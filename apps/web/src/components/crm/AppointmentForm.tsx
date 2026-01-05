@@ -4,7 +4,6 @@ import { Input } from '../ui/input';
 import { CreateCrmAppointmentRequest, CrmAppointmentType } from '../../types/crm-types';
 import { listContacts, listDeals, getContact, getDeal, CrmContact, CrmDeal } from '../../services/crm-service';
 import { listMembers, Member } from '../../services/membership-service';
-import { getDealTypeLabel } from '../../utils/crm-utils';
 import { Users } from 'lucide-react';
 
 interface AppointmentFormProps {
@@ -28,9 +27,8 @@ export const AppointmentForm: React.FC<AppointmentFormProps> = ({
     contactId: contactId || '',
     dealId: dealId || '',
     appointmentType: 'RDV' as CrmAppointmentType,
-    date: '',
-    startTime: '',
-    endTime: '',
+    startAt: '',
+    endAt: '',
     location: '',
     assignedToUserId: '',
     collaboratorIds: [] as string[],
@@ -160,23 +158,19 @@ export const AppointmentForm: React.FC<AppointmentFormProps> = ({
       newErrors.contactId = 'Le contact est requis';
     }
 
-    if (!formData.date) {
-      newErrors.date = 'La date est requise';
+    if (!formData.startAt) {
+      newErrors.startAt = 'La date et heure de début sont requises';
     }
 
-    if (!formData.startTime) {
-      newErrors.startTime = 'L\'heure de début est requise';
+    if (!formData.endAt) {
+      newErrors.endAt = 'La date et heure de fin sont requises';
     }
 
-    if (!formData.endTime) {
-      newErrors.endTime = 'L\'heure de fin est requise';
-    }
-
-    if (formData.date && formData.startTime && formData.endTime) {
-      const startDateTime = new Date(`${formData.date}T${formData.startTime}`);
-      const endDateTime = new Date(`${formData.date}T${formData.endTime}`);
-      if (endDateTime <= startDateTime) {
-        newErrors.endTime = 'L\'heure de fin doit être après l\'heure de début';
+    if (formData.startAt && formData.endAt) {
+      const start = new Date(formData.startAt);
+      const end = new Date(formData.endAt);
+      if (end <= start) {
+        newErrors.endAt = 'L\'heure de fin doit être après l\'heure de début';
       }
     }
 
@@ -198,16 +192,12 @@ export const AppointmentForm: React.FC<AppointmentFormProps> = ({
         throw new Error('Contact ID is required');
       }
 
-      // Combine date with times to create full datetime
-      const startAt = new Date(`${formData.date}T${formData.startTime}`);
-      const endAt = new Date(`${formData.date}T${formData.endTime}`);
-
       const submitData: CreateCrmAppointmentRequest = {
         contactId: finalContactId,
         dealId: formData.dealId || dealId || undefined,
         appointmentType: formData.appointmentType,
-        startAt: startAt,
-        endAt: endAt,
+        startAt: new Date(formData.startAt),
+        endAt: new Date(formData.endAt),
         location: formData.location.trim() || undefined,
         assignedToUserId: formData.assignedToUserId || undefined,
         collaboratorIds: formData.collaboratorIds.length > 0 ? formData.collaboratorIds : undefined,
@@ -385,7 +375,7 @@ export const AppointmentForm: React.FC<AppointmentFormProps> = ({
                   <option value="" disabled>Aucune affaire pour ce contact</option>
                 ) : (
                   deals.map((deal) => {
-                    const typeLabel = getDealTypeLabel(deal.type);
+                    const typeLabel = deal.type === 'ACHAT' ? 'Achat' : 'Location';
                     const stageLabels: Record<string, string> = {
                       'NEW': 'Nouveau',
                       'QUALIFIED': 'Qualifié',
@@ -450,55 +440,38 @@ export const AppointmentForm: React.FC<AppointmentFormProps> = ({
         )}
       </div>
 
-      <div>
-        <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
-          Date <span className="text-red-500">*</span>
-        </label>
-        <Input
-          id="date"
-          type="date"
-          value={formData.date}
-          onChange={(e) => handleChange('date', e.target.value)}
-          className={errors.date ? 'border-red-500' : ''}
-          required
-        />
-        {errors.date && (
-          <p className="mt-1 text-sm text-red-600">{errors.date}</p>
-        )}
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label htmlFor="startTime" className="block text-sm font-medium text-gray-700 mb-1">
-            Heure de début <span className="text-red-500">*</span>
+          <label htmlFor="startAt" className="block text-sm font-medium text-gray-700 mb-1">
+            Date et heure de début <span className="text-red-500">*</span>
           </label>
           <Input
-            id="startTime"
-            type="time"
-            value={formData.startTime}
-            onChange={(e) => handleChange('startTime', e.target.value)}
-            className={errors.startTime ? 'border-red-500' : ''}
+            id="startAt"
+            type="datetime-local"
+            value={formData.startAt}
+            onChange={(e) => handleChange('startAt', e.target.value)}
+            className={errors.startAt ? 'border-red-500' : ''}
             required
           />
-          {errors.startTime && (
-            <p className="mt-1 text-sm text-red-600">{errors.startTime}</p>
+          {errors.startAt && (
+            <p className="mt-1 text-sm text-red-600">{errors.startAt}</p>
           )}
         </div>
 
         <div>
-          <label htmlFor="endTime" className="block text-sm font-medium text-gray-700 mb-1">
-            Heure de fin <span className="text-red-500">*</span>
+          <label htmlFor="endAt" className="block text-sm font-medium text-gray-700 mb-1">
+            Date et heure de fin <span className="text-red-500">*</span>
           </label>
           <Input
-            id="endTime"
-            type="time"
-            value={formData.endTime}
-            onChange={(e) => handleChange('endTime', e.target.value)}
-            className={errors.endTime ? 'border-red-500' : ''}
+            id="endAt"
+            type="datetime-local"
+            value={formData.endAt}
+            onChange={(e) => handleChange('endAt', e.target.value)}
+            className={errors.endAt ? 'border-red-500' : ''}
             required
           />
-          {errors.endTime && (
-            <p className="mt-1 text-sm text-red-600">{errors.endTime}</p>
+          {errors.endAt && (
+            <p className="mt-1 text-sm text-red-600">{errors.endAt}</p>
           )}
         </div>
       </div>

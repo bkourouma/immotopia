@@ -66,10 +66,10 @@ export const Activities: React.FC = () => {
         setActivities(response.activities);
         setPagination(response.pagination);
       } else {
-        setError('Erreur lors du chargement des suivis');
+        setError('Erreur lors du chargement des activités');
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des suivis');
+      setError(err.response?.data?.message || 'Erreur lors du chargement des activités');
     } finally {
       setLoading(false);
     }
@@ -140,18 +140,18 @@ export const Activities: React.FC = () => {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Suivis</h1>
-            <p className="text-gray-600 mt-1">Suivez toutes les interactions et suivis</p>
+            <h1 className="text-3xl font-bold text-gray-900">Activités</h1>
+            <p className="text-gray-600 mt-1">Suivez toutes les interactions et activités</p>
           </div>
           <Button onClick={() => setShowForm(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Nouveau suivi
+            Nouvelle activité
           </Button>
         </div>
 
         {showForm && tenantId && (
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-semibold mb-4">Créer un nouveau suivi</h2>
+            <h2 className="text-xl font-semibold mb-4">Créer une nouvelle activité</h2>
             <ActivityForm
               tenantId={tenantId}
               contactId={contactId}
@@ -303,7 +303,7 @@ export const Activities: React.FC = () => {
             <div className="text-sm text-gray-700">
               Affichage de {((pagination.page - 1) * pagination.limit) + 1} à{' '}
               {Math.min(pagination.page * pagination.limit, pagination.total)} sur{' '}
-              {pagination.total} suivis
+              {pagination.total} activités
             </div>
             <div className="flex gap-2">
               <Button

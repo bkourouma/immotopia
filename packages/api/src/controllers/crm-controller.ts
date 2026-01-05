@@ -133,8 +133,6 @@ export async function listContactsHandler(req: Request, res: Response): Promise<
       assignedTo: req.query.assignedTo as string | undefined,
       tag: req.query.tag as string | undefined,
       search: req.query.search as string | undefined,
-      startDate: req.query.startDate as string | undefined,
-      endDate: req.query.endDate as string | undefined,
       page: req.query.page ? parseInt(req.query.page as string, 10) : undefined,
       limit: req.query.limit ? parseInt(req.query.limit as string, 10) : undefined
     };
@@ -444,7 +442,6 @@ export async function getDealHandler(req: Request, res: Response): Promise<void>
       data: deal
     });
   } catch (error) {
-    console.error('Error getting deal:', error);
     res.status(500).json({
       success: false,
       error: 'Internal Server Error',
@@ -787,37 +784,12 @@ export async function convertContactHandler(req: Request, res: Response): Promis
 /**
  * Get CRM dashboard data
  * GET /tenants/:tenantId/crm/dashboard
- * Query params: start, end, assignee, tags, stages, statuses
  */
 export async function getDashboardHandler(req: Request, res: Response): Promise<void> {
   try {
     const tenantId = getTenantIdFromRequest(req);
 
-    // Extract filters from query params
-    const start = req.query.start as string | undefined;
-    const end = req.query.end as string | undefined;
-    const assignee = req.query.assignee as string | undefined;
-    const tags = req.query.tags as string | undefined; // comma-separated tag IDs
-    const stages = req.query.stages as string | undefined; // comma-separated stages
-    const statuses = req.query.statuses as string | undefined; // comma-separated statuses
-
-    // Convert date strings to Date objects if provided
-    const startDate = start ? new Date(start) : undefined;
-    const endDate = end ? new Date(end) : undefined;
-
-    // Parse comma-separated values
-    const tagIds = tags ? tags.split(',').filter(Boolean) : undefined;
-    const stageArray = stages ? stages.split(',').filter(Boolean) as any[] : undefined;
-    const statusArray = statuses ? statuses.split(',').filter(Boolean) as any[] : undefined;
-
-    const dashboard = await getDashboard(tenantId, {
-      assignedToUserId: assignee,
-      startDate,
-      endDate,
-      tagIds,
-      stages: stageArray,
-      statuses: statusArray,
-    });
+    const dashboard = await getDashboard(tenantId);
 
     res.status(200).json({
       success: true,

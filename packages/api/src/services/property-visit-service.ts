@@ -434,7 +434,7 @@ export async function getCalendarVisits(
           firstName: true,
           lastName: true,
           email: true,
-          phonePrimary: true
+          phone: true
         }
       },
       deal: {

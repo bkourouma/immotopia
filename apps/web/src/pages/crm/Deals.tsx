@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { DealForm } from '../../components/crm/DealForm';
 import { ActivityForm } from '../../components/crm/ActivityForm';
@@ -29,42 +29,15 @@ import { exportToCSV, exportToExcel } from '../../utils/export-utils';
 export const Deals: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
   const [deals, setDeals] = useState<CrmDeal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingDeal, setEditingDeal] = useState<CrmDeal | null>(null);
-  
-  // Parse URL params - these will be the source of truth
-  const urlStage = searchParams.get('stage');
-  const urlStartDate = searchParams.get('startDate');
-  const urlEndDate = searchParams.get('endDate');
-  const urlAssignedTo = searchParams.get('assignedTo');
-  
-  // Compute filters from URL params - this ensures they're always in sync
-  const urlBasedFilters = useMemo<DealFilters>(() => ({
+  const [filters, setFilters] = useState<DealFilters>({
     page: 1,
     limit: 20,
-    ...(urlStage && { stage: urlStage as CrmDealStage }),
-  }), [urlStage]);
-  
-  const urlBasedAdvancedFilters = useMemo<AdvancedFiltersType>(() => ({
-    ...(urlStartDate && { startDate: urlStartDate }),
-    ...(urlEndDate && { endDate: urlEndDate }),
-    ...(urlAssignedTo && { assignedTo: urlAssignedTo }),
-  }), [urlStartDate, urlEndDate, urlAssignedTo]);
-  
-  // Local filters state (for UI interactions that don't update URL immediately)
-  const [filters, setFilters] = useState<DealFilters>(urlBasedFilters);
-  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFiltersType>(urlBasedAdvancedFilters);
-  
-  // Sync local filters with URL-based filters
-  useEffect(() => {
-    setFilters(urlBasedFilters);
-    setAdvancedFilters(urlBasedAdvancedFilters);
-  }, [urlBasedFilters, urlBasedAdvancedFilters]);
-  
+  });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
@@ -73,56 +46,37 @@ export const Deals: React.FC = () => {
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('kanban');
-  
-  const [showFilters, setShowFilters] = useState(() => {
-    // Show filters if URL params are present
-    return !!(urlStage || urlStartDate || urlEndDate || urlAssignedTo);
-  });
+  const [showFilters, setShowFilters] = useState(false);
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [selectedDealForActivity, setSelectedDealForActivity] = useState<CrmDeal | null>(null);
   const [showAppointmentForm, setShowAppointmentForm] = useState(false);
   const [selectedDealForAppointment, setSelectedDealForAppointment] = useState<CrmDeal | null>(null);
-
-  // Update showFilters when URL params change
-  useEffect(() => {
-    if (urlStage || urlStartDate || urlEndDate || urlAssignedTo) {
-      setShowFilters(true);
-    }
-  }, [urlStage, urlStartDate, urlEndDate, urlAssignedTo]);
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFiltersType>({});
 
   useEffect(() => {
     if (tenantId) {
       loadDeals();
     }
-  }, [tenantId, urlBasedFilters, urlBasedAdvancedFilters, viewMode, filters.type]);
+  }, [tenantId, filters, viewMode, advancedFilters]);
 
   const loadDeals = async () => {
     if (!tenantId) return;
     setLoading(true);
     setError(null);
     try {
-      // Use URL-based filters as source of truth, but merge with local filters (like type)
-      const baseFilters = { ...urlBasedFilters, ...(filters.type && { type: filters.type }) };
-      
       // For kanban view, load all deals (no pagination)
       const filtersToUse = viewMode === 'kanban' 
-        ? { ...baseFilters, limit: 1000, page: 1 }
-        : baseFilters;
+        ? { ...filters, limit: 1000, page: 1 }
+        : filters;
       
-      // Build the complete filters object, ensuring stage is included if present
-      const apiFilters: DealFilters = {
-        page: filtersToUse.page,
-        limit: filtersToUse.limit,
-        ...(filtersToUse.stage && { stage: filtersToUse.stage }),
-        ...(filtersToUse.type && { type: filtersToUse.type }),
-        ...(urlBasedAdvancedFilters.budgetMin && { budgetMin: urlBasedAdvancedFilters.budgetMin }),
-        ...(urlBasedAdvancedFilters.budgetMax && { budgetMax: urlBasedAdvancedFilters.budgetMax }),
-        ...(urlBasedAdvancedFilters.startDate && { startDate: urlBasedAdvancedFilters.startDate }),
-        ...(urlBasedAdvancedFilters.endDate && { endDate: urlBasedAdvancedFilters.endDate }),
-        ...(urlBasedAdvancedFilters.assignedTo && { assignedTo: urlBasedAdvancedFilters.assignedTo }),
-      };
-      
-      const response = await listDeals(tenantId, apiFilters);
+      const response = await listDeals(tenantId, {
+        ...filtersToUse,
+        budgetMin: advancedFilters.budgetMin,
+        budgetMax: advancedFilters.budgetMax,
+        startDate: advancedFilters.startDate,
+        endDate: advancedFilters.endDate,
+        assignedTo: advancedFilters.assignedTo,
+      });
       if (response.success) {
         setDeals(response.deals);
         setPagination(response.pagination);
@@ -170,46 +124,12 @@ export const Deals: React.FC = () => {
     });
   }, [deals, searchTerm]);
 
-  const handleTypeFilter = (type: 'ACHAT' | 'LOCATION' | 'VENTE' | 'GESTION' | 'MANDAT' | '') => {
+  const handleTypeFilter = (type: 'ACHAT' | 'LOCATION' | '') => {
     setFilters({ ...filters, page: 1, type: type || undefined });
   };
 
   const handleStageFilter = (stage: string) => {
-    const newFilters = { ...filters, page: 1, stage: (stage || undefined) as CrmDealStage | undefined };
-    setFilters(newFilters);
-    
-    // Update URL
-    const params = new URLSearchParams(searchParams);
-    if (stage) {
-      params.set('stage', stage);
-    } else {
-      params.delete('stage');
-    }
-    setSearchParams(params);
-  };
-
-  // Handler for advanced filters that also updates URL
-  const handleAdvancedFiltersChange = (newFilters: AdvancedFiltersType) => {
-    setAdvancedFilters(newFilters);
-    
-    // Update URL with advanced filter params
-    const params = new URLSearchParams(searchParams);
-    if (newFilters.startDate) {
-      params.set('startDate', newFilters.startDate);
-    } else {
-      params.delete('startDate');
-    }
-    if (newFilters.endDate) {
-      params.set('endDate', newFilters.endDate);
-    } else {
-      params.delete('endDate');
-    }
-    if (newFilters.assignedTo) {
-      params.set('assignedTo', newFilters.assignedTo);
-    } else {
-      params.delete('assignedTo');
-    }
-    setSearchParams(params);
+    setFilters({ ...filters, page: 1, stage: (stage || undefined) as CrmDealStage | undefined });
   };
 
   const handleCreate = async (data: CreateCrmDealRequest | UpdateCrmDealRequest) => {
@@ -308,14 +228,7 @@ export const Deals: React.FC = () => {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Affaires</h1>
-            <p className="text-gray-600 mt-0.5 text-sm">
-              Gérez votre pipeline de ventes
-              {pagination.total > 0 && (
-                <span className="ml-2 text-blue-600 font-medium">
-                  ({pagination.total} résultat{pagination.total > 1 ? 's' : ''})
-                </span>
-              )}
-            </p>
+            <p className="text-gray-600 mt-0.5 text-sm">Gérez votre pipeline de ventes</p>
           </div>
           <div className="flex gap-2">
             <Button
@@ -393,7 +306,7 @@ export const Deals: React.FC = () => {
 
         {showActivityForm && selectedDealForActivity && (
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-semibold mb-4">Ajouter un suivi à l'affaire</h2>
+            <h2 className="text-xl font-semibold mb-4">Ajouter une activité à l'affaire</h2>
             <ActivityForm
               tenantId={tenantId!}
               contactId={selectedDealForActivity.contactId}
@@ -555,7 +468,7 @@ export const Deals: React.FC = () => {
                 dateRangeLabel: 'Date de création',
               }}
               filters={advancedFilters}
-              onFiltersChange={handleAdvancedFiltersChange}
+              onFiltersChange={setAdvancedFilters}
             />
           </div>
         </div>
@@ -673,7 +586,7 @@ export const Deals: React.FC = () => {
                           variant="ghost"
                           size="sm"
                           onClick={() => handleAddActivity(deal)}
-                          title="Ajouter un suivi"
+                          title="Ajouter une activité"
                         >
                           <Activity className="h-4 w-4" />
                         </Button>

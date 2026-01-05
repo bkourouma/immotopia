@@ -104,7 +104,7 @@ export async function getDealById(tenantId: string, dealId: string): Promise<Dea
           firstName: true,
           lastName: true,
           email: true,
-          phonePrimary: true
+          phone: true
         }
       },
       activities: {
@@ -216,15 +216,12 @@ export async function listDeals(tenantId: string, filters: DealFilters) {
   }
 
   if (filters.startDate || filters.endDate) {
-    // For WON deals, filter by updatedAt (when they were won)
-    // For other deals, filter by createdAt (when they were created)
-    const dateField = filters.stage === 'WON' ? 'updatedAt' : 'createdAt';
-    where[dateField] = {};
+    where.createdAt = {};
     if (filters.startDate) {
-      where[dateField].gte = new Date(filters.startDate);
+      where.createdAt.gte = new Date(filters.startDate);
     }
     if (filters.endDate) {
-      where[dateField].lte = new Date(filters.endDate);
+      where.createdAt.lte = new Date(filters.endDate);
     }
   }
 

@@ -148,7 +148,7 @@ export function Sidebar() {
         { title: 'Contacts', href: `/tenant/${tenantMembership?.tenantId}/crm/contacts` },
         { title: 'Nouveau contact', href: `/tenant/${tenantMembership?.tenantId}/crm/contacts/new` },
         { title: 'Affaires', href: `/tenant/${tenantMembership?.tenantId}/crm/deals` },
-        { title: 'Suivis', href: `/tenant/${tenantMembership?.tenantId}/crm/activities` },
+        { title: 'Activités', href: `/tenant/${tenantMembership?.tenantId}/crm/activities` },
         { title: 'Rendez-vous', href: `/tenant/${tenantMembership?.tenantId}/crm/appointments` },
       ],
     },

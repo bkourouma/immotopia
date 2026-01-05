@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { ContactForm } from '../../components/crm/ContactForm';
 import { ActivityForm } from '../../components/crm/ActivityForm';
@@ -22,36 +22,22 @@ import {
   CreateCrmAppointmentRequest,
   ContactFilters,
 } from '../../services/crm-service';
-import { CrmContactStatus } from '../../types/crm-types';
 import { Users, Plus, Search, Edit, Eye, Activity, Calendar, Tag, X, Filter, Download, FileSpreadsheet } from 'lucide-react';
 import { AdvancedFilters, AdvancedFilters as AdvancedFiltersType } from '../../components/crm/AdvancedFilters';
 import { exportToCSV, exportToExcel } from '../../utils/export-utils';
-import { getDealTypeLabel } from '../../utils/crm-utils';
 
 export const Contacts: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  
-  // Parse URL parameters on mount
-  const urlStatus = searchParams.get('status') as CrmContactStatus | undefined;
-  const urlStartDate = searchParams.get('startDate') || undefined;
-  const urlEndDate = searchParams.get('endDate') || undefined;
-  const urlAssignedTo = searchParams.get('assignedTo') || undefined;
-  
   const [contacts, setContacts] = useState<CrmContact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingContact, setEditingContact] = useState<CrmContact | null>(null);
-  
-  // Initialize filters from URL params
-  const [filters, setFilters] = useState<ContactFilters>(() => ({
+  const [filters, setFilters] = useState<ContactFilters>({
     page: 1,
     limit: 20,
-    ...(urlStatus && { status: urlStatus }),
-  }));
-  
+  });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
@@ -68,35 +54,9 @@ export const Contacts: React.FC = () => {
   const [showTagFilter, setShowTagFilter] = useState(false);
   const [selectedContacts, setSelectedContacts] = useState<string[]>([]);
   const [showBulkTagManager, setShowBulkTagManager] = useState(false);
-  
-  // Initialize advanced filters from URL params
-  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFiltersType>(() => ({
-    ...(urlStartDate && { startDate: urlStartDate }),
-    ...(urlEndDate && { endDate: urlEndDate }),
-    ...(urlAssignedTo && { assignedTo: urlAssignedTo }),
-  }));
-  
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFiltersType>({});
   const [hasActiveDealFilter, setHasActiveDealFilter] = useState<boolean | undefined>(undefined);
   const [hasUpcomingAppointmentOrActivityFilter, setHasUpcomingAppointmentOrActivityFilter] = useState<boolean | undefined>(undefined);
-
-  // Update filters when URL params change
-  useEffect(() => {
-    const status = searchParams.get('status') as CrmContactStatus | undefined;
-    const startDate = searchParams.get('startDate') || undefined;
-    const endDate = searchParams.get('endDate') || undefined;
-    const assignedTo = searchParams.get('assignedTo') || undefined;
-
-    setFilters(prev => ({
-      ...prev,
-      ...(status && { status }),
-    }));
-    
-    setAdvancedFilters({
-      ...(startDate && { startDate }),
-      ...(endDate && { endDate }),
-      ...(assignedTo && { assignedTo }),
-    });
-  }, [searchParams]);
 
   useEffect(() => {
     if (tenantId) {
@@ -284,7 +244,7 @@ export const Contacts: React.FC = () => {
                   'Statut': contact.status === 'LEAD' ? 'Prospect' : contact.status === 'ACTIVE_CLIENT' ? 'Client actif' : 'Archivé',
                   'Source': contact.source || '',
                   'Prochaine action': contact.nextAction ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString('fr-FR')}` : '',
-                  'Affaire en cours': contact.activeDeal ? `${getDealTypeLabel(contact.activeDeal.type)} - ${contact.activeDeal.stage}` : '',
+                  'Affaire en cours': contact.activeDeal ? `${contact.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${contact.activeDeal.stage}` : '',
                   'Date de création': new Date(contact.createdAt).toLocaleDateString('fr-FR'),
                 }));
                 exportToCSV(exportData, 'contacts');
@@ -303,7 +263,7 @@ export const Contacts: React.FC = () => {
                   'Statut': contact.status === 'LEAD' ? 'Prospect' : contact.status === 'ACTIVE_CLIENT' ? 'Client actif' : 'Archivé',
                   'Source': contact.source || '',
                   'Prochaine action': contact.nextAction ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString('fr-FR')}` : '',
-                  'Affaire en cours': contact.activeDeal ? `${getDealTypeLabel(contact.activeDeal.type)} - ${contact.activeDeal.stage}` : '',
+                  'Affaire en cours': contact.activeDeal ? `${contact.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${contact.activeDeal.stage}` : '',
                   'Date de création': new Date(contact.createdAt).toLocaleDateString('fr-FR'),
                 }));
                 exportToExcel(exportData, 'contacts', 'Contacts');
@@ -320,7 +280,7 @@ export const Contacts: React.FC = () => {
         </div>
 
         {showForm && (
-          <div className="bg-white rounded-lg shadow p-6 overflow-visible">
+          <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold mb-4">Créer un nouveau contact</h2>
             <ContactForm
               onSubmit={handleCreate}
@@ -330,7 +290,7 @@ export const Contacts: React.FC = () => {
         )}
 
         {editingContact && (
-          <div className="bg-white rounded-lg shadow p-6 overflow-visible">
+          <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-semibold mb-4">Modifier le contact</h2>
             <ContactForm
               contact={editingContact}
@@ -342,7 +302,7 @@ export const Contacts: React.FC = () => {
 
         {showActivityForm && selectedContactForActivity && (
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-semibold mb-4">Ajouter un suivi au contact</h2>
+            <h2 className="text-xl font-semibold mb-4">Ajouter une activité au contact</h2>
             <ActivityForm
               tenantId={tenantId!}
               contactId={selectedContactForActivity.id}
@@ -545,7 +505,7 @@ export const Contacts: React.FC = () => {
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
               />
               <label htmlFor="hasUpcomingAppointmentOrActivity" className="text-sm font-medium text-gray-700">
-                Rendez-vous ou Suivi à venir
+                Rendez-vous ou Activité à venir
               </label>
             </div>
           </div>
@@ -708,7 +668,7 @@ export const Contacts: React.FC = () => {
                         {contact.activeDeal ? (
                           <div className="text-sm">
                             <div className="font-medium text-gray-900">
-                              {getDealTypeLabel(contact.activeDeal.type)}
+                              {contact.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location'}
                             </div>
                             <div className="text-xs text-gray-500">
                               {contact.activeDeal.stage === 'NEW' && 'Nouveau'}
@@ -728,7 +688,7 @@ export const Contacts: React.FC = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleAddActivity(contact)}
-                            title="Ajouter un suivi"
+                            title="Ajouter une activité"
                           >
                             <Activity className="h-4 w-4" />
                           </Button>

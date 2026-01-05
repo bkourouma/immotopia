@@ -3,7 +3,6 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { CreateCrmActivityRequest, CrmActivityType, CrmActivityDirection } from '../../types/crm-types';
 import { listContacts, listDeals, getContact, getDeal, CrmContact, CrmDeal } from '../../services/crm-service';
-import { getDealTypeLabel } from '../../utils/crm-utils';
 
 interface ActivityFormProps {
   tenantId: string;
@@ -135,7 +134,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
     // Contact is required
     if (!formData.contactId && !contactId) {
       newErrors.contactId = 'Le contact est requis';
-      newErrors.submit = 'Vous devez sélectionner un contact pour créer un suivi';
+      newErrors.submit = 'Vous devez sélectionner un contact pour créer une activité';
     }
 
     if (!formData.content.trim()) {
@@ -185,7 +184,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
       } else if (error.response?.data?.message) {
         setErrors({ submit: error.response.data.message });
       } else {
-        setErrors({ submit: 'Une erreur est survenue lors de l\'enregistrement du suivi' });
+        setErrors({ submit: 'Une erreur est survenue lors de l\'enregistrement de l\'activité' });
       }
     } finally {
       setIsSubmitting(false);
@@ -330,7 +329,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
                   <option value="" disabled>Aucune affaire pour ce contact</option>
                 ) : (
                   deals.map((deal) => {
-                    const typeLabel = getDealTypeLabel(deal.type);
+                    const typeLabel = deal.type === 'ACHAT' ? 'Achat' : 'Location';
                     const stageLabels: Record<string, string> = {
                       'NEW': 'Nouveau',
                       'QUALIFIED': 'Qualifié',
@@ -446,7 +445,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
           type="text"
           value={formData.subject}
           onChange={(e) => handleChange('subject', e.target.value)}
-          placeholder="Sujet du suivi"
+          placeholder="Sujet de l'activité"
           className="h-9"
         />
       </div>
@@ -463,7 +462,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
             errors.content ? 'border-red-500' : 'border-slate-200'
           } bg-white px-3 py-2 text-sm`}
           required
-          placeholder="Détails du suivi..."
+          placeholder="Détails de l'activité..."
         />
         {errors.content && (
           <p className="mt-1 text-xs text-red-600">{errors.content}</p>
@@ -509,7 +508,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
             type="text"
             value={formData.outcome}
             onChange={(e) => handleChange('outcome', e.target.value)}
-            placeholder="Résultat du suivi"
+            placeholder="Résultat de l'activité"
             className="h-9"
           />
         </div>
@@ -537,7 +536,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
           </Button>
         )}
         <Button type="submit" disabled={isSubmitting || loading} className="h-9">
-          {isSubmitting || loading ? 'Enregistrement...' : 'Créer le suivi'}
+          {isSubmitting || loading ? 'Enregistrement...' : 'Créer l\'activité'}
         </Button>
       </div>
     </form>

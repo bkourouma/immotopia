@@ -14,3 +14,4 @@ export function getDealTypeLabel(type: CrmDealType | string): string {
   return labels[type] || type;
 }
 
+
