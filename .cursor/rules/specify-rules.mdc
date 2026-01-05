@@ -1,0 +1,32 @@
+# Immobillier Development Guidelines
+
+Auto-generated from all feature plans. Last updated: 2025-12-14
+
+## Active Technologies
+- PostgreSQL (via Prisma ORM) (006-rental-management)
+
+- TypeScript 5.3 (strict mode), Node.js >=18.x (LTS) (003-multi-tenant-rbac)
+
+## Project Structure
+
+```text
+backend/
+frontend/
+tests/
+```
+
+## Commands
+
+npm test; npm run lint
+
+## Code Style
+
+TypeScript 5.3 (strict mode), Node.js >=18.x (LTS): Follow standard conventions
+
+## Recent Changes
+- 006-rental-management: Added TypeScript 5.3 (strict mode), Node.js >=18.x (LTS)
+
+- 003-multi-tenant-rbac: Added TypeScript 5.3 (strict mode), Node.js >=18.x (LTS)
+
+<!-- MANUAL ADDITIONS START -->
+<!-- MANUAL ADDITIONS END -->

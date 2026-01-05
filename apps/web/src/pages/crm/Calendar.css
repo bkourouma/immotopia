@@ -1,0 +1,33 @@
+/* Custom styles for calendar events */
+.rbc-event {
+  font-size: 11px !important;
+  padding: 2px 4px !important;
+  line-height: 1.2 !important;
+}
+
+.rbc-event-label {
+  font-size: 10px !important;
+}
+
+.rbc-event-content {
+  font-size: 11px !important;
+  line-height: 1.2 !important;
+}
+
+/* Make event text more compact */
+.rbc-event-small {
+  font-size: 11px !important;
+  padding: 2px 4px !important;
+}
+
+/* Ensure text doesn't overflow */
+.rbc-event-content {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+
+
+

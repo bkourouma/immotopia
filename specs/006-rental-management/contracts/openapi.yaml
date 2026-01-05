@@ -1,0 +1,1102 @@
+openapi: 3.0.0
+info:
+  title: Rental Management API
+  version: 1.0.0
+  description: API for Rental Management Module - leases, installments, payments, penalties, security deposits, and documents
+
+servers:
+  - url: http://localhost:5000/api
+    description: Development server
+  - url: https://api.immotopia.com/api
+    description: Production server
+
+tags:
+  - name: Leases
+    description: Rental lease (bail) management
+  - name: Installments
+    description: Installment schedule generation and management
+  - name: Payments
+    description: Payment recording and allocation
+  - name: Penalties
+    description: Penalty calculation and management
+  - name: Deposits
+    description: Security deposit management
+  - name: Documents
+    description: Document generation and retrieval
+
+paths:
+  # Leases
+  /tenants/{tenantId}/rental/leases:
+    get:
+      tags: [Leases]
+      summary: List leases
+      description: Get paginated list of leases with filtering
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, ACTIVE, SUSPENDED, ENDED, CANCELED]
+        - name: propertyId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: renterId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of leases
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  leases:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Lease'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      tags: [Leases]
+      summary: Create lease
+      description: Create a new rental lease
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLeaseRequest'
+      responses:
+        '201':
+          description: Lease created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lease'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenants/{tenantId}/rental/leases/{leaseId}:
+    get:
+      tags: [Leases]
+      summary: Get lease
+      description: Get lease details by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/leaseId'
+      responses:
+        '200':
+          description: Lease details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lease'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Leases]
+      summary: Update lease
+      description: Update lease details
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/leaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLeaseRequest'
+      responses:
+        '200':
+          description: Lease updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lease'
+
+  /tenants/{tenantId}/rental/leases/{leaseId}/status:
+    patch:
+      tags: [Leases]
+      summary: Update lease status
+      description: Update lease status (e.g., DRAFT → ACTIVE)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/leaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [DRAFT, ACTIVE, SUSPENDED, ENDED, CANCELED]
+      responses:
+        '200':
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lease'
+
+  /tenants/{tenantId}/rental/leases/{leaseId}/co-renters:
+    post:
+      tags: [Leases]
+      summary: Add co-renter
+      description: Add a co-renter to the lease
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/leaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - renterClientId
+              properties:
+                renterClientId:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Co-renter added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoRenter'
+
+  # Installments
+  /tenants/{tenantId}/rental/leases/{leaseId}/installments:
+    get:
+      tags: [Installments]
+      summary: List installments
+      description: Get installments for a lease
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/leaseId'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, DUE, PARTIAL, PAID, OVERDUE, CANCELED]
+        - name: year
+          in: query
+          schema:
+            type: integer
+        - name: month
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+      responses:
+        '200':
+          description: List of installments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  installments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Installment'
+
+    post:
+      tags: [Installments]
+      summary: Generate installments
+      description: Manually trigger installment generation for a lease
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/leaseId'
+      responses:
+        '201':
+          description: Installments generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  installments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Installment'
+                  count:
+                    type: integer
+
+  # Payments
+  /tenants/{tenantId}/rental/payments:
+    post:
+      tags: [Payments]
+      summary: Create payment
+      description: Record a new payment
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePaymentRequest'
+      responses:
+        '201':
+          description: Payment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+
+  /tenants/{tenantId}/rental/payments/{paymentId}/allocate:
+    post:
+      tags: [Payments]
+      summary: Allocate payment to installments
+      description: Allocate payment amount to one or more installments (prioritizes oldest overdue first)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - installmentIds
+              properties:
+                installmentIds:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                  description: Installment IDs to allocate to (system prioritizes oldest overdue first)
+                amounts:
+                  type: object
+                  additionalProperties:
+                    type: number
+                  description: Optional specific amounts per installment (if not provided, auto-allocates)
+      responses:
+        '200':
+          description: Payment allocated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  allocations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentAllocation'
+
+  /tenants/{tenantId}/rental/payments/{paymentId}/status:
+    patch:
+      tags: [Payments]
+      summary: Update payment status
+      description: Update payment status (e.g., PENDING → SUCCESS)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [PENDING, SUCCESS, FAILED, CANCELED, REFUNDED, PARTIALLY_REFUNDED]
+      responses:
+        '200':
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+
+  # Penalties
+  /tenants/{tenantId}/rental/penalties/calculate:
+    post:
+      tags: [Penalties]
+      summary: Calculate penalties
+      description: Manually trigger penalty calculation for overdue installments
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                leaseId:
+                  type: string
+                  format: uuid
+                  description: Optional lease ID to calculate penalties for specific lease
+                installmentId:
+                  type: string
+                  format: uuid
+                  description: Optional installment ID to calculate penalty for specific installment
+      responses:
+        '200':
+          description: Penalties calculated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  penalties:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Penalty'
+                  count:
+                    type: integer
+
+  /tenants/{tenantId}/rental/penalties/{penaltyId}:
+    patch:
+      tags: [Penalties]
+      summary: Update penalty
+      description: Manually adjust penalty amount
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: penaltyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - reason
+              properties:
+                amount:
+                  type: number
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Penalty updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Penalty'
+
+  # Security Deposits
+  /tenants/{tenantId}/rental/leases/{leaseId}/deposit:
+    get:
+      tags: [Deposits]
+      summary: Get security deposit
+      description: Get security deposit details for a lease
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/leaseId'
+      responses:
+        '200':
+          description: Security deposit details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityDeposit'
+
+    post:
+      tags: [Deposits]
+      summary: Create security deposit
+      description: Create security deposit record for a lease
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/leaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - targetAmount
+              properties:
+                targetAmount:
+                  type: number
+      responses:
+        '201':
+          description: Security deposit created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SecurityDeposit'
+
+  /tenants/{tenantId}/rental/deposits/{depositId}/movements:
+    post:
+      tags: [Deposits]
+      summary: Create deposit movement
+      description: Record a deposit movement (COLLECT, HOLD, RELEASE, REFUND, FORFEIT, ADJUSTMENT)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: depositId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDepositMovementRequest'
+      responses:
+        '201':
+          description: Movement created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositMovement'
+
+  # Documents
+  /tenants/{tenantId}/rental/documents:
+    get:
+      tags: [Documents]
+      summary: List documents
+      description: Get paginated list of rental documents
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: leaseId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [LEASE_CONTRACT, LEASE_ADDENDUM, RENT_RECEIPT, RENT_QUITTANCE, DEPOSIT_RECEIPT, STATEMENT, OTHER]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Document'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      tags: [Documents]
+      summary: Generate document
+      description: Generate a rental document (contract, receipt, quittance, etc.)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateDocumentRequest'
+      responses:
+        '201':
+          description: Document generated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+
+  /tenants/{tenantId}/rental/documents/{documentId}:
+    get:
+      tags: [Documents]
+      summary: Get document
+      description: Get document details and download URL
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Document details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+
+    patch:
+      tags: [Documents]
+      summary: Update document status
+      description: Update document status (e.g., DRAFT → FINAL, or void document)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [DRAFT, FINAL, VOID]
+      responses:
+        '200':
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    tenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Tenant organization ID
+
+    leaseId:
+      name: leaseId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Lease ID
+
+  schemas:
+    Lease:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        propertyId:
+          type: string
+          format: uuid
+        primaryRenterClientId:
+          type: string
+          format: uuid
+        ownerClientId:
+          type: string
+          format: uuid
+          nullable: true
+        leaseNumber:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, SUSPENDED, ENDED, CANCELED]
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+        moveInDate:
+          type: string
+          format: date-time
+          nullable: true
+        moveOutDate:
+          type: string
+          format: date-time
+          nullable: true
+        billingFrequency:
+          type: string
+          enum: [MONTHLY, QUARTERLY, SEMIANNUAL, ANNUAL]
+        dueDayOfMonth:
+          type: integer
+        currency:
+          type: string
+        rentAmount:
+          type: number
+        serviceChargeAmount:
+          type: number
+        securityDepositAmount:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateLeaseRequest:
+      type: object
+      required:
+        - leaseNumber
+        - propertyId
+        - primaryRenterClientId
+        - startDate
+        - rentAmount
+        - billingFrequency
+      properties:
+        leaseNumber:
+          type: string
+        propertyId:
+          type: string
+          format: uuid
+        primaryRenterClientId:
+          type: string
+          format: uuid
+        ownerClientId:
+          type: string
+          format: uuid
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        billingFrequency:
+          type: string
+          enum: [MONTHLY, QUARTERLY, SEMIANNUAL, ANNUAL]
+        dueDayOfMonth:
+          type: integer
+          default: 5
+        currency:
+          type: string
+          default: FCFA
+        rentAmount:
+          type: number
+        serviceChargeAmount:
+          type: number
+          default: 0
+        securityDepositAmount:
+          type: number
+          default: 0
+
+    UpdateLeaseRequest:
+      type: object
+      properties:
+        endDate:
+          type: string
+          format: date-time
+        moveInDate:
+          type: string
+          format: date-time
+        moveOutDate:
+          type: string
+          format: date-time
+        rentAmount:
+          type: number
+        serviceChargeAmount:
+          type: number
+        billingFrequency:
+          type: string
+          enum: [MONTHLY, QUARTERLY, SEMIANNUAL, ANNUAL]
+        notes:
+          type: string
+
+    Installment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        leaseId:
+          type: string
+          format: uuid
+        periodYear:
+          type: integer
+        periodMonth:
+          type: integer
+        dueDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [DRAFT, DUE, PARTIAL, PAID, OVERDUE, CANCELED]
+        amountRent:
+          type: number
+        amountService:
+          type: number
+        amountOtherFees:
+          type: number
+        penaltyAmount:
+          type: number
+        amountPaid:
+          type: number
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreatePaymentRequest:
+      type: object
+      required:
+        - leaseId
+        - renterClientId
+        - method
+        - amount
+        - currency
+      properties:
+        leaseId:
+          type: string
+          format: uuid
+        renterClientId:
+          type: string
+          format: uuid
+        method:
+          type: string
+          enum: [CASH, BANK_TRANSFER, CHECK, MOBILE_MONEY, CARD, OTHER]
+        amount:
+          type: number
+        currency:
+          type: string
+        mmOperator:
+          type: string
+          enum: [ORANGE, MTN, MOOV, WAVE, OTHER]
+        mmPhone:
+          type: string
+        pspTransactionId:
+          type: string
+        pspReference:
+          type: string
+        idempotencyKey:
+          type: string
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        leaseId:
+          type: string
+          format: uuid
+        method:
+          type: string
+          enum: [CASH, BANK_TRANSFER, CHECK, MOBILE_MONEY, CARD, OTHER]
+        status:
+          type: string
+          enum: [PENDING, SUCCESS, FAILED, CANCELED, REFUNDED, PARTIALLY_REFUNDED]
+        amount:
+          type: number
+        currency:
+          type: string
+        initiatedAt:
+          type: string
+          format: date-time
+        succeededAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    PaymentAllocation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        paymentId:
+          type: string
+          format: uuid
+        installmentId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+
+    Penalty:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        installmentId:
+          type: string
+          format: uuid
+        calculatedAt:
+          type: string
+          format: date-time
+        daysLate:
+          type: integer
+        mode:
+          type: string
+          enum: [FIXED_AMOUNT, PERCENT_OF_RENT, PERCENT_OF_BALANCE]
+        amount:
+          type: number
+        isManualOverride:
+          type: boolean
+        overrideReason:
+          type: string
+          nullable: true
+
+    SecurityDeposit:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        leaseId:
+          type: string
+          format: uuid
+        targetAmount:
+          type: number
+        collectedAmount:
+          type: number
+        heldAmount:
+          type: number
+        refundedAmount:
+          type: number
+        forfeitedAmount:
+          type: number
+
+    CreateDepositMovementRequest:
+      type: object
+      required:
+        - type
+        - amount
+      properties:
+        type:
+          type: string
+          enum: [COLLECT, HOLD, RELEASE, REFUND, FORFEIT, ADJUSTMENT]
+        amount:
+          type: number
+        paymentId:
+          type: string
+          format: uuid
+        installmentId:
+          type: string
+          format: uuid
+        note:
+          type: string
+
+    DepositMovement:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        depositId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [COLLECT, HOLD, RELEASE, REFUND, FORFEIT, ADJUSTMENT]
+        amount:
+          type: number
+        createdAt:
+          type: string
+          format: date-time
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [LEASE_CONTRACT, LEASE_ADDENDUM, RENT_RECEIPT, RENT_QUITTANCE, DEPOSIT_RECEIPT, STATEMENT, OTHER]
+        status:
+          type: string
+          enum: [DRAFT, FINAL, VOID]
+        documentNumber:
+          type: string
+        leaseId:
+          type: string
+          format: uuid
+          nullable: true
+        fileUrl:
+          type: string
+          nullable: true
+        issuedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    GenerateDocumentRequest:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [LEASE_CONTRACT, LEASE_ADDENDUM, RENT_RECEIPT, RENT_QUITTANCE, DEPOSIT_RECEIPT, STATEMENT, OTHER]
+        leaseId:
+          type: string
+          format: uuid
+        installmentId:
+          type: string
+          format: uuid
+        paymentId:
+          type: string
+          format: uuid
+
+    CoRenter:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        leaseId:
+          type: string
+          format: uuid
+        renterClientId:
+          type: string
+          format: uuid
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+
+
+
+

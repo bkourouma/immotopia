@@ -1,0 +1,942 @@
+openapi: 3.0.0
+info:
+  title: Properties API
+  version: 1.0.0
+  description: API for Properties & Listings Module - property management, type-specific templates, media/documents, search, matching, and public portal
+
+servers:
+  - url: http://localhost:5000/api
+    description: Development server
+  - url: https://api.immotopia.com/api
+    description: Production server
+
+tags:
+  - name: Properties
+    description: Property CRUD operations
+  - name: Property Templates
+    description: Property type template management
+  - name: Property Media
+    description: Media upload and management
+  - name: Property Documents
+    description: Document upload and expiration management
+  - name: Property Search
+    description: Search and filtering
+  - name: Property Matching
+    description: Property matching for CRM deals
+  - name: Property Visits
+    description: Visit scheduling and management
+  - name: Public Portal
+    description: Public property portal (unauthenticated)
+
+paths:
+  # Properties - Tenant-scoped
+  /tenants/{tenantId}/properties:
+    get:
+      tags: [Properties]
+      summary: List properties
+      description: Get paginated list of tenant properties with filtering
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: propertyType
+          in: query
+          schema:
+            type: string
+            enum: [APPARTEMENT, MAISON_VILLA, STUDIO, DUPLEX_TRIPLEX, CHAMBRE_COLOCATION, BUREAU, BOUTIQUE_COMMERCIAL, ENTREPOT_INDUSTRIEL, TERRAIN, IMMEUBLE, PARKING_BOX, LOT_PROGRAMME_NEUF]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, UNDER_REVIEW, AVAILABLE, RESERVED, UNDER_OFFER, RENTED, SOLD, ARCHIVED]
+        - name: ownershipType
+          in: query
+          schema:
+            type: string
+            enum: [TENANT, PUBLIC, CLIENT]
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by title, reference, or address
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of properties
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  properties:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Property'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Properties]
+      summary: Create property
+      description: Create a new property with type-specific template
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePropertyRequest'
+      responses:
+        '201':
+          description: Property created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenants/{tenantId}/properties/{propertyId}:
+    get:
+      tags: [Properties]
+      summary: Get property
+      description: Get property details by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/propertyId'
+      responses:
+        '200':
+          description: Property details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    put:
+      tags: [Properties]
+      summary: Update property
+      description: Update property details
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/propertyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePropertyRequest'
+      responses:
+        '200':
+          description: Property updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Concurrent update conflict
+          $ref: '#/components/responses/Conflict'
+
+    delete:
+      tags: [Properties]
+      summary: Delete property
+      description: Archive property (soft delete)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/propertyId'
+      responses:
+        '204':
+          description: Property archived
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Cannot delete - has active deals, visits, or transactions
+
+  /tenants/{tenantId}/properties/{propertyId}/publish:
+    post:
+      tags: [Properties]
+      summary: Publish property
+      description: Publish property to public portal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/propertyId'
+      responses:
+        '200':
+          description: Property published
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        '400':
+          description: Missing required information (fields, photos, geolocation)
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenants/{tenantId}/properties/{propertyId}/unpublish:
+    post:
+      tags: [Properties]
+      summary: Unpublish property
+      description: Remove property from public portal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/propertyId'
+      responses:
+        '200':
+          description: Property unpublished
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenants/{tenantId}/properties/{propertyId}/status:
+    post:
+      tags: [Properties]
+      summary: Update property status
+      description: Change property workflow status
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/propertyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [DRAFT, UNDER_REVIEW, AVAILABLE, RESERVED, UNDER_OFFER, RENTED, SOLD, ARCHIVED]
+                notes:
+                  type: string
+      responses:
+        '200':
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Property'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # Property Templates
+  /property-templates:
+    get:
+      tags: [Property Templates]
+      summary: List property type templates
+      description: Get all property type templates
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PropertyTemplate'
+
+  /property-templates/{propertyType}:
+    get:
+      tags: [Property Templates]
+      summary: Get template by type
+      description: Get property type template configuration
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: propertyType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [APPARTEMENT, MAISON_VILLA, STUDIO, DUPLEX_TRIPLEX, CHAMBRE_COLOCATION, BUREAU, BOUTIQUE_COMMERCIAL, ENTREPOT_INDUSTRIEL, TERRAIN, IMMEUBLE, PARKING_BOX, LOT_PROGRAMME_NEUF]
+      responses:
+        '200':
+          description: Template configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyTemplate'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Property Media
+  /tenants/{tenantId}/properties/{propertyId}/media:
+    get:
+      tags: [Property Media]
+      summary: List property media
+      description: Get all media for a property
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/propertyId'
+      responses:
+        '200':
+          description: List of media
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PropertyMedia'
+
+    post:
+      tags: [Property Media]
+      summary: Upload media
+      description: Upload photo, video, or 360° tour
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/propertyId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - mediaType
+              properties:
+                file:
+                  type: string
+                  format: binary
+                mediaType:
+                  type: string
+                  enum: [PHOTO, VIDEO, TOUR_360]
+                displayOrder:
+                  type: integer
+                isPrimary:
+                  type: boolean
+      responses:
+        '201':
+          description: Media uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyMedia'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /tenants/{tenantId}/properties/{propertyId}/media/{mediaId}:
+    delete:
+      tags: [Property Media]
+      summary: Delete media
+      description: Remove media from property
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/propertyId'
+        - name: mediaId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Media deleted
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenants/{tenantId}/properties/{propertyId}/media/reorder:
+    post:
+      tags: [Property Media]
+      summary: Reorder media
+      description: Update display order of media items
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/propertyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - mediaOrder
+              properties:
+                mediaOrder:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      mediaId:
+                        type: string
+                        format: uuid
+                      displayOrder:
+                        type: integer
+      responses:
+        '200':
+          description: Media reordered
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  # Property Search
+  /tenants/{tenantId}/properties/search:
+    post:
+      tags: [Property Search]
+      summary: Search properties
+      description: Advanced search with multiple filters
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PropertySearchRequest'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  properties:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Property'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  # Property Matching
+  /tenants/{tenantId}/crm/deals/{dealId}/properties/match:
+    post:
+      tags: [Property Matching]
+      summary: Match properties for deal
+      description: Find and rank properties matching deal criteria
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: dealId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Ranked property matches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PropertyMatch'
+
+  # Property Visits
+  /tenants/{tenantId}/properties/{propertyId}/visits:
+    get:
+      tags: [Property Visits]
+      summary: List property visits
+      description: Get all visits for a property
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/propertyId'
+      responses:
+        '200':
+          description: List of visits
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PropertyVisit'
+
+    post:
+      tags: [Property Visits]
+      summary: Schedule visit
+      description: Schedule a property visit
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/propertyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVisitRequest'
+      responses:
+        '201':
+          description: Visit scheduled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyVisit'
+
+  # Public Portal
+  /public/properties:
+    get:
+      tags: [Public Portal]
+      summary: List published properties
+      description: Get published properties for public portal (unauthenticated)
+      parameters:
+        - name: propertyType
+          in: query
+          schema:
+            type: string
+        - name: location
+          in: query
+          schema:
+            type: string
+        - name: priceMin
+          in: query
+          schema:
+            type: number
+        - name: priceMax
+          in: query
+          schema:
+            type: number
+        - name: rooms
+          in: query
+          schema:
+            type: integer
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of published properties
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  properties:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PublicProperty'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /public/properties/{propertyId}:
+    get:
+      tags: [Public Portal]
+      summary: Get published property
+      description: Get published property details (unauthenticated)
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Property details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicProperty'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    tenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Tenant ID
+
+    propertyId:
+      name: propertyId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Property ID
+
+  schemas:
+    Property:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        internalReference:
+          type: string
+          example: PROP-20250127-T001-0001
+        propertyType:
+          type: string
+          enum: [APPARTEMENT, MAISON_VILLA, STUDIO, DUPLEX_TRIPLEX, CHAMBRE_COLOCATION, BUREAU, BOUTIQUE_COMMERCIAL, ENTREPOT_INDUSTRIEL, TERRAIN, IMMEUBLE, PARKING_BOX, LOT_PROGRAMME_NEUF]
+        ownershipType:
+          type: string
+          enum: [TENANT, PUBLIC, CLIENT]
+        title:
+          type: string
+        description:
+          type: string
+        address:
+          type: string
+        locationZone:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        transactionModes:
+          type: array
+          items:
+            type: string
+            enum: [SALE, RENTAL, SHORT_TERM]
+        price:
+          type: number
+        fees:
+          type: number
+        currency:
+          type: string
+          default: EUR
+        surfaceArea:
+          type: number
+        rooms:
+          type: integer
+        bedrooms:
+          type: integer
+        bathrooms:
+          type: integer
+        status:
+          type: string
+          enum: [DRAFT, UNDER_REVIEW, AVAILABLE, RESERVED, UNDER_OFFER, RENTED, SOLD, ARCHIVED]
+        isPublished:
+          type: boolean
+        qualityScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreatePropertyRequest:
+      type: object
+      required:
+        - propertyType
+        - ownershipType
+        - title
+        - address
+      properties:
+        propertyType:
+          type: string
+        ownershipType:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        address:
+          type: string
+        locationZone:
+          type: string
+        latitude:
+          type: number
+        longitude:
+          type: number
+        transactionModes:
+          type: array
+          items:
+            type: string
+        price:
+          type: number
+        fees:
+          type: number
+        surfaceArea:
+          type: number
+        rooms:
+          type: integer
+        typeSpecificData:
+          type: object
+
+    UpdatePropertyRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        address:
+          type: string
+        price:
+          type: number
+        status:
+          type: string
+        typeSpecificData:
+          type: object
+
+    PropertyTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        propertyType:
+          type: string
+        name:
+          type: string
+        fieldDefinitions:
+          type: array
+          items:
+            type: object
+        sections:
+          type: array
+          items:
+            type: object
+
+    PropertyMedia:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        mediaType:
+          type: string
+          enum: [PHOTO, VIDEO, TOUR_360]
+        fileUrl:
+          type: string
+        displayOrder:
+          type: integer
+        isPrimary:
+          type: boolean
+
+    PropertyMatch:
+      type: object
+      properties:
+        property:
+          $ref: '#/components/schemas/Property'
+        matchScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+        matchExplanation:
+          type: string
+        matchedCriteria:
+          type: object
+
+    PropertyVisit:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        scheduledAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [SCHEDULED, CONFIRMED, DONE, NO_SHOW, CANCELED]
+        contact:
+          type: object
+        deal:
+          type: object
+
+    CreateVisitRequest:
+      type: object
+      required:
+        - scheduledAt
+      properties:
+        scheduledAt:
+          type: string
+          format: date-time
+        contactId:
+          type: string
+          format: uuid
+        dealId:
+          type: string
+          format: uuid
+        assignedToUserId:
+          type: string
+          format: uuid
+
+    PropertySearchRequest:
+      type: object
+      properties:
+        propertyType:
+          type: string
+        location:
+          type: string
+        priceMin:
+          type: number
+        priceMax:
+          type: number
+        rooms:
+          type: integer
+        features:
+          type: array
+          items:
+            type: string
+        transactionMode:
+          type: string
+        status:
+          type: string
+
+    PublicProperty:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        address:
+          type: string
+        locationZone:
+          type: string
+        price:
+          type: number
+        surfaceArea:
+          type: number
+        rooms:
+          type: integer
+        primaryPhoto:
+          type: string
+        media:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyMedia'
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              message:
+                type: string
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              message:
+                type: string
+
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              message:
+                type: string
+
+    Conflict:
+      description: Conflict (concurrent update)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              message:
+                type: string
+
+
+
+
+

@@ -1,0 +1,620 @@
+// =============================================================
+// ImmoTopia — Module Gestion Locative
+// Prisma models (tables) + enums + indexes
+//
+// Notes importantes:
+// - Convention DB existante: snake_case + pluriels (ex: tenant_clients, invoices)
+// - On mappe explicitement chaque model avec @@map("...")
+// - Tous les IDs sont UUID (String @db.Uuid)
+// - created_at / updated_at en snake_case
+// - Multi-tenant: tenant_id obligatoire sur toutes les tables métier
+//
+// Dépendances (déjà présentes dans votre schema):
+// model Tenant { id ... }
+// model User { id ... }
+// model Property { id ... }
+// model TenantClient { id ... client_type ... }
+// model Invoice { id ... }
+//
+// =============================================================
+
+// -------------------------
+// ENUMS
+// -------------------------
+
+enum RentalLeaseStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  ENDED
+  CANCELED
+}
+
+enum RentalBillingFrequency {
+  MONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+}
+
+enum RentalInstallmentStatus {
+  DRAFT
+  DUE
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELED
+}
+
+enum RentalChargeType {
+  RENT
+  SERVICE_CHARGE
+  UTILITY
+  MAINTENANCE
+  DOSSIER_FEE
+  OTHER
+}
+
+enum RentalPaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHECK
+  MOBILE_MONEY
+  CARD
+  OTHER
+}
+
+enum RentalPaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum MobileMoneyOperator {
+  ORANGE
+  MTN
+  MOOV
+  WAVE
+  OTHER
+}
+
+enum RentalPenaltyMode {
+  FIXED_AMOUNT
+  PERCENT_OF_RENT
+  PERCENT_OF_BALANCE
+}
+
+enum RentalDepositMovementType {
+  COLLECT
+  HOLD
+  RELEASE
+  REFUND
+  FORFEIT
+  ADJUSTMENT
+}
+
+// -------------------------
+// CORE: LEASE (BAIL)
+// -------------------------
+
+model RentalLease {
+  id                         String              @id @default(uuid()) @db.Uuid
+  tenant_id                  String              @db.Uuid
+  property_id                String              @db.Uuid
+
+  // Le locataire principal (référence vers tenant_clients)
+  primary_renter_client_id   String              @db.Uuid
+
+  // Optionnel: propriétaire (si vous le gérez via tenant_clients)
+  owner_client_id            String?             @db.Uuid
+
+  // Optionnel: rattachement CRM (deal de type LOCATION)
+  crm_deal_id                String?             @db.Uuid
+
+  lease_number               String              @unique
+  status                     RentalLeaseStatus   @default(DRAFT)
+
+  start_date                 DateTime
+  end_date                   DateTime?
+  move_in_date               DateTime?
+  move_out_date              DateTime?
+
+  billing_frequency          RentalBillingFrequency @default(MONTHLY)
+  due_day_of_month           Int                 @default(5) // ex: échéance le 5
+
+  currency                   String              @default("FCFA")
+
+  rent_amount                Decimal             @db.Decimal(12, 2)
+  service_charge_amount      Decimal             @default(0) @db.Decimal(12, 2)
+
+  // Dépôt de garantie (montant cible). Les mouvements réels sont gérés via RentalSecurityDeposit*
+  security_deposit_amount    Decimal             @default(0) @db.Decimal(12, 2)
+
+  // Paramètres pénalités par défaut (peuvent être surchargés par règle tenant)
+  penalty_grace_days         Int                 @default(0)
+  penalty_mode               RentalPenaltyMode   @default(PERCENT_OF_BALANCE)
+  penalty_rate               Decimal             @default(0) @db.Decimal(12, 4) // 0.02 = 2%
+  penalty_fixed_amount       Decimal             @default(0) @db.Decimal(12, 2)
+  penalty_cap_amount         Decimal?            @db.Decimal(12, 2)
+
+  notes                      String?             @db.Text
+  terms_json                 Json?
+
+  created_by_user_id         String              @db.Uuid
+  created_at                 DateTime            @default(now())
+  updated_at                 DateTime            @updatedAt
+
+  // Relations (à relier à vos models existants)
+  tenant                     Tenant              @relation(fields: [tenant_id], references: [id])
+  property                   Property            @relation(fields: [property_id], references: [id])
+  primaryRenter              TenantClient        @relation("RentalLeasePrimaryRenter", fields: [primary_renter_client_id], references: [id])
+  ownerClient                TenantClient?       @relation("RentalLeaseOwner", fields: [owner_client_id], references: [id])
+  createdBy                  User                @relation(fields: [created_by_user_id], references: [id])
+
+  coRenters                  RentalLeaseCoRenter[]
+  installments               RentalInstallment[]
+  deposit                    RentalSecurityDeposit?
+  documents                  RentalDocument[]
+
+  @@index([tenant_id])
+  @@index([tenant_id, status])
+  @@index([tenant_id, property_id])
+  @@index([tenant_id, primary_renter_client_id])
+  @@index([crm_deal_id])
+  @@index([start_date])
+  @@index([end_date])
+  @@map("rental_leases")
+}
+
+// Colocataires / co-titulaires du bail (optionnel)
+model RentalLeaseCoRenter {
+  id              String       @id @default(uuid()) @db.Uuid
+  tenant_id       String       @db.Uuid
+  lease_id        String       @db.Uuid
+  renter_client_id String      @db.Uuid
+  created_at      DateTime     @default(now())
+
+  tenant          Tenant       @relation(fields: [tenant_id], references: [id])
+  lease           RentalLease  @relation(fields: [lease_id], references: [id], onDelete: Cascade)
+  renterClient    TenantClient @relation(fields: [renter_client_id], references: [id])
+
+  @@unique([lease_id, renter_client_id])
+  @@index([tenant_id])
+  @@index([lease_id])
+  @@index([renter_client_id])
+  @@map("rental_lease_co_renters")
+}
+
+// -------------------------
+// INSTALLMENTS (ECHEANCIER)
+// -------------------------
+
+model RentalInstallment {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  tenant_id          String                 @db.Uuid
+  lease_id           String                 @db.Uuid
+
+  // Période comptable / locative
+  period_year        Int
+  period_month       Int
+
+  due_date           DateTime
+  status             RentalInstallmentStatus @default(DRAFT)
+
+  currency           String                 @default("FCFA")
+
+  // Montants attendus
+  amount_rent        Decimal                @db.Decimal(12, 2)
+  amount_service     Decimal                @default(0) @db.Decimal(12, 2)
+  amount_other_fees  Decimal                @default(0) @db.Decimal(12, 2)
+
+  // Pénalités calculées / appliquées
+  penalty_amount     Decimal                @default(0) @db.Decimal(12, 2)
+
+  // Suivi paiement
+  amount_paid        Decimal                @default(0) @db.Decimal(12, 2)
+  paid_at            DateTime?
+
+  // Lien facture (réutilisation de invoices)
+  invoice_id         String?                @db.Uuid
+
+  created_at         DateTime               @default(now())
+  updated_at         DateTime               @updatedAt
+
+  tenant             Tenant                 @relation(fields: [tenant_id], references: [id])
+  lease              RentalLease            @relation(fields: [lease_id], references: [id], onDelete: Cascade)
+  invoice            Invoice?               @relation(fields: [invoice_id], references: [id])
+
+  items              RentalInstallmentItem[]
+  payments           RentalPaymentAllocation[]
+  penalties          RentalPenalty[]
+
+  @@unique([lease_id, period_year, period_month])
+  @@index([tenant_id])
+  @@index([tenant_id, status])
+  @@index([tenant_id, due_date])
+  @@index([lease_id])
+  @@index([invoice_id])
+  @@map("rental_installments")
+}
+
+// Détail des lignes d’échéance (utile si vous voulez ventiler précisément)
+model RentalInstallmentItem {
+  id              String          @id @default(uuid()) @db.Uuid
+  tenant_id       String          @db.Uuid
+  installment_id  String          @db.Uuid
+
+  charge_type     RentalChargeType
+  label           String
+  amount          Decimal         @db.Decimal(12, 2)
+  currency        String          @default("FCFA")
+
+  metadata        Json?
+  created_at      DateTime        @default(now())
+
+  tenant          Tenant          @relation(fields: [tenant_id], references: [id])
+  installment     RentalInstallment @relation(fields: [installment_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([installment_id])
+  @@index([charge_type])
+  @@map("rental_installment_items")
+}
+
+// -------------------------
+// PAYMENTS (MOBILE MONEY + MANUEL)
+// -------------------------
+
+// Transaction de paiement (source de vérité pour encaissement)
+model RentalPayment {
+  id                     String              @id @default(uuid()) @db.Uuid
+  tenant_id              String              @db.Uuid
+
+  // Cible principale (facilite les requêtes)
+  lease_id               String?             @db.Uuid
+  renter_client_id       String?             @db.Uuid
+
+  // Lien optionnel facture (invoices)
+  invoice_id             String?             @db.Uuid
+
+  method                 RentalPaymentMethod
+  status                 RentalPaymentStatus @default(PENDING)
+
+  currency               String              @default("FCFA")
+  amount                 Decimal             @db.Decimal(12, 2)
+
+  // Mobile Money
+  mm_operator            MobileMoneyOperator?
+  mm_phone               String?
+
+  // Idempotence / PSP refs
+  idempotency_key        String              @unique
+  psp_name               String?
+  psp_transaction_id     String?             @unique
+  psp_reference          String?
+
+  initiated_at           DateTime            @default(now())
+  succeeded_at           DateTime?
+  failed_at              DateTime?
+  canceled_at            DateTime?
+
+  raw_event_payload      Json?
+
+  created_by_user_id     String?             @db.Uuid // null si webhook pur
+  created_at             DateTime            @default(now())
+  updated_at             DateTime            @updatedAt
+
+  tenant                 Tenant              @relation(fields: [tenant_id], references: [id])
+  lease                  RentalLease?        @relation(fields: [lease_id], references: [id])
+  renterClient           TenantClient?       @relation(fields: [renter_client_id], references: [id])
+  invoice                Invoice?            @relation(fields: [invoice_id], references: [id])
+  createdBy              User?               @relation(fields: [created_by_user_id], references: [id])
+
+  allocations            RentalPaymentAllocation[]
+  refunds                RentalRefund[]
+
+  @@index([tenant_id])
+  @@index([tenant_id, status])
+  @@index([tenant_id, method])
+  @@index([lease_id])
+  @@index([invoice_id])
+  @@index([renter_client_id])
+  @@index([initiated_at])
+  @@map("rental_payments")
+}
+
+// Ventilation d’un paiement sur une ou plusieurs échéances
+model RentalPaymentAllocation {
+  id              String            @id @default(uuid()) @db.Uuid
+  tenant_id       String            @db.Uuid
+  payment_id      String            @db.Uuid
+  installment_id  String            @db.Uuid
+
+  amount          Decimal           @db.Decimal(12, 2)
+  currency        String            @default("FCFA")
+
+  created_at      DateTime          @default(now())
+
+  tenant          Tenant            @relation(fields: [tenant_id], references: [id])
+  payment         RentalPayment     @relation(fields: [payment_id], references: [id], onDelete: Cascade)
+  installment     RentalInstallment @relation(fields: [installment_id], references: [id], onDelete: Cascade)
+
+  @@unique([payment_id, installment_id])
+  @@index([tenant_id])
+  @@index([payment_id])
+  @@index([installment_id])
+  @@map("rental_payment_allocations")
+}
+
+// Remboursements (si PSP supporte, sinon interne)
+model RentalRefund {
+  id                 String              @id @default(uuid()) @db.Uuid
+  tenant_id          String              @db.Uuid
+  payment_id         String              @db.Uuid
+
+  status             RentalPaymentStatus @default(PENDING)
+  currency           String              @default("FCFA")
+  amount             Decimal             @db.Decimal(12, 2)
+
+  psp_refund_id      String?             @unique
+  raw_event_payload  Json?
+
+  created_by_user_id String?             @db.Uuid
+  created_at         DateTime            @default(now())
+  updated_at         DateTime            @updatedAt
+
+  tenant             Tenant              @relation(fields: [tenant_id], references: [id])
+  payment            RentalPayment       @relation(fields: [payment_id], references: [id], onDelete: Cascade)
+  createdBy          User?               @relation(fields: [created_by_user_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([payment_id])
+  @@index([tenant_id, status])
+  @@map("rental_refunds")
+}
+
+// -------------------------
+// PENALTIES (PENALITES)
+// -------------------------
+
+// Règle de pénalité configurable par tenant (optionnel)
+model RentalPenaltyRule {
+  id                 String            @id @default(uuid()) @db.Uuid
+  tenant_id          String            @db.Uuid
+
+  is_active          Boolean           @default(true)
+  grace_days         Int               @default(0)
+  mode               RentalPenaltyMode @default(PERCENT_OF_BALANCE)
+
+  // Si FIXED_AMOUNT -> fixed_amount
+  fixed_amount       Decimal           @default(0) @db.Decimal(12, 2)
+
+  // Si PERCENT_* -> rate
+  rate               Decimal           @default(0) @db.Decimal(12, 4)
+
+  cap_amount         Decimal?          @db.Decimal(12, 2)
+
+  // Ex: appliquer seulement à partir d’un certain seuil
+  min_balance_to_apply Decimal?        @db.Decimal(12, 2)
+
+  created_at         DateTime          @default(now())
+  updated_at         DateTime          @updatedAt
+
+  tenant             Tenant            @relation(fields: [tenant_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([tenant_id, is_active])
+  @@map("rental_penalty_rules")
+}
+
+// Pénalité appliquée à une échéance (audit métier)
+model RentalPenalty {
+  id                 String            @id @default(uuid()) @db.Uuid
+  tenant_id          String            @db.Uuid
+  installment_id     String            @db.Uuid
+
+  // Calcul
+  calculated_at      DateTime          @default(now())
+  days_late          Int
+
+  mode               RentalPenaltyMode
+  rate               Decimal?          @db.Decimal(12, 4)
+  fixed_amount       Decimal?          @db.Decimal(12, 2)
+
+  amount             Decimal           @db.Decimal(12, 2)
+  currency           String            @default("FCFA")
+
+  // Gestion manuelle
+  is_manual_override Boolean           @default(false)
+  override_reason    String?           @db.Text
+
+  created_by_user_id String?           @db.Uuid
+  created_at         DateTime          @default(now())
+
+  tenant             Tenant            @relation(fields: [tenant_id], references: [id])
+  installment        RentalInstallment @relation(fields: [installment_id], references: [id], onDelete: Cascade)
+  createdBy          User?             @relation(fields: [created_by_user_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([installment_id])
+  @@index([calculated_at])
+  @@map("rental_penalties")
+}
+
+// -------------------------
+// SECURITY DEPOSIT (DEPOT DE GARANTIE)
+// -------------------------
+
+model RentalSecurityDeposit {
+  id              String        @id @default(uuid()) @db.Uuid
+  tenant_id       String        @db.Uuid
+  lease_id        String        @unique @db.Uuid
+
+  currency        String        @default("FCFA")
+  target_amount   Decimal       @default(0) @db.Decimal(12, 2)
+
+  // Agrégats (calculés via mouvements, stockés pour perf)
+  collected_amount Decimal      @default(0) @db.Decimal(12, 2)
+  held_amount      Decimal      @default(0) @db.Decimal(12, 2)
+  refunded_amount  Decimal      @default(0) @db.Decimal(12, 2)
+  forfeited_amount Decimal      @default(0) @db.Decimal(12, 2)
+
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  tenant          Tenant        @relation(fields: [tenant_id], references: [id])
+  lease           RentalLease   @relation(fields: [lease_id], references: [id], onDelete: Cascade)
+  movements       RentalDepositMovement[]
+
+  @@index([tenant_id])
+  @@map("rental_security_deposits")
+}
+
+model RentalDepositMovement {
+  id                   String                   @id @default(uuid()) @db.Uuid
+  tenant_id            String                   @db.Uuid
+  deposit_id           String                   @db.Uuid
+
+  type                 RentalDepositMovementType
+  currency             String                   @default("FCFA")
+  amount               Decimal                  @db.Decimal(12, 2)
+
+  // Optionnel: lier à un paiement
+  payment_id           String?                  @db.Uuid
+
+  // Optionnel: lier à une échéance (retenue pour impayé)
+  installment_id       String?                  @db.Uuid
+
+  note                 String?                  @db.Text
+  metadata             Json?
+
+  created_by_user_id   String?                  @db.Uuid
+  created_at           DateTime                 @default(now())
+
+  tenant               Tenant                   @relation(fields: [tenant_id], references: [id])
+  deposit              RentalSecurityDeposit     @relation(fields: [deposit_id], references: [id], onDelete: Cascade)
+  payment              RentalPayment?            @relation(fields: [payment_id], references: [id])
+  installment          RentalInstallment?        @relation(fields: [installment_id], references: [id])
+  createdBy            User?                    @relation(fields: [created_by_user_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([deposit_id])
+  @@index([payment_id])
+  @@index([installment_id])
+  @@index([created_at])
+  @@map("rental_deposit_movements")
+}
+
+// -------------------------
+// DOCUMENTS (CONTRATS, QUITTANCES, REÇUS)
+// -------------------------
+
+enum RentalDocumentType {
+  LEASE_CONTRACT
+  LEASE_ADDENDUM
+  RENT_RECEIPT
+  RENT_QUITTANCE
+  DEPOSIT_RECEIPT
+  STATEMENT
+  OTHER
+}
+
+enum RentalDocumentStatus {
+  DRAFT
+  FINAL
+  VOID
+}
+
+model RentalDocument {
+  id              String              @id @default(uuid()) @db.Uuid
+  tenant_id       String              @db.Uuid
+
+  type            RentalDocumentType
+  status          RentalDocumentStatus @default(DRAFT)
+
+  lease_id        String?             @db.Uuid
+  installment_id  String?             @db.Uuid
+  payment_id      String?             @db.Uuid
+
+  document_number String?             @unique
+
+  // stockage
+  file_url        String?
+  file_key        String?
+  mime_type       String?
+
+  // preuve
+  content_hash    String?
+  issued_at       DateTime?
+
+  title           String?
+  description     String?             @db.Text
+  metadata        Json?
+
+  created_by_user_id String           @db.Uuid
+  created_at      DateTime            @default(now())
+  updated_at      DateTime            @updatedAt
+
+  tenant          Tenant              @relation(fields: [tenant_id], references: [id])
+  lease           RentalLease?        @relation(fields: [lease_id], references: [id])
+  installment     RentalInstallment?  @relation(fields: [installment_id], references: [id])
+  payment         RentalPayment?      @relation(fields: [payment_id], references: [id])
+  createdBy       User                @relation(fields: [created_by_user_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([tenant_id, type])
+  @@index([lease_id])
+  @@index([installment_id])
+  @@index([payment_id])
+  @@index([issued_at])
+  @@map("rental_documents")
+}
+
+// =============================================================
+// AJOUTS MINIMAUX RECOMMANDÉS SUR LES MODELS EXISTANTS
+// (à intégrer dans vos models actuels, sans casser l’existant)
+// =============================================================
+
+// model Tenant {
+//   ...
+//   rentalLeases        RentalLease[]
+//   rentalInstallments  RentalInstallment[]
+//   rentalPayments      RentalPayment[]
+//   rentalPenaltyRules  RentalPenaltyRule[]
+//   rentalDocuments     RentalDocument[]
+// }
+
+// model Property {
+//   ...
+//   rentalLeases RentalLease[]
+// }
+
+// model TenantClient {
+//   ...
+//   primaryLeases RentalLease[] @relation("RentalLeasePrimaryRenter")
+//   ownerLeases   RentalLease[] @relation("RentalLeaseOwner")
+//   coRenterLeases RentalLeaseCoRenter[]
+// }
+
+// model Invoice {
+//   ...
+//   rentalInstallments RentalInstallment[]
+//   rentalPayments     RentalPayment[]
+// }
+
+// model User {
+//   ...
+//   rentalLeasesCreated   RentalLease[] @relation(fields: [id], references: [created_by_user_id]) // ou nommer relation
+// }
+
+// =============================================================
+// Recommandations Index Postgres (en plus des @@index Prisma)
+// - rental_installments(tenant_id, due_date, status)
+// - rental_payments(tenant_id, status, initiated_at)
+// - rental_payments(psp_transaction_id) UNIQUE
+// - rental_payments(idempotency_key) UNIQUE
+// - rental_installments(lease_id, period_year, period_month) UNIQUE
+// =============================================================

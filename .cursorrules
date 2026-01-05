@@ -1,0 +1,100 @@
+# .cursorrules
+# Cursor AI — Project Rules for “Udemy-Clone” Platform (Node + React)
+# Define how Cursor should behave, code style, architecture choices, naming conventions.
+
+project:
+  name: “UdemyClone”
+  description: |
+    A learning platform with learners, instructors, enterprise accounts,
+    modules/learning-paths, Node.js backend + React frontend.
+
+language:
+  backend: TypeScript (Node.js, Express or Nest)
+  frontend: TypeScript (React, functional components, hooks)
+  database: PostgreSQL (or your choice) with Prisma
+  version_control: Git
+
+roles:
+  global_user_roles:
+    - STUDENT
+    - INSTRUCTOR
+    - ADMIN
+  org_user_roles:
+    - ORG_ADMIN
+    - MANAGER
+    - EMPLOYEE
+
+architecture:
+  folders:
+    backend: "packages/api"
+    frontend: "apps/web"
+  services:
+    - AuthenticationService
+    - UserProfileService
+    - CourseService
+    - ModuleService
+    - OrganizationService
+    - EnrollmentService
+    - ReportingService
+    - NotificationService
+    - RecommendationService
+  endpoints_prefix: "/api"
+
+naming_conventions:
+  models: PascalCase (e.g., Course, ModuleAssignment)
+  tables: snake_case (e.g., modules, module_courses)
+  files:
+    backend: kebab-case (e.g., module-service.ts)
+    frontend components: PascalCase (e.g., ModuleList.tsx)
+  API routes: kebab-case (e.g., `/modules/:id/courses`)
+  database fields: snake_case
+  constants: UPPER_SNAKE_CASE
+
+code_style:
+  indent: 2 spaces
+  max_line_length: 120
+  use_semicolons: true
+  quotes: single
+  trailing_commas: none
+  react_hooks_order:
+    - useState
+    - useEffect
+    - useContext
+    - custom hooks
+  separation_of_concerns:
+    - Business logic in service layer, controllers minimal
+    - UI components lean toward presentation
+
+testing:
+  backend: Jest + Supertest
+  frontend: React Testing Library + Jest
+  minimum_coverage: 80%
+  tests_folder: __tests__
+  naming: `*.spec.ts` or `*.test.tsx`
+
+documentation:
+  every public API endpoint must have swagger doc or OpenAPI comment
+  each service class must have JSDoc summary
+  modules & entity relationships must be documented in architecture.md
+
+best_practices:
+  - Write descriptive commit messages: `<service>: <action> – <description>`
+  - Use feature branches named `feature/<role>-<feature>` e.g., `feature/module-management`
+  - Always create data migrations for schema changes
+  - Keep secrets out of codebase (use environment variables)
+  - Validate incoming request bodies using Zod or class-validator
+  - Use paginated endpoints for list queries
+  - Maintain role-based access control (RBAC) everywhere
+
+cursor_agent_behavior:
+  - Always output a **plan** before implementing code changes
+  - Prompt: “What steps will I take? …” then implement  
+  - Use `{“analysis”:…, “code”:…}` structure when generating code  
+  - If requesting refactor, highlight impacted files and update tests
+  - Before modifying backend + frontend, check for consistency: changes in API → update both sides
+  - If adding a new role or permission, also update enum, migrations, service logic, and tests
+
+team_collaboration:
+  all developer team members must load this `.cursorrules` to align Cursor behavior
+  add rule changes via pull request and document in CHANGELOG.md
+
