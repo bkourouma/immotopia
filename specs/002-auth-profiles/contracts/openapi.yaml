@@ -1,0 +1,59 @@
+openapi: 3.0.0
+info:
+  title: Auth & Profiles API
+  version: 1.0.0
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+                name:
+                  type: string
+  /auth/login:
+    post:
+      summary: Login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+  /auth/google/callback:
+    post:
+      summary: Verify Google ID token and login/register
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                idToken:
+                  type: string
+  /me:
+    get:
+      summary: Get current user profile and available contexts
+  /tenants:
+    get:
+      summary: List tenants accessible to the user
+  /tenants/{slug}/context:
+    get:
+      summary: Get user profile specifically for this tenant context
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string

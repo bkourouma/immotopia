@@ -1,0 +1,2013 @@
+// Prisma schema for Immobillier authentication module
+// File: packages/api/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum GlobalRole {
+  SUPER_ADMIN
+  USER
+}
+
+enum TenantType {
+  AGENCY
+  OPERATOR
+}
+
+enum ClientType {
+  OWNER
+  RENTER
+  BUYER
+  CO_OWNER
+}
+
+enum TenantStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum ModuleKey {
+  MODULE_AGENCY
+  MODULE_SYNDIC
+  MODULE_PROMOTER
+}
+
+enum MembershipStatus {
+  PENDING_INVITE
+  ACTIVE
+  DISABLED
+}
+
+enum RoleScope {
+  PLATFORM
+  TENANT
+}
+
+enum SubscriptionPlan {
+  BASIC
+  PRO
+  ELITE
+}
+
+enum BillingCycle {
+  MONTHLY
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  SUSPENDED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  FAILED
+  CANCELED
+  REFUNDED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+// CRM Enums
+enum CrmContactStatus {
+  LEAD // Prospect/lead
+  ACTIVE_CLIENT // Converted client
+  ARCHIVED // Archived contact
+}
+
+enum CrmContactRoleType {
+  PROPRIETAIRE // Property owner
+  LOCATAIRE // Renter
+  COPROPRIETAIRE // Co-owner
+  ACQUEREUR // Buyer
+}
+
+enum CrmContactType {
+  PERSON
+  COMPANY
+}
+
+enum Civility {
+  MR
+  MRS
+  MS
+  DR
+  PROF
+}
+
+enum IdentityDocumentType {
+  CNI
+  PASSPORT
+  DRIVING_LICENSE
+  OTHER
+}
+
+enum LegalForm {
+  SARL
+  SA
+  EI
+  EURL
+  SAS
+  ASSOCIATION
+  OTHER
+}
+
+enum CrmProjectType {
+  BUY
+  RENT
+  SELL
+  MANAGE
+  INVEST
+}
+
+enum CrmUrgencyLevel {
+  IMMEDIATE
+  LESS_THAN_3_MONTHS
+  THREE_TO_SIX_MONTHS
+  MORE_THAN_6_MONTHS
+}
+
+enum CrmProjectPropertyType {
+  LAND
+  APARTMENT
+  VILLA
+  OFFICE
+  SHOP
+  WAREHOUSE
+  OTHER
+}
+
+enum IntendedUse {
+  RESIDENTIAL
+  COMMERCIAL
+  MIXED
+}
+
+enum FinancingMode {
+  CASH
+  CREDIT
+  MIXED
+}
+
+enum JobStability {
+  CDI
+  CDD
+  FREELANCE
+  INFORMAL
+  RETIRED
+  STUDENT
+  UNEMPLOYED
+  OTHER
+}
+
+enum BorrowingCapacity {
+  YES
+  NO
+  UNKNOWN
+}
+
+enum LeadSource {
+  WEBSITE
+  SOCIAL_MEDIA
+  REFERRAL
+  CAMPAIGN
+  AGENCY
+  WALK_IN
+  PHONE_CALL
+  OTHER
+}
+
+enum MaturityLevel {
+  COLD
+  WARM
+  HOT
+}
+
+enum PreferredContactChannel {
+  CALL
+  WHATSAPP
+  EMAIL
+  SMS
+}
+
+enum PaymentMethod {
+  MOBILE_MONEY
+  BANK_TRANSFER
+  CASH
+  CHECK
+  CARD
+  OTHER
+}
+
+enum PriorityLevel {
+  LOW
+  NORMAL
+  HIGH
+}
+
+enum CrmDealType {
+  ACHAT // Purchase
+  LOCATION // Rental
+  VENTE // Sale (property owner wants to sell)
+  GESTION // Property management (property owner wants management services)
+  MANDAT // Mandate (management, sale, or rental mandate)
+}
+
+enum CrmDealStage {
+  NEW // New opportunity
+  QUALIFIED // Qualified lead
+  APPOINTMENT // Appointment scheduled
+  VISIT // Property visit scheduled
+  NEGOTIATION // In negotiation
+  WON // Deal closed successfully
+  LOST // Deal lost
+}
+
+enum CrmActivityType {
+  CALL
+  EMAIL
+  SMS
+  WHATSAPP
+  VISIT
+  MEETING
+  NOTE
+  TASK
+  CORRECTION
+}
+
+enum CrmActivityDirection {
+  IN // Incoming
+  OUT // Outgoing
+  INTERNAL // Internal note/task
+}
+
+enum CrmAppointmentType {
+  RDV // General appointment
+  VISITE // Property visit
+}
+
+enum CrmAppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  DONE
+  NO_SHOW
+  CANCELED
+}
+
+enum CrmDealPropertyStatus {
+  SHORTLISTED // Added to shortlist
+  PROPOSED // Sent to client
+  VISITED // Client visited property
+  REJECTED // Client rejected
+  SELECTED // Client selected property
+}
+
+enum CrmEntityType {
+  CONTACT
+  DEAL
+  PROPERTY
+}
+
+// Property Enums
+enum PropertyType {
+  APPARTEMENT
+  MAISON_VILLA
+  STUDIO
+  DUPLEX_TRIPLEX
+  CHAMBRE_COLOCATION
+  BUREAU
+  BOUTIQUE_COMMERCIAL
+  ENTREPOT_INDUSTRIEL
+  TERRAIN
+  IMMEUBLE
+  PARKING_BOX
+  LOT_PROGRAMME_NEUF
+}
+
+enum PropertyOwnershipType {
+  TENANT
+  PUBLIC
+  CLIENT
+}
+
+enum PropertyTransactionMode {
+  SALE
+  RENTAL
+  SHORT_TERM
+}
+
+enum PropertyFurnishingStatus {
+  FURNISHED
+  UNFURNISHED
+  PARTIALLY_FURNISHED
+}
+
+enum PropertyStatus {
+  DRAFT
+  UNDER_REVIEW
+  AVAILABLE
+  RESERVED
+  UNDER_OFFER
+  RENTED
+  SOLD
+  ARCHIVED
+}
+
+enum PropertyAvailability {
+  AVAILABLE
+  UNAVAILABLE
+  SOON_AVAILABLE
+}
+
+enum PropertyMediaType {
+  PHOTO
+  VIDEO
+  TOUR_360
+}
+
+enum PropertyDocumentType {
+  TITLE_DEED
+  MANDATE
+  PLAN
+  TAX_DOCUMENT
+  OTHER
+}
+
+enum PropertyVisitType {
+  VISIT
+  APPOINTMENT
+}
+
+enum PropertyVisitGoal {
+  CONTACT_TAKING
+  NETWORKING
+  EVALUATION
+  CONTRACT_SIGNING
+  FOLLOW_UP
+  NEGOTIATION
+  OTHER
+}
+
+enum PropertyVisitStatus {
+  SCHEDULED
+  CONFIRMED
+  DONE
+  NO_SHOW
+  CANCELED
+}
+
+// User entity
+model User {
+  id            String     @id @default(uuid())
+  email         String     @unique
+  passwordHash  String?    @map("password_hash") // Optional for OAuth
+  googleId      String?    @unique @map("google_id")
+  fullName      String?    @map("full_name")
+  avatarUrl     String?    @map("avatar_url")
+  globalRole    GlobalRole @default(USER) @map("global_role")
+  emailVerified Boolean    @default(false) @map("email_verified")
+  isActive      Boolean    @default(true) @map("is_active")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  // Relationships
+  clientProfiles TenantClient[]
+
+  refreshTokens           RefreshToken[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+
+  // New relationships for multi-tenant RBAC
+  memberships         Membership[]
+  userRoles           UserRole[]
+  invitations         Invitation[] @relation("InvitedBy")
+  acceptedInvitations Invitation[] @relation("AcceptedBy")
+  auditLogs           AuditLog[]
+  lastLoginAt         DateTime?    @map("last_login_at")
+
+  // CRM relationships
+  crmContactsAssigned         CrmContact[]                 @relation("ContactAssignedTo")
+  crmDealsAssigned            CrmDeal[]                    @relation("DealAssignedTo")
+  crmActivitiesCreated        CrmActivity[]                @relation("ActivityCreatedBy")
+  crmAppointmentsCreated      CrmAppointment[]             @relation("AppointmentCreatedBy")
+  crmAppointmentsAssigned     CrmAppointment[]             @relation("AppointmentAssignedTo")
+  crmAppointmentCollaborators CrmAppointmentCollaborator[]
+  crmNotesCreated             CrmNote[]                    @relation("NoteCreatedBy")
+
+  // Property relationships
+  propertiesOwned             Property[]                  @relation("PropertyOwner")
+  propertyStatusChanges       PropertyStatusHistory[]     @relation("PropertyStatusChangedBy")
+  propertyVisitsAssigned      PropertyVisit[]             @relation("PropertyVisitAssignedTo")
+  propertyVisitCollaborations PropertyVisitCollaborator[] @relation("PropertyVisitCollaborator")
+  propertyMandatesOwned       PropertyMandate[]           @relation("PropertyMandateOwner")
+  propertyMandatesRevoked     PropertyMandate[]           @relation("PropertyMandateRevokedBy")
+
+  // Rental relationships
+  rentalLeasesCreated           RentalLease[]           @relation("RentalLeaseCreatedBy")
+  rentalPaymentsCreated         RentalPayment[]         @relation("RentalPaymentCreatedBy")
+  rentalRefundsCreated          RentalRefund[]          @relation("RentalRefundCreatedBy")
+  rentalPenaltiesCreated        RentalPenalty[]         @relation("RentalPenaltyCreatedBy")
+  rentalDepositMovementsCreated RentalDepositMovement[] @relation("RentalDepositMovementCreatedBy")
+  rentalDocumentsCreated        RentalDocument[]        @relation("RentalDocumentCreatedBy")
+  documentTemplatesCreated      DocumentTemplate[]      @relation("DocumentTemplateCreatedBy")
+
+  @@index([email])
+  @@map("users")
+}
+
+// Tenant entity (Agency/Operator)
+model Tenant {
+  id        String     @id @default(uuid())
+  name      String
+  slug      String     @unique
+  type      TenantType
+  logoUrl   String?    @map("logo_url")
+  website   String?
+  isActive  Boolean    @default(true) @map("is_active")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  // New fields for multi-tenant SaaS
+  legalName            String?      @map("legal_name")
+  status               TenantStatus @default(PENDING)
+  contactEmail         String?      @map("contact_email")
+  contactPhone         String?      @map("contact_phone")
+  country              String?
+  city                 String?
+  address              String?
+  brandingPrimaryColor String?      @map("branding_primary_color")
+  subdomain            String?      @unique
+  customDomain         String?      @map("custom_domain")
+  lastActivityAt       DateTime?    @map("last_activity_at")
+
+  // Relationships
+  clients TenantClient[]
+
+  // New relationships for multi-tenant RBAC
+  modules      TenantModule[]
+  memberships  Membership[]
+  subscription Subscription?
+  invoices     Invoice[]
+  auditLogs    AuditLog[]
+  invitations  Invitation[]
+
+  // CRM relationships
+  crmContacts       CrmContact[]
+  crmDeals          CrmDeal[]
+  crmActivities     CrmActivity[]
+  crmAppointments   CrmAppointment[]
+  crmDealProperties CrmDealProperty[]
+  crmTags           CrmTag[]
+  crmNotes          CrmNote[]
+  properties        Property[]
+  CrmContactRole    CrmContactRole[]
+
+  // Property relationships
+  propertyMandates PropertyMandate[]
+
+  // Rental relationships
+  rentalLeases             RentalLease[]
+  rentalInstallments       RentalInstallment[]
+  rentalInstallmentItems   RentalInstallmentItem[]
+  rentalPayments           RentalPayment[]
+  rentalPaymentAllocations RentalPaymentAllocation[]
+  rentalRefunds            RentalRefund[]
+  rentalPenaltyRules       RentalPenaltyRule[]
+  rentalPenalties          RentalPenalty[]
+  rentalSecurityDeposits   RentalSecurityDeposit[]
+  rentalDepositMovements   RentalDepositMovement[]
+  rentalDocuments          RentalDocument[]
+  rentalLeaseCoRenters     RentalLeaseCoRenter[]
+  documentTemplates        DocumentTemplate[]
+  documentCounters         DocumentCounter[]
+
+  @@index([slug])
+  @@index([status])
+  @@index([contactEmail])
+  @@map("tenants")
+}
+
+// Tenant Client (Customer)
+model TenantClient {
+  id         String     @id @default(uuid())
+  userId     String     @map("user_id")
+  tenantId   String     @map("tenant_id")
+  clientType ClientType @map("client_type")
+  details    Json? // JSONB for flexible client attributes
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Rental relationships
+  primaryLeases  RentalLease[]         @relation("RentalLeasePrimaryRenter")
+  ownerLeases    RentalLease[]         @relation("RentalLeaseOwner")
+  coRenterLeases RentalLeaseCoRenter[]
+  rentalPayments RentalPayment[]
+
+  @@unique([userId, tenantId])
+  @@index([userId])
+  @@index([tenantId])
+  @@map("tenant_clients")
+}
+
+// Refresh token entity
+model RefreshToken {
+  id         String    @id @default(uuid())
+  token      String    @unique
+  userId     String    @map("user_id")
+  expiresAt  DateTime  @map("expires_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  revoked    Boolean   @default(false)
+  revokedAt  DateTime? @map("revoked_at")
+  deviceInfo String?   @map("device_info")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+// Password reset token entity
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  used      Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("password_reset_tokens")
+}
+
+// Email verification token entity
+model EmailVerificationToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  used      Boolean  @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("email_verification_tokens")
+}
+
+// Tenant Module
+model TenantModule {
+  id        String    @id @default(uuid())
+  tenantId  String    @map("tenant_id")
+  moduleKey ModuleKey @map("module_key")
+  enabled   Boolean   @default(false)
+  enabledAt DateTime? @map("enabled_at")
+  enabledBy String?   @map("enabled_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, moduleKey])
+  @@index([tenantId])
+  @@index([moduleKey])
+  @@map("tenant_modules")
+}
+
+// Membership (User-Tenant relationship)
+model Membership {
+  id         String           @id @default(uuid())
+  userId     String           @map("user_id")
+  tenantId   String           @map("tenant_id")
+  status     MembershipStatus @default(PENDING_INVITE)
+  invitedAt  DateTime?        @map("invited_at")
+  invitedBy  String?          @map("invited_by")
+  acceptedAt DateTime?        @map("accepted_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([userId])
+  @@index([tenantId])
+  @@index([status])
+  @@map("memberships")
+}
+
+// Role
+model Role {
+  id          String    @id @default(uuid())
+  key         String    @unique
+  name        String
+  description String?   @db.Text
+  scope       RoleScope
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  permissions RolePermission[]
+  userRoles   UserRole[]
+
+  @@index([scope])
+  @@index([key])
+  @@map("roles")
+}
+
+// Permission
+model Permission {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  roles RolePermission[]
+
+  @@index([key])
+  @@map("permissions")
+}
+
+// Role Permission (many-to-many)
+model RolePermission {
+  id           String   @id @default(uuid())
+  roleId       String   @map("role_id")
+  permissionId String   @map("permission_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+// User Role
+model UserRole {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  roleId    String   @map("role_id")
+  tenantId  String?  @map("tenant_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId, tenantId])
+  @@index([userId])
+  @@index([roleId])
+  @@index([tenantId])
+  @@map("user_roles")
+}
+
+// Invitation
+model Invitation {
+  id         String           @id @default(uuid())
+  tenantId   String           @map("tenant_id")
+  email      String
+  tokenHash  String           @unique @map("token_hash")
+  expiresAt  DateTime         @map("expires_at")
+  status     InvitationStatus @default(PENDING)
+  invitedBy  String           @map("invited_by")
+  acceptedBy String?          @map("accepted_by")
+  acceptedAt DateTime?        @map("accepted_at")
+  revokedAt  DateTime?        @map("revoked_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inviter  User   @relation("InvitedBy", fields: [invitedBy], references: [id], onDelete: Cascade)
+  accepter User?  @relation("AcceptedBy", fields: [acceptedBy], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([email])
+  @@index([tokenHash])
+  @@index([status])
+  @@index([expiresAt])
+  @@map("invitations")
+}
+
+// Subscription
+model Subscription {
+  id                 String             @id @default(uuid())
+  tenantId           String             @unique @map("tenant_id")
+  planKey            SubscriptionPlan   @map("plan_key")
+  billingCycle       BillingCycle
+  status             SubscriptionStatus @default(TRIALING)
+  startAt            DateTime           @map("start_at")
+  currentPeriodStart DateTime           @map("current_period_start")
+  currentPeriodEnd   DateTime           @map("current_period_end")
+  cancelAt           DateTime?          @map("cancel_at")
+  canceledAt         DateTime?          @map("canceled_at")
+  metadata           Json?
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+
+  @@index([status])
+  @@index([planKey])
+  @@map("subscriptions")
+}
+
+// Invoice
+model Invoice {
+  id             String        @id @default(uuid())
+  tenantId       String        @map("tenant_id")
+  subscriptionId String?       @map("subscription_id")
+  invoiceNumber  String        @unique @map("invoice_number")
+  issueDate      DateTime      @map("issue_date")
+  dueDate        DateTime      @map("due_date")
+  currency       String        @default("FCFA")
+  amountTotal    Decimal       @map("amount_total") @db.Decimal(10, 2)
+  status         InvoiceStatus @default(DRAFT)
+  paidAt         DateTime?     @map("paid_at")
+  notes          String?       @db.Text
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  // Rental relationships
+  rentalInstallments RentalInstallment[]
+  rentalPayments     RentalPayment[]
+
+  @@index([tenantId])
+  @@index([subscriptionId])
+  @@index([invoiceNumber])
+  @@index([status])
+  @@index([dueDate])
+  @@map("invoices")
+}
+
+// Audit Log
+model AuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String?  @map("actor_user_id")
+  tenantId    String?  @map("tenant_id")
+  actionKey   String   @map("action_key")
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  payload     Json?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  actor  User?   @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([tenantId])
+  @@index([actionKey])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// CRM Models
+
+// CRM Contact
+model CrmContact {
+  id                String           @id @default(uuid())
+  tenantId          String           @map("tenant_id")
+  
+  // Contact Type
+  contactType       CrmContactType?  @default(PERSON) @map("contact_type")
+  
+  // Basic Identification (Person)
+  civility          Civility?        @map("civility")
+  firstName         String           @map("first_name")
+  lastName          String           @map("last_name")
+  dateOfBirth       DateTime?        @map("date_of_birth")
+  nationality       String?
+  identityDocumentType IdentityDocumentType? @map("identity_document_type")
+  identityDocumentNumber String?     @map("identity_document_number")
+  identityDocumentExpiry DateTime?  @map("identity_document_expiry")
+  profilePhotoUrl   String?         @map("profile_photo_url")
+  
+  // Company Identification
+  legalName         String?          @map("legal_name")
+  legalForm         LegalForm?      @map("legal_form")
+  rccm              String?          @map("rccm")
+  taxId             String?          @map("tax_id")
+  representativeName String?        @map("representative_name")
+  representativeRole String?        @map("representative_role")
+  
+  // Multi-Channel Contact Information
+  email             String
+  emailSecondary    String?          @map("email_secondary")
+  phonePrimary      String?          @map("phone_primary")
+  phoneSecondary    String?          @map("phone_secondary")
+  whatsappNumber    String?          @map("whatsapp_number")
+  address           String?
+  city              String?          // Legacy - to be deprecated
+  district          String?          // Legacy - to be deprecated
+  country           String?         // Legacy - to be deprecated
+  communeId         String?          @map("commune_id")
+  locationZone      String?          @map("location_zone")
+  preferredLanguage String?          @map("preferred_language")
+  preferredContactChannel PreferredContactChannel? @map("preferred_contact_channel")
+  
+  // Real Estate Project / Intent (stored as JSON for flexibility)
+  projectIntentJson Json?           @map("project_intent_json")
+  
+  // Socio-Professional Profile
+  profession        String?
+  sectorOfActivity  String?          @map("sector_of_activity")
+  employer          String?
+  incomeMin         Decimal?          @map("income_min") @db.Decimal(12, 2)
+  incomeMax         Decimal?          @map("income_max") @db.Decimal(12, 2)
+  jobStability       JobStability?   @map("job_stability")
+  borrowingCapacity BorrowingCapacity? @map("borrowing_capacity")
+  
+  // CRM Behavior & Scoring
+  source            String?
+  leadSource        LeadSource?     @map("lead_source_enum")
+  maturityLevel     MaturityLevel?  @default(COLD) @map("maturity_level")
+  score             Int?            @default(0)
+  responsivenessRate Decimal?       @db.Decimal(5, 2) @map("responsiveness_rate")
+  lastInteractionAt DateTime?       @map("last_interaction_at")
+  nextActionAt      DateTime?       @map("next_action_at")
+  
+  // Status & Assignment
+  status            CrmContactStatus @default(LEAD)
+  assignedToUserId  String?          @map("assigned_to_user_id")
+  priorityLevel     PriorityLevel?  @default(NORMAL) @map("priority_level")
+  
+  // Financial Snapshot (if client)
+  balance           Decimal?         @db.Decimal(12, 2)
+  totalPaid         Decimal?         @db.Decimal(12, 2) @map("total_paid")
+  totalDue          Decimal?         @db.Decimal(12, 2) @map("total_due")
+  depositAmount     Decimal?         @db.Decimal(12, 2) @map("deposit_amount")
+  paymentIncidentsCount Int?        @default(0) @map("payment_incidents_count")
+  preferredPaymentMethod PaymentMethod? @map("preferred_payment_method")
+  
+  // Consents & Compliance
+  consentMarketing  Boolean?        @default(false) @map("consent_marketing")
+  consentWhatsapp   Boolean?        @default(false) @map("consent_whatsapp")
+  consentEmail      Boolean?         @default(false) @map("consent_email")
+  consentDate       DateTime?       @map("consent_date")
+  consentSource     String?         @map("consent_source")
+  
+  // Legacy fields (kept for backward compatibility)
+  fonction          String?
+  salaire           Decimal?         @db.Decimal(12, 2)
+  numeroPieceId     String?         @map("numero_piece_id")
+  
+  // Internal Notes (stored as text, tags via relation)
+  internalNotes     String?         @db.Text @map("internal_notes")
+  
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignedTo      User?             @relation("ContactAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  commune         Commune?          @relation("ContactCommune", fields: [communeId], references: [id], onDelete: SetNull)
+  targetZones     CrmContactTargetZone[]
+  roles           CrmContactRole[]
+  deals           CrmDeal[]
+  activities      CrmActivity[]
+  appointments    CrmAppointment[]
+  tags            CrmContactTag[]
+  notes           CrmNote[]
+  CrmDealProperty CrmDealProperty[]
+  propertyVisits  PropertyVisit[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, contactType])
+  @@index([tenantId, maturityLevel])
+  @@index([tenantId, score])
+  @@index([assignedToUserId])
+  @@index([lastInteractionAt])
+  @@index([nextActionAt])
+  @@index([email])
+  @@index([phonePrimary])
+  @@index([whatsappNumber])
+  @@index([identityDocumentNumber])
+  @@index([locationZone])
+  @@index([communeId])
+  @@map("crm_contacts")
+}
+
+// CRM Contact Role
+model CrmContactRole {
+  id        String             @id @default(uuid())
+  tenantId  String             @map("tenant_id")
+  contactId String             @map("contact_id")
+  role      CrmContactRoleType
+  active    Boolean            @default(true)
+  startedAt DateTime           @map("started_at")
+  endedAt   DateTime?          @map("ended_at")
+  metadata  Json?
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+
+  tenant  Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact CrmContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([contactId])
+  @@index([tenantId, contactId, active])
+  @@map("crm_contact_roles")
+}
+
+// CRM Deal
+model CrmDeal {
+  id               String       @id @default(uuid())
+  tenantId         String       @map("tenant_id")
+  contactId        String       @map("contact_id")
+  type             CrmDealType
+  stage            CrmDealStage @default(NEW)
+  budgetMin        Decimal?     @map("budget_min") @db.Decimal(12, 2)
+  budgetMax        Decimal?     @map("budget_max") @db.Decimal(12, 2)
+  locationZone     String?      @map("location_zone")
+  criteriaJson     Json?        @map("criteria_json")
+  expectedValue    Decimal?     @map("expected_value") @db.Decimal(12, 2)
+  probability      Float?
+  assignedToUserId String?      @map("assigned_to_user_id")
+  closedReason     String?      @map("closed_reason")
+  closedAt         DateTime?    @map("closed_at")
+  version          Int          @default(1)
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact         CrmContact        @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  assignedTo      User?             @relation("DealAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  activities      CrmActivity[]
+  appointments    CrmAppointment[]
+  propertyMatches CrmDealProperty[]
+  notes           CrmNote[]
+  propertyVisits  PropertyVisit[]
+
+  @@index([tenantId])
+  @@index([tenantId, contactId])
+  @@index([tenantId, stage])
+  @@index([assignedToUserId])
+  @@index([createdAt])
+  @@map("crm_deals")
+}
+
+// CRM Activity
+model CrmActivity {
+  id              String                @id @default(uuid())
+  tenantId        String                @map("tenant_id")
+  contactId       String                @map("contact_id")
+  dealId          String?               @map("deal_id")
+  activityType    CrmActivityType       @map("activity_type")
+  direction       CrmActivityDirection?
+  subject         String?
+  content         String                @db.Text
+  outcome         String?
+  occurredAt      DateTime              @map("occurred_at")
+  createdByUserId String                @map("created_by_user_id")
+  nextActionAt    DateTime?             @map("next_action_at")
+  nextActionType  String?               @map("next_action_type")
+  correctionOfId  String?               @map("correction_of_id")
+  createdAt       DateTime              @default(now()) @map("created_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact      CrmContact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  deal         CrmDeal?      @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  createdBy    User          @relation("ActivityCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  correctionOf CrmActivity?  @relation("ActivityCorrection", fields: [correctionOfId], references: [id], onDelete: SetNull)
+  corrections  CrmActivity[] @relation("ActivityCorrection")
+
+  @@index([tenantId])
+  @@index([tenantId, contactId])
+  @@index([tenantId, dealId])
+  @@index([createdByUserId])
+  @@index([occurredAt])
+  @@index([nextActionAt])
+  @@map("crm_activities")
+}
+
+// CRM Appointment
+model CrmAppointment {
+  id               String               @id @default(uuid())
+  tenantId         String               @map("tenant_id")
+  contactId        String               @map("contact_id")
+  dealId           String?              @map("deal_id")
+  appointmentType  CrmAppointmentType   @map("appointment_type")
+  startAt          DateTime             @map("start_at")
+  endAt            DateTime             @map("end_at")
+  location         String?
+  status           CrmAppointmentStatus @default(SCHEDULED)
+  createdByUserId  String               @map("created_by_user_id")
+  assignedToUserId String?              @map("assigned_to_user_id")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  tenant        Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact       CrmContact                   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  deal          CrmDeal?                     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  createdBy     User                         @relation("AppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  assignedTo    User?                        @relation("AppointmentAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  collaborators CrmAppointmentCollaborator[]
+
+  @@index([tenantId])
+  @@index([tenantId, contactId])
+  @@index([tenantId, dealId])
+  @@index([assignedToUserId])
+  @@index([startAt])
+  @@index([status])
+  @@map("crm_appointments")
+}
+
+// CRM Appointment Collaborator (many-to-many)
+model CrmAppointmentCollaborator {
+  id            String   @id @default(uuid())
+  appointmentId String   @map("appointment_id")
+  userId        String   @map("user_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  appointment CrmAppointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([appointmentId, userId])
+  @@index([appointmentId])
+  @@index([userId])
+  @@map("crm_appointment_collaborators")
+}
+
+// CRM Deal Property (shortlist)
+model CrmDealProperty {
+  id                   String                @id @default(uuid())
+  tenantId             String                @map("tenant_id")
+  dealId               String                @map("deal_id")
+  propertyId           String                @map("property_id")
+  sourceOwnerContactId String?               @map("source_owner_contact_id")
+  matchScore           Int?
+  matchExplanationJson Json?                 @map("match_explanation_json")
+  status               CrmDealPropertyStatus @default(SHORTLISTED)
+  createdAt            DateTime              @default(now()) @map("created_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deal        CrmDeal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  property    Property    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  sourceOwner CrmContact? @relation(fields: [sourceOwnerContactId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, dealId, propertyId])
+  @@index([tenantId])
+  @@index([tenantId, dealId])
+  @@index([propertyId])
+  @@index([matchScore])
+  @@map("crm_deal_properties")
+}
+
+// CRM Tag
+model CrmTag {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  name      String
+  color     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contacts CrmContactTag[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("crm_tags")
+}
+
+// CRM Contact Tag (many-to-many)
+model CrmContactTag {
+  id        String   @id @default(uuid())
+  contactId String   @map("contact_id")
+  tagId     String   @map("tag_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  contact CrmContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag     CrmTag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, tagId])
+  @@index([contactId])
+  @@index([tagId])
+  @@map("crm_contact_tags")
+}
+
+// CRM Contact Target Zone (many-to-many)
+model CrmContactTargetZone {
+  id        String   @id @default(uuid())
+  contactId String   @map("contact_id")
+  communeId String   @map("commune_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  contact CrmContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  commune Commune    @relation(fields: [communeId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, communeId])
+  @@index([contactId])
+  @@index([communeId])
+  @@map("crm_contact_target_zones")
+}
+
+// CRM Note
+model CrmNote {
+  id              String        @id @default(uuid())
+  tenantId        String        @map("tenant_id")
+  entityType      CrmEntityType @map("entity_type")
+  entityId        String        @map("entity_id")
+  content         String        @db.Text
+  createdByUserId String        @map("created_by_user_id")
+  createdAt       DateTime      @default(now()) @map("created_at")
+
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy    User        @relation("NoteCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  CrmContact   CrmContact? @relation(fields: [crmContactId], references: [id])
+  crmContactId String?
+  CrmDeal      CrmDeal?    @relation(fields: [crmDealId], references: [id])
+  crmDealId    String?
+
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+  @@index([createdByUserId])
+  @@map("crm_notes")
+}
+
+// Property Models
+
+// Property Type Template
+model PropertyTypeTemplate {
+  id               String       @id @default(uuid())
+  propertyType     PropertyType @unique @map("property_type")
+  name             String
+  description      String?      @db.Text
+  fieldDefinitions Json         @map("field_definitions")
+  sections         Json
+  validationRules  Json         @map("validation_rules")
+  version          Int          @default(1)
+  isActive         Boolean      @default(true) @map("is_active")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  @@map("property_type_templates")
+}
+
+// Property
+model Property {
+  id                String                @id @default(uuid())
+  internalReference String                @unique @map("internal_reference")
+  propertyType      PropertyType          @map("property_type")
+  ownershipType     PropertyOwnershipType @map("ownership_type")
+
+  // Ownership
+  tenantId    String? @map("tenant_id")
+  ownerUserId String? @map("owner_user_id")
+
+  // Basic Information
+  title        String
+  description  String  @db.Text
+  address      String
+  locationZone String? @map("location_zone")
+  latitude     Float?
+  longitude    Float?
+
+  // Transaction
+  transactionModes PropertyTransactionMode[] @map("transaction_modes")
+  price            Float?
+  fees             Float?
+  currency         String                    @default("EUR")
+
+  // Physical Characteristics
+  surfaceArea      Float?                    @map("surface_area")
+  surfaceUseful    Float?                    @map("surface_useful")
+  surfaceTerrain   Float?                    @map("surface_terrain")
+  rooms            Int?
+  bedrooms         Int?
+  bathrooms        Int?
+  furnishingStatus PropertyFurnishingStatus? @map("furnishing_status")
+
+  // Status and Workflow
+  status       PropertyStatus       @default(DRAFT)
+  isPublished  Boolean              @default(false) @map("is_published")
+  publishedAt  DateTime?            @map("published_at")
+  availability PropertyAvailability @default(AVAILABLE)
+
+  // Quality and Scoring
+  qualityScore          Int?      @map("quality_score")
+  qualityScoreUpdatedAt DateTime? @map("quality_score_updated_at")
+
+  // Type-Specific Data
+  typeSpecificData Json? @map("type_specific_data")
+
+  // Container relationship
+  containerParentId String? @map("container_parent_id")
+
+  // Version for optimistic locking
+  version Int @default(1)
+
+  // Timestamps
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relationships
+  tenant            Tenant?                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner             User?                   @relation("PropertyOwner", fields: [ownerUserId], references: [id], onDelete: SetNull)
+  media             PropertyMedia[]
+  documents         PropertyDocument[]
+  statusHistory     PropertyStatusHistory[]
+  visits            PropertyVisit[]
+  mandates          PropertyMandate[]
+  containerParent   Property?               @relation("PropertyContainer", fields: [containerParentId], references: [id], onDelete: SetNull)
+  containerChildren Property[]              @relation("PropertyContainer")
+  qualityScores     PropertyQualityScore[]
+  crmDealProperties CrmDealProperty[]
+  rentalLeases      RentalLease[]
+
+  @@index([tenantId])
+  @@index([ownerUserId])
+  @@index([propertyType])
+  @@index([ownershipType])
+  @@index([status])
+  @@index([isPublished])
+  @@index([latitude, longitude])
+  @@index([locationZone])
+  @@index([containerParentId])
+  @@map("properties")
+}
+
+// Property Media
+model PropertyMedia {
+  id           String            @id @default(uuid())
+  propertyId   String            @map("property_id")
+  mediaType    PropertyMediaType @map("media_type")
+  filePath     String            @map("file_path")
+  fileUrl      String?           @map("file_url")
+  fileName     String            @map("file_name")
+  fileSize     Int?              @map("file_size")
+  mimeType     String?           @map("mime_type")
+  displayOrder Int               @default(0) @map("display_order")
+  isPrimary    Boolean           @default(false) @map("is_primary")
+  metadata     Json?
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@index([propertyId, displayOrder])
+  @@index([propertyId, isPrimary])
+  @@map("property_media")
+}
+
+// Property Document
+model PropertyDocument {
+  id                String               @id @default(uuid())
+  propertyId        String               @map("property_id")
+  documentType      PropertyDocumentType @map("document_type")
+  filePath          String               @map("file_path")
+  fileUrl           String?              @map("file_url")
+  fileName          String               @map("file_name")
+  fileSize          Int?                 @map("file_size")
+  mimeType          String?              @map("mime_type")
+  expirationDate    DateTime?            @map("expiration_date")
+  warningSentAt     DateTime?            @map("warning_sent_at")
+  gracePeriodEndsAt DateTime?            @map("grace_period_ends_at")
+  isRequired        Boolean              @default(false) @map("is_required")
+  isValid           Boolean              @default(true) @map("is_valid")
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@index([expirationDate])
+  @@index([propertyId, documentType])
+  @@map("property_documents")
+}
+
+// Property Status History
+model PropertyStatusHistory {
+  id              String          @id @default(uuid())
+  propertyId      String          @map("property_id")
+  previousStatus  PropertyStatus? @map("previous_status")
+  newStatus       PropertyStatus  @map("new_status")
+  changedByUserId String          @map("changed_by_user_id")
+  notes           String?         @db.Text
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  changedBy User     @relation("PropertyStatusChangedBy", fields: [changedByUserId], references: [id])
+
+  @@index([propertyId])
+  @@index([propertyId, createdAt])
+  @@index([changedByUserId])
+  @@map("property_status_history")
+}
+
+// Property Visit
+model PropertyVisit {
+  id               String              @id @default(uuid())
+  propertyId       String              @map("property_id")
+  contactId        String?             @map("contact_id")
+  dealId           String?             @map("deal_id")
+  visitType        PropertyVisitType   @default(VISIT) @map("visit_type")
+  goal             PropertyVisitGoal?  @map("goal")
+  scheduledAt      DateTime            @map("scheduled_at")
+  duration         Int?
+  location         String?
+  status           PropertyVisitStatus @default(SCHEDULED)
+  assignedToUserId String?             @map("assigned_to_user_id")
+  notes            String?             @db.Text
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+
+  property      Property                    @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  contact       CrmContact?                 @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  deal          CrmDeal?                    @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  assignedTo    User?                       @relation("PropertyVisitAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  collaborators PropertyVisitCollaborator[]
+
+  @@index([propertyId])
+  @@index([contactId])
+  @@index([dealId])
+  @@index([scheduledAt])
+  @@index([assignedToUserId])
+  @@index([status])
+  @@map("property_visits")
+}
+
+// Property Visit Collaborator (many-to-many)
+model PropertyVisitCollaborator {
+  id        String   @id @default(uuid())
+  visitId   String   @map("visit_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  visit PropertyVisit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  user  User          @relation("PropertyVisitCollaborator", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([visitId, userId])
+  @@index([visitId])
+  @@index([userId])
+  @@map("property_visit_collaborators")
+}
+
+// Property Mandate
+model PropertyMandate {
+  id              String    @id @default(uuid())
+  propertyId      String    @map("property_id")
+  tenantId        String    @map("tenant_id")
+  ownerUserId     String    @map("owner_user_id")
+  startDate       DateTime  @map("start_date")
+  endDate         DateTime? @map("end_date")
+  scope           Json?
+  notes           String?   @db.Text
+  isActive        Boolean   @default(true) @map("is_active")
+  revokedAt       DateTime? @map("revoked_at")
+  revokedByUserId String?   @map("revoked_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner     User     @relation("PropertyMandateOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  revokedBy User?    @relation("PropertyMandateRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([propertyId, tenantId, isActive])
+  @@index([propertyId])
+  @@index([tenantId])
+  @@index([ownerUserId])
+  @@index([isActive])
+  @@map("property_mandates")
+}
+
+// Geographic Models
+model Country {
+  id        String   @id @default(uuid())
+  code      String   @unique // ISO code (e.g., "CI" for Côte d'Ivoire)
+  name      String
+  nameFr    String?  @map("name_fr")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  regions Region[]
+
+  @@index([code])
+  @@index([isActive])
+  @@map("countries")
+}
+
+model Region {
+  id        String   @id @default(uuid())
+  countryId String   @map("country_id")
+  code      String? // Optional region code
+  name      String
+  nameFr    String?  @map("name_fr")
+  capital   String? // Chef-lieu
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  country  Country   @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  communes Commune[]
+
+  @@unique([countryId, name])
+  @@index([countryId])
+  @@index([code])
+  @@index([isActive])
+  @@map("regions")
+}
+
+model Commune {
+  id        String   @id @default(uuid())
+  regionId  String   @map("region_id")
+  code      String? // Optional commune code
+  name      String
+  nameFr    String?  @map("name_fr")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  region Region @relation(fields: [regionId], references: [id], onDelete: Cascade)
+  contacts CrmContact[] @relation("ContactCommune")
+  targetZones CrmContactTargetZone[]
+
+  @@unique([regionId, name])
+  @@index([regionId])
+  @@index([code])
+  @@index([isActive])
+  @@map("communes")
+}
+
+// Property Quality Score
+model PropertyQualityScore {
+  id           String   @id @default(uuid())
+  propertyId   String   @map("property_id")
+  score        Int
+  suggestions  Json
+  calculatedAt DateTime @default(now()) @map("calculated_at")
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId])
+  @@index([propertyId, calculatedAt])
+  @@map("property_quality_scores")
+}
+
+// =============================================================
+// RENTAL MANAGEMENT MODULE - ENUMS
+// =============================================================
+
+enum RentalLeaseStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  ENDED
+  CANCELED
+}
+
+enum RentalBillingFrequency {
+  MONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+}
+
+enum RentalInstallmentStatus {
+  DRAFT
+  DUE
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELED
+}
+
+enum RentalChargeType {
+  RENT
+  SERVICE_CHARGE
+  UTILITY
+  MAINTENANCE
+  DOSSIER_FEE
+  OTHER
+}
+
+enum RentalPaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CHECK
+  MOBILE_MONEY
+  CARD
+  OTHER
+}
+
+enum RentalPaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum MobileMoneyOperator {
+  ORANGE
+  MTN
+  MOOV
+  WAVE
+  OTHER
+}
+
+enum RentalPenaltyMode {
+  FIXED_AMOUNT
+  PERCENT_OF_RENT
+  PERCENT_OF_BALANCE
+}
+
+enum RentalDepositMovementType {
+  COLLECT
+  HOLD
+  RELEASE
+  REFUND
+  FORFEIT
+  ADJUSTMENT
+}
+
+enum RentalDocumentType {
+  LEASE_CONTRACT
+  LEASE_ADDENDUM
+  RENT_RECEIPT
+  RENT_QUITTANCE
+  DEPOSIT_RECEIPT
+  STATEMENT
+  OTHER
+}
+
+enum RentalDocumentStatus {
+  DRAFT
+  FINAL
+  VOID
+  SUPERSEDED
+}
+
+enum DocumentTemplateStatus {
+  ACTIVE
+  INACTIVE
+  DELETED
+}
+
+enum DocumentType {
+  LEASE_HABITATION
+  LEASE_COMMERCIAL
+  RENT_RECEIPT
+  RENT_STATEMENT
+}
+
+// =============================================================
+// RENTAL MANAGEMENT MODULE - MODELS
+// =============================================================
+
+// Rental Lease (Bail)
+model RentalLease {
+  id                       String                 @id @default(uuid()) @db.Uuid
+  tenant_id                String
+  property_id              String
+  primary_renter_client_id String
+  owner_client_id          String?
+  crm_deal_id              String?
+  lease_number             String
+  status                   RentalLeaseStatus      @default(DRAFT)
+  start_date               DateTime               @map("start_date")
+  end_date                 DateTime?              @map("end_date")
+  move_in_date             DateTime?              @map("move_in_date")
+  move_out_date            DateTime?              @map("move_out_date")
+  billing_frequency        RentalBillingFrequency @default(MONTHLY) @map("billing_frequency")
+  due_day_of_month         Int                    @default(5) @map("due_day_of_month")
+  currency                 String                 @default("FCFA")
+  rent_amount              Decimal                @map("rent_amount") @db.Decimal(12, 2)
+  service_charge_amount    Decimal                @default(0) @map("service_charge_amount") @db.Decimal(12, 2)
+  security_deposit_amount  Decimal                @default(0) @map("security_deposit_amount") @db.Decimal(12, 2)
+  penalty_grace_days       Int                    @default(0) @map("penalty_grace_days")
+  penalty_mode             RentalPenaltyMode      @default(PERCENT_OF_BALANCE) @map("penalty_mode")
+  penalty_rate             Decimal                @default(0) @map("penalty_rate") @db.Decimal(12, 4)
+  penalty_fixed_amount     Decimal                @default(0) @map("penalty_fixed_amount") @db.Decimal(12, 2)
+  penalty_cap_amount       Decimal?               @map("penalty_cap_amount") @db.Decimal(12, 2)
+  notes                    String?                @db.Text
+  terms_json               Json?                  @map("terms_json")
+  created_by_user_id       String                 @map("created_by_user_id")
+  created_at               DateTime               @default(now()) @map("created_at")
+  updated_at               DateTime               @updatedAt @map("updated_at")
+
+  tenant        Tenant                 @relation(fields: [tenant_id], references: [id])
+  property      Property               @relation(fields: [property_id], references: [id])
+  primaryRenter TenantClient           @relation("RentalLeasePrimaryRenter", fields: [primary_renter_client_id], references: [id])
+  ownerClient   TenantClient?          @relation("RentalLeaseOwner", fields: [owner_client_id], references: [id])
+  createdBy     User                   @relation("RentalLeaseCreatedBy", fields: [created_by_user_id], references: [id])
+  coRenters     RentalLeaseCoRenter[]
+  installments  RentalInstallment[]
+  deposit       RentalSecurityDeposit?
+  documents     RentalDocument[]
+  payments      RentalPayment[]
+
+  @@unique([tenant_id, lease_number])
+  @@index([tenant_id])
+  @@index([tenant_id, status])
+  @@index([tenant_id, property_id])
+  @@index([tenant_id, primary_renter_client_id])
+  @@index([crm_deal_id])
+  @@index([start_date])
+  @@index([end_date])
+  @@map("rental_leases")
+}
+
+// Rental Lease Co-Renter
+model RentalLeaseCoRenter {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenant_id        String
+  lease_id         String   @db.Uuid
+  renter_client_id String   @map("renter_client_id")
+  created_at       DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant       @relation(fields: [tenant_id], references: [id])
+  lease        RentalLease  @relation(fields: [lease_id], references: [id], onDelete: Cascade)
+  renterClient TenantClient @relation(fields: [renter_client_id], references: [id])
+
+  @@unique([lease_id, renter_client_id])
+  @@index([tenant_id])
+  @@index([lease_id])
+  @@index([renter_client_id])
+  @@map("rental_lease_co_renters")
+}
+
+// Rental Installment
+model RentalInstallment {
+  id                String                  @id @default(uuid()) @db.Uuid
+  tenant_id         String
+  lease_id          String                  @db.Uuid
+  period_year       Int                     @map("period_year")
+  period_month      Int                     @map("period_month")
+  due_date          DateTime                @map("due_date")
+  status            RentalInstallmentStatus @default(DRAFT)
+  currency          String                  @default("FCFA")
+  amount_rent       Decimal                 @map("amount_rent") @db.Decimal(12, 2)
+  amount_service    Decimal                 @default(0) @map("amount_service") @db.Decimal(12, 2)
+  amount_other_fees Decimal                 @default(0) @map("amount_other_fees") @db.Decimal(12, 2)
+  penalty_amount    Decimal                 @default(0) @map("penalty_amount") @db.Decimal(12, 2)
+  amount_paid       Decimal                 @default(0) @map("amount_paid") @db.Decimal(12, 2)
+  paid_at           DateTime?               @map("paid_at")
+  invoice_id        String?                 @map("invoice_id")
+  created_at        DateTime                @default(now()) @map("created_at")
+  updated_at        DateTime                @updatedAt @map("updated_at")
+
+  tenant           Tenant                    @relation(fields: [tenant_id], references: [id])
+  lease            RentalLease               @relation(fields: [lease_id], references: [id], onDelete: Cascade)
+  invoice          Invoice?                  @relation(fields: [invoice_id], references: [id])
+  items            RentalInstallmentItem[]
+  payments         RentalPaymentAllocation[]
+  penalties        RentalPenalty[]
+  depositMovements RentalDepositMovement[]
+  documents        RentalDocument[]
+
+  @@unique([lease_id, period_year, period_month])
+  @@index([tenant_id])
+  @@index([tenant_id, status])
+  @@index([tenant_id, due_date])
+  @@index([lease_id])
+  @@index([invoice_id])
+  @@map("rental_installments")
+}
+
+// Rental Installment Item
+model RentalInstallmentItem {
+  id             String           @id @default(uuid()) @db.Uuid
+  tenant_id      String
+  installment_id String           @db.Uuid
+  charge_type    RentalChargeType @map("charge_type")
+  label          String
+  amount         Decimal          @db.Decimal(12, 2)
+  currency       String           @default("FCFA")
+  metadata       Json?
+  created_at     DateTime         @default(now()) @map("created_at")
+
+  tenant      Tenant            @relation(fields: [tenant_id], references: [id])
+  installment RentalInstallment @relation(fields: [installment_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([installment_id])
+  @@index([charge_type])
+  @@map("rental_installment_items")
+}
+
+// Rental Payment
+model RentalPayment {
+  id                 String               @id @default(uuid()) @db.Uuid
+  tenant_id          String
+  lease_id           String?              @db.Uuid
+  renter_client_id   String?
+  invoice_id         String?
+  method             RentalPaymentMethod
+  status             RentalPaymentStatus  @default(PENDING)
+  currency           String               @default("FCFA")
+  amount             Decimal              @db.Decimal(12, 2)
+  mm_operator        MobileMoneyOperator? @map("mm_operator")
+  mm_phone           String?              @map("mm_phone")
+  idempotency_key    String               @unique @map("idempotency_key")
+  psp_name           String?              @map("psp_name")
+  psp_transaction_id String?              @unique @map("psp_transaction_id")
+  psp_reference      String?              @map("psp_reference")
+  initiated_at       DateTime             @default(now()) @map("initiated_at")
+  succeeded_at       DateTime?            @map("succeeded_at")
+  failed_at          DateTime?            @map("failed_at")
+  canceled_at        DateTime?            @map("canceled_at")
+  raw_event_payload  Json?                @map("raw_event_payload")
+  created_by_user_id String?              @map("created_by_user_id")
+  created_at         DateTime             @default(now()) @map("created_at")
+  updated_at         DateTime             @updatedAt @map("updated_at")
+
+  tenant           Tenant                    @relation(fields: [tenant_id], references: [id])
+  lease            RentalLease?              @relation(fields: [lease_id], references: [id])
+  renterClient     TenantClient?             @relation(fields: [renter_client_id], references: [id])
+  invoice          Invoice?                  @relation(fields: [invoice_id], references: [id])
+  createdBy        User?                     @relation("RentalPaymentCreatedBy", fields: [created_by_user_id], references: [id])
+  allocations      RentalPaymentAllocation[]
+  refunds          RentalRefund[]
+  depositMovements RentalDepositMovement[]
+  documents        RentalDocument[]
+
+  @@index([tenant_id])
+  @@index([tenant_id, status])
+  @@index([tenant_id, method])
+  @@index([lease_id])
+  @@index([invoice_id])
+  @@index([renter_client_id])
+  @@index([initiated_at])
+  @@map("rental_payments")
+}
+
+// Rental Payment Allocation
+model RentalPaymentAllocation {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenant_id      String
+  payment_id     String   @db.Uuid
+  installment_id String   @db.Uuid
+  amount         Decimal  @db.Decimal(12, 2)
+  currency       String   @default("FCFA")
+  created_at     DateTime @default(now()) @map("created_at")
+
+  tenant      Tenant            @relation(fields: [tenant_id], references: [id])
+  payment     RentalPayment     @relation(fields: [payment_id], references: [id], onDelete: Cascade)
+  installment RentalInstallment @relation(fields: [installment_id], references: [id], onDelete: Cascade)
+
+  @@unique([payment_id, installment_id])
+  @@index([tenant_id])
+  @@index([payment_id])
+  @@index([installment_id])
+  @@map("rental_payment_allocations")
+}
+
+// Rental Refund
+model RentalRefund {
+  id                 String              @id @default(uuid()) @db.Uuid
+  tenant_id          String
+  payment_id         String              @db.Uuid
+  status             RentalPaymentStatus @default(PENDING)
+  currency           String              @default("FCFA")
+  amount             Decimal             @db.Decimal(12, 2)
+  psp_refund_id      String?             @unique @map("psp_refund_id")
+  raw_event_payload  Json?               @map("raw_event_payload")
+  created_by_user_id String?             @map("created_by_user_id")
+  created_at         DateTime            @default(now()) @map("created_at")
+  updated_at         DateTime            @updatedAt @map("updated_at")
+
+  tenant    Tenant        @relation(fields: [tenant_id], references: [id])
+  payment   RentalPayment @relation(fields: [payment_id], references: [id], onDelete: Cascade)
+  createdBy User?         @relation("RentalRefundCreatedBy", fields: [created_by_user_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([payment_id])
+  @@index([tenant_id, status])
+  @@map("rental_refunds")
+}
+
+// Rental Penalty Rule
+model RentalPenaltyRule {
+  id                   String            @id @default(uuid()) @db.Uuid
+  tenant_id            String
+  is_active            Boolean           @default(true) @map("is_active")
+  grace_days           Int               @default(0) @map("grace_days")
+  mode                 RentalPenaltyMode @default(PERCENT_OF_BALANCE)
+  fixed_amount         Decimal           @default(0) @map("fixed_amount") @db.Decimal(12, 2)
+  rate                 Decimal           @default(0) @db.Decimal(12, 4)
+  cap_amount           Decimal?          @map("cap_amount") @db.Decimal(12, 2)
+  min_balance_to_apply Decimal?          @map("min_balance_to_apply") @db.Decimal(12, 2)
+  created_at           DateTime          @default(now()) @map("created_at")
+  updated_at           DateTime          @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([tenant_id, is_active])
+  @@map("rental_penalty_rules")
+}
+
+// Rental Penalty
+model RentalPenalty {
+  id                 String            @id @default(uuid()) @db.Uuid
+  tenant_id          String
+  installment_id     String            @db.Uuid
+  calculated_at      DateTime          @default(now()) @map("calculated_at")
+  days_late          Int               @map("days_late")
+  mode               RentalPenaltyMode
+  rate               Decimal?          @db.Decimal(12, 4)
+  fixed_amount       Decimal?          @map("fixed_amount") @db.Decimal(12, 2)
+  amount             Decimal           @db.Decimal(12, 2)
+  currency           String            @default("FCFA")
+  is_manual_override Boolean           @default(false) @map("is_manual_override")
+  override_reason    String?           @map("override_reason") @db.Text
+  created_by_user_id String?           @map("created_by_user_id")
+  created_at         DateTime          @default(now()) @map("created_at")
+
+  tenant      Tenant            @relation(fields: [tenant_id], references: [id])
+  installment RentalInstallment @relation(fields: [installment_id], references: [id], onDelete: Cascade)
+  createdBy   User?             @relation("RentalPenaltyCreatedBy", fields: [created_by_user_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([installment_id])
+  @@index([calculated_at])
+  @@map("rental_penalties")
+}
+
+// Rental Security Deposit
+model RentalSecurityDeposit {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenant_id        String
+  lease_id         String   @unique @db.Uuid
+  currency         String   @default("FCFA")
+  target_amount    Decimal  @default(0) @map("target_amount") @db.Decimal(12, 2)
+  collected_amount Decimal  @default(0) @map("collected_amount") @db.Decimal(12, 2)
+  held_amount      Decimal  @default(0) @map("held_amount") @db.Decimal(12, 2)
+  refunded_amount  Decimal  @default(0) @map("refunded_amount") @db.Decimal(12, 2)
+  forfeited_amount Decimal  @default(0) @map("forfeited_amount") @db.Decimal(12, 2)
+  created_at       DateTime @default(now()) @map("created_at")
+  updated_at       DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant                  @relation(fields: [tenant_id], references: [id])
+  lease     RentalLease             @relation(fields: [lease_id], references: [id], onDelete: Cascade)
+  movements RentalDepositMovement[]
+
+  @@index([tenant_id])
+  @@map("rental_security_deposits")
+}
+
+// Rental Deposit Movement
+model RentalDepositMovement {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  tenant_id          String
+  deposit_id         String                    @db.Uuid
+  type               RentalDepositMovementType
+  currency           String                    @default("FCFA")
+  amount             Decimal                   @db.Decimal(12, 2)
+  payment_id         String?                   @db.Uuid
+  installment_id     String?                   @db.Uuid
+  note               String?                   @db.Text
+  metadata           Json?
+  created_by_user_id String?                   @map("created_by_user_id")
+  created_at         DateTime                  @default(now()) @map("created_at")
+
+  tenant      Tenant                @relation(fields: [tenant_id], references: [id])
+  deposit     RentalSecurityDeposit @relation(fields: [deposit_id], references: [id], onDelete: Cascade)
+  payment     RentalPayment?        @relation(fields: [payment_id], references: [id])
+  installment RentalInstallment?    @relation(fields: [installment_id], references: [id])
+  createdBy   User?                 @relation("RentalDepositMovementCreatedBy", fields: [created_by_user_id], references: [id])
+
+  @@index([tenant_id])
+  @@index([deposit_id])
+  @@index([payment_id])
+  @@index([installment_id])
+  @@index([created_at])
+  @@map("rental_deposit_movements")
+}
+
+// Rental Document
+model RentalDocument {
+  id                 String               @id @default(uuid()) @db.Uuid
+  tenant_id          String
+  type               RentalDocumentType
+  status             RentalDocumentStatus @default(DRAFT)
+  lease_id           String?              @db.Uuid
+  installment_id     String?              @db.Uuid
+  payment_id         String?              @db.Uuid
+  document_number    String?              @unique @map("document_number")
+  file_url           String?              @map("file_url")
+  file_key           String?              @map("file_key")
+  file_path          String?              @map("file_path")
+  mime_type          String?              @map("mime_type")
+  content_hash       String?              @map("content_hash")
+  file_hash          String?              @map("file_hash")
+  issued_at          DateTime?            @map("issued_at")
+  title              String?
+  description        String?              @db.Text
+  metadata           Json?
+  template_id        String?              @map("template_id") @db.Uuid
+  template_hash      String?              @map("template_hash")
+  revision           Int                  @default(1)
+  superseded_by_id   String?              @map("superseded_by_id") @db.Uuid
+  created_by_user_id String               @map("created_by_user_id")
+  created_at         DateTime             @default(now()) @map("created_at")
+  updated_at         DateTime             @updatedAt @map("updated_at")
+
+  tenant       Tenant             @relation(fields: [tenant_id], references: [id])
+  lease        RentalLease?       @relation(fields: [lease_id], references: [id])
+  installment  RentalInstallment? @relation(fields: [installment_id], references: [id])
+  payment      RentalPayment?     @relation(fields: [payment_id], references: [id])
+  createdBy    User               @relation("RentalDocumentCreatedBy", fields: [created_by_user_id], references: [id])
+  template     DocumentTemplate?  @relation(fields: [template_id], references: [id])
+  supersededBy RentalDocument?    @relation("DocumentSuperseded", fields: [superseded_by_id], references: [id])
+  supersedes   RentalDocument[]   @relation("DocumentSuperseded")
+
+  @@index([tenant_id])
+  @@index([tenant_id, type])
+  @@index([lease_id])
+  @@index([installment_id])
+  @@index([payment_id])
+  @@index([issued_at])
+  @@index([template_id])
+  @@index([superseded_by_id])
+  @@map("rental_documents")
+}
+
+// Document Template
+model DocumentTemplate {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  tenant_id          String?                @map("tenant_id")
+  doc_type           DocumentType
+  name               String
+  status             DocumentTemplateStatus @default(INACTIVE)
+  is_default         Boolean                @default(false) @map("is_default")
+  original_filename  String                 @map("original_filename")
+  stored_filename    String                 @map("stored_filename")
+  storage_path       String                 @map("storage_path")
+  file_size          Int                    @map("file_size")
+  mime_type          String                 @map("mime_type")
+  file_hash_sha256   String                 @map("file_hash_sha256")
+  placeholders       Json[]                 @default([])
+  version            Int                    @default(1)
+  created_by_user_id String                 @map("created_by_user_id")
+  created_at         DateTime               @default(now()) @map("created_at")
+  updated_at         DateTime               @updatedAt @map("updated_at")
+
+  tenant    Tenant?          @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  createdBy User             @relation("DocumentTemplateCreatedBy", fields: [created_by_user_id], references: [id])
+  documents RentalDocument[]
+
+  @@unique([tenant_id, doc_type, is_default])
+  @@index([tenant_id])
+  @@index([tenant_id, doc_type])
+  @@index([tenant_id, doc_type, status])
+  @@index([status])
+  @@map("document_templates")
+}
+
+// Document Counter
+model DocumentCounter {
+  id          String       @id @default(uuid()) @db.Uuid
+  tenant_id   String       @map("tenant_id")
+  doc_type    DocumentType @map("doc_type")
+  period_key  String       @map("period_key")
+  last_number Int          @default(0) @map("last_number")
+  created_at  DateTime     @default(now()) @map("created_at")
+  updated_at  DateTime     @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, doc_type, period_key])
+  @@index([tenant_id])
+  @@index([tenant_id, doc_type])
+  @@map("document_counters")
+}

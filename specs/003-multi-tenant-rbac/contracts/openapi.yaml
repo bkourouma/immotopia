@@ -1,0 +1,1047 @@
+openapi: 3.0.0
+info:
+  title: Multi-Tenant RBAC API
+  version: 1.0.0
+  description: API for multi-tenant SaaS architecture with hierarchical RBAC, tenant management, and subscription billing
+
+servers:
+  - url: http://localhost:5000/api
+    description: Development server
+  - url: https://api.immotopia.com/api
+    description: Production server
+
+tags:
+  - name: Platform Admin
+    description: Platform-level admin operations (requires PLATFORM_SUPER_ADMIN)
+  - name: Tenant Management
+    description: Tenant CRUD and configuration
+  - name: Collaborator Management
+    description: Tenant user (collaborator) management
+  - name: Invitations
+    description: User invitation and acceptance
+  - name: Subscriptions
+    description: Subscription and billing management
+  - name: Statistics
+    description: Tenant statistics and reporting
+
+paths:
+  # Platform Admin - Tenant Management
+  /admin/tenants:
+    get:
+      tags: [Platform Admin]
+      summary: List all tenants
+      description: Get paginated list of tenants with filtering
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, ACTIVE, SUSPENDED]
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [AGENCY, SYNDIC, PROMOTER, AMENAGEUR]
+        - name: plan
+          in: query
+          schema:
+            type: string
+            enum: [BASIC, PRO, ELITE]
+        - name: module
+          in: query
+          schema:
+            type: string
+            enum: [MODULE_AGENCY, MODULE_SYNDIC, MODULE_PROMOTER]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of tenants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenants:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tenant'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Platform Admin]
+      summary: Create new tenant
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTenantRequest'
+      responses:
+        '201':
+          description: Tenant created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/tenants/{tenantId}:
+    get:
+      tags: [Platform Admin]
+      summary: Get tenant details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tenant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    patch:
+      tags: [Platform Admin]
+      summary: Update tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTenantRequest'
+      responses:
+        '200':
+          description: Tenant updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/tenants/{tenantId}/modules:
+    get:
+      tags: [Platform Admin]
+      summary: Get tenant modules
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of tenant modules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  modules:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TenantModule'
+
+    put:
+      tags: [Platform Admin]
+      summary: Update tenant modules
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                modules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      moduleKey:
+                        type: string
+                        enum: [MODULE_AGENCY, MODULE_SYNDIC, MODULE_PROMOTER]
+                      enabled:
+                        type: boolean
+      responses:
+        '200':
+          description: Modules updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  modules:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TenantModule'
+
+  /admin/tenants/{tenantId}/subscription:
+    get:
+      tags: [Subscriptions]
+      summary: Get tenant subscription
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Subscription details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+
+    put:
+      tags: [Subscriptions]
+      summary: Update tenant subscription
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubscriptionRequest'
+      responses:
+        '200':
+          description: Subscription updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+
+  /admin/tenants/{tenantId}/invoices:
+    get:
+      tags: [Subscriptions]
+      summary: List tenant invoices
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of invoices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoices:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Invoice'
+
+    post:
+      tags: [Subscriptions]
+      summary: Create invoice
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInvoiceRequest'
+      responses:
+        '201':
+          description: Invoice created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+
+  /admin/invoices/{invoiceId}:
+    patch:
+      tags: [Subscriptions]
+      summary: Update invoice (mark paid, cancel, etc.)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: invoiceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInvoiceRequest'
+      responses:
+        '200':
+          description: Invoice updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+
+  /admin/tenants/{tenantId}/stats:
+    get:
+      tags: [Statistics]
+      summary: Get tenant statistics
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tenant statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantStats'
+
+  /admin/audit:
+    get:
+      tags: [Platform Admin]
+      summary: Get audit logs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: actionKey
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Audit logs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditLog'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  # Tenant - Collaborator Management
+  /tenants/{tenantId}/users:
+    get:
+      tags: [Collaborator Management]
+      summary: List collaborators
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: role
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, DISABLED, PENDING_INVITE]
+      responses:
+        '200':
+          description: List of collaborators
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collaborators:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Collaborator'
+
+    post:
+      tags: [Collaborator Management]
+      summary: Create collaborator directly
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCollaboratorRequest'
+      responses:
+        '201':
+          description: Collaborator created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Collaborator'
+
+  /tenants/{tenantId}/users/invite:
+    post:
+      tags: [Invitations]
+      summary: Invite collaborator
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteCollaboratorRequest'
+      responses:
+        '201':
+          description: Invitation sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invitation'
+
+  /tenants/{tenantId}/users/{userId}:
+    get:
+      tags: [Collaborator Management]
+      summary: Get collaborator details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Collaborator details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CollaboratorDetail'
+
+    patch:
+      tags: [Collaborator Management]
+      summary: Update collaborator
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCollaboratorRequest'
+      responses:
+        '200':
+          description: Collaborator updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Collaborator'
+
+  /tenants/{tenantId}/users/{userId}/reset-password:
+    post:
+      tags: [Collaborator Management]
+      summary: Trigger password reset for collaborator
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Password reset email sent
+
+  /tenants/{tenantId}/users/{userId}/revoke-sessions:
+    post:
+      tags: [Collaborator Management]
+      summary: Revoke all sessions for collaborator
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Sessions revoked
+
+  /tenants/{tenantId}/users/invitations/{invitationId}/resend:
+    post:
+      tags: [Invitations]
+      summary: Resend invitation email
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: invitationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Invitation email resent
+
+  # Invitation Acceptance
+  /auth/invitations/accept:
+    post:
+      tags: [Invitations]
+      summary: Accept invitation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: Invitation token from email
+                password:
+                  type: string
+                  description: Password (required if new user)
+      responses:
+        '200':
+          description: Invitation accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  user:
+                    $ref: '#/components/schemas/User'
+                  tenant:
+                    $ref: '#/components/schemas/Tenant'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        legalName:
+          type: string
+          nullable: true
+        type:
+          type: string
+          enum: [AGENCY, SYNDIC, PROMOTER, AMENAGEUR]
+        status:
+          type: string
+          enum: [PENDING, ACTIVE, SUSPENDED]
+        contactEmail:
+          type: string
+          nullable: true
+        contactPhone:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    TenantDetail:
+      allOf:
+        - $ref: '#/components/schemas/Tenant'
+        - type: object
+          properties:
+            modules:
+              type: array
+              items:
+                $ref: '#/components/schemas/TenantModule'
+            subscription:
+              $ref: '#/components/schemas/Subscription'
+            stats:
+              $ref: '#/components/schemas/TenantStats'
+
+    TenantModule:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        moduleKey:
+          type: string
+          enum: [MODULE_AGENCY, MODULE_SYNDIC, MODULE_PROMOTER]
+        enabled:
+          type: boolean
+        enabledAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        planKey:
+          type: string
+          enum: [BASIC, PRO, ELITE]
+        billingCycle:
+          type: string
+          enum: [MONTHLY, ANNUAL]
+        status:
+          type: string
+          enum: [TRIALING, ACTIVE, PAST_DUE, CANCELED, SUSPENDED]
+        currentPeriodStart:
+          type: string
+          format: date-time
+        currentPeriodEnd:
+          type: string
+          format: date-time
+
+    Invoice:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        invoiceNumber:
+          type: string
+        issueDate:
+          type: string
+          format: date
+        dueDate:
+          type: string
+          format: date
+        amountTotal:
+          type: number
+        currency:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, ISSUED, PAID, FAILED, CANCELED, REFUNDED]
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Collaborator:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user:
+          $ref: '#/components/schemas/User'
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+        status:
+          type: string
+          enum: [ACTIVE, DISABLED, PENDING_INVITE]
+
+    CollaboratorDetail:
+      allOf:
+        - $ref: '#/components/schemas/Collaborator'
+        - type: object
+          properties:
+            invitedAt:
+              type: string
+              format: date-time
+              nullable: true
+            acceptedAt:
+              type: string
+              format: date-time
+              nullable: true
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        fullName:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+
+    Role:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+        name:
+          type: string
+        scope:
+          type: string
+          enum: [PLATFORM, TENANT]
+
+    Invitation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, ACCEPTED, EXPIRED, REVOKED]
+        expiresAt:
+          type: string
+          format: date-time
+
+    TenantStats:
+      type: object
+      properties:
+        collaboratorCount:
+          type: integer
+        activeCollaborators:
+          type: integer
+        disabledCollaborators:
+          type: integer
+        enabledModules:
+          type: array
+          items:
+            type: string
+        subscription:
+          $ref: '#/components/schemas/Subscription'
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        actionKey:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: string
+        actorUserId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+    CreateTenantRequest:
+      type: object
+      required: [name, type, contactEmail]
+      properties:
+        name:
+          type: string
+        legalName:
+          type: string
+        type:
+          type: string
+          enum: [AGENCY, SYNDIC, PROMOTER, AMENAGEUR]
+        contactEmail:
+          type: string
+        contactPhone:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, ACTIVE, SUSPENDED]
+          default: PENDING
+
+    UpdateTenantRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, ACTIVE, SUSPENDED]
+        contactEmail:
+          type: string
+        contactPhone:
+          type: string
+
+    UpdateSubscriptionRequest:
+      type: object
+      properties:
+        planKey:
+          type: string
+          enum: [BASIC, PRO, ELITE]
+        billingCycle:
+          type: string
+          enum: [MONTHLY, ANNUAL]
+        status:
+          type: string
+          enum: [TRIALING, ACTIVE, PAST_DUE, CANCELED, SUSPENDED]
+
+    CreateInvoiceRequest:
+      type: object
+      required: [amountTotal, dueDate]
+      properties:
+        amountTotal:
+          type: number
+        currency:
+          type: string
+          default: FCFA
+        dueDate:
+          type: string
+          format: date
+        notes:
+          type: string
+
+    UpdateInvoiceRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [DRAFT, ISSUED, PAID, FAILED, CANCELED, REFUNDED]
+        paidAt:
+          type: string
+          format: date-time
+
+    CreateCollaboratorRequest:
+      type: object
+      required: [email, fullName, roleIds]
+      properties:
+        email:
+          type: string
+        fullName:
+          type: string
+        phone:
+          type: string
+        roleIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    InviteCollaboratorRequest:
+      type: object
+      required: [email, roleIds]
+      properties:
+        email:
+          type: string
+        roleIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    UpdateCollaboratorRequest:
+      type: object
+      properties:
+        roleIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        status:
+          type: string
+          enum: [ACTIVE, DISABLED]
+
+  responses:
+    Forbidden:
+      description: Access forbidden
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              message:
+                type: string
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              message:
+                type: string
+
+
+
+
+

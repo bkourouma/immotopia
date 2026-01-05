@@ -1,0 +1,649 @@
+openapi: 3.0.3
+info:
+  title: ImmoTopia Authentication API
+  description: |
+    API d'authentification pour la plateforme ImmoTopia.
+    Cette API permet aux utilisateurs de s'inscrire, de se connecter, de vérifier leur email,
+    de réinitialiser leur mot de passe, et de gérer leurs tokens JWT.
+    
+    Tous les messages d'erreur et de succès sont en français.
+  version: 1.0.0
+  contact:
+    name: ImmoTopia Platform Team
+    email: support@immotopia.com
+
+servers:
+  - url: http://localhost:3000/api
+    description: Serveur de développement local
+  - url: https://api.immotopia.com/api
+    description: Serveur de production
+
+tags:
+  - name: auth
+    description: Endpoints d'authentification
+  - name: users
+    description: Endpoints de gestion des utilisateurs
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - auth
+      summary: Inscription d'un nouvel utilisateur
+      description: |
+        Crée un nouveau compte utilisateur avec email et mot de passe.
+        Envoie un email de vérification après l'inscription.
+        Le compte est créé avec le statut `email_verified: false`.
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            examples:
+              student:
+                value:
+                  email: etudiant@example.com
+                  password: Student@123456
+                  confirmPassword: Student@123456
+                  fullName: Marie Martin
+                  role: STUDENT
+              instructor:
+                value:
+                  email: instructeur@example.com
+                  password: Instructor@123456
+                  confirmPassword: Instructor@123456
+                  fullName: Jean Dupont
+                  role: INSTRUCTOR
+      responses:
+        '201':
+          description: Inscription réussie. Un email de vérification a été envoyé.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              example:
+                success: true
+                message: Inscription réussie ! Veuillez vérifier votre email.
+                user:
+                  id: 123e4567-e89b-12d3-a456-426614174000
+                  email: etudiant@example.com
+                  fullName: Marie Martin
+                  role: STUDENT
+                  emailVerified: false
+        '400':
+          description: Erreur de validation (email invalide, mot de passe non conforme, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Les données fournies sont invalides.
+                errors:
+                  - field: email
+                    message: Cette adresse email est déjà utilisée.
+                  - field: password
+                    message: Le mot de passe doit contenir au moins 8 caractères, une majuscule, une minuscule, un chiffre et un caractère spécial.
+        '429':
+          description: Trop de tentatives. Rate limit dépassé.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Trop de tentatives. Veuillez réessayer dans quelques instants.
+
+  /auth/login:
+    post:
+      tags:
+        - auth
+      summary: Connexion d'un utilisateur
+      description: |
+        Authentifie un utilisateur avec email et mot de passe.
+        Génère un JWT access token (15 minutes) et un refresh token (7 jours).
+        Les tokens sont retournés dans des cookies HTTP-only.
+        L'utilisateur doit avoir vérifié son email pour pouvoir se connecter.
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: etudiant@example.com
+              password: Student@123456
+              rememberMe: true
+      responses:
+        '200':
+          description: Connexion réussie. Les tokens sont retournés dans des cookies HTTP-only.
+          headers:
+            Set-Cookie:
+              description: Cookies HTTP-only contenant les tokens JWT
+              schema:
+                type: string
+                example: accessToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; HttpOnly; Secure; SameSite=Strict; Path=/
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              example:
+                success: true
+                message: Connexion réussie.
+                user:
+                  id: 123e4567-e89b-12d3-a456-426614174000
+                  email: etudiant@example.com
+                  fullName: Marie Martin
+                  role: STUDENT
+        '400':
+          description: Erreur de validation (email ou mot de passe invalide)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Email ou mot de passe incorrect.
+        '403':
+          description: Compte non vérifié. Un nouvel email de vérification a été envoyé.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Veuillez vérifier votre adresse email. Un nouveau lien de vérification a été envoyé.
+        '429':
+          description: Trop de tentatives. Compte temporairement bloqué.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Trop de tentatives de connexion. Votre compte est temporairement bloqué.
+
+  /auth/logout:
+    post:
+      tags:
+        - auth
+      summary: Déconnexion d'un utilisateur
+      description: |
+        Déconnecte un utilisateur en révoquant le refresh token
+        et en supprimant les cookies contenant les tokens.
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Déconnexion réussie.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                success: true
+                message: Déconnexion réussie.
+        '401':
+          description: Non authentifié. Token invalide ou expiré.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Non authentifié.
+
+  /auth/refresh:
+    post:
+      tags:
+        - auth
+      summary: Rafraîchissement du token d'accès
+      description: |
+        Rafraîchit le JWT access token en utilisant le refresh token
+        stocké dans un cookie HTTP-only.
+        Génère un nouveau access token si le refresh token est valide.
+      operationId: refreshToken
+      responses:
+        '200':
+          description: Token rafraîchi avec succès.
+          headers:
+            Set-Cookie:
+              description: Cookie HTTP-only contenant le nouveau access token
+              schema:
+                type: string
+                example: accessToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...; HttpOnly; Secure; SameSite=Strict; Path=/
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                success: true
+                message: Token rafraîchi avec succès.
+        '401':
+          description: Refresh token invalide ou expiré.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Votre session a expiré. Veuillez vous reconnecter.
+
+  /auth/verify-email:
+    get:
+      tags:
+        - auth
+      summary: Vérification de l'email
+      description: |
+        Vérifie l'email d'un utilisateur en validant le token
+        fourni dans l'URL (paramètre query).
+        Marque le compte comme vérifié après validation.
+      operationId: verifyEmail
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: Token de vérification d'email
+          schema:
+            type: string
+            format: uuid
+            example: 123e4567-e89b-12d3-a456-426614174000
+      responses:
+        '200':
+          description: Email vérifié avec succès.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                success: true
+                message: Votre email a été vérifié avec succès ! Vous pouvez maintenant vous connecter.
+        '400':
+          description: Token invalide ou expiré.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Le lien de vérification est invalide ou a expiré.
+
+  /auth/resend-verification:
+    post:
+      tags:
+        - auth
+      summary: Renvoi de l'email de vérification
+      description: |
+        Renvoie un nouvel email de vérification à un utilisateur
+        avec un compte non vérifié.
+        Génère un nouveau token et invalide l'ancien.
+      operationId: resendVerification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendVerificationRequest'
+            example:
+              email: etudiant@example.com
+      responses:
+        '200':
+          description: Email de vérification envoyé avec succès.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                success: true
+                message: Un nouvel email de vérification a été envoyé.
+        '400':
+          description: Erreur de validation (email invalide ou compte déjà vérifié)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Cette adresse email n'existe pas ou est déjà vérifiée.
+
+  /auth/forgot-password:
+    post:
+      tags:
+        - auth
+      summary: Demande de réinitialisation de mot de passe
+      description: |
+        Envoie un email de réinitialisation de mot de passe à un utilisateur.
+        Génère un token de réinitialisation avec expiration de 1 heure.
+        Retourne toujours un message de succès (même si l'email n'existe pas)
+        pour ne pas révéler l'existence du compte.
+      operationId: forgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+            example:
+              email: etudiant@example.com
+      responses:
+        '200':
+          description: Email de réinitialisation envoyé (si l'email existe).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                success: true
+                message: Si cette adresse email existe, un lien de réinitialisation a été envoyé.
+        '429':
+          description: Trop de tentatives. Rate limit dépassé.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Trop de tentatives. Veuillez réessayer dans quelques instants.
+
+  /auth/reset-password:
+    post:
+      tags:
+        - auth
+      summary: Réinitialisation du mot de passe
+      description: |
+        Réinitialise le mot de passe d'un utilisateur en utilisant
+        le token fourni dans la requête.
+        Valide le token, vérifie qu'il n'est pas expiré, et met à jour le mot de passe.
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+            example:
+              token: 123e4567-e89b-12d3-a456-426614174000
+              password: NewPassword@123456
+              confirmPassword: NewPassword@123456
+      responses:
+        '200':
+          description: Mot de passe réinitialisé avec succès.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                success: true
+                message: Mot de passe réinitialisé avec succès ! Vous pouvez maintenant vous connecter.
+        '400':
+          description: Erreur de validation (token invalide, mot de passe non conforme, etc.)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Le lien de réinitialisation est invalide ou a expiré.
+                errors:
+                  - field: password
+                    message: Le mot de passe doit contenir au moins 8 caractères, une majuscule, une minuscule, un chiffre et un caractère spécial.
+
+  /auth/me:
+    get:
+      tags:
+        - auth
+      summary: Récupération des informations de l'utilisateur connecté
+      description: |
+        Récupère les informations de l'utilisateur actuellement connecté
+        à partir du JWT access token.
+      operationId: getMe
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Informations de l'utilisateur connecté.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+              example:
+                success: true
+                user:
+                  id: 123e4567-e89b-12d3-a456-426614174000
+                  email: etudiant@example.com
+                  fullName: Marie Martin
+                  role: STUDENT
+                  emailVerified: true
+                  createdAt: '2025-11-12T10:00:00Z'
+        '401':
+          description: Non authentifié. Token invalide ou expiré.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: Non authentifié.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        JWT access token dans l'en-tête Authorization.
+        Format: `Bearer <token>`
+        Le token expire après 15 minutes.
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - email
+        - password
+        - confirmPassword
+        - fullName
+        - role
+      properties:
+        email:
+          type: string
+          format: email
+          description: Adresse email de l'utilisateur (unique)
+          example: etudiant@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: Mot de passe (minimum 8 caractères, majuscule, minuscule, chiffre, caractère spécial)
+          example: Student@123456
+        confirmPassword:
+          type: string
+          format: password
+          description: Confirmation du mot de passe
+          example: Student@123456
+        fullName:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Nom complet de l'utilisateur
+          example: Marie Martin
+        role:
+          type: string
+          enum: [STUDENT, INSTRUCTOR]
+          default: STUDENT
+          description: Rôle de l'utilisateur (STUDENT ou INSTRUCTOR, ADMIN non disponible à l'inscription)
+          example: STUDENT
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: Adresse email de l'utilisateur
+          example: etudiant@example.com
+        password:
+          type: string
+          format: password
+          description: Mot de passe de l'utilisateur
+          example: Student@123456
+        rememberMe:
+          type: boolean
+          default: false
+          description: Se souvenir de moi (prolonge la durée du refresh token)
+          example: true
+
+    ResendVerificationRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          description: Adresse email de l'utilisateur
+          example: etudiant@example.com
+
+    ForgotPasswordRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          description: Adresse email de l'utilisateur
+          example: etudiant@example.com
+
+    ResetPasswordRequest:
+      type: object
+      required:
+        - token
+        - password
+        - confirmPassword
+      properties:
+        token:
+          type: string
+          format: uuid
+          description: Token de réinitialisation de mot de passe
+          example: 123e4567-e89b-12d3-a456-426614174000
+        password:
+          type: string
+          format: password
+          minLength: 8
+          description: Nouveau mot de passe (minimum 8 caractères, majuscule, minuscule, chiffre, caractère spécial)
+          example: NewPassword@123456
+        confirmPassword:
+          type: string
+          format: password
+          description: Confirmation du nouveau mot de passe
+          example: NewPassword@123456
+
+    RegisterResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Inscription réussie ! Veuillez vérifier votre email.
+        user:
+          $ref: '#/components/schemas/User'
+
+    LoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Connexion réussie.
+        user:
+          $ref: '#/components/schemas/User'
+
+    UserResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Identifiant unique de l'utilisateur
+          example: 123e4567-e89b-12d3-a456-426614174000
+        email:
+          type: string
+          format: email
+          description: Adresse email de l'utilisateur
+          example: etudiant@example.com
+        fullName:
+          type: string
+          description: Nom complet de l'utilisateur
+          example: Marie Martin
+        role:
+          type: string
+          enum: [STUDENT, INSTRUCTOR, ADMIN]
+          description: Rôle de l'utilisateur
+          example: STUDENT
+        emailVerified:
+          type: boolean
+          description: Statut de vérification de l'email
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          description: Date de création du compte
+          example: '2025-11-12T10:00:00Z'
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Opération réussie.
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          description: Message d'erreur principal
+          example: Une erreur est survenue.
+        errors:
+          type: array
+          description: Liste des erreurs de validation (optionnel)
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                description: Champ concerné par l'erreur
+                example: email
+              message:
+                type: string
+                description: Message d'erreur pour ce champ
+                example: Cette adresse email est déjà utilisée.
+
