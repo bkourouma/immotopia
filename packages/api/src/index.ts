@@ -1,4 +1,6 @@
-import 'dotenv/config';
+// Validates required configuration and aborts startup on an unsafe setup.
+// Must be imported first so no module reads process.env before validation.
+import { env, frontendUrl } from './config/env';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import passport from 'passport';
@@ -35,10 +37,11 @@ import { requestLogger } from './middleware/logging-middleware';
 import { requestContextMiddleware } from './middleware/request-context-middleware';
 import { errorHandler } from './middleware/error-middleware';
 import { compressionMiddleware } from './middleware/compression-middleware';
+import { uploadsAccessGuard } from './middleware/uploads-access-middleware';
 import helmet from 'helmet';
 
 const app = express();
-const PORT = process.env.PORT || 8001;
+const PORT = env.PORT;
 
 // Trust proxy so req.ip is the real client IP when behind nginx/reverse proxy
 app.set('trust proxy', 1);
@@ -55,8 +58,8 @@ app.use(
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        imgSrc: ["'self'", 'data:', 'blob:', 'http://localhost:8001', 'http://localhost:3000'],
-        mediaSrc: ["'self'", 'blob:', 'http://localhost:8001', 'http://localhost:3000']
+        imgSrc: ["'self'", 'data:', 'blob:', env.BACKEND_URL, frontendUrl],
+        mediaSrc: ["'self'", 'blob:', env.BACKEND_URL, frontendUrl]
       }
     }
   })
@@ -74,7 +77,7 @@ app.use(passport.initialize());
 const cwd = process.cwd();
 const projectRoot =
   path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages' ? path.resolve(cwd, '..') : cwd;
-const uploadsPath = path.join(projectRoot, 'uploads');
+const uploadsPath = env.UPLOADS_DIR ? path.resolve(env.UPLOADS_DIR) : path.join(projectRoot, 'uploads');
 console.log('Serving static files from:', uploadsPath);
 // Ensure uploads directory exists
 if (!existsSync(uploadsPath)) {
@@ -83,10 +86,16 @@ if (!existsSync(uploadsPath)) {
 }
 app.use(
   '/uploads',
+  // Private documents (leases, payment proofs, attachments) require an
+  // authenticated user with access to the owning tenant. Public listing media
+  // passes straight through.
+  uploadsAccessGuard,
   express.static(uploadsPath, {
     setHeaders: (res, filePath) => {
-      // Ensure CORS headers are set for static files
-      res.setHeader('Access-Control-Allow-Origin', '*');
+      // Credentialed requests cannot use a wildcard origin: scope to the app.
+      res.setHeader('Access-Control-Allow-Origin', frontendUrl);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Vary', 'Origin');
       res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       // Set appropriate content type for images and documents
@@ -114,7 +123,7 @@ app.use(corsMiddleware);
 app.use(requestContextMiddleware);
 
 // Request logging
-if (process.env.NODE_ENV !== 'test') {
+if (env.NODE_ENV !== 'test') {
   app.use(requestLogger);
 }
 
@@ -169,7 +178,7 @@ app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 
   // Start scheduled jobs
-  if (process.env.NODE_ENV !== 'test') {
+  if (env.NODE_ENV !== 'test') {
     startPenaltyCalculationJob();
     startReminderSchedulerJob();
     startNewsletterCampaignSchedulerJob();

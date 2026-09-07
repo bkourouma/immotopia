@@ -4,12 +4,29 @@ import { uploadDocument, getDocuments, deleteDocument } from '../services/proper
 import { PropertyDocumentType } from '@prisma/client';
 
 /**
+ * Resolve the tenant the caller is authorised for.
+ * Set by enforcePropertyTenantIsolation; required to scope every property lookup.
+ */
+function getTenantId(req: Request): string | undefined {
+  return req.propertyTenantId || req.tenantContext?.tenantId;
+}
+
+/**
  * Upload document handler
  */
 export async function uploadDocumentHandler(req: Request, res: Response): Promise<void> {
   try {
     const propertyId = req.params.id;
+    const tenantId = getTenantId(req);
     const userId = req.user?.userId;
+
+    if (!tenantId) {
+      res.status(400).json({
+        success: false,
+        error: 'Tenant context required for property operations'
+      });
+      return;
+    }
 
     if (!req.file) {
       res.status(400).json({
@@ -23,7 +40,15 @@ export async function uploadDocumentHandler(req: Request, res: Response): Promis
     const expirationDate = req.body.expirationDate ? new Date(req.body.expirationDate) : undefined;
     const isRequired = req.body.isRequired === 'true' || req.body.isRequired === true;
 
-    const document = await uploadDocument(propertyId, req.file, documentType, expirationDate, isRequired, userId);
+    const document = await uploadDocument(
+      propertyId,
+      tenantId,
+      req.file,
+      documentType,
+      expirationDate,
+      isRequired,
+      userId
+    );
 
     res.status(201).json({
       success: true,
@@ -44,9 +69,18 @@ export async function uploadDocumentHandler(req: Request, res: Response): Promis
 export async function listDocumentsHandler(req: Request, res: Response): Promise<void> {
   try {
     const propertyId = req.params.id;
+    const tenantId = getTenantId(req);
     const includeExpired = req.query.includeExpired !== 'false';
 
-    const documents = await getDocuments(propertyId, includeExpired);
+    if (!tenantId) {
+      res.status(400).json({
+        success: false,
+        error: 'Tenant context required for property operations'
+      });
+      return;
+    }
+
+    const documents = await getDocuments(propertyId, tenantId, includeExpired);
 
     res.json({
       success: true,
@@ -68,9 +102,18 @@ export async function deleteDocumentHandler(req: Request, res: Response): Promis
   try {
     const propertyId = req.params.id;
     const documentId = req.params.documentId;
+    const tenantId = getTenantId(req);
     const userId = req.user?.userId;
 
-    await deleteDocument(propertyId, documentId, userId);
+    if (!tenantId) {
+      res.status(400).json({
+        success: false,
+        error: 'Tenant context required for property operations'
+      });
+      return;
+    }
+
+    await deleteDocument(propertyId, tenantId, documentId, userId);
 
     res.json({
       success: true,

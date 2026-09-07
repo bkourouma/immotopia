@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth-middleware';
-import { requireTenantAccess } from '../middleware/tenant-middleware';
+import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
 import { enforceTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import {
   listHandler,
@@ -30,6 +30,10 @@ const upload = multer({
 
 router.use(authenticate);
 router.use(requireTenantAccess);
+// requireTenantAccess also passes for client-type members (renters/owners);
+// without this, any renter attached to the tenant could trigger
+// /group-invite/send-all and /group-broadcast/send.
+router.use(requireTenantCollaborator);
 router.use(enforceTenantIsolation);
 
 router.get('/', listHandler);

@@ -6,10 +6,13 @@ import { AuditActionKey } from '../types/audit-types';
 import { PropertyMediaType } from '@prisma/client';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { randomUUID } from 'crypto';
+import { getPropertyForTenant } from '../utils/property-tenant-guard';
 
 /**
  * Upload media file for a property
  * @param propertyId - Property ID
+ * @param tenantId - Tenant owning the property (enforces isolation)
  * @param file - Uploaded file (from multer)
  * @param mediaType - Type of media
  * @param displayOrder - Display order (optional)
@@ -19,20 +22,15 @@ import * as fs from 'fs/promises';
  */
 export async function uploadMedia(
   propertyId: string,
+  tenantId: string,
   file: Express.Multer.File,
   mediaType: PropertyMediaType,
   displayOrder?: number,
   isPrimary?: boolean,
   actorUserId?: string
 ) {
-  // Verify property exists
-  const property = await prisma.property.findUnique({
-    where: { id: propertyId }
-  });
-
-  if (!property) {
-    throw new Error('Property not found');
-  }
+  // Verify property exists AND belongs to the caller's tenant
+  const property = await getPropertyForTenant(propertyId, tenantId);
 
   // Validate file type based on media type
   if (mediaType === PropertyMediaType.PHOTO) {
@@ -64,8 +62,10 @@ export async function uploadMedia(
   const uploadDir = path.join(projectRoot, 'uploads', 'properties', propertyId);
   await fs.mkdir(uploadDir, { recursive: true });
 
-  const fileExtension = path.extname(file.originalname);
-  const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}${fileExtension}`;
+  // CSPRNG name: Date.now()+Math.random() is guessable, and these files sit
+  // under a publicly served directory.
+  const fileExtension = path.extname(file.originalname).toLowerCase();
+  const fileName = `${randomUUID()}${fileExtension}`;
   const filePath = path.join(uploadDir, fileName);
 
   // Save file
@@ -139,22 +139,18 @@ export async function uploadMedia(
 /**
  * Reorder media items
  * @param propertyId - Property ID
+ * @param tenantId - Tenant owning the property (enforces isolation)
  * @param mediaOrders - Array of { mediaId, displayOrder }
  * @param actorUserId - User performing the reorder (for audit)
  */
 export async function reorderMedia(
   propertyId: string,
+  tenantId: string,
   mediaOrders: Array<{ mediaId: string; displayOrder: number }>,
   _actorUserId?: string
 ) {
-  // Verify property exists
-  const property = await prisma.property.findUnique({
-    where: { id: propertyId }
-  });
-
-  if (!property) {
-    throw new Error('Property not found');
-  }
+  // Verify property exists AND belongs to the caller's tenant
+  await getPropertyForTenant(propertyId, tenantId);
 
   // Update display orders
   for (const order of mediaOrders) {
@@ -180,11 +176,15 @@ export async function reorderMedia(
 /**
  * Set primary media
  * @param propertyId - Property ID
+ * @param tenantId - Tenant owning the property (enforces isolation)
  * @param mediaId - Media ID to set as primary
  * @param actorUserId - User setting primary (for audit)
  * @returns Updated media
  */
-export async function setPrimaryMedia(propertyId: string, mediaId: string, _actorUserId?: string) {
+export async function setPrimaryMedia(propertyId: string, tenantId: string, mediaId: string, _actorUserId?: string) {
+  // Verify the property belongs to the caller's tenant before touching media
+  await getPropertyForTenant(propertyId, tenantId);
+
   // Verify property and media exist
   const media = await prisma.propertyMedia.findFirst({
     where: {
@@ -234,10 +234,14 @@ export async function setPrimaryMedia(propertyId: string, mediaId: string, _acto
 /**
  * Delete media
  * @param propertyId - Property ID
+ * @param tenantId - Tenant owning the property (enforces isolation)
  * @param mediaId - Media ID to delete
  * @param actorUserId - User deleting the media (for audit)
  */
-export async function deleteMedia(propertyId: string, mediaId: string, actorUserId?: string) {
+export async function deleteMedia(propertyId: string, tenantId: string, mediaId: string, actorUserId?: string) {
+  // Verify the property belongs to the caller's tenant before touching media
+  await getPropertyForTenant(propertyId, tenantId);
+
   // Get media with property
   const media = await prisma.propertyMedia.findFirst({
     where: {
@@ -294,9 +298,12 @@ export async function deleteMedia(propertyId: string, mediaId: string, actorUser
 /**
  * Get all media for a property
  * @param propertyId - Property ID
+ * @param tenantId - Tenant owning the property (enforces isolation)
  * @returns List of media ordered by displayOrder
  */
-export async function getPropertyMedia(propertyId: string) {
+export async function getPropertyMedia(propertyId: string, tenantId: string) {
+  await getPropertyForTenant(propertyId, tenantId);
+
   const media = await prisma.propertyMedia.findMany({
     where: { propertyId },
     orderBy: { displayOrder: 'asc' }

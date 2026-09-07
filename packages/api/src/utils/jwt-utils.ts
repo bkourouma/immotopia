@@ -1,9 +1,12 @@
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { JWTPayload } from '../types/auth-types';
+import { env } from '../config/env';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'changeme_in_production_secret_key_12345';
-const ACCESS_TOKEN_EXPIRY = (process.env.JWT_EXPIRES_IN || '15m') as jwt.SignOptions['expiresIn'];
+// Validated at startup by src/config/env.ts: no insecure fallback here.
+const JWT_SECRET = env.JWT_SECRET;
+const ACCESS_TOKEN_EXPIRY = env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'];
+const JWT_ALGORITHM: jwt.Algorithm = 'HS256';
 
 /**
  * Generate JWT access token
@@ -12,6 +15,7 @@ const ACCESS_TOKEN_EXPIRY = (process.env.JWT_EXPIRES_IN || '15m') as jwt.SignOpt
  */
 export function generateAccessToken(payload: Omit<JWTPayload, 'iat' | 'exp'>): string {
   return jwt.sign(payload, JWT_SECRET, {
+    algorithm: JWT_ALGORITHM,
     expiresIn: ACCESS_TOKEN_EXPIRY,
     issuer: 'immobillier-api',
     audience: 'immobillier-web'
@@ -34,6 +38,8 @@ export function generateRefreshToken(): string {
 export function verifyToken(token: string): JWTPayload | null {
   try {
     const decoded = jwt.verify(token, JWT_SECRET, {
+      // Pinning the algorithm prevents confusion attacks on the verify side.
+      algorithms: [JWT_ALGORITHM],
       issuer: 'immobillier-api',
       audience: 'immobillier-web'
     }) as JWTPayload;

@@ -51,7 +51,7 @@ export class EmailService {
   private transporter: Transporter;
 
   constructor() {
-    // SMTP: configure via variables d'environnement (voir .env.example ou docs/ENV-SMTP-CONFIG.md)
+    // SMTP: configure via variables d'environnement (voir env.example ou docs/ENV-SMTP-CONFIG.md)
     const EMAIL_SMTP_HOST = process.env.EMAIL_SMTP_HOST || 'smtp.hostinger.com';
     const EMAIL_SMTP_PORT = parseInt(process.env.EMAIL_SMTP_PORT || '465', 10);
     const EMAIL_SMTP_USER = process.env.EMAIL_SMTP_USER || '';

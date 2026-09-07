@@ -10,12 +10,29 @@ import {
 import { PropertyMediaType } from '@prisma/client';
 
 /**
+ * Resolve the tenant the caller is authorised for.
+ * Set by enforcePropertyTenantIsolation; required to scope every property lookup.
+ */
+function getTenantId(req: Request): string | undefined {
+  return req.propertyTenantId || req.tenantContext?.tenantId;
+}
+
+/**
  * Upload media handler
  */
 export async function uploadMediaHandler(req: Request, res: Response): Promise<void> {
   try {
     const propertyId = req.params.id;
+    const tenantId = getTenantId(req);
     const userId = req.user?.userId;
+
+    if (!tenantId) {
+      res.status(400).json({
+        success: false,
+        error: 'Tenant context required for property operations'
+      });
+      return;
+    }
 
     if (!req.file) {
       res.status(400).json({
@@ -29,7 +46,7 @@ export async function uploadMediaHandler(req: Request, res: Response): Promise<v
     const displayOrder = req.body.displayOrder ? parseInt(req.body.displayOrder, 10) : undefined;
     const isPrimary = req.body.isPrimary === 'true' || req.body.isPrimary === true;
 
-    const media = await uploadMedia(propertyId, req.file, mediaType, displayOrder, isPrimary, userId);
+    const media = await uploadMedia(propertyId, tenantId, req.file, mediaType, displayOrder, isPrimary, userId);
 
     res.status(201).json({
       success: true,
@@ -50,7 +67,17 @@ export async function uploadMediaHandler(req: Request, res: Response): Promise<v
 export async function listMediaHandler(req: Request, res: Response): Promise<void> {
   try {
     const propertyId = req.params.id;
-    const media = await getPropertyMedia(propertyId);
+    const tenantId = getTenantId(req);
+
+    if (!tenantId) {
+      res.status(400).json({
+        success: false,
+        error: 'Tenant context required for property operations'
+      });
+      return;
+    }
+
+    const media = await getPropertyMedia(propertyId, tenantId);
 
     res.json({
       success: true,
@@ -71,8 +98,17 @@ export async function listMediaHandler(req: Request, res: Response): Promise<voi
 export async function reorderMediaHandler(req: Request, res: Response): Promise<void> {
   try {
     const propertyId = req.params.id;
+    const tenantId = getTenantId(req);
     const userId = req.user?.userId;
     const mediaOrders = req.body.mediaOrders as Array<{ mediaId: string; displayOrder: number }>;
+
+    if (!tenantId) {
+      res.status(400).json({
+        success: false,
+        error: 'Tenant context required for property operations'
+      });
+      return;
+    }
 
     if (!Array.isArray(mediaOrders)) {
       res.status(400).json({
@@ -82,7 +118,7 @@ export async function reorderMediaHandler(req: Request, res: Response): Promise<
       return;
     }
 
-    await reorderMedia(propertyId, mediaOrders, userId);
+    await reorderMedia(propertyId, tenantId, mediaOrders, userId);
 
     res.json({
       success: true,
@@ -104,9 +140,18 @@ export async function deleteMediaHandler(req: Request, res: Response): Promise<v
   try {
     const propertyId = req.params.id;
     const mediaId = req.params.mediaId;
+    const tenantId = getTenantId(req);
     const userId = req.user?.userId;
 
-    await deleteMedia(propertyId, mediaId, userId);
+    if (!tenantId) {
+      res.status(400).json({
+        success: false,
+        error: 'Tenant context required for property operations'
+      });
+      return;
+    }
+
+    await deleteMedia(propertyId, tenantId, mediaId, userId);
 
     res.json({
       success: true,
@@ -128,7 +173,16 @@ export async function setPrimaryMediaHandler(req: Request, res: Response): Promi
   try {
     const propertyId = req.params.id;
     const mediaId = req.body.mediaId;
+    const tenantId = getTenantId(req);
     const userId = req.user?.userId;
+
+    if (!tenantId) {
+      res.status(400).json({
+        success: false,
+        error: 'Tenant context required for property operations'
+      });
+      return;
+    }
 
     if (!mediaId) {
       res.status(400).json({
@@ -138,7 +192,7 @@ export async function setPrimaryMediaHandler(req: Request, res: Response): Promi
       return;
     }
 
-    const media = await setPrimaryMedia(propertyId, mediaId, userId);
+    const media = await setPrimaryMedia(propertyId, tenantId, mediaId, userId);
 
     res.json({
       success: true,

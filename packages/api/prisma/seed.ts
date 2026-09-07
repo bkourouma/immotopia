@@ -3,7 +3,40 @@ import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
+/**
+ * This seed wipes users, tenants and every row that cascades from them
+ * (156 cascading relations in the schema). Running it against a shared or
+ * production database destroys all tenant data, so it refuses to run unless
+ * the environment explicitly allows it.
+ */
+function assertDestructiveSeedAllowed(): void {
+    const nodeEnv = process.env.NODE_ENV || 'development';
+    const optedIn = process.env.ALLOW_DESTRUCTIVE_SEED === '1' || process.env.ALLOW_DESTRUCTIVE_SEED === 'true';
+
+    if (nodeEnv === 'production') {
+        console.error('\n❌ Refus : ce seed efface toutes les données et NODE_ENV=production.\n');
+        process.exit(1);
+    }
+
+    if (!optedIn) {
+        console.error(
+            [
+                '',
+                '❌ Refus : ce seed supprime TOUS les utilisateurs, tenants et données liées',
+                `   sur la base ciblée par DATABASE_URL (NODE_ENV=${nodeEnv}).`,
+                '',
+                '   Pour confirmer, relancez avec :',
+                '     ALLOW_DESTRUCTIVE_SEED=1 npm run db:seed',
+                ''
+            ].join('\n')
+        );
+        process.exit(1);
+    }
+}
+
 async function main() {
+    assertDestructiveSeedAllowed();
+
     console.log('🗑️  Clearing existing data...');
 
     // Delete all data in correct order (respecting foreign keys)

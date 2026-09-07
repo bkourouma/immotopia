@@ -28,7 +28,7 @@ import {
 } from '../controllers/membership-controller';
 import { authenticate } from '../middleware/auth-middleware';
 import { requirePermission } from '../middleware/rbac-middleware';
-import { requireTenantAccess } from '../middleware/tenant-middleware';
+import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
 
 const router = Router();
 
@@ -52,12 +52,19 @@ router.patch(
 // Public routes with tenantId (must come after specific routes)
 router.get('/:tenantId', getTenant);
 router.post('/:tenantId/register', authenticate, registerAsTenantClient);
-router.get('/:tenantId/clients', authenticate, getTenantClientsHandler);
+
+// Client directory exposes e-mails and names: restricted to collaborators of
+// this tenant (used by the property form to pick an owner). Any authenticated
+// user could previously read any tenant's client list.
+router.get('/:tenantId/clients', authenticate, requireTenantAccess, requireTenantCollaborator, getTenantClientsHandler);
+
 router.patch('/:tenantId/client-details', authenticate, updateClientDetails);
 router.delete('/:tenantId/unregister', authenticate, unregisterFromTenant);
 
 // Admin only routes
-router.post('/', authenticate, createTenantHandler);
+// Tenant creation is a platform-level operation: the canonical endpoint is
+// POST /api/admin/tenants. This alias now enforces the same permission.
+router.post('/', authenticate, requirePermission('PLATFORM_TENANTS_CREATE'), createTenantHandler);
 
 // Tenant user management routes (require tenant context and permissions)
 router.get(

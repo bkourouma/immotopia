@@ -6,6 +6,8 @@ import { AuditActionKey } from '../types/audit-types';
 import { PropertyDocumentType } from '@prisma/client';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { randomUUID } from 'crypto';
+import { getPropertyForTenant } from '../utils/property-tenant-guard';
 
 /**
  * Validate document type
@@ -42,6 +44,7 @@ export function getAllowedFileTypes(documentType: PropertyDocumentType): string[
 /**
  * Upload document for a property
  * @param propertyId - Property ID
+ * @param tenantId - Tenant owning the property (enforces isolation)
  * @param file - Uploaded file (from multer)
  * @param documentType - Type of document
  * @param expirationDate - Expiration date (optional)
@@ -51,20 +54,15 @@ export function getAllowedFileTypes(documentType: PropertyDocumentType): string[
  */
 export async function uploadDocument(
   propertyId: string,
+  tenantId: string,
   file: Express.Multer.File,
   documentType: PropertyDocumentType,
   expirationDate?: Date,
   isRequired?: boolean,
   actorUserId?: string
 ) {
-  // Verify property exists
-  const property = await prisma.property.findUnique({
-    where: { id: propertyId }
-  });
-
-  if (!property) {
-    throw new Error('Property not found');
-  }
+  // Verify property exists AND belongs to the caller's tenant
+  const property = await getPropertyForTenant(propertyId, tenantId);
 
   // Validate document type
   if (!validateDocumentType(documentType)) {
@@ -86,8 +84,9 @@ export async function uploadDocument(
   const uploadDir = path.join(projectRoot, 'uploads', 'properties', propertyId, 'documents');
   await fs.mkdir(uploadDir, { recursive: true });
 
-  const fileExtension = path.extname(file.originalname);
-  const fileName = `${documentType}-${Date.now()}-${Math.random().toString(36).substring(7)}${fileExtension}`;
+  // CSPRNG name: property documents must not be guessable from a timestamp.
+  const fileExtension = path.extname(file.originalname).toLowerCase();
+  const fileName = `${documentType}-${randomUUID()}${fileExtension}`;
   const filePath = path.join(uploadDir, fileName);
 
   // Save file
@@ -143,10 +142,13 @@ export async function uploadDocument(
 /**
  * Get documents for a property
  * @param propertyId - Property ID
+ * @param tenantId - Tenant owning the property (enforces isolation)
  * @param includeExpired - Whether to include expired documents (default: true)
  * @returns List of documents
  */
-export async function getDocuments(propertyId: string, includeExpired: boolean = true) {
+export async function getDocuments(propertyId: string, tenantId: string, includeExpired: boolean = true) {
+  await getPropertyForTenant(propertyId, tenantId);
+
   const where: any = { propertyId };
 
   if (!includeExpired) {
@@ -164,10 +166,19 @@ export async function getDocuments(propertyId: string, includeExpired: boolean =
 /**
  * Delete document
  * @param propertyId - Property ID
+ * @param tenantId - Tenant owning the property (enforces isolation)
  * @param documentId - Document ID to delete
  * @param actorUserId - User deleting the document (for audit)
  */
-export async function deleteDocument(propertyId: string, documentId: string, _actorUserId?: string) {
+export async function deleteDocument(
+  propertyId: string,
+  tenantId: string,
+  documentId: string,
+  _actorUserId?: string
+) {
+  // Verify the property belongs to the caller's tenant before touching documents
+  await getPropertyForTenant(propertyId, tenantId);
+
   // Get document with property
   const document = await prisma.propertyDocument.findFirst({
     where: {
