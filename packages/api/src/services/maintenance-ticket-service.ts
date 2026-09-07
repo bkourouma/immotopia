@@ -165,59 +165,63 @@ export async function createTicket(
   // Validate active lease for property
   await validateActiveLease(tenantId, data.propertyId, actorContactId, data.leaseId);
 
-  // Create ticket with DECLARED status
-  const ticket = await prisma.maintenanceTicket.create({
-    data: {
-      tenant_id: tenantId,
-      property_id: data.propertyId,
-      lease_id: data.leaseId || null,
-      tenant_contact_id: actorContactId || null,
-      created_by_user_id: actorUserId || null,
-      created_by_contact_id: actorContactId || null,
-      title: data.title,
-      category: data.category as MaintenanceTicketCategory,
-      priority: data.priority as MaintenanceTicketPriority,
-      description: data.description,
-      location_details: data.locationDetails || null,
-      status: MaintenanceTicketStatus.DECLARED,
-      declared_at: new Date()
-    },
-    include: {
-      property: {
-        select: {
-          id: true,
-          internalReference: true,
-          address: true,
-          title: true
-        }
+  // Ticket and its first history entry are one unit of work: a failure between
+  // the two used to leave a ticket with no status history.
+  const ticket = await prisma.$transaction(async tx => {
+    const created = await tx.maintenanceTicket.create({
+      data: {
+        tenant_id: tenantId,
+        property_id: data.propertyId,
+        lease_id: data.leaseId || null,
+        tenant_contact_id: actorContactId || null,
+        created_by_user_id: actorUserId || null,
+        created_by_contact_id: actorContactId || null,
+        title: data.title,
+        category: data.category as MaintenanceTicketCategory,
+        priority: data.priority as MaintenanceTicketPriority,
+        description: data.description,
+        location_details: data.locationDetails || null,
+        status: MaintenanceTicketStatus.DECLARED,
+        declared_at: new Date()
       },
-      lease: {
-        select: {
-          id: true,
-          lease_number: true
-        }
-      },
-      tenantContact: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true
+      include: {
+        property: {
+          select: {
+            id: true,
+            internalReference: true,
+            address: true,
+            title: true
+          }
+        },
+        lease: {
+          select: {
+            id: true,
+            lease_number: true
+          }
+        },
+        tenantContact: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true
+          }
         }
       }
-    }
-  });
+    });
 
-  // Create initial status history entry
-  await prisma.maintenanceTicketStatusHistory.create({
-    data: {
-      tenant_id: tenantId,
-      ticket_id: ticket.id,
-      from_status: null,
-      to_status: MaintenanceTicketStatus.DECLARED,
-      changed_by_user_id: actorUserId || null,
-      note: 'Ticket créé'
-    }
+    await tx.maintenanceTicketStatusHistory.create({
+      data: {
+        tenant_id: tenantId,
+        ticket_id: created.id,
+        from_status: null,
+        to_status: MaintenanceTicketStatus.DECLARED,
+        changed_by_user_id: actorUserId || null,
+        note: 'Ticket créé'
+      }
+    });
+
+    return created;
   });
 
   logger.info('Maintenance ticket created', {
@@ -483,36 +487,39 @@ export async function cancelTicket(tenantId: string, ticketId: string, tenantCon
     throw new Error(transition.error || 'Transition de statut invalide');
   }
 
-  // Update ticket
-  const ticket = await prisma.maintenanceTicket.update({
-    where: {
-      id: ticketId
-    },
-    data: {
-      status: MaintenanceTicketStatus.CANCELED,
-      canceled_at: new Date()
-    },
-    include: {
-      property: {
-        select: {
-          id: true,
-          internalReference: true,
-          address: true
+  // Status change and its history entry must commit together.
+  const ticket = await prisma.$transaction(async tx => {
+    const updated = await tx.maintenanceTicket.update({
+      where: {
+        id: ticketId
+      },
+      data: {
+        status: MaintenanceTicketStatus.CANCELED,
+        canceled_at: new Date()
+      },
+      include: {
+        property: {
+          select: {
+            id: true,
+            internalReference: true,
+            address: true
+          }
         }
       }
-    }
-  });
+    });
 
-  // Create status history entry
-  await prisma.maintenanceTicketStatusHistory.create({
-    data: {
-      tenant_id: tenantId,
-      ticket_id: ticket.id,
-      from_status: existingTicket.status,
-      to_status: MaintenanceTicketStatus.CANCELED,
-      changed_by_user_id: actorUserId || null,
-      note: 'Ticket annulé par le locataire'
-    }
+    await tx.maintenanceTicketStatusHistory.create({
+      data: {
+        tenant_id: tenantId,
+        ticket_id: updated.id,
+        from_status: existingTicket.status,
+        to_status: MaintenanceTicketStatus.CANCELED,
+        changed_by_user_id: actorUserId || null,
+        note: 'Ticket annulé par le locataire'
+      }
+    });
+
+    return updated;
   });
 
   logger.info('Maintenance ticket canceled', {
@@ -908,41 +915,44 @@ export async function updateTicketStatus(
     updateData.resolved_at = new Date();
   }
 
-  // Update ticket
-  const ticket = await prisma.maintenanceTicket.update({
-    where: {
-      id: ticketId
-    },
-    data: updateData,
-    include: {
-      property: {
-        select: {
-          id: true,
-          internalReference: true,
-          address: true
-        }
+  // Status change and its history entry must commit together.
+  const ticket = await prisma.$transaction(async tx => {
+    const updated = await tx.maintenanceTicket.update({
+      where: {
+        id: ticketId
       },
-      tenantContact: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true
+      data: updateData,
+      include: {
+        property: {
+          select: {
+            id: true,
+            internalReference: true,
+            address: true
+          }
+        },
+        tenantContact: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true
+          }
         }
       }
-    }
-  });
+    });
 
-  // Create status history entry
-  await prisma.maintenanceTicketStatusHistory.create({
-    data: {
-      tenant_id: tenantId,
-      ticket_id: ticket.id,
-      from_status: existingTicket.status,
-      to_status: newStatus,
-      changed_by_user_id: actorUserId,
-      note: note || null
-    }
+    await tx.maintenanceTicketStatusHistory.create({
+      data: {
+        tenant_id: tenantId,
+        ticket_id: updated.id,
+        from_status: existingTicket.status,
+        to_status: newStatus,
+        changed_by_user_id: actorUserId,
+        note: note || null
+      }
+    });
+
+    return updated;
   });
 
   logger.info('Maintenance ticket status updated', {

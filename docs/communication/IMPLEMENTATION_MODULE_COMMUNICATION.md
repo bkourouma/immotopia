@@ -201,7 +201,7 @@ Le menu **Communication** (sidebar) est affiché pour les utilisateurs tenant (T
 - **Webhooks** : montés sur le routeur communication ; en production il faut vérifier les URLs et sécuriser par signature (SendGrid/Twilio).  
 - **Status updater** : le job ne met pas encore à jour DELIVERED/READ ; il est prévu pour appeler les APIs fournisseurs ou traiter les webhooks.  
 - **Copy agency** : champ `copy_agency` sur les règles ; la logique pour envoyer une copie à l’agence n’est pas détaillée dans le code parcouru (à confirmer si implémentée).  
-- **Seeds** : `communication-seed.ts` crée un template et une règle par défaut (ex. PAYMENT_RECEIVED) pour un tenant existant ; `communication-permissions-seed.ts` crée la permission COMMUNICATION_VIEW et l’assigne aux rôles.  
+- **Seeds** : `communication-permissions-seed.ts` cree la permission COMMUNICATION_VIEW et l'assigne aux roles. (`communication-seed.ts` a ete retire : les tables templates/regles n'existent plus depuis la migration `20260210120000_remove_communication_messaging_tables`.)
 
 ---
 

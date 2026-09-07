@@ -10,10 +10,12 @@ Pour lister les règles du tenant `e3e428d1-364b-42c9-a102-a22daa9329c5` (ou un 
 
 ### Option A : Script npm (depuis `packages/api`)
 
-```bash
-cd packages/api
-npm run script:list-rules -- e3e428d1-364b-42c9-a102-a22daa9329c5
-```
+> **Obsolete** : les tables `communication_templates` et `notification_rules` ont ete supprimees
+> par la migration `20260210120000_remove_communication_messaging_tables`. Les notifications sont
+> desormais pilotees par les constantes `src/constants/email-notification-*` et
+> `src/constants/whatsapp-notification-*`, surchargeables par tenant via les ecrans
+> "Notifications email" / "Notifications WhatsApp". Le seed `db:seed:communication` et le script
+> `script:list-rules` ont ete retires.
 
 Vous obtiendrez un JSON avec toutes les règles (nom, événement, destinataires, templates, actif, etc.).
 

@@ -99,6 +99,8 @@ export async function uploadMedia(
   const media = await prisma.propertyMedia.create({
     data: {
       propertyId,
+      // Denormalised so media can be scoped by tenant without joining properties.
+      tenantId: property.tenantId,
       mediaType,
       filePath: filePath,
       fileUrl: `/uploads/properties/${propertyId}/${fileName}`, // Relative URL for serving

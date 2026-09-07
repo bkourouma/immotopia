@@ -59,10 +59,12 @@ TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
 ```
 
 #### Seed des données de communication
-```bash
-cd packages/api
-npm run db:seed:communication
-```
+> **Obsolete** : les tables `communication_templates` et `notification_rules` ont ete supprimees
+> par la migration `20260210120000_remove_communication_messaging_tables`. Les notifications sont
+> desormais pilotees par les constantes `src/constants/email-notification-*` et
+> `src/constants/whatsapp-notification-*`, surchargeables par tenant via les ecrans
+> "Notifications email" / "Notifications WhatsApp". Le seed `db:seed:communication` et le script
+> `script:list-rules` ont ete retires.
 
 Ce seed créera :
 - 1 template email "Confirmation de paiement"

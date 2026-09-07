@@ -39,6 +39,7 @@ import { errorHandler } from './middleware/error-middleware';
 import { compressionMiddleware } from './middleware/compression-middleware';
 import { uploadsAccessGuard } from './middleware/uploads-access-middleware';
 import { globalApiRateLimiter } from './middleware/rate-limit-middleware';
+import { logger } from './utils/logger';
 import helmet from 'helmet';
 
 const app = express();
@@ -168,19 +169,36 @@ app.use('/api', patrimoineRoutes); // Patrimoine routes (tenant-scoped)
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)
 app.use('/api/admin', adminRoutes);
 
-// Error handling middleware (must be last)
-app.use(errorHandler);
-
-// 404 handler
+// 404 handler for unmatched routes (before the error handler, which only runs
+// for actual errors).
 app.use((_req, res) => {
   res.status(404).json({
     success: false,
-    message: 'Route non trouvée.'
+    message: 'Route non trouvée.',
+    code: 'NOT_FOUND'
   });
 });
 
+// Error handling middleware (must be last)
+app.use(errorHandler);
+
+// Safety net: an unhandled rejection anywhere (a fire-and-forget notification,
+// a job) would otherwise terminate the process silently on newer Node versions.
+process.on('unhandledRejection', reason => {
+  logger.error('Unhandled promise rejection', {
+    reason: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined
+  });
+});
+
+process.on('uncaughtException', error => {
+  logger.error('Uncaught exception', { message: error.message, stack: error.stack });
+  // The process is in an undefined state: exit and let the supervisor restart it.
+  process.exit(1);
+});
+
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  logger.info(`Server running on port ${PORT}`);
 
   // Start scheduled jobs
   if (env.NODE_ENV !== 'test') {

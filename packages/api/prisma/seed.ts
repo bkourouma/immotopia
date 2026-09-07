@@ -1,4 +1,4 @@
-import { PrismaClient, GlobalRole, TenantType, ClientType } from '@prisma/client';
+import { PrismaClient, GlobalRole, TenantType, ClientType, MembershipStatus, TenantStatus } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
@@ -26,7 +26,11 @@ function assertDestructiveSeedAllowed(): void {
                 `   sur la base ciblée par DATABASE_URL (NODE_ENV=${nodeEnv}).`,
                 '',
                 '   Pour confirmer, relancez avec :',
-                '     ALLOW_DESTRUCTIVE_SEED=1 npm run db:seed',
+                '     bash / CI   : ALLOW_DESTRUCTIVE_SEED=1 npm run db:seed',
+                '     PowerShell  : $env:ALLOW_DESTRUCTIVE_SEED="1"; npm run db:seed',
+                '     cmd.exe     : set ALLOW_DESTRUCTIVE_SEED=1 && npm run db:seed',
+                '',
+                '   Sous Windows, setup-database.bat enchaîne toute la séquence.',
                 ''
             ].join('\n')
         );
@@ -142,6 +146,10 @@ async function main() {
             slug: 'agence-mali',
             type: TenantType.AGENCY,
             website: 'https://agence-mali.com',
+            // Le défaut du schéma est PENDING : sans ACTIVE explicite, le tenant
+            // reste invisible pour tout ce qui filtre sur TenantStatus.ACTIVE
+            // (statistiques plateforme, seed maintenance, etc.).
+            status: TenantStatus.ACTIVE,
             isActive: true
         }
     });
@@ -154,10 +162,51 @@ async function main() {
             slug: 'bamako-immo',
             type: TenantType.AGENCY,
             website: 'https://bamako-immo.com',
+            status: TenantStatus.ACTIVE,
             isActive: true
         }
     });
     console.log('  ✓ Tenant 2 created:', tenant2.name);
+
+    console.log('\n🔗 Creating memberships and role assignments...');
+
+    // Les rôles RBAC sont globaux : ils survivent au wipe ci-dessus tant que
+    // db:seed:rbac a déjà tourné une fois. Sans eux, les comptes admin/agent
+    // seraient créés sans aucun accès à leur tenant.
+    const tenantAdminRole = await prisma.role.findUnique({ where: { key: 'TENANT_ADMIN' } });
+    const tenantAgentRole = await prisma.role.findUnique({ where: { key: 'TENANT_AGENT' } });
+
+    if (!tenantAdminRole || !tenantAgentRole) {
+        console.warn('  ⚠️  Rôles RBAC introuvables : aucun membership créé.');
+        console.warn('     Lancez `npm run db:seed:rbac` puis relancez ce seed.');
+    } else {
+        const assignments = [
+            { user: admin1, tenant: tenant1, role: tenantAdminRole },
+            { user: admin2, tenant: tenant2, role: tenantAdminRole },
+            { user: collaborator, tenant: tenant1, role: tenantAgentRole }
+        ];
+
+        for (const { user, tenant, role } of assignments) {
+            await prisma.membership.create({
+                data: {
+                    userId: user.id,
+                    tenantId: tenant.id,
+                    status: MembershipStatus.ACTIVE,
+                    acceptedAt: new Date()
+                }
+            });
+
+            await prisma.userRole.create({
+                data: {
+                    userId: user.id,
+                    roleId: role.id,
+                    tenantId: tenant.id
+                }
+            });
+
+            console.log(`  ✓ ${user.email} → ${tenant.slug} (${role.key})`);
+        }
+    }
 
     console.log('\n🏘️  Creating tenant clients...');
 
@@ -208,9 +257,9 @@ async function main() {
     console.log('  Password: Test@123456\n');
     console.log('  Accounts:');
     console.log('  1. visitor@immobillier.com      - Visitor (no tenant)');
-    console.log('  2. admin1@agence-mali.com       - Admin @ Agence Mali');
-    console.log('  3. admin2@bamako-immo.com       - Admin @ Bamako Immo');
-    console.log('  4. agent@agence-mali.com        - Agent @ Agence Mali');
+    console.log('  2. admin1@agence-mali.com       - TENANT_ADMIN @ Agence Mali');
+    console.log('  3. admin2@bamako-immo.com       - TENANT_ADMIN @ Bamako Immo');
+    console.log('  4. agent@agence-mali.com        - TENANT_AGENT @ Agence Mali');
     console.log('  5. proprietaire@gmail.com       - Owner client @ Agence Mali');
     console.log('  6. locataire@gmail.com          - Renter client @ Bamako Immo');
     console.log('');

@@ -132,32 +132,49 @@ export async function getAuditLogs(filters: {
     }
   }
 
-  const [logs, total] = await Promise.all([
+  const [rows, total] = await Promise.all([
     prisma.auditLog.findMany({
       where,
       skip,
       take: limit,
       orderBy: {
         createdAt: 'desc'
-      },
-      include: {
-        actor: {
-          select: {
-            id: true,
-            email: true,
-            fullName: true
-          }
-        },
-        tenant: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
       }
     }),
     prisma.auditLog.count({ where })
   ]);
+
+  // AuditLog no longer carries foreign keys to users/tenants, so that a
+  // deleted user or tenant cannot erase who did what. Resolve the labels in a
+  // second query instead — two round-trips, not one per row.
+  const actorIds = [...new Set(rows.map(r => r.actorUserId).filter((id): id is string => Boolean(id)))];
+  const tenantIds = [...new Set(rows.map(r => r.tenantId).filter((id): id is string => Boolean(id)))];
+
+  const [actors, tenants] = await Promise.all([
+    actorIds.length
+      ? prisma.user.findMany({
+          where: { id: { in: actorIds } },
+          select: { id: true, email: true, fullName: true }
+        })
+      : Promise.resolve([]),
+    tenantIds.length
+      ? prisma.tenant.findMany({
+          where: { id: { in: tenantIds } },
+          select: { id: true, name: true }
+        })
+      : Promise.resolve([])
+  ]);
+
+  const actorById = new Map(actors.map(a => [a.id, a]));
+  const tenantById = new Map(tenants.map(t => [t.id, t]));
+
+  // Keep the previous response shape: null means the referenced entity is gone,
+  // while the id itself is still on the log line.
+  const logs = rows.map(row => ({
+    ...row,
+    actor: row.actorUserId ? actorById.get(row.actorUserId) ?? null : null,
+    tenant: row.tenantId ? tenantById.get(row.tenantId) ?? null : null
+  }));
 
   return {
     logs,

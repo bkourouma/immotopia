@@ -42,26 +42,33 @@ async function seedDocumentTemplates() {
     console.log('   ✅ Directory created\n');
   }
 
+  // Fallback: templates historiquement livres a la racine de assets/modeles_documents
+  const legacyDir = path.join(projectRoot, 'assets', 'modeles_documents');
+
   // Document types to seed
-  const docTypes: Array<{ type: DocumentType; filename: string; name: string }> = [
+  const docTypes: Array<{ type: DocumentType; filename: string; legacyFilename?: string; name: string }> = [
     {
       type: DocumentType.LEASE_HABITATION,
       filename: 'LEASE_HABITATION.docx',
+      legacyFilename: 'contrat_bail_habitation.docx',
       name: 'Contrat de Bail Habitation (Par défaut)'
     },
     {
       type: DocumentType.LEASE_COMMERCIAL,
       filename: 'LEASE_COMMERCIAL.docx',
+      legacyFilename: 'contrat_bail_commercial.docx',
       name: 'Contrat de Bail Commercial (Par défaut)'
     },
     {
       type: DocumentType.RENT_RECEIPT,
       filename: 'RENT_RECEIPT.docx',
+      legacyFilename: 'Reçu_Loyer.docx',
       name: 'Reçu de Loyer (Par défaut)'
     },
     {
       type: DocumentType.RENT_STATEMENT,
       filename: 'RENT_STATEMENT.docx',
+      legacyFilename: 'Releve_Compte.docx',
       name: 'Relevé de Compte Locatif (Par défaut)'
     }
   ];
@@ -70,7 +77,7 @@ async function seedDocumentTemplates() {
   let systemUserId: string;
   const systemUser = await prisma.user.findFirst({
     where: { email: { contains: 'admin' } },
-    orderBy: { created_at: 'asc' }
+    orderBy: { createdAt: 'asc' }
   });
 
   if (systemUser) {
@@ -95,11 +102,29 @@ async function seedDocumentTemplates() {
   let skippedCount = 0;
 
   for (const docTypeConfig of docTypes) {
-    const filePath = path.join(templatesDir, docTypeConfig.filename);
+    const candidates = [path.join(templatesDir, docTypeConfig.filename)];
+    if (docTypeConfig.legacyFilename) {
+      candidates.push(path.join(legacyDir, docTypeConfig.legacyFilename));
+    }
 
     try {
-      // Check if file exists
-      await fs.access(filePath);
+      // Check if file exists (default/ first, then the legacy asset)
+      let filePath: string | null = null;
+      for (const candidate of candidates) {
+        try {
+          await fs.access(candidate);
+          filePath = candidate;
+          break;
+        } catch {
+          // try next candidate
+        }
+      }
+
+      if (!filePath) {
+        const err: any = new Error(`No template file found for ${docTypeConfig.type}`);
+        err.code = 'ENOENT';
+        throw err;
+      }
 
       // Check if template already exists
       const existing = await prisma.documentTemplate.findFirst({
@@ -198,6 +223,8 @@ if (require.main === module) {
     })
     .finally(async () => {
       await prisma.$disconnect();
+      // audit-service garde un setInterval ouvert: sortir explicitement
+      process.exit(0);
     });
 }
 

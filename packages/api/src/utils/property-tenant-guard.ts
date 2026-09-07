@@ -1,4 +1,5 @@
 import { prisma } from './database';
+import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
 
 /**
  * Load a property and assert it belongs to the given tenant.
@@ -11,13 +12,13 @@ import { prisma } from './database';
  * @param propertyId - Property being acted upon
  * @param tenantId - Tenant the caller is authorised for (req.propertyTenantId)
  * @returns The property row
- * @throws Error('Property not found') when the property does not exist or
- *         belongs to another tenant (same message either way, so the endpoint
- *         does not confirm the existence of another tenant's property)
+ * @throws NotFoundError when the property does not exist or belongs to another
+ *         tenant (same error either way, so the endpoint does not confirm the
+ *         existence of another tenant's property)
  */
 export async function getPropertyForTenant(propertyId: string, tenantId: string) {
   if (!tenantId) {
-    throw new Error('Tenant ID is required for property operations');
+    throw new BadRequestError('Contexte tenant requis pour les opérations sur les biens.');
   }
 
   const property = await prisma.property.findFirst({
@@ -25,7 +26,7 @@ export async function getPropertyForTenant(propertyId: string, tenantId: string)
   });
 
   if (!property) {
-    throw new Error('Property not found');
+    throw new NotFoundError('Bien introuvable.');
   }
 
   return property;

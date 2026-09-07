@@ -3,20 +3,23 @@ import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
-// Tenant ID
-const TENANT_ID = '946f57e2-d1b1-470c-9446-f0a051b54a9a';
+// Tenant cible : argument CLI (id ou slug), sinon SEED_TENANT_SLUG, sinon le slug
+// par defaut du seed principal. Pas d'UUID en dur : il change a chaque re-seed.
+const TENANT_REF = process.argv[2] || process.env.SEED_TENANT_SLUG || 'agence-mali';
 
 async function main() {
   console.log('🌱 Seeding tenant members...\n');
-  console.log(`📋 Target Tenant ID: ${TENANT_ID}\n`);
+  console.log(`📋 Target tenant: ${TENANT_REF}\n`);
 
-  // Check if tenant exists
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: TENANT_ID }
-  });
+  // Resolve the tenant by slug first, then by id
+  const tenant =
+    (await prisma.tenant.findUnique({ where: { slug: TENANT_REF } })) ||
+    (await prisma.tenant.findUnique({ where: { id: TENANT_REF } }));
 
   if (!tenant) {
-    console.error(`❌ Tenant with ID ${TENANT_ID} not found!`);
+    console.error(`❌ Tenant "${TENANT_REF}" introuvable (ni par slug, ni par id) !`);
+    console.log('💡 Lancez d\'abord le seed principal: ALLOW_DESTRUCTIVE_SEED=1 npm run db:seed');
+    console.log('💡 Ou ciblez un autre tenant: npx ts-node prisma/seeds/seed-tenant-members.ts <slug|id>');
     process.exit(1);
   }
 

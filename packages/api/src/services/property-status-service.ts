@@ -137,7 +137,14 @@ export async function updatePropertyStatus(
   });
 
   // Record status history (immutable)
-  await recordStatusHistory(propertyId, property.status, newStatus, actorUserId || userId || '', notes);
+  await recordStatusHistory(
+    propertyId,
+    property.status,
+    newStatus,
+    actorUserId || userId || '',
+    notes,
+    property.tenantId
+  );
 
   logger.info('Property status updated', {
     propertyId,
@@ -172,6 +179,7 @@ export async function updatePropertyStatus(
  * @param newStatus - New status
  * @param changedByUserId - User who changed the status
  * @param notes - Optional notes
+ * @param tenantId - Tenant owning the property (denormalised for scoping)
  * @returns Created history record
  */
 export async function recordStatusHistory(
@@ -179,11 +187,13 @@ export async function recordStatusHistory(
   previousStatus: PropertyStatus | null,
   newStatus: PropertyStatus,
   changedByUserId: string,
-  notes?: string
+  notes?: string,
+  tenantId?: string | null
 ) {
   const history = await prisma.propertyStatusHistory.create({
     data: {
       propertyId,
+      tenantId: tenantId ?? null,
       previousStatus,
       newStatus,
       changedByUserId,

@@ -99,6 +99,8 @@ export async function uploadDocument(
   const document = await prisma.propertyDocument.create({
     data: {
       propertyId,
+      // Denormalised so documents can be scoped by tenant without joining properties.
+      tenantId: property.tenantId,
       documentType,
       filePath: filePath,
       fileUrl: `/uploads/properties/${propertyId}/documents/${fileName}`,

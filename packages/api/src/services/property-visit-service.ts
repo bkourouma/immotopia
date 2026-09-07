@@ -98,6 +98,8 @@ export async function scheduleVisit(
   const visit = await prisma.propertyVisit.create({
     data: {
       propertyId,
+      // Denormalised so visits can be listed per tenant without joining properties.
+      tenantId: tenantId || null,
       contactId: data.contactId || null,
       dealId: data.dealId || null,
       visitType: data.visitType,

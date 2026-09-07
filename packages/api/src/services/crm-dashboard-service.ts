@@ -667,11 +667,18 @@ async function getContactsInsights(
 
   const totalContacts = await prisma.crmContact.count({ where: statusBaseWhere });
 
-  const byStatus: ContactsByStatus[] = [];
-  for (const status of statusesToShow) {
-    const count = await prisma.crmContact.count({ where: { ...statusBaseWhere, status } });
-    byStatus.push({ status, count, percentage: totalContacts > 0 ? Math.round((count / totalContacts) * 100) : 0 });
-  }
+  // One groupBy instead of one COUNT per status (N+1).
+  const statusGroups = await prisma.crmContact.groupBy({
+    by: ['status'],
+    where: { ...statusBaseWhere, status: { in: statusesToShow } },
+    _count: { _all: true }
+  });
+  const countByStatus = new Map(statusGroups.map(g => [g.status, g._count._all]));
+
+  const byStatus: ContactsByStatus[] = statusesToShow.map(status => {
+    const count = countByStatus.get(status) ?? 0;
+    return { status, count, percentage: totalContacts > 0 ? Math.round((count / totalContacts) * 100) : 0 };
+  });
 
   // By role
   const roleGroups = await prisma.crmContactRole.groupBy({
@@ -693,17 +700,19 @@ async function getContactsInsights(
     { range: '51-80', min: 51, max: 80 },
     { range: '81-100', min: 81, max: 100 }
   ];
-  const byScore: ScoreBucket[] = [];
-  for (const bucket of scoreBuckets) {
-    const count = await prisma.crmContact.count({
-      where: { ...baseWhere, score: { gte: bucket.min, lte: bucket.max } }
-    });
-    byScore.push({
-      range: bucket.range,
-      count,
-      percentage: totalContacts > 0 ? Math.round((count / totalContacts) * 100) : 0
-    });
-  }
+  // One round-trip for all four buckets instead of one COUNT each (N+1).
+  const bucketCounts = await prisma.$transaction(
+    scoreBuckets.map(bucket =>
+      prisma.crmContact.count({
+        where: { ...baseWhere, score: { gte: bucket.min, lte: bucket.max } }
+      })
+    )
+  );
+  const byScore: ScoreBucket[] = scoreBuckets.map((bucket, index) => ({
+    range: bucket.range,
+    count: bucketCounts[index],
+    percentage: totalContacts > 0 ? Math.round((bucketCounts[index] / totalContacts) * 100) : 0
+  }));
 
   // Hot leads
   const hotLeads = await prisma.crmContact.findMany({

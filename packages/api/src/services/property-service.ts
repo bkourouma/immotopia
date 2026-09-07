@@ -405,7 +405,8 @@ export async function updateProperty(
         existing.status,
         data.status,
         actorUserId || userId || '',
-        'Status updated via property edit'
+        'Status updated via property edit',
+        existing.tenantId
       );
     }
     // Include status in update (even if unchanged, to ensure it's set correctly)

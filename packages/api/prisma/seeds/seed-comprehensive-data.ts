@@ -1035,8 +1035,10 @@ async function main() {
     const monthsToCreate = Math.min(monthsSinceStart + 3, 12); // Up to 12 months or until now + 3 months
 
     for (let month = 0; month < monthsToCreate; month++) {
-      const periodDate = new Date(startDate);
-      periodDate.setMonth(periodDate.getMonth() + month);
+      // Normaliser au 1er du mois : setMonth() sur un 29/30/31 deborde sur le
+      // mois suivant (31 janvier + 1 mois = 3 mars), deux iterations tombent
+      // alors sur la meme periode et le document_number du recu collisionne.
+      const periodDate = new Date(startDate.getFullYear(), startDate.getMonth() + month, 1);
       const dueDate = new Date(periodDate);
       dueDate.setDate(5); // Due on 5th of each month
 

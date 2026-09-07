@@ -45,26 +45,61 @@ This will:
 - Apply the migration to your database
 - Generate the Prisma client
 
-### 4. Seed Database (Optional)
+### 4. Seed Database
 
-After migrations are applied, seed the database with test accounts:
+Order matters: the RBAC seed must run **before** the main seed, which looks up
+`TENANT_ADMIN` / `TENANT_AGENT` to attach the demo accounts to their tenant.
 
 ```bash
-npm run prisma:seed
+npm run db:seed:rbac
+ALLOW_DESTRUCTIVE_SEED=1 npm run db:seed
+npm run db:seed:geographic
+npm run db:seed:property-templates
+npm run db:seed:document-templates
+npm run db:seed:super-admin
 ```
 
-Or manually:
+On Windows, `setup-database.bat` (repo root) runs all of the above in order.
+
+> `db:seed` **deletes every user, tenant and all cascading data** on the database
+> pointed to by `DATABASE_URL`. It refuses to run unless `ALLOW_DESTRUCTIVE_SEED=1`
+> is set, and always refuses when `NODE_ENV=production`.
+>
+> PowerShell: `$env:ALLOW_DESTRUCTIVE_SEED="1"; npm run db:seed`
+> cmd.exe: `set ALLOW_DESTRUCTIVE_SEED=1 && npm run db:seed`
+
+Optional demo data (needs the steps above first):
+
 ```bash
-ts-node prisma/seeds/seed-users.ts
+npm run db:seed:comprehensive    # properties, leases, payments, CRM contacts
+npm run db:seed:tenant-members   # extra managers/agents on a tenant (arg: slug or id)
+npm run db:seed:maintenance      # maintenance vendors and tickets
+npm run db:seed:crm              # CRM contacts, deals and activities
+```
+
+Repair utility for databases seeded before roles existed — assigns a role to any
+active membership that has none:
+
+```bash
+npm run db:assign:rbac -- --dry-run
+npm run db:assign:rbac -- --role=TENANT_ADMIN --tenant=agence-mali
 ```
 
 ## Seed Accounts
 
-After seeding, you can use these test accounts:
+After seeding, you can use these test accounts (password `Test@123456`):
 
-- **Admin**: `admin@immotopia.com` / `Admin@123456`
-- **Instructor**: `instructeur@immotopia.com` / `Instructor@123456`
-- **Student**: `etudiant@immotopia.com` / `Student@123456`
+- `admin1@agence-mali.com` — TENANT_ADMIN @ Agence Immobilière du Mali
+- `admin2@bamako-immo.com` — TENANT_ADMIN @ Bamako Immobilier
+- `agent@agence-mali.com` — TENANT_AGENT @ Agence Immobilière du Mali
+- `proprietaire@gmail.com` — client OWNER @ Agence Immobilière du Mali
+- `locataire@gmail.com` — client RENTER @ Bamako Immobilier
+- `visitor@immobillier.com` — user without any tenant
+
+Plus the platform account created by `db:seed:super-admin`:
+
+- `admin@immobillier.com` / `Admin@123456` — SUPER_ADMIN
+  (override with `SUPER_ADMIN_EMAIL` / `SUPER_ADMIN_PASSWORD`)
 
 ## Troubleshooting
 

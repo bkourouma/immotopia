@@ -31,7 +31,7 @@ export async function generatePropertyReference(tenantId: string | null, ownerId
   }
 
   // Get the starting sequential number
-  let sequential = await getNextSequentialNumber(date, prefix);
+  let sequential = await getNextSequentialNumber(date, prefix, tenantId);
   let attempts = 0;
   const maxAttempts = 100; // Increased attempts
 
@@ -45,8 +45,10 @@ export async function generatePropertyReference(tenantId: string | null, ownerId
 
     // Check for collision
     try {
-      const existing = await prisma.property.findUnique({
-        where: { internalReference: reference },
+      // internalReference is unique per tenant, not globally: scope the
+      // collision check to the same tenant.
+      const existing = await prisma.property.findFirst({
+        where: { internalReference: reference, tenantId },
         select: { id: true } // Only select id for performance
       });
 
@@ -87,8 +89,8 @@ export async function generatePropertyReference(tenantId: string | null, ownerId
 
   // Final check for fallback
   try {
-    const existingFallback = await prisma.property.findUnique({
-      where: { internalReference: fallbackReference },
+    const existingFallback = await prisma.property.findFirst({
+      where: { internalReference: fallbackReference, tenantId },
       select: { id: true }
     });
 
@@ -110,14 +112,16 @@ export async function generatePropertyReference(tenantId: string | null, ownerId
  * Get next sequential number for a given date and prefix
  * @param date - Date string in YYYYMMDD format
  * @param prefix - Tenant or owner prefix
+ * @param tenantId - Tenant the sequence belongs to (references are unique per tenant)
  * @returns Next sequential number
  */
-async function getNextSequentialNumber(date: string, prefix: string): Promise<number> {
+async function getNextSequentialNumber(date: string, prefix: string, tenantId: string | null): Promise<number> {
   const todayStart = `PROP-${date}-${prefix}-`;
 
   try {
     const lastProperty = await prisma.property.findFirst({
       where: {
+        tenantId,
         internalReference: {
           startsWith: todayStart
         }

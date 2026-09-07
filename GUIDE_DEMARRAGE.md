@@ -220,8 +220,14 @@ npm run prisma:generate
 # Backend - Créer une migration
 npm run prisma:migrate
 
+# Backend - Rôles et permissions RBAC (à lancer AVANT le seed principal)
+npm run db:seed:rbac
+
 # Backend - Remplir la base avec des données de test
-npm run prisma:seed
+# ⚠️ Ce seed efface tous les utilisateurs et tenants de la base ciblée :
+#    il refuse de démarrer sans ALLOW_DESTRUCTIVE_SEED=1
+#    PowerShell : $env:ALLOW_DESTRUCTIVE_SEED="1"; npm run db:seed
+ALLOW_DESTRUCTIVE_SEED=1 npm run db:seed
 
 # Frontend - Lancer les tests
 cd apps/web

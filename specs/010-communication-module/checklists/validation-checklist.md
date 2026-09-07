@@ -7,7 +7,7 @@
 - [ ] Base de données PostgreSQL accessible, migrations appliquées (`npx prisma migrate deploy`)
 - [ ] Variables d'environnement configurées (voir `packages/api/.env.example` pour COMMUNICATION_*, EMAIL_*, TWILIO_*)
 - [ ] Au moins un tenant actif en base
-- [ ] (Optionnel) Seed communication exécuté : `npm run db:seed:communication` dans `packages/api`
+- [ ] (Obsolete) Le seed `db:seed:communication` a ete retire : les tables templates/regles n'existent plus
 
 ## Backend
 

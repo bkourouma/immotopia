@@ -1,10 +1,11 @@
-import { LotType, Prisma, PrismaClient } from '@prisma/client';
+import { LotType, Prisma, type PrismaClient } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { notFound, tenantIsolationError, unprocessableEntity } from '../errors';
 import { computeChargeCallStatus, computeOutstanding, isJournalEntryBalanced, roundMoney } from './finance-utils';
 import { logger } from '../../utils/logger';
-
-const prisma = new PrismaClient();
+// Shared client: a second `new PrismaClient()` here doubled the connection
+// pool and escaped the graceful-shutdown handlers in utils/database.
+import { prisma } from '../../utils/database';
 
 export type PaginationInput = {
   page?: number;

@@ -1,6 +1,6 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+// Shared client: a dedicated `new PrismaClient()` here opened a second
+// connection pool outside the graceful-shutdown handlers in utils/database.
+import { prisma } from '../utils/database';
 
 export interface GeographicLocation {
   id: string;

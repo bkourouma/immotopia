@@ -5,8 +5,6 @@ import {
   CrmDealStage,
   CrmActivityType,
   CrmActivityDirection,
-  CrmAppointmentType,
-  CrmAppointmentStatus,
   CrmContactRoleType,
   GlobalRole
 } from '@prisma/client';
@@ -237,7 +235,7 @@ async function main() {
         firstName,
         lastName,
         email,
-        phone,
+        phonePrimary: phone,
         source,
         status: CrmContactStatus.ACTIVE_CLIENT,
         assignedToUserId: assignedTo.id,
@@ -285,7 +283,7 @@ async function main() {
         firstName,
         lastName,
         email,
-        phone,
+        phonePrimary: phone,
         source,
         status: CrmContactStatus.LEAD,
         assignedToUserId: assignedTo.id,
@@ -309,8 +307,7 @@ async function main() {
   const stageCounts = {
     [CrmDealStage.NEW]: 5,
     [CrmDealStage.QUALIFIED]: 8,
-    [CrmDealStage.APPOINTMENT]: 6,
-    [CrmDealStage.VISIT]: 7,
+    [CrmDealStage.VISIT]: 13,
     [CrmDealStage.NEGOTIATION]: 8,
     [CrmDealStage.WON]: 5,
     [CrmDealStage.LOST]: 2
@@ -422,72 +419,6 @@ async function main() {
   }
   console.log('  ✓ Created 150 activities');
 
-  // ==========================================
-  // 5. Create 44 Appointments
-  // ==========================================
-  console.log('\n📅 Creating 44 appointments...');
-const appointmentLocations = [
-  'Bureau agence - Plateau',
-  'Cocody',
-  'Marcory',
-  'Yopougon',
-  'Adjamé',
-  'Treichville',
-  'Koumassi'
-];
-
-  const appointmentStatuses: CrmAppointmentStatus[] = [
-    CrmAppointmentStatus.SCHEDULED,
-    CrmAppointmentStatus.CONFIRMED,
-    CrmAppointmentStatus.DONE,
-    CrmAppointmentStatus.NO_SHOW,
-    CrmAppointmentStatus.CANCELED
-  ];
-
-  for (let i = 0; i < 44; i++) {
-    const contact = contacts[Math.floor(Math.random() * contacts.length)];
-    const deal = Math.random() > 0.4 ? deals[Math.floor(Math.random() * deals.length)] : null;
-    const appointmentType = Math.random() > 0.5 ? CrmAppointmentType.RDV : CrmAppointmentType.VISITE;
-    const createdBy = allCollaborators[Math.floor(Math.random() * allCollaborators.length)];
-    const assignedTo = allCollaborators[Math.floor(Math.random() * allCollaborators.length)];
-    const status = appointmentStatuses[Math.floor(Math.random() * appointmentStatuses.length)];
-    
-    // Start time in future or past depending on status
-    const startAt = status === CrmAppointmentStatus.DONE || status === CrmAppointmentStatus.NO_SHOW || status === CrmAppointmentStatus.CANCELED
-      ? randomDate(30)
-      : randomFutureDate(30);
-    const endAt = new Date(startAt.getTime() + (60 + Math.floor(Math.random() * 120)) * 60000); // 1-3 hours
-    const location = appointmentLocations[Math.floor(Math.random() * appointmentLocations.length)];
-
-    const appointment = await prisma.crmAppointment.create({
-      data: {
-        tenantId: tenant.id,
-        contactId: contact.id,
-        dealId: deal?.id,
-        appointmentType,
-        startAt,
-        endAt,
-        location,
-        status,
-        createdByUserId: createdBy.id,
-        assignedToUserId: assignedTo.id
-      }
-    });
-
-    // Sometimes add additional collaborators
-    if (Math.random() > 0.7) {
-      const extraCollaborator = allCollaborators[Math.floor(Math.random() * allCollaborators.length)];
-      if (extraCollaborator.id !== assignedTo.id) {
-        await prisma.crmAppointmentCollaborator.create({
-          data: {
-            appointmentId: appointment.id,
-            userId: extraCollaborator.id
-          }
-        });
-      }
-    }
-  }
-  console.log('  ✓ Created 44 appointments');
 
   // ==========================================
   // Summary
@@ -498,7 +429,6 @@ const appointmentLocations = [
   console.log(`  • Contacts: 105 (24 clients, 81 leads)`);
   console.log(`  • Deals: 41 (various stages)`);
   console.log(`  • Activities: 150`);
-  console.log(`  • Appointments: 44`);
   console.log(`\n🏢 Tenant: ${tenant.name}`);
   console.log('');
 }

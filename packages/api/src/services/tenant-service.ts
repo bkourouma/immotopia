@@ -821,35 +821,43 @@ export async function getOrCreateTenantClientFromContact(
   if (!user) {
     isNewUser = true;
 
-    user = await prisma.user.create({
-      data: {
-        email: contact.email,
-        fullName: `${contact.firstName} ${contact.lastName}`,
-        globalRole: 'USER',
-        // Generate a random password - user will need to reset it
-        passwordHash: await import('bcrypt').then(bcrypt => bcrypt.hash(Math.random().toString(36), 10)),
-        emailVerified: false
-      }
+    // Random password the user never learns: access is regained through the
+    // reset token created below. crypto.randomBytes, not Math.random.
+    const throwawayPassword = crypto.randomBytes(32).toString('base64url');
+    const passwordHash = await import('bcrypt').then(bcrypt => bcrypt.hash(throwawayPassword, 10));
+
+    const resetToken = crypto.randomUUID();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry
+
+    // The account and the token that makes it usable are one unit of work:
+    // creating the user without the token left an account nobody could access.
+    user = await prisma.$transaction(async tx => {
+      const createdUser = await tx.user.create({
+        data: {
+          email: contact.email,
+          fullName: `${contact.firstName} ${contact.lastName}`,
+          globalRole: 'USER',
+          passwordHash,
+          emailVerified: false
+        }
+      });
+
+      await tx.passwordResetToken.create({
+        data: {
+          token: resetToken,
+          userId: createdUser.id,
+          expiresAt: expiresAt
+        }
+      });
+
+      return createdUser;
     });
 
     logger.info('User account created from CRM contact', {
       userId: user.id,
       contactId: contact.id,
       email: contact.email
-    });
-
-    // Generate password reset token for new users
-    const resetToken = crypto.randomUUID();
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days expiry
-
-    // Create password reset token
-    await prisma.passwordResetToken.create({
-      data: {
-        token: resetToken,
-        userId: user.id,
-        expiresAt: expiresAt
-      }
     });
 
     passwordResetToken = resetToken;

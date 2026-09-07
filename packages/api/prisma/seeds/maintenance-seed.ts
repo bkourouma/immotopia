@@ -27,7 +27,7 @@ async function seedMaintenance() {
   // Get a property for the tenant
   const property = await prisma.property.findFirst({
     where: {
-      tenant_id: tenant.id
+      tenantId: tenant.id
     }
   });
 
@@ -49,8 +49,8 @@ async function seedMaintenance() {
   // Get a tenant contact (optional)
   const tenantContact = await prisma.crmContact.findFirst({
     where: {
-      tenant_id: tenant.id,
-      clientType: 'RENTER'
+      tenantId: tenant.id,
+      roles: { some: { role: 'LOCATAIRE', active: true } }
     }
   });
 
@@ -64,7 +64,7 @@ async function seedMaintenance() {
     include: {
       memberships: {
         where: {
-          tenant_id: tenant.id,
+          tenantId: tenant.id,
           status: 'ACTIVE'
         }
       }
@@ -262,7 +262,7 @@ async function seedMaintenance() {
             from_status: MaintenanceTicketStatus.ASSIGNED,
             to_status: MaintenanceTicketStatus.RESOLVED,
             changed_by_user_id: managerUser?.id || null,
-            changed_at: ticket.resolved_at || ticket.assigned_at
+            changed_at: ticket.resolved_at ?? ticket.assigned_at ?? ticket.declared_at
           }
         ]
       });
@@ -273,8 +273,7 @@ async function seedMaintenance() {
           ticket_id: ticket.id,
           from_status: MaintenanceTicketStatus.DECLARED,
           to_status: MaintenanceTicketStatus.CANCELED,
-          changed_by_user_id: tenantContact?.id ? null : managerUser?.id || null,
-          changed_by_contact_id: tenantContact?.id || null,
+          changed_by_user_id: managerUser?.id || null,
           changed_at: ticket.canceled_at || ticket.declared_at
         }
       });
