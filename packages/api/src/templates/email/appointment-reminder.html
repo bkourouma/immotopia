@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rappel de rendez-vous</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="background: #e6f7ff; border: 1px solid #91d5ff; padding: 20px; border-radius: 8px;">
+    <h2 style="color: #1890ff; margin-top: 0;">Rappel de rendez-vous</h2>
+    <p>Bonjour {{contactName}},</p>
+    <p>Nous vous rappelons votre rendez-vous prévu le <strong>{{appointmentDate}}</strong> à <strong>{{appointmentTime}}</strong>.</p>
+    <ul>
+      <li><strong>Objet :</strong> {{appointmentSubject}}</li>
+      <li><strong>Lieu :</strong> {{location}}</li>
+    </ul>
+    <p>En cas d'empêchement, merci de nous prévenir.</p>
+    <p>Cordialement,<br/>{{tenant_name}}</p>
+  </div>
+</body>
+</html>

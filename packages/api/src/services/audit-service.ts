@@ -1,0 +1,347 @@
+import { prisma } from '../utils/database';
+import { AuditLogEntry, AuditActionKey } from '../types/audit-types';
+import { logger } from '../utils/logger';
+import { getRequestContext } from '../utils/request-context';
+
+// In-memory audit queue
+const auditQueue: AuditLogEntry[] = [];
+let flushInterval: NodeJS.Timeout | null = null;
+
+// Queue flush threshold
+const QUEUE_FLUSH_THRESHOLD = 100;
+const QUEUE_FLUSH_INTERVAL_MS = 5000; // 5 seconds
+
+/**
+ * Add audit log entry (non-blocking).
+ * IP and User-Agent are filled from the current HTTP request context when available.
+ * @param entry - Audit log entry
+ */
+export function logAuditEvent(entry: AuditLogEntry): void {
+  const ctx = getRequestContext();
+  const enriched: AuditLogEntry = {
+    ...entry,
+    createdAt: entry.createdAt || new Date(),
+    ipAddress: entry.ipAddress ?? ctx?.ip ?? null,
+    userAgent: entry.userAgent ?? ctx?.userAgent ?? null
+  };
+
+  auditQueue.push(enriched);
+
+  // Auto-flush if queue reaches threshold
+  if (auditQueue.length >= QUEUE_FLUSH_THRESHOLD) {
+    flushAuditQueue().catch(error => {
+      logger.error('Error flushing audit queue (threshold)', { error });
+    });
+  } else if (!flushInterval) {
+    // Start periodic flush if not already running
+    flushInterval = setInterval(() => {
+      flushAuditQueue().catch(error => {
+        logger.error('Error flushing audit queue (interval)', { error });
+      });
+    }, QUEUE_FLUSH_INTERVAL_MS);
+  }
+}
+
+/**
+ * Flush queue to database (batch insert)
+ */
+async function flushAuditQueue(): Promise<void> {
+  if (auditQueue.length === 0) {
+    return;
+  }
+
+  const entries = auditQueue.splice(0, auditQueue.length);
+
+  try {
+    await prisma.auditLog.createMany({
+      data: entries.map(entry => ({
+        actorUserId: entry.actorUserId || null,
+        tenantId: entry.tenantId || null,
+        actionKey: entry.actionKey,
+        entityType: entry.entityType,
+        entityId: entry.entityId,
+        ipAddress: entry.ipAddress || null,
+        userAgent: entry.userAgent || null,
+        payload: entry.payload || null,
+        createdAt: entry.createdAt || new Date()
+      })),
+      skipDuplicates: true
+    });
+
+    logger.debug('Audit log queue flushed', { count: entries.length });
+  } catch (error) {
+    // Re-queue failed entries (with retry limit)
+    logger.error('Audit log flush failed, re-queuing entries', {
+      error,
+      entryCount: entries.length
+    });
+    auditQueue.unshift(...entries);
+  }
+
+  // Clear interval if queue is empty
+  if (auditQueue.length === 0 && flushInterval) {
+    clearInterval(flushInterval);
+    flushInterval = null;
+  }
+}
+
+/**
+ * Get audit logs with filtering
+ * @param filters - Filter criteria
+ * @returns Audit logs and pagination info
+ */
+export async function getAuditLogs(filters: {
+  tenantId?: string;
+  actionKey?: string;
+  entityType?: string;
+  entityId?: string;
+  actorUserId?: string;
+  startDate?: Date;
+  endDate?: Date;
+  page?: number;
+  limit?: number;
+}) {
+  const page = filters.page || 1;
+  const limit = filters.limit || 50;
+  const skip = (page - 1) * limit;
+
+  const where: any = {};
+
+  if (filters.tenantId) {
+    where.tenantId = filters.tenantId;
+  }
+  if (filters.actionKey) {
+    where.actionKey = filters.actionKey;
+  }
+  if (filters.entityType) {
+    where.entityType = filters.entityType;
+  }
+  if (filters.entityId) {
+    where.entityId = filters.entityId;
+  }
+  if (filters.actorUserId) {
+    where.actorUserId = filters.actorUserId;
+  }
+  if (filters.startDate || filters.endDate) {
+    where.createdAt = {};
+    if (filters.startDate) {
+      where.createdAt.gte = filters.startDate;
+    }
+    if (filters.endDate) {
+      where.createdAt.lte = filters.endDate;
+    }
+  }
+
+  const [logs, total] = await Promise.all([
+    prisma.auditLog.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: {
+        createdAt: 'desc'
+      },
+      include: {
+        actor: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true
+          }
+        },
+        tenant: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
+    }),
+    prisma.auditLog.count({ where })
+  ]);
+
+  return {
+    logs,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit)
+    }
+  };
+}
+
+/**
+ * Enrich audit logs with human-readable resource labels by fetching actual entity data.
+ * Same kind of display as in the app (e.g. property ref + title + address, lease number, contact name).
+ */
+export async function enrichAuditLogsWithResourceLabels(
+  logs: Array<{
+    id: string;
+    entityType: string;
+    entityId: string;
+    tenantId: string | null;
+    payload?: unknown;
+  }>
+): Promise<Map<string, string>> {
+  const labelByLogId = new Map<string, string>();
+  if (logs.length === 0) return labelByLogId;
+
+  const propIds = new Set<string>();
+  const leaseIds = new Set<string>();
+  const contactIds = new Set<string>();
+  const dealIds = new Set<string>();
+  const tenantIds = new Set<string>();
+  const invoiceIds = new Set<string>();
+  const vendorIds = new Set<string>();
+  const ticketIds = new Set<string>();
+
+  for (const log of logs) {
+    const et = log.entityType;
+    if (et === 'PROPERTY' || et === 'Property') propIds.add(log.entityId);
+    else if (et === 'RENTAL_LEASE') leaseIds.add(log.entityId);
+    else if (et === 'CONTACT' || et === 'Contact') contactIds.add(log.entityId);
+    else if (et === 'DEAL' || et === 'CrmDeal') dealIds.add(log.entityId);
+    else if (et === 'Tenant') tenantIds.add(log.entityId);
+    else if (et === 'Invoice') invoiceIds.add(log.entityId);
+    else if (et === 'MaintenanceVendor' || et === 'MAINTENANCE_VENDOR') vendorIds.add(log.entityId);
+    else if (et === 'MaintenanceTicket' || et === 'MAINTENANCE_TICKET') ticketIds.add(log.entityId);
+  }
+
+  const [properties, leases, contacts, deals, tenants, invoices, maintenanceVendors, serviceProviders, tickets] =
+    await Promise.all([
+      propIds.size > 0
+        ? prisma.property.findMany({
+            where: { id: { in: [...propIds] } },
+            select: { id: true, internalReference: true, title: true, address: true }
+          })
+        : [],
+      leaseIds.size > 0
+        ? prisma.rentalLease.findMany({
+            where: { id: { in: [...leaseIds] } },
+            select: {
+              id: true,
+              lease_number: true,
+              property: { select: { internalReference: true, title: true, address: true } }
+            }
+          })
+        : [],
+      contactIds.size > 0
+        ? prisma.crmContact.findMany({
+            where: { id: { in: [...contactIds] } },
+            select: { id: true, firstName: true, lastName: true, email: true, legalName: true }
+          })
+        : [],
+      dealIds.size > 0
+        ? prisma.crmDeal.findMany({
+            where: { id: { in: [...dealIds] } },
+            select: {
+              id: true,
+              type: true,
+              stage: true,
+              contact: { select: { firstName: true, lastName: true, email: true } }
+            }
+          })
+        : [],
+      tenantIds.size > 0
+        ? prisma.tenant.findMany({
+            where: { id: { in: [...tenantIds] } },
+            select: { id: true, name: true }
+          })
+        : [],
+      invoiceIds.size > 0
+        ? prisma.invoice.findMany({
+            where: { id: { in: [...invoiceIds] } },
+            select: { id: true, invoiceNumber: true }
+          })
+        : [],
+      vendorIds.size > 0
+        ? prisma.maintenanceVendor.findMany({
+            where: { id: { in: [...vendorIds] } },
+            select: { id: true, name: true }
+          })
+        : [],
+      vendorIds.size > 0
+        ? prisma.serviceProvider.findMany({
+            where: { id: { in: [...vendorIds] } },
+            select: { id: true, name: true }
+          })
+        : [],
+      ticketIds.size > 0
+        ? prisma.maintenanceTicket.findMany({
+            where: { id: { in: [...ticketIds] } },
+            select: { id: true, title: true, category: true }
+          })
+        : []
+    ]);
+
+  const propMap = new Map(
+    properties.map(p => [p.id, [p.internalReference, p.title, p.address].filter(Boolean).join(' – ') || p.id])
+  );
+  const leaseMap = new Map(
+    leases.map(l => {
+      const propPart = l.property
+        ? [l.property.internalReference, l.property.title].filter(Boolean).join(' – ') || l.property.address
+        : '';
+      const label = propPart ? `Bail n° ${l.lease_number} – ${propPart}` : `Bail n° ${l.lease_number}`;
+      return [l.id, label];
+    })
+  );
+  const contactMap = new Map(
+    contacts.map(c => {
+      const name = [c.firstName, c.lastName].filter(Boolean).join(' ') || c.legalName || c.email || c.id;
+      return [c.id, name];
+    })
+  );
+  const dealMap = new Map(
+    deals.map(d => {
+      const contactPart = d.contact
+        ? [d.contact.firstName, d.contact.lastName].filter(Boolean).join(' ') || d.contact.email
+        : '';
+      const label = contactPart ? `Affaire ${d.type} – ${contactPart}` : `Affaire ${d.type}`;
+      return [d.id, label];
+    })
+  );
+  const tenantMap = new Map(tenants.map(t => [t.id, t.name]));
+  const invoiceMap = new Map(invoices.map(i => [i.id, `Facture n° ${i.invoiceNumber}`]));
+  const vendorMap = new Map([
+    ...maintenanceVendors.map(v => [v.id, v.name] as const),
+    ...serviceProviders.map(v => [v.id, v.name] as const)
+  ]);
+  const ticketMap = new Map(tickets.map(t => [t.id, [t.title, t.category].filter(Boolean).join(' – ') || t.id]));
+
+  for (const log of logs) {
+    const et = log.entityType;
+    let label: string | undefined;
+    if (et === 'PROPERTY' || et === 'Property') label = propMap.get(log.entityId);
+    else if (et === 'RENTAL_LEASE') label = leaseMap.get(log.entityId);
+    else if (et === 'CONTACT' || et === 'Contact') label = contactMap.get(log.entityId);
+    else if (et === 'DEAL' || et === 'CrmDeal') label = dealMap.get(log.entityId);
+    else if (et === 'Tenant') label = tenantMap.get(log.entityId);
+    else if (et === 'Invoice') label = invoiceMap.get(log.entityId);
+    else if (et === 'MaintenanceVendor' || et === 'MAINTENANCE_VENDOR') label = vendorMap.get(log.entityId);
+    else if (et === 'MaintenanceTicket' || et === 'MAINTENANCE_TICKET') label = ticketMap.get(log.entityId);
+    if (label) labelByLogId.set(log.id, label);
+  }
+
+  return labelByLogId;
+}
+
+// Graceful shutdown: flush remaining entries
+process.on('SIGTERM', async () => {
+  if (flushInterval) {
+    clearInterval(flushInterval);
+  }
+  await flushAuditQueue();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  if (flushInterval) {
+    clearInterval(flushInterval);
+  }
+  await flushAuditQueue();
+  process.exit(0);
+});
+
+// Export AuditActionKey for convenience
+export { AuditActionKey };

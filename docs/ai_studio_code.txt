@@ -1,0 +1,364 @@
+[
+  {
+    "region": "District Autonome d'Abidjan",
+    "chef_lieu": "Abidjan",
+    "communes": [
+      "Abobo",
+      "Adjamé",
+      "Anyama",
+      "Attécoubé",
+      "Bingerville",
+      "Brofodoumé",
+      "Cocody",
+      "Koumassi",
+      "Marcory",
+      "Plateau",
+      "Port-Bouët",
+      "Songon",
+      "Treichville",
+      "Yopougon"
+    ]
+  },
+  {
+    "region": "District Autonome de Yamoussoukro",
+    "chef_lieu": "Yamoussoukro",
+    "communes": [
+      "Yamoussoukro",
+      "Attiégouakro"
+    ]
+  },
+  {
+    "region": "Agnéby-Tiassa",
+    "chef_lieu": "Agboville",
+    "communes": [
+      "Agboville",
+      "Sikensi",
+      "Tiassalé",
+      "Taabo",
+      "Rubino",
+      "Azaguié",
+      "N'Douci"
+    ]
+  },
+  {
+    "region": "Bafing",
+    "chef_lieu": "Touba",
+    "communes": [
+      "Touba",
+      "Koro",
+      "Ouaninou"
+    ]
+  },
+  {
+    "region": "Bagoué",
+    "chef_lieu": "Boundiali",
+    "communes": [
+      "Boundiali",
+      "Kouto",
+      "Tengréla",
+      "Gbon",
+      "Kolia"
+    ]
+  },
+  {
+    "region": "Bélier",
+    "chef_lieu": "Toumodi",
+    "communes": [
+      "Toumodi",
+      "Didiévi",
+      "Tiébissou",
+      "Djékanou",
+      "Kokumbo"
+    ]
+  },
+  {
+    "region": "Béré",
+    "chef_lieu": "Mankono",
+    "communes": [
+      "Mankono",
+      "Dianra",
+      "Kounahiri",
+      "Sarhala"
+    ]
+  },
+  {
+    "region": "Bounkani",
+    "chef_lieu": "Bouna",
+    "communes": [
+      "Bouna",
+      "Doropo",
+      "Nassian",
+      "Tehini"
+    ]
+  },
+  {
+    "region": "Cavally",
+    "chef_lieu": "Guiglo",
+    "communes": [
+      "Guiglo",
+      "Taï",
+      "Blolequin",
+      "Toulepleu"
+    ]
+  },
+  {
+    "region": "Folon",
+    "chef_lieu": "Minignan",
+    "communes": [
+      "Minignan",
+      "Kaniasso",
+      "Goulia",
+      "Tienko"
+    ]
+  },
+  {
+    "region": "Gbêkê",
+    "chef_lieu": "Bouaké",
+    "communes": [
+      "Bouaké",
+      "Béoumi",
+      "Sakassou",
+      "Botro",
+      "Diabo",
+      "Djébonoua"
+    ]
+  },
+  {
+    "region": "Gbôklé",
+    "chef_lieu": "Sassandra",
+    "communes": [
+      "Sassandra",
+      "Fresco"
+    ]
+  },
+  {
+    "region": "Gôh",
+    "chef_lieu": "Gagnoa",
+    "communes": [
+      "Gagnoa",
+      "Oumé",
+      "Guibéroua",
+      "Ouragahio",
+      "Diégonéfla"
+    ]
+  },
+  {
+    "region": "Gontougo",
+    "chef_lieu": "Bondoukou",
+    "communes": [
+      "Bondoukou",
+      "Tanda",
+      "Koun-Fao",
+      "Sandégué",
+      "Transua"
+    ]
+  },
+  {
+    "region": "Grands-Ponts",
+    "chef_lieu": "Dabou",
+    "communes": [
+      "Dabou",
+      "Grand-Lahou",
+      "Jacqueville"
+    ]
+  },
+  {
+    "region": "Guémon",
+    "chef_lieu": "Duékoué",
+    "communes": [
+      "Duékoué",
+      "Bangolo",
+      "Facobly",
+      "Kouibly"
+    ]
+  },
+  {
+    "region": "Hambol",
+    "chef_lieu": "Katiola",
+    "communes": [
+      "Katiola",
+      "Dabakala",
+      "Niakaramandougou",
+      "Tafiré"
+    ]
+  },
+  {
+    "region": "Haut-Sassandra",
+    "chef_lieu": "Daloa",
+    "communes": [
+      "Daloa",
+      "Issia",
+      "Vavoua",
+      "Zoukougbeu",
+      "Saïoua",
+      "Bediala"
+    ]
+  },
+  {
+    "region": "Iffou",
+    "chef_lieu": "Daoukro",
+    "communes": [
+      "Daoukro",
+      "M'Bahiakro",
+      "Prikro",
+      "Ouellé",
+      "Ettrokro"
+    ]
+  },
+  {
+    "region": "Indénié-Djuablin",
+    "chef_lieu": "Abengourou",
+    "communes": [
+      "Abengourou",
+      "Agnibilékrou",
+      "Bettié",
+      "Niablé"
+    ]
+  },
+  {
+    "region": "Kabadougou",
+    "chef_lieu": "Odienné",
+    "communes": [
+      "Odienné",
+      "Madinani",
+      "Gbéléban",
+      "Samatiguila",
+      "Seguelon",
+      "Bako",
+      "Tiémé"
+    ]
+  },
+  {
+    "region": "Lôh-Djiboua",
+    "chef_lieu": "Divo",
+    "communes": [
+      "Divo",
+      "Lakota",
+      "Guitry",
+      "Hiré",
+      "Zikisso"
+    ]
+  },
+  {
+    "region": "Marahoué",
+    "chef_lieu": "Bouaflé",
+    "communes": [
+      "Bouaflé",
+      "Sinfra",
+      "Zuénoula",
+      "Bonon",
+      "Gohitafla"
+    ]
+  },
+  {
+    "region": "Mé",
+    "chef_lieu": "Adzopé",
+    "communes": [
+      "Adzopé",
+      "Akoupé",
+      "Alépé",
+      "Yakassé-Attobrou",
+      "Afféry",
+      "Agou"
+    ]
+  },
+  {
+    "region": "Moronou",
+    "chef_lieu": "Bongouanou",
+    "communes": [
+      "Bongouanou",
+      "Arrah",
+      "M'Batto",
+      "Tiemélékro"
+    ]
+  },
+  {
+    "region": "Nawa",
+    "chef_lieu": "Soubré",
+    "communes": [
+      "Soubré",
+      "Gueyo",
+      "Buyo",
+      "Méagui",
+      "Grand-Zattry",
+      "Mayo"
+    ]
+  },
+  {
+    "region": "N'Zi",
+    "chef_lieu": "Dimbokro",
+    "communes": [
+      "Dimbokro",
+      "Bocanda",
+      "Kouassi-Kouassikro"
+    ]
+  },
+  {
+    "region": "Poro",
+    "chef_lieu": "Korhogo",
+    "communes": [
+      "Korhogo",
+      "Sinématiali",
+      "Dikodougou",
+      "M'Bengué",
+      "Napiéolédougou",
+      "Karakoro"
+    ]
+  },
+  {
+    "region": "San-Pédro",
+    "chef_lieu": "San-Pédro",
+    "communes": [
+      "San-Pédro",
+      "Tabou",
+      "Grabo",
+      "Grand-Béréby"
+    ]
+  },
+  {
+    "region": "Sud-Comoé",
+    "chef_lieu": "Aboisso",
+    "communes": [
+      "Aboisso",
+      "Adiaké",
+      "Grand-Bassam",
+      "Tiapoum",
+      "Bonoua",
+      "Maféré",
+      "Ayamé"
+    ]
+  },
+  {
+    "region": "Tchologo",
+    "chef_lieu": "Ferkessédougou",
+    "communes": [
+      "Ferkessédougou",
+      "Ouangolodougou",
+      "Kong",
+      "Koumbala"
+    ]
+  },
+  {
+    "region": "Tonkpi",
+    "chef_lieu": "Man",
+    "communes": [
+      "Man",
+      "Biankouma",
+      "Danané",
+      "Sipilou",
+      "Zouan-Hounien",
+      "Logoualé",
+      "Sangouiné"
+    ]
+  },
+  {
+    "region": "Worodougou",
+    "chef_lieu": "Séguéla",
+    "communes": [
+      "Séguéla",
+      "Kani",
+      "Massala",
+      "Worofla"
+    ]
+  }
+]

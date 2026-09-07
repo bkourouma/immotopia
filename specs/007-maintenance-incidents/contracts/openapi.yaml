@@ -1,0 +1,974 @@
+openapi: 3.0.0
+info:
+  title: Maintenance & Rental Incidents API
+  version: 1.0.0
+  description: API for Maintenance & Rental Incidents Module - ticket management, vendor management, file uploads, and maintenance history
+
+servers:
+  - url: http://localhost:5000/api
+    description: Development server
+  - url: https://api.immotopia.com/api
+    description: Production server
+
+tags:
+  - name: Tenant Tickets
+    description: Tenant-facing ticket operations (create, view, comment)
+  - name: Manager Tickets
+    description: Property manager ticket management (view all, update status, assign vendors)
+  - name: Attachments
+    description: File upload and download for ticket attachments
+  - name: Comments
+    description: Ticket comment thread management
+  - name: Vendors
+    description: Maintenance vendor management
+  - name: Property History
+    description: Maintenance history per property
+
+paths:
+  # Tenant Ticket Routes
+  /tenants/{tenantId}/maintenance/tenant/tickets:
+    get:
+      tags: [Tenant Tickets]
+      summary: List tenant tickets
+      description: Get paginated list of tickets for the logged-in tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DECLARED, IN_PROGRESS, ASSIGNED, RESOLVED, CANCELED]
+        - name: propertyId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of tickets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      tickets:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Ticket'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+
+    post:
+      tags: [Tenant Tickets]
+      summary: Create ticket
+      description: Create a new maintenance ticket
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTicketRequest'
+      responses:
+        '201':
+          description: Ticket created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Ticket'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenants/{tenantId}/maintenance/tenant/tickets/{ticketId}:
+    get:
+      tags: [Tenant Tickets]
+      summary: Get ticket details
+      description: Get ticket details with timeline, comments, and attachments
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ticketId'
+      responses:
+        '200':
+          description: Ticket details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/TicketDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Tenant Tickets]
+      summary: Cancel ticket
+      description: Cancel a ticket (only if status is DECLARED or IN_PROGRESS)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ticketId'
+      responses:
+        '200':
+          description: Ticket canceled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Ticket'
+
+  /tenants/{tenantId}/maintenance/tenant/tickets/{ticketId}/comments:
+    post:
+      tags: [Comments]
+      summary: Add comment to ticket
+      description: Add a comment to the ticket thread
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ticketId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentRequest'
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Comment'
+
+  /tenants/{tenantId}/maintenance/tenant/tickets/{ticketId}/attachments:
+    post:
+      tags: [Attachments]
+      summary: Upload attachment
+      description: Upload a file attachment to a ticket (multipart/form-data)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ticketId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Attachment uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Attachment'
+
+  # Manager Ticket Routes
+  /tenants/{tenantId}/maintenance/admin/tickets:
+    get:
+      tags: [Manager Tickets]
+      summary: List all tickets
+      description: Get paginated list of all tickets for property managers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DECLARED, IN_PROGRESS, ASSIGNED, RESOLVED, CANCELED]
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [LOW, MEDIUM, HIGH, URGENT]
+        - name: propertyId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: vendorId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of tickets
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      tickets:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Ticket'
+                      pagination:
+                        $ref: '#/components/schemas/Pagination'
+
+  /tenants/{tenantId}/maintenance/admin/tickets/{ticketId}:
+    get:
+      tags: [Manager Tickets]
+      summary: Get ticket details
+      description: Get ticket details with full information
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ticketId'
+      responses:
+        '200':
+          description: Ticket details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/TicketDetail'
+
+    patch:
+      tags: [Manager Tickets]
+      summary: Update ticket
+      description: Update ticket status, assign vendor, add resolution notes
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ticketId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTicketRequest'
+      responses:
+        '200':
+          description: Ticket updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Ticket'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /tenants/{tenantId}/maintenance/admin/tickets/{ticketId}/comments:
+    post:
+      tags: [Comments]
+      summary: Add manager comment
+      description: Add a comment from property manager
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/ticketId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommentRequest'
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Comment'
+
+  # Vendor Routes
+  /tenants/{tenantId}/maintenance/admin/vendors:
+    get:
+      tags: [Vendors]
+      summary: List vendors
+      description: Get list of maintenance vendors
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of vendors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      vendors:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Vendor'
+
+    post:
+      tags: [Vendors]
+      summary: Create vendor
+      description: Create a new maintenance vendor
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVendorRequest'
+      responses:
+        '201':
+          description: Vendor created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Vendor'
+
+  /tenants/{tenantId}/maintenance/admin/vendors/{vendorId}:
+    get:
+      tags: [Vendors]
+      summary: Get vendor
+      description: Get vendor details
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/vendorId'
+      responses:
+        '200':
+          description: Vendor details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Vendor'
+
+    patch:
+      tags: [Vendors]
+      summary: Update vendor
+      description: Update vendor information
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/vendorId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVendorRequest'
+      responses:
+        '200':
+          description: Vendor updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Vendor'
+
+    delete:
+      tags: [Vendors]
+      summary: Deactivate vendor
+      description: Soft delete vendor (set isActive to false)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/vendorId'
+      responses:
+        '200':
+          description: Vendor deactivated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+
+  # File Download
+  /tenants/{tenantId}/maintenance/files/{attachmentId}:
+    get:
+      tags: [Attachments]
+      summary: Download attachment
+      description: Download a ticket attachment file
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: attachmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: File download
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Property Maintenance History
+  /tenants/{tenantId}/properties/{propertyId}/maintenance:
+    get:
+      tags: [Property History]
+      summary: Get property maintenance history
+      description: Get all maintenance tickets for a property
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DECLARED, IN_PROGRESS, ASSIGNED, RESOLVED, CANCELED]
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [PLUMBING, ELECTRICITY, AC, OTHER]
+      responses:
+        '200':
+          description: Maintenance history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      tickets:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Ticket'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    tenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Tenant organization ID
+
+    ticketId:
+      name: ticketId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Maintenance ticket ID
+
+    vendorId:
+      name: vendorId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Maintenance vendor ID
+
+  schemas:
+    Ticket:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        category:
+          type: string
+          enum: [PLUMBING, ELECTRICITY, AC, OTHER]
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, URGENT]
+        status:
+          type: string
+          enum: [DECLARED, IN_PROGRESS, ASSIGNED, RESOLVED, CANCELED]
+        description:
+          type: string
+        locationDetails:
+          type: string
+          nullable: true
+        propertyId:
+          type: string
+          format: uuid
+        leaseId:
+          type: string
+          format: uuid
+          nullable: true
+        assignedVendorId:
+          type: string
+          format: uuid
+          nullable: true
+        assignedVendor:
+          $ref: '#/components/schemas/Vendor'
+          nullable: true
+        resolutionNotes:
+          type: string
+          nullable: true
+        declaredAt:
+          type: string
+          format: date-time
+        inProgressAt:
+          type: string
+          format: date-time
+          nullable: true
+        assignedAt:
+          type: string
+          format: date-time
+          nullable: true
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+        canceledAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    TicketDetail:
+      allOf:
+        - $ref: '#/components/schemas/Ticket'
+        - type: object
+          properties:
+            attachments:
+              type: array
+              items:
+                $ref: '#/components/schemas/Attachment'
+            comments:
+              type: array
+              items:
+                $ref: '#/components/schemas/Comment'
+            statusHistory:
+              type: array
+              items:
+                $ref: '#/components/schemas/StatusHistory'
+
+    CreateTicketRequest:
+      type: object
+      required:
+        - title
+        - category
+        - priority
+        - description
+        - propertyId
+      properties:
+        title:
+          type: string
+          minLength: 3
+          maxLength: 200
+        category:
+          type: string
+          enum: [PLUMBING, ELECTRICITY, AC, OTHER]
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, URGENT]
+        description:
+          type: string
+          minLength: 10
+          maxLength: 5000
+        locationDetails:
+          type: string
+          maxLength: 500
+        propertyId:
+          type: string
+          format: uuid
+        leaseId:
+          type: string
+          format: uuid
+
+    UpdateTicketRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [IN_PROGRESS, ASSIGNED, RESOLVED, CANCELED]
+        assignedVendorId:
+          type: string
+          format: uuid
+        assignedToUserId:
+          type: string
+          format: uuid
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, URGENT]
+        resolutionNotes:
+          type: string
+          maxLength: 1000
+
+    Attachment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticketId:
+          type: string
+          format: uuid
+        fileName:
+          type: string
+        mimeType:
+          type: string
+        fileSize:
+          type: integer
+        fileUrl:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Comment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticketId:
+          type: string
+          format: uuid
+        authorType:
+          type: string
+          enum: [TENANT, MANAGER, SYSTEM]
+        content:
+          type: string
+        authorUser:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        authorContact:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            firstName:
+              type: string
+            lastName:
+              type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateCommentRequest:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 5000
+
+    Vendor:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        phone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        specialties:
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateVendorRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 200
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        address:
+          type: string
+        specialties:
+          type: array
+          items:
+            type: string
+
+    UpdateVendorRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 200
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+        address:
+          type: string
+        specialties:
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean
+
+    StatusHistory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticketId:
+          type: string
+          format: uuid
+        fromStatus:
+          type: string
+          enum: [DECLARED, IN_PROGRESS, ASSIGNED, RESOLVED, CANCELED]
+          nullable: true
+        toStatus:
+          type: string
+          enum: [DECLARED, IN_PROGRESS, ASSIGNED, RESOLVED, CANCELED]
+        note:
+          type: string
+          nullable: true
+        changedByUser:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        changedAt:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              message:
+                type: string
+              errors:
+                type: array
+                items:
+                  type: object
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              message:
+                type: string
+
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              message:
+                type: string

@@ -1,0 +1,1076 @@
+openapi: 3.0.0
+info:
+  title: Tenant Portal API
+  version: 1.0.0
+  description: API for Tenant Portal Module - self-service portal for tenants to view lease details, track payments, declare payments, manage maintenance requests, and access documents
+
+servers:
+  - url: http://localhost:8001/api
+    description: Development server
+  - url: https://api.immotopia.com/api
+    description: Production server
+
+tags:
+  - name: Dashboard
+    description: Tenant portal dashboard and overview
+  - name: Lease
+    description: Lease details and information
+  - name: Installments
+    description: Payment installment tracking
+  - name: Payments
+    description: Payment history and declarations
+  - name: Deposit
+    description: Security deposit information
+  - name: Maintenance
+    description: Maintenance ticket management (uses existing maintenance module)
+  - name: Documents
+    description: Rental document access and download
+
+paths:
+  # Dashboard
+  /portal/tenant/dashboard:
+    get:
+      tags: [Dashboard]
+      summary: Get tenant dashboard
+      description: Get comprehensive dashboard with lease overview, current balance, next installment, recent payments, deposit info, and maintenance summary
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Dashboard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Lease Details
+  /portal/tenant/lease:
+    get:
+      tags: [Lease]
+      summary: Get lease details
+      description: Get complete lease information including property details, lease terms, co-renters, and associated documents
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lease details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/LeaseDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Installments
+  /portal/tenant/installments:
+    get:
+      tags: [Installments]
+      summary: List installments
+      description: Get list of payment installments with optional filters by status and date range
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, DUE, PARTIAL, PAID, OVERDUE, CANCELED]
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Installments list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/InstallmentsList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /portal/tenant/installments/{installmentId}:
+    get:
+      tags: [Installments]
+      summary: Get installment details
+      description: Get detailed breakdown of installment including charge items, payment allocations, penalties, and related payments
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: installmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Installment details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/InstallmentDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Payments
+  /portal/tenant/payments:
+    get:
+      tags: [Payments]
+      summary: Get payment history
+      description: Get complete payment history with dates, amounts, methods, status, and allocation details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: method
+          in: query
+          schema:
+            type: string
+            enum: [CASH, BANK_TRANSFER, CHECK, MOBILE_MONEY, CARD, OTHER]
+      responses:
+        '200':
+          description: Payment history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/PaymentHistory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /portal/tenant/payments/declare:
+    post:
+      tags: [Payments]
+      summary: Declare payment
+      description: Declare a payment made outside the portal (cash, bank transfer, mobile money, etc.) with optional proof file upload
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeclarePaymentRequest'
+      responses:
+        '201':
+          description: Payment declaration created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/PaymentDeclaration'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # Deposit
+  /portal/tenant/deposit:
+    get:
+      tags: [Deposit]
+      summary: Get deposit information
+      description: Get security deposit information including original amount, current held amount, status, and movement history
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Deposit information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/DepositInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Maintenance (uses existing maintenance module endpoints)
+  /portal/tenant/maintenance:
+    get:
+      tags: [Maintenance]
+      summary: List maintenance tickets
+      description: Get list of tenant's maintenance tickets with optional filters by status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DECLARED, IN_PROGRESS, ASSIGNED, RESOLVED, CANCELED]
+      responses:
+        '200':
+          description: Maintenance tickets list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MaintenanceTicketsList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Maintenance]
+      summary: Create maintenance ticket
+      description: Create a new maintenance ticket with category, priority, description, and optional photo uploads
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateMaintenanceTicketRequest'
+      responses:
+        '201':
+          description: Maintenance ticket created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MaintenanceTicket'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /portal/tenant/maintenance/{ticketId}:
+    get:
+      tags: [Maintenance]
+      summary: Get maintenance ticket details
+      description: Get maintenance ticket details with comments, photos, and status history
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Maintenance ticket details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MaintenanceTicketDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /portal/tenant/maintenance/{ticketId}/comment:
+    post:
+      tags: [Maintenance]
+      summary: Add comment to ticket
+      description: Add a comment to a maintenance ticket
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddCommentRequest'
+      responses:
+        '201':
+          description: Comment added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/TicketComment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Documents
+  /portal/tenant/documents:
+    get:
+      tags: [Documents]
+      summary: List documents
+      description: Get list of rental documents organized by type (contracts, receipts, quittances, etc.)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [LEASE_CONTRACT, LEASE_ADDENDUM, RENT_RECEIPT, RENT_QUITTANCE, DEPOSIT_RECEIPT, STATEMENT, OTHER]
+      responses:
+        '200':
+          description: Documents list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/DocumentsList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /portal/tenant/documents/{documentId}/download:
+    get:
+      tags: [Documents]
+      summary: Download document
+      description: Download a rental document as PDF file
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Document file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Dashboard:
+      type: object
+      properties:
+        lease:
+          $ref: '#/components/schemas/LeaseOverview'
+        currentBalance:
+          type: number
+          format: decimal
+          description: Current balance (amount owed or advance)
+        nextInstallment:
+          $ref: '#/components/schemas/InstallmentOverview'
+        recentPayments:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentOverview'
+        depositInfo:
+          $ref: '#/components/schemas/DepositOverview'
+        maintenanceTickets:
+          $ref: '#/components/schemas/MaintenanceSummary'
+
+    LeaseOverview:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        propertyAddress:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        monthlyRent:
+          type: number
+          format: decimal
+        serviceCharges:
+          type: number
+          format: decimal
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, SUSPENDED, ENDED, CANCELED]
+
+    InstallmentOverview:
+      type: object
+      nullable: true
+      properties:
+        id:
+          type: string
+          format: uuid
+        period:
+          type: string
+          description: Period in format "YYYY-MM"
+        dueDate:
+          type: string
+          format: date-time
+        amount:
+          type: number
+          format: decimal
+        status:
+          type: string
+          enum: [DRAFT, DUE, PARTIAL, PAID, OVERDUE, CANCELED]
+
+    PaymentOverview:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: decimal
+        date:
+          type: string
+          format: date-time
+        method:
+          type: string
+          enum: [CASH, BANK_TRANSFER, CHECK, MOBILE_MONEY, CARD, OTHER]
+
+    DepositOverview:
+      type: object
+      properties:
+        amount:
+          type: number
+          format: decimal
+        status:
+          type: string
+        heldAmount:
+          type: number
+          format: decimal
+
+    MaintenanceSummary:
+      type: object
+      properties:
+        total:
+          type: integer
+        open:
+          type: integer
+        inProgress:
+          type: integer
+        resolved:
+          type: integer
+
+    LeaseDetails:
+      type: object
+      properties:
+        lease:
+          $ref: '#/components/schemas/Lease'
+        coRenters:
+          type: array
+          items:
+            $ref: '#/components/schemas/TenantClient'
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/Document'
+
+    Lease:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        property:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            address:
+              type: string
+        primaryRenter:
+          $ref: '#/components/schemas/TenantClient'
+        owner:
+          $ref: '#/components/schemas/TenantClient'
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        rentAmount:
+          type: number
+          format: decimal
+        serviceChargeAmount:
+          type: number
+          format: decimal
+        securityDepositAmount:
+          type: number
+          format: decimal
+        billingFrequency:
+          type: string
+          enum: [MONTHLY, QUARTERLY, SEMIANNUAL, ANNUAL]
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, SUSPENDED, ENDED, CANCELED]
+
+    TenantClient:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+
+    InstallmentsList:
+      type: object
+      properties:
+        installments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Installment'
+        summary:
+          $ref: '#/components/schemas/InstallmentSummary'
+
+    Installment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        period:
+          type: string
+        dueDate:
+          type: string
+          format: date-time
+        amount:
+          type: number
+          format: decimal
+        status:
+          type: string
+          enum: [DRAFT, DUE, PARTIAL, PAID, OVERDUE, CANCELED]
+
+    InstallmentSummary:
+      type: object
+      properties:
+        total:
+          type: integer
+        paid:
+          type: integer
+        due:
+          type: integer
+        overdue:
+          type: integer
+        partial:
+          type: integer
+
+    InstallmentDetails:
+      type: object
+      properties:
+        installment:
+          $ref: '#/components/schemas/InstallmentDetail'
+        relatedPayments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Payment'
+
+    InstallmentDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        period:
+          type: string
+        dueDate:
+          type: string
+          format: date-time
+        amount:
+          type: number
+          format: decimal
+        status:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InstallmentItem'
+        allocations:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentAllocation'
+        penalties:
+          type: array
+          items:
+            $ref: '#/components/schemas/Penalty'
+
+    InstallmentItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        chargeType:
+          type: string
+          enum: [RENT, SERVICE_CHARGE, UTILITY, MAINTENANCE, DOSSIER_FEE, OTHER]
+        label:
+          type: string
+        amount:
+          type: number
+          format: decimal
+
+    PaymentAllocation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        paymentId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: decimal
+
+    Penalty:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: decimal
+        daysLate:
+          type: integer
+
+    PaymentHistory:
+      type: object
+      properties:
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Payment'
+        totalPaid:
+          type: number
+          format: decimal
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: decimal
+        date:
+          type: string
+          format: date-time
+        method:
+          type: string
+          enum: [CASH, BANK_TRANSFER, CHECK, MOBILE_MONEY, CARD, OTHER]
+        status:
+          type: string
+          enum: [PENDING, SUCCESS, FAILED, CANCELED, REFUNDED, PARTIALLY_REFUNDED]
+        allocations:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentAllocation'
+
+    DeclarePaymentRequest:
+      type: object
+      required:
+        - amount
+        - paymentDate
+        - paymentMethod
+      properties:
+        amount:
+          type: number
+          format: decimal
+          minimum: 0.01
+        paymentDate:
+          type: string
+          format: date
+        paymentMethod:
+          type: string
+          enum: [CASH, BANK_TRANSFER, CHECK, MOBILE_MONEY, CARD, OTHER]
+        mobileOperator:
+          type: string
+          enum: [ORANGE, MTN, MOOV, WAVE, OTHER]
+        reference:
+          type: string
+        installmentId:
+          type: string
+          format: uuid
+        notes:
+          type: string
+        proof:
+          type: string
+          format: binary
+          description: Payment proof file (image or PDF, max 5MB)
+
+    PaymentDeclaration:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        leaseId:
+          type: string
+          format: uuid
+        installmentId:
+          type: string
+          format: uuid
+          nullable: true
+        amount:
+          type: number
+          format: decimal
+        paymentDate:
+          type: string
+          format: date
+        paymentMethod:
+          type: string
+        reference:
+          type: string
+          nullable: true
+        proofFileUrl:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [PENDING, APPROVED, REJECTED, CANCELED]
+        createdAt:
+          type: string
+          format: date-time
+
+    DepositInfo:
+      type: object
+      properties:
+        deposit:
+          $ref: '#/components/schemas/SecurityDeposit'
+        movements:
+          type: array
+          items:
+            $ref: '#/components/schemas/DepositMovement'
+        currentHeldAmount:
+          type: number
+          format: decimal
+
+    SecurityDeposit:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: decimal
+        status:
+          type: string
+
+    DepositMovement:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [COLLECT, HOLD, RELEASE, REFUND, FORFEIT, ADJUSTMENT]
+        amount:
+          type: number
+          format: decimal
+        date:
+          type: string
+          format: date-time
+
+    MaintenanceTicketsList:
+      type: object
+      properties:
+        tickets:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaintenanceTicket'
+        summary:
+          $ref: '#/components/schemas/MaintenanceSummary'
+
+    MaintenanceTicket:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        category:
+          type: string
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, URGENT]
+        title:
+          type: string
+        status:
+          type: string
+          enum: [DECLARED, IN_PROGRESS, ASSIGNED, RESOLVED, CANCELED]
+        createdAt:
+          type: string
+          format: date-time
+
+    MaintenanceTicketDetail:
+      type: object
+      properties:
+        ticket:
+          $ref: '#/components/schemas/MaintenanceTicket'
+        comments:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketComment'
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketAttachment'
+
+    CreateMaintenanceTicketRequest:
+      type: object
+      required:
+        - category
+        - priority
+        - title
+        - description
+      properties:
+        category:
+          type: string
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, URGENT]
+        title:
+          type: string
+        description:
+          type: string
+        attachments:
+          type: array
+          items:
+            type: string
+            format: binary
+          description: Photo attachments (images or PDFs, max 5MB each, max 10 files)
+
+    AddCommentRequest:
+      type: object
+      required:
+        - comment
+      properties:
+        comment:
+          type: string
+
+    TicketComment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        comment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    TicketAttachment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        fileUrl:
+          type: string
+        fileName:
+          type: string
+
+    DocumentsList:
+      type: object
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/Document'
+        groupedByType:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/Document'
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [LEASE_CONTRACT, LEASE_ADDENDUM, RENT_RECEIPT, RENT_QUITTANCE, DEPOSIT_RECEIPT, STATEMENT, OTHER]
+        fileName:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              message:
+                type: string
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              message:
+                type: string
+
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              message:
+                type: string
+
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              message:
+                type: string

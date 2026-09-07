@@ -1,0 +1,42 @@
+﻿# Immobillier Development Guidelines
+
+Auto-generated from all feature plans. Last updated: 2025-12-14
+
+## Active Technologies
+- PostgreSQL (via Prisma ORM) (006-rental-management)
+- PostgreSQL (via Prisma ORM) for data, local filesystem (`uploads/maintenance/<tenantId>/<ticketId>/`) for ticket attachments (007-maintenance-incidents)
+- PostgreSQL (via Prisma ORM) for data, local filesystem (`uploads/portal/payments/<tenantId>/<declarationId>/` and `uploads/maintenance/<tenantId>/<ticketId>/` for existing maintenance module) for file uploads (008-tenant-portal)
+- PostgreSQL (via Prisma ORM) for data, local filesystem for generated reports (`reports/owner/<ownerId>/<reportId>.pdf`) (009-owner-portal)
+- TypeScript (Node.js backend), TypeScript (React frontend) + Express (API), React, Prisma ORM (011-in-app-notifications-messaging)
+- PostgreSQL via Prisma ; tables `in_app_notifications`, `conversations`, `conversation_participants`, `messages`, `message_read_receipts` (011-in-app-notifications-messaging)
+- TypeScript (Node.js backend), TypeScript (React frontend) + Express (API), React, Prisma ORM, nodemailer (012-newsletter-mailing)
+- PostgreSQL via Prisma ; tables `newsletter_lists`, `newsletter_subscribers`, `newsletter_campaigns`, `newsletter_campaign_recipients`, `newsletter_templates` (012-newsletter-mailing)
+- TypeScript sur Next.js 14+ (App Router) côté frontend et API routes backend + Next.js, React, TypeScript, Prisma ORM, Zod, JWT auth middleware, Twilio WhatsApp, SMTP email, Tailwind CSS (013-syndic-module)
+- PostgreSQL via Prisma, avec schéma multi-tenant (filtrage strict par `organization_id`) (013-syndic-module)
+
+- TypeScript 5.3 (strict mode), Node.js >=18.x (LTS) (003-multi-tenant-rbac)
+
+## Project Structure
+
+```text
+backend/
+frontend/
+tests/
+```
+
+## Commands
+
+npm test; npm run lint
+
+## Code Style
+
+TypeScript 5.3 (strict mode), Node.js >=18.x (LTS): Follow standard conventions
+
+## Recent Changes
+- 013-syndic-module: Added TypeScript sur Next.js 14+ (App Router) côté frontend et API routes backend + Next.js, React, TypeScript, Prisma ORM, Zod, JWT auth middleware, Twilio WhatsApp, SMTP email, Tailwind CSS
+- 012-newsletter-mailing: Added TypeScript (Node.js backend), TypeScript (React frontend) + Express (API), React, Prisma ORM, nodemailer
+- 011-in-app-notifications-messaging: Added TypeScript (Node.js backend), TypeScript (React frontend) + Express (API), React, Prisma ORM
+
+
+<!-- MANUAL ADDITIONS START -->
+<!-- MANUAL ADDITIONS END -->

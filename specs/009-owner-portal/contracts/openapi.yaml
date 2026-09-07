@@ -1,0 +1,1363 @@
+openapi: 3.0.0
+info:
+  title: Owner Portal API
+  version: 1.0.0
+  description: API for Owner Portal Module - self-service portal for property owners to view property portfolio, track rental income, monitor leases and payments, manage maintenance, access documents, and generate reports
+
+servers:
+  - url: http://localhost:8001/api
+    description: Development server
+  - url: https://api.immotopia.com/api
+    description: Production server
+
+tags:
+  - name: Dashboard
+    description: Owner portal dashboard and portfolio overview
+  - name: Properties
+    description: Property portfolio management
+  - name: Leases
+    description: Lease management and details
+  - name: Revenues
+    description: Rental income and revenue analytics
+  - name: Installments
+    description: Payment installment tracking
+  - name: Payments
+    description: Payment history and details
+  - name: Deposits
+    description: Security deposit management
+  - name: Maintenance
+    description: Maintenance ticket tracking
+  - name: Documents
+    description: Rental document access and download
+  - name: Reports
+    description: Report generation and export
+
+security:
+  - bearerAuth: []
+
+paths:
+  # Dashboard
+  /portal/owner/dashboard:
+    get:
+      tags: [Dashboard]
+      summary: Get owner dashboard
+      description: Get comprehensive dashboard with property portfolio summary, revenue metrics, occupancy rate, upcoming payments, and recent activity
+      responses:
+        '200':
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Dashboard'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  # Properties
+  /portal/owner/properties:
+    get:
+      tags: [Properties]
+      summary: List properties
+      description: Get list of all properties owned by the user with optional filters
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, UNDER_REVIEW, AVAILABLE, RESERVED, RENTED, SOLD, UNDER_MAINTENANCE, UNAVAILABLE]
+        - name: propertyType
+          in: query
+          schema:
+            type: string
+        - name: transactionMode
+          in: query
+          schema:
+            type: string
+            enum: [SALE, RENTAL, SHORT_TERM]
+      responses:
+        '200':
+          description: Properties list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/PropertiesList'
+
+  /portal/owner/properties/{propertyId}:
+    get:
+      tags: [Properties]
+      summary: Get property details
+      description: Get detailed property information including current lease, lease history, revenue statistics, and maintenance history
+      parameters:
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Property details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/PropertyDetails'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Leases
+  /portal/owner/leases:
+    get:
+      tags: [Leases]
+      summary: List leases
+      description: Get list of all leases for owner's properties with optional filters
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, ACTIVE, SUSPENDED, ENDED, CANCELED]
+        - name: propertyId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Leases list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/LeasesList'
+
+  /portal/owner/leases/{leaseId}:
+    get:
+      tags: [Leases]
+      summary: Get lease details
+      description: Get complete lease information including tenant details, payment history, installment schedule, balance, and security deposit
+      parameters:
+        - name: leaseId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Lease details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/LeaseDetails'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Revenues
+  /portal/owner/revenues:
+    get:
+      tags: [Revenues]
+      summary: Get revenue data
+      description: Get revenue data with optional filters and grouping
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: groupBy
+          in: query
+          schema:
+            type: string
+            enum: [month, year, property]
+        - name: propertyId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Revenue data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/RevenueData'
+
+  /portal/owner/revenues/summary:
+    get:
+      tags: [Revenues]
+      summary: Get revenue summary
+      description: Get revenue summary with current month, current year, all-time totals, and average monthly revenue
+      responses:
+        '200':
+          description: Revenue summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/RevenueSummary'
+
+  /portal/owner/revenues/by-property:
+    get:
+      tags: [Revenues]
+      summary: Get revenue by property
+      description: Get revenue breakdown by property showing total revenue, payment count, and average monthly revenue per property
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [current_month, current_year, all_time]
+      responses:
+        '200':
+          description: Revenue by property
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/RevenueByProperty'
+
+  /portal/owner/revenues/by-month:
+    get:
+      tags: [Revenues]
+      summary: Get revenue by month
+      description: Get monthly revenue breakdown for a specific year
+      parameters:
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int32
+      responses:
+        '200':
+          description: Revenue by month
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/RevenueByMonth'
+
+  # Installments
+  /portal/owner/installments:
+    get:
+      tags: [Installments]
+      summary: List installments
+      description: Get list of all payment installments for owner's properties with optional filters
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, DUE, PARTIAL, PAID, OVERDUE, CANCELED]
+        - name: propertyId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Installments list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/InstallmentsList'
+
+  # Payments
+  /portal/owner/payments:
+    get:
+      tags: [Payments]
+      summary: List payments
+      description: Get list of all rental payments received for owner's properties with optional filters
+      parameters:
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: propertyId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: method
+          in: query
+          schema:
+            type: string
+            enum: [CASH, BANK_TRANSFER, MOBILE_MONEY, CHECK, CARD]
+      responses:
+        '200':
+          description: Payments list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/PaymentsList'
+
+  /portal/owner/payments/{paymentId}:
+    get:
+      tags: [Payments]
+      summary: Get payment details
+      description: Get detailed payment information including allocations to installments
+      parameters:
+        - name: paymentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Payment details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/PaymentDetails'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Deposits
+  /portal/owner/deposits:
+    get:
+      tags: [Deposits]
+      summary: List security deposits
+      description: Get list of all security deposits for owner's properties
+      responses:
+        '200':
+          description: Deposits list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/DepositsList'
+
+  /portal/owner/deposits/{depositId}/movements:
+    get:
+      tags: [Deposits]
+      summary: Get deposit movements
+      description: Get deposit movement history for a specific deposit
+      parameters:
+        - name: depositId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Deposit movements
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/DepositMovements'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Maintenance
+  /portal/owner/maintenance:
+    get:
+      tags: [Maintenance]
+      summary: List maintenance tickets
+      description: Get list of all maintenance tickets for owner's properties with optional filters
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DECLARED, IN_PROGRESS, ASSIGNED, RESOLVED, CANCELED, CLOSED]
+        - name: propertyId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [LOW, MEDIUM, HIGH, URGENT]
+      responses:
+        '200':
+          description: Maintenance tickets list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MaintenanceTicketsList'
+
+  /portal/owner/maintenance/{ticketId}:
+    get:
+      tags: [Maintenance]
+      summary: Get maintenance ticket details
+      description: Get detailed maintenance ticket information including description, photos, comments, status history, and costs
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Maintenance ticket details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/MaintenanceTicketDetails'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Documents
+  /portal/owner/documents:
+    get:
+      tags: [Documents]
+      summary: List documents
+      description: Get list of all rental documents for owner's properties, grouped by document type
+      parameters:
+        - name: documentType
+          in: query
+          schema:
+            type: string
+        - name: propertyId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: leaseId
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Documents list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/DocumentsList'
+
+  /portal/owner/documents/{documentId}/download:
+    get:
+      tags: [Documents]
+      summary: Download document
+      description: Download a rental document file
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Document file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Reports
+  /portal/owner/reports/revenues:
+    get:
+      tags: [Reports]
+      summary: Generate revenue report
+      description: Generate a revenue report for a specific time period in PDF, CSV, or Excel format
+      parameters:
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: endDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: format
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [PDF, CSV, Excel]
+      responses:
+        '200':
+          description: Generated report file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /portal/owner/reports/occupancy:
+    get:
+      tags: [Reports]
+      summary: Generate occupancy report
+      description: Generate an occupancy report showing property occupancy rates and availability in PDF, CSV, or Excel format
+      parameters:
+        - name: format
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [PDF, CSV, Excel]
+      responses:
+        '200':
+          description: Generated report file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+
+  /portal/owner/reports/export:
+    post:
+      tags: [Reports]
+      summary: Export data
+      description: Export payment, installment, or lease data in CSV or Excel format
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportDataRequest'
+      responses:
+        '200':
+          description: Exported data file
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Dashboard:
+      type: object
+      properties:
+        properties:
+          type: object
+          properties:
+            total:
+              type: integer
+            rented:
+              type: integer
+            available:
+              type: integer
+            inMaintenance:
+              type: integer
+        revenues:
+          type: object
+          properties:
+            currentMonth:
+              type: number
+              format: decimal
+            currentYear:
+              type: number
+              format: decimal
+            lastMonth:
+              type: number
+              format: decimal
+            lastYear:
+              type: number
+              format: decimal
+        occupancy:
+          type: object
+          properties:
+            rate:
+              type: number
+              format: decimal
+            rentedUnits:
+              type: integer
+            totalUnits:
+              type: integer
+        upcomingPayments:
+          type: object
+          properties:
+            count:
+              type: integer
+            totalAmount:
+              type: number
+              format: decimal
+            installments:
+              type: array
+              items:
+                $ref: '#/components/schemas/Installment'
+        recentActivity:
+          type: object
+          properties:
+            recentPayments:
+              type: array
+              items:
+                $ref: '#/components/schemas/Payment'
+            recentTickets:
+              type: array
+              items:
+                $ref: '#/components/schemas/MaintenanceTicket'
+
+    PropertiesList:
+      type: object
+      properties:
+        properties:
+          type: array
+          items:
+            $ref: '#/components/schemas/Property'
+        summary:
+          type: object
+          properties:
+            total:
+              type: integer
+            available:
+              type: integer
+            rented:
+              type: integer
+            underMaintenance:
+              type: integer
+
+    Property:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        address:
+          type: string
+        propertyType:
+          type: string
+        status:
+          type: string
+        currentLease:
+          $ref: '#/components/schemas/Lease'
+        media:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyMedia'
+
+    PropertyDetails:
+      type: object
+      properties:
+        property:
+          $ref: '#/components/schemas/Property'
+        currentLease:
+          $ref: '#/components/schemas/Lease'
+        leaseHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/Lease'
+        revenueStats:
+          type: object
+          properties:
+            totalReceived:
+              type: number
+              format: decimal
+            currentMonthRevenue:
+              type: number
+              format: decimal
+            averageMonthlyRevenue:
+              type: number
+              format: decimal
+        maintenanceHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaintenanceTicket'
+
+    LeasesList:
+      type: object
+      properties:
+        leases:
+          type: array
+          items:
+            $ref: '#/components/schemas/Lease'
+        summary:
+          type: object
+          properties:
+            active:
+              type: integer
+            ended:
+              type: integer
+            suspended:
+              type: integer
+
+    Lease:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        property:
+          $ref: '#/components/schemas/Property'
+        primaryRenter:
+          $ref: '#/components/schemas/TenantClient'
+        monthlyRent:
+          type: number
+          format: decimal
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+
+    LeaseDetails:
+      type: object
+      properties:
+        lease:
+          $ref: '#/components/schemas/Lease'
+        renters:
+          type: array
+          items:
+            $ref: '#/components/schemas/TenantClient'
+        installments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Installment'
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Payment'
+        balance:
+          type: object
+          properties:
+            totalDue:
+              type: number
+              format: decimal
+            totalPaid:
+              type: number
+              format: decimal
+            remaining:
+              type: number
+              format: decimal
+        depositInfo:
+          $ref: '#/components/schemas/SecurityDeposit'
+
+    RevenueData:
+      type: object
+      properties:
+        totalRevenue:
+          type: number
+          format: decimal
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Payment'
+        breakdown:
+          type: object
+          additionalProperties:
+            type: array
+
+    RevenueSummary:
+      type: object
+      properties:
+        currentMonth:
+          type: number
+          format: decimal
+        lastMonth:
+          type: number
+          format: decimal
+        currentYear:
+          type: number
+          format: decimal
+        lastYear:
+          type: number
+          format: decimal
+        allTime:
+          type: number
+          format: decimal
+        averageMonthly:
+          type: number
+          format: decimal
+
+    RevenueByProperty:
+      type: object
+      properties:
+        properties:
+          type: array
+          items:
+            type: object
+            properties:
+              propertyId:
+                type: string
+                format: uuid
+              propertyName:
+                type: string
+              address:
+                type: string
+              totalRevenue:
+                type: number
+                format: decimal
+              paymentsCount:
+                type: integer
+              averageMonthly:
+                type: number
+                format: decimal
+
+    RevenueByMonth:
+      type: object
+      properties:
+        year:
+          type: integer
+        months:
+          type: array
+          items:
+            type: object
+            properties:
+              month:
+                type: integer
+              monthName:
+                type: string
+              revenue:
+                type: number
+                format: decimal
+        totalYear:
+          type: number
+          format: decimal
+
+    InstallmentsList:
+      type: object
+      properties:
+        installments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Installment'
+        summary:
+          type: object
+          properties:
+            total:
+              type: integer
+            due:
+              type: integer
+            overdue:
+              type: integer
+            paid:
+              type: integer
+            totalAmount:
+              type: number
+              format: decimal
+            dueAmount:
+              type: number
+              format: decimal
+
+    Installment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        lease:
+          $ref: '#/components/schemas/Lease'
+        periodYear:
+          type: integer
+        periodMonth:
+          type: integer
+        dueDate:
+          type: string
+          format: date-time
+        status:
+          type: string
+        amountRent:
+          type: number
+          format: decimal
+        amountPaid:
+          type: number
+          format: decimal
+
+    PaymentsList:
+      type: object
+      properties:
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Payment'
+        summary:
+          type: object
+          properties:
+            total:
+              type: integer
+            totalAmount:
+              type: number
+              format: decimal
+            thisMonth:
+              type: number
+              format: decimal
+            thisYear:
+              type: number
+              format: decimal
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        lease:
+          $ref: '#/components/schemas/Lease'
+        amount:
+          type: number
+          format: decimal
+        date:
+          type: string
+          format: date-time
+        method:
+          type: string
+        status:
+          type: string
+
+    PaymentDetails:
+      type: object
+      properties:
+        payment:
+          $ref: '#/components/schemas/Payment'
+        allocations:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentAllocation'
+        lease:
+          $ref: '#/components/schemas/Lease'
+        property:
+          $ref: '#/components/schemas/Property'
+        renter:
+          $ref: '#/components/schemas/TenantClient'
+
+    PaymentAllocation:
+      type: object
+      properties:
+        installmentId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          format: decimal
+
+    DepositsList:
+      type: object
+      properties:
+        deposits:
+          type: array
+          items:
+            $ref: '#/components/schemas/SecurityDeposit'
+        summary:
+          type: object
+          properties:
+            total:
+              type: integer
+            totalHeld:
+              type: number
+              format: decimal
+            totalReleased:
+              type: number
+              format: decimal
+
+    SecurityDeposit:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        lease:
+          $ref: '#/components/schemas/Lease'
+        amount:
+          type: number
+          format: decimal
+        currentHeldAmount:
+          type: number
+          format: decimal
+        status:
+          type: string
+
+    DepositMovements:
+      type: object
+      properties:
+        deposit:
+          $ref: '#/components/schemas/SecurityDeposit'
+        movements:
+          type: array
+          items:
+            $ref: '#/components/schemas/DepositMovement'
+        currentHeldAmount:
+          type: number
+          format: decimal
+
+    DepositMovement:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        amount:
+          type: number
+          format: decimal
+        date:
+          type: string
+          format: date-time
+
+    MaintenanceTicketsList:
+      type: object
+      properties:
+        tickets:
+          type: array
+          items:
+            $ref: '#/components/schemas/MaintenanceTicket'
+        summary:
+          type: object
+          properties:
+            total:
+              type: integer
+            open:
+              type: integer
+            inProgress:
+              type: integer
+            resolved:
+              type: integer
+            totalCost:
+              type: number
+              format: decimal
+
+    MaintenanceTicket:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        property:
+          $ref: '#/components/schemas/Property'
+        category:
+          type: string
+        priority:
+          type: string
+        status:
+          type: string
+        title:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        totalCost:
+          type: number
+          format: decimal
+
+    MaintenanceTicketDetails:
+      type: object
+      properties:
+        ticket:
+          $ref: '#/components/schemas/MaintenanceTicket'
+        property:
+          $ref: '#/components/schemas/Property'
+        lease:
+          $ref: '#/components/schemas/Lease'
+        attachments:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketAttachment'
+        comments:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketComment'
+        statusHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatusHistory'
+
+    TicketAttachment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        fileUrl:
+          type: string
+        fileName:
+          type: string
+
+    TicketComment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        comment:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    StatusHistory:
+      type: object
+      properties:
+        status:
+          type: string
+        changedAt:
+          type: string
+          format: date-time
+
+    DocumentsList:
+      type: object
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/Document'
+        groupedByType:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/Document'
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+        documentNumber:
+          type: string
+        generatedAt:
+          type: string
+          format: date-time
+        fileUrl:
+          type: string
+
+    ExportDataRequest:
+      type: object
+      required:
+        - dataType
+        - format
+      properties:
+        dataType:
+          type: string
+          enum: [payments, installments, leases]
+        format:
+          type: string
+          enum: [CSV, Excel]
+        filters:
+          type: object
+
+    PropertyMedia:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        fileUrl:
+          type: string
+        isPrimary:
+          type: boolean
+
+    TenantClient:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              message:
+                type: string
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              message:
+                type: string
+
+    Forbidden:
+      description: Forbidden - user does not own the requested property/resource
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              message:
+                type: string
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success:
+                type: boolean
+                example: false
+              message:
+                type: string

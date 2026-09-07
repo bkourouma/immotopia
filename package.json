@@ -1,0 +1,20 @@
+{
+  "name": "immotopia",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix packages/api\" \"npm run dev --prefix apps/web\"",
+    "dev:api": "npm run dev --prefix packages/api",
+    "dev:web": "npm run dev --prefix apps/web",
+    "build": "npm run build --prefix packages/api && npm run build --prefix apps/web",
+    "build:api": "npm run build --prefix packages/api",
+    "build:web": "npm run build --prefix apps/web"
+  },
+  "devDependencies": {
+    "chrome-devtools-mcp": "^0.10.1",
+    "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "puppeteer": "^24.29.1"
+  }
+}

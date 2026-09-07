@@ -1,0 +1,91 @@
+import React, { useMemo, useState } from 'react';
+import { Button, Card, Empty, Select, Space, Typography } from 'antd';
+import { MeetingResolution, SyndicateLot, VoteChoice } from '../../types/syndic-types';
+
+const { Paragraph, Text, Title } = Typography;
+
+interface MeetingAgendaProps {
+  resolutions: MeetingResolution[];
+  lots: SyndicateLot[];
+  onVote: (resolutionId: string, lotId: string, vote: VoteChoice) => Promise<void>;
+  voting?: boolean;
+}
+
+export const MeetingAgenda: React.FC<MeetingAgendaProps> = ({ resolutions, lots, onVote, voting = false }) => {
+  const [selectedLotsByResolution, setSelectedLotsByResolution] = useState<Record<string, string>>({});
+
+  if (resolutions.length === 0) {
+    return <Empty description="Aucune resolution enregistree" />;
+  }
+
+  const lotOptions = useMemo(
+    () =>
+      lots.map((lot) => ({
+        value: lot.id,
+        label: `${lot.lotNumber} (${lot.lotType})`,
+      })),
+    [lots]
+  );
+
+  const getSelectedLotId = (resolutionId: string) => selectedLotsByResolution[resolutionId] || lots[0]?.id;
+
+  const handleSelectLot = (resolutionId: string, lotId: string) => {
+    setSelectedLotsByResolution((prev) => ({ ...prev, [resolutionId]: lotId }));
+  };
+
+  const handleVoteClick = async (resolutionId: string, vote: VoteChoice) => {
+    const lotId = getSelectedLotId(resolutionId);
+    if (!lotId) return;
+    await onVote(resolutionId, lotId, vote);
+  };
+
+  return (
+    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      {resolutions.map((resolution, index) => (
+        <Card key={resolution.id}>
+          <Space direction="vertical" size={8} style={{ width: '100%' }}>
+            <Title level={5} style={{ margin: 0 }}>
+              Resolution {index + 1}: {resolution.title}
+            </Title>
+            {resolution.description ? <Paragraph type="secondary">{resolution.description}</Paragraph> : null}
+            <Space>
+              <Text type="secondary">Majorite:</Text>
+              <Text>{resolution.majorityRule || 'Simple'}</Text>
+            </Space>
+            <Space>
+              <Text type="secondary">Votes:</Text>
+              <Text>Pour {resolution.votesFor}</Text>
+              <Text>Contre {resolution.votesAgainst}</Text>
+              <Text>Abstention {resolution.votesAbstain}</Text>
+            </Space>
+
+            {lots.length > 0 ? (
+              <Space wrap>
+                <Text type="secondary">Lot votant :</Text>
+                <Select
+                  size="small"
+                  style={{ minWidth: 220 }}
+                  value={getSelectedLotId(resolution.id)}
+                  options={lotOptions}
+                  onChange={(value) => handleSelectLot(resolution.id, value)}
+                  disabled={voting}
+                />
+                <Button size="small" onClick={() => void handleVoteClick(resolution.id, 'FOR')} loading={voting}>
+                  Pour
+                </Button>
+                <Button size="small" onClick={() => void handleVoteClick(resolution.id, 'AGAINST')} loading={voting}>
+                  Contre
+                </Button>
+                <Button size="small" onClick={() => void handleVoteClick(resolution.id, 'ABSTAIN')} loading={voting}>
+                  Abstention
+                </Button>
+              </Space>
+            ) : (
+              <Text type="secondary">Aucun lot disponible pour voter.</Text>
+            )}
+          </Space>
+        </Card>
+      ))}
+    </Space>
+  );
+};

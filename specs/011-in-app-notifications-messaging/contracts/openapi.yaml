@@ -1,0 +1,659 @@
+openapi: 3.0.0
+info:
+  title: In-App Notifications & Messaging API
+  version: 1.0.0
+  description: API for in-app persistent notifications and internal messaging (conversations, messages) — feature 011
+
+servers:
+  - url: http://localhost:8001/api
+    description: Development
+  - url: https://api.immotopia.com/api
+    description: Production
+
+tags:
+  - name: In-App Notifications
+    description: Persistent notifications and badge
+  - name: Conversations
+    description: Direct and group conversations
+  - name: Messages
+    description: Messages and read receipts
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ---------------------------------------------------------------------------
+  # IN-APP NOTIFICATIONS
+  # ---------------------------------------------------------------------------
+  /tenants/{tenantId}/notifications:
+    get:
+      tags: [In-App Notifications]
+      summary: List my notifications
+      description: Returns paginated list of in-app notifications for the current user (recipient resolved from auth + tenant). Excludes expired.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [UNREAD, READ, ARCHIVED]
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [ANNOUNCEMENT, ALERT, NOTIFICATION]
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [LOW, NORMAL, HIGH, URGENT]
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Notifications and pagination
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InAppNotification'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenants/{tenantId}/notifications/stats:
+    get:
+      tags: [In-App Notifications]
+      summary: Get notification stats (badge)
+      description: Returns unread count and optional breakdown by priority/type for the current user.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenants/{tenantId}/notifications/{notificationId}/read:
+    patch:
+      tags: [In-App Notifications]
+      summary: Mark one notification as read
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/NotificationId'
+      responses:
+        '200':
+          description: Updated notification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InAppNotification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tenants/{tenantId}/notifications/mark-read:
+    post:
+      tags: [In-App Notifications]
+      summary: Mark multiple notifications as read
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [notificationIds]
+              properties:
+                notificationIds:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenants/{tenantId}/notifications/mark-all-read:
+    post:
+      tags: [In-App Notifications]
+      summary: Mark all my notifications as read
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenants/{tenantId}/notifications/{notificationId}/archive:
+    patch:
+      tags: [In-App Notifications]
+      summary: Archive one notification
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/NotificationId'
+      responses:
+        '200':
+          description: Updated notification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InAppNotification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tenants/{tenantId}/notifications/archive-multiple:
+    post:
+      tags: [In-App Notifications]
+      summary: Archive multiple notifications
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [notificationIds]
+              properties:
+                notificationIds:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenants/{tenantId}/notifications/{notificationId}:
+    delete:
+      tags: [In-App Notifications]
+      summary: Delete one notification
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/NotificationId'
+      responses:
+        '200':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # CONVERSATIONS
+  # ---------------------------------------------------------------------------
+  /tenants/{tenantId}/messages/conversations:
+    get:
+      tags: [Conversations]
+      summary: List my conversations
+      description: Returns conversations where current user is an active participant. Optional filter includeArchived.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: includeArchived
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: List of conversations with last message and participant info
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConversationListItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Conversations]
+      summary: Create conversation (direct or group)
+      description: For direct, can use get-or-create semantics (existing conversation between two participants returned if any). For group, provide title (optional) and participantIds.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, participantIds]
+              properties:
+                type:
+                  type: string
+                  enum: [DIRECT, GROUP]
+                title:
+                  type: string
+                participantIds:
+                  type: array
+                  items:
+                    type: object
+                    required: [participantType, participantId]
+                    properties:
+                      participantType:
+                        type: string
+                        enum: [AGENCY_USER, RENTER, OWNER, CONTACT]
+                      participantId:
+                        type: string
+      responses:
+        '200':
+        '201':
+          description: Created or existing conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '400':
+          description: Invalid payload (e.g. DIRECT with != 2 participants)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenants/{tenantId}/messages/conversations/{conversationId}:
+    get:
+      tags: [Conversations]
+      summary: Get conversation detail
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ConversationId'
+      responses:
+        '200':
+          description: Conversation with participants
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Conversations]
+      summary: Archive conversation
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [ARCHIVED]
+      responses:
+        '200':
+          description: Updated conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # MESSAGES
+  # ---------------------------------------------------------------------------
+  /tenants/{tenantId}/messages/conversations/{conversationId}/messages:
+    get:
+      tags: [Messages]
+      summary: List messages (paginated)
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ConversationId'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: before
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Cursor for pagination (messages before this date)
+      responses:
+        '200':
+          description: Messages in chronological order and pagination
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [Messages]
+      summary: Send message
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                attachments:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      url:
+                        type: string
+                      type:
+                        type: string
+                      size:
+                        type: integer
+      responses:
+        '201':
+          description: Message created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '400':
+          description: Invalid content or attachments
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tenants/{tenantId}/messages/conversations/{conversationId}/read:
+    post:
+      tags: [Messages]
+      summary: Mark messages as read
+      description: Updates participant last_read_at and last_read_message_id; creates read receipts for messages up to lastMessageId.
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ConversationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lastMessageId]
+              properties:
+                lastMessageId:
+                  type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        type: string
+    NotificationId:
+      name: notificationId
+      in: path
+      required: true
+      schema:
+        type: string
+    ConversationId:
+      name: conversationId
+      in: path
+      required: true
+      schema:
+        type: string
+
+  schemas:
+    InAppNotification:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        message: { type: string }
+        type: { type: string; enum: [ANNOUNCEMENT, ALERT, NOTIFICATION] }
+        priority: { type: string; enum: [LOW, NORMAL, HIGH, URGENT] }
+        status: { type: string; enum: [UNREAD, READ, ARCHIVED] }
+        actionUrl: { type: string; nullable: true }
+        relatedEntityType: { type: string; nullable: true }
+        relatedEntityId: { type: string; nullable: true }
+        createdAt: { type: string; format: date-time }
+        readAt: { type: string; format: date-time; nullable: true }
+        createdBy:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string }
+            fullName: { type: string }
+            avatarUrl: { type: string; nullable: true }
+
+    NotificationStats:
+      type: object
+      properties:
+        unreadCount: { type: integer }
+        readCount: { type: integer }
+        archivedCount: { type: integer }
+        totalCount: { type: integer }
+        byPriority:
+          type: object
+          properties:
+            low: { type: integer }
+            normal: { type: integer }
+            high: { type: integer }
+            urgent: { type: integer }
+        byType:
+          type: object
+          properties:
+            announcement: { type: integer }
+            alert: { type: integer }
+            notification: { type: integer }
+
+    Pagination:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+        totalPages: { type: integer }
+
+    Conversation:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string; enum: [DIRECT, GROUP] }
+        status: { type: string; enum: [ACTIVE, ARCHIVED, DELETED] }
+        title: { type: string; nullable: true }
+        lastMessageAt: { type: string; format: date-time; nullable: true }
+        lastMessagePreview: { type: string; nullable: true }
+        createdAt: { type: string; format: date-time }
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParticipantInfo'
+
+    ConversationListItem:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string; enum: [DIRECT, GROUP] }
+        status: { type: string }
+        title: { type: string; nullable: true }
+        lastMessageAt: { type: string; format: date-time; nullable: true }
+        lastMessagePreview: { type: string; nullable: true }
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParticipantInfo'
+        unreadCount: { type: integer; description: optional }
+
+    ParticipantInfo:
+      type: object
+      properties:
+        id: { type: string }
+        participantType: { type: string; enum: [AGENCY_USER, RENTER, OWNER, CONTACT] }
+        participantId: { type: string }
+        fullName: { type: string }
+        avatarUrl: { type: string; nullable: true }
+
+    Message:
+      type: object
+      properties:
+        id: { type: string }
+        conversationId: { type: string }
+        senderType: { type: string }
+        senderId: { type: string }
+        senderName: { type: string }
+        content: { type: string }
+        attachments: { type: array; items: { type: object }; nullable: true }
+        isSystemMessage: { type: boolean }
+        status: { type: string; enum: [SENT, DELIVERED, READ] }
+        createdAt: { type: string; format: date-time }
+        readReceipts:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              readerId: { type: string }
+              readAt: { type: string; format: date-time }
+
+  responses:
+    Unauthorized:
+      description: Not authenticated
+    Forbidden:
+      description: Not allowed for this tenant or resource
+    NotFound:
+      description: Resource not found

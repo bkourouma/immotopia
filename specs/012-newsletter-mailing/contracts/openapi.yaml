@@ -1,0 +1,865 @@
+openapi: 3.0.0
+info:
+  title: Newsletter & Mailing API
+  version: 1.0.0
+  description: API pour la gestion des listes de diffusion, abonnés, campagnes et templates newsletter — feature 012
+
+servers:
+  - url: http://localhost:8001/api
+    description: Development
+  - url: https://api.immotopia.com/api
+    description: Production
+
+tags:
+  - name: Newsletter Lists
+    description: Listes de diffusion
+  - name: Subscribers
+    description: Abonnés
+  - name: Campaigns
+    description: Campagnes
+  - name: Templates
+    description: Templates newsletter
+  - name: Public
+    description: Endpoints publics (sans auth)
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ---------------------------------------------------------------------------
+  # LISTS (authentifiés)
+  # ---------------------------------------------------------------------------
+  /tenants/{tenantId}/newsletter/lists:
+    get:
+      tags: [Newsletter Lists]
+      summary: Lister les listes
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Liste des listes avec compteurs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NewsletterListWithCounts'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Newsletter Lists]
+      summary: Créer une liste
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, type]
+              properties:
+                name:
+                  type: string
+                type:
+                  type: string
+                  enum: [MANUAL, FROM_OWNERS, FROM_RENTERS, FROM_CRM_CONTACTS]
+                double_opt_in:
+                  type: boolean
+                  default: true
+      responses:
+        '201':
+          description: Liste créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsletterList'
+        '400':
+          description: Nom dupliqué ou type invalide
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenants/{tenantId}/newsletter/lists/{listId}:
+    get:
+      tags: [Newsletter Lists]
+      summary: Détail d'une liste
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ListId'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsletterListWithCounts'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Newsletter Lists]
+      summary: Modifier une liste
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ListId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                double_opt_in:
+                  type: boolean
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsletterList'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Newsletter Lists]
+      summary: Supprimer une liste
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ListId'
+      responses:
+        '204':
+          description: Supprimé
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tenants/{tenantId}/newsletter/lists/{listId}/subscribers:
+    get:
+      tags: [Subscribers]
+      summary: Lister les abonnés (paginated)
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ListId'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING_CONFIRMATION, ACTIVE, UNSUBSCRIBED]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscribers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NewsletterSubscriber'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      tags: [Subscribers]
+      summary: Ajouter un abonné manuellement (listes MANUAL uniquement)
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ListId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                name:
+                  type: string
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsletterSubscriber'
+        '400':
+          description: Liste dérivée ou email dupliqué
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tenants/{tenantId}/newsletter/lists/{listId}/import:
+    post:
+      tags: [Subscribers]
+      summary: Importer des abonnés via CSV (listes MANUAL uniquement)
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ListId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: integer
+                  rejected:
+                    type: integer
+                  duplicateCount:
+                    type: integer
+                  errors:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Liste dérivée ou fichier invalide
+
+  /tenants/{tenantId}/newsletter/lists/{listId}/export:
+    get:
+      tags: [Subscribers]
+      summary: Exporter les abonnés en CSV
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/ListId'
+      responses:
+        '200':
+          description: Fichier CSV
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+
+  /tenants/{tenantId}/newsletter/subscribers/{subscriberId}:
+    delete:
+      tags: [Subscribers]
+      summary: Retirer un abonné (listes MANUAL)
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: subscriberId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Retiré
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ---------------------------------------------------------------------------
+  # CAMPAIGNS
+  # ---------------------------------------------------------------------------
+  /tenants/{tenantId}/newsletter/campaigns:
+    get:
+      tags: [Campaigns]
+      summary: Historique des campagnes
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, SCHEDULED, SENDING, SENT, CANCELLED, FAILED]
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  campaigns:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NewsletterCampaignSummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+    post:
+      tags: [Campaigns]
+      summary: Créer une campagne
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [listId, subject, bodyHtml]
+              properties:
+                listId:
+                  type: string
+                templateId:
+                  type: string
+                subject:
+                  type: string
+                bodyHtml:
+                  type: string
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsletterCampaign'
+        '400':
+          description: liste invalide ou {{lien_desinscription}} manquant
+
+  /tenants/{tenantId}/newsletter/campaigns/{campaignId}:
+    get:
+      tags: [Campaigns]
+      summary: Détail d'une campagne avec stats
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsletterCampaignWithStats'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Campaigns]
+      summary: Modifier une campagne (DRAFT uniquement)
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subject:
+                  type: string
+                bodyHtml:
+                  type: string
+                templateId:
+                  type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsletterCampaign'
+        '400':
+          description: Campagne non modifiable (déjà envoyée)
+
+  /tenants/{tenantId}/newsletter/campaigns/{campaignId}/send:
+    post:
+      tags: [Campaigns]
+      summary: Envoyer immédiatement
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Envoi lancé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsletterCampaign'
+        '400':
+          description: Campagne non en statut DRAFT ou validation échouée
+
+  /tenants/{tenantId}/newsletter/campaigns/{campaignId}/schedule:
+    post:
+      tags: [Campaigns]
+      summary: Planifier l'envoi
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scheduledAt]
+              properties:
+                scheduledAt:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsletterCampaign'
+        '400':
+          description: Date passée ou campagne non DRAFT
+
+  /tenants/{tenantId}/newsletter/campaigns/{campaignId}/cancel:
+    post:
+      tags: [Campaigns]
+      summary: Annuler une campagne planifiée
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsletterCampaign'
+        '400':
+          description: Campagne non SCHEDULED ou déjà envoyée
+
+  /tenants/{tenantId}/newsletter/campaigns/{campaignId}/preview:
+    get:
+      tags: [Campaigns]
+      summary: Aperçu avec données exemple
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subject:
+                    type: string
+                  html:
+                    type: string
+
+  /tenants/{tenantId}/newsletter/campaigns/{campaignId}/recipients:
+    get:
+      tags: [Campaigns]
+      summary: Log des destinataires (résultats d'envoi)
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: campaignId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recipients:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NewsletterCampaignRecipient'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  # ---------------------------------------------------------------------------
+  # TEMPLATES
+  # ---------------------------------------------------------------------------
+  /tenants/{tenantId}/newsletter/templates:
+    get:
+      tags: [Templates]
+      summary: Lister les templates
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NewsletterTemplate'
+
+    post:
+      tags: [Templates]
+      summary: Créer un template
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, html]
+              properties:
+                name:
+                  type: string
+                html:
+                  type: string
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsletterTemplate'
+
+  /tenants/{tenantId}/newsletter/templates/{templateId}:
+    get:
+      tags: [Templates]
+      summary: Détail d'un template
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsletterTemplate'
+
+    patch:
+      tags: [Templates]
+      summary: Modifier un template
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                html:
+                  type: string
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NewsletterTemplate'
+
+    delete:
+      tags: [Templates]
+      summary: Supprimer un template
+      description: Bloqué si utilisé par une campagne SCHEDULED
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Supprimé
+        '400':
+          description: Template en cours d'utilisation
+
+  # ---------------------------------------------------------------------------
+  # PUBLIC (sans auth)
+  # ---------------------------------------------------------------------------
+  /newsletter/subscribe:
+    post:
+      tags: [Public]
+      summary: Inscription publique (double opt-in)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                listId:
+                  type: string
+                listToken:
+                  type: string
+                  description: Token public de la liste (alternative à listId)
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Email de confirmation envoyé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '400':
+          description: Email invalide ou liste inexistante
+        '429':
+          description: Rate limit dépassé
+
+  /newsletter/confirm:
+    get:
+      tags: [Public]
+      summary: Confirmer l'inscription (lien dans l'email)
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Page ou redirect de succès
+        '400':
+          description: Token invalide ou expiré
+        '429':
+          description: Rate limit dépassé
+
+  /newsletter/unsubscribe:
+    get:
+      tags: [Public]
+      summary: Page de désinscription (lien unique dans l'email)
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Page de confirmation de désinscription
+        '400':
+          description: Token invalide
+        '429':
+          description: Rate limit dépassé
+
+    post:
+      tags: [Public]
+      summary: Désinscription (option toutes listes)
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                unsubscribeAll:
+                  type: boolean
+                  description: Désabonner de toutes les listes du tenant
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        type: string
+    ListId:
+      name: listId
+      in: path
+      required: true
+      schema:
+        type: string
+
+  schemas:
+    NewsletterList:
+      type: object
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        name: { type: string }
+        type: { type: string; enum: [MANUAL, FROM_OWNERS, FROM_RENTERS, FROM_CRM_CONTACTS] }
+        doubleOptIn: { type: boolean }
+        publicSubscribeToken: { type: string }
+        createdAt: { type: string; format: date-time }
+        updatedAt: { type: string; format: date-time }
+
+    NewsletterListWithCounts:
+      allOf:
+        - $ref: '#/components/schemas/NewsletterList'
+        - type: object
+          properties:
+            totalCount: { type: integer }
+            activeCount: { type: integer }
+            unsubscribedCount: { type: integer }
+
+    NewsletterSubscriber:
+      type: object
+      properties:
+        id: { type: string }
+        listId: { type: string }
+        email: { type: string }
+        name: { type: string }
+        status: { type: string; enum: [PENDING_CONFIRMATION, ACTIVE, UNSUBSCRIBED] }
+        subscribedAt: { type: string; format: date-time }
+        confirmedAt: { type: string; format: date-time }
+        unsubscribedAt: { type: string; format: date-time }
+
+    NewsletterCampaign:
+      type: object
+      properties:
+        id: { type: string }
+        listId: { type: string }
+        templateId: { type: string }
+        subject: { type: string }
+        status: { type: string; enum: [DRAFT, SCHEDULED, SENDING, SENT, CANCELLED, FAILED] }
+        scheduledAt: { type: string; format: date-time }
+        sentAt: { type: string; format: date-time }
+        createdAt: { type: string; format: date-time }
+        updatedAt: { type: string; format: date-time }
+
+    NewsletterCampaignSummary:
+      allOf:
+        - $ref: '#/components/schemas/NewsletterCampaign'
+        - type: object
+          properties:
+            listName: { type: string }
+
+    NewsletterCampaignWithStats:
+      allOf:
+        - $ref: '#/components/schemas/NewsletterCampaign'
+        - type: object
+          properties:
+            listName: { type: string }
+            sentCount: { type: integer }
+            failedCount: { type: integer }
+            unsubscribeCount: { type: integer }
+
+    NewsletterCampaignRecipient:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string }
+        status: { type: string; enum: [SENT, FAILED] }
+        sentAt: { type: string; format: date-time }
+        failureReason: { type: string }
+
+    NewsletterTemplate:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        html: { type: string }
+        createdAt: { type: string; format: date-time }
+        updatedAt: { type: string; format: date-time }
+
+    Pagination:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        limit: { type: integer }
+        totalPages: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: Non authentifié
+    Forbidden:
+      description: Accès refusé
+    NotFound:
+      description: Ressource introuvable

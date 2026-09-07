@@ -1,0 +1,913 @@
+openapi: 3.0.0
+info:
+  title: Syndic Module API
+  version: 1.1.0
+  description: >
+    Contrat OpenAPI du module syndic implémente côté API Express.
+    Toutes les routes sont tenant-scopées sous /api/tenants/{tenantId}/syndics.
+
+servers:
+  - url: https://api.immotopia.com/api
+    description: Production
+  - url: http://localhost:3000/api
+    description: Développement
+
+tags:
+  - name: Syndicates
+  - name: Lots
+  - name: Charges
+  - name: Meetings
+  - name: Providers
+  - name: Documents
+  - name: Funds
+
+paths:
+  /tenants/{tenantId}/syndics:
+    get:
+      tags: [Syndicates]
+      summary: Lister les copropriétés d'un tenant
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: Liste des copropriétés
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Syndicate'
+    post:
+      tags: [Syndicates]
+      summary: Créer une copropriété
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSyndicateRequest'
+      responses:
+        '201':
+          description: Copropriété créée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    $ref: '#/components/schemas/Syndicate'
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /tenants/{tenantId}/syndics/{syndicId}:
+    get:
+      tags: [Syndicates]
+      summary: Détail d'une copropriété
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+      responses:
+        '200':
+          description: Détail copropriété (inclut lots et compteurs)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    $ref: '#/components/schemas/Syndicate'
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Syndicates]
+      summary: Mettre à jour une copropriété
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSyndicateRequest'
+      responses:
+        '200':
+          description: Copropriété mise à jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    $ref: '#/components/schemas/Syndicate'
+    delete:
+      tags: [Syndicates]
+      summary: Archiver une copropriété
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+      responses:
+        '200':
+          description: Copropriété archivée
+
+  /tenants/{tenantId}/syndics/{syndicId}/lots:
+    get:
+      tags: [Lots]
+      summary: Lister les lots d'une copropriété
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+      responses:
+        '200':
+          description: Liste des lots
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SyndicateLot'
+    post:
+      tags: [Lots]
+      summary: Créer un lot
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLotRequest'
+      responses:
+        '201':
+          description: Lot créé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    $ref: '#/components/schemas/SyndicateLot'
+
+  /tenants/{tenantId}/syndics/{syndicId}/lots/{lotId}:
+    patch:
+      tags: [Lots]
+      summary: Mettre à jour un lot
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+        - $ref: '#/components/parameters/lotId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLotRequest'
+      responses:
+        '200':
+          description: Lot mis à jour
+
+  /tenants/{tenantId}/syndics/{syndicId}/charges:
+    get:
+      tags: [Charges]
+      summary: Lister les appels de charges
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+        - name: period
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, PARTIAL, PAID, OVERDUE]
+      responses:
+        '200':
+          description: Liste des appels de charges
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChargeCall'
+    post:
+      tags: [Charges]
+      summary: Créer un appel de charges
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChargeCallRequest'
+      responses:
+        '201':
+          description: Appel de charges créé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    $ref: '#/components/schemas/ChargeCall'
+
+  /tenants/{tenantId}/syndics/{syndicId}/charges/{chargeId}:
+    get:
+      tags: [Charges]
+      summary: Détail d'un appel de charges
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+        - $ref: '#/components/parameters/chargeId'
+      responses:
+        '200':
+          description: Détail d'appel de charges
+
+  /tenants/{tenantId}/syndics/{syndicId}/charges/{chargeId}/pay:
+    post:
+      tags: [Charges]
+      summary: Enregistrer un paiement
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+        - $ref: '#/components/parameters/chargeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateChargePaymentRequest'
+      responses:
+        '201':
+          description: Paiement enregistré
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    $ref: '#/components/schemas/ChargePayment'
+
+  /tenants/{tenantId}/syndics/{syndicId}/assemblees:
+    get:
+      tags: [Meetings]
+      summary: Lister les AG
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PLANNED, IN_PROGRESS, COMPLETED, CANCELLED]
+      responses:
+        '200':
+          description: Liste des AG
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GeneralMeeting'
+    post:
+      tags: [Meetings]
+      summary: Créer une AG
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMeetingRequest'
+      responses:
+        '201':
+          description: AG créée
+
+  /tenants/{tenantId}/syndics/{syndicId}/assemblees/{meetingId}:
+    get:
+      tags: [Meetings]
+      summary: Détail d'une AG
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+        - $ref: '#/components/parameters/meetingId'
+      responses:
+        '200':
+          description: Détail de l'AG
+
+  /tenants/{tenantId}/syndics/{syndicId}/assemblees/{meetingId}/resolutions:
+    post:
+      tags: [Meetings]
+      summary: Ajouter une résolution
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+        - $ref: '#/components/parameters/meetingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateResolutionRequest'
+      responses:
+        '201':
+          description: Résolution créée
+
+  /tenants/{tenantId}/syndics/{syndicId}/assemblees/{meetingId}/resolutions/{resolutionId}/votes:
+    post:
+      tags: [Meetings]
+      summary: Voter une résolution
+      description: Retourne le meeting recalculé (quorum et compteurs).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+        - $ref: '#/components/parameters/meetingId'
+        - $ref: '#/components/parameters/resolutionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CastVoteRequest'
+      responses:
+        '200':
+          description: Vote enregistré
+
+  /tenants/{tenantId}/syndics/{syndicId}/prestataires:
+    get:
+      tags: [Providers]
+      summary: Lister prestataires, contrats et actifs communs
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+      responses:
+        '200':
+          description: Données prestataires
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    $ref: '#/components/schemas/SyndicProvidersPayload'
+
+  /tenants/{tenantId}/syndics/{syndicId}/contrats:
+    get:
+      tags: [Providers]
+      summary: Lister les contrats de maintenance
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, EXPIRED, TERMINATED]
+      responses:
+        '200':
+          description: Liste de contrats
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MaintenanceContract'
+    post:
+      tags: [Providers]
+      summary: Créer un contrat de maintenance
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContractRequest'
+      responses:
+        '201':
+          description: Contrat créé
+
+  /tenants/{tenantId}/syndics/{syndicId}/contrats/{contractId}:
+    get:
+      tags: [Providers]
+      summary: Détail d'un contrat
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+        - $ref: '#/components/parameters/contractId'
+      responses:
+        '200':
+          description: Détail du contrat
+    patch:
+      tags: [Providers]
+      summary: Mettre à jour un contrat
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+        - $ref: '#/components/parameters/contractId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateContractRequest'
+      responses:
+        '200':
+          description: Contrat mis à jour
+    delete:
+      tags: [Providers]
+      summary: Supprimer un contrat
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+        - $ref: '#/components/parameters/contractId'
+      responses:
+        '200':
+          description: Contrat supprimé
+
+  /tenants/{tenantId}/syndics/{syndicId}/documents:
+    get:
+      tags: [Documents]
+      summary: Lister les documents de copropriété
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [REGULATION, GENERAL_MEETING_MINUTES, DIAGNOSTIC, INSURANCE, BUDGET, OTHER]
+      responses:
+        '200':
+          description: Documents de copropriété
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SyndicateDocument'
+
+  /tenants/{tenantId}/syndics/{syndicId}/finances:
+    get:
+      tags: [Funds]
+      summary: Synthèse financière de copropriété
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/syndicId'
+      responses:
+        '200':
+          description: Fonds + totaux
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    $ref: '#/components/schemas/FinanceSummary'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    tenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    syndicId:
+      name: syndicId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    lotId:
+      name: lotId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    chargeId:
+      name: chargeId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    meetingId:
+      name: meetingId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    resolutionId:
+      name: resolutionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    contractId:
+      name: contractId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: Requête invalide
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+  schemas:
+    ApiError:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        error: { type: string }
+
+    Syndicate:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        name: { type: string }
+        address: { type: string }
+        cadastralReference: { type: string, nullable: true }
+        totalLots: { type: integer }
+        totalBuildings: { type: integer }
+        status:
+          type: string
+          enum: [ACTIVE, IN_LIQUIDATION, IN_DISPUTE]
+        regulationDocUrl: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        lots:
+          type: array
+          items: { $ref: '#/components/schemas/SyndicateLot' }
+          nullable: true
+        _count:
+          type: object
+          properties:
+            lots: { type: integer }
+          nullable: true
+
+    SyndicateLot:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        syndicateId: { type: string, format: uuid }
+        propertyId: { type: string, format: uuid, nullable: true }
+        ownerContactId: { type: string, format: uuid, nullable: true }
+        lotNumber: { type: string }
+        lotType:
+          type: string
+          enum: [APARTMENT, PARKING, CELLAR, OFFICE, COMMERCIAL, OTHER]
+        generalShares: { type: integer }
+        specialShares: { type: integer, nullable: true }
+        ownerSince: { type: string, format: date-time, nullable: true }
+
+    ChargeCall:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        syndicateId: { type: string, format: uuid }
+        lotId: { type: string, format: uuid }
+        period: { type: string }
+        amount: { type: number, format: double }
+        currency: { type: string }
+        dueDate: { type: string, format: date-time }
+        status:
+          type: string
+          enum: [PENDING, PARTIAL, PAID, OVERDUE]
+        lot:
+          $ref: '#/components/schemas/SyndicateLot'
+          nullable: true
+
+    ChargePayment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        chargeCallId: { type: string, format: uuid }
+        amount: { type: number, format: double }
+        paidAt: { type: string, format: date-time }
+        method: { type: string, nullable: true }
+        reference: { type: string, nullable: true }
+
+    GeneralMeeting:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        syndicateId: { type: string, format: uuid }
+        type:
+          type: string
+          enum: [ORDINARY, EXTRAORDINARY]
+        scheduledAt: { type: string, format: date-time }
+        location: { type: string, nullable: true }
+        quorum: { type: number, format: double, nullable: true }
+        status:
+          type: string
+          enum: [PLANNED, IN_PROGRESS, COMPLETED, CANCELLED]
+        resolutions:
+          type: array
+          items: { $ref: '#/components/schemas/GMResolution' }
+          nullable: true
+
+    GMResolution:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        meetingId: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        majorityRule: { type: string, nullable: true }
+        result: { type: string, nullable: true }
+        votesFor: { type: integer }
+        votesAgainst: { type: integer }
+        votesAbstain: { type: integer }
+        sharesFor: { type: integer }
+
+    ServiceProvider:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tenantId: { type: string, format: uuid }
+        name: { type: string }
+        category: { type: string, nullable: true }
+        email: { type: string, nullable: true }
+        phone: { type: string, nullable: true }
+
+    MaintenanceContract:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        syndicateId: { type: string, format: uuid }
+        providerId: { type: string, format: uuid }
+        nature: { type: string }
+        startDate: { type: string, format: date-time }
+        endDate: { type: string, format: date-time, nullable: true }
+        annualAmount: { type: number, format: double, nullable: true }
+        currency: { type: string }
+        renewalAlertDays: { type: integer }
+        status:
+          type: string
+          enum: [ACTIVE, EXPIRED, TERMINATED]
+        provider:
+          $ref: '#/components/schemas/ServiceProvider'
+          nullable: true
+
+    CommonAreaAsset:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        syndicateId: { type: string, format: uuid }
+        name: { type: string }
+        category: { type: string, nullable: true }
+        status: { type: string, nullable: true }
+        nextMaintenanceDate: { type: string, format: date-time, nullable: true }
+
+    SyndicProvidersPayload:
+      type: object
+      properties:
+        providers:
+          type: array
+          items: { $ref: '#/components/schemas/ServiceProvider' }
+        contracts:
+          type: array
+          items: { $ref: '#/components/schemas/MaintenanceContract' }
+        commonAssets:
+          type: array
+          items: { $ref: '#/components/schemas/CommonAreaAsset' }
+
+    SyndicateDocument:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        syndicateId: { type: string, format: uuid }
+        title: { type: string }
+        type: { type: string }
+        fileUrl: { type: string }
+        expiresAt: { type: string, format: date-time, nullable: true }
+
+    SyndicateFund:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        syndicateId: { type: string, format: uuid }
+        name: { type: string }
+        balance: { type: number, format: double }
+        currency: { type: string }
+
+    FinanceTotals:
+      type: object
+      properties:
+        totalFundsBalance: { type: number, format: double }
+        totalCalled: { type: number, format: double }
+        totalPaid: { type: number, format: double }
+        totalOutstanding: { type: number, format: double }
+        overdueCount: { type: integer }
+        overdueAmount: { type: number, format: double }
+
+    FinanceSummary:
+      type: object
+      properties:
+        funds:
+          type: array
+          items: { $ref: '#/components/schemas/SyndicateFund' }
+        totals:
+          $ref: '#/components/schemas/FinanceTotals'
+
+    CreateSyndicateRequest:
+      type: object
+      required: [name, address]
+      properties:
+        name: { type: string }
+        address: { type: string }
+        cadastralReference: { type: string, nullable: true }
+        totalLots: { type: integer }
+        totalBuildings: { type: integer }
+
+    UpdateSyndicateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        address: { type: string }
+        cadastralReference: { type: string, nullable: true }
+        totalLots: { type: integer }
+        totalBuildings: { type: integer }
+        status:
+          type: string
+          enum: [ACTIVE, IN_LIQUIDATION, IN_DISPUTE]
+
+    CreateLotRequest:
+      type: object
+      required: [lotNumber, lotType, generalShares]
+      properties:
+        propertyId: { type: string, format: uuid }
+        ownerContactId: { type: string, format: uuid }
+        lotNumber: { type: string }
+        lotType:
+          type: string
+          enum: [APARTMENT, PARKING, CELLAR, OFFICE, COMMERCIAL, OTHER]
+        generalShares: { type: integer }
+        specialShares: { type: integer }
+        ownerSince: { type: string, format: date-time }
+
+    UpdateLotRequest:
+      type: object
+      properties:
+        propertyId: { type: string, format: uuid, nullable: true }
+        ownerContactId: { type: string, format: uuid, nullable: true }
+        lotNumber: { type: string }
+        lotType:
+          type: string
+          enum: [APARTMENT, PARKING, CELLAR, OFFICE, COMMERCIAL, OTHER]
+        generalShares: { type: integer }
+        specialShares: { type: integer, nullable: true }
+        ownerSince: { type: string, format: date-time, nullable: true }
+
+    CreateChargeCallRequest:
+      type: object
+      required: [lotId, period, amount, dueDate]
+      properties:
+        lotId: { type: string, format: uuid }
+        period: { type: string }
+        amount: { type: number, format: double }
+        currency: { type: string }
+        dueDate: { type: string, format: date-time }
+
+    CreateChargePaymentRequest:
+      type: object
+      required: [amount, paidAt]
+      properties:
+        amount: { type: number, format: double }
+        paidAt: { type: string, format: date-time }
+        method: { type: string }
+        reference: { type: string }
+
+    CreateMeetingRequest:
+      type: object
+      required: [type, scheduledAt]
+      properties:
+        type:
+          type: string
+          enum: [ORDINARY, EXTRAORDINARY]
+        scheduledAt: { type: string, format: date-time }
+        location: { type: string, nullable: true }
+        resolutions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateResolutionRequest'
+
+    CreateResolutionRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        majorityRule: { type: string }
+
+    CastVoteRequest:
+      type: object
+      required: [lotId, vote]
+      properties:
+        lotId: { type: string, format: uuid }
+        vote:
+          type: string
+          enum: [FOR, AGAINST, ABSTAIN]
+
+    CreateContractRequest:
+      type: object
+      required: [providerId, nature, startDate]
+      properties:
+        providerId: { type: string, format: uuid }
+        nature: { type: string }
+        startDate: { type: string, format: date-time }
+        endDate: { type: string, format: date-time, nullable: true }
+        annualAmount: { type: number, format: double, nullable: true }
+        currency: { type: string }
+        renewalAlertDays: { type: integer }
+        status:
+          type: string
+          enum: [ACTIVE, EXPIRED, TERMINATED]
+
+    UpdateContractRequest:
+      type: object
+      properties:
+        providerId: { type: string, format: uuid }
+        nature: { type: string }
+        startDate: { type: string, format: date-time }
+        endDate: { type: string, format: date-time, nullable: true }
+        annualAmount: { type: number, format: double, nullable: true }
+        currency: { type: string }
+        renewalAlertDays: { type: integer }
+        status:
+          type: string
+          enum: [ACTIVE, EXPIRED, TERMINATED]

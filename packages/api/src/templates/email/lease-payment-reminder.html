@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rappel d'échéance de loyer</title>
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+  <div style="background: #f5f5f5; padding: 20px; border-radius: 8px;">
+    <h2 style="color: #1890ff; margin-top: 0;">Rappel d'échéance de loyer</h2>
+    <p>Bonjour {{contactName}},</p>
+    <p>Nous vous rappelons que votre échéance de loyer est prévue le <strong>{{dueDate}}</strong>.</p>
+    <ul>
+      <li><strong>Montant dû :</strong> {{amount}} {{currency}}</li>
+      <li><strong>Référence bail :</strong> {{leaseId}}</li>
+    </ul>
+    <p>Merci d'effectuer votre paiement avant cette date.</p>
+    <p>Cordialement,<br/>{{tenant_name}}</p>
+  </div>
+</body>
+</html>

@@ -1,0 +1,1250 @@
+openapi: 3.0.0
+info:
+  title: CRM API
+  version: 1.0.0
+  description: API for CRM & Client Relationship Management - contacts, deals, activities, appointments, and property matching
+
+servers:
+  - url: http://localhost:5000/api
+    description: Development server
+  - url: https://api.immotopia.com/api
+    description: Production server
+
+tags:
+  - name: Contacts
+    description: Contact (prospect/client) management
+  - name: Deals
+    description: Deal pipeline and opportunity management
+  - name: Activities
+    description: Activity logging and interaction history
+  - name: Appointments
+    description: Appointment and visit scheduling
+  - name: Matching
+    description: Property matching for deals
+  - name: Dashboard
+    description: CRM dashboard and KPIs
+
+paths:
+  # Contacts
+  /tenants/{tenantId}/crm/contacts:
+    get:
+      tags: [Contacts]
+      summary: List contacts
+      description: Get paginated list of contacts with filtering
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [LEAD, ACTIVE_CLIENT, ARCHIVED]
+        - name: source
+          in: query
+          schema:
+            type: string
+        - name: assignedTo
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: tag
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by name or email
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of contacts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  contacts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Contact'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Contacts]
+      summary: Create contact
+      description: Create a new contact (prospect/client)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateContactRequest'
+      responses:
+        '201':
+          description: Contact created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Contact with this email already exists in tenant
+          $ref: '#/components/responses/Conflict'
+
+  /tenants/{tenantId}/crm/contacts/{contactId}:
+    get:
+      tags: [Contacts]
+      summary: Get contact
+      description: Get contact details with roles, activities, and deals
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/contactId'
+      responses:
+        '200':
+          description: Contact details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContactDetail'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Contacts]
+      summary: Update contact
+      description: Update contact information
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/contactId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateContactRequest'
+      responses:
+        '200':
+          description: Contact updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Contact with this email already exists in tenant
+          $ref: '#/components/responses/Conflict'
+
+  /tenants/{tenantId}/crm/contacts/{contactId}/convert:
+    post:
+      tags: [Contacts]
+      summary: Convert lead to client
+      description: Convert a lead contact to active client by assigning business roles
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/contactId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - roles
+              properties:
+                roles:
+                  type: array
+                  items:
+                    type: string
+                    enum: [PROPRIETAIRE, LOCATAIRE, COPROPRIETAIRE, ACQUEREUR]
+      responses:
+        '200':
+          description: Contact converted to client
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contact'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Deals
+  /tenants/{tenantId}/crm/deals:
+    get:
+      tags: [Deals]
+      summary: List deals
+      description: Get paginated list of deals with filtering
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [ACHAT, LOCATION]
+        - name: stage
+          in: query
+          schema:
+            type: string
+            enum: [NEW, QUALIFIED, APPOINTMENT, VISIT, NEGOTIATION, WON, LOST]
+        - name: assignedTo
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: contactId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of deals
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deals:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Deal'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Deals]
+      summary: Create deal
+      description: Create a new deal (opportunity)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDealRequest'
+      responses:
+        '201':
+          description: Deal created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tenants/{tenantId}/crm/deals/{dealId}:
+    get:
+      tags: [Deals]
+      summary: Get deal
+      description: Get deal details with activities and property matches
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/dealId'
+      responses:
+        '200':
+          description: Deal details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DealDetail'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Deals]
+      summary: Update deal
+      description: Update deal information (uses optimistic locking via version field)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/dealId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDealRequest'
+      responses:
+        '200':
+          description: Deal updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Version conflict - deal was modified by another user
+          $ref: '#/components/responses/Conflict'
+
+  # Activities
+  /tenants/{tenantId}/crm/activities:
+    get:
+      tags: [Activities]
+      summary: List activities
+      description: Get paginated list of activities with filtering
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: contactId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: dealId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [CALL, EMAIL, SMS, WHATSAPP, VISIT, MEETING, NOTE, TASK, CORRECTION]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of activities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Activity'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Activities]
+      summary: Create activity
+      description: Log a new activity (immutable - cannot be updated or deleted)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateActivityRequest'
+      responses:
+        '201':
+          description: Activity created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Activity'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Appointments
+  /tenants/{tenantId}/crm/appointments:
+    get:
+      tags: [Appointments]
+      summary: List appointments
+      description: Get paginated list of appointments with filtering
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: contactId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: dealId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: assignedTo
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [SCHEDULED, CONFIRMED, DONE, NO_SHOW, CANCELED]
+        - name: startDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: endDate
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of appointments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appointments:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Appointment'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags: [Appointments]
+      summary: Create appointment
+      description: Schedule a new appointment or visit
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAppointmentRequest'
+      responses:
+        '201':
+          description: Appointment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tenants/{tenantId}/crm/appointments/{appointmentId}:
+    patch:
+      tags: [Appointments]
+      summary: Update appointment
+      description: Update appointment status or details (confirm, cancel, mark done)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - name: appointmentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAppointmentRequest'
+      responses:
+        '200':
+          description: Appointment updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Matching
+  /tenants/{tenantId}/crm/deals/{dealId}/match:
+    post:
+      tags: [Matching]
+      summary: Match properties for deal
+      description: Run property matching algorithm for a deal and return ranked matches
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/dealId'
+      responses:
+        '200':
+          description: Property matches with scores
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PropertyMatch'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tenants/{tenantId}/crm/deals/{dealId}/matches:
+    get:
+      tags: [Matching]
+      summary: Get deal property matches
+      description: Get property matches (shortlist) for a deal
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/dealId'
+      responses:
+        '200':
+          description: Property matches for deal
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  matches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DealProperty'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tenants/{tenantId}/crm/deals/{dealId}/properties/{propertyId}:
+    post:
+      tags: [Matching]
+      summary: Update property match status
+      description: Update status of a property in deal shortlist (SHORTLISTED, PROPOSED, VISITED, REJECTED, SELECTED)
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/dealId'
+        - name: propertyId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum: [SHORTLISTED, PROPOSED, VISITED, REJECTED, SELECTED]
+      responses:
+        '200':
+          description: Property match status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DealProperty'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Dashboard
+  /tenants/{tenantId}/crm/dashboard:
+    get:
+      tags: [Dashboard]
+      summary: Get CRM dashboard data
+      description: Get KPIs and next best actions for CRM dashboard
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        '200':
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    tenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Tenant ID
+    contactId:
+      name: contactId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Contact ID
+    dealId:
+      name: dealId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Deal ID
+
+  schemas:
+    Contact:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        source:
+          type: string
+        status:
+          type: string
+          enum: [LEAD, ACTIVE_CLIENT, ARCHIVED]
+        assignedToUserId:
+          type: string
+          format: uuid
+        lastInteractionAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ContactDetail:
+      allOf:
+        - $ref: '#/components/schemas/Contact'
+        - type: object
+          properties:
+            roles:
+              type: array
+              items:
+                $ref: '#/components/schemas/ContactRole'
+            deals:
+              type: array
+              items:
+                $ref: '#/components/schemas/Deal'
+            recentActivities:
+              type: array
+              items:
+                $ref: '#/components/schemas/Activity'
+
+    CreateContactRequest:
+      type: object
+      required:
+        - firstName
+        - lastName
+        - email
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        source:
+          type: string
+        assignedToUserId:
+          type: string
+          format: uuid
+
+    UpdateContactRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        source:
+          type: string
+        status:
+          type: string
+          enum: [LEAD, ACTIVE_CLIENT, ARCHIVED]
+        assignedToUserId:
+          type: string
+          format: uuid
+
+    ContactRole:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [PROPRIETAIRE, LOCATAIRE, COPROPRIETAIRE, ACQUEREUR]
+        active:
+          type: boolean
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+
+    Deal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        contactId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [ACHAT, LOCATION]
+        stage:
+          type: string
+          enum: [NEW, QUALIFIED, APPOINTMENT, VISIT, NEGOTIATION, WON, LOST]
+        budgetMin:
+          type: number
+        budgetMax:
+          type: number
+        locationZone:
+          type: string
+        criteriaJson:
+          type: object
+        expectedValue:
+          type: number
+        probability:
+          type: number
+          minimum: 0
+          maximum: 1
+        assignedToUserId:
+          type: string
+          format: uuid
+        closedReason:
+          type: string
+        closedAt:
+          type: string
+          format: date-time
+        version:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DealDetail:
+      allOf:
+        - $ref: '#/components/schemas/Deal'
+        - type: object
+          properties:
+            contact:
+              $ref: '#/components/schemas/Contact'
+            activities:
+              type: array
+              items:
+                $ref: '#/components/schemas/Activity'
+            propertyMatches:
+              type: array
+              items:
+                $ref: '#/components/schemas/DealProperty'
+
+    CreateDealRequest:
+      type: object
+      required:
+        - contactId
+        - type
+      properties:
+        contactId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [ACHAT, LOCATION]
+        budgetMin:
+          type: number
+        budgetMax:
+          type: number
+        locationZone:
+          type: string
+        criteriaJson:
+          type: object
+        expectedValue:
+          type: number
+        assignedToUserId:
+          type: string
+          format: uuid
+
+    UpdateDealRequest:
+      type: object
+      required:
+        - version
+      properties:
+        type:
+          type: string
+          enum: [ACHAT, LOCATION]
+        stage:
+          type: string
+          enum: [NEW, QUALIFIED, APPOINTMENT, VISIT, NEGOTIATION, WON, LOST]
+        budgetMin:
+          type: number
+        budgetMax:
+          type: number
+        locationZone:
+          type: string
+        criteriaJson:
+          type: object
+        expectedValue:
+          type: number
+        probability:
+          type: number
+          minimum: 0
+          maximum: 1
+        assignedToUserId:
+          type: string
+          format: uuid
+        closedReason:
+          type: string
+        version:
+          type: integer
+
+    Activity:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        contactId:
+          type: string
+          format: uuid
+        dealId:
+          type: string
+          format: uuid
+        activityType:
+          type: string
+          enum: [CALL, EMAIL, SMS, WHATSAPP, VISIT, MEETING, NOTE, TASK, CORRECTION]
+        direction:
+          type: string
+          enum: [IN, OUT, INTERNAL]
+        subject:
+          type: string
+        content:
+          type: string
+        outcome:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        createdByUserId:
+          type: string
+          format: uuid
+        nextActionAt:
+          type: string
+          format: date-time
+        nextActionType:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateActivityRequest:
+      type: object
+      required:
+        - activityType
+        - content
+      properties:
+        contactId:
+          type: string
+          format: uuid
+        dealId:
+          type: string
+          format: uuid
+        activityType:
+          type: string
+          enum: [CALL, EMAIL, SMS, WHATSAPP, VISIT, MEETING, NOTE, TASK, CORRECTION]
+        direction:
+          type: string
+          enum: [IN, OUT, INTERNAL]
+        subject:
+          type: string
+        content:
+          type: string
+        outcome:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+        nextActionAt:
+          type: string
+          format: date-time
+        nextActionType:
+          type: string
+
+    Appointment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        contactId:
+          type: string
+          format: uuid
+        dealId:
+          type: string
+          format: uuid
+        appointmentType:
+          type: string
+          enum: [RDV, VISITE]
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        location:
+          type: string
+        status:
+          type: string
+          enum: [SCHEDULED, CONFIRMED, DONE, NO_SHOW, CANCELED]
+        createdByUserId:
+          type: string
+          format: uuid
+        assignedToUserId:
+          type: string
+          format: uuid
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateAppointmentRequest:
+      type: object
+      required:
+        - contactId
+        - appointmentType
+        - startAt
+        - endAt
+      properties:
+        contactId:
+          type: string
+          format: uuid
+        dealId:
+          type: string
+          format: uuid
+        appointmentType:
+          type: string
+          enum: [RDV, VISITE]
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        location:
+          type: string
+        assignedToUserId:
+          type: string
+          format: uuid
+
+    UpdateAppointmentRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [SCHEDULED, CONFIRMED, DONE, NO_SHOW, CANCELED]
+        startAt:
+          type: string
+          format: date-time
+        endAt:
+          type: string
+          format: date-time
+        location:
+          type: string
+        assignedToUserId:
+          type: string
+          format: uuid
+
+    PropertyMatch:
+      type: object
+      properties:
+        propertyId:
+          type: string
+          format: uuid
+        matchScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+        matchExplanation:
+          type: object
+          description: Scoring breakdown (budget, zone, size, extras)
+
+    DealProperty:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        dealId:
+          type: string
+          format: uuid
+        propertyId:
+          type: string
+          format: uuid
+        matchScore:
+          type: integer
+          minimum: 0
+          maximum: 100
+        matchExplanationJson:
+          type: object
+        status:
+          type: string
+          enum: [SHORTLISTED, PROPOSED, VISITED, REJECTED, SELECTED]
+        createdAt:
+          type: string
+          format: date-time
+
+    Dashboard:
+      type: object
+      properties:
+        kpis:
+          type: object
+          properties:
+            newLeads:
+              type: integer
+              description: New leads in last 7 days
+            hotLeads:
+              type: integer
+              description: Leads with deals in QUALIFIED/APPOINTMENT/VISIT/NEGOTIATION
+            upcomingAppointments:
+              type: integer
+              description: Appointments in next 7 days
+            dealsInNegotiation:
+              type: integer
+              description: Deals in NEGOTIATION stage
+        nextActions:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              description:
+                type: string
+              dueDate:
+                type: string
+                format: date-time
+              contactId:
+                type: string
+                format: uuid
+              dealId:
+                type: string
+                format: uuid
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
+
+  responses:
+    BadRequest:
+      description: Bad request - validation error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              details:
+                type: array
+                items:
+                  type: object
+
+    Forbidden:
+      description: Forbidden - insufficient permissions
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+
+    Conflict:
+      description: Conflict - resource conflict (duplicate, version mismatch, etc.)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              details:
+                type: object
+
+
+
+
+

@@ -1,0 +1,109 @@
+﻿import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Alert, Button, Card, Col, Row, Space, Spin, Statistic, Typography } from 'antd';
+import { ArrowLeftOutlined } from '@ant-design/icons';
+import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
+import { SyndicateFundWidget } from '../../components/syndics/SyndicateFundWidget';
+import { getSyndicFinanceSummary } from '../../services/syndic-service';
+import { FinanceSummary } from '../../types/syndic-types';
+import { useSyndicRouteContext } from './useSyndicRouteContext';
+
+const { Paragraph, Title } = Typography;
+
+export const SyndicFinances: React.FC = () => {
+  const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
+  const navigate = useNavigate();
+
+  const [summary, setSummary] = useState<FinanceSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!effectiveTenantId || !syndicId) {
+      setLoading(false);
+      setError('Paramètres finances manquants');
+      return;
+    }
+    void loadSummary();
+  }, [effectiveTenantId, syndicId]);
+
+  const loadSummary = async () => {
+    if (!effectiveTenantId || !syndicId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getSyndicFinanceSummary(effectiveTenantId, syndicId);
+      setSummary(data);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Impossible de charger la synthese financiere');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <DashboardLayout>
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <Space direction="vertical" size={4}>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}>
+            Retour à la fiche syndic
+          </Button>
+          <Title level={2} style={{ margin: 0 }}>
+            Finances copropriété
+          </Title>
+          <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+              Soldes des fonds, appels émis, paiements et impayés.
+          </Paragraph>
+        </Space>
+
+        {error ? <Alert type="error" message={error} showIcon /> : null}
+
+        {loading || !summary ? (
+          <div style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Spin size="large" />
+          </div>
+        ) : (
+          <>
+            <Row gutter={[16, 16]}>
+              <Col xs={24} md={8}>
+                <Card>
+                  <Statistic title="Total fonds" value={summary.totals.totalFundsBalance} suffix="XOF" />
+                </Card>
+              </Col>
+              <Col xs={24} md={8}>
+                <Card>
+                  <Statistic title="Total appele" value={summary.totals.totalCalled} suffix="XOF" />
+                </Card>
+              </Col>
+              <Col xs={24} md={8}>
+                <Card>
+                  <Statistic title="Total paye" value={summary.totals.totalPaid} suffix="XOF" />
+                </Card>
+              </Col>
+              <Col xs={24} md={8}>
+                <Card>
+                  <Statistic title="Reste a payer" value={summary.totals.totalOutstanding} suffix="XOF" />
+                </Card>
+              </Col>
+              <Col xs={24} md={8}>
+                <Card>
+                  <Statistic title="Dossiers en retard" value={summary.totals.overdueCount} />
+                </Card>
+              </Col>
+              <Col xs={24} md={8}>
+                <Card>
+                  <Statistic title="Montant en retard" value={summary.totals.overdueAmount} suffix="XOF" />
+                </Card>
+              </Col>
+            </Row>
+
+            <Card title="Fonds de copropriété">
+              <SyndicateFundWidget funds={summary.funds} />
+            </Card>
+          </>
+        )}
+      </Space>
+    </DashboardLayout>
+  );
+};
+

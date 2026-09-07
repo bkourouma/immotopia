@@ -1,0 +1,460 @@
+import { Router } from 'express';
+import { authenticate } from '../middleware/auth-middleware';
+import { requireTenantAccess } from '../middleware/tenant-middleware';
+import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
+import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
+import { uploadDocument } from '../middleware/upload-middleware';
+import {
+  listSyndicsHandler,
+  createSyndicHandler,
+  getSyndicHandler,
+  updateSyndicHandler,
+  archiveSyndicHandler,
+  listSyndicLotsHandler,
+  createSyndicLotHandler,
+  importSyndicLotsFromPropertiesHandler,
+  updateSyndicLotHandler,
+  addLotTenantHandler,
+  deactivateLotTenantAssignmentHandler,
+  listChargeCallsHandler,
+  createChargeCallHandler,
+  getChargeCallHandler,
+  payChargeCallHandler,
+  listChargeCallBatchesHandler,
+  createChargeCallBatchHandler,
+  listBudgetsHandler,
+  createBudgetHandler,
+  updateBudgetHandler,
+  recomputeBudgetAllocationsHandler,
+  generateBudgetChargeCallsHandler,
+  listMeetingsHandler,
+  createMeetingHandler,
+  updateMeetingHandler,
+  getMeetingHandler,
+  addResolutionHandler,
+  addAgendaItemHandler,
+  updateAgendaItemHandler,
+  deleteAgendaItemHandler,
+  castVoteHandler,
+  generateMeetingMinutesHandler,
+  listProvidersHandler,
+  listContractsHandler,
+  linkContractHandler,
+  createContractHandler,
+  getContractHandler,
+  updateContractHandler,
+  deleteContractHandler,
+  listDocumentsHandler,
+  createDocumentHandler,
+  getFinanceSummaryHandler,
+  getOverdueDashboardHandler,
+  listRemindersHandler,
+  createManualReminderHandler,
+  runReminderBatchHandler,
+  listPenaltiesHandler,
+  listPaymentSchedulesHandler,
+  createPenaltyHandler,
+  waivePenaltyHandler,
+  createPaymentScheduleHandler,
+  getLotOwnerAccountHandler,
+  listLotOwnerAccountTransactionsHandler,
+  createLotOwnerAccountAdjustmentHandler,
+  downloadLotOwnerAccountStatementHandler,
+  listLotOwnerProfilesHandler,
+  createLotOwnerProfileHandler,
+  updateLotOwnerProfileHandler,
+  listLotTenantProfilesHandler,
+  createLotTenantProfileHandler,
+  updateLotTenantProfileHandler,
+  listIncidentsHandler,
+  linkIncidentHandler,
+  createIncidentHandler,
+  updateIncidentHandler,
+  addIncidentImputationHandler,
+  listChartOfAccountsHandler,
+  createChartOfAccountHandler,
+  listAccountingJournalsHandler,
+  createAccountingJournalHandler,
+  listAccountingEntriesHandler,
+  createAccountingEntryHandler,
+  lockAccountingEntryHandler,
+  getTrialBalanceHandler,
+  getGeneralLedgerHandler
+} from '../controllers/syndic-controller';
+
+const router = Router();
+
+router.use(authenticate);
+router.use(requireTenantAccess);
+router.use(enforcePropertyTenantIsolation);
+
+router.get(
+  '/tenants/:tenantId/syndics',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW', 'PROPERTIES_CREATE']),
+  listSyndicsHandler
+);
+router.post('/tenants/:tenantId/syndics', requireAnyPropertyPermission(['PROPERTIES_CREATE']), createSyndicHandler);
+router.get('/tenants/:tenantId/syndics/:syndicId', requireAnyPropertyPermission(['PROPERTIES_VIEW']), getSyndicHandler);
+router.patch('/tenants/:tenantId/syndics/:syndicId', requirePropertyPermission('PROPERTIES_EDIT'), updateSyndicHandler);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  archiveSyndicHandler
+);
+
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/lots',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listSyndicLotsHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/lots',
+  requireAnyPropertyPermission(['PROPERTIES_CREATE']),
+  createSyndicLotHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/lots/import-properties',
+  requireAnyPropertyPermission(['PROPERTIES_CREATE']),
+  importSyndicLotsFromPropertiesHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/lots/:lotId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  updateSyndicLotHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/lots/:lotId/tenants',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  addLotTenantHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/lots/:lotId/tenants/:assignmentId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  deactivateLotTenantAssignmentHandler
+);
+
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/charges',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listChargeCallsHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/charges',
+  requireAnyPropertyPermission(['PROPERTIES_CREATE']),
+  createChargeCallHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/charges/batch',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listChargeCallBatchesHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/charges/batch',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createChargeCallBatchHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/charges/:chargeId',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  getChargeCallHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/pay',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  payChargeCallHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/budgets',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listBudgetsHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/budgets',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createBudgetHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/budgets/:budgetId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  updateBudgetHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/budgets/:budgetId/repartition',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  recomputeBudgetAllocationsHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/budgets/:budgetId/generer-appels',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  generateBudgetChargeCallsHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/retards',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  getOverdueDashboardHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/relances',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listRemindersHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/relance',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createManualReminderHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/relances/batch',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  runReminderBatchHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/penalites',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listPenaltiesHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/penalite',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createPenaltyHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/penalites/:penaltyId/remise',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  waivePenaltyHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/charges/:chargeId/echeancier',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createPaymentScheduleHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/echeanciers',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listPaymentSchedulesHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/lots/:lotId/compte',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  getLotOwnerAccountHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/lots/:lotId/compte/transactions',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listLotOwnerAccountTransactionsHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/lots/:lotId/compte/ajustements',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createLotOwnerAccountAdjustmentHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/lots/:lotId/compte/releve',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  downloadLotOwnerAccountStatementHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/profils/proprietaires',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listLotOwnerProfilesHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/profils/proprietaires',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createLotOwnerProfileHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/profils/proprietaires/:ownerProfileId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  updateLotOwnerProfileHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/profils/locataires',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listLotTenantProfilesHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/profils/locataires',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createLotTenantProfileHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/profils/locataires/:tenantProfileId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  updateLotTenantProfileHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/incidents',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listIncidentsHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/incidents/link',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  linkIncidentHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/incidents',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createIncidentHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/incidents/:incidentId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  updateIncidentHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/incidents/:incidentId/imputations',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  addIncidentImputationHandler
+);
+
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listMeetingsHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createMeetingHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  updateMeetingHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  getMeetingHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  addResolutionHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/ordre-du-jour',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  addAgendaItemHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/ordre-du-jour/:agendaItemId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  updateAgendaItemHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/ordre-du-jour/:agendaItemId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  deleteAgendaItemHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/votes',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  castVoteHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/compte-rendu',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  generateMeetingMinutesHandler
+);
+
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/prestataires',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listProvidersHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/contrats',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listContractsHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/contracts/link',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  linkContractHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/contrats',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createContractHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/contrats/:contractId',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  getContractHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/contrats/:contractId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  updateContractHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/contrats/:contractId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  deleteContractHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/documents',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listDocumentsHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/documents',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  uploadDocument.single('file'),
+  createDocumentHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/finances',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  getFinanceSummaryHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/comptabilite/comptes',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listChartOfAccountsHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/comptabilite/comptes',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createChartOfAccountHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/comptabilite/journaux',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listAccountingJournalsHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/comptabilite/journaux',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createAccountingJournalHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/comptabilite/ecritures',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listAccountingEntriesHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/comptabilite/ecritures',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createAccountingEntryHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/comptabilite/ecritures/:entryId/verrouiller',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  lockAccountingEntryHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/comptabilite/balance',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  getTrialBalanceHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/comptabilite/grand-livre',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  getGeneralLedgerHandler
+);
+
+export default router;

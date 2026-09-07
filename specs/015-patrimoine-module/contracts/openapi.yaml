@@ -1,0 +1,581 @@
+﻿openapi: 3.0.3
+info:
+  title: ImmoTopia Patrimoine API
+  version: 1.0.0
+  description: Contrats API pour la gestion du patrimoine (enrichissement des biens existants).
+servers:
+  - url: /api
+tags:
+  - name: PatrimoineOverview
+  - name: PatrimoinePerformance
+  - name: PropertyValuations
+  - name: PropertyExpenses
+  - name: PropertyLoans
+  - name: PropertyWorkPrograms
+  - name: PropertyDocuments
+  - name: PropertyYield
+  - name: OwnerStatements
+paths:
+  /patrimoine/overview:
+    get:
+      tags: [PatrimoineOverview]
+      summary: Recuperer les indicateurs consolides du portefeuille
+      responses:
+        '200':
+          description: Apercu consolide patrimoine
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PatrimoineOverview'
+
+  /patrimoine/performance:
+    get:
+      tags: [PatrimoinePerformance]
+      summary: Recuperer les performances par bien et portefeuille
+      parameters:
+        - name: propertyId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Performance rendement et projection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceResponse'
+
+  /properties/{propertyId}/valuations:
+    get:
+      tags: [PropertyValuations]
+      summary: Lister les valorisations d'un bien existant
+      parameters: [ { $ref: '#/components/parameters/PropertyId' } ]
+      responses:
+        '200': { $ref: '#/components/responses/OkList' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [PropertyValuations]
+      summary: Creer une valorisation pour un bien existant
+      parameters: [ { $ref: '#/components/parameters/PropertyId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateValuationRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /properties/{propertyId}/valuations/{valuationId}:
+    get:
+      tags: [PropertyValuations]
+      summary: Recuperer une valorisation
+      parameters:
+        - { $ref: '#/components/parameters/PropertyId' }
+        - { $ref: '#/components/parameters/ValuationId' }
+      responses:
+        '200': { $ref: '#/components/responses/OkItem' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [PropertyValuations]
+      summary: Mettre a jour une valorisation
+      parameters:
+        - { $ref: '#/components/parameters/PropertyId' }
+        - { $ref: '#/components/parameters/ValuationId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateValuationRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/OkItem' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [PropertyValuations]
+      summary: Supprimer une valorisation
+      parameters:
+        - { $ref: '#/components/parameters/PropertyId' }
+        - { $ref: '#/components/parameters/ValuationId' }
+      responses:
+        '204': { description: Supprime }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /properties/{propertyId}/expenses:
+    get:
+      tags: [PropertyExpenses]
+      summary: Lister les depenses d'un bien
+      parameters: [ { $ref: '#/components/parameters/PropertyId' } ]
+      responses:
+        '200': { $ref: '#/components/responses/OkList' }
+    post:
+      tags: [PropertyExpenses]
+      summary: Creer une depense d'un bien
+      parameters: [ { $ref: '#/components/parameters/PropertyId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateExpenseRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /properties/{propertyId}/expenses/{expenseId}:
+    get:
+      tags: [PropertyExpenses]
+      summary: Recuperer une depense
+      parameters:
+        - { $ref: '#/components/parameters/PropertyId' }
+        - { $ref: '#/components/parameters/ExpenseId' }
+      responses:
+        '200': { $ref: '#/components/responses/OkItem' }
+    patch:
+      tags: [PropertyExpenses]
+      summary: Mettre a jour une depense
+      parameters:
+        - { $ref: '#/components/parameters/PropertyId' }
+        - { $ref: '#/components/parameters/ExpenseId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateExpenseRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/OkItem' }
+    delete:
+      tags: [PropertyExpenses]
+      summary: Supprimer une depense
+      parameters:
+        - { $ref: '#/components/parameters/PropertyId' }
+        - { $ref: '#/components/parameters/ExpenseId' }
+      responses:
+        '204': { description: Supprime }
+
+  /properties/{propertyId}/loans:
+    get:
+      tags: [PropertyLoans]
+      summary: Lister les prets d'un bien
+      parameters: [ { $ref: '#/components/parameters/PropertyId' } ]
+      responses:
+        '200': { $ref: '#/components/responses/OkList' }
+    post:
+      tags: [PropertyLoans]
+      summary: Creer un pret d'un bien
+      parameters: [ { $ref: '#/components/parameters/PropertyId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateLoanRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /properties/{propertyId}/loans/{loanId}:
+    get:
+      tags: [PropertyLoans]
+      summary: Recuperer un pret
+      parameters:
+        - { $ref: '#/components/parameters/PropertyId' }
+        - { $ref: '#/components/parameters/LoanId' }
+      responses:
+        '200': { $ref: '#/components/responses/OkItem' }
+    patch:
+      tags: [PropertyLoans]
+      summary: Mettre a jour un pret
+      parameters:
+        - { $ref: '#/components/parameters/PropertyId' }
+        - { $ref: '#/components/parameters/LoanId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateLoanRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/OkItem' }
+    delete:
+      tags: [PropertyLoans]
+      summary: Supprimer un pret
+      parameters:
+        - { $ref: '#/components/parameters/PropertyId' }
+        - { $ref: '#/components/parameters/LoanId' }
+      responses:
+        '204': { description: Supprime }
+
+  /properties/{propertyId}/work-programs:
+    get:
+      tags: [PropertyWorkPrograms]
+      summary: Lister les programmes de travaux
+      parameters: [ { $ref: '#/components/parameters/PropertyId' } ]
+      responses:
+        '200': { $ref: '#/components/responses/OkList' }
+    post:
+      tags: [PropertyWorkPrograms]
+      summary: Creer un programme de travaux
+      parameters: [ { $ref: '#/components/parameters/PropertyId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateWorkProgramRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /properties/{propertyId}/work-programs/{programId}:
+    get:
+      tags: [PropertyWorkPrograms]
+      summary: Recuperer un programme de travaux
+      parameters:
+        - { $ref: '#/components/parameters/PropertyId' }
+        - { $ref: '#/components/parameters/ProgramId' }
+      responses:
+        '200': { $ref: '#/components/responses/OkItem' }
+    patch:
+      tags: [PropertyWorkPrograms]
+      summary: Mettre a jour un programme de travaux
+      parameters:
+        - { $ref: '#/components/parameters/PropertyId' }
+        - { $ref: '#/components/parameters/ProgramId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateWorkProgramRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/OkItem' }
+    delete:
+      tags: [PropertyWorkPrograms]
+      summary: Supprimer un programme de travaux
+      parameters:
+        - { $ref: '#/components/parameters/PropertyId' }
+        - { $ref: '#/components/parameters/ProgramId' }
+      responses:
+        '204': { description: Supprime }
+
+  /properties/{propertyId}/documents:
+    get:
+      tags: [PropertyDocuments]
+      summary: Lister les documents patrimoine d'un bien
+      parameters: [ { $ref: '#/components/parameters/PropertyId' } ]
+      responses:
+        '200': { $ref: '#/components/responses/OkList' }
+    post:
+      tags: [PropertyDocuments]
+      summary: Creer un document patrimoine
+      parameters: [ { $ref: '#/components/parameters/PropertyId' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDocumentRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /properties/{propertyId}/documents/{documentId}:
+    get:
+      tags: [PropertyDocuments]
+      summary: Recuperer un document patrimoine
+      parameters:
+        - { $ref: '#/components/parameters/PropertyId' }
+        - { $ref: '#/components/parameters/DocumentId' }
+      responses:
+        '200': { $ref: '#/components/responses/OkItem' }
+    delete:
+      tags: [PropertyDocuments]
+      summary: Supprimer un document patrimoine
+      parameters:
+        - { $ref: '#/components/parameters/PropertyId' }
+        - { $ref: '#/components/parameters/DocumentId' }
+      responses:
+        '204': { description: Supprime }
+
+  /properties/{propertyId}/yield:
+    get:
+      tags: [PropertyYield]
+      summary: Calculer les rendements d'un bien
+      parameters:
+        - { $ref: '#/components/parameters/PropertyId' }
+      responses:
+        '200':
+          description: Resultats de rendement
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/YieldResponse' }
+
+  /owner-statements:
+    get:
+      tags: [OwnerStatements]
+      summary: Lister les releves proprietaires
+      parameters:
+        - name: ownerContactId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: period
+          in: query
+          required: false
+          schema: { type: string, pattern: '^\\d{4}-\\d{2}$' }
+      responses:
+        '200': { $ref: '#/components/responses/OkList' }
+    post:
+      tags: [OwnerStatements]
+      summary: Generer un releve proprietaire
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenerateStatementRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /owner-statements/{statementId}:
+    get:
+      tags: [OwnerStatements]
+      summary: Recuperer le detail d'un releve
+      parameters:
+        - { $ref: '#/components/parameters/StatementId' }
+      responses:
+        '200': { $ref: '#/components/responses/OkItem' }
+    patch:
+      tags: [OwnerStatements]
+      summary: Mettre a jour un releve
+      parameters:
+        - { $ref: '#/components/parameters/StatementId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateStatementRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/OkItem' }
+
+  /owner-statements/{statementId}/send:
+    post:
+      tags: [OwnerStatements]
+      summary: Envoyer un releve proprietaire
+      parameters:
+        - { $ref: '#/components/parameters/StatementId' }
+      responses:
+        '202':
+          description: Envoi lance
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiSuccess' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    PropertyId: { name: propertyId, in: path, required: true, schema: { type: string, format: uuid } }
+    ValuationId: { name: valuationId, in: path, required: true, schema: { type: string, format: uuid } }
+    ExpenseId: { name: expenseId, in: path, required: true, schema: { type: string, format: uuid } }
+    LoanId: { name: loanId, in: path, required: true, schema: { type: string, format: uuid } }
+    ProgramId: { name: programId, in: path, required: true, schema: { type: string, format: uuid } }
+    DocumentId: { name: documentId, in: path, required: true, schema: { type: string, format: uuid } }
+    StatementId: { name: statementId, in: path, required: true, schema: { type: string, format: uuid } }
+  responses:
+    OkList:
+      description: Liste retournee
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiSuccess'
+    OkItem:
+      description: Element retourne
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiSuccess'
+    Created:
+      description: Ressource creee
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiSuccess'
+    BadRequest:
+      description: Requete invalide
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+  schemas:
+    ApiSuccess:
+      type: object
+      required: [success]
+      properties:
+        success: { type: boolean, example: true }
+        data: {}
+        message: { type: string, nullable: true }
+    ApiError:
+      type: object
+      required: [success, error]
+      properties:
+        success: { type: boolean, example: false }
+        error: { type: string }
+
+    CreateValuationRequest:
+      type: object
+      required: [valuatedAt, estimatedValue]
+      properties:
+        valuatedAt: { type: string, format: date-time }
+        estimatedValue: { type: number, minimum: 0.000001 }
+        currency: { type: string, default: XOF }
+        acquisitionCost: { type: number, minimum: 0.000001, nullable: true }
+        acquisitionDate: { type: string, format: date-time, nullable: true }
+        method: { type: string, enum: [MANUAL, MARKET_ESTIMATE, EXPERT_APPRAISAL], default: MANUAL }
+        notes: { type: string, nullable: true }
+    UpdateValuationRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateValuationRequest'
+
+    CreateExpenseRequest:
+      type: object
+      required: [category, label, amount, paidAt]
+      properties:
+        category:
+          type: string
+          enum: [PROPERTY_TAX, CONDO_FEES, INSURANCE, ROUTINE_MAINTENANCE, RENOVATION, MANAGEMENT_FEES, UTILITIES, OTHER]
+        label: { type: string }
+        amount: { type: number, minimum: 0.000001 }
+        currency: { type: string, default: XOF }
+        paidAt: { type: string, format: date-time }
+        isCapitalized: { type: boolean, default: false }
+        receiptUrl: { type: string, format: uri, nullable: true }
+        notes: { type: string, nullable: true }
+    UpdateExpenseRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateExpenseRequest'
+
+    CreateLoanRequest:
+      type: object
+      required: [lender, capitalAmount, remainingCapital, interestRate, monthlyPayment, startDate, endDate]
+      properties:
+        lender: { type: string, minLength: 2 }
+        capitalAmount: { type: number, minimum: 0.000001 }
+        remainingCapital: { type: number, minimum: 0.000001 }
+        interestRate: { type: number, minimum: 0.000001 }
+        monthlyPayment: { type: number, minimum: 0.000001 }
+        currency: { type: string, default: XOF }
+        startDate: { type: string, format: date-time }
+        endDate: { type: string, format: date-time }
+    UpdateLoanRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateLoanRequest'
+
+    CreateWorkProgramRequest:
+      type: object
+      required: [title, estimatedCost, plannedDate]
+      properties:
+        title: { type: string, minLength: 2 }
+        description: { type: string, nullable: true }
+        estimatedCost: { type: number, minimum: 0.000001 }
+        currency: { type: string, default: XOF }
+        plannedDate: { type: string, format: date-time }
+        isCapitalized: { type: boolean, default: false }
+    UpdateWorkProgramRequest:
+      type: object
+      properties:
+        title: { type: string, minLength: 2, nullable: true }
+        description: { type: string, nullable: true }
+        estimatedCost: { type: number, minimum: 0, nullable: true }
+        actualCost: { type: number, minimum: 0, nullable: true }
+        plannedDate: { type: string, format: date-time, nullable: true }
+        completedDate: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [PLANNED, IN_PROGRESS, COMPLETED, CANCELLED], nullable: true }
+        isCapitalized: { type: boolean, nullable: true }
+
+    CreateDocumentRequest:
+      type: object
+      required: [title, type, fileUrl]
+      properties:
+        title: { type: string, minLength: 2 }
+        type:
+          type: string
+          enum: [TITLE_DEED, NOTARIAL_DEED, TAX_DOCUMENT, INSURANCE, TECHNICAL_DIAGNOSIS, FLOOR_PLAN, BUILDING_PERMIT, OTHER]
+        fileUrl: { type: string, format: uri }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        ownerContactId: { type: string, format: uuid, nullable: true }
+
+    GenerateStatementRequest:
+      type: object
+      required: [ownerContactId, period, propertyIds]
+      properties:
+        ownerContactId: { type: string, format: uuid }
+        period: { type: string, pattern: '^\\d{4}-\\d{2}$' }
+        propertyIds:
+          type: array
+          minItems: 1
+          items: { type: string, format: uuid }
+
+    UpdateStatementRequest:
+      type: object
+      properties:
+        status: { type: string, enum: [DRAFT, SENT, PAID], nullable: true }
+        paidAt: { type: string, format: date-time, nullable: true }
+
+    PatrimoineOverview:
+      type: object
+      properties:
+        totalProperties: { type: integer }
+        occupiedProperties: { type: integer }
+        occupancyRate: { type: number }
+        totalEstimatedValue: { type: number }
+        totalLoanBalance: { type: number }
+        totalExpensesThisYear: { type: number }
+        totalAnnualRent: { type: number }
+
+    YieldResponse:
+      type: object
+      properties:
+        grossYield: { type: number }
+        netYield: { type: number }
+        netNetYield: { type: number }
+        latentCapitalGain: { type: number }
+        projection:
+          type: array
+          items:
+            type: object
+            properties:
+              year: { type: integer }
+              estimatedValue: { type: number }
+              cumulativeRent: { type: number }
+              cumulativeExpenses: { type: number }
+              netResult: { type: number }
+
+    PerformanceResponse:
+      type: object
+      properties:
+        portfolio:
+          type: object
+          properties:
+            averageGrossYield: { type: number }
+            averageNetYield: { type: number }
+            averageNetNetYield: { type: number }
+        properties:
+          type: array
+          items:
+            type: object
+            properties:
+              propertyId: { type: string, format: uuid }
+              grossYield: { type: number }
+              netYield: { type: number }
+              netNetYield: { type: number }
+              latentCapitalGain: { type: number }
+security:
+  - bearerAuth: []

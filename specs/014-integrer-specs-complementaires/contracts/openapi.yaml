@@ -1,0 +1,765 @@
+openapi: 3.0.3
+info:
+  title: ImmoTopia Syndic - Extensions complementaires API
+  version: 1.0.0
+  description: Contrat API aligne sur l'implementation backend des extensions US1-US5.
+servers:
+  - url: /api
+tags:
+  - name: Budgets
+  - name: Recouvrement
+  - name: ComptesLots
+  - name: Comptabilite
+  - name: Profils
+  - name: Incidents
+paths:
+  /tenants/{tenantId}/syndics/{syndicId}/budgets:
+    get:
+      tags: [Budgets]
+      summary: Lister les budgets syndic
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Budgets]
+      summary: Creer un budget
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateBudgetRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/budgets/{budgetId}:
+    patch:
+      tags: [Budgets]
+      summary: Mettre a jour un budget
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/BudgetId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateBudgetRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/budgets/{budgetId}/repartition:
+    post:
+      tags: [Budgets]
+      summary: Recalculer les allocations budgetaires
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/BudgetId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/budgets/{budgetId}/generer-appels:
+    post:
+      tags: [Budgets]
+      summary: Generer les appels de charges depuis un budget
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/BudgetId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenerateBudgetChargeCallsRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/charges/batch:
+    get:
+      tags: [Budgets]
+      summary: Lister les batches d'appels
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Budgets]
+      summary: Creer un batch d'appels
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateChargeBatchRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/retards:
+    get:
+      tags: [Recouvrement]
+      summary: Recuperer le dashboard des impayes
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/relances:
+    get:
+      tags: [Recouvrement]
+      summary: Lister les relances
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/relances/batch:
+    post:
+      tags: [Recouvrement]
+      summary: Executer une relance batch
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunReminderBatchRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/charges/{chargeId}/relance:
+    post:
+      tags: [Recouvrement]
+      summary: Creer une relance manuelle
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/ChargeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateManualReminderRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/penalites:
+    get:
+      tags: [Recouvrement]
+      summary: Lister les penalites
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/charges/{chargeId}/penalite:
+    post:
+      tags: [Recouvrement]
+      summary: Creer une penalite
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/ChargeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePenaltyRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/penalites/{penaltyId}/remise:
+    patch:
+      tags: [Recouvrement]
+      summary: Appliquer une remise de penalite
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/PenaltyId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WaivePenaltyRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/charges/{chargeId}/echeancier:
+    post:
+      tags: [Recouvrement]
+      summary: Creer un echeancier de paiement
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/ChargeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePaymentScheduleRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/lots/{lotId}/compte:
+    get:
+      tags: [ComptesLots]
+      summary: Recuperer le compte lot
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/LotId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/lots/{lotId}/compte/transactions:
+    get:
+      tags: [ComptesLots]
+      summary: Lister les transactions du compte lot
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/LotId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/lots/{lotId}/compte/ajustements:
+    post:
+      tags: [ComptesLots]
+      summary: Ajouter un ajustement de compte lot
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/LotId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOwnerAccountAdjustmentRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/lots/{lotId}/compte/releve:
+    get:
+      tags: [ComptesLots]
+      summary: Telecharger un releve de compte lot
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/LotId'
+      responses:
+        '200':
+          description: Fichier binaire (PDF ou DOCX selon implementation)
+
+  /tenants/{tenantId}/syndics/{syndicId}/comptabilite/comptes:
+    get:
+      tags: [Comptabilite]
+      summary: Lister les comptes comptables
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Comptabilite]
+      summary: Creer un compte comptable
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateChartOfAccountRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/comptabilite/journaux:
+    get:
+      tags: [Comptabilite]
+      summary: Lister les journaux comptables
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Comptabilite]
+      summary: Creer un journal comptable
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAccountingJournalRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/comptabilite/ecritures:
+    get:
+      tags: [Comptabilite]
+      summary: Lister les ecritures comptables
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Comptabilite]
+      summary: Creer une ecriture comptable
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateJournalEntryRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/comptabilite/ecritures/{entryId}/verrouiller:
+    patch:
+      tags: [Comptabilite]
+      summary: Verrouiller une ecriture
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/EntryId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LockEntryRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/comptabilite/balance:
+    get:
+      tags: [Comptabilite]
+      summary: Recuperer la balance
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/comptabilite/grand-livre:
+    get:
+      tags: [Comptabilite]
+      summary: Recuperer le grand livre
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/profils/proprietaires:
+    get:
+      tags: [Profils]
+      summary: Lister les profils proprietaires
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Profils]
+      summary: Creer un profil proprietaire
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateLotOwnerProfileRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/profils/proprietaires/{ownerProfileId}:
+    patch:
+      tags: [Profils]
+      summary: Mettre a jour un profil proprietaire
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/OwnerProfileId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateLotOwnerProfileRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/profils/locataires:
+    get:
+      tags: [Profils]
+      summary: Lister les profils locataires
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Profils]
+      summary: Creer un profil locataire
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateLotTenantProfileRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/profils/locataires/{tenantProfileId}:
+    patch:
+      tags: [Profils]
+      summary: Mettre a jour un profil locataire
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/TenantProfileId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateLotTenantProfileRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/incidents:
+    get:
+      tags: [Incidents]
+      summary: Lister les incidents
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Incidents]
+      summary: Creer un incident
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateIncidentRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/incidents/{incidentId}:
+    patch:
+      tags: [Incidents]
+      summary: Mettre a jour un incident
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/IncidentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateIncidentRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+
+  /tenants/{tenantId}/syndics/{syndicId}/incidents/{incidentId}/imputations:
+    post:
+      tags: [Incidents]
+      summary: Ajouter une imputation de cout
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/SyndicId'
+        - $ref: '#/components/parameters/IncidentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateIncidentImputationRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Created' }
+
+components:
+  parameters:
+    TenantId: { name: tenantId, in: path, required: true, schema: { type: string, format: uuid } }
+    SyndicId: { name: syndicId, in: path, required: true, schema: { type: string, format: uuid } }
+    BudgetId: { name: budgetId, in: path, required: true, schema: { type: string, format: uuid } }
+    ChargeId: { name: chargeId, in: path, required: true, schema: { type: string, format: uuid } }
+    LotId: { name: lotId, in: path, required: true, schema: { type: string, format: uuid } }
+    PenaltyId: { name: penaltyId, in: path, required: true, schema: { type: string, format: uuid } }
+    EntryId: { name: entryId, in: path, required: true, schema: { type: string, format: uuid } }
+    OwnerProfileId: { name: ownerProfileId, in: path, required: true, schema: { type: string, format: uuid } }
+    TenantProfileId: { name: tenantProfileId, in: path, required: true, schema: { type: string, format: uuid } }
+    IncidentId: { name: incidentId, in: path, required: true, schema: { type: string, format: uuid } }
+  responses:
+    Success:
+      description: Reponse standard succes
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiSuccess' }
+    Created:
+      description: Ressource creee
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiSuccess' }
+    BadRequest:
+      description: Requete invalide
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+    Forbidden:
+      description: Acces interdit
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ApiError' }
+  schemas:
+    ApiSuccess:
+      type: object
+      properties:
+        success: { type: boolean, example: true }
+        data: {}
+        message: { type: string, nullable: true }
+      required: [success]
+    ApiError:
+      type: object
+      properties:
+        success: { type: boolean, example: false }
+        error: { type: string }
+      required: [success, error]
+    CreateChargeBatchRequest:
+      type: object
+      required: [label, period, dueDate, batchType, totalAmount]
+      properties:
+        label: { type: string }
+        period: { type: string }
+        dueDate: { type: string, format: date-time }
+        budgetId: { type: string, format: uuid, nullable: true }
+        batchType: { type: string, enum: [REGULAR, EXCEPTIONAL] }
+        totalAmount: { type: number, minimum: 0 }
+        currency: { type: string, default: XOF }
+    CreateBudgetRequest:
+      type: object
+      required: [fiscalYear, label, totalAmount, lines]
+      properties:
+        fiscalYear: { type: integer }
+        label: { type: string }
+        totalAmount: { type: number, minimum: 0 }
+        currency: { type: string, default: XOF }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [category, description, amountForecast, distributionKey]
+            properties:
+              category: { type: string }
+              description: { type: string }
+              amountForecast: { type: number }
+              distributionKey: { type: string, enum: [GENERAL_SHARES, SPECIAL_SHARES, EQUAL, MANUAL] }
+              accountId: { type: string, format: uuid, nullable: true }
+    UpdateBudgetRequest:
+      type: object
+      properties:
+        label: { type: string, nullable: true }
+        status: { type: string, enum: [DRAFT, APPROVED, REVISED, CLOSED], nullable: true }
+        approvedByResolutionId: { type: string, format: uuid, nullable: true }
+        totalAmount: { type: number, nullable: true }
+    GenerateBudgetChargeCallsRequest:
+      type: object
+      required: [label, period, dueDate, batchType]
+      properties:
+        label: { type: string }
+        period: { type: string }
+        dueDate: { type: string, format: date-time }
+        batchType: { type: string, enum: [REGULAR, EXCEPTIONAL] }
+        currency: { type: string, default: XOF }
+    RunReminderBatchRequest:
+      type: object
+      properties:
+        asOfDate: { type: string, format: date-time, nullable: true }
+    CreateManualReminderRequest:
+      type: object
+      required: []
+      properties:
+        reminderLevel: { type: integer, minimum: 1, maximum: 4, default: 1 }
+        channel: { type: string, enum: [EMAIL, SMS, WHATSAPP, PUSH], default: EMAIL }
+        sentAt: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [SENT, DELIVERED, FAILED], default: SENT }
+        responseAction: { type: string, nullable: true }
+    CreatePenaltyRequest:
+      type: object
+      required: [penaltyRate]
+      properties:
+        daysLate: { type: integer, minimum: 0, nullable: true }
+        penaltyRate: { type: number, minimum: 0 }
+        penaltyAmount: { type: number, minimum: 0, nullable: true }
+        appliedAt: { type: string, format: date-time, nullable: true }
+        waived: { type: boolean, default: false }
+        waivedReason: { type: string, nullable: true }
+    WaivePenaltyRequest:
+      type: object
+      required: [waivedReason]
+      properties:
+        waivedReason: { type: string }
+    CreatePaymentScheduleRequest:
+      type: object
+      required: [totalAmount, instalments]
+      properties:
+        agreedAt: { type: string, format: date-time, nullable: true }
+        totalAmount: { type: number, minimum: 0 }
+        instalments:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [dueDate, amount]
+            properties:
+              dueDate: { type: string, format: date-time }
+              amount: { type: number, minimum: 0 }
+    CreateOwnerAccountAdjustmentRequest:
+      type: object
+      required: [direction, amount, label]
+      properties:
+        direction: { type: string, enum: [DEBIT, CREDIT] }
+        amount: { type: number }
+        label: { type: string }
+        reference: { type: string, nullable: true }
+        transactionDate: { type: string, format: date-time, nullable: true }
+    CreateChartOfAccountRequest:
+      type: object
+      required: [accountNumber, accountName, accountClass, accountType]
+      properties:
+        accountNumber: { type: string }
+        accountName: { type: string }
+        accountClass: { type: integer, minimum: 1, maximum: 9 }
+        accountType: { type: string, enum: [ASSET, LIABILITY, EQUITY, INCOME, EXPENSE] }
+        isAuxiliary: { type: boolean, default: false }
+        parentAccountId: { type: string, format: uuid, nullable: true }
+    CreateAccountingJournalRequest:
+      type: object
+      required: [journalType, label, code, fiscalYear]
+      properties:
+        journalType: { type: string, enum: [GENERAL, BANK, CASH, CHARGES] }
+        label: { type: string }
+        code: { type: string }
+        fiscalYear: { type: integer }
+    CreateJournalEntryRequest:
+      type: object
+      required: [journalId, entryDate, reference, lines]
+      properties:
+        journalId: { type: string, format: uuid }
+        entryDate: { type: string, format: date-time }
+        reference: { type: string }
+        description: { type: string }
+        sourceType: { type: string, enum: [CHARGE_PAYMENT, MANUAL, PENALTY, FUND] }
+        sourceId: { type: string, format: uuid, nullable: true }
+        lines:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            required: [accountId, debit, credit]
+            properties:
+              accountId: { type: string, format: uuid }
+              lotId: { type: string, format: uuid, nullable: true }
+              debit: { type: number, minimum: 0 }
+              credit: { type: number, minimum: 0 }
+              label: { type: string }
+    LockEntryRequest:
+      type: object
+      required: [lock]
+      properties:
+        lock: { type: boolean, enum: [true], default: true }
+    CreateLotOwnerProfileRequest:
+      type: object
+      required: [lotId, contactId, ownershipPercentage, ownedSince]
+      properties:
+        lotId: { type: string, format: uuid }
+        contactId: { type: string, format: uuid }
+        ownershipPercentage: { type: number, minimum: 0, maximum: 100 }
+        ownedSince: { type: string, format: date-time }
+        ownedUntil: { type: string, format: date-time, nullable: true }
+        portalAccessEnabled: { type: boolean, nullable: true }
+        notificationPrefs: { type: object, nullable: true }
+        isActive: { type: boolean, nullable: true }
+    UpdateLotOwnerProfileRequest:
+      type: object
+      properties:
+        ownershipPercentage: { type: number, minimum: 0, maximum: 100, nullable: true }
+        ownedSince: { type: string, format: date-time, nullable: true }
+        ownedUntil: { type: string, format: date-time, nullable: true }
+        portalAccessEnabled: { type: boolean, nullable: true }
+        notificationPrefs: { type: object, nullable: true }
+        isActive: { type: boolean, nullable: true }
+    CreateLotTenantProfileRequest:
+      type: object
+      required: [lotId, contactId, tenantSince]
+      properties:
+        lotId: { type: string, format: uuid }
+        contactId: { type: string, format: uuid }
+        leaseId: { type: string, format: uuid, nullable: true }
+        tenantSince: { type: string, format: date-time }
+        tenantUntil: { type: string, format: date-time, nullable: true }
+        chargesBilledToTenant: { type: boolean, nullable: true }
+        isCurrent: { type: boolean, nullable: true }
+    UpdateLotTenantProfileRequest:
+      type: object
+      properties:
+        leaseId: { type: string, format: uuid, nullable: true }
+        tenantSince: { type: string, format: date-time, nullable: true }
+        tenantUntil: { type: string, format: date-time, nullable: true }
+        chargesBilledToTenant: { type: boolean, nullable: true }
+        isCurrent: { type: boolean, nullable: true }
+    CreateIncidentRequest:
+      type: object
+      required: [reportedByContactId, incidentType, description, urgency]
+      properties:
+        reportedByContactId: { type: string, format: uuid }
+        lotId: { type: string, format: uuid, nullable: true }
+        assetId: { type: string, format: uuid, nullable: true }
+        incidentType: { type: string, enum: [BREAKDOWN, LEAK, VANDALISM, SAFETY, OTHER] }
+        urgency: { type: string, enum: [LOW, MEDIUM, HIGH, CRITICAL] }
+        description: { type: string }
+        reportedAt: { type: string, format: date-time, nullable: true }
+    UpdateIncidentRequest:
+      type: object
+      properties:
+        status: { type: string, enum: [REPORTED, ASSIGNED, IN_PROGRESS, RESOLVED, CLOSED], nullable: true }
+        providerId: { type: string, format: uuid, nullable: true }
+        resolvedAt: { type: string, format: date-time, nullable: true }
+        description: { type: string, nullable: true }
+    CreateIncidentImputationRequest:
+      type: object
+      required: [amount, imputationType]
+      properties:
+        amount: { type: number, minimum: 0 }
+        imputationType: { type: string, enum: [SYNDICATE_BUDGET, INSURANCE, LOT_OWNER, THIRD_PARTY] }
+        currency: { type: string, default: XOF }
+        budgetLineId: { type: string, format: uuid, nullable: true }
+        lotId: { type: string, format: uuid, nullable: true }
+        contractId: { type: string, format: uuid, nullable: true }
+        notes: { type: string, nullable: true }
