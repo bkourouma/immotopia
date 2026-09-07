@@ -5,7 +5,7 @@ import { Button } from '../../../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import { Clock, Calendar, CheckCircle, X, ExternalLink } from 'lucide-react';
 import type { Workbench as WorkbenchType, WorkbenchItem } from '../../../../types/crmDashboard';
-import { format } from 'date-fns';
+import dayjs from 'dayjs';
 
 interface WorkbenchProps {
   data: WorkbenchType;
@@ -60,7 +60,7 @@ const WorkbenchItemRow: React.FC<{
             )}
             <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
               <span>
-                {format(new Date(item.dueDate), 'PPp')}
+                {dayjs(item.dueDate).format('DD MMM YYYY HH:mm')}
               </span>
               {item.contactName && <span>• {item.contactName}</span>}
               {item.dealLabel && <span>• {item.dealLabel}</span>}

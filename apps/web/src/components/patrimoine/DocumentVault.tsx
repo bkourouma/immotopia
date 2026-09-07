@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, Card, Popconfirm, Space, Table, Tag } from 'antd';
 import type { PatrimonyDocument } from '../../types/patrimoine-types';
+import { API_URL } from '../../config/api';
 
 interface Props {
   documents: PatrimonyDocument[];
@@ -13,7 +14,7 @@ function getDocumentUrl(fileUrl?: string | null): string {
   if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
     return fileUrl;
   }
-  const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8001/api';
+  const apiBaseUrl = API_URL;
   const serverBaseUrl = apiBaseUrl.replace('/api', '');
   const normalizedFileUrl = fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`;
   return `${serverBaseUrl}${normalizedFileUrl}`;

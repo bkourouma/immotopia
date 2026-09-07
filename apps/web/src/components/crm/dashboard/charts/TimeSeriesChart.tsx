@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Brush } from 'recharts';
 import { TimeSeries } from '../../../../types/crmDashboard';
-import { format, parseISO } from 'date-fns';
+import dayjs from 'dayjs';
 
 interface TimeSeriesChartProps {
   data: TimeSeries;
@@ -12,18 +12,14 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ data }) => {
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>(['activities', 'newLeads', 'wonDeals']);
 
   const formatDate = (dateString: string) => {
-    try {
-      const date = parseISO(dateString);
-      if (data.period === 'day') {
-        return format(date, 'dd MMM');
-      } else if (data.period === 'week') {
-        return format(date, 'dd MMM');
-      } else {
-        return format(date, 'MMM yyyy');
-      }
-    } catch {
+    const date = dayjs(dateString);
+    if (!date.isValid()) {
       return dateString;
     }
+    if (data.period === 'day' || data.period === 'week') {
+      return date.format('DD MMM');
+    }
+    return date.format('MMM YYYY');
   };
 
   const CustomTooltip = ({ active, payload, label }: any) => {

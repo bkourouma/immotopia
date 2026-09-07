@@ -1,6 +1,9 @@
 import express, { NextFunction, Request, Response, Router } from 'express';
+import twilio from 'twilio';
 import { handleWebhook } from '../services/providers/whatsapp.provider';
 import { logger } from '../utils/logger';
+import { env, isProduction } from '../config/env';
+import { webhookRateLimiter } from '../middleware/rate-limit-middleware';
 
 const router: Router = Router();
 
@@ -11,6 +14,52 @@ router.use(
     limit: '1mb'
   })
 );
+
+/**
+ * Verify the X-Twilio-Signature header on inbound Twilio payloads.
+ *
+ * The endpoint is public by necessity, so without this anyone can post
+ * arbitrary messages into the WhatsApp pipeline. Non-Twilio providers
+ * (WaSender) do not sign requests and are identified by the absence of the
+ * Twilio-specific fields; in production we refuse unsigned Twilio-shaped
+ * payloads rather than trusting them.
+ */
+function verifyTwilioSignature(req: Request, res: Response, next: NextFunction): void {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const looksLikeTwilio = typeof body.From === 'string' || typeof body.MessageSid === 'string';
+
+  if (!looksLikeTwilio) {
+    next();
+    return;
+  }
+
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const signature = req.get('X-Twilio-Signature');
+
+  if (!authToken) {
+    // Twilio is not configured: a Twilio-shaped payload cannot be genuine.
+    logger.warn('Twilio-shaped webhook received but TWILIO_AUTH_TOKEN is not set');
+    res.status(403).type('text/plain; charset=utf-8').send('Forbidden');
+    return;
+  }
+
+  // Twilio signs the exact URL it was configured with.
+  const url = `${env.BACKEND_URL.replace(/\/$/, '')}${req.originalUrl}`;
+  const isValid = Boolean(signature) && twilio.validateRequest(authToken, signature as string, url, body as never);
+
+  if (!isValid) {
+    logger.warn('Invalid Twilio webhook signature', { url, hasSignature: Boolean(signature) });
+    if (isProduction) {
+      res.status(403).type('text/plain; charset=utf-8').send('Forbidden');
+      return;
+    }
+    // Outside production, log loudly but let local tunnels (ngrok URLs that do
+    // not match BACKEND_URL) keep working.
+    logger.warn('Signature check bypassed (NODE_ENV != production)');
+  }
+
+  next();
+}
 
 interface WhatsAppWebhookBody {
   From?: string;
@@ -41,6 +90,8 @@ function buildTwiMLMessage(message: string): string {
 
 router.post(
   '/whatsapp/webhook',
+  webhookRateLimiter,
+  verifyTwilioSignature,
   async (req: Request<unknown, unknown, WhatsAppWebhookBody>, res: Response, _next: NextFunction): Promise<void> => {
     try {
       const payload = req.body ?? {};

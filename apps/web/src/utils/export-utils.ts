@@ -1,4 +1,40 @@
-import * as XLSX from 'xlsx';
+/**
+ * CSV / Excel export helpers.
+ *
+ * Excel generation uses exceljs, loaded on demand: it is a large dependency and
+ * only a handful of screens have an export button, so it must not sit in the
+ * main bundle. (It replaces `xlsx` 0.18.5, whose published npm build carries
+ * unpatched prototype-pollution and ReDoS advisories.)
+ */
+
+/** Trigger a browser download for a generated Blob. */
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', filename);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/** Render one cell value for CSV, quoting and escaping as needed. */
+function toCsvCell(value: unknown): string {
+  if (value === null || value === undefined) return '';
+
+  if (typeof value === 'object') {
+    return `"${JSON.stringify(value).replace(/"/g, '""')}"`;
+  }
+
+  const asString = String(value);
+  if (asString.includes(',') || asString.includes('"') || asString.includes('\n')) {
+    return `"${asString.replace(/"/g, '""')}"`;
+  }
+
+  return asString;
+}
 
 /**
  * Export data to CSV format
@@ -9,63 +45,55 @@ export function exportToCSV(data: any[], filename: string): void {
     return;
   }
 
-  // Get headers from first object
   const headers = Object.keys(data[0]);
-  
-  // Create CSV content
+
   const csvContent = [
-    headers.join(','), // Header row
-    ...data.map(row => 
-      headers.map(header => {
-        const value = row[header];
-        // Handle null/undefined
-        if (value === null || value === undefined) return '';
-        // Handle objects/arrays - convert to JSON string
-        if (typeof value === 'object') {
-          return `"${JSON.stringify(value).replace(/"/g, '""')}"`;
-        }
-        // Handle strings with commas or quotes
-        if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
-          return `"${value.replace(/"/g, '""')}"`;
-        }
-        return value;
-      }).join(',')
-    )
+    headers.join(','),
+    ...data.map(row => headers.map(header => toCsvCell(row[header])).join(','))
   ].join('\n');
 
-  // Create blob and download
-  const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-  const link = document.createElement('a');
-  const url = URL.createObjectURL(blob);
-  link.setAttribute('href', url);
-  link.setAttribute('download', `${filename}.csv`);
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  // BOM so Excel opens UTF-8 accents correctly.
+  downloadBlob(new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' }), `${filename}.csv`);
+}
+
+/** Values exceljs cannot write directly are rendered as text. */
+function toExcelCell(value: unknown): string | number | boolean | Date | null {
+  if (value === null || value === undefined) return null;
+  if (value instanceof Date) return value;
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'string') return value;
+  return JSON.stringify(value);
 }
 
 /**
- * Export data to Excel format
+ * Export data to Excel format.
+ * Async because exceljs is code-split out of the main bundle.
  */
-export function exportToExcel(data: any[], filename: string, sheetName: string = 'Sheet1'): void {
+export async function exportToExcel(data: any[], filename: string, sheetName: string = 'Sheet1'): Promise<void> {
   if (!data || data.length === 0) {
     alert('Aucune donnée à exporter');
     return;
   }
 
-  // Convert data to worksheet format
-  const worksheet = XLSX.utils.json_to_sheet(data);
-  
-  // Create workbook
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
-  
-  // Generate Excel file and download
-  XLSX.writeFile(workbook, `${filename}.xlsx`);
+  const ExcelJS = await import('exceljs');
+
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet(sheetName);
+
+  const headers = Object.keys(data[0]);
+  worksheet.columns = headers.map(header => ({
+    header,
+    key: header,
+    width: Math.min(Math.max(header.length + 2, 12), 50)
+  }));
+  worksheet.getRow(1).font = { bold: true };
+
+  for (const row of data) {
+    worksheet.addRow(headers.map(header => toExcelCell(row[header])));
+  }
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  downloadBlob(
+    new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    `${filename}.xlsx`
+  );
 }
-
-
-
-
-

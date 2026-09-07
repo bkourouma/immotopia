@@ -1,6 +1,5 @@
 declare module 'react-big-calendar' {
   import { Component, CSSProperties } from 'react';
-  import { Moment } from 'moment';
 
   export type View = 'month' | 'week' | 'work_week' | 'day' | 'agenda';
   export type Navigate = 'PREV' | 'NEXT' | 'TODAY' | 'DATE';
@@ -50,6 +49,7 @@ declare module 'react-big-calendar' {
   export class Calendar<TEvent extends Event = Event> extends Component<CalendarProps<TEvent>> {}
 
   export function momentLocalizer(moment: any): any;
+  export function dayjsLocalizer(dayjs: any): any;
 
   export default Calendar;
 }

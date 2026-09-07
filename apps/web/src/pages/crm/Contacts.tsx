@@ -244,7 +244,7 @@ export const Contacts: React.FC = () => {
     message.success('Export CSV réussi');
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     const exportData = contacts.map(contact => ({
       'Nom': `${contact.firstName} ${contact.lastName}`,
       'Email': contact.email,
@@ -255,7 +255,7 @@ export const Contacts: React.FC = () => {
       'Affaire en cours': contact.activeDeal ? `${contact.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${contact.activeDeal.stage}` : '',
       'Date de création': new Date(contact.createdAt).toLocaleDateString('fr-FR'),
     }));
-    exportToExcel(exportData, 'contacts', 'Contacts');
+    await exportToExcel(exportData, 'contacts', 'Contacts');
     message.success('Export Excel réussi');
   };
 

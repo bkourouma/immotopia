@@ -138,6 +138,18 @@ describe('Syndics profiles/incidents page', () => {
       if (url.includes('/incidents')) {
         return Promise.resolve({ data: { success: true, data: [{ id: 'i-1', incidentType: 'LEAK', urgency: 'HIGH', description: 'Fuite', status: 'REPORTED', imputations: [] }] } });
       }
+      // The page loads lots, CRM contacts and properties in the same
+      // Promise.all; any unhandled branch rejects the whole load and the page
+      // renders its error state instead of the data asserted below.
+      if (url.endsWith('/lots')) {
+        return Promise.resolve({ data: { success: true, data: [{ id: 'lot-1', lotNumber: 'A-01', lotType: 'APARTMENT' }] } });
+      }
+      if (url.includes('/crm/contacts')) {
+        return Promise.resolve({ data: { success: true, data: [], pagination: { total: 0 } } });
+      }
+      if (url.includes('/properties')) {
+        return Promise.resolve({ data: { success: true, data: [], pagination: { total: 0 } } });
+      }
       return Promise.reject(new Error(`Unhandled GET ${url}`));
     });
   });
@@ -145,7 +157,9 @@ describe('Syndics profiles/incidents page', () => {
   it('renders profiles and incidents', async () => {
     renderWithRoute();
     expect(await screen.findByText('Profils lot et incidents')).toBeTruthy();
-    expect(await screen.findByText('Fuite')).toBeTruthy();
+    // The description shows both in the incidents table and in the imputation
+    // modal's incident selector, so match all occurrences.
+    expect((await screen.findAllByText('Fuite')).length).toBeGreaterThan(0);
   });
 
   it('shows imputation action for incidents', async () => {

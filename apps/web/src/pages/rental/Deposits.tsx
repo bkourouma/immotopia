@@ -52,9 +52,19 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
   useEffect(() => {
     if (tenantId && leaseId) {
       loadDeposit();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, leaseId]);
+
+  // Movements depend on the deposit id, which is only known once loadDeposit
+  // resolves. Calling both in the effect above meant loadMovements always
+  // early-returned and movements never appeared on first render.
+  useEffect(() => {
+    if (tenantId && deposit?.id) {
       loadMovements();
     }
-  }, [tenantId, leaseId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, deposit?.id]);
 
   const loadDeposit = async () => {
     if (!tenantId || !leaseId) return;
@@ -65,14 +75,8 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
       if (response.success) {
         setDeposit(response.data);
       } else {
-        // Try to create deposit if it doesn't exist
-        const leaseResponse = await fetch(`/api/tenants/${tenantId}/rental/leases/${leaseId}`);
-        if (leaseResponse.ok) {
-          const lease = await leaseResponse.json();
-          if (lease.data?.security_deposit_amount > 0) {
-            // Deposit will be created automatically when needed
-          }
-        }
+        // No deposit yet: it is created server-side on the first movement.
+        setDeposit(null);
       }
     } catch (err: any) {
       if (err.response?.status === 404) {

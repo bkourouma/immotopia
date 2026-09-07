@@ -59,16 +59,13 @@ export const LeaseFormPage: React.FC = () => {
   const handleSubmit = async (data: CreateLeaseRequest | UpdateLeaseRequest) => {
     if (!tenantId) return;
 
-    try {
-      if (leaseId) {
-        await updateLease(tenantId, leaseId, data as UpdateLeaseRequest);
-      } else {
-        await createLease(tenantId, data as CreateLeaseRequest);
-      }
-      navigate(`/tenant/${tenantId}/rental/leases`);
-    } catch (error) {
-      throw error; // Let LeaseForm handle the error
+    // Errors propagate to LeaseForm, which renders them.
+    if (leaseId) {
+      await updateLease(tenantId, leaseId, data as UpdateLeaseRequest);
+    } else {
+      await createLease(tenantId, data as CreateLeaseRequest);
     }
+    navigate(`/tenant/${tenantId}/rental/leases`);
   };
 
   const handleCancel = () => {

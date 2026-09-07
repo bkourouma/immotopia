@@ -38,6 +38,7 @@ import { PropertyMaintenanceTab } from '../../components/properties/PropertyMain
 import { PropertyApartments } from '../../components/properties/PropertyApartments';
 import { PropertyNewsletterCampaignModal } from '../../components/newsletter/PropertyNewsletterCampaignModal';
 import { PropertyPatrimoineTab } from '../../components/patrimoine/PropertyPatrimoineTab';
+import { API_URL } from '../../config/api';
 
 const { Title, Text } = Typography;
 
@@ -101,7 +102,7 @@ export const PropertyDetail: React.FC = () => {
       if (item.fileUrl.startsWith('http')) {
         return item.fileUrl;
       }
-      const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8001/api';
+      const apiBaseUrl = API_URL;
       const baseUrl = apiBaseUrl.replace('/api', '');
       return `${baseUrl}${item.fileUrl}`;
     }

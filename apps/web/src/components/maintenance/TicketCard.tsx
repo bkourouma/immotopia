@@ -36,7 +36,7 @@ const priorityColors: Record<string, string> = {
 };
 
 export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, onEdit, onDelete }) => {
-  const formattedDate = safeFormatDate(ticket.createdAt, 'dd MMM yyyy', 'Date invalide');
+  const formattedDate = safeFormatDate(ticket.createdAt, 'DD MMM YYYY', 'Date invalide');
   const canEdit = ticket.status === MaintenanceTicketStatus.DECLARED;
   // Can delete permanently only if DECLARED or CANCELED
   const canDelete = ticket.status === MaintenanceTicketStatus.DECLARED || ticket.status === MaintenanceTicketStatus.CANCELED;

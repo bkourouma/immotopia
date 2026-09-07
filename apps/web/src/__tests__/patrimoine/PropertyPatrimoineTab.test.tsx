@@ -15,6 +15,14 @@ jest.mock('../../utils/api-client', () => ({
   }
 }));
 
+// The tab loads owners from the CRM in the same Promise.all as the patrimoine
+// data. Left unmocked it hits the mocked apiClient, the whole load rejects, and
+// none of the fetched state (documents included) is ever applied.
+jest.mock('../../services/crm-service', () => ({
+  __esModule: true,
+  listContacts: require('@jest/globals').jest.fn(async () => ({ contacts: [], pagination: { total: 0 } }))
+}));
+
 jest.mock('antd', () => {
   const React = require('react');
   const jestObject = require('@jest/globals').jest;

@@ -34,18 +34,37 @@ jest.mock('antd', () => {
     (Tag: keyof JSX.IntrinsicElements = 'div') =>
     ({ children, ...props }: any) =>
       React.createElement(Tag, props, children);
+  // SyndicProviders and SyndicDocuments call Form.useForm() at render time, so
+  // the mock must expose the full antd surface these pages import, not just the
+  // layout primitives.
+  const Form: any = passthrough('form');
+  Form.useForm = () => [{ resetFields() {}, setFieldsValue() {}, validateFields: async () => ({}) }];
+  Form.Item = passthrough();
+
+  const Upload: any = passthrough();
+  Upload.Dragger = passthrough();
+
+  const Modal: any = ({ children, open }: any) => (open ? React.createElement('div', null, children) : null);
+
   return {
     Alert: passthrough(),
     Button: passthrough('button'),
     Card: passthrough(),
     Col: passthrough(),
     Row: passthrough(),
+    DatePicker: passthrough('input'),
+    Form,
+    Input: passthrough('input'),
+    InputNumber: passthrough('input'),
+    Modal,
     Select: passthrough('select'),
     Space: passthrough(),
     Spin: passthrough(),
     Statistic: ({ title, value }: any) => <div>{title}:{value}</div>,
     Table: ({ dataSource }: any) => <div>{JSON.stringify(dataSource || [])}</div>,
     Tag: passthrough('span'),
+    Upload,
+    message: { success() {}, error() {}, warning() {}, info() {} },
     Typography: {
       Title: passthrough('h1'),
       Paragraph: passthrough('p'),
@@ -153,7 +172,7 @@ describe('Providers/Documents/Finances pages', () => {
       }
     } as never);
     renderWithRoute('/tenant/tenant-1/syndics/syndic-1/finances');
-    expect(await screen.findByText('Finances copropriete')).toBeTruthy();
+    expect(await screen.findByText('Finances copropriété')).toBeTruthy();
     expect(await screen.findByText(/Fonds travaux/)).toBeTruthy();
   });
 });

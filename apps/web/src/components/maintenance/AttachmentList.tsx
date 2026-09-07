@@ -3,6 +3,7 @@ import { List, Button, Typography, Image } from 'antd';
 import { DownloadOutlined, FileOutlined } from '@ant-design/icons';
 import { Attachment } from '../../types/maintenance-types';
 import apiClient from '../../utils/api-client';
+import { API_ORIGIN } from '../../config/api';
 
 const { Text } = Typography;
 
@@ -53,7 +54,7 @@ export const AttachmentList: React.FC<AttachmentListProps> = ({ attachments, ten
   };
 
   const getFileUrl = (attachment: Attachment): string => {
-    const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8001';
+    const baseUrl = API_ORIGIN;
     return `${baseUrl}${attachment.fileUrl}`;
   };
 

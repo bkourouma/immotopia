@@ -196,7 +196,7 @@ describe('Syndics accounting page', () => {
 
   it('renders accounting dashboard', async () => {
     renderWithRoute();
-    expect(await screen.findByText('Comptabilite syndic')).toBeTruthy();
+    expect(await screen.findByText('Comptabilité syndic')).toBeTruthy();
     expect(await screen.findByText('401 - Fournisseurs')).toBeTruthy();
   });
 

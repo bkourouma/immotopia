@@ -431,11 +431,11 @@ export async function resetMemberPassword(
     throw new Error('Membre introuvable.');
   }
 
-  // Generate random password if not provided
-  let password = newPassword;
-  if (!password) {
-    password = crypto.randomBytes(16).toString('hex');
-  }
+  // When the admin does not supply a password, set an unguessable one so the
+  // previous credentials stop working immediately. It is never disclosed:
+  // the member regains access through the one-time reset link below.
+  const generated = !newPassword;
+  const password = newPassword || crypto.randomBytes(32).toString('base64url');
 
   // Validate password strength
   const passwordValidation = validatePasswordStrength(password);
@@ -453,21 +453,27 @@ export async function resetMemberPassword(
   // Revoke all sessions
   await revokeUserSessions(userId);
 
+  // Issue a single-use reset link instead of e-mailing the password in clear
+  // text (e-mail is not a confidential channel and the message is archived).
+  const resetToken = crypto.randomUUID();
+  const expiresAt = new Date();
+  expiresAt.setHours(expiresAt.getHours() + 24);
+
+  await prisma.passwordResetToken.updateMany({
+    where: { userId, used: false },
+    data: { used: true }
+  });
+
+  await prisma.passwordResetToken.create({
+    data: { token: resetToken, userId, expiresAt }
+  });
+
   // Send password reset notification email
   try {
-    await emailService.sendEmail({
-      to: membership.user.email,
-      subject: 'Votre mot de passe a ete reinitialise',
-      html: `
-        <h1>Mot de passe reinitialise</h1>
-        <p>Votre mot de passe a ete reinitialise par un administrateur.</p>
-        <p>Votre nouveau mot de passe est: <strong>${password}</strong></p>
-        <p>Veuillez vous connecter et changer votre mot de passe des que possible.</p>
-      `
-    });
-    logger.info('Password reset notification email sent', { userId, tenantId });
+    await emailService.sendPasswordResetEmail(membership.user.email, resetToken);
+    logger.info('Password reset link sent', { userId, tenantId });
   } catch (error) {
-    logger.error('Failed to send password reset notification email', { userId, tenantId, error });
+    logger.error('Failed to send password reset link', { userId, tenantId, error });
     // Don't throw - password is reset, email can be resent
   }
 
@@ -484,7 +490,10 @@ export async function resetMemberPassword(
     });
   }
 
-  return { password }; // Return password for admin to share with user
+  // A generated password is deliberately never returned: the member sets their
+  // own through the reset link. Only an admin-chosen password is echoed back,
+  // since the admin already knows it.
+  return { password: generated ? undefined : password, resetLinkSent: true };
 }
 
 /**

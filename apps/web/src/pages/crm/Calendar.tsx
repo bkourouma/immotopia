@@ -38,8 +38,9 @@ import {
   CalendarScope,
   CalendarFilters,
 } from '../../services/crm-service';
-import { Calendar as BigCalendar, momentLocalizer, View, Event as RBCEvent } from 'react-big-calendar';
-import moment from 'moment';
+import { Calendar as BigCalendar, dayjsLocalizer, View, Event as RBCEvent } from 'react-big-calendar';
+import dayjs from 'dayjs';
+import 'dayjs/locale/fr';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import './Calendar.css';
 import { ActivityForm } from '../../components/crm/ActivityForm';
@@ -49,8 +50,9 @@ import { exportToCSV, exportToExcel } from '../../utils/export-utils';
 
 const { Title, Text } = Typography;
 
-// Configure moment localizer
-const localizer = momentLocalizer(moment);
+// Configure dayjs localizer (dayjs is already the date library used by antd)
+dayjs.locale('fr');
+const localizer = dayjsLocalizer(dayjs);
 
 // Extend CalendarEvent to work with react-big-calendar
 interface CalendarEventExtended extends RBCEvent {
@@ -94,12 +96,14 @@ export const CalendarPage: React.FC = () => {
 
   // Calculate date range based on current view
   const dateRange = useMemo(() => {
-    const start = moment(currentDate).startOf(view === 'month' ? 'month' : view === 'week' ? 'week' : 'day');
-    const end = moment(currentDate).endOf(view === 'month' ? 'month' : view === 'week' ? 'week' : 'day');
-    // Add buffer for month view
+    const unit = view === 'month' ? 'month' : view === 'week' ? 'week' : 'day';
+    let start = dayjs(currentDate).startOf(unit);
+    let end = dayjs(currentDate).endOf(unit);
+    // Add buffer for month view.
+    // dayjs is immutable, so the results must be reassigned (moment mutated in place).
     if (view === 'month') {
-      start.subtract(7, 'days');
-      end.add(7, 'days');
+      start = start.subtract(7, 'day');
+      end = end.add(7, 'day');
     }
     return { from: start.toDate(), to: end.toDate() };
   }, [currentDate, view]);
@@ -427,11 +431,11 @@ export const CalendarPage: React.FC = () => {
                       'Titre': event.title,
                       'Contact': event.contactName,
                       'Affaire': event.dealLabel || '',
-                      'Date début': event.start && moment(event.start).isValid()
-                        ? moment(event.start).format('DD/MM/YYYY HH:mm')
+                      'Date début': event.start && dayjs(event.start).isValid()
+                        ? dayjs(event.start).format('DD/MM/YYYY HH:mm')
                         : 'Date invalide',
-                      'Date fin': event.end && moment(event.end).isValid()
-                        ? moment(event.end).format('DD/MM/YYYY HH:mm')
+                      'Date fin': event.end && dayjs(event.end).isValid()
+                        ? dayjs(event.end).format('DD/MM/YYYY HH:mm')
                         : '',
                       'Type d\'action': event.nextActionType || '',
                       'Lieu': event.location || '',
@@ -451,11 +455,11 @@ export const CalendarPage: React.FC = () => {
                       'Titre': event.title,
                       'Contact': event.contactName,
                       'Affaire': event.dealLabel || '',
-                      'Date début': event.start && moment(event.start).isValid()
-                        ? moment(event.start).format('DD/MM/YYYY HH:mm')
+                      'Date début': event.start && dayjs(event.start).isValid()
+                        ? dayjs(event.start).format('DD/MM/YYYY HH:mm')
                         : 'Date invalide',
-                      'Date fin': event.end && moment(event.end).isValid()
-                        ? moment(event.end).format('DD/MM/YYYY HH:mm')
+                      'Date fin': event.end && dayjs(event.end).isValid()
+                        ? dayjs(event.end).format('DD/MM/YYYY HH:mm')
                         : '',
                       'Type d\'action': event.nextActionType || '',
                       'Lieu': event.location || '',
@@ -667,11 +671,11 @@ export const CalendarPage: React.FC = () => {
                 <Space>
                   <ClockCircleOutlined />
                   <Text>
-                    {selectedEvent.start && moment(selectedEvent.start).isValid()
-                      ? moment(selectedEvent.start).format('DD/MM/YYYY HH:mm')
+                    {selectedEvent.start && dayjs(selectedEvent.start).isValid()
+                      ? dayjs(selectedEvent.start).format('DD/MM/YYYY HH:mm')
                       : 'Date invalide'}
-                    {selectedEvent.end && moment(selectedEvent.end).isValid() && (
-                      <> - {moment(selectedEvent.end).format('HH:mm')}</>
+                    {selectedEvent.end && dayjs(selectedEvent.end).isValid() && (
+                      <> - {dayjs(selectedEvent.end).format('HH:mm')}</>
                     )}
                   </Text>
                 </Space>

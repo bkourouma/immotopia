@@ -14,10 +14,8 @@ interface MeetingAgendaProps {
 export const MeetingAgenda: React.FC<MeetingAgendaProps> = ({ resolutions, lots, onVote, voting = false }) => {
   const [selectedLotsByResolution, setSelectedLotsByResolution] = useState<Record<string, string>>({});
 
-  if (resolutions.length === 0) {
-    return <Empty description="Aucune resolution enregistree" />;
-  }
-
+  // Hooks must run on every render: this useMemo sat after the early return
+  // below, so the hook order changed as soon as resolutions became non-empty.
   const lotOptions = useMemo(
     () =>
       lots.map((lot) => ({
@@ -26,6 +24,10 @@ export const MeetingAgenda: React.FC<MeetingAgendaProps> = ({ resolutions, lots,
       })),
     [lots]
   );
+
+  if (resolutions.length === 0) {
+    return <Empty description="Aucune resolution enregistree" />;
+  }
 
   const getSelectedLotId = (resolutionId: string) => selectedLotsByResolution[resolutionId] || lots[0]?.id;
 

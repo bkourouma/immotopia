@@ -39,6 +39,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { GeographicLocation, getAllCommunes } from '../../services/geographic-service';
 import { CommuneSearchableSelect } from '../../components/ui/commune-searchable-select';
 import { PropertyNewsletterCampaignModal } from '../../components/newsletter/PropertyNewsletterCampaignModal';
+import { API_URL } from '../../config/api';
 
 const { Title, Text } = Typography;
 const { Panel } = Collapse;
@@ -248,7 +249,7 @@ export const Properties: React.FC = () => {
     if (!effectiveTenantId) return;
     
     const imageMap: Record<string, string> = {};
-    const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8001/api';
+    const apiBaseUrl = API_URL;
     const mediaBaseUrl = apiBaseUrl.replace('/api', '');
     
     await Promise.all(

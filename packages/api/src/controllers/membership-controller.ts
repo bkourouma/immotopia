@@ -223,11 +223,9 @@ export async function resetPasswordHandler(req: Request, res: Response): Promise
 
     res.status(200).json({
       success: true,
-      message: 'Mot de passe réinitialisé avec succès.',
-      data: {
-        // Only return password in development/testing
-        ...(process.env.NODE_ENV !== 'production' && { password: result.password })
-      }
+      message: result.password
+        ? 'Mot de passe réinitialisé. Un lien de réinitialisation a également été envoyé au membre.'
+        : 'Un lien de réinitialisation a été envoyé au membre. Ses sessions ont été révoquées.'
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';

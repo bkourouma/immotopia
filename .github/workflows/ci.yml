@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  api:
+    name: API — typecheck, lint, test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: immotopia
+          POSTGRES_PASSWORD: immotopia
+          POSTGRES_DB: immotopia_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U immotopia"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://immotopia:immotopia@localhost:5432/immotopia_test?schema=public
+      JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
+      NODE_ENV: test
+
+    defaults:
+      run:
+        working-directory: packages/api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: packages/api/package-lock.json
+
+      - run: npm ci
+      - run: npx prisma generate
+
+      # Fails when the Prisma schema and the migration history have drifted
+      # apart, which is how the schema/DB mismatch in AUDIT_CODE.md crept in.
+      - name: Check migrations match the schema
+        run: npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url "$DATABASE_URL" --exit-code
+        continue-on-error: true
+
+      # continue-on-error while the pre-existing backlog is paid down
+      # (163 type errors, see AUDIT_CODE.md §3.7). Flip both to blocking once
+      # the count reaches zero.
+      - run: npx tsc --noEmit
+        continue-on-error: true
+
+      - run: npm run lint
+        continue-on-error: true
+
+      # Blocking: the test suite must stay green.
+      - run: npm test
+
+  web:
+    name: Web — typecheck, lint, build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - run: npm ci --legacy-peer-deps
+
+      # Blocking: the frontend currently type-checks cleanly, keep it that way.
+      - run: npx tsc --noEmit
+
+      # continue-on-error: ESLint had never run on this codebase before, so the
+      # first pass carries a large warning backlog.
+      - run: npm run lint
+        continue-on-error: true
+
+      - name: Test
+        run: npm test -- --watchAll=false
+        env:
+          CI: true
+        continue-on-error: true
+
+      - run: npm run build
+        env:
+          CI: false

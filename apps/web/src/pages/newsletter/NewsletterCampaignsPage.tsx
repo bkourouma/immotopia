@@ -378,9 +378,17 @@ export function NewsletterCampaignsPage() {
         {preview && (
           <div>
             <p><strong>Sujet:</strong> {preview.subject}</p>
-            <div
-              style={{ border: '1px solid #d9d9d9', padding: 16, maxHeight: 400, overflow: 'auto' }}
-              dangerouslySetInnerHTML={{ __html: preview.html }}
+            {/*
+              Campaign HTML is authored by users in the template editor, so it is
+              untrusted. Rendering it with dangerouslySetInnerHTML executed that
+              markup inside the app (stored XSS). A sandboxed iframe with no
+              allow-scripts and no allow-same-origin renders it inert instead.
+            */}
+            <iframe
+              title="Aperçu de la campagne"
+              sandbox=""
+              srcDoc={preview.html}
+              style={{ border: '1px solid #d9d9d9', width: '100%', height: 400, background: '#fff' }}
             />
           </div>
         )}

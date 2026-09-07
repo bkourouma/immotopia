@@ -213,7 +213,7 @@ export const Tickets: React.FC = () => {
         }
         
         // Fallback to safeFormatDate
-        const formatted = safeFormatDate(date, 'dd MMM yyyy', '');
+        const formatted = safeFormatDate(date, 'DD MMM YYYY', '');
         if (formatted && formatted !== 'Date invalide') {
           return formatted;
         }

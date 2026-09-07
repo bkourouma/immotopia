@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { register } from '../services/auth-service';
 import { PasswordStrength } from '../components/PasswordStrength';
 import { RegisterData } from '../types/auth-types';
+import { API_ORIGIN } from '../config/api';
 
 export const Register: React.FC = () => {
   const navigate = useNavigate();
@@ -18,7 +19,7 @@ export const Register: React.FC = () => {
 
   const handleGoogleLogin = (): void => {
     // Redirect to Google OAuth endpoint
-    const apiUrl = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:8001';
+    const apiUrl = API_ORIGIN;
     window.location.href = `${apiUrl}/api/auth/google`;
   };
 

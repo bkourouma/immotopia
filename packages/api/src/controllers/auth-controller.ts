@@ -11,6 +11,7 @@ import {
   resetPassword
 } from '../services/auth-service';
 import { RegisterRequest, LoginRequest } from '../types/auth-types';
+import { setAuthCookies, clearAuthCookies } from '../utils/auth-cookies';
 
 /**
  * Register a new user
@@ -96,26 +97,7 @@ export async function login(req: Request, res: Response): Promise<void> {
 
     const result = await loginUser(data);
 
-    // Set cookies
-    const isProduction = process.env.NODE_ENV === 'production';
-
-    // Access token cookie (15 minutes)
-    res.cookie('accessToken', result.accessToken, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: 'lax', // Changed from 'strict' to 'lax' for better compatibility
-      maxAge: 15 * 60 * 1000, // 15 minutes
-      path: '/'
-    });
-
-    // Refresh token cookie (7 days)
-    res.cookie('refreshToken', result.refreshToken, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: 'lax', // Changed from 'strict' to 'lax' for better compatibility
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      path: '/'
-    });
+    setAuthCookies(res, result.accessToken, result.refreshToken);
 
     res.status(200).json({
       success: true,
@@ -141,24 +123,16 @@ export async function refresh(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const result = await refreshAccessToken(refreshToken);
+    const result = await refreshAccessToken(refreshToken, req.headers['user-agent']);
 
-    // Set new access token cookie
-    const isProduction = process.env.NODE_ENV === 'production';
-    res.cookie('accessToken', result.accessToken, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: 'lax', // Changed from 'strict' to 'lax' for better compatibility
-      maxAge: 15 * 60 * 1000, // 15 minutes
-      path: '/'
-    });
+    // The refresh token is rotated on every use: both cookies must be replaced.
+    setAuthCookies(res, result.accessToken, result.refreshToken);
 
     res.status(200).json({ success: true, message: 'Token rafraîchi avec succès.' });
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : 'Une erreur est survenue lors du rafraîchissement du token.';
-    res.clearCookie('accessToken');
-    res.clearCookie('refreshToken');
+    clearAuthCookies(res);
     res.status(401).json({ success: false, message: errorMessage });
   }
 }
@@ -192,12 +166,10 @@ export async function logout(req: Request, res: Response): Promise<void> {
     if (refreshToken) {
       await logoutUser(refreshToken);
     }
-    res.clearCookie('accessToken', { path: '/' });
-    res.clearCookie('refreshToken', { path: '/' });
+    clearAuthCookies(res);
     res.status(200).json({ success: true, message: 'Déconnexion réussie.' });
   } catch (error) {
-    res.clearCookie('accessToken', { path: '/' });
-    res.clearCookie('refreshToken', { path: '/' });
+    clearAuthCookies(res);
     res.status(200).json({ success: true, message: 'Déconnexion réussie.' });
   }
 }

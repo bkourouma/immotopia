@@ -197,7 +197,7 @@ export const Clients: React.FC = () => {
     message.success('Export CSV réussi');
   };
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     const exportData = filteredClients.map(client => ({
       'Nom': `${client.firstName} ${client.lastName}`,
       'Email': client.email,
@@ -206,7 +206,7 @@ export const Clients: React.FC = () => {
       'Groupes': client.tags?.map(t => t.name).join(', ') || '',
       'Date d\'inscription': new Date(client.createdAt).toLocaleDateString('fr-FR'),
     }));
-    exportToExcel(exportData, 'clients', 'Clients');
+    await exportToExcel(exportData, 'clients', 'Clients');
     message.success('Export Excel réussi');
   };
 

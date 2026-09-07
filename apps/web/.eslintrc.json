@@ -1,0 +1,65 @@
+{
+  "root": true,
+  "env": {
+    "browser": true,
+    "es2022": true,
+    "node": true
+  },
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module",
+    "ecmaFeatures": { "jsx": true }
+  },
+  "settings": {
+    "react": { "version": "detect" }
+  },
+  "plugins": ["@typescript-eslint", "react", "react-hooks"],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:react/recommended",
+    "plugin:react-hooks/recommended",
+    "prettier"
+  ],
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "react/prop-types": "off",
+
+    // The UI is written in French: apostrophes in copy are the norm, not a
+    // defect, and CRA turns ESLint errors into build failures.
+    "react/no-unescaped-entities": "off",
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
+    "@typescript-eslint/no-empty-function": "off",
+    "@typescript-eslint/ban-ts-comment": "warn",
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+
+    // 509 `: any` annotations exist today (see AUDIT_CODE.md). Kept as a
+    // warning so the build stays green while the debt is paid down; raise to
+    // "error" once the count reaches zero.
+    "@typescript-eslint/no-explicit-any": "warn",
+
+    // Missing effect dependencies are a real source of stale-data bugs here
+    // (209 useEffect calls, none with cancellation).
+    "react-hooks/rules-of-hooks": "error",
+    "react-hooks/exhaustive-deps": "warn",
+
+    // ESLint had never run on this codebase, so its first pass surfaces a large
+    // pre-existing backlog. CRA turns ESLint *errors* into build failures, so
+    // these stay warnings until the backlog is cleared, then promote to "error".
+    "no-useless-catch": "warn",
+    "no-case-declarations": "warn",
+    "react/jsx-key": "warn",
+    "@typescript-eslint/ban-types": "warn",
+    "@typescript-eslint/no-empty-interface": "warn",
+    "@typescript-eslint/no-non-null-assertion": "warn",
+    "no-empty": "warn",
+    "no-prototype-builtins": "warn",
+    "no-useless-escape": "warn",
+    "no-fallthrough": "warn",
+    "react/display-name": "warn",
+    "react/no-children-prop": "warn"
+  },
+  "ignorePatterns": ["build/", "node_modules/", "*.config.js", "public/"]
+}

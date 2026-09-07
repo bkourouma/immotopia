@@ -128,7 +128,7 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({
       title: 'Date de création',
       dataIndex: 'createdAt',
       key: 'createdAt',
-      render: (date: string | null | undefined) => safeFormatDate(date, 'dd MMM yyyy', '-')
+      render: (date: string | null | undefined) => safeFormatDate(date, 'DD MMM YYYY', '-')
     }
   ];
 

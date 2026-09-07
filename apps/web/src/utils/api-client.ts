@@ -1,6 +1,5 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001/api';
+import { API_URL } from '../config/api';
 
 // Create Axios instance
 const apiClient: AxiosInstance = axios.create({
@@ -23,6 +22,37 @@ apiClient.interceptors.request.use(
   }
 );
 
+/**
+ * In-flight refresh, shared by every 401 that arrives while it runs.
+ *
+ * Without this, N concurrent requests failing with 401 fire N POST
+ * /auth/refresh. Now that refresh tokens are rotated server-side, the first
+ * response invalidates the token the others are still presenting, which the
+ * backend treats as token reuse and logs the user out entirely.
+ */
+let refreshPromise: Promise<void> | null = null;
+
+function refreshSession(): Promise<void> {
+  if (!refreshPromise) {
+    refreshPromise = apiClient
+      .post('/auth/refresh')
+      .then(() => undefined)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+}
+
+/** Send the user to login, preserving where they were headed. */
+function redirectToLogin(): void {
+  if (window.location.pathname.includes('/login')) {
+    return;
+  }
+  const redirect = `${window.location.pathname}${window.location.search}`;
+  window.location.href = `/login?redirect=${encodeURIComponent(redirect)}`;
+}
+
 // Response interceptor: Handle token refresh on 401
 apiClient.interceptors.response.use(
   (response) => {
@@ -32,12 +62,12 @@ apiClient.interceptors.response.use(
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
     // If error is 401 and we haven't retried yet
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true;
 
       // Don't retry these endpoints - they should fail gracefully
       const skipRefreshEndpoints = ['/auth/refresh', '/auth/me', '/auth/login', '/auth/register'];
-      const shouldSkipRefresh = skipRefreshEndpoints.some(endpoint => 
+      const shouldSkipRefresh = skipRefreshEndpoints.some(endpoint =>
         originalRequest.url?.includes(endpoint)
       );
 
@@ -47,16 +77,10 @@ apiClient.interceptors.response.use(
       }
 
       try {
-        // Attempt to refresh token
-        await apiClient.post('/auth/refresh');
-
-        // Retry original request
+        await refreshSession();
         return apiClient(originalRequest);
       } catch (refreshError) {
-        // Refresh failed, only redirect if not already on login page
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login';
-        }
+        redirectToLogin();
         return Promise.reject(refreshError);
       }
     }
@@ -66,4 +90,3 @@ apiClient.interceptors.response.use(
 );
 
 export default apiClient;
-

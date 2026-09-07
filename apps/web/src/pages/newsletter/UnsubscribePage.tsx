@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card, Result, Button, Checkbox, Form, Spin } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001/api';
+import apiClient from '../../utils/api-client';
 
 export function UnsubscribePage() {
   const [searchParams] = useSearchParams();
@@ -26,26 +25,22 @@ export function UnsubscribePage() {
     if (!token) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_URL}/newsletter/unsubscribe`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ token, unsubscribeAll })
-      });
-      const data = (await res.json().catch(() => ({}))) as { success?: boolean; message?: string };
-      if (res.ok && data.success) {
+      const { data } = await apiClient.post('/newsletter/unsubscribe', { token, unsubscribeAll });
+      if (data?.success) {
         setStatus('success');
         setMessage(unsubscribeAll ? 'Vous êtes désabonné de toutes nos listes.' : 'Vous avez été désabonné avec succès.');
       } else {
         setStatus('error');
         setMessage(
-          data.message ||
+          data?.message ||
             'Ce lien de désinscription est invalide ou a déjà été utilisé. Utilisez le lien présent dans un email plus récent.'
         );
       }
-    } catch {
+    } catch (err: any) {
       setStatus('error');
-      setMessage('Impossible de contacter le serveur. Réessayez plus tard.');
+      setMessage(
+        err?.response?.data?.message || 'Impossible de contacter le serveur. Réessayez plus tard.'
+      );
     } finally {
       setSubmitting(false);
     }

@@ -3,6 +3,7 @@ import { Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { SyndicateDocument } from '../../types/syndic-types';
+import { API_URL } from '../../config/api';
 
 const { Link, Text } = Typography;
 
@@ -27,7 +28,7 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({ documents, loading
       return fileUrl;
     }
 
-    const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8001/api';
+    const apiBaseUrl = API_URL;
     const serverBaseUrl = apiBaseUrl.replace('/api', '');
     const normalizedFileUrl = fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`;
     return `${serverBaseUrl}${normalizedFileUrl}`;

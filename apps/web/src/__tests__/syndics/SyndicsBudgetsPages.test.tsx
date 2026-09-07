@@ -168,13 +168,18 @@ describe('Syndics budgets page', () => {
           },
         });
       }
+      // The page also loads lots in the same Promise.all; without this branch
+      // the mock rejects and the page renders its error state instead of data.
+      if (url.endsWith('/lots')) {
+        return Promise.resolve({ data: { success: true, data: [] } });
+      }
       return Promise.reject(new Error(`Unhandled GET ${url}`));
     });
   });
 
   it('renders budgets and batches', async () => {
     renderWithRoute();
-    expect(await screen.findByText('Budgets et batches d appels')).toBeTruthy();
+    expect(await screen.findByText("Budgets et batches d'appels")).toBeTruthy();
     expect(await screen.findByText('Budget 2026')).toBeTruthy();
   });
 

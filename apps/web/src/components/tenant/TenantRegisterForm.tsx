@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ClientType } from '../../types/tenant-types';
+import apiClient from '../../utils/api-client';
 
 interface Tenant {
     id: string;
@@ -39,8 +40,7 @@ export const TenantRegisterForm: React.FC<TenantRegisterFormProps> = ({
 
     const fetchTenants = async () => {
         try {
-            const response = await fetch('/api/tenants');
-            const data = await response.json();
+            const { data } = await apiClient.get('/tenants');
             if (data.success) {
                 setTenants(data.data);
                 if (!propTenantId && data.data.length > 0) {
@@ -72,21 +72,12 @@ export const TenantRegisterForm: React.FC<TenantRegisterFormProps> = ({
                 }
             });
 
-            const response = await fetch(`/api/tenants/${selectedTenantId}/register`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'include',
-                body: JSON.stringify({
-                    clientType,
-                    details: cleanDetails
-                })
+            const { data } = await apiClient.post(`/tenants/${selectedTenantId}/register`, {
+                clientType,
+                details: cleanDetails
             });
 
-            const data = await response.json();
-
-            if (response.ok && data.success) {
+            if (data.success) {
                 setSuccess('Inscription réussie !');
                 // Reset form
                 setDetails({
@@ -103,8 +94,8 @@ export const TenantRegisterForm: React.FC<TenantRegisterFormProps> = ({
             } else {
                 setError(data.message || 'Une erreur est survenue lors de l\'inscription.');
             }
-        } catch (err) {
-            setError('Une erreur est survenue. Veuillez réessayer.');
+        } catch (err: any) {
+            setError(err?.response?.data?.message || 'Une erreur est survenue. Veuillez réessayer.');
             console.error('Registration error:', err);
         } finally {
             setIsLoading(false);

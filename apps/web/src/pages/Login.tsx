@@ -25,6 +25,7 @@ import {
 } from '@ant-design/icons';
 import { useAuth } from '../hooks/useAuth';
 import { LoginCredentials } from '../types/auth-types';
+import { API_ORIGIN } from '../config/api';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -187,7 +188,7 @@ export const Login: React.FC = () => {
   };
 
   const handleGoogleLogin = (): void => {
-    const apiUrl = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:8001';
+    const apiUrl = API_ORIGIN;
     window.location.href = `${apiUrl}/api/auth/google`;
   };
 

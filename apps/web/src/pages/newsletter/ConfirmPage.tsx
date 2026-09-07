@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Card, Result, Spin } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8001/api';
+import apiClient from '../../utils/api-client';
 
 export function ConfirmPage() {
   const [searchParams] = useSearchParams();
@@ -19,16 +18,12 @@ export function ConfirmPage() {
     }
     (async () => {
       try {
-        const res = await fetch(`${API_URL}/newsletter/confirm?token=${encodeURIComponent(token)}`, {
-          method: 'GET',
-          credentials: 'include'
-        });
-        const data = (await res.json().catch(() => ({}))) as { success?: boolean; message?: string };
-        setStatus(data.success ? 'success' : 'error');
-        setMessage(data.message || (res.ok ? 'Votre inscription a été confirmée.' : 'Une erreur est survenue.'));
-      } catch {
+        const { data } = await apiClient.get('/newsletter/confirm', { params: { token } });
+        setStatus(data?.success ? 'success' : 'error');
+        setMessage(data?.message || 'Votre inscription a été confirmée.');
+      } catch (err: any) {
         setStatus('error');
-        setMessage('Impossible de contacter le serveur. Réessayez plus tard.');
+        setMessage(err?.response?.data?.message || 'Impossible de contacter le serveur. Réessayez plus tard.');
       }
     })();
   }, [token]);

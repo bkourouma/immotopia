@@ -163,13 +163,19 @@ describe('Syndics recovery page', () => {
         return Promise.resolve({ data: { success: true, data: [] } });
       }
 
+      // Loaded in the same Promise.all as the dashboard; a missing branch makes
+      // the whole load reject and nothing renders.
+      if (url.endsWith('/echeanciers')) {
+        return Promise.resolve({ data: { success: true, data: [] } });
+      }
+
       return Promise.reject(new Error(`Unhandled GET ${url}`));
     });
   });
 
   it('renders recovery dashboard with overdue item', async () => {
     renderWithRoute();
-    expect(await screen.findByText('Recouvrement des impayes')).toBeTruthy();
+    expect(await screen.findByText('Recouvrement des impayés')).toBeTruthy();
     expect(await screen.findByText(/A-01/)).toBeTruthy();
   });
 

@@ -256,11 +256,18 @@ export async function loginUser(data: LoginRequest) {
 }
 
 /**
- * Refresh access token using refresh token
+ * Refresh access token using refresh token.
+ *
+ * The refresh token is rotated on every use: the presented token is revoked and
+ * a new one is issued. A stolen token is therefore usable at most once, and its
+ * reuse after the legitimate client has refreshed is detectable (the record is
+ * already revoked).
+ *
  * @param refreshToken - Refresh token from cookie
- * @returns New access token
+ * @param deviceInfo - User-Agent of the caller, stored on the new token
+ * @returns New access token and the new refresh token to set as a cookie
  */
-export async function refreshAccessToken(refreshToken: string) {
+export async function refreshAccessToken(refreshToken: string, deviceInfo?: string) {
   if (!refreshToken) {
     throw new Error('Refresh token manquant.');
   }
@@ -268,21 +275,30 @@ export async function refreshAccessToken(refreshToken: string) {
   // Hash the refresh token to compare with stored hash
   const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
 
-  // Find valid refresh token
+  // Find the token record (revoked ones included, to detect reuse)
   const tokenRecord = await prisma.refreshToken.findFirst({
-    where: {
-      token: refreshTokenHash,
-      revoked: false,
-      expiresAt: {
-        gt: new Date()
-      }
-    },
-    include: {
-      user: true
-    }
+    where: { token: refreshTokenHash },
+    include: { user: true }
   });
 
   if (!tokenRecord) {
+    throw new Error('Refresh token invalide ou expiré. Veuillez vous reconnecter.');
+  }
+
+  // Reuse of an already-rotated token means the token leaked: revoke the whole
+  // family so both the attacker and the legitimate client must re-authenticate.
+  if (tokenRecord.revoked) {
+    logger.warn('Refresh token reuse detected, revoking all sessions', {
+      userId: tokenRecord.userId
+    });
+    await prisma.refreshToken.updateMany({
+      where: { userId: tokenRecord.userId, revoked: false },
+      data: { revoked: true, revokedAt: new Date() }
+    });
+    throw new Error('Session invalide. Veuillez vous reconnecter.');
+  }
+
+  if (tokenRecord.expiresAt <= new Date()) {
     throw new Error('Refresh token invalide ou expiré. Veuillez vous reconnecter.');
   }
 
@@ -296,6 +312,27 @@ export async function refreshAccessToken(refreshToken: string) {
     throw new Error('Compte utilisateur désactivé ou non vérifié.');
   }
 
+  // Rotate: revoke the presented token and issue a replacement atomically.
+  const newRefreshToken = generateRefreshToken();
+  const newRefreshTokenHash = crypto.createHash('sha256').update(newRefreshToken).digest('hex');
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7);
+
+  await prisma.$transaction([
+    prisma.refreshToken.update({
+      where: { id: tokenRecord.id },
+      data: { revoked: true, revokedAt: new Date() }
+    }),
+    prisma.refreshToken.create({
+      data: {
+        token: newRefreshTokenHash,
+        userId: tokenRecord.userId,
+        expiresAt,
+        deviceInfo: deviceInfo || tokenRecord.deviceInfo || 'Web Browser'
+      }
+    })
+  ]);
+
   // Generate new access token
   const accessToken = generateAccessToken({
     userId: tokenRecord.user.id,
@@ -303,7 +340,7 @@ export async function refreshAccessToken(refreshToken: string) {
     globalRole: tokenRecord.user.globalRole
   });
 
-  return { accessToken };
+  return { accessToken, refreshToken: newRefreshToken };
 }
 
 /**

@@ -35,7 +35,18 @@ jest.mock('antd', () => {
     ({ children, ...props }: any) =>
       React.createElement(Tag, props, children);
   const FormComp: any = ({ children }: any) => <form>{children}</form>;
-  FormComp.useForm = () => [{ validateFields: mockValidateFields, resetFields: require('@jest/globals').jest.fn() }];
+  // SyndicMeetingDetail calls setFieldsValue when the meeting loads; a form
+  // instance missing it throws and aborts the render before resolutions appear.
+  FormComp.useForm = () => [
+    {
+      validateFields: mockValidateFields,
+      resetFields: require('@jest/globals').jest.fn(),
+      setFieldsValue: require('@jest/globals').jest.fn(),
+      setFieldValue: require('@jest/globals').jest.fn(),
+      getFieldsValue: () => ({}),
+      getFieldValue: () => undefined
+    }
+  ];
   FormComp.Item = passthrough();
   const InputComp: any = passthrough('input');
   InputComp.TextArea = passthrough('textarea');
@@ -45,6 +56,7 @@ jest.mock('antd', () => {
     Card: passthrough(),
     Col: passthrough(),
     DatePicker: passthrough('input'),
+    TimePicker: passthrough('input'),
     Form: FormComp,
     Input: InputComp,
     Modal: passthrough(),
@@ -141,7 +153,7 @@ describe('Meetings pages', () => {
 
     renderWithRoute('/tenant/tenant-1/syndics/syndic-1/assemblees');
 
-    expect(await screen.findByText('Assemblees generales')).toBeTruthy();
+    expect(await screen.findByText('Assemblées générales')).toBeTruthy();
     expect(await screen.findByText(/meeting-1|ORDINARY/)).toBeTruthy();
   });
 
@@ -181,7 +193,7 @@ describe('Meetings pages', () => {
 
     renderWithRoute('/tenant/tenant-1/syndics/syndic-1/assemblees/meeting-1');
 
-    expect(await screen.findByText('Detail assemblee generale')).toBeTruthy();
+    expect(await screen.findByText('Détail assemblée générale')).toBeTruthy();
     await waitFor(() => {
       expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1/assemblees/meeting-1');
     });

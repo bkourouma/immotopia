@@ -1,132 +1,144 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, Spin } from 'antd';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ClientNewRedirect } from './components/ClientNewRedirect';
-import { Register } from './pages/Register';
-import { VerifyEmail } from './pages/VerifyEmail';
+const Register = lazy(() => import(/* webpackChunkName: "pages-root" */ './pages/Register').then(m => ({ default: m.Register })));
+const VerifyEmail = lazy(() => import(/* webpackChunkName: "pages-root" */ './pages/VerifyEmail').then(m => ({ default: m.VerifyEmail })));
 import { Login } from './pages/Login';
-import { Dashboard } from './pages/Dashboard';
-import { Properties } from './pages/properties/Properties';
-import { PropertyCreate } from './pages/properties/PropertyCreate';
-import { PropertyEdit } from './pages/properties/PropertyEdit';
-import { PropertyDetail } from './pages/properties/PropertyDetail';
-import { PropertyPublic } from './pages/properties/PropertyPublic';
-import { PropertyPublicDetail } from './pages/properties/PropertyPublicDetail';
-import { PropertyVisitsCalendar } from './pages/properties/PropertyVisitsCalendar';
-import { PatrimoineOverviewPage } from './pages/patrimoine/PatrimoineOverviewPage';
-import { PatrimoinePerformancePage } from './pages/patrimoine/PatrimoinePerformancePage';
-import { WorkProgramsPage } from './pages/patrimoine/work-programs/WorkProgramsPage';
-import { OwnerStatementsPage } from './pages/patrimoine/statements/OwnerStatementsPage';
-import { OwnerStatementDetailPage } from './pages/patrimoine/statements/OwnerStatementDetailPage';
-import { SyndicsList } from './pages/syndics/SyndicsList';
-import { SyndicDetail } from './pages/syndics/SyndicDetail';
-import { SyndicLots } from './pages/syndics/SyndicLots';
-import { SyndicCharges } from './pages/syndics/SyndicCharges';
-import { SyndicMeetings } from './pages/syndics/SyndicMeetings';
-import { SyndicMeetingDetail } from './pages/syndics/SyndicMeetingDetail';
-import { SyndicProviders } from './pages/syndics/SyndicProviders';
-import { SyndicDocuments } from './pages/syndics/SyndicDocuments';
-import { SyndicFinances } from './pages/syndics/SyndicFinances';
-import { SyndicRecovery } from './pages/syndics/SyndicRecovery';
-import { SyndicOwnerAccount } from './pages/syndics/SyndicOwnerAccount';
-import { SyndicAccounting } from './pages/syndics/SyndicAccounting';
-import { SyndicBudgets } from './pages/syndics/SyndicBudgets';
-import { SyndicProfilesIncidents } from './pages/syndics/SyndicProfilesIncidents';
-import { ForgotPassword } from './pages/ForgotPassword';
-import { ResetPassword } from './pages/ResetPassword';
-import { AuthCallback } from './pages/AuthCallback';
-import { AcceptInvitePage } from './pages/auth/AcceptInvitePage';
-import { SettingsLayout } from './pages/settings/SettingsLayout';
-import { ProfilePage } from './pages/settings/ProfilePage';
+const Dashboard = lazy(() => import(/* webpackChunkName: "pages-root" */ './pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Properties = lazy(() => import(/* webpackChunkName: "properties" */ './pages/properties/Properties').then(m => ({ default: m.Properties })));
+const PropertyCreate = lazy(() => import(/* webpackChunkName: "properties" */ './pages/properties/PropertyCreate').then(m => ({ default: m.PropertyCreate })));
+const PropertyEdit = lazy(() => import(/* webpackChunkName: "properties" */ './pages/properties/PropertyEdit').then(m => ({ default: m.PropertyEdit })));
+const PropertyDetail = lazy(() => import(/* webpackChunkName: "properties" */ './pages/properties/PropertyDetail').then(m => ({ default: m.PropertyDetail })));
+const PropertyPublic = lazy(() => import(/* webpackChunkName: "properties" */ './pages/properties/PropertyPublic').then(m => ({ default: m.PropertyPublic })));
+const PropertyPublicDetail = lazy(() => import(/* webpackChunkName: "properties" */ './pages/properties/PropertyPublicDetail').then(m => ({ default: m.PropertyPublicDetail })));
+const PropertyVisitsCalendar = lazy(() => import(/* webpackChunkName: "properties" */ './pages/properties/PropertyVisitsCalendar').then(m => ({ default: m.PropertyVisitsCalendar })));
+const PatrimoineOverviewPage = lazy(() => import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/PatrimoineOverviewPage').then(m => ({ default: m.PatrimoineOverviewPage })));
+const PatrimoinePerformancePage = lazy(() => import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/PatrimoinePerformancePage').then(m => ({ default: m.PatrimoinePerformancePage })));
+const WorkProgramsPage = lazy(() => import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/work-programs/WorkProgramsPage').then(m => ({ default: m.WorkProgramsPage })));
+const OwnerStatementsPage = lazy(() => import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/statements/OwnerStatementsPage').then(m => ({ default: m.OwnerStatementsPage })));
+const OwnerStatementDetailPage = lazy(() => import(/* webpackChunkName: "patrimoine" */ './pages/patrimoine/statements/OwnerStatementDetailPage').then(m => ({ default: m.OwnerStatementDetailPage })));
+const SyndicsList = lazy(() => import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicsList').then(m => ({ default: m.SyndicsList })));
+const SyndicDetail = lazy(() => import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicDetail').then(m => ({ default: m.SyndicDetail })));
+const SyndicLots = lazy(() => import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicLots').then(m => ({ default: m.SyndicLots })));
+const SyndicCharges = lazy(() => import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicCharges').then(m => ({ default: m.SyndicCharges })));
+const SyndicMeetings = lazy(() => import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicMeetings').then(m => ({ default: m.SyndicMeetings })));
+const SyndicMeetingDetail = lazy(() => import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicMeetingDetail').then(m => ({ default: m.SyndicMeetingDetail })));
+const SyndicProviders = lazy(() => import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicProviders').then(m => ({ default: m.SyndicProviders })));
+const SyndicDocuments = lazy(() => import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicDocuments').then(m => ({ default: m.SyndicDocuments })));
+const SyndicFinances = lazy(() => import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicFinances').then(m => ({ default: m.SyndicFinances })));
+const SyndicRecovery = lazy(() => import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicRecovery').then(m => ({ default: m.SyndicRecovery })));
+const SyndicOwnerAccount = lazy(() => import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicOwnerAccount').then(m => ({ default: m.SyndicOwnerAccount })));
+const SyndicAccounting = lazy(() => import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicAccounting').then(m => ({ default: m.SyndicAccounting })));
+const SyndicBudgets = lazy(() => import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicBudgets').then(m => ({ default: m.SyndicBudgets })));
+const SyndicProfilesIncidents = lazy(() => import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicProfilesIncidents').then(m => ({ default: m.SyndicProfilesIncidents })));
+const ForgotPassword = lazy(() => import(/* webpackChunkName: "pages-root" */ './pages/ForgotPassword').then(m => ({ default: m.ForgotPassword })));
+const ResetPassword = lazy(() => import(/* webpackChunkName: "pages-root" */ './pages/ResetPassword').then(m => ({ default: m.ResetPassword })));
+const AuthCallback = lazy(() => import(/* webpackChunkName: "pages-root" */ './pages/AuthCallback').then(m => ({ default: m.AuthCallback })));
+const AcceptInvitePage = lazy(() => import(/* webpackChunkName: "auth" */ './pages/auth/AcceptInvitePage').then(m => ({ default: m.AcceptInvitePage })));
+const SettingsLayout = lazy(() => import(/* webpackChunkName: "settings" */ './pages/settings/SettingsLayout').then(m => ({ default: m.SettingsLayout })));
+const ProfilePage = lazy(() => import(/* webpackChunkName: "settings" */ './pages/settings/ProfilePage').then(m => ({ default: m.ProfilePage })));
 // Admin pages
-import { TenantsList } from './pages/admin/TenantsList';
-import { TenantDetail } from './pages/admin/TenantDetail';
-import { TenantCreate } from './pages/admin/TenantCreate';
-import { Statistics } from './pages/admin/Statistics';
-import { AuditLogs } from './pages/admin/AuditLogs';
-import { AdminCollaboratorDetail } from './pages/admin/AdminCollaboratorDetail';
-import { AdminInviteCollaborator } from './pages/admin/AdminInviteCollaborator';
-import { RolesPermissions } from './pages/admin/RolesPermissions';
+const TenantsList = lazy(() => import(/* webpackChunkName: "admin" */ './pages/admin/TenantsList').then(m => ({ default: m.TenantsList })));
+const TenantDetail = lazy(() => import(/* webpackChunkName: "admin" */ './pages/admin/TenantDetail').then(m => ({ default: m.TenantDetail })));
+const TenantCreate = lazy(() => import(/* webpackChunkName: "admin" */ './pages/admin/TenantCreate').then(m => ({ default: m.TenantCreate })));
+const Statistics = lazy(() => import(/* webpackChunkName: "admin" */ './pages/admin/Statistics').then(m => ({ default: m.Statistics })));
+const AuditLogs = lazy(() => import(/* webpackChunkName: "admin" */ './pages/admin/AuditLogs').then(m => ({ default: m.AuditLogs })));
+const AdminCollaboratorDetail = lazy(() => import(/* webpackChunkName: "admin" */ './pages/admin/AdminCollaboratorDetail').then(m => ({ default: m.AdminCollaboratorDetail })));
+const AdminInviteCollaborator = lazy(() => import(/* webpackChunkName: "admin" */ './pages/admin/AdminInviteCollaborator').then(m => ({ default: m.AdminInviteCollaborator })));
+const RolesPermissions = lazy(() => import(/* webpackChunkName: "admin" */ './pages/admin/RolesPermissions').then(m => ({ default: m.RolesPermissions })));
 // Tenant pages
-import { CollaboratorsList } from './pages/tenant/CollaboratorsList';
-import { CollaboratorDetail } from './pages/tenant/CollaboratorDetail';
-import { InviteCollaborator } from './pages/tenant/InviteCollaborator';
-import { InvitationsList } from './pages/tenant/InvitationsList';
-import { TenantSettings } from './pages/tenant/TenantSettings';
+const CollaboratorsList = lazy(() => import(/* webpackChunkName: "tenant" */ './pages/tenant/CollaboratorsList').then(m => ({ default: m.CollaboratorsList })));
+const CollaboratorDetail = lazy(() => import(/* webpackChunkName: "tenant" */ './pages/tenant/CollaboratorDetail').then(m => ({ default: m.CollaboratorDetail })));
+const InviteCollaborator = lazy(() => import(/* webpackChunkName: "tenant" */ './pages/tenant/InviteCollaborator').then(m => ({ default: m.InviteCollaborator })));
+const InvitationsList = lazy(() => import(/* webpackChunkName: "tenant" */ './pages/tenant/InvitationsList').then(m => ({ default: m.InvitationsList })));
+const TenantSettings = lazy(() => import(/* webpackChunkName: "tenant" */ './pages/tenant/TenantSettings').then(m => ({ default: m.TenantSettings })));
 // CRM pages
-import { Contacts } from './pages/crm/Contacts';
-import { ContactFormPage } from './pages/crm/ContactFormPage';
-import { ContactDetailPage } from './pages/crm/ContactDetailPage';
-import { Deals } from './pages/crm/Deals';
-import { DealDetailPage } from './pages/crm/DealDetailPage';
-import { DealFormPage } from './pages/crm/DealFormPage';
-import { Activities } from './pages/crm/Activities';
-import { CrmDashboard } from './pages/crm/Dashboard';
-import { CalendarPage } from './pages/crm/Calendar';
+const Contacts = lazy(() => import(/* webpackChunkName: "crm" */ './pages/crm/Contacts').then(m => ({ default: m.Contacts })));
+const ContactFormPage = lazy(() => import(/* webpackChunkName: "crm" */ './pages/crm/ContactFormPage').then(m => ({ default: m.ContactFormPage })));
+const ContactDetailPage = lazy(() => import(/* webpackChunkName: "crm" */ './pages/crm/ContactDetailPage').then(m => ({ default: m.ContactDetailPage })));
+const Deals = lazy(() => import(/* webpackChunkName: "crm" */ './pages/crm/Deals').then(m => ({ default: m.Deals })));
+const DealDetailPage = lazy(() => import(/* webpackChunkName: "crm" */ './pages/crm/DealDetailPage').then(m => ({ default: m.DealDetailPage })));
+const DealFormPage = lazy(() => import(/* webpackChunkName: "crm" */ './pages/crm/DealFormPage').then(m => ({ default: m.DealFormPage })));
+const Activities = lazy(() => import(/* webpackChunkName: "crm" */ './pages/crm/Activities').then(m => ({ default: m.Activities })));
+const CrmDashboard = lazy(() => import(/* webpackChunkName: "crm" */ './pages/crm/Dashboard').then(m => ({ default: m.CrmDashboard })));
+const CalendarPage = lazy(() => import(/* webpackChunkName: "crm" */ './pages/crm/Calendar').then(m => ({ default: m.CalendarPage })));
 // Rental pages
-import { Leases } from './pages/rental/Leases';
-import { LeaseFormPage } from './pages/rental/LeaseFormPage';
-import { LeaseDetailPage } from './pages/rental/LeaseDetailPage';
-import { Installments } from './pages/rental/Installments';
-import { InstallmentDetailPage } from './pages/rental/InstallmentDetailPage';
-import { Payments } from './pages/rental/Payments';
-import { Penalties } from './pages/rental/Penalties';
-import { Deposits } from './pages/rental/Deposits';
-import { Documents } from './pages/rental/Documents';
-import { PaymentDetailPage } from './pages/rental/PaymentDetailPage';
+const Leases = lazy(() => import(/* webpackChunkName: "rental" */ './pages/rental/Leases').then(m => ({ default: m.Leases })));
+const LeaseFormPage = lazy(() => import(/* webpackChunkName: "rental" */ './pages/rental/LeaseFormPage').then(m => ({ default: m.LeaseFormPage })));
+const LeaseDetailPage = lazy(() => import(/* webpackChunkName: "rental" */ './pages/rental/LeaseDetailPage').then(m => ({ default: m.LeaseDetailPage })));
+const Installments = lazy(() => import(/* webpackChunkName: "rental" */ './pages/rental/Installments').then(m => ({ default: m.Installments })));
+const InstallmentDetailPage = lazy(() => import(/* webpackChunkName: "rental" */ './pages/rental/InstallmentDetailPage').then(m => ({ default: m.InstallmentDetailPage })));
+const Payments = lazy(() => import(/* webpackChunkName: "rental" */ './pages/rental/Payments').then(m => ({ default: m.Payments })));
+const Penalties = lazy(() => import(/* webpackChunkName: "rental" */ './pages/rental/Penalties').then(m => ({ default: m.Penalties })));
+const Deposits = lazy(() => import(/* webpackChunkName: "rental" */ './pages/rental/Deposits').then(m => ({ default: m.Deposits })));
+const Documents = lazy(() => import(/* webpackChunkName: "rental" */ './pages/rental/Documents').then(m => ({ default: m.Documents })));
+const PaymentDetailPage = lazy(() => import(/* webpackChunkName: "rental" */ './pages/rental/PaymentDetailPage').then(m => ({ default: m.PaymentDetailPage })));
 // Maintenance pages
-import { TicketList } from './pages/tenant/maintenance/TicketList';
-import { TicketDetail } from './pages/tenant/maintenance/TicketDetail';
-import { CreateTicket } from './pages/tenant/maintenance/CreateTicket';
-import { EditTicket } from './pages/tenant/maintenance/EditTicket';
-import { Tickets as ManagerTickets } from './pages/admin/maintenance/Tickets';
-import { TicketDetail as ManagerTicketDetail } from './pages/admin/maintenance/TicketDetail';
-import { Vendors } from './pages/admin/maintenance/Vendors';
+const TicketList = lazy(() => import(/* webpackChunkName: "tenant" */ './pages/tenant/maintenance/TicketList').then(m => ({ default: m.TicketList })));
+const TicketDetail = lazy(() => import(/* webpackChunkName: "tenant" */ './pages/tenant/maintenance/TicketDetail').then(m => ({ default: m.TicketDetail })));
+const CreateTicket = lazy(() => import(/* webpackChunkName: "tenant" */ './pages/tenant/maintenance/CreateTicket').then(m => ({ default: m.CreateTicket })));
+const EditTicket = lazy(() => import(/* webpackChunkName: "tenant" */ './pages/tenant/maintenance/EditTicket').then(m => ({ default: m.EditTicket })));
+const ManagerTickets = lazy(() => import(/* webpackChunkName: "admin" */ './pages/admin/maintenance/Tickets').then(m => ({ default: m.Tickets })));
+const ManagerTicketDetail = lazy(() => import(/* webpackChunkName: "admin" */ './pages/admin/maintenance/TicketDetail').then(m => ({ default: m.TicketDetail })));
+const Vendors = lazy(() => import(/* webpackChunkName: "admin" */ './pages/admin/maintenance/Vendors').then(m => ({ default: m.Vendors })));
 // Communication pages (email + WhatsApp notifications)
-import { EmailNotificationsUnifiedPage } from './pages/communication/EmailNotificationsUnifiedPage';
-import { WhatsAppNotificationsPage } from './pages/communication/WhatsAppNotificationsPage';
-import { WhatsAppGroupMessagePage } from './pages/communication/WhatsAppGroupMessagePage';
+const EmailNotificationsUnifiedPage = lazy(() => import(/* webpackChunkName: "communication" */ './pages/communication/EmailNotificationsUnifiedPage').then(m => ({ default: m.EmailNotificationsUnifiedPage })));
+const WhatsAppNotificationsPage = lazy(() => import(/* webpackChunkName: "communication" */ './pages/communication/WhatsAppNotificationsPage').then(m => ({ default: m.WhatsAppNotificationsPage })));
+const WhatsAppGroupMessagePage = lazy(() => import(/* webpackChunkName: "communication" */ './pages/communication/WhatsAppGroupMessagePage').then(m => ({ default: m.WhatsAppGroupMessagePage })));
 // Newsletter pages
-import { NewsletterListsPage } from './pages/newsletter/NewsletterListsPage';
-import { NewsletterCampaignsPage } from './pages/newsletter/NewsletterCampaignsPage';
-import { NewsletterTemplatesPage } from './pages/newsletter/NewsletterTemplatesPage';
-import { UnsubscribePage } from './pages/newsletter/UnsubscribePage';
-import { ConfirmPage } from './pages/newsletter/ConfirmPage';
-import { SubscribePage } from './pages/newsletter/SubscribePage';
+const NewsletterListsPage = lazy(() => import(/* webpackChunkName: "newsletter" */ './pages/newsletter/NewsletterListsPage').then(m => ({ default: m.NewsletterListsPage })));
+const NewsletterCampaignsPage = lazy(() => import(/* webpackChunkName: "newsletter" */ './pages/newsletter/NewsletterCampaignsPage').then(m => ({ default: m.NewsletterCampaignsPage })));
+const NewsletterTemplatesPage = lazy(() => import(/* webpackChunkName: "newsletter" */ './pages/newsletter/NewsletterTemplatesPage').then(m => ({ default: m.NewsletterTemplatesPage })));
+const UnsubscribePage = lazy(() => import(/* webpackChunkName: "newsletter" */ './pages/newsletter/UnsubscribePage').then(m => ({ default: m.UnsubscribePage })));
+const ConfirmPage = lazy(() => import(/* webpackChunkName: "newsletter" */ './pages/newsletter/ConfirmPage').then(m => ({ default: m.ConfirmPage })));
+const SubscribePage = lazy(() => import(/* webpackChunkName: "newsletter" */ './pages/newsletter/SubscribePage').then(m => ({ default: m.SubscribePage })));
 // Client pages
-import { Clients } from './pages/Clients';
-import { ClientGroups } from './pages/ClientGroups';
-import { DocumentTemplates } from './pages/documents/DocumentTemplates';
+const Clients = lazy(() => import(/* webpackChunkName: "pages-root" */ './pages/Clients').then(m => ({ default: m.Clients })));
+const ClientGroups = lazy(() => import(/* webpackChunkName: "pages-root" */ './pages/ClientGroups').then(m => ({ default: m.ClientGroups })));
+const DocumentTemplates = lazy(() => import(/* webpackChunkName: "documents" */ './pages/documents/DocumentTemplates').then(m => ({ default: m.DocumentTemplates })));
 // Transactions page
-import { Transactions } from './pages/Transactions';
+const Transactions = lazy(() => import(/* webpackChunkName: "pages-root" */ './pages/Transactions').then(m => ({ default: m.Transactions })));
 // Reports page
-import { Reports } from './pages/Reports';
+const Reports = lazy(() => import(/* webpackChunkName: "pages-root" */ './pages/Reports').then(m => ({ default: m.Reports })));
 // Tenant Portal pages
-import TenantPortalLayout from './pages/TenantPortal/Layout';
-import TenantDashboard from './pages/TenantPortal/Dashboard';
-import TenantLease from './pages/TenantPortal/Lease';
-import TenantPayments from './pages/TenantPortal/Payments';
-import TenantDeposit from './pages/TenantPortal/Deposit';
-import TenantMaintenance from './pages/TenantPortal/Maintenance';
-import TenantDocuments from './pages/TenantPortal/Documents';
+const TenantPortalLayout = lazy(() => import(/* webpackChunkName: "tenant-portal" */ './pages/TenantPortal/Layout'));
+const TenantDashboard = lazy(() => import(/* webpackChunkName: "tenant-portal" */ './pages/TenantPortal/Dashboard'));
+const TenantLease = lazy(() => import(/* webpackChunkName: "tenant-portal" */ './pages/TenantPortal/Lease'));
+const TenantPayments = lazy(() => import(/* webpackChunkName: "tenant-portal" */ './pages/TenantPortal/Payments'));
+const TenantDeposit = lazy(() => import(/* webpackChunkName: "tenant-portal" */ './pages/TenantPortal/Deposit'));
+const TenantMaintenance = lazy(() => import(/* webpackChunkName: "tenant-portal" */ './pages/TenantPortal/Maintenance'));
+const TenantDocuments = lazy(() => import(/* webpackChunkName: "tenant-portal" */ './pages/TenantPortal/Documents'));
 // Owner Portal pages
-import OwnerPortalLayout from './pages/OwnerPortal/Layout';
-import OwnerDashboard from './pages/OwnerPortal/Dashboard';
-import OwnerProperties from './pages/OwnerPortal/Properties';
-import OwnerPropertyDetails from './pages/OwnerPortal/PropertyDetails';
-import OwnerLeases from './pages/OwnerPortal/Leases';
-import OwnerLeaseDetails from './pages/OwnerPortal/LeaseDetails';
-import OwnerRevenues from './pages/OwnerPortal/Revenues';
-import OwnerInstallments from './pages/OwnerPortal/Installments';
-import OwnerPayments from './pages/OwnerPortal/Payments';
-import OwnerDeposits from './pages/OwnerPortal/Deposits';
-import OwnerMaintenance from './pages/OwnerPortal/Maintenance';
-import OwnerDocuments from './pages/OwnerPortal/Documents';
-import OwnerReports from './pages/OwnerPortal/Reports';
-import OwnerPreferences from './pages/OwnerPortal/Preferences';
+const OwnerPortalLayout = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Layout'));
+const OwnerDashboard = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Dashboard'));
+const OwnerProperties = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Properties'));
+const OwnerPropertyDetails = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/PropertyDetails'));
+const OwnerLeases = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Leases'));
+const OwnerLeaseDetails = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/LeaseDetails'));
+const OwnerRevenues = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Revenues'));
+const OwnerInstallments = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Installments'));
+const OwnerPayments = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Payments'));
+const OwnerDeposits = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Deposits'));
+const OwnerMaintenance = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Maintenance'));
+const OwnerDocuments = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Documents'));
+const OwnerReports = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Reports'));
+const OwnerPreferences = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Preferences'));
+
+/** Shown while a route's chunk is being fetched. */
+const RouteFallback: React.FC = () => (
+  <div
+    role="status"
+    aria-live="polite"
+    aria-label="Chargement de la page"
+    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}
+  >
+    <Spin size="large" />
+  </div>
+);
 
 function App() {
   return (
@@ -134,6 +146,8 @@ function App() {
       <ConfigProvider>
         <AuthProvider>
           <Router>
+            {/* Every page below is code-split; this boundary covers chunk loading. */}
+            <Suspense fallback={<RouteFallback />}>
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
@@ -858,6 +872,7 @@ function App() {
               </Route>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
             </Routes>
+            </Suspense>
           </Router>
         </AuthProvider>
       </ConfigProvider>

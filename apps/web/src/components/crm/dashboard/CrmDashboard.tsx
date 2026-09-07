@@ -19,7 +19,7 @@ import {
   ExclamationCircleOutlined,
   BarChartOutlined,
 } from '@ant-design/icons';
-import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
+import dayjs from 'dayjs';
 import { getCrmDashboard } from '../../../lib/api/crmDashboard';
 import { CrmDashboardData, CrmDashboardFilters } from '../../../types/crmDashboard';
 import { KpiCard } from './cards/KpiCard';
@@ -42,8 +42,8 @@ export const CrmDashboard: React.FC = () => {
 
   // Parse filters from URL
   const getFiltersFromUrl = (): CrmDashboardFilters => {
-    const start = searchParams.get('start') || format(subDays(new Date(), 30), 'yyyy-MM-dd');
-    const end = searchParams.get('end') || format(new Date(), 'yyyy-MM-dd');
+    const start = searchParams.get('start') || dayjs().subtract(30, 'day').format('YYYY-MM-DD');
+    const end = searchParams.get('end') || dayjs().format('YYYY-MM-DD');
     const assignee = searchParams.get('assignee') || undefined;
     const tags = searchParams.get('tags')?.split(',').filter(Boolean) || undefined;
     const stages = searchParams.get('stages')?.split(',') as any[] || undefined;
@@ -197,7 +197,7 @@ export const CrmDashboard: React.FC = () => {
           <Title level={2} style={{ margin: 0 }}>Tableau de bord CRM</Title>
           <Text type="secondary">
             {filters.start && filters.end
-              ? `${format(new Date(filters.start), 'dd MMM yyyy')} - ${format(new Date(filters.end), 'dd MMM yyyy')}`
+              ? `${dayjs(filters.start).format('DD MMM YYYY')} - ${dayjs(filters.end).format('DD MMM YYYY')}`
               : 'Vue d\'ensemble'}
           </Text>
         </Col>
@@ -205,10 +205,10 @@ export const CrmDashboard: React.FC = () => {
           <Space wrap>
             <Button
               onClick={() => {
-                const today = new Date();
+                const today = dayjs();
                 updateFilters({
-                  start: format(startOfMonth(today), 'yyyy-MM-dd'),
-                  end: format(endOfMonth(today), 'yyyy-MM-dd'),
+                  start: today.startOf('month').format('YYYY-MM-DD'),
+                  end: today.endOf('month').format('YYYY-MM-DD'),
                 });
               }}
             >
@@ -217,8 +217,8 @@ export const CrmDashboard: React.FC = () => {
             <Button
               onClick={() => {
                 updateFilters({
-                  start: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
-                  end: format(new Date(), 'yyyy-MM-dd'),
+                  start: dayjs().subtract(30, 'day').format('YYYY-MM-DD'),
+                  end: dayjs().format('YYYY-MM-DD'),
                 });
               }}
             >

@@ -2,19 +2,39 @@
   "name": "immotopia",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=20 <21",
+    "npm": ">=10"
+  },
   "scripts": {
     "dev": "concurrently \"npm run dev --prefix packages/api\" \"npm run dev --prefix apps/web\"",
     "dev:api": "npm run dev --prefix packages/api",
     "dev:web": "npm run dev --prefix apps/web",
     "build": "npm run build --prefix packages/api && npm run build --prefix apps/web",
     "build:api": "npm run build --prefix packages/api",
-    "build:web": "npm run build --prefix apps/web"
+    "build:web": "npm run build --prefix apps/web",
+    "lint": "npm run lint --prefix packages/api && npm run lint --prefix apps/web",
+    "typecheck": "npm run typecheck --prefix packages/api && npm run typecheck --prefix apps/web",
+    "test": "npm run test --prefix packages/api",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "packages/api/**/*.ts": [
+      "prettier --write",
+      "eslint --fix --max-warnings=0"
+    ],
+    "apps/web/**/*.{ts,tsx}": [
+      "prettier --write",
+      "eslint --fix --max-warnings=0"
+    ],
+    "**/*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
   },
   "devDependencies": {
     "chrome-devtools-mcp": "^0.10.1",
-    "concurrently": "^8.2.2"
-  },
-  "dependencies": {
-    "puppeteer": "^24.29.1"
+    "concurrently": "^8.2.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.5.0"
   }
 }

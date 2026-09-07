@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons';
 import { PropertyMedia, PropertyMediaType } from '../../types/property-types';
 import apiClient from '../../utils/api-client';
+import { API_URL } from '../../config/api';
 
 interface PropertyMediaGalleryProps {
   propertyId: string;
@@ -147,7 +148,7 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
       }
       // Otherwise, construct full URL using API base URL
       // Remove /api from base URL for static file serving
-      const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8001/api';
+      const apiBaseUrl = API_URL;
       const baseUrl = apiBaseUrl.replace('/api', '');
       return `${baseUrl}${item.fileUrl}`;
     }

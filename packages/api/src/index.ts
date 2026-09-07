@@ -38,6 +38,7 @@ import { requestContextMiddleware } from './middleware/request-context-middlewar
 import { errorHandler } from './middleware/error-middleware';
 import { compressionMiddleware } from './middleware/compression-middleware';
 import { uploadsAccessGuard } from './middleware/uploads-access-middleware';
+import { globalApiRateLimiter } from './middleware/rate-limit-middleware';
 import helmet from 'helmet';
 
 const app = express();
@@ -118,6 +119,10 @@ app.use(
 
 // CORS
 app.use(corsMiddleware);
+
+// Baseline rate limiting for the whole API (tighter per-endpoint limiters
+// remain on the sensitive auth routes).
+app.use(globalApiRateLimiter);
 
 // Request context (IP, User-Agent) for audit logs – must run before routes
 app.use(requestContextMiddleware);

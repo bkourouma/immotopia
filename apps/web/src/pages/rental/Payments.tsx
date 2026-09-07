@@ -97,13 +97,10 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
 
   const handleCreatePayment = async (data: CreatePaymentRequest) => {
     if (!tenantId) return;
-    try {
-      await createPayment(tenantId, data);
-      setShowPaymentForm(false);
-      await loadPayments();
-    } catch (err: any) {
-      throw err;
-    }
+    // Errors propagate to the form, which renders them.
+    await createPayment(tenantId, data);
+    setShowPaymentForm(false);
+    await loadPayments();
   };
 
   const handleAllocate = (payment: RentalPayment) => {
@@ -113,15 +110,12 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
 
   const handleAllocatePayment = async (data: AllocatePaymentRequest) => {
     if (!tenantId || !selectedPayment) return;
-    try {
-      await allocatePayment(tenantId, selectedPayment.id, data);
-      setShowAllocateForm(false);
-      setSelectedPayment(null);
-      // Redirect to installments page after successful allocation
-      navigate(`/tenant/${tenantId}/rental/installments`);
-    } catch (err: any) {
-      throw err;
-    }
+    // Errors propagate to the form, which renders them.
+    await allocatePayment(tenantId, selectedPayment.id, data);
+    setShowAllocateForm(false);
+    setSelectedPayment(null);
+    // Redirect to installments page after successful allocation
+    navigate(`/tenant/${tenantId}/rental/installments`);
   };
 
   const handleStatusChange = async (paymentId: string, newStatus: RentalPaymentStatus) => {

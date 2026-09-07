@@ -38,6 +38,7 @@ import {
   RentalPenalty,
   PenaltyFilters,
 } from '../../services/rental-service';
+import { API_URL } from '../../config/api';
 
 const { Text, Title } = Typography;
 
@@ -271,7 +272,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
   const handleDownloadJustification = (justification: any) => {
     if (justification?.fileUrl) {
       // Construct full URL pointing to backend API server
-      const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8001/api';
+      const apiBaseUrl = API_URL;
       // Remove /api from base URL to get the server root
       const serverBaseUrl = apiBaseUrl.replace(/\/api$/, '');
       const fullUrl = `${serverBaseUrl}${justification.fileUrl}`;

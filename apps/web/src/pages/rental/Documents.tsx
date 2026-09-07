@@ -35,6 +35,7 @@ import {
   GenerateDocumentRequest,
 } from '../../services/rental-service';
 import { DocumentForm } from '../../components/rental/DocumentForm';
+import { API_URL } from '../../config/api';
 
 const { Text, Title } = Typography;
 
@@ -291,7 +292,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
                       icon={<DownloadOutlined />}
                       onClick={async () => {
                         try {
-                          const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8001/api';
+                          const apiBaseUrl = API_URL;
                           const downloadUrl = `${apiBaseUrl}/tenants/${tenantId}/documents/${record.id}/download`;
                           
                           const response = await fetch(downloadUrl, {

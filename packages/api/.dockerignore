@@ -1,0 +1,12 @@
+node_modules
+dist
+dist_test
+coverage
+logs
+uploads
+.env
+.env.*
+__tests__
+tests
+scripts
+*.md

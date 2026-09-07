@@ -1,0 +1,49 @@
+# Local development stack: Postgres + API.
+# Replaces the Windows-only .bat launchers for anyone who wants a reproducible
+# database. The frontend still runs with `npm run dev:web`.
+#
+#   docker compose up -d db      # database only (most common)
+#   docker compose up -d         # database + API
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: immotopia-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-immotopia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-immotopia}
+      POSTGRES_DB: ${POSTGRES_DB:-immotopia}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-immotopia} -d ${POSTGRES_DB:-immotopia}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./packages/api
+    container_name: immotopia-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-immotopia}:${POSTGRES_PASSWORD:-immotopia}@db:5432/${POSTGRES_DB:-immotopia}?schema=public
+      # Required: the API refuses to start without a strong secret.
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required - generate with: openssl rand -base64 48}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:8001}
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: '8001'
+    ports:
+      - '8001:8001'
+    volumes:
+      - api-uploads:/data/uploads
+
+volumes:
+  db-data:
+  api-uploads:

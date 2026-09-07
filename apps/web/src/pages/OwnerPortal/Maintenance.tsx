@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { fileUrl as buildFileUrl } from '../../config/api';
 import {
   Card,
   Row,
@@ -161,31 +162,8 @@ const getCategoryLabel = (category: string) => {
   return categoryMap[category] || category;
 };
 
-const getAttachmentUrl = (fileUrl: string): string => {
-  if (!fileUrl) return '';
-  // If already a full URL, return as is
-  if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
-    return fileUrl;
-  }
-  // Static files are served from the server root at /uploads, not from /api
-  // Extract the base server URL (host and port) from REACT_APP_API_URL
-  const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8001/api';
-  
-  // Parse the URL to get protocol, host, and port
-  try {
-    const url = new URL(apiUrl);
-    // Build server base URL without /api path
-    const serverBaseUrl = `${url.protocol}//${url.host}`;
-    // Ensure fileUrl starts with / if it doesn't already
-    const normalizedFileUrl = fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`;
-    return `${serverBaseUrl}${normalizedFileUrl}`;
-  } catch (e) {
-    // Fallback if URL parsing fails
-    const serverBaseUrl = apiUrl.replace(/\/api\/?$/, '') || 'http://localhost:8001';
-    const normalizedFileUrl = fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`;
-    return `${serverBaseUrl}${normalizedFileUrl}`;
-  }
-};
+// Static files are served from the server root at /uploads, not from /api.
+const getAttachmentUrl = (fileUrl: string): string => buildFileUrl(fileUrl);
 
 export default function Maintenance() {
   const [loading, setLoading] = useState(true);
