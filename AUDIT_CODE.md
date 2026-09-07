@@ -360,15 +360,17 @@ Trois systèmes de style coexistent : tokens antd, Tailwind (52 fichiers), `styl
 
 ## 7. Feuille de route recommandée
 
-### Semaine 1 — Stopper l'hémorragie (sécurité et dépôt)
+### Semaine 1 — Stopper l'hémorragie (sécurité et dépôt) — **traitée le 2026-09-07** (commit `b0e3e5f`)
 
-1. Faire tourner tous les secrets de `packages/api/.env` et le mot de passe Postgres local ; supprimer `OPENAI_API_KEY` (inutilisée).
-2. Supprimer le fallback de `jwt-utils.ts:5`, ajouter `src/config/env.ts` (Zod, fail fast).
-3. Réécrire le `.gitignore` racine (`uploads/`, `packages/uploads/`, `packages/api/uploads/`, `assets/generated_documents/`, `dist_test/`, `.serena/cache/`, `*.log`, `.env*` sauf `env.example`), retirer `prisma/migrations/*.sql` et `package-lock.json` des sous-`.gitignore`, puis premier commit sur `main`, `git gc`, remote.
-4. Uploads : déplacer les documents privés hors du dossier statique, endpoint authentifié et scopé, `crypto.randomUUID()` pour les noms.
-5. IDOR : vérifier `property.tenantId` dans `property-media-service` et `property-document-service` ; protéger `tenant-routes.ts:54, 60` et les routes de config notifications.
-6. Supprimer `temp_migration.sql`, les trois scripts `create-*.js`, `001 stop-services.bat`, `test-google-oauth.html`, `test-contact-creation.js`, `lib/`, `app/`, `dist_test/`, `npm`.
-7. Garder `prisma/seed.ts` derrière `NODE_ENV !== 'production'` et `ALLOW_DESTRUCTIVE_SEED`.
+1. ✅ `JWT_SECRET` et `REFRESH_TOKEN_SECRET` locaux régénérés (ils contenaient la valeur d'exemple publique) ; `OPENAI_API_KEY` et `OPENAI_MINUTES_MODEL` retirées du `.env`.
+   ⚠️ **Reste à faire par vous** : rotation des identifiants externes — Google OAuth, Twilio, WaSender, SMTP, et mot de passe Postgres — qui ne peut se faire que depuis leurs consoles respectives.
+2. ✅ Fallback de `jwt-utils.ts` supprimé, algorithme HS256 épinglé, `src/config/env.ts` ajouté (Zod, arrêt au démarrage si la configuration est invalide).
+3. ✅ `.gitignore` racine réécrit, `package-lock.json` et `prisma/migrations/*.sql` retirés des sous-`.gitignore`, commit initial créé, branche `main` créée.
+   ⚠️ **Reste à faire par vous** : `git gc --prune=now` (5 789 blobs orphelins) et ajout d'un remote.
+4. ✅ `uploads-access-middleware.ts` : documents privés derrière authentification + contrôle du tenant propriétaire ; photos d'annonces et images WhatsApp toujours publiques ; `Access-Control-Allow-Origin` restreint au frontend ; noms de fichiers en `randomUUID()` ; variable `UPLOADS_DIR`.
+5. ✅ `property-media-service` et `property-document-service` scopés par tenant via `property-tenant-guard.ts` ; `GET /tenants/:id/clients` réservé aux collaborateurs ; `POST /tenants` exige `PLATFORM_TENANTS_CREATE` ; routes de config notifications réservées aux collaborateurs.
+6. ✅ `temp_migration.sql`, les trois `create-*.js`, `001 stop-services.bat`, `test-google-oauth.html`, `test-contact-creation.js`, `lib/`, `app/`, `dist_test/`, `npm` et le `.env.example` obsolète supprimés.
+7. ✅ `prisma/seed.ts` refuse de s'exécuter sans `ALLOW_DESTRUCTIVE_SEED`, et toujours en production.
 
 ### Mois 1 — Fiabiliser
 
