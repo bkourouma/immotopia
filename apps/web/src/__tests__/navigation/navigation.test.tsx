@@ -1,0 +1,202 @@
+import { NAVIGATION, MORE_TAB_HREF } from '../../navigation/model';
+import { contextFromPath, resolveHref, resolvePersona } from '../../navigation/resolve';
+import { buildCrumbs } from '../../components/shell/Breadcrumbs';
+import { ROUTE_LABELS, isIdSegment, labelForSegment } from '../../navigation/route-labels';
+
+/**
+ * Le modèle de navigation pilote les 100 écrans : sidebar, barre d'onglets et
+ * fil d'Ariane en dérivent tous les trois. Une omission ici se paie partout,
+ * d'où des tests d'intégrité sur le modèle lui-même et pas seulement sur les
+ * fonctions qui le lisent.
+ */
+
+const TENANT = '8cab62a9-bddc-41d5-be02-712d345df2df';
+const SYNDIC = '11111111-2222-3333-4444-555555555555';
+
+describe('modèle de navigation — intégrité', () => {
+  it('couvre les cinq personas', () => {
+    expect(Object.keys(NAVIGATION).sort()).toEqual([
+      'collaborateur',
+      'locataire',
+      'proprietaire',
+      'public',
+      'super-admin'
+    ]);
+  });
+
+  it('respecte le nombre d’onglets par persona du §4.2', () => {
+    expect(NAVIGATION['super-admin'].tabs).toHaveLength(0);
+    expect(NAVIGATION.collaborateur.tabs).toHaveLength(5);
+    expect(NAVIGATION.proprietaire.tabs).toHaveLength(5);
+    expect(NAVIGATION.locataire.tabs).toHaveLength(4);
+    expect(NAVIGATION.public.tabs).toHaveLength(0);
+  });
+
+  it('n’expose aucune ACTION comme destination', () => {
+    const labels: string[] = [];
+    for (const persona of Object.values(NAVIGATION)) {
+      for (const group of persona.tree) {
+        labels.push(group.label);
+        group.children?.forEach(c => labels.push(c.label));
+      }
+    }
+    // Les quatre actions du §4.3 doivent avoir quitté le menu.
+    expect(labels).not.toContain('Ajouter une propriété');
+    expect(labels).not.toContain('Nouveau contact');
+    expect(labels).not.toContain('Nouveau bail');
+    expect(labels).not.toContain('Nouveau ticket');
+  });
+
+  it('applique les suppressions actées du §4.3', () => {
+    const hrefs: string[] = [];
+    for (const persona of Object.values(NAVIGATION)) {
+      for (const group of persona.tree) {
+        if (group.href) hrefs.push(group.href);
+        group.children?.forEach(c => hrefs.push(c.href));
+      }
+    }
+    expect(hrefs).not.toContain('/properties/categories');
+    expect(hrefs.some(h => h.endsWith('/clients'))).toBe(false);
+    expect(hrefs.some(h => h.includes('/transactions'))).toBe(false);
+    // /reports du back-office est supprimé ; /owner/reports est une autre page.
+    expect(hrefs).not.toContain('/reports');
+  });
+
+  it('place « Baux » et « Encaisser » au premier niveau, pas sous un accordéon', () => {
+    const primaires = NAVIGATION.collaborateur.tree.filter(g => g.zone === 'primary').map(g => g.label);
+    expect(primaires).toEqual(['Tableau de bord', 'Biens', 'Baux', 'Encaisser']);
+    // Le groupe que la refonte défait ne doit pas réapparaître.
+    expect(NAVIGATION.collaborateur.tree.map(g => g.label)).not.toContain('Gestion locative');
+  });
+
+  it('marque la frontière « Plus » exigée par le §4.2', () => {
+    const more = NAVIGATION.collaborateur.tree.filter(g => g.zone === 'more');
+    expect(more.length).toBeGreaterThan(0);
+    expect(more.map(g => g.label)).toContain('Syndic');
+  });
+
+  it('donne la même icône à la même destination dans l’onglet et dans l’arbre', () => {
+    for (const persona of Object.values(NAVIGATION)) {
+      for (const tab of persona.tabs) {
+        if (tab.href === MORE_TAB_HREF) continue;
+        const group = persona.tree.find(g => g.href === tab.href);
+        if (!group) continue;
+        // Deux icônes différentes pour une même destination font dire deux
+        // choses au même symbole d'une moitié de l'interface à l'autre.
+        expect(JSON.stringify(group.icon)).toBe(JSON.stringify(tab.icon));
+      }
+    }
+  });
+
+  it('n’emploie que des clés uniques par persona', () => {
+    for (const persona of Object.values(NAVIGATION)) {
+      const keys: string[] = [];
+      persona.tree.forEach(g => {
+        keys.push(g.key);
+        g.children?.forEach(c => keys.push(c.key));
+      });
+      expect(new Set(keys).size).toBe(keys.length);
+    }
+  });
+});
+
+describe('resolveHref', () => {
+  it('refuse une destination d’agence tant que l’agence est inconnue', () => {
+    // Sans cela, la sidebar produit littéralement /tenant/undefined/properties.
+    expect(resolveHref('/tenant/:tenantId/properties', {})).toBeNull();
+  });
+
+  it('interpole l’agence quand elle est connue', () => {
+    expect(resolveHref('/tenant/:tenantId/properties', { tenantId: TENANT })).toBe(`/tenant/${TENANT}/properties`);
+  });
+
+  it('replie le module syndic sur la liste quand aucune copropriété n’est active', () => {
+    expect(resolveHref('/tenant/:tenantId/syndics/:syndicId/charges', { tenantId: TENANT })).toBe(
+      `/tenant/${TENANT}/syndics?openSyndicSection=charges`
+    );
+  });
+
+  it('utilise la dernière copropriété consultée quand elle existe', () => {
+    expect(resolveHref('/tenant/:tenantId/syndics/:syndicId/charges', { tenantId: TENANT, syndicId: SYNDIC })).toBe(
+      `/tenant/${TENANT}/syndics/${SYNDIC}/charges`
+    );
+  });
+
+  it('laisse passer le déclencheur « Plus », qui n’est pas une destination', () => {
+    expect(resolveHref(MORE_TAB_HREF, {})).toBe(MORE_TAB_HREF);
+  });
+});
+
+describe('resolvePersona', () => {
+  const base = { hasTenantMembership: false, isLoadingMembership: false };
+
+  it('classe les cinq personas', () => {
+    expect(resolvePersona({ ...base, globalRole: 'SUPER_ADMIN' })).toBe('super-admin');
+    expect(resolvePersona({ ...base, hasTenantMembership: true })).toBe('collaborateur');
+    expect(resolvePersona({ ...base, clientType: 'OWNER' })).toBe('proprietaire');
+    expect(resolvePersona({ ...base, clientType: 'RENTER' })).toBe('locataire');
+    expect(resolvePersona(base)).toBe('public');
+  });
+
+  it('ne tranche pas tant que l’appartenance charge', () => {
+    // Afficher le menu public à un collaborateur, même une seconde, est pire
+    // que de n'afficher aucun menu.
+    expect(resolvePersona({ ...base, isLoadingMembership: true })).toBeNull();
+  });
+});
+
+describe('contextFromPath', () => {
+  it('extrait agence et copropriété', () => {
+    expect(contextFromPath(`/tenant/${TENANT}/syndics/${SYNDIC}/lots`)).toEqual({
+      tenantId: TENANT,
+      syndicId: SYNDIC
+    });
+    expect(contextFromPath(`/tenant/${TENANT}/properties`)).toEqual({ tenantId: TENANT });
+    expect(contextFromPath('/dashboard')).toEqual({});
+  });
+});
+
+describe('fil d’Ariane', () => {
+  it('absorbe les identifiants et masque le préfixe d’agence', () => {
+    expect(buildCrumbs(`/tenant/${TENANT}/rental/leases`).map(c => c.label)).toEqual(['Gestion locative', 'Baux']);
+  });
+
+  it('ne dit jamais « Agence » à un locataire', () => {
+    // Le segment `tenant` recouvre le préfixe d'agence ET la racine du portail
+    // locataire : sans distinction, on lit « Agence › Mon bail ».
+    expect(buildCrumbs('/tenant/lease').map(c => c.label)).toEqual(['Accueil', 'Mon bail']);
+    expect(buildCrumbs('/tenant/payments').map(c => c.label)).toEqual(['Accueil', 'Paiements']);
+  });
+
+  it('efface le préfixe technique `admin` côté agence', () => {
+    expect(buildCrumbs(`/tenant/${TENANT}/admin/maintenance/tickets`).map(c => c.label)).toEqual([
+      'Maintenance',
+      'Tickets'
+    ]);
+    // Mais le conserve côté plateforme, où il désigne une vraie section.
+    expect(buildCrumbs('/admin/tenants').map(c => c.label)).toEqual(['Administration', 'Agences']);
+  });
+
+  it('dit « Encaisser » là où l’onglet dit « Encaisser »', () => {
+    const labels = buildCrumbs(`/tenant/${TENANT}/rental/installments`).map(c => c.label);
+    expect(labels).toContain('Encaisser');
+    expect(labels).not.toContain('Échéances');
+  });
+
+  it('ne rend rien pour un seul niveau', () => {
+    expect(buildCrumbs('/dashboard')).toHaveLength(1);
+  });
+});
+
+describe('table de libellés', () => {
+  it('reconnaît les identifiants', () => {
+    expect(isIdSegment(TENANT)).toBe(true);
+    expect(isIdSegment('42')).toBe(true);
+    expect(isIdSegment('leases')).toBe(false);
+  });
+
+  it('rend visible un segment inconnu au lieu de le masquer', () => {
+    expect(labelForSegment('segment-inedit')).toBe('Segment inedit');
+    expect(ROUTE_LABELS.leases).toBe('Baux');
+  });
+});
