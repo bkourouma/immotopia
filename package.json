@@ -2,36 +2,44 @@
   "name": "immotopia",
   "version": "1.0.0",
   "private": true,
+  "workspaces": [
+    "packages/tsconfig",
+    "packages/eslint-config",
+    "packages/api",
+    "apps/web"
+  ],
   "engines": {
-    "node": ">=20 <21",
+    "node": ">=20",
     "npm": ">=10"
   },
   "scripts": {
-    "dev": "concurrently \"npm run dev --prefix packages/api\" \"npm run dev --prefix apps/web\"",
-    "dev:api": "npm run dev --prefix packages/api",
-    "dev:web": "npm run dev --prefix apps/web",
-    "build": "npm run build --prefix packages/api && npm run build --prefix apps/web",
-    "build:api": "npm run build --prefix packages/api",
-    "build:web": "npm run build --prefix apps/web",
-    "lint": "npm run lint --prefix packages/api && npm run lint --prefix apps/web",
-    "typecheck": "npm run typecheck --prefix packages/api && npm run typecheck --prefix apps/web",
-    "test": "npm run test --prefix packages/api",
+    "dev": "concurrently \"npm run dev -w @immotopia/api\" \"npm run dev -w @immotopia/web\"",
+    "dev:api": "npm run dev -w @immotopia/api",
+    "dev:web": "npm run dev -w @immotopia/web",
+    "build": "npm run build -w @immotopia/api && npm run build -w @immotopia/web",
+    "build:api": "npm run build -w @immotopia/api",
+    "build:web": "npm run build -w @immotopia/web",
+    "lint": "npm run lint -w @immotopia/api && npm run lint -w @immotopia/web",
+    "typecheck": "npm run typecheck -w @immotopia/api && npm run typecheck -w @immotopia/web",
+    "test": "npm run test -w @immotopia/api",
+    "test:web": "npm run test -w @immotopia/web",
     "prepare": "husky"
   },
   "lint-staged": {
     "packages/api/**/*.ts": [
       "prettier --write",
-      "eslint --fix --max-warnings=0"
+      "eslint --fix"
     ],
     "apps/web/**/*.{ts,tsx}": [
       "prettier --write",
-      "eslint --fix --max-warnings=0"
+      "eslint --fix"
     ],
     "**/*.{json,md,yml,yaml}": [
       "prettier --write"
     ]
   },
   "devDependencies": {
+    "ajv": "^8.17.1",
     "chrome-devtools-mcp": "^0.10.1",
     "concurrently": "^8.2.2",
     "husky": "^9.1.7",

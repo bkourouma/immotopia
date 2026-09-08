@@ -17,7 +17,12 @@ interface Props {
 }
 
 export const YieldProjectionChart: React.FC<Props> = ({ data }) => {
-  const formatNumber = (value: number | string | undefined): string => Number(value ?? 0).toLocaleString('fr-FR');
+  // recharts types a tooltip/axis value as ValueType, which also covers arrays
+  // of values; accept that shape and reduce it to a single number.
+  const formatNumber = (value: unknown): string => {
+    const raw = Array.isArray(value) ? value[0] : value;
+    return Number(raw ?? 0).toLocaleString('fr-FR');
+  };
 
   const yAxisWidth = useMemo(() => {
     const dataKeys: Array<keyof YieldProjectionPoint> = [

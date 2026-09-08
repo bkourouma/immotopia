@@ -1,11 +1,11 @@
-import { LotType, Prisma, type PrismaClient } from '@prisma/client';
+import { LotType, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { notFound, tenantIsolationError, unprocessableEntity } from '../errors';
 import { computeChargeCallStatus, computeOutstanding, isJournalEntryBalanced, roundMoney } from './finance-utils';
 import { logger } from '../../utils/logger';
 // Shared client: a second `new PrismaClient()` here doubled the connection
 // pool and escaped the graceful-shutdown handlers in utils/database.
-import { prisma } from '../../utils/database';
+import { prisma, type PrismaTransactionClient } from '../../utils/database';
 
 export type PaginationInput = {
   page?: number;
@@ -30,7 +30,7 @@ const SYNDICATE_DOCUMENT_TYPES = [
 ] as const;
 
 async function ensureCrmRoleForContact(
-  tx: Prisma.TransactionClient,
+  tx: PrismaTransactionClient,
   tenantId: string,
   contactId: string,
   role: 'COOWNER' | 'TENANT'
@@ -102,7 +102,7 @@ export async function assertSyndicateTenantOwnership(tenantId: string, syndicate
 }
 
 async function syncSyndicateLotCount(
-  tx: Prisma.TransactionClient | PrismaClient,
+  tx: PrismaTransactionClient,
   syndicateId: string
 ) {
   const totalLots = await tx.syndicateLot.count({
@@ -115,7 +115,7 @@ async function syncSyndicateLotCount(
   });
 }
 
-type OwnerAccountTxClient = Prisma.TransactionClient | PrismaClient;
+type OwnerAccountTxClient = PrismaTransactionClient;
 
 function supportsOwnerAccount(tx: any): tx is OwnerAccountTxClient {
   return Boolean(tx?.ownerAccount && tx?.ownerAccountTransaction && tx?.syndicateLot);

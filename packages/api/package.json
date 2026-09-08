@@ -1,10 +1,10 @@
 {
-  "name": "@standard-app/api",
+  "name": "@immotopia/api",
   "version": "1.0.0",
-  "description": "StandardApplication Template Backend API",
+  "description": "ImmoTopia backend API",
   "main": "dist/index.js",
   "engines": {
-    "node": ">=20 <21"
+    "node": ">=20"
   },
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
@@ -47,12 +47,7 @@
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
   },
-  "keywords": [
-    "standard-app",
-    "api",
-    "template"
-  ],
-  "author": "StandardApplication Team",
+  "author": "ImmoTopia",
   "license": "ISC",
   "dependencies": {
     "@prisma/client": "^5.7.1",
@@ -91,6 +86,8 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@immotopia/eslint-config": "*",
+    "@immotopia/tsconfig": "*",
     "@types/bcrypt": "^5.0.2",
     "@types/compression": "^1.7.5",
     "@types/cookie-parser": "^1.4.6",

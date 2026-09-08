@@ -1,0 +1,12 @@
+{
+  "name": "@immotopia/eslint-config",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Shared ESLint configuration for the ImmoTopia monorepo",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "node.js",
+    "react.js"
+  ]
+}

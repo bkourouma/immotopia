@@ -383,14 +383,24 @@ Trois systèmes de style coexistent : tokens antd, Tailwind (52 fichiers), `styl
 4. **Auth** — ✅ `state` sur Google OAuth (cookie httpOnly, comparaison en temps constant) ; rotation des refresh tokens avec détection de réutilisation ; rate limit sur `/refresh`, `/reset-password`, `/invitations/accept`, le webhook et globalement sur l'API ; signature Twilio validée ; fin des mots de passe envoyés en clair.
 5. **Qualité** — ✅ `.nvmrc`, `engines`, `.editorconfig`, husky + lint-staged, workflow GitHub Actions (API et Web, avec Postgres en service et `prisma migrate diff`), `Dockerfile` multi-stage + `docker-compose`, `postinstall prisma generate`.
 
-### Trimestre — Structurer
+### Trimestre — Structurer — **partiellement traité le 2026-09-08**
 
-1. npm workspaces (un lockfile), `packages/tsconfig` et `packages/eslint-config` partagés, renommage `@immotopia/*`.
-2. Découper `lib/syndics/queries.ts` en services par agrégat ; factoriser les portails locataire/propriétaire ; fusionner les deux services de matching ; brancher `pagination-helper` et `validate()` partout.
-3. Extension Prisma injectant `tenantId` + politiques RLS Postgres en seconde ligne de défense.
-4. Migration CRA → Vite (supprime `legacy-peer-deps`, Jest 27, ESLint 8 hérités), adoption de react-query, découpage des composants > 800 lignes, fusion `PropertyForm`/`PropertyFormWizard` et `LeaseForm`/`LeaseFormWizard`.
-5. Documentation : `README.md` réel + `docs/{setup,architecture,integrations,runbooks}`, fusion des 6 docs OAuth et des 4 vues d'architecture, un seul dossier de prompts IA, `database-schema.md` régénéré.
-6. Réduire la dette de typage (549 `any` API, 568 web) avec `no-explicit-any: warn` puis `error` module par module ; étendre `AuditLog` à l'auth, aux rôles et au module syndic.
+1. **Monorepo** — ✅ npm workspaces avec un unique `package-lock.json` (3 avant) ; `packages/tsconfig` et `packages/eslint-config` partagés, dont les deux paquets héritent ; renommage en `@immotopia/api` et `@immotopia/web`. `.npmrc` remonté à la racine. `ajv` épinglé en version 8 à la racine : le hoisting y plaçait ajv 6, que `ajv-keywords@5` résolvait, ce qui cassait le build. Surcharge Jest `transformIgnorePatterns` pour les modules ESM d'Ant Design devenus hissés.
+2. **Découpage backend** — ❌ Non fait. Voir « Ce qui reste » ci-dessous.
+3. **Isolation tenant** — ✅ Extension Prisma `prisma-tenant-guard-extension.ts` + contexte de requête `tenant-context.ts` (AsyncLocalStorage). Elle **signale** (mode `warn`, par défaut) ou **bloque** (mode `enforce`, via `TENANT_GUARD_MODE`) toute requête sur un modèle scopé par tenant qui ne porte pas de filtre tenant alors qu'un contexte est actif. Elle n'injecte délibérément pas le filtre : réécrire silencieusement une requête masquerait le défaut et casserait les endpoints d'administration qui lisent volontairement en travers.
+   ⚠️ **RLS Postgres non fait** : les politiques exigent une variable de session posée par connexion (`SET LOCAL app.tenant_id`), ce que le pooling de Prisma rend délicat. Des politiques livrées sans avoir pu les tester contre une base bloqueraient toutes les requêtes. À concevoir avec une base accessible.
+4. **Frontend** — ❌ Migration Vite, react-query et découpage des gros composants non faits.
+5. **Documentation** — ✅ 21 fichiers markdown à la racine réduits à 5 (`README`, `CONTRIBUTING`, `CHANGELOG`, `AUDIT_CODE`, `AGENTS`). `README.md` réécrit (vrai nom, stack, ports corrects, démarrage réel), `CONTRIBUTING.md` créé, `AGENTS.md` réécrit (il décrivait une arborescence `backend/ frontend/` inexistante). Structure `docs/{setup,architecture,integrations,modules,runbooks,archive}` avec un index `docs/README.md`. Les 6 documents OAuth fusionnés en un seul, les originaux archivés. `GEMINI.md` et `.cursorrules` (qui décrivait un projet « UdemyClone ») supprimés, doublon WaSender supprimé.
+6. **Typage et audit** — ✅ `no-explicit-any` en avertissement dans la configuration partagée (568 occurrences côté API, 1150 côté web, à résorber module par module). `AuditLog` étendu à l'authentification : connexion réussie et échouée, déconnexion, réinitialisation de mot de passe, réutilisation de refresh token détectée.
+
+**Ce qui reste sur ce trimestre**, et pourquoi :
+
+- **Découpage de `lib/syndics/queries.ts`** (3 846 lignes, 80 fonctions) : mécanique mais volumineux, et sans test de non-régression sur ce module au-delà des 19 suites existantes.
+- **Fusion des deux services de matching** : les routes exposent les deux (`/deals/:id/match` en legacy, `/deals/:id/properties/match` en nouveau) et le frontend appelle la version legacy. Les formes de réponse diffèrent : la fusion change un contrat d'API et demande de vérifier l'application en fonctionnement.
+- **Factorisation des portails locataire/propriétaire** (156 lignes identiques) et **branchement de `pagination-helper` / `validate()`** dans une quarantaine de contrôleurs : volume, et modification du traitement des requêtes sans possibilité de tester l'application.
+- **Migration CRA → Vite** : élimine `legacy-peer-deps`, Jest 27 et les conflits de hoisting rencontrés ci-dessus. Suppose de migrer les 11 suites de tests de Jest vers Vitest et de rejouer l'application manuellement.
+- **react-query** : touche 144 fichiers et 209 `useEffect`.
+- **Réduction effective des `any`** : 1 718 occurrences au total.
 
 ---
 

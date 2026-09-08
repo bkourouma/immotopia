@@ -6,6 +6,11 @@ import { generateAccessToken, generateRefreshToken } from '../utils/jwt-utils';
 import { RegisterRequest, LoginRequest, PasswordResetRequest, ForgotPasswordRequest } from '../types/auth-types';
 import { logger } from '../utils/logger';
 import { prisma } from '../utils/database';
+import { logAuditEvent } from './audit-service';
+import { AuditActionKey } from '../types/audit-types';
+
+/** Entity type used for every authentication event. */
+const AUTH_ENTITY = 'User';
 
 /**
  * Register a new user
@@ -212,6 +217,14 @@ export async function loginUser(data: LoginRequest) {
 
   if (!isPasswordValid) {
     logger.warn('Failed login attempt', { userId: user.id, email: user.email });
+    logAuditEvent({
+      actorUserId: user.id,
+      tenantId: null,
+      actionKey: AuditActionKey.AUTH_LOGIN_FAILED,
+      entityType: AUTH_ENTITY,
+      entityId: user.id,
+      payload: { reason: 'invalid_password' }
+    });
     throw new Error('Email ou mot de passe incorrect.');
   }
 
@@ -244,6 +257,14 @@ export async function loginUser(data: LoginRequest) {
   });
 
   logger.info('User logged in', { userId: user.id, email: user.email, role: user.globalRole });
+  logAuditEvent({
+    actorUserId: user.id,
+    tenantId: null,
+    actionKey: AuditActionKey.AUTH_LOGIN_SUCCEEDED,
+    entityType: AUTH_ENTITY,
+    entityId: user.id,
+    payload: { method: 'password' }
+  });
 
   // Return user (without password) and tokens
   const { passwordHash: removedPasswordHash, ...userPublic } = user;
@@ -290,6 +311,14 @@ export async function refreshAccessToken(refreshToken: string, deviceInfo?: stri
   if (tokenRecord.revoked) {
     logger.warn('Refresh token reuse detected, revoking all sessions', {
       userId: tokenRecord.userId
+    });
+    logAuditEvent({
+      actorUserId: tokenRecord.userId,
+      tenantId: null,
+      actionKey: AuditActionKey.AUTH_TOKEN_REUSE_DETECTED,
+      entityType: AUTH_ENTITY,
+      entityId: tokenRecord.userId,
+      payload: { revokedAllSessions: true }
     });
     await prisma.refreshToken.updateMany({
       where: { userId: tokenRecord.userId, revoked: false },
@@ -373,6 +402,12 @@ export async function logoutUser(refreshToken: string) {
 
   const refreshTokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
 
+  // Read the owner before revoking, so the audit line names who logged out.
+  const tokenRecord = await prisma.refreshToken.findFirst({
+    where: { token: refreshTokenHash },
+    select: { userId: true }
+  });
+
   await prisma.refreshToken.updateMany({
     where: {
       token: refreshTokenHash,
@@ -383,6 +418,16 @@ export async function logoutUser(refreshToken: string) {
       revokedAt: new Date()
     }
   });
+
+  if (tokenRecord) {
+    logAuditEvent({
+      actorUserId: tokenRecord.userId,
+      tenantId: null,
+      actionKey: AuditActionKey.AUTH_LOGOUT,
+      entityType: AUTH_ENTITY,
+      entityId: tokenRecord.userId
+    });
+  }
 
   logger.info('User logged out', { tokenHash: refreshTokenHash.substring(0, 8) + '...' });
 }
@@ -483,5 +528,13 @@ export async function resetPassword(data: PasswordResetRequest) {
       where: { id: resetToken.id },
       data: { used: true }
     });
+  });
+
+  logAuditEvent({
+    actorUserId: resetToken.userId,
+    tenantId: null,
+    actionKey: AuditActionKey.AUTH_PASSWORD_RESET_COMPLETED,
+    entityType: AUTH_ENTITY,
+    entityId: resetToken.userId
   });
 }

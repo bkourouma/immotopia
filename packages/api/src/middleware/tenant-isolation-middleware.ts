@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { runWithTenantContext } from '../utils/tenant-context';
 
 /**
  * Middleware to enforce tenant isolation for CRM operations
@@ -6,6 +7,32 @@ import { Request, Response, NextFunction } from 'express';
  *
  * This middleware should be used after requireTenantAccess to ensure tenantContext exists
  */
+
+/**
+ * Publish the resolved tenant as the ambient context for the rest of the
+ * request, so the Prisma tenant guard can tell whether a query that touches a
+ * tenant-scoped model forgot its filter.
+ *
+ * Mount after requireTenantAccess. Purely observational by default; see
+ * utils/prisma-tenant-guard-extension.ts and TENANT_GUARD_MODE.
+ */
+export const withTenantContext = (req: Request, _res: Response, next: NextFunction): void => {
+  const tenantId = req.tenantContext?.tenantId;
+
+  if (!tenantId) {
+    next();
+    return;
+  }
+
+  runWithTenantContext(
+    {
+      tenantId,
+      userId: req.user?.userId,
+      isSuperAdmin: Boolean(req.tenantContext?.isSuperAdmin)
+    },
+    next
+  );
+};
 
 /**
  * Middleware to ensure tenant context exists for CRM operations

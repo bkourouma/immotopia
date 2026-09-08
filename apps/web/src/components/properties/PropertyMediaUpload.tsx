@@ -25,10 +25,11 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
 
   // Clear status message after 3 seconds
   React.useEffect(() => {
-    if (uploadStatus) {
-      const timer = setTimeout(() => setUploadStatus(null), 3000);
-      return () => clearTimeout(timer);
+    if (!uploadStatus) {
+      return undefined;
     }
+    const timer = setTimeout(() => setUploadStatus(null), 3000);
+    return () => clearTimeout(timer);
   }, [uploadStatus]);
 
   const handleFileSelect = async (files: FileList | null) => {

@@ -1,10 +1,10 @@
 {
-  "name": "@standard-app/web",
+  "name": "@immotopia/web",
   "version": "1.0.0",
-  "description": "StandardApplication Template Frontend Web Application",
+  "description": "ImmoTopia web application",
   "private": true,
   "engines": {
-    "node": ">=20 <21"
+    "node": ">=20"
   },
   "scripts": {
     "dev": "react-scripts start",
@@ -46,6 +46,8 @@
     "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
+    "@immotopia/eslint-config": "*",
+    "@immotopia/tsconfig": "*",
     "@testing-library/jest-dom": "^6.1.5",
     "@testing-library/react": "^14.1.2",
     "@testing-library/user-event": "^14.5.1",
@@ -78,6 +80,12 @@
       "last 1 chrome version",
       "last 1 firefox version",
       "last 1 safari version"
+    ]
+  },
+  "jest": {
+    "transformIgnorePatterns": [
+      "[/\\\\]node_modules[/\\\\](?!(antd|@ant-design|rc-[a-z-]+)[/\\\\]).+\\.(js|mjs|jsx|ts|tsx)$",
+      "^.+\\.module\\.(css|sass|scss)$"
     ]
   }
 }

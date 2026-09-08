@@ -1,5 +1,18 @@
 // Audit log action keys
 export enum AuditActionKey {
+  // Authentication actions
+  // Login, logout and credential changes were not traced at all, which left no
+  // way to investigate a compromised account (see AUDIT_CODE.md 4.8).
+  AUTH_LOGIN_SUCCEEDED = 'AUTH_LOGIN_SUCCEEDED',
+  AUTH_LOGIN_FAILED = 'AUTH_LOGIN_FAILED',
+  AUTH_LOGOUT = 'AUTH_LOGOUT',
+  AUTH_GOOGLE_LOGIN = 'AUTH_GOOGLE_LOGIN',
+  AUTH_TOKEN_REFRESHED = 'AUTH_TOKEN_REFRESHED',
+  AUTH_TOKEN_REUSE_DETECTED = 'AUTH_TOKEN_REUSE_DETECTED',
+  AUTH_PASSWORD_RESET_REQUESTED = 'AUTH_PASSWORD_RESET_REQUESTED',
+  AUTH_PASSWORD_RESET_COMPLETED = 'AUTH_PASSWORD_RESET_COMPLETED',
+  AUTH_EMAIL_VERIFIED = 'AUTH_EMAIL_VERIFIED',
+
   // Tenant actions
   TENANT_CREATED = 'TENANT_CREATED',
   TENANT_UPDATED = 'TENANT_UPDATED',

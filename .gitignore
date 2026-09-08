@@ -33,6 +33,9 @@ packages/api/uploads/
 assets/generated_documents/
 # Per-tenant document templates uploaded at runtime (base templates stay tracked)
 assets/modeles_documents/tenants/
+# Global default templates stored at runtime by db:seed:document-templates
+# (the source .docx at the root of modeles_documents/ stay tracked)
+assets/modeles_documents/default/
 # Word lock files
 ~$*
 
