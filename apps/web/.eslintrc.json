@@ -8,7 +8,24 @@
       {
         "patterns": [
           {
-            "group": ["**/components/ui/*", "**/ui/button", "**/ui/input", "**/ui/card", "**/ui/select", "**/ui/native-select", "**/ui/table", "**/ui/tabs", "**/ui/badge", "**/ui/alert", "**/ui/avatar", "**/ui/checkbox", "**/ui/dropdown-menu", "**/ui/location-selector", "**/ui/address-autocomplete", "**/ui/commune-searchable-select"],
+            "group": [
+              "**/components/ui/*",
+              "**/ui/button",
+              "**/ui/input",
+              "**/ui/card",
+              "**/ui/select",
+              "**/ui/native-select",
+              "**/ui/table",
+              "**/ui/tabs",
+              "**/ui/badge",
+              "**/ui/alert",
+              "**/ui/avatar",
+              "**/ui/checkbox",
+              "**/ui/dropdown-menu",
+              "**/ui/location-selector",
+              "**/ui/address-autocomplete",
+              "**/ui/commune-searchable-select"
+            ],
             "message": "components/ui/ est gele depuis la cloture du Lot 0 (REFONTE_UI_UX.md §3.1). Ant Design est le design system unique : utiliser le composant AntD equivalent, ou une primitive de components/primitives/. Le repertoire, @radix-ui/*, class-variance-authority et tailwind-merge sont supprimes du depot a la cloture du Lot 4."
           }
         ]
@@ -17,7 +34,9 @@
   },
   "overrides": [
     {
-      "settings": { "derogation": "Liste de derogation temporaire, videe a la cloture du Lot 4 (REFONTE_UI_UX.md §3.1). Enumeration litterale et non un glob : un nouveau fichier doit echouer." },
+      "settings": {
+        "derogation": "Liste de derogation temporaire, videe a la cloture du Lot 4 (REFONTE_UI_UX.md §3.1). Enumeration litterale et non un glob : un nouveau fichier doit echouer. 29 entrees a la sortie du Lot 0, 25 a la sortie du Lot 1."
+      },
       "files": [
         "src/components/crm/AddDealDialog.tsx",
         "src/components/crm/BulkTagManager.tsx",
@@ -41,12 +60,8 @@
         "src/components/properties/PropertySearchResults.tsx",
         "src/components/properties/PropertyStatusWorkflow.tsx",
         "src/components/rental/AllocatePaymentForm.tsx",
-        "src/pages/Properties.tsx",
         "src/pages/crm/Deals.tsx",
         "src/pages/properties/Properties.tsx",
-        "src/pages/properties/PropertyPublic.tsx",
-        "src/pages/properties/PropertyPublicDetail.tsx",
-        "src/pages/properties/PropertySearch.tsx",
         "src/pages/rental/Penalties.tsx"
       ],
       "rules": {
@@ -54,7 +69,9 @@
       }
     },
     {
-      "settings": { "derogation": "Les primitives de components/ui/ se composent entre elles ; retire avec le repertoire au Lot 4." },
+      "settings": {
+        "derogation": "Les primitives de components/ui/ se composent entre elles ; retire avec le repertoire au Lot 4."
+      },
       "files": ["src/components/ui/*.tsx"],
       "rules": {
         "no-restricted-imports": "off"

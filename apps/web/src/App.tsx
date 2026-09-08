@@ -19,7 +19,7 @@ import { useBreakpoint } from './hooks/useBreakpoint';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { ClientNewRedirect } from './components/ClientNewRedirect';
+import { TenantRedirect } from './components/TenantRedirect';
 const Register = lazy(() =>
   import(/* webpackChunkName: "pages-root" */ './pages/Register').then(m => ({ default: m.Register }))
 );
@@ -48,16 +48,6 @@ const PropertyEdit = lazy(() =>
 const PropertyDetail = lazy(() =>
   import(/* webpackChunkName: "properties" */ './pages/properties/PropertyDetail').then(m => ({
     default: m.PropertyDetail
-  }))
-);
-const PropertyPublic = lazy(() =>
-  import(/* webpackChunkName: "properties" */ './pages/properties/PropertyPublic').then(m => ({
-    default: m.PropertyPublic
-  }))
-);
-const PropertyPublicDetail = lazy(() =>
-  import(/* webpackChunkName: "properties" */ './pages/properties/PropertyPublicDetail').then(m => ({
-    default: m.PropertyPublicDetail
   }))
 );
 const PropertyVisitsCalendar = lazy(() =>
@@ -354,25 +344,13 @@ const SubscribePage = lazy(() =>
   }))
 );
 // Client pages
-const Clients = lazy(() =>
-  import(/* webpackChunkName: "pages-root" */ './pages/Clients').then(m => ({ default: m.Clients }))
-);
-const ClientGroups = lazy(() =>
-  import(/* webpackChunkName: "pages-root" */ './pages/ClientGroups').then(m => ({ default: m.ClientGroups }))
-);
 const DocumentTemplates = lazy(() =>
   import(/* webpackChunkName: "documents" */ './pages/documents/DocumentTemplates').then(m => ({
     default: m.DocumentTemplates
   }))
 );
 // Transactions page
-const Transactions = lazy(() =>
-  import(/* webpackChunkName: "pages-root" */ './pages/Transactions').then(m => ({ default: m.Transactions }))
-);
 // Reports page
-const Reports = lazy(() =>
-  import(/* webpackChunkName: "pages-root" */ './pages/Reports').then(m => ({ default: m.Reports }))
-);
 // Tenant Portal pages
 const TenantDashboard = lazy(() => import(/* webpackChunkName: "tenant-portal" */ './pages/TenantPortal/Dashboard'));
 const TenantLease = lazy(() => import(/* webpackChunkName: "tenant-portal" */ './pages/TenantPortal/Lease'));
@@ -469,13 +447,31 @@ function App() {
                   >
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/properties" element={<Properties />} />
-                    <Route path="/clients" element={<Clients />} />
-                    <Route path="/clients/new" element={<ClientNewRedirect />} />
-                    <Route path="/clients/groups" element={<ClientGroups />} />
-                    <Route path="/transactions" element={<Transactions />} />
-                    <Route path="/transactions/sales" element={<Transactions />} />
-                    <Route path="/transactions/rentals" element={<Transactions />} />
-                    <Route path="/reports" element={<Reports />} />
+                    {/* Fusions du §4.3. Les ecrans disparaissent, les URL en
+                        circulation sont redirigees et non cassees.
+                        Clients -> CRM Contacts : meme entite, deux listes,
+                        deux interfaces. /clients/new etait deja une
+                        redirection vers le formulaire de contact CRM.
+                        Transactions -> Affaires filtrees par type, Rapports ->
+                        Releves : deux pages-passerelles qui n'affichaient
+                        qu'un Empty ou des cartes de redirection, au prix de
+                        trois clics. */}
+                    <Route path="/clients" element={<TenantRedirect to="crm/contacts" />} />
+                    <Route path="/clients/new" element={<TenantRedirect to="crm/contacts/new" />} />
+                    <Route
+                      path="/clients/groups"
+                      element={<TenantRedirect to="crm/contacts" keepParams={['group']} />}
+                    />
+                    <Route path="/transactions" element={<TenantRedirect to="crm/deals" />} />
+                    <Route
+                      path="/transactions/sales"
+                      element={<TenantRedirect to="crm/deals" query={{ type: 'SALE' }} />}
+                    />
+                    <Route
+                      path="/transactions/rentals"
+                      element={<TenantRedirect to="crm/deals" query={{ type: 'RENT' }} />}
+                    />
+                    <Route path="/reports" element={<TenantRedirect to="patrimoine/statements" />} />
                     {/* SettingsLayout n'est plus qu'un <Outlet/> : la coquille
                         lui vient desormais du parent, comme aux autres ecrans. */}
                     <Route path="/settings" element={<SettingsLayout />}>
