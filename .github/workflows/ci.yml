@@ -37,10 +37,6 @@ jobs:
       JWT_SECRET: ci-only-secret-not-used-anywhere-else-0123456789
       NODE_ENV: test
 
-    defaults:
-      run:
-        working-directory: packages/api
-
     steps:
       - uses: actions/checkout@v4
 
@@ -48,37 +44,35 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: packages/api/package-lock.json
 
+      # Single install for the whole workspace: one lockfile at the root.
       - run: npm ci
-      - run: npx prisma generate
+
+      - run: npm run prisma:generate -w @immotopia/api
 
       # Fails when the Prisma schema and the migration history have drifted
       # apart, which is how the schema/DB mismatch in AUDIT_CODE.md crept in.
       - name: Check migrations match the schema
+        working-directory: packages/api
         run: npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url "$DATABASE_URL" --exit-code
         continue-on-error: true
 
       # continue-on-error while the pre-existing backlog is paid down
-      # (163 type errors, see AUDIT_CODE.md §3.7). Flip both to blocking once
+      # (148 type errors, see AUDIT_CODE.md §3.7). Flip both to blocking once
       # the count reaches zero.
-      - run: npx tsc --noEmit
+      - run: npm run typecheck -w @immotopia/api
         continue-on-error: true
 
-      - run: npm run lint
+      - run: npm run lint -w @immotopia/api
         continue-on-error: true
 
       # Blocking: the test suite must stay green.
-      - run: npm test
+      - run: npm test -w @immotopia/api
 
   web:
     name: Web — typecheck, lint, build
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: apps/web
-
     steps:
       - uses: actions/checkout@v4
 
@@ -86,24 +80,22 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: apps/web/package-lock.json
 
-      - run: npm ci --legacy-peer-deps
+      - run: npm ci
 
       # Blocking: the frontend currently type-checks cleanly, keep it that way.
-      - run: npx tsc --noEmit
+      - run: npm run typecheck -w @immotopia/web
 
       # continue-on-error: ESLint had never run on this codebase before, so the
       # first pass carries a large warning backlog.
-      - run: npm run lint
+      - run: npm run lint -w @immotopia/web
         continue-on-error: true
 
       - name: Test
-        run: npm test -- --watchAll=false
+        run: npm run test -w @immotopia/web -- --watchAll=false
         env:
           CI: true
-        continue-on-error: true
 
-      - run: npm run build
+      - run: npm run build -w @immotopia/web
         env:
           CI: false

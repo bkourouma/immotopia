@@ -25,7 +25,9 @@ services:
 
   api:
     build:
-      context: ./packages/api
+      # Root context: the monorepo has a single lockfile at the root.
+      context: .
+      dockerfile: packages/api/Dockerfile
     container_name: immotopia-api
     restart: unless-stopped
     depends_on:
