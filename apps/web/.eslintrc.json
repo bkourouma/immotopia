@@ -1,5 +1,64 @@
 {
   "root": true,
   "extends": ["@immotopia/eslint-config/react"],
-  "ignorePatterns": ["build/", "node_modules/", "*.config.js", "public/"]
+  "ignorePatterns": ["build/", "node_modules/", "public/", "*.config.js", "scripts/"],
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["**/components/ui/*", "**/ui/button", "**/ui/input", "**/ui/card", "**/ui/select", "**/ui/native-select", "**/ui/table", "**/ui/tabs", "**/ui/badge", "**/ui/alert", "**/ui/avatar", "**/ui/checkbox", "**/ui/dropdown-menu", "**/ui/location-selector", "**/ui/address-autocomplete", "**/ui/commune-searchable-select"],
+            "message": "components/ui/ est gele depuis la cloture du Lot 0 (REFONTE_UI_UX.md §3.1). Ant Design est le design system unique : utiliser le composant AntD equivalent, ou une primitive de components/primitives/. Le repertoire, @radix-ui/*, class-variance-authority et tailwind-merge sont supprimes du depot a la cloture du Lot 4."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "settings": { "derogation": "Liste de derogation temporaire, videe a la cloture du Lot 4 (REFONTE_UI_UX.md §3.1). Enumeration litterale et non un glob : un nouveau fichier doit echouer." },
+      "files": [
+        "src/components/crm/AddDealDialog.tsx",
+        "src/components/crm/BulkTagManager.tsx",
+        "src/components/crm/ContactForm.tsx",
+        "src/components/crm/ConvertContactDialog.tsx",
+        "src/components/crm/DealForm.tsx",
+        "src/components/crm/DealKanban.tsx",
+        "src/components/crm/PropertyMatchCard.tsx",
+        "src/components/crm/PropertyMatching.tsx",
+        "src/components/crm/dashboard/charts/PipelineChart.tsx",
+        "src/components/crm/dashboard/team/TeamPerformanceTable.tsx",
+        "src/components/crm/dashboard/workbench/Workbench.tsx",
+        "src/components/properties/ContactSearchableSelect.tsx",
+        "src/components/properties/PropertyDocumentUpload.tsx",
+        "src/components/properties/PropertyForm.tsx",
+        "src/components/properties/PropertyFormWizard.tsx",
+        "src/components/properties/PropertyMandateForm.tsx",
+        "src/components/properties/PropertyMediaUpload.tsx",
+        "src/components/properties/PropertyQualityScore.tsx",
+        "src/components/properties/PropertySearchFilters.tsx",
+        "src/components/properties/PropertySearchResults.tsx",
+        "src/components/properties/PropertyStatusWorkflow.tsx",
+        "src/components/rental/AllocatePaymentForm.tsx",
+        "src/pages/Properties.tsx",
+        "src/pages/crm/Deals.tsx",
+        "src/pages/properties/Properties.tsx",
+        "src/pages/properties/PropertyPublic.tsx",
+        "src/pages/properties/PropertyPublicDetail.tsx",
+        "src/pages/properties/PropertySearch.tsx",
+        "src/pages/rental/Penalties.tsx"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "settings": { "derogation": "Les primitives de components/ui/ se composent entre elles ; retire avec le repertoire au Lot 4." },
+      "files": ["src/components/ui/*.tsx"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ]
 }
