@@ -28,6 +28,7 @@ import {
   CreatePaymentRequest
 } from '../../services/rental-service';
 import { PaymentForm } from '../../components/rental/PaymentForm';
+import { useConfirmAction } from '../../components/primitives';
 
 const { Text, Title } = Typography;
 
@@ -37,6 +38,7 @@ interface InstallmentsProps {
 }
 
 export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId, refreshTrigger }) => {
+  const confirmAction = useConfirmAction();
   const { tenantId, leaseId: paramLeaseId } = useParams<{ tenantId: string; leaseId?: string }>();
   const leaseId = propLeaseId || paramLeaseId;
   const navigate = useNavigate();
@@ -184,29 +186,31 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
     }
   };
 
-  const handleDeleteAll = async () => {
+  const handleDeleteAll = () => {
     if (!tenantId || !leaseId) return;
 
-    const confirmed = window.confirm(
-      'Êtes-vous sûr de vouloir supprimer toutes les échéances de ce bail ? Cette action est irréversible.'
-    );
-
-    if (!confirmed) return;
-
-    setDeleting(true);
-    setError(null);
-    try {
-      const response = await deleteAllInstallments(tenantId, leaseId);
-      if (response.success) {
-        await loadInstallments();
-      } else {
-        setError('Erreur lors de la suppression des échéances');
+    confirmAction({
+      title: 'Supprimer toutes les échéances de ce bail ?',
+      description: 'Cette action est irréversible.',
+      okText: 'Supprimer',
+      danger: true,
+      onConfirm: async () => {
+        setDeleting(true);
+        setError(null);
+        try {
+          const response = await deleteAllInstallments(tenantId, leaseId);
+          if (response.success) {
+            await loadInstallments();
+          } else {
+            setError('Erreur lors de la suppression des échéances');
+          }
+        } catch (err: any) {
+          setError(err.response?.data?.message || 'Erreur lors de la suppression des échéances');
+        } finally {
+          setDeleting(false);
+        }
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de la suppression des échéances');
-    } finally {
-      setDeleting(false);
-    }
+    });
   };
 
   const getStatusTag = (status: RentalInstallmentStatus) => {

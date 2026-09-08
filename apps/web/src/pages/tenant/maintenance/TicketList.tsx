@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Card, Select, Button, Empty, Spin, Pagination, Space, Typography, Modal } from 'antd';
+import { App, Card, Select, Button, Empty, Spin, Pagination, Space, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { TicketCard } from '../../../components/maintenance/TicketCard';
 import { tenantMaintenanceService } from '../../../services/maintenance-service';
 import { Ticket, MaintenanceTicketStatus } from '../../../types/maintenance-types';
 import { useAuth } from '../../../hooks/useAuth';
+import { useConfirmAction } from '../../../components/primitives';
 
 const { Title } = Typography;
 const { Option } = Select;
 
 export const TicketList: React.FC = () => {
   const { message } = App.useApp();
+  const confirmAction = useConfirmAction();
 
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
@@ -80,14 +82,14 @@ export const TicketList: React.FC = () => {
   const handleDelete = async (ticketId: string) => {
     if (!effectiveTenantId) return;
 
-    Modal.confirm({
+    confirmAction({
       title: 'Supprimer définitivement le ticket',
-      content:
+      description:
         'Êtes-vous sûr de vouloir supprimer définitivement ce ticket ? Cette action est irréversible et supprimera toutes les données associées (pièces jointes, commentaires, historique).',
       okText: 'Oui, supprimer',
       cancelText: 'Non',
-      okButtonProps: { danger: true },
-      onOk: async () => {
+      danger: true,
+      onConfirm: async () => {
         try {
           const response = await tenantMaintenanceService.deleteTicket(effectiveTenantId, ticketId);
           if (response.success) {

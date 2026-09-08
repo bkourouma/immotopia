@@ -110,7 +110,12 @@ vi.mock('antd', async () => {
     modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
     notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
   };
-  return { ...antdMock, App: { useApp: () => appApi } };
+  return {
+    ...antdMock,
+    App: { useApp: () => appApi },
+    // Aucun palier actif : le rendu par defaut des tests est le mobile.
+    Grid: { useBreakpoint: () => ({}) }
+  };
 });
 
 // Vitest has no `requireMock`; importing the module inside a mocked test file

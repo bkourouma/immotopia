@@ -38,6 +38,7 @@ import {
   PenaltyFilters
 } from '../../services/rental-service';
 import { API_URL } from '../../config/api';
+import { useConfirmAction } from '../../components/primitives';
 
 const { Text, Title } = Typography;
 
@@ -46,6 +47,7 @@ interface PenaltiesProps {
 }
 
 export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) => {
+  const confirmAction = useConfirmAction();
   const { tenantId, leaseId: paramLeaseId } = useParams<{ tenantId: string; leaseId?: string }>();
   const leaseId = propLeaseId || paramLeaseId;
   const [penalties, setPenalties] = useState<RentalPenalty[]>([]);
@@ -225,25 +227,27 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
     }
   };
 
-  const handleDeletePenalty = async (penaltyId: string) => {
+  const handleDeletePenalty = (penaltyId: string) => {
     if (!tenantId) return;
 
-    const confirmed = window.confirm(
-      'Êtes-vous sûr de vouloir supprimer cette pénalité ? Cette action est irréversible.'
-    );
-
-    if (!confirmed) return;
-
-    setIsDeleting(penaltyId);
-    setError(null);
-    try {
-      await deletePenalty(tenantId, penaltyId);
-      await loadPenalties();
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de la suppression de la pénalité');
-    } finally {
-      setIsDeleting(null);
-    }
+    confirmAction({
+      title: 'Supprimer cette pénalité ?',
+      description: 'Cette action est irréversible.',
+      okText: 'Supprimer',
+      danger: true,
+      onConfirm: async () => {
+        setIsDeleting(penaltyId);
+        setError(null);
+        try {
+          await deletePenalty(tenantId, penaltyId);
+          await loadPenalties();
+        } catch (err: any) {
+          setError(err.response?.data?.message || 'Erreur lors de la suppression de la pénalité');
+        } finally {
+          setIsDeleting(null);
+        }
+      }
+    });
   };
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {

@@ -1,3 +1,5 @@
+import { feedback } from '../lib/feedback';
+
 /**
  * CSV / Excel export helpers.
  *
@@ -41,7 +43,9 @@ function toCsvCell(value: unknown): string {
  */
 export function exportToCSV(data: any[], filename: string): void {
   if (!data || data.length === 0) {
-    alert('Aucune donnée à exporter');
+    // Module hors React : `App.useApp()` y est impossible. La passerelle
+    // rejoue le `message` contextualise pose par <FeedbackBridge/> (§5.7).
+    feedback.warning('Aucune donnée à exporter');
     return;
   }
 
@@ -70,7 +74,9 @@ function toExcelCell(value: unknown): string | number | boolean | Date | null {
  */
 export async function exportToExcel(data: any[], filename: string, sheetName: string = 'Sheet1'): Promise<void> {
   if (!data || data.length === 0) {
-    alert('Aucune donnée à exporter');
+    // Module hors React : `App.useApp()` y est impossible. La passerelle
+    // rejoue le `message` contextualise pose par <FeedbackBridge/> (§5.7).
+    feedback.warning('Aucune donnée à exporter');
     return;
   }
 

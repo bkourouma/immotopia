@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Star, AlertCircle, CheckCircle, RefreshCw, Loader2 } from 'lucide-react';
 import { getQualityScore } from '../../services/property-service';
+import { App } from 'antd';
 
 interface PropertyQualityScoreProps {
   propertyId: string;
@@ -19,10 +20,8 @@ interface QualityScoreData {
   };
 }
 
-export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({
-  propertyId,
-  tenantId,
-}) => {
+export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ propertyId, tenantId }) => {
+  const { message } = App.useApp();
   const [qualityScore, setQualityScore] = useState<QualityScoreData | null>(null);
   const [loading, setLoading] = useState(true);
   const [recalculating, setRecalculating] = useState(false);
@@ -50,7 +49,7 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({
       setQualityScore(score);
     } catch (error) {
       console.error('Error recalculating quality score:', error);
-      alert('Erreur lors du recalcul du score');
+      message.error('Erreur lors du recalcul du score');
     } finally {
       setRecalculating(false);
     }
@@ -93,16 +92,9 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({
       <div className="flex items-center justify-between mb-6">
         <div>
           <h3 className="text-lg font-semibold text-slate-900">Score de qualité</h3>
-          <p className="text-sm text-gray-600 mt-1">
-            Évaluation automatique de la complétude de votre annonce
-          </p>
+          <p className="text-sm text-gray-600 mt-1">Évaluation automatique de la complétude de votre annonce</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleRecalculate}
-          disabled={recalculating}
-        >
+        <Button variant="outline" size="sm" onClick={handleRecalculate} disabled={recalculating}>
           {recalculating ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -153,10 +145,7 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({
               <span className="font-medium">{qualityScore.breakdown.media}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
-              <div
-                className="bg-green-600 h-2 rounded-full"
-                style={{ width: `${qualityScore.breakdown.media}%` }}
-              />
+              <div className="bg-green-600 h-2 rounded-full" style={{ width: `${qualityScore.breakdown.media}%` }} />
             </div>
           </div>
           <div>
@@ -195,10 +184,7 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({
           </h4>
           <div className="space-y-2">
             {qualityScore.suggestions.map((suggestion, index) => (
-              <div
-                key={index}
-                className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg"
-              >
+              <div key={index} className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <CheckCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
                 <span className="text-sm text-gray-700">{suggestion}</span>
               </div>
@@ -218,8 +204,3 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({
     </div>
   );
 };
-
-
-
-
-

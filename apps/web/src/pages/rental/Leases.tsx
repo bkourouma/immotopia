@@ -16,8 +16,7 @@ import {
   Pagination,
   Select,
   Typography,
-  Tooltip,
-  Modal
+  Tooltip
 } from 'antd';
 import {
   PlusOutlined,
@@ -38,12 +37,14 @@ import {
 } from '../../services/rental-service';
 import { PropertyTransactionMode } from '../../types/property-types';
 import type { ColumnsType } from 'antd/es/table';
+import { useConfirmAction } from '../../components/primitives';
 
 const { Title, Text } = Typography;
 const { Search: InputSearch } = Input;
 
 export const Leases: React.FC = () => {
   const { message } = App.useApp();
+  const confirmAction = useConfirmAction();
 
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
@@ -135,13 +136,13 @@ export const Leases: React.FC = () => {
   const handleDelete = (leaseId: string, leaseNumber: string) => {
     if (!tenantId) return;
 
-    Modal.confirm({
+    confirmAction({
       title: 'Supprimer le bail',
-      content: `Êtes-vous sûr de vouloir supprimer le bail "${leaseNumber}" ? Cette action est irréversible.`,
+      description: `Êtes-vous sûr de vouloir supprimer le bail "${leaseNumber}" ? Cette action est irréversible.`,
       okText: 'Supprimer',
-      okType: 'danger',
+      danger: true,
       cancelText: 'Annuler',
-      onOk: async () => {
+      onConfirm: async () => {
         try {
           await deleteLease(tenantId, leaseId);
           message.success('Bail supprimé avec succès');

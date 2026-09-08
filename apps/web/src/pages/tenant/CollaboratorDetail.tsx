@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Card, Spin, Alert, Button, Descriptions, Checkbox, Space, Typography, Modal } from 'antd';
+import { App, Card, Spin, Alert, Button, Descriptions, Checkbox, Space, Typography } from 'antd';
 import { ArrowLeftOutlined, EditOutlined, KeyOutlined, LogoutOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
@@ -12,6 +12,7 @@ import {
 } from '../../services/membership-service';
 import apiClient from '../../utils/api-client';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
+import { useConfirmAction } from '../../components/primitives';
 
 interface Role {
   id: string;
@@ -28,6 +29,7 @@ const statusLabels: Record<string, string> = {
 
 export const CollaboratorDetail: React.FC = () => {
   const { message } = App.useApp();
+  const confirmAction = useConfirmAction();
 
   const { tenantId, userId } = useParams<{ tenantId: string; userId: string }>();
   const navigate = useNavigate();
@@ -91,12 +93,12 @@ export const CollaboratorDetail: React.FC = () => {
 
   const handleResetPassword = () => {
     if (!tenantId || !userId) return;
-    Modal.confirm({
+    confirmAction({
       title: 'Réinitialiser le mot de passe',
-      content: "Êtes-vous sûr de vouloir réinitialiser le mot de passe ? Un email sera envoyé à l'utilisateur.",
+      description: "Êtes-vous sûr de vouloir réinitialiser le mot de passe ? Un email sera envoyé à l'utilisateur.",
       okText: 'Réinitialiser',
       cancelText: 'Annuler',
-      onOk: async () => {
+      onConfirm: async () => {
         try {
           await resetMemberPassword(tenantId, userId, { sendEmail: true });
           message.success("Mot de passe réinitialisé. Un email a été envoyé à l'utilisateur.");
@@ -109,13 +111,13 @@ export const CollaboratorDetail: React.FC = () => {
 
   const handleRevokeSessions = () => {
     if (!tenantId || !userId) return;
-    Modal.confirm({
+    confirmAction({
       title: 'Révoquer les sessions',
-      content: 'Êtes-vous sûr de vouloir révoquer toutes les sessions de cet utilisateur ?',
+      description: 'Êtes-vous sûr de vouloir révoquer toutes les sessions de cet utilisateur ?',
       okText: 'Révoquer',
       cancelText: 'Annuler',
-      okButtonProps: { danger: true },
-      onOk: async () => {
+      danger: true,
+      onConfirm: async () => {
         try {
           await revokeMemberSessions(tenantId, userId);
           message.success('Toutes les sessions ont été révoquées');

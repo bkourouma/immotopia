@@ -1,8 +1,8 @@
 /**
  * Passerelle de retour d'action pour le code qui n'est pas un composant React.
  *
- * Depuis Ant Design 5, les fonctions statiques `message.*`, `notification.*` et
- * `Modal.confirm` ne consomment pas le contexte du `ConfigProvider` : elles
+ * Depuis Ant Design 5, les fonctions statiques de message, de notification et
+ * de modale ne consomment pas le contexte du `ConfigProvider` : elles
  * s'afficheraient au thème par défaut, à côté d'une application thémée par les
  * tokens du §3.2. La réponse standard est `App.useApp()` — mais c'est un hook,
  * inutilisable depuis un module utilitaire.

@@ -18,6 +18,7 @@ import {
   type NewsletterTemplate,
   type NewsletterCampaign
 } from '../../services/newsletter.service';
+import { useConfirmAction } from '../../components/primitives';
 
 const statusColors: Record<string, string> = {
   DRAFT: 'default',
@@ -39,6 +40,7 @@ const statusLabels: Record<string, string> = {
 
 export function NewsletterCampaignsPage() {
   const { message } = App.useApp();
+  const confirmAction = useConfirmAction();
 
   const { tenantId } = useParams<{ tenantId: string }>();
   const [campaigns, setCampaigns] = useState<NewsletterCampaign[]>([]);
@@ -138,11 +140,11 @@ export function NewsletterCampaignsPage() {
 
   const handleSendCampaign = async (campaign: NewsletterCampaign) => {
     if (!tenantId) return;
-    Modal.confirm({
+    confirmAction({
       title: 'Envoyer la campagne',
-      content: `Êtes-vous sûr de vouloir envoyer « ${campaign.subject} » à tous les abonnés actifs ?`,
+      description: `Êtes-vous sûr de vouloir envoyer « ${campaign.subject} » à tous les abonnés actifs ?`,
       okText: 'Envoyer',
-      onOk: async () => {
+      onConfirm: async () => {
         try {
           await newsletterService.sendCampaign(tenantId, campaign.id);
           message.success('Campagne envoyée');
@@ -174,12 +176,12 @@ export function NewsletterCampaignsPage() {
 
   const handleCancelCampaign = async (campaign: NewsletterCampaign) => {
     if (!tenantId) return;
-    Modal.confirm({
+    confirmAction({
       title: 'Annuler la campagne',
-      content: `Annuler l'envoi planifié de « ${campaign.subject} » ?`,
+      description: `Annuler l'envoi planifié de « ${campaign.subject} » ?`,
       okText: 'Annuler la campagne',
-      okButtonProps: { danger: true },
-      onOk: async () => {
+      danger: true,
+      onConfirm: async () => {
         try {
           await newsletterService.cancelCampaign(tenantId, campaign.id);
           message.success('Campagne annulée');

@@ -15,15 +15,29 @@ import {
   CreateCrmDealRequest,
   UpdateCrmDealRequest,
   CreateCrmActivityRequest,
-  DealFilters,
+  DealFilters
 } from '../../services/crm-service';
 import { CrmDealStage } from '../../types/crm-types';
-import { Briefcase, Plus, Search, Edit, Eye, LayoutGrid, Activity, Calendar, X, Download, FileSpreadsheet } from 'lucide-react';
+import {
+  Briefcase,
+  Plus,
+  Search,
+  Edit,
+  Eye,
+  LayoutGrid,
+  Activity,
+  Calendar,
+  X,
+  Download,
+  FileSpreadsheet
+} from 'lucide-react';
 import { DealKanban } from '../../components/crm/DealKanban';
 import { AdvancedFilters, AdvancedFilters as AdvancedFiltersType } from '../../components/crm/AdvancedFilters';
 import { exportToCSV, exportToExcel } from '../../utils/export-utils';
+import { App } from 'antd';
 
 export const Deals: React.FC = () => {
+  const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const [deals, setDeals] = useState<CrmDeal[]>([]);
@@ -33,13 +47,13 @@ export const Deals: React.FC = () => {
   const [editingDeal, setEditingDeal] = useState<CrmDeal | null>(null);
   const [filters, setFilters] = useState<DealFilters>({
     page: 1,
-    limit: 20,
+    limit: 20
   });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
     total: 0,
-    totalPages: 0,
+    totalPages: 0
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('kanban');
@@ -60,17 +74,15 @@ export const Deals: React.FC = () => {
     setError(null);
     try {
       // For kanban view, load all deals (no pagination)
-      const filtersToUse = viewMode === 'kanban' 
-        ? { ...filters, limit: 1000, page: 1 }
-        : filters;
-      
+      const filtersToUse = viewMode === 'kanban' ? { ...filters, limit: 1000, page: 1 } : filters;
+
       const response = await listDeals(tenantId, {
         ...filtersToUse,
         budgetMin: advancedFilters.budgetMin,
         budgetMax: advancedFilters.budgetMax,
         startDate: advancedFilters.startDate,
         endDate: advancedFilters.endDate,
-        assignedTo: advancedFilters.assignedTo,
+        assignedTo: advancedFilters.assignedTo
       });
       if (response.success) {
         setDeals(response.deals);
@@ -96,25 +108,25 @@ export const Deals: React.FC = () => {
     if (!searchTerm.trim()) {
       return deals;
     }
-    
+
     const searchLower = searchTerm.toLowerCase();
-    return deals.filter((deal) => {
+    return deals.filter(deal => {
       const dealDetail = deal as CrmDealDetail;
       const contact = dealDetail.contact;
-      
+
       // Search in contact name
       if (contact) {
         const fullName = `${contact.firstName} ${contact.lastName}`.toLowerCase();
         if (fullName.includes(searchLower)) return true;
         if (contact.email?.toLowerCase().includes(searchLower)) return true;
       }
-      
+
       // Search in location
       if (deal.locationZone?.toLowerCase().includes(searchLower)) return true;
-      
+
       // Search in deal type
       if (deal.type.toLowerCase().includes(searchLower)) return true;
-      
+
       return false;
     });
   }, [deals, searchTerm]);
@@ -166,7 +178,6 @@ export const Deals: React.FC = () => {
     }
   };
 
-
   const getStageLabel = (stage: string): string => {
     const labels: Record<string, string> = {
       NEW: 'Nouveau',
@@ -175,7 +186,7 @@ export const Deals: React.FC = () => {
       VISIT: 'Visite',
       NEGOTIATION: 'Négociation',
       WON: 'Gagné',
-      LOST: 'Perdu',
+      LOST: 'Perdu'
     };
     return labels[stage] || stage;
   };
@@ -188,7 +199,7 @@ export const Deals: React.FC = () => {
       VISIT: 'bg-orange-100 text-orange-800',
       NEGOTIATION: 'bg-purple-100 text-purple-800',
       WON: 'bg-green-100 text-green-800',
-      LOST: 'bg-red-100 text-red-800',
+      LOST: 'bg-red-100 text-red-800'
     };
     return (
       <span
@@ -219,15 +230,15 @@ export const Deals: React.FC = () => {
                   const dealDetail = deal as CrmDealDetail;
                   const contact = dealDetail.contact;
                   return {
-                    'Type': deal.type,
-                    'Contact': contact ? `${contact.firstName} ${contact.lastName}` : `Contact ID: ${deal.contactId}`,
-                    'Email': contact?.email || '',
-                    'Téléphone': contact?.phone || '',
-                    'Stade': getStageLabel(deal.stage),
+                    Type: deal.type,
+                    Contact: contact ? `${contact.firstName} ${contact.lastName}` : `Contact ID: ${deal.contactId}`,
+                    Email: contact?.email || '',
+                    Téléphone: contact?.phone || '',
+                    Stade: getStageLabel(deal.stage),
                     'Budget min': deal.budgetMin ? deal.budgetMin.toLocaleString() + ' FCFA' : '',
                     'Budget max': deal.budgetMax ? deal.budgetMax.toLocaleString() + ' FCFA' : '',
-                    'Localisation': deal.locationZone || '',
-                    'Date de création': new Date(deal.createdAt).toLocaleDateString('fr-FR'),
+                    Localisation: deal.locationZone || '',
+                    'Date de création': new Date(deal.createdAt).toLocaleDateString('fr-FR')
                   };
                 });
                 exportToCSV(exportData, 'affaires');
@@ -245,15 +256,15 @@ export const Deals: React.FC = () => {
                   const dealDetail = deal as CrmDealDetail;
                   const contact = dealDetail.contact;
                   return {
-                    'Type': deal.type,
-                    'Contact': contact ? `${contact.firstName} ${contact.lastName}` : `Contact ID: ${deal.contactId}`,
-                    'Email': contact?.email || '',
-                    'Téléphone': contact?.phone || '',
-                    'Stade': getStageLabel(deal.stage),
+                    Type: deal.type,
+                    Contact: contact ? `${contact.firstName} ${contact.lastName}` : `Contact ID: ${deal.contactId}`,
+                    Email: contact?.email || '',
+                    Téléphone: contact?.phone || '',
+                    Stade: getStageLabel(deal.stage),
                     'Budget min': deal.budgetMin ? deal.budgetMin.toLocaleString() + ' FCFA' : '',
                     'Budget max': deal.budgetMax ? deal.budgetMax.toLocaleString() + ' FCFA' : '',
-                    'Localisation': deal.locationZone || '',
-                    'Date de création': new Date(deal.createdAt).toLocaleDateString('fr-FR'),
+                    Localisation: deal.locationZone || '',
+                    'Date de création': new Date(deal.createdAt).toLocaleDateString('fr-FR')
                   };
                 });
                 exportToExcel(exportData, 'affaires', 'Affaires');
@@ -279,7 +290,12 @@ export const Deals: React.FC = () => {
         {editingDeal && (
           <div className="bg-white rounded-lg shadow p-4">
             <h2 className="text-lg font-semibold mb-3">Modifier l'affaire</h2>
-            <DealForm tenantId={tenantId!} deal={editingDeal} onSubmit={handleUpdate} onCancel={() => setEditingDeal(null)} />
+            <DealForm
+              tenantId={tenantId!}
+              deal={editingDeal}
+              onSubmit={handleUpdate}
+              onCancel={() => setEditingDeal(null)}
+            />
           </div>
         )}
 
@@ -299,7 +315,6 @@ export const Deals: React.FC = () => {
           </div>
         )}
 
-
         {/* Search and Filters Bar */}
         <div className="bg-white rounded-lg shadow p-3 mb-3">
           <div className="flex gap-2 items-center mb-2">
@@ -311,7 +326,7 @@ export const Deals: React.FC = () => {
                   type="text"
                   placeholder="Rechercher par nom, email, localisation..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={e => setSearchTerm(e.target.value)}
                   className="pl-8 pr-8 h-8 text-xs"
                 />
                 {searchTerm && (
@@ -325,24 +340,19 @@ export const Deals: React.FC = () => {
                 )}
               </div>
             </form>
-            
+
             {/* Results Count */}
             {searchTerm && (
               <span className="text-xs text-gray-500 whitespace-nowrap">
                 {filteredDeals.length} résultat{filteredDeals.length !== 1 ? 's' : ''}
               </span>
             )}
-            
+
             {/* Filter Toggle */}
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs h-8"
-              onClick={() => setShowFilters(!showFilters)}
-            >
+            <Button variant="outline" size="sm" className="text-xs h-8" onClick={() => setShowFilters(!showFilters)}>
               Filtres
             </Button>
-            
+
             {/* View Toggle */}
             <div className="flex gap-1 border-l pl-2 ml-2">
               <Button
@@ -364,7 +374,7 @@ export const Deals: React.FC = () => {
               </Button>
             </div>
           </div>
-          
+
           {/* Filters Panel */}
           {showFilters && (
             <div className="border-t pt-2 mt-2 space-y-2">
@@ -395,7 +405,7 @@ export const Deals: React.FC = () => {
                   Location
                 </Button>
               </div>
-              
+
               <div className="flex gap-2 flex-wrap">
                 <span className="text-xs font-medium text-gray-700 self-center">Stade:</span>
                 <Button
@@ -406,7 +416,7 @@ export const Deals: React.FC = () => {
                 >
                   Tous
                 </Button>
-                {['NEW', 'QUALIFIED', 'APPOINTMENT', 'VISIT', 'NEGOTIATION', 'WON', 'LOST'].map((stage) => (
+                {['NEW', 'QUALIFIED', 'APPOINTMENT', 'VISIT', 'NEGOTIATION', 'WON', 'LOST'].map(stage => (
                   <Button
                     key={stage}
                     variant={filters.stage === stage ? 'default' : 'outline'}
@@ -429,7 +439,7 @@ export const Deals: React.FC = () => {
                 showDateRange: true,
                 showAssignedTo: true,
                 showBudget: true,
-                dateRangeLabel: 'Date de création',
+                dateRangeLabel: 'Date de création'
               }}
               filters={advancedFilters}
               onFiltersChange={setAdvancedFilters}
@@ -437,13 +447,8 @@ export const Deals: React.FC = () => {
           </div>
         </div>
 
-
         {/* Deals View */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-            {error}
-          </div>
-        )}
+        {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{error}</div>}
 
         {loading ? (
           <div className="text-center py-12">
@@ -465,23 +470,23 @@ export const Deals: React.FC = () => {
             <DealKanban
               deals={filteredDeals}
               loading={loading}
-              onDealClick={(deal) => navigate(`/tenant/${tenantId}/crm/deals/${deal.id}`)}
+              onDealClick={deal => navigate(`/tenant/${tenantId}/crm/deals/${deal.id}`)}
               onStageChange={async (dealId, newStage) => {
-                const deal = filteredDeals.find((d) => d.id === dealId) || deals.find((d) => d.id === dealId);
+                const deal = filteredDeals.find(d => d.id === dealId) || deals.find(d => d.id === dealId);
                 if (deal && tenantId) {
                   try {
                     await updateDeal(tenantId, dealId, {
                       stage: newStage,
-                      version: deal.version,
+                      version: deal.version
                     });
                     // Reload deals
                     await loadDeals();
                   } catch (err: any) {
-                    alert(err.response?.data?.message || 'Erreur lors de la mise à jour du stade de l\'affaire');
+                    message.error(err.response?.data?.message || "Erreur lors de la mise à jour du stade de l'affaire");
                   }
                 }
               }}
-              onAddDeal={(stage) => {
+              onAddDeal={stage => {
                 // Set the stage in the form and show it
                 setShowForm(true);
                 // You could pre-fill the stage in the form if needed
@@ -514,7 +519,7 @@ export const Deals: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredDeals.map((deal) => (
+                {filteredDeals.map(deal => (
                   <tr key={deal.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{deal.type}</div>
@@ -529,16 +534,14 @@ export const Deals: React.FC = () => {
                         })()}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {getStageBadge(deal.stage)}
-                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">{getStageBadge(deal.stage)}</td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-500">
                         {deal.budgetMin && deal.budgetMax
                           ? `${deal.budgetMin.toLocaleString()} - ${deal.budgetMax.toLocaleString()} FCFA`
                           : deal.budgetMax
-                          ? `Jusqu'à ${deal.budgetMax.toLocaleString()} FCFA`
-                          : '-'}
+                            ? `Jusqu'à ${deal.budgetMax.toLocaleString()} FCFA`
+                            : '-'}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -570,12 +573,7 @@ export const Deals: React.FC = () => {
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingDeal(deal)}
-                          title="Modifier"
-                        >
+                        <Button variant="ghost" size="sm" onClick={() => setEditingDeal(deal)} title="Modifier">
                           <Edit className="h-4 w-4" />
                         </Button>
                       </div>
@@ -589,9 +587,8 @@ export const Deals: React.FC = () => {
             {pagination.totalPages > 1 && (
               <div className="bg-gray-50 px-6 py-3 flex items-center justify-between border-t border-gray-200">
                 <div className="text-sm text-gray-700">
-                  Affichage de {((pagination.page - 1) * pagination.limit) + 1} à{' '}
-                  {Math.min(pagination.page * pagination.limit, pagination.total)} sur{' '}
-                  {pagination.total} affaires
+                  Affichage de {(pagination.page - 1) * pagination.limit + 1} à{' '}
+                  {Math.min(pagination.page * pagination.limit, pagination.total)} sur {pagination.total} affaires
                 </div>
                 <div className="flex gap-2">
                   <Button
@@ -619,4 +616,3 @@ export const Deals: React.FC = () => {
     </DashboardLayout>
   );
 };
-

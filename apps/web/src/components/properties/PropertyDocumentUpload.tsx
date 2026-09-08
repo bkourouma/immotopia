@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import { Upload, X, FileText, Loader2 } from 'lucide-react';
 import { PropertyDocumentType } from '../../types/property-types';
 import apiClient from '../../utils/api-client';
+import { App } from 'antd';
 
 interface PropertyDocumentUploadProps {
   propertyId: string;
@@ -13,13 +14,14 @@ interface PropertyDocumentUploadProps {
 export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
   propertyId,
   tenantId,
-  onUploadComplete,
+  onUploadComplete
 }) => {
+  const { message } = App.useApp();
   const [uploading, setUploading] = useState(false);
   const [formData, setFormData] = useState({
     documentType: PropertyDocumentType.OTHER,
     expirationDate: '',
-    isRequired: false,
+    isRequired: false
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -34,7 +36,7 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
     e.preventDefault();
 
     if (!selectedFile) {
-      alert('Veuillez sélectionner un fichier');
+      message.warning('Veuillez sélectionner un fichier');
       return;
     }
 
@@ -48,22 +50,18 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
       }
       uploadFormData.append('isRequired', formData.isRequired.toString());
 
-      await apiClient.post(
-        `/tenants/${tenantId}/properties/${propertyId}/documents`,
-        uploadFormData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
+      await apiClient.post(`/tenants/${tenantId}/properties/${propertyId}/documents`, uploadFormData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
         }
-      );
+      });
 
       // Reset form
       setSelectedFile(null);
       setFormData({
         documentType: PropertyDocumentType.OTHER,
         expirationDate: '',
-        isRequired: false,
+        isRequired: false
       });
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
@@ -74,7 +72,7 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
       }
     } catch (error: any) {
       console.error('Error uploading document:', error);
-      alert(error.response?.data?.error || 'Erreur lors du téléchargement');
+      message.error(error.response?.data?.error || 'Erreur lors du téléchargement');
     } finally {
       setUploading(false);
     }
@@ -85,7 +83,7 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
     [PropertyDocumentType.MANDATE]: 'Mandat',
     [PropertyDocumentType.PLAN]: 'Plan',
     [PropertyDocumentType.TAX_DOCUMENT]: 'Document fiscal',
-    [PropertyDocumentType.OTHER]: 'Autre',
+    [PropertyDocumentType.OTHER]: 'Autre'
   };
 
   return (
@@ -122,20 +120,12 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
         ) : (
           <div className="text-center">
             <FileText className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-            <p className="text-sm text-gray-600 mb-2">
-              Aucun fichier sélectionné
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-            >
+            <p className="text-sm text-gray-600 mb-2">Aucun fichier sélectionné</p>
+            <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
               <Upload className="h-4 w-4 mr-2" />
               Sélectionner un fichier
             </Button>
-            <p className="text-xs text-gray-500 mt-2">
-              PDF, DOC, DOCX, JPEG, PNG, TIFF (max 10MB)
-            </p>
+            <p className="text-xs text-gray-500 mt-2">PDF, DOC, DOCX, JPEG, PNG, TIFF (max 10MB)</p>
           </div>
         )}
       </div>
@@ -147,10 +137,10 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
           </label>
           <select
             value={formData.documentType}
-            onChange={(e) =>
-              setFormData((prev) => ({
+            onChange={e =>
+              setFormData(prev => ({
                 ...prev,
-                documentType: e.target.value as PropertyDocumentType,
+                documentType: e.target.value as PropertyDocumentType
               }))
             }
             className="w-full rounded-md border border-gray-300 px-3 py-2"
@@ -165,15 +155,11 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Date d'expiration (optionnel)
-          </label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Date d'expiration (optionnel)</label>
           <input
             type="date"
             value={formData.expirationDate}
-            onChange={(e) =>
-              setFormData((prev) => ({ ...prev, expirationDate: e.target.value }))
-            }
+            onChange={e => setFormData(prev => ({ ...prev, expirationDate: e.target.value }))}
             className="w-full rounded-md border border-gray-300 px-3 py-2"
           />
         </div>
@@ -184,9 +170,7 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
           type="checkbox"
           id="isRequired"
           checked={formData.isRequired}
-          onChange={(e) =>
-            setFormData((prev) => ({ ...prev, isRequired: e.target.checked }))
-          }
+          onChange={e => setFormData(prev => ({ ...prev, isRequired: e.target.checked }))}
           className="h-4 w-4 rounded border-gray-300 text-blue-600"
         />
         <label htmlFor="isRequired" className="text-sm text-gray-700">
@@ -210,8 +194,3 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
     </form>
   );
 };
-
-
-
-
-

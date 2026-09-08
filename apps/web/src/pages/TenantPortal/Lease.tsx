@@ -1,5 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Spin, Alert, Descriptions, Tag, List, Button, Space, Empty, Divider } from 'antd';
+import {
+  App,
+  Card,
+  Row,
+  Col,
+  Typography,
+  Spin,
+  Alert,
+  Descriptions,
+  Tag,
+  List,
+  Button,
+  Space,
+  Empty,
+  Divider
+} from 'antd';
 import {
   FileTextOutlined,
   UserOutlined,
@@ -74,18 +89,22 @@ interface LeaseDetailsData {
     issued_at: string | null;
     title: string | null;
   }>;
-  groupedByType: Record<string, Array<{
-    id: string;
-    type: string;
-    document_number: string | null;
-    file_url: string | null;
-    file_path: string | null;
-    issued_at: string | null;
-    title: string | null;
-  }>>;
+  groupedByType: Record<
+    string,
+    Array<{
+      id: string;
+      type: string;
+      document_number: string | null;
+      file_url: string | null;
+      file_path: string | null;
+      issued_at: string | null;
+      title: string | null;
+    }>
+  >;
 }
 
 export default function TenantLease() {
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<LeaseDetailsData | null>(null);
@@ -163,11 +182,7 @@ export default function TenantLease() {
     return labels[type] || type;
   };
 
-  const getDisplayName = (
-    fullName: string | null | undefined,
-    email?: string | null,
-    fallback = 'Non renseigné'
-  ) => {
+  const getDisplayName = (fullName: string | null | undefined, email?: string | null, fallback = 'Non renseigné') => {
     const cleanName = fullName?.trim();
     if (cleanName) return cleanName;
 
@@ -184,7 +199,7 @@ export default function TenantLease() {
     return normalized
       .split(' ')
       .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ');
   };
 
@@ -201,7 +216,7 @@ export default function TenantLease() {
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
       console.error('Error downloading document:', err);
-      alert('Erreur lors du téléchargement du document');
+      message.error('Erreur lors du téléchargement du document');
     }
   };
 
@@ -230,7 +245,13 @@ export default function TenantLease() {
       </div>
 
       {/* Lease Information Display (T041) */}
-      <Card title={<><FileTextOutlined /> Informations du bail</>}>
+      <Card
+        title={
+          <>
+            <FileTextOutlined /> Informations du bail
+          </>
+        }
+      >
         <Descriptions bordered column={{ xs: 1, sm: 2, lg: 3 }}>
           <Descriptions.Item label="Numéro de bail">
             <Text strong>{data.lease.lease_number}</Text>
@@ -246,9 +267,7 @@ export default function TenantLease() {
           <Descriptions.Item label="Adresse">
             <Text>{data.lease.property?.address || data.lease.property?.title || '-'}</Text>
           </Descriptions.Item>
-          <Descriptions.Item label="Statut">
-            {getStatusTag(data.lease.status)}
-          </Descriptions.Item>
+          <Descriptions.Item label="Statut">{getStatusTag(data.lease.status)}</Descriptions.Item>
           <Descriptions.Item label="Date de début">
             <CalendarOutlined style={{ marginRight: 8 }} />
             {formatDate(data.lease.start_date)}
@@ -264,21 +283,15 @@ export default function TenantLease() {
             <DollarOutlined style={{ marginRight: 8 }} />
             <Text strong>{formatCurrency(data.lease.rent_amount)}</Text>
           </Descriptions.Item>
-          <Descriptions.Item label="Charges">
-            {formatCurrency(data.lease.service_charge_amount)}
-          </Descriptions.Item>
+          <Descriptions.Item label="Charges">{formatCurrency(data.lease.service_charge_amount)}</Descriptions.Item>
           <Descriptions.Item label="Dépôt de garantie">
             {formatCurrency(data.lease.security_deposit_amount)}
           </Descriptions.Item>
           <Descriptions.Item label="Fréquence de facturation">
             {getBillingFrequencyLabel(data.lease.billing_frequency)}
           </Descriptions.Item>
-          <Descriptions.Item label="Jour d'échéance">
-            Le {data.lease.due_day_of_month} de chaque mois
-          </Descriptions.Item>
-          <Descriptions.Item label="Devise">
-            {data.lease.currency}
-          </Descriptions.Item>
+          <Descriptions.Item label="Jour d'échéance">Le {data.lease.due_day_of_month} de chaque mois</Descriptions.Item>
+          <Descriptions.Item label="Devise">{data.lease.currency}</Descriptions.Item>
           {data.lease.notes && (
             <Descriptions.Item label="Notes" span={3}>
               <Text>{data.lease.notes}</Text>
@@ -290,7 +303,13 @@ export default function TenantLease() {
       {/* Primary Renter and Owner */}
       <Row gutter={[16, 16]}>
         <Col xs={24} md={12}>
-          <Card title={<><UserOutlined /> Locataire principal</>}>
+          <Card
+            title={
+              <>
+                <UserOutlined /> Locataire principal
+              </>
+            }
+          >
             <Space direction="vertical">
               <Text strong>{data.lease.primaryRenter.user.fullName || 'Non renseigné'}</Text>
               <Text type="secondary">{data.lease.primaryRenter.user.email}</Text>
@@ -299,7 +318,13 @@ export default function TenantLease() {
         </Col>
         {data.lease.ownerClient && (
           <Col xs={24} md={12}>
-            <Card title={<><UserOutlined /> Propriétaire</>}>
+            <Card
+              title={
+                <>
+                  <UserOutlined /> Propriétaire
+                </>
+              }
+            >
               <Space direction="vertical">
                 <Text strong>
                   {getDisplayName(
@@ -316,10 +341,16 @@ export default function TenantLease() {
 
       {/* Co-Renters List Display (T042) */}
       {data.coRenters.length > 0 && (
-        <Card title={<><UserOutlined /> Co-locataires</>}>
+        <Card
+          title={
+            <>
+              <UserOutlined /> Co-locataires
+            </>
+          }
+        >
           <List
             dataSource={data.coRenters}
-            renderItem={(coRenter) => (
+            renderItem={coRenter => (
               <List.Item>
                 <List.Item.Meta
                   avatar={<UserOutlined />}
@@ -333,7 +364,13 @@ export default function TenantLease() {
       )}
 
       {/* Documents List Grouped by Type (T043) */}
-      <Card title={<><FileTextOutlined /> Documents</>}>
+      <Card
+        title={
+          <>
+            <FileTextOutlined /> Documents
+          </>
+        }
+      >
         {Object.keys(data.groupedByType).length > 0 ? (
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             {Object.entries(data.groupedByType).map(([type, docs]) => (
@@ -344,7 +381,7 @@ export default function TenantLease() {
                 </Title>
                 <List
                   dataSource={docs}
-                  renderItem={(doc) => (
+                  renderItem={doc => (
                     <List.Item
                       actions={[
                         <Button
@@ -360,11 +397,7 @@ export default function TenantLease() {
                     >
                       <List.Item.Meta
                         title={doc.title || doc.document_number || `Document ${doc.id.substring(0, 8)}`}
-                        description={
-                          doc.issued_at
-                            ? `Émis le ${formatDate(doc.issued_at)}`
-                            : 'Date non disponible'
-                        }
+                        description={doc.issued_at ? `Émis le ${formatDate(doc.issued_at)}` : 'Date non disponible'}
                       />
                     </List.Item>
                   )}

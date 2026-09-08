@@ -8,8 +8,10 @@ import { useAuth } from '../../hooks/useAuth';
 import { PropertySearchRequest } from '../../types/property-types';
 import { Button } from '../../components/ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { App } from 'antd';
 
 export const PropertySearch: React.FC = () => {
+  const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
   const { tenantMembership } = useAuth();
   const effectiveTenantId = tenantId || tenantMembership?.tenantId;
@@ -20,7 +22,7 @@ export const PropertySearch: React.FC = () => {
     page: 1,
     limit: 20,
     total: 0,
-    totalPages: 0,
+    totalPages: 0
   });
   const [currentFilters, setCurrentFilters] = useState<any>({});
 
@@ -33,7 +35,7 @@ export const PropertySearch: React.FC = () => {
       const searchRequest: PropertySearchRequest = {
         ...filters,
         page: 1,
-        limit: 20,
+        limit: 20
       };
 
       const response = await searchProperties(effectiveTenantId, searchRequest);
@@ -41,7 +43,7 @@ export const PropertySearch: React.FC = () => {
       setPagination(response.pagination);
     } catch (error: any) {
       console.error('Error searching properties:', error);
-      alert(error.response?.data?.error || 'Erreur lors de la recherche');
+      message.error(error.response?.data?.error || 'Erreur lors de la recherche');
     } finally {
       setLoading(false);
     }
@@ -55,7 +57,7 @@ export const PropertySearch: React.FC = () => {
       const searchRequest: PropertySearchRequest = {
         ...currentFilters,
         page: newPage,
-        limit: 20,
+        limit: 20
       };
 
       const response = await searchProperties(effectiveTenantId, searchRequest);
@@ -74,7 +76,7 @@ export const PropertySearch: React.FC = () => {
       page: 1,
       limit: 20,
       total: 0,
-      totalPages: 0,
+      totalPages: 0
     });
     setCurrentFilters({});
   };
@@ -95,17 +97,11 @@ export const PropertySearch: React.FC = () => {
         {/* Page Header */}
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Recherche de propriétés</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Trouvez la propriété idéale selon vos critères
-          </p>
+          <p className="mt-2 text-sm text-slate-600">Trouvez la propriété idéale selon vos critères</p>
         </div>
 
         {/* Search Filters */}
-        <PropertySearchFilters
-          onSearch={handleSearch}
-          onReset={handleReset}
-          initialFilters={currentFilters}
-        />
+        <PropertySearchFilters onSearch={handleSearch} onReset={handleReset} initialFilters={currentFilters} />
 
         {/* Results Count */}
         {pagination.total > 0 && (
@@ -116,11 +112,7 @@ export const PropertySearch: React.FC = () => {
         )}
 
         {/* Search Results */}
-        <PropertySearchResults
-          properties={properties}
-          tenantId={effectiveTenantId}
-          loading={loading}
-        />
+        <PropertySearchResults properties={properties} tenantId={effectiveTenantId} loading={loading} />
 
         {/* Pagination */}
         {pagination.totalPages > 1 && (
@@ -152,8 +144,3 @@ export const PropertySearch: React.FC = () => {
     </DashboardLayout>
   );
 };
-
-
-
-
-

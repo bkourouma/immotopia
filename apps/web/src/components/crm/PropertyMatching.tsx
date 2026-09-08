@@ -7,9 +7,10 @@ import {
   addPropertyToShortlist,
   updatePropertyStatus,
   PropertyMatch,
-  CrmDealPropertyStatus,
+  CrmDealPropertyStatus
 } from '../../services/crm-service';
 import { Search } from 'lucide-react';
+import { App } from 'antd';
 
 interface PropertyMatchingProps {
   tenantId: string;
@@ -17,6 +18,7 @@ interface PropertyMatchingProps {
 }
 
 export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, dealId }) => {
+  const { message } = App.useApp();
   const [matches, setMatches] = useState<PropertyMatch[]>([]);
   const [shortlist, setShortlist] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -67,10 +69,10 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
       if (response.success) {
         await loadShortlist();
         // Remove from matches list
-        setMatches(matches.filter((m) => m.propertyId !== match.propertyId));
+        setMatches(matches.filter(m => m.propertyId !== match.propertyId));
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Error adding to shortlist');
+      message.error(err.response?.data?.message || "Erreur lors de l'ajout à la sélection");
     }
   };
 
@@ -79,11 +81,11 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
       await updatePropertyStatus(tenantId, dealId, propertyId, status);
       await loadShortlist();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Error updating status');
+      message.error(err.response?.data?.message || 'Erreur lors de la mise à jour du statut');
     }
   };
 
-  const shortlistPropertyIds = new Set(shortlist.map((item) => item.propertyId));
+  const shortlistPropertyIds = new Set(shortlist.map(item => item.propertyId));
 
   return (
     <div className="space-y-6">
@@ -93,7 +95,7 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
           <input
             type="number"
             value={threshold}
-            onChange={(e) => setThreshold(parseInt(e.target.value, 10))}
+            onChange={e => setThreshold(parseInt(e.target.value, 10))}
             className="w-20 px-2 py-1 border rounded text-sm"
             min="0"
             max="100"
@@ -105,28 +107,24 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
         </div>
       </div>
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          {error}
-        </div>
-      )}
+      {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{error}</div>}
 
       {/* Shortlist */}
       {shortlist.length > 0 && (
         <div>
           <h3 className="text-lg font-medium mb-3">Shortlist ({shortlist.length})</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {shortlist.map((item) => (
+            {shortlist.map(item => (
               <PropertyMatchCard
                 key={item.id}
                 match={{
                   propertyId: item.propertyId,
                   matchScore: item.matchScore,
-                  matchExplanation: item.matchExplanationJson,
+                  matchExplanation: item.matchExplanationJson
                 }}
                 isInShortlist
                 currentStatus={item.status}
-                onStatusChange={(status) => handleStatusChange(item.propertyId, status)}
+                onStatusChange={status => handleStatusChange(item.propertyId, status)}
               />
             ))}
           </div>
@@ -139,8 +137,8 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
           <h3 className="text-lg font-medium mb-3">Suggested Matches ({matches.length})</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {matches
-              .filter((match) => !shortlistPropertyIds.has(match.propertyId))
-              .map((match) => (
+              .filter(match => !shortlistPropertyIds.has(match.propertyId))
+              .map(match => (
                 <PropertyMatchCard
                   key={match.propertyId}
                   match={match}
@@ -165,4 +163,3 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
     </div>
   );
 };
-

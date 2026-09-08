@@ -16,8 +16,8 @@ export type { SkeletonProps } from './Skeleton';
 export { StatusTag, statusTone } from './StatusTag';
 export type { StatusTagProps, StatusTone } from './StatusTag';
 
-export { ConfirmAction } from './ConfirmAction';
-export type { ConfirmActionProps } from './ConfirmAction';
+export { ConfirmAction, useConfirmAction } from './ConfirmAction';
+export type { ConfirmActionProps, ConfirmOptions } from './ConfirmAction';
 
 export { MoneyValue, formatMoney } from './MoneyValue';
 export type { MoneyValueProps } from './MoneyValue';

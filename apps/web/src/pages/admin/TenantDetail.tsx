@@ -7,16 +7,11 @@ import {
   Tenant,
   TenantStats,
   suspendTenant,
-  activateTenant,
+  activateTenant
 } from '../../services/tenant-service';
 import { getTenantModules, updateTenantModules } from '../../services/module-service';
 import { getSubscription } from '../../services/subscription-service';
-import {
-  listMembers,
-  Member,
-  disableMember,
-  enableMember,
-} from '../../services/membership-service';
+import { listMembers, Member, disableMember, enableMember } from '../../services/membership-service';
 import {
   Building2,
   ArrowLeft,
@@ -31,10 +26,14 @@ import {
   Plus,
   Eye,
   UserX,
-  UserCheck,
+  UserCheck
 } from 'lucide-react';
+import { App } from 'antd';
+import { useConfirmAction } from '../../components/primitives';
 
 export const TenantDetail: React.FC = () => {
+  const { message } = App.useApp();
+  const confirmAction = useConfirmAction();
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -58,7 +57,7 @@ export const TenantDetail: React.FC = () => {
     try {
       const [tenantResponse, statsResponse] = await Promise.all([
         getTenant(tenantId),
-        getTenantStats(tenantId).catch(() => null),
+        getTenantStats(tenantId).catch(() => null)
       ]);
       if (tenantResponse.success) {
         setTenant(tenantResponse.data);
@@ -75,30 +74,46 @@ export const TenantDetail: React.FC = () => {
     }
   };
 
-  const handleSuspend = async () => {
-    if (!tenantId || !window.confirm('Etes-vous sur de vouloir suspendre ce tenant ?')) return;
-    try {
-      await suspendTenant(tenantId);
-      await loadTenant();
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Erreur lors de la suspension');
-    }
+  const handleSuspend = () => {
+    if (!tenantId) return;
+    confirmAction({
+      title: `Suspendre le tenant « ${tenant?.name ?? tenantId} » ?`,
+      description: "Ses collaborateurs perdent l'accès jusqu'à réactivation.",
+      okText: 'Suspendre',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await suspendTenant(tenantId);
+          await loadTenant();
+          message.success('Tenant suspendu');
+        } catch (err: any) {
+          message.error(err.response?.data?.message || 'Erreur lors de la suspension');
+        }
+      }
+    });
   };
-  const handleActivate = async () => {
-    if (!tenantId || !window.confirm('Etes-vous sur de vouloir activer ce tenant ?')) return;
-    try {
-      await activateTenant(tenantId);
-      await loadTenant();
-    } catch (err: any) {
-      alert(err.response?.data?.message || "Erreur lors de l'activation");
-    }
+  const handleActivate = () => {
+    if (!tenantId) return;
+    confirmAction({
+      title: `Activer le tenant « ${tenant?.name ?? tenantId} » ?`,
+      okText: 'Activer',
+      onConfirm: async () => {
+        try {
+          await activateTenant(tenantId);
+          await loadTenant();
+          message.success('Tenant activé');
+        } catch (err: any) {
+          message.error(err.response?.data?.message || "Erreur lors de l'activation");
+        }
+      }
+    });
   };
 
   const getStatusBadge = (status: string) => {
     const styles = {
       ACTIVE: 'bg-green-100 text-green-800',
       SUSPENDED: 'bg-red-100 text-red-800',
-      INACTIVE: 'bg-gray-100 text-gray-800',
+      INACTIVE: 'bg-gray-100 text-gray-800'
     };
     return (
       <span
@@ -137,10 +152,7 @@ export const TenantDetail: React.FC = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate('/admin/tenants')}
-              className="text-gray-600 hover:text-gray-900"
-            >
+            <button onClick={() => navigate('/admin/tenants')} className="text-gray-600 hover:text-gray-900">
               <ArrowLeft className="h-5 w-5" />
             </button>
             <div>
@@ -181,12 +193,12 @@ export const TenantDetail: React.FC = () => {
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
             {[
-              { id: 'overview', label: 'Vue d\'ensemble', icon: Building2 },
+              { id: 'overview', label: "Vue d'ensemble", icon: Building2 },
               { id: 'collaborators', label: 'Collaborateurs', icon: Users },
               { id: 'modules', label: 'Modules', icon: Settings },
               { id: 'subscription', label: 'Abonnement', icon: CreditCard },
-              { id: 'stats', label: 'Statistiques', icon: BarChart3 },
-            ].map((tab) => (
+              { id: 'stats', label: 'Statistiques', icon: BarChart3 }
+            ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
@@ -278,6 +290,7 @@ export const TenantDetail: React.FC = () => {
 
 // Collaborators Tab Component
 const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+  const { message } = App.useApp();
   const navigate = useNavigate();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
@@ -313,7 +326,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       }
       await loadMembers();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Erreur lors de la modification');
+      message.error(err.response?.data?.message || 'Erreur lors de la modification');
     }
   };
 
@@ -321,7 +334,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     const styles = {
       ACTIVE: 'bg-green-100 text-green-800',
       PENDING_INVITE: 'bg-yellow-100 text-yellow-800',
-      DISABLED: 'bg-red-100 text-red-800',
+      DISABLED: 'bg-red-100 text-red-800'
     };
     return (
       <span
@@ -329,11 +342,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           styles[status as keyof typeof styles] || styles.DISABLED
         }`}
       >
-        {status === 'ACTIVE'
-          ? 'Actif'
-          : status === 'PENDING_INVITE'
-          ? 'Invitation en attente'
-          : 'Desactive'}
+        {status === 'ACTIVE' ? 'Actif' : status === 'PENDING_INVITE' ? 'Invitation en attente' : 'Desactive'}
       </span>
     );
   };
@@ -391,7 +400,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {members.map((member) => (
+              {members.map(member => (
                 <tr key={member.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
@@ -410,7 +419,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex flex-wrap gap-1">
-                      {member.roles.map((role) => (
+                      {member.roles.map(role => (
                         <span
                           key={role.id}
                           className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
@@ -422,9 +431,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(member.status)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {member.user.lastLoginAt
-                      ? new Date(member.user.lastLoginAt).toLocaleDateString('fr-FR')
-                      : 'Jamais'}
+                    {member.user.lastLoginAt ? new Date(member.user.lastLoginAt).toLocaleDateString('fr-FR') : 'Jamais'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex items-center justify-end gap-2">
@@ -466,6 +473,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
 
 // Modules Tab Component
 const ModulesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
+  const { message } = App.useApp();
   const [modules, setModules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -492,11 +500,11 @@ const ModulesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const toggleModule = async (moduleKey: string, enabled: boolean) => {
     try {
       await updateTenantModules(tenantId, {
-        modules: [{ moduleKey, enabled: !enabled }],
+        modules: [{ moduleKey, enabled: !enabled }]
       });
       await loadModules();
     } catch (err) {
-      alert('Erreur lors de la mise a jour du module');
+      message.error('Erreur lors de la mise à jour du module');
     }
   };
 
@@ -505,11 +513,7 @@ const ModulesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   }
 
   if (!modules || modules.length === 0) {
-    return (
-      <div className="text-center py-8 text-gray-500">
-        Aucun module disponible
-      </div>
-    );
+    return <div className="text-center py-8 text-gray-500">Aucun module disponible</div>;
   }
 
   return (
@@ -521,9 +525,7 @@ const ModulesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         >
           <div>
             <h3 className="font-medium text-gray-900">{module.moduleKey}</h3>
-            <p className="text-sm text-gray-500">
-              {module.enabled ? 'Active' : 'Desactive'}
-            </p>
+            <p className="text-sm text-gray-500">{module.enabled ? 'Active' : 'Desactive'}</p>
           </div>
           <button
             onClick={() => toggleModule(module.moduleKey, module.enabled)}
@@ -590,7 +592,3 @@ const SubscriptionTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     </div>
   );
 };
-
-
-
-

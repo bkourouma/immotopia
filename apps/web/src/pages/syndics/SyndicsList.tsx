@@ -7,11 +7,13 @@ import { SyndicateCard } from '../../components/syndics/SyndicateCard';
 import { useAuth } from '../../hooks/useAuth';
 import { createSyndicate, deleteSyndicate, listSyndicates } from '../../services/syndic-service';
 import { CreateSyndicateRequest, Syndicate } from '../../types/syndic-types';
+import { useConfirmAction } from '../../components/primitives';
 
 const { Paragraph, Title } = Typography;
 
 export const SyndicsList: React.FC = () => {
   const { message } = App.useApp();
+  const confirmAction = useConfirmAction();
 
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
@@ -120,13 +122,13 @@ export const SyndicsList: React.FC = () => {
       return;
     }
 
-    Modal.confirm({
+    confirmAction({
       title: 'Supprimer cette copropriété ?',
-      content: 'Cette action supprime définitivement la copropriété et ses données liées.',
+      description: 'Cette action supprime définitivement la copropriété et ses données liées.',
       okText: 'Supprimer',
-      okType: 'danger',
+      danger: true,
       cancelText: 'Annuler',
-      onOk: async () => {
+      onConfirm: async () => {
         setDeletingSyndicId(syndicId);
         try {
           await deleteSyndicate(effectiveTenantId, syndicId);

@@ -5,6 +5,7 @@ import { inviteCollaborator, InviteCollaboratorRequest } from '../../services/in
 import { getTenant, Tenant } from '../../services/tenant-service';
 import apiClient from '../../utils/api-client';
 import { ArrowLeft, Mail, Users } from 'lucide-react';
+import { App } from 'antd';
 
 interface Role {
   id: string;
@@ -15,6 +16,7 @@ interface Role {
 }
 
 export const AdminInviteCollaborator: React.FC = () => {
+  const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
@@ -23,7 +25,7 @@ export const AdminInviteCollaborator: React.FC = () => {
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [formData, setFormData] = useState<InviteCollaboratorRequest>({
     email: '',
-    roleIds: [],
+    roleIds: []
   });
 
   useEffect(() => {
@@ -72,24 +74,22 @@ export const AdminInviteCollaborator: React.FC = () => {
     try {
       const response = await inviteCollaborator(tenantId, formData);
       if (response.success) {
-        alert('Invitation envoyee avec succes');
+        message.success('Invitation envoyée avec succès');
         navigate(`/admin/tenants/${tenantId}`);
       } else {
-        setError(response.message || 'Erreur lors de l\'invitation');
+        setError(response.message || "Erreur lors de l'invitation");
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de l\'invitation');
+      setError(err.response?.data?.message || "Erreur lors de l'invitation");
     } finally {
       setLoading(false);
     }
   };
 
   const handleRoleToggle = (roleId: string) => {
-    setFormData((prev) => ({
+    setFormData(prev => ({
       ...prev,
-      roleIds: prev.roleIds.includes(roleId)
-        ? prev.roleIds.filter((id) => id !== roleId)
-        : [...prev.roleIds, roleId],
+      roleIds: prev.roleIds.includes(roleId) ? prev.roleIds.filter(id => id !== roleId) : [...prev.roleIds, roleId]
     }));
   };
 
@@ -98,17 +98,12 @@ export const AdminInviteCollaborator: React.FC = () => {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
-          <button
-            onClick={() => navigate(`/admin/tenants/${tenantId}`)}
-            className="text-gray-600 hover:text-gray-900"
-          >
+          <button onClick={() => navigate(`/admin/tenants/${tenantId}`)} className="text-gray-600 hover:text-gray-900">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Inviter un collaborateur</h1>
-            <p className="mt-2 text-sm text-slate-600">
-              {tenant ? `Tenant: ${tenant.name}` : 'Chargement...'}
-            </p>
+            <p className="mt-2 text-sm text-slate-600">{tenant ? `Tenant: ${tenant.name}` : 'Chargement...'}</p>
           </div>
         </div>
 
@@ -123,9 +118,7 @@ export const AdminInviteCollaborator: React.FC = () => {
           <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
             <div className="flex items-center gap-2">
               <Mail className="h-5 w-5 text-blue-600" />
-              <p className="text-sm text-blue-800">
-                Une invitation sera envoyee par email au collaborateur.
-              </p>
+              <p className="text-sm text-blue-800">Une invitation sera envoyee par email au collaborateur.</p>
             </div>
           </div>
 
@@ -139,7 +132,7 @@ export const AdminInviteCollaborator: React.FC = () => {
               name="email"
               required
               value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              onChange={e => setFormData({ ...formData, email: e.target.value })}
               className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               placeholder="email@example.com"
             />
@@ -156,7 +149,7 @@ export const AdminInviteCollaborator: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-2">
-                {roles.map((role) => (
+                {roles.map(role => (
                   <label
                     key={role.id}
                     className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${
@@ -173,9 +166,7 @@ export const AdminInviteCollaborator: React.FC = () => {
                     />
                     <div className="ml-3">
                       <div className="text-sm font-medium text-gray-900">{role.name}</div>
-                      {role.description && (
-                        <div className="text-sm text-gray-500">{role.description}</div>
-                      )}
+                      {role.description && <div className="text-sm text-gray-500">{role.description}</div>}
                     </div>
                   </label>
                 ))}
@@ -196,7 +187,7 @@ export const AdminInviteCollaborator: React.FC = () => {
               disabled={loading || formData.roleIds.length === 0}
               className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
             >
-              {loading ? 'Envoi en cours...' : 'Envoyer l\'invitation'}
+              {loading ? 'Envoi en cours...' : "Envoyer l'invitation"}
             </button>
           </div>
         </form>

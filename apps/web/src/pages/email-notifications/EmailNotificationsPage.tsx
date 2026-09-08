@@ -24,11 +24,13 @@ import {
   type EmailNotificationConfigItem,
   type UpdateEmailNotificationPayload
 } from '../../services/email-notification-config-service';
+import { useConfirmAction } from '../../components/primitives';
 
 const { Title, Text } = Typography;
 
 export function EmailNotificationsPage() {
   const { message } = App.useApp();
+  const confirmAction = useConfirmAction();
 
   const { tenantId } = useParams<{ tenantId: string }>();
   const [items, setItems] = useState<EmailNotificationConfigItem[]>([]);
@@ -113,12 +115,12 @@ export function EmailNotificationsPage() {
 
   const handleReset = async (record: EmailNotificationConfigItem) => {
     if (!tenantId) return;
-    Modal.confirm({
+    confirmAction({
       title: 'Réinitialiser le template ?',
-      content: `Le sujet et le corps de l'email "${record.label}" reviendront au contenu par défaut.`,
+      description: `Le sujet et le corps de l'email "${record.label}" reviendront au contenu par défaut.`,
       okText: 'Réinitialiser',
       cancelText: 'Annuler',
-      onOk: async () => {
+      onConfirm: async () => {
         try {
           await emailNotificationConfigService.reset(tenantId, record.key);
           message.success('Template réinitialisé');

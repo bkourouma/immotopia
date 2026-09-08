@@ -87,7 +87,12 @@ vi.mock('antd', async () => {
     modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
     notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
   };
-  return { ...antdMock, App: { useApp: () => appApi } };
+  return {
+    ...antdMock,
+    App: { useApp: () => appApi },
+    // Aucun palier actif : le rendu par defaut des tests est le mobile.
+    Grid: { useBreakpoint: () => ({}) }
+  };
 });
 
 const mockApiClient = apiClient as any;

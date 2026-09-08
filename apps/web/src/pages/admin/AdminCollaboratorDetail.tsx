@@ -8,10 +8,12 @@ import {
   revokeMemberSessions,
   disableMember,
   enableMember,
-  Member,
+  Member
 } from '../../services/membership-service';
 import apiClient from '../../utils/api-client';
 import { ArrowLeft, Edit, Key, LogOut, UserX, UserCheck, Users } from 'lucide-react';
+import { App, Typography } from 'antd';
+import { useConfirmAction } from '../../components/primitives';
 
 interface Role {
   id: string;
@@ -21,6 +23,8 @@ interface Role {
 }
 
 export const AdminCollaboratorDetail: React.FC = () => {
+  const { message, modal } = App.useApp();
+  const confirmAction = useConfirmAction();
   const { tenantId, userId } = useParams<{ tenantId: string; userId: string }>();
   const navigate = useNavigate();
   const [member, setMember] = useState<Member | null>(null);
@@ -45,7 +49,7 @@ export const AdminCollaboratorDetail: React.FC = () => {
       const response = await getMember(tenantId, userId);
       if (response.success) {
         setMember(response.data);
-        setSelectedRoleIds(response.data.roles.map((r) => r.id));
+        setSelectedRoleIds(response.data.roles.map(r => r.id));
       } else {
         setError('Erreur lors du chargement du collaborateur');
       }
@@ -73,66 +77,104 @@ export const AdminCollaboratorDetail: React.FC = () => {
     try {
       await updateMember(tenantId, userId, { roleIds: selectedRoleIds });
       await loadMember();
-      alert('Roles mis a jour avec succes');
+      message.success('Rôles mis à jour avec succès');
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Erreur lors de la mise a jour');
+      message.error(err.response?.data?.message || 'Erreur lors de la mise à jour');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleResetPassword = async () => {
+  const handleResetPassword = () => {
     if (!tenantId || !userId) return;
-    if (!window.confirm('Etes-vous sur de vouloir reinitialiser le mot de passe ?')) return;
-    try {
-      const response = await resetMemberPassword(tenantId, userId, { sendEmail: true });
-      if (response.data?.newPassword) {
-        alert(`Nouveau mot de passe: ${response.data.newPassword}\n\nUn email a ete envoye a l'utilisateur.`);
-      } else {
-        alert('Mot de passe reinitialise. Un email a ete envoye a l\'utilisateur.');
+    confirmAction({
+      title: `Réinitialiser le mot de passe de ${member?.user?.fullName ?? 'ce collaborateur'} ?`,
+      description: "Un email sera envoyé à l'utilisateur.",
+      okText: 'Réinitialiser',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          const response = await resetMemberPassword(tenantId, userId, { sendEmail: true });
+          const newPassword = response.data?.newPassword;
+          if (newPassword) {
+            // Le mot de passe régénéré était affiché dans un dialogue natif :
+            // ni copiable, ni masquable, ni journalisable (§5.7). Il passe par
+            // une modale AntD avec bouton de copie.
+            modal.info({
+              title: 'Nouveau mot de passe',
+              content: (
+                <div>
+                  <Typography.Paragraph copyable={{ text: newPassword }} code>
+                    {newPassword}
+                  </Typography.Paragraph>
+                  <Typography.Text type="secondary">
+                    Un email a été envoyé à l'utilisateur. Ce mot de passe ne sera plus affiché.
+                  </Typography.Text>
+                </div>
+              ),
+              okText: 'Fermer'
+            });
+          } else {
+            message.success("Mot de passe réinitialisé. Un email a été envoyé à l'utilisateur.");
+          }
+        } catch (err: any) {
+          message.error(err.response?.data?.message || 'Erreur lors de la réinitialisation');
+        }
       }
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Erreur lors de la reinitialisation');
-    }
+    });
   };
 
-  const handleRevokeSessions = async () => {
+  const handleRevokeSessions = () => {
     if (!tenantId || !userId) return;
-    if (!window.confirm('Etes-vous sur de vouloir revoquer toutes les sessions ?')) return;
-    try {
-      await revokeMemberSessions(tenantId, userId);
-      alert('Toutes les sessions ont ete revoquees');
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Erreur lors de la revocation');
-    }
+    confirmAction({
+      title: 'Révoquer toutes les sessions de ce collaborateur ?',
+      description: 'Il devra se reconnecter sur tous ses appareils.',
+      okText: 'Révoquer',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await revokeMemberSessions(tenantId, userId);
+          message.success('Toutes les sessions ont été révoquées');
+        } catch (err: any) {
+          message.error(err.response?.data?.message || 'Erreur lors de la révocation');
+        }
+      }
+    });
   };
 
-  const handleToggleStatus = async () => {
+  const handleToggleStatus = () => {
     if (!tenantId || !userId || !member) return;
-    const action = member.status === 'ACTIVE' ? 'desactiver' : 'activer';
-    if (!window.confirm(`Etes-vous sur de vouloir ${action} ce collaborateur ?`)) return;
-    try {
-      if (member.status === 'ACTIVE') {
-        await disableMember(tenantId, userId);
-      } else {
-        await enableMember(tenantId, userId);
+    const disabling = member.status === 'ACTIVE';
+    confirmAction({
+      title: `${disabling ? 'Désactiver' : 'Activer'} ${member.user?.fullName ?? 'ce collaborateur'} ?`,
+      okText: disabling ? 'Désactiver' : 'Activer',
+      danger: disabling,
+      onConfirm: async () => {
+        try {
+          if (disabling) {
+            await disableMember(tenantId, userId);
+          } else {
+            await enableMember(tenantId, userId);
+          }
+          await loadMember();
+          message.success(disabling ? 'Collaborateur désactivé' : 'Collaborateur activé');
+        } catch (err: any) {
+          message.error(err.response?.data?.message || 'Erreur lors de la modification');
+        }
       }
-      await loadMember();
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Erreur lors de la modification');
-    }
+    });
   };
 
   const getStatusBadge = (status: string) => {
     const styles = {
       ACTIVE: 'bg-green-100 text-green-800',
       PENDING_INVITE: 'bg-yellow-100 text-yellow-800',
-      DISABLED: 'bg-red-100 text-red-800',
+      DISABLED: 'bg-red-100 text-red-800'
     };
     const labels = {
       ACTIVE: 'Actif',
       PENDING_INVITE: 'Invitation en attente',
-      DISABLED: 'Desactive',
+      DISABLED: 'Desactive'
     };
     return (
       <span
@@ -182,16 +224,12 @@ export const AdminCollaboratorDetail: React.FC = () => {
                 <Users className="h-7 w-7 text-blue-600" />
               </div>
               <div>
-                <h1 className="text-3xl font-bold text-slate-900">
-                  {member.user.fullName || member.user.email}
-                </h1>
+                <h1 className="text-3xl font-bold text-slate-900">{member.user.fullName || member.user.email}</h1>
                 <p className="mt-1 text-sm text-slate-600">{member.user.email}</p>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {getStatusBadge(member.status)}
-          </div>
+          <div className="flex items-center gap-2">{getStatusBadge(member.status)}</div>
         </div>
 
         {/* User Info */}
@@ -208,30 +246,22 @@ export const AdminCollaboratorDetail: React.FC = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Email verifie</label>
-              <p className="mt-1 text-sm text-gray-900">
-                {member.user.emailVerified ? 'Oui' : 'Non'}
-              </p>
+              <p className="mt-1 text-sm text-gray-900">{member.user.emailVerified ? 'Oui' : 'Non'}</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Derniere connexion</label>
               <p className="mt-1 text-sm text-gray-900">
-                {member.user.lastLoginAt
-                  ? new Date(member.user.lastLoginAt).toLocaleString('fr-FR')
-                  : 'Jamais'}
+                {member.user.lastLoginAt ? new Date(member.user.lastLoginAt).toLocaleString('fr-FR') : 'Jamais'}
               </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Membre depuis</label>
-              <p className="mt-1 text-sm text-gray-900">
-                {new Date(member.createdAt).toLocaleDateString('fr-FR')}
-              </p>
+              <p className="mt-1 text-sm text-gray-900">{new Date(member.createdAt).toLocaleDateString('fr-FR')}</p>
             </div>
             {member.invitedAt && (
               <div>
                 <label className="block text-sm font-medium text-gray-700">Invite le</label>
-                <p className="mt-1 text-sm text-gray-900">
-                  {new Date(member.invitedAt).toLocaleDateString('fr-FR')}
-                </p>
+                <p className="mt-1 text-sm text-gray-900">{new Date(member.invitedAt).toLocaleDateString('fr-FR')}</p>
               </div>
             )}
           </div>
@@ -244,7 +274,7 @@ export const AdminCollaboratorDetail: React.FC = () => {
             <p className="text-sm text-gray-500">Chargement des roles...</p>
           ) : (
             <div className="space-y-2">
-              {availableRoles.map((role) => (
+              {availableRoles.map(role => (
                 <label
                   key={role.id}
                   className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
@@ -252,20 +282,18 @@ export const AdminCollaboratorDetail: React.FC = () => {
                   <input
                     type="checkbox"
                     checked={selectedRoleIds.includes(role.id)}
-                    onChange={(e) => {
+                    onChange={e => {
                       if (e.target.checked) {
                         setSelectedRoleIds([...selectedRoleIds, role.id]);
                       } else {
-                        setSelectedRoleIds(selectedRoleIds.filter((id) => id !== role.id));
+                        setSelectedRoleIds(selectedRoleIds.filter(id => id !== role.id));
                       }
                     }}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
                   <div className="ml-3">
                     <div className="text-sm font-medium text-gray-900">{role.name}</div>
-                    {role.description && (
-                      <div className="text-sm text-gray-500">{role.description}</div>
-                    )}
+                    {role.description && <div className="text-sm text-gray-500">{role.description}</div>}
                   </div>
                 </label>
               ))}

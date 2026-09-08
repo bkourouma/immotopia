@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, Drawer, Popconfirm, Space, Typography } from 'antd';
+import { App, Button, Drawer, Popconfirm, Space, Typography } from 'antd';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 
 const { Text, Title } = Typography;
@@ -7,11 +7,11 @@ const { Text, Title } = Typography;
 /**
  * `<ConfirmAction>` — une seule facon de confirmer (REFONTE_UI_UX.md §5.7).
  *
- * Le depot en compte trois : `Popconfirm` (14 fichiers), `Modal.confirm`
- * (8 fichiers) et `window.confirm()` natif (13 fichiers). Supprimer un ticket
- * est un `Popconfirm` dans `components/maintenance/TicketCard.tsx` et un
- * `Modal.confirm` dans `pages/tenant/maintenance/TicketList.tsx` — meme
- * action, deux dialogues.
+ * Le depot en comptait trois : `Popconfirm` (14 fichiers), la modale de
+ * confirmation statique d'AntD (8 fichiers) et le dialogue natif du
+ * navigateur (13 fichiers). Supprimer un ticket etait un `Popconfirm` dans
+ * `components/maintenance/TicketCard.tsx` et une modale statique dans
+ * `pages/tenant/maintenance/TicketList.tsx` — meme action, deux dialogues.
  *
  * Cible : `Popconfirm` ancre a partir de 992 px, bottom-sheet en dessous.
  * Deux regles du §5.7 sont appliquees ici plutot que laissees a l'appelant :
@@ -128,3 +128,46 @@ export const ConfirmAction: React.FC<ConfirmActionProps> = ({
     </>
   );
 };
+
+/**
+ * Pendant imperatif de `<ConfirmAction>`, pour les appelants qui declenchent la
+ * confirmation depuis un gestionnaire d'evenement et non depuis un element
+ * declencheur : les dix modales de confirmation statiques du depot etaient
+ * dans ce cas.
+ *
+ * Passer par ici plutot que par l'API `modal` d'`App.useApp()` en direct
+ * garde une politique de confirmation unique — memes libelles par defaut, meme
+ * traitement du destructif, meme mise en page sous 992 px.
+ *
+ * Limite connue : la variante mobile reste une modale centree et non un
+ * bottom-sheet. La voie declarative `<ConfirmAction>` porte le bottom-sheet ;
+ * l'aligner ici suppose de restructurer le JSX des dix appelants, ce que le
+ * Lot 0 s'interdit.
+ */
+export interface ConfirmOptions {
+  title: string;
+  description?: React.ReactNode;
+  okText?: string;
+  cancelText?: string;
+  danger?: boolean;
+  onConfirm: () => void | Promise<unknown>;
+}
+
+export function useConfirmAction(): (options: ConfirmOptions) => void {
+  const { modal } = App.useApp();
+  const { isDesktop } = useBreakpoint();
+
+  return ({ title, description, okText = 'Confirmer', cancelText = 'Annuler', danger, onConfirm }) => {
+    modal.confirm({
+      title,
+      content: description,
+      okText,
+      cancelText,
+      centered: !isDesktop,
+      // Sous 992 px, les boutons occupent toute la largeur (§5.7).
+      okButtonProps: { danger, block: !isDesktop },
+      cancelButtonProps: { block: !isDesktop },
+      onOk: onConfirm
+    });
+  };
+}

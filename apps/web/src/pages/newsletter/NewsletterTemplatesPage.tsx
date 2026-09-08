@@ -5,11 +5,13 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { HtmlCodeEditor } from '../../components/HtmlCodeEditor';
 import { newsletterService, type NewsletterTemplate } from '../../services/newsletter.service';
+import { useConfirmAction } from '../../components/primitives';
 
 const HELP_TEXT = 'Variables disponibles : {{contenu}}, {{prenom}}, {{nom}}, {{email}}, {{lien_desinscription}}';
 
 export function NewsletterTemplatesPage() {
   const { message } = App.useApp();
+  const confirmAction = useConfirmAction();
 
   const { tenantId } = useParams<{ tenantId: string }>();
   const [templates, setTemplates] = useState<NewsletterTemplate[]>([]);
@@ -74,12 +76,12 @@ export function NewsletterTemplatesPage() {
 
   const handleDelete = (tpl: NewsletterTemplate) => {
     if (!tenantId) return;
-    Modal.confirm({
+    confirmAction({
       title: 'Supprimer le template',
-      content: `Supprimer « ${tpl.name} » ?`,
+      description: `Supprimer « ${tpl.name} » ?`,
       okText: 'Supprimer',
-      okButtonProps: { danger: true },
-      onOk: async () => {
+      danger: true,
+      onConfirm: async () => {
         try {
           await newsletterService.deleteTemplate(tenantId, tpl.id);
           message.success('Template supprimé');

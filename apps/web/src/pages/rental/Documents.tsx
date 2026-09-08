@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Table, Button, Tag, Space, Typography, Empty, Alert, Select, Modal, Row, Col } from 'antd';
+import { App, Table, Button, Tag, Space, Typography, Empty, Alert, Select, Row, Col } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, FileTextOutlined, EyeOutlined, DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
@@ -17,6 +17,7 @@ import {
 } from '../../services/rental-service';
 import { DocumentForm } from '../../components/rental/DocumentForm';
 import { API_URL } from '../../config/api';
+import { useConfirmAction } from '../../components/primitives';
 
 const { Text, Title } = Typography;
 
@@ -26,6 +27,7 @@ interface DocumentsProps {
 
 export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) => {
   const { message } = App.useApp();
+  const confirmAction = useConfirmAction();
 
   const { tenantId, leaseId: paramLeaseId } = useParams<{ tenantId: string; leaseId?: string }>();
   const leaseId = propLeaseId || paramLeaseId;
@@ -86,10 +88,10 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
 
   const handleRegenerate = async (documentId: string) => {
     if (!tenantId) return;
-    Modal.confirm({
+    confirmAction({
       title: 'Régénérer le document',
-      content: 'Voulez-vous régénérer ce document avec les données mises à jour ?',
-      onOk: async () => {
+      description: 'Voulez-vous régénérer ce document avec les données mises à jour ?',
+      onConfirm: async () => {
         try {
           await regenerateDocument(tenantId, documentId);
           await loadDocuments();
