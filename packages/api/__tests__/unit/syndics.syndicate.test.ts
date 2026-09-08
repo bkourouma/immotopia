@@ -13,10 +13,14 @@ jest.mock('@prisma/client', () => {
     syndicate: {
       findMany: jest.fn(),
       findFirst: jest.fn(),
-      create: jest.fn()
+      create: jest.fn(),
+      update: jest.fn()
     },
     syndicateLot: {
-      create: jest.fn()
+      create: jest.fn(),
+      // `syncSyndicateLotCount` recompte les lots puis met a jour le syndicat
+      // depuis le commit 3b568c5 ; le mock ne l'avait pas suivi.
+      count: jest.fn(async () => 1)
     },
     $transaction: jest.fn(async (cb: (tx: any) => Promise<any>) => cb(prisma))
   };
@@ -27,11 +31,7 @@ jest.mock('@prisma/client', () => {
   };
 });
 
-import {
-  createSyndicateLot,
-  createSyndicateWithDefaults,
-  listSyndicatesByTenant
-} from '../../src/lib/syndics/queries';
+import { createSyndicateLot, createSyndicateWithDefaults, listSyndicatesByTenant } from '../../src/lib/syndics/queries';
 
 const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as {
   __mockPrisma: {
@@ -49,9 +49,11 @@ const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as {
       findMany: jest.Mock;
       findFirst: jest.Mock;
       create: jest.Mock;
+      update: jest.Mock;
     };
     syndicateLot: {
       create: jest.Mock;
+      count: jest.Mock;
     };
   };
 };
@@ -96,9 +98,13 @@ describe('Syndics queries - US1', () => {
 
     await listSyndicatesByTenant('tenant-a');
 
+    // On assere l'invariant que ce test surveille — l'isolation par agence est
+    // dans le filtre — et non la forme exacte de la requete : depuis 3b568c5
+    // elle porte aussi un filtre de statut et une pagination, ce qui faisait
+    // echouer l'egalite stricte sans qu'aucune isolation ne soit rompue.
     expect(mockPrisma.syndicate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { tenantId: 'tenant-a' }
+        where: expect.objectContaining({ tenantId: 'tenant-a' })
       })
     );
   });
