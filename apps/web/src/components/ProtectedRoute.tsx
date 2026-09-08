@@ -1,6 +1,8 @@
 import React from 'react';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { AccessDenied } from './primitives/AccessDenied';
+import { SkeletonDetail } from './primitives/Skeleton';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -19,20 +21,18 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   children,
   requiredRole,
   requireTenant,
-  requirePermission,
+  requirePermission
 }) => {
   const { isAuthenticated, isLoading, user, tenantMembership, isLoadingMembership } = useAuth();
   const location = useLocation();
   const params = useParams<{ tenantId?: string }>();
 
-  // Show loading state while checking authentication
+  // Squelette plutot que spinner plein ecran : une seule convention de
+  // chargement (§5.6), et aucun saut de mise en page a l'arrivee du contenu.
   if (isLoading || isLoadingMembership) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Chargement...</p>
-        </div>
+      <div style={{ padding: 'var(--page-padding)' }}>
+        <SkeletonDetail aria-label="Verification de votre acces" />
       </div>
     );
   }
@@ -40,54 +40,35 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   // Redirect to login if not authenticated (pass redirect in URL for post-login navigation)
   if (!isAuthenticated) {
     const redirectPath = location.pathname + location.search;
-    const to = redirectPath && redirectPath !== '/login'
-      ? `/login?redirect=${encodeURIComponent(redirectPath)}`
-      : '/login';
+    const to =
+      redirectPath && redirectPath !== '/login' ? `/login?redirect=${encodeURIComponent(redirectPath)}` : '/login';
     return <Navigate to={to} replace />;
   }
 
   // Check role if required
   if (requiredRole && user?.globalRole !== requiredRole) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900">Accès refusé</h2>
-          <p className="mt-2 text-gray-600">
-            Vous n'avez pas les permissions nécessaires pour accéder à cette page.
-          </p>
-        </div>
-      </div>
-    );
+    return <AccessDenied reason="role" currentRole={user?.globalRole} requiredRole={requiredRole} />;
   }
 
   // Check tenant membership if required
   if (requireTenant) {
-    // If route has tenantId param, verify it matches user's membership
-    if (params.tenantId) {
-      if (!tenantMembership || tenantMembership.tenantId !== params.tenantId) {
-        return (
-          <div className="min-h-screen flex items-center justify-center bg-gray-50">
-            <div className="text-center">
-              <h2 className="text-2xl font-bold text-gray-900">Accès refusé</h2>
-              <p className="mt-2 text-gray-600">
-                Vous n'avez pas accès à ce tenant.
-              </p>
-            </div>
-          </div>
-        );
+    // Le SUPER_ADMIN n'a pas de tenantMembership par construction : il supervise
+    // la plateforme, pas une agence. L'exclure de ce controle evite de le
+    // verrouiller hors des routes /tenant/:tenantId/* qu'il doit pouvoir
+    // inspecter. Le back-end filtre de toute facon par tenantId.
+    const isPlatformAdmin = user?.globalRole === 'SUPER_ADMIN';
+
+    if (!isPlatformAdmin) {
+      if (params.tenantId) {
+        if (!tenantMembership) {
+          return <AccessDenied reason="no-tenant" />;
+        }
+        if (tenantMembership.tenantId !== params.tenantId) {
+          return <AccessDenied reason="wrong-tenant" />;
+        }
+      } else if (!tenantMembership) {
+        return <AccessDenied reason="no-tenant" />;
       }
-    } else if (!tenantMembership) {
-      // If no tenantId in route but tenant membership is required
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900">Accès refusé</h2>
-            <p className="mt-2 text-gray-600">
-              Vous devez être membre d'un tenant pour accéder à cette page.
-            </p>
-          </div>
-        </div>
-      );
     }
   }
 
@@ -97,4 +78,3 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   return <>{children}</>;
 };
-

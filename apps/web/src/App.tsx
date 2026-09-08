@@ -4,6 +4,7 @@ import { App as AntApp, ConfigProvider, Spin } from 'antd';
 import frFR from 'antd/locale/fr_FR';
 import { buildAntdTheme } from './theme/antd-theme';
 import { FeedbackBridge } from './lib/feedback';
+import { NotFound } from './components/primitives/NotFound';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -1160,6 +1161,11 @@ function App() {
                     <Route path="profile" element={<ProfilePage />} />
                   </Route>
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  {/* Route attrape-tout. Sans elle, toute URL non reconnue
+                      affichait une page blanche, sans erreur ni redirection
+                      (§4.3) — c'etait le cas de /properties/categories, promise
+                      par le menu public et jamais implementee. */}
+                  <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>
             </Router>

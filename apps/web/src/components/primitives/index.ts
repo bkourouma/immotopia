@@ -21,3 +21,8 @@ export type { ConfirmActionProps, ConfirmOptions } from './ConfirmAction';
 
 export { MoneyValue, formatMoney } from './MoneyValue';
 export type { MoneyValueProps } from './MoneyValue';
+
+export { AccessDenied } from './AccessDenied';
+export type { AccessDeniedProps, AccessDeniedReason } from './AccessDenied';
+
+export { NotFound } from './NotFound';

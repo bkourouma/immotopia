@@ -3,8 +3,10 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import {
+  AccessDenied,
   ConfirmAction,
   MoneyValue,
+  NotFound,
   PageHeader,
   StateBlock,
   StatusTag,
@@ -129,5 +131,40 @@ describe('ConfirmAction', () => {
     // matchMedia est mocke a `matches: false` dans setupTests : le rendu est
     // celui du palier mobile, donc le bottom-sheet.
     expect(screen.getByText('Supprimer le bail BAIL-2026-0184 ?')).toBeInTheDocument();
+  });
+});
+
+describe('AccessDenied', () => {
+  it('nomme la cause, offre deux sorties et annonce le refus', () => {
+    wrap(<AccessDenied reason="role" currentRole="Agent" requiredRole="SUPER_ADMIN" />);
+    // Le message nomme le role : « accès refusé » seul n'est pas actionnable.
+    expect(screen.getByText(/Votre rôle « Agent »/)).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: "Retour à l'écran précédent" })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aller au tableau de bord' })).toBeInTheDocument();
+    // La reference technique reste disponible pour le support.
+    expect(screen.getByText(/AUTH-403.*rôle requis SUPER_ADMIN/)).toBeInTheDocument();
+  });
+
+  it('distingue les trois causes de refus', () => {
+    const { unmount } = wrap(<AccessDenied reason="wrong-tenant" />);
+    expect(screen.getByText(/n’est pas la vôtre/)).toBeInTheDocument();
+    unmount();
+
+    wrap(<AccessDenied reason="no-tenant" />);
+    expect(screen.getByText('Aucune agence rattachée')).toBeInTheDocument();
+  });
+});
+
+describe('NotFound', () => {
+  it("affiche l'URL demandée et offre une sortie", () => {
+    render(
+      <MemoryRouter initialEntries={['/properties/categories']}>
+        <NotFound />
+      </MemoryRouter>
+    );
+    expect(screen.getByText('Cette page n’existe pas')).toBeInTheDocument();
+    expect(screen.getByText(/HTTP-404.*\/properties\/categories/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aller au tableau de bord' })).toBeInTheDocument();
   });
 });
