@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { App, Alert, Button, Col, Empty, Form, Input, Modal, Row, Space, Spin, Typography } from 'antd';
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { SyndicateCard } from '../../components/syndics/SyndicateCard';
 import { useAuth } from '../../hooks/useAuth';
 import { createSyndicate, deleteSyndicate, listSyndicates } from '../../services/syndic-service';
@@ -144,7 +143,7 @@ export const SyndicsList: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div>
@@ -217,6 +216,6 @@ export const SyndicsList: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
-    </DashboardLayout>
+    </>
   );
 };

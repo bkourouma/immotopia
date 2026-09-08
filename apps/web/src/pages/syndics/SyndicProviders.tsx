@@ -16,7 +16,6 @@ import {
   Typography
 } from 'antd';
 import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { ContractList } from '../../components/syndics/ContractList';
 import { createContract, listProvidersContracts } from '../../services/syndic-service';
 import { SyndicProvidersPayload } from '../../types/syndic-types';
@@ -90,7 +89,7 @@ export const SyndicProviders: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Space direction="vertical" size={4}>
           <Button
@@ -190,6 +189,6 @@ export const SyndicProviders: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
-    </DashboardLayout>
+    </>
   );
 };

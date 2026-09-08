@@ -1,9 +1,15 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Spin, Card, Space, Typography } from 'antd';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { ContactForm } from '../../components/crm/ContactForm';
-import { getContact, createContact, updateContact, CrmContact, CreateCrmContactRequest, UpdateCrmContactRequest } from '../../services/crm-service';
+import {
+  getContact,
+  createContact,
+  updateContact,
+  CrmContact,
+  CreateCrmContactRequest,
+  UpdateCrmContactRequest
+} from '../../services/crm-service';
 
 const { Title, Text } = Typography;
 
@@ -58,19 +64,19 @@ export const ContactFormPage: React.FC = () => {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <Spin size="large" />
           <div style={{ marginTop: 16 }}>
             <Text type="secondary">Chargement du contact...</Text>
           </div>
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <Card>
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -82,19 +88,10 @@ export const ContactFormPage: React.FC = () => {
                 {contactId ? 'Modifiez les informations du contact' : 'Créez un nouveau contact'}
               </Text>
             </div>
-            <ContactForm
-              contact={contact || undefined}
-              onSubmit={handleSubmit}
-              onCancel={handleCancel}
-            />
+            <ContactForm contact={contact || undefined} onSubmit={handleSubmit} onCancel={handleCancel} />
           </Space>
         </Card>
       </div>
-    </DashboardLayout>
+    </>
   );
 };
-
-
-
-
-

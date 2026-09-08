@@ -10,7 +10,6 @@ import {
   CreditCardOutlined,
   SafetyOutlined
 } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { getLease, RentalLease, RentalLeaseStatus, updateLeaseStatus } from '../../services/rental-service';
 import { getContact } from '../../services/crm-service';
 import { PropertyTransactionMode } from '../../types/property-types';
@@ -157,17 +156,17 @@ export const LeaseDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <Spin size="large" tip="Chargement..." />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (error || !lease) {
     return (
-      <DashboardLayout>
+      <>
         <Alert
           message="Erreur"
           description={error || 'Bail non trouvé'}
@@ -175,7 +174,7 @@ export const LeaseDetailPage: React.FC = () => {
           showIcon
           style={{ margin: '24px' }}
         />
-      </DashboardLayout>
+      </>
     );
   }
 
@@ -194,7 +193,7 @@ export const LeaseDetailPage: React.FC = () => {
     '-';
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Row justify="space-between" align="middle">
           <Col>
@@ -504,6 +503,6 @@ export const LeaseDetailPage: React.FC = () => {
           })()}
         </Card>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { App, Card, Form, Input, Select, Button, Space, Typography, Spin } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { FileUploader } from '../../../components/maintenance/FileUploader';
 import { tenantMaintenanceService } from '../../../services/maintenance-service';
 import {
@@ -151,7 +150,7 @@ export const CreateTicket: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <div style={{ padding: '24px' }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>
@@ -306,6 +305,6 @@ export const CreateTicket: React.FC = () => {
           </Card>
         </Space>
       </div>
-    </DashboardLayout>
+    </>
   );
 };

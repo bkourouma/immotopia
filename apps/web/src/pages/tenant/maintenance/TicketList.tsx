@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { App, Card, Select, Button, Empty, Spin, Pagination, Space, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { TicketCard } from '../../../components/maintenance/TicketCard';
 import { tenantMaintenanceService } from '../../../services/maintenance-service';
 import { Ticket, MaintenanceTicketStatus } from '../../../types/maintenance-types';
@@ -107,14 +106,14 @@ export const TicketList: React.FC = () => {
 
   if (loading && tickets.length === 0) {
     return (
-      <DashboardLayout>
+      <>
         <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <div style={{ padding: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <Title level={2}>Mes tickets de maintenance</Title>
@@ -191,6 +190,6 @@ export const TicketList: React.FC = () => {
           </>
         )}
       </div>
-    </DashboardLayout>
+    </>
   );
 };

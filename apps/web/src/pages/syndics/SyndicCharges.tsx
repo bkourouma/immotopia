@@ -20,7 +20,6 @@ import {
 } from 'antd';
 import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { ChargeCallTable } from '../../components/syndics/ChargeCallTable';
 import { createChargeCall, getSyndicate, listChargeCalls, listSyndicateLots } from '../../services/syndic-service';
 import {
@@ -197,7 +196,7 @@ export const SyndicCharges: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
@@ -412,6 +411,6 @@ export const SyndicCharges: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
-    </DashboardLayout>
+    </>
   );
 };

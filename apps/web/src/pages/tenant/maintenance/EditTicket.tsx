@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { App, Card, Form, Input, Select, Button, Space, Typography, Spin, Alert } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { tenantMaintenanceService } from '../../../services/maintenance-service';
 import {
   MaintenanceTicketCategory,
@@ -129,17 +128,17 @@ export const EditTicket: React.FC = () => {
 
   if (loadingTicket) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ padding: '24px', textAlign: 'center' }}>
           <Spin size="large" />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (!ticket) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ padding: '24px' }}>
           <Alert
             message="Ticket introuvable"
@@ -151,13 +150,13 @@ export const EditTicket: React.FC = () => {
             }
           />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (ticket.status !== MaintenanceTicketStatus.DECLARED) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ padding: '24px' }}>
           <Alert
             message="Modification impossible"
@@ -171,12 +170,12 @@ export const EditTicket: React.FC = () => {
             }
           />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <div style={{ padding: '24px' }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Button
@@ -270,6 +269,6 @@ export const EditTicket: React.FC = () => {
           </Card>
         </Space>
       </div>
-    </DashboardLayout>
+    </>
   );
 };

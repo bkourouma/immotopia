@@ -21,7 +21,6 @@ import {
 } from 'antd';
 import { ArrowLeftOutlined, LockOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
   createAccountingEntry,
   createAccountingJournal,
@@ -221,7 +220,7 @@ export const SyndicAccounting: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
@@ -627,6 +626,6 @@ export const SyndicAccounting: React.FC = () => {
           </Form.List>
         </Form>
       </Modal>
-    </DashboardLayout>
+    </>
   );
 };

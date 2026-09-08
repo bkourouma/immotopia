@@ -1,19 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-  Card,
-  Button,
-  Space,
-  Typography,
-  Alert,
-  Spin,
-} from 'antd';
-import {
-  ArrowLeftOutlined,
-  PictureOutlined,
-  PlayCircleOutlined,
-} from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
+import { Card, Button, Space, Typography, Alert, Spin } from 'antd';
+import { ArrowLeftOutlined, PictureOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { PropertyForm } from '../../components/properties/PropertyForm';
 import { PropertyPublicationControls } from '../../components/properties/PropertyPublicationControls';
 import { PropertyMediaUpload } from '../../components/properties/PropertyMediaUpload';
@@ -78,27 +66,27 @@ export const PropertyEdit: React.FC = () => {
 
   if (!effectiveTenantId) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <Text type="secondary">Aucun tenant sélectionné</Text>
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
           <Spin size="large" />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (error || !property) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <Alert
             message="Erreur"
@@ -106,18 +94,16 @@ export const PropertyEdit: React.FC = () => {
             type="error"
             showIcon
             action={
-              <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>
-                Retour à la liste
-              </Button>
+              <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>Retour à la liste</Button>
             }
           />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Page Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -137,11 +123,7 @@ export const PropertyEdit: React.FC = () => {
 
         {/* Publication Controls */}
         {property && effectiveTenantId && (
-          <PropertyPublicationControls
-            property={property}
-            tenantId={effectiveTenantId}
-            onUpdate={loadProperty}
-          />
+          <PropertyPublicationControls property={property} tenantId={effectiveTenantId} onUpdate={loadProperty} />
         )}
 
         {/* Form */}
@@ -210,6 +192,6 @@ export const PropertyEdit: React.FC = () => {
           </Space>
         </Card>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

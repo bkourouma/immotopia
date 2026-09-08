@@ -19,7 +19,6 @@ import {
   Checkbox
 } from 'antd';
 import { EditOutlined, MailOutlined, CodeOutlined, TeamOutlined, UserOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { HtmlCodeEditor } from '../../components/HtmlCodeEditor';
 import {
   emailNotificationConfigService,
@@ -258,7 +257,7 @@ export function EmailNotificationsUnifiedPage() {
   ];
 
   return (
-    <DashboardLayout>
+    <>
       <Card style={{ marginBottom: 24 }}>
         <Space align="center" style={{ marginBottom: 8 }}>
           <MailOutlined style={{ fontSize: 20, color: '#1890ff' }} />
@@ -457,6 +456,6 @@ export function EmailNotificationsUnifiedPage() {
           <Table rowKey="key" columns={columns} dataSource={items} pagination={false} size="middle" />
         </Spin>
       </Card>
-    </DashboardLayout>
+    </>
   );
 }

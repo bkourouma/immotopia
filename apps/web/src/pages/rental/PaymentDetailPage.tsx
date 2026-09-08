@@ -24,7 +24,6 @@ import {
   FileTextOutlined,
   CloseOutlined
 } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
   getPayment,
   RentalPayment,
@@ -162,24 +161,24 @@ export const PaymentDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <Spin size="large" />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (error || !payment) {
     return (
-      <DashboardLayout>
+      <>
         <Alert message="Erreur" description={error || 'Paiement non trouvé'} type="error" showIcon />
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {error && (
           <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
@@ -408,6 +407,6 @@ export const PaymentDetailPage: React.FC = () => {
           />
         </Modal>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

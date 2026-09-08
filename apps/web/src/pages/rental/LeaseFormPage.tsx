@@ -1,13 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import {
-  Card,
-  Space,
-  Typography,
-  Spin,
-  Alert,
-} from 'antd';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
+import { Card, Space, Typography, Spin, Alert } from 'antd';
 import { LeaseForm } from '../../components/rental/LeaseForm';
 import { LeaseFormWizard } from '../../components/rental/LeaseFormWizard';
 import {
@@ -16,7 +9,7 @@ import {
   getLease,
   CreateLeaseRequest,
   UpdateLeaseRequest,
-  RentalLease,
+  RentalLease
 } from '../../services/rental-service';
 
 const { Title, Text } = Typography;
@@ -74,7 +67,7 @@ export const LeaseFormPage: React.FC = () => {
 
   if (loading && leaseId) {
     return (
-      <DashboardLayout>
+      <>
         <Card>
           <div style={{ textAlign: 'center', padding: '48px 0' }}>
             <Spin size="large" />
@@ -83,12 +76,12 @@ export const LeaseFormPage: React.FC = () => {
             </div>
           </div>
         </Card>
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
           <Title level={2} style={{ margin: 0 }}>
@@ -100,14 +93,7 @@ export const LeaseFormPage: React.FC = () => {
         </div>
 
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
 
         {leaseId ? (
@@ -132,7 +118,6 @@ export const LeaseFormPage: React.FC = () => {
           </Card>
         )}
       </Space>
-    </DashboardLayout>
+    </>
   );
 };
-

@@ -18,7 +18,6 @@ import {
   Pagination
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { vendorMaintenanceService } from '../../../services/maintenance-service';
 import { useAuth } from '../../../hooks/useAuth';
 
@@ -220,14 +219,14 @@ export const Vendors: React.FC = () => {
 
   if (loading && vendors.length === 0) {
     return (
-      <DashboardLayout>
+      <>
         <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <div style={{ padding: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <Title level={2}>Gestion des prestataires</Title>
@@ -349,6 +348,6 @@ export const Vendors: React.FC = () => {
           </Form>
         </Modal>
       </div>
-    </DashboardLayout>
+    </>
   );
 };

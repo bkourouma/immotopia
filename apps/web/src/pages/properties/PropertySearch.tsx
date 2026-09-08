@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { PropertySearchFilters } from '../../components/properties/PropertySearchFilters';
 import { PropertySearchResults } from '../../components/properties/PropertySearchResults';
 import { searchProperties, Property } from '../../services/property-service';
@@ -83,16 +82,16 @@ export const PropertySearch: React.FC = () => {
 
   if (!effectiveTenantId) {
     return (
-      <DashboardLayout>
+      <>
         <div className="text-center py-12">
           <p className="text-slate-600">Aucun tenant sélectionné</p>
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <div className="space-y-6">
         {/* Page Header */}
         <div>
@@ -141,6 +140,6 @@ export const PropertySearch: React.FC = () => {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </>
   );
 };

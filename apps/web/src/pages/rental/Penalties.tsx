@@ -27,7 +27,6 @@ import {
 } from '@ant-design/icons';
 import { Edit, X, Upload as UploadIcon, Download, FileText } from 'lucide-react';
 import { Button as UIButton } from '../../components/ui/button';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
   listPenalties,
   calculatePenalties,
@@ -592,7 +591,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
   );
 
   if (isStandalone) {
-    return <DashboardLayout>{content}</DashboardLayout>;
+    return <>{content}</>;
   }
 
   return content;

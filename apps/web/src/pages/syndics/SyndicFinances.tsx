@@ -2,7 +2,6 @@
 import { useNavigate } from 'react-router-dom';
 import { Alert, Button, Card, Col, Row, Space, Spin, Statistic, Typography } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { SyndicateFundWidget } from '../../components/syndics/SyndicateFundWidget';
 import { getSyndicFinanceSummary } from '../../services/syndic-service';
 import { FinanceSummary } from '../../types/syndic-types';
@@ -42,17 +41,20 @@ export const SyndicFinances: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Space direction="vertical" size={4}>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}>
+          <Button
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
+          >
             Retour à la fiche syndic
           </Button>
           <Title level={2} style={{ margin: 0 }}>
             Finances copropriété
           </Title>
           <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Soldes des fonds, appels émis, paiements et impayés.
+            Soldes des fonds, appels émis, paiements et impayés.
           </Paragraph>
         </Space>
 
@@ -103,7 +105,6 @@ export const SyndicFinances: React.FC = () => {
           </>
         )}
       </Space>
-    </DashboardLayout>
+    </>
   );
 };
-

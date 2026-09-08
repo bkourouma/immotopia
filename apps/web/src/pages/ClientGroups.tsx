@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { App, Card, Button, Input, Modal, Form, Space, Typography, Tag, Spin, Empty, Row, Col, Alert } from 'antd';
 import { PlusOutlined, FolderOpenOutlined, TagOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../components/dashboard/dashboard-layout';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { listTags, createTag, listContacts, CrmTag } from '../services/crm-service';
@@ -111,7 +110,7 @@ export const ClientGroups: React.FC = () => {
   ];
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -260,6 +259,6 @@ export const ClientGroups: React.FC = () => {
           </Form>
         </Modal>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

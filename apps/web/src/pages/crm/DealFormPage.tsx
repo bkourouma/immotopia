@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { DealForm } from '../../components/crm/DealForm';
-import { getDeal, createDeal, updateDeal, CrmDeal, CreateCrmDealRequest, UpdateCrmDealRequest } from '../../services/crm-service';
+import {
+  getDeal,
+  createDeal,
+  updateDeal,
+  CrmDeal,
+  CreateCrmDealRequest,
+  UpdateCrmDealRequest
+} from '../../services/crm-service';
 
 export const DealFormPage: React.FC = () => {
   const { tenantId, dealId } = useParams<{ tenantId: string; dealId?: string }>();
@@ -65,20 +71,20 @@ export const DealFormPage: React.FC = () => {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div className="text-center py-12">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
           <p className="mt-2 text-gray-600">Chargement de l'affaire...</p>
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <div className="space-y-6">
         <h1 className="text-3xl font-bold text-gray-900">
-          {dealId ? 'Modifier l\'affaire' : 'Créer une nouvelle affaire'}
+          {dealId ? "Modifier l'affaire" : 'Créer une nouvelle affaire'}
         </h1>
         <DealForm
           tenantId={tenantId!}
@@ -88,7 +94,6 @@ export const DealFormPage: React.FC = () => {
           onCancel={handleCancel}
         />
       </div>
-    </DashboardLayout>
+    </>
   );
 };
-

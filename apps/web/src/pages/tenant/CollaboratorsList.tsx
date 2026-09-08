@@ -24,7 +24,6 @@ import {
   UserDeleteOutlined,
   CheckCircleOutlined
 } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { listMembers, Member, MembershipFilters, disableMember, enableMember } from '../../services/membership-service';
 import type { ColumnsType } from 'antd/es/table';
 
@@ -204,7 +203,7 @@ export const CollaboratorsList: React.FC = () => {
   ];
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -278,6 +277,6 @@ export const CollaboratorsList: React.FC = () => {
           </div>
         </Card>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

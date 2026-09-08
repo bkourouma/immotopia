@@ -1,20 +1,7 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Alert,
-  Button,
-  Card,
-  Col,
-  Descriptions,
-  Row,
-  Space,
-  Spin,
-  Statistic,
-  Tag,
-  Typography,
-} from 'antd';
+import { Alert, Button, Card, Col, Descriptions, Row, Space, Spin, Statistic, Tag, Typography } from 'antd';
 import { ArrowLeftOutlined, ApartmentOutlined, BankOutlined, FolderOpenOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { LotTable } from '../../components/syndics/LotTable';
 import { getSyndicate } from '../../services/syndic-service';
 import { Syndicate } from '../../types/syndic-types';
@@ -25,7 +12,7 @@ const { Paragraph, Title } = Typography;
 const statusConfig: Record<Syndicate['status'], { color: string; label: string }> = {
   ACTIVE: { color: 'green', label: 'Active' },
   IN_LIQUIDATION: { color: 'orange', label: 'En liquidation' },
-  IN_DISPUTE: { color: 'red', label: 'En litige' },
+  IN_DISPUTE: { color: 'red', label: 'En litige' }
 };
 
 export const SyndicDetail: React.FC = () => {
@@ -64,38 +51,30 @@ export const SyndicDetail: React.FC = () => {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Spin size="large" />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (error || !syndicate) {
     return (
-      <DashboardLayout>
-        <Alert
-          type="error"
-          message="Erreur de chargement"
-          description={error || 'Copropriété introuvable'}
-          showIcon
-        />
-      </DashboardLayout>
+      <>
+        <Alert type="error" message="Erreur de chargement" description={error || 'Copropriété introuvable'} showIcon />
+      </>
     );
   }
 
   const status = statusConfig[syndicate.status];
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics`)}
-            >
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics`)}>
               Retour à la liste
             </Button>
             <Space>
@@ -155,11 +134,7 @@ export const SyndicDetail: React.FC = () => {
           </Col>
           <Col xs={24} md={8}>
             <Card>
-              <Statistic
-                title="Bâtiments"
-                value={syndicate.totalBuildings}
-                prefix={<ApartmentOutlined />}
-              />
+              <Statistic title="Bâtiments" value={syndicate.totalBuildings} prefix={<ApartmentOutlined />} />
             </Card>
           </Col>
           <Col xs={24} md={8}>
@@ -194,7 +169,6 @@ export const SyndicDetail: React.FC = () => {
           <LotTable lots={syndicate.lots || []} />
         </Card>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };
-

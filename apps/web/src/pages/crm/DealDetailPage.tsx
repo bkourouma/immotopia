@@ -1,6 +1,5 @@
 import React from 'react';
 import { useParams } from 'react-router-dom';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { DealDetail } from '../../components/crm/DealDetail';
 
 export const DealDetailPage: React.FC = () => {
@@ -11,13 +10,8 @@ export const DealDetailPage: React.FC = () => {
   }
 
   return (
-    <DashboardLayout>
+    <>
       <DealDetail tenantId={tenantId} dealId={dealId} />
-    </DashboardLayout>
+    </>
   );
 };
-
-
-
-
-

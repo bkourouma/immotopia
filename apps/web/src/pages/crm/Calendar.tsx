@@ -1,20 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Card,
-  Button,
-  Checkbox,
-  Space,
-  Typography,
-  Alert,
-  Spin,
-  Modal,
-  Drawer,
-  Tag,
-  Divider,
-  Row,
-  Col,
-} from 'antd';
+import { Card, Button, Checkbox, Space, Typography, Alert, Spin, Modal, Drawer, Tag, Divider, Row, Col } from 'antd';
 import {
   PlusOutlined,
   CloseOutlined,
@@ -26,9 +12,8 @@ import {
   FileExcelOutlined,
   EnvironmentOutlined,
   HomeOutlined,
-  CalendarOutlined,
+  CalendarOutlined
 } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
   getCalendarEvents,
   rescheduleFollowUp,
@@ -36,7 +21,7 @@ import {
   CalendarEvent,
   CalendarEventType,
   CalendarScope,
-  CalendarFilters,
+  CalendarFilters
 } from '../../services/crm-service';
 import { Calendar as BigCalendar, dayjsLocalizer, View, Event as RBCEvent } from 'react-big-calendar';
 import dayjs from 'dayjs';
@@ -118,10 +103,10 @@ export const CalendarPage: React.FC = () => {
     try {
       // Determine which types to load based on checkboxes and advanced filter
       let typesToLoad: ('followups' | 'propertyVisits')[] = [];
-      
+
       // Always include property visits in the global calendar
       typesToLoad.push('propertyVisits');
-      
+
       // If advanced filter has a type, use it to determine what to load
       if (advancedFilters.type) {
         if (advancedFilters.type === 'FOLLOWUP') {
@@ -141,7 +126,7 @@ export const CalendarPage: React.FC = () => {
         from: dateRange.from,
         to: dateRange.to,
         scope,
-        types: typesToLoad.length > 0 ? typesToLoad : ['followups', 'propertyVisits'],
+        types: typesToLoad.length > 0 ? typesToLoad : ['followups', 'propertyVisits']
       };
 
       const response = await getCalendarEvents(tenantId, filters);
@@ -149,18 +134,18 @@ export const CalendarPage: React.FC = () => {
       if (response.success) {
         // Transform events to react-big-calendar format
         const transformedEvents: CalendarEventExtended[] = [];
-        
+
         for (const event of response.events) {
           // Validate dates before creating Date objects
           const startDate = event.start ? new Date(event.start) : null;
           const endDate = event.end ? new Date(event.end) : null;
-          
+
           // Skip events with invalid start dates
           if (!startDate || isNaN(startDate.getTime())) {
             console.warn('Skipping event with invalid start date:', event);
             continue;
           }
-          
+
           transformedEvents.push({
             eventId: event.eventId,
             eventType: event.eventType,
@@ -180,15 +165,15 @@ export const CalendarPage: React.FC = () => {
             assignedToUserId: event.assignedToUserId,
             createdByUserId: event.createdByUserId,
             propertyId: event.propertyId,
-            resource: event, // Store original event for reference
+            resource: event // Store original event for reference
           });
         }
-        
+
         let filteredEvents = transformedEvents;
 
         // Apply type filter if set
         if (advancedFilters.type) {
-          filteredEvents = filteredEvents.filter((event) => {
+          filteredEvents = filteredEvents.filter(event => {
             if (advancedFilters.type === 'FOLLOWUP') {
               return event.eventType === 'FOLLOWUP';
             }
@@ -201,7 +186,7 @@ export const CalendarPage: React.FC = () => {
 
         // Apply assignedTo filter if set
         if (advancedFilters.assignedTo) {
-          filteredEvents = filteredEvents.filter((event) => {
+          filteredEvents = filteredEvents.filter(event => {
             return event.assignedToUserId === advancedFilters.assignedTo;
           });
         }
@@ -209,7 +194,7 @@ export const CalendarPage: React.FC = () => {
         // Apply contactName filter if set
         if (advancedFilters.contactName) {
           const searchTerm = advancedFilters.contactName.toLowerCase().trim();
-          filteredEvents = filteredEvents.filter((event) => {
+          filteredEvents = filteredEvents.filter(event => {
             if (!event.contactName) return false;
             return event.contactName.toLowerCase().includes(searchTerm);
           });
@@ -241,7 +226,7 @@ export const CalendarPage: React.FC = () => {
 
     // Only allow dragging for follow-ups (property visits rescheduling not yet implemented)
     if (event.eventType === 'PROPERTY_VISIT') {
-      setError('Le déplacement des visites de propriétés n\'est pas encore disponible');
+      setError("Le déplacement des visites de propriétés n'est pas encore disponible");
       return;
     }
 
@@ -250,13 +235,13 @@ export const CalendarPage: React.FC = () => {
     const originalEnd = event.end;
 
     // Optimistic update
-    setEvents((prev) =>
-      prev.map((e) =>
+    setEvents(prev =>
+      prev.map(e =>
         e.eventId === event.eventId
           ? {
               ...e,
               start,
-              end: start, // Follow-ups are point-in-time
+              end: start // Follow-ups are point-in-time
             }
           : e
       )
@@ -265,24 +250,24 @@ export const CalendarPage: React.FC = () => {
     try {
       // Follow-up
       await rescheduleFollowUp(tenantId, event.eventId, {
-        nextActionAt: start,
+        nextActionAt: start
       });
       // Reload events to ensure consistency
       await loadEvents();
     } catch (err: any) {
       // Revert on error
-      setEvents((prev) =>
-        prev.map((e) =>
+      setEvents(prev =>
+        prev.map(e =>
           e.eventId === event.eventId
             ? {
                 ...e,
                 start: originalStart,
-                end: originalEnd,
+                end: originalEnd
               }
             : e
         )
       );
-      setError(err.response?.data?.message || 'Erreur lors du déplacement de l\'événement');
+      setError(err.response?.data?.message || "Erreur lors du déplacement de l'événement");
     } finally {
       setDraggedEvent(null);
     }
@@ -296,13 +281,13 @@ export const CalendarPage: React.FC = () => {
     const originalEnd = event.end;
 
     // Optimistic update
-    setEvents((prev) =>
-      prev.map((e) =>
+    setEvents(prev =>
+      prev.map(e =>
         e.eventId === event.eventId
           ? {
               ...e,
               start,
-              end,
+              end
             }
           : e
       )
@@ -312,32 +297,31 @@ export const CalendarPage: React.FC = () => {
       // For follow-ups, reschedule with new time
       if (event.eventType === 'FOLLOWUP') {
         await rescheduleFollowUp(tenantId, event.eventId, {
-          nextActionAt: start,
+          nextActionAt: start
         });
       } else if (event.eventType === 'PROPERTY_VISIT') {
         // Property visit resizing not yet implemented
-        setError('Le redimensionnement des visites de propriétés n\'est pas encore disponible');
+        setError("Le redimensionnement des visites de propriétés n'est pas encore disponible");
         return;
       }
       // Reload events to ensure consistency
       await loadEvents();
     } catch (err: any) {
       // Revert on error
-      setEvents((prev) =>
-        prev.map((e) =>
+      setEvents(prev =>
+        prev.map(e =>
           e.eventId === event.eventId
             ? {
                 ...e,
                 start: originalStart,
-                end: originalEnd,
+                end: originalEnd
               }
             : e
         )
       );
-      setError(err.response?.data?.message || 'Erreur lors du redimensionnement de l\'événement');
+      setError(err.response?.data?.message || "Erreur lors du redimensionnement de l'événement");
     }
   };
-
 
   // Handle mark done
   const handleMarkDone = async () => {
@@ -386,9 +370,9 @@ export const CalendarPage: React.FC = () => {
         opacity: isDone ? 0.6 : 1,
         fontSize: '11px',
         padding: '2px 4px',
-        lineHeight: '1.2',
+        lineHeight: '1.2'
       },
-      className: 'rbc-event-small',
+      className: 'rbc-event-small'
     };
   };
 
@@ -400,7 +384,7 @@ export const CalendarPage: React.FC = () => {
       await createActivity(tenantId, {
         ...data,
         activityType: 'TASK',
-        nextActionAt: data.nextActionAt || new Date(),
+        nextActionAt: data.nextActionAt || new Date()
       });
       setShowActivityForm(false);
       setPrefillContactId(undefined);
@@ -412,12 +396,14 @@ export const CalendarPage: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {/* Header */}
         <Row gutter={[16, 16]} justify="space-between" align="middle">
           <Col xs={24} sm={24} md={12}>
-            <Title level={2} style={{ margin: 0 }}>Calendrier CRM</Title>
+            <Title level={2} style={{ margin: 0 }}>
+              Calendrier CRM
+            </Title>
             <Text type="secondary">Gérez vos rendez-vous et relances</Text>
           </Col>
           <Col xs={24} sm={24} md={12}>
@@ -427,20 +413,20 @@ export const CalendarPage: React.FC = () => {
                   icon={<DownloadOutlined />}
                   onClick={() => {
                     const exportData = events.map(event => ({
-                      'Type': event.eventType === 'FOLLOWUP' ? 'Relance' : 'Visite',
-                      'Titre': event.title,
-                      'Contact': event.contactName,
-                      'Affaire': event.dealLabel || '',
-                      'Date début': event.start && dayjs(event.start).isValid()
-                        ? dayjs(event.start).format('DD/MM/YYYY HH:mm')
-                        : 'Date invalide',
-                      'Date fin': event.end && dayjs(event.end).isValid()
-                        ? dayjs(event.end).format('DD/MM/YYYY HH:mm')
-                        : '',
-                      'Type d\'action': event.nextActionType || '',
-                      'Lieu': event.location || '',
-                      'Statut': event.status || '',
-                      'Badges': event.badges.join(', ') || '',
+                      Type: event.eventType === 'FOLLOWUP' ? 'Relance' : 'Visite',
+                      Titre: event.title,
+                      Contact: event.contactName,
+                      Affaire: event.dealLabel || '',
+                      'Date début':
+                        event.start && dayjs(event.start).isValid()
+                          ? dayjs(event.start).format('DD/MM/YYYY HH:mm')
+                          : 'Date invalide',
+                      'Date fin':
+                        event.end && dayjs(event.end).isValid() ? dayjs(event.end).format('DD/MM/YYYY HH:mm') : '',
+                      "Type d'action": event.nextActionType || '',
+                      Lieu: event.location || '',
+                      Statut: event.status || '',
+                      Badges: event.badges.join(', ') || ''
                     }));
                     exportToCSV(exportData, 'calendrier');
                   }}
@@ -451,20 +437,20 @@ export const CalendarPage: React.FC = () => {
                   icon={<FileExcelOutlined />}
                   onClick={() => {
                     const exportData = events.map(event => ({
-                      'Type': event.eventType === 'FOLLOWUP' ? 'Relance' : 'Visite',
-                      'Titre': event.title,
-                      'Contact': event.contactName,
-                      'Affaire': event.dealLabel || '',
-                      'Date début': event.start && dayjs(event.start).isValid()
-                        ? dayjs(event.start).format('DD/MM/YYYY HH:mm')
-                        : 'Date invalide',
-                      'Date fin': event.end && dayjs(event.end).isValid()
-                        ? dayjs(event.end).format('DD/MM/YYYY HH:mm')
-                        : '',
-                      'Type d\'action': event.nextActionType || '',
-                      'Lieu': event.location || '',
-                      'Statut': event.status || '',
-                      'Badges': event.badges.join(', ') || '',
+                      Type: event.eventType === 'FOLLOWUP' ? 'Relance' : 'Visite',
+                      Titre: event.title,
+                      Contact: event.contactName,
+                      Affaire: event.dealLabel || '',
+                      'Date début':
+                        event.start && dayjs(event.start).isValid()
+                          ? dayjs(event.start).format('DD/MM/YYYY HH:mm')
+                          : 'Date invalide',
+                      'Date fin':
+                        event.end && dayjs(event.end).isValid() ? dayjs(event.end).format('DD/MM/YYYY HH:mm') : '',
+                      "Type d'action": event.nextActionType || '',
+                      Lieu: event.location || '',
+                      Statut: event.status || '',
+                      Badges: event.badges.join(', ') || ''
                     }));
                     exportToExcel(exportData, 'calendrier', 'Calendrier');
                   }}
@@ -472,11 +458,7 @@ export const CalendarPage: React.FC = () => {
                   Excel
                 </Button>
               </Button.Group>
-              <Button
-                onClick={() => setCurrentDate(new Date())}
-              >
-                Aujourd'hui
-              </Button>
+              <Button onClick={() => setCurrentDate(new Date())}>Aujourd'hui</Button>
               <Button
                 type="primary"
                 icon={<PlusOutlined />}
@@ -512,22 +494,13 @@ export const CalendarPage: React.FC = () => {
                 <Space wrap>
                   <Text strong>Vue:</Text>
                   <Button.Group>
-                    <Button
-                      type={view === 'month' ? 'primary' : 'default'}
-                      onClick={() => setView('month')}
-                    >
+                    <Button type={view === 'month' ? 'primary' : 'default'} onClick={() => setView('month')}>
                       Mois
                     </Button>
-                    <Button
-                      type={view === 'week' ? 'primary' : 'default'}
-                      onClick={() => setView('week')}
-                    >
+                    <Button type={view === 'week' ? 'primary' : 'default'} onClick={() => setView('week')}>
                       Semaine
                     </Button>
-                    <Button
-                      type={view === 'day' ? 'primary' : 'default'}
-                      onClick={() => setView('day')}
-                    >
+                    <Button type={view === 'day' ? 'primary' : 'default'} onClick={() => setView('day')}>
                       Jour
                     </Button>
                   </Button.Group>
@@ -535,16 +508,10 @@ export const CalendarPage: React.FC = () => {
               </Col>
               <Col xs={24} sm={12} md={8}>
                 <Space>
-                  <Checkbox
-                    checked={scope === 'MINE'}
-                    onChange={(e) => setScope(e.target.checked ? 'MINE' : 'GLOBAL')}
-                  >
+                  <Checkbox checked={scope === 'MINE'} onChange={e => setScope(e.target.checked ? 'MINE' : 'GLOBAL')}>
                     Mon calendrier
                   </Checkbox>
-                  <Checkbox
-                    checked={showFollowups}
-                    onChange={(e) => setShowFollowups(e.target.checked)}
-                  >
+                  <Checkbox checked={showFollowups} onChange={e => setShowFollowups(e.target.checked)}>
                     Relances
                   </Checkbox>
                 </Space>
@@ -561,16 +528,16 @@ export const CalendarPage: React.FC = () => {
                 showType: true,
                 showContactName: true,
                 dateRangeLabel: 'Période personnalisée',
-                typeLabel: 'Type d\'événement',
+                typeLabel: "Type d'événement",
                 contactNameLabel: 'Nom du client',
                 typeOptions: [
                   { value: 'RDV', label: 'Rendez-vous (RDV)' },
                   { value: 'VISITE', label: 'Visite' },
-                  { value: 'FOLLOWUP', label: 'Relance' },
-                ],
+                  { value: 'FOLLOWUP', label: 'Relance' }
+                ]
               }}
               filters={advancedFilters}
-              onFiltersChange={(newFilters) => {
+              onFiltersChange={newFilters => {
                 setAdvancedFilters(newFilters);
                 // Update date range if set
                 if (newFilters.startDate || newFilters.endDate) {
@@ -585,14 +552,12 @@ export const CalendarPage: React.FC = () => {
         </Card>
 
         {/* Error message */}
-        {error && (
-          <Alert message={error} type="error" showIcon closable onClose={() => setError(null)} />
-        )}
+        {error && <Alert message={error} type="error" showIcon closable onClose={() => setError(null)} />}
 
         {/* Calendar */}
         <Card>
-          <div 
-            style={{ 
+          <div
+            style={{
               height: '600px',
               minHeight: '400px',
               overflow: 'auto'
@@ -602,41 +567,43 @@ export const CalendarPage: React.FC = () => {
             {loading ? (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                 <Spin size="large" />
-                <Text type="secondary" style={{ marginLeft: 16 }}>Chargement...</Text>
+                <Text type="secondary" style={{ marginLeft: 16 }}>
+                  Chargement...
+                </Text>
               </div>
             ) : (
-            <div style={{ height: '100%', width: '100%' }}>
-              <BigCalendar<CalendarEventExtended>
-                localizer={localizer}
-                events={events}
-                startAccessor="start"
-                endAccessor="end"
-                view={view}
-                onView={setView}
-                date={currentDate}
-                onNavigate={setCurrentDate}
-                onSelectEvent={handleSelectEvent}
-                onEventDrop={handleEventDrop}
-                onEventResize={handleEventResize}
-                eventPropGetter={eventStyleGetter}
-                draggableAccessor={(event: CalendarEventExtended) => event.canDrag}
-                resizable={true}
-                defaultDate={new Date()}
-                messages={{
-                  next: 'Suivant',
-                  previous: 'Précédent',
-                  today: "Aujourd'hui",
-                  month: 'Mois',
-                  week: 'Semaine',
-                  day: 'Jour',
-                  agenda: 'Agenda',
-                  date: 'Date',
-                  time: 'Heure',
-                  event: 'Événement',
-                  noEventsInRange: 'Aucun événement cette période',
-                }}
-              />
-            </div>
+              <div style={{ height: '100%', width: '100%' }}>
+                <BigCalendar<CalendarEventExtended>
+                  localizer={localizer}
+                  events={events}
+                  startAccessor="start"
+                  endAccessor="end"
+                  view={view}
+                  onView={setView}
+                  date={currentDate}
+                  onNavigate={setCurrentDate}
+                  onSelectEvent={handleSelectEvent}
+                  onEventDrop={handleEventDrop}
+                  onEventResize={handleEventResize}
+                  eventPropGetter={eventStyleGetter}
+                  draggableAccessor={(event: CalendarEventExtended) => event.canDrag}
+                  resizable={true}
+                  defaultDate={new Date()}
+                  messages={{
+                    next: 'Suivant',
+                    previous: 'Précédent',
+                    today: "Aujourd'hui",
+                    month: 'Mois',
+                    week: 'Semaine',
+                    day: 'Jour',
+                    agenda: 'Agenda',
+                    date: 'Date',
+                    time: 'Heure',
+                    event: 'Événement',
+                    noEventsInRange: 'Aucun événement cette période'
+                  }}
+                />
+              </div>
             )}
           </div>
         </Card>
@@ -766,7 +733,6 @@ export const CalendarPage: React.FC = () => {
           )}
         </Modal>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };
-

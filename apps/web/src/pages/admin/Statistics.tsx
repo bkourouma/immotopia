@@ -1,16 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  Row,
-  Col,
-  Typography,
-  Alert,
-  Spin,
-  Statistic,
-  Space,
-} from 'antd';
+import { Card, Row, Col, Typography, Alert, Spin, Statistic, Space } from 'antd';
 import { BankOutlined, TeamOutlined, CreditCardOutlined, BarChartOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { getGlobalStatistics, GlobalStatistics } from '../../services/statistics-service';
 
 const { Title, Text } = Typography;
@@ -43,24 +33,19 @@ export const Statistics: React.FC = () => {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 256 }}>
           <Spin size="large" />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (error || !stats) {
     return (
-      <DashboardLayout>
-        <Alert
-          message="Erreur"
-          description={error || 'Erreur lors du chargement'}
-          type="error"
-          showIcon
-        />
-      </DashboardLayout>
+      <>
+        <Alert message="Erreur" description={error || 'Erreur lors du chargement'} type="error" showIcon />
+      </>
     );
   }
 
@@ -80,13 +65,13 @@ export const Statistics: React.FC = () => {
             </>
           )}
         </>
-      ),
+      )
     },
     {
       title: 'Collaborateurs',
       value: stats.totalCollaborators,
       icon: <TeamOutlined style={{ fontSize: 24, color: '#52c41a' }} />,
-      footer: <Text type="success">{stats.activeCollaborators} actifs</Text>,
+      footer: <Text type="success">{stats.activeCollaborators} actifs</Text>
     },
     {
       title: 'Abonnements',
@@ -103,7 +88,7 @@ export const Statistics: React.FC = () => {
             </>
           )}
         </>
-      ),
+      )
     },
     {
       title: 'Modules Activés',
@@ -116,12 +101,12 @@ export const Statistics: React.FC = () => {
             .map(([key, value]) => `${key}: ${value}`)
             .join(' · ')}
         </Text>
-      ),
-    },
+      )
+    }
   ];
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
           <Title level={3} style={{ margin: 0 }}>
@@ -134,7 +119,7 @@ export const Statistics: React.FC = () => {
           {statCards.map((item, index) => (
             <Col xs={24} sm={12} lg={6} key={index}>
               <Card>
-                <Space align="start" style={{ width: "100%" }}>
+                <Space align="start" style={{ width: '100%' }}>
                   {item.icon}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <Statistic title={item.title} value={item.value} />
@@ -152,7 +137,7 @@ export const Statistics: React.FC = () => {
               {Object.entries(stats.moduleActivations).map(([moduleKey, count]) => (
                 <Col xs={24} sm={12} key={moduleKey}>
                   <Card size="small" style={{ background: 'var(--ant-color-fill-quaternary)' }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Text>{moduleKey}</Text>
                       <Text strong>{count}</Text>
                     </div>
@@ -163,6 +148,6 @@ export const Statistics: React.FC = () => {
           </Card>
         )}
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

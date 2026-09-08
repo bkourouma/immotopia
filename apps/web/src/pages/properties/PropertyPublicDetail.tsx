@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { Property } from '../../types/property-types';
 import apiClient from '../../utils/api-client';
 import { Button } from '../../components/ui/button';
@@ -24,9 +23,7 @@ export const PropertyPublicDetail: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await apiClient.get<{ success: boolean; data: Property }>(
-        `/public/properties/${id}`
-      );
+      const response = await apiClient.get<{ success: boolean; data: Property }>(`/public/properties/${id}`);
       setProperty(response.data.data);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Propriété non trouvée ou non publiée');
@@ -43,29 +40,29 @@ export const PropertyPublicDetail: React.FC = () => {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (error || !property) {
     return (
-      <DashboardLayout>
+      <>
         <div className="text-center py-12">
           <p className="text-red-600 mb-4">{error || 'Propriété non trouvée'}</p>
           <Link to="/public/properties">
             <Button variant="outline">Retour à la liste</Button>
           </Link>
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
@@ -150,9 +147,9 @@ export const PropertyPublicDetail: React.FC = () => {
                 {formatPrice(property.price, property.currency, property.propertyType)}
               </div>
               <div className="text-sm text-gray-600 mb-4">
-                {property.transactionModes.map((mode) =>
-                  mode === 'SALE' ? 'Vente' : mode === 'RENTAL' ? 'Location' : 'Court terme'
-                ).join(' • ')}
+                {property.transactionModes
+                  .map(mode => (mode === 'SALE' ? 'Vente' : mode === 'RENTAL' ? 'Location' : 'Court terme'))
+                  .join(' • ')}
               </div>
               <Button className="w-full">Contacter l'agence</Button>
             </div>
@@ -190,8 +187,8 @@ export const PropertyPublicDetail: React.FC = () => {
                       {property.furnishingStatus === 'FURNISHED'
                         ? 'Oui'
                         : property.furnishingStatus === 'UNFURNISHED'
-                        ? 'Non'
-                        : 'Partiellement'}
+                          ? 'Non'
+                          : 'Partiellement'}
                     </span>
                   </div>
                 )}
@@ -200,11 +197,6 @@ export const PropertyPublicDetail: React.FC = () => {
           </div>
         </div>
       </div>
-    </DashboardLayout>
+    </>
   );
 };
-
-
-
-
-

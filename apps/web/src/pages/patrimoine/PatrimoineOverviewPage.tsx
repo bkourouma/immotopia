@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Alert, Button, Empty, Space, Spin, Typography } from 'antd';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { PatrimoineOverview } from '../../components/patrimoine/PatrimoineOverview';
 import { WorkProgramTimeline } from '../../components/patrimoine/WorkProgramTimeline';
 import { listProperties } from '../../services/property-service';
@@ -41,7 +40,7 @@ export const PatrimoineOverviewPage: React.FC = () => {
         const programsPerProperty = await Promise.all(
           properties.map(async (property: Property) => {
             const programs = await listWorkPrograms(effectiveTenantId, property.id);
-            return programs.map((program) => ({ ...program, propertyLabel: property.title }));
+            return programs.map(program => ({ ...program, propertyLabel: property.title }));
           })
         );
         setWorkPrograms(programsPerProperty.flat());
@@ -56,14 +55,14 @@ export const PatrimoineOverviewPage: React.FC = () => {
 
   if (!effectiveTenantId) {
     return (
-      <DashboardLayout>
+      <>
         <Alert type="warning" showIcon message="Aucun tenant selectionne" />
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
@@ -87,7 +86,6 @@ export const PatrimoineOverviewPage: React.FC = () => {
         {!loading && overview ? <PatrimoineOverview data={overview} /> : null}
         {!loading ? <WorkProgramTimeline items={workPrograms} /> : null}
       </Space>
-    </DashboardLayout>
+    </>
   );
 };
-

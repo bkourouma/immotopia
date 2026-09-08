@@ -1,14 +1,7 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-  Button,
-  Space,
-  Typography,
-} from 'antd';
-import {
-  ArrowLeftOutlined,
-} from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
+import { Button, Space, Typography } from 'antd';
+import { ArrowLeftOutlined } from '@ant-design/icons';
 import { PropertyFormWizard } from '../../components/properties/PropertyFormWizard';
 import { useAuth } from '../../hooks/useAuth';
 
@@ -22,11 +15,11 @@ export const PropertyCreate: React.FC = () => {
 
   if (!effectiveTenantId) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <Text type="secondary">Aucun tenant sélectionné</Text>
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
@@ -39,33 +32,24 @@ export const PropertyCreate: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Page Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <Button
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}
-          >
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>
             Retour
           </Button>
           <div>
             <Title level={2} style={{ margin: 0 }}>
               Nouvelle propriété
             </Title>
-            <Text type="secondary">
-              Créez une nouvelle propriété immobilière
-            </Text>
+            <Text type="secondary">Créez une nouvelle propriété immobilière</Text>
           </div>
         </div>
 
         {/* Wizard */}
-        <PropertyFormWizard
-          tenantId={effectiveTenantId}
-          onComplete={handleComplete}
-          onCancel={handleCancel}
-        />
+        <PropertyFormWizard tenantId={effectiveTenantId} onComplete={handleComplete} onCancel={handleCancel} />
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

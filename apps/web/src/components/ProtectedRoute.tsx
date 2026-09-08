@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { AccessDenied } from './primitives/AccessDenied';
-import { SkeletonDetail } from './primitives/Skeleton';
+// `AccessDenied` est `lazy` : c'est un ecran rare, et il tire `Result` et
+// `Empty` d'Ant Design. ProtectedRoute etant sur le chemin critique de TOUTES
+// les routes, l'importer statiquement mettait 53 Ko d'AntD dans le chunk
+// d'entree pour un ecran que la plupart des sessions ne voient jamais.
+const AccessDenied = lazy(() => import('./primitives/AccessDenied').then(m => ({ default: m.AccessDenied })));
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -27,12 +30,30 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   const location = useLocation();
   const params = useParams<{ tenantId?: string }>();
 
-  // Squelette plutot que spinner plein ecran : une seule convention de
-  // chargement (§5.6), et aucun saut de mise en page a l'arrivee du contenu.
+  // Placeholder sans dependance AntD : ce rendu precede la coquille, donc il
+  // ne peut pas s'appuyer sur `<SkeletonDetail>` sans tirer Card, Tabs et
+  // Skeleton — 75 Ko — dans le chunk d'entree. Trois barres tokenisees
+  // suffisent, et evitent le saut de mise en page d'un spinner centre.
   if (isLoading || isLoadingMembership) {
     return (
-      <div style={{ padding: 'var(--page-padding)' }}>
-        <SkeletonDetail aria-label="Verification de votre acces" />
+      <div
+        role="status"
+        aria-live="polite"
+        aria-label="Verification de votre acces"
+        aria-busy="true"
+        style={{ padding: 'var(--page-padding)', display: 'grid', gap: 'var(--space-4)' }}
+      >
+        {['40%', '100%', '70%'].map(width => (
+          <div
+            key={width}
+            style={{
+              width,
+              height: 'var(--control-h-md)',
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--surface-sunken)'
+            }}
+          />
+        ))}
       </div>
     );
   }
@@ -47,7 +68,11 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   // Check role if required
   if (requiredRole && user?.globalRole !== requiredRole) {
-    return <AccessDenied reason="role" currentRole={user?.globalRole} requiredRole={requiredRole} />;
+    return (
+      <Suspense fallback={null}>
+        <AccessDenied reason="role" currentRole={user?.globalRole} requiredRole={requiredRole} />
+      </Suspense>
+    );
   }
 
   // Check tenant membership if required
@@ -61,13 +86,25 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     if (!isPlatformAdmin) {
       if (params.tenantId) {
         if (!tenantMembership) {
-          return <AccessDenied reason="no-tenant" />;
+          return (
+            <Suspense fallback={null}>
+              <AccessDenied reason="no-tenant" />
+            </Suspense>
+          );
         }
         if (tenantMembership.tenantId !== params.tenantId) {
-          return <AccessDenied reason="wrong-tenant" />;
+          return (
+            <Suspense fallback={null}>
+              <AccessDenied reason="wrong-tenant" />
+            </Suspense>
+          );
         }
       } else if (!tenantMembership) {
-        return <AccessDenied reason="no-tenant" />;
+        return (
+          <Suspense fallback={null}>
+            <AccessDenied reason="no-tenant" />
+          </Suspense>
+        );
       }
     }
   }

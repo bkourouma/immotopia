@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { PropertySearchResults } from '../../components/properties/PropertySearchResults';
 import { PropertySearchFilters } from '../../components/properties/PropertySearchFilters';
 import { Property } from '../../types/property-types';
@@ -15,7 +14,7 @@ export const PropertyPublic: React.FC = () => {
     page: 1,
     limit: 20,
     total: 0,
-    totalPages: 0,
+    totalPages: 0
   });
   const [currentFilters, setCurrentFilters] = useState<any>({});
 
@@ -55,12 +54,12 @@ export const PropertyPublic: React.FC = () => {
 
   const handleSearch = (filters: any) => {
     setCurrentFilters(filters);
-    setPagination((prev) => ({ ...prev, page: 1 }));
+    setPagination(prev => ({ ...prev, page: 1 }));
     // Reload will happen via useEffect when page changes
   };
 
   const handlePageChange = (newPage: number) => {
-    setPagination((prev) => ({ ...prev, page: newPage }));
+    setPagination(prev => ({ ...prev, page: newPage }));
   };
 
   // Reload when filters change
@@ -71,14 +70,12 @@ export const PropertyPublic: React.FC = () => {
   }, [currentFilters]);
 
   return (
-    <DashboardLayout>
+    <>
       <div className="space-y-6">
         {/* Page Header */}
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Portail Public</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Découvrez nos propriétés disponibles
-          </p>
+          <p className="mt-2 text-sm text-slate-600">Découvrez nos propriétés disponibles</p>
         </div>
 
         {/* Search Filters */}
@@ -86,7 +83,7 @@ export const PropertyPublic: React.FC = () => {
           onSearch={handleSearch}
           onReset={() => {
             setCurrentFilters({});
-            setPagination((prev) => ({ ...prev, page: 1 }));
+            setPagination(prev => ({ ...prev, page: 1 }));
           }}
           initialFilters={currentFilters}
         />
@@ -133,11 +130,6 @@ export const PropertyPublic: React.FC = () => {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </>
   );
 };
-
-
-
-
-

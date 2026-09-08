@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { inviteCollaborator, InviteCollaboratorRequest } from '../../services/invitation-service';
 import { getTenant, Tenant } from '../../services/tenant-service';
 import apiClient from '../../utils/api-client';
@@ -94,7 +93,7 @@ export const AdminInviteCollaborator: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center gap-4">
@@ -192,6 +191,6 @@ export const AdminInviteCollaborator: React.FC = () => {
           </div>
         </form>
       </div>
-    </DashboardLayout>
+    </>
   );
 };

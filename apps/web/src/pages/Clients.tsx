@@ -15,7 +15,6 @@ import {
   FileExcelOutlined,
   CloseOutlined
 } from '@ant-design/icons';
-import { DashboardLayout } from '../components/dashboard/dashboard-layout';
 import { listContacts, CrmContact, listTags, CrmTag } from '../services/crm-service';
 import { useAuth } from '../hooks/useAuth';
 import { AdvancedFilters, AdvancedFilters as AdvancedFiltersType } from '../components/crm/AdvancedFilters';
@@ -321,7 +320,7 @@ export const Clients: React.FC = () => {
   }));
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Header */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -501,6 +500,6 @@ export const Clients: React.FC = () => {
           </Card>
         )}
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

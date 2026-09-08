@@ -32,7 +32,6 @@ import {
   StarOutlined,
   StarFilled
 } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import apiClient from '../../utils/api-client';
 
 const { Title, Text, Paragraph } = Typography;
@@ -292,7 +291,7 @@ export function DocumentTemplates() {
   ];
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Row justify="space-between" align="middle">
           <Col>
@@ -493,6 +492,6 @@ export function DocumentTemplates() {
           </Form>
         </Modal>
       </Space>
-    </DashboardLayout>
+    </>
   );
 }

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { DealForm } from '../../components/crm/DealForm';
 import { ActivityForm } from '../../components/crm/ActivityForm';
 import { Button } from '../../components/ui/button';
@@ -213,7 +212,7 @@ export const Deals: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <div className="space-y-3 w-full">
         <div className="flex justify-between items-center">
           <div>
@@ -613,6 +612,6 @@ export const Deals: React.FC = () => {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </>
   );
 };

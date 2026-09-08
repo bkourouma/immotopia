@@ -26,7 +26,6 @@ import {
   FileTextOutlined,
   DeleteOutlined
 } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
   listLeases,
   updateLeaseStatus,
@@ -247,7 +246,7 @@ export const Leases: React.FC = () => {
   ];
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Row justify="space-between" align="middle" gutter={[16, 16]}>
           <Col xs={24} sm={24} md={12}>
@@ -384,6 +383,6 @@ export const Leases: React.FC = () => {
           </>
         )}
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

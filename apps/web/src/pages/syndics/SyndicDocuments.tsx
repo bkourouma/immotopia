@@ -16,7 +16,6 @@ import {
   Upload
 } from 'antd';
 import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { DocumentVault } from '../../components/syndics/DocumentVault';
 import { createSyndicDocument, listSyndicDocuments } from '../../services/syndic-service';
 import { SyndicateDocument } from '../../types/syndic-types';
@@ -90,7 +89,7 @@ export const SyndicDocuments: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Space direction="vertical" size={4}>
           <Button
@@ -190,6 +189,6 @@ export const SyndicDocuments: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
-    </DashboardLayout>
+    </>
   );
 };

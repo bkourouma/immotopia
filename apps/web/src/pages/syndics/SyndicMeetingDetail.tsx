@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { App, Alert, Button, Card, Form, Input, Modal, Space, Spin, TimePicker, Typography } from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { meetingTypeLabels } from '../../components/syndics/labels';
 import { MeetingAgenda } from '../../components/syndics/MeetingAgenda';
 import { VoteBoard } from '../../components/syndics/VoteBoard';
@@ -230,24 +229,24 @@ export const SyndicMeetingDetail: React.FC = () => {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ minHeight: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Spin size="large" />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (error || !meeting) {
     return (
-      <DashboardLayout>
+      <>
         <Alert type="error" message={error || 'Assemblée introuvable'} showIcon />
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
@@ -405,6 +404,6 @@ export const SyndicMeetingDetail: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
-    </DashboardLayout>
+    </>
   );
 };

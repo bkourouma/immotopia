@@ -1,33 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  List,
-  Typography,
-  Button,
-  Alert,
-  Spin,
-  Empty,
-  Checkbox,
-  Space,
-  Row,
-  Col,
-  Tag,
-} from 'antd';
+import { Card, List, Typography, Button, Alert, Spin, Empty, Checkbox, Space, Row, Col, Tag } from 'antd';
 import { SafetyCertificateOutlined, SaveOutlined, CheckOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
   listRoles,
   getRole,
   listPermissions,
   updateRolePermissions,
   Role,
-  Permission,
+  Permission
 } from '../../services/role-service';
-import {
-  getPermissionLabelFr,
-  getPermissionGroupLabelFr,
-  getRoleLabelFr,
-} from '../../constants/permissions-labels';
+import { getPermissionLabelFr, getPermissionGroupLabelFr, getRoleLabelFr } from '../../constants/permissions-labels';
 
 const { Title, Text } = Typography;
 
@@ -55,10 +37,7 @@ export const RolesPermissions: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [rolesData, permissionsData] = await Promise.all([
-        listRoles(),
-        listPermissions(),
-      ]);
+      const [rolesData, permissionsData] = await Promise.all([listRoles(), listPermissions()]);
       setRoles(rolesData);
       setPermissions(permissionsData);
       if (rolesData.length > 0 && !selectedRole) {
@@ -75,7 +54,7 @@ export const RolesPermissions: React.FC = () => {
     if (!selectedRole) return;
     try {
       const role = await getRole(selectedRole.id);
-      setRolePermissions(new Set(role.permissions?.map((p) => p.id) || []));
+      setRolePermissions(new Set(role.permissions?.map(p => p.id) || []));
     } catch (err: any) {
       setError(err.response?.data?.message || 'Erreur lors du chargement des permissions du rôle');
     }
@@ -87,7 +66,7 @@ export const RolesPermissions: React.FC = () => {
   };
 
   const handlePermissionToggle = (permissionId: string) => {
-    setRolePermissions((prev) => {
+    setRolePermissions(prev => {
       const newSet = new Set(prev);
       if (newSet.has(permissionId)) {
         newSet.delete(permissionId);
@@ -108,7 +87,7 @@ export const RolesPermissions: React.FC = () => {
       setSuccess('Permissions mises à jour avec succès');
       const updatedRole = await getRole(selectedRole.id);
       setSelectedRole(updatedRole);
-      setRoles((prev) => prev.map((r) => (r.id === updatedRole.id ? updatedRole : r)));
+      setRoles(prev => prev.map(r => (r.id === updatedRole.id ? updatedRole : r)));
     } catch (err: any) {
       setError(err.response?.data?.message || 'Erreur lors de la mise à jour des permissions');
     } finally {
@@ -116,9 +95,7 @@ export const RolesPermissions: React.FC = () => {
     }
   };
 
-  const permissionsWithoutCommunication = permissions.filter(
-    (perm) => !perm.key.startsWith('COMMUNICATION_')
-  );
+  const permissionsWithoutCommunication = permissions.filter(perm => !perm.key.startsWith('COMMUNICATION_'));
 
   const groupedPermissions = permissionsWithoutCommunication.reduce(
     (acc, perm) => {
@@ -129,7 +106,7 @@ export const RolesPermissions: React.FC = () => {
       acc[prefix].push(perm);
       return acc;
     },
-    {} as Record<string, Permission[]>,
+    {} as Record<string, Permission[]>
   );
 
   const getRoleDisplayName = (role: Role) => {
@@ -144,16 +121,16 @@ export const RolesPermissions: React.FC = () => {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 256 }}>
           <Spin size="large" />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
           <Title level={3} style={{ margin: 0 }}>
@@ -163,14 +140,7 @@ export const RolesPermissions: React.FC = () => {
         </div>
 
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
 
         {success && (
@@ -189,7 +159,7 @@ export const RolesPermissions: React.FC = () => {
             <Card title="Rôles" size="small">
               <List
                 dataSource={roles}
-                renderItem={(role) => {
+                renderItem={role => {
                   const isSelected = selectedRole?.id === role.id;
                   return (
                     <List.Item
@@ -199,12 +169,16 @@ export const RolesPermissions: React.FC = () => {
                         background: isSelected ? 'var(--ant-color-primary-bg)' : undefined,
                         borderRadius: 6,
                         marginBottom: 4,
-                        borderLeft: isSelected ? '3px solid var(--ant-color-primary)' : '3px solid transparent',
+                        borderLeft: isSelected ? '3px solid var(--ant-color-primary)' : '3px solid transparent'
                       }}
                       onClick={() => handleRoleSelect(role)}
                     >
                       <List.Item.Meta
-                        avatar={<SafetyCertificateOutlined style={{ fontSize: 20, color: isSelected ? 'var(--ant-color-primary)' : undefined }} />}
+                        avatar={
+                          <SafetyCertificateOutlined
+                            style={{ fontSize: 20, color: isSelected ? 'var(--ant-color-primary)' : undefined }}
+                          />
+                        }
                         title={<Text strong={isSelected}>{getRoleDisplayName(role)}</Text>}
                         description={
                           <Tag color={role.scope === 'PLATFORM' ? 'blue' : 'green'}>
@@ -255,11 +229,14 @@ export const RolesPermissions: React.FC = () => {
                       const groupLabel = getPermissionGroupLabelFr(prefix);
                       return (
                         <div key={prefix}>
-                          <Text strong style={{ fontSize: 13, color: 'rgba(0,0,0,0.75)', display: 'block', marginBottom: 12 }}>
+                          <Text
+                            strong
+                            style={{ fontSize: 13, color: 'rgba(0,0,0,0.75)', display: 'block', marginBottom: 12 }}
+                          >
                             {groupLabel}
                           </Text>
                           <Row gutter={[16, 8]}>
-                            {perms.map((permission) => {
+                            {perms.map(permission => {
                               const isChecked = rolePermissions.has(permission.id);
                               const { label: permLabel, description: permDesc } = getPermissionLabelFr(
                                 permission.key,
@@ -303,6 +280,6 @@ export const RolesPermissions: React.FC = () => {
           </Col>
         </Row>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

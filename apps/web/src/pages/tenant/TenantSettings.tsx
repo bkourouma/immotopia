@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { App, Form, Input, Card, Button, Space, Alert, Spin, Typography, Row, Col } from 'antd';
 import { SaveOutlined, SettingOutlined, CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { getTenant, updateTenantSelf, Tenant, UpdateTenantRequest } from '../../services/tenant-service';
 
 const { Title, Text } = Typography;
@@ -92,17 +91,17 @@ export const TenantSettings: React.FC = () => {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
           <Spin size="large" />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (error && !tenant) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <Alert
             message="Erreur"
@@ -117,12 +116,12 @@ export const TenantSettings: React.FC = () => {
             }
           />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Header */}
         <div>
@@ -290,6 +289,6 @@ export const TenantSettings: React.FC = () => {
           icon={<SettingOutlined />}
         />
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

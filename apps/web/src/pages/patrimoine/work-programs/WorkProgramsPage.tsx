@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Alert, Select, Space, Spin, Typography } from 'antd';
-import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { WorkProgramTimeline } from '../../../components/patrimoine/WorkProgramTimeline';
 import { listWorkPrograms } from '../../../services/patrimoine-service';
 import { listProperties } from '../../../services/property-service';
@@ -30,9 +29,9 @@ export const WorkProgramsPage: React.FC = () => {
       try {
         const propertiesResp = await listProperties(effectiveTenantId, { page: 1, limit: 100 });
         const result = await Promise.all(
-          propertiesResp.properties.map(async (property) => {
+          propertiesResp.properties.map(async property => {
             const programs = await listWorkPrograms(effectiveTenantId, property.id);
-            return programs.map((program) => ({ ...program, propertyLabel: property.title }));
+            return programs.map(program => ({ ...program, propertyLabel: property.title }));
           })
         );
         setAllPrograms(result.flat());
@@ -45,10 +44,10 @@ export const WorkProgramsPage: React.FC = () => {
     void run();
   }, [effectiveTenantId]);
 
-  const filtered = statusFilter ? allPrograms.filter((program) => program.status === statusFilter) : allPrograms;
+  const filtered = statusFilter ? allPrograms.filter(program => program.status === statusFilter) : allPrograms;
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
           <Title level={2} style={{ marginBottom: 0 }}>
@@ -62,7 +61,7 @@ export const WorkProgramsPage: React.FC = () => {
           placeholder="Filtrer par statut"
           style={{ width: 280 }}
           value={statusFilter}
-          onChange={(value) => setStatusFilter(value)}
+          onChange={value => setStatusFilter(value)}
           options={[
             { value: 'PLANNED', label: 'Planifié' },
             { value: 'IN_PROGRESS', label: 'En cours' },
@@ -79,6 +78,6 @@ export const WorkProgramsPage: React.FC = () => {
         {error ? <Alert type="error" showIcon message={error} /> : null}
         {!loading ? <WorkProgramTimeline items={filtered} /> : null}
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

@@ -1,20 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import {
-  Card,
-  Button,
-  Tabs,
-  Space,
-  Typography,
-  Empty,
-} from 'antd';
-import {
-  FileTextOutlined,
-  ArrowRightOutlined,
-  ShoppingCartOutlined,
-  HomeOutlined,
-} from '@ant-design/icons';
-import { DashboardLayout } from '../components/dashboard/dashboard-layout';
+import { Card, Button, Tabs, Space, Typography, Empty } from 'antd';
+import { FileTextOutlined, ArrowRightOutlined, ShoppingCartOutlined, HomeOutlined } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext';
 
 const { Title, Text } = Typography;
@@ -50,11 +37,11 @@ export const Transactions: React.FC = () => {
 
   if (!tenantId) {
     return (
-      <DashboardLayout>
+      <>
         <Card>
           <Text type="secondary">Aucun tenant sélectionné.</Text>
         </Card>
-      </DashboardLayout>
+      </>
     );
   }
 
@@ -81,12 +68,14 @@ export const Transactions: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <Title level={2} style={{ margin: 0 }}>Transactions</Title>
+            <Title level={2} style={{ margin: 0 }}>
+              Transactions
+            </Title>
             <Text type="secondary">Gérez vos transactions immobilières (ventes et locations)</Text>
           </div>
         </div>
@@ -98,16 +87,16 @@ export const Transactions: React.FC = () => {
           items={[
             {
               key: 'all',
-              label: 'Toutes les transactions',
+              label: 'Toutes les transactions'
             },
             {
               key: 'sales',
-              label: 'Ventes',
+              label: 'Ventes'
             },
             {
               key: 'rentals',
-              label: 'Locations',
-            },
+              label: 'Locations'
+            }
           ]}
         />
 
@@ -117,7 +106,9 @@ export const Transactions: React.FC = () => {
             image={<FileTextOutlined style={{ fontSize: 64, color: '#d9d9d9' }} />}
             description={
               <Space direction="vertical" size="small">
-                <Title level={4} style={{ margin: 0 }}>{getTitle()}</Title>
+                <Title level={4} style={{ margin: 0 }}>
+                  {getTitle()}
+                </Title>
                 <Text type="secondary">{getDescription()}</Text>
               </Space>
             }
@@ -133,10 +124,7 @@ export const Transactions: React.FC = () => {
                 </Button>
               )}
               {(activeTab === 'all' || activeTab === 'rentals') && (
-                <Button
-                  icon={<HomeOutlined />}
-                  onClick={() => navigate(`/tenant/${tenantId}/rental/leases`)}
-                >
+                <Button icon={<HomeOutlined />} onClick={() => navigate(`/tenant/${tenantId}/rental/leases`)}>
                   Voir les baux
                 </Button>
               )}
@@ -144,7 +132,6 @@ export const Transactions: React.FC = () => {
           </Empty>
         </Card>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };
-

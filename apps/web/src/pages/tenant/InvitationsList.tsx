@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { App, Table, Card, Button, Tag, Space, Popconfirm, Alert, Empty, Typography } from 'antd';
 import { MailOutlined, PlusOutlined, ReloadOutlined, CloseOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { resendInvitation, revokeInvitation } from '../../services/invitation-service';
 import apiClient from '../../utils/api-client';
 import type { ColumnsType } from 'antd/es/table';
@@ -155,7 +154,7 @@ export const InvitationsList: React.FC = () => {
   ];
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -191,6 +190,6 @@ export const InvitationsList: React.FC = () => {
           </div>
         </Card>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

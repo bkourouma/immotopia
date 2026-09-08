@@ -12,7 +12,6 @@ import {
   DeleteOutlined,
   CloseOutlined
 } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
   listInstallments,
   generateInstallments,
@@ -579,7 +578,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
   );
 
   if (isStandalone) {
-    return <DashboardLayout>{content}</DashboardLayout>;
+    return <>{content}</>;
   }
 
   return content;

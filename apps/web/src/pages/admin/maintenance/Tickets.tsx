@@ -17,7 +17,6 @@ import {
   Col
 } from 'antd';
 import { EyeOutlined, FilterOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { TicketStatusBadge } from '../../../components/maintenance/TicketStatusBadge';
 import { managerMaintenanceService } from '../../../services/maintenance-service';
 import { Ticket, MaintenanceTicketStatus, MaintenanceTicketPriority } from '../../../types/maintenance-types';
@@ -99,19 +98,19 @@ export const Tickets: React.FC = () => {
   };
 
   const handleFilterChange = (key: string, value: any) => {
-    setFilters((prev) => ({ ...prev, [key]: value, page: 1 }));
+    setFilters(prev => ({ ...prev, [key]: value, page: 1 }));
   };
 
   const handleDateRangeChange = (dates: any) => {
     if (dates && dates.length === 2) {
-      setFilters((prev) => ({
+      setFilters(prev => ({
         ...prev,
         dateFrom: dates[0].format('YYYY-MM-DD'),
         dateTo: dates[1].format('YYYY-MM-DD'),
         page: 1
       }));
     } else {
-      setFilters((prev) => ({
+      setFilters(prev => ({
         ...prev,
         dateFrom: undefined,
         dateTo: undefined,
@@ -121,7 +120,7 @@ export const Tickets: React.FC = () => {
   };
 
   const handlePageChange = (page: number) => {
-    setFilters((prev) => ({ ...prev, page }));
+    setFilters(prev => ({ ...prev, page }));
   };
 
   const columns = [
@@ -135,8 +134,8 @@ export const Tickets: React.FC = () => {
         <Button
           type="link"
           onClick={() => navigate(`/tenant/${effectiveTenantId}/admin/maintenance/tickets/${record.id}`)}
-          style={{ 
-            padding: 0, 
+          style={{
+            padding: 0,
             textAlign: 'left',
             maxWidth: '100%',
             overflow: 'hidden',
@@ -170,9 +169,7 @@ export const Tickets: React.FC = () => {
       dataIndex: 'priority',
       key: 'priority',
       width: 120,
-      render: (priority: string) => (
-        <Tag color={priorityColors[priority]}>{priorityLabels[priority] || priority}</Tag>
-      )
+      render: (priority: string) => <Tag color={priorityColors[priority]}>{priorityLabels[priority] || priority}</Tag>
     },
     {
       title: 'Statut',
@@ -205,19 +202,19 @@ export const Tickets: React.FC = () => {
         if (!date) {
           return <span style={{ color: '#999' }}>-</span>;
         }
-        
+
         // Try dayjs first (more lenient)
         const dayjsDate = dayjs(date);
         if (dayjsDate.isValid()) {
           return dayjsDate.format('DD MMM YYYY');
         }
-        
+
         // Fallback to safeFormatDate
         const formatted = safeFormatDate(date, 'DD MMM YYYY', '');
         if (formatted && formatted !== 'Date invalide') {
           return formatted;
         }
-        
+
         // Last resort: try to display the raw value if it exists
         return <span style={{ color: '#999' }}>-</span>;
       }
@@ -239,14 +236,14 @@ export const Tickets: React.FC = () => {
 
   if (loading && tickets.length === 0) {
     return (
-      <DashboardLayout>
+      <>
         <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <div style={{ padding: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <Title level={2}>Gestion des tickets de maintenance</Title>
@@ -260,7 +257,7 @@ export const Tickets: React.FC = () => {
                 allowClear
                 style={{ width: '100%' }}
                 value={filters.status}
-                onChange={(value) => handleFilterChange('status', value)}
+                onChange={value => handleFilterChange('status', value)}
               >
                 <Option value="DECLARED">Déclaré</Option>
                 <Option value="IN_PROGRESS">En cours</Option>
@@ -276,7 +273,7 @@ export const Tickets: React.FC = () => {
                 allowClear
                 style={{ width: '100%' }}
                 value={filters.priority}
-                onChange={(value) => handleFilterChange('priority', value)}
+                onChange={value => handleFilterChange('priority', value)}
               >
                 <Option value="LOW">Faible</Option>
                 <Option value="MEDIUM">Moyenne</Option>
@@ -295,12 +292,7 @@ export const Tickets: React.FC = () => {
             </Col>
 
             <Col xs={24} sm={24} md={4} lg={6}>
-              <Button 
-                icon={<FilterOutlined />} 
-                onClick={loadTickets}
-                block
-                type="primary"
-              >
+              <Button icon={<FilterOutlined />} onClick={loadTickets} block type="primary">
                 Appliquer les filtres
               </Button>
             </Col>
@@ -328,7 +320,7 @@ export const Tickets: React.FC = () => {
                     total={pagination.total}
                     pageSize={pagination.limit}
                     onChange={handlePageChange}
-                    showTotal={(total) => `Total: ${total} tickets`}
+                    showTotal={total => `Total: ${total} tickets`}
                   />
                 </div>
               )}
@@ -336,6 +328,6 @@ export const Tickets: React.FC = () => {
           )}
         </Card>
       </div>
-    </DashboardLayout>
+    </>
   );
 };

@@ -18,7 +18,6 @@ import {
   Divider
 } from 'antd';
 import { PlusOutlined, FilterOutlined, CloseOutlined, CalendarOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { ActivityForm } from '../../components/crm/ActivityForm';
 import { ActivityTimeline } from '../../components/crm/ActivityTimeline';
 import {
@@ -181,7 +180,7 @@ export const Activities: React.FC = () => {
   const activityTypes = ['CALL', 'EMAIL', 'SMS', 'WHATSAPP', 'VISIT', 'MEETING', 'NOTE', 'TASK'];
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Row justify="space-between" align="middle" gutter={[16, 16]}>
           <Col xs={24} sm={24} md={12}>
@@ -379,6 +378,6 @@ export const Activities: React.FC = () => {
           </Card>
         )}
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

@@ -38,7 +38,6 @@ import {
   FileExcelOutlined,
   CheckOutlined
 } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { ContactForm } from '../../components/crm/ContactForm';
 import { ActivityForm } from '../../components/crm/ActivityForm';
 import { BulkTagManager } from '../../components/crm/BulkTagManager';
@@ -387,7 +386,7 @@ export const Contacts: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Row justify="space-between" align="middle" gutter={[16, 16]}>
           <Col xs={24} sm={24} md={12}>
@@ -723,6 +722,6 @@ export const Contacts: React.FC = () => {
           />
         )}
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

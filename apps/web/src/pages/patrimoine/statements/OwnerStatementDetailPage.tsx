@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Alert, Button, Card, Descriptions, Space, Table, Tag, Typography } from 'antd';
-import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { getOwnerStatementById } from '../../../services/patrimoine-service';
 import type { OwnerStatement } from '../../../types/patrimoine-types';
 import { useAuth } from '../../../hooks/useAuth';
@@ -61,7 +60,7 @@ export const OwnerStatementDetailPage: React.FC = () => {
   }, [effectiveTenantId, id]);
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Space>
           <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/patrimoine/statements`)}>Retour</Button>
@@ -79,8 +78,12 @@ export const OwnerStatementDetailPage: React.FC = () => {
               </Descriptions.Item>
               <Descriptions.Item label="Période">{statement.period}</Descriptions.Item>
               <Descriptions.Item label="Propriétaire">{ownerLabel(statement)}</Descriptions.Item>
-              <Descriptions.Item label="Total revenus">{Number(statement.totalRevenue).toLocaleString('fr-FR')}</Descriptions.Item>
-              <Descriptions.Item label="Total charges">{Number(statement.totalExpenses).toLocaleString('fr-FR')}</Descriptions.Item>
+              <Descriptions.Item label="Total revenus">
+                {Number(statement.totalRevenue).toLocaleString('fr-FR')}
+              </Descriptions.Item>
+              <Descriptions.Item label="Total charges">
+                {Number(statement.totalExpenses).toLocaleString('fr-FR')}
+              </Descriptions.Item>
               <Descriptions.Item label="Montant net">
                 {Number(statement.netAmount).toLocaleString('fr-FR')} {statement.currency}
               </Descriptions.Item>
@@ -97,18 +100,26 @@ export const OwnerStatementDetailPage: React.FC = () => {
             dataSource={statement?.items ?? []}
             pagination={false}
             columns={[
-              { title: 'Bien', key: 'property', render: (_: unknown, record: OwnerStatement['items'][number]) => propertyLabel(record) },
+              {
+                title: 'Bien',
+                key: 'property',
+                render: (_: unknown, record: OwnerStatement['items'][number]) => propertyLabel(record)
+              },
               { title: 'Libellé', dataIndex: 'label' },
               {
                 title: 'Type',
                 dataIndex: 'type',
                 render: (value: OwnerStatement['items'][number]['type']) => <Tag>{statementItemTypeLabel(value)}</Tag>
               },
-              { title: 'Montant', dataIndex: 'amount', render: (value: number) => Number(value).toLocaleString('fr-FR') }
+              {
+                title: 'Montant',
+                dataIndex: 'amount',
+                render: (value: number) => Number(value).toLocaleString('fr-FR')
+              }
             ]}
           />
         </Card>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

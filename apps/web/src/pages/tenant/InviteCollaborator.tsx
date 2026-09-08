@@ -2,7 +2,6 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { App, Alert, Button, Card, Checkbox, Form, Input, Space, Typography } from 'antd';
 import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { InviteCollaboratorRequest, inviteCollaborator } from '../../services/invitation-service';
 import apiClient from '../../utils/api-client';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
@@ -119,7 +118,7 @@ export const InviteCollaborator: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <Space orientation="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <Button
@@ -250,6 +249,6 @@ export const InviteCollaborator: React.FC = () => {
           </Form>
         </Card>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

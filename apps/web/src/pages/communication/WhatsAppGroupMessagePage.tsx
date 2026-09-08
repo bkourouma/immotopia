@@ -11,7 +11,6 @@ import {
   SmileOutlined,
   StrikethroughOutlined
 } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { whatsappNotificationConfigService } from '../../services/whatsapp-notification-config-service';
 
 const { Title, Text } = Typography;
@@ -167,7 +166,7 @@ export function WhatsAppGroupMessagePage() {
   );
 
   return (
-    <DashboardLayout>
+    <>
       <Card>
         <Space align="center" style={{ marginBottom: 8 }}>
           <PictureOutlined style={{ color: '#25D366', fontSize: 20 }} />
@@ -286,6 +285,6 @@ export function WhatsAppGroupMessagePage() {
           </Button>
         </Space>
       </Card>
-    </DashboardLayout>
+    </>
   );
 }

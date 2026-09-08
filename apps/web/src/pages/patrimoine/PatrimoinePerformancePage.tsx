@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Alert, Select, Space, Spin, Typography } from 'antd';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { YieldCalculator, type YieldAssumptionsInput } from '../../components/patrimoine/YieldCalculator';
 import { YieldProjectionChart } from '../../components/patrimoine/YieldProjectionChart';
 import { getPatrimoinePerformance } from '../../services/patrimoine-service';
@@ -59,7 +58,7 @@ export const PatrimoinePerformancePage: React.FC = () => {
     const run = async () => {
       try {
         const properties = await listProperties(effectiveTenantId, { page: 1, limit: 100 });
-        setPropertyOptions(properties.properties.map((property) => ({ value: property.id, label: property.title })));
+        setPropertyOptions(properties.properties.map(property => ({ value: property.id, label: property.title })));
       } catch {
         setPropertyOptions([]);
       }
@@ -112,7 +111,7 @@ export const PatrimoinePerformancePage: React.FC = () => {
   }, [assumptions, effectiveTenantId, propertyId]);
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
           <Title level={2} style={{ marginBottom: 0 }}>
@@ -132,10 +131,12 @@ export const PatrimoinePerformancePage: React.FC = () => {
           }
           options={propertyOptions}
           value={propertyId}
-          onChange={(value) => setPropertyId(value)}
+          onChange={value => setPropertyId(value)}
         />
 
-        {!propertyId ? <Alert type="info" showIcon message="Sélectionnez un bien pour afficher la performance." /> : null}
+        {!propertyId ? (
+          <Alert type="info" showIcon message="Sélectionnez un bien pour afficher la performance." />
+        ) : null}
         {loading ? (
           <div style={{ textAlign: 'center', padding: '24px 0' }}>
             <Spin />
@@ -148,12 +149,12 @@ export const PatrimoinePerformancePage: React.FC = () => {
               data={data}
               loading={loading}
               assumptions={assumptions}
-              onRecalculate={(nextAssumptions) => setAssumptions(nextAssumptions)}
+              onRecalculate={nextAssumptions => setAssumptions(nextAssumptions)}
             />
             <YieldProjectionChart data={data?.projection ?? []} />
           </>
         ) : null}
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

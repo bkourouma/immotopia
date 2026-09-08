@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Table, Button, Tag, Space, Typography, Empty, Alert, Pagination, Select, Row, Col, Tabs } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { EyeOutlined, PlusOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
   listPayments,
   createPayment,
@@ -334,7 +333,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   );
 
   if (isStandalone) {
-    return <DashboardLayout>{content}</DashboardLayout>;
+    return <>{content}</>;
   }
 
   return content;

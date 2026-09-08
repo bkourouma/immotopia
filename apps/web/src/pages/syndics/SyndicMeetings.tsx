@@ -19,7 +19,6 @@ import {
 } from 'antd';
 import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { meetingStatusLabels, meetingTypeLabels } from '../../components/syndics/labels';
 import { createMeeting, listMeetings } from '../../services/syndic-service';
 import { GeneralMeeting, MeetingType } from '../../types/syndic-types';
@@ -106,7 +105,7 @@ export const SyndicMeetings: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
@@ -225,6 +224,6 @@ export const SyndicMeetings: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
-    </DashboardLayout>
+    </>
   );
 };

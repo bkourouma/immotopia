@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { App, Card, Typography, Space, Button, Spin, Divider, Input, Popconfirm } from 'antd';
 import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { TicketStatusBadge } from '../../../components/maintenance/TicketStatusBadge';
 import { TicketTimeline } from '../../../components/maintenance/TicketTimeline';
 import { CommentThread } from '../../../components/maintenance/CommentThread';
@@ -101,26 +100,26 @@ export const TicketDetail: React.FC = () => {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <Spin size="large" style={{ display: 'block', textAlign: 'center', padding: '50px' }} />
-      </DashboardLayout>
+      </>
     );
   }
 
   if (!ticket) {
     return (
-      <DashboardLayout>
+      <>
         <Card>
           <Text>Ticket introuvable</Text>
         </Card>
-      </DashboardLayout>
+      </>
     );
   }
 
   const formattedCreatedDate = formatTicketDate(ticket.createdAt);
 
   return (
-    <DashboardLayout>
+    <>
       <div style={{ padding: '24px' }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>
@@ -229,6 +228,6 @@ export const TicketDetail: React.FC = () => {
           </Card>
         </Space>
       </div>
-    </DashboardLayout>
+    </>
   );
 };

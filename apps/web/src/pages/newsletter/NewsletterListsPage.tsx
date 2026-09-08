@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom';
 import { App, Card, Button, Modal, Form, Input, Select, Switch, Space, Typography, Collapse } from 'antd';
 import { DownloadOutlined, UserAddOutlined } from '@ant-design/icons';
 import { ArrowLeftOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { ListDashboard } from '../../components/newsletter/ListDashboard';
 import { SubscriberList } from '../../components/newsletter/SubscriberList';
 import { ImportCsvModal } from '../../components/newsletter/ImportCsvModal';
@@ -183,7 +182,7 @@ export function NewsletterListsPage() {
   const canEditList = selectedList?.type === 'MANUAL';
 
   return (
-    <DashboardLayout>
+    <>
       <div style={{ padding: 24 }}>
         {selectedList ? (
           <>
@@ -381,6 +380,6 @@ export function NewsletterListsPage() {
       >
         <AdvancedContactSearch mode="select" multiSelect={true} onSelectContacts={handleAddContactsFromSearch} />
       </Modal>
-    </DashboardLayout>
+    </>
   );
 }

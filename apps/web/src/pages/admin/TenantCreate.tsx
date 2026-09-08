@@ -1,19 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Card,
-  Form,
-  Input,
-  Radio,
-  Button,
-  Space,
-  Typography,
-  Alert,
-  Row,
-  Col,
-} from 'antd';
+import { Card, Form, Input, Radio, Button, Space, Typography, Alert, Row, Col } from 'antd';
 import { ArrowLeftOutlined, BankOutlined, TeamOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { createTenant, CreateTenantRequest } from '../../services/tenant-service';
 
 const { Title, Text } = Typography;
@@ -44,7 +32,7 @@ export const TenantCreate: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <Button
@@ -69,13 +57,13 @@ export const TenantCreate: React.FC = () => {
               name: '',
               legalName: '',
               contactEmail: '',
-              contactPhone: '',
-              country: '',
+              contactPhone: '+225 ',
+              country: "Côte d'Ivoire",
               city: '',
               address: '',
               brandingPrimaryColor: '',
               subdomain: '',
-              customDomain: '',
+              customDomain: ''
             }}
             onFinish={handleSubmit}
           >
@@ -96,7 +84,7 @@ export const TenantCreate: React.FC = () => {
                 optionType="button"
                 buttonStyle="solid"
                 value={tenantType}
-                onChange={(e) => setTenantType(e.target.value)}
+                onChange={e => setTenantType(e.target.value)}
               >
                 <Radio.Button value="AGENCY">
                   <Space>
@@ -112,19 +100,13 @@ export const TenantCreate: React.FC = () => {
                 </Radio.Button>
               </Radio.Group>
               <Text type="secondary" style={{ display: 'block', marginTop: 8, fontSize: 12 }}>
-                {tenantType === 'AGENCY'
-                  ? 'Agence immobilière traditionnelle'
-                  : 'Opérateur ou promoteur immobilier'}
+                {tenantType === 'AGENCY' ? 'Agence immobilière traditionnelle' : 'Opérateur ou promoteur immobilier'}
               </Text>
             </Form.Item>
 
             <Row gutter={24}>
               <Col xs={24} sm={12}>
-                <Form.Item
-                  label="Nom"
-                  name="name"
-                  rules={[{ required: true, message: 'Le nom est requis' }]}
-                >
+                <Form.Item label="Nom" name="name" rules={[{ required: true, message: 'Le nom est requis' }]}>
                   <Input placeholder="Nom du tenant" />
                 </Form.Item>
               </Col>
@@ -140,7 +122,7 @@ export const TenantCreate: React.FC = () => {
               </Col>
               <Col xs={24} sm={12}>
                 <Form.Item label="Téléphone" name="contactPhone">
-                  <Input placeholder="+33 ..." />
+                  <Input placeholder="+225 07 00 00 00 00" />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
@@ -150,7 +132,7 @@ export const TenantCreate: React.FC = () => {
               </Col>
               <Col xs={24} sm={12}>
                 <Form.Item label="Pays" name="country">
-                  <Input placeholder="Pays" />
+                  <Input placeholder="Côte d'Ivoire" />
                 </Form.Item>
               </Col>
               <Col span={24}>
@@ -181,6 +163,6 @@ export const TenantCreate: React.FC = () => {
           </Form>
         </Card>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

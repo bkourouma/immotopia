@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { App, Card, Spin, Alert, Button, Descriptions, Checkbox, Space, Typography } from 'antd';
 import { ArrowLeftOutlined, EditOutlined, KeyOutlined, LogoutOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
   getMember,
   updateMember,
@@ -130,24 +129,24 @@ export const CollaboratorDetail: React.FC = () => {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
           <Spin size="large" />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (error || !member) {
     return (
-      <DashboardLayout>
+      <>
         <Alert type="error" showIcon message={error || 'Collaborateur introuvable'} style={{ margin: 16 }} />
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Header */}
         <Space align="center" wrap>
@@ -240,6 +239,6 @@ export const CollaboratorDetail: React.FC = () => {
           </div>
         </Card>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

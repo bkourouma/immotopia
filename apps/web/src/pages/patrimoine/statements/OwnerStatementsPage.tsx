@@ -1,7 +1,6 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { App, Alert, Button, Card, Space, Table, Tag, Typography } from 'antd';
-import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { OwnerStatementGenerator } from '../../../components/patrimoine/OwnerStatementGenerator';
 import { createOwnerStatement, listOwnerStatements, sendOwnerStatement } from '../../../services/patrimoine-service';
 import { listContacts } from '../../../services/crm-service';
@@ -115,7 +114,7 @@ export const OwnerStatementsPage: React.FC = () => {
   };
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
           <Title level={2} style={{ marginBottom: 0 }}>
@@ -178,6 +177,6 @@ export const OwnerStatementsPage: React.FC = () => {
           />
         </Card>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

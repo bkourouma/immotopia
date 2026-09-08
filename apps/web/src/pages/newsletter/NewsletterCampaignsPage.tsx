@@ -10,7 +10,6 @@ import {
   StopOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { CampaignForm } from '../../components/newsletter/CampaignForm';
 import {
   newsletterService,
@@ -305,7 +304,7 @@ export function NewsletterCampaignsPage() {
   ];
 
   return (
-    <DashboardLayout>
+    <>
       <div style={{ padding: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <Typography.Title level={4} style={{ margin: 0 }}>
@@ -440,6 +439,6 @@ export function NewsletterCampaignsPage() {
           style={{ width: '100%' }}
         />
       </Modal>
-    </DashboardLayout>
+    </>
   );
 }

@@ -14,7 +14,7 @@ import {
   Carousel,
   Descriptions,
   Empty,
-  Tabs,
+  Tabs
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -26,9 +26,8 @@ import {
   PlayCircleOutlined,
   ToolOutlined,
   MailOutlined,
-  BankOutlined,
+  BankOutlined
 } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { Property, PropertyStatus, PropertyMedia, PropertyMediaType } from '../../types/property-types';
 import { getProperty } from '../../services/property-service';
 import apiClient from '../../utils/api-client';
@@ -124,7 +123,7 @@ export const PropertyDetail: React.FC = () => {
       UNDER_OFFER: { color: 'processing', text: 'Sous offre' },
       RENTED: { color: 'purple', text: 'Loué' },
       SOLD: { color: 'error', text: 'Vendu' },
-      ARCHIVED: { color: 'default', text: 'Archivé' },
+      ARCHIVED: { color: 'default', text: 'Archivé' }
     };
     const config = status ? statusConfig[status] : { color: 'default', text: 'N/A' };
     return <Tag color={config.color}>{config.text}</Tag>;
@@ -132,27 +131,27 @@ export const PropertyDetail: React.FC = () => {
 
   if (!effectiveTenantId) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <Text type="secondary">Aucun tenant sélectionné</Text>
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
           <Spin size="large" />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (error || !property) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <Alert
             message="Erreur"
@@ -160,13 +159,11 @@ export const PropertyDetail: React.FC = () => {
             type="error"
             showIcon
             action={
-              <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>
-                Retour à la liste
-              </Button>
+              <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>Retour à la liste</Button>
             }
           />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
@@ -174,15 +171,12 @@ export const PropertyDetail: React.FC = () => {
   const videos = media.filter(m => m.mediaType === PropertyMediaType.VIDEO);
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <Space>
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}
-            >
+            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>
               Retour
             </Button>
             <div>
@@ -202,10 +196,7 @@ export const PropertyDetail: React.FC = () => {
             </div>
           </Space>
           <Space>
-            <Button
-              icon={<MailOutlined />}
-              onClick={() => setNewsletterModalOpen(true)}
-            >
+            <Button icon={<MailOutlined />} onClick={() => setNewsletterModalOpen(true)}>
               Créer campagne newsletter
             </Button>
             <Button
@@ -232,7 +223,15 @@ export const PropertyDetail: React.FC = () => {
               {/* Property Images Gallery */}
               <Card>
                 {photos.length === 0 ? (
-                  <div style={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }}>
+                  <div
+                    style={{
+                      height: 400,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: '#f0f0f0'
+                    }}
+                  >
                     <Empty
                       image={<HomeOutlined style={{ fontSize: 64, color: '#bfbfbf' }} />}
                       description="Aucune photo disponible"
@@ -240,14 +239,14 @@ export const PropertyDetail: React.FC = () => {
                   </div>
                 ) : (
                   <Carousel autoplay>
-                    {photos.map((photo) => (
+                    {photos.map(photo => (
                       <div key={photo.id}>
                         <Image
                           src={getMediaUrl(photo)}
                           alt={photo.fileName}
                           style={{ width: '100%', height: 400, objectFit: 'cover' }}
                           preview={{
-                            mask: 'Voir',
+                            mask: 'Voir'
                           }}
                         />
                       </div>
@@ -258,15 +257,17 @@ export const PropertyDetail: React.FC = () => {
 
               {/* Videos Section */}
               {videos.length > 0 && (
-                <Card title={<><PlayCircleOutlined /> Vidéos</>}>
+                <Card
+                  title={
+                    <>
+                      <PlayCircleOutlined /> Vidéos
+                    </>
+                  }
+                >
                   <Row gutter={[16, 16]}>
-                    {videos.map((video) => (
+                    {videos.map(video => (
                       <Col key={video.id} xs={24} sm={12}>
-                        <video
-                          src={getMediaUrl(video)}
-                          controls
-                          style={{ width: '100%', borderRadius: 8 }}
-                        />
+                        <video src={getMediaUrl(video)} controls style={{ width: '100%', borderRadius: 8 }} />
                       </Col>
                     ))}
                   </Row>
@@ -286,9 +287,7 @@ export const PropertyDetail: React.FC = () => {
                   {property.surfaceArea && (
                     <Col xs={12} sm={6}>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1890ff' }}>
-                          {property.surfaceArea}
-                        </div>
+                        <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1890ff' }}>{property.surfaceArea}</div>
                         <Text type="secondary">m²</Text>
                       </div>
                     </Col>
@@ -296,9 +295,7 @@ export const PropertyDetail: React.FC = () => {
                   {property.rooms && (
                     <Col xs={12} sm={6}>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1890ff' }}>
-                          {property.rooms}
-                        </div>
+                        <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1890ff' }}>{property.rooms}</div>
                         <Text type="secondary">Pièces</Text>
                       </div>
                     </Col>
@@ -306,9 +303,7 @@ export const PropertyDetail: React.FC = () => {
                   {property.bedrooms && (
                     <Col xs={12} sm={6}>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1890ff' }}>
-                          {property.bedrooms}
-                        </div>
+                        <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1890ff' }}>{property.bedrooms}</div>
                         <Text type="secondary">Chambres</Text>
                       </div>
                     </Col>
@@ -316,9 +311,7 @@ export const PropertyDetail: React.FC = () => {
                   {property.bathrooms && (
                     <Col xs={12} sm={6}>
                       <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1890ff' }}>
-                          {property.bathrooms}
-                        </div>
+                        <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1890ff' }}>{property.bathrooms}</div>
                         <Text type="secondary">Salles de bain</Text>
                       </div>
                     </Col>
@@ -328,11 +321,7 @@ export const PropertyDetail: React.FC = () => {
 
               {/* Apartments Section - Only for IMMEUBLE type */}
               {property.propertyType === 'IMMEUBLE' && (
-                <PropertyApartments
-                  propertyId={id!}
-                  tenantId={effectiveTenantId!}
-                  property={property}
-                />
+                <PropertyApartments propertyId={id!} tenantId={effectiveTenantId!} property={property} />
               )}
 
               {/* Maintenance History Tab */}
@@ -377,13 +366,7 @@ export const PropertyDetail: React.FC = () => {
                 </div>
                 <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
                   {property.transactionModes
-                    .map((mode) =>
-                      mode === 'SALE'
-                        ? 'Vente'
-                        : mode === 'RENTAL'
-                        ? 'Location'
-                        : 'Court terme'
-                    )
+                    .map(mode => (mode === 'SALE' ? 'Vente' : mode === 'RENTAL' ? 'Location' : 'Court terme'))
                     .join(' • ')}
                 </Text>
                 {property.fees && (
@@ -396,19 +379,15 @@ export const PropertyDetail: React.FC = () => {
               {/* Property Info */}
               <Card title="Informations">
                 <Descriptions column={1} size="small">
-                  <Descriptions.Item label="Référence">
-                    {property.internalReference}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Type">
-                    {property.propertyType}
-                  </Descriptions.Item>
+                  <Descriptions.Item label="Référence">{property.internalReference}</Descriptions.Item>
+                  <Descriptions.Item label="Type">{property.propertyType}</Descriptions.Item>
                   <Descriptions.Item label="Propriété de">
                     {(() => {
                       // Priority 1: If owner is loaded and has name/email, display it
                       if (property.owner && (property.owner.fullName || property.owner.email)) {
                         return property.owner.fullName || property.owner.email;
                       }
-                      
+
                       // Priority 2: If ownershipType is TENANT
                       if (property.ownershipType === 'TENANT') {
                         // If ownerUserId exists, it means a specific owner was selected
@@ -420,7 +399,7 @@ export const PropertyDetail: React.FC = () => {
                         const tenant = (property as any).tenant;
                         return tenant?.name || 'Agence';
                       }
-                      
+
                       // Priority 3: If ownershipType is PUBLIC
                       if (property.ownershipType === 'PUBLIC') {
                         if (property.ownerUserId) {
@@ -429,7 +408,7 @@ export const PropertyDetail: React.FC = () => {
                         }
                         return 'Publique';
                       }
-                      
+
                       // Priority 4: If ownershipType is CLIENT
                       if (property.ownershipType === 'CLIENT') {
                         if (property.ownerUserId) {
@@ -437,7 +416,7 @@ export const PropertyDetail: React.FC = () => {
                         }
                         return 'Client';
                       }
-                      
+
                       // Default fallback
                       return 'Agence';
                     })()}
@@ -447,8 +426,8 @@ export const PropertyDetail: React.FC = () => {
                       {property.furnishingStatus === 'FURNISHED'
                         ? 'Oui'
                         : property.furnishingStatus === 'UNFURNISHED'
-                        ? 'Non'
-                        : 'Partiellement'}
+                          ? 'Non'
+                          : 'Partiellement'}
                     </Descriptions.Item>
                   )}
                   {property.availability && (
@@ -456,8 +435,8 @@ export const PropertyDetail: React.FC = () => {
                       {property.availability === 'AVAILABLE'
                         ? 'Disponible'
                         : property.availability === 'UNAVAILABLE'
-                        ? 'Indisponible'
-                        : 'Bientôt disponible'}
+                          ? 'Indisponible'
+                          : 'Bientôt disponible'}
                     </Descriptions.Item>
                   )}
                 </Descriptions>
@@ -496,11 +475,7 @@ export const PropertyDetail: React.FC = () => {
                   </Space>
                 }
               >
-                <PropertyVisitScheduler
-                  propertyId={id!}
-                  tenantId={effectiveTenantId!}
-                  onVisitScheduled={() => {}}
-                />
+                <PropertyVisitScheduler propertyId={id!} tenantId={effectiveTenantId!} onVisitScheduled={() => {}} />
               </Card>
             </Space>
           </Col>
@@ -512,9 +487,9 @@ export const PropertyDetail: React.FC = () => {
         onClose={() => setNewsletterModalOpen(false)}
         tenantId={effectiveTenantId!}
         property={property}
-        imageUrls={photos.map((p) => getMediaUrl(p))}
+        imageUrls={photos.map(p => getMediaUrl(p))}
         onSuccess={() => setNewsletterModalOpen(false)}
       />
-    </DashboardLayout>
+    </>
   );
 };

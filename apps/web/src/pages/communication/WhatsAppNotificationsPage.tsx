@@ -17,7 +17,6 @@ import {
   Alert
 } from 'antd';
 import { EditOutlined, MessageOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
   whatsappNotificationConfigService,
   type WhatsappNotificationConfigItem,
@@ -181,7 +180,7 @@ export function WhatsAppNotificationsPage() {
   ];
 
   return (
-    <DashboardLayout>
+    <>
       <Card style={{ marginBottom: 24 }}>
         <Space align="center" style={{ marginBottom: 8 }}>
           <MessageOutlined style={{ fontSize: 20, color: '#25D366' }} />
@@ -311,6 +310,6 @@ export function WhatsAppNotificationsPage() {
           <Table rowKey="key" columns={columns} dataSource={items} pagination={false} size="middle" />
         </Spin>
       </Card>
-    </DashboardLayout>
+    </>
   );
 }

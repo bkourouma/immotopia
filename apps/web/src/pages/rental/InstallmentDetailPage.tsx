@@ -1,19 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Button,
-  Card,
-  Row,
-  Col,
-  Tag,
-  Typography,
-  Spin,
-  Alert,
-  Descriptions,
-  Space,
-} from 'antd';
+import { Button, Card, Row, Col, Tag, Typography, Spin, Alert, Descriptions, Space } from 'antd';
 import { ArrowLeftOutlined, DollarOutlined, CalendarOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { getInstallment, RentalInstallment, RentalInstallmentStatus } from '../../services/rental-service';
 
 const { Title, Text } = Typography;
@@ -40,10 +28,10 @@ export const InstallmentDetailPage: React.FC = () => {
       if (response.success) {
         setInstallment(response.data);
       } else {
-        setError('Erreur lors du chargement de l\'Ã©chÃ©ance');
+        setError("Erreur lors du chargement de l'Ã©chÃ©ance");
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement de l\'Ã©chÃ©ance');
+      setError(err.response?.data?.message || "Erreur lors du chargement de l'Ã©chÃ©ance");
     } finally {
       setLoading(false);
     }
@@ -55,7 +43,7 @@ export const InstallmentDetailPage: React.FC = () => {
       DUE: { label: 'Échéance', color: 'blue' },
       PARTIAL: { label: 'Partiel', color: 'orange' },
       PAID: { label: 'Payé', color: 'green' },
-      OVERDUE: { label: 'En retard', color: 'red' },
+      OVERDUE: { label: 'En retard', color: 'red' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -69,7 +57,7 @@ export const InstallmentDetailPage: React.FC = () => {
   const formatCurrency = (amount: number, currency: string = 'FCFA') => {
     return new Intl.NumberFormat('fr-FR', {
       style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency,
+      currency: currency === 'FCFA' ? 'XOF' : currency
     }).format(amount);
   };
 
@@ -84,23 +72,19 @@ export const InstallmentDetailPage: React.FC = () => {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ textAlign: 'center', padding: 48 }}>
           <Spin size="large" tip="Chargement..." />
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   if (error || !installment) {
     return (
-      <DashboardLayout>
-        <Alert
-          message={error || 'Échéance non trouvée'}
-          type="error"
-          showIcon
-        />
-      </DashboardLayout>
+      <>
+        <Alert message={error || 'Échéance non trouvée'} type="error" showIcon />
+      </>
     );
   }
 
@@ -108,9 +92,11 @@ export const InstallmentDetailPage: React.FC = () => {
   const remaining = totalDue - Number(installment.amount_paid || 0);
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}
+        >
           <Space size="middle">
             <Button
               type="text"
@@ -180,31 +166,19 @@ export const InstallmentDetailPage: React.FC = () => {
                 <Descriptions.Item label="Période">
                   {installment.period_month}/{installment.period_year}
                 </Descriptions.Item>
-                <Descriptions.Item label="Date d'échéance">
-                  {formatDate(installment.due_date)}
-                </Descriptions.Item>
-                <Descriptions.Item label="Statut">
-                  {getStatusTag(installment.status)}
-                </Descriptions.Item>
+                <Descriptions.Item label="Date d'échéance">{formatDate(installment.due_date)}</Descriptions.Item>
+                <Descriptions.Item label="Statut">{getStatusTag(installment.status)}</Descriptions.Item>
                 {installment.paid_at && (
-                  <Descriptions.Item label="Date de paiement">
-                    {formatDate(installment.paid_at)}
-                  </Descriptions.Item>
+                  <Descriptions.Item label="Date de paiement">{formatDate(installment.paid_at)}</Descriptions.Item>
                 )}
                 <Descriptions.Item label="Devise">{installment.currency}</Descriptions.Item>
-                <Descriptions.Item label="Date de création">
-                  {formatDate(installment.created_at)}
-                </Descriptions.Item>
-                <Descriptions.Item label="Dernière mise à jour">
-                  {formatDate(installment.updated_at)}
-                </Descriptions.Item>
+                <Descriptions.Item label="Date de création">{formatDate(installment.created_at)}</Descriptions.Item>
+                <Descriptions.Item label="Dernière mise à jour">{formatDate(installment.updated_at)}</Descriptions.Item>
               </Descriptions>
             </Card>
           </Col>
         </Row>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };
-
-

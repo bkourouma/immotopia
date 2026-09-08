@@ -31,7 +31,6 @@ import {
   DeleteOutlined,
   MailOutlined
 } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { listProperties, Property, deleteProperty } from '../../services/property-service';
 import { PropertyMedia, PropertyMediaType } from '../../types/property-types';
 import apiClient from '../../utils/api-client';
@@ -337,16 +336,16 @@ export const Properties: React.FC = () => {
 
   if (!effectiveTenantId) {
     return (
-      <DashboardLayout>
+      <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <Text type="secondary">Aucun tenant sélectionné</Text>
         </div>
-      </DashboardLayout>
+      </>
     );
   }
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Page Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -780,6 +779,6 @@ export const Properties: React.FC = () => {
             : []
         }
       />
-    </DashboardLayout>
+    </>
   );
 };

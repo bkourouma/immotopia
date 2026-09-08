@@ -17,7 +17,6 @@ import {
   Collapse
 } from 'antd';
 import { EditOutlined, RollbackOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { HtmlCodeEditor } from '../../components/HtmlCodeEditor';
 import {
   emailNotificationConfigService,
@@ -186,7 +185,7 @@ export function EmailNotificationsPage() {
   ];
 
   return (
-    <DashboardLayout>
+    <>
       <Card>
         <Title level={4} style={{ marginBottom: 16 }}>
           Notifications email
@@ -259,6 +258,6 @@ export function EmailNotificationsPage() {
           </>
         )}
       </Modal>
-    </DashboardLayout>
+    </>
   );
 }

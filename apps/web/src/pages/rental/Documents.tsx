@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom';
 import { App, Table, Button, Tag, Space, Typography, Empty, Alert, Select, Row, Col } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, FileTextOutlined, EyeOutlined, DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
   listDocuments,
   generateDocument,
@@ -322,7 +321,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
   );
 
   if (isStandalone) {
-    return <DashboardLayout>{content}</DashboardLayout>;
+    return <>{content}</>;
   }
 
   return content;

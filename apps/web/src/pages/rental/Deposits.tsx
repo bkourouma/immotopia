@@ -3,7 +3,6 @@ import { useParams } from 'react-router-dom';
 import { App, Table, Button, Tag, Space, Typography, Empty, Alert, Card, Row, Col, Spin } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined, SafetyOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
   getDeposit,
   createDeposit,
@@ -86,12 +85,6 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
     }
   };
 
-  useEffect(() => {
-    if (deposit?.id) {
-      loadMovements();
-    }
-  }, [deposit?.id]);
-
   const handleCreateMovement = async (data: CreateDepositMovementRequest) => {
     if (!tenantId || !deposit) return;
     try {
@@ -150,7 +143,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
       </div>
     );
     if (isStandalone) {
-      return <DashboardLayout>{loadingContent}</DashboardLayout>;
+      return <>{loadingContent}</>;
     }
     return loadingContent;
   }
@@ -280,7 +273,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
   );
 
   if (isStandalone) {
-    return <DashboardLayout>{content}</DashboardLayout>;
+    return <>{content}</>;
   }
 
   return content;

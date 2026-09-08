@@ -16,19 +16,18 @@ import {
   Tooltip,
   Modal,
   Descriptions,
-  Divider,
+  Divider
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { SearchOutlined, FilterOutlined, EyeOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { getAuditLogs, AuditLog, AuditFilters } from '../../services/audit-service';
 import { getProperty } from '../../services/property-service';
 import type { Property } from '../../types/property-types';
 import {
   getAuditActionLabelFr,
   getAuditEntityTypeLabelFr,
-  getAuditResourceDisplayLabel,
+  getAuditResourceDisplayLabel
 } from '../../constants/audit-labels';
 
 const { Title, Text } = Typography;
@@ -41,13 +40,13 @@ export const AuditLogs: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<AuditFilters>({
     page: 1,
-    limit: 50,
+    limit: 50
   });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 50,
     total: 0,
-    totalPages: 0,
+    totalPages: 0
   });
   const [actionSearch, setActionSearch] = useState(filters.action || '');
   const [resourceTypeSearch, setResourceTypeSearch] = useState(filters.resourceType || '');
@@ -84,7 +83,7 @@ export const AuditLogs: React.FC = () => {
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -93,7 +92,7 @@ export const AuditLogs: React.FC = () => {
       ...filters,
       page: 1,
       action: actionSearch || undefined,
-      resourceType: resourceTypeSearch || undefined,
+      resourceType: resourceTypeSearch || undefined
     });
   };
 
@@ -106,14 +105,12 @@ export const AuditLogs: React.FC = () => {
       ...filters,
       page: 1,
       startDate: dates[0].format('YYYY-MM-DD'),
-      endDate: dates[1].format('YYYY-MM-DD'),
+      endDate: dates[1].format('YYYY-MM-DD')
     });
   };
 
   const dateRangeValue: [dayjs.Dayjs, dayjs.Dayjs] | null =
-    filters.startDate && filters.endDate
-      ? [dayjs(filters.startDate), dayjs(filters.endDate)]
-      : null;
+    filters.startDate && filters.endDate ? [dayjs(filters.startDate), dayjs(filters.endDate)] : null;
 
   const openDetailModal = (record: AuditLog) => {
     setSelectedLog(record);
@@ -126,7 +123,7 @@ export const AuditLogs: React.FC = () => {
     if (isProperty) {
       setPropertyLoading(true);
       getProperty(record.tenantId!, record.resourceId!)
-        .then((p) => setPropertyDetails(p))
+        .then(p => setPropertyDetails(p))
         .catch(() => setPropertyDetails(null))
         .finally(() => setPropertyLoading(false));
     }
@@ -144,13 +141,13 @@ export const AuditLogs: React.FC = () => {
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 160,
-      render: (date: string) => formatDate(date),
+      render: (date: string) => formatDate(date)
     },
     {
       title: 'Utilisateur',
       key: 'user',
       width: 180,
-      render: (_, record) => record.user?.fullName || record.user?.email || '-',
+      render: (_, record) => record.user?.fullName || record.user?.email || '-'
     },
     {
       title: 'Action',
@@ -174,7 +171,7 @@ export const AuditLogs: React.FC = () => {
             )}
           </Space>
         );
-      },
+      }
     },
     {
       title: 'Ressource',
@@ -183,28 +180,22 @@ export const AuditLogs: React.FC = () => {
         if (record.resourceLabel) {
           return record.resourceLabel;
         }
-        const { label, tooltip } = getAuditResourceDisplayLabel(
-          record.resourceType,
-          record.resourceId,
-          record.details
-        );
+        const { label, tooltip } = getAuditResourceDisplayLabel(record.resourceType, record.resourceId, record.details);
         if (tooltip) {
           return (
             <Tooltip title={tooltip}>
-              <span style={{ cursor: 'help', borderBottom: '1px dotted rgba(0,0,0,0.2)' }}>
-                {label}
-              </span>
+              <span style={{ cursor: 'help', borderBottom: '1px dotted rgba(0,0,0,0.2)' }}>{label}</span>
             </Tooltip>
           );
         }
         return label;
-      },
+      }
     },
     {
       title: 'Tenant',
       key: 'tenant',
       width: 140,
-      render: (_, record) => record.tenant?.name || '-',
+      render: (_, record) => record.tenant?.name || '-'
     },
     {
       title: (
@@ -215,7 +206,7 @@ export const AuditLogs: React.FC = () => {
       dataIndex: 'ipAddress',
       key: 'ipAddress',
       width: 130,
-      render: (ip: string) => ip || '-',
+      render: (ip: string) => ip || '-'
     },
     {
       title: 'Détails',
@@ -223,20 +214,15 @@ export const AuditLogs: React.FC = () => {
       width: 100,
       fixed: 'right',
       render: (_, record) => (
-        <Button
-          type="link"
-          size="small"
-          icon={<EyeOutlined />}
-          onClick={() => openDetailModal(record)}
-        >
+        <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openDetailModal(record)}>
           Voir
         </Button>
-      ),
-    },
+      )
+    }
   ];
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
           <Title level={3} style={{ margin: 0 }}>
@@ -255,7 +241,7 @@ export const AuditLogs: React.FC = () => {
                 placeholder="Rechercher une action..."
                 prefix={<SearchOutlined />}
                 value={actionSearch}
-                onChange={(e) => setActionSearch(e.target.value)}
+                onChange={e => setActionSearch(e.target.value)}
                 allowClear
               />
             </Col>
@@ -266,7 +252,7 @@ export const AuditLogs: React.FC = () => {
               <Input
                 placeholder="Type de ressource..."
                 value={resourceTypeSearch}
-                onChange={(e) => setResourceTypeSearch(e.target.value)}
+                onChange={e => setResourceTypeSearch(e.target.value)}
                 allowClear
               />
             </Col>
@@ -290,14 +276,7 @@ export const AuditLogs: React.FC = () => {
         </Card>
 
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
 
         <Card>
@@ -315,15 +294,15 @@ export const AuditLogs: React.FC = () => {
                   pageSize: pagination.limit,
                   total: pagination.total,
                   showSizeChanger: true,
-                  showTotal: (total) => `Total ${total} résultat(s)`,
+                  showTotal: total => `Total ${total} résultat(s)`,
                   pageSizeOptions: ['20', '50', '100'],
                   onChange: (page, pageSize) => {
                     setFilters({
                       ...filters,
                       page,
-                      limit: pageSize || pagination.limit,
+                      limit: pageSize || pagination.limit
                     });
-                  },
+                  }
                 }}
                 locale={{ emptyText: 'Aucune donnée' }}
               />
@@ -338,7 +317,7 @@ export const AuditLogs: React.FC = () => {
           footer={[
             <Button key="close" onClick={closeDetailModal}>
               Fermer
-            </Button>,
+            </Button>
           ]}
           width={720}
           destroyOnClose
@@ -346,9 +325,7 @@ export const AuditLogs: React.FC = () => {
           {selectedLog && (
             <>
               <Descriptions title="Informations du log" column={1} bordered size="small">
-                <Descriptions.Item label="Date">
-                  {formatDate(selectedLog.createdAt)}
-                </Descriptions.Item>
+                <Descriptions.Item label="Date">{formatDate(selectedLog.createdAt)}</Descriptions.Item>
                 <Descriptions.Item label="Utilisateur">
                   {selectedLog.user?.fullName || selectedLog.user?.email || '-'}
                   {selectedLog.user?.email && (
@@ -372,12 +349,8 @@ export const AuditLogs: React.FC = () => {
                       ? `${getAuditEntityTypeLabelFr(selectedLog.resourceType)} (${selectedLog.resourceId})`
                       : '-')}
                 </Descriptions.Item>
-                <Descriptions.Item label="Tenant">
-                  {selectedLog.tenant?.name || '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label="IP client">
-                  {selectedLog.ipAddress || '-'}
-                </Descriptions.Item>
+                <Descriptions.Item label="Tenant">{selectedLog.tenant?.name || '-'}</Descriptions.Item>
+                <Descriptions.Item label="IP client">{selectedLog.ipAddress || '-'}</Descriptions.Item>
                 <Descriptions.Item label="User-Agent">
                   {selectedLog.userAgent ? (
                     <Paragraph
@@ -422,37 +395,21 @@ export const AuditLogs: React.FC = () => {
                       <Spin />
                     ) : propertyDetails ? (
                       <Descriptions column={1} bordered size="small">
-                        <Descriptions.Item label="Référence">
-                          {propertyDetails.internalReference}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Titre">
-                          {propertyDetails.title}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Adresse">
-                          {propertyDetails.address}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Type de bien">
-                          {propertyDetails.propertyType}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Statut">
-                          {propertyDetails.status}
-                        </Descriptions.Item>
+                        <Descriptions.Item label="Référence">{propertyDetails.internalReference}</Descriptions.Item>
+                        <Descriptions.Item label="Titre">{propertyDetails.title}</Descriptions.Item>
+                        <Descriptions.Item label="Adresse">{propertyDetails.address}</Descriptions.Item>
+                        <Descriptions.Item label="Type de bien">{propertyDetails.propertyType}</Descriptions.Item>
+                        <Descriptions.Item label="Statut">{propertyDetails.status}</Descriptions.Item>
                         <Descriptions.Item label="Prix">
                           {propertyDetails.price != null
                             ? `${propertyDetails.price} ${propertyDetails.currency || ''}`
                             : '-'}
                         </Descriptions.Item>
                         <Descriptions.Item label="Surface">
-                          {propertyDetails.surfaceArea != null
-                            ? `${propertyDetails.surfaceArea} m²`
-                            : '-'}
+                          {propertyDetails.surfaceArea != null ? `${propertyDetails.surfaceArea} m²` : '-'}
                         </Descriptions.Item>
-                        <Descriptions.Item label="Pièces">
-                          {propertyDetails.rooms ?? '-'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Chambres">
-                          {propertyDetails.bedrooms ?? '-'}
-                        </Descriptions.Item>
+                        <Descriptions.Item label="Pièces">{propertyDetails.rooms ?? '-'}</Descriptions.Item>
+                        <Descriptions.Item label="Chambres">{propertyDetails.bedrooms ?? '-'}</Descriptions.Item>
                         <Descriptions.Item label="Modes de transaction">
                           {propertyDetails.transactionModes?.join(', ') || '-'}
                         </Descriptions.Item>
@@ -471,6 +428,6 @@ export const AuditLogs: React.FC = () => {
           )}
         </Modal>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };

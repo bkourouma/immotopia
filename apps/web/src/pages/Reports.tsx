@@ -1,21 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Card,
-  Button,
-  Row,
-  Col,
-  Space,
-  Typography,
-} from 'antd';
-import {
-  BarChartOutlined,
-  FileTextOutlined,
-  RiseOutlined,
-  DollarOutlined,
-  HomeOutlined,
-} from '@ant-design/icons';
-import { DashboardLayout } from '../components/dashboard/dashboard-layout';
+import { Card, Button, Row, Col, Space, Typography } from 'antd';
+import { BarChartOutlined, FileTextOutlined, RiseOutlined, DollarOutlined, HomeOutlined } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext';
 
 const { Title, Text } = Typography;
@@ -27,11 +13,11 @@ export const Reports: React.FC = () => {
 
   if (!tenantId) {
     return (
-      <DashboardLayout>
+      <>
         <Card>
           <Text type="secondary">Aucun tenant sélectionné.</Text>
         </Card>
-      </DashboardLayout>
+      </>
     );
   }
 
@@ -67,12 +53,14 @@ export const Reports: React.FC = () => {
   ];
 
   return (
-    <DashboardLayout>
+    <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <Title level={2} style={{ margin: 0 }}>Rapports</Title>
+            <Title level={2} style={{ margin: 0 }}>
+              Rapports
+            </Title>
             <Text type="secondary">Analysez vos données et générez des rapports détaillés</Text>
           </div>
         </div>
@@ -81,10 +69,7 @@ export const Reports: React.FC = () => {
         <Row gutter={[16, 16]}>
           {reportCards.map((card, index) => (
             <Col xs={24} md={12} key={index}>
-              <Card
-                hoverable
-                style={{ height: '100%' }}
-              >
+              <Card hoverable style={{ height: '100%' }}>
                 <Space size="middle" style={{ width: '100%' }}>
                   <div
                     style={{
@@ -96,7 +81,7 @@ export const Reports: React.FC = () => {
                       alignItems: 'center',
                       justifyContent: 'center',
                       minWidth: '56px',
-                      height: '56px',
+                      height: '56px'
                     }}
                   >
                     {card.icon}
@@ -108,10 +93,7 @@ export const Reports: React.FC = () => {
                     <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
                       {card.description}
                     </Text>
-                    <Button
-                      onClick={() => navigate(card.href)}
-                      block
-                    >
+                    <Button onClick={() => navigate(card.href)} block>
                       Consulter
                     </Button>
                   </div>
@@ -129,14 +111,12 @@ export const Reports: React.FC = () => {
               Rapports avancés à venir
             </Title>
             <Text type="secondary" style={{ maxWidth: '600px', margin: '0 auto', display: 'block' }}>
-              Nous travaillons sur des fonctionnalités de reporting avancées incluant des graphiques
-              interactifs, des exports personnalisés et des analyses prédictives. Ces fonctionnalités
-              seront disponibles prochainement.
+              Nous travaillons sur des fonctionnalités de reporting avancées incluant des graphiques interactifs, des
+              exports personnalisés et des analyses prédictives. Ces fonctionnalités seront disponibles prochainement.
             </Text>
           </div>
         </Card>
       </Space>
-    </DashboardLayout>
+    </>
   );
 };
-
