@@ -23,6 +23,7 @@
     "typecheck": "npm run typecheck -w @immotopia/api && npm run typecheck -w @immotopia/web",
     "test": "npm run test -w @immotopia/api",
     "test:web": "npm run test -w @immotopia/web",
+    "a11y:contrast": "npm run a11y:contrast -w @immotopia/web",
     "prepare": "husky"
   },
   "lint-staged": {
