@@ -1,8 +1,9 @@
 import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ConfigProvider, Spin } from 'antd';
+import { App as AntApp, ConfigProvider, Spin } from 'antd';
 import frFR from 'antd/locale/fr_FR';
 import { buildAntdTheme } from './theme/antd-theme';
+import { FeedbackBridge } from './lib/feedback';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -409,737 +410,743 @@ function App() {
     <ErrorBoundary>
       {/* `locale` francise DatePicker, Pagination, Table, Upload et Empty (§3.5). */}
       <ConfigProvider theme={antdTheme} locale={frFR}>
-        <AuthProvider>
-          <Router>
-            {/* Every page below is code-split; this boundary covers chunk loading. */}
-            <Suspense fallback={<RouteFallback />}>
-              <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="/verify-email" element={<VerifyEmail />} />
-                <Route path="/forgot-password" element={<ForgotPassword />} />
-                <Route path="/reset-password" element={<ResetPassword />} />
-                <Route path="/auth/callback" element={<AuthCallback />} />
-                <Route path="/auth/accept-invite" element={<AcceptInvitePage />} />
-                <Route path="/newsletter/unsubscribe" element={<UnsubscribePage />} />
-                <Route path="/newsletter/confirm" element={<ConfirmPage />} />
-                <Route path="/newsletter/subscribe" element={<SubscribePage />} />
-                <Route
-                  path="/dashboard"
-                  element={
-                    <ProtectedRoute>
-                      <Dashboard />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Property Routes */}
-                <Route
-                  path="/tenant/:tenantId/properties"
-                  element={
-                    <ProtectedRoute>
-                      <Properties />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/properties/new"
-                  element={
-                    <ProtectedRoute>
-                      <PropertyCreate />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/properties/visits/calendar"
-                  element={
-                    <ProtectedRoute>
-                      <PropertyVisitsCalendar />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/properties/:id/edit"
-                  element={
-                    <ProtectedRoute>
-                      <PropertyEdit />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/properties/:id"
-                  element={
-                    <ProtectedRoute>
-                      <PropertyDetail />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/patrimoine"
-                  element={
-                    <ProtectedRoute>
-                      <PatrimoineOverviewPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/patrimoine/performance"
-                  element={
-                    <ProtectedRoute>
-                      <PatrimoinePerformancePage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/patrimoine/work-programs"
-                  element={
-                    <ProtectedRoute>
-                      <WorkProgramsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/patrimoine/statements"
-                  element={
-                    <ProtectedRoute>
-                      <OwnerStatementsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/patrimoine/statements/:id"
-                  element={
-                    <ProtectedRoute>
-                      <OwnerStatementDetailPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/syndics"
-                  element={
-                    <ProtectedRoute>
-                      <SyndicsList />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/syndics/:syndicId"
-                  element={
-                    <ProtectedRoute>
-                      <SyndicDetail />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/syndics/:syndicId/lots"
-                  element={
-                    <ProtectedRoute>
-                      <SyndicLots />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/syndics/:syndicId/lots/:lotId/compte"
-                  element={
-                    <ProtectedRoute>
-                      <SyndicOwnerAccount />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/syndics/:syndicId/charges"
-                  element={
-                    <ProtectedRoute>
-                      <SyndicCharges />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/syndics/:syndicId/assemblees"
-                  element={
-                    <ProtectedRoute>
-                      <SyndicMeetings />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/syndics/:syndicId/assemblees/:meetingId"
-                  element={
-                    <ProtectedRoute>
-                      <SyndicMeetingDetail />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/syndics/:syndicId/prestataires"
-                  element={
-                    <ProtectedRoute>
-                      <SyndicProviders />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/syndics/:syndicId/documents"
-                  element={
-                    <ProtectedRoute>
-                      <SyndicDocuments />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/syndics/:syndicId/finances"
-                  element={
-                    <ProtectedRoute>
-                      <SyndicFinances />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/syndics/:syndicId/recouvrement"
-                  element={
-                    <ProtectedRoute>
-                      <SyndicRecovery />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/syndics/:syndicId/comptabilite"
-                  element={
-                    <ProtectedRoute>
-                      <SyndicAccounting />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/syndics/:syndicId/budgets"
-                  element={
-                    <ProtectedRoute>
-                      <SyndicBudgets />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/syndics/:syndicId/profils-incidents"
-                  element={
-                    <ProtectedRoute>
-                      <SyndicProfilesIncidents />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Legacy route for backward compatibility */}
-                <Route
-                  path="/properties"
-                  element={
-                    <ProtectedRoute>
-                      <Properties />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Admin Routes */}
-                <Route
-                  path="/admin/tenants"
-                  element={
-                    <ProtectedRoute requiredRole="SUPER_ADMIN">
-                      <TenantsList />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin/tenants/new"
-                  element={
-                    <ProtectedRoute requiredRole="SUPER_ADMIN">
-                      <TenantCreate />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin/tenants/:tenantId"
-                  element={
-                    <ProtectedRoute requiredRole="SUPER_ADMIN">
-                      <TenantDetail />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin/tenants/:tenantId/edit"
-                  element={
-                    <ProtectedRoute requiredRole="SUPER_ADMIN">
-                      <TenantDetail />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin/tenants/:tenantId/collaborators/:userId"
-                  element={
-                    <ProtectedRoute requiredRole="SUPER_ADMIN">
-                      <AdminCollaboratorDetail />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin/tenants/:tenantId/collaborators/invite"
-                  element={
-                    <ProtectedRoute requiredRole="SUPER_ADMIN">
-                      <AdminInviteCollaborator />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin/statistics"
-                  element={
-                    <ProtectedRoute requiredRole="SUPER_ADMIN">
-                      <Statistics />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin/audit"
-                  element={
-                    <ProtectedRoute requiredRole="SUPER_ADMIN">
-                      <AuditLogs />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/admin/roles-permissions"
-                  element={
-                    <ProtectedRoute requiredRole="SUPER_ADMIN">
-                      <RolesPermissions />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Tenant Routes */}
-                <Route
-                  path="/tenant/:tenantId/collaborators"
-                  element={
-                    <ProtectedRoute>
-                      <CollaboratorsList />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/collaborators/:userId"
-                  element={
-                    <ProtectedRoute>
-                      <CollaboratorDetail />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/invite"
-                  element={
-                    <ProtectedRoute>
-                      <InviteCollaborator />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/invitations"
-                  element={
-                    <ProtectedRoute>
-                      <InvitationsList />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/settings"
-                  element={
-                    <ProtectedRoute>
-                      <TenantSettings />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/documents/templates"
-                  element={
-                    <ProtectedRoute>
-                      <DocumentTemplates />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Client Routes */}
-                <Route
-                  path="/clients"
-                  element={
-                    <ProtectedRoute>
-                      <Clients />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/clients/new"
-                  element={
-                    <ProtectedRoute>
-                      <ClientNewRedirect />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/clients/groups"
-                  element={
-                    <ProtectedRoute>
-                      <ClientGroups />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* CRM Routes */}
-                <Route
-                  path="/tenant/:tenantId/crm/contacts"
-                  element={
-                    <ProtectedRoute>
-                      <Contacts />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/crm/contacts/new"
-                  element={
-                    <ProtectedRoute>
-                      <ContactFormPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/crm/contacts/:contactId"
-                  element={
-                    <ProtectedRoute>
-                      <ContactDetailPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/crm/contacts/:contactId/edit"
-                  element={
-                    <ProtectedRoute>
-                      <ContactFormPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/crm/deals"
-                  element={
-                    <ProtectedRoute>
-                      <Deals />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/crm/deals/new"
-                  element={
-                    <ProtectedRoute>
-                      <DealFormPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/crm/deals/:dealId"
-                  element={
-                    <ProtectedRoute>
-                      <DealDetailPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/crm/deals/:dealId/edit"
-                  element={
-                    <ProtectedRoute>
-                      <DealFormPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/crm/activities"
-                  element={
-                    <ProtectedRoute>
-                      <Activities />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/crm/dashboard"
-                  element={
-                    <ProtectedRoute>
-                      <CrmDashboard />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/crm/calendar"
-                  element={
-                    <ProtectedRoute>
-                      <CalendarPage />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Rental Management Routes */}
-                <Route
-                  path="/tenant/:tenantId/rental/leases"
-                  element={
-                    <ProtectedRoute>
-                      <Leases />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/rental/leases/new"
-                  element={
-                    <ProtectedRoute>
-                      <LeaseFormPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/rental/leases/:leaseId"
-                  element={
-                    <ProtectedRoute>
-                      <LeaseDetailPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/rental/leases/:leaseId/edit"
-                  element={
-                    <ProtectedRoute>
-                      <LeaseFormPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/rental/installments"
-                  element={
-                    <ProtectedRoute>
-                      <Installments />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/rental/installments/:installmentId"
-                  element={
-                    <ProtectedRoute>
-                      <InstallmentDetailPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/rental/payments"
-                  element={
-                    <ProtectedRoute>
-                      <Payments />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/rental/payments/:paymentId"
-                  element={
-                    <ProtectedRoute>
-                      <PaymentDetailPage />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Maintenance Routes */}
-                <Route
-                  path="/tenant/:tenantId/maintenance"
-                  element={
-                    <ProtectedRoute>
-                      <TicketList />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/maintenance/new"
-                  element={
-                    <ProtectedRoute>
-                      <CreateTicket />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/maintenance/:ticketId/edit"
-                  element={
-                    <ProtectedRoute>
-                      <EditTicket />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/maintenance/:ticketId"
-                  element={
-                    <ProtectedRoute>
-                      <TicketDetail />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Manager Maintenance Routes */}
-                <Route
-                  path="/tenant/:tenantId/admin/maintenance/tickets"
-                  element={
-                    <ProtectedRoute>
-                      <ManagerTickets />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/admin/maintenance/tickets/:ticketId"
-                  element={
-                    <ProtectedRoute>
-                      <ManagerTicketDetail />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/admin/maintenance/vendors"
-                  element={
-                    <ProtectedRoute>
-                      <Vendors />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Communication: email + WhatsApp notifications */}
-                <Route
-                  path="/tenant/:tenantId/communication/email-notifications"
-                  element={
-                    <ProtectedRoute>
-                      <EmailNotificationsUnifiedPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/communication/whatsapp-notifications"
-                  element={
-                    <ProtectedRoute>
-                      <WhatsAppNotificationsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/communication/whatsapp-group-message"
-                  element={
-                    <ProtectedRoute>
-                      <WhatsAppGroupMessagePage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/email-notifications"
-                  element={
-                    <ProtectedRoute>
-                      <EmailNotificationsUnifiedPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/newsletter/lists"
-                  element={
-                    <ProtectedRoute>
-                      <NewsletterListsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/newsletter/campaigns"
-                  element={
-                    <ProtectedRoute>
-                      <NewsletterCampaignsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/tenant/:tenantId/newsletter/templates"
-                  element={
-                    <ProtectedRoute>
-                      <NewsletterTemplatesPage />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Transactions Routes */}
-                <Route
-                  path="/transactions"
-                  element={
-                    <ProtectedRoute>
-                      <Transactions />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/transactions/sales"
-                  element={
-                    <ProtectedRoute>
-                      <Transactions />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/transactions/rentals"
-                  element={
-                    <ProtectedRoute>
-                      <Transactions />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Reports Route */}
-                <Route
-                  path="/reports"
-                  element={
-                    <ProtectedRoute>
-                      <Reports />
-                    </ProtectedRoute>
-                  }
-                />
-                {/* Tenant Portal Routes */}
-                <Route
-                  path="/tenant"
-                  element={
-                    <ProtectedRoute>
-                      <TenantPortalLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<TenantDashboard />} />
-                  <Route path="lease" element={<TenantLease />} />
-                  <Route path="payments" element={<TenantPayments />} />
-                  <Route path="deposit" element={<TenantDeposit />} />
-                  <Route path="maintenance" element={<TenantMaintenance />} />
-                  <Route path="documents" element={<TenantDocuments />} />
-                </Route>
-                {/* Owner Portal routes */}
-                <Route
-                  path="/owner"
-                  element={
-                    <ProtectedRoute>
-                      <OwnerPortalLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<OwnerDashboard />} />
-                  <Route path="properties" element={<OwnerProperties />} />
-                  <Route path="properties/:id" element={<OwnerPropertyDetails />} />
-                  <Route path="leases" element={<OwnerLeases />} />
-                  <Route path="leases/:id" element={<OwnerLeaseDetails />} />
-                  <Route path="revenues" element={<OwnerRevenues />} />
-                  <Route path="installments" element={<OwnerInstallments />} />
-                  <Route path="payments" element={<OwnerPayments />} />
-                  <Route path="deposits" element={<OwnerDeposits />} />
-                  <Route path="maintenance" element={<OwnerMaintenance />} />
-                  <Route path="documents" element={<OwnerDocuments />} />
-                  <Route path="reports" element={<OwnerReports />} />
-                  <Route path="preferences" element={<OwnerPreferences />} />
-                </Route>
-                {/* User Settings & Profile Routes */}
-                <Route
-                  path="/settings"
-                  element={
-                    <ProtectedRoute>
-                      <SettingsLayout />
-                    </ProtectedRoute>
-                  }
-                >
-                  <Route index element={<Navigate to="/settings/profile" replace />} />
-                  <Route path="profile" element={<ProfilePage />} />
-                </Route>
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              </Routes>
-            </Suspense>
-          </Router>
-        </AuthProvider>
+        {/* <App> fournit message/notification/modal contextualises : les
+            fonctions statiques d'AntD ignorent le ConfigProvider depuis la v5
+            et s'afficheraient au theme par defaut (§5.7). */}
+        <AntApp>
+          <FeedbackBridge />
+          <AuthProvider>
+            <Router>
+              {/* Every page below is code-split; this boundary covers chunk loading. */}
+              <Suspense fallback={<RouteFallback />}>
+                <Routes>
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/register" element={<Register />} />
+                  <Route path="/verify-email" element={<VerifyEmail />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
+                  <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/auth/callback" element={<AuthCallback />} />
+                  <Route path="/auth/accept-invite" element={<AcceptInvitePage />} />
+                  <Route path="/newsletter/unsubscribe" element={<UnsubscribePage />} />
+                  <Route path="/newsletter/confirm" element={<ConfirmPage />} />
+                  <Route path="/newsletter/subscribe" element={<SubscribePage />} />
+                  <Route
+                    path="/dashboard"
+                    element={
+                      <ProtectedRoute>
+                        <Dashboard />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* Property Routes */}
+                  <Route
+                    path="/tenant/:tenantId/properties"
+                    element={
+                      <ProtectedRoute>
+                        <Properties />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/properties/new"
+                    element={
+                      <ProtectedRoute>
+                        <PropertyCreate />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/properties/visits/calendar"
+                    element={
+                      <ProtectedRoute>
+                        <PropertyVisitsCalendar />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/properties/:id/edit"
+                    element={
+                      <ProtectedRoute>
+                        <PropertyEdit />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/properties/:id"
+                    element={
+                      <ProtectedRoute>
+                        <PropertyDetail />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/patrimoine"
+                    element={
+                      <ProtectedRoute>
+                        <PatrimoineOverviewPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/patrimoine/performance"
+                    element={
+                      <ProtectedRoute>
+                        <PatrimoinePerformancePage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/patrimoine/work-programs"
+                    element={
+                      <ProtectedRoute>
+                        <WorkProgramsPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/patrimoine/statements"
+                    element={
+                      <ProtectedRoute>
+                        <OwnerStatementsPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/patrimoine/statements/:id"
+                    element={
+                      <ProtectedRoute>
+                        <OwnerStatementDetailPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/syndics"
+                    element={
+                      <ProtectedRoute>
+                        <SyndicsList />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/syndics/:syndicId"
+                    element={
+                      <ProtectedRoute>
+                        <SyndicDetail />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/syndics/:syndicId/lots"
+                    element={
+                      <ProtectedRoute>
+                        <SyndicLots />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/syndics/:syndicId/lots/:lotId/compte"
+                    element={
+                      <ProtectedRoute>
+                        <SyndicOwnerAccount />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/syndics/:syndicId/charges"
+                    element={
+                      <ProtectedRoute>
+                        <SyndicCharges />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/syndics/:syndicId/assemblees"
+                    element={
+                      <ProtectedRoute>
+                        <SyndicMeetings />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/syndics/:syndicId/assemblees/:meetingId"
+                    element={
+                      <ProtectedRoute>
+                        <SyndicMeetingDetail />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/syndics/:syndicId/prestataires"
+                    element={
+                      <ProtectedRoute>
+                        <SyndicProviders />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/syndics/:syndicId/documents"
+                    element={
+                      <ProtectedRoute>
+                        <SyndicDocuments />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/syndics/:syndicId/finances"
+                    element={
+                      <ProtectedRoute>
+                        <SyndicFinances />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/syndics/:syndicId/recouvrement"
+                    element={
+                      <ProtectedRoute>
+                        <SyndicRecovery />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/syndics/:syndicId/comptabilite"
+                    element={
+                      <ProtectedRoute>
+                        <SyndicAccounting />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/syndics/:syndicId/budgets"
+                    element={
+                      <ProtectedRoute>
+                        <SyndicBudgets />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/syndics/:syndicId/profils-incidents"
+                    element={
+                      <ProtectedRoute>
+                        <SyndicProfilesIncidents />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* Legacy route for backward compatibility */}
+                  <Route
+                    path="/properties"
+                    element={
+                      <ProtectedRoute>
+                        <Properties />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* Admin Routes */}
+                  <Route
+                    path="/admin/tenants"
+                    element={
+                      <ProtectedRoute requiredRole="SUPER_ADMIN">
+                        <TenantsList />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/tenants/new"
+                    element={
+                      <ProtectedRoute requiredRole="SUPER_ADMIN">
+                        <TenantCreate />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/tenants/:tenantId"
+                    element={
+                      <ProtectedRoute requiredRole="SUPER_ADMIN">
+                        <TenantDetail />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/tenants/:tenantId/edit"
+                    element={
+                      <ProtectedRoute requiredRole="SUPER_ADMIN">
+                        <TenantDetail />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/tenants/:tenantId/collaborators/:userId"
+                    element={
+                      <ProtectedRoute requiredRole="SUPER_ADMIN">
+                        <AdminCollaboratorDetail />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/tenants/:tenantId/collaborators/invite"
+                    element={
+                      <ProtectedRoute requiredRole="SUPER_ADMIN">
+                        <AdminInviteCollaborator />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/statistics"
+                    element={
+                      <ProtectedRoute requiredRole="SUPER_ADMIN">
+                        <Statistics />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/audit"
+                    element={
+                      <ProtectedRoute requiredRole="SUPER_ADMIN">
+                        <AuditLogs />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/admin/roles-permissions"
+                    element={
+                      <ProtectedRoute requiredRole="SUPER_ADMIN">
+                        <RolesPermissions />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* Tenant Routes */}
+                  <Route
+                    path="/tenant/:tenantId/collaborators"
+                    element={
+                      <ProtectedRoute>
+                        <CollaboratorsList />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/collaborators/:userId"
+                    element={
+                      <ProtectedRoute>
+                        <CollaboratorDetail />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/invite"
+                    element={
+                      <ProtectedRoute>
+                        <InviteCollaborator />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/invitations"
+                    element={
+                      <ProtectedRoute>
+                        <InvitationsList />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/settings"
+                    element={
+                      <ProtectedRoute>
+                        <TenantSettings />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/documents/templates"
+                    element={
+                      <ProtectedRoute>
+                        <DocumentTemplates />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* Client Routes */}
+                  <Route
+                    path="/clients"
+                    element={
+                      <ProtectedRoute>
+                        <Clients />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/clients/new"
+                    element={
+                      <ProtectedRoute>
+                        <ClientNewRedirect />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/clients/groups"
+                    element={
+                      <ProtectedRoute>
+                        <ClientGroups />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* CRM Routes */}
+                  <Route
+                    path="/tenant/:tenantId/crm/contacts"
+                    element={
+                      <ProtectedRoute>
+                        <Contacts />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/crm/contacts/new"
+                    element={
+                      <ProtectedRoute>
+                        <ContactFormPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/crm/contacts/:contactId"
+                    element={
+                      <ProtectedRoute>
+                        <ContactDetailPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/crm/contacts/:contactId/edit"
+                    element={
+                      <ProtectedRoute>
+                        <ContactFormPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/crm/deals"
+                    element={
+                      <ProtectedRoute>
+                        <Deals />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/crm/deals/new"
+                    element={
+                      <ProtectedRoute>
+                        <DealFormPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/crm/deals/:dealId"
+                    element={
+                      <ProtectedRoute>
+                        <DealDetailPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/crm/deals/:dealId/edit"
+                    element={
+                      <ProtectedRoute>
+                        <DealFormPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/crm/activities"
+                    element={
+                      <ProtectedRoute>
+                        <Activities />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/crm/dashboard"
+                    element={
+                      <ProtectedRoute>
+                        <CrmDashboard />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/crm/calendar"
+                    element={
+                      <ProtectedRoute>
+                        <CalendarPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* Rental Management Routes */}
+                  <Route
+                    path="/tenant/:tenantId/rental/leases"
+                    element={
+                      <ProtectedRoute>
+                        <Leases />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/rental/leases/new"
+                    element={
+                      <ProtectedRoute>
+                        <LeaseFormPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/rental/leases/:leaseId"
+                    element={
+                      <ProtectedRoute>
+                        <LeaseDetailPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/rental/leases/:leaseId/edit"
+                    element={
+                      <ProtectedRoute>
+                        <LeaseFormPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/rental/installments"
+                    element={
+                      <ProtectedRoute>
+                        <Installments />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/rental/installments/:installmentId"
+                    element={
+                      <ProtectedRoute>
+                        <InstallmentDetailPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/rental/payments"
+                    element={
+                      <ProtectedRoute>
+                        <Payments />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/rental/payments/:paymentId"
+                    element={
+                      <ProtectedRoute>
+                        <PaymentDetailPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* Maintenance Routes */}
+                  <Route
+                    path="/tenant/:tenantId/maintenance"
+                    element={
+                      <ProtectedRoute>
+                        <TicketList />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/maintenance/new"
+                    element={
+                      <ProtectedRoute>
+                        <CreateTicket />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/maintenance/:ticketId/edit"
+                    element={
+                      <ProtectedRoute>
+                        <EditTicket />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/maintenance/:ticketId"
+                    element={
+                      <ProtectedRoute>
+                        <TicketDetail />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* Manager Maintenance Routes */}
+                  <Route
+                    path="/tenant/:tenantId/admin/maintenance/tickets"
+                    element={
+                      <ProtectedRoute>
+                        <ManagerTickets />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/admin/maintenance/tickets/:ticketId"
+                    element={
+                      <ProtectedRoute>
+                        <ManagerTicketDetail />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/admin/maintenance/vendors"
+                    element={
+                      <ProtectedRoute>
+                        <Vendors />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* Communication: email + WhatsApp notifications */}
+                  <Route
+                    path="/tenant/:tenantId/communication/email-notifications"
+                    element={
+                      <ProtectedRoute>
+                        <EmailNotificationsUnifiedPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/communication/whatsapp-notifications"
+                    element={
+                      <ProtectedRoute>
+                        <WhatsAppNotificationsPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/communication/whatsapp-group-message"
+                    element={
+                      <ProtectedRoute>
+                        <WhatsAppGroupMessagePage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/email-notifications"
+                    element={
+                      <ProtectedRoute>
+                        <EmailNotificationsUnifiedPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/newsletter/lists"
+                    element={
+                      <ProtectedRoute>
+                        <NewsletterListsPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/newsletter/campaigns"
+                    element={
+                      <ProtectedRoute>
+                        <NewsletterCampaignsPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/tenant/:tenantId/newsletter/templates"
+                    element={
+                      <ProtectedRoute>
+                        <NewsletterTemplatesPage />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* Transactions Routes */}
+                  <Route
+                    path="/transactions"
+                    element={
+                      <ProtectedRoute>
+                        <Transactions />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/transactions/sales"
+                    element={
+                      <ProtectedRoute>
+                        <Transactions />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/transactions/rentals"
+                    element={
+                      <ProtectedRoute>
+                        <Transactions />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* Reports Route */}
+                  <Route
+                    path="/reports"
+                    element={
+                      <ProtectedRoute>
+                        <Reports />
+                      </ProtectedRoute>
+                    }
+                  />
+                  {/* Tenant Portal Routes */}
+                  <Route
+                    path="/tenant"
+                    element={
+                      <ProtectedRoute>
+                        <TenantPortalLayout />
+                      </ProtectedRoute>
+                    }
+                  >
+                    <Route index element={<TenantDashboard />} />
+                    <Route path="lease" element={<TenantLease />} />
+                    <Route path="payments" element={<TenantPayments />} />
+                    <Route path="deposit" element={<TenantDeposit />} />
+                    <Route path="maintenance" element={<TenantMaintenance />} />
+                    <Route path="documents" element={<TenantDocuments />} />
+                  </Route>
+                  {/* Owner Portal routes */}
+                  <Route
+                    path="/owner"
+                    element={
+                      <ProtectedRoute>
+                        <OwnerPortalLayout />
+                      </ProtectedRoute>
+                    }
+                  >
+                    <Route index element={<OwnerDashboard />} />
+                    <Route path="properties" element={<OwnerProperties />} />
+                    <Route path="properties/:id" element={<OwnerPropertyDetails />} />
+                    <Route path="leases" element={<OwnerLeases />} />
+                    <Route path="leases/:id" element={<OwnerLeaseDetails />} />
+                    <Route path="revenues" element={<OwnerRevenues />} />
+                    <Route path="installments" element={<OwnerInstallments />} />
+                    <Route path="payments" element={<OwnerPayments />} />
+                    <Route path="deposits" element={<OwnerDeposits />} />
+                    <Route path="maintenance" element={<OwnerMaintenance />} />
+                    <Route path="documents" element={<OwnerDocuments />} />
+                    <Route path="reports" element={<OwnerReports />} />
+                    <Route path="preferences" element={<OwnerPreferences />} />
+                  </Route>
+                  {/* User Settings & Profile Routes */}
+                  <Route
+                    path="/settings"
+                    element={
+                      <ProtectedRoute>
+                        <SettingsLayout />
+                      </ProtectedRoute>
+                    }
+                  >
+                    <Route index element={<Navigate to="/settings/profile" replace />} />
+                    <Route path="profile" element={<ProfilePage />} />
+                  </Route>
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                </Routes>
+              </Suspense>
+            </Router>
+          </AuthProvider>
+        </AntApp>
       </ConfigProvider>
     </ErrorBoundary>
   );
