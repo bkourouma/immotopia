@@ -27,7 +27,7 @@ import {
 } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
 import { useSidebar } from '../../context/SidebarContext';
-import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 
 const { Sider } = Layout;
 
@@ -48,7 +48,8 @@ export function Sidebar() {
   const [openKeys, setOpenKeys] = useState<string[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [lastSyndicId, setLastSyndicId] = useState<string | null>(null);
-  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  // Bascule au palier lg (992 px), aligne sur la grille AntD (§3.4).
+  const { isDesktop } = useBreakpoint();
 
   // Determine user type
   const isSuperAdmin = user?.globalRole === 'SUPER_ADMIN';

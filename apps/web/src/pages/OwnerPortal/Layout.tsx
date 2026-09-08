@@ -13,10 +13,10 @@ import {
   ToolOutlined,
   FolderOutlined,
   FileSearchOutlined,
-  SettingOutlined,
+  SettingOutlined
 } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
-import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { Header } from '../../components/dashboard/header';
 import { SidebarProvider, useSidebar } from '../../context/SidebarContext';
 
@@ -29,64 +29,65 @@ function OwnerPortalLayoutContent() {
   const { isMobileSidebarOpen, closeMobileSidebar } = useSidebar();
   const [openKeys, setOpenKeys] = useState<string[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
-  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  // Bascule au palier lg (992 px), aligne sur la grille AntD (§3.4).
+  const { isDesktop } = useBreakpoint();
 
   const menuItems: MenuProps['items'] = [
     {
       key: '/owner',
       icon: <HomeOutlined />,
-      label: 'Tableau de bord',
+      label: 'Tableau de bord'
     },
     {
       key: '/owner/properties',
       icon: <BankOutlined />,
-      label: 'Mes propriétés',
+      label: 'Mes propriétés'
     },
     {
       key: '/owner/leases',
       icon: <FileTextOutlined />,
-      label: 'Baux',
+      label: 'Baux'
     },
     {
       key: '/owner/revenues',
       icon: <DollarOutlined />,
-      label: 'Revenus',
+      label: 'Revenus'
     },
     {
       key: '/owner/installments',
       icon: <CalendarOutlined />,
-      label: 'Échéances',
+      label: 'Échéances'
     },
     {
       key: '/owner/payments',
       icon: <WalletOutlined />,
-      label: 'Paiements',
+      label: 'Paiements'
     },
     {
       key: '/owner/deposits',
       icon: <SafetyOutlined />,
-      label: 'Dépôts de garantie',
+      label: 'Dépôts de garantie'
     },
     {
       key: '/owner/maintenance',
       icon: <ToolOutlined />,
-      label: 'Maintenance',
+      label: 'Maintenance'
     },
     {
       key: '/owner/documents',
       icon: <FolderOutlined />,
-      label: 'Documents',
+      label: 'Documents'
     },
     {
       key: '/owner/reports',
       icon: <FileSearchOutlined />,
-      label: 'Rapports',
+      label: 'Rapports'
     },
     {
       key: '/owner/preferences',
       icon: <SettingOutlined />,
-      label: 'Préférences',
-    },
+      label: 'Préférences'
+    }
   ];
 
   // Update selected keys based on current location
@@ -113,7 +114,7 @@ function OwnerPortalLayoutContent() {
           alignItems: 'center',
           justifyContent: 'center',
           borderBottom: '1px solid #1e293b',
-          padding: '0 24px',
+          padding: '0 24px'
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -125,7 +126,7 @@ function OwnerPortalLayoutContent() {
               alignItems: 'center',
               justifyContent: 'center',
               borderRadius: 8,
-              backgroundColor: '#1890ff',
+              backgroundColor: '#1890ff'
             }}
           >
             <BankOutlined style={{ fontSize: 24, color: '#fff' }} />
@@ -150,7 +151,7 @@ function OwnerPortalLayoutContent() {
           height: 'calc(100vh - 64px)',
           overflowY: 'auto',
           backgroundColor: '#0f172a',
-          borderRight: 0,
+          borderRight: 0
         }}
       />
     </>
@@ -166,7 +167,7 @@ function OwnerPortalLayoutContent() {
             alignItems: 'center',
             justifyContent: 'center',
             borderBottom: '1px solid #1e293b',
-            padding: '0 24px',
+            padding: '0 24px'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -178,7 +179,7 @@ function OwnerPortalLayoutContent() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderRadius: 8,
-                backgroundColor: '#1890ff',
+                backgroundColor: '#1890ff'
               }}
             >
               <BankOutlined style={{ fontSize: 24, color: '#fff' }} />
@@ -207,7 +208,7 @@ function OwnerPortalLayoutContent() {
               top: 0,
               bottom: 0,
               backgroundColor: '#0f172a',
-              zIndex: 30,
+              zIndex: 30
             }}
           >
             {loadingContent}
@@ -237,7 +238,7 @@ function OwnerPortalLayoutContent() {
             top: 0,
             bottom: 0,
             backgroundColor: '#0f172a',
-            zIndex: 30,
+            zIndex: 30
           }}
         >
           {renderSidebarContent()}

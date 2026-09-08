@@ -4,6 +4,7 @@ import { App as AntApp, ConfigProvider, Spin } from 'antd';
 import frFR from 'antd/locale/fr_FR';
 import { buildAntdTheme } from './theme/antd-theme';
 import { FeedbackBridge } from './lib/feedback';
+import { useBreakpoint } from './hooks/useBreakpoint';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -405,11 +406,26 @@ const RouteFallback: React.FC = () => (
  */
 const antdTheme = buildAntdTheme();
 
+/**
+ * `componentSize` est le seul levier qui applique `controlHeightLG` a tous les
+ * composants AntD d'un coup. Sous 992 px, chaque controle passe donc a 44 px
+ * (plancher tactile) et les champs a `fontSizeLG` = 16 px, la regle non
+ * negociable du §3.2 contre le zoom automatique d'iOS Safari.
+ */
+function ThemedApp({ children }: { children: React.ReactNode }) {
+  const { isDesktop } = useBreakpoint();
+  return (
+    <ConfigProvider theme={antdTheme} locale={frFR} componentSize={isDesktop ? 'middle' : 'large'}>
+      {children}
+    </ConfigProvider>
+  );
+}
+
 function App() {
   return (
     <ErrorBoundary>
       {/* `locale` francise DatePicker, Pagination, Table, Upload et Empty (§3.5). */}
-      <ConfigProvider theme={antdTheme} locale={frFR}>
+      <ThemedApp>
         {/* <App> fournit message/notification/modal contextualises : les
             fonctions statiques d'AntD ignorent le ConfigProvider depuis la v5
             et s'afficheraient au theme par defaut (§5.7). */}
@@ -1147,7 +1163,7 @@ function App() {
             </Router>
           </AuthProvider>
         </AntApp>
-      </ConfigProvider>
+      </ThemedApp>
     </ErrorBoundary>
   );
 }

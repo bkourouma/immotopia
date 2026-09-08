@@ -1,14 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Layout,
-  Input,
-  Avatar,
-  Dropdown,
-  Button,
-  Space,
-  Typography,
-} from 'antd';
+import { Layout, Input, Avatar, Dropdown, Button, Space, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   SearchOutlined,
@@ -16,11 +8,11 @@ import {
   UserOutlined,
   LogoutOutlined,
   SettingOutlined,
-  MenuOutlined,
+  MenuOutlined
 } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
 import { useSidebar } from '../../context/SidebarContext';
-import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 
 const { Header: AntHeader } = Layout;
 const { Text } = Typography;
@@ -29,7 +21,8 @@ export function Header() {
   const { user, logout, tenantMembership } = useAuth();
   const navigate = useNavigate();
   const { toggleMobileSidebar } = useSidebar();
-  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  // Bascule au palier lg (992 px), aligne sur la grille AntD (§3.4).
+  const { isDesktop } = useBreakpoint();
 
   const handleLogout = async () => {
     await logout();
@@ -39,7 +32,7 @@ export function Header() {
   const getInitials = (name: string) => {
     return name
       .split(' ')
-      .map((n) => n[0])
+      .map(n => n[0])
       .join('')
       .toUpperCase()
       .slice(0, 2);
@@ -50,24 +43,24 @@ export function Header() {
       key: 'profile',
       label: 'Profil',
       icon: <UserOutlined />,
-      onClick: () => navigate('/settings/profile'),
+      onClick: () => navigate('/settings/profile')
     },
     {
       key: 'settings',
       label: 'Paramètres',
       icon: <SettingOutlined />,
-      onClick: () => navigate('/settings'),
+      onClick: () => navigate('/settings')
     },
     {
-      type: 'divider',
+      type: 'divider'
     },
     {
       key: 'logout',
       label: 'Déconnexion',
       icon: <LogoutOutlined />,
       danger: true,
-      onClick: handleLogout,
-    },
+      onClick: handleLogout
+    }
   ];
 
   return (
@@ -83,7 +76,7 @@ export function Header() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: 16,
+        gap: 16
       }}
     >
       {/* Mobile Menu Button - Only visible on mobile */}
@@ -97,7 +90,7 @@ export function Header() {
             alignItems: 'center',
             justifyContent: 'center',
             minWidth: 40,
-            height: 40,
+            height: 40
           }}
         />
       )}
@@ -115,34 +108,23 @@ export function Header() {
       {/* Right Section - User Controls */}
       <Space size="middle" style={{ marginLeft: 'auto', flexShrink: 0 }}>
         {/* Language Selector */}
-        <Button
-          type="text"
-          icon={<GlobalOutlined />}
-          style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-        >
+        <Button type="text" icon={<GlobalOutlined />} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           FR
         </Button>
 
         {/* User Menu */}
-        <Dropdown
-          menu={{ items: userMenuItems }}
-          placement="bottomRight"
-          trigger={['click']}
-        >
+        <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" trigger={['click']}>
           <Button
             type="text"
             style={{
               height: 'auto',
               padding: '4px 12px',
               display: 'flex',
-              alignItems: 'center',
+              alignItems: 'center'
             }}
           >
             <Space>
-              <Avatar
-                src={user?.avatarUrl}
-                style={{ backgroundColor: '#1890ff' }}
-              >
+              <Avatar src={user?.avatarUrl} style={{ backgroundColor: '#1890ff' }}>
                 {user?.fullName ? getInitials(user.fullName) : 'U'}
               </Avatar>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -160,4 +142,3 @@ export function Header() {
     </AntHeader>
   );
 }
-

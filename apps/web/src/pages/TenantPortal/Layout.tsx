@@ -9,10 +9,10 @@ import {
   ToolOutlined,
   FolderOutlined,
   SafetyOutlined,
-  MenuOutlined,
+  MenuOutlined
 } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
-import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { Header } from '../../components/dashboard/header';
 import { SidebarProvider, useSidebar } from '../../context/SidebarContext';
 
@@ -25,7 +25,8 @@ function TenantPortalLayoutContent() {
   const { isMobileSidebarOpen, closeMobileSidebar } = useSidebar();
   const [openKeys, setOpenKeys] = useState<string[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
-  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  // Bascule au palier lg (992 px), aligne sur la grille AntD (§3.4).
+  const { isDesktop } = useBreakpoint();
 
   // Redirect owners to owner portal - this is a safety check in case they somehow reach this route
   useEffect(() => {
@@ -43,33 +44,33 @@ function TenantPortalLayoutContent() {
     {
       key: '/tenant',
       icon: <HomeOutlined />,
-      label: 'Tableau de bord',
+      label: 'Tableau de bord'
     },
     {
       key: '/tenant/lease',
       icon: <FileTextOutlined />,
-      label: 'Mon bail',
+      label: 'Mon bail'
     },
     {
       key: '/tenant/payments',
       icon: <DollarOutlined />,
-      label: 'Paiements',
+      label: 'Paiements'
     },
     {
       key: '/tenant/deposit',
       icon: <SafetyOutlined />,
-      label: 'Dépôt de garantie',
+      label: 'Dépôt de garantie'
     },
     {
       key: '/tenant/maintenance',
       icon: <ToolOutlined />,
-      label: 'Maintenance',
+      label: 'Maintenance'
     },
     {
       key: '/tenant/documents',
       icon: <FolderOutlined />,
-      label: 'Documents',
-    },
+      label: 'Documents'
+    }
   ];
 
   // Update selected keys based on current location
@@ -96,7 +97,7 @@ function TenantPortalLayoutContent() {
           alignItems: 'center',
           justifyContent: 'center',
           borderBottom: '1px solid #1e293b',
-          padding: '0 24px',
+          padding: '0 24px'
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -108,7 +109,7 @@ function TenantPortalLayoutContent() {
               alignItems: 'center',
               justifyContent: 'center',
               borderRadius: 8,
-              backgroundColor: '#1890ff',
+              backgroundColor: '#1890ff'
             }}
           >
             <HomeOutlined style={{ fontSize: 24, color: '#fff' }} />
@@ -133,7 +134,7 @@ function TenantPortalLayoutContent() {
           height: 'calc(100vh - 64px)',
           overflowY: 'auto',
           backgroundColor: '#0f172a',
-          borderRight: 0,
+          borderRight: 0
         }}
       />
     </>
@@ -149,7 +150,7 @@ function TenantPortalLayoutContent() {
             alignItems: 'center',
             justifyContent: 'center',
             borderBottom: '1px solid #1e293b',
-            padding: '0 24px',
+            padding: '0 24px'
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -161,7 +162,7 @@ function TenantPortalLayoutContent() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderRadius: 8,
-                backgroundColor: '#1890ff',
+                backgroundColor: '#1890ff'
               }}
             >
               <HomeOutlined style={{ fontSize: 24, color: '#fff' }} />
@@ -190,7 +191,7 @@ function TenantPortalLayoutContent() {
               top: 0,
               bottom: 0,
               backgroundColor: '#0f172a',
-              zIndex: 30,
+              zIndex: 30
             }}
           >
             {loadingContent}
@@ -220,7 +221,7 @@ function TenantPortalLayoutContent() {
             top: 0,
             bottom: 0,
             backgroundColor: '#0f172a',
-            zIndex: 30,
+            zIndex: 30
           }}
         >
           {renderSidebarContent()}
