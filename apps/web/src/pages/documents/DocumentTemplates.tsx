@@ -92,7 +92,7 @@ export function DocumentTemplates() {
     } finally {
       setLoading(false);
     }
-  }, [tenantId, filterDocType]);
+  }, [tenantId, filterDocType, message]);
 
   useEffect(() => {
     if (tenantId) {

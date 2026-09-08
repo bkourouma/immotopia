@@ -44,7 +44,7 @@ export function NewsletterListsPage() {
     } finally {
       setLoading(false);
     }
-  }, [tenantId]);
+  }, [tenantId, message]);
 
   const loadSubscribers = useCallback(
     async (page = 1, limit = 20) => {
@@ -60,7 +60,7 @@ export function NewsletterListsPage() {
         setSubLoading(false);
       }
     },
-    [tenantId, selectedList]
+    [tenantId, selectedList, message]
   );
 
   useEffect(() => {

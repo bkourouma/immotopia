@@ -122,7 +122,7 @@ export function PropertyNewsletterCampaignModal({
         .catch(() => message.error('Erreur lors du chargement des listes'))
         .finally(() => setLoading(false));
     }
-  }, [open, tenantId]);
+  }, [open, tenantId, message]);
 
   useEffect(() => {
     if (open && property) {

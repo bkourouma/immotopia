@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { App, Card, Switch, Typography, Spin } from 'antd';
 import { MailOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
@@ -12,11 +12,10 @@ export default function OwnerPreferences() {
   const [newsletterConsent, setNewsletterConsent] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    loadPreferences();
-  }, []);
-
-  const loadPreferences = async () => {
+  // Memoise sur `message`, seule dependance externe, elle-meme stable :
+  // le contexte d'<App> est memoise (antd/es/app/App.js). Sans useCallback, la
+  // fonction serait recreee a chaque rendu et l'effet tournerait en boucle.
+  const loadPreferences = useCallback(async () => {
     try {
       setLoading(true);
       const res = await ownerPortalService.getPreferences();
@@ -29,7 +28,11 @@ export default function OwnerPreferences() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [message]);
+
+  useEffect(() => {
+    loadPreferences();
+  }, [loadPreferences]);
 
   const handleNewsletterChange = async (checked: boolean) => {
     try {

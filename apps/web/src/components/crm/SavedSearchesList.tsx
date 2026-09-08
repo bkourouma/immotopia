@@ -23,7 +23,7 @@ export function SavedSearchesList({ onSelectSearch, onClose }: SavedSearchesList
       .then(setList)
       .catch(() => message.error('Impossible de charger les recherches'))
       .finally(() => setLoading(false));
-  }, [tenantId]);
+  }, [tenantId, message]);
 
   const handleDelete = async (id: string) => {
     if (!tenantId) return;

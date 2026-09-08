@@ -32,7 +32,7 @@ export function NewsletterTemplatesPage() {
     } finally {
       setLoading(false);
     }
-  }, [tenantId]);
+  }, [tenantId, message]);
 
   useEffect(() => {
     loadTemplates();

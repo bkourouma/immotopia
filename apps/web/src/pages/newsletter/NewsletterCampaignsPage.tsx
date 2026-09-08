@@ -71,7 +71,7 @@ export function NewsletterCampaignsPage() {
         setLoading(false);
       }
     },
-    [tenantId]
+    [tenantId, message]
   );
 
   const loadListsAndTemplates = useCallback(async () => {
@@ -86,7 +86,7 @@ export function NewsletterCampaignsPage() {
     } catch (e) {
       message.error((e as Error).message || 'Erreur');
     }
-  }, [tenantId]);
+  }, [tenantId, message]);
 
   useEffect(() => {
     loadCampaigns();
