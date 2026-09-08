@@ -2,7 +2,7 @@
 
 > Périmètre : `docs/REFONTE_UI_UX.md` §9, Lot 0.
 > Branche : `feat/refonte-lot-0`, créée depuis `fix/securite-semaine-1`. **Non poussée.**
-> 15 commits · 8 septembre 2026.
+> 20 commits · 8 septembre 2026.
 
 ---
 
@@ -469,3 +469,57 @@ Les douze premiers ratios du §3.2 sont exacts au centième. `components/ui/wiza
 Deux affirmations du §8.1 méritent d'être révisées à la lumière du §4.1 : la prescription
 `manualChunks` y est contre-productive sur cette application, et le budget de 220 Ko pour le chunk
 d'entrée est inatteignable tant que `Login` reste importé statiquement.
+
+---
+
+## 9. Clôture du lot — les cinq points repris après coup
+
+Cinq points restaient ouverts à la première rédaction. Ils sont traités ici, et trois d'entre eux
+ont invalidé une affirmation de ce rapport.
+
+| #   | Point                                                 | Résultat                                                                                                                                                                            | Commit       |
+| --- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| 1   | Décomposer les +17 Ko du chunk d'entrée               | Fait, par ablation — §2.1. **`<App>` d'AntD porte 17,2 Ko des 17,3.** Point de contrôle : les six primitives sont **absentes** du chunk d'entrée, le baril ne les y fait pas entrer | — (mesure)   |
+| 2   | Vérifier les couples `a11y:contrast` passés en `info` | **Deux sur trois étaient de vrais défauts** — §2.2. Corrigés par `--border-control` et `--icon-muted`                                                                               | `db9f1a5`    |
+| 3   | Identifier les 3 warnings ESLint introduits           | **Il y en avait 9, pas 3** — §2.3. Le « +3 » masquait 15 mouvements. Corrigés : 1 048 warnings, 6 sous la référence                                                                 | `dd92923`    |
+| 4   | Reclasser l'écart n°2 au Lot 3                        | Fait — §4.3. Le §5.3 est mobilisé par le Lot 3, qui refond les dialogues des parcours terrain                                                                                       | — (document) |
+| 5   | Réparer `lint-staged`                                 | **Cause racine trouvée et corrigée**, sans repli ni `--no-verify`                                                                                                                   | `c846218`    |
+
+### 9.1 `lint-staged` — cause racine
+
+Le hook était inopérant dès 8 fichiers indexés : blocage indéfini, **aucun processus enfant jamais
+engendré**, donc aucun message d'erreur. Les 16 commits du lot ont dû passer en `--no-verify` après
+exécution manuelle des mêmes commandes.
+
+La cause a été isolée dans un dépôt git jetable, **hors d'ImmoTopia**, pour écarter le monorepo, les
+workspaces et les surveillants de fichiers du serveur de développement :
+
+| Tâche                                 | 4 fichiers | 8 fichiers  | 16 fichiers | 40 fichiers |
+| ------------------------------------- | ---------- | ----------- | ----------- | ----------- |
+| `node -e "process.exit(0)"`           | passe      | passe       | —           | —           |
+| `prettier --write` (raccourci `.bin`) | passe      | **bloque**  | **bloque**  | —           |
+| `node prettier.cjs --write`           | —          | passe (2 s) | passe (4 s) | passe (5 s) |
+
+Trois hypothèses écartées en chemin : le nombre de fichiers (12 fichiers passent avec une tâche
+triviale), le volume de sortie (512 Ko sur `stdout` passent en 3 s, à nombre de fichiers constant),
+et les surveillants de fichiers du serveur de développement (le blocage se reproduit hors du dépôt).
+
+**Cause retenue : lint-staged 17.5.0 se bloque en lançant le raccourci `.cmd` de
+`node_modules/.bin` sous Windows au-delà de sept arguments de fichier.** Les trois groupes de tâches
+appellent désormais le point d'entrée JS par `node`. Aucune vérification n'est désactivée, aucune
+version n'est changée. Vérifié sur le dépôt réel : `lint-staged --diff` sur 11 fichiers `apps/web`
+s'exécute et se termine en quelques secondes, et le commit `c846218` est le premier du lot à passer
+le hook réellement.
+
+### 9.2 Ce que cette clôture dit de la méthode
+
+Les trois affirmations invalidées l'ont été par une relecture **adversariale**, pas par les tests ni
+par le linter, tous deux verts pendant tout le lot :
+
+- classer un couple de contraste en « info » sans remonter la chaîne token → alias AntD → feuille de
+  style du composant revient à masquer un défaut dans son propre vérificateur ;
+- comparer deux totaux de linter ne dit rien tant qu'on n'a pas diffusé par fichier **et** par règle ;
+- et la première correction du défaut de contraste en introduisait un autre — égaliser repos et
+  survol —, rattrapé uniquement par une relecture du correctif lui-même.
+
+**Le nombre de commits du lot passe de 16 à 20.**
