@@ -18,10 +18,6 @@ vi.mock('../../utils/api-client', () => ({
   }
 }));
 
-vi.mock('../../components/dashboard/dashboard-layout', () => ({
-  DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
-}));
-
 vi.mock('@ant-design/icons', async () => {
   // Vitest resolves named imports against the keys of this object, so the mock
   // must expose the real export names — a Proxy over {} declares none.
