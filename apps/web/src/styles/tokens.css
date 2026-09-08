@@ -1,0 +1,288 @@
+/**
+ * Design tokens — source unique de vérité (REFONTE_UI_UX.md §3.2).
+ *
+ * Deux niveaux, et l'ordre compte (§3.3) :
+ *   1. PRIMITIVES — les valeurs brutes (`--blue-600`, `--neutral-500`). Elles ne
+ *      portent aucun sens : on ne les référence pas depuis un composant.
+ *   2. RÔLES — ce que l'interface consomme (`--surface-card`, `--text-secondary`).
+ *      Sémantiquement neutres : aucun nom n'encode « clair » ou « sombre », de
+ *      sorte que le thème sombre soit un échange de valeurs et non une refonte.
+ *
+ * Consommé par `tailwind.config.js` et par le `ConfigProvider` AntD
+ * (`src/theme/antd-theme.ts`). Une seule valeur par rôle.
+ */
+
+:root {
+  /* ------------------------------------------------------------------ */
+  /* PRIMITIVES — échelles brutes                                        */
+  /* ------------------------------------------------------------------ */
+
+  /* Neutres : échelle slate Tailwind, conservée telle quelle */
+  --neutral-50: #f8fafc;
+  --neutral-100: #f1f5f9;
+  --neutral-200: #e2e8f0;
+  --neutral-300: #cbd5e1;
+  --neutral-400: #94a3b8;
+  --neutral-500: #64748b;
+  --neutral-600: #475569;
+  --neutral-700: #334155;
+  --neutral-800: #1e293b;
+  --neutral-900: #0f172a;
+
+  --white: #ffffff;
+
+  --blue-50: #eff6ff;
+  --blue-200: #bfdbfe;
+  --blue-600: #2563eb;
+  --blue-700: #1d4ed8;
+  --blue-800: #1e40af;
+
+  --green-50: #f0fdf4;
+  --green-600: #16a34a;
+  --green-700: #15803d;
+
+  --amber-50: #fffbeb;
+  --amber-600: #d97706;
+  --amber-700: #b45309;
+
+  --red-50: #fef2f2;
+  --red-600: #dc2626;
+  --red-700: #b91c1c;
+
+  /* ------------------------------------------------------------------ */
+  /* RÔLES — couleurs de marque et sémantiques                           */
+  /* Les ratios en commentaire sont mesurés sur --surface-page (#F8FAFC) */
+  /* et vérifiés par `npm run a11y:contrast`.                            */
+  /* ------------------------------------------------------------------ */
+
+  --color-primary: var(--blue-600); /* 4,94:1 — AA texte */
+  --color-primary-hover: var(--blue-700); /* 6,41:1 */
+  --color-primary-active: var(--blue-800); /* 8,34:1 */
+  --color-primary-bg: var(--blue-50);
+  --color-primary-border: var(--blue-200);
+
+  --color-success: var(--green-600); /* 3,15:1 — non-texte uniquement */
+  --color-success-text: var(--green-700); /* 4,79:1 — AA texte */
+  --color-success-bg: var(--green-50);
+
+  --color-warning: var(--amber-600); /* 3,04:1 — non-texte uniquement */
+  --color-warning-text: var(--amber-700); /* 4,80:1 — AA texte */
+  --color-warning-bg: var(--amber-50);
+
+  --color-error: var(--red-600); /* 4,62:1 — AA texte */
+  --color-error-text: var(--red-700); /* 6,18:1 */
+  --color-error-bg: var(--red-50);
+
+  /* Aligné sur la primaire — pas de bleu supplémentaire dans le système. */
+  --color-info: var(--color-primary);
+
+  /* ------------------------------------------------------------------ */
+  /* RÔLES — surfaces, bordures, texte                                   */
+  /* ------------------------------------------------------------------ */
+
+  --surface-page: var(--neutral-50); /* fond applicatif UNIQUE */
+  --surface-card: var(--white);
+  --surface-raised: var(--white); /* bottom-sheet, popover */
+  --surface-sunken: var(--neutral-100); /* en-tête de tableau, zones d'aide */
+  --surface-inverse: var(--neutral-900); /* sidebar */
+
+  --border-subtle: var(--neutral-200);
+  --border-default: var(--neutral-300);
+  --border-strong: var(--neutral-400);
+
+  --text-primary: var(--neutral-900); /* 17,06:1 */
+  --text-secondary: var(--neutral-600); /* 7,24:1 */
+  --text-tertiary: var(--neutral-500); /* 4,55:1 — plancher AA */
+  --text-disabled: var(--neutral-400); /* 2,45:1 — jamais seul porteur d'info */
+  --text-on-inverse: var(--neutral-100); /* 16,30:1 sur --surface-inverse */
+  --text-on-inverse-muted: var(--neutral-400); /* 6,96:1 sur --surface-inverse */
+
+  /* ------------------------------------------------------------------ */
+  /* TYPOGRAPHIE — Inter                                                 */
+  /* Valeurs mobiles par défaut ; le palier md (768) les remplace plus   */
+  /* bas. Graisses chargées : 400, 500, 600, 700 uniquement.             */
+  /* ------------------------------------------------------------------ */
+
+  --font-sans: 'Inter Variable', 'Inter var', 'Inter', system-ui, -apple-system, 'Segoe UI',
+    Roboto, sans-serif;
+  --font-mono: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --font-size-display: 24px;
+  --line-height-display: 1.25;
+  --font-weight-display: var(--font-weight-bold);
+
+  --font-size-h1: 20px;
+  --line-height-h1: 1.3;
+  --font-weight-h1: var(--font-weight-semibold);
+
+  --font-size-h2: 18px;
+  --line-height-h2: 1.35;
+  --font-weight-h2: var(--font-weight-semibold);
+
+  --font-size-h3: 16px;
+  --line-height-h3: 1.4;
+  --font-weight-h3: var(--font-weight-semibold);
+
+  --font-size-body: 15px;
+  --line-height-body: 1.55;
+  --font-weight-body: var(--font-weight-regular);
+  --font-weight-body-strong: var(--font-weight-semibold);
+
+  /* 16px sous 768 : en dessous, iOS Safari zoome au focus et casse la mise en page. */
+  --font-size-input: 16px;
+  --line-height-input: 1.5;
+
+  --font-size-small: 13px;
+  --line-height-small: 1.45;
+
+  --font-size-caption: 12px;
+  --line-height-caption: 1.4;
+  --font-weight-caption: var(--font-weight-medium);
+
+  --font-size-numeric: 16px;
+  --line-height-numeric: 1.3;
+  --font-weight-numeric: var(--font-weight-semibold);
+
+  /* ------------------------------------------------------------------ */
+  /* ESPACEMENTS — base 4 px                                             */
+  /* ------------------------------------------------------------------ */
+
+  --space-0: 0px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Gouttière de grille et padding de conteneur : valeurs xs par défaut, */
+  /* relevées aux paliers md et lg plus bas.                             */
+  --grid-gutter: 12px;
+  --page-padding: 16px;
+
+  /* ------------------------------------------------------------------ */
+  /* RAYONS                                                              */
+  /* ------------------------------------------------------------------ */
+
+  --radius-sm: 4px; /* Tag, badge, puce */
+  --radius-md: 6px; /* champs, boutons — = borderRadius AntD 6 */
+  --radius-lg: 8px; /* cartes, modales */
+  --radius-xl: 12px; /* bottom-sheet, feuille de filtres */
+  --radius-full: 9999px; /* avatar, FAB, pastille */
+
+  /* ------------------------------------------------------------------ */
+  /* OMBRES                                                              */
+  /* Exprimées sur rgba(15,23,42,…) et non sur #000, pour rester         */
+  /* lisibles après inversion en thème sombre (§3.3).                    */
+  /* ------------------------------------------------------------------ */
+
+  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.1), 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+  --shadow-sheet: 0 -4px 24px rgba(15, 23, 42, 0.16);
+
+  /* ------------------------------------------------------------------ */
+  /* HAUTEURS DE CONTRÔLE                                                */
+  /* ------------------------------------------------------------------ */
+
+  --control-h-sm: 32px; /* desktop, densité compacte (tableaux) */
+  --control-h-md: 36px; /* desktop, défaut */
+  --control-h-lg: 44px; /* tout contrôle interactif sous 992 px */
+
+  /* ------------------------------------------------------------------ */
+  /* Z-INDEX — échelle unique                                            */
+  /* ------------------------------------------------------------------ */
+
+  --z-content: 0;
+  --z-sticky: 10; /* en-tête de tableau sticky, barre d'outils */
+  --z-sidebar: 20;
+  --z-header: 30;
+  --z-bottom-bar: 40; /* barre d'onglets basse, barre d'action mobile */
+  --z-drawer: 1000; /* drawer, bottom-sheet — = zIndexPopupBase AntD */
+  --z-modal: 1010;
+  --z-popover: 1050; /* dropdown, Select, popover, Tooltip */
+  --z-toast: 1080; /* message, notification */
+
+  /* ------------------------------------------------------------------ */
+  /* DURÉES ET COURBES                                                   */
+  /* ------------------------------------------------------------------ */
+
+  --duration-fast: 120ms; /* survol, focus, bascule */
+  --duration-base: 180ms; /* dropdown, Tag, dépliage de ligne */
+  --duration-slow: 260ms; /* drawer, bottom-sheet, modale */
+
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ------------------------------------------------------------------ */
+  /* BREAKPOINTS (§3.4) — les paliers AntD font autorité.                */
+  /* Déclarés ici pour documentation et pour `tailwind.config.js` ;      */
+  /* une media query ne peut pas lire une variable CSS, donc les valeurs */
+  /* sont répétées littéralement dans les @media de ce fichier.          */
+  /* ------------------------------------------------------------------ */
+
+  --screen-sm: 576px;
+  --screen-md: 768px;
+  --screen-lg: 992px;
+  --screen-xl: 1200px;
+  --screen-xxl: 1600px;
+}
+
+/* Palier md (tablette portrait) et au-delà : typographie desktop. */
+@media (min-width: 768px) {
+  :root {
+    --font-size-display: 30px;
+    --font-size-h1: 24px;
+    --font-size-h2: 20px;
+    --font-size-h3: 16px;
+    --font-size-body: 14px;
+    --font-size-input: 14px;
+    --font-size-small: 12px;
+    --font-size-caption: 12px;
+    --font-size-numeric: 15px;
+
+    --grid-gutter: 16px;
+    --page-padding: 24px;
+  }
+}
+
+/* Palier lg : gouttière et padding pleine densité. */
+@media (min-width: 992px) {
+  :root {
+    --grid-gutter: 24px;
+    --page-padding: 32px;
+  }
+}
+
+/**
+ * Thème sombre — non livré dans ce chantier (§3.3).
+ * Le bloc existe pour que l'activation soit un échange de valeurs : seuls les
+ * RÔLES y sont redéfinis, jamais les primitives, jamais un composant.
+ * Laissé volontairement vide tant que la palette sombre n'est pas arbitrée.
+ */
+:root[data-theme='dark'] {
+  /* à remplir en même temps que le second ThemeConfig AntD (theme.darkAlgorithm) */
+}
+
+/**
+ * Mouvement réduit : une seule règle, aucune modification de composant.
+ * `framer-motion` reste à câbler sur `useReducedMotion()` (hors Lot 0).
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 1ms;
+    --duration-base: 1ms;
+    --duration-slow: 1ms;
+  }
+}
