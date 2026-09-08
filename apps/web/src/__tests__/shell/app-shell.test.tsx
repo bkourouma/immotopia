@@ -189,3 +189,21 @@ describe('AppShell — action primaire sortie du menu', () => {
     }
   });
 });
+
+describe('AppShell — compte non rattaché', () => {
+  it('rend l’écran dédié à la place de la coquille, sans aucun élément de navigation', () => {
+    // Ni agence, ni contrat client : aucune destination, donc aucun menu.
+    renderShell(makeAuth({}), '/dashboard');
+    expect(screen.getByText(/n’est rattaché à aucune agence/)).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Navigation principale' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('banner')).not.toBeInTheDocument();
+    // Le contenu de la route n'est pas rendu : il n'aurait rien a afficher.
+    expect(screen.queryByTestId('contenu')).not.toBeInTheDocument();
+  });
+
+  it('propose une sortie, et rappelle le compte concerné', () => {
+    renderShell(makeAuth({}), '/properties');
+    expect(screen.getByText('test@example.com')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Se déconnecter' })).toBeInTheDocument();
+  });
+});

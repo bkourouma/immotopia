@@ -26,3 +26,5 @@ export { AccessDenied } from './AccessDenied';
 export type { AccessDeniedProps, AccessDeniedReason } from './AccessDenied';
 
 export { NotFound } from './NotFound';
+
+export { AccountNotLinked } from './AccountNotLinked';

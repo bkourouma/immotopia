@@ -192,7 +192,7 @@ export const AuditLogs: React.FC = () => {
       }
     },
     {
-      title: 'Tenant',
+      title: 'Agence',
       key: 'tenant',
       width: 140,
       render: (_, record) => record.tenant?.name || '-'
@@ -349,7 +349,7 @@ export const AuditLogs: React.FC = () => {
                       ? `${getAuditEntityTypeLabelFr(selectedLog.resourceType)} (${selectedLog.resourceId})`
                       : '-')}
                 </Descriptions.Item>
-                <Descriptions.Item label="Tenant">{selectedLog.tenant?.name || '-'}</Descriptions.Item>
+                <Descriptions.Item label="Agence">{selectedLog.tenant?.name || '-'}</Descriptions.Item>
                 <Descriptions.Item label="IP client">{selectedLog.ipAddress || '-'}</Descriptions.Item>
                 <Descriptions.Item label="User-Agent">
                   {selectedLog.userAgent ? (

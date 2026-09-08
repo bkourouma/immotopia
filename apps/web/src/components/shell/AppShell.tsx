@@ -7,6 +7,7 @@ import { actionForPath } from '../../navigation/actions';
 import { NAVIGATION } from '../../navigation/model';
 import { contextFromPath, lastSyndicKey, portalRedirect, resolvePersona } from '../../navigation/resolve';
 import type { NavContext } from '../../navigation/resolve';
+import { AccountNotLinked } from '../primitives/AccountNotLinked';
 import { SkeletonDetail } from '../primitives/Skeleton';
 import { AppHeader } from './AppHeader';
 import { AppNavigation } from './AppNavigation';
@@ -103,7 +104,7 @@ export const AppShell: React.FC = () => {
    */
   const redirectTo = isLoadingMembership ? null : portalRedirect(location.pathname, tenantClient?.clientType);
 
-  const nav = persona ? NAVIGATION[persona] : null;
+  const nav = persona && persona !== 'non-rattache' ? NAVIGATION[persona] : null;
 
   // Tant que le persona n'est pas tranché, on rend la coquille sans menu
   // plutôt qu'un menu faux : afficher le menu public à un collaborateur, même
@@ -124,6 +125,14 @@ export const AppShell: React.FC = () => {
   const action = actionForPath(location.pathname, navContext.tenantId);
 
   if (redirectTo) return <Navigate to={redirectTo} replace />;
+
+  /**
+   * Compte authentifie rattache a rien : ni agence, ni bail, ni bien. Ce n'est
+   * pas un persona, c'est un etat de compte — il n'a aucune destination, donc
+   * ni sidebar, ni barre d'onglets, ni action flottante. On rend l'ecran
+   * dedie a la place de la coquille, quelle que soit la route demandee.
+   */
+  if (persona === 'non-rattache') return <AccountNotLinked />;
 
   return (
     <Layout style={{ minHeight: '100vh', background: 'var(--surface-page)' }}>

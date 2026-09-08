@@ -211,7 +211,7 @@ export const CollaboratorsList: React.FC = () => {
             <Title level={2} style={{ margin: 0 }}>
               Collaborateurs
             </Title>
-            <Text type="secondary">Gérez les collaborateurs de votre tenant</Text>
+            <Text type="secondary">Gérez les collaborateurs de votre agence</Text>
           </div>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate(`/tenant/${tenantId}/invite`)}>
             Inviter un collaborateur

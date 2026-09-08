@@ -72,21 +72,24 @@ export function resolveHref(href: string, ctx: NavContext): string | null {
  * ceci près qu'elle est désormais nommée, testable, et lue par la coquille,
  * la barre d'onglets et le drawer plutôt que recalculée dans chacun.
  */
+export type ShellAudience = PersonaId | 'non-rattache';
+
 export function resolvePersona(input: {
   globalRole?: string | null;
   hasTenantMembership: boolean;
   clientType?: string | null;
   isLoadingMembership: boolean;
-}): PersonaId | null {
+}): ShellAudience | null {
   if (input.globalRole === 'SUPER_ADMIN') return 'super-admin';
   if (input.hasTenantMembership) return 'collaborateur';
   if (input.clientType === 'OWNER') return 'proprietaire';
   if (input.clientType === 'RENTER') return 'locataire';
-  // Tant que l'appartenance est en cours de chargement, on ne tranche pas :
-  // afficher le menu public à un collaborateur, même une seconde, est pire
-  // que de n'afficher aucun menu.
+  // Tant que l'appartenance charge, on ne tranche pas : afficher un menu faux,
+  // meme une seconde, est pire que de n'afficher aucun menu.
   if (input.isLoadingMembership) return null;
-  return 'public';
+  // Authentifie, rattache a rien. Ce n'est pas un persona : il n'a aucune
+  // destination, donc aucune navigation. Voir <AccountNotLinked>.
+  return 'non-rattache';
 }
 
 /** Extrait `tenantId` et `syndicId` d'un chemin de route, s'ils s'y trouvent. */

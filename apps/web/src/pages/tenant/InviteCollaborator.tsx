@@ -187,7 +187,7 @@ export const InviteCollaborator: React.FC = () => {
                 </Space>
               ) : roles.length === 0 ? (
                 <Space orientation="vertical">
-                  <Text type="secondary">Aucun role disponible pour ce tenant.</Text>
+                  <Text type="secondary">Aucun rôle disponible pour cette agence.</Text>
                   <Button onClick={loadRoles}>Recharger</Button>
                 </Space>
               ) : (

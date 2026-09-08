@@ -56,7 +56,7 @@ export const PatrimoineOverviewPage: React.FC = () => {
   if (!effectiveTenantId) {
     return (
       <>
-        <Alert type="warning" showIcon message="Aucun tenant selectionne" />
+        <Alert type="warning" showIcon message="Aucune agence sélectionnée" />
       </>
     );
   }

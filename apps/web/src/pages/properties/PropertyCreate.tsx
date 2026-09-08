@@ -17,7 +17,7 @@ export const PropertyCreate: React.FC = () => {
     return (
       <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <Text type="secondary">Aucun tenant sélectionné</Text>
+          <Text type="secondary">Aucune agence sélectionnée</Text>
         </div>
       </>
     );

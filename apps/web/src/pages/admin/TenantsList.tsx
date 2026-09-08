@@ -181,7 +181,7 @@ export const TenantsList: React.FC = () => {
             <Title level={3} style={{ margin: 0 }}>
               Tenants
             </Title>
-            <Text type="secondary">Gérez tous les tenants de la plateforme</Text>
+            <Text type="secondary">Gérez toutes les agences de la plateforme</Text>
           </div>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/admin/tenants/new')}>
             Nouveau Tenant
@@ -193,7 +193,7 @@ export const TenantsList: React.FC = () => {
           <form onSubmit={handleSearch}>
             <Space wrap size="middle" style={{ width: '100%' }}>
               <Input
-                placeholder="Rechercher un tenant..."
+                placeholder="Rechercher une agence…"
                 prefix={<SearchOutlined />}
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
@@ -224,7 +224,7 @@ export const TenantsList: React.FC = () => {
         <Card>
           <Spin spinning={loading}>
             {!loading && (!tenants || tenants.length === 0) ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Aucun tenant trouvé" />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Aucune agence trouvée" />
             ) : (
               <Table
                 rowKey="id"

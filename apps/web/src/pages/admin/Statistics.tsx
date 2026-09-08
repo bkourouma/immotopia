@@ -51,7 +51,7 @@ export const Statistics: React.FC = () => {
 
   const statCards = [
     {
-      title: 'Total Tenants',
+      title: 'Total agences',
       value: stats.totalTenants,
       icon: <BankOutlined style={{ fontSize: 24, color: '#1677ff' }} />,
       footer: (

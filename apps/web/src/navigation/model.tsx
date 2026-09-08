@@ -8,7 +8,6 @@ import {
   FileTextOutlined,
   FolderOutlined,
   GoldOutlined,
-  HomeOutlined,
   MailOutlined,
   MenuOutlined,
   RiseOutlined,
@@ -60,7 +59,14 @@ import {
  * que l'appartenance n'est pas chargée.
  */
 
-export type PersonaId = 'super-admin' | 'collaborateur' | 'proprietaire' | 'locataire' | 'public';
+/**
+ * Les quatre personas qui ont une navigation.
+ *
+ * Un cinquieme etat existe — le compte authentifie rattache a rien — mais ce
+ * n'est pas un persona : il n'a aucune destination, donc aucun menu. Il est
+ * traite par `<AccountNotLinked>`, hors coquille.
+ */
+export type PersonaId = 'super-admin' | 'collaborateur' | 'proprietaire' | 'locataire';
 
 /** Déclencheur d'interface, pas une destination : ouvre le drawer complet. */
 export const MORE_TAB_HREF = '#plus';
@@ -407,28 +413,6 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
       { key: 'payer', label: 'Payer', icon: <WalletOutlined />, zone: 'primary', href: '/tenant/payments' },
       { key: 'incidents', label: 'Incidents', icon: <ToolOutlined />, zone: 'primary', href: '/tenant/maintenance' },
       { key: 'bail', label: 'Mon bail', icon: <FileTextOutlined />, zone: 'primary', href: '/tenant/lease' }
-    ]
-  },
-
-  public: {
-    id: 'public',
-    label: 'Utilisateur sans agence',
-    tabs: [],
-    // Une seule destination, et c'est un constat, pas un oubli. L'ancien menu
-    // public proposait « Propriétés » vers /properties — or cette route rend
-    // `pages/properties/Properties.tsx`, qui exige un tenant : un utilisateur
-    // public, défini justement par l'absence de tenant, y tombait TOUJOURS sur
-    // l'écran « Aucune agence sélectionnée ». L'entrée est retirée plutôt que
-    // de mener à un cul-de-sac. Ce persona n'a rien à consulter tant qu'il
-    // n'est pas rattaché : à arbitrer côté produit (voir LOT-1-RAPPORT).
-    tree: [
-      {
-        key: 'accueil',
-        label: 'Tableau de bord',
-        icon: <HomeOutlined />,
-        zone: 'primary',
-        href: '/dashboard'
-      }
     ]
   }
 };

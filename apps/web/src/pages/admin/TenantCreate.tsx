@@ -45,7 +45,7 @@ export const TenantCreate: React.FC = () => {
             <Title level={3} style={{ margin: 0 }}>
               Nouveau Tenant
             </Title>
-            <Text type="secondary">Créer un nouveau tenant</Text>
+            <Text type="secondary">Créer une nouvelle agence</Text>
           </div>
         </div>
 
@@ -79,7 +79,7 @@ export const TenantCreate: React.FC = () => {
               />
             )}
 
-            <Form.Item label="Type de tenant" required>
+            <Form.Item label="Type d'agence" required>
               <Radio.Group
                 optionType="button"
                 buttonStyle="solid"
@@ -107,7 +107,7 @@ export const TenantCreate: React.FC = () => {
             <Row gutter={24}>
               <Col xs={24} sm={12}>
                 <Form.Item label="Nom" name="name" rules={[{ required: true, message: 'Le nom est requis' }]}>
-                  <Input placeholder="Nom du tenant" />
+                  <Input placeholder="Nom de l'agence" />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
@@ -142,7 +142,7 @@ export const TenantCreate: React.FC = () => {
               </Col>
               <Col xs={24} sm={12}>
                 <Form.Item label="Sous-domaine" name="subdomain">
-                  <Input placeholder="mon-tenant" />
+                  <Input placeholder="mon-agence" />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>

@@ -76,7 +76,7 @@ export const TenantDetail: React.FC = () => {
   const handleSuspend = () => {
     if (!tenantId) return;
     confirmAction({
-      title: `Suspendre le tenant « ${tenant?.name ?? tenantId} » ?`,
+      title: `Suspendre l'agence « ${tenant?.name ?? tenantId} » ?`,
       description: "Ses collaborateurs perdent l'accès jusqu'à réactivation.",
       okText: 'Suspendre',
       danger: true,
@@ -84,7 +84,7 @@ export const TenantDetail: React.FC = () => {
         try {
           await suspendTenant(tenantId);
           await loadTenant();
-          message.success('Tenant suspendu');
+          message.success('Agence suspendue');
         } catch (err: any) {
           message.error(err.response?.data?.message || 'Erreur lors de la suspension');
         }
@@ -94,13 +94,13 @@ export const TenantDetail: React.FC = () => {
   const handleActivate = () => {
     if (!tenantId) return;
     confirmAction({
-      title: `Activer le tenant « ${tenant?.name ?? tenantId} » ?`,
+      title: `Activer l'agence « ${tenant?.name ?? tenantId} » ?`,
       okText: 'Activer',
       onConfirm: async () => {
         try {
           await activateTenant(tenantId);
           await loadTenant();
-          message.success('Tenant activé');
+          message.success('Agence activée');
         } catch (err: any) {
           message.error(err.response?.data?.message || "Erreur lors de l'activation");
         }

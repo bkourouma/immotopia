@@ -21,14 +21,10 @@ const TENANT = '8cab62a9-bddc-41d5-be02-712d345df2df';
 const SYNDIC = '11111111-2222-3333-4444-555555555555';
 
 describe('modèle de navigation — intégrité', () => {
-  it('couvre les cinq personas', () => {
-    expect(Object.keys(NAVIGATION).sort()).toEqual([
-      'collaborateur',
-      'locataire',
-      'proprietaire',
-      'public',
-      'super-admin'
-    ]);
+  it('couvre les quatre personas qui ont une navigation', () => {
+    // Le cinquieme etat — compte rattache a rien — n'est pas un persona : il
+    // n'a aucune destination, donc aucun menu.
+    expect(Object.keys(NAVIGATION).sort()).toEqual(['collaborateur', 'locataire', 'proprietaire', 'super-admin']);
   });
 
   it('respecte le nombre d’onglets par persona du §4.2', () => {
@@ -36,7 +32,6 @@ describe('modèle de navigation — intégrité', () => {
     expect(NAVIGATION.collaborateur.tabs).toHaveLength(5);
     expect(NAVIGATION.proprietaire.tabs).toHaveLength(5);
     expect(NAVIGATION.locataire.tabs).toHaveLength(4);
-    expect(NAVIGATION.public.tabs).toHaveLength(0);
   });
 
   it('n’expose aucune ACTION comme destination', () => {
@@ -142,7 +137,7 @@ describe('resolvePersona', () => {
     expect(resolvePersona({ ...base, hasTenantMembership: true })).toBe('collaborateur');
     expect(resolvePersona({ ...base, clientType: 'OWNER' })).toBe('proprietaire');
     expect(resolvePersona({ ...base, clientType: 'RENTER' })).toBe('locataire');
-    expect(resolvePersona(base)).toBe('public');
+    expect(resolvePersona(base)).toBe('non-rattache');
   });
 
   it('ne tranche pas tant que l’appartenance charge', () => {
@@ -237,5 +232,20 @@ describe('gardes de portail', () => {
   it('ne touche pas aux écrans hors portail', () => {
     expect(portalRedirect(`/tenant/${TENANT}/rental/leases`, 'RENTER')).toBeNull();
     expect(portalRedirect('/dashboard', 'OWNER')).toBeNull();
+  });
+});
+
+describe('compte non rattaché', () => {
+  it('n’est pas un persona : il n’a aucune navigation', () => {
+    // L'ancien persona « public » avait deux entrees de menu, dont aucune ne
+    // menait nulle part depuis la suppression de la vitrine.
+    expect(Object.keys(NAVIGATION)).not.toContain('public');
+    expect(Object.keys(NAVIGATION)).not.toContain('non-rattache');
+  });
+
+  it('est distingué du chargement en cours', () => {
+    const base = { hasTenantMembership: false, isLoadingMembership: false };
+    expect(resolvePersona(base)).toBe('non-rattache');
+    expect(resolvePersona({ ...base, isLoadingMembership: true })).toBeNull();
   });
 });
