@@ -61,3 +61,10 @@ code {
   background: #94a3b8;
   border-radius: 999px;
 }
+
+/* Le drawer de navigation reprend le fond sombre de la sidebar : son titre et
+   son bouton de fermeture doivent lire dessus. */
+.app-drawer-header .ant-drawer-title,
+.app-drawer-header .ant-drawer-close {
+  color: var(--text-on-inverse);
+}
