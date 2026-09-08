@@ -5,6 +5,7 @@ import 'dayjs/locale/fr';
 import 'antd/dist/reset.css';
 // Les tokens précèdent la CSS applicative : `index.css` et `tailwind.config.js`
 // consomment ces variables, le thème AntD les lit au démarrage.
+import './styles/fonts.css';
 import './styles/tokens.css';
 import './index.css';
 import App from './App';
