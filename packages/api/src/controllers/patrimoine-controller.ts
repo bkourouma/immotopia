@@ -35,12 +35,20 @@ import {
   listPropertyLoans,
   listPropertyValuations,
   listPropertyWorkPrograms,
+  listTenantWorkPrograms,
   updatePropertyExpense,
   updatePropertyLoan,
   updatePropertyValuation,
   updatePropertyWorkProgram
 } from '../lib/patrimoine/queries';
-import { grossYield, latentCapitalGain, netNetYield, netYield, projectedYieldAtHorizon, projectYield } from '../lib/patrimoine/yield';
+import {
+  grossYield,
+  latentCapitalGain,
+  netNetYield,
+  netYield,
+  projectedYieldAtHorizon,
+  projectYield
+} from '../lib/patrimoine/yield';
 import { badRequest } from '../lib/errors';
 
 function resolveTenantId(req: Request): string {
@@ -73,6 +81,34 @@ export async function getPatrimoineOverviewHandler(req: Request, res: Response):
   }
 }
 
+/**
+ * Programmes de travaux de toute l'agence, pagines et filtres cote serveur.
+ * Remplace le N+1 decrit au §8.4 : une requete au lieu de 101.
+ */
+export async function listTenantWorkProgramsHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const tenantId = resolveTenantId(req);
+    const rawStatus = req.query.status as string | undefined;
+    const allowed = ['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
+    if (rawStatus && !allowed.includes(rawStatus)) {
+      res.status(400).json({ success: false, error: 'Statut de programme de travaux inconnu' });
+      return;
+    }
+    const data = await listTenantWorkPrograms(tenantId, {
+      status: rawStatus as never,
+      page: req.query.page ? Number(req.query.page) : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : undefined
+    });
+    res.json({ success: true, data });
+  } catch (error: unknown) {
+    logger.error('Error listing tenant work programs', { error });
+    const typed = error as { status?: number; message?: string };
+    res
+      .status(typed.status || 500)
+      .json({ success: false, error: typed.message || 'Echec du chargement des programmes de travaux' });
+  }
+}
+
 export async function getPatrimoinePerformanceHandler(req: Request, res: Response): Promise<void> {
   try {
     const tenantId = resolveTenantId(req);
@@ -100,7 +136,9 @@ export async function getPatrimoinePerformanceHandler(req: Request, res: Respons
   } catch (error: unknown) {
     logger.error('Error getting patrimoine performance', { error });
     const typed = error as { status?: number; message?: string };
-    res.status(typed.status || 500).json({ success: false, error: typed.message || 'Echec de la performance patrimoine' });
+    res
+      .status(typed.status || 500)
+      .json({ success: false, error: typed.message || 'Echec de la performance patrimoine' });
   }
 }
 
@@ -391,7 +429,9 @@ export async function listPropertyDocumentsHandler(req: Request, res: Response):
   } catch (error: unknown) {
     logger.error('Error listing property documents', { error });
     const typed = error as { status?: number; message?: string };
-    res.status(typed.status || 500).json({ success: false, error: typed.message || 'Echec liste documents patrimoine' });
+    res
+      .status(typed.status || 500)
+      .json({ success: false, error: typed.message || 'Echec liste documents patrimoine' });
   }
 }
 
@@ -418,7 +458,9 @@ export async function getPropertyDocumentHandler(req: Request, res: Response): P
   } catch (error: unknown) {
     logger.error('Error getting property document', { error });
     const typed = error as { status?: number; message?: string };
-    res.status(typed.status || 500).json({ success: false, error: typed.message || 'Echec detail document patrimoine' });
+    res
+      .status(typed.status || 500)
+      .json({ success: false, error: typed.message || 'Echec detail document patrimoine' });
   }
 }
 

@@ -1,4 +1,4 @@
-import { Prisma, StatementStatus } from '@prisma/client';
+import { Prisma, StatementStatus, WorkProgramStatus } from '@prisma/client';
 import { badRequest, notFound } from '../errors';
 import { prisma } from '../../utils/database';
 import type { YieldInput } from './yield';
@@ -342,6 +342,42 @@ export async function listPropertyWorkPrograms(tenantId: string, propertyId: str
     include: { property: true },
     orderBy: { plannedDate: 'asc' }
   });
+}
+
+/**
+ * Programmes de travaux d'une AGENCE entiere, pagines et filtres cote serveur.
+ *
+ * Corrige le N+1 du §8.4 : `PatrimoineOverviewPage` chargeait jusqu'a 100
+ * biens puis lancait une requete `listPropertyWorkPrograms` PAR BIEN — jusqu'a
+ * 101 requetes au montage. `WorkProgramsPage` faisait de meme, puis filtrait
+ * par statut en memoire APRES avoir tout telecharge.
+ *
+ * Ajout non rupturant : `listPropertyWorkPrograms` reste en place et repond a
+ * l'identique. L'index `@@index([tenantId, propertyId, status])` couvre ce
+ * filtre.
+ */
+export async function listTenantWorkPrograms(
+  tenantId: string,
+  options: { status?: WorkProgramStatus; page?: number; limit?: number } = {}
+) {
+  const page = Math.max(1, options.page ?? 1);
+  // Plafond a 100 : une page plus large signale un appelant qui veut tout
+  // charger, precisement ce que cet endpoint remplace.
+  const limit = Math.min(100, Math.max(1, options.limit ?? 25));
+  const where = { tenantId, ...(options.status ? { status: options.status } : {}) };
+
+  const [items, total] = await Promise.all([
+    prisma.workProgram.findMany({
+      where,
+      include: { property: { select: { id: true, title: true, internalReference: true } } },
+      orderBy: { plannedDate: 'asc' },
+      skip: (page - 1) * limit,
+      take: limit
+    }),
+    prisma.workProgram.count({ where })
+  ]);
+
+  return { items, total, page, limit, totalPages: Math.max(1, Math.ceil(total / limit)) };
 }
 
 export async function createPropertyWorkProgram(

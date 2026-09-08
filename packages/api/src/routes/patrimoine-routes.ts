@@ -27,6 +27,7 @@ import {
   listPropertyLoansHandler,
   listPropertyValuationsHandler,
   listPropertyWorkProgramsHandler,
+  listTenantWorkProgramsHandler,
   updatePropertyExpenseHandler,
   updatePropertyLoanHandler,
   updatePropertyValuationHandler,
@@ -43,6 +44,14 @@ router.get(
   '/tenants/:tenantId/patrimoine/overview',
   requireAnyPropertyPermission(['PROPERTIES_VIEW']),
   getPatrimoineOverviewHandler
+);
+
+// Ajout non rupturant : la route par bien reste en place et repond a
+// l'identique. Celle-ci evite d'avoir a l'appeler en boucle (§8.4).
+router.get(
+  '/tenants/:tenantId/work-programs',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listTenantWorkProgramsHandler
 );
 
 router.get(
