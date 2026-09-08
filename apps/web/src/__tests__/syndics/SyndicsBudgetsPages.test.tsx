@@ -12,12 +12,12 @@ vi.mock('../../utils/api-client', () => ({
     get: vi.fn(),
     post: vi.fn(),
     patch: vi.fn(),
-    delete: vi.fn(),
-  },
+    delete: vi.fn()
+  }
 }));
 
 vi.mock('../../components/dashboard/dashboard-layout', () => ({
-  DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
 }));
 
 vi.mock('@ant-design/icons', async () => {
@@ -25,11 +25,11 @@ vi.mock('@ant-design/icons', async () => {
   // must expose the real export names — a Proxy over {} declares none.
   const actual = await vi.importActual<Record<string, unknown>>('@ant-design/icons');
   const Icon = () => <span />;
-  return Object.fromEntries(Object.keys(actual).map((name) => [name, Icon]));
+  return Object.fromEntries(Object.keys(actual).map(name => [name, Icon]));
 });
 
 vi.mock('antd', async () => {
-    // importActual reaches the real module from inside a hoisted mock factory;
+  // importActual reaches the real module from inside a hoisted mock factory;
   // a plain dynamic import here deadlocks the module graph.
   const React = await vi.importActual<typeof import('react')>('react');
   const passthrough =
@@ -40,7 +40,7 @@ vi.mock('antd', async () => {
   const formInstance = {
     validateFields: vi.fn(),
     resetFields: vi.fn(),
-    setFieldsValue: vi.fn(),
+    setFieldsValue: vi.fn()
   };
 
   const FormComponent: any = passthrough('form');
@@ -61,7 +61,7 @@ vi.mock('antd', async () => {
     </div>
   );
 
-  return {
+  const antdMock: Record<string, unknown> = {
     Alert: passthrough(),
     Button: passthrough('button'),
     Card: passthrough(),
@@ -77,13 +77,19 @@ vi.mock('antd', async () => {
     Typography: {
       Title: passthrough('h1'),
       Paragraph: passthrough('p'),
-      Text: passthrough('span'),
+      Text: passthrough('span')
     },
     message: {
       success: vi.fn(),
-      error: vi.fn(),
-    },
+      error: vi.fn()
+    }
   };
+  const appApi = {
+    message: antdMock.message ?? { success() {}, error() {}, warning() {}, info() {}, loading() {} },
+    modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
+    notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
+  };
+  return { ...antdMock, App: { useApp: () => appApi } };
 });
 
 const mockApiClient = apiClient as any;
@@ -98,7 +104,7 @@ const authValue: AuthContextType = {
     emailVerified: true,
     isActive: true,
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   },
   isAuthenticated: true,
   isLoading: false,
@@ -107,7 +113,7 @@ const authValue: AuthContextType = {
     id: 'membership-1',
     tenantId: 'tenant-1',
     tenant: { id: 'tenant-1', name: 'Tenant Demo', slug: 'tenant-demo' },
-    status: 'ACTIVE',
+    status: 'ACTIVE'
   },
   tenantClient: null,
   isLoadingMembership: false,
@@ -116,7 +122,7 @@ const authValue: AuthContextType = {
   register: async () => undefined,
   refreshToken: async () => undefined,
   clearError: vi.fn(),
-  refreshMembership: async () => undefined,
+  refreshMembership: async () => undefined
 };
 
 function renderWithRoute() {
@@ -147,10 +153,10 @@ describe('Syndics budgets page', () => {
                 totalAmount: 1000000,
                 status: 'DRAFT',
                 allocations: [{ id: 'alloc-1' }],
-                currency: 'XOF',
-              },
-            ],
-          },
+                currency: 'XOF'
+              }
+            ]
+          }
         });
       }
       if (url.endsWith('/charges/batch')) {
@@ -166,10 +172,10 @@ describe('Syndics budgets page', () => {
                 batchType: 'REGULAR',
                 totalAmount: 1000000,
                 chargeCalls: [{ id: 'c1' }],
-                status: 'SENT',
-              },
-            ],
-          },
+                status: 'SENT'
+              }
+            ]
+          }
         });
       }
       // The page also loads lots in the same Promise.all; without this branch
@@ -191,19 +197,17 @@ describe('Syndics budgets page', () => {
     mockApiClient.patch.mockResolvedValue({
       data: {
         success: true,
-        data: { id: 'budget-1', status: 'APPROVED' },
-      },
+        data: { id: 'budget-1', status: 'APPROVED' }
+      }
     });
 
     renderWithRoute();
     fireEvent.click(await screen.findByText('Approuver'));
 
     await waitFor(() => {
-      expect(mockApiClient.patch).toHaveBeenCalledWith(
-        '/tenants/tenant-1/syndics/syndic-1/budgets/budget-1',
-        { status: 'APPROVED' }
-      );
+      expect(mockApiClient.patch).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1/budgets/budget-1', {
+        status: 'APPROVED'
+      });
     });
   });
 });
-

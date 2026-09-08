@@ -44,7 +44,7 @@ vi.mock('antd', async () => {
   const Modal = ({ open, children }: any) => (open ? <div>{children}</div> : null);
   const Table = ({ dataSource }: any) => <div>{JSON.stringify(dataSource || [])}</div>;
 
-  return {
+  const antdMock: Record<string, unknown> = {
     Alert: passthrough(),
     Button: passthrough('button'),
     Card: passthrough(),
@@ -73,6 +73,12 @@ vi.mock('antd', async () => {
       error: jestObject.fn()
     }
   };
+  const appApi = {
+    message: antdMock.message ?? { success() {}, error() {}, warning() {}, info() {}, loading() {} },
+    modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
+    notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
+  };
+  return { ...antdMock, App: { useApp: () => appApi } };
 });
 
 vi.mock('../../components/patrimoine/ValuationHistory', () => ({
@@ -133,13 +139,7 @@ vi.mock('../../components/patrimoine/YieldCalculator', () => ({
 }));
 
 vi.mock('../../components/patrimoine/DocumentVault', () => ({
-  DocumentVault: ({
-    documents,
-    onDelete
-  }: {
-    documents: Array<{ id: string }>;
-    onDelete?: (id: string) => void;
-  }) => (
+  DocumentVault: ({ documents, onDelete }: { documents: Array<{ id: string }>; onDelete?: (id: string) => void }) => (
     <button type="button" onClick={() => documents[0] && onDelete?.(documents[0].id)}>
       delete-first-doc
     </button>

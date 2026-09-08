@@ -14,12 +14,12 @@ vi.mock('../../utils/api-client', () => ({
     get: vi.fn(),
     post: vi.fn(),
     patch: vi.fn(),
-    delete: vi.fn(),
-  },
+    delete: vi.fn()
+  }
 }));
 
 vi.mock('../../components/dashboard/dashboard-layout', () => ({
-  DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
 }));
 
 vi.mock('@ant-design/icons', async () => {
@@ -27,7 +27,7 @@ vi.mock('@ant-design/icons', async () => {
   // must expose the real export names — a Proxy over {} declares none.
   const actual = await vi.importActual<Record<string, unknown>>('@ant-design/icons');
   const Icon = () => <span />;
-  return Object.fromEntries(Object.keys(actual).map((name) => [name, Icon]));
+  return Object.fromEntries(Object.keys(actual).map(name => [name, Icon]));
 });
 
 vi.mock('antd', async () => {
@@ -57,7 +57,7 @@ vi.mock('antd', async () => {
 
   const Table = ({ dataSource }: any) => <div>{JSON.stringify(dataSource || [])}</div>;
 
-  return {
+  const antdMock: Record<string, unknown> = {
     Alert: passthrough(),
     Button: ({ children, onClick, disabled }: any) => (
       <button onClick={onClick} disabled={disabled}>
@@ -103,8 +103,14 @@ vi.mock('antd', async () => {
       mockSetFieldsValue,
       mockMessageSuccess,
       mockMessageError
-    },
+    }
   };
+  const appApi = {
+    message: antdMock.message ?? { success() {}, error() {}, warning() {}, info() {}, loading() {} },
+    modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
+    notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
+  };
+  return { ...antdMock, App: { useApp: () => appApi } };
 });
 
 // Vitest has no `requireMock`; importing the module inside a mocked test file
@@ -196,7 +202,20 @@ describe('SyndicCharges page', () => {
       }
       if (url === '/tenants/tenant-1/syndics/syndic-1/lots') {
         return Promise.resolve({
-          data: { success: true, data: [{ id: 'lot-1', syndicateId: 'syndic-1', lotNumber: 'A-01', lotType: 'APARTMENT', generalShares: 100, createdAt: '', updatedAt: '' }] }
+          data: {
+            success: true,
+            data: [
+              {
+                id: 'lot-1',
+                syndicateId: 'syndic-1',
+                lotNumber: 'A-01',
+                lotType: 'APARTMENT',
+                generalShares: 100,
+                createdAt: '',
+                updatedAt: ''
+              }
+            ]
+          }
         });
       }
       if (url === '/tenants/tenant-1/syndics/syndic-1/charges') {
@@ -204,7 +223,20 @@ describe('SyndicCharges page', () => {
           return Promise.resolve({
             data: {
               success: true,
-              data: [{ id: 'charge-overdue', lotId: 'lot-1', syndicateId: 'syndic-1', period: '2026-Q1', amount: 70000, currency: 'XOF', dueDate: '2026-01-10T00:00:00.000Z', status: 'OVERDUE', createdAt: '', updatedAt: '' }]
+              data: [
+                {
+                  id: 'charge-overdue',
+                  lotId: 'lot-1',
+                  syndicateId: 'syndic-1',
+                  period: '2026-Q1',
+                  amount: 70000,
+                  currency: 'XOF',
+                  dueDate: '2026-01-10T00:00:00.000Z',
+                  status: 'OVERDUE',
+                  createdAt: '',
+                  updatedAt: ''
+                }
+              ]
             }
           });
         }
@@ -212,8 +244,30 @@ describe('SyndicCharges page', () => {
           data: {
             success: true,
             data: [
-              { id: 'charge-1', lotId: 'lot-1', syndicateId: 'syndic-1', period: '2026-Q2', amount: 100000, currency: 'XOF', dueDate: '2026-06-10T00:00:00.000Z', status: 'PENDING', createdAt: '', updatedAt: '' },
-              { id: 'charge-2', lotId: 'lot-1', syndicateId: 'syndic-1', period: '2026-Q1', amount: 70000, currency: 'XOF', dueDate: '2026-01-10T00:00:00.000Z', status: 'OVERDUE', createdAt: '', updatedAt: '' }
+              {
+                id: 'charge-1',
+                lotId: 'lot-1',
+                syndicateId: 'syndic-1',
+                period: '2026-Q2',
+                amount: 100000,
+                currency: 'XOF',
+                dueDate: '2026-06-10T00:00:00.000Z',
+                status: 'PENDING',
+                createdAt: '',
+                updatedAt: ''
+              },
+              {
+                id: 'charge-2',
+                lotId: 'lot-1',
+                syndicateId: 'syndic-1',
+                period: '2026-Q1',
+                amount: 70000,
+                currency: 'XOF',
+                dueDate: '2026-01-10T00:00:00.000Z',
+                status: 'OVERDUE',
+                createdAt: '',
+                updatedAt: ''
+              }
             ]
           }
         });
@@ -225,7 +279,9 @@ describe('SyndicCharges page', () => {
 
     expect(await screen.findByText(/Charges de Residence Test/)).toBeTruthy();
     await waitFor(() => {
-      expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1/charges', { params: { status: undefined, period: undefined } });
+      expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1/charges', {
+        params: { status: undefined, period: undefined }
+      });
     });
     expect(await screen.findByText(/2026-Q2/)).toBeTruthy();
     expect(await screen.findByText(/PENDING/)).toBeTruthy();
@@ -254,7 +310,20 @@ describe('SyndicCharges page', () => {
       }
       if (url === '/tenants/tenant-1/syndics/syndic-1/lots') {
         return Promise.resolve({
-          data: { success: true, data: [{ id: 'lot-1', syndicateId: 'syndic-1', lotNumber: 'A-01', lotType: 'APARTMENT', generalShares: 100, createdAt: '', updatedAt: '' }] }
+          data: {
+            success: true,
+            data: [
+              {
+                id: 'lot-1',
+                syndicateId: 'syndic-1',
+                lotNumber: 'A-01',
+                lotType: 'APARTMENT',
+                generalShares: 100,
+                createdAt: '',
+                updatedAt: ''
+              }
+            ]
+          }
         });
       }
       if (url === '/tenants/tenant-1/syndics/syndic-1/charges') {

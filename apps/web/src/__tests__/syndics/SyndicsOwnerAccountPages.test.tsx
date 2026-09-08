@@ -12,12 +12,12 @@ vi.mock('../../utils/api-client', () => ({
     get: vi.fn(),
     post: vi.fn(),
     patch: vi.fn(),
-    delete: vi.fn(),
-  },
+    delete: vi.fn()
+  }
 }));
 
 vi.mock('../../components/dashboard/dashboard-layout', () => ({
-  DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
 }));
 
 vi.mock('@ant-design/icons', async () => {
@@ -25,11 +25,11 @@ vi.mock('@ant-design/icons', async () => {
   // must expose the real export names — a Proxy over {} declares none.
   const actual = await vi.importActual<Record<string, unknown>>('@ant-design/icons');
   const Icon = () => <span />;
-  return Object.fromEntries(Object.keys(actual).map((name) => [name, Icon]));
+  return Object.fromEntries(Object.keys(actual).map(name => [name, Icon]));
 });
 
 vi.mock('antd', async () => {
-    // importActual reaches the real module from inside a hoisted mock factory;
+  // importActual reaches the real module from inside a hoisted mock factory;
   // a plain dynamic import here deadlocks the module graph.
   const React = await vi.importActual<typeof import('react')>('react');
   const passthrough =
@@ -38,12 +38,12 @@ vi.mock('antd', async () => {
       React.createElement(Tag, props, children);
   const formInstance = {
     validateFields: vi.fn(),
-    resetFields: vi.fn(),
+    resetFields: vi.fn()
   };
   const Form: any = passthrough('form');
   Form.useForm = () => [formInstance];
   Form.Item = passthrough();
-  return {
+  const antdMock: Record<string, unknown> = {
     Alert: passthrough(),
     Button: passthrough('button'),
     Card: passthrough(),
@@ -56,18 +56,28 @@ vi.mock('antd', async () => {
     Select: passthrough('select'),
     Space: passthrough(),
     Spin: passthrough(),
-    Statistic: ({ title, value }: any) => <div>{title}:{value}</div>,
+    Statistic: ({ title, value }: any) => (
+      <div>
+        {title}:{value}
+      </div>
+    ),
     Table: ({ dataSource }: any) => <div>{JSON.stringify(dataSource || [])}</div>,
     Typography: {
       Title: passthrough('h1'),
       Paragraph: passthrough('p'),
-      Text: passthrough('span'),
+      Text: passthrough('span')
     },
     message: {
       success: vi.fn(),
-      error: vi.fn(),
-    },
+      error: vi.fn()
+    }
   };
+  const appApi = {
+    message: antdMock.message ?? { success() {}, error() {}, warning() {}, info() {}, loading() {} },
+    modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
+    notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
+  };
+  return { ...antdMock, App: { useApp: () => appApi } };
 });
 
 const mockApiClient = apiClient as any;
@@ -82,7 +92,7 @@ const authValue: AuthContextType = {
     emailVerified: true,
     isActive: true,
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   },
   isAuthenticated: true,
   isLoading: false,
@@ -91,7 +101,7 @@ const authValue: AuthContextType = {
     id: 'membership-1',
     tenantId: 'tenant-1',
     tenant: { id: 'tenant-1', name: 'Tenant Demo', slug: 'tenant-demo' },
-    status: 'ACTIVE',
+    status: 'ACTIVE'
   },
   tenantClient: null,
   isLoadingMembership: false,
@@ -100,7 +110,7 @@ const authValue: AuthContextType = {
   register: async () => undefined,
   refreshToken: async () => undefined,
   clearError: vi.fn(),
-  refreshMembership: async () => undefined,
+  refreshMembership: async () => undefined
 };
 
 function renderWithRoute() {
@@ -129,9 +139,9 @@ describe('Syndics owner account page', () => {
               balance: 35000,
               currency: 'XOF',
               lot: { id: 'lot-1', lotNumber: 'A-01' },
-              contact: { id: 'contact-1', firstName: 'Awa', lastName: 'Diop' },
-            },
-          },
+              contact: { id: 'contact-1', firstName: 'Awa', lastName: 'Diop' }
+            }
+          }
         });
       }
       if (url.endsWith('/compte/transactions')) {
@@ -139,10 +149,26 @@ describe('Syndics owner account page', () => {
           data: {
             success: true,
             data: [
-              { id: 'tx-1', transactionDate: '2026-01-10T00:00:00.000Z', type: 'CHARGE_CALL', label: 'Appel', debit: 10000, credit: null, balanceAfter: 45000 },
-              { id: 'tx-2', transactionDate: '2026-01-20T00:00:00.000Z', type: 'PAYMENT', label: 'Paiement', debit: null, credit: 10000, balanceAfter: 35000 },
-            ],
-          },
+              {
+                id: 'tx-1',
+                transactionDate: '2026-01-10T00:00:00.000Z',
+                type: 'CHARGE_CALL',
+                label: 'Appel',
+                debit: 10000,
+                credit: null,
+                balanceAfter: 45000
+              },
+              {
+                id: 'tx-2',
+                transactionDate: '2026-01-20T00:00:00.000Z',
+                type: 'PAYMENT',
+                label: 'Paiement',
+                debit: null,
+                credit: 10000,
+                balanceAfter: 35000
+              }
+            ]
+          }
         });
       }
       if (url.endsWith('/compte/releve')) {

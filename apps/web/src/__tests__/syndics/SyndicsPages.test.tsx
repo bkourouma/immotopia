@@ -13,12 +13,12 @@ vi.mock('../../utils/api-client', () => ({
     get: vi.fn(),
     post: vi.fn(),
     patch: vi.fn(),
-    delete: vi.fn(),
-  },
+    delete: vi.fn()
+  }
 }));
 
 vi.mock('../../components/dashboard/dashboard-layout', () => ({
-  DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
 }));
 
 vi.mock('@ant-design/icons', async () => {
@@ -26,11 +26,11 @@ vi.mock('@ant-design/icons', async () => {
   // must expose the real export names — a Proxy over {} declares none.
   const actual = await vi.importActual<Record<string, unknown>>('@ant-design/icons');
   const Icon = () => <span />;
-  return Object.fromEntries(Object.keys(actual).map((name) => [name, Icon]));
+  return Object.fromEntries(Object.keys(actual).map(name => [name, Icon]));
 });
 
 vi.mock('antd', async () => {
-    // importActual reaches the real module from inside a hoisted mock factory;
+  // importActual reaches the real module from inside a hoisted mock factory;
   // a plain dynamic import here deadlocks the module graph.
   const React = await vi.importActual<typeof import('react')>('react');
   const jestObject = vi;
@@ -41,7 +41,9 @@ vi.mock('antd', async () => {
 
   const Table = ({ dataSource }: any) => <div>{JSON.stringify(dataSource || [])}</div>;
   const FormComp: any = ({ children }: any) => <form>{children}</form>;
-  FormComp.useForm = () => [{ validateFields: jestObject.fn(), resetFields: jestObject.fn(), setFieldsValue: jestObject.fn() }];
+  FormComp.useForm = () => [
+    { validateFields: jestObject.fn(), resetFields: jestObject.fn(), setFieldsValue: jestObject.fn() }
+  ];
   FormComp.Item = passthrough();
   const InputComp: any = passthrough('input');
   InputComp.TextArea = passthrough('textarea');
@@ -50,10 +52,10 @@ vi.mock('antd', async () => {
   const Typography = {
     Title: passthrough('h1'),
     Paragraph: passthrough('p'),
-    Text: passthrough('span'),
+    Text: passthrough('span')
   };
 
-  return {
+  const antdMock: Record<string, unknown> = {
     Alert: passthrough(),
     Button: passthrough('button'),
     Card: passthrough(),
@@ -80,9 +82,15 @@ vi.mock('antd', async () => {
     Typography,
     message: {
       success: jestObject.fn(),
-      error: jestObject.fn(),
-    },
+      error: jestObject.fn()
+    }
   };
+  const appApi = {
+    message: antdMock.message ?? { success() {}, error() {}, warning() {}, info() {}, loading() {} },
+    modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
+    notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
+  };
+  return { ...antdMock, App: { useApp: () => appApi } };
 });
 
 const mockApiClient = apiClient as any;
@@ -97,7 +105,7 @@ const authValue: AuthContextType = {
     emailVerified: true,
     isActive: true,
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   },
   isAuthenticated: true,
   isLoading: false,
@@ -108,9 +116,9 @@ const authValue: AuthContextType = {
     tenant: {
       id: 'tenant-1',
       name: 'Tenant Demo',
-      slug: 'tenant-demo',
+      slug: 'tenant-demo'
     },
-    status: 'ACTIVE',
+    status: 'ACTIVE'
   },
   tenantClient: null,
   isLoadingMembership: false,
@@ -119,7 +127,7 @@ const authValue: AuthContextType = {
   register: async () => undefined,
   refreshToken: async () => undefined,
   clearError: vi.fn(),
-  refreshMembership: async () => undefined,
+  refreshMembership: async () => undefined
 };
 
 function renderWithAuthAndRoute(route: string, element: React.ReactElement) {
@@ -156,10 +164,10 @@ describe('Syndics pages', () => {
             status: 'ACTIVE',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            _count: { lots: 12, chargeCalls: 0 },
-          },
-        ],
-      },
+            _count: { lots: 12, chargeCalls: 0 }
+          }
+        ]
+      }
     } as never);
 
     renderWithAuthAndRoute('/tenant/tenant-1/syndics', <SyndicsList />);
@@ -195,13 +203,13 @@ describe('Syndics pages', () => {
               propertyId: null,
               ownerSince: null,
               createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            },
+              updatedAt: new Date().toISOString()
+            }
           ],
           chargeCalls: [],
-          funds: [],
-        },
-      },
+          funds: []
+        }
+      }
     } as never);
 
     renderWithAuthAndRoute('/tenant/tenant-1/syndics/syndic-1', <SyndicDetail />);

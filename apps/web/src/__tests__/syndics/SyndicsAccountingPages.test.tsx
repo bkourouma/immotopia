@@ -12,12 +12,12 @@ vi.mock('../../utils/api-client', () => ({
     get: vi.fn(),
     post: vi.fn(),
     patch: vi.fn(),
-    delete: vi.fn(),
-  },
+    delete: vi.fn()
+  }
 }));
 
 vi.mock('../../components/dashboard/dashboard-layout', () => ({
-  DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
 }));
 
 vi.mock('@ant-design/icons', async () => {
@@ -25,11 +25,11 @@ vi.mock('@ant-design/icons', async () => {
   // must expose the real export names — a Proxy over {} declares none.
   const actual = await vi.importActual<Record<string, unknown>>('@ant-design/icons');
   const Icon = () => <span />;
-  return Object.fromEntries(Object.keys(actual).map((name) => [name, Icon]));
+  return Object.fromEntries(Object.keys(actual).map(name => [name, Icon]));
 });
 
 vi.mock('antd', async () => {
-    // importActual reaches the real module from inside a hoisted mock factory;
+  // importActual reaches the real module from inside a hoisted mock factory;
   // a plain dynamic import here deadlocks the module graph.
   const React = await vi.importActual<typeof import('react')>('react');
   const passthrough =
@@ -39,7 +39,7 @@ vi.mock('antd', async () => {
 
   const formInstance = {
     validateFields: vi.fn(),
-    resetFields: vi.fn(),
+    resetFields: vi.fn()
   };
 
   const FormComponent: any = passthrough('form');
@@ -48,7 +48,7 @@ vi.mock('antd', async () => {
   FormComponent.List = ({ children }: any) =>
     children([], {
       add: vi.fn(),
-      remove: vi.fn(),
+      remove: vi.fn()
     });
 
   const Table = ({ dataSource, columns }: any) => (
@@ -65,7 +65,7 @@ vi.mock('antd', async () => {
     </div>
   );
 
-  return {
+  const antdMock: Record<string, unknown> = {
     Alert: passthrough(),
     Button: passthrough('button'),
     Card: passthrough(),
@@ -78,19 +78,29 @@ vi.mock('antd', async () => {
     Select: passthrough('select'),
     Space: passthrough(),
     Spin: passthrough(),
-    Statistic: ({ title, value }: any) => <div>{title}:{value}</div>,
+    Statistic: ({ title, value }: any) => (
+      <div>
+        {title}:{value}
+      </div>
+    ),
     Table,
     Tag: passthrough('span'),
     Typography: {
       Title: passthrough('h1'),
       Paragraph: passthrough('p'),
-      Text: passthrough('span'),
+      Text: passthrough('span')
     },
     message: {
       success: vi.fn(),
-      error: vi.fn(),
-    },
+      error: vi.fn()
+    }
   };
+  const appApi = {
+    message: antdMock.message ?? { success() {}, error() {}, warning() {}, info() {}, loading() {} },
+    modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
+    notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
+  };
+  return { ...antdMock, App: { useApp: () => appApi } };
 });
 
 const mockApiClient = apiClient as any;
@@ -105,7 +115,7 @@ const authValue: AuthContextType = {
     emailVerified: true,
     isActive: true,
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   },
   isAuthenticated: true,
   isLoading: false,
@@ -114,7 +124,7 @@ const authValue: AuthContextType = {
     id: 'membership-1',
     tenantId: 'tenant-1',
     tenant: { id: 'tenant-1', name: 'Tenant Demo', slug: 'tenant-demo' },
-    status: 'ACTIVE',
+    status: 'ACTIVE'
   },
   tenantClient: null,
   isLoadingMembership: false,
@@ -123,7 +133,7 @@ const authValue: AuthContextType = {
   register: async () => undefined,
   refreshToken: async () => undefined,
   clearError: vi.fn(),
-  refreshMembership: async () => undefined,
+  refreshMembership: async () => undefined
 };
 
 function renderWithRoute() {
@@ -146,33 +156,44 @@ describe('Syndics accounting page', () => {
         return Promise.resolve({
           data: {
             success: true,
-            data: [{ id: 'acc-1', accountNumber: '401', accountName: 'Fournisseurs', accountClass: 4, accountType: 'LIABILITY', isActive: true }],
-          },
+            data: [
+              {
+                id: 'acc-1',
+                accountNumber: '401',
+                accountName: 'Fournisseurs',
+                accountClass: 4,
+                accountType: 'LIABILITY',
+                isActive: true
+              }
+            ]
+          }
         });
       }
       if (url.endsWith('/comptabilite/journaux')) {
         return Promise.resolve({
           data: {
             success: true,
-            data: [{ id: 'journal-1', code: 'JG', label: 'Journal general', fiscalYear: 2026 }],
-          },
+            data: [{ id: 'journal-1', code: 'JG', label: 'Journal general', fiscalYear: 2026 }]
+          }
         });
       }
       if (url.endsWith('/comptabilite/ecritures')) {
         return Promise.resolve({
           data: {
             success: true,
-            data: [{
-              id: 'entry-1',
-              journalId: 'journal-1',
-              entryDate: '2026-03-01T00:00:00.000Z',
-              reference: 'JE-001',
-              description: 'Ecriture test',
-              sourceType: 'MANUAL',
-              isLocked: false,
-              journal: { code: 'JG' },
-            }],
-          },
+            data: [
+              {
+                id: 'entry-1',
+                journalId: 'journal-1',
+                entryDate: '2026-03-01T00:00:00.000Z',
+                reference: 'JE-001',
+                description: 'Ecriture test',
+                sourceType: 'MANUAL',
+                isLocked: false,
+                journal: { code: 'JG' }
+              }
+            ]
+          }
         });
       }
       if (url.endsWith('/comptabilite/balance')) {
@@ -180,18 +201,35 @@ describe('Syndics accounting page', () => {
           data: {
             success: true,
             data: {
-              items: [{ accountId: 'acc-1', accountNumber: '401', accountName: 'Fournisseurs', totalDebit: 10000, totalCredit: 10000, balance: 0 }],
-              totals: { totalDebit: 10000, totalCredit: 10000, isBalanced: true },
-            },
-          },
+              items: [
+                {
+                  accountId: 'acc-1',
+                  accountNumber: '401',
+                  accountName: 'Fournisseurs',
+                  totalDebit: 10000,
+                  totalCredit: 10000,
+                  balance: 0
+                }
+              ],
+              totals: { totalDebit: 10000, totalCredit: 10000, isBalanced: true }
+            }
+          }
         });
       }
       if (url.endsWith('/comptabilite/grand-livre')) {
         return Promise.resolve({
           data: {
             success: true,
-            data: [{ id: 'line-1', debit: 10000, credit: 0, account: { accountNumber: '401' }, entry: { reference: 'JE-001', entryDate: '2026-03-01T00:00:00.000Z' } }],
-          },
+            data: [
+              {
+                id: 'line-1',
+                debit: 10000,
+                credit: 0,
+                account: { accountNumber: '401' },
+                entry: { reference: 'JE-001', entryDate: '2026-03-01T00:00:00.000Z' }
+              }
+            ]
+          }
         });
       }
       return Promise.reject(new Error(`Unhandled GET ${url}`));
@@ -208,8 +246,8 @@ describe('Syndics accounting page', () => {
     mockApiClient.patch.mockResolvedValue({
       data: {
         success: true,
-        data: { id: 'entry-1', isLocked: true },
-      },
+        data: { id: 'entry-1', isLocked: true }
+      }
     });
 
     renderWithRoute();

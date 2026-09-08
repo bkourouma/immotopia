@@ -12,12 +12,12 @@ vi.mock('../../utils/api-client', () => ({
     get: vi.fn(),
     post: vi.fn(),
     patch: vi.fn(),
-    delete: vi.fn(),
-  },
+    delete: vi.fn()
+  }
 }));
 
 vi.mock('../../components/dashboard/dashboard-layout', () => ({
-  DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
 }));
 
 vi.mock('@ant-design/icons', async () => {
@@ -25,11 +25,11 @@ vi.mock('@ant-design/icons', async () => {
   // must expose the real export names — a Proxy over {} declares none.
   const actual = await vi.importActual<Record<string, unknown>>('@ant-design/icons');
   const Icon = () => <span />;
-  return Object.fromEntries(Object.keys(actual).map((name) => [name, Icon]));
+  return Object.fromEntries(Object.keys(actual).map(name => [name, Icon]));
 });
 
 vi.mock('antd', async () => {
-    // importActual reaches the real module from inside a hoisted mock factory;
+  // importActual reaches the real module from inside a hoisted mock factory;
   // a plain dynamic import here deadlocks the module graph.
   const React = await vi.importActual<typeof import('react')>('react');
   const passthrough =
@@ -39,7 +39,7 @@ vi.mock('antd', async () => {
 
   const formInstance = {
     validateFields: vi.fn(),
-    resetFields: vi.fn(),
+    resetFields: vi.fn()
   };
   const FormComponent: any = passthrough('form');
   FormComponent.useForm = () => [formInstance];
@@ -59,7 +59,7 @@ vi.mock('antd', async () => {
     </div>
   );
 
-  return {
+  const antdMock: Record<string, unknown> = {
     Alert: passthrough(),
     Button: passthrough('button'),
     Card: passthrough(),
@@ -75,13 +75,19 @@ vi.mock('antd', async () => {
     Typography: {
       Title: passthrough('h1'),
       Paragraph: passthrough('p'),
-      Text: passthrough('span'),
+      Text: passthrough('span')
     },
     message: {
       success: vi.fn(),
-      error: vi.fn(),
-    },
+      error: vi.fn()
+    }
   };
+  const appApi = {
+    message: antdMock.message ?? { success() {}, error() {}, warning() {}, info() {}, loading() {} },
+    modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
+    notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
+  };
+  return { ...antdMock, App: { useApp: () => appApi } };
 });
 
 const mockApiClient = apiClient as any;
@@ -96,7 +102,7 @@ const authValue: AuthContextType = {
     emailVerified: true,
     isActive: true,
     createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   },
   isAuthenticated: true,
   isLoading: false,
@@ -105,7 +111,7 @@ const authValue: AuthContextType = {
     id: 'membership-1',
     tenantId: 'tenant-1',
     tenant: { id: 'tenant-1', name: 'Tenant Demo', slug: 'tenant-demo' },
-    status: 'ACTIVE',
+    status: 'ACTIVE'
   },
   tenantClient: null,
   isLoadingMembership: false,
@@ -114,7 +120,7 @@ const authValue: AuthContextType = {
   register: async () => undefined,
   refreshToken: async () => undefined,
   clearError: vi.fn(),
-  refreshMembership: async () => undefined,
+  refreshMembership: async () => undefined
 };
 
 function renderWithRoute() {
@@ -134,19 +140,63 @@ describe('Syndics profiles/incidents page', () => {
     vi.clearAllMocks();
     mockApiClient.get.mockImplementation((url: string) => {
       if (url.includes('/profils/proprietaires')) {
-        return Promise.resolve({ data: { success: true, data: [{ id: 'op-1', lotId: 'lot-1', contactId: 'c-1', ownershipPercentage: 100, ownedSince: '2026-01-01T00:00:00.000Z', portalAccessEnabled: true }] } });
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: [
+              {
+                id: 'op-1',
+                lotId: 'lot-1',
+                contactId: 'c-1',
+                ownershipPercentage: 100,
+                ownedSince: '2026-01-01T00:00:00.000Z',
+                portalAccessEnabled: true
+              }
+            ]
+          }
+        });
       }
       if (url.includes('/profils/locataires')) {
-        return Promise.resolve({ data: { success: true, data: [{ id: 'tp-1', lotId: 'lot-1', contactId: 'c-2', tenantSince: '2026-01-01T00:00:00.000Z', chargesBilledToTenant: false, isCurrent: true }] } });
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: [
+              {
+                id: 'tp-1',
+                lotId: 'lot-1',
+                contactId: 'c-2',
+                tenantSince: '2026-01-01T00:00:00.000Z',
+                chargesBilledToTenant: false,
+                isCurrent: true
+              }
+            ]
+          }
+        });
       }
       if (url.includes('/incidents')) {
-        return Promise.resolve({ data: { success: true, data: [{ id: 'i-1', incidentType: 'LEAK', urgency: 'HIGH', description: 'Fuite', status: 'REPORTED', imputations: [] }] } });
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: [
+              {
+                id: 'i-1',
+                incidentType: 'LEAK',
+                urgency: 'HIGH',
+                description: 'Fuite',
+                status: 'REPORTED',
+                imputations: []
+              }
+            ]
+          }
+        });
       }
       // The page loads lots, CRM contacts and properties in the same
       // Promise.all; any unhandled branch rejects the whole load and the page
       // renders its error state instead of the data asserted below.
       if (url.endsWith('/lots')) {
-        return Promise.resolve({ data: { success: true, data: [{ id: 'lot-1', lotNumber: 'A-01', lotType: 'APARTMENT' }] } });
+        return Promise.resolve({
+          data: { success: true, data: [{ id: 'lot-1', lotNumber: 'A-01', lotType: 'APARTMENT' }] }
+        });
       }
       if (url.includes('/crm/contacts')) {
         return Promise.resolve({ data: { success: true, data: [], pagination: { total: 0 } } });
