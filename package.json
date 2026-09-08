@@ -28,15 +28,15 @@
   },
   "lint-staged": {
     "packages/api/**/*.ts": [
-      "prettier --write",
-      "eslint --fix"
+      "node node_modules/prettier/bin/prettier.cjs --write",
+      "node node_modules/eslint/bin/eslint.js --fix"
     ],
     "apps/web/**/*.{ts,tsx}": [
-      "prettier --write",
-      "eslint --fix"
+      "node node_modules/prettier/bin/prettier.cjs --write",
+      "node node_modules/eslint/bin/eslint.js --fix"
     ],
     "**/*.{json,md,yml,yaml}": [
-      "prettier --write"
+      "node node_modules/prettier/bin/prettier.cjs --write"
     ]
   },
   "devDependencies": {
