@@ -34,9 +34,31 @@ export default defineConfig(({ mode }) => {
       // scripts and .gitignore entries stay valid.
       outDir: 'build',
       sourcemap: false,
-      // The app is code-split per domain in App.tsx; the remaining large chunks
-      // are vendor bundles, so raise the warning bar rather than silence it.
-      chunkSizeWarningLimit: 900
+      // REFONTE_UI_UX.md §8.1 : 350 Ko non compresses valent environ 120 Ko
+      // gzip, le budget d'un chunk de route. L'ancien seuil de 900 etait
+      // quatre fois trop permissif. Avertissement seulement : le Lot 0 mesure
+      // et publie la reference, c'est le Lot 5 qui rend size-limit bloquant.
+      chunkSizeWarningLimit: 350
+
+      // PAS de rollupOptions.output.manualChunks, contrairement au §8.1.
+      // Mesure du chemin critique (JS + CSS charges au premier rendu, gzip) :
+      //
+      //   sans manualChunks .......................... 274 301 o
+      //   antd + charts + calendar + editor + motion . 505 735 o
+      //   charts + calendar + editor + motion ........ 510 035 o
+      //   excel + editor seulement ................... 286 390 o
+      //
+      // Tout chunk nomme par manualChunks est systematiquement precharge par
+      // Vite via <link rel="modulepreload"> dans index.html. Ce qui etait
+      // charge paresseusement par route devient donc telecharge des le premier
+      // rendu, et le chemin critique double. Le decoupage automatique de
+      // Rollup fait mieux ici. `exceljs` est deja isole sans aide, parce
+      // qu'il est importe dynamiquement (utils/export-utils.ts).
+      //
+      // Ecart assume et chiffre dans docs/refonte/LOT-0-RAPPORT.md. Le vrai
+      // levier sur ce chemin critique est ailleurs : Login est le seul ecran
+      // importe statiquement (App.tsx), ce qui tire tout AntD dans l'entree.
+      // Son passage en lazy est au perimetre du Lot 1.,
     },
 
     test: {
