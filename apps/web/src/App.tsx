@@ -15,7 +15,9 @@ const Register = lazy(() =>
 const VerifyEmail = lazy(() =>
   import(/* webpackChunkName: "pages-root" */ './pages/VerifyEmail').then(m => ({ default: m.VerifyEmail }))
 );
-import { Login } from './pages/Login';
+const Login = lazy(() =>
+  import(/* webpackChunkName: "pages-root" */ './pages/Login').then(m => ({ default: m.Login }))
+);
 const Dashboard = lazy(() =>
   import(/* webpackChunkName: "pages-root" */ './pages/Dashboard').then(m => ({ default: m.Dashboard }))
 );

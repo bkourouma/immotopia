@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: '20'
+  NODE_VERSION: "20"
 
 jobs:
   api:
@@ -96,3 +96,18 @@ jobs:
 
       # `build` runs tsc --noEmit then vite build.
       - run: npm run build -w @immotopia/web
+
+      # Critère de sortie du Lot 1 (§9) : aucun mot de passe dans le bundle de
+      # production. Les neuf comptes de test de Login.tsx étaient servis à tout
+      # visiteur, l'écran étant le seul importé statiquement. Le grep porte sur
+      # le bundle construit, pas sur les sources : c'est ce qui part en ligne.
+      - name: Aucun identifiant en clair dans le bundle
+        run: |
+          if grep -rIlE '(Admin@|Test@|P@ssw0rd)' apps/web/build/assets/; then
+            echo "::error::Un identifiant en clair a ete trouve dans le bundle de production."
+            exit 1
+          fi
+          echo "Aucun identifiant en clair dans le bundle."
+
+      # Les tokens du §3.2 doivent rester conformes AA.
+      - run: npm run a11y:contrast
