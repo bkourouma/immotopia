@@ -1,10 +1,10 @@
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import { Drawer, Layout } from 'antd';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { NAVIGATION } from '../../navigation/model';
-import { contextFromPath, lastSyndicKey, resolvePersona } from '../../navigation/resolve';
+import { contextFromPath, lastSyndicKey, portalRedirect, resolvePersona } from '../../navigation/resolve';
 import type { NavContext } from '../../navigation/resolve';
 import { SkeletonDetail } from '../primitives/Skeleton';
 import { AppHeader } from './AppHeader';
@@ -92,6 +92,15 @@ export const AppShell: React.FC = () => {
     setDrawerOpen(false);
   }, [location.pathname]);
 
+  /**
+   * Garde de portail. `TenantPortal/Layout` la portait dans un `useEffect` ;
+   * `OwnerPortal/Layout` n'en avait AUCUNE, si bien qu'un locataire atteignant
+   * /owner obtenait la coquille proprietaire (§4.3). La coquille unique la pose
+   * pour les deux, et par un `<Navigate>` plutot qu'un effet : rediriger apres
+   * le rendu laisse voir un instant l'ecran qu'on n'aurait pas du atteindre.
+   */
+  const redirectTo = isLoadingMembership ? null : portalRedirect(location.pathname, tenantClient?.clientType);
+
   const nav = persona ? NAVIGATION[persona] : null;
 
   // Tant que le persona n'est pas tranché, on rend la coquille sans menu
@@ -103,6 +112,8 @@ export const AppShell: React.FC = () => {
   const canOpenDrawer = Boolean(nav) && !isDesktop;
 
   const sidebarWidth = showSidebar ? 256 : showRail ? 72 : 0;
+
+  if (redirectTo) return <Navigate to={redirectTo} replace />;
 
   return (
     <Layout style={{ minHeight: '100vh', background: 'var(--surface-page)' }}>

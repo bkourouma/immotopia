@@ -374,7 +374,6 @@ const Reports = lazy(() =>
   import(/* webpackChunkName: "pages-root" */ './pages/Reports').then(m => ({ default: m.Reports }))
 );
 // Tenant Portal pages
-const TenantPortalLayout = lazy(() => import(/* webpackChunkName: "tenant-portal" */ './pages/TenantPortal/Layout'));
 const TenantDashboard = lazy(() => import(/* webpackChunkName: "tenant-portal" */ './pages/TenantPortal/Dashboard'));
 const TenantLease = lazy(() => import(/* webpackChunkName: "tenant-portal" */ './pages/TenantPortal/Lease'));
 const TenantPayments = lazy(() => import(/* webpackChunkName: "tenant-portal" */ './pages/TenantPortal/Payments'));
@@ -384,7 +383,6 @@ const TenantMaintenance = lazy(
 );
 const TenantDocuments = lazy(() => import(/* webpackChunkName: "tenant-portal" */ './pages/TenantPortal/Documents'));
 // Owner Portal pages
-const OwnerPortalLayout = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Layout'));
 const OwnerDashboard = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Dashboard'));
 const OwnerProperties = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Properties'));
 const OwnerPropertyDetails = lazy(
@@ -617,12 +615,15 @@ function App() {
                   {/* Communication: email + WhatsApp notifications */}
                   {/* Transactions Routes */}
                   {/* Reports Route */}
-                  {/* Tenant Portal Routes */}
+                  {/* Portail locataire — meme coquille que le reste (§4.1).
+                      La sidebar de 256 px et le drawer de ce portail sont
+                      supprimes : quatre onglets couvrent ses six destinations,
+                      et son usage est 100 % mobile (§4.2). */}
                   <Route
                     path="/tenant"
                     element={
                       <ProtectedRoute>
-                        <TenantPortalLayout />
+                        <AppShell />
                       </ProtectedRoute>
                     }
                   >
@@ -633,12 +634,14 @@ function App() {
                     <Route path="maintenance" element={<TenantMaintenance />} />
                     <Route path="documents" element={<TenantDocuments />} />
                   </Route>
-                  {/* Owner Portal routes */}
+                  {/* Portail proprietaire — meme coquille. La garde defensive
+                      qui manquait a OwnerPortal/Layout est desormais posee par
+                      <AppShell> pour les deux portails a la fois (§4.3). */}
                   <Route
                     path="/owner"
                     element={
                       <ProtectedRoute>
-                        <OwnerPortalLayout />
+                        <AppShell />
                       </ProtectedRoute>
                     }
                   >

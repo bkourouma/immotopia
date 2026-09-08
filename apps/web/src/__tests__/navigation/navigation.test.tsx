@@ -1,5 +1,12 @@
 import { NAVIGATION, MORE_TAB_HREF } from '../../navigation/model';
-import { contextFromPath, resolveHref, resolvePersona } from '../../navigation/resolve';
+import {
+  contextFromPath,
+  isOwnerPortalPath,
+  isTenantPortalPath,
+  portalRedirect,
+  resolveHref,
+  resolvePersona
+} from '../../navigation/resolve';
 import { buildCrumbs } from '../../components/shell/Breadcrumbs';
 import { ROUTE_LABELS, isIdSegment, labelForSegment } from '../../navigation/route-labels';
 
@@ -198,5 +205,37 @@ describe('table de libellés', () => {
   it('rend visible un segment inconnu au lieu de le masquer', () => {
     expect(labelForSegment('segment-inedit')).toBe('Segment inedit');
     expect(ROUTE_LABELS.leases).toBe('Baux');
+  });
+});
+
+describe('gardes de portail', () => {
+  it('distingue le portail locataire du préfixe d’agence', () => {
+    expect(isTenantPortalPath('/tenant')).toBe(true);
+    expect(isTenantPortalPath('/tenant/lease')).toBe(true);
+    expect(isTenantPortalPath(`/tenant/${TENANT}/properties`)).toBe(false);
+    expect(isOwnerPortalPath('/owner/revenues')).toBe(true);
+    expect(isOwnerPortalPath('/dashboard')).toBe(false);
+  });
+
+  it('renvoie un locataire hors du portail propriétaire', () => {
+    // OwnerPortal/Layout n'avait AUCUNE garde : un RENTER atteignant /owner
+    // obtenait la coquille proprietaire.
+    expect(portalRedirect('/owner/revenues', 'RENTER')).toBe('/tenant');
+    expect(portalRedirect('/tenant/lease', 'RENTER')).toBeNull();
+  });
+
+  it('renvoie un propriétaire hors du portail locataire', () => {
+    expect(portalRedirect('/tenant/lease', 'OWNER')).toBe('/owner');
+    expect(portalRedirect('/owner/revenues', 'OWNER')).toBeNull();
+  });
+
+  it('renvoie au tableau de bord qui n’est ni l’un ni l’autre', () => {
+    expect(portalRedirect('/owner', null)).toBe('/dashboard');
+    expect(portalRedirect('/tenant', undefined)).toBe('/dashboard');
+  });
+
+  it('ne touche pas aux écrans hors portail', () => {
+    expect(portalRedirect(`/tenant/${TENANT}/rental/leases`, 'RENTER')).toBeNull();
+    expect(portalRedirect('/dashboard', 'OWNER')).toBeNull();
   });
 });

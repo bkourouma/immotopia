@@ -99,3 +99,50 @@ export function contextFromPath(pathname: string): NavContext {
 
   return {};
 }
+
+/**
+ * Segments de premier niveau du portail LOCATAIRE.
+ *
+ * `/tenant` recouvre deux espaces disjoints : le portail locataire
+ * (`/tenant`, `/tenant/lease`, ...) et le prefixe d'agence
+ * (`/tenant/<id>/properties`). On les distingue par une liste FERMEE de
+ * segments connus, et non en testant si le segment ressemble a un
+ * identifiant : rien ne garantit que les identifiants d'agence resteront des
+ * UUID, et une heuristique de forme ferait basculer TOUTES les routes
+ * d'agence du cote portail le jour ou elle se tromperait.
+ */
+export const TENANT_PORTAL_SEGMENTS = ['lease', 'payments', 'deposit', 'maintenance', 'documents'] as const;
+
+/** Le chemin appartient-il au portail LOCATAIRE ? */
+export function isTenantPortalPath(pathname: string): boolean {
+  if (pathname === '/tenant') return true;
+  const match = pathname.match(/^\/tenant\/([^/]+)/);
+  if (!match) return false;
+  return (TENANT_PORTAL_SEGMENTS as readonly string[]).includes(match[1]);
+}
+
+/** Le chemin appartient-il au portail PROPRIETAIRE ? */
+export function isOwnerPortalPath(pathname: string): boolean {
+  return pathname === '/owner' || pathname.startsWith('/owner/');
+}
+
+/**
+ * Ou rediriger un client qui atteint le mauvais portail, ou `null` s'il est
+ * au bon endroit.
+ *
+ * `TenantPortal/Layout` portait cette garde ; `OwnerPortal/Layout` n'en avait
+ * AUCUNE (§4.3), si bien qu'un locataire atteignant /owner obtenait la
+ * coquille proprietaire. La coquille unique la pose pour les deux.
+ */
+export function portalRedirect(pathname: string, clientType?: string | null): string | null {
+  const inTenantPortal = isTenantPortalPath(pathname);
+  const inOwnerPortal = isOwnerPortalPath(pathname);
+  if (!inTenantPortal && !inOwnerPortal) return null;
+
+  if (clientType === 'OWNER') return inTenantPortal ? '/owner' : null;
+  if (clientType === 'RENTER') return inOwnerPortal ? '/tenant' : null;
+
+  // Ni proprietaire ni locataire : un collaborateur ou un administrateur qui
+  // atterrit sur un portail client n'y a rien a faire.
+  return '/dashboard';
+}

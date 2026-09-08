@@ -4,6 +4,7 @@ import { LeftOutlined } from '@ant-design/icons';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { isIdSegment, labelForSegment } from '../../navigation/route-labels';
+import { TENANT_PORTAL_SEGMENTS } from '../../navigation/resolve';
 
 /**
  * `<Breadcrumbs>` — dérivé du routeur (REFONTE_UI_UX.md §4.3).
@@ -45,7 +46,11 @@ export function buildCrumbs(pathname: string): Crumb[] {
     // Sans ce traitement, un locataire lit « Agence › Mon bail » — précisément
     // le mot que le §4.3 s'emploie à ne jamais lui montrer.
     if (segment === 'tenant') {
-      if (isIdSegment(segments[index + 1] ?? '')) return;
+      const next = segments[index + 1];
+      // Liste fermee plutot qu'heuristique sur la forme de l'identifiant :
+      // voir TENANT_PORTAL_SEGMENTS.
+      const isPortal = next === undefined || (TENANT_PORTAL_SEGMENTS as readonly string[]).includes(next);
+      if (!isPortal) return;
       crumbs.push({ label: 'Accueil', to: isLast ? undefined : '/tenant' });
       return;
     }
