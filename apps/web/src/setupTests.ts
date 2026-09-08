@@ -15,3 +15,15 @@ Object.defineProperty(window, 'matchMedia', {
     dispatchEvent: () => false
   })
 });
+
+// jsdom n'implémente pas ResizeObserver, dont Ant Design 6 se sert dans Menu,
+// Layout et Drawer. Les suites qui mockent `antd` en entier ne le rencontraient
+// pas ; celles qui montent la vraie coquille, si.
+class ResizeObserverStub {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+if (!('ResizeObserver' in globalThis)) {
+  (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+}

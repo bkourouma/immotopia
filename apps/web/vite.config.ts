@@ -64,6 +64,11 @@ export default defineConfig(({ mode }) => {
     test: {
       globals: true,
       environment: 'jsdom',
+      // Le defaut de 5 s suffisait tant que les suites mockaient `antd` en
+      // entier. Celles qui montent la vraie coquille prennent 4 s a elles
+      // seules et depassaient sous la charge parallele — echec intermittent,
+      // pas defaut de code. 20 s laisse la marge sans masquer un blocage.
+      testTimeout: 20000,
       setupFiles: './src/setupTests.ts',
       css: false,
       include: ['src/**/*.{test,spec}.{ts,tsx}']
