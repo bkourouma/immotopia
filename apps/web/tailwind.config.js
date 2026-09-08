@@ -165,6 +165,12 @@ module.exports = {
         'control-md': 'var(--control-h-md)',
         'control-lg': 'var(--control-h-lg)'
       },
+      // Pour les boutons-icône, qui doivent rester carrés.
+      width: {
+        'control-sm': 'var(--control-h-sm)',
+        'control-md': 'var(--control-h-md)',
+        'control-lg': 'var(--control-h-lg)'
+      },
 
       spacing: {
         gutter: 'var(--grid-gutter)',

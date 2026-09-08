@@ -37,9 +37,13 @@ code {
   color: rgba(255, 255, 255, 0.5);
 }
 
-/* Fix for Radix UI Select dropdown overlay issue */
+/* Les popovers Radix rejoignent l'échelle z-index unique du §3.2 : 1050, donc
+   au-dessus des modales AntD (1010), ce qui est l'ordre voulu — un Select
+   ouvert depuis une modale doit passer devant elle. Le `!important` reste
+   nécessaire tant que Radix pose son propre z-index inline ; il disparaît avec
+   `components/ui/` en Lot 4 (§3.1). */
 [data-radix-popper-content-wrapper] {
-  z-index: 99999 !important;
+  z-index: var(--z-popover) !important;
 }
 
 /* Tableau des lots: scroll horizontal visible et confortable sur mobile */

@@ -14,8 +14,8 @@ export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
         className={cn(
           'relative w-full rounded-lg border p-4',
           variant === 'destructive'
-            ? 'border-red-200 bg-red-50 text-red-900'
-            : 'border-slate-200 bg-slate-50 text-slate-900',
+            ? 'border-error-bg bg-error-bg text-error-text'
+            : 'border-line-subtle bg-surface-page text-content-primary',
           className
         )}
         {...props}
@@ -25,18 +25,11 @@ export const Alert = React.forwardRef<HTMLDivElement, AlertProps>(
 );
 Alert.displayName = 'Alert';
 
-export interface AlertDescriptionProps extends React.HTMLAttributes<HTMLParagraphElement> {}
+export type AlertDescriptionProps = React.HTMLAttributes<HTMLParagraphElement>;
 
 export const AlertDescription = React.forwardRef<HTMLParagraphElement, AlertDescriptionProps>(
   ({ className, ...props }, ref) => {
-    return (
-      <div
-        ref={ref}
-        className={cn('text-sm [&_p]:leading-relaxed', className)}
-        {...props}
-      />
-    );
+    return <div ref={ref} className={cn('text-small [&_p]:leading-relaxed', className)} {...props} />;
   }
 );
 AlertDescription.displayName = 'AlertDescription';
-
