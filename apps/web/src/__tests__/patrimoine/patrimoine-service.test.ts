@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import type { Mock } from 'vitest';
 import apiClient from '../../utils/api-client';
 import {
   deleteExpense,
@@ -9,26 +9,26 @@ import {
   updateWorkProgram
 } from '../../services/patrimoine-service';
 
-jest.mock('../../utils/api-client', () => ({
+vi.mock('../../utils/api-client', () => ({
   __esModule: true,
   default: {
-    get: require('@jest/globals').jest.fn(),
-    post: require('@jest/globals').jest.fn(),
-    patch: require('@jest/globals').jest.fn(),
-    delete: require('@jest/globals').jest.fn()
+    get: vi.fn(),
+    post: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn()
   }
 }));
 
 const mockApiClient = apiClient as unknown as {
-  get: jest.Mock;
-  post: jest.Mock;
-  patch: jest.Mock;
-  delete: jest.Mock;
+  get: Mock;
+  post: Mock;
+  patch: Mock;
+  delete: Mock;
 };
 
 describe('patrimoine-service', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it('builds yield endpoint without assumptions', async () => {

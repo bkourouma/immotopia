@@ -91,11 +91,8 @@ jobs:
       - run: npm run lint -w @immotopia/web
         continue-on-error: true
 
-      - name: Test
-        run: npm run test -w @immotopia/web -- --watchAll=false
-        env:
-          CI: true
+      # `vitest run` is single-shot; no watch flag needed.
+      - run: npm run test -w @immotopia/web
 
+      # `build` runs tsc --noEmit then vite build.
       - run: npm run build -w @immotopia/web
-        env:
-          CI: false

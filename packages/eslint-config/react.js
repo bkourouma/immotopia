@@ -17,8 +17,7 @@ module.exports = {
     'react/react-in-jsx-scope': 'off',
     'react/prop-types': 'off',
 
-    // The UI is written in French: apostrophes in copy are the norm, and CRA
-    // turns ESLint errors into build failures.
+    // The UI is written in French: apostrophes in copy are the norm.
     'react/no-unescaped-entities': 'off',
     'react/jsx-key': 'warn',
     'react/display-name': 'warn',

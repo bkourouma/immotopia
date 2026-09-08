@@ -9,7 +9,7 @@ locataire et propriétaire.
 | | |
 |---|---|
 | Backend | Node 20, TypeScript, Express 4, Prisma 5, PostgreSQL 16 |
-| Frontend | React 18, TypeScript, Ant Design 6, Create React App |
+| Frontend | React 18, TypeScript, Ant Design 6, Vite 6 (tests : Vitest) |
 | Auth | JWT en cookies httpOnly, refresh tokens rotatifs, Google OAuth |
 | Intégrations | WaSender / Twilio (WhatsApp), SMTP (e-mail) |
 

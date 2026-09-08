@@ -1,41 +1,45 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
 import { SyndicAccounting } from '../../pages/syndics/SyndicAccounting';
 import apiClient from '../../utils/api-client';
 
-jest.mock('../../utils/api-client', () => ({
+vi.mock('../../utils/api-client', () => ({
   __esModule: true,
   default: {
-    get: require('@jest/globals').jest.fn(),
-    post: require('@jest/globals').jest.fn(),
-    patch: require('@jest/globals').jest.fn(),
-    delete: require('@jest/globals').jest.fn(),
+    get: vi.fn(),
+    post: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn(),
   },
 }));
 
-jest.mock('../../components/dashboard/dashboard-layout', () => ({
+vi.mock('../../components/dashboard/dashboard-layout', () => ({
   DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
-jest.mock('@ant-design/icons', () => {
+vi.mock('@ant-design/icons', async () => {
+  // Vitest resolves named imports against the keys of this object, so the mock
+  // must expose the real export names — a Proxy over {} declares none.
+  const actual = await vi.importActual<Record<string, unknown>>('@ant-design/icons');
   const Icon = () => <span />;
-  return new Proxy({}, { get: () => Icon });
+  return Object.fromEntries(Object.keys(actual).map((name) => [name, Icon]));
 });
 
-jest.mock('antd', () => {
-  const React = require('react');
+vi.mock('antd', async () => {
+    // importActual reaches the real module from inside a hoisted mock factory;
+  // a plain dynamic import here deadlocks the module graph.
+  const React = await vi.importActual<typeof import('react')>('react');
   const passthrough =
     (Tag: keyof JSX.IntrinsicElements = 'div') =>
     ({ children, ...props }: any) =>
       React.createElement(Tag, props, children);
 
   const formInstance = {
-    validateFields: require('@jest/globals').jest.fn(),
-    resetFields: require('@jest/globals').jest.fn(),
+    validateFields: vi.fn(),
+    resetFields: vi.fn(),
   };
 
   const FormComponent: any = passthrough('form');
@@ -43,8 +47,8 @@ jest.mock('antd', () => {
   FormComponent.Item = passthrough();
   FormComponent.List = ({ children }: any) =>
     children([], {
-      add: require('@jest/globals').jest.fn(),
-      remove: require('@jest/globals').jest.fn(),
+      add: vi.fn(),
+      remove: vi.fn(),
     });
 
   const Table = ({ dataSource, columns }: any) => (
@@ -83,8 +87,8 @@ jest.mock('antd', () => {
       Text: passthrough('span'),
     },
     message: {
-      success: require('@jest/globals').jest.fn(),
-      error: require('@jest/globals').jest.fn(),
+      success: vi.fn(),
+      error: vi.fn(),
     },
   };
 });
@@ -118,7 +122,7 @@ const authValue: AuthContextType = {
   logout: async () => undefined,
   register: async () => undefined,
   refreshToken: async () => undefined,
-  clearError: jest.fn(),
+  clearError: vi.fn(),
   refreshMembership: async () => undefined,
 };
 
@@ -136,7 +140,7 @@ function renderWithRoute() {
 
 describe('Syndics accounting page', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     mockApiClient.get.mockImplementation((url: string) => {
       if (url.endsWith('/comptabilite/comptes')) {
         return Promise.resolve({

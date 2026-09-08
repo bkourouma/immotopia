@@ -7,13 +7,13 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "react-scripts start",
-    "build": "react-scripts build",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "react-scripts test",
-    "test:watch": "react-scripts test --watch",
-    "test:coverage": "react-scripts test --coverage",
-    "eject": "react-scripts eject",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx}\""
@@ -57,18 +57,21 @@
     "@types/react-dom": "^18.2.18",
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "@vitest/coverage-v8": "^2.1.8",
     "autoprefixer": "^10.4.16",
     "eslint": "^8.56.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.1.2",
     "eslint-plugin-react": "^7.33.2",
     "eslint-plugin-react-hooks": "^4.6.0",
-    "jest": "^29.7.0",
+    "jsdom": "^25.0.1",
     "postcss": "^8.4.32",
     "prettier": "^3.1.1",
-    "react-scripts": "5.0.1",
     "tailwindcss": "^3.4.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vite": "^6.0.0",
+    "vitest": "^2.1.8"
   },
   "browserslist": {
     "production": [
@@ -80,12 +83,6 @@
       "last 1 chrome version",
       "last 1 firefox version",
       "last 1 safari version"
-    ]
-  },
-  "jest": {
-    "transformIgnorePatterns": [
-      "[/\\\\]node_modules[/\\\\](?!(antd|@ant-design|rc-[a-z-]+)[/\\\\]).+\\.(js|mjs|jsx|ts|tsx)$",
-      "^.+\\.module\\.(css|sass|scss)$"
     ]
   }
 }

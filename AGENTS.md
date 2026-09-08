@@ -7,7 +7,7 @@ identifiée, voir [AUDIT_CODE.md](AUDIT_CODE.md).
 ## Structure réelle
 
 ```text
-apps/web                 React 18 + TypeScript + Ant Design (Create React App)
+apps/web                 React 18 + TypeScript + Ant Design, build Vite
 packages/api             Express 4 + Prisma 5 + PostgreSQL
 packages/tsconfig        configuration TypeScript partagée
 packages/eslint-config   configuration ESLint partagée
@@ -57,7 +57,13 @@ c'est faux.
 
 - La base de démonstration est effacée par `npm run db:seed` : ce seed exige
   `ALLOW_DESTRUCTIVE_SEED=1` et refuse de tourner en production.
-- `react-scripts@5` impose `legacy-peer-deps` (voir `.npmrc`) tant que le
-  frontend n'est pas migré hors de Create React App.
+- Les variables d'environnement du frontend doivent être préfixées `VITE_` pour
+  être exposées au bundle, et se lisent via `import.meta.env`, pas
+  `process.env`. Le port du serveur de développement vient de `PORT` dans
+  `apps/web/.env` et doit rester aligné avec `FRONTEND_URL` côté API, dont le
+  CORS n'autorise qu'une seule origine.
+- Vitest refuse tout import qu'un `vi.mock` ne déclare pas explicitement, là où
+  Jest renvoyait `undefined` en silence : un mock de module doit couvrir chaque
+  export utilisé par le composant testé.
 - Le backend compte encore ~160 erreurs TypeScript préexistantes ; ne pas en
   ajouter dans les fichiers déjà propres.

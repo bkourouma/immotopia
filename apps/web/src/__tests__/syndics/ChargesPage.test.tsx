@@ -1,39 +1,43 @@
+import type { Mock } from 'vitest';
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import dayjs from 'dayjs';
 import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
 import { SyndicCharges } from '../../pages/syndics/SyndicCharges';
 import apiClient from '../../utils/api-client';
 
-jest.mock('../../utils/api-client', () => ({
+vi.mock('../../utils/api-client', () => ({
   __esModule: true,
   default: {
-    get: require('@jest/globals').jest.fn(),
-    post: require('@jest/globals').jest.fn(),
-    patch: require('@jest/globals').jest.fn(),
-    delete: require('@jest/globals').jest.fn(),
+    get: vi.fn(),
+    post: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn(),
   },
 }));
 
-jest.mock('../../components/dashboard/dashboard-layout', () => ({
+vi.mock('../../components/dashboard/dashboard-layout', () => ({
   DashboardLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
-jest.mock('@ant-design/icons', () => {
+vi.mock('@ant-design/icons', async () => {
+  // Vitest resolves named imports against the keys of this object, so the mock
+  // must expose the real export names — a Proxy over {} declares none.
+  const actual = await vi.importActual<Record<string, unknown>>('@ant-design/icons');
   const Icon = () => <span />;
-  return new Proxy({}, { get: () => Icon });
+  return Object.fromEntries(Object.keys(actual).map((name) => [name, Icon]));
 });
 
-jest.mock('antd', () => {
-  const React = require('react');
-  const mockValidateFields = require('@jest/globals').jest.fn();
-  const mockResetFields = require('@jest/globals').jest.fn();
-  const mockSetFieldsValue = require('@jest/globals').jest.fn();
-  const mockMessageSuccess = require('@jest/globals').jest.fn();
-  const mockMessageError = require('@jest/globals').jest.fn();
+vi.mock('antd', async () => {
+  // Vitest runs test files as ESM: `require` is not available here.
+  const React = await vi.importActual<typeof import('react')>('react');
+  const mockValidateFields = vi.fn();
+  const mockResetFields = vi.fn();
+  const mockSetFieldsValue = vi.fn();
+  const mockMessageSuccess = vi.fn();
+  const mockMessageError = vi.fn();
   const passthrough =
     (Tag: keyof JSX.IntrinsicElements = 'div') =>
     ({ children, ...props }: any) =>
@@ -103,13 +107,15 @@ jest.mock('antd', () => {
   };
 });
 
-const { __mocks } = jest.requireMock('antd') as {
+// Vitest has no `requireMock`; importing the module inside a mocked test file
+// already yields the mock, so a plain dynamic import is the equivalent.
+const { __mocks } = (await import('antd')) as unknown as {
   __mocks: {
-    mockValidateFields: jest.Mock;
-    mockResetFields: jest.Mock;
-    mockSetFieldsValue: jest.Mock;
-    mockMessageSuccess: jest.Mock;
-    mockMessageError: jest.Mock;
+    mockValidateFields: Mock;
+    mockResetFields: Mock;
+    mockSetFieldsValue: Mock;
+    mockMessageSuccess: Mock;
+    mockMessageError: Mock;
   };
 };
 const mockValidateFields = __mocks.mockValidateFields;
@@ -147,7 +153,7 @@ const authValue: AuthContextType = {
   logout: async () => undefined,
   register: async () => undefined,
   refreshToken: async () => undefined,
-  clearError: jest.fn(),
+  clearError: vi.fn(),
   refreshMembership: async () => undefined
 };
 
@@ -165,7 +171,7 @@ function renderWithRoute() {
 
 describe('SyndicCharges page', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   it('renders charge calls with statuses', async () => {

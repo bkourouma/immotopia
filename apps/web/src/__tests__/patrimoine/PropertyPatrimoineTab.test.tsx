@@ -1,31 +1,31 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import userEvent from '@testing-library/user-event';
 import { PropertyPatrimoineTab } from '../../components/patrimoine/PropertyPatrimoineTab';
 import * as patrimoineService from '../../services/patrimoine-service';
 
-jest.mock('../../utils/api-client', () => ({
+vi.mock('../../utils/api-client', () => ({
   __esModule: true,
   default: {
-    get: require('@jest/globals').jest.fn(),
-    post: require('@jest/globals').jest.fn(),
-    patch: require('@jest/globals').jest.fn(),
-    delete: require('@jest/globals').jest.fn()
+    get: vi.fn(),
+    post: vi.fn(),
+    patch: vi.fn(),
+    delete: vi.fn()
   }
 }));
 
 // The tab loads owners from the CRM in the same Promise.all as the patrimoine
 // data. Left unmocked it hits the mocked apiClient, the whole load rejects, and
 // none of the fetched state (documents included) is ever applied.
-jest.mock('../../services/crm-service', () => ({
+vi.mock('../../services/crm-service', () => ({
   __esModule: true,
-  listContacts: require('@jest/globals').jest.fn(async () => ({ contacts: [], pagination: { total: 0 } }))
+  listContacts: vi.fn(async () => ({ contacts: [], pagination: { total: 0 } }))
 }));
 
-jest.mock('antd', () => {
-  const React = require('react');
-  const jestObject = require('@jest/globals').jest;
+vi.mock('antd', async () => {
+  // Vitest runs test files as ESM: `require` is not available here.
+  const React = await vi.importActual<typeof import('react')>('react');
+  const jestObject = vi;
   const passthrough =
     (Tag: keyof JSX.IntrinsicElements = 'div') =>
     ({ children, ...props }: any) =>
@@ -61,6 +61,10 @@ jest.mock('antd', () => {
     Switch: passthrough('input'),
     Table,
     Tag: passthrough('span'),
+    // Vitest errors on any import the mock does not provide (Jest silently
+    // returned undefined), so the mock must cover every antd export the
+    // component imports.
+    Upload: Object.assign(passthrough(), { Dragger: passthrough() }),
     Typography: {
       Text: passthrough('span')
     },
@@ -71,35 +75,35 @@ jest.mock('antd', () => {
   };
 });
 
-jest.mock('../../components/patrimoine/ValuationHistory', () => ({
+vi.mock('../../components/patrimoine/ValuationHistory', () => ({
   ValuationHistory: ({ valuations }: { valuations: Array<{ id: string }> }) => (
     <div data-testid="valuation-history">{valuations.length}</div>
   )
 }));
 
-jest.mock('../../components/patrimoine/ExpenseTracker', () => ({
+vi.mock('../../components/patrimoine/ExpenseTracker', () => ({
   ExpenseTracker: ({ expenses }: { expenses: Array<{ id: string }> }) => (
     <div data-testid="expense-tracker">{expenses.length}</div>
   )
 }));
 
-jest.mock('../../components/patrimoine/LoanWidget', () => ({
+vi.mock('../../components/patrimoine/LoanWidget', () => ({
   LoanWidget: ({ loans }: { loans: Array<{ id: string }> }) => <div data-testid="loan-widget">{loans.length}</div>
 }));
 
-jest.mock('../../components/patrimoine/YieldProjectionChart', () => ({
+vi.mock('../../components/patrimoine/YieldProjectionChart', () => ({
   YieldProjectionChart: ({ data }: { data: Array<{ year: number }> }) => (
     <div data-testid="yield-projection">{data.length}</div>
   )
 }));
 
-jest.mock('../../components/patrimoine/WorkProgramTimeline', () => ({
+vi.mock('../../components/patrimoine/WorkProgramTimeline', () => ({
   WorkProgramTimeline: ({ items }: { items: Array<{ id: string }> }) => (
     <div data-testid="work-program-timeline">{items.length}</div>
   )
 }));
 
-jest.mock('../../components/patrimoine/YieldCalculator', () => ({
+vi.mock('../../components/patrimoine/YieldCalculator', () => ({
   YieldCalculator: ({
     onRecalculate
   }: {
@@ -128,7 +132,7 @@ jest.mock('../../components/patrimoine/YieldCalculator', () => ({
   )
 }));
 
-jest.mock('../../components/patrimoine/DocumentVault', () => ({
+vi.mock('../../components/patrimoine/DocumentVault', () => ({
   DocumentVault: ({
     documents,
     onDelete
@@ -144,11 +148,11 @@ jest.mock('../../components/patrimoine/DocumentVault', () => ({
 
 describe('PropertyPatrimoineTab', () => {
   beforeEach(() => {
-    jest.restoreAllMocks();
+    vi.restoreAllMocks();
   });
 
   it('loads patrimoine data on mount and triggers recalculate + document delete actions', async () => {
-    const listValuationsSpy = jest.spyOn(patrimoineService, 'listValuations').mockResolvedValue([
+    const listValuationsSpy = vi.spyOn(patrimoineService, 'listValuations').mockResolvedValue([
       {
         id: 'valuation-1',
         propertyId: 'property-1',
@@ -159,7 +163,7 @@ describe('PropertyPatrimoineTab', () => {
         method: 'MANUAL'
       }
     ]);
-    const listExpensesSpy = jest.spyOn(patrimoineService, 'listExpenses').mockResolvedValue([
+    const listExpensesSpy = vi.spyOn(patrimoineService, 'listExpenses').mockResolvedValue([
       {
         id: 'expense-1',
         propertyId: 'property-1',
@@ -172,7 +176,7 @@ describe('PropertyPatrimoineTab', () => {
         isCapitalized: false
       }
     ]);
-    const listLoansSpy = jest.spyOn(patrimoineService, 'listLoans').mockResolvedValue([
+    const listLoansSpy = vi.spyOn(patrimoineService, 'listLoans').mockResolvedValue([
       {
         id: 'loan-1',
         propertyId: 'property-1',
@@ -188,8 +192,8 @@ describe('PropertyPatrimoineTab', () => {
         status: 'ACTIVE'
       }
     ]);
-    const listWorkProgramsSpy = jest.spyOn(patrimoineService, 'listWorkPrograms').mockResolvedValue([]);
-    const listDocumentsSpy = jest.spyOn(patrimoineService, 'listDocuments').mockResolvedValue([
+    const listWorkProgramsSpy = vi.spyOn(patrimoineService, 'listWorkPrograms').mockResolvedValue([]);
+    const listDocumentsSpy = vi.spyOn(patrimoineService, 'listDocuments').mockResolvedValue([
       {
         id: 'doc-1',
         propertyId: 'property-1',
@@ -198,7 +202,7 @@ describe('PropertyPatrimoineTab', () => {
         fileUrl: 'https://example.com/doc.pdf'
       }
     ]);
-    const getPropertyYieldSpy = jest
+    const getPropertyYieldSpy = vi
       .spyOn(patrimoineService, 'getPropertyYield')
       .mockResolvedValueOnce({
         grossYield: 10,
@@ -214,7 +218,7 @@ describe('PropertyPatrimoineTab', () => {
         latentCapitalGain: 1200,
         projection: [{ year: 1, estimatedValue: 1, cumulativeRent: 1, cumulativeExpenses: 1, netResult: 1 }]
       });
-    const deleteDocumentSpy = jest.spyOn(patrimoineService, 'deleteDocument').mockResolvedValue();
+    const deleteDocumentSpy = vi.spyOn(patrimoineService, 'deleteDocument').mockResolvedValue();
 
     render(<PropertyPatrimoineTab tenantId="tenant-1" propertyId="property-1" />);
 
