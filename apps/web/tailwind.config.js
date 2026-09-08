@@ -87,7 +87,9 @@ module.exports = {
         line: {
           subtle: 'var(--border-subtle)',
           DEFAULT: 'var(--border-default)',
-          strong: 'var(--border-strong)'
+          strong: 'var(--border-strong)',
+          // Bordure d'un controle interactif — conforme a WCAG 1.4.11.
+          control: 'var(--border-control)'
         },
         content: {
           primary: 'var(--text-primary)',

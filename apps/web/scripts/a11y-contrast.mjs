@@ -70,12 +70,30 @@ const PAIRS = [
   ['--color-warning-text', '--color-warning-bg', 'text'],
   ['--color-error-text', '--color-error-bg', 'text'],
 
-  // Bordures de champ. Mesurées et publiées, mais NON bloquantes : le §3.2 fige
-  // ces valeurs (slate-300 / slate-400) sans leur attribuer de ratio cible, et
-  // le Lot 0 n'a pas mandat de les changer. Elles sortent toutes deux sous le
-  // seuil non-texte de WCAG 1.4.11 (bordure de contrôle) — défaut réel, à
-  // arbitrer à l'audit RGAA du Lot 5 (§7).
+  // Bordure de CONTROLE : seule delimitation visuelle d'un champ blanc pose sur
+  // une carte blanche, donc WCAG 1.4.11 s'applique pleinement. BLOQUANT sur les
+  // trois surfaces ou un controle peut se poser.
+  ['--border-control', '--surface-card', 'non-text'],
+  ['--border-control', '--surface-page', 'non-text'],
+  ['--border-control', '--surface-sunken', 'non-text'],
+
+  // Icone porteuse de sens AU REPOS. Le survol passe a --text-tertiary : le
+  // couple est donc bloquant au repos, et l'ecart repos/survol (3,46 -> 4,76)
+  // garantit que l'affordance reste perceptible.
+  ['--icon-muted', '--surface-card', 'non-text'],
+  ['--icon-muted', '--surface-page', 'non-text'],
+
+  // --border-default reste mesure, non bloquant. Il n'est plus la bordure d'un
+  // controle, mais il n'est pas purement decoratif pour autant : `border-line`
+  // reste consomme par la variante `outline` de components/ui/badge.tsx, rendue
+  // par TeamPerformanceTable. Un Badge n'etant pas interactif, WCAG 1.4.11 ne
+  // s'y applique pas. Sa valeur du §3.2 est conservee telle quelle.
   ['--border-default', '--surface-card', 'info'],
+
+  // --border-strong n'est consomme par AUCUN composant : declare au §3.2 comme
+  // « bordure au survol », il n'est cable ni dans le theme AntD ni dans une
+  // classe Tailwind employee. Mesure pour memoire ; s'il est cable un jour, il
+  // devra passer le seuil non-texte avant.
   ['--border-strong', '--surface-card', 'info'],
 ];
 

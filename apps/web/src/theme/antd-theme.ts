@@ -55,7 +55,19 @@ export function buildAntdTheme(): ThemeConfig {
       colorText: token('--text-primary'),
       colorTextSecondary: token('--text-secondary'),
       colorTextTertiary: token('--text-tertiary'),
-      colorTextQuaternary: token('--text-disabled'),
+      // WCAG 1.4.11 : colorTextQuaternary porte la fleche du Select, l'icone du
+      // DatePicker, la croix allowClear, la piste du Switch a l'arret et le
+      // separateur du RangePicker — des pixels porteurs de sens, pas des etats
+      // desactives. --text-disabled les laissait a 2,56:1.
+      //
+      // On ne les monte PAS a --text-tertiary : AntD construit ces pixels sur
+      // une paire repos/survol dont colorTextTertiary est deja le survol
+      // (switch/style/index.js:246 vs :254, input/style/index.js:331 vs :341,
+      // select/style/index.js:60 vs :79, date-picker/style/index.js:176 vs
+      // :193). Les egaliser supprimerait le retour visuel au survol.
+      // --icon-muted est cale au plancher (3,46:1) et laisse --text-tertiary
+      // (4,76:1) assombrir au survol.
+      colorTextQuaternary: token('--icon-muted'),
       colorTextDescription: token('--text-secondary'),
       colorTextPlaceholder: token('--text-tertiary'),
       colorTextDisabled: token('--text-disabled'),
@@ -65,7 +77,19 @@ export function buildAntdTheme(): ThemeConfig {
       colorBgContainer: token('--surface-card'),
       colorBgElevated: token('--surface-raised'),
       colorFillAlter: token('--surface-sunken'),
-      colorBorder: token('--border-default'),
+      // Bordure de controle : role dedie, conforme a WCAG 1.4.11 (3,46:1 sur
+      // --surface-card, 3,31:1 sur --surface-page, 3,16:1 sur --surface-sunken),
+      // la ou --border-default plafonnait a 1,48:1 alors qu'il etait le seul
+      // pixel delimitant un champ blanc pose sur une carte blanche.
+      //
+      // PORTEE REELLE, plus large que les seuls champs : dans AntD, colorBorder
+      // pilote aussi la bordure des Tag neutres, de Collapse, de List bordered,
+      // des onglets `type="card"`, de Pagination, Checkbox, Radio, Form et
+      // InputNumber. Checkbox, Radio, Pagination et InputNumber sont des
+      // controles et relevent bien de 1.4.11 ; les autres s'assombrissent sans
+      // en avoir besoin. Assombrissement uniforme assume, a reevaluer a l'audit
+      // RGAA du Lot 5.
+      colorBorder: token('--border-control'),
       colorBorderSecondary: token('--border-subtle'),
 
       // Typographie
@@ -99,7 +123,16 @@ export function buildAntdTheme(): ThemeConfig {
     components: {
       Table: defined({
         cellPaddingBlockSM: 8,
-        headerBg: token('--surface-sunken')
+        headerBg: token('--surface-sunken'),
+        // AntD rend le message d'etat vide en colorTextDisabled
+        // (table/style/empty.js). C'est du TEXTE, pas un etat desactive : il
+        // tombait a 2,56:1 dans les 11 ecrans qui passent une chaine brute a
+        // `locale.emptyText`. Surcharge par token de composant plutot que par
+        // regle CSS : une surcharge CSS a la meme specificite que la regle
+        // generee et ne l'emporte que grace au hashPriority 'low' par defaut de
+        // cssinjs — un StyleProvider hashPriority="high" l'inverserait en
+        // silence.
+        colorTextDisabled: token('--text-tertiary')
       }),
       Menu: { darkItemBg: 'transparent' },
       Layout: defined({

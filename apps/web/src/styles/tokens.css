@@ -90,6 +90,40 @@
   --border-default: var(--neutral-300);
   --border-strong: var(--neutral-400);
 
+  /**
+   * Bordure d'un CONTRÔLE — champ de saisie, bouton `default`, sélecteur.
+   *
+   * Ajouté à la clôture du Lot 0, sur mesure. WCAG 1.4.11 exige 3:1 pour la
+   * limite visuelle d'un composant d'interface ; `--border-default` (#CBD5E1)
+   * plafonne à 1,48:1 sur `--surface-card`, et c'est pourtant le seul pixel
+   * qui délimite un champ blanc posé sur une carte blanche.
+   *
+   * #7C8BA1 est la teinte la plus légère qui reste conforme sur les trois
+   * surfaces : 3,46:1 sur `--surface-card`, 3,31:1 sur `--surface-page`,
+   * 3,16:1 sur `--surface-sunken`.
+   *
+   * `--border-default` conserve sa valeur du §3.2 et reste réservé aux
+   * séparateurs décoratifs, que la règle ne concerne pas.
+   */
+  --border-control: #7c8ba1;
+
+  /**
+   * Icône porteuse de sens AU REPOS — flèche de `Select`, icône de `DatePicker`,
+   * croix `allowClear`, piste du `Switch` à l'arrêt, séparateur du `RangePicker`.
+   *
+   * Ant Design construit ces pixels sur une paire repos/survol :
+   * `colorTextQuaternary` au repos, `colorTextTertiary` au survol. Les faire
+   * pointer sur la même valeur supprimerait le retour visuel au survol. Ce rôle
+   * est donc calé au plancher WCAG 1.4.11 (3,46:1 sur `--surface-card`), et
+   * reste plus clair que `--text-tertiary` (4,76:1), qui prend le relais au
+   * survol — l'assombrissement reste perceptible.
+   *
+   * Même valeur que `--border-control` : c'est la teinte la plus légère qui
+   * franchit le seuil sur les trois surfaces. Deux rôles distincts, parce
+   * qu'ils évolueront séparément.
+   */
+  --icon-muted: #7c8ba1;
+
   --text-primary: var(--neutral-900); /* 17,06:1 */
   --text-secondary: var(--neutral-600); /* 7,24:1 */
   --text-tertiary: var(--neutral-500); /* 4,55:1 — plancher AA */
@@ -103,8 +137,7 @@
   /* bas. Graisses chargées : 400, 500, 600, 700 uniquement.             */
   /* ------------------------------------------------------------------ */
 
-  --font-sans: 'Inter Variable', 'Inter var', 'Inter', system-ui, -apple-system, 'Segoe UI',
-    Roboto, sans-serif;
+  --font-sans: 'Inter Variable', 'Inter var', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
 
   --font-weight-regular: 400;
