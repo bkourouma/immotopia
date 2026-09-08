@@ -1,8 +1,9 @@
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
-import { Drawer, Layout } from 'antd';
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Button, Drawer, Layout } from 'antd';
+import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { actionForPath } from '../../navigation/actions';
 import { NAVIGATION } from '../../navigation/model';
 import { contextFromPath, lastSyndicKey, portalRedirect, resolvePersona } from '../../navigation/resolve';
 import type { NavContext } from '../../navigation/resolve';
@@ -38,6 +39,7 @@ import { BottomTabBar } from './BottomTabBar';
  */
 export const AppShell: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const { user, tenantMembership, tenantClient, isLoadingMembership } = useAuth();
   const { isDesktop, isTablet } = useBreakpoint();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -113,6 +115,14 @@ export const AppShell: React.FC = () => {
 
   const sidebarWidth = showSidebar ? 256 : showRail ? 72 : 0;
 
+  /**
+   * Action primaire de l'ecran courant, rendue en FAB sous 992 px (§4.3).
+   * Elle est portee par la coquille et non par l'ecran : le Lot 1 ne refond
+   * aucun ecran, et le bouton primaire du <PageHeader> arrivera avec le lot
+   * qui refond l'ecran concerne.
+   */
+  const action = actionForPath(location.pathname, navContext.tenantId);
+
   if (redirectTo) return <Navigate to={redirectTo} replace />;
 
   return (
@@ -160,6 +170,29 @@ export const AppShell: React.FC = () => {
           </Suspense>
         </Layout.Content>
       </Layout>
+
+      {!isDesktop && action && (
+        <Button
+          type="primary"
+          shape="circle"
+          size="large"
+          icon={action.icon}
+          aria-label={action.label}
+          onClick={() => navigate(action.href)}
+          style={{
+            position: 'fixed',
+            insetInlineEnd: 'var(--space-4)',
+            // Au-dessus de la barre d'onglets, jamais dessus.
+            bottom: showTabs
+              ? 'calc(var(--control-h-lg) + var(--space-4) + env(safe-area-inset-bottom, 0px))'
+              : 'calc(var(--space-4) + env(safe-area-inset-bottom, 0px))',
+            zIndex: 'var(--z-bottom-bar)' as unknown as number,
+            width: 56,
+            height: 56,
+            boxShadow: 'var(--shadow-lg)'
+          }}
+        />
+      )}
 
       {showTabs && nav && (
         <BottomTabBar

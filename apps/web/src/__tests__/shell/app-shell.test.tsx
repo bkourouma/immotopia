@@ -160,3 +160,32 @@ describe('AppShell — garde du persona', () => {
     expect(screen.getByTestId('contenu')).toBeInTheDocument();
   });
 });
+
+describe('AppShell — action primaire sortie du menu', () => {
+  it('propose le FAB sur l’écran hôte, sous 992 px', () => {
+    renderShell(collaborateur, `/tenant/${TENANT}/rental/leases`);
+    expect(screen.getByRole('button', { name: 'Nouveau bail' })).toBeInTheDocument();
+  });
+
+  it('ne le propose pas ailleurs, ni sur le formulaire de création', () => {
+    const { unmount } = renderShell(collaborateur, `/tenant/${TENANT}/rental/leases/new`);
+    expect(screen.queryByRole('button', { name: 'Nouveau bail' })).not.toBeInTheDocument();
+    unmount();
+
+    renderShell(collaborateur, '/dashboard');
+    expect(screen.queryByRole('button', { name: 'Nouveau bail' })).not.toBeInTheDocument();
+  });
+
+  it('couvre les quatre actions retirées du menu', () => {
+    for (const [path, label] of [
+      ['properties', 'Ajouter une propriété'],
+      ['crm/contacts', 'Nouveau contact'],
+      ['rental/leases', 'Nouveau bail'],
+      ['maintenance', 'Signaler un problème']
+    ] as const) {
+      const { unmount } = renderShell(collaborateur, `/tenant/${TENANT}/${path}`);
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
+      unmount();
+    }
+  });
+});
