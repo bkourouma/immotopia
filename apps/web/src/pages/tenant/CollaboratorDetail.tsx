@@ -1,17 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Card,
-  Spin,
-  Alert,
-  Button,
-  Descriptions,
-  Checkbox,
-  Space,
-  Typography,
-  message,
-  Modal,
-} from 'antd';
+import { App, Card, Spin, Alert, Button, Descriptions, Checkbox, Space, Typography, Modal } from 'antd';
 import { ArrowLeftOutlined, EditOutlined, KeyOutlined, LogoutOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
@@ -19,7 +8,7 @@ import {
   updateMember,
   resetMemberPassword,
   revokeMemberSessions,
-  Member,
+  Member
 } from '../../services/membership-service';
 import apiClient from '../../utils/api-client';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
@@ -34,10 +23,12 @@ interface Role {
 const statusLabels: Record<string, string> = {
   ACTIVE: 'Actif',
   PENDING_INVITE: 'Invitation en attente',
-  INACTIVE: 'Désactivé',
+  INACTIVE: 'Désactivé'
 };
 
 export const CollaboratorDetail: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId, userId } = useParams<{ tenantId: string; userId: string }>();
   const navigate = useNavigate();
   const [member, setMember] = useState<Member | null>(null);
@@ -62,7 +53,7 @@ export const CollaboratorDetail: React.FC = () => {
       const response = await getMember(tenantId, userId);
       if (response.success) {
         setMember(response.data);
-        setSelectedRoleIds(response.data.roles.map((r) => r.id));
+        setSelectedRoleIds(response.data.roles.map(r => r.id));
       } else {
         setError('Erreur lors du chargement du collaborateur');
       }
@@ -112,7 +103,7 @@ export const CollaboratorDetail: React.FC = () => {
         } catch (err: any) {
           message.error(err.response?.data?.message || 'Erreur lors de la réinitialisation');
         }
-      },
+      }
     });
   };
 
@@ -131,7 +122,7 @@ export const CollaboratorDetail: React.FC = () => {
         } catch (err: any) {
           message.error(err.response?.data?.message || 'Erreur lors de la révocation');
         }
-      },
+      }
     });
   };
 
@@ -148,12 +139,7 @@ export const CollaboratorDetail: React.FC = () => {
   if (error || !member) {
     return (
       <DashboardLayout>
-        <Alert
-          type="error"
-          showIcon
-          message={error || 'Collaborateur introuvable'}
-          style={{ margin: 16 }}
-        />
+        <Alert type="error" showIcon message={error || 'Collaborateur introuvable'} style={{ margin: 16 }} />
       </DashboardLayout>
     );
   }
@@ -181,16 +167,10 @@ export const CollaboratorDetail: React.FC = () => {
         <Card title="Informations du collaborateur">
           <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
             <Descriptions.Item label="Email">{member.user.email}</Descriptions.Item>
-            <Descriptions.Item label="Nom complet">
-              {member.user.fullName || '—'}
-            </Descriptions.Item>
-            <Descriptions.Item label="Statut">
-              {statusLabels[member.status] ?? member.status}
-            </Descriptions.Item>
+            <Descriptions.Item label="Nom complet">{member.user.fullName || '—'}</Descriptions.Item>
+            <Descriptions.Item label="Statut">{statusLabels[member.status] ?? member.status}</Descriptions.Item>
             <Descriptions.Item label="Dernière connexion">
-              {member.user.lastLoginAt
-                ? new Date(member.user.lastLoginAt).toLocaleString('fr-FR')
-                : 'Jamais'}
+              {member.user.lastLoginAt ? new Date(member.user.lastLoginAt).toLocaleString('fr-FR') : 'Jamais'}
             </Descriptions.Item>
           </Descriptions>
 
@@ -204,11 +184,11 @@ export const CollaboratorDetail: React.FC = () => {
               <>
                 <Checkbox.Group
                   value={selectedRoleIds}
-                  onChange={(ids) => setSelectedRoleIds(ids as string[])}
+                  onChange={ids => setSelectedRoleIds(ids as string[])}
                   style={{ width: '100%', display: 'block' }}
                 >
                   <Space direction="vertical" style={{ width: '100%' }}>
-                    {availableRoles.map((role) => {
+                    {availableRoles.map(role => {
                       const { name: labelFr, description: descFr } = getRoleLabelFr(
                         role.key,
                         role.name,

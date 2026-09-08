@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Alert, Button, Card, Space, Table, Tag, Typography, message } from 'antd';
+import { App, Alert, Button, Card, Space, Table, Tag, Typography } from 'antd';
 import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { OwnerStatementGenerator } from '../../../components/patrimoine/OwnerStatementGenerator';
 import { createOwnerStatement, listOwnerStatements, sendOwnerStatement } from '../../../services/patrimoine-service';
@@ -35,6 +35,8 @@ function sendReasonLabel(reason?: string): string {
 }
 
 export const OwnerStatementsPage: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const { tenantMembership } = useAuth();
@@ -59,12 +61,12 @@ export const OwnerStatementsPage: React.FC = () => {
         listContacts(effectiveTenantId, { page: 1, limit: 500 })
       ]);
       setStatements(statementData);
-      setPropertyOptions(properties.properties.map((property) => ({ value: property.id, label: property.title })));
-      const owners = contacts.contacts.filter((contact) =>
-        (contact.roles || []).some((role) => role.active && role.role === 'PROPRIETAIRE')
+      setPropertyOptions(properties.properties.map(property => ({ value: property.id, label: property.title })));
+      const owners = contacts.contacts.filter(contact =>
+        (contact.roles || []).some(role => role.active && role.role === 'PROPRIETAIRE')
       );
       setOwnerOptions(
-        owners.map((owner) => ({
+        owners.map(owner => ({
           value: owner.id,
           label: `${owner.firstName} ${owner.lastName}`.trim() || owner.email || owner.id
         }))

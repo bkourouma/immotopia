@@ -1,17 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Card,
-  Typography,
-  Space,
-  Button,
-  Spin,
-  Divider,
-  Input,
-  Select,
-  message,
-  Form
-} from 'antd';
+import { App, Card, Typography, Space, Button, Spin, Divider, Input, Select, Form } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined, SendOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { TicketStatusBadge } from '../../../components/maintenance/TicketStatusBadge';
@@ -20,7 +9,11 @@ import { CommentThread } from '../../../components/maintenance/CommentThread';
 import { AttachmentList } from '../../../components/maintenance/AttachmentList';
 import { VendorSelect } from '../../../components/maintenance/VendorSelect';
 import { managerMaintenanceService } from '../../../services/maintenance-service';
-import { TicketDetail as TicketDetailType, MaintenanceTicketStatus, MaintenanceTicketPriority } from '../../../types/maintenance-types';
+import {
+  TicketDetail as TicketDetailType,
+  MaintenanceTicketStatus,
+  MaintenanceTicketPriority
+} from '../../../types/maintenance-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { formatTicketDate } from '../../../utils/date-utils';
 
@@ -43,6 +36,8 @@ const priorityLabels: Record<string, string> = {
 };
 
 export const TicketDetail: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId, ticketId } = useParams<{ tenantId: string; ticketId: string }>();
   const navigate = useNavigate();
   const { tenantMembership } = useAuth();
@@ -114,7 +109,7 @@ export const TicketDetail: React.FC = () => {
       message.success('Commentaire ajouté');
       await loadTicket();
     } catch (error: any) {
-      message.error(error.response?.data?.message || 'Erreur lors de l\'ajout du commentaire');
+      message.error(error.response?.data?.message || "Erreur lors de l'ajout du commentaire");
     } finally {
       setSubmittingComment(false);
     }
@@ -167,11 +162,7 @@ export const TicketDetail: React.FC = () => {
 
               <Divider />
 
-              <Form
-                form={form}
-                layout="vertical"
-                onFinish={handleSave}
-              >
+              <Form form={form} layout="vertical" onFinish={handleSave}>
                 <Space direction="vertical" size="large" style={{ width: '100%' }}>
                   <div>
                     <Title level={5}>Informations</Title>
@@ -189,7 +180,9 @@ export const TicketDetail: React.FC = () => {
                       {ticket.tenantContact && (
                         <div>
                           <Text strong>Locataire: </Text>
-                          <Text>{ticket.tenantContact.firstName} {ticket.tenantContact.lastName}</Text>
+                          <Text>
+                            {ticket.tenantContact.firstName} {ticket.tenantContact.lastName}
+                          </Text>
                         </div>
                       )}
                       {ticket.assignedVendor && (
@@ -282,7 +275,7 @@ export const TicketDetail: React.FC = () => {
                     rows={4}
                     placeholder="Ajouter un commentaire..."
                     value={commentContent}
-                    onChange={(e) => setCommentContent(e.target.value)}
+                    onChange={e => setCommentContent(e.target.value)}
                   />
                   <Button
                     type="primary"

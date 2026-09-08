@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import {
+  App,
   Table,
   Card,
   Button,
@@ -17,8 +18,7 @@ import {
   Form,
   Input,
   Upload,
-  message,
-  Popconfirm,
+  Popconfirm
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -30,7 +30,7 @@ import {
   CloseCircleOutlined,
   DeleteOutlined,
   StarOutlined,
-  StarFilled,
+  StarFilled
 } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import apiClient from '../../utils/api-client';
@@ -61,6 +61,8 @@ const OPEN_BRACE = '{';
 const CLOSE_BRACE = '}';
 
 export function DocumentTemplates() {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -75,7 +77,7 @@ export function DocumentTemplates() {
       const url = filterDocType
         ? `/tenants/${tenantId}/documents/templates?docType=${filterDocType}`
         : `/tenants/${tenantId}/documents/templates`;
-      
+
       const response = await apiClient.get(url);
       const data = response.data;
 
@@ -118,15 +120,11 @@ export function DocumentTemplates() {
       formData.append('docType', values.docType);
       formData.append('name', values.name);
 
-      const response = await apiClient.post(
-        `/tenants/${tenantId}/documents/templates/upload`,
-        formData,
-        {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          }
+      const response = await apiClient.post(`/tenants/${tenantId}/documents/templates/upload`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
         }
-      );
+      });
 
       const data = response.data;
 
@@ -148,9 +146,7 @@ export function DocumentTemplates() {
 
   const handleSetDefault = async (templateId: string) => {
     try {
-      const response = await apiClient.post(
-        `/tenants/${tenantId}/documents/templates/${templateId}/set-default`
-      );
+      const response = await apiClient.post(`/tenants/${tenantId}/documents/templates/${templateId}/set-default`);
 
       const data = response.data;
       if (data.success) {
@@ -168,10 +164,9 @@ export function DocumentTemplates() {
   const handleToggleStatus = async (templateId: string, currentStatus: string) => {
     try {
       const newStatus = currentStatus === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
-      const response = await apiClient.patch(
-        `/tenants/${tenantId}/documents/templates/${templateId}`,
-        { status: newStatus }
-      );
+      const response = await apiClient.patch(`/tenants/${tenantId}/documents/templates/${templateId}`, {
+        status: newStatus
+      });
 
       const data = response.data;
       if (data.success) {
@@ -188,9 +183,7 @@ export function DocumentTemplates() {
 
   const handleDelete = async (templateId: string) => {
     try {
-      const response = await apiClient.delete(
-        `/tenants/${tenantId}/documents/templates/${templateId}`
-      );
+      const response = await apiClient.delete(`/tenants/${tenantId}/documents/templates/${templateId}`);
 
       const data = response.data;
       if (data.success) {
@@ -224,16 +217,16 @@ export function DocumentTemplates() {
             {record.original_filename}
           </Text>
         </Space>
-      ),
+      )
     },
     {
       title: 'Type',
       dataIndex: 'doc_type',
       key: 'doc_type',
       render: (docType: string) => {
-        const docTypeLabel = DOC_TYPES.find((t) => t.value === docType)?.label || docType;
+        const docTypeLabel = DOC_TYPES.find(t => t.value === docType)?.label || docType;
         return <Text>{docTypeLabel}</Text>;
-      },
+      }
     },
     {
       title: 'Statut',
@@ -253,7 +246,7 @@ export function DocumentTemplates() {
             </Space>
           )}
         </Tag>
-      ),
+      )
     },
     {
       title: 'Placeholders',
@@ -261,14 +254,12 @@ export function DocumentTemplates() {
       key: 'placeholders',
       render: (placeholders: string[]) => (
         <Space wrap>
-          {(placeholders || []).slice(0, 3).map((p) => (
+          {(placeholders || []).slice(0, 3).map(p => (
             <Tag key={p}>{p}</Tag>
           ))}
-          {(placeholders || []).length > 3 && (
-            <Tag>+{(placeholders || []).length - 3}</Tag>
-          )}
+          {(placeholders || []).length > 3 && <Tag>+{(placeholders || []).length - 3}</Tag>}
         </Space>
-      ),
+      )
     },
     {
       title: 'Actions',
@@ -276,18 +267,11 @@ export function DocumentTemplates() {
       render: (_: any, record: DocumentTemplate) => (
         <Space>
           {!record.is_default && (
-            <Button
-              type="link"
-              icon={<StarOutlined />}
-              onClick={() => handleSetDefault(record.id)}
-            >
+            <Button type="link" icon={<StarOutlined />} onClick={() => handleSetDefault(record.id)}>
               Définir par défaut
             </Button>
           )}
-          <Button
-            type="link"
-            onClick={() => handleToggleStatus(record.id, record.status)}
-          >
+          <Button type="link" onClick={() => handleToggleStatus(record.id, record.status)}>
             {record.status === 'ACTIVE' ? 'Désactiver' : 'Activer'}
           </Button>
           <Popconfirm
@@ -298,17 +282,13 @@ export function DocumentTemplates() {
             cancelText="Non"
             okButtonProps={{ danger: true }}
           >
-            <Button
-              type="link"
-              danger
-              icon={<DeleteOutlined />}
-            >
+            <Button type="link" danger icon={<DeleteOutlined />}>
               Supprimer
             </Button>
           </Popconfirm>
         </Space>
-      ),
-    },
+      )
+    }
   ];
 
   return (
@@ -327,11 +307,7 @@ export function DocumentTemplates() {
               >
                 Guide d'utilisation
               </Button>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => setShowUploadModal(true)}
-              >
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowUploadModal(true)}>
                 Ajouter un template
               </Button>
             </Space>
@@ -347,20 +323,32 @@ export function DocumentTemplates() {
                   Comment créer vos modèles de documents ?
                 </Title>
                 <Paragraph style={{ marginBottom: 8 }}>
-                  Créez vos propres modèles de contrats de bail, reçus et relevés en utilisant des variables dans un document Word (.docx).
+                  Créez vos propres modèles de contrats de bail, reçus et relevés en utilisant des variables dans un
+                  document Word (.docx).
                 </Paragraph>
                 <Space direction="vertical" size="small">
                   <Text>
                     • Utilisez des variables comme{' '}
-                    <Tag>{OPEN_BRACE}{OPEN_BRACE}AGENCE_NOM{CLOSE_BRACE}{CLOSE_BRACE}</Tag> ou{' '}
-                    <Tag>{OPEN_BRACE}{OPEN_BRACE}BAIL_LOYER_MENSUEL{CLOSE_BRACE}{CLOSE_BRACE}</Tag>
+                    <Tag>
+                      {OPEN_BRACE}
+                      {OPEN_BRACE}AGENCE_NOM{CLOSE_BRACE}
+                      {CLOSE_BRACE}
+                    </Tag>{' '}
+                    ou{' '}
+                    <Tag>
+                      {OPEN_BRACE}
+                      {OPEN_BRACE}BAIL_LOYER_MENSUEL{CLOSE_BRACE}
+                      {CLOSE_BRACE}
+                    </Tag>
                   </Text>
                   <Text>• Téléchargez votre fichier DOCX avec votre mise en page personnalisée</Text>
                   <Text>• Le système remplacera automatiquement les variables lors de la génération</Text>
                 </Space>
                 <Button
                   type="link"
-                  onClick={() => window.open('/docs/GUIDE_TENANT_MODELES_DOCUMENTS.md', '_blank', 'noopener,noreferrer')}
+                  onClick={() =>
+                    window.open('/docs/GUIDE_TENANT_MODELES_DOCUMENTS.md', '_blank', 'noopener,noreferrer')
+                  }
                   style={{ padding: 0 }}
                 >
                   Consulter le guide complet avec toutes les variables disponibles →
@@ -379,12 +367,12 @@ export function DocumentTemplates() {
             <Text strong>Filtrer par type :</Text>
             <Select
               value={filterDocType || undefined}
-              onChange={(value) => setFilterDocType(value || '')}
+              onChange={value => setFilterDocType(value || '')}
               placeholder="Tous les types"
               allowClear
               style={{ width: 200 }}
             >
-              {DOC_TYPES.map((type) => (
+              {DOC_TYPES.map(type => (
                 <Option key={type.value} value={type.value}>
                   {type.label}
                 </Option>
@@ -401,11 +389,11 @@ export function DocumentTemplates() {
             ) : (
               <Table
                 columns={columns}
-                dataSource={templates.map((t) => ({ ...t, key: t.id }))}
+                dataSource={templates.map(t => ({ ...t, key: t.id }))}
                 pagination={{
                   pageSize: 10,
                   showSizeChanger: true,
-                  showTotal: (total) => `Total: ${total} templates`,
+                  showTotal: total => `Total: ${total} templates`
                 }}
               />
             )}
@@ -428,7 +416,7 @@ export function DocumentTemplates() {
             layout="vertical"
             onFinish={handleUpload}
             initialValues={{
-              docType: 'LEASE_HABITATION',
+              docType: 'LEASE_HABITATION'
             }}
           >
             <Form.Item
@@ -437,7 +425,7 @@ export function DocumentTemplates() {
               rules={[{ required: true, message: 'Veuillez sélectionner un type de document' }]}
             >
               <Select>
-                {DOC_TYPES.map((type) => (
+                {DOC_TYPES.map(type => (
                   <Option key={type.value} value={type.value}>
                     {type.label}
                   </Option>
@@ -471,22 +459,18 @@ export function DocumentTemplates() {
                       }
                     }
                     return Promise.resolve();
-                  },
-                },
+                  }
+                }
               ]}
               valuePropName="fileList"
-              getValueFromEvent={(e) => {
+              getValueFromEvent={e => {
                 if (Array.isArray(e)) {
                   return e;
                 }
                 return e?.fileList;
               }}
             >
-              <Upload
-                accept=".docx"
-                maxCount={1}
-                beforeUpload={() => false}
-              >
+              <Upload accept=".docx" maxCount={1} beforeUpload={() => false}>
                 <Button icon={<UploadOutlined />}>Sélectionner un fichier DOCX</Button>
               </Upload>
             </Form.Item>
@@ -512,5 +496,3 @@ export function DocumentTemplates() {
     </DashboardLayout>
   );
 }
-
-

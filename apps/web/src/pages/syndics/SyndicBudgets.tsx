@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  App,
   Alert,
   Button,
   Card,
@@ -13,8 +14,7 @@ import {
   Spin,
   Table,
   Tag,
-  Typography,
-  message,
+  Typography
 } from 'antd';
 import { ArrowLeftOutlined, CheckOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -27,7 +27,7 @@ import {
   listChargeCallBatches,
   listSyndicateLots,
   recomputeBudgetAllocations,
-  updateBudget,
+  updateBudget
 } from '../../services/syndic-service';
 import { BudgetAllocation, ChargeCallBatch, SyndicateBudget, SyndicateLot } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
@@ -36,13 +36,13 @@ const { Paragraph, Title } = Typography;
 
 const batchTypeLabels: Record<ChargeCallBatch['batchType'], string> = {
   REGULAR: 'Régulier',
-  EXCEPTIONAL: 'Exceptionnel',
+  EXCEPTIONAL: 'Exceptionnel'
 };
 
 const batchStatusLabels: Record<ChargeCallBatch['status'], string> = {
   DRAFT: 'Brouillon',
   SENT: 'Envoyé',
-  CLOSED: 'Clôturé',
+  CLOSED: 'Clôturé'
 };
 
 function buildLotDisplayName(allocation: BudgetAllocation, lotDirectoryEntry?: SyndicateLot): string {
@@ -70,6 +70,8 @@ function buildLotDisplayName(allocation: BudgetAllocation, lotDirectoryEntry?: S
 }
 
 export const SyndicBudgets: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const navigate = useNavigate();
 
@@ -117,7 +119,7 @@ export const SyndicBudgets: React.FC = () => {
       const [budgetsData, batchesData, lotsData] = await Promise.all([
         listBudgets(effectiveTenantId, syndicId),
         listChargeCallBatches(effectiveTenantId, syndicId),
-        listSyndicateLots(effectiveTenantId, syndicId),
+        listSyndicateLots(effectiveTenantId, syndicId)
       ]);
       setBudgets(budgetsData);
       setBatches(batchesData);
@@ -150,9 +152,9 @@ export const SyndicBudgets: React.FC = () => {
             category: values.category,
             description: values.description,
             amountForecast: values.totalAmount,
-            distributionKey: values.distributionKey,
-          },
-        ],
+            distributionKey: values.distributionKey
+          }
+        ]
       });
       message.success('Budget créé');
       setOpenBudgetModal(false);
@@ -212,7 +214,7 @@ export const SyndicBudgets: React.FC = () => {
         period: values.period,
         dueDate: new Date(values.dueDate).toISOString(),
         batchType: values.batchType,
-        currency: values.currency || 'XOF',
+        currency: values.currency || 'XOF'
       });
       message.success("Batch d'appels généré");
       setOpenGenerateModal(false);
@@ -243,7 +245,7 @@ export const SyndicBudgets: React.FC = () => {
         dueDate: new Date(values.dueDate).toISOString(),
         batchType: values.batchType,
         totalAmount: values.totalAmount,
-        currency: values.currency || 'XOF',
+        currency: values.currency || 'XOF'
       });
       message.success('Batch créé');
       setOpenBatchModal(false);
@@ -261,7 +263,10 @@ export const SyndicBudgets: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
+            >
               Retour à la fiche syndic
             </Button>
             <Title level={2} style={{ margin: 0 }}>
@@ -300,12 +305,16 @@ export const SyndicBudgets: React.FC = () => {
                 columns={[
                   { title: 'Exercice', dataIndex: 'fiscalYear' },
                   { title: 'Libellé', dataIndex: 'label' },
-                  { title: 'Montant', dataIndex: 'totalAmount', render: (value: number | string) => `${Number(value).toLocaleString('fr-FR')} XOF` },
+                  {
+                    title: 'Montant',
+                    dataIndex: 'totalAmount',
+                    render: (value: number | string) => `${Number(value).toLocaleString('fr-FR')} XOF`
+                  },
                   { title: 'Allocations', render: (_, budget) => budget.allocations?.length || 0 },
                   {
                     title: 'Statut',
                     dataIndex: 'status',
-                    render: (status: string) => <Tag>{status}</Tag>,
+                    render: (status: string) => <Tag>{status}</Tag>
                   },
                   {
                     title: 'Actions',
@@ -342,25 +351,21 @@ export const SyndicBudgets: React.FC = () => {
                               label: `Batch ${budget.fiscalYear}`,
                               period: `${budget.fiscalYear}-01`,
                               batchType: 'REGULAR',
-                              currency: budget.currency || 'XOF',
+                              currency: budget.currency || 'XOF'
                             });
                           }}
                         >
                           Générer appels
                         </Button>
                       </Space>
-                    ),
-                  },
+                    )
+                  }
                 ]}
               />
             </Card>
 
             <Card
-              title={
-                allocationBudgetLabel
-                  ? `Répartition des lots - ${allocationBudgetLabel}`
-                  : 'Répartition des lots'
-              }
+              title={allocationBudgetLabel ? `Répartition des lots - ${allocationBudgetLabel}` : 'Répartition des lots'}
             >
               <Table
                 rowKey="id"
@@ -368,19 +373,22 @@ export const SyndicBudgets: React.FC = () => {
                 pagination={{ pageSize: 8 }}
                 locale={{ emptyText: 'Cliquez sur Répartir ou Voir allocations pour afficher le détail.' }}
                 columns={[
-                  { title: 'Lot', render: (_, row) => buildLotDisplayName(row, row.lotId ? lotsById[row.lotId] : undefined) },
+                  {
+                    title: 'Lot',
+                    render: (_, row) => buildLotDisplayName(row, row.lotId ? lotsById[row.lotId] : undefined)
+                  },
                   {
                     title: 'Total alloué',
                     dataIndex: 'totalAllocated',
-                    render: (value: number | string) => `${Number(value).toLocaleString('fr-FR')} XOF`,
+                    render: (value: number | string) => `${Number(value).toLocaleString('fr-FR')} XOF`
                   },
                   {
                     title: 'Détail lignes',
                     render: (_, row) =>
                       (row.breakdown || [])
                         .map(line => `${line.category}: ${Number(line.allocated).toLocaleString('fr-FR')} XOF`)
-                        .join(' | ') || '-',
-                  },
+                        .join(' | ') || '-'
+                  }
                 ]}
               />
             </Card>
@@ -396,16 +404,24 @@ export const SyndicBudgets: React.FC = () => {
                   {
                     title: 'Type',
                     dataIndex: 'batchType',
-                    render: (value: ChargeCallBatch['batchType']) => batchTypeLabels[value] || value,
+                    render: (value: ChargeCallBatch['batchType']) => batchTypeLabels[value] || value
                   },
-                  { title: 'Échéance', dataIndex: 'dueDate', render: (value: string) => dayjs(value).format('DD/MM/YYYY') },
-                  { title: 'Montant', dataIndex: 'totalAmount', render: (value: number | string) => `${Number(value).toLocaleString('fr-FR')} XOF` },
+                  {
+                    title: 'Échéance',
+                    dataIndex: 'dueDate',
+                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
+                  },
+                  {
+                    title: 'Montant',
+                    dataIndex: 'totalAmount',
+                    render: (value: number | string) => `${Number(value).toLocaleString('fr-FR')} XOF`
+                  },
                   { title: 'Charges', render: (_, batch) => batch.chargeCalls?.length || 0 },
                   {
                     title: 'Statut',
                     dataIndex: 'status',
-                    render: (status: ChargeCallBatch['status']) => <Tag>{batchStatusLabels[status] || status}</Tag>,
-                  },
+                    render: (status: ChargeCallBatch['status']) => <Tag>{batchStatusLabels[status] || status}</Tag>
+                  }
                 ]}
               />
             </Card>
@@ -422,20 +438,36 @@ export const SyndicBudgets: React.FC = () => {
         cancelText="Annuler"
         confirmLoading={submitting}
       >
-        <Form form={budgetForm} layout="vertical" initialValues={{ fiscalYear: new Date().getFullYear(), distributionKey: 'GENERAL_SHARES', currency: 'XOF' }}>
+        <Form
+          form={budgetForm}
+          layout="vertical"
+          initialValues={{ fiscalYear: new Date().getFullYear(), distributionKey: 'GENERAL_SHARES', currency: 'XOF' }}
+        >
           <Form.Item label="Exercice" name="fiscalYear" rules={[{ required: true }]}>
             <InputNumber min={2020} max={2100} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item label="Libellé" name="label" rules={[{ required: true, message: 'Libellé obligatoire' }]}>
             <Input />
           </Form.Item>
-          <Form.Item label="Montant total" name="totalAmount" rules={[{ required: true, message: 'Montant obligatoire' }]}>
+          <Form.Item
+            label="Montant total"
+            name="totalAmount"
+            rules={[{ required: true, message: 'Montant obligatoire' }]}
+          >
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item label="Catégorie principale" name="category" rules={[{ required: true, message: 'Catégorie obligatoire' }]}>
+          <Form.Item
+            label="Catégorie principale"
+            name="category"
+            rules={[{ required: true, message: 'Catégorie obligatoire' }]}
+          >
             <Input />
           </Form.Item>
-          <Form.Item label="Description ligne" name="description" rules={[{ required: true, message: 'Description obligatoire' }]}>
+          <Form.Item
+            label="Description ligne"
+            name="description"
+            rules={[{ required: true, message: 'Description obligatoire' }]}
+          >
             <Input />
           </Form.Item>
           <Form.Item label="Clé de distribution" name="distributionKey" rules={[{ required: true }]}>
@@ -444,7 +476,7 @@ export const SyndicBudgets: React.FC = () => {
                 { value: 'GENERAL_SHARES', label: 'Tantièmes généraux' },
                 { value: 'SPECIAL_SHARES', label: 'Tantièmes spéciaux' },
                 { value: 'EQUAL', label: 'Répartition égale' },
-                { value: 'MANUAL', label: 'Manuelle' },
+                { value: 'MANUAL', label: 'Manuelle' }
               ]}
             />
           </Form.Item>
@@ -480,7 +512,7 @@ export const SyndicBudgets: React.FC = () => {
             <Select
               options={[
                 { value: 'REGULAR', label: 'Régulier' },
-                { value: 'EXCEPTIONAL', label: 'Exceptionnel' },
+                { value: 'EXCEPTIONAL', label: 'Exceptionnel' }
               ]}
             />
           </Form.Item>
@@ -516,7 +548,7 @@ export const SyndicBudgets: React.FC = () => {
             <Select
               options={[
                 { value: 'REGULAR', label: 'Régulier' },
-                { value: 'EXCEPTIONAL', label: 'Exceptionnel' },
+                { value: 'EXCEPTIONAL', label: 'Exceptionnel' }
               ]}
             />
           </Form.Item>
@@ -528,5 +560,3 @@ export const SyndicBudgets: React.FC = () => {
     </DashboardLayout>
   );
 };
-
-

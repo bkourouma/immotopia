@@ -1,20 +1,6 @@
 import React, { useState } from 'react';
-import {
-  Modal,
-  Form,
-  Input,
-  Select,
-  Upload,
-  Button,
-  message,
-  Space,
-  Typography
-} from 'antd';
-import {
-  UploadOutlined,
-  ToolOutlined,
-  PlusOutlined
-} from '@ant-design/icons';
+import { App, Modal, Form, Input, Select, Upload, Button, Space, Typography } from 'antd';
+import { UploadOutlined, ToolOutlined, PlusOutlined } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import type { UploadFile } from 'antd';
 
@@ -27,11 +13,9 @@ interface MaintenanceTicketModalProps {
   onSuccess: () => void;
 }
 
-export default function MaintenanceTicketModal({
-  open,
-  onCancel,
-  onSuccess
-}: MaintenanceTicketModalProps) {
+export default function MaintenanceTicketModal({ open, onCancel, onSuccess }: MaintenanceTicketModalProps) {
+  const { message } = App.useApp();
+
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
@@ -45,13 +29,13 @@ export default function MaintenanceTicketModal({
       formData.append('category', values.category);
       formData.append('priority', values.priority);
       formData.append('description', values.description);
-      
+
       if (values.locationDetails) {
         formData.append('locationDetails', values.locationDetails);
       }
 
       // Add files
-      fileList.forEach((file) => {
+      fileList.forEach(file => {
         if (file.originFileObj) {
           formData.append('attachments', file.originFileObj);
         }
@@ -65,9 +49,7 @@ export default function MaintenanceTicketModal({
       onSuccess();
       onCancel();
     } catch (error: any) {
-      message.error(
-        error.response?.data?.message || 'Erreur lors de la création du ticket'
-      );
+      message.error(error.response?.data?.message || 'Erreur lors de la création du ticket');
     } finally {
       setLoading(false);
     }
@@ -116,19 +98,11 @@ export default function MaintenanceTicketModal({
           priority: 'MEDIUM'
         }}
       >
-        <Form.Item
-          label="Titre"
-          name="title"
-          rules={[{ required: true, message: 'Le titre est requis' }]}
-        >
+        <Form.Item label="Titre" name="title" rules={[{ required: true, message: 'Le titre est requis' }]}>
           <Input placeholder="Ex: Fuite d'eau dans la salle de bain" />
         </Form.Item>
 
-        <Form.Item
-          label="Catégorie"
-          name="category"
-          rules={[{ required: true, message: 'La catégorie est requise' }]}
-        >
+        <Form.Item label="Catégorie" name="category" rules={[{ required: true, message: 'La catégorie est requise' }]}>
           <Select placeholder="Sélectionner la catégorie">
             <Select.Option value="PLUMBING">Plomberie</Select.Option>
             <Select.Option value="ELECTRICITY">Électricité</Select.Option>
@@ -137,11 +111,7 @@ export default function MaintenanceTicketModal({
           </Select>
         </Form.Item>
 
-        <Form.Item
-          label="Priorité"
-          name="priority"
-          rules={[{ required: true, message: 'La priorité est requise' }]}
-        >
+        <Form.Item label="Priorité" name="priority" rules={[{ required: true, message: 'La priorité est requise' }]}>
           <Select placeholder="Sélectionner la priorité">
             <Select.Option value="LOW">Basse</Select.Option>
             <Select.Option value="MEDIUM">Moyenne</Select.Option>
@@ -155,16 +125,10 @@ export default function MaintenanceTicketModal({
           name="description"
           rules={[{ required: true, message: 'La description est requise' }]}
         >
-          <TextArea
-            rows={4}
-            placeholder="Décrivez le problème en détail..."
-          />
+          <TextArea rows={4} placeholder="Décrivez le problème en détail..." />
         </Form.Item>
 
-        <Form.Item
-          label="Détails de localisation (optionnel)"
-          name="locationDetails"
-        >
+        <Form.Item label="Détails de localisation (optionnel)" name="locationDetails">
           <Input placeholder="Ex: Chambre principale, côté fenêtre" />
         </Form.Item>
 

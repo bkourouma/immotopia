@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Form, Input, Select, Button, message, Alert } from 'antd';
+import { App, Modal, Form, Input, Select, Button, Alert } from 'antd';
 import { HtmlCodeEditor } from '../HtmlCodeEditor';
 import { newsletterService } from '../../services/newsletter.service';
 import type { NewsletterList, NewsletterTemplate } from '../../services/newsletter.service';
@@ -35,9 +35,7 @@ function formatPrice(price?: number, currency?: string): string {
 
 function buildPropertyHtmlBody(property: Property, imageUrls: string[]): string {
   const typeLabel = propertyTypeLabels[property.propertyType] || property.propertyType;
-  const modes = (property.transactionModes || [])
-    .map((m: string) => transactionModeLabels[m] || m)
-    .join(', ');
+  const modes = (property.transactionModes || []).map((m: string) => transactionModeLabels[m] || m).join(', ');
   const specs: string[] = [];
   if (property.rooms) specs.push(`${property.rooms} pièce(s)`);
   if (property.bedrooms) specs.push(`${property.bedrooms} chambre(s)`);
@@ -49,7 +47,7 @@ function buildPropertyHtmlBody(property: Property, imageUrls: string[]): string 
   if (imageUrls.length > 0) {
     imagesHtml = imageUrls
       .map(
-        (url) =>
+        url =>
           `<img src="${url}" alt="${property.title}" style="max-width: 100%; height: auto; border-radius: 8px; margin: 8px 0;" />`
       )
       .join('');
@@ -104,6 +102,8 @@ export function PropertyNewsletterCampaignModal({
   imageUrls = [],
   onSuccess
 }: PropertyNewsletterCampaignModalProps) {
+  const { message } = App.useApp();
+
   const [form] = Form.useForm();
   const [lists, setLists] = useState<NewsletterList[]>([]);
   const [templates, setTemplates] = useState<NewsletterTemplate[]>([]);
@@ -114,10 +114,7 @@ export function PropertyNewsletterCampaignModal({
   useEffect(() => {
     if (open && tenantId) {
       setLoading(true);
-      Promise.all([
-        newsletterService.listLists(tenantId),
-        newsletterService.listTemplates(tenantId)
-      ])
+      Promise.all([newsletterService.listLists(tenantId), newsletterService.listTemplates(tenantId)])
         .then(([listsData, templatesData]) => {
           setLists(listsData);
           setTemplates(templatesData);
@@ -153,7 +150,7 @@ export function PropertyNewsletterCampaignModal({
         subject: values.subject,
         bodyHtml: values.bodyHtml
       });
-      message.success('Campagne créée. Vous pouvez l\'envoyer depuis la page Campagnes.');
+      message.success("Campagne créée. Vous pouvez l'envoyer depuis la page Campagnes.");
       form.resetFields();
       onClose();
       onSuccess?.();
@@ -190,7 +187,7 @@ export function PropertyNewsletterCampaignModal({
         >
           <Select
             placeholder="Choisir une liste"
-            options={lists.map((l) => ({ value: l.id, label: `${l.name} (${l.activeCount ?? 0} destinataires)` }))}
+            options={lists.map(l => ({ value: l.id, label: `${l.name} (${l.activeCount ?? 0} destinataires)` }))}
             loading={loading}
           />
         </Form.Item>
@@ -198,15 +195,11 @@ export function PropertyNewsletterCampaignModal({
           <Select
             placeholder="Aucun template"
             allowClear
-            options={templates.map((t) => ({ value: t.id, label: t.name }))}
+            options={templates.map(t => ({ value: t.id, label: t.name }))}
             loading={loading}
           />
         </Form.Item>
-        <Form.Item
-          name="subject"
-          label="Sujet"
-          rules={[{ required: true, message: 'Saisissez le sujet' }]}
-        >
+        <Form.Item name="subject" label="Sujet" rules={[{ required: true, message: 'Saisissez le sujet' }]}>
           <Input placeholder="Sujet de l'email" />
         </Form.Item>
         <Form.Item

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  App,
   Card,
   Typography,
   Button,
@@ -19,8 +20,7 @@ import {
   Input,
   List,
   Avatar,
-  Divider,
-  message
+  Divider
 } from 'antd';
 import {
   ToolOutlined,
@@ -109,6 +109,8 @@ interface TicketDetails {
 }
 
 export default function TenantMaintenance() {
+  const { message } = App.useApp();
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<MaintenanceTicketsData | null>(null);
@@ -173,7 +175,7 @@ export default function TenantMaintenance() {
       // Reload tickets list
       await loadTickets();
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors de l\'ajout du commentaire');
+      message.error(err.response?.data?.message || "Erreur lors de l'ajout du commentaire");
     } finally {
       setCommentLoading(false);
     }
@@ -256,11 +258,7 @@ export default function TenantMaintenance() {
       title: 'Actions',
       key: 'actions',
       render: (_: any, record: MaintenanceTicket) => (
-        <Button
-          type="link"
-          icon={<EyeOutlined />}
-          onClick={() => loadTicketDetails(record.id)}
-        >
+        <Button type="link" icon={<EyeOutlined />} onClick={() => loadTicketDetails(record.id)}>
           Détails
         </Button>
       )
@@ -275,11 +273,7 @@ export default function TenantMaintenance() {
           <Title level={2}>Maintenance</Title>
           <Text type="secondary">Gérez vos demandes de maintenance</Text>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setModalVisible(true)}
-        >
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
           Nouvelle demande
         </Button>
       </div>
@@ -289,11 +283,7 @@ export default function TenantMaintenance() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <Card>
-              <Statistic
-                title="Total tickets"
-                value={data.summary.total}
-                prefix={<ToolOutlined />}
-              />
+              <Statistic title="Total tickets" value={data.summary.total} prefix={<ToolOutlined />} />
             </Card>
           </Col>
           <Col xs={24} sm={12} lg={6}>
@@ -341,7 +331,7 @@ export default function TenantMaintenance() {
             allowClear
             style={{ width: 200 }}
             value={statusFilter}
-            onChange={(value) => setStatusFilter(value)}
+            onChange={value => setStatusFilter(value)}
           >
             <Select.Option value="DECLARED">Déclaré</Select.Option>
             <Select.Option value="IN_PROGRESS">En cours</Select.Option>
@@ -349,16 +339,18 @@ export default function TenantMaintenance() {
             <Select.Option value="RESOLVED">Résolu</Select.Option>
             <Select.Option value="CANCELED">Annulé</Select.Option>
           </Select>
-          {statusFilter && (
-            <Button onClick={() => setStatusFilter(undefined)}>
-              Réinitialiser
-            </Button>
-          )}
+          {statusFilter && <Button onClick={() => setStatusFilter(undefined)}>Réinitialiser</Button>}
         </Space>
       </Card>
 
       {/* Tickets Table (T098, T099) */}
-      <Card title={<><ToolOutlined /> Liste des tickets</>}>
+      <Card
+        title={
+          <>
+            <ToolOutlined /> Liste des tickets
+          </>
+        }
+      >
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px' }}>
             <Spin size="large" tip="Chargement des tickets..." />
@@ -375,7 +367,7 @@ export default function TenantMaintenance() {
               pageSize: data.pagination.limit,
               total: data.pagination.total,
               showSizeChanger: true,
-              showTotal: (total) => `Total: ${total} tickets`
+              showTotal: total => `Total: ${total} tickets`
             }}
           />
         ) : (
@@ -422,18 +414,10 @@ export default function TenantMaintenance() {
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             {/* Ticket Details */}
             <Descriptions bordered column={2}>
-              <Descriptions.Item label="Statut">
-                {getStatusTag(selectedTicket.status)}
-              </Descriptions.Item>
-              <Descriptions.Item label="Priorité">
-                {getPriorityTag(selectedTicket.priority)}
-              </Descriptions.Item>
-              <Descriptions.Item label="Catégorie">
-                {getCategoryLabel(selectedTicket.category)}
-              </Descriptions.Item>
-              <Descriptions.Item label="Date de création">
-                {formatDate(selectedTicket.created_at)}
-              </Descriptions.Item>
+              <Descriptions.Item label="Statut">{getStatusTag(selectedTicket.status)}</Descriptions.Item>
+              <Descriptions.Item label="Priorité">{getPriorityTag(selectedTicket.priority)}</Descriptions.Item>
+              <Descriptions.Item label="Catégorie">{getCategoryLabel(selectedTicket.category)}</Descriptions.Item>
+              <Descriptions.Item label="Date de création">{formatDate(selectedTicket.created_at)}</Descriptions.Item>
               <Descriptions.Item label="Propriété" span={2}>
                 {selectedTicket.property.address}
               </Descriptions.Item>
@@ -453,7 +437,7 @@ export default function TenantMaintenance() {
                 <Title level={5}>Photos</Title>
                 <Image.PreviewGroup>
                   <Space wrap>
-                    {selectedTicket.attachments.map((attachment) => (
+                    {selectedTicket.attachments.map(attachment => (
                       <Image
                         key={attachment.id}
                         width={100}
@@ -478,18 +462,19 @@ export default function TenantMaintenance() {
               {selectedTicket.comments && selectedTicket.comments.length > 0 ? (
                 <List
                   dataSource={selectedTicket.comments}
-                  renderItem={(comment) => (
+                  renderItem={comment => (
                     <List.Item>
                       <List.Item.Meta
                         avatar={<Avatar icon={<UserOutlined />} />}
                         title={
                           comment.author_type === 'TENANT'
                             ? comment.authorContact
-                              ? `${comment.authorContact.firstName || ''} ${comment.authorContact.lastName || ''}`.trim() || comment.authorContact.email
+                              ? `${comment.authorContact.firstName || ''} ${comment.authorContact.lastName || ''}`.trim() ||
+                                comment.authorContact.email
                               : 'Locataire'
                             : comment.authorUser
-                            ? comment.authorUser.fullName || comment.authorUser.email
-                            : 'Gestionnaire'
+                              ? comment.authorUser.fullName || comment.authorUser.email
+                              : 'Gestionnaire'
                         }
                         description={
                           <Space direction="vertical" size="small">
@@ -513,7 +498,7 @@ export default function TenantMaintenance() {
                   rows={3}
                   placeholder="Ajouter un commentaire..."
                   value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
+                  onChange={e => setCommentText(e.target.value)}
                 />
                 <Button
                   type="primary"

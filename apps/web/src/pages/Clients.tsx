@@ -1,21 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  Table,
-  Card,
-  Input,
-  Button,
-  Space,
-  Typography,
-  Tag,
-  Avatar,
-  Alert,
-  Spin,
-  Empty,
-  Row,
-  Col,
-  message,
-} from 'antd';
+import { App, Table, Card, Input, Button, Space, Typography, Tag, Avatar, Alert, Spin, Empty, Row, Col } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   UserOutlined,
@@ -28,7 +13,7 @@ import {
   TagOutlined,
   DownloadOutlined,
   FileExcelOutlined,
-  CloseOutlined,
+  CloseOutlined
 } from '@ant-design/icons';
 import { DashboardLayout } from '../components/dashboard/dashboard-layout';
 import { listContacts, CrmContact, listTags, CrmTag } from '../services/crm-service';
@@ -44,6 +29,8 @@ interface ClientTableData extends CrmContact {
 }
 
 export const Clients: React.FC = () => {
+  const { message } = App.useApp();
+
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { tenantMembership } = useAuth();
@@ -51,7 +38,9 @@ export const Clients: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<'ALL' | 'PROPRIETAIRE' | 'LOCATAIRE' | 'ACQUEREUR' | 'COPROPRIETAIRE'>('ALL');
+  const [filterType, setFilterType] = useState<'ALL' | 'PROPRIETAIRE' | 'LOCATAIRE' | 'ACQUEREUR' | 'COPROPRIETAIRE'>(
+    'ALL'
+  );
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<CrmTag | null>(null);
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFiltersType>({});
@@ -104,11 +93,11 @@ export const Clients: React.FC = () => {
         startDate: advancedFilters.startDate,
         endDate: advancedFilters.endDate,
         assignedTo: advancedFilters.assignedTo,
-        source: advancedFilters.source,
+        source: advancedFilters.source
       });
       if (response.success) {
-        const clientContacts = response.contacts.filter(contact =>
-          contact.roles && contact.roles.length > 0 && contact.roles.some(r => r.active)
+        const clientContacts = response.contacts.filter(
+          contact => contact.roles && contact.roles.length > 0 && contact.roles.some(r => r.active)
         );
         setClients(clientContacts);
       } else {
@@ -160,7 +149,7 @@ export const Clients: React.FC = () => {
       PROPRIETAIRE: 'blue',
       LOCATAIRE: 'green',
       ACQUEREUR: 'purple',
-      COPROPRIETAIRE: 'orange',
+      COPROPRIETAIRE: 'orange'
     };
     return (
       <Tag color={colors[type] || 'default'} icon={getClientTypeIcon(type)}>
@@ -169,29 +158,32 @@ export const Clients: React.FC = () => {
     );
   };
 
-  const filteredClients = clients.filter((client) => {
+  const filteredClients = clients.filter(client => {
     const matchesSearch =
       !searchTerm ||
       `${client.firstName} ${client.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
       client.email.toLowerCase().includes(searchTerm.toLowerCase());
 
-    const matchesType = filterType === 'ALL' ||
-      (client.roles && client.roles.some(r => r.active && r.role === filterType));
+    const matchesType =
+      filterType === 'ALL' || (client.roles && client.roles.some(r => r.active && r.role === filterType));
 
-    const matchesTag = !selectedTagId ||
-      (client.tags && client.tags.some(tag => tag.id === selectedTagId));
+    const matchesTag = !selectedTagId || (client.tags && client.tags.some(tag => tag.id === selectedTagId));
 
     return matchesSearch && matchesType && matchesTag;
   });
 
   const handleExportCSV = () => {
     const exportData = filteredClients.map(client => ({
-      'Nom': `${client.firstName} ${client.lastName}`,
-      'Email': client.email,
-      'Téléphone': client.phone || '',
-      'Type': client.roles?.filter(r => r.active).map(r => getClientTypeLabel(r.role)).join(', ') || '',
-      'Groupes': client.tags?.map(t => t.name).join(', ') || '',
-      'Date d\'inscription': new Date(client.createdAt).toLocaleDateString('fr-FR'),
+      Nom: `${client.firstName} ${client.lastName}`,
+      Email: client.email,
+      Téléphone: client.phone || '',
+      Type:
+        client.roles
+          ?.filter(r => r.active)
+          .map(r => getClientTypeLabel(r.role))
+          .join(', ') || '',
+      Groupes: client.tags?.map(t => t.name).join(', ') || '',
+      "Date d'inscription": new Date(client.createdAt).toLocaleDateString('fr-FR')
     }));
     exportToCSV(exportData, 'clients');
     message.success('Export CSV réussi');
@@ -199,12 +191,16 @@ export const Clients: React.FC = () => {
 
   const handleExportExcel = async () => {
     const exportData = filteredClients.map(client => ({
-      'Nom': `${client.firstName} ${client.lastName}`,
-      'Email': client.email,
-      'Téléphone': client.phone || '',
-      'Type': client.roles?.filter(r => r.active).map(r => getClientTypeLabel(r.role)).join(', ') || '',
-      'Groupes': client.tags?.map(t => t.name).join(', ') || '',
-      'Date d\'inscription': new Date(client.createdAt).toLocaleDateString('fr-FR'),
+      Nom: `${client.firstName} ${client.lastName}`,
+      Email: client.email,
+      Téléphone: client.phone || '',
+      Type:
+        client.roles
+          ?.filter(r => r.active)
+          .map(r => getClientTypeLabel(r.role))
+          .join(', ') || '',
+      Groupes: client.tags?.map(t => t.name).join(', ') || '',
+      "Date d'inscription": new Date(client.createdAt).toLocaleDateString('fr-FR')
     }));
     await exportToExcel(exportData, 'clients', 'Clients');
     message.success('Export Excel réussi');
@@ -229,14 +225,14 @@ export const Clients: React.FC = () => {
             )}
           </div>
         </Space>
-      ),
+      )
     },
     {
       title: 'Email',
       dataIndex: 'email',
       key: 'email',
       width: 250,
-      render: (email: string) => <Text>{email}</Text>,
+      render: (email: string) => <Text>{email}</Text>
     },
     {
       title: 'Type',
@@ -247,18 +243,27 @@ export const Clients: React.FC = () => {
         return (
           <Space size="small" wrap>
             {activeRoles.map((role, idx) => (
-              <Tag key={idx} color={
-                role.role === 'PROPRIETAIRE' ? 'blue' :
-                role.role === 'LOCATAIRE' ? 'green' :
-                role.role === 'ACQUEREUR' ? 'purple' :
-                role.role === 'COPROPRIETAIRE' ? 'orange' : 'default'
-              } icon={getClientTypeIcon(role.role)}>
+              <Tag
+                key={idx}
+                color={
+                  role.role === 'PROPRIETAIRE'
+                    ? 'blue'
+                    : role.role === 'LOCATAIRE'
+                      ? 'green'
+                      : role.role === 'ACQUEREUR'
+                        ? 'purple'
+                        : role.role === 'COPROPRIETAIRE'
+                          ? 'orange'
+                          : 'default'
+                }
+                icon={getClientTypeIcon(role.role)}
+              >
                 {getClientTypeLabel(role.role)}
               </Tag>
             ))}
           </Space>
         );
-      },
+      }
     },
     {
       title: 'Groupes',
@@ -266,16 +271,16 @@ export const Clients: React.FC = () => {
       width: 200,
       render: (_, record) => {
         if (!record.tags || record.tags.length === 0) {
-          return <Text type="secondary" style={{ fontSize: 12 }}>Aucun groupe</Text>;
+          return (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              Aucun groupe
+            </Text>
+          );
         }
         return (
           <Space size="small" wrap>
-            {record.tags.slice(0, 3).map((tag) => (
-              <Tag
-                key={tag.id}
-                color={tag.color || '#1890ff'}
-                icon={<TagOutlined />}
-              >
+            {record.tags.slice(0, 3).map(tag => (
+              <Tag key={tag.id} color={tag.color || '#1890ff'} icon={<TagOutlined />}>
                 {tag.name}
               </Tag>
             ))}
@@ -286,15 +291,13 @@ export const Clients: React.FC = () => {
             )}
           </Space>
         );
-      },
+      }
     },
     {
-      title: 'Date d\'inscription',
+      title: "Date d'inscription",
       key: 'createdAt',
       width: 150,
-      render: (_, record) => (
-        <Text>{new Date(record.createdAt).toLocaleDateString('fr-FR')}</Text>
-      ),
+      render: (_, record) => <Text>{new Date(record.createdAt).toLocaleDateString('fr-FR')}</Text>
     },
     {
       title: 'Actions',
@@ -308,13 +311,13 @@ export const Clients: React.FC = () => {
           onClick={() => navigate(`/tenant/${tenantMembership?.tenantId}/crm/contacts/${record.id}`)}
           title="Voir les détails"
         />
-      ),
-    },
+      )
+    }
   ];
 
   const tableData: ClientTableData[] = filteredClients.map(client => ({
     ...client,
-    key: client.id,
+    key: client.id
   }));
 
   return (
@@ -323,20 +326,16 @@ export const Clients: React.FC = () => {
         {/* Header */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div>
-            <Title level={2} style={{ margin: 0 }}>Clients</Title>
+            <Title level={2} style={{ margin: 0 }}>
+              Clients
+            </Title>
             <Text type="secondary">Gérez vos clients et leurs informations</Text>
           </div>
           <Space wrap>
-            <Button
-              icon={<DownloadOutlined />}
-              onClick={handleExportCSV}
-            >
+            <Button icon={<DownloadOutlined />} onClick={handleExportCSV}>
               Exporter CSV
             </Button>
-            <Button
-              icon={<FileExcelOutlined />}
-              onClick={handleExportExcel}
-            >
+            <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>
               Exporter Excel
             </Button>
             <Button
@@ -373,7 +372,7 @@ export const Clients: React.FC = () => {
             <Search
               placeholder="Rechercher des clients..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={e => setSearchTerm(e.target.value)}
               onSearch={handleSearch}
               onPressEnter={handleSearch}
               style={{ flex: 1 }}
@@ -391,7 +390,7 @@ export const Clients: React.FC = () => {
                 showDateRange: true,
                 showAssignedTo: true,
                 showSource: true,
-                dateRangeLabel: 'Date de création',
+                dateRangeLabel: 'Date de création'
               }}
               filters={advancedFilters}
               onFiltersChange={setAdvancedFilters}
@@ -440,14 +439,7 @@ export const Clients: React.FC = () => {
 
         {/* Error Alert */}
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
 
         {/* Clients List */}
@@ -499,10 +491,10 @@ export const Clients: React.FC = () => {
                 pagination={{
                   pageSize: 10,
                   showSizeChanger: true,
-                  showTotal: (total) => `Total: ${total} clients`,
+                  showTotal: total => `Total: ${total} clients`
                 }}
                 locale={{
-                  emptyText: <Empty description="Aucun client trouvé" />,
+                  emptyText: <Empty description="Aucun client trouvé" />
                 }}
               />
             </div>

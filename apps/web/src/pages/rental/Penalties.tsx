@@ -13,9 +13,8 @@ import {
   Form,
   InputNumber,
   Upload,
-  message,
   Row,
-  Col,
+  Col
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -24,7 +23,7 @@ import {
   DeleteOutlined,
   UploadOutlined,
   DownloadOutlined,
-  ExclamationCircleOutlined,
+  ExclamationCircleOutlined
 } from '@ant-design/icons';
 import { Edit, X, Upload as UploadIcon, Download, FileText } from 'lucide-react';
 import { Button as UIButton } from '../../components/ui/button';
@@ -36,7 +35,7 @@ import {
   deletePenalty,
   uploadPenaltyJustification,
   RentalPenalty,
-  PenaltyFilters,
+  PenaltyFilters
 } from '../../services/rental-service';
 import { API_URL } from '../../config/api';
 
@@ -65,13 +64,13 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
   const [filters, setFilters] = useState<PenaltyFilters>({
     leaseId: leaseId,
     page: 1,
-    limit: 50,
+    limit: 50
   });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 50,
     total: 0,
-    totalPages: 0,
+    totalPages: 0
   });
 
   useEffect(() => {
@@ -95,7 +94,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
     try {
       const response = await listPenalties(tenantId, {
         ...filters,
-        leaseId: leaseId || filters.leaseId,
+        leaseId: leaseId || filters.leaseId
       });
       if (response.success) {
         setPenalties(response.data || []);
@@ -104,7 +103,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
           page: 1,
           limit: 50,
           total: (response.data || []).length,
-          totalPages: 1,
+          totalPages: 1
         });
       } else {
         setError('Erreur lors du chargement des pénalités');
@@ -156,7 +155,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
   const formatCurrency = (amount: number, currency: string = 'FCFA') => {
     return new Intl.NumberFormat('fr-FR', {
       style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency,
+      currency: currency === 'FCFA' ? 'XOF' : currency
     }).format(amount);
   };
 
@@ -198,7 +197,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
 
   const handleAdjustPenalty = async () => {
     if (!tenantId || !selectedPenalty) return;
-    
+
     const amount = parseFloat(adjustAmount);
     if (isNaN(amount) || amount < 0) {
       setError('Le montant doit être un nombre positif');
@@ -206,7 +205,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
     }
 
     if (!adjustReason.trim()) {
-      setError('Veuillez indiquer une raison pour l\'ajustement');
+      setError("Veuillez indiquer une raison pour l'ajustement");
       return;
     }
 
@@ -220,7 +219,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       setAdjustReason('');
       await loadPenalties();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de l\'ajustement de la pénalité');
+      setError(err.response?.data?.message || "Erreur lors de l'ajustement de la pénalité");
     } finally {
       setIsAdjusting(false);
     }
@@ -228,11 +227,11 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
 
   const handleDeletePenalty = async (penaltyId: string) => {
     if (!tenantId) return;
-    
+
     const confirmed = window.confirm(
       'Êtes-vous sûr de vouloir supprimer cette pénalité ? Cette action est irréversible.'
     );
-    
+
     if (!confirmed) return;
 
     setIsDeleting(penaltyId);
@@ -253,7 +252,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
     const file = event.target.files[0];
     setIsUploading(true);
     setError(null);
-    
+
     try {
       await uploadPenaltyJustification(tenantId, selectedPenalty.id, file);
       setShowJustificationForm(false);
@@ -263,7 +262,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       }
       await loadPenalties();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de l\'upload du justificatif');
+      setError(err.response?.data?.message || "Erreur lors de l'upload du justificatif");
     } finally {
       setIsUploading(false);
     }
@@ -288,20 +287,15 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Row gutter={[16, 16]} justify="space-between" align="middle">
           <Col xs={24} sm={24} md={12} lg={14}>
-            <Title level={2} style={{ margin: 0 }}>Pénalités</Title>
-            <Text type="secondary">
-              {leaseId ? 'Pénalités du bail' : 'Gérez les pénalités de retard'}
-            </Text>
+            <Title level={2} style={{ margin: 0 }}>
+              Pénalités
+            </Title>
+            <Text type="secondary">{leaseId ? 'Pénalités du bail' : 'Gérez les pénalités de retard'}</Text>
           </Col>
           <Col xs={24} sm={24} md={12} lg={10}>
             <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
               {leaseId && (
-                <Button
-                  type="primary"
-                  icon={<ReloadOutlined />}
-                  onClick={handleCalculate}
-                  loading={calculating}
-                >
+                <Button type="primary" icon={<ReloadOutlined />} onClick={handleCalculate} loading={calculating}>
                   Calculer les pénalités
                 </Button>
               )}
@@ -310,14 +304,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
         </Row>
 
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
 
         {penalties.length === 0 && !loading ? (
@@ -338,19 +325,17 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
               {
                 title: 'Date de calcul',
                 key: 'calculated_at',
-                render: (_, record) => formatDate(record.calculated_at),
+                render: (_, record) => formatDate(record.calculated_at)
               },
               {
                 title: 'Jours de retard',
                 key: 'days_late',
-                render: (_, record) => (
-                  <Tag color="error">{record.days_late} jours</Tag>
-                ),
+                render: (_, record) => <Tag color="error">{record.days_late} jours</Tag>
               },
               {
                 title: 'Montant',
                 key: 'amount',
-                render: (_, record) => formatCurrency(record.amount, record.currency),
+                render: (_, record) => formatCurrency(record.amount, record.currency)
               },
               {
                 title: 'Montant ajusté',
@@ -358,7 +343,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
                 render: (_, record) =>
                   record.adjusted_amount
                     ? formatCurrency(record.adjusted_amount, record.currency)
-                    : formatCurrency(record.amount, record.currency),
+                    : formatCurrency(record.amount, record.currency)
               },
               {
                 title: "Raison d'ajustement",
@@ -366,7 +351,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
                 render: (_, record) => {
                   const adjustmentReason = getAdjustmentReason(record);
                   return adjustmentReason || '-';
-                },
+                }
               },
               {
                 title: 'Justificatif',
@@ -384,25 +369,17 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
                   ) : (
                     <Text type="secondary">-</Text>
                   );
-                },
+                }
               },
               {
                 title: 'Actions',
                 key: 'actions',
                 render: (_, record) => (
                   <Space>
-                    <Button
-                      icon={<EditOutlined />}
-                      onClick={() => handleOpenAdjustForm(record)}
-                      size="small"
-                    >
+                    <Button icon={<EditOutlined />} onClick={() => handleOpenAdjustForm(record)} size="small">
                       Ajuster
                     </Button>
-                    <Button
-                      icon={<UploadOutlined />}
-                      onClick={() => handleOpenJustificationForm(record)}
-                      size="small"
-                    >
+                    <Button icon={<UploadOutlined />} onClick={() => handleOpenJustificationForm(record)} size="small">
                       Justificatif
                     </Button>
                     <Button
@@ -415,8 +392,8 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
                       Supprimer
                     </Button>
                   </Space>
-                ),
-              },
+                )
+              }
             ]}
             pagination={
               pagination.totalPages > 1
@@ -425,10 +402,10 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
                     pageSize: pagination.limit,
                     total: pagination.total,
                     showSizeChanger: true,
-                    showTotal: (total) => `Total ${total} pénalités`,
+                    showTotal: total => `Total ${total} pénalités`,
                     onChange: (page, pageSize) => {
-                      setFilters((prev) => ({ ...prev, page, limit: pageSize }));
-                    },
+                      setFilters(prev => ({ ...prev, page, limit: pageSize }));
+                    }
                   }
                 : false
             }
@@ -477,7 +454,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
                     step="0.01"
                     min="0"
                     value={adjustAmount}
-                    onChange={(e) => setAdjustAmount(e.target.value)}
+                    onChange={e => setAdjustAmount(e.target.value)}
                     placeholder="0.00"
                     className="mt-1"
                   />
@@ -489,7 +466,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
                   <textarea
                     id="adjustReason"
                     value={adjustReason}
-                    onChange={(e) => setAdjustReason(e.target.value)}
+                    onChange={e => setAdjustReason(e.target.value)}
                     placeholder="Expliquez la raison de cet ajustement..."
                     rows={4}
                     className="flex min-h-[80px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mt-1"
@@ -510,10 +487,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
                 >
                   Annuler
                 </UIButton>
-                <UIButton
-                  onClick={handleAdjustPenalty}
-                  disabled={isAdjusting}
-                >
+                <UIButton onClick={handleAdjustPenalty} disabled={isAdjusting}>
                   {isAdjusting ? 'Ajustement...' : 'Ajuster la pénalité'}
                 </UIButton>
               </div>
@@ -558,9 +532,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
                   <label htmlFor="justificationFile" className="block text-sm font-medium text-gray-700 mb-1">
                     Fichier justificatif
                   </label>
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Formats acceptés: PDF, Word, Images (JPEG, PNG)
-                  </p>
+                  <p className="text-sm text-muted-foreground mb-2">Formats acceptés: PDF, Word, Images (JPEG, PNG)</p>
                   <input
                     id="justificationFile"
                     type="file"
@@ -588,9 +560,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
                         <Download className="h-4 w-4" />
                       </UIButton>
                     </div>
-                    <p className="text-xs text-blue-600 mt-2">
-                      Le nouveau fichier remplacera l'ancien.
-                    </p>
+                    <p className="text-xs text-blue-600 mt-2">Le nouveau fichier remplacera l'ancien.</p>
                   </div>
                 )}
               </div>
@@ -623,4 +593,3 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
 
   return content;
 };
-

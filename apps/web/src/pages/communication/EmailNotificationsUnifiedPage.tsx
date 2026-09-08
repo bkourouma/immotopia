@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
+  App,
   Card,
   Table,
   Switch,
   Button,
   Form,
   Input,
-  message,
   Spin,
   Tag,
   Space,
@@ -38,6 +38,8 @@ interface UniqueEventOption {
 }
 
 export function EmailNotificationsUnifiedPage() {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const [items, setItems] = useState<EmailNotificationConfigItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,12 +85,12 @@ export function EmailNotificationsUnifiedPage() {
 
   const recipientsForSelectedEvent = useMemo(() => {
     if (!selectedEventGroup) return [];
-    return items.filter((i) => getEventGroupKey(i.key) === selectedEventGroup);
+    return items.filter(i => getEventGroupKey(i.key) === selectedEventGroup);
   }, [items, selectedEventGroup]);
 
   useEffect(() => {
     if (!selectedKey || items.length === 0) return;
-    const item = items.find((i) => i.key === selectedKey);
+    const item = items.find(i => i.key === selectedKey);
     if (item) {
       form.setFieldsValue({
         subjectOverride: item.subjectOverride ?? item.defaultSubject ?? '',
@@ -97,12 +99,10 @@ export function EmailNotificationsUnifiedPage() {
     }
   }, [selectedKey, items]);
 
-  const selectedItem = items.find((i) => i.key === selectedKey) ?? null;
+  const selectedItem = items.find(i => i.key === selectedKey) ?? null;
   const variablesForEvent = selectedKey ? (VARIABLES_BY_EVENT_KEY[selectedKey] ?? []) : [];
   const sameEventOtherItems =
-    selectedKey && selectedEventGroup
-      ? recipientsForSelectedEvent.filter((i) => i.key !== selectedKey)
-      : [];
+    selectedKey && selectedEventGroup ? recipientsForSelectedEvent.filter(i => i.key !== selectedKey) : [];
 
   const handleSelectEvent = (eventGroupKey: string | null) => {
     setSelectedEventGroup(eventGroupKey);
@@ -114,7 +114,7 @@ export function EmailNotificationsUnifiedPage() {
   const handleSelectRecipient = (key: string) => {
     setSelectedKey(key);
     setApplyToOtherKeys([]);
-    const item = items.find((i) => i.key === key);
+    const item = items.find(i => i.key === key);
     if (item) {
       form.setFieldsValue({
         subjectOverride: item.subjectOverride ?? item.defaultSubject ?? '',
@@ -127,7 +127,7 @@ export function EmailNotificationsUnifiedPage() {
     if (!tenantId) return;
     try {
       await emailNotificationConfigService.update(tenantId, key, { enabled });
-      setItems((prev) => prev.map((i) => (i.key === key ? { ...i, enabled } : i)));
+      setItems(prev => prev.map(i => (i.key === key ? { ...i, enabled } : i)));
       message.success(enabled ? 'Notification activée' : 'Notification désactivée');
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
@@ -225,10 +225,7 @@ export function EmailNotificationsUnifiedPage() {
       key: 'enabled',
       width: 90,
       render: (enabled: boolean, record: EmailNotificationConfigItem) => (
-        <Switch
-          checked={enabled}
-          onChange={(checked) => handleToggleEnabled(record.key, checked)}
-        />
+        <Switch checked={enabled} onChange={checked => handleToggleEnabled(record.key, checked)} />
       )
     },
     {
@@ -270,7 +267,8 @@ export function EmailNotificationsUnifiedPage() {
           </Title>
         </Space>
         <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-          Gérez les événements déclencheurs et personnalisez les templates d&apos;emails (sujet et corps). Les variables sont remplacées à l&apos;envoi. Canal : Email uniquement.
+          Gérez les événements déclencheurs et personnalisez les templates d&apos;emails (sujet et corps). Les variables
+          sont remplacées à l&apos;envoi. Canal : Email uniquement.
         </Text>
 
         <Divider style={{ margin: '16px 0' }} />
@@ -282,10 +280,10 @@ export function EmailNotificationsUnifiedPage() {
           <Select
             placeholder="Sélectionner un événement déclencheur"
             value={selectedEventGroup ?? undefined}
-            onChange={(value) => handleSelectEvent(value ?? null)}
+            onChange={value => handleSelectEvent(value ?? null)}
             allowClear
             style={{ width: '100%', maxWidth: 480, marginBottom: 16 }}
-            options={uniqueEvents.map((ev) => ({
+            options={uniqueEvents.map(ev => ({
               value: ev.eventGroupKey,
               label: ev.label
             }))}
@@ -303,7 +301,7 @@ export function EmailNotificationsUnifiedPage() {
                   Cliquez sur un destinataire pour afficher et modifier le template qui lui est envoyé.
                 </Text>
                 <Space size={8} wrap>
-                  {recipientsForSelectedEvent.map((item) => (
+                  {recipientsForSelectedEvent.map(item => (
                     <Button
                       key={item.key}
                       type={selectedKey === item.key ? 'primary' : 'default'}
@@ -334,12 +332,16 @@ export function EmailNotificationsUnifiedPage() {
                         key: 'default',
                         label: 'Template par défaut (modèle)',
                         children: (
-                          <div style={{ background: '#fff', padding: 12, borderRadius: 8, border: '1px solid #f0f0f0' }}>
+                          <div
+                            style={{ background: '#fff', padding: 12, borderRadius: 8, border: '1px solid #f0f0f0' }}
+                          >
                             <div style={{ marginBottom: 12 }}>
                               <Text type="secondary" style={{ fontSize: 12 }}>
                                 Sujet par défaut :
                               </Text>
-                              <div style={{ marginTop: 4, fontFamily: 'monospace', fontSize: 13, wordBreak: 'break-word' }}>
+                              <div
+                                style={{ marginTop: 4, fontFamily: 'monospace', fontSize: 13, wordBreak: 'break-word' }}
+                              >
                                 {selectedItem.defaultSubject || '—'}
                               </div>
                             </div>
@@ -351,7 +353,12 @@ export function EmailNotificationsUnifiedPage() {
                                 <HtmlCodeEditor readOnly value={selectedItem.defaultBodyHtml || ''} minHeight={180} />
                               </div>
                             </div>
-                            <Button type="dashed" size="small" onClick={fillWithDefaultTemplate} style={{ marginTop: 8 }}>
+                            <Button
+                              type="dashed"
+                              size="small"
+                              onClick={fillWithDefaultTemplate}
+                              style={{ marginTop: 8 }}
+                            >
                               Utiliser ce modèle dans les champs ci-dessous
                             </Button>
                           </div>
@@ -383,7 +390,7 @@ export function EmailNotificationsUnifiedPage() {
                         </Text>
                       </Space>
                       <Space size={[4, 4]} wrap>
-                        {variablesForEvent.map((name) => (
+                        {variablesForEvent.map(name => (
                           <Tag
                             key={name}
                             style={{ cursor: 'pointer', marginBottom: 4 }}
@@ -396,7 +403,15 @@ export function EmailNotificationsUnifiedPage() {
                     </div>
 
                     {sameEventOtherItems.length > 0 && (
-                      <div style={{ marginBottom: 16, padding: 12, background: '#f6ffed', border: '1px solid #b7eb8f', borderRadius: 8 }}>
+                      <div
+                        style={{
+                          marginBottom: 16,
+                          padding: 12,
+                          background: '#f6ffed',
+                          border: '1px solid #b7eb8f',
+                          borderRadius: 8
+                        }}
+                      >
                         <Space align="center" style={{ marginBottom: 8 }}>
                           <TeamOutlined style={{ color: '#52c41a' }} />
                           <Text strong>Appliquer ce template à d&apos;autres destinataires</Text>
@@ -406,8 +421,8 @@ export function EmailNotificationsUnifiedPage() {
                         </Text>
                         <Checkbox.Group
                           value={applyToOtherKeys}
-                          onChange={(checked) => setApplyToOtherKeys(checked as string[])}
-                          options={sameEventOtherItems.map((i) => ({
+                          onChange={checked => setApplyToOtherKeys(checked as string[])}
+                          options={sameEventOtherItems.map(i => ({
                             value: i.key,
                             label: i.recipientLabel
                           }))}
@@ -419,9 +434,7 @@ export function EmailNotificationsUnifiedPage() {
                       <Button type="primary" onClick={handleSaveTemplate} loading={saving}>
                         Enregistrer
                       </Button>
-                      <Button onClick={handleReset}>
-                        Réinitialiser au modèle par défaut
-                      </Button>
+                      <Button onClick={handleReset}>Réinitialiser au modèle par défaut</Button>
                     </Space>
                   </Form>
                 </>
@@ -429,7 +442,9 @@ export function EmailNotificationsUnifiedPage() {
 
               {selectedEventGroup && !selectedKey && (
                 <Card size="small" style={{ background: '#fafafa', textAlign: 'center', padding: 24 }}>
-                  <Text type="secondary">Cliquez sur un destinataire ci-dessus pour afficher et modifier son template.</Text>
+                  <Text type="secondary">
+                    Cliquez sur un destinataire ci-dessus pour afficher et modifier son template.
+                  </Text>
                 </Card>
               )}
             </>
@@ -439,13 +454,7 @@ export function EmailNotificationsUnifiedPage() {
 
       <Card title="Liste des notifications email">
         <Spin spinning={loading}>
-          <Table
-            rowKey="key"
-            columns={columns}
-            dataSource={items}
-            pagination={false}
-            size="middle"
-          />
+          <Table rowKey="key" columns={columns} dataSource={items} pagination={false} size="middle" />
         </Spin>
       </Card>
     </DashboardLayout>

@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  App,
   Alert,
   Button,
   Card,
@@ -16,8 +17,7 @@ import {
   Tag,
   Spin,
   Statistic,
-  Typography,
-  message,
+  Typography
 } from 'antd';
 import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -35,7 +35,13 @@ import {
 } from '../../services/syndic-service';
 import { CrmContact } from '../../types/crm-types';
 import { Property } from '../../types/property-types';
-import { CreateSyndicateLotRequest, LotType, Syndicate, SyndicateLot, UpdateSyndicateLotRequest } from '../../types/syndic-types';
+import {
+  CreateSyndicateLotRequest,
+  LotType,
+  Syndicate,
+  SyndicateLot,
+  UpdateSyndicateLotRequest
+} from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 
 const { Paragraph, Title } = Typography;
@@ -46,7 +52,7 @@ const lotTypeOptions: Array<{ label: string; value: LotType }> = [
   { label: 'Cave', value: 'CELLAR' },
   { label: 'Bureau', value: 'OFFICE' },
   { label: 'Commerce', value: 'COMMERCIAL' },
-  { label: 'Autre', value: 'OTHER' },
+  { label: 'Autre', value: 'OTHER' }
 ];
 
 type PropertySelectOption = {
@@ -115,6 +121,8 @@ function buildContactLabel(contact: CrmContact): string {
 }
 
 export const SyndicLots: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -138,11 +146,17 @@ export const SyndicLots: React.FC = () => {
   const [referenceWarning, setReferenceWarning] = useState<string | null>(null);
   const [form] = Form.useForm();
   const [importForm] = Form.useForm<{ propertyIds: string[] }>();
-  const [tenantForm] = Form.useForm<{ tenantId: string; startDate: dayjs.Dayjs; endDate?: dayjs.Dayjs; leaseId?: string; notes?: string }>();
+  const [tenantForm] = Form.useForm<{
+    tenantId: string;
+    startDate: dayjs.Dayjs;
+    endDate?: dayjs.Dayjs;
+    leaseId?: string;
+    notes?: string;
+  }>();
 
   const ownerByEmail = useMemo(() => {
     const map = new Map<string, string>();
-    ownerOptions.forEach((owner) => {
+    ownerOptions.forEach(owner => {
       if (owner.email) {
         map.set(owner.email.trim().toLowerCase(), owner.value);
       }
@@ -158,14 +172,13 @@ export const SyndicLots: React.FC = () => {
 
     // Ensure imported lots keep a readable property label even if the property is
     // not present in the local property options payload.
-    lots.forEach((lot) => {
+    lots.forEach(lot => {
       const property = lot.property;
       if (!property?.id || labelById[property.id]) {
         return;
       }
 
-      labelById[property.id] =
-        buildPropertyNomenclatureLabel(property);
+      labelById[property.id] = buildPropertyNomenclatureLabel(property);
     });
 
     return labelById;
@@ -219,7 +232,7 @@ export const SyndicLots: React.FC = () => {
     try {
       const [syndicateData, lotData] = await Promise.all([
         getSyndicate(effectiveTenantId, syndicId),
-        listSyndicateLots(effectiveTenantId, syndicId),
+        listSyndicateLots(effectiveTenantId, syndicId)
       ]);
       setSyndicate(syndicateData);
       setLots(lotData);
@@ -234,21 +247,20 @@ export const SyndicLots: React.FC = () => {
   const loadReferenceData = async (tenantId: string) => {
     const [propertiesResult, contactsResult] = await Promise.allSettled([
       listProperties(tenantId, { page: 1, limit: 200 }),
-      listContacts(tenantId, { page: 1, limit: 200 }),
+      listContacts(tenantId, { page: 1, limit: 200 })
     ]);
 
     const warnings: string[] = [];
 
     if (propertiesResult.status === 'fulfilled') {
-      const properties = propertiesResult.value.properties.filter((property) => property.ownershipType !== 'PUBLIC');
-      const selectableProperties = properties
-        .map((property) => ({
-          value: property.id,
-          label: buildPropertyNomenclatureLabel(property),
-          inferredLotType: inferLotTypeFromProperty(property),
-          inferredLotNumber: inferLotNumberFromProperty(property),
-          ownerEmail: property.owner?.email || undefined,
-        }));
+      const properties = propertiesResult.value.properties.filter(property => property.ownershipType !== 'PUBLIC');
+      const selectableProperties = properties.map(property => ({
+        value: property.id,
+        label: buildPropertyNomenclatureLabel(property),
+        inferredLotType: inferLotTypeFromProperty(property),
+        inferredLotNumber: inferLotNumberFromProperty(property),
+        ownerEmail: property.owner?.email || undefined
+      }));
 
       // Full lookup used for table labels and fallback displays.
       setAllPropertyOptions(selectableProperties);
@@ -256,26 +268,26 @@ export const SyndicLots: React.FC = () => {
       // Manual lot creation: hide sub-properties and parent buildings.
       setLotPropertyOptions(
         properties
-          .filter((property) => !property.containerParent && property.propertyType !== 'IMMEUBLE')
-          .map((property) => ({
+          .filter(property => !property.containerParent && property.propertyType !== 'IMMEUBLE')
+          .map(property => ({
             value: property.id,
             label: buildPropertyNomenclatureLabel(property),
             inferredLotType: inferLotTypeFromProperty(property),
             inferredLotNumber: inferLotNumberFromProperty(property),
-            ownerEmail: property.owner?.email || undefined,
+            ownerEmail: property.owner?.email || undefined
           }))
       );
 
       // Import modal: only top-level properties (building or autonomous properties).
       setImportPropertyOptions(
         properties
-          .filter((property) => !property.containerParent)
-          .map((property) => ({
+          .filter(property => !property.containerParent)
+          .map(property => ({
             value: property.id,
             label: buildPropertyNomenclatureLabel(property),
             inferredLotType: inferLotTypeFromProperty(property),
             inferredLotNumber: inferLotNumberFromProperty(property),
-            ownerEmail: property.owner?.email || undefined,
+            ownerEmail: property.owner?.email || undefined
           }))
       );
     } else {
@@ -289,10 +301,10 @@ export const SyndicLots: React.FC = () => {
       const contacts = contactsResult.value.contacts || [];
 
       setOwnerOptions(
-        contacts.map((contact) => ({
+        contacts.map(contact => ({
           value: contact.id,
           label: buildContactLabel(contact),
-          email: contact.email || undefined,
+          email: contact.email || undefined
         }))
       );
     } else {
@@ -325,7 +337,7 @@ export const SyndicLots: React.FC = () => {
     setTenantLot(lot);
     tenantForm.resetFields();
     tenantForm.setFieldsValue({
-      startDate: dayjs(),
+      startDate: dayjs()
     });
     setTenantOpen(true);
   };
@@ -339,7 +351,7 @@ export const SyndicLots: React.FC = () => {
       specialShares: lot.specialShares ?? undefined,
       propertyId: lot.propertyId ?? undefined,
       ownerContactId: lot.ownerContactId ?? undefined,
-      ownerSince: lot.ownerSince ? dayjs(lot.ownerSince) : null,
+      ownerSince: lot.ownerSince ? dayjs(lot.ownerSince) : null
     });
     setOpen(true);
   };
@@ -349,7 +361,7 @@ export const SyndicLots: React.FC = () => {
       return;
     }
 
-    const selectedProperty = lotPropertyOptions.find((option) => option.value === propertyId);
+    const selectedProperty = lotPropertyOptions.find(option => option.value === propertyId);
     if (!selectedProperty) {
       return;
     }
@@ -362,7 +374,7 @@ export const SyndicLots: React.FC = () => {
     form.setFieldsValue({
       lotType: selectedProperty.inferredLotType,
       lotNumber: currentLotNumber || selectedProperty.inferredLotNumber,
-      ownerContactId: ownerContactId || undefined,
+      ownerContactId: ownerContactId || undefined
     });
   };
 
@@ -374,7 +386,7 @@ export const SyndicLots: React.FC = () => {
     const values = await form.validateFields();
     const payload = {
       ...values,
-      ownerSince: values.ownerSince ? values.ownerSince.toISOString() : undefined,
+      ownerSince: values.ownerSince ? values.ownerSince.toISOString() : undefined
     };
 
     setSubmitting(true);
@@ -385,7 +397,7 @@ export const SyndicLots: React.FC = () => {
           propertyId: values.propertyId || null,
           ownerContactId: values.ownerContactId || null,
           ownerSince: values.ownerSince ? values.ownerSince.toISOString() : null,
-          specialShares: values.specialShares ?? null,
+          specialShares: values.specialShares ?? null
         };
         await updateSyndicateLot(effectiveTenantId, syndicId, editingLot.id, updatePayload);
         message.success('Lot mis à jour');
@@ -427,7 +439,10 @@ export const SyndicLots: React.FC = () => {
       }
 
       if (skippedCount > 0) {
-        const skippedReasons = result.skipped.slice(0, 3).map((item) => item.reason).join(' | ');
+        const skippedReasons = result.skipped
+          .slice(0, 3)
+          .map(item => item.reason)
+          .join(' | ');
         message.warning(`${skippedCount} lot(s) ignoré(s). ${skippedReasons}`);
       }
 
@@ -435,7 +450,7 @@ export const SyndicLots: React.FC = () => {
       importForm.resetFields();
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || "Import des lots impossible");
+      message.error(err.response?.data?.error || 'Import des lots impossible');
     } finally {
       setImportSubmitting(false);
     }
@@ -454,7 +469,7 @@ export const SyndicLots: React.FC = () => {
         startDate: values.startDate.toISOString(),
         endDate: values.endDate ? values.endDate.toISOString() : undefined,
         leaseId: values.leaseId || undefined,
-        notes: values.notes || undefined,
+        notes: values.notes || undefined
       });
       message.success('Locataire assigné au lot');
       setTenantOpen(false);
@@ -483,16 +498,15 @@ export const SyndicLots: React.FC = () => {
               Lots de {syndicate?.name || 'la copropriété'}
             </Title>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Ajoutez les lots et sélectionnez directement un bien existant pour proposer automatiquement le propriétaire.
+              Ajoutez les lots et sélectionnez directement un bien existant pour proposer automatiquement le
+              propriétaire.
             </Paragraph>
           </Space>
 
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
             Nouveau lot
           </Button>
-          <Button onClick={openImportModal}>
-            Importer des biens
-          </Button>
+          <Button onClick={openImportModal}>Importer des biens</Button>
         </div>
 
         {error ? <Alert type="error" message={error} showIcon /> : null}
@@ -513,12 +527,18 @@ export const SyndicLots: React.FC = () => {
               </Col>
               <Col xs={24} md={8}>
                 <Card>
-                  <Statistic title="Tantièmes généraux cumulés" value={lots.reduce((sum, lot) => sum + lot.generalShares, 0)} />
+                  <Statistic
+                    title="Tantièmes généraux cumulés"
+                    value={lots.reduce((sum, lot) => sum + lot.generalShares, 0)}
+                  />
                 </Card>
               </Col>
               <Col xs={24} md={8}>
                 <Card>
-                  <Statistic title="Lots avec propriétaire" value={lots.filter((lot) => Boolean(lot.ownerContactId)).length} />
+                  <Statistic
+                    title="Lots avec propriétaire"
+                    value={lots.filter(lot => Boolean(lot.ownerContactId)).length}
+                  />
                 </Card>
               </Col>
               <Col xs={24} md={8}>
@@ -526,7 +546,7 @@ export const SyndicLots: React.FC = () => {
                   <Statistic
                     title="Lots avec locataire actif"
                     value={
-                      lots.filter((lot) => (lot.tenantAssignments || []).some((assignment) => assignment.isActive)).length
+                      lots.filter(lot => (lot.tenantAssignments || []).some(assignment => assignment.isActive)).length
                     }
                   />
                 </Card>
@@ -542,7 +562,9 @@ export const SyndicLots: React.FC = () => {
                 ownerLabelByEmail={ownerLabelByEmail}
                 onEdit={openEditModal}
                 onAssignTenant={openTenantModal}
-                onViewAccount={(lot) => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/lots/${lot.id}/compte`)}
+                onViewAccount={lot =>
+                  navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/lots/${lot.id}/compte`)
+                }
               />
             </Card>
           </>
@@ -561,12 +583,20 @@ export const SyndicLots: React.FC = () => {
         <Form form={form} layout="vertical" initialValues={{ lotType: 'APARTMENT' }}>
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item label="Numéro de lot" name="lotNumber" rules={[{ required: true, message: 'Le numéro est obligatoire' }]}>
+              <Form.Item
+                label="Numéro de lot"
+                name="lotNumber"
+                rules={[{ required: true, message: 'Le numéro est obligatoire' }]}
+              >
                 <Input />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="Type de lot" name="lotType" rules={[{ required: true, message: 'Le type est obligatoire' }]}>
+              <Form.Item
+                label="Type de lot"
+                name="lotType"
+                rules={[{ required: true, message: 'Le type est obligatoire' }]}
+              >
                 <Select options={lotTypeOptions} />
               </Form.Item>
             </Col>
@@ -574,7 +604,11 @@ export const SyndicLots: React.FC = () => {
 
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item label="Tantièmes généraux" name="generalShares" rules={[{ required: true, message: 'Champ obligatoire' }]}>
+              <Form.Item
+                label="Tantièmes généraux"
+                name="generalShares"
+                rules={[{ required: true, message: 'Champ obligatoire' }]}
+              >
                 <InputNumber min={1} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
@@ -637,9 +671,9 @@ export const SyndicLots: React.FC = () => {
               showSearch
               optionFilterProp="label"
               placeholder="Sélectionner une ou plusieurs propriétés"
-              options={importPropertyOptions.map((option) => ({
+              options={importPropertyOptions.map(option => ({
                 value: option.value,
-                label: option.label,
+                label: option.label
               }))}
             />
           </Form.Item>
@@ -680,9 +714,9 @@ export const SyndicLots: React.FC = () => {
               showSearch
               optionFilterProp="label"
               placeholder="Sélectionner un contact CRM"
-              options={ownerOptions.map((contact) => ({
+              options={ownerOptions.map(contact => ({
                 value: contact.value,
-                label: contact.label,
+                label: contact.label
               }))}
             />
           </Form.Item>
@@ -713,4 +747,3 @@ export const SyndicLots: React.FC = () => {
     </DashboardLayout>
   );
 };
-

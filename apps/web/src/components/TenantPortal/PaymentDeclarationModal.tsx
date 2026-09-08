@@ -1,24 +1,6 @@
 import React, { useState } from 'react';
-import {
-  Modal,
-  Form,
-  Input,
-  InputNumber,
-  DatePicker,
-  Select,
-  Upload,
-  Button,
-  message,
-  Space,
-  Typography
-} from 'antd';
-import {
-  UploadOutlined,
-  DollarOutlined,
-  CalendarOutlined,
-  FileTextOutlined,
-  PhoneOutlined
-} from '@ant-design/icons';
+import { App, Modal, Form, Input, InputNumber, DatePicker, Select, Upload, Button, Space, Typography } from 'antd';
+import { UploadOutlined, DollarOutlined, CalendarOutlined, FileTextOutlined, PhoneOutlined } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import dayjs, { Dayjs } from 'dayjs';
@@ -40,6 +22,8 @@ export default function PaymentDeclarationModal({
   onSuccess,
   installmentId
 }: PaymentDeclarationModalProps) {
+  const { message } = App.useApp();
+
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
@@ -75,7 +59,7 @@ export default function PaymentDeclarationModal({
       await tenantPortalService.declarePayment(formData);
 
       message.success({
-        content: 'Déclaration de paiement créée avec succès. Elle est en attente d\'approbation par le gestionnaire.',
+        content: "Déclaration de paiement créée avec succès. Elle est en attente d'approbation par le gestionnaire.",
         duration: 5
       });
       form.resetFields();
@@ -83,9 +67,7 @@ export default function PaymentDeclarationModal({
       onSuccess();
       onCancel();
     } catch (error: any) {
-      message.error(
-        error.response?.data?.message || 'Erreur lors de la déclaration du paiement'
-      );
+      message.error(error.response?.data?.message || 'Erreur lors de la déclaration du paiement');
     } finally {
       setLoading(false);
     }
@@ -98,8 +80,7 @@ export default function PaymentDeclarationModal({
   };
 
   const beforeUpload = (file: File) => {
-    const isImageOrPdf =
-      file.type.startsWith('image/') || file.type === 'application/pdf';
+    const isImageOrPdf = file.type.startsWith('image/') || file.type === 'application/pdf';
     if (!isImageOrPdf) {
       message.error('Vous ne pouvez télécharger que des images ou des PDF!');
       return Upload.LIST_IGNORE;
@@ -150,7 +131,7 @@ export default function PaymentDeclarationModal({
             min={0.01}
             step={1000}
             precision={0}
-            formatter={(value) => formatNumberWithSpaces(value?.toString() || '')}
+            formatter={value => formatNumberWithSpaces(value?.toString() || '')}
             parser={(value): number => parseFloat(parseFormattedNumber(value || '')) || 0}
           />
         </Form.Item>
@@ -163,7 +144,7 @@ export default function PaymentDeclarationModal({
           <DatePicker
             style={{ width: '100%' }}
             format="DD/MM/YYYY"
-            disabledDate={(current) => current && current > dayjs().endOf('day')}
+            disabledDate={current => current && current > dayjs().endOf('day')}
             placeholder="Sélectionner la date"
           />
         </Form.Item>
@@ -185,9 +166,7 @@ export default function PaymentDeclarationModal({
 
         <Form.Item
           noStyle
-          shouldUpdate={(prevValues, currentValues) =>
-            prevValues.paymentMethod !== currentValues.paymentMethod
-          }
+          shouldUpdate={(prevValues, currentValues) => prevValues.paymentMethod !== currentValues.paymentMethod}
         >
           {({ getFieldValue }) =>
             getFieldValue('paymentMethod') === 'MOBILE_MONEY' ? (
@@ -200,18 +179,12 @@ export default function PaymentDeclarationModal({
                     { max: 50, message: 'Le numéro ne peut pas dépasser 50 caractères' }
                   ]}
                 >
-                  <Input
-                    prefix={<PhoneOutlined />}
-                    placeholder="Ex. 07 00 00 00 00"
-                    maxLength={50}
-                  />
+                  <Input prefix={<PhoneOutlined />} placeholder="Ex. 07 00 00 00 00" maxLength={50} />
                 </Form.Item>
                 <Form.Item
                   label="Opérateur mobile"
                   name="mobileOperator"
-                  rules={[
-                    { required: true, message: 'L\'opérateur mobile est requis' }
-                  ]}
+                  rules={[{ required: true, message: "L'opérateur mobile est requis" }]}
                 >
                   <Select placeholder="Sélectionner l'opérateur">
                     <Select.Option value="ORANGE">Orange Money</Select.Option>
@@ -226,10 +199,7 @@ export default function PaymentDeclarationModal({
           }
         </Form.Item>
 
-        <Form.Item
-          label="Référence / Numéro de transaction"
-          name="reference"
-        >
+        <Form.Item label="Référence / Numéro de transaction" name="reference">
           <Input placeholder="Numéro de transaction, référence, etc." />
         </Form.Item>
 
@@ -249,14 +219,8 @@ export default function PaymentDeclarationModal({
           </Upload>
         </Form.Item>
 
-        <Form.Item
-          label="Notes (optionnel)"
-          name="notes"
-        >
-          <TextArea
-            rows={3}
-            placeholder="Informations complémentaires sur ce paiement..."
-          />
+        <Form.Item label="Notes (optionnel)" name="notes">
+          <TextArea rows={3} placeholder="Informations complémentaires sur ce paiement..." />
         </Form.Item>
 
         <Form.Item>

@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Button, Table, Tag, Space, Modal, Form, Input, InputNumber, Select, message, Upload } from 'antd';
-import { PlusOutlined, EyeOutlined, DeleteOutlined, UploadOutlined, PictureOutlined, VideoCameraOutlined } from '@ant-design/icons';
+import { App, Card, Button, Table, Tag, Space, Modal, Form, Input, InputNumber, Select, Upload } from 'antd';
+import {
+  PlusOutlined,
+  EyeOutlined,
+  DeleteOutlined,
+  UploadOutlined,
+  PictureOutlined,
+  VideoCameraOutlined
+} from '@ant-design/icons';
 import { Property, PropertyType, PropertyStatus, PropertyMediaType } from '../../types/property-types';
 import apiClient from '../../utils/api-client';
 import { useNavigate } from 'react-router-dom';
@@ -13,11 +20,9 @@ interface PropertyApartmentsProps {
   property: Property;
 }
 
-export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
-  propertyId,
-  tenantId,
-  property
-}) => {
+export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ propertyId, tenantId, property }) => {
+  const { message } = App.useApp();
+
   const [apartments, setApartments] = useState<Property[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -45,9 +50,11 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
     } catch (error: any) {
       // Si la propriété n'est pas de type IMMEUBLE, on retourne une liste vide
       // au lieu d'afficher une erreur
-      if (error.response?.status === 404 || 
-          error.response?.data?.error?.includes('IMMEUBLE') ||
-          error.response?.data?.error?.includes('not found')) {
+      if (
+        error.response?.status === 404 ||
+        error.response?.data?.error?.includes('IMMEUBLE') ||
+        error.response?.data?.error?.includes('not found')
+      ) {
         setApartments([]);
       } else {
         console.error('Erreur lors du chargement des appartements:', error);
@@ -61,7 +68,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
     }
   };
 
-// Correcting the handleCreate function to use Promise.allSettled and batching
+  // Correcting the handleCreate function to use Promise.allSettled and batching
   const handleCreate = async (values: any) => {
     setCreating(true);
     const apartmentGroups = values.apartmentGroups || [];
@@ -71,23 +78,22 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
 
     try {
       // Traitement par batch pour éviter les problèmes de concurrence
-      const BATCH_SIZE = 3; 
-      
+      const BATCH_SIZE = 3;
+
       for (const group of apartmentGroups) {
         const count = group.count || 1;
         const baseTitle = group.title || 'Appartement';
         const rooms = group.rooms;
         const bedrooms = rooms > 0 ? Math.max(0, rooms - 1) : 0;
         const mediaFiles = group.mediaFiles || [];
-        
+
         const apartmentsToCreate = [];
         // Inherit location from parent (Pays, Région, Commune, Quartier, Adresse) so apartments are linked to building location
-        const parentLocation = property.typeSpecificData && typeof property.typeSpecificData === 'object'
-          ? property.typeSpecificData
-          : {};
+        const parentLocation =
+          property.typeSpecificData && typeof property.typeSpecificData === 'object' ? property.typeSpecificData : {};
         const locationFields = ['country', 'countryId', 'region', 'regionId', 'commune', 'communeId'];
         const inheritedLocation: Record<string, any> = {};
-        locationFields.forEach((key) => {
+        locationFields.forEach(key => {
           if (parentLocation[key] !== undefined && parentLocation[key] !== null) {
             inheritedLocation[key] = parentLocation[key];
           }
@@ -124,7 +130,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
         for (let i = 0; i < apartmentsToCreate.length; i += BATCH_SIZE) {
           const batch = apartmentsToCreate.slice(i, i + BATCH_SIZE);
           const batchResults = await Promise.allSettled(
-            batch.map((apt) =>
+            batch.map(apt =>
               apiClient.post<{ success: boolean; data: Property }>(
                 `/tenants/${tenantId}/properties/${propertyId}/sub-properties`,
                 apt.data
@@ -182,7 +188,8 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
                 const err = result.reason as { response?: { data?: { error?: string } }; message?: string };
                 errorMsg = err?.response?.data?.error || err?.message || errorMsg;
               } else {
-                const resData = (result as PromiseFulfilledResult<{ data: { success?: boolean; error?: string } }>).value?.data;
+                const resData = (result as PromiseFulfilledResult<{ data: { success?: boolean; error?: string } }>)
+                  .value?.data;
                 errorMsg = resData?.error || errorMsg;
               }
               errors.push(`${apt.title}: ${errorMsg}`);
@@ -203,7 +210,8 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
         message.success(successMsg);
       }
       if (errorCount > 0) {
-        const errorDetails = errors.length > 0 ? `\nDétails: ${errors.slice(0, 3).join(', ')}${errors.length > 3 ? '...' : ''}` : '';
+        const errorDetails =
+          errors.length > 0 ? `\nDétails: ${errors.slice(0, 3).join(', ')}${errors.length > 3 ? '...' : ''}` : '';
         message.warning(
           `${errorCount} appartement${errorCount > 1 ? 's' : ''} n'a${errorCount > 1 ? 'ont' : ''} pas pu être créé${errorCount > 1 ? 's' : ''}${errorDetails}`
         );
@@ -242,7 +250,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
       title: 'Prix',
       dataIndex: 'price',
       key: 'price',
-      render: (value: number, record: Property) => 
+      render: (value: number, record: Property) =>
         value ? `${new Intl.NumberFormat('fr-FR').format(value)} ${record.currency || 'EUR'}` : '-'
     },
     {
@@ -298,22 +306,12 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
     <Card
       title="Appartements"
       extra={
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setModalVisible(true)}
-        >
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
           Ajouter un appartement
         </Button>
       }
     >
-      <Table
-        dataSource={apartments}
-        columns={columns}
-        loading={loading}
-        rowKey="id"
-        pagination={{ pageSize: 10 }}
-      />
+      <Table dataSource={apartments} columns={columns} loading={loading} rowKey="id" pagination={{ pageSize: 10 }} />
 
       <Modal
         title="Créer des appartements"
@@ -332,10 +330,12 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
           layout="vertical"
           onFinish={handleCreate}
           initialValues={{
-            apartmentGroups: [{
-              count: 1,
-              status: 'AVAILABLE'
-            }]
+            apartmentGroups: [
+              {
+                count: 1,
+                status: 'AVAILABLE'
+              }
+            ]
           }}
         >
           <Form.List name="apartmentGroups">
@@ -348,12 +348,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
                     title={`Groupe d'appartements ${name + 1}`}
                     extra={
                       fields.length > 1 && (
-                        <Button
-                          type="text"
-                          danger
-                          icon={<DeleteOutlined />}
-                          onClick={() => remove(name)}
-                        >
+                        <Button type="text" danger icon={<DeleteOutlined />} onClick={() => remove(name)}>
                           Supprimer
                         </Button>
                       )
@@ -382,19 +377,11 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
                       <Input placeholder="Ex: Appartement" />
                     </Form.Item>
 
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'description']}
-                      label="Description"
-                    >
+                    <Form.Item {...restField} name={[name, 'description']} label="Description">
                       <Input.TextArea rows={2} />
                     </Form.Item>
 
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'surfaceArea']}
-                      label="Surface (m²)"
-                    >
+                    <Form.Item {...restField} name={[name, 'surfaceArea']} label="Surface (m²)">
                       <InputNumber min={0} style={{ width: '100%' }} />
                     </Form.Item>
 
@@ -405,45 +392,32 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
                       rules={[{ required: true, message: 'Le nombre de pièces est requis' }]}
                       tooltip="Le nombre de chambres sera calculé automatiquement (pièces - 1 pour le salon)"
                     >
-                      <InputNumber 
-                        min={1} 
-                        style={{ width: '100%' }}
-                      />
+                      <InputNumber min={1} style={{ width: '100%' }} />
                     </Form.Item>
 
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'bathrooms']}
-                      label="Salles de bain"
-                    >
+                    <Form.Item {...restField} name={[name, 'bathrooms']} label="Salles de bain">
                       <InputNumber min={0} style={{ width: '100%' }} />
                     </Form.Item>
 
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'price']}
-                      label="Prix"
-                    >
+                    <Form.Item {...restField} name={[name, 'price']} label="Prix">
                       <InputNumber
                         placeholder="Ex: 50 000 000"
                         min={0}
                         step={1000}
                         style={{ width: '100%' }}
-                        formatter={(value) => formatNumberWithSpaces(value?.toString() || '')}
-                        parser={((value) => {
-                          if (value == null || value === '') return undefined as unknown as number;
-                          const parsed = parseFormattedNumber(value);
-                          const num = parseFloat(parsed);
-                          return isNaN(num) ? (undefined as unknown as number) : num;
-                        }) as (displayValue: string | undefined) => number}
+                        formatter={value => formatNumberWithSpaces(value?.toString() || '')}
+                        parser={
+                          (value => {
+                            if (value == null || value === '') return undefined as unknown as number;
+                            const parsed = parseFormattedNumber(value);
+                            const num = parseFloat(parsed);
+                            return isNaN(num) ? (undefined as unknown as number) : num;
+                          }) as (displayValue: string | undefined) => number
+                        }
                       />
                     </Form.Item>
 
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'furnishingStatus']}
-                      label="Meublé"
-                    >
+                    <Form.Item {...restField} name={[name, 'furnishingStatus']} label="Meublé">
                       <Select>
                         <Select.Option value="FURNISHED">Meublé</Select.Option>
                         <Select.Option value="UNFURNISHED">Non meublé</Select.Option>
@@ -451,11 +425,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
                       </Select>
                     </Form.Item>
 
-                    <Form.Item
-                      {...restField}
-                      name={[name, 'status']}
-                      label="Statut"
-                    >
+                    <Form.Item {...restField} name={[name, 'status']} label="Statut">
                       <Select defaultValue="AVAILABLE">
                         <Select.Option value="AVAILABLE">Disponible</Select.Option>
                         <Select.Option value="RESERVED">Réservé</Select.Option>
@@ -477,12 +447,12 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
                         listType="picture-card"
                         beforeUpload={() => false} // Empêcher l'upload automatique
                         accept="image/*,video/*"
-                        onChange={(info) => {
+                        onChange={info => {
                           // Garder seulement les fichiers valides
                           const fileList = info.fileList.filter(file => file.status !== 'error');
                           form.setFieldValue(['apartmentGroups', name, 'mediaFiles'], fileList);
                         }}
-                        onRemove={(file) => {
+                        onRemove={file => {
                           const currentFiles = form.getFieldValue(['apartmentGroups', name, 'mediaFiles']) || [];
                           const newFiles = currentFiles.filter((f: any) => f.uid !== file.uid);
                           form.setFieldValue(['apartmentGroups', name, 'mediaFiles'], newFiles);
@@ -502,12 +472,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({
                   </Card>
                 ))}
                 <Form.Item>
-                  <Button
-                    type="dashed"
-                    onClick={() => add()}
-                    block
-                    icon={<PlusOutlined />}
-                  >
+                  <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
                     Ajouter un groupe d'appartements
                   </Button>
                 </Form.Item>

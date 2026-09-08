@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  App,
   Alert,
   Button,
   Card,
@@ -15,15 +16,20 @@ import {
   Space,
   Spin,
   Statistic,
-  Typography,
-  message,
+  Typography
 } from 'antd';
 import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { ChargeCallTable } from '../../components/syndics/ChargeCallTable';
 import { createChargeCall, getSyndicate, listChargeCalls, listSyndicateLots } from '../../services/syndic-service';
-import { ChargeCall, ChargeCallStatus, CreateChargeCallRequest, Syndicate, SyndicateLot } from '../../types/syndic-types';
+import {
+  ChargeCall,
+  ChargeCallStatus,
+  CreateChargeCallRequest,
+  Syndicate,
+  SyndicateLot
+} from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 
 const { Paragraph, Title } = Typography;
@@ -32,19 +38,19 @@ const statusOptions: Array<{ label: string; value: ChargeCallStatus }> = [
   { label: 'En attente', value: 'PENDING' },
   { label: 'Partiel', value: 'PARTIAL' },
   { label: 'Paye', value: 'PAID' },
-  { label: 'En retard', value: 'OVERDUE' },
+  { label: 'En retard', value: 'OVERDUE' }
 ];
 
 const targetModeOptions = [
   { label: 'Un lot', value: 'single' },
   { label: 'Plusieurs lots', value: 'multiple' },
-  { label: 'Tous les lots', value: 'all' },
+  { label: 'Tous les lots', value: 'all' }
 ];
 
 const recurrenceFrequencyOptions = [
   { label: 'Mensuelle', value: 'MONTHLY' },
   { label: 'Trimestrielle', value: 'QUARTERLY' },
-  { label: 'Annuelle', value: 'ANNUAL' },
+  { label: 'Annuelle', value: 'ANNUAL' }
 ];
 
 const lotTypeLabels: Record<SyndicateLot['lotType'], string> = {
@@ -53,7 +59,7 @@ const lotTypeLabels: Record<SyndicateLot['lotType'], string> = {
   CELLAR: 'Cave',
   OFFICE: 'Bureau',
   COMMERCIAL: 'Commerce',
-  OTHER: 'Autre',
+  OTHER: 'Autre'
 };
 
 function buildPropertyNomenclatureFromLot(lot: SyndicateLot): string {
@@ -68,6 +74,8 @@ function buildPropertyNomenclatureFromLot(lot: SyndicateLot): string {
 }
 
 export const SyndicCharges: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const navigate = useNavigate();
 
@@ -108,7 +116,7 @@ export const SyndicCharges: React.FC = () => {
     try {
       const [syndicateData, lotData] = await Promise.all([
         getSyndicate(effectiveTenantId, syndicId),
-        listSyndicateLots(effectiveTenantId, syndicId),
+        listSyndicateLots(effectiveTenantId, syndicId)
       ]);
       setSyndicate(syndicateData);
       setLots(lotData);
@@ -127,7 +135,7 @@ export const SyndicCharges: React.FC = () => {
     try {
       const data = await listChargeCalls(effectiveTenantId, syndicId, {
         status: statusFilter,
-        period: periodFilter || undefined,
+        period: periodFilter || undefined
       });
       setCharges(data);
     } catch (err: any) {
@@ -137,16 +145,16 @@ export const SyndicCharges: React.FC = () => {
 
   const summary = useMemo(() => {
     const total = charges.reduce((sum, charge) => sum + Number(charge.amount), 0);
-    const overdue = charges.filter((charge) => charge.status === 'OVERDUE').length;
-    const pending = charges.filter((charge) => charge.status === 'PENDING' || charge.status === 'PARTIAL').length;
+    const overdue = charges.filter(charge => charge.status === 'OVERDUE').length;
+    const pending = charges.filter(charge => charge.status === 'PENDING' || charge.status === 'PARTIAL').length;
     return { total, overdue, pending };
   }, [charges]);
 
   const lotSelectOptions = useMemo(
     () =>
-      lots.map((lot) => ({
+      lots.map(lot => ({
         value: lot.id,
-        label: `${buildPropertyNomenclatureFromLot(lot)} (${lotTypeLabels[lot.lotType]})`,
+        label: `${buildPropertyNomenclatureFromLot(lot)} (${lotTypeLabels[lot.lotType]})`
       })),
     [lots]
   );
@@ -170,7 +178,7 @@ export const SyndicCharges: React.FC = () => {
       dueDate: values.dueDate.toISOString(),
       isRecurring: Boolean(values.isRecurring),
       recurrenceFrequency: values.isRecurring ? values.recurrenceFrequency : undefined,
-      recurrenceCount: values.isRecurring ? values.recurrenceCount : undefined,
+      recurrenceCount: values.isRecurring ? values.recurrenceCount : undefined
     };
 
     setSubmitting(true);
@@ -245,7 +253,7 @@ export const SyndicCharges: React.FC = () => {
                   style={{ minWidth: 210 }}
                   placeholder="Filtrer par statut"
                   value={statusFilter}
-                  onChange={(value) => setStatusFilter(value)}
+                  onChange={value => setStatusFilter(value)}
                   options={statusOptions}
                 />
                 <Input
@@ -253,7 +261,7 @@ export const SyndicCharges: React.FC = () => {
                   style={{ minWidth: 220 }}
                   placeholder="Filtrer par periode (ex: 2026-Q1)"
                   value={periodFilter}
-                  onChange={(event) => setPeriodFilter(event.target.value)}
+                  onChange={event => setPeriodFilter(event.target.value)}
                 />
               </Space>
             </Card>
@@ -282,24 +290,18 @@ export const SyndicCharges: React.FC = () => {
             targetMode: 'single',
             isRecurring: false,
             recurrenceFrequency: 'MONTHLY',
-            recurrenceCount: 1,
+            recurrenceCount: 1
           }}
         >
           <Form.Item label="Cible" name="targetMode" rules={[{ required: true, message: 'La cible est obligatoire' }]}>
-            <Select
-              options={targetModeOptions}
-            />
+            <Select options={targetModeOptions} />
           </Form.Item>
 
           <Form.Item noStyle dependencies={['targetMode']}>
             {({ getFieldValue }) =>
               getFieldValue('targetMode') === 'single' ? (
                 <Form.Item label="Lot" name="lotId" rules={[{ required: true, message: 'Le lot est obligatoire' }]}>
-                  <Select
-                    showSearch
-                    optionFilterProp="label"
-                  options={lotSelectOptions}
-                  />
+                  <Select showSearch optionFilterProp="label" options={lotSelectOptions} />
                 </Form.Item>
               ) : null
             }
@@ -313,12 +315,7 @@ export const SyndicCharges: React.FC = () => {
                   name="lotIds"
                   rules={[{ required: true, message: 'Sélectionnez au moins un lot' }]}
                 >
-                  <Select
-                    mode="multiple"
-                    showSearch
-                    optionFilterProp="label"
-                    options={lotSelectOptions}
-                  />
+                  <Select mode="multiple" showSearch optionFilterProp="label" options={lotSelectOptions} />
                 </Form.Item>
               ) : null
             }
@@ -347,23 +344,44 @@ export const SyndicCharges: React.FC = () => {
 
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item label="Montant" name="amount" rules={[{ required: true, message: 'Le montant est obligatoire' }]}>
+              <Form.Item
+                label="Montant"
+                name="amount"
+                rules={[{ required: true, message: 'Le montant est obligatoire' }]}
+              >
                 <InputNumber min={1} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="Devise" name="currency" rules={[{ required: true, message: 'La devise est obligatoire' }]}>
+              <Form.Item
+                label="Devise"
+                name="currency"
+                rules={[{ required: true, message: 'La devise est obligatoire' }]}
+              >
                 <Input />
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item label="Date d'échéance" name="dueDate" rules={[{ required: true, message: 'La date est obligatoire' }]}>
-            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" disabledDate={(current) => current && current < dayjs().startOf('day')} />
+          <Form.Item
+            label="Date d'échéance"
+            name="dueDate"
+            rules={[{ required: true, message: 'La date est obligatoire' }]}
+          >
+            <DatePicker
+              style={{ width: '100%' }}
+              format="DD/MM/YYYY"
+              disabledDate={current => current && current < dayjs().startOf('day')}
+            />
           </Form.Item>
 
           <Form.Item label="Charge récurrente" name="isRecurring">
-            <Select options={[{ label: 'Non', value: false }, { label: 'Oui', value: true }]} />
+            <Select
+              options={[
+                { label: 'Non', value: false },
+                { label: 'Oui', value: true }
+              ]}
+            />
           </Form.Item>
 
           <Form.Item noStyle dependencies={['isRecurring']}>
@@ -397,4 +415,3 @@ export const SyndicCharges: React.FC = () => {
     </DashboardLayout>
   );
 };
-

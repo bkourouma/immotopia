@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  App,
   Alert,
   Button,
   Card,
@@ -13,8 +14,7 @@ import {
   Spin,
   Table,
   Tag,
-  Typography,
-  message,
+  Typography
 } from 'antd';
 import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -29,7 +29,7 @@ import {
   listLotOwnerProfiles,
   listLotTenantProfiles,
   listSyndicateLots,
-  listSyndicIncidents,
+  listSyndicIncidents
 } from '../../services/syndic-service';
 import { LotOwnerProfile, LotTenantProfile, SyndicateIncident, SyndicateLot } from '../../types/syndic-types';
 import type { Property } from '../../types/property-types';
@@ -43,28 +43,28 @@ const incidentTypeLabels: Record<string, string> = {
   LEAK: 'Fuite',
   VANDALISM: 'Vandalisme',
   SAFETY: 'Sécurité',
-  OTHER: 'Autre',
+  OTHER: 'Autre'
 };
 
 const incidentUrgencyLabels: Record<string, string> = {
   LOW: 'Basse',
   MEDIUM: 'Moyenne',
   HIGH: 'Haute',
-  CRITICAL: 'Critique',
+  CRITICAL: 'Critique'
 };
 
 const incidentStatusLabels: Record<string, string> = {
   REPORTED: 'Signalé',
   IN_PROGRESS: 'En cours',
   RESOLVED: 'Résolu',
-  CLOSED: 'Clôturé',
+  CLOSED: 'Clôturé'
 };
 
 const incidentImputationTypeLabels: Record<string, string> = {
   SYNDICATE_BUDGET: 'Budget syndic',
   INSURANCE: 'Assurance',
   LOT_OWNER: 'Lot propriétaire',
-  THIRD_PARTY: 'Tiers',
+  THIRD_PARTY: 'Tiers'
 };
 
 function isTechnicalLotLabel(value?: string | null): boolean {
@@ -73,12 +73,14 @@ function isTechnicalLotLabel(value?: string | null): boolean {
   return normalized.startsWith('PROP-');
 }
 
-function getContactDisplayName(contact?: {
-  firstName?: string | null;
-  lastName?: string | null;
-  legalName?: string | null;
-  email?: string | null;
-} | null): string {
+function getContactDisplayName(
+  contact?: {
+    firstName?: string | null;
+    lastName?: string | null;
+    legalName?: string | null;
+    email?: string | null;
+  } | null
+): string {
   if (!contact) return '';
   const fullName = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
   return fullName || contact.legalName || contact.email || '';
@@ -103,7 +105,8 @@ function getLotDisplayName(
   const contactName = getContactDisplayName(profileContact);
   const titleLabel = property?.title?.trim() || fallbackProperty?.title?.trim() || '';
   const addressLabel = property?.address?.trim() || fallbackProperty?.address?.trim() || '';
-  const referenceLabel = property?.internalReference?.trim() || fallbackProperty?.internalReference?.trim() || lot.lotNumber || '';
+  const referenceLabel =
+    property?.internalReference?.trim() || fallbackProperty?.internalReference?.trim() || lot.lotNumber || '';
   const validReferenceLabel = isTechnicalLotLabel(referenceLabel) ? '' : referenceLabel;
   const lotLabel = titleLabel || addressLabel || validReferenceLabel;
 
@@ -112,17 +115,18 @@ function getLotDisplayName(
   return lotLabel || lot.lotNumber || '-';
 }
 
-function getLotOptionLabel(
-  lot: SyndicateLot,
-  propertiesByInternalReference: Record<string, Property>
-): string {
+function getLotOptionLabel(lot: SyndicateLot, propertiesByInternalReference: Record<string, Property>): string {
   const lotReference = lot.property?.internalReference || lot.lotNumber || '';
-  const propertyByReference = lotReference ? propertiesByInternalReference[lotReference.trim().toUpperCase()] : undefined;
+  const propertyByReference = lotReference
+    ? propertiesByInternalReference[lotReference.trim().toUpperCase()]
+    : undefined;
   const displayName = getLotDisplayName(lot, null, propertyByReference);
   return `${displayName} (${lot.lotType})`;
 }
 
 export const SyndicProfilesIncidents: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const navigate = useNavigate();
 
@@ -183,12 +187,12 @@ export const SyndicProfilesIncidents: React.FC = () => {
       const [owners, tenants, incidentsData] = await Promise.all([
         listLotOwnerProfiles(effectiveTenantId, syndicId),
         listLotTenantProfiles(effectiveTenantId, syndicId),
-        listSyndicIncidents(effectiveTenantId, syndicId),
+        listSyndicIncidents(effectiveTenantId, syndicId)
       ]);
       const [lotsData, contactsData, propertiesData] = await Promise.all([
         listSyndicateLots(effectiveTenantId, syndicId),
         listContacts(effectiveTenantId, { page: 1, limit: 200 }),
-        listProperties(effectiveTenantId, { page: 1, limit: 1000 }),
+        listProperties(effectiveTenantId, { page: 1, limit: 1000 })
       ]);
       setOwnerProfiles(owners);
       setTenantProfiles(tenants);
@@ -213,7 +217,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
         contactId: values.contactId,
         ownershipPercentage: values.ownershipPercentage,
         ownedSince: new Date(values.ownedSince).toISOString(),
-        portalAccessEnabled: values.portalAccessEnabled || false,
+        portalAccessEnabled: values.portalAccessEnabled || false
       });
       message.success('Profil propriétaire créé');
       setOpenOwner(false);
@@ -236,7 +240,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
         contactId: values.contactId,
         tenantSince: new Date(values.tenantSince).toISOString(),
         chargesBilledToTenant: values.chargesBilledToTenant || false,
-        isCurrent: true,
+        isCurrent: true
       });
       message.success('Profil locataire créé');
       setOpenTenant(false);
@@ -259,7 +263,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
         lotId: values.lotId || undefined,
         incidentType: values.incidentType,
         description: values.description,
-        urgency: values.urgency,
+        urgency: values.urgency
       });
       message.success('Incident créé');
       setOpenIncident(false);
@@ -282,7 +286,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
         amount: values.amount,
         currency: values.currency || 'XOF',
         lotId: values.lotId || undefined,
-        notes: values.notes || undefined,
+        notes: values.notes || undefined
       });
       message.success('Imputation enregistree');
       setOpenImputation(false);
@@ -301,7 +305,10 @@ export const SyndicProfilesIncidents: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
+            >
               Retour à la fiche syndic
             </Button>
             <Title level={2} style={{ margin: 0 }}>
@@ -347,7 +354,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                         ? propertiesByInternalReference[lotReference.trim().toUpperCase()]
                         : undefined;
                       return getLotDisplayName(lot, row.contact || null, propertyByReference);
-                    },
+                    }
                   },
                   {
                     title: 'Contact',
@@ -356,11 +363,18 @@ export const SyndicProfilesIncidents: React.FC = () => {
                       if (!contact) return row.contactId;
                       const name = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
                       return name || contact.legalName || contact.email || row.contactId;
-                    },
+                    }
                   },
                   { title: 'Part (%)', dataIndex: 'ownershipPercentage' },
-                  { title: 'Depuis', dataIndex: 'ownedSince', render: (value: string) => dayjs(value).format('DD/MM/YYYY') },
-                  { title: 'Portail', render: (_, row) => (row.portalAccessEnabled ? <Tag color="green">ACTIVE</Tag> : <Tag>INACTIF</Tag>) },
+                  {
+                    title: 'Depuis',
+                    dataIndex: 'ownedSince',
+                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
+                  },
+                  {
+                    title: 'Portail',
+                    render: (_, row) => (row.portalAccessEnabled ? <Tag color="green">ACTIVE</Tag> : <Tag>INACTIF</Tag>)
+                  }
                 ]}
               />
             </Card>
@@ -380,7 +394,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                         ? propertiesByInternalReference[lotReference.trim().toUpperCase()]
                         : undefined;
                       return getLotDisplayName(lot, row.contact || null, propertyByReference);
-                    },
+                    }
                   },
                   {
                     title: 'Contact',
@@ -389,10 +403,14 @@ export const SyndicProfilesIncidents: React.FC = () => {
                       if (!contact) return row.contactId;
                       const name = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
                       return name || contact.legalName || contact.email || row.contactId;
-                    },
+                    }
                   },
-                  { title: 'Depuis', dataIndex: 'tenantSince', render: (value: string) => dayjs(value).format('DD/MM/YYYY') },
-                  { title: 'Facture au locataire', render: (_, row) => (row.chargesBilledToTenant ? 'Oui' : 'Non') },
+                  {
+                    title: 'Depuis',
+                    dataIndex: 'tenantSince',
+                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
+                  },
+                  { title: 'Facture au locataire', render: (_, row) => (row.chargesBilledToTenant ? 'Oui' : 'Non') }
                 ]}
               />
             </Card>
@@ -403,7 +421,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                 dataSource={incidents}
                 pagination={{ pageSize: 8 }}
                 expandable={{
-                  expandedRowRender: (incident) => (
+                  expandedRowRender: incident => (
                     <Table
                       rowKey="id"
                       dataSource={incident.imputations || []}
@@ -414,9 +432,13 @@ export const SyndicProfilesIncidents: React.FC = () => {
                         {
                           title: 'Type',
                           dataIndex: 'imputationType',
-                          render: (value: string) => incidentImputationTypeLabels[value] || value,
+                          render: (value: string) => incidentImputationTypeLabels[value] || value
                         },
-                        { title: 'Montant', dataIndex: 'amount', render: (value: number | string) => `${Number(value).toLocaleString('fr-FR')} XOF` },
+                        {
+                          title: 'Montant',
+                          dataIndex: 'amount',
+                          render: (value: number | string) => `${Number(value).toLocaleString('fr-FR')} XOF`
+                        },
                         { title: 'Devise', dataIndex: 'currency' },
                         {
                           title: 'Lot',
@@ -427,31 +449,39 @@ export const SyndicProfilesIncidents: React.FC = () => {
                               ? propertiesByInternalReference[lotReference.trim().toUpperCase()]
                               : undefined;
                             return getLotDisplayName(lot, null, propertyByReference);
-                          },
+                          }
                         },
-                        { title: 'Notes', dataIndex: 'notes', render: (value: string | undefined | null) => value || '-' },
-                        { title: 'Cree le', dataIndex: 'createdAt', render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm') },
+                        {
+                          title: 'Notes',
+                          dataIndex: 'notes',
+                          render: (value: string | undefined | null) => value || '-'
+                        },
+                        {
+                          title: 'Cree le',
+                          dataIndex: 'createdAt',
+                          render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm')
+                        }
                       ]}
                     />
                   ),
-                  rowExpandable: (incident) => (incident.imputations?.length || 0) > 0,
+                  rowExpandable: incident => (incident.imputations?.length || 0) > 0
                 }}
                 columns={[
                   {
                     title: 'Type',
                     dataIndex: 'incidentType',
-                    render: (value: string) => incidentTypeLabels[value] || value,
+                    render: (value: string) => incidentTypeLabels[value] || value
                   },
                   {
                     title: 'Urgence',
                     dataIndex: 'urgency',
-                    render: (value: string) => incidentUrgencyLabels[value] || value,
+                    render: (value: string) => incidentUrgencyLabels[value] || value
                   },
                   { title: 'Description', dataIndex: 'description' },
                   {
                     title: 'Statut',
                     dataIndex: 'status',
-                    render: (value: string) => <Tag>{incidentStatusLabels[value] || value}</Tag>,
+                    render: (value: string) => <Tag>{incidentStatusLabels[value] || value}</Tag>
                   },
                   {
                     title: 'Imputations',
@@ -459,7 +489,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                       <Tag color={(row.imputations?.length || 0) > 0 ? 'blue' : 'default'}>
                         {row.imputations?.length || 0}
                       </Tag>
-                    ),
+                    )
                   },
                   {
                     title: 'Action',
@@ -473,8 +503,8 @@ export const SyndicProfilesIncidents: React.FC = () => {
                       >
                         Ajouter imputation
                       </Button>
-                    ),
-                  },
+                    )
+                  }
                 ]}
               />
             </Card>
@@ -482,16 +512,33 @@ export const SyndicProfilesIncidents: React.FC = () => {
         )}
       </Space>
 
-      <Modal title="Nouveau profil propriétaire" open={openOwner} onCancel={() => setOpenOwner(false)} onOk={() => void handleCreateOwner()} confirmLoading={submitting}>
-        <Form form={ownerForm} layout="vertical" initialValues={{ ownershipPercentage: 100, portalAccessEnabled: false }}>
+      <Modal
+        title="Nouveau profil propriétaire"
+        open={openOwner}
+        onCancel={() => setOpenOwner(false)}
+        onOk={() => void handleCreateOwner()}
+        confirmLoading={submitting}
+      >
+        <Form
+          form={ownerForm}
+          layout="vertical"
+          initialValues={{ ownershipPercentage: 100, portalAccessEnabled: false }}
+        >
           <Form.Item label="Lot" name="lotId" rules={[{ required: true, message: 'Lot obligatoire' }]}>
             <Select
               showSearch
               optionFilterProp="label"
-              options={lots.map(lot => ({ value: lot.id, label: getLotOptionLabel(lot, propertiesByInternalReference) }))}
+              options={lots.map(lot => ({
+                value: lot.id,
+                label: getLotOptionLabel(lot, propertiesByInternalReference)
+              }))}
             />
           </Form.Item>
-          <Form.Item label="Contact propriétaire" name="contactId" rules={[{ required: true, message: 'Contact obligatoire' }]}>
+          <Form.Item
+            label="Contact propriétaire"
+            name="contactId"
+            rules={[{ required: true, message: 'Contact obligatoire' }]}
+          >
             <Select
               showSearch
               optionFilterProp="label"
@@ -502,22 +549,46 @@ export const SyndicProfilesIncidents: React.FC = () => {
               })}
             />
           </Form.Item>
-          <Form.Item label="Part de propriete (%)" name="ownershipPercentage" rules={[{ required: true }]}><InputNumber min={0.01} max={100} style={{ width: '100%' }} /></Form.Item>
-          <Form.Item label="Date de debut" name="ownedSince" rules={[{ required: true }]}><Input type="date" /></Form.Item>
-          <Form.Item label="Activer accès portail" name="portalAccessEnabled"><Select options={[{ value: true, label: 'Oui' }, { value: false, label: 'Non' }]} /></Form.Item>
+          <Form.Item label="Part de propriete (%)" name="ownershipPercentage" rules={[{ required: true }]}>
+            <InputNumber min={0.01} max={100} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item label="Date de debut" name="ownedSince" rules={[{ required: true }]}>
+            <Input type="date" />
+          </Form.Item>
+          <Form.Item label="Activer accès portail" name="portalAccessEnabled">
+            <Select
+              options={[
+                { value: true, label: 'Oui' },
+                { value: false, label: 'Non' }
+              ]}
+            />
+          </Form.Item>
         </Form>
       </Modal>
 
-      <Modal title="Nouveau profil locataire" open={openTenant} onCancel={() => setOpenTenant(false)} onOk={() => void handleCreateTenant()} confirmLoading={submitting}>
+      <Modal
+        title="Nouveau profil locataire"
+        open={openTenant}
+        onCancel={() => setOpenTenant(false)}
+        onOk={() => void handleCreateTenant()}
+        confirmLoading={submitting}
+      >
         <Form form={tenantForm} layout="vertical" initialValues={{ chargesBilledToTenant: false }}>
           <Form.Item label="Lot" name="lotId" rules={[{ required: true, message: 'Lot obligatoire' }]}>
             <Select
               showSearch
               optionFilterProp="label"
-              options={lots.map(lot => ({ value: lot.id, label: getLotOptionLabel(lot, propertiesByInternalReference) }))}
+              options={lots.map(lot => ({
+                value: lot.id,
+                label: getLotOptionLabel(lot, propertiesByInternalReference)
+              }))}
             />
           </Form.Item>
-          <Form.Item label="Contact locataire" name="contactId" rules={[{ required: true, message: 'Contact obligatoire' }]}>
+          <Form.Item
+            label="Contact locataire"
+            name="contactId"
+            rules={[{ required: true, message: 'Contact obligatoire' }]}
+          >
             <Select
               showSearch
               optionFilterProp="label"
@@ -528,14 +599,33 @@ export const SyndicProfilesIncidents: React.FC = () => {
               })}
             />
           </Form.Item>
-          <Form.Item label="Date d'entrée" name="tenantSince" rules={[{ required: true }]}><Input type="date" /></Form.Item>
-          <Form.Item label="Charges facturees au locataire" name="chargesBilledToTenant"><Select options={[{ value: true, label: 'Oui' }, { value: false, label: 'Non' }]} /></Form.Item>
+          <Form.Item label="Date d'entrée" name="tenantSince" rules={[{ required: true }]}>
+            <Input type="date" />
+          </Form.Item>
+          <Form.Item label="Charges facturees au locataire" name="chargesBilledToTenant">
+            <Select
+              options={[
+                { value: true, label: 'Oui' },
+                { value: false, label: 'Non' }
+              ]}
+            />
+          </Form.Item>
         </Form>
       </Modal>
 
-      <Modal title="Nouvel incident" open={openIncident} onCancel={() => setOpenIncident(false)} onOk={() => void handleCreateIncident()} confirmLoading={submitting}>
+      <Modal
+        title="Nouvel incident"
+        open={openIncident}
+        onCancel={() => setOpenIncident(false)}
+        onOk={() => void handleCreateIncident()}
+        confirmLoading={submitting}
+      >
         <Form form={incidentForm} layout="vertical" initialValues={{ incidentType: 'OTHER', urgency: 'MEDIUM' }}>
-          <Form.Item label="Contact declarant" name="reportedByContactId" rules={[{ required: true, message: 'Contact obligatoire' }]}>
+          <Form.Item
+            label="Contact declarant"
+            name="reportedByContactId"
+            rules={[{ required: true, message: 'Contact obligatoire' }]}
+          >
             <Select
               showSearch
               optionFilterProp="label"
@@ -551,39 +641,83 @@ export const SyndicProfilesIncidents: React.FC = () => {
               allowClear
               showSearch
               optionFilterProp="label"
-              options={lots.map(lot => ({ value: lot.id, label: getLotOptionLabel(lot, propertiesByInternalReference) }))}
+              options={lots.map(lot => ({
+                value: lot.id,
+                label: getLotOptionLabel(lot, propertiesByInternalReference)
+              }))}
             />
           </Form.Item>
           <Form.Item label="Type incident" name="incidentType" rules={[{ required: true }]}>
-            <Select options={[{ value: 'BREAKDOWN', label: 'Panne' }, { value: 'LEAK', label: 'Fuite' }, { value: 'VANDALISM', label: 'Vandalisme' }, { value: 'SAFETY', label: 'Securite' }, { value: 'OTHER', label: 'Autre' }]} />
+            <Select
+              options={[
+                { value: 'BREAKDOWN', label: 'Panne' },
+                { value: 'LEAK', label: 'Fuite' },
+                { value: 'VANDALISM', label: 'Vandalisme' },
+                { value: 'SAFETY', label: 'Securite' },
+                { value: 'OTHER', label: 'Autre' }
+              ]}
+            />
           </Form.Item>
           <Form.Item label="Urgence" name="urgency" rules={[{ required: true }]}>
-            <Select options={[{ value: 'LOW', label: 'Basse' }, { value: 'MEDIUM', label: 'Moyenne' }, { value: 'HIGH', label: 'Haute' }, { value: 'CRITICAL', label: 'Critique' }]} />
+            <Select
+              options={[
+                { value: 'LOW', label: 'Basse' },
+                { value: 'MEDIUM', label: 'Moyenne' },
+                { value: 'HIGH', label: 'Haute' },
+                { value: 'CRITICAL', label: 'Critique' }
+              ]}
+            />
           </Form.Item>
-          <Form.Item label="Description" name="description" rules={[{ required: true }]}><Input.TextArea rows={3} /></Form.Item>
+          <Form.Item label="Description" name="description" rules={[{ required: true }]}>
+            <Input.TextArea rows={3} />
+          </Form.Item>
         </Form>
       </Modal>
 
-      <Modal title="Imputation d incident" open={openImputation} onCancel={() => setOpenImputation(false)} onOk={() => void handleCreateImputation()} confirmLoading={submitting}>
-        <Form form={imputationForm} layout="vertical" initialValues={{ imputationType: 'SYNDICATE_BUDGET', currency: 'XOF' }}>
+      <Modal
+        title="Imputation d incident"
+        open={openImputation}
+        onCancel={() => setOpenImputation(false)}
+        onOk={() => void handleCreateImputation()}
+        confirmLoading={submitting}
+      >
+        <Form
+          form={imputationForm}
+          layout="vertical"
+          initialValues={{ imputationType: 'SYNDICATE_BUDGET', currency: 'XOF' }}
+        >
           <Form.Item label="Type imputation" name="imputationType" rules={[{ required: true }]}>
-            <Select options={[{ value: 'SYNDICATE_BUDGET', label: 'Budget syndic' }, { value: 'INSURANCE', label: 'Assurance' }, { value: 'LOT_OWNER', label: 'Lot propriétaire' }, { value: 'THIRD_PARTY', label: 'Tiers' }]} />
+            <Select
+              options={[
+                { value: 'SYNDICATE_BUDGET', label: 'Budget syndic' },
+                { value: 'INSURANCE', label: 'Assurance' },
+                { value: 'LOT_OWNER', label: 'Lot propriétaire' },
+                { value: 'THIRD_PARTY', label: 'Tiers' }
+              ]}
+            />
           </Form.Item>
-          <Form.Item label="Montant" name="amount" rules={[{ required: true }]}><InputNumber min={1} style={{ width: '100%' }} /></Form.Item>
-          <Form.Item label="Devise" name="currency"><Input /></Form.Item>
+          <Form.Item label="Montant" name="amount" rules={[{ required: true }]}>
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item label="Devise" name="currency">
+            <Input />
+          </Form.Item>
           <Form.Item label="Lot (optionnel)" name="lotId">
             <Select
               allowClear
               showSearch
               optionFilterProp="label"
-              options={lots.map(lot => ({ value: lot.id, label: getLotOptionLabel(lot, propertiesByInternalReference) }))}
+              options={lots.map(lot => ({
+                value: lot.id,
+                label: getLotOptionLabel(lot, propertiesByInternalReference)
+              }))}
             />
           </Form.Item>
-          <Form.Item label="Notes" name="notes"><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item label="Notes" name="notes">
+            <Input.TextArea rows={2} />
+          </Form.Item>
         </Form>
       </Modal>
     </DashboardLayout>
   );
 };
-
-

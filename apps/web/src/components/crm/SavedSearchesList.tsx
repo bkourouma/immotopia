@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { List, Button, Spin, Empty, Typography, message } from 'antd';
+import { App, List, Button, Spin, Empty, Typography } from 'antd';
 import { PlayCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useParams } from 'react-router-dom';
 import contactSearchService, { type SavedSearchItem } from '../../services/contact-search.service';
@@ -10,6 +10,8 @@ interface SavedSearchesListProps {
 }
 
 export function SavedSearchesList({ onSelectSearch, onClose }: SavedSearchesListProps) {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const [list, setList] = useState<SavedSearchItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,7 +29,7 @@ export function SavedSearchesList({ onSelectSearch, onClose }: SavedSearchesList
     if (!tenantId) return;
     try {
       await contactSearchService.deleteSavedSearch(tenantId, id);
-      setList((prev) => prev.filter((s) => s.id !== id));
+      setList(prev => prev.filter(s => s.id !== id));
       message.success('Recherche supprimée');
     } catch {
       message.error('Suppression impossible');
@@ -41,24 +43,13 @@ export function SavedSearchesList({ onSelectSearch, onClose }: SavedSearchesList
     <List
       itemLayout="horizontal"
       dataSource={list}
-      renderItem={(item) => (
+      renderItem={item => (
         <List.Item
           actions={[
-            <Button
-              type="link"
-              key="use"
-              icon={<PlayCircleOutlined />}
-              onClick={() => onSelectSearch(item.id)}
-            >
+            <Button type="link" key="use" icon={<PlayCircleOutlined />} onClick={() => onSelectSearch(item.id)}>
               Utiliser
             </Button>,
-            <Button
-              type="link"
-              danger
-              key="del"
-              icon={<DeleteOutlined />}
-              onClick={() => handleDelete(item.id)}
-            >
+            <Button type="link" danger key="del" icon={<DeleteOutlined />} onClick={() => handleDelete(item.id)}>
               Supprimer
             </Button>
           ]}

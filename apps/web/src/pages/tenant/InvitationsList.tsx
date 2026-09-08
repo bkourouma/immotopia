@@ -1,23 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Table,
-  Card,
-  Button,
-  Tag,
-  Space,
-  Popconfirm,
-  message,
-  Alert,
-  Empty,
-  Typography,
-} from 'antd';
-import {
-  MailOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-  CloseOutlined,
-} from '@ant-design/icons';
+import { App, Table, Card, Button, Tag, Space, Popconfirm, Alert, Empty, Typography } from 'antd';
+import { MailOutlined, PlusOutlined, ReloadOutlined, CloseOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { resendInvitation, revokeInvitation } from '../../services/invitation-service';
 import apiClient from '../../utils/api-client';
@@ -35,6 +19,8 @@ interface Invitation {
 }
 
 export const InvitationsList: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -93,7 +79,7 @@ export const InvitationsList: React.FC = () => {
       PENDING: { color: isExpired ? 'default' : 'warning', text: isExpired ? 'Expirée' : 'En attente' },
       ACCEPTED: { color: 'success', text: 'Acceptée' },
       REVOKED: { color: 'error', text: 'Révoquée' },
-      EXPIRED: { color: 'default', text: 'Expirée' },
+      EXPIRED: { color: 'default', text: 'Expirée' }
     };
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.PENDING;
     return <Tag color={config.color}>{config.text}</Tag>;
@@ -109,27 +95,27 @@ export const InvitationsList: React.FC = () => {
       dataIndex: 'email',
       key: 'email',
       width: 250,
-      render: (email: string) => <Text strong>{email}</Text>,
+      render: (email: string) => <Text strong>{email}</Text>
     },
     {
       title: 'Statut',
       key: 'status',
       width: 150,
-      render: (_, record) => getStatusTag(record.status, record.expiresAt),
+      render: (_, record) => getStatusTag(record.status, record.expiresAt)
     },
     {
-      title: 'Date d\'invitation',
+      title: "Date d'invitation",
       dataIndex: 'invitedAt',
       key: 'invitedAt',
       width: 150,
-      render: (date: string) => new Date(date).toLocaleDateString('fr-FR'),
+      render: (date: string) => new Date(date).toLocaleDateString('fr-FR')
     },
     {
       title: 'Expiration',
       dataIndex: 'expiresAt',
       key: 'expiresAt',
       width: 150,
-      render: (date: string) => new Date(date).toLocaleDateString('fr-FR'),
+      render: (date: string) => new Date(date).toLocaleDateString('fr-FR')
     },
     {
       title: 'Actions',
@@ -149,11 +135,7 @@ export const InvitationsList: React.FC = () => {
                   okText="Oui"
                   cancelText="Non"
                 >
-                  <Button
-                    type="text"
-                    icon={<ReloadOutlined />}
-                    title="Renvoyer"
-                  />
+                  <Button type="text" icon={<ReloadOutlined />} title="Renvoyer" />
                 </Popconfirm>
                 <Popconfirm
                   title="Révoquer l'invitation"
@@ -162,19 +144,14 @@ export const InvitationsList: React.FC = () => {
                   okText="Oui"
                   cancelText="Non"
                 >
-                  <Button
-                    type="text"
-                    danger
-                    icon={<CloseOutlined />}
-                    title="Révoquer"
-                  />
+                  <Button type="text" danger icon={<CloseOutlined />} title="Révoquer" />
                 </Popconfirm>
               </>
             )}
           </Space>
         );
-      },
-    },
+      }
+    }
   ];
 
   return (
@@ -188,25 +165,14 @@ export const InvitationsList: React.FC = () => {
             </Title>
             <Text type="secondary">Gérez les invitations envoyées aux collaborateurs</Text>
           </div>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => navigate(`/tenant/${tenantId}/invite`)}
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate(`/tenant/${tenantId}/invite`)}>
             Nouvelle invitation
           </Button>
         </div>
 
         {/* Error Message */}
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
 
         {/* Invitations Table */}
@@ -219,7 +185,7 @@ export const InvitationsList: React.FC = () => {
               loading={loading}
               scroll={{ x: 'max-content' }}
               locale={{
-                emptyText: <Empty description="Aucune invitation trouvée" />,
+                emptyText: <Empty description="Aucune invitation trouvée" />
               }}
             />
           </div>

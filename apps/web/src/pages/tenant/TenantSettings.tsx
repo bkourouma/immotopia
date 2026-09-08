@@ -1,35 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  Form,
-  Input,
-  Card,
-  Button,
-  Space,
-  Alert,
-  Spin,
-  Typography,
-  message,
-  Row,
-  Col,
-} from 'antd';
-import {
-  SaveOutlined,
-  SettingOutlined,
-  CheckCircleOutlined,
-  ExclamationCircleOutlined,
-} from '@ant-design/icons';
+import { App, Form, Input, Card, Button, Space, Alert, Spin, Typography, Row, Col } from 'antd';
+import { SaveOutlined, SettingOutlined, CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
-import {
-  getTenant,
-  updateTenantSelf,
-  Tenant,
-  UpdateTenantRequest,
-} from '../../services/tenant-service';
+import { getTenant, updateTenantSelf, Tenant, UpdateTenantRequest } from '../../services/tenant-service';
 
 const { Title, Text } = Typography;
 
 export const TenantSettings: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const [form] = Form.useForm();
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -61,7 +41,7 @@ export const TenantSettings: React.FC = () => {
           address: tenantData.address || '',
           city: tenantData.city || '',
           country: tenantData.country || '',
-          website: tenantData.website || '',
+          website: tenantData.website || ''
         });
       } else {
         setError('Erreur lors du chargement des informations');
@@ -89,7 +69,7 @@ export const TenantSettings: React.FC = () => {
         address: values.address || undefined,
         city: values.city || undefined,
         country: values.country || undefined,
-        website: values.website || undefined,
+        website: values.website || undefined
       };
 
       const response = await updateTenantSelf(tenantId, updateData);
@@ -193,7 +173,7 @@ export const TenantSettings: React.FC = () => {
             address: '',
             city: '',
             country: '',
-            website: '',
+            website: ''
           }}
         >
           {/* Informations Générales */}
@@ -223,13 +203,14 @@ export const TenantSettings: React.FC = () => {
                 <Form.Item
                   label="Email de contact"
                   name="contactEmail"
-                  rules={[
-                    { type: 'email', message: 'Email invalide' },
-                  ]}
+                  rules={[{ type: 'email', message: 'Email invalide' }]}
                 >
                   <Input type="email" placeholder="contact@agence.com" />
                 </Form.Item>
-                <Text type="secondary" style={{ fontSize: '12px', marginTop: '-12px', display: 'block', marginBottom: '16px' }}>
+                <Text
+                  type="secondary"
+                  style={{ fontSize: '12px', marginTop: '-12px', display: 'block', marginBottom: '16px' }}
+                >
                   Utilisé dans les documents générés (AGENCE_EMAIL)
                 </Text>
               </Col>
@@ -237,7 +218,10 @@ export const TenantSettings: React.FC = () => {
                 <Form.Item label="Téléphone de contact" name="contactPhone">
                   <Input type="tel" placeholder="+225 XX XX XX XX XX" />
                 </Form.Item>
-                <Text type="secondary" style={{ fontSize: '12px', marginTop: '-12px', display: 'block', marginBottom: '16px' }}>
+                <Text
+                  type="secondary"
+                  style={{ fontSize: '12px', marginTop: '-12px', display: 'block', marginBottom: '16px' }}
+                >
                   Utilisé dans les documents générés (AGENCE_TELEPHONE)
                 </Text>
               </Col>
@@ -251,7 +235,10 @@ export const TenantSettings: React.FC = () => {
                 <Form.Item label="Adresse complète" name="address">
                   <Input placeholder="Adresse complète de l'agence" />
                 </Form.Item>
-                <Text type="secondary" style={{ fontSize: '12px', marginTop: '-12px', display: 'block', marginBottom: '16px' }}>
+                <Text
+                  type="secondary"
+                  style={{ fontSize: '12px', marginTop: '-12px', display: 'block', marginBottom: '16px' }}
+                >
                   Utilisé dans les documents générés (AGENCE_ADRESSE)
                 </Text>
               </Col>
@@ -276,8 +263,8 @@ export const TenantSettings: React.FC = () => {
               rules={[
                 {
                   pattern: /^https?:\/\/.+/,
-                  message: 'URL invalide (doit commencer par http:// ou https://)',
-                },
+                  message: 'URL invalide (doit commencer par http:// ou https://)'
+                }
               ]}
             >
               <Input type="url" placeholder="https://www.agence.com" />
@@ -287,13 +274,7 @@ export const TenantSettings: React.FC = () => {
           {/* Actions */}
           <Card>
             <Form.Item>
-              <Button
-                type="primary"
-                htmlType="submit"
-                icon={<SaveOutlined />}
-                loading={saving}
-                size="large"
-              >
+              <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving} size="large">
                 {saving ? 'Enregistrement...' : 'Enregistrer'}
               </Button>
             </Form.Item>

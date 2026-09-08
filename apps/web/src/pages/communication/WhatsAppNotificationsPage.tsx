@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
+  App,
   Card,
   Table,
   Switch,
   Button,
   Form,
   Input,
-  message,
   Spin,
   Tag,
   Space,
@@ -29,6 +29,8 @@ const { Title, Text } = Typography;
 const { TextArea } = Input;
 
 export function WhatsAppNotificationsPage() {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const [items, setItems] = useState<WhatsappNotificationConfigItem[]>([]);
   const [loading, setLoading] = useState(true);

@@ -1,18 +1,6 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Alert,
-  Button,
-  Card,
-  Form,
-  Input,
-  Modal,
-  Space,
-  Spin,
-  TimePicker,
-  Typography,
-  message
-} from 'antd';
+import { App, Alert, Button, Card, Form, Input, Modal, Space, Spin, TimePicker, Typography } from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
@@ -35,6 +23,8 @@ import { useSyndicRouteContext } from './useSyndicRouteContext';
 const { Paragraph, Title, Text } = Typography;
 
 export const SyndicMeetingDetail: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId: effectiveTenantId, syndicId, meetingId } = useSyndicRouteContext();
   const navigate = useNavigate();
 
@@ -211,7 +201,12 @@ export const SyndicMeetingDetail: React.FC = () => {
     const values = await meetingMetaForm.validateFields();
     const meetingDate = dayjs(meeting.scheduledAt);
     const startTime = values.startTime
-      ? meetingDate.hour(values.startTime.hour()).minute(values.startTime.minute()).second(0).millisecond(0).toISOString()
+      ? meetingDate
+          .hour(values.startTime.hour())
+          .minute(values.startTime.minute())
+          .second(0)
+          .millisecond(0)
+          .toISOString()
       : null;
     const endTime = values.endTime
       ? meetingDate.hour(values.endTime.hour()).minute(values.endTime.minute()).second(0).millisecond(0).toISOString()
@@ -256,7 +251,10 @@ export const SyndicMeetingDetail: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/assemblees`)}>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/assemblees`)}
+            >
               Retour aux assemblées
             </Button>
             <Title level={2} style={{ margin: 0 }}>
@@ -283,7 +281,11 @@ export const SyndicMeetingDetail: React.FC = () => {
             </Form>
           </Space>
           <Space>
-            <Button icon={<DownloadOutlined />} onClick={() => void handleGenerateMinutes()} loading={generatingMinutes}>
+            <Button
+              icon={<DownloadOutlined />}
+              onClick={() => void handleGenerateMinutes()}
+              loading={generatingMinutes}
+            >
               Générer compte rendu Word
             </Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenResolution(true)}>
@@ -309,7 +311,7 @@ export const SyndicMeetingDetail: React.FC = () => {
               (meeting.agendaItems || [])
                 .slice()
                 .sort((a, b) => a.orderIndex - b.orderIndex)
-                .map((item) => (
+                .map(item => (
                   <Card
                     key={item.id}
                     size="small"
@@ -388,7 +390,11 @@ export const SyndicMeetingDetail: React.FC = () => {
         confirmLoading={savingAgenda}
       >
         <Form form={agendaForm} layout="vertical">
-          <Form.Item label="Titre du point" name="title" rules={[{ required: true, message: 'Le titre est obligatoire' }]}>
+          <Form.Item
+            label="Titre du point"
+            name="title"
+            rules={[{ required: true, message: 'Le titre est obligatoire' }]}
+          >
             <Input />
           </Form.Item>
           <Form.Item label="Ordre" name="orderIndex" rules={[{ required: true, message: "L'ordre est obligatoire" }]}>
@@ -402,4 +408,3 @@ export const SyndicMeetingDetail: React.FC = () => {
     </DashboardLayout>
   );
 };
-

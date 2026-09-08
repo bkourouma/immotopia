@@ -1,18 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  Card,
-  Button,
-  Modal,
-  Form,
-  Input,
-  Select,
-  Switch,
-  message,
-  Space,
-  Typography,
-  Collapse
-} from 'antd';
+import { App, Card, Button, Modal, Form, Input, Select, Switch, Space, Typography, Collapse } from 'antd';
 import { DownloadOutlined, UserAddOutlined } from '@ant-design/icons';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
@@ -21,14 +9,12 @@ import { SubscriberList } from '../../components/newsletter/SubscriberList';
 import { ImportCsvModal } from '../../components/newsletter/ImportCsvModal';
 import { SubscriptionForm } from '../../components/newsletter/SubscriptionForm';
 import { AdvancedContactSearch } from '../../components/crm/AdvancedContactSearch';
-import {
-  newsletterService,
-  type NewsletterList,
-  type NewsletterSubscriber
-} from '../../services/newsletter.service';
+import { newsletterService, type NewsletterList, type NewsletterSubscriber } from '../../services/newsletter.service';
 import type { ContactSearchResultItem } from '../../services/contact-search.service';
 
 export function NewsletterListsPage() {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const [lists, setLists] = useState<NewsletterList[]>([]);
   const [selectedList, setSelectedList] = useState<NewsletterList | null>(null);
@@ -72,8 +58,10 @@ export function NewsletterListsPage() {
         message.error((e as Error).message || 'Erreur lors du chargement');
       } finally {
         setSubLoading(false);
-    }
-  }, [tenantId, selectedList]);
+      }
+    },
+    [tenantId, selectedList]
+  );
 
   useEffect(() => {
     loadLists();
@@ -114,7 +102,7 @@ export function NewsletterListsPage() {
       editForm.resetFields();
       loadLists();
       if (selectedList?.id === editList.id) {
-        setSelectedList((prev) => (prev ? { ...prev, ...values } : null));
+        setSelectedList(prev => (prev ? { ...prev, ...values } : null));
       }
     } catch (e) {
       message.error((e as Error).message || 'Erreur');
@@ -179,14 +167,16 @@ export function NewsletterListsPage() {
       const result = await newsletterService.addSubscribersFromContacts(
         tenantId,
         selectedList.id,
-        contacts.map((c) => c.id)
+        contacts.map(c => c.id)
       );
       setAdvancedSearchModalOpen(false);
-      message.success(`${result.added} contact(s) ajouté(s)${result.skipped ? `, ${result.skipped} ignoré(s) ou déjà présents` : ''}`);
+      message.success(
+        `${result.added} contact(s) ajouté(s)${result.skipped ? `, ${result.skipped} ignoré(s) ou déjà présents` : ''}`
+      );
       loadSubscribers(1, pagination.limit);
       loadLists();
     } catch (e) {
-      message.error((e as Error).message || 'Erreur lors de l\'ajout');
+      message.error((e as Error).message || "Erreur lors de l'ajout");
     }
   };
 
@@ -197,7 +187,12 @@ export function NewsletterListsPage() {
       <div style={{ padding: 24 }}>
         {selectedList ? (
           <>
-            <Button type="link" icon={<ArrowLeftOutlined />} onClick={() => setSelectedList(null)} style={{ marginBottom: 16 }}>
+            <Button
+              type="link"
+              icon={<ArrowLeftOutlined />}
+              onClick={() => setSelectedList(null)}
+              style={{ marginBottom: 16 }}
+            >
               Retour aux listes
             </Button>
             <Card title={selectedList.name}>
@@ -206,7 +201,7 @@ export function NewsletterListsPage() {
                   items={[
                     {
                       key: 'public-form',
-                      label: 'Formulaire d\'inscription publique',
+                      label: "Formulaire d'inscription publique",
                       children: (
                         <div>
                           <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
@@ -234,11 +229,7 @@ export function NewsletterListsPage() {
               {canEditList ? (
                 <>
                   <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <Button
-                      type="primary"
-                      icon={<UserAddOutlined />}
-                      onClick={() => setAdvancedSearchModalOpen(true)}
-                    >
+                    <Button type="primary" icon={<UserAddOutlined />} onClick={() => setAdvancedSearchModalOpen(true)}>
                       Ajouter des contacts (recherche CRM)
                     </Button>
                   </div>
@@ -256,8 +247,9 @@ export function NewsletterListsPage() {
               ) : (
                 <div style={{ padding: 24, background: '#fafafa', borderRadius: 8 }}>
                   <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-                    Liste dérivée : {selectedList.activeCount ?? 0} destinataire(s) potentiel(s) (propriétaires / locataires / contacts avec consentement).
-                    Les abonnés sont résolus à l&apos;envoi de chaque campagne.
+                    Liste dérivée : {selectedList.activeCount ?? 0} destinataire(s) potentiel(s) (propriétaires /
+                    locataires / contacts avec consentement). Les abonnés sont résolus à l&apos;envoi de chaque
+                    campagne.
                   </Typography.Paragraph>
                   <Button type="default" icon={<DownloadOutlined />} onClick={handleExport}>
                     Exporter CSV (destinataires actuels)
@@ -272,12 +264,12 @@ export function NewsletterListsPage() {
             loading={loading}
             onSelectList={setSelectedList}
             onCreateList={() => setCreateModalOpen(true)}
-            onEditList={(l) => {
+            onEditList={l => {
               setEditList(l);
               editForm.setFieldsValue({ name: l.name, doubleOptIn: l.doubleOptIn });
               setEditModalOpen(true);
             }}
-            onDeleteList={(l) => {
+            onDeleteList={l => {
               setListToDelete(l);
               setDeleteModalOpen(true);
             }}
@@ -323,7 +315,10 @@ export function NewsletterListsPage() {
       <Modal
         title="Modifier la liste"
         open={editModalOpen}
-        onCancel={() => { setEditModalOpen(false); setEditList(null); }}
+        onCancel={() => {
+          setEditModalOpen(false);
+          setEditList(null);
+        }}
         footer={null}
         destroyOnClose
       >
@@ -341,7 +336,14 @@ export function NewsletterListsPage() {
               <Button type="primary" htmlType="submit" loading={saving}>
                 Enregistrer
               </Button>
-              <Button onClick={() => { setEditModalOpen(false); setEditList(null); }}>Annuler</Button>
+              <Button
+                onClick={() => {
+                  setEditModalOpen(false);
+                  setEditList(null);
+                }}
+              >
+                Annuler
+              </Button>
             </Space>
           </Form.Item>
         </Form>
@@ -351,23 +353,23 @@ export function NewsletterListsPage() {
         title="Supprimer la liste"
         open={deleteModalOpen}
         onOk={handleDeleteList}
-        onCancel={() => { setDeleteModalOpen(false); setListToDelete(null); }}
+        onCancel={() => {
+          setDeleteModalOpen(false);
+          setListToDelete(null);
+        }}
         confirmLoading={saving}
         okText="Supprimer"
         okButtonProps={{ danger: true }}
       >
         {listToDelete && (
           <p>
-            Êtes-vous sûr de vouloir supprimer la liste <strong>{listToDelete.name}</strong> ? Tous les abonnés seront supprimés.
+            Êtes-vous sûr de vouloir supprimer la liste <strong>{listToDelete.name}</strong> ? Tous les abonnés seront
+            supprimés.
           </p>
         )}
       </Modal>
 
-      <ImportCsvModal
-        open={importModalOpen}
-        onClose={() => setImportModalOpen(false)}
-        onImport={handleImport}
-      />
+      <ImportCsvModal open={importModalOpen} onClose={() => setImportModalOpen(false)} onImport={handleImport} />
 
       <Modal
         title="Recherche avancée de contacts CRM"
@@ -377,11 +379,7 @@ export function NewsletterListsPage() {
         width={900}
         destroyOnClose
       >
-        <AdvancedContactSearch
-          mode="select"
-          multiSelect={true}
-          onSelectContacts={handleAddContactsFromSearch}
-        />
+        <AdvancedContactSearch mode="select" multiSelect={true} onSelectContacts={handleAddContactsFromSearch} />
       </Modal>
     </DashboardLayout>
   );

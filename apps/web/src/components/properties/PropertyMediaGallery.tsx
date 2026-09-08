@@ -1,12 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Popconfirm, message, Spin } from 'antd';
-import {
-  StarOutlined,
-  DeleteOutlined,
-  DragOutlined,
-  PictureOutlined,
-  PlayCircleOutlined,
-} from '@ant-design/icons';
+import { App, Button, Popconfirm, Spin } from 'antd';
+import { StarOutlined, DeleteOutlined, DragOutlined, PictureOutlined, PlayCircleOutlined } from '@ant-design/icons';
 import { PropertyMedia, PropertyMediaType } from '../../types/property-types';
 import apiClient from '../../utils/api-client';
 import { API_URL } from '../../config/api';
@@ -24,8 +18,10 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
   tenantId,
   onUpdate,
   refreshTrigger,
-  mediaType: filterMediaType,
+  mediaType: filterMediaType
 }) => {
+  const { message } = App.useApp();
+
   const [media, setMedia] = useState<PropertyMedia[]>([]);
   const [loading, setLoading] = useState(true);
   const [reordering, setReordering] = useState(false);
@@ -43,9 +39,7 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
       );
       // Filter by media type if specified
       const allMedia = response.data.data;
-      const filteredMedia = filterMediaType 
-        ? allMedia.filter(m => m.mediaType === filterMediaType)
-        : allMedia;
+      const filteredMedia = filterMediaType ? allMedia.filter(m => m.mediaType === filterMediaType) : allMedia;
       setMedia(filteredMedia);
     } catch (error) {
       console.error('Error loading media:', error);
@@ -56,10 +50,7 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
 
   const handleSetPrimary = async (mediaId: string) => {
     try {
-      await apiClient.post(
-        `/tenants/${tenantId}/properties/${propertyId}/media/primary`,
-        { mediaId }
-      );
+      await apiClient.post(`/tenants/${tenantId}/properties/${propertyId}/media/primary`, { mediaId });
       await loadMedia();
       if (onUpdate) onUpdate();
       message.success('Photo principale mise à jour');
@@ -70,9 +61,7 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
 
   const handleDelete = async (mediaId: string) => {
     try {
-      await apiClient.delete(
-        `/tenants/${tenantId}/properties/${propertyId}/media/${mediaId}`
-      );
+      await apiClient.delete(`/tenants/${tenantId}/properties/${propertyId}/media/${mediaId}`);
       await loadMedia();
       if (onUpdate) onUpdate();
       message.success('Média supprimé avec succès');
@@ -104,13 +93,10 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
       setReordering(true);
       const mediaOrders = media.map((item, index) => ({
         mediaId: item.id,
-        displayOrder: index,
+        displayOrder: index
       }));
 
-      await apiClient.post(
-        `/tenants/${tenantId}/properties/${propertyId}/media/reorder`,
-        { mediaOrders }
-      );
+      await apiClient.post(`/tenants/${tenantId}/properties/${propertyId}/media/reorder`, { mediaOrders });
 
       if (onUpdate) onUpdate();
       message.success('Ordre des médias mis à jour');
@@ -166,16 +152,16 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
             borderRadius: 8,
             overflow: 'hidden',
             opacity: reordering ? 0.5 : 1,
-            cursor: 'move',
+            cursor: 'move'
           }}
           draggable
           onDragStart={() => handleDragStart(index)}
-          onDragOver={(e) => handleDragOver(e, index)}
+          onDragOver={e => handleDragOver(e, index)}
           onDragEnd={handleDragEnd}
-          onMouseEnter={(e) => {
+          onMouseEnter={e => {
             e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
           }}
-          onMouseLeave={(e) => {
+          onMouseLeave={e => {
             e.currentTarget.style.boxShadow = 'none';
           }}
         >
@@ -186,7 +172,7 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              position: 'relative',
+              position: 'relative'
             }}
           >
             {item.mediaType === PropertyMediaType.PHOTO ? (
@@ -218,12 +204,12 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
               alignItems: 'center',
               justifyContent: 'center',
               gap: 8,
-              transition: 'background-color 0.2s',
+              transition: 'background-color 0.2s'
             }}
-            onMouseEnter={(e) => {
+            onMouseEnter={e => {
               e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
             }}
-            onMouseLeave={(e) => {
+            onMouseLeave={e => {
               e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0)';
             }}
           >
@@ -234,7 +220,7 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
               style={{
                 backgroundColor: item.isPrimary ? '#1890ff' : 'rgba(255, 255, 255, 0.9)',
                 color: item.isPrimary ? '#fff' : '#000',
-                border: 'none',
+                border: 'none'
               }}
             />
             <Popconfirm
@@ -251,7 +237,7 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
                 icon={<DeleteOutlined />}
                 style={{
                   backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                  border: 'none',
+                  border: 'none'
                 }}
               />
             </Popconfirm>
@@ -274,7 +260,7 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
                 borderRadius: 4,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 4,
+                gap: 4
               }}
             >
               <StarOutlined style={{ fontSize: 12 }} />
@@ -286,4 +272,3 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
     </div>
   );
 };
-

@@ -1,6 +1,20 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Button, Card, DatePicker, Form, Input, Modal, Select, Space, Spin, Typography, Upload, message } from 'antd';
+import {
+  App,
+  Alert,
+  Button,
+  Card,
+  DatePicker,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Spin,
+  Typography,
+  Upload
+} from 'antd';
 import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { DocumentVault } from '../../components/syndics/DocumentVault';
@@ -11,6 +25,8 @@ import { useSyndicRouteContext } from './useSyndicRouteContext';
 const { Paragraph, Title } = Typography;
 
 export const SyndicDocuments: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const navigate = useNavigate();
 
@@ -67,7 +83,7 @@ export const SyndicDocuments: React.FC = () => {
       setSelectedFile(null);
       await loadDocuments();
     } catch (err: any) {
-      message.error(err.response?.data?.error || "Ajout du document impossible");
+      message.error(err.response?.data?.error || 'Ajout du document impossible');
     } finally {
       setSubmitting(false);
     }
@@ -77,7 +93,10 @@ export const SyndicDocuments: React.FC = () => {
     <DashboardLayout>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Space direction="vertical" size={4}>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}>
+          <Button
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
+          >
             Retour à la fiche syndic
           </Button>
           <Space align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
@@ -101,7 +120,7 @@ export const SyndicDocuments: React.FC = () => {
             placeholder="Filtrer par type"
             style={{ minWidth: 260 }}
             value={typeFilter}
-            onChange={(value) => setTypeFilter(value)}
+            onChange={value => setTypeFilter(value)}
             options={[
               { label: 'Reglement', value: 'REGULATION' },
               { label: 'Proces-verbal AG', value: 'GENERAL_MEETING_MINUTES' },
@@ -155,7 +174,7 @@ export const SyndicDocuments: React.FC = () => {
           <Form.Item label="Fichier" required>
             <Upload
               maxCount={1}
-              beforeUpload={(file) => {
+              beforeUpload={file => {
                 setSelectedFile(file);
                 return false;
               }}
@@ -174,4 +193,3 @@ export const SyndicDocuments: React.FC = () => {
     </DashboardLayout>
   );
 };
-

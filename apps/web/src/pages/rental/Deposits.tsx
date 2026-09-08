@@ -1,26 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  Table,
-  Button,
-  Tag,
-  Space,
-  Typography,
-  Empty,
-  Alert,
-  Card,
-  Row,
-  Col,
-  Spin,
-  message,
-} from 'antd';
+import { App, Table, Button, Tag, Space, Typography, Empty, Alert, Card, Row, Col, Spin } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import {
-  PlusOutlined,
-  SafetyOutlined,
-  ArrowUpOutlined,
-  ArrowDownOutlined,
-} from '@ant-design/icons';
+import { PlusOutlined, SafetyOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
   getDeposit,
@@ -30,7 +12,7 @@ import {
   RentalSecurityDeposit,
   RentalDepositMovement,
   CreateDepositMovementRequest,
-  RentalDepositMovementType,
+  RentalDepositMovementType
 } from '../../services/rental-service';
 import { DepositMovementForm } from '../../components/rental/DepositMovementForm';
 
@@ -41,6 +23,8 @@ interface DepositsProps {
 }
 
 export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
+  const { message } = App.useApp();
+
   const { tenantId, leaseId: paramLeaseId } = useParams<{ tenantId: string; leaseId?: string }>();
   const leaseId = propLeaseId || paramLeaseId;
   const [deposit, setDeposit] = useState<RentalSecurityDeposit | null>(null);
@@ -117,7 +101,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
       await loadMovements();
       message.success('Mouvement enregistré avec succès.');
     } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Erreur lors de l\'enregistrement du mouvement.';
+      const msg = err?.response?.data?.message || "Erreur lors de l'enregistrement du mouvement.";
       message.error(msg);
       throw err;
     }
@@ -130,7 +114,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
   const formatCurrency = (amount: number, currency: string = 'FCFA') => {
     return new Intl.NumberFormat('fr-FR', {
       style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency,
+      currency: currency === 'FCFA' ? 'XOF' : currency
     }).format(amount);
   };
 
@@ -141,7 +125,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
       RELEASE: 'Libération',
       REFUND: 'Remboursement',
       FORFEIT: 'Confiscation',
-      ADJUSTMENT: 'Ajustement',
+      ADJUSTMENT: 'Ajustement'
     };
     return typeMap[type] || type;
   };
@@ -176,17 +160,15 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Row gutter={[16, 16]} justify="space-between" align="middle">
           <Col xs={24} sm={24} md={12} lg={14}>
-            <Title level={2} style={{ margin: 0 }}>Dépôt de garantie</Title>
+            <Title level={2} style={{ margin: 0 }}>
+              Dépôt de garantie
+            </Title>
             <Text type="secondary">Gérez le dépôt de garantie du bail</Text>
           </Col>
           <Col xs={24} sm={24} md={12} lg={10}>
             <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
               {deposit && (
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={() => setShowMovementForm(true)}
-                >
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowMovementForm(true)}>
                   Nouveau mouvement
                 </Button>
               )}
@@ -195,14 +177,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
         </Row>
 
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
 
         {deposit ? (
@@ -230,9 +205,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
                     <Text type="secondary">Statut</Text>
                     <div style={{ marginTop: 8 }}>
                       <Tag color={deposit.current_balance >= deposit.target_amount ? 'success' : 'default'}>
-                        {deposit.current_balance >= deposit.target_amount
-                          ? 'Complet'
-                          : 'En attente'}
+                        {deposit.current_balance >= deposit.target_amount ? 'Complet' : 'En attente'}
                       </Tag>
                     </div>
                   </div>
@@ -252,22 +225,20 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
               </Card>
             )}
 
-            <Card
-              title="Historique des mouvements"
-            >
+            <Card title="Historique des mouvements">
               <Table
                 dataSource={movements}
                 loading={loading}
                 rowKey="id"
                 scroll={{ x: 'max-content' }}
                 locale={{
-                  emptyText: 'Aucun mouvement enregistré',
+                  emptyText: 'Aucun mouvement enregistré'
                 }}
                 columns={[
                   {
                     title: 'Date',
                     key: 'created_at',
-                    render: (_, record) => formatDate(record.created_at),
+                    render: (_, record) => formatDate(record.created_at)
                   },
                   {
                     title: 'Type',
@@ -277,7 +248,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
                         {getMovementTypeIcon(record.type)}
                         <span>{getMovementTypeLabel(record.type)}</span>
                       </Space>
-                    ),
+                    )
                   },
                   {
                     title: 'Montant',
@@ -285,21 +256,18 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
                     render: (_, record) => {
                       const isPositive = record.type === 'COLLECT' || record.type === 'ADJUSTMENT';
                       return (
-                        <Text
-                          type={isPositive ? 'success' : 'danger'}
-                          strong
-                        >
+                        <Text type={isPositive ? 'success' : 'danger'} strong>
                           {isPositive ? '+' : '-'}
                           {formatCurrency(record.amount, record.currency)}
                         </Text>
                       );
-                    },
+                    }
                   },
                   {
                     title: 'Note',
                     key: 'note',
-                    render: (_, record) => record.note || '-',
-                  },
+                    render: (_, record) => record.note || '-'
+                  }
                 ]}
               />
             </Card>
@@ -317,4 +285,3 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
 
   return content;
 };
-

@@ -1,16 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Card,
-  Typography,
-  Space,
-  Button,
-  Spin,
-  Divider,
-  Input,
-  message,
-  Popconfirm
-} from 'antd';
+import { App, Card, Typography, Space, Button, Spin, Divider, Input, Popconfirm } from 'antd';
 import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { TicketStatusBadge } from '../../../components/maintenance/TicketStatusBadge';
@@ -40,6 +30,8 @@ const priorityLabels: Record<string, string> = {
 };
 
 export const TicketDetail: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId, ticketId } = useParams<{ tenantId: string; ticketId: string }>();
   const navigate = useNavigate();
   const { tenantMembership } = useAuth();
@@ -81,17 +73,12 @@ export const TicketDetail: React.FC = () => {
     try {
       // Use tenantContactId from ticket if available, otherwise undefined
       // The backend will try to get it from user context if not provided
-      await tenantMaintenanceService.addComment(
-        effectiveTenantId,
-        ticketId,
-        commentContent,
-        ticket?.tenantContactId
-      );
+      await tenantMaintenanceService.addComment(effectiveTenantId, ticketId, commentContent, ticket?.tenantContactId);
       setCommentContent('');
       message.success('Commentaire ajouté');
       await loadTicket(); // Reload to get updated comments
     } catch (error: any) {
-      message.error(error.response?.data?.message || 'Erreur lors de l\'ajout du commentaire');
+      message.error(error.response?.data?.message || "Erreur lors de l'ajout du commentaire");
     } finally {
       setSubmittingComment(false);
     }
@@ -106,7 +93,7 @@ export const TicketDetail: React.FC = () => {
       message.success('Ticket annulé');
       await loadTicket(); // Reload to get updated status
     } catch (error: any) {
-      message.error(error.response?.data?.message || 'Erreur lors de l\'annulation du ticket');
+      message.error(error.response?.data?.message || "Erreur lors de l'annulation du ticket");
     } finally {
       setCanceling(false);
     }
@@ -136,10 +123,7 @@ export const TicketDetail: React.FC = () => {
     <DashboardLayout>
       <div style={{ padding: '24px' }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
-          <Button
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}
-          >
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>
             Retour à la liste
           </Button>
 
@@ -160,7 +144,9 @@ export const TicketDetail: React.FC = () => {
               <div>
                 <Text strong>Catégorie: </Text>
                 <Text>{categoryLabels[ticket.category] || ticket.category}</Text>
-                <Text strong style={{ marginLeft: 16 }}>Priorité: </Text>
+                <Text strong style={{ marginLeft: 16 }}>
+                  Priorité:{' '}
+                </Text>
                 <Text>{priorityLabels[ticket.priority] || ticket.priority}</Text>
               </div>
 
@@ -225,7 +211,7 @@ export const TicketDetail: React.FC = () => {
                     rows={4}
                     placeholder="Ajouter un commentaire..."
                     value={commentContent}
-                    onChange={(e) => setCommentContent(e.target.value)}
+                    onChange={e => setCommentContent(e.target.value)}
                   />
                   <Button
                     type="primary"

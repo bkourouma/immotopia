@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  App,
   Form,
   Input,
   Select,
@@ -14,13 +15,9 @@ import {
   DatePicker,
   InputNumber,
   Divider,
-  Spin,
-  message,
+  Spin
 } from 'antd';
-import {
-  SaveOutlined,
-  HomeOutlined,
-} from '@ant-design/icons';
+import { SaveOutlined, HomeOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { LocationSelector } from '../ui/location-selector';
 import { AddressAutocomplete, AddressSuggestion } from '../ui/address-autocomplete';
@@ -36,7 +33,7 @@ import {
   PropertyTransactionMode,
   PropertyFurnishingStatus,
   PropertyAvailability,
-  PropertyStatus,
+  PropertyStatus
 } from '../../types/property-types';
 import { getTemplate } from '../../services/property-service';
 import { useAuth } from '../../hooks/useAuth';
@@ -58,13 +55,13 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
   tenantId,
   onSubmit,
   onCancel,
-  loading = false,
+  loading = false
 }) => {
+  const { message } = App.useApp();
+
   const [form] = Form.useForm();
   const { tenantMembership } = useAuth();
-  const [selectedType, setSelectedType] = useState<PropertyType | undefined>(
-    property?.propertyType
-  );
+  const [selectedType, setSelectedType] = useState<PropertyType | undefined>(property?.propertyType);
   const [template, setTemplate] = useState<PropertyTypeTemplate | null>(null);
   const [loadingTemplate, setLoadingTemplate] = useState(false);
   const [owners, setOwners] = useState<TenantClient[]>([]);
@@ -99,7 +96,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
             countryId: property.typeSpecificData?.countryId || '',
             country: property.typeSpecificData?.country || '',
             displayName: `${property.typeSpecificData?.commune || ''}, ${property.typeSpecificData?.region || ''}, ${property.typeSpecificData?.country || ''}`,
-            searchText: `${property.typeSpecificData?.commune || ''} ${property.typeSpecificData?.region || ''} ${property.typeSpecificData?.country || ''}`,
+            searchText: `${property.typeSpecificData?.commune || ''} ${property.typeSpecificData?.region || ''} ${property.typeSpecificData?.country || ''}`
           });
 
           try {
@@ -129,7 +126,9 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         description: property.description,
         status: property.status,
         availability: property.availability,
-        availabilityDate: property.typeSpecificData?.availabilityDate ? dayjs(property.typeSpecificData.availabilityDate) : undefined,
+        availabilityDate: property.typeSpecificData?.availabilityDate
+          ? dayjs(property.typeSpecificData.availabilityDate)
+          : undefined,
         locationZone: property.locationZone,
         address: property.address,
         latitude: property.latitude,
@@ -153,7 +152,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         surfaceTerrain: property.surfaceTerrain,
         furnishingStatus: property.furnishingStatus,
         ownerUserId: property.ownerUserId || undefined,
-        ownershipType: property.ownershipType,
+        ownershipType: property.ownershipType
       });
     }
   }, [property, form]);
@@ -250,34 +249,40 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
           standing: values.standing,
           deposit: values.deposit ? parseFloat(parseNumber(String(values.deposit))) : undefined,
           commissionMode: values.commissionMode,
-          commissionAmount: values.commissionAmount ? parseFloat(parseNumber(String(values.commissionAmount))) : undefined,
-          availabilityDate: values.availabilityDate ? dayjs(values.availabilityDate).format('YYYY-MM-DD') : undefined,
-        },
+          commissionAmount: values.commissionAmount
+            ? parseFloat(parseNumber(String(values.commissionAmount)))
+            : undefined,
+          availabilityDate: values.availabilityDate ? dayjs(values.availabilityDate).format('YYYY-MM-DD') : undefined
+        }
       };
 
       await onSubmit(submitData);
     } catch (error: any) {
-      setSubmitError(error.response?.data?.error || 'Une erreur est survenue lors de l\'enregistrement');
-      message.error('Erreur lors de l\'enregistrement');
+      setSubmitError(error.response?.data?.error || "Une erreur est survenue lors de l'enregistrement");
+      message.error("Erreur lors de l'enregistrement");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const shouldShowRooms = (propertyType: PropertyType): boolean => {
-    return propertyType === PropertyType.APPARTEMENT ||
-           propertyType === PropertyType.STUDIO ||
-           propertyType === PropertyType.DUPLEX_TRIPLEX ||
-           propertyType === PropertyType.MAISON_VILLA ||
-           propertyType === PropertyType.CHAMBRE_COLOCATION;
+    return (
+      propertyType === PropertyType.APPARTEMENT ||
+      propertyType === PropertyType.STUDIO ||
+      propertyType === PropertyType.DUPLEX_TRIPLEX ||
+      propertyType === PropertyType.MAISON_VILLA ||
+      propertyType === PropertyType.CHAMBRE_COLOCATION
+    );
   };
 
   const shouldShowUsefulSurface = (propertyType: PropertyType): boolean => {
-    return propertyType === PropertyType.APPARTEMENT ||
-           propertyType === PropertyType.STUDIO ||
-           propertyType === PropertyType.DUPLEX_TRIPLEX ||
-           propertyType === PropertyType.MAISON_VILLA ||
-           propertyType === PropertyType.BUREAU;
+    return (
+      propertyType === PropertyType.APPARTEMENT ||
+      propertyType === PropertyType.STUDIO ||
+      propertyType === PropertyType.DUPLEX_TRIPLEX ||
+      propertyType === PropertyType.MAISON_VILLA ||
+      propertyType === PropertyType.BUREAU
+    );
   };
 
   const renderField = (field: any) => {
@@ -335,11 +340,13 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
             rules={field.required ? [{ required: true, message: `${field.label} est requis` }] : []}
           >
             <Select placeholder="Sélectionner...">
-              {field.validation?.options && Array.isArray(field.validation.options) ? field.validation.options.map((option: string) => (
-                <Select.Option key={option} value={option}>
-                  {option.replace(/_/g, ' ')}
-                </Select.Option>
-              )) : null}
+              {field.validation?.options && Array.isArray(field.validation.options)
+                ? field.validation.options.map((option: string) => (
+                    <Select.Option key={option} value={option}>
+                      {option.replace(/_/g, ' ')}
+                    </Select.Option>
+                  ))
+                : null}
             </Select>
           </Form.Item>
         );
@@ -372,7 +379,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         availability: property?.availability || PropertyAvailability.AVAILABLE,
         transactionModes: property?.transactionModes || [PropertyTransactionMode.SALE],
         currency: property?.currency || 'CFA',
-        furnishingStatus: property?.furnishingStatus || PropertyFurnishingStatus.UNFURNISHED,
+        furnishingStatus: property?.furnishingStatus || PropertyFurnishingStatus.UNFURNISHED
       }}
     >
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -433,7 +440,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
               allowClear
               loading={loadingOwners}
             >
-              {owners.map((owner) => (
+              {owners.map(owner => (
                 <Select.Option key={owner.id} value={owner.userId}>
                   {owner.user.fullName || owner.user.email}
                   {owner.user.email && owner.user.fullName ? ` (${owner.user.email})` : ''}
@@ -442,11 +449,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
             </Select>
           </Form.Item>
 
-          <Form.Item
-            label="Titre du bien"
-            name="title"
-            rules={[{ required: true, message: 'Le titre est requis' }]}
-          >
+          <Form.Item label="Titre du bien" name="title" rules={[{ required: true, message: 'Le titre est requis' }]}>
             <Input placeholder="Ex: Appartement 3 pièces à Cocody" />
           </Form.Item>
 
@@ -460,11 +463,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
 
           <Row gutter={16}>
             <Col xs={24} sm={12}>
-              <Form.Item
-                label="Statut"
-                name="status"
-                rules={[{ required: true, message: 'Le statut est requis' }]}
-              >
+              <Form.Item label="Statut" name="status" rules={[{ required: true, message: 'Le statut est requis' }]}>
                 <Select>
                   <Select.Option value={PropertyStatus.DRAFT}>Brouillon</Select.Option>
                   <Select.Option value={PropertyStatus.AVAILABLE}>Disponible</Select.Option>
@@ -497,10 +496,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
           >
             {({ getFieldValue }) =>
               getFieldValue('availability') === PropertyAvailability.SOON_AVAILABLE ? (
-                <Form.Item
-                  label="Date de disponibilité"
-                  name="availabilityDate"
-                >
+                <Form.Item label="Date de disponibilité" name="availabilityDate">
                   <DatePicker style={{ width: '100%' }} />
                 </Form.Item>
               ) : null
@@ -518,7 +514,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
           >
             <LocationSelector
               value={location?.communeId}
-              onChange={(loc) => setLocation(loc)}
+              onChange={loc => setLocation(loc)}
               placeholder="Rechercher une localisation (ex: Cocody, Abidjan, Côte d'Ivoire)..."
               required
             />
@@ -535,7 +531,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                   address: suggestion.address,
                   locationZone: suggestion.locationZone ?? form.getFieldValue('locationZone'),
                   latitude: suggestion.latitude,
-                  longitude: suggestion.longitude,
+                  longitude: suggestion.longitude
                 });
               }}
             />
@@ -554,20 +550,12 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
             </Col>
             <Col xs={24} sm={12}>
               <Form.Item label="Latitude" name="latitude">
-                <InputNumber
-                  style={{ width: '100%' }}
-                  step={0.000001}
-                  placeholder="Ex: 5.3600"
-                />
+                <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="Ex: 5.3600" />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
               <Form.Item label="Longitude" name="longitude">
-                <InputNumber
-                  style={{ width: '100%' }}
-                  step={0.000001}
-                  placeholder="Ex: -4.0083"
-                />
+                <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="Ex: -4.0083" />
               </Form.Item>
             </Col>
             <Col xs={24}>
@@ -657,19 +645,17 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
               const isSale = transactionModes.includes(PropertyTransactionMode.SALE);
               const hideRentAndFees =
                 propertyType === PropertyType.IMMEUBLE &&
-                (transactionModes.includes(PropertyTransactionMode.RENTAL) || transactionModes.includes(PropertyTransactionMode.SHORT_TERM));
+                (transactionModes.includes(PropertyTransactionMode.RENTAL) ||
+                  transactionModes.includes(PropertyTransactionMode.SHORT_TERM));
               return (
                 <Row gutter={16}>
                   {!hideRentAndFees && (
                     <>
                       <Col xs={24} sm={8}>
-                        <Form.Item
-                          label={isSale ? 'Prix (vente)' : 'Loyer (location)'}
-                          name="price"
-                        >
+                        <Form.Item label={isSale ? 'Prix (vente)' : 'Loyer (location)'} name="price">
                           <Input
                             placeholder="Ex: 50 000 000"
-                            onChange={(e) => {
+                            onChange={e => {
                               const cleaned = parseNumber(e.target.value);
                               form.setFieldsValue({ price: cleaned });
                             }}
@@ -681,7 +667,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                         <Form.Item label="Charges" name="fees">
                           <Input
                             placeholder="Ex: 50 000"
-                            onChange={(e) => {
+                            onChange={e => {
                               const cleaned = parseNumber(e.target.value);
                               form.setFieldsValue({ fees: cleaned });
                             }}
@@ -705,7 +691,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                       <Form.Item label="Dépôt de garantie" name="deposit">
                         <Input
                           placeholder="Ex: 500 000"
-                          onChange={(e) => {
+                          onChange={e => {
                             const cleaned = parseNumber(e.target.value);
                             form.setFieldsValue({ deposit: cleaned });
                           }}
@@ -726,11 +712,15 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                     <Form.Item label="Commission / Honoraires" name="commissionAmount">
                       <Input
                         placeholder="Ex: 1 000 000"
-                        onChange={(e) => {
+                        onChange={e => {
                           const cleaned = parseNumber(e.target.value);
                           form.setFieldsValue({ commissionAmount: cleaned });
                         }}
-                        value={form.getFieldValue('commissionAmount') ? formatNumber(form.getFieldValue('commissionAmount')) : ''}
+                        value={
+                          form.getFieldValue('commissionAmount')
+                            ? formatNumber(form.getFieldValue('commissionAmount'))
+                            : ''
+                        }
                       />
                     </Form.Item>
                   </Col>
@@ -774,7 +764,9 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                     <Select>
                       <Select.Option value={PropertyFurnishingStatus.UNFURNISHED}>Non meublé</Select.Option>
                       <Select.Option value={PropertyFurnishingStatus.FURNISHED}>Meublé</Select.Option>
-                      <Select.Option value={PropertyFurnishingStatus.PARTIALLY_FURNISHED}>Partiellement meublé</Select.Option>
+                      <Select.Option value={PropertyFurnishingStatus.PARTIALLY_FURNISHED}>
+                        Partiellement meublé
+                      </Select.Option>
                     </Select>
                   </Form.Item>
                 </Col>
@@ -793,28 +785,26 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
             ) : (
               template.sections
                 .sort((a, b) => a.order - b.order)
-                .map((section) => (
-                  <Card
-                    key={section.key}
-                    type="inner"
-                    title={section.label}
-                    style={{ marginBottom: 16 }}
-                  >
+                .map(section => (
+                  <Card key={section.key} type="inner" title={section.label} style={{ marginBottom: 16 }}>
                     <Row gutter={16}>
-                      {section.fields && Array.isArray(section.fields) ? section.fields.map((fieldKey) => {
-                        const field = template.fieldDefinitions?.find((f) => f.key === fieldKey);
-                        if (!field) return null;
-                        const currentType = selectedType || property?.propertyType;
-                        if (currentType === PropertyType.IMMEUBLE && field.key === 'occupancy_rate') return null;
-                        const displayField = currentType === PropertyType.IMMEUBLE && field.key === 'units_count'
-                          ? { ...field, label: "Nombre total d'appartements" }
-                          : field;
-                        return (
-                          <Col key={field.key} xs={24} sm={12}>
-                            {renderField(displayField)}
-                          </Col>
-                        );
-                      }) : null}
+                      {section.fields && Array.isArray(section.fields)
+                        ? section.fields.map(fieldKey => {
+                            const field = template.fieldDefinitions?.find(f => f.key === fieldKey);
+                            if (!field) return null;
+                            const currentType = selectedType || property?.propertyType;
+                            if (currentType === PropertyType.IMMEUBLE && field.key === 'occupancy_rate') return null;
+                            const displayField =
+                              currentType === PropertyType.IMMEUBLE && field.key === 'units_count'
+                                ? { ...field, label: "Nombre total d'appartements" }
+                                : field;
+                            return (
+                              <Col key={field.key} xs={24} sm={12}>
+                                {renderField(displayField)}
+                              </Col>
+                            );
+                          })
+                        : null}
                     </Row>
                   </Card>
                 ))
@@ -823,18 +813,21 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         )}
 
         {/* Actions */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 16, paddingTop: 16, borderTop: '1px solid #f0f0f0' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            gap: 16,
+            paddingTop: 16,
+            borderTop: '1px solid #f0f0f0'
+          }}
+        >
           {onCancel && (
             <Button onClick={onCancel} disabled={isSubmitting}>
               Annuler
             </Button>
           )}
-          <Button
-            type="primary"
-            htmlType="submit"
-            icon={<SaveOutlined />}
-            loading={isSubmitting || loading}
-          >
+          <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={isSubmitting || loading}>
             {isSubmitting ? 'Enregistrement...' : property ? 'Mettre à jour' : 'Créer'}
           </Button>
         </div>

@@ -1,27 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  Table,
-  Button,
-  Tag,
-  Space,
-  Typography,
-  Empty,
-  Alert,
-  Select,
-  message,
-  Modal,
-  Row,
-  Col,
-} from 'antd';
+import { App, Table, Button, Tag, Space, Typography, Empty, Alert, Select, Modal, Row, Col } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import {
-  PlusOutlined,
-  FileTextOutlined,
-  EyeOutlined,
-  DownloadOutlined,
-  ReloadOutlined,
-} from '@ant-design/icons';
+import { PlusOutlined, FileTextOutlined, EyeOutlined, DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
   listDocuments,
@@ -32,7 +13,7 @@ import {
   RentalDocumentType,
   RentalDocumentStatus,
   DocumentFilters,
-  GenerateDocumentRequest,
+  GenerateDocumentRequest
 } from '../../services/rental-service';
 import { DocumentForm } from '../../components/rental/DocumentForm';
 import { API_URL } from '../../config/api';
@@ -44,6 +25,8 @@ interface DocumentsProps {
 }
 
 export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) => {
+  const { message } = App.useApp();
+
   const { tenantId, leaseId: paramLeaseId } = useParams<{ tenantId: string; leaseId?: string }>();
   const leaseId = propLeaseId || paramLeaseId;
   const [documents, setDocuments] = useState<RentalDocument[]>([]);
@@ -53,13 +36,13 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
   const [filters, setFilters] = useState<DocumentFilters>({
     leaseId: leaseId,
     page: 1,
-    limit: 50,
+    limit: 50
   });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 50,
     total: 0,
-    totalPages: 0,
+    totalPages: 0
   });
 
   useEffect(() => {
@@ -75,7 +58,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
     try {
       const response = await listDocuments(tenantId, {
         ...filters,
-        leaseId: leaseId || filters.leaseId,
+        leaseId: leaseId || filters.leaseId
       });
       if (response.success) {
         setDocuments(response.data);
@@ -114,7 +97,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
         } catch (err: any) {
           message.error(err.response?.data?.message || 'Erreur lors de la régénération du document');
         }
-      },
+      }
     });
   };
 
@@ -132,7 +115,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
     const statusMap: Record<RentalDocumentStatus, { label: string; color: string }> = {
       DRAFT: { label: 'Brouillon', color: 'default' },
       FINAL: { label: 'Final', color: 'success' },
-      VOID: { label: 'Annulé', color: 'error' },
+      VOID: { label: 'Annulé', color: 'error' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -146,7 +129,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
       RENT_QUITTANCE: 'Quittance de loyer',
       DEPOSIT_RECEIPT: 'Reçu de dépôt',
       STATEMENT: 'Relevé',
-      OTHER: 'Autre',
+      OTHER: 'Autre'
     };
     return typeMap[type] || type;
   };
@@ -163,18 +146,14 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Row gutter={[16, 16]} justify="space-between" align="middle">
           <Col xs={24} sm={24} md={12} lg={14}>
-            <Title level={2} style={{ margin: 0 }}>Documents</Title>
-            <Text type="secondary">
-              {leaseId ? 'Documents du bail' : 'Gérez les documents de location'}
-            </Text>
+            <Title level={2} style={{ margin: 0 }}>
+              Documents
+            </Title>
+            <Text type="secondary">{leaseId ? 'Documents du bail' : 'Gérez les documents de location'}</Text>
           </Col>
           <Col xs={24} sm={24} md={12} lg={10}>
             <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => setShowForm(true)}
-              >
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)}>
                 Générer un document
               </Button>
             </div>
@@ -182,14 +161,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
         </Row>
 
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
 
         {showForm && (
@@ -206,11 +178,11 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
         <Space>
           <Select
             value={filters.type || 'all'}
-            onChange={(value) =>
+            onChange={value =>
               setFilters({
                 ...filters,
                 type: value === 'all' ? undefined : (value as RentalDocumentType),
-                page: 1,
+                page: 1
               })
             }
             style={{ width: 180 }}
@@ -226,11 +198,11 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
           </Select>
           <Select
             value={filters.status || 'all'}
-            onChange={(value) =>
+            onChange={value =>
               setFilters({
                 ...filters,
                 status: value === 'all' ? undefined : (value as RentalDocumentStatus),
-                page: 1,
+                page: 1
               })
             }
             style={{ width: 180 }}
@@ -254,27 +226,27 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
               {
                 title: 'Numéro',
                 key: 'document_number',
-                render: (_, record) => <Text strong>{record.document_number}</Text>,
+                render: (_, record) => <Text strong>{record.document_number}</Text>
               },
               {
                 title: 'Type',
                 key: 'type',
-                render: (_, record) => getTypeLabel(record.type),
+                render: (_, record) => getTypeLabel(record.type)
               },
               {
                 title: 'Titre',
                 key: 'title',
-                render: (_, record) => record.title || '-',
+                render: (_, record) => record.title || '-'
               },
               {
                 title: "Date d'émission",
                 key: 'issued_at',
-                render: (_, record) => formatDate(record.issued_at),
+                render: (_, record) => formatDate(record.issued_at)
               },
               {
                 title: 'Statut',
                 key: 'status',
-                render: (_, record) => getStatusTag(record.status),
+                render: (_, record) => getStatusTag(record.status)
               },
               {
                 title: 'Actions',
@@ -294,17 +266,17 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
                         try {
                           const apiBaseUrl = API_URL;
                           const downloadUrl = `${apiBaseUrl}/tenants/${tenantId}/documents/${record.id}/download`;
-                          
+
                           const response = await fetch(downloadUrl, {
                             method: 'GET',
-                            credentials: 'include',
+                            credentials: 'include'
                           });
-                          
+
                           if (!response.ok) {
                             const errorText = await response.text();
                             throw new Error(`Failed to download document: ${response.status} ${response.statusText}`);
                           }
-                          
+
                           const blob = await response.blob();
                           const url = window.URL.createObjectURL(blob);
                           const a = document.createElement('a');
@@ -316,14 +288,16 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
                           document.body.removeChild(a);
                           message.success('Téléchargement réussi');
                         } catch (error) {
-                          message.error(`Erreur lors du téléchargement: ${error instanceof Error ? error.message : 'Erreur inconnue'}`);
+                          message.error(
+                            `Erreur lors du téléchargement: ${error instanceof Error ? error.message : 'Erreur inconnue'}`
+                          );
                         }
                       }}
                       title="Télécharger le document"
                     />
                   </Space>
-                ),
-              },
+                )
+              }
             ]}
             pagination={
               pagination.totalPages > 1
@@ -332,10 +306,10 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
                     pageSize: pagination.limit,
                     total: pagination.total,
                     showSizeChanger: true,
-                    showTotal: (total) => `Total ${total} documents`,
+                    showTotal: total => `Total ${total} documents`,
                     onChange: (page, pageSize) => {
-                      setFilters((prev) => ({ ...prev, page, limit: pageSize }));
-                    },
+                      setFilters(prev => ({ ...prev, page, limit: pageSize }));
+                    }
                   }
                 : false
             }
@@ -351,4 +325,3 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
 
   return content;
 };
-

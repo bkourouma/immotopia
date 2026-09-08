@@ -1,18 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  Typography,
-  Spin,
-  Alert,
-  Empty,
-  List,
-  Button,
-  Space,
-  Select,
-  Tag,
-  Divider,
-  message
-} from 'antd';
+import { App, Card, Typography, Spin, Alert, Empty, List, Button, Space, Select, Tag, Divider } from 'antd';
 import {
   FolderOutlined,
   DownloadOutlined,
@@ -49,6 +36,8 @@ interface DocumentsData {
 }
 
 export default function Documents() {
+  const { message } = App.useApp();
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DocumentsData | null>(null);
@@ -69,10 +58,12 @@ export default function Documents() {
     try {
       const response = await ownerPortalService.getProperties();
       if (response.data?.success && response.data?.data?.properties) {
-        setProperties(response.data.data.properties.map((p: any) => ({
-          id: p.id,
-          address: p.address
-        })));
+        setProperties(
+          response.data.data.properties.map((p: any) => ({
+            id: p.id,
+            address: p.address
+          }))
+        );
       }
     } catch (err) {
       console.error('Error loading properties:', err);
@@ -103,12 +94,12 @@ export default function Documents() {
     try {
       setDownloading(documentId);
       const response = await ownerPortalService.downloadDocument(documentId);
-      
+
       // Create blob from response
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      
+
       // Get filename from Content-Disposition header or use default
       const contentDisposition = response.headers['content-disposition'];
       let fileName = `document-${documentId}.pdf`;
@@ -118,13 +109,13 @@ export default function Documents() {
           fileName = decodeURIComponent(fileNameMatch[1]);
         }
       }
-      
+
       link.setAttribute('download', fileName);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      
+
       message.success('Document téléchargé avec succès');
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Erreur lors du téléchargement');
@@ -162,15 +153,11 @@ export default function Documents() {
   };
 
   // Get all unique document types for filter
-  const allTypes = data
-    ? Array.from(new Set(data.documents.map((doc) => doc.type)))
-    : [];
+  const allTypes = data ? Array.from(new Set(data.documents.map(doc => doc.type))) : [];
 
   // Filter grouped documents by type filter
   const filteredGroupedByType = data
-    ? Object.entries(data.groupedByType).filter(([type]) =>
-        typeFilter ? type === typeFilter : true
-      )
+    ? Object.entries(data.groupedByType).filter(([type]) => (typeFilter ? type === typeFilter : true))
     : [];
 
   if (loading && !data) {
@@ -193,12 +180,7 @@ export default function Documents() {
           <Title level={2}>Documents</Title>
           <Text type="secondary">Accès aux documents de location</Text>
         </div>
-        <Button
-          icon={<SyncOutlined />}
-          onClick={loadDocuments}
-          loading={loading}
-          aria-label="Rafraîchir les documents"
-        >
+        <Button icon={<SyncOutlined />} onClick={loadDocuments} loading={loading} aria-label="Rafraîchir les documents">
           Actualiser
         </Button>
       </div>
@@ -220,10 +202,12 @@ export default function Documents() {
               placeholder="Tous les types"
               allowClear
               value={typeFilter}
-              onChange={(value) => setTypeFilter(value)}
+              onChange={value => setTypeFilter(value)}
             >
               {allTypes.map(type => (
-                <Option key={type} value={type}>{getDocumentTypeLabel(type)}</Option>
+                <Option key={type} value={type}>
+                  {getDocumentTypeLabel(type)}
+                </Option>
               ))}
             </Select>
           </Space>
@@ -234,10 +218,12 @@ export default function Documents() {
               placeholder="Toutes les propriétés"
               allowClear
               value={propertyFilter}
-              onChange={(value) => setPropertyFilter(value)}
+              onChange={value => setPropertyFilter(value)}
             >
               {properties.map(prop => (
-                <Option key={prop.id} value={prop.id}>{prop.address}</Option>
+                <Option key={prop.id} value={prop.id}>
+                  {prop.address}
+                </Option>
               ))}
             </Select>
           </Space>
@@ -259,7 +245,7 @@ export default function Documents() {
           >
             <List
               dataSource={documents}
-              renderItem={(doc) => (
+              renderItem={doc => (
                 <List.Item
                   actions={[
                     <Button
@@ -283,17 +269,11 @@ export default function Documents() {
                     }
                     description={
                       <Space direction="vertical" size="small">
-                        {doc.lease?.property && (
-                          <Text type="secondary">
-                            Propriété: {doc.lease.property.address}
-                          </Text>
-                        )}
+                        {doc.lease?.property && <Text type="secondary">Propriété: {doc.lease.property.address}</Text>}
                         {doc.issued_at && (
                           <Space>
                             <CalendarOutlined />
-                            <Text type="secondary">
-                              Émis le {formatDate(doc.issued_at)}
-                            </Text>
+                            <Text type="secondary">Émis le {formatDate(doc.issued_at)}</Text>
                           </Space>
                         )}
                       </Space>

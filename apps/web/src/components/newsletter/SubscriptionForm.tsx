@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, message } from 'antd';
+import { App, Form, Input, Button } from 'antd';
 import { MailOutlined, UserOutlined } from '@ant-design/icons';
 import apiClient from '../../utils/api-client';
 
@@ -20,13 +20,17 @@ export function SubscriptionForm({
   showName = true,
   compact = false
 }: SubscriptionFormProps) {
+  const { message } = App.useApp();
+
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
   if (!listToken && !listId) {
     return (
-      <p style={{ color: '#999' }}>Configuration manquante : fournissez listToken ou listId pour le formulaire d'inscription.</p>
+      <p style={{ color: '#999' }}>
+        Configuration manquante : fournissez listToken ou listId pour le formulaire d'inscription.
+      </p>
     );
   }
 

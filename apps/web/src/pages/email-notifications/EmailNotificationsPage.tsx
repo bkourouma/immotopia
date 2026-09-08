@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
+  App,
   Card,
   Table,
   Switch,
@@ -8,7 +9,6 @@ import {
   Modal,
   Form,
   Input,
-  message,
   Spin,
   Tag,
   Space,
@@ -28,6 +28,8 @@ import {
 const { Title, Text } = Typography;
 
 export function EmailNotificationsPage() {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const [items, setItems] = useState<EmailNotificationConfigItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,7 +59,7 @@ export function EmailNotificationsPage() {
     if (!tenantId) return;
     try {
       await emailNotificationConfigService.update(tenantId, key, { enabled });
-      setItems((prev) => prev.map((i) => (i.key === key ? { ...i, enabled } : i)));
+      setItems(prev => prev.map(i => (i.key === key ? { ...i, enabled } : i)));
       message.success(enabled ? 'Notification activée' : 'Notification désactivée');
     } catch (e: any) {
       message.error(e.response?.data?.message || 'Erreur');
@@ -155,10 +157,7 @@ export function EmailNotificationsPage() {
       key: 'enabled',
       width: 100,
       render: (enabled: boolean, record: EmailNotificationConfigItem) => (
-        <Switch
-          checked={enabled}
-          onChange={(checked) => handleToggleEnabled(record.key, checked)}
-        />
+        <Switch checked={enabled} onChange={checked => handleToggleEnabled(record.key, checked)} />
       )
     },
     {
@@ -168,24 +167,13 @@ export function EmailNotificationsPage() {
       render: (_: unknown, record: EmailNotificationConfigItem) => (
         <Space>
           <Tooltip title="Modifier le template (sujet et corps de l'email)">
-            <Button
-              type="link"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => openEditModal(record)}
-            >
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
               Modifier
             </Button>
           </Tooltip>
           {(record.subjectOverride || record.bodyHtmlOverride) && (
             <Tooltip title="Revenir au template par défaut">
-              <Button
-                type="link"
-                size="small"
-                danger
-                icon={<RollbackOutlined />}
-                onClick={() => handleReset(record)}
-              >
+              <Button type="link" size="small" danger icon={<RollbackOutlined />} onClick={() => handleReset(record)}>
                 Réinitialiser
               </Button>
             </Tooltip>
@@ -202,17 +190,11 @@ export function EmailNotificationsPage() {
           Notifications email
         </Title>
         <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-          Activez ou désactivez chaque notification et personnalisez le sujet et le contenu des
-          emails envoyés par l'application (maintenance, paiements, etc.).
+          Activez ou désactivez chaque notification et personnalisez le sujet et le contenu des emails envoyés par
+          l'application (maintenance, paiements, etc.).
         </Text>
         <Spin spinning={loading}>
-          <Table
-            rowKey="key"
-            columns={columns}
-            dataSource={items}
-            pagination={false}
-            size="middle"
-          />
+          <Table rowKey="key" columns={columns} dataSource={items} pagination={false} size="middle" />
         </Spin>
       </Card>
 
@@ -238,19 +220,19 @@ export function EmailNotificationsPage() {
                   children: (
                     <div style={{ background: '#fafafa', padding: 12, borderRadius: 8 }}>
                       <div style={{ marginBottom: 12 }}>
-                        <Text type="secondary" style={{ fontSize: 12 }}>Sujet par défaut :</Text>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          Sujet par défaut :
+                        </Text>
                         <div style={{ marginTop: 4, fontFamily: 'monospace', fontSize: 13, wordBreak: 'break-word' }}>
                           {editingItem.defaultSubject || '—'}
                         </div>
                       </div>
                       <div>
-                        <Text type="secondary" style={{ fontSize: 12 }}>Corps HTML par défaut :</Text>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          Corps HTML par défaut :
+                        </Text>
                         <div style={{ marginTop: 4 }}>
-                          <HtmlCodeEditor
-                            readOnly
-                            value={editingItem.defaultBodyHtml || ''}
-                            minHeight={220}
-                          />
+                          <HtmlCodeEditor readOnly value={editingItem.defaultBodyHtml || ''} minHeight={220} />
                         </div>
                       </div>
                       <Button type="dashed" size="small" onClick={fillWithDefaultTemplate} style={{ marginTop: 8 }}>
@@ -262,20 +244,14 @@ export function EmailNotificationsPage() {
               ]}
             />
             <Form form={form} layout="vertical">
-              <Form.Item
-                name="subjectOverride"
-                label="Sujet personnalisé (vide = sujet par défaut)"
-              >
+              <Form.Item name="subjectOverride" label="Sujet personnalisé (vide = sujet par défaut)">
                 <Input placeholder="Ex: Nouveau ticket - {{ticketTitle}}" />
               </Form.Item>
               <Form.Item
                 name="bodyHtmlOverride"
                 label="Corps personnalisé HTML (vide = contenu par défaut). Variables : {{ticketTitle}}, {{agencyName}}, {{leaseNumber}}, etc."
               >
-                <HtmlCodeEditor
-                  placeholder="<p>Bonjour {{tenantName}}, ...</p>"
-                  minHeight={280}
-                />
+                <HtmlCodeEditor placeholder="<p>Bonjour {{tenantName}}, ...</p>" minHeight={280} />
               </Form.Item>
             </Form>
           </>

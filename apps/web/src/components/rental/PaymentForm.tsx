@@ -1,20 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Form,
-  Input,
-  Select,
-  Button,
-  Row,
-  Col,
-  Alert,
-  InputNumber,
-  Space,
-  message,
-} from 'antd';
-import {
-  CreatePaymentRequest,
-  RentalPaymentMethod,
-} from '../../services/rental-service';
+import { App, Form, Input, Select, Button, Row, Col, Alert, InputNumber, Space } from 'antd';
+import { CreatePaymentRequest, RentalPaymentMethod } from '../../services/rental-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 
 interface PaymentFormProps {
@@ -34,8 +20,10 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
   defaultCurrency = 'FCFA',
   onSubmit,
   onCancel,
-  loading = false,
+  loading = false
 }) => {
+  const { message } = App.useApp();
+
   const [form] = Form.useForm();
   const [method, setMethod] = useState<RentalPaymentMethod>(RentalPaymentMethod.CASH);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -46,7 +34,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
     if (defaultAmount !== undefined || defaultCurrency) {
       form.setFieldsValue({
         amount: defaultAmount,
-        currency: defaultCurrency,
+        currency: defaultCurrency
       });
     }
   }, [defaultAmount, defaultCurrency, form]);
@@ -63,7 +51,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
         mmPhone: values.mmPhone || undefined,
         pspName: values.pspName || undefined,
         pspTransactionId: values.pspTransactionId || undefined,
-        pspReference: values.pspReference || undefined,
+        pspReference: values.pspReference || undefined
       };
 
       await onSubmit(submitData);
@@ -75,7 +63,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
           apiErrors[err.field] = err.message;
           fieldErrors.push({
             name: [err.field],
-            errors: [err.message],
+            errors: [err.message]
           });
         });
         setErrors(apiErrors);
@@ -85,7 +73,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
         setErrors({ submit: errorMsg });
         message.error(errorMsg);
       } else {
-        const errorMsg = 'Une erreur est survenue lors de l\'enregistrement du paiement';
+        const errorMsg = "Une erreur est survenue lors de l'enregistrement du paiement";
         setErrors({ submit: errorMsg });
         message.error(errorMsg);
       }
@@ -102,7 +90,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
       initialValues={{
         method: RentalPaymentMethod.CASH,
         amount: defaultAmount,
-        currency: defaultCurrency,
+        currency: defaultCurrency
       }}
     >
       {errors.submit && (
@@ -144,30 +132,29 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
             help={errors.amount}
             rules={[
               { required: true, message: 'Le montant est requis' },
-              { type: 'number', min: 0.01, message: 'Le montant doit être supérieur à 0' },
+              { type: 'number', min: 0.01, message: 'Le montant doit être supérieur à 0' }
             ]}
           >
             <InputNumber
               style={{ width: '100%' }}
               min={0}
               step={1000}
-              formatter={(value) => formatNumberWithSpaces(value?.toString() || '')}
-              parser={((value) => {
-                if (!value) return 0;
-                const parsed = parseFormattedNumber(value);
-                const num = parseFloat(parsed);
-                return isNaN(num) ? 0 : num;
-              }) as (displayValue: string | undefined) => number}
+              formatter={value => formatNumberWithSpaces(value?.toString() || '')}
+              parser={
+                (value => {
+                  if (!value) return 0;
+                  const parsed = parseFormattedNumber(value);
+                  const num = parseFloat(parsed);
+                  return isNaN(num) ? 0 : num;
+                }) as (displayValue: string | undefined) => number
+              }
               placeholder="Ex: 150000"
             />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item
-            label="Devise"
-            name="currency"
-          >
+          <Form.Item label="Devise" name="currency">
             <Select>
               <Select.Option value="FCFA">FCFA</Select.Option>
               <Select.Option value="EUR">EUR</Select.Option>
@@ -185,7 +172,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                 required
                 validateStatus={errors.mmOperator ? 'error' : ''}
                 help={errors.mmOperator}
-                rules={[{ required: true, message: 'L\'opérateur mobile money est requis' }]}
+                rules={[{ required: true, message: "L'opérateur mobile money est requis" }]}
               >
                 <Select placeholder="Sélectionner un opérateur">
                   <Select.Option value="ORANGE">Orange Money</Select.Option>
@@ -206,38 +193,26 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                 help={errors.mmPhone}
                 rules={[{ required: true, message: 'Le numéro de téléphone est requis' }]}
               >
-                <Input
-                  type="tel"
-                  placeholder="+225 XX XX XX XX XX"
-                />
+                <Input type="tel" placeholder="+225 XX XX XX XX XX" />
               </Form.Item>
             </Col>
           </>
         )}
 
         <Col xs={24} md={12}>
-          <Form.Item
-            label="PSP (optionnel)"
-            name="pspName"
-          >
+          <Form.Item label="PSP (optionnel)" name="pspName">
             <Input placeholder="Nom du prestataire de services de paiement" />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item
-            label="ID Transaction PSP (optionnel)"
-            name="pspTransactionId"
-          >
+          <Form.Item label="ID Transaction PSP (optionnel)" name="pspTransactionId">
             <Input placeholder="ID de transaction" />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item
-            label="Référence PSP (optionnel)"
-            name="pspReference"
-          >
+          <Form.Item label="Référence PSP (optionnel)" name="pspReference">
             <Input placeholder="Référence PSP" />
           </Form.Item>
         </Col>
@@ -258,8 +233,3 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
     </Form>
   );
 };
-
-
-
-
-

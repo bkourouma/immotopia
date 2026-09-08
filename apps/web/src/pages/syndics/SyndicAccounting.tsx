@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  App,
   Alert,
   Button,
   Card,
@@ -16,8 +17,7 @@ import {
   Statistic,
   Table,
   Tag,
-  Typography,
-  message,
+  Typography
 } from 'antd';
 import { ArrowLeftOutlined, LockOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -31,15 +31,9 @@ import {
   listAccountingEntries,
   listAccountingJournals,
   listChartOfAccounts,
-  lockAccountingEntry,
+  lockAccountingEntry
 } from '../../services/syndic-service';
-import {
-  AccountingJournal,
-  ChartOfAccount,
-  JournalEntry,
-  SourceType,
-  TrialBalance,
-} from '../../types/syndic-types';
+import { AccountingJournal, ChartOfAccount, JournalEntry, SourceType, TrialBalance } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 
 const { Paragraph, Title } = Typography;
@@ -48,7 +42,7 @@ const sourceTypeOptions: Array<{ value: SourceType; label: string }> = [
   { value: 'MANUAL', label: 'MANUEL' },
   { value: 'CHARGE_PAYMENT', label: 'PAIEMENT CHARGE' },
   { value: 'PENALTY', label: 'PÉNALITÉ' },
-  { value: 'FUND', label: 'FONDS' },
+  { value: 'FUND', label: 'FONDS' }
 ];
 
 const accountTypeLabels: Record<ChartOfAccount['accountType'], string> = {
@@ -56,10 +50,12 @@ const accountTypeLabels: Record<ChartOfAccount['accountType'], string> = {
   LIABILITY: 'Passif',
   EQUITY: 'Capitaux propres',
   INCOME: 'Produit',
-  EXPENSE: 'Charge',
+  EXPENSE: 'Charge'
 };
 
 export const SyndicAccounting: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const navigate = useNavigate();
 
@@ -72,7 +68,7 @@ export const SyndicAccounting: React.FC = () => {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [trialBalance, setTrialBalance] = useState<TrialBalance>({
     items: [],
-    totals: { totalDebit: 0, totalCredit: 0, isBalanced: true },
+    totals: { totalDebit: 0, totalCredit: 0, isBalanced: true }
   });
   const [ledger, setLedger] = useState<any[]>([]);
 
@@ -95,18 +91,18 @@ export const SyndicAccounting: React.FC = () => {
 
   const accountOptions = useMemo(
     () =>
-      accounts.map((account) => ({
+      accounts.map(account => ({
         value: account.id,
-        label: `${account.accountNumber} - ${account.accountName}`,
+        label: `${account.accountNumber} - ${account.accountName}`
       })),
     [accounts]
   );
 
   const journalOptions = useMemo(
     () =>
-      journals.map((journal) => ({
+      journals.map(journal => ({
         value: journal.id,
-        label: `${journal.code} - ${journal.label} (${journal.fiscalYear})`,
+        label: `${journal.code} - ${journal.label} (${journal.fiscalYear})`
       })),
     [journals]
   );
@@ -122,7 +118,7 @@ export const SyndicAccounting: React.FC = () => {
         listAccountingJournals(effectiveTenantId, syndicId),
         listAccountingEntries(effectiveTenantId, syndicId, { page: 1, limit: 100 }),
         getTrialBalance(effectiveTenantId, syndicId),
-        getGeneralLedger(effectiveTenantId, syndicId, { page: 1, limit: 100 }),
+        getGeneralLedger(effectiveTenantId, syndicId, { page: 1, limit: 100 })
       ]);
 
       setAccounts(accountsData);
@@ -148,7 +144,7 @@ export const SyndicAccounting: React.FC = () => {
         accountName: values.accountName,
         accountClass: values.accountClass,
         accountType: values.accountType,
-        isAuxiliary: values.isAuxiliary || false,
+        isAuxiliary: values.isAuxiliary || false
       });
       message.success('Compte comptable créé');
       setOpenAccount(false);
@@ -196,8 +192,8 @@ export const SyndicAccounting: React.FC = () => {
           lotId: line.lotId || undefined,
           debit: Number(line.debit || 0),
           credit: Number(line.credit || 0),
-          label: line.label,
-        })),
+          label: line.label
+        }))
       });
       message.success('Écriture comptable enregistrée');
       setOpenEntry(false);
@@ -229,7 +225,10 @@ export const SyndicAccounting: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
+            >
               Retour à la fiche syndic
             </Button>
             <Title level={2} style={{ margin: 0 }}>
@@ -246,7 +245,12 @@ export const SyndicAccounting: React.FC = () => {
             <Button icon={<PlusOutlined />} onClick={() => setOpenJournal(true)}>
               Nouveau journal
             </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenEntry(true)} disabled={accounts.length < 2 || journals.length < 1}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setOpenEntry(true)}
+              disabled={accounts.length < 2 || journals.length < 1}
+            >
               Nouvelle écriture
             </Button>
           </Space>
@@ -290,12 +294,13 @@ export const SyndicAccounting: React.FC = () => {
                   {
                     title: 'Type',
                     dataIndex: 'accountType',
-                    render: (value: ChartOfAccount['accountType']) => accountTypeLabels[value] || value,
+                    render: (value: ChartOfAccount['accountType']) => accountTypeLabels[value] || value
                   },
                   {
                     title: 'Actif',
-                    render: (_, account) => (account.isActive ? <Tag color="green">OUI</Tag> : <Tag color="red">NON</Tag>),
-                  },
+                    render: (_, account) =>
+                      account.isActive ? <Tag color="green">OUI</Tag> : <Tag color="red">NON</Tag>
+                  }
                 ]}
               />
             </Card>
@@ -313,8 +318,8 @@ export const SyndicAccounting: React.FC = () => {
                   {
                     title: 'Créé le',
                     dataIndex: 'createdAt',
-                    render: (value: string) => dayjs(value).format('DD/MM/YYYY'),
-                  },
+                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
+                  }
                 ]}
               />
             </Card>
@@ -328,17 +333,18 @@ export const SyndicAccounting: React.FC = () => {
                   {
                     title: 'Date',
                     dataIndex: 'entryDate',
-                    render: (value: string) => dayjs(value).format('DD/MM/YYYY'),
+                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
                   },
                   { title: 'Référence', dataIndex: 'reference' },
                   { title: 'Description', dataIndex: 'description' },
                   {
                     title: 'Journal',
-                    render: (_, entry) => entry.journal?.code || entry.journalId,
+                    render: (_, entry) => entry.journal?.code || entry.journalId
                   },
                   {
                     title: 'Statut',
-                    render: (_, entry) => (entry.isLocked ? <Tag color="green">VERROUILLÉE</Tag> : <Tag color="orange">OUVERTE</Tag>),
+                    render: (_, entry) =>
+                      entry.isLocked ? <Tag color="green">VERROUILLÉE</Tag> : <Tag color="orange">OUVERTE</Tag>
                   },
                   {
                     title: 'Action',
@@ -346,27 +352,40 @@ export const SyndicAccounting: React.FC = () => {
                       entry.isLocked ? (
                         <Tag>Verrouillée</Tag>
                       ) : (
-                        <Button size="small" icon={<LockOutlined />} loading={submitting} onClick={() => void handleLockEntry(entry.id)}>
+                        <Button
+                          size="small"
+                          icon={<LockOutlined />}
+                          loading={submitting}
+                          onClick={() => void handleLockEntry(entry.id)}
+                        >
                           Verrouiller
                         </Button>
-                      ),
-                  },
+                      )
+                  }
                 ]}
               />
             </Card>
 
             <Row gutter={[16, 16]}>
               <Col xs={24} xl={12}>
-                    <Card title="Balance de vérification">
+                <Card title="Balance de vérification">
                   <Table
                     rowKey="accountId"
                     dataSource={trialBalance.items}
                     pagination={{ pageSize: 8 }}
                     columns={[
                       { title: 'Compte', render: (_, item) => `${item.accountNumber} - ${item.accountName}` },
-                      { title: 'Débit', dataIndex: 'totalDebit', render: (value: number) => value.toLocaleString('fr-FR') },
-                      { title: 'Crédit', dataIndex: 'totalCredit', render: (value: number) => value.toLocaleString('fr-FR') },
-                      { title: 'Solde', dataIndex: 'balance', render: (value: number) => value.toLocaleString('fr-FR') },
+                      {
+                        title: 'Débit',
+                        dataIndex: 'totalDebit',
+                        render: (value: number) => value.toLocaleString('fr-FR')
+                      },
+                      {
+                        title: 'Crédit',
+                        dataIndex: 'totalCredit',
+                        render: (value: number) => value.toLocaleString('fr-FR')
+                      },
+                      { title: 'Solde', dataIndex: 'balance', render: (value: number) => value.toLocaleString('fr-FR') }
                     ]}
                   />
                 </Card>
@@ -381,8 +400,16 @@ export const SyndicAccounting: React.FC = () => {
                       { title: 'Date', render: (_, line) => dayjs(line.entry?.entryDate).format('DD/MM/YYYY') },
                       { title: 'Compte', render: (_, line) => line.account?.accountNumber || '-' },
                       { title: 'Référence', render: (_, line) => line.entry?.reference || '-' },
-                      { title: 'Débit', dataIndex: 'debit', render: (value: number | string) => Number(value).toLocaleString('fr-FR') },
-                      { title: 'Crédit', dataIndex: 'credit', render: (value: number | string) => Number(value).toLocaleString('fr-FR') },
+                      {
+                        title: 'Débit',
+                        dataIndex: 'debit',
+                        render: (value: number | string) => Number(value).toLocaleString('fr-FR')
+                      },
+                      {
+                        title: 'Crédit',
+                        dataIndex: 'credit',
+                        render: (value: number | string) => Number(value).toLocaleString('fr-FR')
+                      }
                     ]}
                   />
                 </Card>
@@ -401,10 +428,18 @@ export const SyndicAccounting: React.FC = () => {
         cancelText="Annuler"
         confirmLoading={submitting}
       >
-        <Form form={accountForm} layout="vertical" initialValues={{ accountType: 'ASSET', accountClass: 1, isAuxiliary: false }}>
+        <Form
+          form={accountForm}
+          layout="vertical"
+          initialValues={{ accountType: 'ASSET', accountClass: 1, isAuxiliary: false }}
+        >
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item label="Numéro compte" name="accountNumber" rules={[{ required: true, message: 'Numéro obligatoire' }]}>
+              <Form.Item
+                label="Numéro compte"
+                name="accountNumber"
+                rules={[{ required: true, message: 'Numéro obligatoire' }]}
+              >
                 <Input />
               </Form.Item>
             </Col>
@@ -414,7 +449,11 @@ export const SyndicAccounting: React.FC = () => {
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item label="Intitulé compte" name="accountName" rules={[{ required: true, message: 'Intitulé obligatoire' }]}>
+          <Form.Item
+            label="Intitulé compte"
+            name="accountName"
+            rules={[{ required: true, message: 'Intitulé obligatoire' }]}
+          >
             <Input />
           </Form.Item>
           <Form.Item label="Type" name="accountType" rules={[{ required: true, message: 'Type obligatoire' }]}>
@@ -424,7 +463,7 @@ export const SyndicAccounting: React.FC = () => {
                 { value: 'LIABILITY', label: 'PASSIF' },
                 { value: 'EQUITY', label: 'CAPITAUX PROPRES' },
                 { value: 'INCOME', label: 'PRODUIT' },
-                { value: 'EXPENSE', label: 'CHARGE' },
+                { value: 'EXPENSE', label: 'CHARGE' }
               ]}
             />
           </Form.Item>
@@ -440,7 +479,11 @@ export const SyndicAccounting: React.FC = () => {
         cancelText="Annuler"
         confirmLoading={submitting}
       >
-        <Form form={journalForm} layout="vertical" initialValues={{ journalType: 'GENERAL', fiscalYear: new Date().getFullYear() }}>
+        <Form
+          form={journalForm}
+          layout="vertical"
+          initialValues={{ journalType: 'GENERAL', fiscalYear: new Date().getFullYear() }}
+        >
           <Row gutter={12}>
             <Col span={12}>
               <Form.Item label="Code" name="code" rules={[{ required: true, message: 'Code obligatoire' }]}>
@@ -448,7 +491,11 @@ export const SyndicAccounting: React.FC = () => {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="Exercice" name="fiscalYear" rules={[{ required: true, message: 'Exercice obligatoire' }]}>
+              <Form.Item
+                label="Exercice"
+                name="fiscalYear"
+                rules={[{ required: true, message: 'Exercice obligatoire' }]}
+              >
                 <InputNumber min={2020} max={2100} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
@@ -462,7 +509,7 @@ export const SyndicAccounting: React.FC = () => {
                 { value: 'GENERAL', label: 'GENERAL' },
                 { value: 'BANK', label: 'BANQUE' },
                 { value: 'CASH', label: 'CAISSE' },
-                { value: 'CHARGES', label: 'CHARGES' },
+                { value: 'CHARGES', label: 'CHARGES' }
               ]}
             />
           </Form.Item>
@@ -486,8 +533,8 @@ export const SyndicAccounting: React.FC = () => {
             sourceType: 'MANUAL',
             lines: [
               { debit: undefined, credit: undefined, label: '' },
-              { debit: undefined, credit: undefined, label: '' },
-            ],
+              { debit: undefined, credit: undefined, label: '' }
+            ]
           }}
         >
           <Row gutter={12}>
@@ -497,14 +544,22 @@ export const SyndicAccounting: React.FC = () => {
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item label="Date écriture" name="entryDate" rules={[{ required: true, message: 'Date obligatoire' }]}>
+              <Form.Item
+                label="Date écriture"
+                name="entryDate"
+                rules={[{ required: true, message: 'Date obligatoire' }]}
+              >
                 <Input type="datetime-local" />
               </Form.Item>
             </Col>
           </Row>
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item label="Référence" name="reference" rules={[{ required: true, message: 'Référence obligatoire' }]}>
+              <Form.Item
+                label="Référence"
+                name="reference"
+                rules={[{ required: true, message: 'Référence obligatoire' }]}
+              >
                 <Input />
               </Form.Item>
             </Col>
@@ -514,7 +569,11 @@ export const SyndicAccounting: React.FC = () => {
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item label="Description" name="description" rules={[{ required: true, message: 'Description obligatoire' }]}>
+          <Form.Item
+            label="Description"
+            name="description"
+            rules={[{ required: true, message: 'Description obligatoire' }]}
+          >
             <Input />
           </Form.Item>
 
@@ -571,4 +630,3 @@ export const SyndicAccounting: React.FC = () => {
     </DashboardLayout>
   );
 };
-

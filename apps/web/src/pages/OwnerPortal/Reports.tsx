@@ -1,25 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  Typography,
-  Form,
-  DatePicker,
-  Select,
-  Button,
-  Space,
-  Divider,
-  message,
-  Row,
-  Col,
-  Spin,
-  Alert
-} from 'antd';
-import {
-  FilePdfOutlined,
-  FileExcelOutlined,
-  FileTextOutlined,
-  DownloadOutlined
-} from '@ant-design/icons';
+import { App, Card, Typography, Form, DatePicker, Select, Button, Space, Divider, Row, Col, Spin, Alert } from 'antd';
+import { FilePdfOutlined, FileExcelOutlined, FileTextOutlined, DownloadOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import dayjs from 'dayjs';
 
@@ -28,6 +9,8 @@ const { Option } = Select;
 const { RangePicker } = DatePicker;
 
 export default function Reports() {
+  const { message } = App.useApp();
+
   const [revenueForm] = Form.useForm();
   const [occupancyForm] = Form.useForm();
   const [exportForm] = Form.useForm();
@@ -42,10 +25,12 @@ export default function Reports() {
     try {
       const response = await ownerPortalService.getProperties();
       if (response.data?.success && response.data?.data?.properties) {
-        setProperties(response.data.data.properties.map((p: any) => ({
-          id: p.id,
-          address: p.address
-        })));
+        setProperties(
+          response.data.data.properties.map((p: any) => ({
+            id: p.id,
+            address: p.address
+          }))
+        );
       }
     } catch (err) {
       console.error('Error loading properties:', err);
@@ -106,7 +91,7 @@ export default function Reports() {
       link.remove();
       window.URL.revokeObjectURL(url);
 
-      message.success('Rapport d\'occupation généré avec succès');
+      message.success("Rapport d'occupation généré avec succès");
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Erreur lors de la génération du rapport');
     } finally {
@@ -149,7 +134,7 @@ export default function Reports() {
 
       message.success('Export des données réussi');
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors de l\'export des données');
+      message.error(err.response?.data?.message || "Erreur lors de l'export des données");
     } finally {
       setLoading(false);
     }
@@ -172,11 +157,7 @@ export default function Reports() {
           </Space>
         }
       >
-        <Form
-          form={revenueForm}
-          layout="vertical"
-          onFinish={handleRevenueReport}
-        >
+        <Form form={revenueForm} layout="vertical" onFinish={handleRevenueReport}>
           <Row gutter={16}>
             <Col xs={24} sm={12}>
               <Form.Item
@@ -188,13 +169,12 @@ export default function Reports() {
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item
-                name="propertyId"
-                label="Propriété (optionnel)"
-              >
+              <Form.Item name="propertyId" label="Propriété (optionnel)">
                 <Select placeholder="Toutes les propriétés" allowClear>
                   {properties.map(prop => (
-                    <Option key={prop.id} value={prop.id}>{prop.address}</Option>
+                    <Option key={prop.id} value={prop.id}>
+                      {prop.address}
+                    </Option>
                   ))}
                 </Select>
               </Form.Item>
@@ -230,12 +210,7 @@ export default function Reports() {
             </Col>
           </Row>
           <Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              icon={<DownloadOutlined />}
-              loading={loading}
-            >
+            <Button type="primary" htmlType="submit" icon={<DownloadOutlined />} loading={loading}>
               Générer le rapport
             </Button>
           </Form.Item>
@@ -251,11 +226,7 @@ export default function Reports() {
           </Space>
         }
       >
-        <Form
-          form={occupancyForm}
-          layout="vertical"
-          onFinish={handleOccupancyReport}
-        >
+        <Form form={occupancyForm} layout="vertical" onFinish={handleOccupancyReport}>
           <Row gutter={16}>
             <Col xs={24} sm={12}>
               <Form.Item
@@ -298,12 +269,7 @@ export default function Reports() {
             </Col>
           </Row>
           <Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              icon={<DownloadOutlined />}
-              loading={loading}
-            >
+            <Button type="primary" htmlType="submit" icon={<DownloadOutlined />} loading={loading}>
               Générer le rapport
             </Button>
           </Form.Item>
@@ -319,11 +285,7 @@ export default function Reports() {
           </Space>
         }
       >
-        <Form
-          form={exportForm}
-          layout="vertical"
-          onFinish={handleExportData}
-        >
+        <Form form={exportForm} layout="vertical" onFinish={handleExportData}>
           <Row gutter={16}>
             <Col xs={24} sm={12}>
               <Form.Item
@@ -362,33 +324,24 @@ export default function Reports() {
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item
-                name="dateRange"
-                label="Période (optionnel)"
-              >
+              <Form.Item name="dateRange" label="Période (optionnel)">
                 <RangePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item
-                name="propertyId"
-                label="Propriété (optionnel)"
-              >
+              <Form.Item name="propertyId" label="Propriété (optionnel)">
                 <Select placeholder="Toutes les propriétés" allowClear>
                   {properties.map(prop => (
-                    <Option key={prop.id} value={prop.id}>{prop.address}</Option>
+                    <Option key={prop.id} value={prop.id}>
+                      {prop.address}
+                    </Option>
                   ))}
                 </Select>
               </Form.Item>
             </Col>
           </Row>
           <Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              icon={<DownloadOutlined />}
-              loading={loading}
-            >
+            <Button type="primary" htmlType="submit" icon={<DownloadOutlined />} loading={loading}>
               Exporter les données
             </Button>
           </Form.Item>

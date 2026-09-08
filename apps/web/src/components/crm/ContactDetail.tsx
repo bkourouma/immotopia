@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
+  App,
   Card,
   Button,
   Space,
@@ -14,9 +15,8 @@ import {
   Col,
   Descriptions,
   Popconfirm,
-  message,
   Modal,
-  Divider,
+  Divider
 } from 'antd';
 import {
   UserOutlined,
@@ -32,9 +32,20 @@ import {
   CheckCircleOutlined,
   CloseOutlined,
   MessageOutlined,
-  ArrowLeftOutlined,
+  ArrowLeftOutlined
 } from '@ant-design/icons';
-import { getContact, convertContact, removeContactRole, updateContactRoles, CrmContact, CrmContactDetail, createDeal, CreateCrmDealRequest, createActivity, CreateCrmActivityRequest } from '../../services/crm-service';
+import {
+  getContact,
+  convertContact,
+  removeContactRole,
+  updateContactRoles,
+  CrmContact,
+  CrmContactDetail,
+  createDeal,
+  CreateCrmDealRequest,
+  createActivity,
+  CreateCrmActivityRequest
+} from '../../services/crm-service';
 import { ActivityTimeline } from './ActivityTimeline';
 import { ConvertContactDialog } from './ConvertContactDialog';
 import { ManageRolesDialog } from './ManageRolesDialog';
@@ -50,6 +61,8 @@ interface ContactDetailProps {
 }
 
 export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactId }) => {
+  const { message } = App.useApp();
+
   const navigate = useNavigate();
   const [contact, setContact] = useState<CrmContactDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,7 +165,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
     const statusConfig: Record<string, { label: string; color: string }> = {
       LEAD: { label: 'Prospect', color: 'blue' },
       ACTIVE_CLIENT: { label: 'Client actif', color: 'green' },
-      ARCHIVED: { label: 'Archivé', color: 'default' },
+      ARCHIVED: { label: 'Archivé', color: 'default' }
     };
     const config = statusConfig[status] || statusConfig.ARCHIVED;
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -166,7 +179,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
       VISIT: 'Visite',
       NEGOTIATION: 'Négociation',
       WON: 'Gagné',
-      LOST: 'Perdu',
+      LOST: 'Perdu'
     };
     return labels[stage] || stage;
   };
@@ -200,16 +213,14 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
 
   if (!contact) {
     return (
-      <Empty
-        description="Contact non trouvé"
-        image={<UserOutlined style={{ fontSize: 64, color: '#d9d9d9' }} />}
-      />
+      <Empty description="Contact non trouvé" image={<UserOutlined style={{ fontSize: 64, color: '#d9d9d9' }} />} />
     );
   }
 
-  const displayName = contact.firstName || contact.lastName
-    ? `${contact.firstName || ''} ${contact.lastName || ''}`.trim()
-    : contact.email || 'Contact sans nom';
+  const displayName =
+    contact.firstName || contact.lastName
+      ? `${contact.firstName || ''} ${contact.lastName || ''}`.trim()
+      : contact.email || 'Contact sans nom';
 
   const hasActiveRoles = contact.roles && contact.roles.some((r: any) => r.active);
   const canConvert = contact.status === 'LEAD' || (contact.status === 'ACTIVE_CLIENT' && !hasActiveRoles);
@@ -219,13 +230,18 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
       {/* Header */}
       <Card>
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start',
+              flexWrap: 'wrap',
+              gap: 16
+            }}
+          >
             <div style={{ flex: 1, minWidth: 0 }}>
               <Space>
-                <Button
-                  icon={<ArrowLeftOutlined />}
-                  onClick={() => navigate(`/tenant/${tenantId}/crm/contacts`)}
-                >
+                <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${tenantId}/crm/contacts`)}>
                   Retour
                 </Button>
                 <div>
@@ -242,11 +258,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
               </Space>
             </div>
             <Space>
-              {canConvert && (
-                <Button onClick={() => setShowConvertDialog(true)}>
-                  Convertir
-                </Button>
-              )}
+              {canConvert && <Button onClick={() => setShowConvertDialog(true)}>Convertir</Button>}
               <Button
                 type="primary"
                 icon={<EditOutlined />}
@@ -260,22 +272,52 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
           <Divider style={{ margin: '16px 0' }} />
 
           <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-            <Descriptions.Item label={<Space><MailOutlined /> Email</Space>}>
+            <Descriptions.Item
+              label={
+                <Space>
+                  <MailOutlined /> Email
+                </Space>
+              }
+            >
               {contact.email || <Text type="secondary">Aucun email</Text>}
             </Descriptions.Item>
-            <Descriptions.Item label={<Space><PhoneOutlined /> Téléphone</Space>}>
+            <Descriptions.Item
+              label={
+                <Space>
+                  <PhoneOutlined /> Téléphone
+                </Space>
+              }
+            >
               {contact.phonePrimary || contact.phone || <Text type="secondary">Aucun téléphone</Text>}
             </Descriptions.Item>
-            <Descriptions.Item label={<Space><MessageOutlined /> WhatsApp</Space>}>
+            <Descriptions.Item
+              label={
+                <Space>
+                  <MessageOutlined /> WhatsApp
+                </Space>
+              }
+            >
               {contact.whatsappNumber || <Text type="secondary">Aucun numéro WhatsApp</Text>}
             </Descriptions.Item>
             {contact.source && (
-              <Descriptions.Item label={<Space><TagOutlined /> Source</Space>}>
+              <Descriptions.Item
+                label={
+                  <Space>
+                    <TagOutlined /> Source
+                  </Space>
+                }
+              >
                 {contact.source}
               </Descriptions.Item>
             )}
             {contact.lastInteractionAt && (
-              <Descriptions.Item label={<Space><CalendarOutlined /> Dernière interaction</Space>}>
+              <Descriptions.Item
+                label={
+                  <Space>
+                    <CalendarOutlined /> Dernière interaction
+                  </Space>
+                }
+              >
                 {new Date(contact.lastInteractionAt).toLocaleDateString('fr-FR')}
               </Descriptions.Item>
             )}
@@ -323,11 +365,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
                 </Space>
               }
               extra={
-                <Button
-                  type="link"
-                  icon={<PlusOutlined />}
-                  onClick={() => setShowManageRolesDialog(true)}
-                >
+                <Button type="link" icon={<PlusOutlined />} onClick={() => setShowManageRolesDialog(true)}>
                   Ajouter
                 </Button>
               }
@@ -337,11 +375,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
                   {contact.roles
                     .filter((role: any) => role.active)
                     .map((role: any) => (
-                      <Card
-                        key={role.id}
-                        size="small"
-                        style={{ border: '1px solid #f0f0f0' }}
-                      >
+                      <Card key={role.id} size="small" style={{ border: '1px solid #f0f0f0' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <Space>
                             <Text strong>{role.role}</Text>
@@ -371,19 +405,11 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
                       </Card>
                     ))}
                   {contact.roles.filter((role: any) => role.active).length === 0 && (
-                    <Empty
-                      description="Aucun rôle actif"
-                      image={false}
-                      style={{ padding: '24px 0' }}
-                    />
+                    <Empty description="Aucun rôle actif" image={false} style={{ padding: '24px 0' }} />
                   )}
                 </Space>
               ) : (
-                <Empty
-                  description="Aucun rôle assigné"
-                  image={false}
-                  style={{ padding: '24px 0' }}
-                />
+                <Empty description="Aucun rôle assigné" image={false} style={{ padding: '24px 0' }} />
               )}
             </Card>
 
@@ -396,11 +422,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
                 </Space>
               }
               extra={
-                <Button
-                  type="link"
-                  icon={<PlusOutlined />}
-                  onClick={() => setShowTagManager(true)}
-                >
+                <Button type="link" icon={<PlusOutlined />} onClick={() => setShowTagManager(true)}>
                   Gérer
                 </Button>
               }
@@ -408,26 +430,14 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
               {contact.tags && contact.tags.length > 0 ? (
                 <Space wrap>
                   {contact.tags.map((tag: any) => (
-                    <Tag
-                      key={tag.id}
-                      color={tag.color || '#1890ff'}
-                      icon={<TagOutlined />}
-                    >
+                    <Tag key={tag.id} color={tag.color || '#1890ff'} icon={<TagOutlined />}>
                       {tag.name}
                     </Tag>
                   ))}
                 </Space>
               ) : (
-                <Empty
-                  description="Aucun groupe"
-                  image={false}
-                  style={{ padding: '24px 0' }}
-                >
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => setShowTagManager(true)}
-                  >
+                <Empty description="Aucun groupe" image={false} style={{ padding: '24px 0' }}>
+                  <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowTagManager(true)}>
                     Ajouter
                   </Button>
                 </Empty>
@@ -446,11 +456,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
               </Space>
             }
             extra={
-              <Button
-                type="link"
-                icon={<PlusOutlined />}
-                onClick={() => setShowDealDialog(true)}
-              >
+              <Button type="link" icon={<PlusOutlined />} onClick={() => setShowDealDialog(true)}>
                 Ajouter
               </Button>
             }
@@ -471,25 +477,15 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
                         <Text type="secondary">- {getDealStageLabel(deal.stage)}</Text>
                       </Space>
                       {deal.budgetMax && (
-                        <Text strong>
-                          {deal.budgetMax.toLocaleString('fr-FR', { style: 'decimal' })} FCFA
-                        </Text>
+                        <Text strong>{deal.budgetMax.toLocaleString('fr-FR', { style: 'decimal' })} FCFA</Text>
                       )}
                     </div>
                   </Card>
                 ))}
               </Space>
             ) : (
-              <Empty
-                description="Aucune affaire associée"
-                image={false}
-                style={{ padding: '24px 0' }}
-              >
-                <Button
-                  type="primary"
-                  icon={<PlusOutlined />}
-                  onClick={() => setShowDealDialog(true)}
-                >
+              <Empty description="Aucune affaire associée" image={false} style={{ padding: '24px 0' }}>
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowDealDialog(true)}>
                   Créer
                 </Button>
               </Empty>
@@ -507,11 +503,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
           </Space>
         }
         extra={
-          <Button
-            type="link"
-            icon={<PlusOutlined />}
-            onClick={() => setShowActivityForm(true)}
-          >
+          <Button type="link" icon={<PlusOutlined />} onClick={() => setShowActivityForm(true)}>
             Ajouter
           </Button>
         }
@@ -519,16 +511,8 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
         {contact.recentActivities && contact.recentActivities.length > 0 ? (
           <ActivityTimeline activities={contact.recentActivities} tenantId={tenantId} contactId={contactId} />
         ) : (
-          <Empty
-            description="Aucune activité récente"
-            image={false}
-            style={{ padding: '24px 0' }}
-          >
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setShowActivityForm(true)}
-            >
+          <Empty description="Aucune activité récente" image={false} style={{ padding: '24px 0' }}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowActivityForm(true)}>
               Créer
             </Button>
           </Empty>

@@ -1,18 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  Typography,
-  Spin,
-  Alert,
-  Empty,
-  List,
-  Button,
-  Space,
-  Select,
-  Tag,
-  Divider,
-  message
-} from 'antd';
+import { App, Card, Typography, Spin, Alert, Empty, List, Button, Space, Select, Tag, Divider } from 'antd';
 import {
   FolderOutlined,
   DownloadOutlined,
@@ -42,6 +29,8 @@ interface DocumentsData {
 }
 
 export default function TenantDocuments() {
+  const { message } = App.useApp();
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DocumentsData | null>(null);
@@ -77,12 +66,12 @@ export default function TenantDocuments() {
     try {
       setDownloading(documentId);
       const response = await tenantPortalService.downloadDocument(documentId);
-      
+
       // Create blob from response
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      
+
       // Get filename from Content-Disposition header or use default
       const contentDisposition = response.headers['content-disposition'];
       let fileName = `document-${documentId}.pdf`;
@@ -92,13 +81,13 @@ export default function TenantDocuments() {
           fileName = fileNameMatch[1];
         }
       }
-      
+
       link.setAttribute('download', fileName);
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      
+
       message.success('Document téléchargé avec succès');
     } catch (err: any) {
       message.error(err.response?.data?.message || 'Erreur lors du téléchargement');
@@ -136,15 +125,11 @@ export default function TenantDocuments() {
   };
 
   // Get all unique document types for filter
-  const allTypes = data
-    ? Array.from(new Set(data.documents.map((doc) => doc.type)))
-    : [];
+  const allTypes = data ? Array.from(new Set(data.documents.map(doc => doc.type))) : [];
 
   // Filter grouped documents by type filter
   const filteredGroupedByType = data
-    ? Object.entries(data.groupedByType).filter(([type]) =>
-        typeFilter ? type === typeFilter : true
-      )
+    ? Object.entries(data.groupedByType).filter(([type]) => (typeFilter ? type === typeFilter : true))
     : [];
 
   if (loading) {
@@ -179,19 +164,15 @@ export default function TenantDocuments() {
             allowClear
             style={{ width: 250 }}
             value={typeFilter}
-            onChange={(value) => setTypeFilter(value)}
+            onChange={value => setTypeFilter(value)}
           >
-            {allTypes.map((type) => (
+            {allTypes.map(type => (
               <Select.Option key={type} value={type}>
                 {getDocumentTypeLabel(type)}
               </Select.Option>
             ))}
           </Select>
-          {typeFilter && (
-            <Button onClick={() => setTypeFilter(undefined)}>
-              Réinitialiser
-            </Button>
-          )}
+          {typeFilter && <Button onClick={() => setTypeFilter(undefined)}>Réinitialiser</Button>}
         </Space>
       </Card>
 
@@ -211,7 +192,7 @@ export default function TenantDocuments() {
             >
               <List
                 dataSource={documents}
-                renderItem={(doc) => (
+                renderItem={doc => (
                   <List.Item
                     actions={[
                       <Button
@@ -230,9 +211,7 @@ export default function TenantDocuments() {
                       avatar={<FileTextOutlined style={{ fontSize: 24 }} />}
                       title={
                         <Space>
-                          <Text strong>
-                            {doc.title || doc.document_number || `Document ${doc.id.substring(0, 8)}`}
-                          </Text>
+                          <Text strong>{doc.title || doc.document_number || `Document ${doc.id.substring(0, 8)}`}</Text>
                           {getStatusTag(doc.status)}
                         </Space>
                       }
@@ -241,9 +220,7 @@ export default function TenantDocuments() {
                           {doc.issued_at && (
                             <>
                               <CalendarOutlined />
-                              <Text type="secondary">
-                                Émis le {formatDate(doc.issued_at)}
-                              </Text>
+                              <Text type="secondary">Émis le {formatDate(doc.issued_at)}</Text>
                             </>
                           )}
                         </Space>

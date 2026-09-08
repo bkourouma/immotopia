@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Modal, Upload, message } from 'antd';
+import { App, Modal, Upload } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
 import type { ImportResult } from '../../services/newsletter.service';
 
@@ -12,6 +12,8 @@ interface ImportCsvModalProps {
 }
 
 export function ImportCsvModal({ open, onClose, onImport }: ImportCsvModalProps) {
+  const { message } = App.useApp();
+
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -37,7 +39,7 @@ export function ImportCsvModal({ open, onClose, onImport }: ImportCsvModalProps)
       }
       setFile(null);
     } catch (e) {
-      message.error((e as Error).message || 'Erreur lors de l\'import.');
+      message.error((e as Error).message || "Erreur lors de l'import.");
     } finally {
       setLoading(false);
     }
@@ -65,7 +67,7 @@ export function ImportCsvModal({ open, onClose, onImport }: ImportCsvModalProps)
       <Dragger
         accept=".csv"
         maxCount={1}
-        beforeUpload={(f) => {
+        beforeUpload={f => {
           setFile(f);
           return false;
         }}
@@ -79,7 +81,8 @@ export function ImportCsvModal({ open, onClose, onImport }: ImportCsvModalProps)
       </Dragger>
       {result && (
         <div style={{ marginTop: 16, padding: 12, background: '#f5f5f5', borderRadius: 8 }}>
-          <strong>Résultat :</strong> {result.accepted} accepté(s), {result.rejected} rejeté(s), {result.duplicateCount} doublon(s)
+          <strong>Résultat :</strong> {result.accepted} accepté(s), {result.rejected} rejeté(s), {result.duplicateCount}{' '}
+          doublon(s)
           {result.errors.length > 0 && (
             <ul style={{ marginTop: 8, marginBottom: 0 }}>
               {result.errors.slice(0, 5).map((e, i) => (

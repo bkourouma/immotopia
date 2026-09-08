@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, Button, message, List, Typography } from 'antd';
+import { App, Upload, Button, List, Typography } from 'antd';
 import { UploadOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { UploadFile, UploadProps, RcFile } from 'antd/es/upload/interface';
 
@@ -18,16 +18,16 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
   maxSize = 5,
   acceptedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf']
 }) => {
+  const { message } = App.useApp();
+
   const [fileList, setFileList] = useState<File[]>([]);
 
   const beforeUpload = (file: RcFile, fileListParam: RcFile[]) => {
     // Check for duplicate files (by name, size, and lastModified timestamp)
     const isDuplicate = fileList.some(
-      (f) => f.name === file.name && 
-             f.size === file.size && 
-             f.lastModified === file.lastModified
+      f => f.name === file.name && f.size === file.size && f.lastModified === file.lastModified
     );
-    
+
     if (isDuplicate) {
       message.warning(`Le fichier "${file.name}" est déjà sélectionné`);
       return Upload.LIST_IGNORE;
@@ -56,13 +56,13 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     setFileList(newFiles);
     onFilesChange?.(newFiles);
     message.success(`Fichier "${file.name}" ajouté`);
-    
+
     // Return false to prevent auto upload
     return false;
   };
 
   const handleRemove = (file: File) => {
-    const newFiles = fileList.filter((f) => f !== file);
+    const newFiles = fileList.filter(f => f !== file);
     setFileList(newFiles);
     onFilesChange?.(newFiles);
   };
@@ -89,16 +89,10 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         <List
           style={{ marginTop: 16 }}
           dataSource={fileList}
-          renderItem={(file) => (
+          renderItem={file => (
             <List.Item
               actions={[
-                <Button
-                  key="remove"
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={() => handleRemove(file)}
-                >
+                <Button key="remove" type="text" danger icon={<DeleteOutlined />} onClick={() => handleRemove(file)}>
                   Supprimer
                 </Button>
               ]}

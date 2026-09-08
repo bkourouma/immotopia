@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  App,
   Form,
   Input,
   Select,
@@ -12,9 +13,8 @@ import {
   Typography,
   Alert,
   Spin,
-  message,
   Row,
-  Col,
+  Col
 } from 'antd';
 import {
   CalendarOutlined,
@@ -25,7 +25,7 @@ import {
   ProjectOutlined,
   AimOutlined,
   TeamOutlined,
-  CheckCircleOutlined,
+  CheckCircleOutlined
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { PropertyVisitType, PropertyVisitGoal } from '../../types/property-types';
@@ -52,8 +52,10 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
   tenantId,
   onVisitScheduled,
   initialContactId,
-  initialDealId,
+  initialDealId
 }) => {
+  const { message } = App.useApp();
+
   const navigate = useNavigate();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
@@ -119,7 +121,7 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
     { value: PropertyVisitGoal.CONTRACT_SIGNING, label: 'Signature du contrat' },
     { value: PropertyVisitGoal.FOLLOW_UP, label: 'Suivi' },
     { value: PropertyVisitGoal.NEGOTIATION, label: 'Négociation' },
-    { value: PropertyVisitGoal.OTHER, label: 'Autre' },
+    { value: PropertyVisitGoal.OTHER, label: 'Autre' }
   ];
 
   const handleSubmit = async (values: any) => {
@@ -130,7 +132,7 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
       const scheduledTime = values.scheduledTime as Dayjs;
 
       if (!scheduledDate || !scheduledTime) {
-        message.error('La date et l\'heure sont requises');
+        message.error("La date et l'heure sont requises");
         setLoading(false);
         return;
       }
@@ -143,7 +145,7 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
         .millisecond(0);
 
       if (scheduledDateTime.isBefore(dayjs())) {
-        message.error('La date et l\'heure doivent être dans le futur');
+        message.error("La date et l'heure doivent être dans le futur");
         setLoading(false);
         return;
       }
@@ -157,8 +159,9 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
         duration: values.duration ? parseInt(values.duration, 10) : undefined,
         location: values.location || undefined,
         assignedToUserId: values.assignedToUserId || undefined,
-        collaboratorIds: values.collaboratorIds && values.collaboratorIds.length > 0 ? values.collaboratorIds : undefined,
-        notes: values.notes || undefined,
+        collaboratorIds:
+          values.collaboratorIds && values.collaboratorIds.length > 0 ? values.collaboratorIds : undefined,
+        notes: values.notes || undefined
       });
 
       // Show success message
@@ -191,7 +194,7 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
       onFinish={handleSubmit}
       initialValues={{
         duration: '60',
-        collaboratorIds: [],
+        collaboratorIds: []
       }}
     >
       {/* Success Message */}
@@ -242,12 +245,8 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
           }
           name="dealId"
         >
-          <Select
-            placeholder="Aucune affaire"
-            loading={loadingDeals}
-            allowClear
-          >
-            {deals.map((deal) => (
+          <Select placeholder="Aucune affaire" loading={loadingDeals} allowClear>
+            {deals.map(deal => (
               <Select.Option key={deal.id} value={deal.id}>
                 {getDealTypeLabel(deal.type)} - {deal.stage}
               </Select.Option>
@@ -267,7 +266,7 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
         name="goal"
       >
         <Select placeholder="Sélectionner un objectif" allowClear>
-          {goalOptions.map((option) => (
+          {goalOptions.map(option => (
             <Select.Option key={option.value} value={option.value}>
               {option.label}
             </Select.Option>
@@ -290,7 +289,7 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
           >
             <DatePicker
               style={{ width: '100%' }}
-              disabledDate={(current) => current && current < dayjs().startOf('day')}
+              disabledDate={current => current && current < dayjs().startOf('day')}
             />
           </Form.Item>
         </Col>
@@ -303,27 +302,16 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
               </Space>
             }
             name="scheduledTime"
-            rules={[{ required: true, message: 'L\'heure est requise' }]}
+            rules={[{ required: true, message: "L'heure est requise" }]}
           >
-            <TimePicker
-              style={{ width: '100%' }}
-              format="HH:mm"
-            />
+            <TimePicker style={{ width: '100%' }} format="HH:mm" />
           </Form.Item>
         </Col>
       </Row>
 
       {/* Duration */}
-      <Form.Item
-        label="Durée (minutes)"
-        name="duration"
-      >
-        <Input
-          type="number"
-          min={15}
-          step={15}
-          placeholder="60"
-        />
+      <Form.Item label="Durée (minutes)" name="duration">
+        <Input type="number" min={15} step={15} placeholder="60" />
       </Form.Item>
 
       {/* Location */}
@@ -336,27 +324,26 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
         }
         name="location"
       >
-        <Input
-          placeholder="Adresse de la propriété par défaut"
-        />
+        <Input placeholder="Adresse de la propriété par défaut" />
       </Form.Item>
 
       {/* Assigned To */}
-      <Form.Item
-        label="Assigné à (optionnel)"
-        name="assignedToUserId"
-      >
-          <Select
-            placeholder="Sélectionner un collaborateur"
-            allowClear
-            showSearch
-            filterOption={(input, option) => {
-              const label = String(option?.label || option?.children || '');
-              return label.toLowerCase().includes(input.toLowerCase());
-            }}
-          >
-          {members.map((member) => (
-            <Select.Option key={member.user.id} value={member.user.id} label={member.user.fullName || member.user.email}>
+      <Form.Item label="Assigné à (optionnel)" name="assignedToUserId">
+        <Select
+          placeholder="Sélectionner un collaborateur"
+          allowClear
+          showSearch
+          filterOption={(input, option) => {
+            const label = String(option?.label || option?.children || '');
+            return label.toLowerCase().includes(input.toLowerCase());
+          }}
+        >
+          {members.map(member => (
+            <Select.Option
+              key={member.user.id}
+              value={member.user.id}
+              label={member.user.fullName || member.user.email}
+            >
               {member.user.fullName || member.user.email}
             </Select.Option>
           ))}
@@ -384,14 +371,14 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
           <Text type="secondary">Aucun collaborateur disponible</Text>
         ) : (
           <Checkbox.Group style={{ width: '100%' }}>
-            <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: 4, padding: 8 }}>
-              {members.map((member) => (
+            <div
+              style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: 4, padding: 8 }}
+            >
+              {members.map(member => (
                 <div key={member.user.id} style={{ padding: '4px 0' }}>
                   <Checkbox value={member.user.id}>
                     <div>
-                      <div style={{ fontWeight: 500 }}>
-                        {member.user.fullName || member.user.email}
-                      </div>
+                      <div style={{ fontWeight: 500 }}>{member.user.fullName || member.user.email}</div>
                       {member.user.fullName && (
                         <Text type="secondary" style={{ fontSize: 12 }}>
                           {member.user.email}
@@ -416,21 +403,12 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
         }
         name="notes"
       >
-        <TextArea
-          rows={3}
-          placeholder="Notes supplémentaires sur la visite..."
-        />
+        <TextArea rows={3} placeholder="Notes supplémentaires sur la visite..." />
       </Form.Item>
 
       {/* Submit */}
       <Form.Item>
-        <Button
-          type="primary"
-          htmlType="submit"
-          loading={loading}
-          icon={<CalendarOutlined />}
-          block
-        >
+        <Button type="primary" htmlType="submit" loading={loading} icon={<CalendarOutlined />} block>
           {loading ? 'Planification...' : 'Planifier la visite'}
         </Button>
       </Form.Item>

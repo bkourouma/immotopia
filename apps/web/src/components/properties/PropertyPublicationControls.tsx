@@ -1,19 +1,10 @@
 import React, { useState } from 'react';
-import {
-  Card,
-  Button,
-  Space,
-  Typography,
-  Alert,
-  Tag,
-  Popconfirm,
-  message,
-} from 'antd';
+import { App, Card, Button, Space, Typography, Alert, Tag, Popconfirm } from 'antd';
 import {
   GlobalOutlined,
   EyeInvisibleOutlined,
   ExclamationCircleOutlined,
-  CheckCircleOutlined,
+  CheckCircleOutlined
 } from '@ant-design/icons';
 import { Property } from '../../types/property-types';
 import { publishProperty, unpublishProperty } from '../../services/property-service';
@@ -29,8 +20,10 @@ interface PropertyPublicationControlsProps {
 export const PropertyPublicationControls: React.FC<PropertyPublicationControlsProps> = ({
   property,
   tenantId,
-  onUpdate,
+  onUpdate
 }) => {
+  const { message } = App.useApp();
+
   const [publishing, setPublishing] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
@@ -84,7 +77,7 @@ export const PropertyPublicationControls: React.FC<PropertyPublicationControlsPr
             <Text type="secondary">
               {property.isPublished
                 ? 'Cette propriété est visible sur le portail public'
-                : 'Cette propriété n\'est pas publiée'}
+                : "Cette propriété n'est pas publiée"}
             </Text>
           </div>
           {property.isPublished ? (
@@ -92,9 +85,7 @@ export const PropertyPublicationControls: React.FC<PropertyPublicationControlsPr
               Publié
             </Tag>
           ) : (
-            <Tag icon={<EyeInvisibleOutlined />}>
-              Non publié
-            </Tag>
+            <Tag icon={<EyeInvisibleOutlined />}>Non publié</Tag>
           )}
         </div>
 
@@ -125,22 +116,12 @@ export const PropertyPublicationControls: React.FC<PropertyPublicationControlsPr
               okText="Oui"
               cancelText="Non"
             >
-              <Button
-                icon={<EyeInvisibleOutlined />}
-                loading={publishing}
-                block
-              >
+              <Button icon={<EyeInvisibleOutlined />} loading={publishing} block>
                 Retirer du portail public
               </Button>
             </Popconfirm>
           ) : (
-            <Button
-              type="primary"
-              icon={<GlobalOutlined />}
-              onClick={handlePublish}
-              loading={publishing}
-              block
-            >
+            <Button type="primary" icon={<GlobalOutlined />} onClick={handlePublish} loading={publishing} block>
               Publier sur le portail public
             </Button>
           )}
@@ -151,7 +132,7 @@ export const PropertyPublicationControls: React.FC<PropertyPublicationControlsPr
           <Text type="secondary" style={{ fontSize: 12 }}>
             Publié le{' '}
             {new Date(property.publishedAt).toLocaleDateString('fr-FR', {
-              dateStyle: 'long',
+              dateStyle: 'long'
             })}
           </Text>
         )}

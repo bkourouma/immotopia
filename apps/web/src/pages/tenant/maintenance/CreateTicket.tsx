@@ -1,16 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Card,
-  Form,
-  Input,
-  Select,
-  Button,
-  Space,
-  Typography,
-  message,
-  Spin
-} from 'antd';
+import { App, Card, Form, Input, Select, Button, Space, Typography, Spin } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { FileUploader } from '../../../components/maintenance/FileUploader';
@@ -29,6 +19,8 @@ const { TextArea } = Input;
 const { Option } = Select;
 
 export const CreateTicket: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const { tenantMembership } = useAuth();
@@ -77,7 +69,7 @@ export const CreateTicket: React.FC = () => {
       });
       const activeLeases = response.data || [];
       setLeases(activeLeases);
-      
+
       // Auto-select lease if there's only one
       if (activeLeases.length === 1) {
         form.setFieldsValue({ leaseId: activeLeases[0].id });
@@ -101,7 +93,9 @@ export const CreateTicket: React.FC = () => {
 
     // Check if there are active leases for the selected property
     if (leases.length === 0 && selectedPropertyId === values.propertyId) {
-      message.error('Cette propriété n\'a pas de bail actif. Vous devez avoir un bail actif pour créer un ticket de maintenance.');
+      message.error(
+        "Cette propriété n'a pas de bail actif. Vous devez avoir un bail actif pour créer un ticket de maintenance."
+      );
       return;
     }
 
@@ -126,17 +120,13 @@ export const CreateTicket: React.FC = () => {
         if (uploadedFiles.length > 0) {
           try {
             await Promise.all(
-              uploadedFiles.map((file) =>
-                tenantMaintenanceService.uploadAttachment(
-                  effectiveTenantId,
-                  createdTicketId,
-                  file
-                )
+              uploadedFiles.map(file =>
+                tenantMaintenanceService.uploadAttachment(effectiveTenantId, createdTicketId, file)
               )
             );
           } catch (uploadError) {
             console.error('Error uploading files:', uploadError);
-            message.warning('Ticket créé mais certaines pièces jointes n\'ont pas pu être uploadées');
+            message.warning("Ticket créé mais certaines pièces jointes n'ont pas pu être uploadées");
           }
         }
 
@@ -146,10 +136,12 @@ export const CreateTicket: React.FC = () => {
     } catch (error: any) {
       console.error('Error creating ticket:', error);
       const errorMessage = error.response?.data?.message || 'Erreur lors de la création du ticket';
-      
+
       // Provide more helpful error message for lease validation
       if (errorMessage.includes('Bail actif introuvable')) {
-        message.error('Cette propriété n\'a pas de bail actif. Veuillez contacter votre gestionnaire pour activer un bail avant de créer un ticket de maintenance.');
+        message.error(
+          "Cette propriété n'a pas de bail actif. Veuillez contacter votre gestionnaire pour activer un bail avant de créer un ticket de maintenance."
+        );
       } else {
         message.error(errorMessage);
       }
@@ -162,22 +154,14 @@ export const CreateTicket: React.FC = () => {
     <DashboardLayout>
       <div style={{ padding: '24px' }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
-          <Button
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}
-          >
+          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>
             Retour à la liste
           </Button>
 
           <Card>
             <Title level={2}>Créer un ticket de maintenance</Title>
 
-            <Form
-              form={form}
-              layout="vertical"
-              onFinish={handleSubmit}
-              style={{ maxWidth: 800 }}
-            >
+            <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ maxWidth: 800 }}>
               <Form.Item
                 name="propertyId"
                 label="Propriété"
@@ -185,17 +169,15 @@ export const CreateTicket: React.FC = () => {
               >
                 <Select
                   placeholder="Sélectionner une propriété"
-                  onChange={(value) => setSelectedPropertyId(value)}
+                  onChange={value => setSelectedPropertyId(value)}
                   showSearch
                   filterOption={(input, option) => {
-                    const label = typeof option?.label === 'string'
-                      ? option.label
-                      : String(option?.children || '');
+                    const label = typeof option?.label === 'string' ? option.label : String(option?.children || '');
                     return label.toLowerCase().includes(input.toLowerCase());
                   }}
                   optionFilterProp="label"
                 >
-                  {properties.map((property) => {
+                  {properties.map(property => {
                     const ownerLabel = property.owner?.fullName?.trim() || property.internalReference;
                     const label = property.containerParent
                       ? `${ownerLabel} - ${property.title} ( ${property.containerParent.title} )`
@@ -212,17 +194,19 @@ export const CreateTicket: React.FC = () => {
               {leases.length > 0 && (
                 <Form.Item
                   name="leaseId"
-                  label={leases.length === 1 ? "Bail" : "Bail"}
-                  tooltip={leases.length === 1 
-                    ? "Le bail actif a été sélectionné automatiquement"
-                    : "Sélectionnez le bail associé si vous en avez plusieurs pour cette propriété"}
+                  label={leases.length === 1 ? 'Bail' : 'Bail'}
+                  tooltip={
+                    leases.length === 1
+                      ? 'Le bail actif a été sélectionné automatiquement'
+                      : 'Sélectionnez le bail associé si vous en avez plusieurs pour cette propriété'
+                  }
                 >
-                  <Select 
-                    placeholder={leases.length === 1 ? "Bail sélectionné automatiquement" : "Sélectionner un bail"} 
+                  <Select
+                    placeholder={leases.length === 1 ? 'Bail sélectionné automatiquement' : 'Sélectionner un bail'}
                     allowClear={leases.length > 1}
                     disabled={leases.length === 1}
                   >
-                    {leases.map((lease) => (
+                    {leases.map(lease => (
                       <Option key={lease.id} value={lease.id}>
                         {lease.lease_number} - {lease.start_date.split('T')[0]}
                       </Option>
@@ -230,17 +214,20 @@ export const CreateTicket: React.FC = () => {
                   </Select>
                 </Form.Item>
               )}
-              
+
               {selectedPropertyId && leases.length === 0 && (
                 <Form.Item>
-                  <div style={{ 
-                    padding: '12px', 
-                    backgroundColor: '#fff7e6', 
-                    border: '1px solid #ffd591',
-                    borderRadius: '4px',
-                    color: '#d46b08'
-                  }}>
-                    ⚠️ Cette propriété n'a pas de bail actif. Vous devez avoir un bail actif pour créer un ticket de maintenance.
+                  <div
+                    style={{
+                      padding: '12px',
+                      backgroundColor: '#fff7e6',
+                      border: '1px solid #ffd591',
+                      borderRadius: '4px',
+                      color: '#d46b08'
+                    }}
+                  >
+                    ⚠️ Cette propriété n'a pas de bail actif. Vous devez avoir un bail actif pour créer un ticket de
+                    maintenance.
                   </div>
                 </Form.Item>
               )}
@@ -292,46 +279,27 @@ export const CreateTicket: React.FC = () => {
                   { max: 5000, message: 'La description ne peut pas dépasser 5000 caractères' }
                 ]}
               >
-                <TextArea
-                  rows={6}
-                  placeholder="Décrivez le problème en détail..."
-                />
+                <TextArea rows={6} placeholder="Décrivez le problème en détail..." />
               </Form.Item>
 
               <Form.Item
                 name="locationDetails"
                 label="Détails de localisation (optionnel)"
-                rules={[
-                  { max: 500, message: 'Les détails ne peuvent pas dépasser 500 caractères' }
-                ]}
+                rules={[{ max: 500, message: 'Les détails ne peuvent pas dépasser 500 caractères' }]}
               >
-                <TextArea
-                  rows={3}
-                  placeholder="Ex: Salle de bain principale, sous l'évier"
-                />
+                <TextArea rows={3} placeholder="Ex: Salle de bain principale, sous l'évier" />
               </Form.Item>
 
               <Form.Item label="Pièces jointes (optionnel)">
-                <FileUploader
-                  onFilesChange={setUploadedFiles}
-                  maxFiles={10}
-                  maxSize={5}
-                />
+                <FileUploader onFilesChange={setUploadedFiles} maxFiles={10} maxSize={5} />
               </Form.Item>
 
               <Form.Item>
                 <Space>
-                  <Button
-                    type="primary"
-                    htmlType="submit"
-                    icon={<SaveOutlined />}
-                    loading={loading}
-                  >
+                  <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={loading}>
                     Créer le ticket
                   </Button>
-                  <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>
-                    Annuler
-                  </Button>
+                  <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>Annuler</Button>
                 </Space>
               </Form.Item>
             </Form>

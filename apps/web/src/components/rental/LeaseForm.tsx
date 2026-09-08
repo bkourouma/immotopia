@@ -1,23 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Form,
-  Input,
-  Select,
-  Button,
-  Row,
-  Col,
-  Alert,
-  InputNumber,
-  DatePicker,
-  Space,
-  message,
-} from 'antd';
+import { App, Form, Input, Select, Button, Row, Col, Alert, InputNumber, DatePicker, Space } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import {
   CreateLeaseRequest,
   UpdateLeaseRequest,
   RentalLease,
-  RentalBillingFrequency,
+  RentalBillingFrequency
 } from '../../services/rental-service';
 import { listProperties, Property } from '../../services/property-service';
 import { PropertyType } from '../../types/property-types';
@@ -34,13 +22,9 @@ interface LeaseFormProps {
   loading?: boolean;
 }
 
-export const LeaseForm: React.FC<LeaseFormProps> = ({
-  lease,
-  tenantId,
-  onSubmit,
-  onCancel,
-  loading = false,
-}) => {
+export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit, onCancel, loading = false }) => {
+  const { message } = App.useApp();
+
   const [form] = Form.useForm();
   const [formData, setFormData] = useState({
     propertyId: lease?.property_id || '',
@@ -61,7 +45,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
     penaltyRate: lease?.penalty_rate?.toString() || '0',
     penaltyFixedAmount: lease?.penalty_fixed_amount?.toString() || '0',
     penaltyCapAmount: lease?.penalty_cap_amount?.toString() || '',
-    notes: lease?.notes || '',
+    notes: lease?.notes || ''
   });
 
   const [properties, setProperties] = useState<Property[]>([]);
@@ -95,42 +79,45 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
       clientsLoaded,
       clientsCount: clients.length,
       leasePrimaryRenterId: lease?.primary_renter_client_id,
-      leaseOwnerId: lease?.owner_client_id,
+      leaseOwnerId: lease?.owner_client_id
     });
 
     if (lease && clientsLoaded) {
       const primaryRenter = clients.find(c => c.id === lease.primary_renter_client_id);
       const owner = clients.find(c => c.id === lease.owner_client_id);
-      
+
       console.log('[LeaseForm] Setting form values', {
         primaryRenterClientId: lease.primary_renter_client_id,
         ownerClientId: lease.owner_client_id,
         availableClientIds: clients.map(c => c.id).slice(0, 5), // Show first 5 for brevity
         totalClients: clients.length,
-        primaryRenterFound: primaryRenter ? { id: primaryRenter.id, name: `${primaryRenter.firstName} ${primaryRenter.lastName}` } : null,
-        ownerFound: owner ? { id: owner.id, name: `${owner.firstName} ${owner.lastName}` } : null,
+        primaryRenterFound: primaryRenter
+          ? { id: primaryRenter.id, name: `${primaryRenter.firstName} ${primaryRenter.lastName}` }
+          : null,
+        ownerFound: owner ? { id: owner.id, name: `${owner.firstName} ${owner.lastName}` } : null
       });
-      
+
       // Check if IDs exist but don't match (case sensitivity, whitespace, etc.)
-      const primaryRenterIdMatches = clients.filter(c => 
-        c.id.toLowerCase() === lease.primary_renter_client_id?.toLowerCase() ||
-        c.id.trim() === lease.primary_renter_client_id?.trim()
+      const primaryRenterIdMatches = clients.filter(
+        c =>
+          c.id.toLowerCase() === lease.primary_renter_client_id?.toLowerCase() ||
+          c.id.trim() === lease.primary_renter_client_id?.trim()
       );
-      const ownerIdMatches = clients.filter(c => 
-        c.id.toLowerCase() === lease.owner_client_id?.toLowerCase() ||
-        c.id.trim() === lease.owner_client_id?.trim()
+      const ownerIdMatches = clients.filter(
+        c =>
+          c.id.toLowerCase() === lease.owner_client_id?.toLowerCase() || c.id.trim() === lease.owner_client_id?.trim()
       );
-      
+
       if (!primaryRenter && primaryRenterIdMatches.length > 0) {
         console.warn('[LeaseForm] Primary renter ID found with case/whitespace difference:', {
           leaseId: lease.primary_renter_client_id,
-          foundId: primaryRenterIdMatches[0].id,
+          foundId: primaryRenterIdMatches[0].id
         });
       }
       if (!owner && ownerIdMatches.length > 0) {
         console.warn('[LeaseForm] Owner ID found with case/whitespace difference:', {
           leaseId: lease.owner_client_id,
-          foundId: ownerIdMatches[0].id,
+          foundId: ownerIdMatches[0].id
         });
       }
 
@@ -153,10 +140,10 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
         penaltyRate: lease.penalty_rate?.toString() || '0',
         penaltyFixedAmount: lease.penalty_fixed_amount?.toString() || '0',
         penaltyCapAmount: lease.penalty_cap_amount?.toString() || '',
-        notes: lease.notes || '',
+        notes: lease.notes || ''
       };
       setFormData(newFormData);
-      
+
       // Update form values - clients are now loaded, so Select options will be available
       const formValues = {
         propertyId: newFormData.propertyId,
@@ -170,16 +157,20 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
         dueDayOfMonth: newFormData.dueDayOfMonth,
         currency: newFormData.currency,
         rentAmount: newFormData.rentAmount ? parseFloat(parseFormattedNumber(newFormData.rentAmount)) : undefined,
-        serviceChargeAmount: newFormData.serviceChargeAmount ? parseFloat(parseFormattedNumber(newFormData.serviceChargeAmount)) : undefined,
-        securityDepositAmount: newFormData.securityDepositAmount ? parseFloat(parseFormattedNumber(newFormData.securityDepositAmount)) : undefined,
-        notes: newFormData.notes,
+        serviceChargeAmount: newFormData.serviceChargeAmount
+          ? parseFloat(parseFormattedNumber(newFormData.serviceChargeAmount))
+          : undefined,
+        securityDepositAmount: newFormData.securityDepositAmount
+          ? parseFloat(parseFormattedNumber(newFormData.securityDepositAmount))
+          : undefined,
+        notes: newFormData.notes
       };
       console.log('[LeaseForm] Calling form.setFieldsValue with:', formValues);
       form.setFieldsValue(formValues);
       console.log('[LeaseForm] Form values set');
     } else {
       console.log('[LeaseForm] Skipping form update', {
-        reason: !lease ? 'no lease' : !clientsLoaded ? 'clients not loaded' : 'unknown',
+        reason: !lease ? 'no lease' : !clientsLoaded ? 'clients not loaded' : 'unknown'
       });
     }
   }, [lease, clientsLoaded, form, clients]);
@@ -204,14 +195,14 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
       const response = await listContacts(tenantId, { limit: 1000 });
       console.log('[LeaseForm] listContacts response:', {
         success: response.success,
-        totalContacts: response.contacts?.length || 0,
+        totalContacts: response.contacts?.length || 0
       });
       if (response.success) {
         // Filter contacts that have client roles
         let clientContacts = response.contacts.filter(
-          (contact) => contact.roles && contact.roles.length > 0 && contact.roles.some((r) => r.active)
+          contact => contact.roles && contact.roles.length > 0 && contact.roles.some(r => r.active)
         );
-        
+
         // If editing a lease, also include contacts referenced in the lease
         // even if they don't have active roles (for backward compatibility)
         if (lease) {
@@ -222,27 +213,25 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
           if (lease.owner_client_id) {
             referencedContactIds.add(lease.owner_client_id);
           }
-          
-          const referencedContacts = response.contacts.filter(
-            (contact) => referencedContactIds.has(contact.id)
-          );
-          
+
+          const referencedContacts = response.contacts.filter(contact => referencedContactIds.has(contact.id));
+
           // Merge: add referenced contacts that are not already in clientContacts
           const existingIds = new Set(clientContacts.map(c => c.id));
           const additionalContacts = referencedContacts.filter(c => !existingIds.has(c.id));
-          
+
           if (additionalContacts.length > 0) {
             console.log('[LeaseForm] Adding referenced contacts without active roles:', {
               count: additionalContacts.length,
-              ids: additionalContacts.map(c => c.id),
+              ids: additionalContacts.map(c => c.id)
             });
             clientContacts = [...clientContacts, ...additionalContacts];
           }
         }
-        
+
         console.log('[LeaseForm] Filtered client contacts:', {
           count: clientContacts.length,
-          clientIds: clientContacts.map(c => ({ id: c.id, name: `${c.firstName} ${c.lastName}`, email: c.email })),
+          clientIds: clientContacts.map(c => ({ id: c.id, name: `${c.firstName} ${c.lastName}`, email: c.email }))
         });
         setClients(clientContacts);
       }
@@ -276,7 +265,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
     }
 
     if (formData.dueDayOfMonth < 1 || formData.dueDayOfMonth > 31) {
-      newErrors.dueDayOfMonth = 'Le jour d\'échéance doit être entre 1 et 31';
+      newErrors.dueDayOfMonth = "Le jour d'échéance doit être entre 1 et 31";
     }
 
     const rentAmount = parseFloat(parseFormattedNumber(formData.rentAmount));
@@ -321,7 +310,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
               penaltyRate: formData.penaltyRate ? parseFloat(formData.penaltyRate) : 0,
               penaltyFixedAmount: formData.penaltyFixedAmount ? parseFloat(formData.penaltyFixedAmount) : 0,
               penaltyCapAmount: formData.penaltyCapAmount ? parseFloat(formData.penaltyCapAmount) : undefined,
-              notes: values.notes || undefined,
+              notes: values.notes || undefined
             }),
         ...(lease
           ? {
@@ -332,9 +321,9 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
               serviceChargeAmount: values.serviceChargeAmount || 0,
               securityDepositAmount: values.securityDepositAmount || 0,
               billingFrequency: values.billingFrequency,
-              notes: values.notes || undefined,
+              notes: values.notes || undefined
             }
-          : {}),
+          : {})
       };
 
       await onSubmit(submitData);
@@ -349,7 +338,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
         setErrors({ submit: error.response.data.message });
         message.error(error.response.data.message);
       } else {
-        const errorMsg = 'Une erreur est survenue lors de l\'enregistrement du bail';
+        const errorMsg = "Une erreur est survenue lors de l'enregistrement du bail";
         setErrors({ submit: errorMsg });
         message.error(errorMsg);
       }
@@ -359,10 +348,10 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
   };
 
   const handleChange = (field: string, value: string | number) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData(prev => ({ ...prev, [field]: value }));
     // Clear field error when user changes the value
     if (errors[field]) {
-      setErrors((prev) => {
+      setErrors(prev => {
         const newErrors = { ...prev };
         delete newErrors[field];
         return newErrors;
@@ -379,13 +368,13 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
         primaryRenterClientId: formValues.primaryRenterClientId,
         ownerClientId: formValues.ownerClientId,
         primaryRenterClient: clients.find(c => c.id === formValues.primaryRenterClientId),
-        ownerClient: clients.find(c => c.id === formValues.ownerClientId),
+        ownerClient: clients.find(c => c.id === formValues.ownerClientId)
       });
     }
   }, [form, clientsLoaded]);
 
   // Properties available for lease: exclude buildings (IMMEUBLE) that have apartments
-  const leaseableProperties = properties.filter((p) => {
+  const leaseableProperties = properties.filter(p => {
     if (p.propertyType === PropertyType.IMMEUBLE && (p._count?.containerChildren ?? 0) > 0) {
       return false;
     }
@@ -406,7 +395,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
     primaryRenterClientId: formData.primaryRenterClientId,
     ownerClientId: formData.ownerClientId,
     clientsCount: clients.length,
-    clientsLoaded,
+    clientsLoaded
   });
 
   return (
@@ -426,9 +415,13 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
         dueDayOfMonth: formData.dueDayOfMonth,
         currency: formData.currency,
         rentAmount: formData.rentAmount ? parseFloat(parseFormattedNumber(formData.rentAmount)) : undefined,
-        serviceChargeAmount: formData.serviceChargeAmount ? parseFloat(parseFormattedNumber(formData.serviceChargeAmount)) : undefined,
-        securityDepositAmount: formData.securityDepositAmount ? parseFloat(parseFormattedNumber(formData.securityDepositAmount)) : undefined,
-        notes: formData.notes,
+        serviceChargeAmount: formData.serviceChargeAmount
+          ? parseFloat(parseFormattedNumber(formData.serviceChargeAmount))
+          : undefined,
+        securityDepositAmount: formData.securityDepositAmount
+          ? parseFloat(parseFormattedNumber(formData.securityDepositAmount))
+          : undefined,
+        notes: formData.notes
       }}
     >
       {errors.submit && (
@@ -455,7 +448,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
             <Select
               placeholder="Sélectionner une propriété"
               disabled={!!lease}
-              onChange={(value) => handleChange('propertyId', value)}
+              onChange={value => handleChange('propertyId', value)}
               loading={loadingData}
               showSearch
               filterOption={(input, option) => {
@@ -464,7 +457,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
               }}
               optionFilterProp="children"
             >
-              {leaseableProperties.map((property) => (
+              {leaseableProperties.map(property => (
                 <Select.Option key={property.id} value={property.id}>
                   {getPropertyOptionLabel(property)}
                 </Select.Option>
@@ -485,10 +478,10 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
             <Select
               placeholder="Sélectionner un locataire"
               disabled={!!lease}
-              onChange={(value) => handleChange('primaryRenterClientId', value)}
+              onChange={value => handleChange('primaryRenterClientId', value)}
               loading={loadingData}
             >
-              {clients.map((client) => (
+              {clients.map(client => (
                 <Select.Option key={client.id} value={client.id}>
                   {client.firstName} {client.lastName} {client.email ? `(${client.email})` : ''}
                 </Select.Option>
@@ -498,18 +491,15 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item
-            label="Propriétaire"
-            name="ownerClientId"
-          >
+          <Form.Item label="Propriétaire" name="ownerClientId">
             <Select
               placeholder="Sélectionner un propriétaire (optionnel)"
               disabled={!!lease}
               allowClear
-              onChange={(value) => handleChange('ownerClientId', value || '')}
+              onChange={value => handleChange('ownerClientId', value || '')}
               loading={loadingData}
             >
-              {clients.map((client) => (
+              {clients.map(client => (
                 <Select.Option key={client.id} value={client.id}>
                   {client.firstName} {client.lastName} {client.email ? `(${client.email})` : ''}
                 </Select.Option>
@@ -530,7 +520,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
             <DatePicker
               style={{ width: '100%' }}
               disabled={!!lease}
-              onChange={(date) => handleChange('startDate', date ? date.format('YYYY-MM-DD') : '')}
+              onChange={date => handleChange('startDate', date ? date.format('YYYY-MM-DD') : '')}
             />
           </Form.Item>
         </Col>
@@ -544,31 +534,25 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
           >
             <DatePicker
               style={{ width: '100%' }}
-              onChange={(date) => handleChange('endDate', date ? date.format('YYYY-MM-DD') : '')}
+              onChange={date => handleChange('endDate', date ? date.format('YYYY-MM-DD') : '')}
             />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item
-            label="Date d'emménagement"
-            name="moveInDate"
-          >
+          <Form.Item label="Date d'emménagement" name="moveInDate">
             <DatePicker
               style={{ width: '100%' }}
-              onChange={(date) => handleChange('moveInDate', date ? date.format('YYYY-MM-DD') : '')}
+              onChange={date => handleChange('moveInDate', date ? date.format('YYYY-MM-DD') : '')}
             />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item
-            label="Date de déménagement"
-            name="moveOutDate"
-          >
+          <Form.Item label="Date de déménagement" name="moveOutDate">
             <DatePicker
               style={{ width: '100%' }}
-              onChange={(date) => handleChange('moveOutDate', date ? date.format('YYYY-MM-DD') : '')}
+              onChange={date => handleChange('moveOutDate', date ? date.format('YYYY-MM-DD') : '')}
             />
           </Form.Item>
         </Col>
@@ -580,9 +564,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
             required
             rules={[{ required: true, message: 'La fréquence de facturation est requise' }]}
           >
-            <Select
-              onChange={(value) => handleChange('billingFrequency', value)}
-            >
+            <Select onChange={value => handleChange('billingFrequency', value)}>
               <Select.Option value={RentalBillingFrequency.MONTHLY}>Mensuel</Select.Option>
               <Select.Option value={RentalBillingFrequency.QUARTERLY}>Trimestriel</Select.Option>
               <Select.Option value={RentalBillingFrequency.SEMIANNUAL}>Semestriel</Select.Option>
@@ -599,27 +581,22 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
             validateStatus={errors.dueDayOfMonth ? 'error' : ''}
             help={errors.dueDayOfMonth}
             rules={[
-              { required: true, message: 'Le jour d\'échéance est requis' },
-              { type: 'number', min: 1, max: 31, message: 'Le jour d\'échéance doit être entre 1 et 31' },
+              { required: true, message: "Le jour d'échéance est requis" },
+              { type: 'number', min: 1, max: 31, message: "Le jour d'échéance doit être entre 1 et 31" }
             ]}
           >
             <InputNumber
               style={{ width: '100%' }}
               min={1}
               max={31}
-              onChange={(value) => handleChange('dueDayOfMonth', value || 1)}
+              onChange={value => handleChange('dueDayOfMonth', value || 1)}
             />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item
-            label="Devise"
-            name="currency"
-          >
-            <Select
-              onChange={(value) => handleChange('currency', value)}
-            >
+          <Form.Item label="Devise" name="currency">
+            <Select onChange={value => handleChange('currency', value)}>
               <Select.Option value="FCFA">FCFA</Select.Option>
               <Select.Option value="EUR">EUR</Select.Option>
               <Select.Option value="USD">USD</Select.Option>
@@ -636,78 +613,75 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
             help={errors.rentAmount}
             rules={[
               { required: true, message: 'Le montant du loyer est requis' },
-              { type: 'number', min: 0.01, message: 'Le montant du loyer doit être supérieur à 0' },
+              { type: 'number', min: 0.01, message: 'Le montant du loyer doit être supérieur à 0' }
             ]}
           >
             <InputNumber
               style={{ width: '100%' }}
               min={0}
               step={1000}
-              formatter={(value) => formatNumberWithSpaces(value?.toString() || '')}
-              parser={((value) => {
-                if (!value) return 0;
-                const parsed = parseFormattedNumber(value);
-                const num = parseFloat(parsed);
-                return isNaN(num) ? 0 : num;
-              }) as (displayValue: string | undefined) => number}
-              onChange={(value) => handleChange('rentAmount', value?.toString() || '')}
+              formatter={value => formatNumberWithSpaces(value?.toString() || '')}
+              parser={
+                (value => {
+                  if (!value) return 0;
+                  const parsed = parseFormattedNumber(value);
+                  const num = parseFloat(parsed);
+                  return isNaN(num) ? 0 : num;
+                }) as (displayValue: string | undefined) => number
+              }
+              onChange={value => handleChange('rentAmount', value?.toString() || '')}
               placeholder="Ex: 150000"
             />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item
-            label="Charges de service"
-            name="serviceChargeAmount"
-          >
+          <Form.Item label="Charges de service" name="serviceChargeAmount">
             <InputNumber
               style={{ width: '100%' }}
               min={0}
               step={1000}
-              formatter={(value) => formatNumberWithSpaces(value?.toString() || '')}
-              parser={((value) => {
-                if (!value) return 0;
-                const parsed = parseFormattedNumber(value);
-                const num = parseFloat(parsed);
-                return isNaN(num) ? 0 : num;
-              }) as (displayValue: string | undefined) => number}
-              onChange={(value) => handleChange('serviceChargeAmount', value?.toString() || '0')}
+              formatter={value => formatNumberWithSpaces(value?.toString() || '')}
+              parser={
+                (value => {
+                  if (!value) return 0;
+                  const parsed = parseFormattedNumber(value);
+                  const num = parseFloat(parsed);
+                  return isNaN(num) ? 0 : num;
+                }) as (displayValue: string | undefined) => number
+              }
+              onChange={value => handleChange('serviceChargeAmount', value?.toString() || '0')}
               placeholder="Ex: 10000"
             />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item
-            label="Dépôt de garantie"
-            name="securityDepositAmount"
-          >
+          <Form.Item label="Dépôt de garantie" name="securityDepositAmount">
             <InputNumber
               style={{ width: '100%' }}
               min={0}
               step={1000}
-              formatter={(value) => formatNumberWithSpaces(value?.toString() || '')}
-              parser={((value) => {
-                if (!value) return 0;
-                const parsed = parseFormattedNumber(value);
-                const num = parseFloat(parsed);
-                return isNaN(num) ? 0 : num;
-              }) as (displayValue: string | undefined) => number}
-              onChange={(value) => handleChange('securityDepositAmount', value?.toString() || '0')}
+              formatter={value => formatNumberWithSpaces(value?.toString() || '')}
+              parser={
+                (value => {
+                  if (!value) return 0;
+                  const parsed = parseFormattedNumber(value);
+                  const num = parseFloat(parsed);
+                  return isNaN(num) ? 0 : num;
+                }) as (displayValue: string | undefined) => number
+              }
+              onChange={value => handleChange('securityDepositAmount', value?.toString() || '0')}
               placeholder="Ex: 500000"
             />
           </Form.Item>
         </Col>
       </Row>
 
-      <Form.Item
-        label="Notes"
-        name="notes"
-      >
+      <Form.Item label="Notes" name="notes">
         <TextArea
           rows={4}
-          onChange={(e) => handleChange('notes', e.target.value)}
+          onChange={e => handleChange('notes', e.target.value)}
           placeholder="Notes additionnelles sur le bail..."
         />
       </Form.Item>
@@ -727,4 +701,3 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({
     </Form>
   );
 };
-

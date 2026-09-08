@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
+  App,
   Button,
   Input,
   Table,
@@ -18,8 +19,7 @@ import {
   Typography,
   Divider,
   Tooltip,
-  message,
-  Popconfirm,
+  Popconfirm
 } from 'antd';
 
 const { Search: InputSearch } = Input;
@@ -36,7 +36,7 @@ import {
   FilterOutlined,
   DownloadOutlined,
   FileExcelOutlined,
-  CheckOutlined,
+  CheckOutlined
 } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { ContactForm } from '../../components/crm/ContactForm';
@@ -54,7 +54,7 @@ import {
   CreateCrmContactRequest,
   UpdateCrmContactRequest,
   CreateCrmActivityRequest,
-  ContactFilters,
+  ContactFilters
 } from '../../services/crm-service';
 import { AdvancedFilters, AdvancedFilters as AdvancedFiltersType } from '../../components/crm/AdvancedFilters';
 import { exportToCSV, exportToExcel } from '../../utils/export-utils';
@@ -63,6 +63,8 @@ import type { ColumnsType } from 'antd/es/table';
 const { Title, Text } = Typography;
 
 export const Contacts: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const [contacts, setContacts] = useState<CrmContact[]>([]);
@@ -72,13 +74,13 @@ export const Contacts: React.FC = () => {
   const [editingContact, setEditingContact] = useState<CrmContact | null>(null);
   const [filters, setFilters] = useState<ContactFilters>({
     page: 1,
-    limit: 20,
+    limit: 20
   });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
     total: 0,
-    totalPages: 0,
+    totalPages: 0
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [showActivityForm, setShowActivityForm] = useState(false);
@@ -124,7 +126,7 @@ export const Contacts: React.FC = () => {
         assignedTo: advancedFilters.assignedTo,
         source: advancedFilters.source,
         hasActiveDeal: hasActiveDealFilter,
-        hasUpcomingActivity: hasUpcomingActivityFilter,
+        hasUpcomingActivity: hasUpcomingActivityFilter
       });
       if (response.success) {
         setContacts(response.contacts);
@@ -145,7 +147,7 @@ export const Contacts: React.FC = () => {
 
   const handleTagToggle = (tagId: string) => {
     const newSelectedTags = selectedTags.includes(tagId)
-      ? selectedTags.filter((id) => id !== tagId)
+      ? selectedTags.filter(id => id !== tagId)
       : [...selectedTags, tagId];
     setSelectedTags(newSelectedTags);
     setFilters({ ...filters, page: 1, tagIds: newSelectedTags.length > 0 ? newSelectedTags : undefined });
@@ -155,7 +157,6 @@ export const Contacts: React.FC = () => {
     setSelectedTags([]);
     setFilters({ ...filters, page: 1, tagIds: undefined });
   };
-
 
   const handleBulkTagComplete = () => {
     setSelectedContacts([]);
@@ -218,12 +219,11 @@ export const Contacts: React.FC = () => {
     }
   };
 
-
   const getStatusBadgeTag = (status: string) => {
     const statusConfig = {
       LEAD: { text: 'Prospect', color: 'blue' },
       ACTIVE_CLIENT: { text: 'Client actif', color: 'green' },
-      ARCHIVED: { text: 'Archivé', color: 'default' },
+      ARCHIVED: { text: 'Archivé', color: 'default' }
     };
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.ARCHIVED;
     return <AntTag color={config.color}>{config.text}</AntTag>;
@@ -231,14 +231,18 @@ export const Contacts: React.FC = () => {
 
   const handleExportCSV = () => {
     const exportData = contacts.map(contact => ({
-      'Nom': `${contact.firstName} ${contact.lastName}`,
-      'Email': contact.email,
-      'Téléphone': contact.phone || '',
-      'Statut': contact.status === 'LEAD' ? 'Prospect' : contact.status === 'ACTIVE_CLIENT' ? 'Client actif' : 'Archivé',
-      'Source': contact.source || '',
-      'Prochaine action': contact.nextAction ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString('fr-FR')}` : '',
-      'Affaire en cours': contact.activeDeal ? `${contact.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${contact.activeDeal.stage}` : '',
-      'Date de création': new Date(contact.createdAt).toLocaleDateString('fr-FR'),
+      Nom: `${contact.firstName} ${contact.lastName}`,
+      Email: contact.email,
+      Téléphone: contact.phone || '',
+      Statut: contact.status === 'LEAD' ? 'Prospect' : contact.status === 'ACTIVE_CLIENT' ? 'Client actif' : 'Archivé',
+      Source: contact.source || '',
+      'Prochaine action': contact.nextAction
+        ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString('fr-FR')}`
+        : '',
+      'Affaire en cours': contact.activeDeal
+        ? `${contact.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${contact.activeDeal.stage}`
+        : '',
+      'Date de création': new Date(contact.createdAt).toLocaleDateString('fr-FR')
     }));
     exportToCSV(exportData, 'contacts');
     message.success('Export CSV réussi');
@@ -246,14 +250,18 @@ export const Contacts: React.FC = () => {
 
   const handleExportExcel = async () => {
     const exportData = contacts.map(contact => ({
-      'Nom': `${contact.firstName} ${contact.lastName}`,
-      'Email': contact.email,
-      'Téléphone': contact.phone || '',
-      'Statut': contact.status === 'LEAD' ? 'Prospect' : contact.status === 'ACTIVE_CLIENT' ? 'Client actif' : 'Archivé',
-      'Source': contact.source || '',
-      'Prochaine action': contact.nextAction ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString('fr-FR')}` : '',
-      'Affaire en cours': contact.activeDeal ? `${contact.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${contact.activeDeal.stage}` : '',
-      'Date de création': new Date(contact.createdAt).toLocaleDateString('fr-FR'),
+      Nom: `${contact.firstName} ${contact.lastName}`,
+      Email: contact.email,
+      Téléphone: contact.phone || '',
+      Statut: contact.status === 'LEAD' ? 'Prospect' : contact.status === 'ACTIVE_CLIENT' ? 'Client actif' : 'Archivé',
+      Source: contact.source || '',
+      'Prochaine action': contact.nextAction
+        ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString('fr-FR')}`
+        : '',
+      'Affaire en cours': contact.activeDeal
+        ? `${contact.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${contact.activeDeal.stage}`
+        : '',
+      'Date de création': new Date(contact.createdAt).toLocaleDateString('fr-FR')
     }));
     await exportToExcel(exportData, 'contacts', 'Contacts');
     message.success('Export Excel réussi');
@@ -263,31 +271,29 @@ export const Contacts: React.FC = () => {
     {
       title: 'Nom',
       key: 'name',
-      render: (_, record) => (
-        <Text strong>{`${record.firstName} ${record.lastName}`}</Text>
-      ),
+      render: (_, record) => <Text strong>{`${record.firstName} ${record.lastName}`}</Text>
     },
     {
       title: 'Email',
       dataIndex: 'email',
-      key: 'email',
+      key: 'email'
     },
     {
       title: 'Téléphone',
       dataIndex: 'phone',
       key: 'phone',
-      render: (phone) => phone || '-',
+      render: phone => phone || '-'
     },
     {
       title: 'Statut',
       key: 'status',
-      render: (_, record) => getStatusBadgeTag(record.status),
+      render: (_, record) => getStatusBadgeTag(record.status)
     },
     {
       title: 'Source',
       dataIndex: 'source',
       key: 'source',
-      render: (source) => source || '-',
+      render: source => source || '-'
     },
     {
       title: 'Prochaine action',
@@ -301,12 +307,12 @@ export const Contacts: React.FC = () => {
               {new Date(record.nextAction.nextActionAt).toLocaleDateString('fr-FR', {
                 day: '2-digit',
                 month: 'short',
-                year: 'numeric',
+                year: 'numeric'
               })}
             </Text>
           </Space>
         );
-      },
+      }
     },
     {
       title: 'Affaire en cours',
@@ -318,7 +324,7 @@ export const Contacts: React.FC = () => {
           NEW: 'Nouveau',
           QUALIFIED: 'Qualifié',
           VISIT: 'Visite',
-          NEGOTIATION: 'Négociation',
+          NEGOTIATION: 'Négociation'
         };
         return (
           <Space direction="vertical" size={0}>
@@ -328,7 +334,7 @@ export const Contacts: React.FC = () => {
             </Text>
           </Space>
         );
-      },
+      }
     },
     {
       title: 'Actions',
@@ -337,11 +343,7 @@ export const Contacts: React.FC = () => {
       render: (_, record) => (
         <Space>
           <Tooltip title="Ajouter une activité">
-            <Button
-              type="text"
-              icon={<CalendarOutlined />}
-              onClick={() => handleAddActivity(record)}
-            />
+            <Button type="text" icon={<CalendarOutlined />} onClick={() => handleAddActivity(record)} />
           </Tooltip>
           <Tooltip title="Voir les détails">
             <Button
@@ -351,11 +353,7 @@ export const Contacts: React.FC = () => {
             />
           </Tooltip>
           <Tooltip title="Modifier">
-            <Button
-              type="text"
-              icon={<EditOutlined />}
-              onClick={() => setEditingContact(record)}
-            />
+            <Button type="text" icon={<EditOutlined />} onClick={() => setEditingContact(record)} />
           </Tooltip>
           <Tooltip title="Supprimer">
             <Popconfirm
@@ -366,16 +364,12 @@ export const Contacts: React.FC = () => {
               cancelText="Annuler"
               onConfirm={() => handleDeleteContact(record)}
             >
-              <Button
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-              />
+              <Button type="text" danger icon={<DeleteOutlined />} />
             </Popconfirm>
           </Tooltip>
         </Space>
-      ),
-    },
+      )
+    }
   ];
 
   const rowSelection = {
@@ -389,7 +383,7 @@ export const Contacts: React.FC = () => {
       } else {
         setSelectedContacts([]);
       }
-    },
+    }
   };
 
   return (
@@ -397,28 +391,20 @@ export const Contacts: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Row justify="space-between" align="middle" gutter={[16, 16]}>
           <Col xs={24} sm={24} md={12}>
-            <Title level={2} style={{ margin: 0 }}>Contacts</Title>
+            <Title level={2} style={{ margin: 0 }}>
+              Contacts
+            </Title>
             <Text type="secondary">Gérez vos contacts et prospects CRM</Text>
           </Col>
           <Col xs={24} sm={24} md={12}>
             <Space wrap>
-              <Button
-                icon={<DownloadOutlined />}
-                onClick={handleExportCSV}
-              >
+              <Button icon={<DownloadOutlined />} onClick={handleExportCSV}>
                 Exporter CSV
               </Button>
-              <Button
-                icon={<FileExcelOutlined />}
-                onClick={handleExportExcel}
-              >
+              <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>
                 Exporter Excel
               </Button>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => setShowForm(true)}
-              >
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)}>
                 Nouveau contact
               </Button>
             </Space>
@@ -432,10 +418,7 @@ export const Contacts: React.FC = () => {
           footer={null}
           width={800}
         >
-          <ContactForm
-            onSubmit={handleCreate}
-            onCancel={() => setShowForm(false)}
-          />
+          <ContactForm onSubmit={handleCreate} onCancel={() => setShowForm(false)} />
         </Modal>
 
         <Modal
@@ -446,11 +429,7 @@ export const Contacts: React.FC = () => {
           width={800}
         >
           {editingContact && (
-            <ContactForm
-              contact={editingContact}
-              onSubmit={handleUpdate}
-              onCancel={() => setEditingContact(null)}
-            />
+            <ContactForm contact={editingContact} onSubmit={handleUpdate} onCancel={() => setEditingContact(null)} />
           )}
         </Modal>
 
@@ -477,7 +456,6 @@ export const Contacts: React.FC = () => {
           )}
         </Modal>
 
-
         {/* Filters */}
         <Card title="Filtres" extra={<FilterOutlined />}>
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -487,8 +465,8 @@ export const Contacts: React.FC = () => {
               enterButton={<SearchOutlined />}
               size="large"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onSearch={(value) => {
+              onChange={e => setSearchTerm(e.target.value)}
+              onSearch={value => {
                 setSearchTerm(value);
                 setFilters({ ...filters, page: 1, search: value || undefined });
               }}
@@ -497,12 +475,11 @@ export const Contacts: React.FC = () => {
             <Divider style={{ margin: '12px 0' }} />
 
             <div>
-              <Text strong style={{ marginRight: 16 }}>Statut:</Text>
+              <Text strong style={{ marginRight: 16 }}>
+                Statut:
+              </Text>
               <Space wrap>
-                <Button
-                  type={!filters.status ? 'primary' : 'default'}
-                  onClick={() => handleStatusFilter('')}
-                >
+                <Button type={!filters.status ? 'primary' : 'default'} onClick={() => handleStatusFilter('')}>
                   Tous
                 </Button>
                 <Button
@@ -534,23 +511,16 @@ export const Contacts: React.FC = () => {
                 <TagOutlined />
                 <Text strong>Filtrer par tags:</Text>
                 {selectedTags.length > 0 && (
-                  <Text type="secondary">({selectedTags.length} sélectionné{selectedTags.length > 1 ? 's' : ''})</Text>
+                  <Text type="secondary">
+                    ({selectedTags.length} sélectionné{selectedTags.length > 1 ? 's' : ''})
+                  </Text>
                 )}
                 {selectedTags.length > 0 && (
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<CloseOutlined />}
-                    onClick={clearTagFilters}
-                  >
+                  <Button type="text" size="small" icon={<CloseOutlined />} onClick={clearTagFilters}>
                     Effacer
                   </Button>
                 )}
-                <Button
-                  size="small"
-                  icon={<FilterOutlined />}
-                  onClick={() => setShowTagFilter(!showTagFilter)}
-                >
+                <Button size="small" icon={<FilterOutlined />} onClick={() => setShowTagFilter(!showTagFilter)}>
                   {showTagFilter ? 'Masquer' : 'Afficher'}
                 </Button>
               </Space>
@@ -558,16 +528,18 @@ export const Contacts: React.FC = () => {
               {showTagFilter && (
                 <div style={{ marginTop: 12 }}>
                   {allTags.length === 0 ? (
-                    <Text type="secondary" italic>Aucun tag disponible</Text>
+                    <Text type="secondary" italic>
+                      Aucun tag disponible
+                    </Text>
                   ) : (
                     <Space wrap>
-                      {allTags.map((tag) => (
+                      {allTags.map(tag => (
                         <AntTag
                           key={tag.id}
                           color={tag.color || '#3B82F6'}
                           style={{
                             cursor: 'pointer',
-                            opacity: selectedTags.includes(tag.id) ? 1 : 0.7,
+                            opacity: selectedTags.includes(tag.id) ? 1 : 0.7
                           }}
                           onClick={() => handleTagToggle(tag.id)}
                         >
@@ -584,8 +556,8 @@ export const Contacts: React.FC = () => {
               {selectedTags.length > 0 && !showTagFilter && (
                 <div style={{ marginTop: 12 }}>
                   <Space wrap>
-                    {selectedTags.map((tagId) => {
-                      const tag = allTags.find((t) => t.id === tagId);
+                    {selectedTags.map(tagId => {
+                      const tag = allTags.find(t => t.id === tagId);
                       if (!tag) return null;
                       return (
                         <AntTag
@@ -609,13 +581,13 @@ export const Contacts: React.FC = () => {
             <Space>
               <Checkbox
                 checked={hasActiveDealFilter === true}
-                onChange={(e) => setHasActiveDealFilter(e.target.checked ? true : undefined)}
+                onChange={e => setHasActiveDealFilter(e.target.checked ? true : undefined)}
               >
                 Affaire en cours
               </Checkbox>
               <Checkbox
                 checked={hasUpcomingActivityFilter === true}
-                onChange={(e) => setHasUpcomingActivityFilter(e.target.checked ? true : undefined)}
+                onChange={e => setHasUpcomingActivityFilter(e.target.checked ? true : undefined)}
               >
                 Activité à venir
               </Checkbox>
@@ -630,7 +602,7 @@ export const Contacts: React.FC = () => {
                 showDateRange: true,
                 showAssignedTo: true,
                 showSource: true,
-                dateRangeLabel: 'Date de création',
+                dateRangeLabel: 'Date de création'
               }}
               filters={advancedFilters}
               onFiltersChange={setAdvancedFilters}
@@ -640,14 +612,7 @@ export const Contacts: React.FC = () => {
 
         {/* Contacts List */}
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
 
         {loading ? (
@@ -683,29 +648,23 @@ export const Contacts: React.FC = () => {
               <Card
                 style={{
                   background: '#e6f7ff',
-                  borderColor: '#91d5ff',
+                  borderColor: '#91d5ff'
                 }}
               >
                 <Row justify="space-between" align="middle" gutter={[16, 16]}>
                   <Col xs={24} sm={12}>
                     <Space>
                       <Text strong>
-                        {selectedContacts.length} contact{selectedContacts.length > 1 ? 's' : ''} sélectionné{selectedContacts.length > 1 ? 's' : ''}
+                        {selectedContacts.length} contact{selectedContacts.length > 1 ? 's' : ''} sélectionné
+                        {selectedContacts.length > 1 ? 's' : ''}
                       </Text>
-                      <Button
-                        size="small"
-                        onClick={() => setSelectedContacts([])}
-                      >
+                      <Button size="small" onClick={() => setSelectedContacts([])}>
                         Désélectionner tout
                       </Button>
                     </Space>
                   </Col>
                   <Col xs={24} sm={12} style={{ textAlign: 'right' }}>
-                    <Button
-                      type="primary"
-                      icon={<TagOutlined />}
-                      onClick={() => setShowBulkTagManager(true)}
-                    >
+                    <Button type="primary" icon={<TagOutlined />} onClick={() => setShowBulkTagManager(true)}>
                       Gérer les tags
                     </Button>
                   </Col>
@@ -723,9 +682,7 @@ export const Contacts: React.FC = () => {
                 rowSelection={rowSelection}
                 pagination={false}
                 scroll={{ x: 'max-content' }}
-                rowClassName={(record) => 
-                  selectedContacts.includes(record.id) ? 'ant-table-row-selected' : ''
-                }
+                rowClassName={record => (selectedContacts.includes(record.id) ? 'ant-table-row-selected' : '')}
               />
             </Card>
 
@@ -735,9 +692,8 @@ export const Contacts: React.FC = () => {
                 <Row justify="space-between" align="middle" gutter={[16, 16]}>
                   <Col xs={24} sm={12}>
                     <Text type="secondary">
-                      Affichage de {((pagination.page - 1) * pagination.limit) + 1} à{' '}
-                      {Math.min(pagination.page * pagination.limit, pagination.total)} sur{' '}
-                      {pagination.total} contacts
+                      Affichage de {(pagination.page - 1) * pagination.limit + 1} à{' '}
+                      {Math.min(pagination.page * pagination.limit, pagination.total)} sur {pagination.total} contacts
                     </Text>
                   </Col>
                   <Col xs={24} sm={12} style={{ textAlign: 'right' }}>
@@ -747,7 +703,7 @@ export const Contacts: React.FC = () => {
                       pageSize={pagination.limit}
                       showSizeChanger={false}
                       showTotal={(total, range) => `${range[0]}-${range[1]} sur ${total}`}
-                      onChange={(page) => setFilters({ ...filters, page })}
+                      onChange={page => setFilters({ ...filters, page })}
                     />
                   </Col>
                 </Row>
@@ -770,4 +726,3 @@ export const Contacts: React.FC = () => {
     </DashboardLayout>
   );
 };
-

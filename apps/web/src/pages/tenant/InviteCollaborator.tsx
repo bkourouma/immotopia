@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Alert, Button, Card, Checkbox, Form, Input, Space, Typography, message } from 'antd';
+import { App, Alert, Button, Card, Checkbox, Form, Input, Space, Typography } from 'antd';
 import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { InviteCollaboratorRequest, inviteCollaborator } from '../../services/invitation-service';
@@ -18,6 +18,8 @@ interface Role {
 }
 
 export const InviteCollaborator: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const [form] = Form.useForm();
@@ -53,9 +55,7 @@ export const InviteCollaborator: React.FC = () => {
     } catch (err: any) {
       console.error('Error loading roles:', err);
       setRoles([]);
-      setRolesError(
-        err.response?.data?.message || 'Impossible de charger les roles. Veuillez reessayer.'
-      );
+      setRolesError(err.response?.data?.message || 'Impossible de charger les roles. Veuillez reessayer.');
     } finally {
       setRolesLoading(false);
     }
@@ -77,7 +77,7 @@ export const InviteCollaborator: React.FC = () => {
     try {
       const formData: InviteCollaboratorRequest = {
         email: values.email,
-        roleIds: selectedRoles,
+        roleIds: selectedRoles
       };
 
       const response = await inviteCollaborator(tenantId, formData);
@@ -101,19 +101,17 @@ export const InviteCollaborator: React.FC = () => {
   };
 
   const handleRoleChange = (roleId: string, checked: boolean) => {
-    setSelectedRoles((prevSelectedRoles) =>
-      checked
-        ? [...prevSelectedRoles, roleId]
-        : prevSelectedRoles.filter((id) => id !== roleId)
+    setSelectedRoles(prevSelectedRoles =>
+      checked ? [...prevSelectedRoles, roleId] : prevSelectedRoles.filter(id => id !== roleId)
     );
     setError(null);
   };
 
   const handleRoleCardClick = (roleId: string) => {
-    setSelectedRoles((prevSelectedRoles) => {
+    setSelectedRoles(prevSelectedRoles => {
       const isAlreadySelected = prevSelectedRoles.includes(roleId);
       if (isAlreadySelected) {
-        return prevSelectedRoles.filter((id) => id !== roleId);
+        return prevSelectedRoles.filter(id => id !== roleId);
       }
       return [...prevSelectedRoles, roleId];
     });
@@ -143,7 +141,7 @@ export const InviteCollaborator: React.FC = () => {
             layout="vertical"
             onFinish={handleSubmit}
             initialValues={{
-              email: '',
+              email: ''
             }}
           >
             {error && (
@@ -163,7 +161,7 @@ export const InviteCollaborator: React.FC = () => {
               name="email"
               rules={[
                 { required: true, message: "L'email est requis" },
-                { type: 'email', message: 'Email invalide' },
+                { type: 'email', message: 'Email invalide' }
               ]}
             >
               <Input type="email" placeholder="email@example.com" size="large" />
@@ -173,9 +171,7 @@ export const InviteCollaborator: React.FC = () => {
               label="Roles"
               required
               validateStatus={
-                hasTriedSubmit && !rolesLoading && roles.length > 0 && selectedRoles.length === 0
-                  ? 'error'
-                  : ''
+                hasTriedSubmit && !rolesLoading && roles.length > 0 && selectedRoles.length === 0 ? 'error' : ''
               }
               help={
                 hasTriedSubmit && !rolesLoading && roles.length > 0 && selectedRoles.length === 0
@@ -197,7 +193,7 @@ export const InviteCollaborator: React.FC = () => {
                 </Space>
               ) : (
                 <Space orientation="vertical" style={{ width: '100%' }} size="middle">
-                  {roles.map((role) => {
+                  {roles.map(role => {
                     const { name: labelFr, description: descFr } = getRoleLabelFr(
                       role.key,
                       role.name,
@@ -211,17 +207,15 @@ export const InviteCollaborator: React.FC = () => {
                         hoverable
                         onClick={() => handleRoleCardClick(role.id)}
                         style={{
-                          border: selectedRoles.includes(role.id)
-                            ? '1px solid #1890ff'
-                            : '1px solid #d9d9d9',
+                          border: selectedRoles.includes(role.id) ? '1px solid #1890ff' : '1px solid #d9d9d9',
                           backgroundColor: selectedRoles.includes(role.id) ? '#e6f7ff' : '#fff',
-                          cursor: 'pointer',
+                          cursor: 'pointer'
                         }}
                       >
                         <Checkbox
                           checked={selectedRoles.includes(role.id)}
-                          onChange={(e) => handleRoleChange(role.id, e.target.checked)}
-                          onClick={(e) => e.stopPropagation()}
+                          onChange={e => handleRoleChange(role.id, e.target.checked)}
+                          onClick={e => e.stopPropagation()}
                         >
                           <div style={{ marginLeft: 8 }}>
                             <div style={{ fontWeight: 500 }}>{labelFr}</div>

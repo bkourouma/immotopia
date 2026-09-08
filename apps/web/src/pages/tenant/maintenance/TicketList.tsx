@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Select, Button, Empty, Spin, Pagination, Space, Typography, message, Modal } from 'antd';
+import { App, Card, Select, Button, Empty, Spin, Pagination, Space, Typography, Modal } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { TicketCard } from '../../../components/maintenance/TicketCard';
@@ -12,6 +12,8 @@ const { Title } = Typography;
 const { Option } = Select;
 
 export const TicketList: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const { tenantMembership } = useAuth();
@@ -59,16 +61,16 @@ export const TicketList: React.FC = () => {
 
   const handleStatusFilterChange = (value: MaintenanceTicketStatus | undefined) => {
     setStatusFilter(value);
-    setPagination((prev) => ({ ...prev, page: 1 }));
+    setPagination(prev => ({ ...prev, page: 1 }));
   };
 
   const handlePropertyFilterChange = (value: string | undefined) => {
     setPropertyFilter(value);
-    setPagination((prev) => ({ ...prev, page: 1 }));
+    setPagination(prev => ({ ...prev, page: 1 }));
   };
 
   const handlePageChange = (page: number) => {
-    setPagination((prev) => ({ ...prev, page }));
+    setPagination(prev => ({ ...prev, page }));
   };
 
   const handleEdit = (ticketId: string) => {
@@ -80,7 +82,8 @@ export const TicketList: React.FC = () => {
 
     Modal.confirm({
       title: 'Supprimer définitivement le ticket',
-      content: 'Êtes-vous sûr de vouloir supprimer définitivement ce ticket ? Cette action est irréversible et supprimera toutes les données associées (pièces jointes, commentaires, historique).',
+      content:
+        'Êtes-vous sûr de vouloir supprimer définitivement ce ticket ? Cette action est irréversible et supprimera toutes les données associées (pièces jointes, commentaires, historique).',
       okText: 'Oui, supprimer',
       cancelText: 'Non',
       okButtonProps: { danger: true },
@@ -151,10 +154,7 @@ export const TicketList: React.FC = () => {
         </Card>
 
         {tickets.length === 0 ? (
-          <Empty
-            description="Aucun ticket de maintenance"
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-          >
+          <Empty description="Aucun ticket de maintenance" image={Empty.PRESENTED_IMAGE_SIMPLE}>
             <Button
               type="primary"
               icon={<PlusOutlined />}
@@ -165,7 +165,7 @@ export const TicketList: React.FC = () => {
           </Empty>
         ) : (
           <>
-            {tickets.map((ticket) => (
+            {tickets.map(ticket => (
               <TicketCard
                 key={ticket.id}
                 ticket={ticket}
@@ -182,7 +182,7 @@ export const TicketList: React.FC = () => {
                   total={pagination.total}
                   pageSize={pagination.limit}
                   onChange={handlePageChange}
-                  showTotal={(total) => `Total: ${total} tickets`}
+                  showTotal={total => `Total: ${total} tickets`}
                 />
               </div>
             )}

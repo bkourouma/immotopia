@@ -1,27 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  Card,
-  Table,
-  Button,
-  Modal,
-  Form,
-  Input,
-  message,
-  Space,
-  Typography
-} from 'antd';
+import { App, Card, Table, Button, Modal, Form, Input, Space, Typography } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { HtmlCodeEditor } from '../../components/HtmlCodeEditor';
-import {
-  newsletterService,
-  type NewsletterTemplate
-} from '../../services/newsletter.service';
+import { newsletterService, type NewsletterTemplate } from '../../services/newsletter.service';
 
 const HELP_TEXT = 'Variables disponibles : {{contenu}}, {{prenom}}, {{nom}}, {{email}}, {{lien_desinscription}}';
 
 export function NewsletterTemplatesPage() {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const [templates, setTemplates] = useState<NewsletterTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -166,12 +155,7 @@ export function NewsletterTemplatesPage() {
           <Form.Item name="name" label="Nom" rules={[{ required: true, message: 'Nom requis' }]}>
             <Input placeholder="Ex: Modèle standard" />
           </Form.Item>
-          <Form.Item
-            name="html"
-            label="HTML"
-            extra={HELP_TEXT}
-            rules={[{ required: true, message: 'Contenu requis' }]}
-          >
+          <Form.Item name="html" label="HTML" extra={HELP_TEXT} rules={[{ required: true, message: 'Contenu requis' }]}>
             <HtmlCodeEditor minHeight={200} />
           </Form.Item>
         </Form>

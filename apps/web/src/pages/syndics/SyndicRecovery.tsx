@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  App,
   Alert,
   Button,
   Card,
@@ -17,8 +18,7 @@ import {
   Statistic,
   Table,
   Tag,
-  Typography,
-  message,
+  Typography
 } from 'antd';
 import { ArrowLeftOutlined, ClockCircleOutlined, ExclamationCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -32,7 +32,7 @@ import {
   listPaymentSchedules,
   listPaymentReminders,
   runReminderBatch,
-  waiveLatePaymentPenalty,
+  waiveLatePaymentPenalty
 } from '../../services/syndic-service';
 import {
   LatePaymentPenalty,
@@ -41,7 +41,7 @@ import {
   PaymentReminder,
   PaymentSchedule,
   ReminderChannel,
-  ReminderStatus,
+  ReminderStatus
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 
@@ -51,13 +51,13 @@ const reminderChannelOptions: Array<{ label: string; value: ReminderChannel }> =
   { label: 'Email', value: 'EMAIL' },
   { label: 'SMS', value: 'SMS' },
   { label: 'WhatsApp', value: 'WHATSAPP' },
-  { label: 'Push', value: 'PUSH' },
+  { label: 'Push', value: 'PUSH' }
 ];
 
 const reminderStatusLabels: Record<ReminderStatus, string> = {
   SENT: 'Envoyé',
   DELIVERED: 'Distribué',
-  FAILED: 'Échec',
+  FAILED: 'Échec'
 };
 
 type LotWithPropertyLabel =
@@ -129,13 +129,18 @@ function propertyLabel(item: OverdueDashboardItem): string {
 }
 
 export const SyndicRecovery: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dashboard, setDashboard] = useState<OverdueDashboard>({ items: [], totals: { overdueCount: 0, overdueAmount: 0 } });
+  const [dashboard, setDashboard] = useState<OverdueDashboard>({
+    items: [],
+    totals: { overdueCount: 0, overdueAmount: 0 }
+  });
   const [reminders, setReminders] = useState<PaymentReminder[]>([]);
   const [penalties, setPenalties] = useState<LatePaymentPenalty[]>([]);
   const [schedules, setSchedules] = useState<PaymentSchedule[]>([]);
@@ -162,9 +167,9 @@ export const SyndicRecovery: React.FC = () => {
 
   const chargeOptions = useMemo(
     () =>
-      dashboard.items.map((item) => ({
+      dashboard.items.map(item => ({
         value: item.chargeCallId,
-        label: `${propertyLabel(item)} - ${ownerLabel(item.owner)} - reste ${item.outstanding.toLocaleString('fr-FR')} XOF`,
+        label: `${propertyLabel(item)} - ${ownerLabel(item.owner)} - reste ${item.outstanding.toLocaleString('fr-FR')} XOF`
       })),
     [dashboard.items]
   );
@@ -178,7 +183,7 @@ export const SyndicRecovery: React.FC = () => {
         getOverdueDashboard(effectiveTenantId, syndicId),
         listPaymentReminders(effectiveTenantId, syndicId, { page: 1, limit: 50 }),
         listLatePaymentPenalties(effectiveTenantId, syndicId, { page: 1, limit: 50 }),
-        listPaymentSchedules(effectiveTenantId, syndicId, { page: 1, limit: 50 }),
+        listPaymentSchedules(effectiveTenantId, syndicId, { page: 1, limit: 50 })
       ]);
       setDashboard(dashboardData);
       setReminders(remindersData);
@@ -213,7 +218,7 @@ export const SyndicRecovery: React.FC = () => {
       await createManualReminder(effectiveTenantId, syndicId, values.chargeCallId, {
         reminderLevel: values.reminderLevel,
         channel: values.channel,
-        status: 'SENT',
+        status: 'SENT'
       });
       message.success('Relance créée');
       setManualOpen(false);
@@ -233,7 +238,7 @@ export const SyndicRecovery: React.FC = () => {
     try {
       await createLatePaymentPenalty(effectiveTenantId, syndicId, values.chargeCallId, {
         penaltyRate: values.penaltyRate,
-        daysLate: values.daysLate,
+        daysLate: values.daysLate
       });
       message.success('Pénalité appliquée');
       setPenaltyOpen(false);
@@ -252,7 +257,7 @@ export const SyndicRecovery: React.FC = () => {
     setSubmitting(true);
     try {
       await waiveLatePaymentPenalty(effectiveTenantId, syndicId, selectedPenalty.id, {
-        waivedReason: values.waivedReason,
+        waivedReason: values.waivedReason
       });
       message.success('Remise appliquée');
       setWaiveOpen(false);
@@ -276,8 +281,8 @@ export const SyndicRecovery: React.FC = () => {
         totalAmount: values.totalAmount,
         instalments: (values.instalments || []).map((item: any) => ({
           dueDate: item.dueDate.toISOString(),
-          amount: item.amount,
-        })),
+          amount: item.amount
+        }))
       });
       message.success('Échéancier créé');
       setScheduleOpen(false);
@@ -295,7 +300,10 @@ export const SyndicRecovery: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
+            >
               Retour à la fiche syndic
             </Button>
             <Title level={2} style={{ margin: 0 }}>
@@ -309,10 +317,18 @@ export const SyndicRecovery: React.FC = () => {
             <Button onClick={() => setManualOpen(true)} icon={<PlusOutlined />} disabled={dashboard.items.length === 0}>
               Relance manuelle
             </Button>
-            <Button onClick={() => setPenaltyOpen(true)} icon={<ExclamationCircleOutlined />} disabled={dashboard.items.length === 0}>
+            <Button
+              onClick={() => setPenaltyOpen(true)}
+              icon={<ExclamationCircleOutlined />}
+              disabled={dashboard.items.length === 0}
+            >
               Appliquer pénalité
             </Button>
-            <Button onClick={() => setScheduleOpen(true)} icon={<ClockCircleOutlined />} disabled={dashboard.items.length === 0}>
+            <Button
+              onClick={() => setScheduleOpen(true)}
+              icon={<ClockCircleOutlined />}
+              disabled={dashboard.items.length === 0}
+            >
               Créer échéancier
             </Button>
             <Button type="primary" onClick={() => void handleRunBatch()} loading={submitting}>
@@ -350,21 +366,33 @@ export const SyndicRecovery: React.FC = () => {
                 columns={[
                   {
                     title: 'Propriété',
-                    render: (_, item) => propertyLabel(item),
+                    render: (_, item) => propertyLabel(item)
                   },
                   {
                     title: 'Propriétaire',
-                    render: (_, item) => ownerLabel(item.owner),
+                    render: (_, item) => ownerLabel(item.owner)
                   },
                   {
                     title: 'Échéance',
                     dataIndex: 'dueDate',
-                    render: (value: string) => dayjs(value).format('DD/MM/YYYY'),
+                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
                   },
                   { title: 'Jours retard', dataIndex: 'daysLate' },
-                  { title: 'Montant', dataIndex: 'amount', render: (value: number) => `${value.toLocaleString('fr-FR')} XOF` },
-                  { title: 'Payé', dataIndex: 'paid', render: (value: number) => `${value.toLocaleString('fr-FR')} XOF` },
-                  { title: 'Reste', dataIndex: 'outstanding', render: (value: number) => `${value.toLocaleString('fr-FR')} XOF` },
+                  {
+                    title: 'Montant',
+                    dataIndex: 'amount',
+                    render: (value: number) => `${value.toLocaleString('fr-FR')} XOF`
+                  },
+                  {
+                    title: 'Payé',
+                    dataIndex: 'paid',
+                    render: (value: number) => `${value.toLocaleString('fr-FR')} XOF`
+                  },
+                  {
+                    title: 'Reste',
+                    dataIndex: 'outstanding',
+                    render: (value: number) => `${value.toLocaleString('fr-FR')} XOF`
+                  }
                 ]}
               />
             </Card>
@@ -384,7 +412,11 @@ export const SyndicRecovery: React.FC = () => {
                   },
                   { title: 'Lot', render: (_, item) => item.lot?.lotNumber || '-' },
                   { title: 'Propriétaire', render: (_, item) => ownerLabel(item.lot?.owner) },
-                  { title: 'Envoyé le', dataIndex: 'sentAt', render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm') },
+                  {
+                    title: 'Envoyé le',
+                    dataIndex: 'sentAt',
+                    render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm')
+                  }
                 ]}
               />
             </Card>
@@ -399,11 +431,14 @@ export const SyndicRecovery: React.FC = () => {
                   { title: 'Propriétaire', render: (_, item) => ownerLabel(item.lot?.owner) },
                   { title: 'Jours retard', dataIndex: 'daysLate' },
                   { title: 'Taux', dataIndex: 'penaltyRate', render: (value: number) => `${value}%` },
-                  { title: 'Montant', dataIndex: 'penaltyAmount', render: (value: number) => `${Number(value).toLocaleString('fr-FR')} XOF` },
+                  {
+                    title: 'Montant',
+                    dataIndex: 'penaltyAmount',
+                    render: (value: number) => `${Number(value).toLocaleString('fr-FR')} XOF`
+                  },
                   {
                     title: 'Statut',
-                    render: (_, item) =>
-                      item.waived ? <Tag color="orange">REMIS</Tag> : <Tag color="red">ACTIF</Tag>,
+                    render: (_, item) => (item.waived ? <Tag color="orange">REMIS</Tag> : <Tag color="red">ACTIF</Tag>)
                   },
                   {
                     title: 'Action',
@@ -420,8 +455,8 @@ export const SyndicRecovery: React.FC = () => {
                         >
                           Remise
                         </Button>
-                      ),
-                  },
+                      )
+                  }
                 ]}
               />
             </Card>
@@ -435,16 +470,27 @@ export const SyndicRecovery: React.FC = () => {
                   { title: 'Lot', render: (_, item) => lotPropertyLabel(item.lot) },
                   { title: 'Propriétaire', render: (_, item) => ownerLabel(item.lot?.owner) },
                   { title: 'Appel', render: (_, item) => item.chargeCall?.period || '-' },
-                  { title: 'Montant total', dataIndex: 'totalAmount', render: (value: number | string) => `${Number(value).toLocaleString('fr-FR')} XOF` },
-                  { title: 'Accord', dataIndex: 'agreedAt', render: (value: string) => dayjs(value).format('DD/MM/YYYY') },
+                  {
+                    title: 'Montant total',
+                    dataIndex: 'totalAmount',
+                    render: (value: number | string) => `${Number(value).toLocaleString('fr-FR')} XOF`
+                  },
+                  {
+                    title: 'Accord',
+                    dataIndex: 'agreedAt',
+                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
+                  },
                   {
                     title: 'Échéances',
                     render: (_, item) =>
                       (item.instalments || [])
-                        .map(inst => `${dayjs(inst.dueDate).format('DD/MM/YYYY')} (${Number(inst.amount).toLocaleString('fr-FR')} XOF)`)
-                        .join(' | ') || '-',
+                        .map(
+                          inst =>
+                            `${dayjs(inst.dueDate).format('DD/MM/YYYY')} (${Number(inst.amount).toLocaleString('fr-FR')} XOF)`
+                        )
+                        .join(' | ') || '-'
                   },
-                  { title: 'Statut', dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag> },
+                  { title: 'Statut', dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag> }
                 ]}
               />
             </Card>
@@ -462,7 +508,11 @@ export const SyndicRecovery: React.FC = () => {
         confirmLoading={submitting}
       >
         <Form form={manualForm} layout="vertical" initialValues={{ reminderLevel: 1, channel: 'EMAIL' }}>
-          <Form.Item label="Appel de charges" name="chargeCallId" rules={[{ required: true, message: "Sélectionnez un appel" }]}>
+          <Form.Item
+            label="Appel de charges"
+            name="chargeCallId"
+            rules={[{ required: true, message: 'Sélectionnez un appel' }]}
+          >
             <Select showSearch optionFilterProp="label" options={chargeOptions} />
           </Form.Item>
           <Row gutter={12}>
@@ -490,12 +540,20 @@ export const SyndicRecovery: React.FC = () => {
         confirmLoading={submitting}
       >
         <Form form={penaltyForm} layout="vertical" initialValues={{ penaltyRate: 5 }}>
-          <Form.Item label="Appel de charges" name="chargeCallId" rules={[{ required: true, message: "Sélectionnez un appel" }]}>
+          <Form.Item
+            label="Appel de charges"
+            name="chargeCallId"
+            rules={[{ required: true, message: 'Sélectionnez un appel' }]}
+          >
             <Select showSearch optionFilterProp="label" options={chargeOptions} />
           </Form.Item>
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item label="Taux (%)" name="penaltyRate" rules={[{ required: true, message: 'Le taux est obligatoire' }]}>
+              <Form.Item
+                label="Taux (%)"
+                name="penaltyRate"
+                rules={[{ required: true, message: 'Le taux est obligatoire' }]}
+              >
                 <InputNumber min={0.01} max={100} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
@@ -522,15 +580,23 @@ export const SyndicRecovery: React.FC = () => {
           form={scheduleForm}
           layout="vertical"
           initialValues={{
-            instalments: [{ amount: undefined, dueDate: undefined }],
+            instalments: [{ amount: undefined, dueDate: undefined }]
           }}
         >
-          <Form.Item label="Appel de charges" name="chargeCallId" rules={[{ required: true, message: "Sélectionnez un appel" }]}>
+          <Form.Item
+            label="Appel de charges"
+            name="chargeCallId"
+            rules={[{ required: true, message: 'Sélectionnez un appel' }]}
+          >
             <Select showSearch optionFilterProp="label" options={chargeOptions} />
           </Form.Item>
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item label="Montant total" name="totalAmount" rules={[{ required: true, message: 'Le total est obligatoire' }]}>
+              <Form.Item
+                label="Montant total"
+                name="totalAmount"
+                rules={[{ required: true, message: 'Le total est obligatoire' }]}
+              >
                 <InputNumber min={1} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
@@ -608,4 +674,3 @@ export const SyndicRecovery: React.FC = () => {
     </DashboardLayout>
   );
 };
-

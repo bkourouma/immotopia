@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
+  App,
   Card,
   Input,
   Select,
@@ -16,9 +17,8 @@ import {
   Collapse,
   Badge,
   Grid,
-  message,
   Pagination,
-  Popconfirm,
+  Popconfirm
 } from 'antd';
 import {
   PlusOutlined,
@@ -29,7 +29,7 @@ import {
   HomeOutlined,
   CloseOutlined,
   DeleteOutlined,
-  MailOutlined,
+  MailOutlined
 } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { listProperties, Property, deleteProperty } from '../../services/property-service';
@@ -46,6 +46,8 @@ const { Panel } = Collapse;
 const { useBreakpoint } = Grid;
 
 export const Properties: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const screens = useBreakpoint();
@@ -60,7 +62,7 @@ export const Properties: React.FC = () => {
     page: 1,
     limit: 20,
     total: 0,
-    totalPages: 0,
+    totalPages: 0
   });
   const [propertyImages, setPropertyImages] = useState<Record<string, string>>({});
   const [communes, setCommunes] = useState<GeographicLocation[]>([]);
@@ -76,7 +78,7 @@ export const Properties: React.FC = () => {
     minRooms: '',
     maxRooms: '',
     minBedrooms: '',
-    maxBedrooms: '',
+    maxBedrooms: ''
   });
   const [activeFiltersCount, setActiveFiltersCount] = useState(0);
   const [newsletterModalProperty, setNewsletterModalProperty] = useState<Property | null>(null);
@@ -93,13 +95,13 @@ export const Properties: React.FC = () => {
     TERRAIN: 'Terrain',
     IMMEUBLE: 'Immeuble',
     PARKING_BOX: 'Parking / Box',
-    LOT_PROGRAMME_NEUF: 'Lot programme neuf',
+    LOT_PROGRAMME_NEUF: 'Lot programme neuf'
   };
 
   const transactionModeLabels: Record<string, string> = {
     SALE: 'Vente',
     RENTAL: 'Location',
-    SHORT_TERM: 'Location courte durée',
+    SHORT_TERM: 'Location courte durée'
   };
 
   const statusLabels: Record<string, string> = {
@@ -110,7 +112,7 @@ export const Properties: React.FC = () => {
     UNDER_OFFER: 'Sous offre',
     RENTED: 'Loué',
     SOLD: 'Vendu',
-    ARCHIVED: 'Archivé',
+    ARCHIVED: 'Archivé'
   };
 
   useEffect(() => {
@@ -147,20 +149,21 @@ export const Properties: React.FC = () => {
         limit: pagination.limit,
         propertyType: filters.propertyType || undefined,
         transactionMode: filters.transactionMode || undefined,
-        status: filters.status || undefined,
+        status: filters.status || undefined
       });
-      
+
       let filteredProperties = response.properties;
-      
+
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
-        filteredProperties = filteredProperties.filter(p => 
-          p.title?.toLowerCase().includes(term) ||
-          p.address?.toLowerCase().includes(term) ||
-          p.internalReference?.toLowerCase().includes(term)
+        filteredProperties = filteredProperties.filter(
+          p =>
+            p.title?.toLowerCase().includes(term) ||
+            p.address?.toLowerCase().includes(term) ||
+            p.internalReference?.toLowerCase().includes(term)
         );
       }
-      
+
       if (filters.city) {
         const selectedCommune = communes.find(c => c.communeId === filters.city);
         if (selectedCommune) {
@@ -169,42 +172,44 @@ export const Properties: React.FC = () => {
           filteredProperties = filteredProperties.filter(p => {
             const addressLower = p.address?.toLowerCase() || '';
             const locationZoneLower = p.locationZone?.toLowerCase() || '';
-            return addressLower.includes(communeName) || 
-                   locationZoneLower.includes(communeName) ||
-                   addressLower.includes(regionName) ||
-                   locationZoneLower.includes(regionName);
+            return (
+              addressLower.includes(communeName) ||
+              locationZoneLower.includes(communeName) ||
+              addressLower.includes(regionName) ||
+              locationZoneLower.includes(regionName)
+            );
           });
         }
       }
-      
+
       if (filters.minPrice) {
         filteredProperties = filteredProperties.filter(p => (p.price || 0) >= Number(filters.minPrice));
       }
       if (filters.maxPrice) {
         filteredProperties = filteredProperties.filter(p => (p.price || 0) <= Number(filters.maxPrice));
       }
-      
+
       if (filters.minSurface) {
         filteredProperties = filteredProperties.filter(p => (p.surfaceArea || 0) >= Number(filters.minSurface));
       }
       if (filters.maxSurface) {
         filteredProperties = filteredProperties.filter(p => (p.surfaceArea || 0) <= Number(filters.maxSurface));
       }
-      
+
       if (filters.minRooms) {
         filteredProperties = filteredProperties.filter(p => (p.rooms || 0) >= Number(filters.minRooms));
       }
       if (filters.maxRooms) {
         filteredProperties = filteredProperties.filter(p => (p.rooms || 0) <= Number(filters.maxRooms));
       }
-      
+
       if (filters.minBedrooms) {
         filteredProperties = filteredProperties.filter(p => (p.bedrooms || 0) >= Number(filters.minBedrooms));
       }
       if (filters.maxBedrooms) {
         filteredProperties = filteredProperties.filter(p => (p.bedrooms || 0) <= Number(filters.maxBedrooms));
       }
-      
+
       setProperties(filteredProperties);
       setPagination(response.pagination);
       loadPropertyImages(filteredProperties);
@@ -234,7 +239,7 @@ export const Properties: React.FC = () => {
       minRooms: '',
       maxRooms: '',
       minBedrooms: '',
-      maxBedrooms: '',
+      maxBedrooms: ''
     });
     setPagination(prev => ({ ...prev, page: 1 }));
   };
@@ -247,13 +252,13 @@ export const Properties: React.FC = () => {
 
   const loadPropertyImages = async (props: Property[]) => {
     if (!effectiveTenantId) return;
-    
+
     const imageMap: Record<string, string> = {};
     const apiBaseUrl = API_URL;
     const mediaBaseUrl = apiBaseUrl.replace('/api', '');
-    
+
     await Promise.all(
-      props.map(async (property) => {
+      props.map(async property => {
         try {
           const response = await apiClient.get<{ success: boolean; data: PropertyMedia[] }>(
             `/tenants/${effectiveTenantId}/properties/${property.id}/media`
@@ -262,8 +267,8 @@ export const Properties: React.FC = () => {
           const primaryPhoto = photos.find(p => p.isPrimary) || photos[0];
           if (primaryPhoto) {
             const filePath = primaryPhoto.fileUrl || primaryPhoto.filePath;
-            imageMap[property.id] = filePath.startsWith('http') 
-              ? filePath 
+            imageMap[property.id] = filePath.startsWith('http')
+              ? filePath
               : `${mediaBaseUrl}${filePath.startsWith('/') ? '' : '/'}${filePath}`;
           }
         } catch (err) {
@@ -271,7 +276,7 @@ export const Properties: React.FC = () => {
         }
       })
     );
-    
+
     setPropertyImages(imageMap);
   };
 
@@ -297,7 +302,8 @@ export const Properties: React.FC = () => {
 
   /** Commune depuis typeSpecificData */
   const getCommune = (p: Property) => {
-    const ts = p.typeSpecificData && typeof p.typeSpecificData === 'object' ? p.typeSpecificData as Record<string, any> : {};
+    const ts =
+      p.typeSpecificData && typeof p.typeSpecificData === 'object' ? (p.typeSpecificData as Record<string, any>) : {};
     return ts.commune?.trim() || '';
   };
 
@@ -318,7 +324,7 @@ export const Properties: React.FC = () => {
       UNDER_OFFER: { color: 'processing', text: 'Sous offre' },
       RENTED: { color: 'purple', text: 'Loué' },
       SOLD: { color: 'error', text: 'Vendu' },
-      ARCHIVED: { color: 'default', text: 'Archivé' },
+      ARCHIVED: { color: 'default', text: 'Archivé' }
     };
     const config = statusConfig[status] || statusConfig.DRAFT;
     return (
@@ -366,7 +372,7 @@ export const Properties: React.FC = () => {
               placeholder="Rechercher par titre, adresse, référence..."
               prefix={<SearchOutlined />}
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={e => setSearchTerm(e.target.value)}
               onPressEnter={handleSearch}
               style={{ flex: 1 }}
             />
@@ -379,10 +385,7 @@ export const Properties: React.FC = () => {
             ghost
             expandIcon={({ isActive }) => (
               <Badge count={activeFiltersCount} offset={[10, 0]}>
-                <Button
-                  icon={isActive ? <CloseOutlined /> : <FilterOutlined />}
-                  iconPosition="end"
-                >
+                <Button icon={isActive ? <CloseOutlined /> : <FilterOutlined />} iconPosition="end">
                   Filtres avancés
                 </Button>
               </Badge>
@@ -404,11 +407,13 @@ export const Properties: React.FC = () => {
                       style={{ width: '100%', marginTop: 8 }}
                       placeholder="Tous les types"
                       value={filters.propertyType || undefined}
-                      onChange={(value) => setFilters(prev => ({ ...prev, propertyType: value || '' }))}
+                      onChange={value => setFilters(prev => ({ ...prev, propertyType: value || '' }))}
                       allowClear
                     >
                       {Object.entries(propertyTypeLabels).map(([value, label]) => (
-                        <Select.Option key={value} value={value}>{label}</Select.Option>
+                        <Select.Option key={value} value={value}>
+                          {label}
+                        </Select.Option>
                       ))}
                     </Select>
                   </Col>
@@ -418,11 +423,13 @@ export const Properties: React.FC = () => {
                       style={{ width: '100%', marginTop: 8 }}
                       placeholder="Tous les modes"
                       value={filters.transactionMode || undefined}
-                      onChange={(value) => setFilters(prev => ({ ...prev, transactionMode: value || '' }))}
+                      onChange={value => setFilters(prev => ({ ...prev, transactionMode: value || '' }))}
                       allowClear
                     >
                       {Object.entries(transactionModeLabels).map(([value, label]) => (
-                        <Select.Option key={value} value={value}>{label}</Select.Option>
+                        <Select.Option key={value} value={value}>
+                          {label}
+                        </Select.Option>
                       ))}
                     </Select>
                   </Col>
@@ -432,11 +439,13 @@ export const Properties: React.FC = () => {
                       style={{ width: '100%', marginTop: 8 }}
                       placeholder="Tous les statuts"
                       value={filters.status || undefined}
-                      onChange={(value) => setFilters(prev => ({ ...prev, status: value || '' }))}
+                      onChange={value => setFilters(prev => ({ ...prev, status: value || '' }))}
                       allowClear
                     >
                       {Object.entries(statusLabels).map(([value, label]) => (
-                        <Select.Option key={value} value={value}>{label}</Select.Option>
+                        <Select.Option key={value} value={value}>
+                          {label}
+                        </Select.Option>
                       ))}
                     </Select>
                   </Col>
@@ -445,7 +454,7 @@ export const Properties: React.FC = () => {
                     <div style={{ marginTop: 8 }}>
                       <CommuneSearchableSelect
                         value={filters.city}
-                        onChange={(communeId) => setFilters(prev => ({ ...prev, city: communeId }))}
+                        onChange={communeId => setFilters(prev => ({ ...prev, city: communeId }))}
                         placeholder="Rechercher une ville..."
                       />
                     </div>
@@ -456,7 +465,7 @@ export const Properties: React.FC = () => {
                       type="number"
                       placeholder="0"
                       value={filters.minPrice}
-                      onChange={(e) => setFilters(prev => ({ ...prev, minPrice: e.target.value }))}
+                      onChange={e => setFilters(prev => ({ ...prev, minPrice: e.target.value }))}
                       style={{ marginTop: 8 }}
                     />
                   </Col>
@@ -466,7 +475,7 @@ export const Properties: React.FC = () => {
                       type="number"
                       placeholder="Illimité"
                       value={filters.maxPrice}
-                      onChange={(e) => setFilters(prev => ({ ...prev, maxPrice: e.target.value }))}
+                      onChange={e => setFilters(prev => ({ ...prev, maxPrice: e.target.value }))}
                       style={{ marginTop: 8 }}
                     />
                   </Col>
@@ -476,7 +485,7 @@ export const Properties: React.FC = () => {
                       type="number"
                       placeholder="0"
                       value={filters.minSurface}
-                      onChange={(e) => setFilters(prev => ({ ...prev, minSurface: e.target.value }))}
+                      onChange={e => setFilters(prev => ({ ...prev, minSurface: e.target.value }))}
                       style={{ marginTop: 8 }}
                     />
                   </Col>
@@ -486,7 +495,7 @@ export const Properties: React.FC = () => {
                       type="number"
                       placeholder="Illimité"
                       value={filters.maxSurface}
-                      onChange={(e) => setFilters(prev => ({ ...prev, maxSurface: e.target.value }))}
+                      onChange={e => setFilters(prev => ({ ...prev, maxSurface: e.target.value }))}
                       style={{ marginTop: 8 }}
                     />
                   </Col>
@@ -497,7 +506,7 @@ export const Properties: React.FC = () => {
                       placeholder="0"
                       min={0}
                       value={filters.minRooms}
-                      onChange={(e) => setFilters(prev => ({ ...prev, minRooms: e.target.value }))}
+                      onChange={e => setFilters(prev => ({ ...prev, minRooms: e.target.value }))}
                       style={{ marginTop: 8 }}
                     />
                   </Col>
@@ -508,7 +517,7 @@ export const Properties: React.FC = () => {
                       placeholder="Illimité"
                       min={0}
                       value={filters.maxRooms}
-                      onChange={(e) => setFilters(prev => ({ ...prev, maxRooms: e.target.value }))}
+                      onChange={e => setFilters(prev => ({ ...prev, maxRooms: e.target.value }))}
                       style={{ marginTop: 8 }}
                     />
                   </Col>
@@ -519,7 +528,7 @@ export const Properties: React.FC = () => {
                       placeholder="0"
                       min={0}
                       value={filters.minBedrooms}
-                      onChange={(e) => setFilters(prev => ({ ...prev, minBedrooms: e.target.value }))}
+                      onChange={e => setFilters(prev => ({ ...prev, minBedrooms: e.target.value }))}
                       style={{ marginTop: 8 }}
                     />
                   </Col>
@@ -530,7 +539,7 @@ export const Properties: React.FC = () => {
                       placeholder="Illimité"
                       min={0}
                       value={filters.maxBedrooms}
-                      onChange={(e) => setFilters(prev => ({ ...prev, maxBedrooms: e.target.value }))}
+                      onChange={e => setFilters(prev => ({ ...prev, maxBedrooms: e.target.value }))}
                       style={{ marginTop: 8 }}
                     />
                   </Col>
@@ -547,14 +556,7 @@ export const Properties: React.FC = () => {
 
         {/* Error State */}
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
 
         {/* Loading State */}
@@ -588,135 +590,161 @@ export const Properties: React.FC = () => {
             ) : (
               <>
                 <Row gutter={[16, 16]}>
-                  {properties.map((property) => {
+                  {properties.map(property => {
                     const commune = getCommune(property);
                     const addressQuartierLine = getAddressAndQuartierLine(property);
                     return (
-                    <Col key={property.id} xs={24} sm={12} lg={8}>
-                      <Card
-                        hoverable
-                        cover={
-                          propertyImages[property.id] ? (
-                            <img
-                              alt={property.title}
-                              src={propertyImages[property.id]}
-                              style={{ height: 200, objectFit: 'cover' }}
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                              }}
-                            />
-                          ) : (
-                            <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f0f0' }}>
-                              <HomeOutlined style={{ fontSize: 48, color: '#bfbfbf' }} />
-                            </div>
-                          )
-                        }
-                        actions={[
-                          <Button
-                            key="view"
-                            type="link"
-                            icon={<EyeOutlined />}
-                            onClick={() => navigate(`/tenant/${effectiveTenantId}/properties/${property.id}`)}
-                            title="Voir"
-                          />,
-                          <Button
-                            key="edit"
-                            type="link"
-                            icon={<EditOutlined />}
-                            onClick={() => navigate(`/tenant/${effectiveTenantId}/properties/${property.id}/edit`)}
-                            title="Modifier"
-                          />,
-                          <Button
-                            key="newsletter"
-                            type="link"
-                            icon={<MailOutlined />}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setNewsletterModalProperty(property);
-                            }}
-                            title="Newsletter"
-                          />,
-                          <Popconfirm
-                            key="delete"
-                            title="Supprimer la propriété"
-                            description={`Êtes-vous sûr de vouloir supprimer "${property.title}" ? Cette action est irréversible.`}
-                            onConfirm={() => handleDeleteProperty(property.id)}
-                            okText="Supprimer"
-                            cancelText="Annuler"
-                            okButtonProps={{ danger: true }}
-                          >
-                            <Button
-                              type="link"
-                              danger
-                              icon={<DeleteOutlined />}
-                              title="Supprimer"
-                            />
-                          </Popconfirm>,
-                        ]}
-                      >
-                        <Card.Meta
-                          title={
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                              <Text strong ellipsis style={{ flex: 1, marginRight: 8 }}>
-                                {property.title}
-                              </Text>
-                              {getStatusTag(property.status, property.isPublished)}
-                            </div>
-                          }
-                          description={
-                            <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                              <div>
-                                <Text type="secondary">{propertyTypeLabels[property.propertyType] || property.propertyType}</Text>
-                                {property.containerParent?.title && (
-                                  <Text type="secondary"> ({property.containerParent.title})</Text>
-                                )}
-                                {property.propertyType === 'IMMEUBLE' && (() => {
-                                  const total = (property as Property & { _count?: { containerChildren: number } })._count?.containerChildren ?? 0;
-                                  const rented = (property as Property & { containerChildrenRentedCount?: number }).containerChildrenRentedCount ?? 0;
-                                  const available = (property as Property & { containerChildrenAvailableCount?: number }).containerChildrenAvailableCount ?? total;
-                                  if (total === 0) return null;
-                                  return (
-                                    <Text type="secondary">
-                                      {' '}• {total} appartement{total > 1 ? 's' : ''}
-                                      {typeof rented === 'number' && typeof available === 'number' && (
-                                        <> • {available} disponible{available > 1 ? 's' : ''} • {rented} loué{rented > 1 ? 's' : ''}</>
-                                      )}
-                                    </Text>
-                                  );
-                                })()}
+                      <Col key={property.id} xs={24} sm={12} lg={8}>
+                        <Card
+                          hoverable
+                          cover={
+                            propertyImages[property.id] ? (
+                              <img
+                                alt={property.title}
+                                src={propertyImages[property.id]}
+                                style={{ height: 200, objectFit: 'cover' }}
+                                onError={e => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                            ) : (
+                              <div
+                                style={{
+                                  height: 200,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  backgroundColor: '#f0f0f0'
+                                }}
+                              >
+                                <HomeOutlined style={{ fontSize: 48, color: '#bfbfbf' }} />
                               </div>
-                              {(commune || (property.transactionModes && property.transactionModes.length > 0)) ? (
+                            )
+                          }
+                          actions={[
+                            <Button
+                              key="view"
+                              type="link"
+                              icon={<EyeOutlined />}
+                              onClick={() => navigate(`/tenant/${effectiveTenantId}/properties/${property.id}`)}
+                              title="Voir"
+                            />,
+                            <Button
+                              key="edit"
+                              type="link"
+                              icon={<EditOutlined />}
+                              onClick={() => navigate(`/tenant/${effectiveTenantId}/properties/${property.id}/edit`)}
+                              title="Modifier"
+                            />,
+                            <Button
+                              key="newsletter"
+                              type="link"
+                              icon={<MailOutlined />}
+                              onClick={e => {
+                                e.stopPropagation();
+                                setNewsletterModalProperty(property);
+                              }}
+                              title="Newsletter"
+                            />,
+                            <Popconfirm
+                              key="delete"
+                              title="Supprimer la propriété"
+                              description={`Êtes-vous sûr de vouloir supprimer "${property.title}" ? Cette action est irréversible.`}
+                              onConfirm={() => handleDeleteProperty(property.id)}
+                              okText="Supprimer"
+                              cancelText="Annuler"
+                              okButtonProps={{ danger: true }}
+                            >
+                              <Button type="link" danger icon={<DeleteOutlined />} title="Supprimer" />
+                            </Popconfirm>
+                          ]}
+                        >
+                          <Card.Meta
+                            title={
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'flex-start',
+                                  marginBottom: 8
+                                }}
+                              >
+                                <Text strong ellipsis style={{ flex: 1, marginRight: 8 }}>
+                                  {property.title}
+                                </Text>
+                                {getStatusTag(property.status, property.isPublished)}
+                              </div>
+                            }
+                            description={
+                              <Space direction="vertical" size="small" style={{ width: '100%' }}>
                                 <div>
                                   <Text type="secondary">
-                                    {property.transactionModes && property.transactionModes.length > 0
-                                      ? property.transactionModes.map((mode: string) => transactionModeLabels[mode] || mode).join(', ')
-                                      : ''}
-                                    {(property.transactionModes?.length && commune) ? ' • ' : ''}
-                                    {commune || ''}
+                                    {propertyTypeLabels[property.propertyType] || property.propertyType}
                                   </Text>
+                                  {property.containerParent?.title && (
+                                    <Text type="secondary"> ({property.containerParent.title})</Text>
+                                  )}
+                                  {property.propertyType === 'IMMEUBLE' &&
+                                    (() => {
+                                      const total =
+                                        (property as Property & { _count?: { containerChildren: number } })._count
+                                          ?.containerChildren ?? 0;
+                                      const rented =
+                                        (property as Property & { containerChildrenRentedCount?: number })
+                                          .containerChildrenRentedCount ?? 0;
+                                      const available =
+                                        (property as Property & { containerChildrenAvailableCount?: number })
+                                          .containerChildrenAvailableCount ?? total;
+                                      if (total === 0) return null;
+                                      return (
+                                        <Text type="secondary">
+                                          {' '}
+                                          • {total} appartement{total > 1 ? 's' : ''}
+                                          {typeof rented === 'number' && typeof available === 'number' && (
+                                            <>
+                                              {' '}
+                                              • {available} disponible{available > 1 ? 's' : ''} • {rented} loué
+                                              {rented > 1 ? 's' : ''}
+                                            </>
+                                          )}
+                                        </Text>
+                                      );
+                                    })()}
                                 </div>
-                              ) : null}
-                              {addressQuartierLine ? (
+                                {commune || (property.transactionModes && property.transactionModes.length > 0) ? (
+                                  <div>
+                                    <Text type="secondary">
+                                      {property.transactionModes && property.transactionModes.length > 0
+                                        ? property.transactionModes
+                                            .map((mode: string) => transactionModeLabels[mode] || mode)
+                                            .join(', ')
+                                        : ''}
+                                      {property.transactionModes?.length && commune ? ' • ' : ''}
+                                      {commune || ''}
+                                    </Text>
+                                  </div>
+                                ) : null}
+                                {addressQuartierLine ? (
+                                  <div>
+                                    <Text type="secondary" ellipsis style={{ display: 'block' }}>
+                                      {addressQuartierLine}
+                                    </Text>
+                                  </div>
+                                ) : null}
                                 <div>
-                                  <Text type="secondary" ellipsis style={{ display: 'block' }}>
-                                    {addressQuartierLine}
-                                  </Text>
+                                  {property.rooms && <Text type="secondary">{property.rooms} pièces</Text>}
+                                  {property.bedrooms && <Text type="secondary"> • {property.bedrooms} chambres</Text>}
+                                  {property.surfaceArea && <Text type="secondary"> • {property.surfaceArea} m²</Text>}
                                 </div>
-                              ) : null}
-                              <div>
-                                {property.rooms && <Text type="secondary">{property.rooms} pièces</Text>}
-                                {property.bedrooms && <Text type="secondary"> • {property.bedrooms} chambres</Text>}
-                                {property.surfaceArea && <Text type="secondary"> • {property.surfaceArea} m²</Text>}
-                              </div>
-                              <Text strong style={{ fontSize: 18, color: '#1890ff' }}>
-                                {formatPrice(property.price, property.currency, property.propertyType)}
-                              </Text>
-                            </Space>
-                          }
-                        />
-                      </Card>
-                    </Col>
-                  );
+                                <Text strong style={{ fontSize: 18, color: '#1890ff' }}>
+                                  {formatPrice(property.price, property.currency, property.propertyType)}
+                                </Text>
+                              </Space>
+                            }
+                          />
+                        </Card>
+                      </Col>
+                    );
                   })}
                 </Row>
 
@@ -728,7 +756,7 @@ export const Properties: React.FC = () => {
                       total={pagination.total}
                       pageSize={pagination.limit}
                       showSizeChanger
-                      showTotal={(total) => `Total: ${total} propriétés`}
+                      showTotal={total => `Total: ${total} propriétés`}
                       onChange={(page, pageSize) => {
                         setPagination(prev => ({ ...prev, page, limit: pageSize }));
                       }}
@@ -746,7 +774,11 @@ export const Properties: React.FC = () => {
         onClose={() => setNewsletterModalProperty(null)}
         tenantId={effectiveTenantId}
         property={newsletterModalProperty!}
-        imageUrls={newsletterModalProperty && propertyImages[newsletterModalProperty.id] ? [propertyImages[newsletterModalProperty.id]] : []}
+        imageUrls={
+          newsletterModalProperty && propertyImages[newsletterModalProperty.id]
+            ? [propertyImages[newsletterModalProperty.id]]
+            : []
+        }
       />
     </DashboardLayout>
   );

@@ -1,20 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Button,
-  Card,
-  Tag,
-  Tabs,
-  Select,
-  Descriptions,
-  Space,
-  Row,
-  Col,
-  Spin,
-  Alert,
-  Typography,
-  message,
-} from 'antd';
+import { App, Button, Card, Tag, Tabs, Select, Descriptions, Space, Row, Col, Spin, Alert, Typography } from 'antd';
 import {
   EditOutlined,
   ArrowLeftOutlined,
@@ -22,7 +8,7 @@ import {
   CalendarOutlined,
   DollarOutlined,
   CreditCardOutlined,
-  SafetyOutlined,
+  SafetyOutlined
 } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { getLease, RentalLease, RentalLeaseStatus, updateLeaseStatus } from '../../services/rental-service';
@@ -37,6 +23,8 @@ import { Documents } from './Documents';
 const { Title, Text } = Typography;
 
 export const LeaseDetailPage: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId, leaseId } = useParams<{ tenantId: string; leaseId: string }>();
   const navigate = useNavigate();
   const [lease, setLease] = useState<RentalLease | null>(null);
@@ -57,12 +45,12 @@ export const LeaseDetailPage: React.FC = () => {
 
       const candidates = [
         { id: lease.primaryRenter?.crmContactId, currentName: lease.primaryRenter?.user?.fullName },
-        { id: lease.ownerClient?.crmContactId, currentName: lease.ownerClient?.user?.fullName },
+        { id: lease.ownerClient?.crmContactId, currentName: lease.ownerClient?.user?.fullName }
       ]
-        .filter((item) => Boolean(item.id))
-        .filter((item) => !item.currentName?.trim())
-        .filter((item) => !contactNameById[item.id as string])
-        .map((item) => ({ id: item.id as string }));
+        .filter(item => Boolean(item.id))
+        .filter(item => !item.currentName?.trim())
+        .filter(item => !contactNameById[item.id as string])
+        .map(item => ({ id: item.id as string }));
 
       if (candidates.length === 0) return;
 
@@ -80,7 +68,7 @@ export const LeaseDetailPage: React.FC = () => {
         })
       );
 
-      setContactNameById((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+      setContactNameById(prev => ({ ...prev, ...Object.fromEntries(entries) }));
     };
 
     loadMissingContactNames();
@@ -123,7 +111,7 @@ export const LeaseDetailPage: React.FC = () => {
       ACTIVE: { label: 'Actif', color: 'success' },
       SUSPENDED: { label: 'Suspendu', color: 'warning' },
       ENDED: { label: 'Terminé', color: 'default' },
-      CANCELED: { label: 'Annulé', color: 'error' },
+      CANCELED: { label: 'Annulé', color: 'error' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -137,7 +125,7 @@ export const LeaseDetailPage: React.FC = () => {
   const formatCurrency = (amount: number, currency: string = 'FCFA') => {
     return new Intl.NumberFormat('fr-FR', {
       style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency,
+      currency: currency === 'FCFA' ? 'XOF' : currency
     }).format(amount);
   };
 
@@ -146,14 +134,14 @@ export const LeaseDetailPage: React.FC = () => {
     if (rate === null || rate === undefined) {
       return '0.00';
     }
-    
+
     const numRate = typeof rate === 'string' ? parseFloat(rate) : Number(rate);
-    
+
     // Check if it's a valid number
     if (isNaN(numRate)) {
       return '0.00';
     }
-    
+
     // The rate can be stored either as:
     // - A decimal (0.05 for 5%) - need to multiply by 100
     // - A percentage (5 for 5%) - use as is
@@ -211,10 +199,7 @@ export const LeaseDetailPage: React.FC = () => {
         <Row justify="space-between" align="middle">
           <Col>
             <Space size="middle">
-              <Button
-                icon={<ArrowLeftOutlined />}
-                onClick={() => navigate(`/tenant/${tenantId}/rental/leases`)}
-              >
+              <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${tenantId}/rental/leases`)}>
                 Retour
               </Button>
               <div>
@@ -229,7 +214,7 @@ export const LeaseDetailPage: React.FC = () => {
             <Space>
               <Select
                 value={lease.status}
-                onChange={(value) => handleStatusChange(value as RentalLeaseStatus)}
+                onChange={value => handleStatusChange(value as RentalLeaseStatus)}
                 style={{ width: 180 }}
               >
                 <Select.Option value="DRAFT">Brouillon</Select.Option>
@@ -260,12 +245,8 @@ export const LeaseDetailPage: React.FC = () => {
               }
             >
               <Descriptions column={1} bordered size="small">
-                <Descriptions.Item label="Numéro de bail">
-                  {lease.lease_number}
-                </Descriptions.Item>
-                <Descriptions.Item label="Statut">
-                  {getStatusTag(lease.status)}
-                </Descriptions.Item>
+                <Descriptions.Item label="Numéro de bail">{lease.lease_number}</Descriptions.Item>
+                <Descriptions.Item label="Statut">{getStatusTag(lease.status)}</Descriptions.Item>
                 <Descriptions.Item label="Propriété">
                   {lease.property?.internalReference || '-'}
                   {lease.property?.title && ` - ${lease.property.title}`}
@@ -275,7 +256,9 @@ export const LeaseDetailPage: React.FC = () => {
                   {lease.primaryRenter?.crmContactId ? (
                     <Button
                       type="link"
-                      onClick={() => navigate(`/tenant/${tenantId}/crm/contacts/${lease.primaryRenter?.crmContactId}/edit`)}
+                      onClick={() =>
+                        navigate(`/tenant/${tenantId}/crm/contacts/${lease.primaryRenter?.crmContactId}/edit`)
+                      }
                       style={{ padding: 0 }}
                     >
                       {renterDisplayName}
@@ -289,7 +272,9 @@ export const LeaseDetailPage: React.FC = () => {
                     lease.ownerClient.crmContactId ? (
                       <Button
                         type="link"
-                        onClick={() => navigate(`/tenant/${tenantId}/crm/contacts/${lease.ownerClient?.crmContactId}/edit`)}
+                        onClick={() =>
+                          navigate(`/tenant/${tenantId}/crm/contacts/${lease.ownerClient?.crmContactId}/edit`)
+                        }
                         style={{ padding: 0 }}
                       >
                         {ownerDisplayName}
@@ -315,18 +300,10 @@ export const LeaseDetailPage: React.FC = () => {
               }
             >
               <Descriptions column={1} bordered size="small">
-                <Descriptions.Item label="Date de début">
-                  {formatDate(lease.start_date)}
-                </Descriptions.Item>
-                <Descriptions.Item label="Date de fin">
-                  {formatDate(lease.end_date)}
-                </Descriptions.Item>
-                <Descriptions.Item label="Date d'emménagement">
-                  {formatDate(lease.move_in_date)}
-                </Descriptions.Item>
-                <Descriptions.Item label="Date de déménagement">
-                  {formatDate(lease.move_out_date)}
-                </Descriptions.Item>
+                <Descriptions.Item label="Date de début">{formatDate(lease.start_date)}</Descriptions.Item>
+                <Descriptions.Item label="Date de fin">{formatDate(lease.end_date)}</Descriptions.Item>
+                <Descriptions.Item label="Date d'emménagement">{formatDate(lease.move_in_date)}</Descriptions.Item>
+                <Descriptions.Item label="Date de déménagement">{formatDate(lease.move_out_date)}</Descriptions.Item>
               </Descriptions>
             </Card>
           </Col>
@@ -375,73 +352,74 @@ export const LeaseDetailPage: React.FC = () => {
                   </Space>
                 }
               >
-              <Descriptions column={1} bordered size="small">
-                <Descriptions.Item label="Jours de grâce">
-                  {lease.penalty_grace_days > 0 ? (
-                    <>
-                      {lease.penalty_grace_days} jour{lease.penalty_grace_days > 1 ? 's' : ''}
-                      <br />
-                      <Text type="secondary" style={{ fontSize: '12px' }}>
-                        Les pénalités seront appliquées après {lease.penalty_grace_days} jour{lease.penalty_grace_days > 1 ? 's' : ''} de retard
-                      </Text>
-                    </>
-                  ) : (
-                    'Aucun'
-                  )}
-                </Descriptions.Item>
-                <Descriptions.Item label="Mode de pénalité">
-                  {lease.penalty_mode === 'PERCENT_OF_BALANCE' && 'Pourcentage du solde'}
-                  {lease.penalty_mode === 'FIXED_AMOUNT' && 'Montant fixe'}
-                  {lease.penalty_mode === 'PERCENT_OF_RENT' && 'Pourcentage du loyer'}
-                </Descriptions.Item>
-                {lease.penalty_mode === 'PERCENT_OF_BALANCE' && (
-                  <>
-                    <Descriptions.Item label="Taux de pénalité">
-                      {formatPenaltyRate(lease.penalty_rate)}%
-                      <br />
-                      <Text type="secondary" style={{ fontSize: '12px' }}>
-                        Appliqué sur le solde impayé
-                      </Text>
-                    </Descriptions.Item>
-                    {lease.penalty_cap_amount && lease.penalty_cap_amount > 0 && (
-                      <Descriptions.Item label="Montant maximum de pénalité">
-                        {formatCurrency(lease.penalty_cap_amount, lease.currency)}
+                <Descriptions column={1} bordered size="small">
+                  <Descriptions.Item label="Jours de grâce">
+                    {lease.penalty_grace_days > 0 ? (
+                      <>
+                        {lease.penalty_grace_days} jour{lease.penalty_grace_days > 1 ? 's' : ''}
                         <br />
                         <Text type="secondary" style={{ fontSize: '12px' }}>
-                          La pénalité ne dépassera pas ce montant
+                          Les pénalités seront appliquées après {lease.penalty_grace_days} jour
+                          {lease.penalty_grace_days > 1 ? 's' : ''} de retard
+                        </Text>
+                      </>
+                    ) : (
+                      'Aucun'
+                    )}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Mode de pénalité">
+                    {lease.penalty_mode === 'PERCENT_OF_BALANCE' && 'Pourcentage du solde'}
+                    {lease.penalty_mode === 'FIXED_AMOUNT' && 'Montant fixe'}
+                    {lease.penalty_mode === 'PERCENT_OF_RENT' && 'Pourcentage du loyer'}
+                  </Descriptions.Item>
+                  {lease.penalty_mode === 'PERCENT_OF_BALANCE' && (
+                    <>
+                      <Descriptions.Item label="Taux de pénalité">
+                        {formatPenaltyRate(lease.penalty_rate)}%
+                        <br />
+                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                          Appliqué sur le solde impayé
                         </Text>
                       </Descriptions.Item>
-                    )}
-                  </>
-                )}
-                {lease.penalty_mode === 'FIXED_AMOUNT' && (
-                  <Descriptions.Item label="Montant fixe de pénalité">
-                    {formatCurrency(lease.penalty_fixed_amount, lease.currency)}
-                    <br />
-                    <Text type="secondary" style={{ fontSize: '12px' }}>
-                      Montant fixe appliqué par période de retard
-                    </Text>
-                  </Descriptions.Item>
-                )}
-                {lease.penalty_mode === 'PERCENT_OF_RENT' && (
-                  <>
-                    <Descriptions.Item label="Taux de pénalité">
-                      {formatPenaltyRate(lease.penalty_rate)}%
+                      {lease.penalty_cap_amount && lease.penalty_cap_amount > 0 && (
+                        <Descriptions.Item label="Montant maximum de pénalité">
+                          {formatCurrency(lease.penalty_cap_amount, lease.currency)}
+                          <br />
+                          <Text type="secondary" style={{ fontSize: '12px' }}>
+                            La pénalité ne dépassera pas ce montant
+                          </Text>
+                        </Descriptions.Item>
+                      )}
+                    </>
+                  )}
+                  {lease.penalty_mode === 'FIXED_AMOUNT' && (
+                    <Descriptions.Item label="Montant fixe de pénalité">
+                      {formatCurrency(lease.penalty_fixed_amount, lease.currency)}
                       <br />
                       <Text type="secondary" style={{ fontSize: '12px' }}>
-                        Appliqué sur le montant du loyer
+                        Montant fixe appliqué par période de retard
                       </Text>
                     </Descriptions.Item>
-                    {lease.penalty_cap_amount && lease.penalty_cap_amount > 0 && (
-                      <Descriptions.Item label="Montant maximum de pénalité">
-                        {formatCurrency(lease.penalty_cap_amount, lease.currency)}
+                  )}
+                  {lease.penalty_mode === 'PERCENT_OF_RENT' && (
+                    <>
+                      <Descriptions.Item label="Taux de pénalité">
+                        {formatPenaltyRate(lease.penalty_rate)}%
+                        <br />
+                        <Text type="secondary" style={{ fontSize: '12px' }}>
+                          Appliqué sur le montant du loyer
+                        </Text>
                       </Descriptions.Item>
-                    )}
-                  </>
-                )}
-              </Descriptions>
-            </Card>
-          </Col>
+                      {lease.penalty_cap_amount && lease.penalty_cap_amount > 0 && (
+                        <Descriptions.Item label="Montant maximum de pénalité">
+                          {formatCurrency(lease.penalty_cap_amount, lease.currency)}
+                        </Descriptions.Item>
+                      )}
+                    </>
+                  )}
+                </Descriptions>
+              </Card>
+            </Col>
           )}
 
           {lease.notes && (
@@ -464,7 +442,7 @@ export const LeaseDetailPage: React.FC = () => {
                     Échéances
                   </span>
                 ),
-                children: <Installments leaseId={leaseId} refreshTrigger={installmentsRefreshTrigger} />,
+                children: <Installments leaseId={leaseId} refreshTrigger={installmentsRefreshTrigger} />
               },
               {
                 key: 'payments',
@@ -474,7 +452,7 @@ export const LeaseDetailPage: React.FC = () => {
                     Paiements
                   </span>
                 ),
-                children: <Payments leaseId={leaseId} />,
+                children: <Payments leaseId={leaseId} />
               },
               {
                 key: 'penalties',
@@ -484,7 +462,7 @@ export const LeaseDetailPage: React.FC = () => {
                     Pénalités
                   </span>
                 ),
-                children: <Penalties leaseId={leaseId} />,
+                children: <Penalties leaseId={leaseId} />
               },
               {
                 key: 'deposit',
@@ -494,7 +472,7 @@ export const LeaseDetailPage: React.FC = () => {
                     Dépôt de garantie
                   </span>
                 ),
-                children: <Deposits leaseId={leaseId} />,
+                children: <Deposits leaseId={leaseId} />
               },
               {
                 key: 'documents',
@@ -504,20 +482,18 @@ export const LeaseDetailPage: React.FC = () => {
                     Documents
                   </span>
                 ),
-                children: <Documents leaseId={leaseId} />,
-              },
+                children: <Documents leaseId={leaseId} />
+              }
             ];
 
-            const tabItems = isSaleOnly
-              ? allTabItems.filter((t) => t.key === 'documents')
-              : allTabItems;
+            const tabItems = isSaleOnly ? allTabItems.filter(t => t.key === 'documents') : allTabItems;
 
             return (
               <Tabs
                 defaultActiveKey={isSaleOnly ? 'documents' : 'installments'}
                 type="line"
                 size="large"
-                onChange={(activeKey) => {
+                onChange={activeKey => {
                   if (activeKey === 'installments') {
                     setInstallmentsRefreshTrigger(prev => prev + 1);
                   }

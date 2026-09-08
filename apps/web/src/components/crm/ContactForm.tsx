@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  App,
   Form,
   Input,
   Select,
@@ -16,7 +17,6 @@ import {
   Alert,
   Upload,
   Avatar,
-  message,
   Card
 } from 'antd';
 import { UserOutlined, UploadOutlined, DeleteOutlined, SaveOutlined } from '@ant-design/icons';
@@ -91,6 +91,8 @@ interface ContactFormProps {
 }
 
 export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onCancel, loading = false }) => {
+  const { message } = App.useApp();
+
   const [form] = Form.useForm();
   const [activeTab, setActiveTab] = useState('basic');
   const [location, setLocation] = useState<GeographicLocation | null>(null);

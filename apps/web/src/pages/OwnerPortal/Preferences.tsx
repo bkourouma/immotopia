@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Switch, Typography, Spin, message } from 'antd';
+import { App, Card, Switch, Typography, Spin } from 'antd';
 import { MailOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 
 const { Title, Paragraph } = Typography;
 
 export default function OwnerPreferences() {
+  const { message } = App.useApp();
+
   const [loading, setLoading] = useState(true);
   const [newsletterConsent, setNewsletterConsent] = useState(false);
   const [saving, setSaving] = useState(false);

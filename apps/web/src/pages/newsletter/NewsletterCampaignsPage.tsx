@@ -1,18 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  Card,
-  Table,
-  Button,
-  Modal,
-  Tag,
-  Space,
-  message,
-  Spin,
-  Select,
-  DatePicker,
-  Typography
-} from 'antd';
+import { App, Card, Table, Button, Modal, Tag, Space, Spin, Select, DatePicker, Typography } from 'antd';
 import {
   PlusOutlined,
   SendOutlined,
@@ -50,6 +38,8 @@ const statusLabels: Record<string, string> = {
 };
 
 export function NewsletterCampaignsPage() {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const [campaigns, setCampaigns] = useState<NewsletterCampaign[]>([]);
   const [lists, setLists] = useState<NewsletterList[]>([]);
@@ -265,13 +255,30 @@ export function NewsletterCampaignsPage() {
         <Space>
           {record.status === 'DRAFT' && (
             <>
-              <Button type="link" size="small" icon={<EditOutlined />} onClick={() => { setSelectedCampaign(record); setEditModalOpen(true); }}>
+              <Button
+                type="link"
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => {
+                  setSelectedCampaign(record);
+                  setEditModalOpen(true);
+                }}
+              >
                 Modifier
               </Button>
               <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handlePreview(record.id)}>
                 Aperçu
               </Button>
-              <Button type="link" size="small" icon={<CalendarOutlined />} onClick={() => { setSelectedCampaign(record); setScheduleDate(null); setScheduleModalOpen(true); }}>
+              <Button
+                type="link"
+                size="small"
+                icon={<CalendarOutlined />}
+                onClick={() => {
+                  setSelectedCampaign(record);
+                  setScheduleDate(null);
+                  setScheduleModalOpen(true);
+                }}
+              >
                 Planifier
               </Button>
               <Button type="primary" size="small" icon={<SendOutlined />} onClick={() => handleSendCampaign(record)}>
@@ -280,7 +287,13 @@ export function NewsletterCampaignsPage() {
             </>
           )}
           {record.status === 'SCHEDULED' && (
-            <Button type="link" size="small" danger icon={<StopOutlined />} onClick={() => handleCancelCampaign(record)}>
+            <Button
+              type="link"
+              size="small"
+              danger
+              icon={<StopOutlined />}
+              onClick={() => handleCancelCampaign(record)}
+            >
               Annuler
             </Button>
           )}
@@ -305,7 +318,7 @@ export function NewsletterCampaignsPage() {
           placeholder="Filtrer par statut"
           allowClear
           style={{ width: 200, marginBottom: 16 }}
-          onChange={(v) => loadCampaigns(1, pagination.limit, v ?? undefined)}
+          onChange={v => loadCampaigns(1, pagination.limit, v ?? undefined)}
           options={[
             { value: 'DRAFT', label: 'Brouillons' },
             { value: 'SCHEDULED', label: 'Planifiées' },
@@ -350,7 +363,10 @@ export function NewsletterCampaignsPage() {
       <Modal
         title="Modifier la campagne"
         open={editModalOpen}
-        onCancel={() => { setEditModalOpen(false); setSelectedCampaign(null); }}
+        onCancel={() => {
+          setEditModalOpen(false);
+          setSelectedCampaign(null);
+        }}
         footer={null}
         width={800}
         destroyOnClose
@@ -371,13 +387,18 @@ export function NewsletterCampaignsPage() {
       <Modal
         title="Aperçu"
         open={previewModalOpen}
-        onCancel={() => { setPreviewModalOpen(false); setPreview(null); }}
+        onCancel={() => {
+          setPreviewModalOpen(false);
+          setPreview(null);
+        }}
         footer={null}
         width={700}
       >
         {preview && (
           <div>
-            <p><strong>Sujet:</strong> {preview.subject}</p>
+            <p>
+              <strong>Sujet:</strong> {preview.subject}
+            </p>
             {/*
               Campaign HTML is authored by users in the template editor, so it is
               untrusted. Rendering it with dangerouslySetInnerHTML executed that
@@ -398,7 +419,11 @@ export function NewsletterCampaignsPage() {
         title="Planifier l'envoi"
         open={scheduleModalOpen}
         onOk={handleScheduleCampaign}
-        onCancel={() => { setScheduleModalOpen(false); setSelectedCampaign(null); setScheduleDate(null); }}
+        onCancel={() => {
+          setScheduleModalOpen(false);
+          setSelectedCampaign(null);
+          setScheduleDate(null);
+        }}
         confirmLoading={saving}
         okText="Planifier"
         okButtonProps={{ disabled: !scheduleDate || (scheduleDate && scheduleDate.isBefore(dayjs())) }}
@@ -408,8 +433,8 @@ export function NewsletterCampaignsPage() {
           showTime
           format="DD/MM/YYYY HH:mm"
           value={scheduleDate}
-          onChange={(v) => setScheduleDate(v)}
-          disabledDate={(d) => d && d.isBefore(dayjs(), 'day')}
+          onChange={v => setScheduleDate(v)}
+          disabledDate={d => d && d.isBefore(dayjs(), 'day')}
           style={{ width: '100%' }}
         />
       </Modal>

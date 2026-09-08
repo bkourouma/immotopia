@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Input, Button, Tag, Modal, message } from 'antd';
+import { App, Input, Button, Tag, Modal } from 'antd';
 import { SearchOutlined, FilterOutlined, SaveOutlined, FolderOpenOutlined, DownloadOutlined } from '@ant-design/icons';
 import contactSearchService, {
   type ContactSearchFilters,
@@ -30,6 +30,8 @@ export function AdvancedContactSearch({
   mode = 'view',
   multiSelect = true
 }: AdvancedContactSearchProps) {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const [filters, setFilters] = useState<Partial<ContactSearchFilters>>({});
   const [results, setResults] = useState<{
@@ -146,15 +148,12 @@ export function AdvancedContactSearch({
         <Input
           placeholder="Recherche rapide (nom, email, téléphone...)"
           value={filters.searchQuery ?? ''}
-          onChange={(e) => setFilters((prev) => ({ ...prev, searchQuery: e.target.value }))}
+          onChange={e => setFilters(prev => ({ ...prev, searchQuery: e.target.value }))}
           onPressEnter={handleSearch}
           style={{ maxWidth: 320 }}
           allowClear
         />
-        <Button
-          icon={<FilterOutlined />}
-          onClick={() => setFilterModalOpen(true)}
-        >
+        <Button icon={<FilterOutlined />} onClick={() => setFilterModalOpen(true)}>
           Filtres avancés
           {activeCount > 0 && <Tag style={{ marginLeft: 4 }}>{activeCount}</Tag>}
         </Button>
@@ -170,16 +169,13 @@ export function AdvancedContactSearch({
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           {Object.entries(filters).map(([key, value]) => {
             if (value === undefined || value === null || (Array.isArray(value) && value.length === 0)) return null;
-            const display =
-              Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? JSON.stringify(value) : String(value);
+            const display = Array.isArray(value)
+              ? value.join(', ')
+              : typeof value === 'object'
+                ? JSON.stringify(value)
+                : String(value);
             const short = display.length > 35 ? display.slice(0, 35) + '…' : display;
-            return (
-              <Tag
-                key={key}
-                closable
-                onClose={() => removeFilter(key)}
-              >{`${key}: ${short}`}</Tag>
-            );
+            return <Tag key={key} closable onClose={() => removeFilter(key)}>{`${key}: ${short}`}</Tag>;
           })}
           <Button type="link" size="small" onClick={() => setFilters({})}>
             Tout effacer
@@ -189,7 +185,9 @@ export function AdvancedContactSearch({
 
       {results && (
         <>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          <div
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}
+          >
             <span style={{ color: '#666' }}>
               {results.pagination.total} contact(s) trouvé(s)
               {mode === 'select' && selectedContacts.length > 0 && ` · ${selectedContacts.length} sélectionné(s)`}
@@ -211,11 +209,9 @@ export function AdvancedContactSearch({
             selectedContacts={selectedContacts}
             onSelectionChange={
               mode === 'select'
-                ? (selectedRows) => {
-                    const pageIds = new Set(results.contacts.map((c) => c.id));
-                    setSelectedContacts((prev) =>
-                      prev.filter((c) => !pageIds.has(c.id)).concat(selectedRows)
-                    );
+                ? selectedRows => {
+                    const pageIds = new Set(results.contacts.map(c => c.id));
+                    setSelectedContacts(prev => prev.filter(c => !pageIds.has(c.id)).concat(selectedRows));
                   }
                 : undefined
             }
@@ -227,7 +223,16 @@ export function AdvancedContactSearch({
           />
 
           {mode === 'select' && selectedContacts.length > 0 && (
-            <div style={{ padding: 16, background: '#fafafa', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div
+              style={{
+                padding: 16,
+                background: '#fafafa',
+                borderRadius: 8,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
               <span style={{ fontWeight: 500 }}>{selectedContacts.length} contact(s) sélectionné(s)</span>
               <div style={{ display: 'flex', gap: 8 }}>
                 <Button onClick={() => setSelectedContacts([])}>Annuler</Button>
@@ -263,10 +268,7 @@ export function AdvancedContactSearch({
         width={520}
         destroyOnClose
       >
-        <SavedSearchesList
-          onSelectSearch={handleUseSavedSearch}
-          onClose={() => setSavedModalOpen(false)}
-        />
+        <SavedSearchesList onSelectSearch={handleUseSavedSearch} onClose={() => setSavedModalOpen(false)} />
       </Modal>
     </div>
   );

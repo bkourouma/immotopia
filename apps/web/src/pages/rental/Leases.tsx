@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
+  App,
   Button,
   Input,
   Table,
@@ -16,8 +17,7 @@ import {
   Select,
   Typography,
   Tooltip,
-  message,
-  Modal,
+  Modal
 } from 'antd';
 import {
   PlusOutlined,
@@ -25,7 +25,7 @@ import {
   EditOutlined,
   EyeOutlined,
   FileTextOutlined,
-  DeleteOutlined,
+  DeleteOutlined
 } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
@@ -34,7 +34,7 @@ import {
   deleteLease,
   RentalLease,
   RentalLeaseStatus,
-  LeaseFilters,
+  LeaseFilters
 } from '../../services/rental-service';
 import { PropertyTransactionMode } from '../../types/property-types';
 import type { ColumnsType } from 'antd/es/table';
@@ -43,6 +43,8 @@ const { Title, Text } = Typography;
 const { Search: InputSearch } = Input;
 
 export const Leases: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const [leases, setLeases] = useState<RentalLease[]>([]);
@@ -50,13 +52,13 @@ export const Leases: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<LeaseFilters>({
     page: 1,
-    limit: 20,
+    limit: 20
   });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
     total: 0,
-    totalPages: 0,
+    totalPages: 0
   });
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -73,7 +75,7 @@ export const Leases: React.FC = () => {
     try {
       const response = await listLeases(tenantId, {
         ...filters,
-        search: searchTerm || undefined,
+        search: searchTerm || undefined
       });
       if (response.success) {
         setLeases(response.data);
@@ -94,7 +96,7 @@ export const Leases: React.FC = () => {
       ACTIVE: { label: 'Actif', color: 'green' },
       SUSPENDED: { label: 'Suspendu', color: 'orange' },
       ENDED: { label: 'Terminé', color: 'blue' },
-      CANCELED: { label: 'Annulé', color: 'red' },
+      CANCELED: { label: 'Annulé', color: 'red' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -108,7 +110,7 @@ export const Leases: React.FC = () => {
   const formatCurrency = (amount: number, currency: string = 'FCFA') => {
     return new Intl.NumberFormat('fr-FR', {
       style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency,
+      currency: currency === 'FCFA' ? 'XOF' : currency
     }).format(amount);
   };
 
@@ -147,7 +149,7 @@ export const Leases: React.FC = () => {
         } catch (err: any) {
           message.error(err.response?.data?.message || 'Erreur lors de la suppression du bail');
         }
-      },
+      }
     });
   };
 
@@ -156,27 +158,27 @@ export const Leases: React.FC = () => {
       title: 'Numéro',
       dataIndex: 'lease_number',
       key: 'lease_number',
-      render: (text) => <Text strong>{text}</Text>,
+      render: text => <Text strong>{text}</Text>
     },
     {
       title: 'Propriété',
       key: 'property',
-      render: (_, record) => getPropertyDisplayName(record),
+      render: (_, record) => getPropertyDisplayName(record)
     },
     {
       title: 'Locataire',
       key: 'renter',
-      render: (_, record) => record.primaryRenter?.user?.fullName || record.primaryRenter?.userId || '-',
+      render: (_, record) => record.primaryRenter?.user?.fullName || record.primaryRenter?.userId || '-'
     },
     {
       title: 'Date début',
       key: 'start_date',
-      render: (_, record) => formatDate(record.start_date),
+      render: (_, record) => formatDate(record.start_date)
     },
     {
       title: 'Date fin',
       key: 'end_date',
-      render: (_, record) => formatDate(record.end_date),
+      render: (_, record) => formatDate(record.end_date)
     },
     {
       title: 'Montant',
@@ -187,19 +189,15 @@ export const Leases: React.FC = () => {
           modes.includes(PropertyTransactionMode.SALE) &&
           !modes.includes(PropertyTransactionMode.RENTAL) &&
           !modes.includes(PropertyTransactionMode.SHORT_TERM);
-        const amount = isSale
-          ? (record.property?.price ?? 0)
-          : record.rent_amount;
+        const amount = isSale ? (record.property?.price ?? 0) : record.rent_amount;
         const currency = record.property?.currency || record.currency;
-        return (
-          <Text>{formatCurrency(amount, currency)}</Text>
-        );
-      },
+        return <Text>{formatCurrency(amount, currency)}</Text>;
+      }
     },
     {
       title: 'Statut',
       key: 'status',
-      render: (_, record) => getStatusTag(record.status),
+      render: (_, record) => getStatusTag(record.status)
     },
     {
       title: 'Actions',
@@ -211,7 +209,7 @@ export const Leases: React.FC = () => {
             <Button
               type="text"
               icon={<EyeOutlined />}
-              onClick={(e) => {
+              onClick={e => {
                 e.stopPropagation();
                 navigate(`/tenant/${tenantId}/rental/leases/${record.id}`);
               }}
@@ -221,7 +219,7 @@ export const Leases: React.FC = () => {
             <Button
               type="text"
               icon={<EditOutlined />}
-              onClick={(e) => {
+              onClick={e => {
                 e.stopPropagation();
                 navigate(`/tenant/${tenantId}/rental/leases/${record.id}/edit`);
               }}
@@ -234,7 +232,7 @@ export const Leases: React.FC = () => {
               icon={<DeleteOutlined />}
               data-lease-id={record.id}
               data-lease-number={record.lease_number}
-              onClick={(e) => {
+              onClick={e => {
                 e.stopPropagation();
                 const leaseId = (e.currentTarget as HTMLButtonElement).dataset.leaseId;
                 const leaseNumber = (e.currentTarget as HTMLButtonElement).dataset.leaseNumber ?? '';
@@ -243,8 +241,8 @@ export const Leases: React.FC = () => {
             />
           </Tooltip>
         </Space>
-      ),
-    },
+      )
+    }
   ];
 
   return (
@@ -252,7 +250,9 @@ export const Leases: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Row justify="space-between" align="middle" gutter={[16, 16]}>
           <Col xs={24} sm={24} md={12}>
-            <Title level={2} style={{ margin: 0 }}>Gestion Locative</Title>
+            <Title level={2} style={{ margin: 0 }}>
+              Gestion Locative
+            </Title>
             <Text type="secondary">Gérez les baux et locations</Text>
           </Col>
           <Col xs={24} sm={24} md={12} style={{ textAlign: 'right' }}>
@@ -267,14 +267,7 @@ export const Leases: React.FC = () => {
         </Row>
 
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
 
         <Card>
@@ -287,11 +280,11 @@ export const Leases: React.FC = () => {
                   enterButton={<SearchOutlined />}
                   size="large"
                   value={searchTerm}
-                  onChange={(e) => {
+                  onChange={e => {
                     setSearchTerm(e.target.value);
                     setFilters({ ...filters, page: 1 });
                   }}
-                  onSearch={(value) => {
+                  onSearch={value => {
                     setSearchTerm(value);
                     setFilters({ ...filters, page: 1, search: value || undefined });
                   }}
@@ -303,11 +296,11 @@ export const Leases: React.FC = () => {
                   size="large"
                   placeholder="Tous les statuts"
                   value={filters.status || undefined}
-                  onChange={(value) =>
+                  onChange={value =>
                     setFilters({
                       ...filters,
                       status: value as RentalLeaseStatus | undefined,
-                      page: 1,
+                      page: 1
                     })
                   }
                   allowClear
@@ -359,7 +352,7 @@ export const Leases: React.FC = () => {
               <Table
                 columns={columns}
                 dataSource={leases}
-                rowKey={(record) => record.id}
+                rowKey={record => record.id}
                 loading={loading}
                 pagination={false}
                 scroll={{ x: 'max-content' }}
@@ -381,7 +374,7 @@ export const Leases: React.FC = () => {
                       pageSize={pagination.limit}
                       showSizeChanger={false}
                       showTotal={(total, range) => `${range[0]}-${range[1]} sur ${total}`}
-                      onChange={(page) => setFilters({ ...filters, page })}
+                      onChange={page => setFilters({ ...filters, page })}
                     />
                   </Col>
                 </Row>

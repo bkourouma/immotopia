@@ -1,19 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import {
-  Alert,
-  Button,
-  Col,
-  Empty,
-  Form,
-  Input,
-  Modal,
-  Row,
-  Space,
-  Spin,
-  Typography,
-  message,
-} from 'antd';
+import { App, Alert, Button, Col, Empty, Form, Input, Modal, Row, Space, Spin, Typography } from 'antd';
 import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { SyndicateCard } from '../../components/syndics/SyndicateCard';
@@ -24,6 +11,8 @@ import { CreateSyndicateRequest, Syndicate } from '../../types/syndic-types';
 const { Paragraph, Title } = Typography;
 
 export const SyndicsList: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -65,7 +54,7 @@ export const SyndicsList: React.FC = () => {
       recouvrement: '/recouvrement',
       comptabilite: '/comptabilite',
       budgets: '/budgets',
-      'profils-incidents': '/profils-incidents',
+      'profils-incidents': '/profils-incidents'
     };
 
     const suffix = sectionToSuffix[section];
@@ -95,15 +84,13 @@ export const SyndicsList: React.FC = () => {
 
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const visibleItems = items.filter((item) => item.status !== 'IN_LIQUIDATION');
+    const visibleItems = items.filter(item => item.status !== 'IN_LIQUIDATION');
     if (!query) {
       return visibleItems;
     }
 
-    return visibleItems.filter((item) =>
-      [item.name, item.address, item.cadastralReference || ''].some((value) =>
-        value.toLowerCase().includes(query)
-      )
+    return visibleItems.filter(item =>
+      [item.name, item.address, item.cadastralReference || ''].some(value => value.toLowerCase().includes(query))
     );
   }, [items, search]);
 
@@ -150,7 +137,7 @@ export const SyndicsList: React.FC = () => {
         } finally {
           setDeletingSyndicId(null);
         }
-      },
+      }
     });
   };
 
@@ -177,7 +164,7 @@ export const SyndicsList: React.FC = () => {
           prefix={<SearchOutlined />}
           placeholder="Rechercher par nom, adresse ou référence cadastrale"
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={event => setSearch(event.target.value)}
         />
 
         {error ? <Alert type="error" message={error} showIcon /> : null}
@@ -190,7 +177,7 @@ export const SyndicsList: React.FC = () => {
           <Empty description="Aucune copropriété trouvée" />
         ) : (
           <Row gutter={[16, 16]}>
-            {filteredItems.map((item) => (
+            {filteredItems.map(item => (
               <Col key={item.id} xs={24} md={12} xl={8}>
                 <SyndicateCard
                   syndicate={item}
@@ -216,12 +203,8 @@ export const SyndicsList: React.FC = () => {
         cancelText="Annuler"
         confirmLoading={submitting}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{ propertyId: undefined }}
-        >
-          <Form.Item label="Nom" name="name" rules={[{ required: true, message: 'Le nom est obligatoire' }]}> 
+        <Form form={form} layout="vertical" initialValues={{ propertyId: undefined }}>
+          <Form.Item label="Nom" name="name" rules={[{ required: true, message: 'Le nom est obligatoire' }]}>
             <Input />
           </Form.Item>
           <Form.Item label="Adresse" name="address" rules={[{ required: true, message: "L'adresse est obligatoire" }]}>

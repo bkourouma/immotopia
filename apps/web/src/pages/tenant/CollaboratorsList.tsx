@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
+  App,
   Table,
   Card,
   Input,
@@ -10,11 +11,10 @@ import {
   Space,
   Avatar,
   Popconfirm,
-  message,
   Alert,
   Empty,
   Spin,
-  Typography,
+  Typography
 } from 'antd';
 import {
   UserOutlined,
@@ -22,21 +22,17 @@ import {
   SearchOutlined,
   EyeOutlined,
   UserDeleteOutlined,
-  CheckCircleOutlined,
+  CheckCircleOutlined
 } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
-import {
-  listMembers,
-  Member,
-  MembershipFilters,
-  disableMember,
-  enableMember,
-} from '../../services/membership-service';
+import { listMembers, Member, MembershipFilters, disableMember, enableMember } from '../../services/membership-service';
 import type { ColumnsType } from 'antd/es/table';
 
 const { Title, Text } = Typography;
 
 export const CollaboratorsList: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const [members, setMembers] = useState<Member[]>([]);
@@ -44,13 +40,13 @@ export const CollaboratorsList: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<MembershipFilters>({
     page: 1,
-    limit: 20,
+    limit: 20
   });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
     total: 0,
-    totalPages: 0,
+    totalPages: 0
   });
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -67,16 +63,18 @@ export const CollaboratorsList: React.FC = () => {
     try {
       const response = await listMembers(tenantId, {
         ...filters,
-        search: searchTerm || undefined,
+        search: searchTerm || undefined
       });
       if (response.success && response.data) {
         setMembers(response.data.members || []);
-        setPagination(response.data.pagination || {
-          page: 1,
-          limit: 20,
-          total: 0,
-          totalPages: 0,
-        });
+        setPagination(
+          response.data.pagination || {
+            page: 1,
+            limit: 20,
+            total: 0,
+            totalPages: 0
+          }
+        );
       } else {
         setError('Erreur lors du chargement des collaborateurs');
       }
@@ -115,7 +113,7 @@ export const CollaboratorsList: React.FC = () => {
     const statusConfig = {
       ACTIVE: { color: 'success', text: 'Actif' },
       PENDING_INVITE: { color: 'warning', text: 'Invitation en attente' },
-      DISABLED: { color: 'error', text: 'Désactivé' },
+      DISABLED: { color: 'error', text: 'Désactivé' }
     };
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.DISABLED;
     return <Tag color={config.color}>{config.text}</Tag>;
@@ -136,7 +134,7 @@ export const CollaboratorsList: React.FC = () => {
             </Text>
           </div>
         </Space>
-      ),
+      )
     },
     {
       title: 'Rôles',
@@ -144,29 +142,27 @@ export const CollaboratorsList: React.FC = () => {
       width: 200,
       render: (_, record) => (
         <Space size="small" wrap>
-          {record.roles.map((role) => (
+          {record.roles.map(role => (
             <Tag key={role.id} color="blue">
               {role.name}
             </Tag>
           ))}
         </Space>
-      ),
+      )
     },
     {
       title: 'Statut',
       dataIndex: 'status',
       key: 'status',
       width: 150,
-      render: (status: string) => getStatusTag(status),
+      render: (status: string) => getStatusTag(status)
     },
     {
       title: 'Dernière connexion',
       key: 'lastLogin',
       width: 150,
       render: (_, record) =>
-        record.user.lastLoginAt
-          ? new Date(record.user.lastLoginAt).toLocaleDateString('fr-FR')
-          : 'Jamais',
+        record.user.lastLoginAt ? new Date(record.user.lastLoginAt).toLocaleDateString('fr-FR') : 'Jamais'
     },
     {
       title: 'Actions',
@@ -189,12 +185,7 @@ export const CollaboratorsList: React.FC = () => {
               okText="Oui"
               cancelText="Non"
             >
-              <Button
-                type="text"
-                danger
-                icon={<UserDeleteOutlined />}
-                title="Désactiver"
-              />
+              <Button type="text" danger icon={<UserDeleteOutlined />} title="Désactiver" />
             </Popconfirm>
           ) : (
             <Popconfirm
@@ -204,16 +195,12 @@ export const CollaboratorsList: React.FC = () => {
               okText="Oui"
               cancelText="Non"
             >
-              <Button
-                type="text"
-                icon={<CheckCircleOutlined />}
-                title="Activer"
-              />
+              <Button type="text" icon={<CheckCircleOutlined />} title="Activer" />
             </Popconfirm>
           )}
         </Space>
-      ),
-    },
+      )
+    }
   ];
 
   return (
@@ -227,11 +214,7 @@ export const CollaboratorsList: React.FC = () => {
             </Title>
             <Text type="secondary">Gérez les collaborateurs de votre tenant</Text>
           </div>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => navigate(`/tenant/${tenantId}/invite`)}
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate(`/tenant/${tenantId}/invite`)}>
             Inviter un collaborateur
           </Button>
         </div>
@@ -243,7 +226,7 @@ export const CollaboratorsList: React.FC = () => {
               placeholder="Rechercher un collaborateur..."
               prefix={<SearchOutlined />}
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={e => setSearchTerm(e.target.value)}
               onPressEnter={handleSearch}
               style={{ flex: 1 }}
             />
@@ -266,14 +249,7 @@ export const CollaboratorsList: React.FC = () => {
 
         {/* Error Message */}
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
 
         {/* Members Table */}
@@ -290,13 +266,13 @@ export const CollaboratorsList: React.FC = () => {
                 pageSize: pagination.limit,
                 total: pagination.total,
                 showSizeChanger: true,
-                showTotal: (total) => `Total: ${total} collaborateurs`,
+                showTotal: total => `Total: ${total} collaborateurs`,
                 onChange: (page, pageSize) => {
                   setFilters({ ...filters, page, limit: pageSize });
-                },
+                }
               }}
               locale={{
-                emptyText: <Empty description="Aucun collaborateur trouvé" />,
+                emptyText: <Empty description="Aucun collaborateur trouvé" />
               }}
             />
           </div>

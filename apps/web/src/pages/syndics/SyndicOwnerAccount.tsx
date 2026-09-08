@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  App,
   Alert,
   Button,
   Card,
@@ -15,8 +16,7 @@ import {
   Spin,
   Statistic,
   Table,
-  Typography,
-  message,
+  Typography
 } from 'antd';
 import { ArrowLeftOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -25,7 +25,7 @@ import {
   createLotOwnerAccountAdjustment,
   downloadLotOwnerAccountStatement,
   getLotOwnerAccount,
-  listLotOwnerAccountTransactions,
+  listLotOwnerAccountTransactions
 } from '../../services/syndic-service';
 import { OwnerAccount, OwnerAccountTransaction } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
@@ -38,10 +38,12 @@ const transactionTypeLabels: Record<OwnerAccountTransaction['type'], string> = {
   PENALTY: 'Pénalité',
   WAIVER: 'Remise',
   ADJUSTMENT: 'Ajustement',
-  FUND_TRANSFER: 'Transfert de fonds',
+  FUND_TRANSFER: 'Transfert de fonds'
 };
 
 export const SyndicOwnerAccount: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId: effectiveTenantId, syndicId, lotId } = useSyndicRouteContext();
   const navigate = useNavigate();
   const [account, setAccount] = useState<OwnerAccount | null>(null);
@@ -68,7 +70,7 @@ export const SyndicOwnerAccount: React.FC = () => {
     try {
       const [accountData, txData] = await Promise.all([
         getLotOwnerAccount(effectiveTenantId, syndicId, lotId),
-        listLotOwnerAccountTransactions(effectiveTenantId, syndicId, lotId, { page: 1, limit: 100 }),
+        listLotOwnerAccountTransactions(effectiveTenantId, syndicId, lotId, { page: 1, limit: 100 })
       ]);
       setAccount(accountData);
       setTransactions(txData);
@@ -81,7 +83,11 @@ export const SyndicOwnerAccount: React.FC = () => {
 
   const ownerName = useMemo(() => {
     if (!account?.contact) return 'Propriétaire';
-    return [account.contact.firstName, account.contact.lastName].filter(Boolean).join(' ').trim() || account.contact.legalName || 'Propriétaire';
+    return (
+      [account.contact.firstName, account.contact.lastName].filter(Boolean).join(' ').trim() ||
+      account.contact.legalName ||
+      'Propriétaire'
+    );
   }, [account]);
 
   const handleAdjustment = async () => {
@@ -93,7 +99,7 @@ export const SyndicOwnerAccount: React.FC = () => {
         direction: values.direction,
         amount: values.amount,
         label: values.label,
-        reference: values.reference || undefined,
+        reference: values.reference || undefined
       });
       message.success('Ajustement enregistré');
       setOpen(false);
@@ -126,7 +132,10 @@ export const SyndicOwnerAccount: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/lots`)}>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/lots`)}
+            >
               Retour aux lots
             </Button>
             <Title level={2} style={{ margin: 0 }}>
@@ -157,7 +166,11 @@ export const SyndicOwnerAccount: React.FC = () => {
             <Row gutter={[16, 16]}>
               <Col xs={24} md={8}>
                 <Card>
-                  <Statistic title="Solde courant" value={Number(account?.balance ?? 0)} suffix={account?.currency || 'XOF'} />
+                  <Statistic
+                    title="Solde courant"
+                    value={Number(account?.balance ?? 0)}
+                    suffix={account?.currency || 'XOF'}
+                  />
                 </Card>
               </Col>
               <Col xs={24} md={8}>
@@ -181,29 +194,29 @@ export const SyndicOwnerAccount: React.FC = () => {
                   {
                     title: 'Date',
                     dataIndex: 'transactionDate',
-                    render: (value: string) => dayjs(value).format('DD/MM/YYYY'),
+                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
                   },
                   {
                     title: 'Type',
                     dataIndex: 'type',
-                    render: (value: OwnerAccountTransaction['type']) => transactionTypeLabels[value] || value,
+                    render: (value: OwnerAccountTransaction['type']) => transactionTypeLabels[value] || value
                   },
                   { title: 'Libellé', dataIndex: 'label' },
                   {
                     title: 'Débit',
                     dataIndex: 'debit',
-                    render: (value: number | string | null) => (value ? Number(value).toLocaleString('fr-FR') : '-'),
+                    render: (value: number | string | null) => (value ? Number(value).toLocaleString('fr-FR') : '-')
                   },
                   {
                     title: 'Crédit',
                     dataIndex: 'credit',
-                    render: (value: number | string | null) => (value ? Number(value).toLocaleString('fr-FR') : '-'),
+                    render: (value: number | string | null) => (value ? Number(value).toLocaleString('fr-FR') : '-')
                   },
                   {
                     title: 'Solde',
                     dataIndex: 'balanceAfter',
-                    render: (value: number | string) => Number(value).toLocaleString('fr-FR'),
-                  },
+                    render: (value: number | string) => Number(value).toLocaleString('fr-FR')
+                  }
                 ]}
               />
             </Card>
@@ -225,7 +238,7 @@ export const SyndicOwnerAccount: React.FC = () => {
             <Select
               options={[
                 { label: 'Débit', value: 'DEBIT' },
-                { label: 'Crédit', value: 'CREDIT' },
+                { label: 'Crédit', value: 'CREDIT' }
               ]}
             />
           </Form.Item>

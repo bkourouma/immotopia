@@ -1,25 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  Button,
-  Input,
-  Modal,
-  Form,
-  Space,
-  Typography,
-  Tag,
-  Spin,
-  Empty,
-  Row,
-  Col,
-  Alert,
-  message,
-} from 'antd';
-import {
-  PlusOutlined,
-  FolderOpenOutlined,
-  TagOutlined,
-} from '@ant-design/icons';
+import { App, Card, Button, Input, Modal, Form, Space, Typography, Tag, Spin, Empty, Row, Col, Alert } from 'antd';
+import { PlusOutlined, FolderOpenOutlined, TagOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../components/dashboard/dashboard-layout';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -28,6 +9,8 @@ import { listTags, createTag, listContacts, CrmTag } from '../services/crm-servi
 const { Title, Text } = Typography;
 
 export const ClientGroups: React.FC = () => {
+  const { message } = App.useApp();
+
   const navigate = useNavigate();
   const { tenantMembership } = useAuth();
   const [form] = Form.useForm();
@@ -124,7 +107,7 @@ export const ClientGroups: React.FC = () => {
     '#8B5CF6', // Purple
     '#EC4899', // Pink
     '#06B6D4', // Cyan
-    '#F97316', // Orange
+    '#F97316' // Orange
   ];
 
   return (
@@ -132,21 +115,17 @@ export const ClientGroups: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <Title level={2} style={{ margin: 0 }}>Groupes de clients</Title>
+            <Title level={2} style={{ margin: 0 }}>
+              Groupes de clients
+            </Title>
             <Text type="secondary">Organisez vos clients en groupes (tags) pour une meilleure gestion</Text>
           </div>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setShowCreateModal(true)}
-          >
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowCreateModal(true)}>
             Nouveau groupe
           </Button>
         </div>
 
-        {error && (
-          <Alert message={error} type="error" showIcon closable onClose={() => setError(null)} />
-        )}
+        {error && <Alert message={error} type="error" showIcon closable onClose={() => setError(null)} />}
 
         {loading ? (
           <Card>
@@ -163,31 +142,23 @@ export const ClientGroups: React.FC = () => {
               image={<FolderOpenOutlined style={{ fontSize: 64, color: '#d9d9d9' }} />}
               description={
                 <Space direction="vertical" size="small">
-                  <Title level={4} style={{ margin: 0 }}>Aucun groupe</Title>
-                  <Text type="secondary">
-                    Créez votre premier groupe pour organiser vos clients
-                  </Text>
+                  <Title level={4} style={{ margin: 0 }}>
+                    Aucun groupe
+                  </Title>
+                  <Text type="secondary">Créez votre premier groupe pour organiser vos clients</Text>
                 </Space>
               }
             >
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => setShowCreateModal(true)}
-              >
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowCreateModal(true)}>
                 Créer un groupe
               </Button>
             </Empty>
           </Card>
         ) : (
           <Row gutter={[16, 16]}>
-            {tags.map((tag) => (
+            {tags.map(tag => (
               <Col xs={24} sm={12} lg={8} key={tag.id}>
-                <Card
-                  hoverable
-                  onClick={() => handleViewGroup(tag.id)}
-                  style={{ cursor: 'pointer' }}
-                >
+                <Card hoverable onClick={() => handleViewGroup(tag.id)} style={{ cursor: 'pointer' }}>
                   <Space size="middle" style={{ width: '100%' }}>
                     <div
                       style={{
@@ -197,7 +168,7 @@ export const ClientGroups: React.FC = () => {
                         backgroundColor: tag.color || '#1890ff',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
+                        justifyContent: 'center'
                       }}
                     >
                       <TagOutlined style={{ fontSize: 24, color: '#fff' }} />
@@ -232,7 +203,7 @@ export const ClientGroups: React.FC = () => {
           <Form
             form={form}
             layout="vertical"
-            onFinish={(values) => handleCreateTag({ name: values.name, color: values.color || '#3B82F6' })}
+            onFinish={values => handleCreateTag({ name: values.name, color: values.color || '#3B82F6' })}
             initialValues={{ color: '#3B82F6' }}
           >
             <Form.Item
@@ -240,23 +211,16 @@ export const ClientGroups: React.FC = () => {
               name="name"
               rules={[{ required: true, message: 'Le nom du groupe est requis' }]}
             >
-              <Input
-                placeholder="Ex: VIP, Nouveaux clients, etc."
-                autoFocus
-              />
+              <Input placeholder="Ex: VIP, Nouveaux clients, etc." autoFocus />
             </Form.Item>
 
-            <Form.Item
-              label="Couleur"
-              name="color"
-              rules={[{ required: true, message: 'La couleur est requise' }]}
-            >
+            <Form.Item label="Couleur" name="color" rules={[{ required: true, message: 'La couleur est requise' }]}>
               <Form.Item noStyle shouldUpdate={(prevValues, currentValues) => prevValues.color !== currentValues.color}>
                 {({ getFieldValue }) => {
                   const selectedColor = getFieldValue('color') || '#3B82F6';
                   return (
                     <Space wrap>
-                      {predefinedColors.map((color) => (
+                      {predefinedColors.map(color => (
                         <Button
                           key={color}
                           type="text"
@@ -267,7 +231,7 @@ export const ClientGroups: React.FC = () => {
                             borderRadius: 8,
                             backgroundColor: color,
                             border: selectedColor === color ? '3px solid #000' : '2px solid transparent',
-                            padding: 0,
+                            padding: 0
                           }}
                         />
                       ))}
@@ -299,7 +263,3 @@ export const ClientGroups: React.FC = () => {
     </DashboardLayout>
   );
 };
-
-
-
-

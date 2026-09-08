@@ -1,25 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Table,
-  Button,
-  Tag,
-  Space,
-  Typography,
-  Empty,
-  Alert,
-  Select,
-  message,
-  Modal,
-  Input,
-  Image,
-} from 'antd';
+import { App, Table, Button, Tag, Space, Typography, Empty, Alert, Select, Modal, Input, Image } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import {
-  EyeOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  FileImageOutlined,
-} from '@ant-design/icons';
+import { EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, FileImageOutlined } from '@ant-design/icons';
 import {
   listPaymentDeclarations,
   approvePaymentDeclaration,
@@ -27,7 +9,7 @@ import {
   RentalPaymentDeclaration,
   PaymentDeclarationStatus,
   PaymentDeclarationFilters,
-  RentalPaymentMethod,
+  RentalPaymentMethod
 } from '../../services/rental-service';
 
 const { Text } = Typography;
@@ -44,8 +26,10 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
   tenantId,
   leaseId,
   onApproveSuccess,
-  onRejectSuccess,
+  onRejectSuccess
 }) => {
+  const { message } = App.useApp();
+
   const [declarations, setDeclarations] = useState<RentalPaymentDeclaration[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,13 +37,13 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     status: undefined,
     leaseId: leaseId,
     page: 1,
-    limit: 100,
+    limit: 100
   });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 100,
     total: 0,
-    totalPages: 0,
+    totalPages: 0
   });
   const [approveModalVisible, setApproveModalVisible] = useState(false);
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
@@ -82,7 +66,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     try {
       const response = await listPaymentDeclarations(tenantId, {
         ...filters,
-        leaseId: leaseId || filters.leaseId,
+        leaseId: leaseId || filters.leaseId
       });
       if (response.success) {
         setDeclarations(response.data);
@@ -114,7 +98,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     setProcessing(true);
     try {
       await approvePaymentDeclaration(tenantId, selectedDeclaration.id, {
-        reviewNotes: reviewNotes || undefined,
+        reviewNotes: reviewNotes || undefined
       });
       message.success('Déclaration approuvée avec succès');
       setApproveModalVisible(false);
@@ -123,7 +107,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
       await loadDeclarations();
       onApproveSuccess?.();
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors de l\'approbation');
+      message.error(err.response?.data?.message || "Erreur lors de l'approbation");
     } finally {
       setProcessing(false);
     }
@@ -137,7 +121,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     setProcessing(true);
     try {
       await rejectPaymentDeclaration(tenantId, selectedDeclaration.id, {
-        reviewNotes: reviewNotes,
+        reviewNotes: reviewNotes
       });
       message.success('Déclaration rejetée');
       setRejectModalVisible(false);
@@ -162,7 +146,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
       PENDING: { label: 'En attente', color: 'orange' },
       APPROVED: { label: 'Approuvée', color: 'green' },
       REJECTED: { label: 'Rejetée', color: 'red' },
-      CANCELED: { label: 'Annulée', color: 'default' },
+      CANCELED: { label: 'Annulée', color: 'default' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -175,7 +159,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
       CHECK: 'Chèque',
       MOBILE_MONEY: 'Mobile Money',
       CARD: 'Carte bancaire',
-      OTHER: 'Autre',
+      OTHER: 'Autre'
     };
     return methodMap[method] || method;
   };
@@ -184,14 +168,14 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     return new Date(dateString).toLocaleDateString('fr-FR', {
       year: 'numeric',
       month: 'long',
-      day: 'numeric',
+      day: 'numeric'
     });
   };
 
   const formatCurrency = (amount: number, currency: string = 'FCFA') => {
     return new Intl.NumberFormat('fr-FR', {
       style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency,
+      currency: currency === 'FCFA' ? 'XOF' : currency
     }).format(amount);
   };
 
@@ -200,22 +184,22 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
       title: 'Date de déclaration',
       key: 'created_at',
       render: (_, record) => formatDate(record.created_at),
-      sorter: (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      sorter: (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     },
     {
       title: 'Date de paiement',
       key: 'payment_date',
-      render: (_, record) => formatDate(record.payment_date),
+      render: (_, record) => formatDate(record.payment_date)
     },
     {
       title: 'Locataire',
       key: 'declarer',
-      render: (_, record) => record.declarer?.user?.fullName || '-',
+      render: (_, record) => record.declarer?.user?.fullName || '-'
     },
     {
       title: 'Bail',
       key: 'lease',
-      render: (_, record) => record.lease?.lease_number || '-',
+      render: (_, record) => record.lease?.lease_number || '-'
     },
     {
       title: 'Échéance',
@@ -225,28 +209,28 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
           return `${record.installment.period_month}/${record.installment.period_year}`;
         }
         return '-';
-      },
+      }
     },
     {
       title: 'Montant',
       key: 'amount',
       render: (_, record) => formatCurrency(Number(record.amount)),
-      sorter: (a, b) => Number(a.amount) - Number(b.amount),
+      sorter: (a, b) => Number(a.amount) - Number(b.amount)
     },
     {
       title: 'Méthode',
       key: 'payment_method',
-      render: (_, record) => getMethodLabel(record.payment_method),
+      render: (_, record) => getMethodLabel(record.payment_method)
     },
     {
       title: 'Référence',
       key: 'reference',
-      render: (_, record) => record.reference || '-',
+      render: (_, record) => record.reference || '-'
     },
     {
       title: 'Statut',
       key: 'status',
-      render: (_, record) => getStatusTag(record.status),
+      render: (_, record) => getStatusTag(record.status)
     },
     {
       title: 'Actions',
@@ -264,51 +248,34 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
           )}
           {record.status === PaymentDeclarationStatus.PENDING && (
             <>
-              <Button
-                type="primary"
-                icon={<CheckCircleOutlined />}
-                onClick={() => handleApprove(record)}
-                size="small"
-              >
+              <Button type="primary" icon={<CheckCircleOutlined />} onClick={() => handleApprove(record)} size="small">
                 Approuver
               </Button>
-              <Button
-                danger
-                icon={<CloseCircleOutlined />}
-                onClick={() => handleReject(record)}
-                size="small"
-              >
+              <Button danger icon={<CloseCircleOutlined />} onClick={() => handleReject(record)} size="small">
                 Rejeter
               </Button>
             </>
           )}
         </Space>
-      ),
-    },
+      )
+    }
   ];
 
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
 
         <Space>
           <Select
             value={filters.status || 'all'}
-            onChange={(value) =>
+            onChange={value =>
               setFilters({
                 ...filters,
                 status: value === 'all' ? undefined : (value as PaymentDeclarationStatus),
-                page: 1,
+                page: 1
               })
             }
             style={{ width: 200 }}
@@ -336,10 +303,10 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
               total: pagination.total,
               showSizeChanger: true,
               pageSizeOptions: ['20', '50', '100', '200'],
-              showTotal: (total) => `Total ${total} déclaration${total !== 1 ? 's' : ''}`,
+              showTotal: total => `Total ${total} déclaration${total !== 1 ? 's' : ''}`,
               onChange: (page, pageSize) => {
-                setFilters((prev) => ({ ...prev, page, limit: pageSize ?? prev.limit }));
-              },
+                setFilters(prev => ({ ...prev, page, limit: pageSize ?? prev.limit }));
+              }
             }}
           />
         )}
@@ -384,7 +351,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
               <TextArea
                 rows={4}
                 value={reviewNotes}
-                onChange={(e) => setReviewNotes(e.target.value)}
+                onChange={e => setReviewNotes(e.target.value)}
                 placeholder="Ajoutez des notes de révision si nécessaire..."
               />
             </div>
@@ -428,7 +395,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
               <TextArea
                 rows={4}
                 value={reviewNotes}
-                onChange={(e) => setReviewNotes(e.target.value)}
+                onChange={e => setReviewNotes(e.target.value)}
                 placeholder="Expliquez pourquoi cette déclaration est rejetée..."
                 required
               />
@@ -449,12 +416,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
         width={800}
       >
         {proofImageUrl && (
-          <Image
-            src={proofImageUrl}
-            alt="Preuve de paiement"
-            style={{ width: '100%' }}
-            preview={false}
-          />
+          <Image src={proofImageUrl} alt="Preuve de paiement" style={{ width: '100%' }} preview={false} />
         )}
       </Modal>
     </>

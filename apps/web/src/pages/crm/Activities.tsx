@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
+  App,
   Button,
   Card,
   Space,
@@ -14,15 +15,9 @@ import {
   Select,
   DatePicker,
   Typography,
-  Divider,
-  message,
+  Divider
 } from 'antd';
-import {
-  PlusOutlined,
-  FilterOutlined,
-  CloseOutlined,
-  CalendarOutlined,
-} from '@ant-design/icons';
+import { PlusOutlined, FilterOutlined, CloseOutlined, CalendarOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { ActivityForm } from '../../components/crm/ActivityForm';
 import { ActivityTimeline } from '../../components/crm/ActivityTimeline';
@@ -33,7 +28,7 @@ import {
   CrmActivity,
   CrmContact,
   CreateCrmActivityRequest,
-  ActivityFilters,
+  ActivityFilters
 } from '../../services/crm-service';
 import { listMembers, Member } from '../../services/membership-service';
 import { CrmActivityType } from '../../types/crm-types';
@@ -43,6 +38,8 @@ const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
 export const Activities: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId, contactId, dealId } = useParams<{ tenantId: string; contactId?: string; dealId?: string }>();
   const [activities, setActivities] = useState<CrmActivity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,13 +49,13 @@ export const Activities: React.FC = () => {
     page: 1,
     limit: 50,
     contactId: contactId,
-    dealId: dealId,
+    dealId: dealId
   });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 50,
     total: 0,
-    totalPages: 0,
+    totalPages: 0
   });
   const [contacts, setContacts] = useState<CrmContact[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -76,7 +73,7 @@ export const Activities: React.FC = () => {
     setFilters((prev: ActivityFilters) => ({
       ...prev,
       contactId: contactId,
-      dealId: dealId,
+      dealId: dealId
     }));
   }, [contactId, dealId]);
 
@@ -152,7 +149,7 @@ export const Activities: React.FC = () => {
         ...filters,
         page: 1,
         startDate: dates[0].format('YYYY-MM-DD'),
-        endDate: dates[1].format('YYYY-MM-DD'),
+        endDate: dates[1].format('YYYY-MM-DD')
       });
     } else {
       setFilters({ ...filters, page: 1, startDate: undefined, endDate: undefined });
@@ -164,21 +161,21 @@ export const Activities: React.FC = () => {
       page: 1,
       limit: 50,
       contactId: contactId,
-      dealId: dealId,
+      dealId: dealId
     });
     setShowAdvancedFilters(false);
     message.info('Filtres réinitialisés');
   };
 
   const typeLabels: Record<string, string> = {
-    'CALL': 'Appel',
-    'EMAIL': 'Email',
-    'SMS': 'SMS',
-    'WHATSAPP': 'WhatsApp',
-    'VISIT': 'Visite',
-    'MEETING': 'Réunion',
-    'NOTE': 'Note',
-    'TASK': 'Tâche',
+    CALL: 'Appel',
+    EMAIL: 'Email',
+    SMS: 'SMS',
+    WHATSAPP: 'WhatsApp',
+    VISIT: 'Visite',
+    MEETING: 'Réunion',
+    NOTE: 'Note',
+    TASK: 'Tâche'
   };
 
   const activityTypes = ['CALL', 'EMAIL', 'SMS', 'WHATSAPP', 'VISIT', 'MEETING', 'NOTE', 'TASK'];
@@ -188,15 +185,13 @@ export const Activities: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Row justify="space-between" align="middle" gutter={[16, 16]}>
           <Col xs={24} sm={24} md={12}>
-            <Title level={2} style={{ margin: 0 }}>Activités</Title>
+            <Title level={2} style={{ margin: 0 }}>
+              Activités
+            </Title>
             <Text type="secondary">Suivez toutes les interactions et activités</Text>
           </Col>
           <Col xs={24} sm={24} md={12} style={{ textAlign: 'right' }}>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setShowForm(true)}
-            >
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)}>
               Nouvelle activité
             </Button>
           </Col>
@@ -225,15 +220,14 @@ export const Activities: React.FC = () => {
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
             {/* Type Filters */}
             <div>
-              <Text strong style={{ marginRight: 16 }}>Type d'activité:</Text>
+              <Text strong style={{ marginRight: 16 }}>
+                Type d'activité:
+              </Text>
               <Space wrap>
-                <Button
-                  type={!filters.type ? 'primary' : 'default'}
-                  onClick={() => handleTypeFilter('')}
-                >
+                <Button type={!filters.type ? 'primary' : 'default'} onClick={() => handleTypeFilter('')}>
                   Tous les types
                 </Button>
-                {activityTypes.map((type) => (
+                {activityTypes.map(type => (
                   <Button
                     key={type}
                     type={filters.type === type ? 'primary' : 'default'}
@@ -249,17 +243,11 @@ export const Activities: React.FC = () => {
 
             {/* Advanced Filters */}
             <Space wrap>
-              <Button
-                icon={<FilterOutlined />}
-                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-              >
+              <Button icon={<FilterOutlined />} onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}>
                 {showAdvancedFilters ? 'Masquer' : 'Afficher'} les filtres avancés
               </Button>
               {(filters.contactId || filters.createdBy || filters.startDate || filters.endDate) && (
-                <Button
-                  icon={<CloseOutlined />}
-                  onClick={clearFilters}
-                >
+                <Button icon={<CloseOutlined />} onClick={clearFilters}>
                   Réinitialiser
                 </Button>
               )}
@@ -271,55 +259,59 @@ export const Activities: React.FC = () => {
                 <Row gutter={[16, 16]}>
                   {/* Contact Filter */}
                   <Col xs={24} sm={12} md={6}>
-                    <Text strong style={{ display: 'block', marginBottom: 8 }}>Contact</Text>
+                    <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                      Contact
+                    </Text>
                     <Select
                       style={{ width: '100%' }}
                       placeholder="Tous les contacts"
                       allowClear
                       value={filters.contactId || undefined}
-                      onChange={(value) => handleContactFilter(value || '')}
+                      onChange={value => handleContactFilter(value || '')}
                       showSearch
                       filterOption={(input, option) =>
                         (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                       }
-                      options={contacts.map((contact) => ({
+                      options={contacts.map(contact => ({
                         value: contact.id,
-                        label: `${contact.firstName} ${contact.lastName}`,
+                        label: `${contact.firstName} ${contact.lastName}`
                       }))}
                     />
                   </Col>
 
                   {/* Collaborator Filter */}
                   <Col xs={24} sm={12} md={6}>
-                    <Text strong style={{ display: 'block', marginBottom: 8 }}>Collaborateur</Text>
+                    <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                      Collaborateur
+                    </Text>
                     <Select
                       style={{ width: '100%' }}
                       placeholder="Tous les collaborateurs"
                       allowClear
                       value={filters.createdBy || undefined}
-                      onChange={(value) => handleCollaboratorFilter(value || '')}
+                      onChange={value => handleCollaboratorFilter(value || '')}
                       showSearch
                       filterOption={(input, option) =>
                         (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                       }
-                      options={members.map((member) => ({
+                      options={members.map(member => ({
                         value: member.user.id,
-                        label: member.user.fullName || member.user.email,
+                        label: member.user.fullName || member.user.email
                       }))}
                     />
                   </Col>
 
                   {/* Date Range Filter */}
                   <Col xs={24} sm={12} md={12}>
-                    <Text strong style={{ display: 'block', marginBottom: 8 }}>Période</Text>
+                    <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                      Période
+                    </Text>
                     <RangePicker
                       style={{ width: '100%' }}
                       format="DD/MM/YYYY"
                       placeholder={['Date début', 'Date fin']}
                       value={
-                        filters.startDate && filters.endDate
-                          ? [dayjs(filters.startDate), dayjs(filters.endDate)]
-                          : null
+                        filters.startDate && filters.endDate ? [dayjs(filters.startDate), dayjs(filters.endDate)] : null
                       }
                       onChange={handleDateRangeFilter}
                     />
@@ -332,14 +324,7 @@ export const Activities: React.FC = () => {
 
         {/* Activities Timeline */}
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
 
         <Card>
@@ -376,9 +361,8 @@ export const Activities: React.FC = () => {
             <Row justify="space-between" align="middle" gutter={[16, 16]}>
               <Col xs={24} sm={12}>
                 <Text type="secondary">
-                  Affichage de {((pagination.page - 1) * pagination.limit) + 1} à{' '}
-                  {Math.min(pagination.page * pagination.limit, pagination.total)} sur{' '}
-                  {pagination.total} activités
+                  Affichage de {(pagination.page - 1) * pagination.limit + 1} à{' '}
+                  {Math.min(pagination.page * pagination.limit, pagination.total)} sur {pagination.total} activités
                 </Text>
               </Col>
               <Col xs={24} sm={12} style={{ textAlign: 'right' }}>
@@ -388,7 +372,7 @@ export const Activities: React.FC = () => {
                   pageSize={pagination.limit}
                   showSizeChanger={false}
                   showTotal={(total, range) => `${range[0]}-${range[1]} sur ${total}`}
-                  onChange={(page) => setFilters({ ...filters, page })}
+                  onChange={page => setFilters({ ...filters, page })}
                 />
               </Col>
             </Row>
@@ -398,4 +382,3 @@ export const Activities: React.FC = () => {
     </DashboardLayout>
   );
 };
-

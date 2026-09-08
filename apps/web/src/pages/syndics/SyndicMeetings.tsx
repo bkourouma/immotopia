@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  App,
   Alert,
   Button,
   Card,
@@ -14,8 +15,7 @@ import {
   TimePicker,
   Table,
   Tag,
-  Typography,
-  message
+  Typography
 } from 'antd';
 import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -33,6 +33,8 @@ const meetingTypeOptions: Array<{ label: string; value: MeetingType }> = [
 ];
 
 export const SyndicMeetings: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const navigate = useNavigate();
 
@@ -108,7 +110,10 @@ export const SyndicMeetings: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
+            >
               Retour à la fiche syndic
             </Button>
             <Title level={2} style={{ margin: 0 }}>
@@ -135,17 +140,50 @@ export const SyndicMeetings: React.FC = () => {
               rowKey="id"
               dataSource={meetings}
               columns={[
-                { title: 'Type', dataIndex: 'type', key: 'type', render: (value: MeetingType) => meetingTypeLabels[value] },
-                { title: 'Date', dataIndex: 'scheduledAt', key: 'scheduledAt', render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm') },
-                { title: 'Début', dataIndex: 'startTime', key: 'startTime', render: (value?: string | null) => (value ? dayjs(value).format('HH:mm') : '-') },
-                { title: 'Fin', dataIndex: 'endTime', key: 'endTime', render: (value?: string | null) => (value ? dayjs(value).format('HH:mm') : '-') },
-                { title: 'Lieu', dataIndex: 'location', key: 'location', render: (value?: string | null) => value || 'Non renseigné' },
-                { title: 'Statut', dataIndex: 'status', key: 'status', render: (value: GeneralMeeting['status']) => <Tag>{meetingStatusLabels[value]}</Tag> },
+                {
+                  title: 'Type',
+                  dataIndex: 'type',
+                  key: 'type',
+                  render: (value: MeetingType) => meetingTypeLabels[value]
+                },
+                {
+                  title: 'Date',
+                  dataIndex: 'scheduledAt',
+                  key: 'scheduledAt',
+                  render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm')
+                },
+                {
+                  title: 'Début',
+                  dataIndex: 'startTime',
+                  key: 'startTime',
+                  render: (value?: string | null) => (value ? dayjs(value).format('HH:mm') : '-')
+                },
+                {
+                  title: 'Fin',
+                  dataIndex: 'endTime',
+                  key: 'endTime',
+                  render: (value?: string | null) => (value ? dayjs(value).format('HH:mm') : '-')
+                },
+                {
+                  title: 'Lieu',
+                  dataIndex: 'location',
+                  key: 'location',
+                  render: (value?: string | null) => value || 'Non renseigné'
+                },
+                {
+                  title: 'Statut',
+                  dataIndex: 'status',
+                  key: 'status',
+                  render: (value: GeneralMeeting['status']) => <Tag>{meetingStatusLabels[value]}</Tag>
+                },
                 {
                   title: 'Actions',
                   key: 'actions',
                   render: (_: unknown, item: GeneralMeeting) => (
-                    <Button size="small" onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/assemblees/${item.id}`)}>
+                    <Button
+                      size="small"
+                      onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/assemblees/${item.id}`)}
+                    >
                       Voir détails
                     </Button>
                   )
@@ -169,7 +207,11 @@ export const SyndicMeetings: React.FC = () => {
           <Form.Item label="Type" name="type" rules={[{ required: true, message: 'Le type est obligatoire' }]}>
             <Select options={meetingTypeOptions} />
           </Form.Item>
-          <Form.Item label="Date et heure" name="scheduledAt" rules={[{ required: true, message: 'La date est obligatoire' }]}>
+          <Form.Item
+            label="Date et heure"
+            name="scheduledAt"
+            rules={[{ required: true, message: 'La date est obligatoire' }]}
+          >
             <DatePicker showTime style={{ width: '100%' }} format="DD/MM/YYYY HH:mm" />
           </Form.Item>
           <Form.Item label="Heure de début" name="startTime">
@@ -186,4 +228,3 @@ export const SyndicMeetings: React.FC = () => {
     </DashboardLayout>
   );
 };
-

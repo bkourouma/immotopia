@@ -1,24 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Button,
-  Card,
-  Col,
-  Descriptions,
-  Empty,
-  Row,
-  Space,
-  Tag,
-  Typography,
-  message,
-} from 'antd';
-import {
-  CheckCircleOutlined,
-  EyeOutlined,
-  PlusOutlined,
-  SearchOutlined,
-  StarFilled,
-} from '@ant-design/icons';
+import { App, Button, Card, Col, Descriptions, Empty, Row, Space, Tag, Typography } from 'antd';
+import { CheckCircleOutlined, EyeOutlined, PlusOutlined, SearchOutlined, StarFilled } from '@ant-design/icons';
 import { Property } from '../../types/property-types';
 import { addPropertyToShortlist, matchPropertiesForDeal } from '../../services/property-service';
 
@@ -62,6 +45,8 @@ function toPercent(value: number): string {
 }
 
 export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tenantId, onPropertyAdded }) => {
+  const { message } = App.useApp();
+
   const navigate = useNavigate();
   const [matches, setMatches] = useState<PropertyMatchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -86,7 +71,7 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
   const handleAddToShortlist = async (propertyId: string, matchScore: number, explanation: unknown) => {
     try {
       await addPropertyToShortlist(tenantId, dealId, propertyId, matchScore, explanation);
-      setShortlistedProperties((previous) => new Set([...previous, propertyId]));
+      setShortlistedProperties(previous => new Set([...previous, propertyId]));
       message.success('Propriete ajoutee a la shortlist');
       if (onPropertyAdded) onPropertyAdded();
     } catch (error: any) {
@@ -121,7 +106,7 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
             {matches.length} correspondance{matches.length > 1 ? 's' : ''} trouvee{matches.length > 1 ? 's' : ''}
           </Title>
 
-          {matches.map((match) => (
+          {matches.map(match => (
             <Card key={match.propertyId}>
               <Space direction="vertical" size="middle" style={{ width: '100%' }}>
                 <Space wrap>
@@ -136,34 +121,40 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
                 <Descriptions
                   size="small"
                   column={{ xs: 1, md: 2, lg: 4 }}
-                  items={[
-                    {
-                      key: 'price',
-                      label: 'Prix',
-                      children: formatPrice(match.property.price, match.property.currency, match.property.propertyType),
-                    },
-                    match.property.surfaceArea
-                      ? {
-                          key: 'surface',
-                          label: 'Surface',
-                          children: `${match.property.surfaceArea} m²`,
-                        }
-                      : null,
-                    match.property.rooms
-                      ? {
-                          key: 'rooms',
-                          label: 'Pieces',
-                          children: match.property.rooms,
-                        }
-                      : null,
-                    match.property.locationZone
-                      ? {
-                          key: 'zone',
-                          label: 'Zone',
-                          children: match.property.locationZone,
-                        }
-                      : null,
-                  ].filter(Boolean) as any}
+                  items={
+                    [
+                      {
+                        key: 'price',
+                        label: 'Prix',
+                        children: formatPrice(
+                          match.property.price,
+                          match.property.currency,
+                          match.property.propertyType
+                        )
+                      },
+                      match.property.surfaceArea
+                        ? {
+                            key: 'surface',
+                            label: 'Surface',
+                            children: `${match.property.surfaceArea} m²`
+                          }
+                        : null,
+                      match.property.rooms
+                        ? {
+                            key: 'rooms',
+                            label: 'Pieces',
+                            children: match.property.rooms
+                          }
+                        : null,
+                      match.property.locationZone
+                        ? {
+                            key: 'zone',
+                            label: 'Zone',
+                            children: match.property.locationZone
+                          }
+                        : null
+                    ].filter(Boolean) as any
+                  }
                 />
 
                 <Card size="small" type="inner" title="Details de correspondance">
@@ -203,7 +194,10 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
                 </Card>
 
                 <Space wrap>
-                  <Button icon={<EyeOutlined />} onClick={() => navigate(`/tenant/${tenantId}/properties/${match.propertyId}`)}>
+                  <Button
+                    icon={<EyeOutlined />}
+                    onClick={() => navigate(`/tenant/${tenantId}/properties/${match.propertyId}`)}
+                  >
                     Voir les details
                   </Button>
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
+  App,
   Table,
   Card,
   Button,
@@ -11,7 +12,6 @@ import {
   Empty,
   Spin,
   Popconfirm,
-  message,
   Modal,
   Form,
   Select,
@@ -37,6 +37,8 @@ interface Vendor {
 }
 
 export const Vendors: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const { tenantMembership } = useAuth();
@@ -89,12 +91,12 @@ export const Vendors: React.FC = () => {
 
   const handleSearch = (value: string) => {
     setSearchTerm(value);
-    setPagination((prev) => ({ ...prev, page: 1 }));
+    setPagination(prev => ({ ...prev, page: 1 }));
   };
 
   const handleFilterChange = (value: boolean | undefined) => {
     setIsActiveFilter(value);
-    setPagination((prev) => ({ ...prev, page: 1 }));
+    setPagination(prev => ({ ...prev, page: 1 }));
   };
 
   const handleCreate = () => {
@@ -132,7 +134,7 @@ export const Vendors: React.FC = () => {
       form.resetFields();
       await loadVendors();
     } catch (error: any) {
-      message.error(error.response?.data?.message || 'Erreur lors de l\'enregistrement');
+      message.error(error.response?.data?.message || "Erreur lors de l'enregistrement");
     } finally {
       setSubmitting(false);
     }
@@ -151,7 +153,7 @@ export const Vendors: React.FC = () => {
   };
 
   const handlePageChange = (page: number) => {
-    setPagination((prev) => ({ ...prev, page }));
+    setPagination(prev => ({ ...prev, page }));
   };
 
   const columns = [
@@ -200,12 +202,7 @@ export const Vendors: React.FC = () => {
       key: 'actions',
       render: (_: any, record: Vendor) => (
         <Space>
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-            title="Modifier"
-          />
+          <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} title="Modifier" />
           <Popconfirm
             title="Êtes-vous sûr de vouloir supprimer définitivement ce prestataire ?"
             description="Cette action est irréversible. Le prestataire sera supprimé de manière permanente."
@@ -214,12 +211,7 @@ export const Vendors: React.FC = () => {
             cancelText="Annuler"
             okButtonProps={{ danger: true }}
           >
-            <Button 
-              type="link" 
-              danger 
-              icon={<DeleteOutlined />} 
-              title="Supprimer définitivement"
-            />
+            <Button type="link" danger icon={<DeleteOutlined />} title="Supprimer définitivement" />
           </Popconfirm>
         </Space>
       )
@@ -271,13 +263,7 @@ export const Vendors: React.FC = () => {
             <Empty description="Aucun prestataire" />
           ) : (
             <>
-              <Table
-                columns={columns}
-                dataSource={vendors}
-                rowKey="id"
-                pagination={false}
-                loading={loading}
-              />
+              <Table columns={columns} dataSource={vendors} rowKey="id" pagination={false} loading={loading} />
 
               {pagination.totalPages > 1 && (
                 <div style={{ textAlign: 'center', marginTop: 24 }}>
@@ -286,7 +272,7 @@ export const Vendors: React.FC = () => {
                     total={pagination.total}
                     pageSize={pagination.limit}
                     onChange={handlePageChange}
-                    showTotal={(total) => `Total: ${total} prestataires`}
+                    showTotal={total => `Total: ${total} prestataires`}
                   />
                 </div>
               )}
@@ -304,11 +290,7 @@ export const Vendors: React.FC = () => {
           footer={null}
           width={600}
         >
-          <Form
-            form={form}
-            layout="vertical"
-            onFinish={handleSubmit}
-          >
+          <Form form={form} layout="vertical" onFinish={handleSubmit}>
             <Form.Item
               name="name"
               label="Nom"
@@ -320,34 +302,19 @@ export const Vendors: React.FC = () => {
               <Input placeholder="Nom du prestataire" />
             </Form.Item>
 
-            <Form.Item
-              name="phone"
-              label="Téléphone"
-            >
+            <Form.Item name="phone" label="Téléphone">
               <Input placeholder="Numéro de téléphone" />
             </Form.Item>
 
-            <Form.Item
-              name="email"
-              label="Email"
-              rules={[
-                { type: 'email', message: 'Email invalide' }
-              ]}
-            >
+            <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Email invalide' }]}>
               <Input placeholder="Adresse email" />
             </Form.Item>
 
-            <Form.Item
-              name="address"
-              label="Adresse"
-            >
+            <Form.Item name="address" label="Adresse">
               <Input.TextArea rows={3} placeholder="Adresse complète" />
             </Form.Item>
 
-            <Form.Item
-              name="specialties"
-              label="Spécialités"
-            >
+            <Form.Item name="specialties" label="Spécialités">
               <Select
                 mode="tags"
                 placeholder="Ajouter des spécialités (ex: Plomberie, Électricité)"
@@ -356,11 +323,7 @@ export const Vendors: React.FC = () => {
             </Form.Item>
 
             {editingVendor && (
-              <Form.Item
-                name="isActive"
-                label="Statut"
-                initialValue={true}
-              >
+              <Form.Item name="isActive" label="Statut" initialValue={true}>
                 <Select>
                   <Option value={true}>Actif</Option>
                   <Option value={false}>Inactif</Option>
@@ -373,10 +336,12 @@ export const Vendors: React.FC = () => {
                 <Button type="primary" htmlType="submit" loading={submitting}>
                   {editingVendor ? 'Enregistrer' : 'Créer'}
                 </Button>
-                <Button onClick={() => {
-                  setShowForm(false);
-                  form.resetFields();
-                }}>
+                <Button
+                  onClick={() => {
+                    setShowForm(false);
+                    form.resetFields();
+                  }}
+                >
                   Annuler
                 </Button>
               </Space>

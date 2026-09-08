@@ -1,17 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Card,
-  Form,
-  Input,
-  Select,
-  Button,
-  Space,
-  Typography,
-  message,
-  Spin,
-  Alert
-} from 'antd';
+import { App, Card, Form, Input, Select, Button, Space, Typography, Spin, Alert } from 'antd';
 import { ArrowLeftOutlined, SaveOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../../components/dashboard/dashboard-layout';
 import { tenantMaintenanceService } from '../../../services/maintenance-service';
@@ -28,6 +17,8 @@ const { TextArea } = Input;
 const { Option } = Select;
 
 export const EditTicket: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId, ticketId } = useParams<{ tenantId: string; ticketId: string }>();
   const navigate = useNavigate();
   const { tenantMembership } = useAuth();
@@ -116,11 +107,7 @@ export const EditTicket: React.FC = () => {
         return;
       }
 
-      const response = await tenantMaintenanceService.updateTicket(
-        effectiveTenantId,
-        ticketId,
-        updateData
-      );
+      const response = await tenantMaintenanceService.updateTicket(effectiveTenantId, ticketId, updateData);
 
       if (response.success) {
         message.success('Ticket modifié avec succès');
@@ -129,7 +116,7 @@ export const EditTicket: React.FC = () => {
     } catch (error: any) {
       console.error('Error updating ticket:', error);
       const errorMessage = error.response?.data?.message || 'Erreur lors de la modification du ticket';
-      
+
       if (errorMessage.includes('Déclaré')) {
         message.error('Seuls les tickets avec le statut "Déclaré" peuvent être modifiés');
       } else {
@@ -160,9 +147,7 @@ export const EditTicket: React.FC = () => {
             type="error"
             showIcon
             action={
-              <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>
-                Retour à la liste
-              </Button>
+              <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>Retour à la liste</Button>
             }
           />
         </div>
@@ -212,12 +197,7 @@ export const EditTicket: React.FC = () => {
               style={{ marginBottom: 24 }}
             />
 
-            <Form
-              form={form}
-              layout="vertical"
-              onFinish={handleSubmit}
-              style={{ maxWidth: 800 }}
-            >
+            <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ maxWidth: 800 }}>
               <Form.Item
                 name="title"
                 label="Titre"
@@ -265,33 +245,20 @@ export const EditTicket: React.FC = () => {
                   { max: 5000, message: 'La description ne peut pas dépasser 5000 caractères' }
                 ]}
               >
-                <TextArea
-                  rows={6}
-                  placeholder="Décrivez le problème en détail..."
-                />
+                <TextArea rows={6} placeholder="Décrivez le problème en détail..." />
               </Form.Item>
 
               <Form.Item
                 name="locationDetails"
                 label="Détails de localisation (optionnel)"
-                rules={[
-                  { max: 500, message: 'Les détails ne peuvent pas dépasser 500 caractères' }
-                ]}
+                rules={[{ max: 500, message: 'Les détails ne peuvent pas dépasser 500 caractères' }]}
               >
-                <TextArea
-                  rows={3}
-                  placeholder="Ex: Salle de bain principale, sous l'évier"
-                />
+                <TextArea rows={3} placeholder="Ex: Salle de bain principale, sous l'évier" />
               </Form.Item>
 
               <Form.Item>
                 <Space>
-                  <Button
-                    type="primary"
-                    htmlType="submit"
-                    icon={<SaveOutlined />}
-                    loading={loading}
-                  >
+                  <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={loading}>
                     Enregistrer les modifications
                   </Button>
                   <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance/${ticketId}`)}>

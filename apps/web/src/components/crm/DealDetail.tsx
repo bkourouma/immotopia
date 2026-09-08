@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  App,
   Alert,
   Button,
   Card,
@@ -13,8 +14,7 @@ import {
   Space,
   Spin,
   Tag,
-  Typography,
-  message
+  Typography
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -57,7 +57,7 @@ const FURNISHING_LABELS: Record<string, string> = {
 };
 
 function getStageLabel(stage: string): string {
-  return STAGE_OPTIONS.find((s) => s.value === stage)?.label || stage;
+  return STAGE_OPTIONS.find(s => s.value === stage)?.label || stage;
 }
 
 function getStageColor(stage: string): string {
@@ -109,6 +109,8 @@ function hasValue(value: unknown): boolean {
 }
 
 export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
+  const { message } = App.useApp();
+
   const navigate = useNavigate();
   const [deal, setDeal] = useState<CrmDealDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -171,7 +173,8 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
     }
     if (hasValue(criteria.floor)) rows.push({ label: 'Etage', value: String(criteria.floor) });
     if (hasValue(criteria.officeCount)) rows.push({ label: 'Nombre de bureaux', value: String(criteria.officeCount) });
-    if (hasValue(criteria.commercialType)) rows.push({ label: 'Type de commerce', value: String(criteria.commercialType) });
+    if (hasValue(criteria.commercialType))
+      rows.push({ label: 'Type de commerce', value: String(criteria.commercialType) });
     return rows;
   }, [criteria]);
 
@@ -224,88 +227,90 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
               size="small"
               column={{ xs: 1, md: 2 }}
               style={{ marginTop: 16 }}
-              items={[
-                deal.contact
-                  ? {
-                      key: 'contact',
-                      label: (
-                        <Space>
-                          <UserOutlined />
-                          Contact
-                        </Space>
-                      ),
-                      children: `${deal.contact.firstName || ''} ${deal.contact.lastName || ''}`.trim() || '—'
-                    }
-                  : null,
-                deal.contact?.email
-                  ? {
-                      key: 'email',
-                      label: (
-                        <Space>
-                          <MailOutlined />
-                          Email
-                        </Space>
-                      ),
-                      children: deal.contact.email
-                    }
-                  : null,
-                (deal.contact?.phonePrimary || deal.contact?.phone)
-                  ? {
-                      key: 'phone',
-                      label: (
-                        <Space>
-                          <PhoneOutlined />
-                          Telephone
-                        </Space>
-                      ),
-                      children: deal.contact?.phonePrimary || deal.contact?.phone
-                    }
-                  : null,
-                deal.locationZone
-                  ? {
-                      key: 'zone',
-                      label: (
-                        <Space>
-                          <EnvironmentOutlined />
-                          Zone
-                        </Space>
-                      ),
-                      children: deal.locationZone
-                    }
-                  : null,
-                deal.budgetMin || deal.budgetMax
-                  ? {
-                      key: 'budget',
-                      label: (
-                        <Space>
-                          <DollarOutlined />
-                          Budget
-                        </Space>
-                      ),
-                      children:
-                        deal.budgetMin && deal.budgetMax
-                          ? `${formatNumber(deal.budgetMin)} - ${formatNumber(deal.budgetMax)} FCFA`
-                          : deal.budgetMax
-                            ? `Jusqu a ${formatNumber(deal.budgetMax)} FCFA`
-                            : `A partir de ${formatNumber(deal.budgetMin)} FCFA`
-                    }
-                  : null,
-                {
-                  key: 'createdAt',
-                  label: (
-                    <Space>
-                      <CalendarOutlined />
-                      Cree le
-                    </Space>
-                  ),
-                  children: new Date(deal.createdAt).toLocaleDateString('fr-FR')
-                },
-                {
-                  key: 'updatedAt',
-                  label: 'Modifie le',
-                  children: new Date(deal.updatedAt).toLocaleDateString('fr-FR')
-                }
-              ].filter(Boolean) as any}
+              items={
+                [
+                  deal.contact
+                    ? {
+                        key: 'contact',
+                        label: (
+                          <Space>
+                            <UserOutlined />
+                            Contact
+                          </Space>
+                        ),
+                        children: `${deal.contact.firstName || ''} ${deal.contact.lastName || ''}`.trim() || '—'
+                      }
+                    : null,
+                  deal.contact?.email
+                    ? {
+                        key: 'email',
+                        label: (
+                          <Space>
+                            <MailOutlined />
+                            Email
+                          </Space>
+                        ),
+                        children: deal.contact.email
+                      }
+                    : null,
+                  deal.contact?.phonePrimary || deal.contact?.phone
+                    ? {
+                        key: 'phone',
+                        label: (
+                          <Space>
+                            <PhoneOutlined />
+                            Telephone
+                          </Space>
+                        ),
+                        children: deal.contact?.phonePrimary || deal.contact?.phone
+                      }
+                    : null,
+                  deal.locationZone
+                    ? {
+                        key: 'zone',
+                        label: (
+                          <Space>
+                            <EnvironmentOutlined />
+                            Zone
+                          </Space>
+                        ),
+                        children: deal.locationZone
+                      }
+                    : null,
+                  deal.budgetMin || deal.budgetMax
+                    ? {
+                        key: 'budget',
+                        label: (
+                          <Space>
+                            <DollarOutlined />
+                            Budget
+                          </Space>
+                        ),
+                        children:
+                          deal.budgetMin && deal.budgetMax
+                            ? `${formatNumber(deal.budgetMin)} - ${formatNumber(deal.budgetMax)} FCFA`
+                            : deal.budgetMax
+                              ? `Jusqu a ${formatNumber(deal.budgetMax)} FCFA`
+                              : `A partir de ${formatNumber(deal.budgetMin)} FCFA`
+                      }
+                    : null,
+                  {
+                    key: 'createdAt',
+                    label: (
+                      <Space>
+                        <CalendarOutlined />
+                        Cree le
+                      </Space>
+                    ),
+                    children: new Date(deal.createdAt).toLocaleDateString('fr-FR')
+                  },
+                  {
+                    key: 'updatedAt',
+                    label: 'Modifie le',
+                    children: new Date(deal.updatedAt).toLocaleDateString('fr-FR')
+                  }
+                ].filter(Boolean) as any
+              }
             />
           </Col>
 
@@ -314,12 +319,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
               <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${tenantId}/crm/deals`)}>
                 Retour
               </Button>
-              <Select
-                value={deal.stage}
-                options={STAGE_OPTIONS}
-                onChange={handleStageChange}
-                loading={updatingStage}
-              />
+              <Select value={deal.stage} options={STAGE_OPTIONS} onChange={handleStageChange} loading={updatingStage} />
               <Button
                 type="primary"
                 icon={<EditOutlined />}
@@ -332,7 +332,10 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
         </Row>
       </Card>
 
-      {(hasValue(criteria.propertyType) || hasValue(deal.expectedValue) || specificCriteria.length > 0 || equipmentTags.length > 0) && (
+      {(hasValue(criteria.propertyType) ||
+        hasValue(deal.expectedValue) ||
+        specificCriteria.length > 0 ||
+        equipmentTags.length > 0) && (
         <Card
           title={
             <Space>
@@ -383,7 +386,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
               <Text type="secondary">Equipements</Text>
               <div style={{ marginTop: 8 }}>
                 <Space wrap>
-                  {equipmentTags.map((item) => (
+                  {equipmentTags.map(item => (
                     <Tag key={item}>{item}</Tag>
                   ))}
                 </Space>

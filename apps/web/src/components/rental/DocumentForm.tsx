@@ -1,19 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Form,
-  Input,
-  Select,
-  Button,
-  Row,
-  Col,
-  Alert,
-  Space,
-  message,
-} from 'antd';
-import {
-  GenerateDocumentRequest,
-  RentalDocumentType,
-} from '../../services/rental-service';
+import { App, Form, Input, Select, Button, Row, Col, Alert, Space } from 'antd';
+import { GenerateDocumentRequest, RentalDocumentType } from '../../services/rental-service';
 import apiClient from '../../utils/api-client';
 
 const { TextArea } = Input;
@@ -43,8 +30,10 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
   paymentId,
   onSubmit,
   onCancel,
-  loading = false,
+  loading = false
 }) => {
+  const { message } = App.useApp();
+
   const [form] = Form.useForm();
   const documentType = Form.useWatch('type', form) || RentalDocumentType.LEASE_CONTRACT;
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
@@ -77,14 +66,12 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
     try {
       setLoadingTemplates(true);
       const docType = getDocTypeForTemplate(documentType);
-      const response = await apiClient.get(
-        `/tenants/${tenantId}/documents/templates?docType=${docType}&status=ACTIVE`
-      );
-      
+      const response = await apiClient.get(`/tenants/${tenantId}/documents/templates?docType=${docType}&status=ACTIVE`);
+
       if (response.data.success) {
         const availableTemplates = response.data.data || [];
         setTemplates(availableTemplates);
-        
+
         // Auto-select default template if available
         const defaultTemplate = availableTemplates.find((t: DocumentTemplate) => t.is_default);
         if (defaultTemplate) {
@@ -109,7 +96,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
         paymentId: paymentId || undefined,
         title: values.title || undefined,
         description: values.description || undefined,
-        templateId: values.templateId || undefined,
+        templateId: values.templateId || undefined
       };
 
       await onSubmit(submitData);
@@ -134,7 +121,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
       layout="vertical"
       onFinish={handleSubmit}
       initialValues={{
-        type: RentalDocumentType.LEASE_CONTRACT,
+        type: RentalDocumentType.LEASE_CONTRACT
       }}
     >
       {errors.submit && (
@@ -169,10 +156,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item
-            label="Titre (optionnel)"
-            name="title"
-          >
+          <Form.Item label="Titre (optionnel)" name="title">
             <Input placeholder="Titre du document" />
           </Form.Item>
         </Col>
@@ -181,14 +165,24 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
           <Form.Item
             label="Template (optionnel)"
             name="templateId"
-            help={templates.length === 0 && !loadingTemplates && 'Aucun template actif pour ce type de document. Le template par défaut sera utilisé.'}
+            help={
+              templates.length === 0 &&
+              !loadingTemplates &&
+              'Aucun template actif pour ce type de document. Le template par défaut sera utilisé.'
+            }
           >
             <Select
-              placeholder={loadingTemplates ? 'Chargement...' : templates.length === 0 ? 'Aucun template disponible' : 'Sélectionner un template'}
+              placeholder={
+                loadingTemplates
+                  ? 'Chargement...'
+                  : templates.length === 0
+                    ? 'Aucun template disponible'
+                    : 'Sélectionner un template'
+              }
               disabled={loadingTemplates || templates.length === 0}
               loading={loadingTemplates}
             >
-              {templates.map((template) => (
+              {templates.map(template => (
                 <Select.Option key={template.id} value={template.id}>
                   {template.name} {template.is_default && '(Par défaut)'}
                 </Select.Option>
@@ -198,14 +192,8 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
         </Col>
 
         <Col xs={24}>
-          <Form.Item
-            label="Description (optionnel)"
-            name="description"
-          >
-            <TextArea
-              rows={3}
-              placeholder="Description du document"
-            />
+          <Form.Item label="Description (optionnel)" name="description">
+            <TextArea rows={3} placeholder="Description du document" />
           </Form.Item>
         </Col>
       </Row>
@@ -225,8 +213,3 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
     </Form>
   );
 };
-
-
-
-
-

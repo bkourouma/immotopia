@@ -1,18 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  Alert,
-  Button,
-  Card,
-  Col,
-  Divider,
-  Popover,
-  Row,
-  Space,
-  Tag,
-  Typography,
-  message
-} from 'antd';
+import { App, Alert, Button, Card, Col, Divider, Popover, Row, Space, Tag, Typography } from 'antd';
 import {
   BoldOutlined,
   CodeOutlined,
@@ -39,6 +27,8 @@ function extractErrorMessage(error: unknown): string {
 }
 
 export function WhatsAppGroupMessagePage() {
+  const { message } = App.useApp();
+
   const { tenantId } = useParams<{ tenantId: string }>();
   const textAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -284,7 +274,14 @@ export function WhatsAppGroupMessagePage() {
 
         <Space style={{ width: '100%', justifyContent: 'space-between' }} wrap>
           <Text type="secondary">Le message part vers votre destination groupe configuree sur WaSender.</Text>
-          <Button type="primary" icon={<SendOutlined />} size="large" loading={sending} disabled={!canSend} onClick={handleSend}>
+          <Button
+            type="primary"
+            icon={<SendOutlined />}
+            size="large"
+            loading={sending}
+            disabled={!canSend}
+            onClick={handleSend}
+          >
             Envoyer au groupe
           </Button>
         </Space>

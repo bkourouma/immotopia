@@ -1,27 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Table,
-  Button,
-  Tag,
-  Space,
-  Typography,
-  Empty,
-  Alert,
-  Pagination,
-  Select,
-  message,
-  Row,
-  Col,
-  Tabs,
-} from 'antd';
+import { Table, Button, Tag, Space, Typography, Empty, Alert, Pagination, Select, Row, Col, Tabs } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import {
-  EyeOutlined,
-  PlusOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-} from '@ant-design/icons';
+import { EyeOutlined, PlusOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
   listPayments,
@@ -33,7 +14,7 @@ import {
   RentalPaymentMethod,
   PaymentFilters,
   CreatePaymentRequest,
-  AllocatePaymentRequest,
+  AllocatePaymentRequest
 } from '../../services/rental-service';
 import { PaymentForm } from '../../components/rental/PaymentForm';
 import { AllocatePaymentForm } from '../../components/rental/AllocatePaymentForm';
@@ -58,13 +39,13 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   const [filters, setFilters] = useState<PaymentFilters>({
     leaseId: leaseId,
     page: 1,
-    limit: 50,
+    limit: 50
   });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 50,
     total: 0,
-    totalPages: 0,
+    totalPages: 0
   });
 
   useEffect(() => {
@@ -80,7 +61,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
     try {
       const response = await listPayments(tenantId, {
         ...filters,
-        leaseId: leaseId || filters.leaseId,
+        leaseId: leaseId || filters.leaseId
       });
       if (response.success) {
         setPayments(response.data);
@@ -135,7 +116,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       FAILED: { label: 'Échoué', color: 'error' },
       CANCELED: { label: 'Annulé', color: 'default' },
       REFUNDED: { label: 'Remboursé', color: 'warning' },
-      PARTIALLY_REFUNDED: { label: 'Partiellement remboursé', color: 'warning' },
+      PARTIALLY_REFUNDED: { label: 'Partiellement remboursé', color: 'warning' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -148,7 +129,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       CHECK: 'Chèque',
       MOBILE_MONEY: 'Mobile Money',
       CARD: 'Carte bancaire',
-      OTHER: 'Autre',
+      OTHER: 'Autre'
     };
     return methodMap[method] || method;
   };
@@ -160,7 +141,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   const formatCurrency = (amount: number, currency: string = 'FCFA') => {
     return new Intl.NumberFormat('fr-FR', {
       style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency,
+      currency: currency === 'FCFA' ? 'XOF' : currency
     }).format(amount);
   };
 
@@ -170,14 +151,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   const paymentsTabContent = (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {error && (
-        <Alert
-          message="Erreur"
-          description={error}
-          type="error"
-          showIcon
-          closable
-          onClose={() => setError(null)}
-        />
+        <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
       )}
 
       {showPaymentForm && (
@@ -208,11 +182,11 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       <Space>
         <Select
           value={filters.status || 'all'}
-          onChange={(value) =>
+          onChange={value =>
             setFilters({
               ...filters,
               status: value === 'all' ? undefined : (value as RentalPaymentStatus),
-              page: 1,
+              page: 1
             })
           }
           style={{ width: 180 }}
@@ -237,12 +211,12 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
             {
               title: 'Date',
               key: 'date',
-              render: (_, record) => formatDate(record.initiated_at),
+              render: (_, record) => formatDate(record.initiated_at)
             },
             {
               title: 'Montant',
               key: 'amount',
-              render: (_, record) => formatCurrency(record.amount, record.currency),
+              render: (_, record) => formatCurrency(record.amount, record.currency)
             },
             {
               title: 'Alloué',
@@ -250,15 +224,14 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
               render: (_, record) => {
                 const toInstallments =
                   record.allocations?.reduce((sum, alloc) => sum + Number(alloc.amount || 0), 0) || 0;
-                const toDeposit =
-                  record.depositMovements?.reduce((sum, m) => sum + Number(m.amount || 0), 0) || 0;
+                const toDeposit = record.depositMovements?.reduce((sum, m) => sum + Number(m.amount || 0), 0) || 0;
                 const allocatedAmount = toInstallments + toDeposit;
                 return (
                   <Text type={allocatedAmount > 0 ? 'success' : 'secondary'} strong={allocatedAmount > 0}>
                     {formatCurrency(allocatedAmount, record.currency)}
                   </Text>
                 );
-              },
+              }
             },
             {
               title: 'Restant',
@@ -266,8 +239,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
               render: (_, record) => {
                 const toInstallments =
                   record.allocations?.reduce((sum, alloc) => sum + Number(alloc.amount || 0), 0) || 0;
-                const toDeposit =
-                  record.depositMovements?.reduce((sum, m) => sum + Number(m.amount || 0), 0) || 0;
+                const toDeposit = record.depositMovements?.reduce((sum, m) => sum + Number(m.amount || 0), 0) || 0;
                 const allocatedAmount = toInstallments + toDeposit;
                 const remainingAmount = record.amount - allocatedAmount;
                 return (
@@ -275,17 +247,17 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
                     {formatCurrency(remainingAmount, record.currency)}
                   </Text>
                 );
-              },
+              }
             },
             {
               title: 'Méthode',
               key: 'method',
-              render: (_, record) => getMethodLabel(record.method),
+              render: (_, record) => getMethodLabel(record.method)
             },
             {
               title: 'Statut',
               key: 'status',
-              render: (_, record) => getStatusTag(record.status),
+              render: (_, record) => getStatusTag(record.status)
             },
             {
               title: 'Actions',
@@ -295,20 +267,12 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
                   <Button
                     type="text"
                     icon={<EyeOutlined />}
-                    onClick={() =>
-                      navigate(`/tenant/${tenantId}/rental/payments/${record.id}`)
-                    }
+                    onClick={() => navigate(`/tenant/${tenantId}/rental/payments/${record.id}`)}
                   />
-                  {record.status === 'PENDING' && (
-                    <Button
-                      onClick={() => handleAllocate(record)}
-                    >
-                      Allouer
-                    </Button>
-                  )}
+                  {record.status === 'PENDING' && <Button onClick={() => handleAllocate(record)}>Allouer</Button>}
                 </Space>
-              ),
-            },
+              )
+            }
           ]}
           pagination={
             pagination.totalPages > 1
@@ -317,10 +281,10 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
                   pageSize: pagination.limit,
                   total: pagination.total,
                   showSizeChanger: true,
-                  showTotal: (total) => `Total ${total} paiements`,
+                  showTotal: total => `Total ${total} paiements`,
                   onChange: (page, pageSize) => {
-                    setFilters((prev) => ({ ...prev, page, limit: pageSize }));
-                  },
+                    setFilters(prev => ({ ...prev, page, limit: pageSize }));
+                  }
                 }
               : false
           }
@@ -334,16 +298,14 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Row gutter={[16, 16]} justify="space-between" align="middle">
           <Col xs={24} sm={24} md={12} lg={14}>
-            <Title level={2} style={{ margin: 0 }}>Paiements</Title>
+            <Title level={2} style={{ margin: 0 }}>
+              Paiements
+            </Title>
             <Text type="secondary">Gérez les paiements de location et validez les déclarations</Text>
           </Col>
           <Col xs={24} sm={24} md={12} lg={10}>
             <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => setShowPaymentForm(true)}
-              >
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowPaymentForm(true)}>
                 Nouveau paiement
               </Button>
             </div>
@@ -356,19 +318,15 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
             {
               key: 'payments',
               label: 'Paiements',
-              children: paymentsTabContent,
+              children: paymentsTabContent
             },
             {
               key: 'declarations',
               label: 'Déclarations en attente',
               children: tenantId ? (
-                <PaymentDeclarationsList
-                  tenantId={tenantId}
-                  leaseId={leaseId}
-                  onApproveSuccess={loadPayments}
-                />
-              ) : null,
-            },
+                <PaymentDeclarationsList tenantId={tenantId} leaseId={leaseId} onApproveSuccess={loadPayments} />
+              ) : null
+            }
           ]}
         />
       </Space>

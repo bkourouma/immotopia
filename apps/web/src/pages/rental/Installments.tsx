@@ -1,20 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Table,
-  Button,
-  Tag,
-  Space,
-  Typography,
-  Empty,
-  Alert,
-  Pagination,
-  Select,
-  Spin,
-  message,
-  Row,
-  Col,
-} from 'antd';
+import { Table, Button, Tag, Space, Typography, Empty, Alert, Pagination, Select, Spin, Row, Col } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
   EyeOutlined,
@@ -24,7 +10,7 @@ import {
   CalendarOutlined,
   PlusOutlined,
   DeleteOutlined,
-  CloseOutlined,
+  CloseOutlined
 } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
@@ -39,7 +25,7 @@ import {
   RentalInstallmentStatus,
   InstallmentFilters,
   RentalPaymentMethod,
-  CreatePaymentRequest,
+  CreatePaymentRequest
 } from '../../services/rental-service';
 import { PaymentForm } from '../../components/rental/PaymentForm';
 
@@ -65,13 +51,13 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
   const [filters, setFilters] = useState<InstallmentFilters>({
     leaseId: leaseId,
     page: 1,
-    limit: 50,
+    limit: 50
   });
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 50,
     total: 0,
-    totalPages: 0,
+    totalPages: 0
   });
 
   // Update filters when leaseId changes
@@ -80,7 +66,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
       setFilters(prev => ({
         ...prev,
         leaseId: leaseId,
-        page: 1, // Reset to first page when leaseId changes
+        page: 1 // Reset to first page when leaseId changes
       }));
     }
   }, [leaseId]);
@@ -118,7 +104,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
           page: 1,
           limit: 50,
           total: 0,
-          totalPages: 0,
+          totalPages: 0
         });
         setLoading(false);
         return;
@@ -133,7 +119,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
     try {
       const response = await listInstallments(tenantId, {
         ...filters,
-        leaseId: effectiveLeaseId,
+        leaseId: effectiveLeaseId
       });
       if (response.success) {
         setInstallments(response.data);
@@ -200,11 +186,11 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
 
   const handleDeleteAll = async () => {
     if (!tenantId || !leaseId) return;
-    
+
     const confirmed = window.confirm(
       'Êtes-vous sûr de vouloir supprimer toutes les échéances de ce bail ? Cette action est irréversible.'
     );
-    
+
     if (!confirmed) return;
 
     setDeleting(true);
@@ -229,7 +215,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
       DUE: { label: 'Échéance', color: 'default' },
       PARTIAL: { label: 'Partiel', color: 'warning' },
       PAID: { label: 'Payé', color: 'success' },
-      OVERDUE: { label: 'En retard', color: 'error' },
+      OVERDUE: { label: 'En retard', color: 'error' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -242,7 +228,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
   const formatCurrency = (amount: number, currency: string = 'FCFA') => {
     return new Intl.NumberFormat('fr-FR', {
       style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency,
+      currency: currency === 'FCFA' ? 'XOF' : currency
     }).format(amount);
   };
 
@@ -257,10 +243,10 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
 
   const handleQuickPayment = async (installment: RentalInstallment) => {
     if (!tenantId) return;
-    
+
     const totalDue = calculateTotalDue(installment);
     const remaining = totalDue - Number(installment.amount_paid || 0);
-    
+
     if (remaining <= 0) {
       setError('Cette Ã©chÃ©ance est dÃ©jÃ  Payée');
       return;
@@ -268,7 +254,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
 
     setProcessingQuickPayment(installment.id);
     setError(null);
-    
+
     try {
       // Create payment with CASH method and current date
       const paymentData: CreatePaymentRequest = {
@@ -276,17 +262,17 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
         method: RentalPaymentMethod.CASH,
         amount: remaining,
         currency: installment.currency,
-        idempotencyKey: `quick-payment-${installment.id}-${Date.now()}`,
+        idempotencyKey: `quick-payment-${installment.id}-${Date.now()}`
       };
-      
+
       const paymentResponse = await createPayment(tenantId, paymentData);
-      
+
       if (paymentResponse.success && paymentResponse.data) {
         // Allocate payment to the installment
         await allocatePayment(tenantId, paymentResponse.data.id, {
-          installmentIds: [installment.id],
+          installmentIds: [installment.id]
         });
-        
+
         // Reload installments to show updated status
         await loadInstallments();
       }
@@ -307,30 +293,30 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
 
   const handleCreatePayment = async (data: CreatePaymentRequest) => {
     if (!tenantId || !selectedInstallment) return;
-    
+
     setError(null);
-    
+
     try {
       const paymentData: CreatePaymentRequest = {
         ...data,
         leaseId: selectedInstallment.lease_id,
-        idempotencyKey: data.idempotencyKey || `payment-${selectedInstallment.id}-${Date.now()}`,
+        idempotencyKey: data.idempotencyKey || `payment-${selectedInstallment.id}-${Date.now()}`
       };
-      
+
       const paymentResponse = await createPayment(tenantId, paymentData);
-      
+
       if (paymentResponse.success && paymentResponse.data) {
         // Allocate payment to the selected installment
         await allocatePayment(tenantId, paymentResponse.data.id, {
-          installmentIds: [selectedInstallment.id],
+          installmentIds: [selectedInstallment.id]
         });
-        
+
         setShowPaymentForm(false);
         setSelectedInstallment(null);
         await loadInstallments();
       }
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || 'Erreur lors de l\'enregistrement du paiement';
+      const errorMessage = err.response?.data?.message || "Erreur lors de l'enregistrement du paiement";
       setError(errorMessage);
       throw err;
     }
@@ -344,28 +330,19 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Row gutter={[16, 16]} justify="space-between" align="middle">
           <Col xs={24} sm={24} md={12} lg={14}>
-            <Title level={2} style={{ margin: 0 }}>Échéances</Title>
-            <Text type="secondary">
-              {leaseId ? 'Échéances du bail' : 'Gérez les échéances de location'}
-            </Text>
+            <Title level={2} style={{ margin: 0 }}>
+              Échéances
+            </Title>
+            <Text type="secondary">{leaseId ? 'Échéances du bail' : 'Gérez les échéances de location'}</Text>
           </Col>
           <Col xs={24} sm={24} md={12} lg={10}>
             <Space wrap style={{ width: '100%', justifyContent: 'flex-end' }}>
               {leaseId && (
                 <>
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={handleGenerate}
-                    loading={generating}
-                  >
+                  <Button type="primary" icon={<PlusOutlined />} onClick={handleGenerate} loading={generating}>
                     Générer les échéances
                   </Button>
-                  <Button
-                    icon={<ReloadOutlined />}
-                    onClick={handleRecalculate}
-                    disabled={loading}
-                  >
+                  <Button icon={<ReloadOutlined />} onClick={handleRecalculate} disabled={loading}>
                     Recalculer
                   </Button>
                   {installments.length > 0 && (
@@ -386,14 +363,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
         </Row>
 
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
 
         {showPaymentForm && selectedInstallment && (
@@ -408,8 +378,8 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
                   <div>
                     <h2 className="text-xl font-semibold">Nouveau paiement</h2>
                     <p className="text-sm text-muted-foreground">
-                      Échéance {selectedInstallment.period_month}/{selectedInstallment.period_year} - 
-                      Date d'échéance: {formatDate(selectedInstallment.due_date)}
+                      Échéance {selectedInstallment.period_month}/{selectedInstallment.period_year} - Date d'échéance:{' '}
+                      {formatDate(selectedInstallment.due_date)}
                     </p>
                   </div>
                 </div>
@@ -428,13 +398,11 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
                 <PaymentForm
                   tenantId={tenantId!}
                   leaseId={selectedInstallment.lease_id}
-                  defaultAmount={
-                    (() => {
-                      const totalDue = calculateTotalDue(selectedInstallment);
-                      const remaining = totalDue - Number(selectedInstallment.amount_paid || 0);
-                      return remaining > 0 ? remaining : undefined;
-                    })()
-                  }
+                  defaultAmount={(() => {
+                    const totalDue = calculateTotalDue(selectedInstallment);
+                    const remaining = totalDue - Number(selectedInstallment.amount_paid || 0);
+                    return remaining > 0 ? remaining : undefined;
+                  })()}
                   defaultCurrency={selectedInstallment.currency}
                   onSubmit={handleCreatePayment}
                   onCancel={() => {
@@ -450,11 +418,11 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
         <Space>
           <Select
             value={filters.status || 'all'}
-            onChange={(value) =>
+            onChange={value =>
               setFilters({
                 ...filters,
                 status: value === 'all' ? undefined : (value as RentalInstallmentStatus),
-                page: 1,
+                page: 1
               })
             }
             style={{ width: 180 }}
@@ -467,11 +435,11 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
           </Select>
           <Select
             value={filters.overdue ? 'true' : 'all'}
-            onChange={(value) =>
+            onChange={value =>
               setFilters({
                 ...filters,
                 overdue: value === 'true',
-                page: 1,
+                page: 1
               })
             }
             style={{ width: 180 }}
@@ -492,117 +460,113 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
         ) : (
           <>
             <div style={{ overflowX: 'auto' }}>
-            <Table
-              dataSource={installments}
-              loading={loading}
-              rowKey="id"
-              scroll={{ x: 900 }}
-              columns={[
-                {
-                  title: 'Période',
-                  key: 'period',
-                  render: (_, record) => `${record.period_month}/${record.period_year}`,
-                },
-                {
-                  title: "Date d'échéance",
-                  key: 'due_date',
-                  render: (_, record) => formatDate(record.due_date),
-                },
-                {
-                  title: 'Montant dû',
-                  key: 'total_due',
-                  render: (_, record) => {
-                    const totalDue = calculateTotalDue(record);
-                    return formatCurrency(totalDue, record.currency);
+              <Table
+                dataSource={installments}
+                loading={loading}
+                rowKey="id"
+                scroll={{ x: 900 }}
+                columns={[
+                  {
+                    title: 'Période',
+                    key: 'period',
+                    render: (_, record) => `${record.period_month}/${record.period_year}`
                   },
-                },
-                {
-                  title: 'Payé',
-                  key: 'amount_paid',
-                  render: (_, record) => formatCurrency(record.amount_paid, record.currency),
-                },
-                {
-                  title: 'Reste à payer',
-                  key: 'remaining',
-                  render: (_, record) => {
-                    const totalDue = calculateTotalDue(record);
-                    const remaining = totalDue - Number(record.amount_paid || 0);
-                    return (
-                      <Text type={remaining > 0 ? 'danger' : 'success'} strong={remaining > 0}>
-                        {formatCurrency(remaining, record.currency)}
-                      </Text>
-                    );
+                  {
+                    title: "Date d'échéance",
+                    key: 'due_date',
+                    render: (_, record) => formatDate(record.due_date)
                   },
-                },
-                {
-                  title: 'Pénalités',
-                  key: 'penalty',
-                  render: (_, record) =>
-                    record.penalty_amount > 0
-                      ? formatCurrency(record.penalty_amount, record.currency)
-                      : '-',
-                },
-                {
-                  title: 'Statut',
-                  key: 'status',
-                  render: (_, record) => getStatusTag(record.status),
-                },
-                {
-                  title: 'Actions',
-                  key: 'actions',
-                  render: (_, record) => {
-                    const totalDue = calculateTotalDue(record);
-                    const remaining = totalDue - Number(record.amount_paid || 0);
-                    return (
-                      <Space>
-                        <Button
-                          type="text"
-                          icon={<EyeOutlined />}
-                          onClick={() =>
-                            navigate(`/tenant/${tenantId}/rental/installments/${record.id}`)
-                          }
-                        />
-                        {remaining > 0 && (
-                          <>
-                            <Button
-                              type="default"
-                              icon={<ThunderboltOutlined />}
-                              onClick={() => handleQuickPayment(record)}
-                              loading={processingQuickPayment === record.id}
-                              size="small"
-                            >
-                              Paiement rapide
-                            </Button>
-                            <Button
-                              type="primary"
-                              icon={<CreditCardOutlined />}
-                              onClick={() => handleOpenPaymentForm(record)}
-                              size="small"
-                            >
-                              Paiement
-                            </Button>
-                          </>
-                        )}
-                      </Space>
-                    );
-                  },
-                },
-              ]}
-              pagination={
-                pagination.totalPages > 1
-                  ? {
-                      current: pagination.page,
-                      pageSize: pagination.limit,
-                      total: pagination.total,
-                      showSizeChanger: true,
-                      showTotal: (total) => `Total ${total} échéances`,
-                      onChange: (page, pageSize) => {
-                        setFilters((prev) => ({ ...prev, page, limit: pageSize }));
-                      },
+                  {
+                    title: 'Montant dû',
+                    key: 'total_due',
+                    render: (_, record) => {
+                      const totalDue = calculateTotalDue(record);
+                      return formatCurrency(totalDue, record.currency);
                     }
-                  : false
-              }
-            />
+                  },
+                  {
+                    title: 'Payé',
+                    key: 'amount_paid',
+                    render: (_, record) => formatCurrency(record.amount_paid, record.currency)
+                  },
+                  {
+                    title: 'Reste à payer',
+                    key: 'remaining',
+                    render: (_, record) => {
+                      const totalDue = calculateTotalDue(record);
+                      const remaining = totalDue - Number(record.amount_paid || 0);
+                      return (
+                        <Text type={remaining > 0 ? 'danger' : 'success'} strong={remaining > 0}>
+                          {formatCurrency(remaining, record.currency)}
+                        </Text>
+                      );
+                    }
+                  },
+                  {
+                    title: 'Pénalités',
+                    key: 'penalty',
+                    render: (_, record) =>
+                      record.penalty_amount > 0 ? formatCurrency(record.penalty_amount, record.currency) : '-'
+                  },
+                  {
+                    title: 'Statut',
+                    key: 'status',
+                    render: (_, record) => getStatusTag(record.status)
+                  },
+                  {
+                    title: 'Actions',
+                    key: 'actions',
+                    render: (_, record) => {
+                      const totalDue = calculateTotalDue(record);
+                      const remaining = totalDue - Number(record.amount_paid || 0);
+                      return (
+                        <Space>
+                          <Button
+                            type="text"
+                            icon={<EyeOutlined />}
+                            onClick={() => navigate(`/tenant/${tenantId}/rental/installments/${record.id}`)}
+                          />
+                          {remaining > 0 && (
+                            <>
+                              <Button
+                                type="default"
+                                icon={<ThunderboltOutlined />}
+                                onClick={() => handleQuickPayment(record)}
+                                loading={processingQuickPayment === record.id}
+                                size="small"
+                              >
+                                Paiement rapide
+                              </Button>
+                              <Button
+                                type="primary"
+                                icon={<CreditCardOutlined />}
+                                onClick={() => handleOpenPaymentForm(record)}
+                                size="small"
+                              >
+                                Paiement
+                              </Button>
+                            </>
+                          )}
+                        </Space>
+                      );
+                    }
+                  }
+                ]}
+                pagination={
+                  pagination.totalPages > 1
+                    ? {
+                        current: pagination.page,
+                        pageSize: pagination.limit,
+                        total: pagination.total,
+                        showSizeChanger: true,
+                        showTotal: total => `Total ${total} échéances`,
+                        onChange: (page, pageSize) => {
+                          setFilters(prev => ({ ...prev, page, limit: pageSize }));
+                        }
+                      }
+                    : false
+                }
+              />
             </div>
           </>
         )}
@@ -616,6 +580,3 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
 
   return content;
 };
-
-
-

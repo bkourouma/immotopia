@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
+  App,
   Button,
   Tag,
   Space,
@@ -13,8 +14,7 @@ import {
   Spin,
   Empty,
   Row,
-  Col,
-  message,
+  Col
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -22,7 +22,7 @@ import {
   CreditCardOutlined,
   CalendarOutlined,
   FileTextOutlined,
-  CloseOutlined,
+  CloseOutlined
 } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import {
@@ -32,13 +32,15 @@ import {
   RentalDepositMovementType,
   allocatePayment,
   AllocatePaymentRequest,
-  updatePaymentStatus,
+  updatePaymentStatus
 } from '../../services/rental-service';
 import { AllocatePaymentForm } from '../../components/rental/AllocatePaymentForm';
 
 const { Title, Text } = Typography;
 
 export const PaymentDetailPage: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId, paymentId } = useParams<{ tenantId: string; paymentId: string }>();
   const navigate = useNavigate();
   const [payment, setPayment] = useState<RentalPayment | null>(null);
@@ -91,7 +93,7 @@ export const PaymentDetailPage: React.FC = () => {
       FAILED: { label: 'Échoué', color: 'error' },
       CANCELED: { label: 'Annulé', color: 'default' },
       REFUNDED: { label: 'Remboursé', color: 'warning' },
-      PARTIALLY_REFUNDED: { label: 'Partiellement remboursé', color: 'warning' },
+      PARTIALLY_REFUNDED: { label: 'Partiellement remboursé', color: 'warning' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -104,7 +106,7 @@ export const PaymentDetailPage: React.FC = () => {
       CHECK: 'Chèque',
       MOBILE_MONEY: 'Mobile Money',
       CARD: 'Carte bancaire',
-      OTHER: 'Autre',
+      OTHER: 'Autre'
     };
     return methodMap[method] || method;
   };
@@ -117,7 +119,7 @@ export const PaymentDetailPage: React.FC = () => {
   const formatCurrency = (amount: number, currency: string = 'FCFA') => {
     return new Intl.NumberFormat('fr-FR', {
       style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency,
+      currency: currency === 'FCFA' ? 'XOF' : currency
     }).format(amount);
   };
 
@@ -128,7 +130,7 @@ export const PaymentDetailPage: React.FC = () => {
       [RentalDepositMovementType.RELEASE]: 'Libération',
       [RentalDepositMovementType.REFUND]: 'Remboursement',
       [RentalDepositMovementType.FORFEIT]: 'Confiscation',
-      [RentalDepositMovementType.ADJUSTMENT]: 'Ajustement',
+      [RentalDepositMovementType.ADJUSTMENT]: 'Ajustement'
     };
     return labels[type] || type;
   };
@@ -143,7 +145,7 @@ export const PaymentDetailPage: React.FC = () => {
       await loadPayment();
       message.success('Paiement alloué avec succès');
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || 'Erreur lors de l\'allocation du paiement';
+      const errorMessage = err.response?.data?.message || "Erreur lors de l'allocation du paiement";
       setError(errorMessage);
       message.error(errorMessage);
       throw err;
@@ -153,10 +155,8 @@ export const PaymentDetailPage: React.FC = () => {
   };
 
   // Allocated = to installments + to deposit (e.g. collect)
-  const toInstallments =
-    payment?.allocations?.reduce((sum, alloc) => sum + Number(alloc.amount || 0), 0) || 0;
-  const toDeposit =
-    payment?.depositMovements?.reduce((sum, m) => sum + Number(m.amount || 0), 0) || 0;
+  const toInstallments = payment?.allocations?.reduce((sum, alloc) => sum + Number(alloc.amount || 0), 0) || 0;
+  const toDeposit = payment?.depositMovements?.reduce((sum, m) => sum + Number(m.amount || 0), 0) || 0;
   const allocatedAmount = toInstallments + toDeposit;
   const availableAmount = (payment?.amount || 0) - allocatedAmount;
 
@@ -173,12 +173,7 @@ export const PaymentDetailPage: React.FC = () => {
   if (error || !payment) {
     return (
       <DashboardLayout>
-        <Alert
-          message="Erreur"
-          description={error || 'Paiement non trouvé'}
-          type="error"
-          showIcon
-        />
+        <Alert message="Erreur" description={error || 'Paiement non trouvé'} type="error" showIcon />
       </DashboardLayout>
     );
   }
@@ -187,14 +182,7 @@ export const PaymentDetailPage: React.FC = () => {
     <DashboardLayout>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {error && (
-          <Alert
-            message="Erreur"
-            description={error}
-            type="error"
-            showIcon
-            closable
-            onClose={() => setError(null)}
-          />
+          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Space>
@@ -219,7 +207,7 @@ export const PaymentDetailPage: React.FC = () => {
           </Space>
           <Select
             value={payment.status}
-            onChange={(value) => handleStatusChange(value as RentalPaymentStatus)}
+            onChange={value => handleStatusChange(value as RentalPaymentStatus)}
             style={{ width: 180 }}
           >
             <Select.Option value="PENDING">En attente</Select.Option>
@@ -249,21 +237,13 @@ export const PaymentDetailPage: React.FC = () => {
                 <Descriptions.Item label="Montant disponible">
                   <Text strong>{formatCurrency(availableAmount, payment.currency)}</Text>
                 </Descriptions.Item>
-                <Descriptions.Item label="Méthode de paiement">
-                  {getMethodLabel(payment.method)}
-                </Descriptions.Item>
-                <Descriptions.Item label="Statut">
-                  {getStatusTag(payment.status)}
-                </Descriptions.Item>
+                <Descriptions.Item label="Méthode de paiement">{getMethodLabel(payment.method)}</Descriptions.Item>
+                <Descriptions.Item label="Statut">{getStatusTag(payment.status)}</Descriptions.Item>
                 {payment.mm_operator && (
-                  <Descriptions.Item label="Opérateur Mobile Money">
-                    {payment.mm_operator}
-                  </Descriptions.Item>
+                  <Descriptions.Item label="Opérateur Mobile Money">{payment.mm_operator}</Descriptions.Item>
                 )}
                 {payment.mm_phone && (
-                  <Descriptions.Item label="Numéro de téléphone">
-                    {payment.mm_phone}
-                  </Descriptions.Item>
+                  <Descriptions.Item label="Numéro de téléphone">{payment.mm_phone}</Descriptions.Item>
                 )}
               </Descriptions>
             </Card>
@@ -279,23 +259,15 @@ export const PaymentDetailPage: React.FC = () => {
               }
             >
               <Descriptions column={1} bordered>
-                <Descriptions.Item label="Date d'initiation">
-                  {formatDate(payment.initiated_at)}
-                </Descriptions.Item>
+                <Descriptions.Item label="Date d'initiation">{formatDate(payment.initiated_at)}</Descriptions.Item>
                 {payment.succeeded_at && (
-                  <Descriptions.Item label="Date de succès">
-                    {formatDate(payment.succeeded_at)}
-                  </Descriptions.Item>
+                  <Descriptions.Item label="Date de succès">{formatDate(payment.succeeded_at)}</Descriptions.Item>
                 )}
                 {payment.failed_at && (
-                  <Descriptions.Item label="Date d'échec">
-                    {formatDate(payment.failed_at)}
-                  </Descriptions.Item>
+                  <Descriptions.Item label="Date d'échec">{formatDate(payment.failed_at)}</Descriptions.Item>
                 )}
                 {payment.canceled_at && (
-                  <Descriptions.Item label="Date d'annulation">
-                    {formatDate(payment.canceled_at)}
-                  </Descriptions.Item>
+                  <Descriptions.Item label="Date d'annulation">{formatDate(payment.canceled_at)}</Descriptions.Item>
                 )}
               </Descriptions>
             </Card>
@@ -325,12 +297,8 @@ export const PaymentDetailPage: React.FC = () => {
               </Text>
               {payment.allocations && payment.allocations.length > 0 ? (
                 <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                  {payment.allocations.map((allocation) => (
-                    <Card
-                      key={allocation.id}
-                      size="small"
-                      style={{ border: '1px solid #d9d9d9' }}
-                    >
+                  {payment.allocations.map(allocation => (
+                    <Card key={allocation.id} size="small" style={{ border: '1px solid #d9d9d9' }}>
                       <Row justify="space-between" align="middle">
                         <Col flex="auto">
                           {allocation.installment ? (
@@ -373,26 +341,18 @@ export const PaymentDetailPage: React.FC = () => {
               </Text>
               {payment.depositMovements && payment.depositMovements.length > 0 ? (
                 <Space direction="vertical" style={{ width: '100%' }} size="middle">
-                  {payment.depositMovements.map((movement) => (
-                    <Card
-                      key={movement.id}
-                      size="small"
-                      style={{ border: '1px solid #d9d9d9' }}
-                    >
+                  {payment.depositMovements.map(movement => (
+                    <Card key={movement.id} size="small" style={{ border: '1px solid #d9d9d9' }}>
                       <Row justify="space-between" align="middle">
                         <Col flex="auto">
-                          <Text strong>
-                            {getDepositMovementTypeLabel(movement.type || 'COLLECT')}
-                          </Text>
+                          <Text strong>{getDepositMovementTypeLabel(movement.type || 'COLLECT')}</Text>
                           <br />
                           <Text type="secondary">
                             Montant : {formatCurrency(Number(movement.amount), payment.currency)}
                           </Text>
                         </Col>
                         <Col>
-                          {movement.created_at && (
-                            <Text type="secondary">{formatDate(movement.created_at)}</Text>
-                          )}
+                          {movement.created_at && <Text type="secondary">{formatDate(movement.created_at)}</Text>}
                         </Col>
                       </Row>
                     </Card>
@@ -410,7 +370,8 @@ export const PaymentDetailPage: React.FC = () => {
                     <p>Aucune utilisation enregistrée pour ce paiement.</p>
                     {payment.lease_id && availableAmount > 0 && payment.status === 'SUCCESS' && (
                       <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginTop: 8 }}>
-                        Cliquez sur &quot;Allouer aux échéances&quot; pour allouer ce paiement à une ou plusieurs échéances.
+                        Cliquez sur &quot;Allouer aux échéances&quot; pour allouer ce paiement à une ou plusieurs
+                        échéances.
                       </Text>
                     )}
                   </>
@@ -450,8 +411,3 @@ export const PaymentDetailPage: React.FC = () => {
     </DashboardLayout>
   );
 };
-
-
-
-
-

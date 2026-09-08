@@ -1,5 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  App,
   Alert,
   Button,
   Card,
@@ -17,8 +18,7 @@ import {
   Table,
   Tag,
   Typography,
-  Upload,
-  message
+  Upload
 } from 'antd';
 import type { RcFile } from 'antd/es/upload';
 import { UploadOutlined } from '@ant-design/icons';
@@ -143,6 +143,8 @@ interface Props {
 }
 
 export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId }) => {
+  const { message } = App.useApp();
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [yieldLoading, setYieldLoading] = useState(false);
@@ -180,26 +182,27 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     setLoading(true);
     setError(null);
     try {
-      const [valuationsRes, expensesRes, loansRes, workProgramsRes, documentsRes, yieldRes, contactsRes] = await Promise.all([
-        listValuations(tenantId, propertyId),
-        listExpenses(tenantId, propertyId),
-        listLoans(tenantId, propertyId),
-        listWorkPrograms(tenantId, propertyId),
-        listDocuments(tenantId, propertyId),
-        getPropertyYield(tenantId, propertyId),
-        listContacts(tenantId, { page: 1, limit: 500 })
-      ]);
+      const [valuationsRes, expensesRes, loansRes, workProgramsRes, documentsRes, yieldRes, contactsRes] =
+        await Promise.all([
+          listValuations(tenantId, propertyId),
+          listExpenses(tenantId, propertyId),
+          listLoans(tenantId, propertyId),
+          listWorkPrograms(tenantId, propertyId),
+          listDocuments(tenantId, propertyId),
+          getPropertyYield(tenantId, propertyId),
+          listContacts(tenantId, { page: 1, limit: 500 })
+        ]);
       setValuations(valuationsRes);
       setExpenses(expensesRes);
       setLoans(loansRes);
       setWorkPrograms(workProgramsRes);
       setDocuments(documentsRes);
       setYieldData(yieldRes);
-      const owners = contactsRes.contacts.filter((contact) =>
-        (contact.roles || []).some((role) => role.active && role.role === 'PROPRIETAIRE')
+      const owners = contactsRes.contacts.filter(contact =>
+        (contact.roles || []).some(role => role.active && role.role === 'PROPRIETAIRE')
       );
       setOwnerOptions(
-        owners.map((owner) => ({
+        owners.map(owner => ({
           value: owner.id,
           label: `${owner.firstName} ${owner.lastName}`.trim() || owner.email || owner.id
         }))
@@ -218,7 +221,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
   const annualExpenses = useMemo(
     () =>
       expenses
-        .filter((expense) => new Date(expense.paidAt).getFullYear() === new Date().getFullYear())
+        .filter(expense => new Date(expense.paidAt).getFullYear() === new Date().getFullYear())
         .reduce((acc, expense) => acc + Number(expense.amount), 0),
     [expenses]
   );
@@ -553,7 +556,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     setDeletingDocumentId(documentId);
     try {
       await deleteDocument(tenantId, propertyId, documentId);
-      setDocuments((prev) => prev.filter((doc) => doc.id !== documentId));
+      setDocuments(prev => prev.filter(doc => doc.id !== documentId));
       message.success('Document supprime');
     } catch (e: any) {
       message.error(e?.response?.data?.error || 'Échec de la suppression du document');
@@ -609,9 +612,14 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
             {
               title: 'Valeur',
               dataIndex: 'estimatedValue',
-              render: (value: number, record: AssetValuation) => `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
+              render: (value: number, record: AssetValuation) =>
+                `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
             },
-            { title: 'Méthode', dataIndex: 'method', render: (value: AssetValuation['method']) => <Tag>{valuationMethodLabel(value)}</Tag> },
+            {
+              title: 'Méthode',
+              dataIndex: 'method',
+              render: (value: AssetValuation['method']) => <Tag>{valuationMethodLabel(value)}</Tag>
+            },
             {
               title: 'Actions',
               key: 'actions',
@@ -644,13 +652,22 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           dataSource={expenses}
           pagination={{ pageSize: 5 }}
           columns={[
-            { title: 'Date', dataIndex: 'paidAt', render: (value: string) => new Date(value).toLocaleDateString('fr-FR') },
+            {
+              title: 'Date',
+              dataIndex: 'paidAt',
+              render: (value: string) => new Date(value).toLocaleDateString('fr-FR')
+            },
             { title: 'Libellé', dataIndex: 'label' },
-            { title: 'Catégorie', dataIndex: 'category', render: (value: PropertyExpense['category']) => <Tag>{expenseCategoryLabel(value)}</Tag> },
+            {
+              title: 'Catégorie',
+              dataIndex: 'category',
+              render: (value: PropertyExpense['category']) => <Tag>{expenseCategoryLabel(value)}</Tag>
+            },
             {
               title: 'Montant',
               dataIndex: 'amount',
-              render: (value: number, record: PropertyExpense) => `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
+              render: (value: number, record: PropertyExpense) =>
+                `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
             },
             {
               title: 'Actions',
@@ -688,7 +705,8 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
             {
               title: 'Capital restant',
               dataIndex: 'remainingCapital',
-              render: (value: number, record: PropertyLoan) => `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
+              render: (value: number, record: PropertyLoan) =>
+                `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
             },
             {
               title: 'Statut',
@@ -736,9 +754,14 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
             {
               title: 'Coût estimé',
               dataIndex: 'estimatedCost',
-              render: (value: number, record: WorkProgram) => `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
+              render: (value: number, record: WorkProgram) =>
+                `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
             },
-            { title: 'Statut', dataIndex: 'status', render: (value: WorkProgram['status']) => <Tag>{workProgramStatusLabel(value)}</Tag> },
+            {
+              title: 'Statut',
+              dataIndex: 'status',
+              render: (value: WorkProgram['status']) => <Tag>{workProgramStatusLabel(value)}</Tag>
+            },
             {
               title: 'Actions',
               key: 'actions',
@@ -775,9 +798,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           </Button>
         }
       >
-        <Text type="secondary">
-          Les documents existants sont consultables dans le coffre-fort ci-dessous.
-        </Text>
+        <Text type="secondary">Les documents existants sont consultables dans le coffre-fort ci-dessous.</Text>
       </Card>
       <Row gutter={[16, 16]}>
         <Col xs={24}>
@@ -998,7 +1019,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           </Form.Item>
           <Form.Item label="Fichier" required>
             <Upload
-              beforeUpload={(file) => {
+              beforeUpload={file => {
                 setDocumentFile(file as RcFile);
                 return false;
               }}
@@ -1028,6 +1049,3 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     </Space>
   );
 };
-
-
-

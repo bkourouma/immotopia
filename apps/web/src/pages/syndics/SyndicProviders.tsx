@@ -1,6 +1,20 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Alert, Button, Card, DatePicker, Form, Input, InputNumber, Modal, Select, Space, Spin, Typography, message } from 'antd';
+import {
+  App,
+  Alert,
+  Button,
+  Card,
+  DatePicker,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Select,
+  Space,
+  Spin,
+  Typography
+} from 'antd';
 import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
 import { DashboardLayout } from '../../components/dashboard/dashboard-layout';
 import { ContractList } from '../../components/syndics/ContractList';
@@ -11,6 +25,8 @@ import { useSyndicRouteContext } from './useSyndicRouteContext';
 const { Paragraph, Title } = Typography;
 
 export const SyndicProviders: React.FC = () => {
+  const { message } = App.useApp();
+
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
   const navigate = useNavigate();
 
@@ -77,7 +93,10 @@ export const SyndicProviders: React.FC = () => {
     <DashboardLayout>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Space direction="vertical" size={4}>
-          <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}>
+          <Button
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
+          >
             Retour à la fiche syndic
           </Button>
           <Space align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
@@ -102,13 +121,13 @@ export const SyndicProviders: React.FC = () => {
         ) : (
           <>
             <Card title={`Prestataires (${payload.providers.length})`}>
-              <div>{payload.providers.map((provider) => provider.name).join(' | ') || 'Aucun prestataire'}</div>
+              <div>{payload.providers.map(provider => provider.name).join(' | ') || 'Aucun prestataire'}</div>
             </Card>
             <Card title="Contrats de maintenance">
               <ContractList contracts={payload.contracts} />
             </Card>
             <Card title={`Actifs communs (${payload.commonAssets.length})`}>
-              <div>{payload.commonAssets.map((asset) => asset.name).join(' | ') || 'Aucun actif commun'}</div>
+              <div>{payload.commonAssets.map(asset => asset.name).join(' | ') || 'Aucun actif commun'}</div>
             </Card>
           </>
         )}
@@ -131,18 +150,30 @@ export const SyndicProviders: React.FC = () => {
             renewalAlertDays: 30
           }}
         >
-          <Form.Item label="Prestataire" name="providerId" rules={[{ required: true, message: 'Le prestataire est obligatoire' }]}>
+          <Form.Item
+            label="Prestataire"
+            name="providerId"
+            rules={[{ required: true, message: 'Le prestataire est obligatoire' }]}
+          >
             <Select
-              options={payload.providers.map((provider) => ({ value: provider.id, label: provider.name }))}
+              options={payload.providers.map(provider => ({ value: provider.id, label: provider.name }))}
               placeholder="Selectionner un prestataire"
               showSearch
               optionFilterProp="label"
             />
           </Form.Item>
-          <Form.Item label="Nature du contrat" name="nature" rules={[{ required: true, message: 'La nature est obligatoire' }]}>
+          <Form.Item
+            label="Nature du contrat"
+            name="nature"
+            rules={[{ required: true, message: 'La nature est obligatoire' }]}
+          >
             <Input placeholder="Ex: Nettoyage parties communes" />
           </Form.Item>
-          <Form.Item label="Date de debut" name="startDate" rules={[{ required: true, message: 'La date de debut est obligatoire' }]}>
+          <Form.Item
+            label="Date de debut"
+            name="startDate"
+            rules={[{ required: true, message: 'La date de debut est obligatoire' }]}
+          >
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
           <Form.Item label="Date de fin" name="endDate">
@@ -162,4 +193,3 @@ export const SyndicProviders: React.FC = () => {
     </DashboardLayout>
   );
 };
-
