@@ -46,7 +46,9 @@ export async function createLease(
   actorUserId: string
 ): Promise<LeaseDetail> {
   // Generate lease number if not provided
-  let leaseNumber = data.leaseNumber;
+  // Annotation explicite : sans elle, la reaffectation dans la boucle plus bas
+  // rend l inference circulaire (TS7022).
+  let leaseNumber: string | undefined = data.leaseNumber;
 
   if (!leaseNumber) {
     // Generate automatic lease number
@@ -66,9 +68,9 @@ export async function createLease(
 
     while (existingLease && attempts < maxAttempts) {
       attempts += 1;
-      const match = leaseNumber.match(/^BAIL-\d{4}-(\d+)$/);
-      const nextSeq = match ? parseInt(match[1], 10) + 1 : 1;
-      const sequenceNumber = nextSeq.toString().padStart(4, '0');
+      const match: RegExpMatchArray | null = leaseNumber.match(/^BAIL-\d{4}-(\d+)$/);
+      const nextSeq: number = match ? parseInt(match[1], 10) + 1 : 1;
+      const sequenceNumber: string = nextSeq.toString().padStart(4, '0');
       leaseNumber = `BAIL-${year}-${sequenceNumber}`;
       existingLease = await prisma.rentalLease.findFirst({
         where: {
@@ -79,7 +81,7 @@ export async function createLease(
     }
 
     if (existingLease) {
-      throw new Error('Impossible de gÃ©nÃ©rer un numÃ©ro de bail unique. RÃ©essayez.');
+      throw new Error('Impossible de générer un numéro de bail unique. Réessayez.');
     }
   } else {
     // If lease number is provided, check for duplicates
@@ -137,7 +139,7 @@ export async function createLease(
       throw new Error('Due day of month must be between 1 and 31');
     }
     if (data.rentAmount == null || data.rentAmount <= 0) {
-      throw new Error('Le montant du loyer doit Ãªtre supÃ©rieur Ã  0');
+      throw new Error('Le montant du loyer doit être supérieur à 0');
     }
   }
 
@@ -229,7 +231,7 @@ export async function createLease(
       penalty_fixed_amount: data.penaltyFixedAmount || 0,
       penalty_cap_amount: data.penaltyCapAmount || null,
       notes: data.notes || null,
-      terms_json: data.termsJson || null,
+      terms_json: (data.termsJson || null) as any,
       created_by_user_id: actorUserId
     },
     include: {
@@ -273,7 +275,7 @@ export async function createLease(
   });
 
   // Update property status when bail created based on property operation type:
-  // Vente (SALE) -> Vendu (SOLD), Location (RENTAL) / Location courte durÃ©e (SHORT_TERM) -> LouÃ© (RENTED)
+  // Vente (SALE) -> Vendu (SOLD), Location (RENTAL) / Location courte durée (SHORT_TERM) -> Loué (RENTED)
   {
     try {
       const modes = (property.transactionModes || []) as PropertyTransactionMode[];
@@ -288,7 +290,7 @@ export async function createLease(
         tenantId,
         undefined,
         actorUserId,
-        `Statut mis Ã  jour automatiquement lors de la crÃ©ation du bail (type d'opÃ©ration: ${hasSale && !hasRental ? 'Vente' : 'Location'})`
+        `Statut mis à jour automatiquement lors de la création du bail (type d'opération: ${hasSale && !hasRental ? 'Vente' : 'Location'})`
       );
       logger.info('Property status updated after lease creation', {
         propertyId: data.propertyId,
@@ -304,13 +306,16 @@ export async function createLease(
     }
   }
 
-  // Les emails (ex. LEASE_ACTIVATED) sont gÃ©rÃ©s uniquement par "Notifications email" (email_notification_configs), pas par triggerEvent.
+  // Les emails (ex. LEASE_ACTIVATED) sont gérés uniquement par "Notifications email" (email_notification_configs), pas par triggerEvent.
 
   // Send account creation emails if new users were created
   try {
     // Get tenant information for emails
     const tenant = await getTenantById(tenantId);
-    const frontendUrl = (process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const frontendUrl = (process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000').replace(
+      /\/$/,
+      ''
+    );
 
     const sendPortalAccountCreatedWhatsapp = async (params: {
       email?: string | null;
@@ -491,7 +496,10 @@ export async function createLease(
       const emailConfig = await getEmailNotificationConfig(tenantId, 'LEASE_ACTIVATED');
       const { getCrmContactIdForWhatsApp } = await import('./whatsapp-contact-resolve');
       const { sendWhatsappNotification } = await import('./whatsapp-notification-send-service');
-      const frontendUrl = (process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
+      const frontendUrl = (process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000').replace(
+        /\/$/,
+        ''
+      );
       const loginUrl = `${frontendUrl}/login`;
       const forgotPasswordUrl = `${frontendUrl}/forgot-password`;
 
@@ -577,7 +585,7 @@ ${accessBlock}
     });
   }
 
-  return lease as LeaseDetail;
+  return lease as unknown as LeaseDetail;
 }
 
 /**
@@ -858,10 +866,10 @@ export async function updateLease(
     actionKey: 'RENTAL_LEASE_UPDATED',
     entityType: 'RENTAL_LEASE',
     entityId: lease.id,
-    payload: data
+    payload: data as unknown as Record<string, unknown>
   });
 
-  return lease as LeaseDetail;
+  return lease as unknown as LeaseDetail;
 }
 
 /**
@@ -961,7 +969,7 @@ export async function updateLeaseStatus(
           tenantId,
           undefined,
           actorUserId,
-          'Statut rÃ©initialisÃ© aprÃ¨s fin du bail'
+          'Statut réinitialisé après fin du bail'
         );
       } catch (err: any) {
         logger.warn('Could not revert property status after lease end', {
@@ -985,7 +993,7 @@ export async function updateLeaseStatus(
     }
   });
 
-  return lease as LeaseDetail;
+  return lease as unknown as LeaseDetail;
 }
 
 /**
@@ -1164,7 +1172,7 @@ export async function deleteLease(tenantId: string, leaseId: string, actorUserId
   });
 
   if (!lease) {
-    throw new Error('Bail non trouvÃ© ou accÃ¨s refusÃ©');
+    throw new Error('Bail non trouvé ou accès refusé');
   }
 
   // Check if lease has installments with payments allocated
@@ -1180,7 +1188,7 @@ export async function deleteLease(tenantId: string, leaseId: string, actorUserId
 
   if (installmentsWithPayments) {
     throw new Error(
-      "Impossible de supprimer le bail : certaines Ã©chÃ©ances ont des paiements allouÃ©s. Supprimez d'abord les paiements."
+      "Impossible de supprimer le bail : certaines échéances ont des paiements alloués. Supprimez d'abord les paiements."
     );
   }
 
@@ -1224,7 +1232,7 @@ export async function deleteLease(tenantId: string, leaseId: string, actorUserId
         tenantId,
         undefined,
         actorUserId,
-        'Statut rÃ©initialisÃ© Ã  Disponible aprÃ¨s suppression du bail'
+        'Statut réinitialisé à Disponible après suppression du bail'
       );
       logger.info('Property status reverted to AVAILABLE after lease deletion', {
         propertyId
@@ -1250,4 +1258,3 @@ export async function deleteLease(tenantId: string, leaseId: string, actorUserId
     }
   });
 }
-

@@ -151,6 +151,12 @@ export interface CreateLeaseRequest {
   penaltyCapAmount?: number;
   notes?: string;
   termsJson?: Record<string, any>;
+  // Champs deja ecrits par `createLease` mais absents de ce contrat : le
+  // service les lisait sans que le type les declare (backlog AUDIT_CODE.md
+  // §3.7). Ajout du declaratif, aucun changement de comportement.
+  crmDealId?: string;
+  moveInDate?: Date;
+  moveOutDate?: Date;
 }
 
 export interface UpdateLeaseRequest {
