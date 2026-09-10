@@ -188,11 +188,32 @@ export async function listPropertiesHandler(req: Request, res: Response): Promis
     const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
     const userId = req.user?.userId;
 
+    // Un nombre absent ou illisible vaut « pas de borne » et non zero :
+    // `?minPrice=` ne doit pas se comporter comme `?minPrice=0`.
+    const num = (value: unknown): number | undefined => {
+      if (typeof value !== 'string' || value.trim() === '') return undefined;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    };
+
     const filters = {
       propertyType: req.query.propertyType as PropertyType | undefined,
       ownershipType: req.query.ownershipType as any,
       status: req.query.status as any,
       transactionMode: req.query.transactionMode as any,
+      // Filtres deplaces du navigateur vers le serveur (§8.4) : ils etaient
+      // appliques sur la page deja recue, donc sur 20 biens et non sur le
+      // portefeuille, et le compteur affiche mentait.
+      q: typeof req.query.q === 'string' ? req.query.q : undefined,
+      city: typeof req.query.city === 'string' ? req.query.city : undefined,
+      minPrice: num(req.query.minPrice),
+      maxPrice: num(req.query.maxPrice),
+      minSurface: num(req.query.minSurface),
+      maxSurface: num(req.query.maxSurface),
+      minRooms: num(req.query.minRooms),
+      maxRooms: num(req.query.maxRooms),
+      minBedrooms: num(req.query.minBedrooms),
+      maxBedrooms: num(req.query.maxBedrooms),
       page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
       limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 20
     };
@@ -250,7 +271,7 @@ export async function getTemplateHandler(req: Request, res: Response): Promise<v
 /**
  * List all templates handler
  */
-export async function listTemplatesHandler(req: Request, res: Response): Promise<void> {
+export async function listTemplatesHandler(_req: Request, res: Response): Promise<void> {
   try {
     const templates = await getAllTemplates();
 

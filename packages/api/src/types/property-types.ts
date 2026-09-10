@@ -46,6 +46,12 @@ export type {
 // Extended Property with relationships
 export interface PropertyDetail extends Property {
   media?: PropertyMedia[];
+  /**
+   * Photo de vignette, resolue par le endpoint de liste (REFONTE_UI_UX.md §8.4).
+   * Photo primaire si elle existe, sinon la premiere dans l ordre d affichage.
+   * `null` quand le bien n a aucune photo.
+   */
+  thumbnailUrl?: string | null;
   documents?: PropertyDocument[];
   statusHistory?: PropertyStatusHistory[];
   visits?: PropertyVisit[];

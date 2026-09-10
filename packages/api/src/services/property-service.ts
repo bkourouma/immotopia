@@ -11,6 +11,7 @@ import {
   PropertyOwnershipType,
   PropertyStatus,
   PropertyTransactionMode,
+  PropertyMediaType,
   RentalLeaseStatus,
   GlobalRole
 } from '@prisma/client';
@@ -143,7 +144,10 @@ export async function createProperty(
           furnishingStatus: data.furnishingStatus || null,
           status: data.status || PropertyStatus.AVAILABLE,
           availability: data.availability || 'AVAILABLE',
-          typeSpecificData: data.typeSpecificData || null
+          // Prisma type ce champ en InputJsonValue, plus etroit que le
+          // Record<string, any> | null du contrat d entree. Aucune conversion
+          // a l execution : la valeur part telle quelle.
+          typeSpecificData: (data.typeSpecificData || null) as any
         },
         include: {
           tenant: {
@@ -483,6 +487,18 @@ export async function listProperties(
     ownershipType?: PropertyOwnershipType;
     status?: PropertyStatus;
     transactionMode?: PropertyTransactionMode;
+    /** Recherche libre : titre, adresse, reference interne. */
+    q?: string;
+    /** Commune ou zone : adresse ou zone de localisation. */
+    city?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    minSurface?: number;
+    maxSurface?: number;
+    minRooms?: number;
+    maxRooms?: number;
+    minBedrooms?: number;
+    maxBedrooms?: number;
     page?: number;
     limit?: number;
   }
@@ -532,6 +548,59 @@ export async function listProperties(
       has: filters.transactionMode
     };
   }
+
+  // Recherche libre et filtre de commune : chacun porte sur plusieurs colonnes,
+  // donc sur un `OR`. Ils vont dans `AND` et non a la racine du `where`, car
+  // `where.OR` est deja pris par l'isolation par agence plus haut : deux `OR`
+  // frere a frere s'ecraseraient, et le survivant aurait ouvert la liste a
+  // TOUTES les agences.
+  const and: any[] = [];
+
+  const q = filters?.q?.trim();
+  if (q) {
+    and.push({
+      OR: [
+        { title: { contains: q, mode: 'insensitive' } },
+        { address: { contains: q, mode: 'insensitive' } },
+        { internalReference: { contains: q, mode: 'insensitive' } }
+      ]
+    });
+  }
+
+  const city = filters?.city?.trim();
+  if (city) {
+    and.push({
+      OR: [
+        { address: { contains: city, mode: 'insensitive' } },
+        { locationZone: { contains: city, mode: 'insensitive' } }
+      ]
+    });
+  }
+
+  if (and.length > 0) {
+    where.AND = and;
+  }
+
+  // Bornes numeriques. Une borne absente laisse l'intervalle ouvert de ce
+  // cote : un minimum seul ou un maximum seul est licite.
+  const range = (min?: number, max?: number): { gte?: number; lte?: number } | undefined => {
+    const bounds: { gte?: number; lte?: number } = {};
+    if (typeof min === 'number' && Number.isFinite(min)) bounds.gte = min;
+    if (typeof max === 'number' && Number.isFinite(max)) bounds.lte = max;
+    return Object.keys(bounds).length > 0 ? bounds : undefined;
+  };
+
+  const priceRange = range(filters?.minPrice, filters?.maxPrice);
+  if (priceRange) where.price = priceRange;
+
+  const surfaceRange = range(filters?.minSurface, filters?.maxSurface);
+  if (surfaceRange) where.surfaceArea = surfaceRange;
+
+  const roomsRange = range(filters?.minRooms, filters?.maxRooms);
+  if (roomsRange) where.rooms = roomsRange;
+
+  const bedroomsRange = range(filters?.minBedrooms, filters?.maxBedrooms);
+  if (bedroomsRange) where.bedrooms = bedroomsRange;
 
   // Get total count
   const total = await prisma.property.count({ where });
@@ -625,8 +694,43 @@ export async function listProperties(
     };
   });
 
+  // Vignette de chaque bien (REFONTE_UI_UX.md §8.4).
+  //
+  // Le front lancait une requete `/media` PAR carte affichee, soit jusqu'a 20
+  // requetes pour une page de liste. Une seule requete groupee les remplace :
+  // le cout ne depend plus du nombre de biens affiches.
+  //
+  // L'`include.media` ci-dessus n'est volontairement pas reutilise : il filtre
+  // sur `isPrimary` sans regarder le type de media, donc il rendrait un plan ou
+  // une video marquee primaire comme s'il s'agissait de la photo. Il reste en
+  // l'etat — c'est un contrat existant — et `thumbnailUrl` s'y ajoute.
+  const thumbnailByPropertyId = new Map<string, string>();
+  const propertyIds = propertiesWithCounts.map(p => p.id);
+  if (propertyIds.length > 0) {
+    const photos = await prisma.propertyMedia.findMany({
+      where: {
+        propertyId: { in: propertyIds },
+        mediaType: PropertyMediaType.PHOTO
+      },
+      // La photo primaire d'abord ; a defaut, la premiere dans l'ordre
+      // d'affichage. C'est exactement la regle que le front appliquait.
+      orderBy: [{ isPrimary: 'desc' }, { displayOrder: 'asc' }],
+      select: { propertyId: true, fileUrl: true, filePath: true }
+    });
+    for (const photo of photos) {
+      if (thumbnailByPropertyId.has(photo.propertyId)) continue;
+      const url = photo.fileUrl || photo.filePath;
+      if (url) thumbnailByPropertyId.set(photo.propertyId, url);
+    }
+  }
+
+  const propertiesWithThumbnail = propertiesWithCounts.map(p => ({
+    ...p,
+    thumbnailUrl: thumbnailByPropertyId.get(p.id) ?? null
+  }));
+
   return {
-    properties: propertiesWithCounts as PropertyDetail[],
+    properties: propertiesWithThumbnail as PropertyDetail[],
     total
   };
 }
