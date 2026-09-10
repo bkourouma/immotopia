@@ -2,7 +2,13 @@
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
 import { CreateLeaseRequest, UpdateLeaseRequest, LeaseDetail } from '../types/rental-types';
-import { RentalLeaseStatus, PropertyStatus, PropertyTransactionMode, RentalBillingFrequency } from '@prisma/client';
+import {
+  RentalLeaseStatus,
+  PropertyStatus,
+  PropertyTransactionMode,
+  RentalBillingFrequency,
+  CrmContactType
+} from '@prisma/client';
 import { emailService } from './email-service';
 import { getEmailNotificationConfig } from './email-notification-config-service';
 import { updatePropertyStatus } from './property-status-service';
@@ -687,6 +693,55 @@ export async function getLeaseById(tenantId: string, leaseId: string): Promise<L
     const details = lease.ownerClient.details as any;
     if (details && details.crmContactId) {
       (lease.ownerClient as any).crmContactId = details.crmContactId;
+    }
+  }
+
+  // Nom affichable du locataire et du proprietaire (REFONTE_UI_UX.md §8.4).
+  //
+  // Le front chargeait le bail, constatait que `user.fullName` etait vide, puis
+  // relancait une requete `getContact` par partie manquante — donc apres le
+  // rendu, en cascade : l'ecran s'affichait avec des noms absents qui
+  // apparaissaient ensuite. Ces noms sont ici resolus avant la reponse, en une
+  // seule requete pour les deux parties.
+  //
+  // La resolution ne se declenche que pour les parties dont le nom manque
+  // vraiment : un client rattache a un compte utilisateur porte deja son nom.
+  if (lease) {
+    const parties = [lease.primaryRenter, lease.ownerClient].filter(Boolean) as any[];
+
+    const missing = parties.filter(party => !party.user?.fullName?.trim() && party.crmContactId);
+    const contactIds = [...new Set(missing.map(party => party.crmContactId as string))];
+
+    if (contactIds.length > 0) {
+      const contacts = await prisma.crmContact.findMany({
+        // `tenantId` fait partie du filtre : un identifiant de contact devine
+        // ou recopie d'une autre agence ne doit pas resoudre un nom.
+        where: { id: { in: contactIds }, tenantId },
+        select: { id: true, contactType: true, firstName: true, lastName: true, legalName: true }
+      });
+
+      const nameById = new Map<string, string>();
+      for (const contact of contacts) {
+        const name =
+          contact.contactType === CrmContactType.COMPANY
+            ? contact.legalName?.trim() || ''
+            : `${contact.firstName?.trim() || ''} ${contact.lastName?.trim() || ''}`.trim();
+        if (name) nameById.set(contact.id, name);
+      }
+
+      for (const party of missing) {
+        const name = nameById.get(party.crmContactId as string);
+        if (name) party.displayName = name;
+      }
+    }
+
+    // Chaque partie porte un nom affichable, quelle que soit sa provenance :
+    // le compte utilisateur s'il existe, le contact CRM sinon. Le front n'a
+    // plus a arbitrer entre les deux ni a completer apres coup.
+    for (const party of parties) {
+      if (!party.displayName) {
+        party.displayName = party.user?.fullName?.trim() || null;
+      }
     }
   }
 
