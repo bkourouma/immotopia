@@ -898,6 +898,49 @@ export async function regenerateDocument(
   return response.data;
 }
 
+/**
+ * Télécharge un document généré.
+ *
+ * Passe par `apiClient` et non par un `fetch` brut, comme le faisait l'écran.
+ * La différence n'est pas cosmétique : `fetch` ignore le délai maximal, le
+ * rafraîchissement de session sur 401 et les nouvelles tentatives. Une session
+ * expirée pendant un téléchargement donnait donc « Failed to download document:
+ * 401 Unauthorized » au lieu de se renouveler silencieusement.
+ *
+ * Le nom de fichier vient de l'en-tête `Content-Disposition` quand le serveur
+ * le fournit. L'écran forçait l'extension `.docx` pour tous les documents, y
+ * compris ceux rendus en PDF : le fichier arrivait alors avec une extension qui
+ * ne correspondait pas à son contenu, et ne s'ouvrait pas.
+ */
+export async function downloadDocument(
+  tenantId: string,
+  documentId: string,
+  fallbackName: string
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(`/tenants/${tenantId}/documents/${documentId}/download`, {
+    responseType: 'blob'
+  });
+
+  const disposition = String(response.headers?.['content-disposition'] ?? '');
+  // `filename*=UTF-8''nom%20accentue.pdf` d'abord — c'est la forme qui porte
+  // les accents —, `filename="nom.pdf"` ensuite.
+  const etendu = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  const simple = disposition.match(/filename="?([^";]+)"?/i);
+
+  let filename = fallbackName;
+  if (etendu?.[1]) {
+    try {
+      filename = decodeURIComponent(etendu[1]);
+    } catch {
+      filename = etendu[1];
+    }
+  } else if (simple?.[1]) {
+    filename = simple[1];
+  }
+
+  return { blob: response.data, filename };
+}
+
 // ==================== PAYMENT DECLARATIONS ====================
 
 export async function listPaymentDeclarations(

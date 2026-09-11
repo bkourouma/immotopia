@@ -1,6 +1,6 @@
 import type { AxiosAdapter, AxiosRequestConfig, AxiosResponse } from 'axios';
 import apiClient from '../../utils/api-client';
-import { BIENS, COMMUNES, ECHEANCES, PENALITES, PAIEMENTS } from './fixtures';
+import { BIENS, COMMUNES, ECHEANCES, PENALITES, PAIEMENTS, DOCUMENTS } from './fixtures';
 
 /**
  * Fausse API de l'atelier.
@@ -124,6 +124,18 @@ export function installerFausseApi(scenario: Scenario) {
       const liste = scenario === 'vide' ? [] : PAIEMENTS;
       const statut = url.searchParams.get('status');
       const filtres = statut ? liste.filter(p => p.status === statut) : liste;
+      return ok(config, {
+        success: true,
+        data: filtres,
+        pagination: { page: 1, limit: 50, total: filtres.length, totalPages: 1 }
+      });
+    }
+
+    if (/\/rental\/documents$/.test(url.pathname)) {
+      const liste = scenario === 'vide' ? [] : DOCUMENTS;
+      const type = url.searchParams.get('type');
+      const statut = url.searchParams.get('status');
+      const filtres = liste.filter(d => (!type || d.type === type) && (!statut || d.status === statut));
       return ok(config, {
         success: true,
         data: filtres,

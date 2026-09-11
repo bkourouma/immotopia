@@ -13,7 +13,7 @@ export type { StateBlockProps, StateVariant, StateBlockAction } from './StateBlo
 export { SkeletonList, SkeletonTable, SkeletonDetail, SkeletonStats } from './Skeleton';
 export type { SkeletonProps } from './Skeleton';
 
-export { StatusTag, statusTone } from './StatusTag';
+export { StatusTag, statusTone, statusLabel } from './StatusTag';
 export type { StatusTagProps, StatusTone } from './StatusTag';
 
 export { ConfirmAction, useConfirmAction } from './ConfirmAction';

@@ -4,6 +4,7 @@ import { Properties } from '../../pages/properties/Properties';
 import { Installments } from '../../pages/rental/Installments';
 import { Penalties } from '../../pages/rental/Penalties';
 import { Payments } from '../../pages/rental/Payments';
+import { Documents } from '../../pages/rental/Documents';
 import { installerFausseApi, retirerFausseApi, type Scenario } from './mock-api';
 import {
   DataCard,
@@ -62,6 +63,7 @@ const ECHEANCES = 'tenant/' + AGENCE + '/rental/leases/bail-demo/installments';
 const ECHEANCES_GLOBAL = 'tenant/' + AGENCE + '/rental/installments';
 const PENALITES = 'tenant/' + AGENCE + '/rental/penalties';
 const PAIEMENTS = 'tenant/' + AGENCE + '/rental/payments';
+const DOCUMENTS = 'tenant/' + AGENCE + '/rental/documents';
 
 const SCENES: Scene[] = [
   {
@@ -155,6 +157,13 @@ const SCENES: Scene[] = [
     description: 'Quatre paiements : un non affecté, un partiel, un versé au dépôt, un échoué.',
     scenario: 'nominal',
     chemin: PAIEMENTS
+  },
+  {
+    id: 'documents',
+    titre: 'Documents — nominal',
+    description: 'Cinq documents, dont un sans titre, un titre très long et un annulé.',
+    scenario: 'nominal',
+    chemin: DOCUMENTS
   },
   {
     id: 'primitives',
@@ -360,6 +369,14 @@ export const Atelier: React.FC = () => (
       element={
         <Scene>
           <Payments />
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/rental/documents"
+      element={
+        <Scene>
+          <Documents />
         </Scene>
       }
     />

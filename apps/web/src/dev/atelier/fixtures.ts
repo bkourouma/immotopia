@@ -291,3 +291,81 @@ export const PAIEMENTS = [
     updated_at: ''
   }
 ];
+
+/**
+ * Documents — cinq cas, dont trois qui éprouvent la mise en page.
+ *
+ * Un document sans titre (le titre est facultatif et souvent absent), un titre
+ * très long, et un document annulé. Le numéro de document reste l'identifiant
+ * fiable : c'est lui qui porte la colonne, le titre l'accompagne quand il
+ * existe.
+ */
+export const DOCUMENTS = [
+  {
+    id: 'doc-1',
+    tenant_id: 'agence-demo',
+    type: 'LEASE_CONTRACT',
+    status: 'FINAL',
+    lease_id: 'bail-demo',
+    document_number: 'DOC-2026-0001',
+    title: 'Contrat de bail — Villa Kipé',
+    issued_at: '2026-01-05T00:00:00.000Z',
+    created_by_user_id: 'u1',
+    created_at: '',
+    updated_at: ''
+  },
+  // Sans titre : la colonne ne doit pas se vider de sens.
+  {
+    id: 'doc-2',
+    tenant_id: 'agence-demo',
+    type: 'RENT_QUITTANCE',
+    status: 'FINAL',
+    lease_id: 'bail-demo',
+    document_number: 'DOC-2026-0002',
+    title: null,
+    issued_at: '2026-02-06T00:00:00.000Z',
+    created_by_user_id: 'u1',
+    created_at: '',
+    updated_at: ''
+  },
+  // Titre long : il doit rester sous le numero sans repousser les actions.
+  {
+    id: 'doc-3',
+    tenant_id: 'agence-demo',
+    type: 'LEASE_ADDENDUM',
+    status: 'DRAFT',
+    lease_id: 'bail-demo',
+    document_number: 'DOC-2026-0003',
+    title: "Avenant n°2 portant revalorisation du loyer et modification de la date d'echeance mensuelle",
+    issued_at: '2026-03-01T00:00:00.000Z',
+    created_by_user_id: 'u1',
+    created_at: '',
+    updated_at: ''
+  },
+  {
+    id: 'doc-4',
+    tenant_id: 'agence-demo',
+    type: 'DEPOSIT_RECEIPT',
+    status: 'VOID',
+    lease_id: 'bail-demo',
+    document_number: 'DOC-2026-0004',
+    title: 'Reçu de dépôt — annulé',
+    issued_at: '2026-01-06T00:00:00.000Z',
+    created_by_user_id: 'u1',
+    created_at: '',
+    updated_at: ''
+  },
+  {
+    id: 'doc-5',
+    tenant_id: 'agence-demo',
+    type: 'STATEMENT',
+    status: 'FINAL',
+    lease_id: 'bail-demo',
+    document_number: 'DOC-2026-0005',
+    title: 'Relevé de gestion — 1er trimestre',
+    issued_at: '2026-04-02T00:00:00.000Z',
+    created_by_user_id: 'u1',
+    created_at: '',
+    updated_at: ''
+  }
+];

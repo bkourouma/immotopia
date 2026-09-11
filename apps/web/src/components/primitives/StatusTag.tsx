@@ -81,6 +81,25 @@ const STATUS_MAP: Record<string, { tone: StatusTone; label: string }> = {
   COMPLETED: { tone: 'success', label: 'Terminé' },
   CLOSED: { tone: 'neutral', label: 'Clôturé' },
 
+  // Documents, baux, visites.
+  //
+  // Ajoutés après un second constat identique au premier : « VOID » s'affichait
+  // en clair sur l'écran des documents, comme « AVAILABLE » l'avait fait sur
+  // celui des biens. Plutôt qu'un troisième rattrapage, tous les codes de
+  // statut déclarés dans les énumérations du dépôt ont été comparés à cette
+  // table, et un test vérifie désormais qu'aucun n'y manque.
+  VOID: { tone: 'danger', label: 'Annulé' },
+  ENDED: { tone: 'neutral', label: 'Terminé' },
+  CONFIRMED: { tone: 'success', label: 'Confirmé' },
+  DONE: { tone: 'success', label: 'Effectué' },
+  NO_SHOW: { tone: 'danger', label: 'Absent' },
+
+  // Ameublement — ce n'est pas un cycle de vie, mais une qualité du bien.
+  // Rendue par le même composant lorsqu'un écran l'affiche comme étiquette.
+  FURNISHED: { tone: 'info', label: 'Meublé' },
+  UNFURNISHED: { tone: 'neutral', label: 'Non meublé' },
+  PARTIALLY_FURNISHED: { tone: 'info', label: 'Partiellement meublé' },
+
   // Invitations, validations, affaires
   SENT: { tone: 'info', label: 'Envoyé' },
   ACCEPTED: { tone: 'success', label: 'Accepté' },
@@ -100,6 +119,20 @@ export interface StatusTagProps {
   tone?: StatusTone;
   /** Force le libelle, pour un statut absent de la table. */
   label?: string;
+}
+
+/**
+ * Libelle francais d'un code de statut, `null` si le code est inconnu.
+ *
+ * Expose pour que le test puisse verifier l invariant qui compte : aucun code
+ * declare dans les enumerations du depot ne doit manquer a la table. Un code
+ * inconnu n echoue pas — le composant rend alors le code brut, ce qui vaut
+ * mieux qu un ecran vide — mais il est alors AFFICHE EN ANGLAIS a
+ * l utilisateur, et c est precisement ce que le test empeche.
+ */
+export function statusLabel(status: string | null | undefined): string | null {
+  if (!status) return null;
+  return STATUS_MAP[status.toUpperCase()]?.label ?? null;
 }
 
 export function statusTone(status: string | null | undefined): StatusTone {

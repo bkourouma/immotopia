@@ -1,328 +1,341 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Table, Button, Tag, Space, Typography, Empty, Alert, Select, Row, Col } from 'antd';
+import { App, Button, Select, Modal, Drawer, Space, Dropdown } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { PlusOutlined, FileTextOutlined, EyeOutlined, DownloadOutlined, ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, DownloadOutlined, MoreOutlined } from '@ant-design/icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listDocuments,
   generateDocument,
-  updateDocumentStatus,
   regenerateDocument,
+  downloadDocument,
   RentalDocument,
   RentalDocumentType,
   RentalDocumentStatus,
-  DocumentFilters,
   GenerateDocumentRequest
 } from '../../services/rental-service';
 import { DocumentForm } from '../../components/rental/DocumentForm';
-import { API_URL } from '../../config/api';
-import { useConfirmAction } from '../../components/primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useListParams } from '../../hooks/useListParams';
+import { queryKey, STALE_TIME } from '../../lib/query-keys';
+import {
+  PageHeader,
+  StateBlock,
+  StatusTag,
+  DataView,
+  DataCard,
+  FilterSheet,
+  useConfirmAction
+} from '../../components/primitives';
 
-const { Text, Title } = Typography;
+/**
+ * Documents de location — cinquième des six écrans hybrides (§9.7).
+ *
+ * **Le téléchargement contournait `apiClient`.** Trente lignes de `fetch` brut
+ * écrites à même le gestionnaire de clic d'une colonne : pas de délai maximal,
+ * pas de rafraîchissement de session sur 401, pas de nouvelle tentative. Une
+ * session expirée pendant un téléchargement affichait « Failed to download
+ * document: 401 Unauthorized » au lieu de se renouveler. Le téléchargement
+ * passe maintenant par le service, donc par `apiClient`.
+ *
+ * **L'extension était forcée à `.docx`** pour tous les documents, y compris
+ * ceux rendus en PDF : le fichier arrivait avec une extension qui ne
+ * correspondait pas à son contenu et ne s'ouvrait pas. Elle vient désormais de
+ * l'en-tête `Content-Disposition`.
+ *
+ * **Deux actions en icône seule** avec un `title` HTML natif, invisible au
+ * clavier et muet au lecteur d'écran. Une action nommée, le reste derrière
+ * « ⋮ ». **Six colonnes derrière `scroll={{ x: 'max-content' }}`** passent à
+ * cinq. Le formulaire de génération, ouvert en pleine page, devient une boîte
+ * de dialogue.
+ *
+ * `handleStatusChange`, défini et jamais appelé, est retiré — comme sur l'écran
+ * des paiements, dont celui-ci est visiblement une copie.
+ */
 
 interface DocumentsProps {
+  /** Fourni quand l'écran est monté en onglet d'un bail. */
   leaseId?: string;
+}
+
+type Filters = { type: string; status: string };
+const FILTER_KEYS = ['type', 'status'] as const;
+
+const TYPE_LABELS: Record<string, string> = {
+  LEASE_CONTRACT: 'Contrat de bail',
+  LEASE_ADDENDUM: 'Avenant',
+  RENT_RECEIPT: 'Reçu de loyer',
+  RENT_QUITTANCE: 'Quittance de loyer',
+  DEPOSIT_RECEIPT: 'Reçu de dépôt',
+  STATEMENT: 'Relevé',
+  OTHER: 'Autre'
+};
+
+const STATUS_OPTIONS = [
+  { value: 'DRAFT', label: 'Brouillon' },
+  { value: 'FINAL', label: 'Final' },
+  { value: 'VOID', label: 'Annulé' }
+];
+
+function dateCourte(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR');
 }
 
 export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) => {
   const { message } = App.useApp();
-  const confirmAction = useConfirmAction();
-
   const { tenantId, leaseId: paramLeaseId } = useParams<{ tenantId: string; leaseId?: string }>();
   const leaseId = propLeaseId || paramLeaseId;
-  const [documents, setDocuments] = useState<RentalDocument[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [filters, setFilters] = useState<DocumentFilters>({
-    leaseId: leaseId,
-    page: 1,
-    limit: 50
-  });
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 50,
-    total: 0,
-    totalPages: 0
+  const queryClient = useQueryClient();
+  const confirmAction = useConfirmAction();
+  const { isDesktop } = useBreakpoint();
+
+  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS, defaultPageSize: 50 });
+  const [formulaireOuvert, setFormulaireOuvert] = useState(false);
+  const [telechargementEnCours, setTelechargementEnCours] = useState<string | null>(null);
+
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: erreurRequete,
+    refetch
+  } = useQuery({
+    queryKey: queryKey('documents', tenantId, { ...list.queryParams, leaseId: leaseId ?? '' }),
+    queryFn: () =>
+      listDocuments(tenantId as string, {
+        leaseId,
+        type: (list.filters.type as RentalDocumentType) || undefined,
+        status: (list.filters.status as RentalDocumentStatus) || undefined,
+        page: list.page,
+        limit: list.pageSize
+      }),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list
   });
 
-  useEffect(() => {
-    if (tenantId) {
-      loadDocuments();
-    }
-  }, [tenantId, filters, leaseId]);
+  const documents = data?.data ?? [];
+  const total = data?.pagination?.total ?? 0;
 
-  const loadDocuments = async () => {
+  const rafraichir = () => queryClient.invalidateQueries({ queryKey: ['documents', tenantId] });
+
+  const handleGenerate = async (donnees: GenerateDocumentRequest) => {
     if (!tenantId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await listDocuments(tenantId, {
-        ...filters,
-        leaseId: leaseId || filters.leaseId
-      });
-      if (response.success) {
-        setDocuments(response.data);
-        setPagination(response.pagination);
-      } else {
-        setError('Erreur lors du chargement des documents');
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des documents');
-    } finally {
-      setLoading(false);
-    }
+    // Les erreurs remontent au formulaire, qui les affiche lui-même.
+    await generateDocument(tenantId, donnees);
+    setFormulaireOuvert(false);
+    await rafraichir();
+    message.success('Document généré.');
   };
 
-  const handleGenerate = async (data: GenerateDocumentRequest) => {
-    if (!tenantId) return;
-    try {
-      await generateDocument(tenantId, data);
-      setShowForm(false);
-      await loadDocuments();
-    } catch (err: any) {
-      throw err;
-    }
-  };
-
-  const handleRegenerate = async (documentId: string) => {
+  const handleRegenerate = (doc: RentalDocument) => {
     if (!tenantId) return;
     confirmAction({
-      title: 'Régénérer le document',
-      description: 'Voulez-vous régénérer ce document avec les données mises à jour ?',
+      title: 'Régénérer ce document ?',
+      description: `Le document ${doc.document_number} sera reconstruit à partir des données actuelles du bail. La version précédente est remplacée.`,
+      okText: 'Régénérer',
       onConfirm: async () => {
         try {
-          await regenerateDocument(tenantId, documentId);
-          await loadDocuments();
-          message.success('Document régénéré avec succès !');
+          await regenerateDocument(tenantId, doc.id);
+          await rafraichir();
+          message.success('Document régénéré.');
         } catch (err: any) {
-          message.error(err.response?.data?.message || 'Erreur lors de la régénération du document');
+          message.error(err?.response?.data?.message || 'La régénération a échoué.');
         }
       }
     });
   };
 
-  const handleStatusChange = async (documentId: string, newStatus: RentalDocumentStatus) => {
+  const handleDownload = async (doc: RentalDocument) => {
     if (!tenantId) return;
+    setTelechargementEnCours(doc.id);
     try {
-      await updateDocumentStatus(tenantId, documentId, newStatus);
-      await loadDocuments();
+      const { blob, filename } = await downloadDocument(tenantId, doc.id, doc.document_number || 'document');
+      const url = window.URL.createObjectURL(blob);
+      const lien = window.document.createElement('a');
+      lien.href = url;
+      lien.download = filename;
+      window.document.body.appendChild(lien);
+      lien.click();
+      // L'URL d'objet est révoquée APRÈS le retrait du lien : l'inverse laisse
+      // au navigateur une référence vers une URL déjà libérée.
+      window.document.body.removeChild(lien);
+      window.URL.revokeObjectURL(url);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de la mise à jour du statut');
+      message.error(err?.response?.data?.message || 'Le téléchargement a échoué.');
+    } finally {
+      setTelechargementEnCours(null);
     }
   };
 
-  const getStatusTag = (status: RentalDocumentStatus) => {
-    const statusMap: Record<RentalDocumentStatus, { label: string; color: string }> = {
-      DRAFT: { label: 'Brouillon', color: 'default' },
-      FINAL: { label: 'Final', color: 'success' },
-      VOID: { label: 'Annulé', color: 'error' }
-    };
-    const config = statusMap[status] || { label: status, color: 'default' };
-    return <Tag color={config.color}>{config.label}</Tag>;
-  };
-
-  const getTypeLabel = (type: RentalDocumentType) => {
-    const typeMap: Record<RentalDocumentType, string> = {
-      LEASE_CONTRACT: 'Contrat de bail',
-      LEASE_ADDENDUM: 'Avenant',
-      RENT_RECEIPT: 'Reçu de loyer',
-      RENT_QUITTANCE: 'Quittance de loyer',
-      DEPOSIT_RECEIPT: 'Reçu de dépôt',
-      STATEMENT: 'Relevé',
-      OTHER: 'Autre'
-    };
-    return typeMap[type] || type;
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fr-FR');
-  };
-
-  // If used as standalone page (not in tab)
-  const isStandalone = !propLeaseId;
-
-  const content = (
-    <>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Row gutter={[16, 16]} justify="space-between" align="middle">
-          <Col xs={24} sm={24} md={12} lg={14}>
-            <Title level={2} style={{ margin: 0 }}>
-              Documents
-            </Title>
-            <Text type="secondary">{leaseId ? 'Documents du bail' : 'Gérez les documents de location'}</Text>
-          </Col>
-          <Col xs={24} sm={24} md={12} lg={10}>
-            <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)}>
-                Générer un document
-              </Button>
-            </div>
-          </Col>
-        </Row>
-
-        {error && (
-          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
-        )}
-
-        {showForm && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <DocumentForm
-              tenantId={tenantId!}
-              leaseId={leaseId}
-              onSubmit={handleGenerate}
-              onCancel={() => setShowForm(false)}
-            />
-          </div>
-        )}
-
-        <Space>
-          <Select
-            value={filters.type || 'all'}
-            onChange={value =>
-              setFilters({
-                ...filters,
-                type: value === 'all' ? undefined : (value as RentalDocumentType),
-                page: 1
-              })
-            }
-            style={{ width: 180 }}
-          >
-            <Select.Option value="all">Tous les types</Select.Option>
-            <Select.Option value={RentalDocumentType.LEASE_CONTRACT}>Contrat de bail</Select.Option>
-            <Select.Option value={RentalDocumentType.LEASE_ADDENDUM}>Avenant</Select.Option>
-            <Select.Option value={RentalDocumentType.RENT_RECEIPT}>Reçu de loyer</Select.Option>
-            <Select.Option value={RentalDocumentType.RENT_QUITTANCE}>Quittance de loyer</Select.Option>
-            <Select.Option value={RentalDocumentType.DEPOSIT_RECEIPT}>Reçu de dépôt</Select.Option>
-            <Select.Option value={RentalDocumentType.STATEMENT}>Relevé</Select.Option>
-            <Select.Option value={RentalDocumentType.OTHER}>Autre</Select.Option>
-          </Select>
-          <Select
-            value={filters.status || 'all'}
-            onChange={value =>
-              setFilters({
-                ...filters,
-                status: value === 'all' ? undefined : (value as RentalDocumentStatus),
-                page: 1
-              })
-            }
-            style={{ width: 180 }}
-          >
-            <Select.Option value="all">Tous les statuts</Select.Option>
-            <Select.Option value={RentalDocumentStatus.DRAFT}>Brouillon</Select.Option>
-            <Select.Option value={RentalDocumentStatus.FINAL}>Final</Select.Option>
-            <Select.Option value={RentalDocumentStatus.VOID}>Annulé</Select.Option>
-          </Select>
-        </Space>
-
-        {documents.length === 0 && !loading ? (
-          <Empty description="Aucun document trouvé" />
-        ) : (
-          <Table
-            dataSource={documents}
-            loading={loading}
-            rowKey="id"
-            scroll={{ x: 'max-content' }}
-            columns={[
-              {
-                title: 'Numéro',
-                key: 'document_number',
-                render: (_, record) => <Text strong>{record.document_number}</Text>
-              },
-              {
-                title: 'Type',
-                key: 'type',
-                render: (_, record) => getTypeLabel(record.type)
-              },
-              {
-                title: 'Titre',
-                key: 'title',
-                render: (_, record) => record.title || '-'
-              },
-              {
-                title: "Date d'émission",
-                key: 'issued_at',
-                render: (_, record) => formatDate(record.issued_at)
-              },
-              {
-                title: 'Statut',
-                key: 'status',
-                render: (_, record) => getStatusTag(record.status)
-              },
-              {
-                title: 'Actions',
-                key: 'actions',
-                render: (_, record) => (
-                  <Space>
-                    <Button
-                      type="text"
-                      icon={<ReloadOutlined />}
-                      onClick={() => handleRegenerate(record.id)}
-                      title="Régénérer le document avec les données mises à jour"
-                    />
-                    <Button
-                      type="text"
-                      icon={<DownloadOutlined />}
-                      onClick={async () => {
-                        try {
-                          const apiBaseUrl = API_URL;
-                          const downloadUrl = `${apiBaseUrl}/tenants/${tenantId}/documents/${record.id}/download`;
-
-                          const response = await fetch(downloadUrl, {
-                            method: 'GET',
-                            credentials: 'include'
-                          });
-
-                          if (!response.ok) {
-                            const errorText = await response.text();
-                            throw new Error(`Failed to download document: ${response.status} ${response.statusText}`);
-                          }
-
-                          const blob = await response.blob();
-                          const url = window.URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url;
-                          a.download = `${record.document_number || 'document'}.docx`;
-                          document.body.appendChild(a);
-                          a.click();
-                          window.URL.revokeObjectURL(url);
-                          document.body.removeChild(a);
-                          message.success('Téléchargement réussi');
-                        } catch (error) {
-                          message.error(
-                            `Erreur lors du téléchargement: ${error instanceof Error ? error.message : 'Erreur inconnue'}`
-                          );
-                        }
-                      }}
-                      title="Télécharger le document"
-                    />
-                  </Space>
-                )
-              }
-            ]}
-            pagination={
-              pagination.totalPages > 1
-                ? {
-                    current: pagination.page,
-                    pageSize: pagination.limit,
-                    total: pagination.total,
-                    showSizeChanger: true,
-                    showTotal: total => `Total ${total} documents`,
-                    onChange: (page, pageSize) => {
-                      setFilters(prev => ({ ...prev, page, limit: pageSize }));
-                    }
-                  }
-                : false
-            }
-          />
-        )}
-      </Space>
-    </>
-  );
-
-  if (isStandalone) {
-    return <>{content}</>;
+  if (!tenantId) {
+    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
   }
 
-  return content;
+  const actionsSecondaires = (doc: RentalDocument) => [
+    { key: 'regen', label: 'Régénérer à partir des données actuelles', onClick: () => handleRegenerate(doc) }
+  ];
+
+  const colonnes: ColumnsType<RentalDocument> = [
+    {
+      title: 'Document',
+      key: 'document',
+      render: (_, doc) => (
+        <>
+          <div style={{ fontWeight: 600 }}>{doc.document_number}</div>
+          {/* Le titre rejoint le numéro plutôt que d'occuper sa propre
+              colonne : les deux nomment le même document, et le titre est
+              souvent vide. */}
+          {doc.title && (
+            <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>{doc.title}</div>
+          )}
+        </>
+      )
+    },
+    { title: 'Type', key: 'type', render: (_, doc) => TYPE_LABELS[doc.type] || doc.type },
+    { title: 'Émis le', key: 'emis', render: (_, doc) => dateCourte(doc.issued_at) },
+    { title: 'Statut', key: 'statut', render: (_, doc) => <StatusTag status={doc.status} /> },
+    {
+      title: 'Actions',
+      key: 'actions',
+      align: 'right',
+      render: (_, doc) => (
+        <Space>
+          <Button
+            icon={<DownloadOutlined />}
+            loading={telechargementEnCours === doc.id}
+            onClick={() => handleDownload(doc)}
+          >
+            Télécharger
+          </Button>
+          <Dropdown menu={{ items: actionsSecondaires(doc) }} trigger={['click']} placement="bottomRight">
+            {/* Nom accessible explicite : le numéro du document distingue ce
+                menu des autres de la liste. */}
+            <Button icon={<MoreOutlined />} aria-label={`Autres actions pour ${doc.document_number}`} />
+          </Dropdown>
+        </Space>
+      )
+    }
+  ];
+
+  const formulaire = (
+    <DocumentForm
+      tenantId={tenantId}
+      leaseId={leaseId}
+      onSubmit={handleGenerate}
+      onCancel={() => setFormulaireOuvert(false)}
+    />
+  );
+
+  return (
+    <>
+      <PageHeader
+        title="Documents"
+        subtitle={total > 0 ? `${total} document${total > 1 ? 's' : ''}` : undefined}
+        primaryAction={{
+          label: 'Générer un document',
+          icon: <PlusOutlined />,
+          onClick: () => setFormulaireOuvert(true)
+        }}
+      />
+
+      <FilterSheet
+        activeCount={Object.keys(list.filters).length}
+        onClear={list.clearFilters}
+        title="Filtrer les documents"
+      >
+        <div style={{ minWidth: 200 }}>
+          <label htmlFor="filtre-type-document">Type</label>
+          <Select
+            id="filtre-type-document"
+            style={{ width: '100%' }}
+            placeholder="Tous les types"
+            allowClear
+            value={list.filters.type || undefined}
+            onChange={valeur => list.setFilters({ type: valeur })}
+            options={Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label }))}
+          />
+        </div>
+        <div style={{ minWidth: 200 }}>
+          <label htmlFor="filtre-statut-document">Statut</label>
+          <Select
+            id="filtre-statut-document"
+            style={{ width: '100%' }}
+            placeholder="Tous les statuts"
+            allowClear
+            value={list.filters.status || undefined}
+            onChange={valeur => list.setFilters({ status: valeur })}
+            options={STATUS_OPTIONS}
+          />
+        </div>
+      </FilterSheet>
+
+      <DataView<RentalDocument>
+        items={documents}
+        total={total}
+        page={list.page}
+        pageSize={list.pageSize}
+        onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
+        loading={isPending}
+        isReloading={isFetching && !isPending}
+        error={erreurRequete ? 'Impossible de charger les documents.' : null}
+        onRetry={() => refetch()}
+        isFiltered={list.isFiltered}
+        onClearFilters={list.clearFilters}
+        emptyDescription={
+          leaseId
+            ? 'Aucun document pour ce bail. Générez-en un depuis l’action ci-dessus.'
+            : 'Aucun document enregistré.'
+        }
+        emptyAction={{ label: 'Générer un document', onClick: () => setFormulaireOuvert(true) }}
+        columns={colonnes}
+        rowKey={doc => doc.id}
+        aria-label="Documents de location"
+        renderCard={doc => (
+          <DataCard
+            title={doc.document_number}
+            aria-label={`Document ${doc.document_number}`}
+            subtitle={doc.title || TYPE_LABELS[doc.type] || doc.type}
+            status={<StatusTag status={doc.status} />}
+            fields={[
+              { label: 'Type', value: TYPE_LABELS[doc.type] || doc.type },
+              { label: 'Émis le', value: dateCourte(doc.issued_at) }
+            ]}
+            primaryAction={{
+              label: 'Télécharger',
+              icon: <DownloadOutlined />,
+              loading: telechargementEnCours === doc.id,
+              onClick: () => handleDownload(doc)
+            }}
+            secondaryActions={actionsSecondaires(doc)}
+          />
+        )}
+      />
+
+      {/* Modale au-dessus de 992 px, feuille pleine hauteur en dessous (§10.1) :
+          le formulaire de génération dépasse trois champs. */}
+      {isDesktop ? (
+        <Modal
+          open={formulaireOuvert}
+          title="Générer un document"
+          onCancel={() => setFormulaireOuvert(false)}
+          footer={null}
+          width={720}
+          destroyOnHidden
+        >
+          {formulaire}
+        </Modal>
+      ) : (
+        <Drawer
+          open={formulaireOuvert}
+          title="Générer un document"
+          onClose={() => setFormulaireOuvert(false)}
+          placement="bottom"
+          height="92%"
+          destroyOnHidden
+        >
+          {formulaire}
+        </Drawer>
+      )}
+    </>
+  );
 };
