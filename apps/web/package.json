@@ -17,7 +17,8 @@
     "lint": "eslint src --ext .ts,.tsx",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
-    "a11y:contrast": "node scripts/a11y-contrast.mjs"
+    "a11y:contrast": "node scripts/a11y-contrast.mjs",
+    "measure:entry": "node scripts/measure-entry.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
@@ -29,6 +30,7 @@
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.13",
+    "@tanstack/react-query": "5.102.8",
     "ajv": "^8.17.1",
     "antd": "^6.2.0",
     "axios": "^1.6.2",

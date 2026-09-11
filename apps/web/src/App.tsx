@@ -4,6 +4,8 @@ import { App as AntApp, ConfigProvider, Spin } from 'antd';
 import frFR from 'antd/locale/fr_FR';
 import { buildAntdTheme } from './theme/antd-theme';
 import { FeedbackBridge } from './lib/feedback';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { createQueryClient } from './lib/query-client';
 // `NotFound` est `lazy` pour la meme raison qu'`AccessDenied` : il tire
 // `Result` d'Ant Design pour un ecran que l'on n'atteint qu'en se trompant
 // d'adresse.
@@ -410,44 +412,57 @@ function ThemedApp({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Créé une seule fois, au chargement du module.
+ *
+ * Le construire dans le rendu en ferait une instance neuve à chaque rendu de
+ * `<App>` : le cache serait vidé à chaque fois, et React Query ne servirait
+ * plus à rien tout en pesant son poids.
+ */
+const queryClient = createQueryClient();
+
 function App() {
   return (
     <ErrorBoundary>
-      {/* `locale` francise DatePicker, Pagination, Table, Upload et Empty (§3.5). */}
-      <ThemedApp>
-        {/* <App> fournit message/notification/modal contextualises : les
+      {/* Cache, déduplication et revalidation (§8.4). Au-dessus du routeur :
+          le cache doit survivre aux changements d'écran, c'est tout son
+          intérêt. */}
+      <QueryClientProvider client={queryClient}>
+        {/* `locale` francise DatePicker, Pagination, Table, Upload et Empty (§3.5). */}
+        <ThemedApp>
+          {/* <App> fournit message/notification/modal contextualises : les
             fonctions statiques d'AntD ignorent le ConfigProvider depuis la v5
             et s'afficheraient au theme par defaut (§5.7). */}
-        <AntApp>
-          <FeedbackBridge />
-          <AuthProvider>
-            <Router>
-              {/* Every page below is code-split; this boundary covers chunk loading. */}
-              <Suspense fallback={<RouteFallback />}>
-                <Routes>
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/register" element={<Register />} />
-                  <Route path="/verify-email" element={<VerifyEmail />} />
-                  <Route path="/forgot-password" element={<ForgotPassword />} />
-                  <Route path="/reset-password" element={<ResetPassword />} />
-                  <Route path="/auth/callback" element={<AuthCallback />} />
-                  <Route path="/auth/accept-invite" element={<AcceptInvitePage />} />
-                  <Route path="/newsletter/unsubscribe" element={<UnsubscribePage />} />
-                  <Route path="/newsletter/confirm" element={<ConfirmPage />} />
-                  <Route path="/newsletter/subscribe" element={<SubscribePage />} />
-                  {/* Coquille — routes authentifiees. <AppShell> est monte UNE fois et persiste
+          <AntApp>
+            <FeedbackBridge />
+            <AuthProvider>
+              <Router>
+                {/* Every page below is code-split; this boundary covers chunk loading. */}
+                <Suspense fallback={<RouteFallback />}>
+                  <Routes>
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/register" element={<Register />} />
+                    <Route path="/verify-email" element={<VerifyEmail />} />
+                    <Route path="/forgot-password" element={<ForgotPassword />} />
+                    <Route path="/reset-password" element={<ResetPassword />} />
+                    <Route path="/auth/callback" element={<AuthCallback />} />
+                    <Route path="/auth/accept-invite" element={<AcceptInvitePage />} />
+                    <Route path="/newsletter/unsubscribe" element={<UnsubscribePage />} />
+                    <Route path="/newsletter/confirm" element={<ConfirmPage />} />
+                    <Route path="/newsletter/subscribe" element={<SubscribePage />} />
+                    {/* Coquille — routes authentifiees. <AppShell> est monte UNE fois et persiste
                       d un ecran a l autre : c est ce que <Outlet/> apporte, la ou les 81 pages
                       remontaient DashboardLayout a chaque navigation (§4.1). */}
-                  <Route
-                    element={
-                      <ProtectedRoute>
-                        <AppShell />
-                      </ProtectedRoute>
-                    }
-                  >
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/properties" element={<Properties />} />
-                    {/* Fusions du §4.3. Les ecrans disparaissent, les URL en
+                    <Route
+                      element={
+                        <ProtectedRoute>
+                          <AppShell />
+                        </ProtectedRoute>
+                      }
+                    >
+                      <Route path="/dashboard" element={<Dashboard />} />
+                      <Route path="/properties" element={<Properties />} />
+                      {/* Fusions du §4.3. Les ecrans disparaissent, les URL en
                         circulation sont redirigees et non cassees.
                         Clients -> CRM Contacts : meme entite, deux listes,
                         deux interfaces. /clients/new etait deja une
@@ -456,218 +471,225 @@ function App() {
                         Releves : deux pages-passerelles qui n'affichaient
                         qu'un Empty ou des cartes de redirection, au prix de
                         trois clics. */}
-                    <Route path="/clients" element={<TenantRedirect to="crm/contacts" />} />
-                    <Route path="/clients/new" element={<TenantRedirect to="crm/contacts/new" />} />
-                    <Route
-                      path="/clients/groups"
-                      element={<TenantRedirect to="crm/contacts" keepParams={['group']} />}
-                    />
-                    <Route path="/transactions" element={<TenantRedirect to="crm/deals" />} />
-                    <Route
-                      path="/transactions/sales"
-                      element={<TenantRedirect to="crm/deals" query={{ type: 'SALE' }} />}
-                    />
-                    <Route
-                      path="/transactions/rentals"
-                      element={<TenantRedirect to="crm/deals" query={{ type: 'RENT' }} />}
-                    />
-                    <Route path="/reports" element={<TenantRedirect to="patrimoine/statements" />} />
-                    {/* SettingsLayout n'est plus qu'un <Outlet/> : la coquille
+                      <Route path="/clients" element={<TenantRedirect to="crm/contacts" />} />
+                      <Route path="/clients/new" element={<TenantRedirect to="crm/contacts/new" />} />
+                      <Route
+                        path="/clients/groups"
+                        element={<TenantRedirect to="crm/contacts" keepParams={['group']} />}
+                      />
+                      <Route path="/transactions" element={<TenantRedirect to="crm/deals" />} />
+                      <Route
+                        path="/transactions/sales"
+                        element={<TenantRedirect to="crm/deals" query={{ type: 'SALE' }} />}
+                      />
+                      <Route
+                        path="/transactions/rentals"
+                        element={<TenantRedirect to="crm/deals" query={{ type: 'RENT' }} />}
+                      />
+                      <Route path="/reports" element={<TenantRedirect to="patrimoine/statements" />} />
+                      {/* SettingsLayout n'est plus qu'un <Outlet/> : la coquille
                         lui vient desormais du parent, comme aux autres ecrans. */}
-                    <Route path="/settings" element={<SettingsLayout />}>
-                      <Route index element={<Navigate to="/settings/profile" replace />} />
-                      <Route path="profile" element={<ProfilePage />} />
+                      <Route path="/settings" element={<SettingsLayout />}>
+                        <Route index element={<Navigate to="/settings/profile" replace />} />
+                        <Route path="profile" element={<ProfilePage />} />
+                      </Route>
                     </Route>
-                  </Route>
-                  {/* Coquille — routes d'agence. requireTenant est active ICI, en un seul point,
+                    {/* Coquille — routes d'agence. requireTenant est active ICI, en un seul point,
                       au lieu de 63 routes a annoter une par une. La prop existait mais
                       n etait passee nulle part : les routes /tenant/:tenantId/* ne verifiaient
                       pas que l agence de l URL etait celle de l utilisateur (§4.1). */}
-                  <Route
-                    element={
-                      <ProtectedRoute requireTenant>
-                        <AppShell />
-                      </ProtectedRoute>
-                    }
-                  >
-                    <Route path="/tenant/:tenantId/properties" element={<Properties />} />
-                    <Route path="/tenant/:tenantId/properties/new" element={<PropertyCreate />} />
-                    <Route path="/tenant/:tenantId/properties/visits/calendar" element={<PropertyVisitsCalendar />} />
-                    <Route path="/tenant/:tenantId/properties/:id/edit" element={<PropertyEdit />} />
-                    <Route path="/tenant/:tenantId/properties/:id" element={<PropertyDetail />} />
-                    <Route path="/tenant/:tenantId/patrimoine" element={<PatrimoineOverviewPage />} />
-                    <Route path="/tenant/:tenantId/patrimoine/performance" element={<PatrimoinePerformancePage />} />
-                    <Route path="/tenant/:tenantId/patrimoine/work-programs" element={<WorkProgramsPage />} />
-                    <Route path="/tenant/:tenantId/patrimoine/statements" element={<OwnerStatementsPage />} />
-                    <Route path="/tenant/:tenantId/patrimoine/statements/:id" element={<OwnerStatementDetailPage />} />
-                    <Route path="/tenant/:tenantId/syndics" element={<SyndicsList />} />
-                    <Route path="/tenant/:tenantId/syndics/:syndicId" element={<SyndicDetail />} />
-                    <Route path="/tenant/:tenantId/syndics/:syndicId/lots" element={<SyndicLots />} />
                     <Route
-                      path="/tenant/:tenantId/syndics/:syndicId/lots/:lotId/compte"
-                      element={<SyndicOwnerAccount />}
-                    />
-                    <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
-                    <Route path="/tenant/:tenantId/syndics/:syndicId/assemblees" element={<SyndicMeetings />} />
+                      element={
+                        <ProtectedRoute requireTenant>
+                          <AppShell />
+                        </ProtectedRoute>
+                      }
+                    >
+                      <Route path="/tenant/:tenantId/properties" element={<Properties />} />
+                      <Route path="/tenant/:tenantId/properties/new" element={<PropertyCreate />} />
+                      <Route path="/tenant/:tenantId/properties/visits/calendar" element={<PropertyVisitsCalendar />} />
+                      <Route path="/tenant/:tenantId/properties/:id/edit" element={<PropertyEdit />} />
+                      <Route path="/tenant/:tenantId/properties/:id" element={<PropertyDetail />} />
+                      <Route path="/tenant/:tenantId/patrimoine" element={<PatrimoineOverviewPage />} />
+                      <Route path="/tenant/:tenantId/patrimoine/performance" element={<PatrimoinePerformancePage />} />
+                      <Route path="/tenant/:tenantId/patrimoine/work-programs" element={<WorkProgramsPage />} />
+                      <Route path="/tenant/:tenantId/patrimoine/statements" element={<OwnerStatementsPage />} />
+                      <Route
+                        path="/tenant/:tenantId/patrimoine/statements/:id"
+                        element={<OwnerStatementDetailPage />}
+                      />
+                      <Route path="/tenant/:tenantId/syndics" element={<SyndicsList />} />
+                      <Route path="/tenant/:tenantId/syndics/:syndicId" element={<SyndicDetail />} />
+                      <Route path="/tenant/:tenantId/syndics/:syndicId/lots" element={<SyndicLots />} />
+                      <Route
+                        path="/tenant/:tenantId/syndics/:syndicId/lots/:lotId/compte"
+                        element={<SyndicOwnerAccount />}
+                      />
+                      <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
+                      <Route path="/tenant/:tenantId/syndics/:syndicId/assemblees" element={<SyndicMeetings />} />
+                      <Route
+                        path="/tenant/:tenantId/syndics/:syndicId/assemblees/:meetingId"
+                        element={<SyndicMeetingDetail />}
+                      />
+                      <Route path="/tenant/:tenantId/syndics/:syndicId/prestataires" element={<SyndicProviders />} />
+                      <Route path="/tenant/:tenantId/syndics/:syndicId/documents" element={<SyndicDocuments />} />
+                      <Route path="/tenant/:tenantId/syndics/:syndicId/finances" element={<SyndicFinances />} />
+                      <Route path="/tenant/:tenantId/syndics/:syndicId/recouvrement" element={<SyndicRecovery />} />
+                      <Route path="/tenant/:tenantId/syndics/:syndicId/comptabilite" element={<SyndicAccounting />} />
+                      <Route path="/tenant/:tenantId/syndics/:syndicId/budgets" element={<SyndicBudgets />} />
+                      <Route
+                        path="/tenant/:tenantId/syndics/:syndicId/profils-incidents"
+                        element={<SyndicProfilesIncidents />}
+                      />
+                      <Route path="/tenant/:tenantId/collaborators" element={<CollaboratorsList />} />
+                      <Route path="/tenant/:tenantId/collaborators/:userId" element={<CollaboratorDetail />} />
+                      <Route path="/tenant/:tenantId/invite" element={<InviteCollaborator />} />
+                      <Route path="/tenant/:tenantId/invitations" element={<InvitationsList />} />
+                      <Route path="/tenant/:tenantId/settings" element={<TenantSettings />} />
+                      <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
+                      <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
+                      <Route path="/tenant/:tenantId/crm/contacts/new" element={<ContactFormPage />} />
+                      <Route path="/tenant/:tenantId/crm/contacts/:contactId" element={<ContactDetailPage />} />
+                      <Route path="/tenant/:tenantId/crm/contacts/:contactId/edit" element={<ContactFormPage />} />
+                      <Route path="/tenant/:tenantId/crm/deals" element={<Deals />} />
+                      <Route path="/tenant/:tenantId/crm/deals/new" element={<DealFormPage />} />
+                      <Route path="/tenant/:tenantId/crm/deals/:dealId" element={<DealDetailPage />} />
+                      <Route path="/tenant/:tenantId/crm/deals/:dealId/edit" element={<DealFormPage />} />
+                      <Route path="/tenant/:tenantId/crm/activities" element={<Activities />} />
+                      <Route path="/tenant/:tenantId/crm/dashboard" element={<CrmDashboard />} />
+                      <Route path="/tenant/:tenantId/crm/calendar" element={<CalendarPage />} />
+                      <Route path="/tenant/:tenantId/rental/leases" element={<Leases />} />
+                      <Route path="/tenant/:tenantId/rental/leases/new" element={<LeaseFormPage />} />
+                      <Route path="/tenant/:tenantId/rental/leases/:leaseId" element={<LeaseDetailPage />} />
+                      <Route path="/tenant/:tenantId/rental/leases/:leaseId/edit" element={<LeaseFormPage />} />
+                      <Route path="/tenant/:tenantId/rental/installments" element={<Installments />} />
+                      <Route
+                        path="/tenant/:tenantId/rental/installments/:installmentId"
+                        element={<InstallmentDetailPage />}
+                      />
+                      <Route path="/tenant/:tenantId/rental/payments" element={<Payments />} />
+                      <Route path="/tenant/:tenantId/rental/payments/:paymentId" element={<PaymentDetailPage />} />
+                      <Route path="/tenant/:tenantId/maintenance" element={<TicketList />} />
+                      <Route path="/tenant/:tenantId/maintenance/new" element={<CreateTicket />} />
+                      <Route path="/tenant/:tenantId/maintenance/:ticketId/edit" element={<EditTicket />} />
+                      <Route path="/tenant/:tenantId/maintenance/:ticketId" element={<TicketDetail />} />
+                      <Route path="/tenant/:tenantId/admin/maintenance/tickets" element={<ManagerTickets />} />
+                      <Route
+                        path="/tenant/:tenantId/admin/maintenance/tickets/:ticketId"
+                        element={<ManagerTicketDetail />}
+                      />
+                      <Route path="/tenant/:tenantId/admin/maintenance/vendors" element={<Vendors />} />
+                      <Route
+                        path="/tenant/:tenantId/communication/email-notifications"
+                        element={<EmailNotificationsUnifiedPage />}
+                      />
+                      <Route
+                        path="/tenant/:tenantId/communication/whatsapp-notifications"
+                        element={<WhatsAppNotificationsPage />}
+                      />
+                      <Route
+                        path="/tenant/:tenantId/communication/whatsapp-group-message"
+                        element={<WhatsAppGroupMessagePage />}
+                      />
+                      <Route path="/tenant/:tenantId/email-notifications" element={<EmailNotificationsUnifiedPage />} />
+                      <Route path="/tenant/:tenantId/newsletter/lists" element={<NewsletterListsPage />} />
+                      <Route path="/tenant/:tenantId/newsletter/campaigns" element={<NewsletterCampaignsPage />} />
+                      <Route path="/tenant/:tenantId/newsletter/templates" element={<NewsletterTemplatesPage />} />
+                    </Route>
+                    {/* Coquille — administration de la plateforme. */}
                     <Route
-                      path="/tenant/:tenantId/syndics/:syndicId/assemblees/:meetingId"
-                      element={<SyndicMeetingDetail />}
-                    />
-                    <Route path="/tenant/:tenantId/syndics/:syndicId/prestataires" element={<SyndicProviders />} />
-                    <Route path="/tenant/:tenantId/syndics/:syndicId/documents" element={<SyndicDocuments />} />
-                    <Route path="/tenant/:tenantId/syndics/:syndicId/finances" element={<SyndicFinances />} />
-                    <Route path="/tenant/:tenantId/syndics/:syndicId/recouvrement" element={<SyndicRecovery />} />
-                    <Route path="/tenant/:tenantId/syndics/:syndicId/comptabilite" element={<SyndicAccounting />} />
-                    <Route path="/tenant/:tenantId/syndics/:syndicId/budgets" element={<SyndicBudgets />} />
-                    <Route
-                      path="/tenant/:tenantId/syndics/:syndicId/profils-incidents"
-                      element={<SyndicProfilesIncidents />}
-                    />
-                    <Route path="/tenant/:tenantId/collaborators" element={<CollaboratorsList />} />
-                    <Route path="/tenant/:tenantId/collaborators/:userId" element={<CollaboratorDetail />} />
-                    <Route path="/tenant/:tenantId/invite" element={<InviteCollaborator />} />
-                    <Route path="/tenant/:tenantId/invitations" element={<InvitationsList />} />
-                    <Route path="/tenant/:tenantId/settings" element={<TenantSettings />} />
-                    <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
-                    <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
-                    <Route path="/tenant/:tenantId/crm/contacts/new" element={<ContactFormPage />} />
-                    <Route path="/tenant/:tenantId/crm/contacts/:contactId" element={<ContactDetailPage />} />
-                    <Route path="/tenant/:tenantId/crm/contacts/:contactId/edit" element={<ContactFormPage />} />
-                    <Route path="/tenant/:tenantId/crm/deals" element={<Deals />} />
-                    <Route path="/tenant/:tenantId/crm/deals/new" element={<DealFormPage />} />
-                    <Route path="/tenant/:tenantId/crm/deals/:dealId" element={<DealDetailPage />} />
-                    <Route path="/tenant/:tenantId/crm/deals/:dealId/edit" element={<DealFormPage />} />
-                    <Route path="/tenant/:tenantId/crm/activities" element={<Activities />} />
-                    <Route path="/tenant/:tenantId/crm/dashboard" element={<CrmDashboard />} />
-                    <Route path="/tenant/:tenantId/crm/calendar" element={<CalendarPage />} />
-                    <Route path="/tenant/:tenantId/rental/leases" element={<Leases />} />
-                    <Route path="/tenant/:tenantId/rental/leases/new" element={<LeaseFormPage />} />
-                    <Route path="/tenant/:tenantId/rental/leases/:leaseId" element={<LeaseDetailPage />} />
-                    <Route path="/tenant/:tenantId/rental/leases/:leaseId/edit" element={<LeaseFormPage />} />
-                    <Route path="/tenant/:tenantId/rental/installments" element={<Installments />} />
-                    <Route
-                      path="/tenant/:tenantId/rental/installments/:installmentId"
-                      element={<InstallmentDetailPage />}
-                    />
-                    <Route path="/tenant/:tenantId/rental/payments" element={<Payments />} />
-                    <Route path="/tenant/:tenantId/rental/payments/:paymentId" element={<PaymentDetailPage />} />
-                    <Route path="/tenant/:tenantId/maintenance" element={<TicketList />} />
-                    <Route path="/tenant/:tenantId/maintenance/new" element={<CreateTicket />} />
-                    <Route path="/tenant/:tenantId/maintenance/:ticketId/edit" element={<EditTicket />} />
-                    <Route path="/tenant/:tenantId/maintenance/:ticketId" element={<TicketDetail />} />
-                    <Route path="/tenant/:tenantId/admin/maintenance/tickets" element={<ManagerTickets />} />
-                    <Route
-                      path="/tenant/:tenantId/admin/maintenance/tickets/:ticketId"
-                      element={<ManagerTicketDetail />}
-                    />
-                    <Route path="/tenant/:tenantId/admin/maintenance/vendors" element={<Vendors />} />
-                    <Route
-                      path="/tenant/:tenantId/communication/email-notifications"
-                      element={<EmailNotificationsUnifiedPage />}
-                    />
-                    <Route
-                      path="/tenant/:tenantId/communication/whatsapp-notifications"
-                      element={<WhatsAppNotificationsPage />}
-                    />
-                    <Route
-                      path="/tenant/:tenantId/communication/whatsapp-group-message"
-                      element={<WhatsAppGroupMessagePage />}
-                    />
-                    <Route path="/tenant/:tenantId/email-notifications" element={<EmailNotificationsUnifiedPage />} />
-                    <Route path="/tenant/:tenantId/newsletter/lists" element={<NewsletterListsPage />} />
-                    <Route path="/tenant/:tenantId/newsletter/campaigns" element={<NewsletterCampaignsPage />} />
-                    <Route path="/tenant/:tenantId/newsletter/templates" element={<NewsletterTemplatesPage />} />
-                  </Route>
-                  {/* Coquille — administration de la plateforme. */}
-                  <Route
-                    element={
-                      <ProtectedRoute requiredRole="SUPER_ADMIN">
-                        <AppShell />
-                      </ProtectedRoute>
-                    }
-                  >
-                    <Route path="/admin/tenants" element={<TenantsList />} />
-                    <Route path="/admin/tenants/new" element={<TenantCreate />} />
-                    <Route path="/admin/tenants/:tenantId" element={<TenantDetail />} />
-                    <Route path="/admin/tenants/:tenantId/edit" element={<TenantDetail />} />
-                    <Route
-                      path="/admin/tenants/:tenantId/collaborators/:userId"
-                      element={<AdminCollaboratorDetail />}
-                    />
-                    <Route path="/admin/tenants/:tenantId/collaborators/invite" element={<AdminInviteCollaborator />} />
-                    <Route path="/admin/statistics" element={<Statistics />} />
-                    <Route path="/admin/audit" element={<AuditLogs />} />
-                    <Route path="/admin/roles-permissions" element={<RolesPermissions />} />
-                  </Route>
-                  {/* Property Routes */}
-                  {/* Legacy route for backward compatibility */}
-                  {/* Admin Routes */}
-                  {/* Tenant Routes */}
-                  {/* Client Routes */}
-                  {/* CRM Routes */}
-                  {/* Rental Management Routes */}
-                  {/* Maintenance Routes */}
-                  {/* Manager Maintenance Routes */}
-                  {/* Communication: email + WhatsApp notifications */}
-                  {/* Transactions Routes */}
-                  {/* Reports Route */}
-                  {/* Portail locataire — meme coquille que le reste (§4.1).
+                      element={
+                        <ProtectedRoute requiredRole="SUPER_ADMIN">
+                          <AppShell />
+                        </ProtectedRoute>
+                      }
+                    >
+                      <Route path="/admin/tenants" element={<TenantsList />} />
+                      <Route path="/admin/tenants/new" element={<TenantCreate />} />
+                      <Route path="/admin/tenants/:tenantId" element={<TenantDetail />} />
+                      <Route path="/admin/tenants/:tenantId/edit" element={<TenantDetail />} />
+                      <Route
+                        path="/admin/tenants/:tenantId/collaborators/:userId"
+                        element={<AdminCollaboratorDetail />}
+                      />
+                      <Route
+                        path="/admin/tenants/:tenantId/collaborators/invite"
+                        element={<AdminInviteCollaborator />}
+                      />
+                      <Route path="/admin/statistics" element={<Statistics />} />
+                      <Route path="/admin/audit" element={<AuditLogs />} />
+                      <Route path="/admin/roles-permissions" element={<RolesPermissions />} />
+                    </Route>
+                    {/* Property Routes */}
+                    {/* Legacy route for backward compatibility */}
+                    {/* Admin Routes */}
+                    {/* Tenant Routes */}
+                    {/* Client Routes */}
+                    {/* CRM Routes */}
+                    {/* Rental Management Routes */}
+                    {/* Maintenance Routes */}
+                    {/* Manager Maintenance Routes */}
+                    {/* Communication: email + WhatsApp notifications */}
+                    {/* Transactions Routes */}
+                    {/* Reports Route */}
+                    {/* Portail locataire — meme coquille que le reste (§4.1).
                       La sidebar de 256 px et le drawer de ce portail sont
                       supprimes : quatre onglets couvrent ses six destinations,
                       et son usage est 100 % mobile (§4.2). */}
-                  <Route
-                    path="/tenant"
-                    element={
-                      <ProtectedRoute>
-                        <AppShell />
-                      </ProtectedRoute>
-                    }
-                  >
-                    <Route index element={<TenantDashboard />} />
-                    <Route path="lease" element={<TenantLease />} />
-                    <Route path="payments" element={<TenantPayments />} />
-                    <Route path="deposit" element={<TenantDeposit />} />
-                    <Route path="maintenance" element={<TenantMaintenance />} />
-                    <Route path="documents" element={<TenantDocuments />} />
-                  </Route>
-                  {/* Portail proprietaire — meme coquille. La garde defensive
+                    <Route
+                      path="/tenant"
+                      element={
+                        <ProtectedRoute>
+                          <AppShell />
+                        </ProtectedRoute>
+                      }
+                    >
+                      <Route index element={<TenantDashboard />} />
+                      <Route path="lease" element={<TenantLease />} />
+                      <Route path="payments" element={<TenantPayments />} />
+                      <Route path="deposit" element={<TenantDeposit />} />
+                      <Route path="maintenance" element={<TenantMaintenance />} />
+                      <Route path="documents" element={<TenantDocuments />} />
+                    </Route>
+                    {/* Portail proprietaire — meme coquille. La garde defensive
                       qui manquait a OwnerPortal/Layout est desormais posee par
                       <AppShell> pour les deux portails a la fois (§4.3). */}
-                  <Route
-                    path="/owner"
-                    element={
-                      <ProtectedRoute>
-                        <AppShell />
-                      </ProtectedRoute>
-                    }
-                  >
-                    <Route index element={<OwnerDashboard />} />
-                    <Route path="properties" element={<OwnerProperties />} />
-                    <Route path="properties/:id" element={<OwnerPropertyDetails />} />
-                    <Route path="leases" element={<OwnerLeases />} />
-                    <Route path="leases/:id" element={<OwnerLeaseDetails />} />
-                    <Route path="revenues" element={<OwnerRevenues />} />
-                    <Route path="installments" element={<OwnerInstallments />} />
-                    <Route path="payments" element={<OwnerPayments />} />
-                    <Route path="deposits" element={<OwnerDeposits />} />
-                    <Route path="maintenance" element={<OwnerMaintenance />} />
-                    <Route path="documents" element={<OwnerDocuments />} />
-                    <Route path="reports" element={<OwnerReports />} />
-                    <Route path="preferences" element={<OwnerPreferences />} />
-                  </Route>
-                  {/* User Settings & Profile Routes */}
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                  {/* Route attrape-tout. Sans elle, toute URL non reconnue
+                    <Route
+                      path="/owner"
+                      element={
+                        <ProtectedRoute>
+                          <AppShell />
+                        </ProtectedRoute>
+                      }
+                    >
+                      <Route index element={<OwnerDashboard />} />
+                      <Route path="properties" element={<OwnerProperties />} />
+                      <Route path="properties/:id" element={<OwnerPropertyDetails />} />
+                      <Route path="leases" element={<OwnerLeases />} />
+                      <Route path="leases/:id" element={<OwnerLeaseDetails />} />
+                      <Route path="revenues" element={<OwnerRevenues />} />
+                      <Route path="installments" element={<OwnerInstallments />} />
+                      <Route path="payments" element={<OwnerPayments />} />
+                      <Route path="deposits" element={<OwnerDeposits />} />
+                      <Route path="maintenance" element={<OwnerMaintenance />} />
+                      <Route path="documents" element={<OwnerDocuments />} />
+                      <Route path="reports" element={<OwnerReports />} />
+                      <Route path="preferences" element={<OwnerPreferences />} />
+                    </Route>
+                    {/* User Settings & Profile Routes */}
+                    <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                    {/* Route attrape-tout. Sans elle, toute URL non reconnue
                       affichait une page blanche, sans erreur ni redirection
                       (§4.3) — c'etait le cas de /properties/categories, promise
                       par le menu public et jamais implementee. */}
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </Suspense>
-            </Router>
-          </AuthProvider>
-        </AntApp>
-      </ThemedApp>
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </Suspense>
+              </Router>
+            </AuthProvider>
+          </AntApp>
+        </ThemedApp>
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 }

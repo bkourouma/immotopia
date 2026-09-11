@@ -1,9 +1,29 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { API_URL } from '../config/api';
 
+/**
+ * Délai maximal d'une requête (REFONTE_UI_UX.md §8.4).
+ *
+ * Sans `timeout`, axios attend indéfiniment. Sur un réseau mobile dégradé — le
+ * cas normal pour un collaborateur en tournée — une requête perdue laissait
+ * l'écran sur son squelette, sans erreur ni sortie possible. 20 s est large
+ * pour une réponse lente et assez court pour qu'un échec soit dit.
+ */
+const REQUEST_TIMEOUT_MS = 20_000;
+
+/**
+ * Nouvelles tentatives : 2, avec attente croissante.
+ *
+ * Une coupure réseau de quelques secondes ne doit pas devenir une erreur
+ * affichée. 1 s puis 3 s couvre un changement de cellule ou une reprise de
+ * connexion, sans marteler une API déjà en difficulté.
+ */
+const RETRY_DELAYS_MS = [1_000, 3_000];
+
 // Create Axios instance
 const apiClient: AxiosInstance = axios.create({
   baseURL: API_URL,
+  timeout: REQUEST_TIMEOUT_MS,
   withCredentials: true, // Important: Send cookies with requests
   headers: {
     'Content-Type': 'application/json'
@@ -55,7 +75,7 @@ function redirectToLogin(): void {
 
 // Response interceptor: Handle token refresh on 401
 apiClient.interceptors.response.use(
-  (response) => {
+  response => {
     return response;
   },
   async (error: AxiosError) => {
@@ -67,9 +87,7 @@ apiClient.interceptors.response.use(
 
       // Don't retry these endpoints - they should fail gracefully
       const skipRefreshEndpoints = ['/auth/refresh', '/auth/me', '/auth/login', '/auth/register'];
-      const shouldSkipRefresh = skipRefreshEndpoints.some(endpoint =>
-        originalRequest.url?.includes(endpoint)
-      );
+      const shouldSkipRefresh = skipRefreshEndpoints.some(endpoint => originalRequest.url?.includes(endpoint));
 
       if (shouldSkipRefresh) {
         // Just reject the error without redirecting
@@ -86,6 +104,62 @@ apiClient.interceptors.response.use(
     }
 
     return Promise.reject(error);
+  }
+);
+
+/**
+ * Nouvelle tentative sur les seules lectures (REFONTE_UI_UX.md §8.4).
+ *
+ * La règle tient en une phrase : **on rejoue ce qui ne change rien**. Un `GET`
+ * peut être répété sans conséquence ; un `POST` d'encaissement, non. Rejouer
+ * une mutation dont la réponse s'est perdue crée un doublon de paiement — le
+ * risque R6 du §11.1, classé critique. Le rejeu sûr des mutations viendra du
+ * Lot 5, avec la file hors-ligne et sa clé d'idempotence.
+ *
+ * Ne sont rejouées que les pannes qui peuvent disparaître d'elles-mêmes :
+ * absence de réponse (réseau coupé, délai dépassé) et erreurs serveur 5xx. Un
+ * 4xx est une réponse, pas une panne : la rejouer à l'identique donnerait le
+ * même résultat en trois fois plus de temps.
+ *
+ * Cet intercepteur est enregistré APRÈS celui du 401 : le rafraîchissement de
+ * session garde la main sur les requêtes authentifiées, et un 401 n'arrive
+ * jamais ici sous forme de panne réseau.
+ */
+interface RetriableConfig extends InternalAxiosRequestConfig {
+  _retryCount?: number;
+}
+
+function isRetriable(error: AxiosError): boolean {
+  const method = error.config?.method?.toLowerCase();
+  if (method !== 'get') return false;
+
+  // Requête annulée par l'appelant (AbortController) : ce n'est pas une panne,
+  // c'est une décision. La rejouer irait contre l'intention.
+  if (axios.isCancel(error) || error.code === 'ERR_CANCELED') return false;
+
+  // Pas de réponse : réseau coupé ou délai dépassé.
+  if (!error.response) return true;
+
+  return error.response.status >= 500;
+}
+
+apiClient.interceptors.response.use(
+  response => response,
+  async (error: AxiosError) => {
+    const config = error.config as RetriableConfig | undefined;
+
+    if (!config || !isRetriable(error)) {
+      return Promise.reject(error);
+    }
+
+    const attempt = config._retryCount ?? 0;
+    if (attempt >= RETRY_DELAYS_MS.length) {
+      return Promise.reject(error);
+    }
+
+    config._retryCount = attempt + 1;
+    await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+    return apiClient(config);
   }
 );
 
