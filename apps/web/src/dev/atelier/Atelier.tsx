@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, Route, Routes, useSearchParams } from 'react-router-dom';
 import { Properties } from '../../pages/properties/Properties';
+import { Installments } from '../../pages/rental/Installments';
 import { installerFausseApi, retirerFausseApi, type Scenario } from './mock-api';
 import {
   DataCard,
@@ -55,6 +56,8 @@ type Scene = {
 
 const AGENCE = 'agence-demo';
 const BIENS = 'tenant/' + AGENCE + '/properties';
+const ECHEANCES = 'tenant/' + AGENCE + '/rental/leases/bail-demo/installments';
+const ECHEANCES_GLOBAL = 'tenant/' + AGENCE + '/rental/installments';
 
 const SCENES: Scene[] = [
   {
@@ -98,6 +101,34 @@ const SCENES: Scene[] = [
     description: 'L’API répond 500 : message lisible et moyen de réessayer.',
     scenario: 'erreur',
     chemin: BIENS
+  },
+  {
+    id: 'echeances',
+    titre: 'Échéances — bail',
+    description: 'Six mois, dont un partiel et un en retard avec pénalités. Actions de génération visibles.',
+    scenario: 'nominal',
+    chemin: ECHEANCES
+  },
+  {
+    id: 'echeances-global',
+    titre: 'Échéances — toutes agences confondues',
+    description: 'Hors contexte de bail : ni génération, ni recalcul, ni suppression.',
+    scenario: 'nominal',
+    chemin: ECHEANCES_GLOBAL
+  },
+  {
+    id: 'echeances-retard',
+    titre: 'Échéances — en retard seulement',
+    description: 'Filtre porté par l’URL, appliqué par le serveur.',
+    scenario: 'nominal',
+    chemin: ECHEANCES + '?overdue=true'
+  },
+  {
+    id: 'echeances-vide',
+    titre: 'Échéances — aucune',
+    description: 'Bail sans échéances : l’écran doit renvoyer vers la génération.',
+    scenario: 'vide',
+    chemin: ECHEANCES
   },
   {
     id: 'primitives',
@@ -271,6 +302,22 @@ export const Atelier: React.FC = () => (
       element={
         <Scene>
           <Properties />
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/rental/leases/:leaseId/installments"
+      element={
+        <Scene>
+          <Installments />
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/rental/installments"
+      element={
+        <Scene>
+          <Installments />
         </Scene>
       }
     />

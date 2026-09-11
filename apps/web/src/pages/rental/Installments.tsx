@@ -1,17 +1,9 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Table, Button, Tag, Space, Typography, Empty, Alert, Pagination, Select, Spin, Row, Col } from 'antd';
+import { App, Button, Select, Space, Modal, Drawer } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import {
-  EyeOutlined,
-  ThunderboltOutlined,
-  CreditCardOutlined,
-  ReloadOutlined,
-  CalendarOutlined,
-  PlusOutlined,
-  DeleteOutlined,
-  CloseOutlined
-} from '@ant-design/icons';
+import { ThunderboltOutlined, CreditCardOutlined, PlusOutlined } from '@ant-design/icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listInstallments,
   generateInstallments,
@@ -22,564 +14,490 @@ import {
   calculatePenalties,
   RentalInstallment,
   RentalInstallmentStatus,
-  InstallmentFilters,
   RentalPaymentMethod,
   CreatePaymentRequest
 } from '../../services/rental-service';
 import { PaymentForm } from '../../components/rental/PaymentForm';
-import { useConfirmAction } from '../../components/primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useListParams } from '../../hooks/useListParams';
+import { queryKey, STALE_TIME } from '../../lib/query-keys';
+import {
+  PageHeader,
+  StateBlock,
+  StatusTag,
+  MoneyValue,
+  DataView,
+  DataCard,
+  FilterSheet,
+  useConfirmAction
+} from '../../components/primitives';
 
-const { Text, Title } = Typography;
+/**
+ * Échéances — l'écran « Encaisser », deuxième des six écrans hybrides (§9.7).
+ *
+ * C'est l'écran le plus utilisé du parcours terrain : le §10.2 en fait le KPI
+ * n°3, « temps d'encaissement d'un loyer, cible < 60 s ». Il cumulait pourtant
+ * les défauts que le Lot 2 doit traiter.
+ *
+ * **Huit colonnes derrière un `scroll={{ x: 900 }}`.** Sous 900 px, la moitié
+ * du tableau — dont « Reste à payer » et les actions — n'était atteignable qu'en
+ * faisant glisser le tableau. Ce geste ne se découvre pas. `<DataView>` rend des
+ * cartes sous 992 px, et le reste à payer y figure en tête.
+ *
+ * **Quatre requêtes au montage**, là où le §10.1 en autorise trois : un
+ * chargement, puis un recalcul de statuts, un calcul de pénalités, et un second
+ * chargement. Les deux effets se déclenchaient indépendamment. Le flux est
+ * désormais unique.
+ *
+ * **Une modale faite à la main en Tailwind**, `fixed inset-0 bg-black`, sans
+ * piège de focus ni fermeture au clavier. Remplacée par un `<Drawer>` pleine
+ * hauteur sous 992 px et une `<Modal>` au-dessus.
+ *
+ * **Une clé d'idempotence qui n'en était pas une** : elle contenait
+ * `Date.now()`, donc chaque envoi en produisait une nouvelle. Deux envois du
+ * même encaissement créaient deux paiements — le risque R6 du §11.1, classé
+ * critique. La clé est maintenant fixée à l'intention, pas à l'envoi.
+ */
 
 interface InstallmentsProps {
+  /** Fourni quand l'écran est monté en onglet d'un bail. */
   leaseId?: string;
-  refreshTrigger?: number;
 }
 
-export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId, refreshTrigger }) => {
-  const confirmAction = useConfirmAction();
+type Filters = { status: string; overdue: string };
+const FILTER_KEYS = ['status', 'overdue'] as const;
+
+const STATUS_OPTIONS = [
+  { value: 'DUE', label: 'À échoir' },
+  { value: 'PARTIAL', label: 'Partiel' },
+  { value: 'PAID', label: 'Payé' },
+  { value: 'OVERDUE', label: 'En retard' }
+];
+
+/** Montant dû : loyer, charges, autres frais et pénalités. */
+function totalDu(echeance: RentalInstallment): number {
+  return (
+    Number(echeance.amount_rent || 0) +
+    Number(echeance.amount_service || 0) +
+    Number(echeance.amount_other_fees || 0) +
+    Number(echeance.penalty_amount || 0)
+  );
+}
+
+function resteAPayer(echeance: RentalInstallment): number {
+  return totalDu(echeance) - Number(echeance.amount_paid || 0);
+}
+
+function periode(echeance: RentalInstallment): string {
+  return `${String(echeance.period_month).padStart(2, '0')}/${echeance.period_year}`;
+}
+
+function dateCourte(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR');
+}
+
+export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId }) => {
+  const { message } = App.useApp();
   const { tenantId, leaseId: paramLeaseId } = useParams<{ tenantId: string; leaseId?: string }>();
   const leaseId = propLeaseId || paramLeaseId;
   const navigate = useNavigate();
-  const [installments, setInstallments] = useState<RentalInstallment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [generating, setGenerating] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [selectedInstallment, setSelectedInstallment] = useState<RentalInstallment | null>(null);
-  const [processingQuickPayment, setProcessingQuickPayment] = useState<string | null>(null);
-  const [filters, setFilters] = useState<InstallmentFilters>({
-    leaseId: leaseId,
-    page: 1,
-    limit: 50
-  });
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 50,
-    total: 0,
-    totalPages: 0
-  });
+  const queryClient = useQueryClient();
+  const confirmAction = useConfirmAction();
+  const { isDesktop } = useBreakpoint();
 
-  // Update filters when leaseId changes
-  useEffect(() => {
-    if (leaseId) {
-      setFilters(prev => ({
-        ...prev,
-        leaseId: leaseId,
-        page: 1 // Reset to first page when leaseId changes
-      }));
-    }
-  }, [leaseId]);
+  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS, defaultPageSize: 50 });
+  const [enCours, setEnCours] = useState<string | null>(null);
+  const [formulairePour, setFormulairePour] = useState<RentalInstallment | null>(null);
+  const [action, setAction] = useState<'generer' | 'recalculer' | 'supprimer' | null>(null);
 
-  useEffect(() => {
-    if (tenantId) {
-      loadInstallments();
-    }
-  }, [tenantId, filters]);
+  /**
+   * Clés d'idempotence, une par intention d'encaissement.
+   *
+   * Le §8.5 l'exige : « clé générée côté client **à la saisie**, pas à l'envoi ».
+   * L'ancienne version concaténait `Date.now()`, ce qui produisait une clé neuve
+   * à chaque tentative : un double appui, ou un renvoi après une réponse perdue,
+   * créait un second paiement. La clé est ici créée au premier appui et
+   * conservée jusqu'à ce que l'encaissement aboutisse.
+   */
+  const clesIdempotence = useRef(new Map<string, string>());
 
-  // Auto-recalculate installment statuses on mount
-  useEffect(() => {
-    if (tenantId && leaseId) {
-      autoRecalculate();
-    }
-  }, [tenantId, leaseId]);
+  function cleIdempotence(installmentId: string): string {
+    const existante = clesIdempotence.current.get(installmentId);
+    if (existante) return existante;
+    const nouvelle =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `${installmentId}-${Math.random().toString(36).slice(2)}`;
+    clesIdempotence.current.set(installmentId, nouvelle);
+    return nouvelle;
+  }
 
-  // Refresh installments when refreshTrigger changes
-  useEffect(() => {
-    if (refreshTrigger && tenantId) {
-      loadInstallments();
-    }
-  }, [refreshTrigger, tenantId]);
-
-  const loadInstallments = async () => {
-    if (!tenantId) return;
-
-    // If we're in the context of a specific lease (propLeaseId or paramLeaseId exists),
-    // we MUST have a leaseId to filter by. Don't load all installments.
-    if (propLeaseId || paramLeaseId) {
-      if (!leaseId) {
-        // Don't load if we're in lease context but no leaseId
-        setInstallments([]);
-        setPagination({
-          page: 1,
-          limit: 50,
-          total: 0,
-          totalPages: 0
-        });
-        setLoading(false);
-        return;
-      }
-    }
-
-    // Use leaseId from props/params if available, otherwise use from filters
-    const effectiveLeaseId = leaseId || filters.leaseId;
-
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await listInstallments(tenantId, {
-        ...filters,
-        leaseId: effectiveLeaseId
-      });
-      if (response.success) {
-        setInstallments(response.data);
-        setPagination(response.pagination);
-      } else {
-        setError('Erreur lors du chargement des échéances');
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des échéances');
-    } finally {
-      setLoading(false);
-    }
+  const filtresApi = {
+    leaseId,
+    status: (list.filters.status as RentalInstallmentStatus) || undefined,
+    overdue: list.filters.overdue === 'true' ? true : undefined,
+    page: list.page,
+    limit: list.pageSize
   };
+
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: erreurRequete,
+    refetch
+  } = useQuery({
+    queryKey: queryKey('installments', tenantId, { ...list.queryParams, leaseId: leaseId ?? '' }),
+    queryFn: () => listInstallments(tenantId as string, filtresApi),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list
+  });
+
+  const echeances = data?.data ?? [];
+  const total = data?.pagination?.total ?? 0;
+
+  /** Invalide toutes les échéances de l'agence, quels que soient filtres et page. */
+  const rafraichir = () => queryClient.invalidateQueries({ queryKey: ['installments', tenantId] });
 
   const handleGenerate = async () => {
     if (!tenantId || !leaseId) return;
-    setGenerating(true);
-    setError(null);
+    setAction('generer');
     try {
-      const response = await generateInstallments(tenantId, leaseId);
-      if (response.success) {
-        await loadInstallments();
-      } else {
-        setError('Erreur lors de la génération des échéances');
-      }
+      await generateInstallments(tenantId, leaseId);
+      await rafraichir();
+      message.success('Échéances générées.');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de la génération des échéances');
+      message.error(err?.response?.data?.message || 'La génération a échoué.');
     } finally {
-      setGenerating(false);
+      setAction(null);
     }
   };
 
+  /**
+   * Recalcul explicite, déclenché par l'utilisateur.
+   *
+   * L'ancienne version le lançait AUSSI automatiquement au montage, sans le
+   * dire. Deux écritures en base — statuts puis pénalités — partaient à chaque
+   * affichage de l'écran, y compris quand il est monté en onglet et remonté à
+   * chaque aller-retour. Elles ne partent plus que sur demande.
+   */
   const handleRecalculate = async () => {
     if (!tenantId || !leaseId) return;
-    setLoading(true);
+    setAction('recalculer');
     try {
-      // First, recalculate installment statuses
       await recalculateInstallmentStatuses(tenantId, leaseId);
-      // Then, calculate penalties for overdue installments
       await calculatePenalties(tenantId);
-      // Finally, reload installments
-      await loadInstallments();
+      await rafraichir();
+      message.success('Statuts et pénalités recalculés.');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du recalcul');
+      message.error(err?.response?.data?.message || 'Le recalcul a échoué.');
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const autoRecalculate = async () => {
-    if (!tenantId || !leaseId) return;
-    try {
-      // First, recalculate installment statuses
-      await recalculateInstallmentStatuses(tenantId, leaseId);
-      // Then, calculate penalties for overdue installments
-      await calculatePenalties(tenantId);
-      // Finally, reload installments to show updated data
-      await loadInstallments();
-    } catch (err: any) {
-      // Silently ignore errors for auto-recalculation
-      console.error('Auto recalculation failed:', err);
+      setAction(null);
     }
   };
 
   const handleDeleteAll = () => {
     if (!tenantId || !leaseId) return;
-
     confirmAction({
       title: 'Supprimer toutes les échéances de ce bail ?',
       description: 'Cette action est irréversible.',
       okText: 'Supprimer',
       danger: true,
       onConfirm: async () => {
-        setDeleting(true);
-        setError(null);
+        setAction('supprimer');
         try {
-          const response = await deleteAllInstallments(tenantId, leaseId);
-          if (response.success) {
-            await loadInstallments();
-          } else {
-            setError('Erreur lors de la suppression des échéances');
-          }
+          await deleteAllInstallments(tenantId, leaseId);
+          await rafraichir();
+          message.success('Échéances supprimées.');
         } catch (err: any) {
-          setError(err.response?.data?.message || 'Erreur lors de la suppression des échéances');
+          message.error(err?.response?.data?.message || 'La suppression a échoué.');
         } finally {
-          setDeleting(false);
+          setAction(null);
         }
       }
     });
   };
 
-  const getStatusTag = (status: RentalInstallmentStatus) => {
-    const statusMap: Partial<Record<RentalInstallmentStatus, { label: string; color: string }>> = {
-      DRAFT: { label: 'Brouillon', color: 'default' },
-      DUE: { label: 'Échéance', color: 'default' },
-      PARTIAL: { label: 'Partiel', color: 'warning' },
-      PAID: { label: 'Payé', color: 'success' },
-      OVERDUE: { label: 'En retard', color: 'error' }
-    };
-    const config = statusMap[status] || { label: status, color: 'default' };
-    return <Tag color={config.color}>{config.label}</Tag>;
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fr-FR');
-  };
-
-  const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency
-    }).format(amount);
-  };
-
-  const calculateTotalDue = (installment: RentalInstallment) => {
-    return (
-      Number(installment.amount_rent || 0) +
-      Number(installment.amount_service || 0) +
-      Number(installment.amount_other_fees || 0) +
-      Number(installment.penalty_amount || 0)
-    );
-  };
-
-  const handleQuickPayment = async (installment: RentalInstallment) => {
+  /** Encaissement du reste dû, en espèces, à la date du jour. */
+  const handleQuickPayment = async (echeance: RentalInstallment) => {
     if (!tenantId) return;
-
-    const totalDue = calculateTotalDue(installment);
-    const remaining = totalDue - Number(installment.amount_paid || 0);
-
-    if (remaining <= 0) {
-      setError('Cette Ã©chÃ©ance est dÃ©jÃ  Payée');
+    const reste = resteAPayer(echeance);
+    if (reste <= 0) {
+      message.info('Cette échéance est déjà soldée.');
       return;
     }
 
-    setProcessingQuickPayment(installment.id);
-    setError(null);
-
+    setEnCours(echeance.id);
     try {
-      // Create payment with CASH method and current date
-      const paymentData: CreatePaymentRequest = {
-        leaseId: installment.lease_id,
+      const paiement = await createPayment(tenantId, {
+        leaseId: echeance.lease_id,
         method: RentalPaymentMethod.CASH,
-        amount: remaining,
-        currency: installment.currency,
-        idempotencyKey: `quick-payment-${installment.id}-${Date.now()}`
-      };
+        amount: reste,
+        currency: echeance.currency,
+        idempotencyKey: cleIdempotence(echeance.id)
+      });
 
-      const paymentResponse = await createPayment(tenantId, paymentData);
-
-      if (paymentResponse.success && paymentResponse.data) {
-        // Allocate payment to the installment
-        await allocatePayment(tenantId, paymentResponse.data.id, {
-          installmentIds: [installment.id]
-        });
-
-        // Reload installments to show updated status
-        await loadInstallments();
+      if (paiement.success && paiement.data) {
+        await allocatePayment(tenantId, paiement.data.id, { installmentIds: [echeance.id] });
+        // L'intention est aboutie : la clé ne doit plus être réutilisée, sinon
+        // un encaissement ultérieur du même bien serait rejeté comme doublon.
+        clesIdempotence.current.delete(echeance.id);
+        await rafraichir();
+        message.success('Encaissement enregistré.');
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du paiement rapide');
+      message.error(err?.response?.data?.message || "L'encaissement a échoué.");
     } finally {
-      setProcessingQuickPayment(null);
+      setEnCours(null);
     }
   };
 
-  const handleOpenPaymentForm = (installment: RentalInstallment) => {
-    console.log('Opening payment form for installment:', installment.id);
-    setSelectedInstallment(installment);
-    setShowPaymentForm(true);
-    // Scroll to top to show the form
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleCreatePayment = async (data: CreatePaymentRequest) => {
-    if (!tenantId || !selectedInstallment) return;
-
-    setError(null);
-
+  const handleCreatePayment = async (donnees: CreatePaymentRequest) => {
+    if (!tenantId || !formulairePour) return;
+    const echeance = formulairePour;
     try {
-      const paymentData: CreatePaymentRequest = {
-        ...data,
-        leaseId: selectedInstallment.lease_id,
-        idempotencyKey: data.idempotencyKey || `payment-${selectedInstallment.id}-${Date.now()}`
-      };
+      const paiement = await createPayment(tenantId, {
+        ...donnees,
+        leaseId: echeance.lease_id,
+        idempotencyKey: donnees.idempotencyKey || cleIdempotence(echeance.id)
+      });
 
-      const paymentResponse = await createPayment(tenantId, paymentData);
-
-      if (paymentResponse.success && paymentResponse.data) {
-        // Allocate payment to the selected installment
-        await allocatePayment(tenantId, paymentResponse.data.id, {
-          installmentIds: [selectedInstallment.id]
-        });
-
-        setShowPaymentForm(false);
-        setSelectedInstallment(null);
-        await loadInstallments();
+      if (paiement.success && paiement.data) {
+        await allocatePayment(tenantId, paiement.data.id, { installmentIds: [echeance.id] });
+        clesIdempotence.current.delete(echeance.id);
+        setFormulairePour(null);
+        await rafraichir();
+        message.success('Paiement enregistré.');
       }
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || "Erreur lors de l'enregistrement du paiement";
-      setError(errorMessage);
+      message.error(err?.response?.data?.message || "L'enregistrement du paiement a échoué.");
       throw err;
     }
   };
 
-  // If used as standalone page (not in tab)
-  const isStandalone = !propLeaseId;
-
-  const content = (
-    <>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Row gutter={[16, 16]} justify="space-between" align="middle">
-          <Col xs={24} sm={24} md={12} lg={14}>
-            <Title level={2} style={{ margin: 0 }}>
-              Échéances
-            </Title>
-            <Text type="secondary">{leaseId ? 'Échéances du bail' : 'Gérez les échéances de location'}</Text>
-          </Col>
-          <Col xs={24} sm={24} md={12} lg={10}>
-            <Space wrap style={{ width: '100%', justifyContent: 'flex-end' }}>
-              {leaseId && (
-                <>
-                  <Button type="primary" icon={<PlusOutlined />} onClick={handleGenerate} loading={generating}>
-                    Générer les échéances
-                  </Button>
-                  <Button icon={<ReloadOutlined />} onClick={handleRecalculate} disabled={loading}>
-                    Recalculer
-                  </Button>
-                  {installments.length > 0 && (
-                    <Button
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={handleDeleteAll}
-                      loading={deleting}
-                      disabled={loading}
-                    >
-                      Supprimer toutes les échéances
-                    </Button>
-                  )}
-                </>
-              )}
-            </Space>
-          </Col>
-        </Row>
-
-        {error && (
-          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
-        )}
-
-        {showPaymentForm && selectedInstallment && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col">
-              {/* Header */}
-              <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="bg-blue-100 rounded-full p-2">
-                    <CreditCardOutlined style={{ fontSize: '20px', color: '#1890ff' }} />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-semibold">Nouveau paiement</h2>
-                    <p className="text-sm text-muted-foreground">
-                      Échéance {selectedInstallment.period_month}/{selectedInstallment.period_year} - Date d'échéance:{' '}
-                      {formatDate(selectedInstallment.due_date)}
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  type="text"
-                  icon={<CloseOutlined />}
-                  onClick={() => {
-                    setShowPaymentForm(false);
-                    setSelectedInstallment(null);
-                  }}
-                />
-              </div>
-
-              {/* Form Content - Scrollable */}
-              <div className="flex-1 overflow-y-auto p-6">
-                <PaymentForm
-                  tenantId={tenantId!}
-                  leaseId={selectedInstallment.lease_id}
-                  defaultAmount={(() => {
-                    const totalDue = calculateTotalDue(selectedInstallment);
-                    const remaining = totalDue - Number(selectedInstallment.amount_paid || 0);
-                    return remaining > 0 ? remaining : undefined;
-                  })()}
-                  defaultCurrency={selectedInstallment.currency}
-                  onSubmit={handleCreatePayment}
-                  onCancel={() => {
-                    setShowPaymentForm(false);
-                    setSelectedInstallment(null);
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        <Space>
-          <Select
-            value={filters.status || 'all'}
-            onChange={value =>
-              setFilters({
-                ...filters,
-                status: value === 'all' ? undefined : (value as RentalInstallmentStatus),
-                page: 1
-              })
-            }
-            style={{ width: 180 }}
-          >
-            <Select.Option value="all">Tous les statuts</Select.Option>
-            <Select.Option value="DUE">Échéance</Select.Option>
-            <Select.Option value="PARTIAL">Partiel</Select.Option>
-            <Select.Option value="PAID">Payé</Select.Option>
-            <Select.Option value="OVERDUE">En retard</Select.Option>
-          </Select>
-          <Select
-            value={filters.overdue ? 'true' : 'all'}
-            onChange={value =>
-              setFilters({
-                ...filters,
-                overdue: value === 'true',
-                page: 1
-              })
-            }
-            style={{ width: 180 }}
-          >
-            <Select.Option value="all">Toutes</Select.Option>
-            <Select.Option value="true">En retard uniquement</Select.Option>
-          </Select>
-        </Space>
-
-        {installments.length === 0 && !loading ? (
-          <Empty
-            description={
-              leaseId
-                ? 'Aucune échéance générée. Cliquez sur "Générer les échéances" pour commencer.'
-                : 'Aucune échéance trouvée'
-            }
-          />
-        ) : (
-          <>
-            <div style={{ overflowX: 'auto' }}>
-              <Table
-                dataSource={installments}
-                loading={loading}
-                rowKey="id"
-                scroll={{ x: 900 }}
-                columns={[
-                  {
-                    title: 'Période',
-                    key: 'period',
-                    render: (_, record) => `${record.period_month}/${record.period_year}`
-                  },
-                  {
-                    title: "Date d'échéance",
-                    key: 'due_date',
-                    render: (_, record) => formatDate(record.due_date)
-                  },
-                  {
-                    title: 'Montant dû',
-                    key: 'total_due',
-                    render: (_, record) => {
-                      const totalDue = calculateTotalDue(record);
-                      return formatCurrency(totalDue, record.currency);
-                    }
-                  },
-                  {
-                    title: 'Payé',
-                    key: 'amount_paid',
-                    render: (_, record) => formatCurrency(record.amount_paid, record.currency)
-                  },
-                  {
-                    title: 'Reste à payer',
-                    key: 'remaining',
-                    render: (_, record) => {
-                      const totalDue = calculateTotalDue(record);
-                      const remaining = totalDue - Number(record.amount_paid || 0);
-                      return (
-                        <Text type={remaining > 0 ? 'danger' : 'success'} strong={remaining > 0}>
-                          {formatCurrency(remaining, record.currency)}
-                        </Text>
-                      );
-                    }
-                  },
-                  {
-                    title: 'Pénalités',
-                    key: 'penalty',
-                    render: (_, record) =>
-                      record.penalty_amount > 0 ? formatCurrency(record.penalty_amount, record.currency) : '-'
-                  },
-                  {
-                    title: 'Statut',
-                    key: 'status',
-                    render: (_, record) => getStatusTag(record.status)
-                  },
-                  {
-                    title: 'Actions',
-                    key: 'actions',
-                    render: (_, record) => {
-                      const totalDue = calculateTotalDue(record);
-                      const remaining = totalDue - Number(record.amount_paid || 0);
-                      return (
-                        <Space>
-                          <Button
-                            type="text"
-                            icon={<EyeOutlined />}
-                            onClick={() => navigate(`/tenant/${tenantId}/rental/installments/${record.id}`)}
-                          />
-                          {remaining > 0 && (
-                            <>
-                              <Button
-                                type="default"
-                                icon={<ThunderboltOutlined />}
-                                onClick={() => handleQuickPayment(record)}
-                                loading={processingQuickPayment === record.id}
-                                size="small"
-                              >
-                                Paiement rapide
-                              </Button>
-                              <Button
-                                type="primary"
-                                icon={<CreditCardOutlined />}
-                                onClick={() => handleOpenPaymentForm(record)}
-                                size="small"
-                              >
-                                Paiement
-                              </Button>
-                            </>
-                          )}
-                        </Space>
-                      );
-                    }
-                  }
-                ]}
-                pagination={
-                  pagination.totalPages > 1
-                    ? {
-                        current: pagination.page,
-                        pageSize: pagination.limit,
-                        total: pagination.total,
-                        showSizeChanger: true,
-                        showTotal: total => `Total ${total} échéances`,
-                        onChange: (page, pageSize) => {
-                          setFilters(prev => ({ ...prev, page, limit: pageSize }));
-                        }
-                      }
-                    : false
-                }
-              />
-            </div>
-          </>
-        )}
-      </Space>
-    </>
-  );
-
-  if (isStandalone) {
-    return <>{content}</>;
+  if (!tenantId) {
+    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
   }
 
-  return content;
+  /**
+   * Colonnes, au-dessus de 992 px.
+   *
+   * Elles tiennent sans défilement horizontal parce qu'elles sont moins
+   * nombreuses : « Payé » et « Pénalités » sortent du tableau. Le reste à payer
+   * les résume, et le détail de l'échéance les porte toutes les deux.
+   */
+  const colonnes: ColumnsType<RentalInstallment> = [
+    { title: 'Période', key: 'periode', render: (_, e) => periode(e) },
+    { title: 'Échéance', key: 'due', render: (_, e) => dateCourte(e.due_date) },
+    {
+      title: 'Montant dû',
+      key: 'du',
+      align: 'right',
+      render: (_, e) => <MoneyValue value={totalDu(e)} currency={e.currency} />
+    },
+    {
+      title: 'Reste à payer',
+      key: 'reste',
+      align: 'right',
+      render: (_, e) => <MoneyValue value={resteAPayer(e)} currency={e.currency} />
+    },
+    { title: 'Statut', key: 'statut', render: (_, e) => <StatusTag status={e.status} /> },
+    {
+      title: 'Actions',
+      key: 'actions',
+      align: 'right',
+      render: (_, e) => {
+        if (resteAPayer(e) <= 0) {
+          return (
+            <Button type="link" onClick={() => navigate(`/tenant/${tenantId}/rental/installments/${e.id}`)}>
+              Voir
+            </Button>
+          );
+        }
+        return (
+          <Space>
+            <Button
+              icon={<ThunderboltOutlined />}
+              loading={enCours === e.id}
+              onClick={() => handleQuickPayment(e)}
+              // Le libellé dit ce qui va se passer : espèces, montant restant,
+              // aujourd'hui. « Paiement rapide » ne le disait pas.
+              title="Encaisser le reste dû en espèces, à la date du jour"
+            >
+              Encaisser
+            </Button>
+            <Button type="primary" icon={<CreditCardOutlined />} onClick={() => setFormulairePour(e)}>
+              Paiement…
+            </Button>
+          </Space>
+        );
+      }
+    }
+  ];
+
+  const enTete = (
+    <PageHeader
+      title="Échéances"
+      subtitle={total > 0 ? `${total} échéance${total > 1 ? 's' : ''}` : undefined}
+      primaryAction={
+        leaseId
+          ? {
+              label: 'Générer les échéances',
+              icon: <PlusOutlined />,
+              onClick: handleGenerate,
+              loading: action === 'generer'
+            }
+          : undefined
+      }
+      secondaryActions={
+        leaseId
+          ? [
+              { key: 'recalc', label: 'Recalculer les statuts et pénalités', onClick: handleRecalculate },
+              { type: 'divider' },
+              { key: 'del', label: 'Supprimer toutes les échéances', danger: true, onClick: handleDeleteAll }
+            ]
+          : undefined
+      }
+    />
+  );
+
+  const formulaire = formulairePour && (
+    <PaymentForm
+      tenantId={tenantId}
+      leaseId={formulairePour.lease_id}
+      defaultAmount={resteAPayer(formulairePour) > 0 ? resteAPayer(formulairePour) : undefined}
+      defaultCurrency={formulairePour.currency}
+      onSubmit={handleCreatePayment}
+      onCancel={() => setFormulairePour(null)}
+    />
+  );
+
+  const titreFormulaire = formulairePour
+    ? `Paiement · échéance ${periode(formulairePour)} du ${dateCourte(formulairePour.due_date)}`
+    : '';
+
+  return (
+    <>
+      {enTete}
+
+      <FilterSheet
+        activeCount={Object.keys(list.filters).length}
+        onClear={list.clearFilters}
+        title="Filtrer les échéances"
+      >
+        <div style={{ minWidth: 200 }}>
+          <label htmlFor="filtre-statut-echeance">Statut</label>
+          <Select
+            id="filtre-statut-echeance"
+            style={{ width: '100%' }}
+            placeholder="Tous les statuts"
+            allowClear
+            value={list.filters.status || undefined}
+            onChange={value => list.setFilters({ status: value })}
+            options={STATUS_OPTIONS}
+          />
+        </div>
+        <div style={{ minWidth: 200 }}>
+          <label htmlFor="filtre-retard">Retard</label>
+          <Select
+            id="filtre-retard"
+            style={{ width: '100%' }}
+            placeholder="Toutes"
+            allowClear
+            value={list.filters.overdue || undefined}
+            onChange={value => list.setFilters({ overdue: value })}
+            options={[{ value: 'true', label: 'En retard uniquement' }]}
+          />
+        </div>
+      </FilterSheet>
+
+      <DataView<RentalInstallment>
+        items={echeances}
+        total={total}
+        page={list.page}
+        pageSize={list.pageSize}
+        onPageChange={(page, size) => (size !== list.pageSize ? list.setPageSize(size) : list.setPage(page))}
+        loading={isPending}
+        isReloading={isFetching && !isPending}
+        error={erreurRequete ? 'Impossible de charger les échéances.' : null}
+        onRetry={() => refetch()}
+        isFiltered={list.isFiltered}
+        onClearFilters={list.clearFilters}
+        emptyDescription={
+          leaseId
+            ? 'Aucune échéance pour ce bail. Générez-les depuis l’action ci-dessus.'
+            : 'Aucune échéance enregistrée.'
+        }
+        columns={colonnes}
+        rowKey={e => e.id}
+        aria-label="Échéances"
+        renderCard={e => {
+          const reste = resteAPayer(e);
+          const solde = reste <= 0;
+          return (
+            <DataCard
+              title={`Échéance ${periode(e)}`}
+              aria-label={`Échéance ${periode(e)}`}
+              subtitle={`À payer le ${dateCourte(e.due_date)}`}
+              status={<StatusTag status={e.status} />}
+              // Le reste à payer est LA donnée de cet écran : elle passe en
+              // tête de carte, alors qu'elle était la cinquième colonne d'un
+              // tableau qui défilait. Sur une échéance soldée, elle disparaît :
+              // « 0 GNF » en gros occuperait la place la plus visible de la
+              // carte pour ne rien dire, quand l'étiquette « Payé » le dit déjà.
+              highlight={solde ? undefined : <MoneyValue value={reste} currency={e.currency} />}
+              fields={[
+                { label: 'Montant dû', value: <MoneyValue value={totalDu(e)} currency={e.currency} /> },
+                { label: 'Déjà payé', value: <MoneyValue value={e.amount_paid} currency={e.currency} /> },
+                ...(Number(e.penalty_amount) > 0
+                  ? [{ label: 'Pénalités', value: <MoneyValue value={e.penalty_amount} currency={e.currency} /> }]
+                  : [])
+              ]}
+              onOpen={() => navigate(`/tenant/${tenantId}/rental/installments/${e.id}`)}
+              primaryAction={
+                solde
+                  ? undefined
+                  : {
+                      label: 'Encaisser',
+                      icon: <ThunderboltOutlined />,
+                      loading: enCours === e.id,
+                      onClick: () => handleQuickPayment(e)
+                    }
+              }
+              secondaryActions={
+                solde ? undefined : [{ key: 'form', label: 'Paiement détaillé…', onClick: () => setFormulairePour(e) }]
+              }
+            />
+          );
+        }}
+      />
+
+      {/* Sous 992 px, le formulaire occupe la hauteur de l'écran plutôt qu'une
+          boîte flottante : le §10.1 impose une page pleine dès quatre champs.
+          `<FormSheet>` du Lot 3 remplacera ces deux formes par une seule. */}
+      {isDesktop ? (
+        <Modal
+          open={Boolean(formulairePour)}
+          onCancel={() => setFormulairePour(null)}
+          title={titreFormulaire}
+          footer={null}
+          width={720}
+          destroyOnHidden
+        >
+          {formulaire}
+        </Modal>
+      ) : (
+        <Drawer
+          open={Boolean(formulairePour)}
+          onClose={() => setFormulairePour(null)}
+          title={titreFormulaire}
+          placement="bottom"
+          height="92%"
+          destroyOnHidden
+        >
+          {formulaire}
+        </Drawer>
+      )}
+    </>
+  );
 };

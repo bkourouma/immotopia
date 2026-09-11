@@ -1,6 +1,6 @@
 import type { AxiosAdapter, AxiosRequestConfig, AxiosResponse } from 'axios';
 import apiClient from '../../utils/api-client';
-import { BIENS, COMMUNES } from './fixtures';
+import { BIENS, COMMUNES, ECHEANCES } from './fixtures';
 
 /**
  * Fausse API de l'atelier.
@@ -58,6 +58,32 @@ function listeBiens(url: URL, scenario: Scenario) {
   };
 }
 
+/** Echeances : filtrage par statut et par retard, pagination, comme l API. */
+function listeEcheances(url: URL, scenario: Scenario) {
+  if (scenario === 'vide') {
+    return { success: true, data: [], pagination: { page: 1, limit: 50, total: 0, totalPages: 0 } };
+  }
+
+  const status = url.searchParams.get('status');
+  const overdue = url.searchParams.get('overdue') === 'true';
+
+  const filtrees = ECHEANCES.filter(e => {
+    if (status && e.status !== status) return false;
+    if (overdue && e.status !== 'OVERDUE') return false;
+    return true;
+  });
+
+  const page = Number(url.searchParams.get('page')) || 1;
+  const limit = Number(url.searchParams.get('limit')) || 50;
+  const debut = (page - 1) * limit;
+
+  return {
+    success: true,
+    data: filtrees.slice(debut, debut + limit),
+    pagination: { page, limit, total: filtrees.length, totalPages: Math.ceil(filtrees.length / limit) || 0 }
+  };
+}
+
 let adaptateurOrigine: AxiosAdapter | undefined;
 
 export function installerFausseApi(scenario: Scenario) {
@@ -81,6 +107,10 @@ export function installerFausseApi(scenario: Scenario) {
 
     if (/\/tenants\/[^/]+\/properties$/.test(url.pathname)) {
       return ok(config, listeBiens(url, scenario));
+    }
+
+    if (/\/rental\/(leases\/[^/]+\/)?installments$/.test(url.pathname)) {
+      return ok(config, listeEcheances(url, scenario));
     }
 
     if (url.pathname.includes('/geographic') || url.pathname.includes('/communes')) {

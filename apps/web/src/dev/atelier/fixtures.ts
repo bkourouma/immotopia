@@ -93,3 +93,61 @@ export const COMMUNES = [
   { communeId: 'c3', commune: 'Dixinn', region: 'Conakry' },
   { communeId: 'c4', commune: 'Kaloum', region: 'Conakry' }
 ];
+
+/**
+ * Échéances — six mois, tous les états du cycle d'encaissement.
+ *
+ * Deux cas y sont volontairement pénibles : une échéance partiellement payée
+ * (le reste dû n'est ni le montant, ni zéro) et une en retard avec pénalités
+ * (le montant dû dépasse le loyer). Ce sont les deux lignes où une colonne
+ * « Reste à payer » mal calculée ne se verrait pas sur un jeu de données sage.
+ */
+export type EcheanceSimulee = {
+  id: string;
+  tenant_id: string;
+  lease_id: string;
+  period_year: number;
+  period_month: number;
+  due_date: string;
+  status: string;
+  currency: string;
+  amount_rent: number;
+  amount_service: number;
+  amount_other_fees: number;
+  penalty_amount: number;
+  amount_paid: number;
+  created_at: string;
+  updated_at: string;
+};
+
+function echeance(mois: number, overrides: Partial<EcheanceSimulee> = {}): EcheanceSimulee {
+  return {
+    id: `ech-${mois}`,
+    tenant_id: 'agence-demo',
+    lease_id: 'bail-demo',
+    period_year: 2026,
+    period_month: mois,
+    due_date: `2026-${String(mois).padStart(2, '0')}-05T00:00:00.000Z`,
+    status: 'PAID',
+    currency: 'GNF',
+    amount_rent: 1_250_000,
+    amount_service: 75_000,
+    amount_other_fees: 0,
+    penalty_amount: 0,
+    amount_paid: 1_325_000,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z',
+    ...overrides
+  };
+}
+
+export const ECHEANCES: EcheanceSimulee[] = [
+  echeance(1),
+  echeance(2),
+  // Partiel : le reste dû n'est ni le montant total, ni zéro.
+  echeance(3, { status: 'PARTIAL', amount_paid: 500_000 }),
+  // En retard AVEC pénalités : le montant dû dépasse le loyer + charges.
+  echeance(4, { status: 'OVERDUE', amount_paid: 0, penalty_amount: 132_500 }),
+  echeance(5, { status: 'DUE', amount_paid: 0 }),
+  echeance(6, { status: 'DUE', amount_paid: 0, amount_other_fees: 45_000 })
+];

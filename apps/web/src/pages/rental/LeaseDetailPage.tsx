@@ -29,7 +29,6 @@ export const LeaseDetailPage: React.FC = () => {
   const [lease, setLease] = useState<RentalLease | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [installmentsRefreshTrigger, setInstallmentsRefreshTrigger] = useState(0);
   const [contactNameById, setContactNameById] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -441,7 +440,7 @@ export const LeaseDetailPage: React.FC = () => {
                     Échéances
                   </span>
                 ),
-                children: <Installments leaseId={leaseId} refreshTrigger={installmentsRefreshTrigger} />
+                children: <Installments leaseId={leaseId} />
               },
               {
                 key: 'payments',
@@ -492,11 +491,6 @@ export const LeaseDetailPage: React.FC = () => {
                 defaultActiveKey={isSaleOnly ? 'documents' : 'installments'}
                 type="line"
                 size="large"
-                onChange={activeKey => {
-                  if (activeKey === 'installments') {
-                    setInstallmentsRefreshTrigger(prev => prev + 1);
-                  }
-                }}
                 items={tabItems}
               />
             );
