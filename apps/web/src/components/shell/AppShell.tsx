@@ -3,6 +3,7 @@ import { Button, Drawer, Layout } from 'antd';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { actionForPath } from '../../navigation/actions';
 import { NAVIGATION } from '../../navigation/model';
 import { contextFromPath, lastSyndicKey, portalRedirect, resolvePersona } from '../../navigation/resolve';
@@ -45,6 +46,10 @@ export const AppShell: React.FC = () => {
   const { isDesktop, isTablet } = useBreakpoint();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerOnlyMore, setDrawerOnlyMore] = useState(false);
+
+  // La coquille est le seul endroit d'où la position de défilement se gère :
+  // elle survit aux changements d'écran depuis le Lot 1, les écrans non.
+  useScrollRestoration();
 
   const persona = useMemo(
     () =>

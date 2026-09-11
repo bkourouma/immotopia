@@ -6,6 +6,8 @@ import { Penalties } from '../../pages/rental/Penalties';
 import { Payments } from '../../pages/rental/Payments';
 import { Documents } from '../../pages/rental/Documents';
 import { CalendarPage } from '../../pages/crm/Calendar';
+import { SceneDefilementListe, SceneDefilementDetail } from './SceneDefilement';
+import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { installerFausseApi, retirerFausseApi, type Scenario } from './mock-api';
 import {
   DataCard,
@@ -182,6 +184,13 @@ const SCENES: Scene[] = [
     chemin: CALENDRIER + '?vue=month'
   },
   {
+    id: 'defilement',
+    titre: 'Défilement — liste filtrée, détail, retour',
+    description: 'Mesure du critère de sortie du Lot 1 : la position doit revenir au retour arrière.',
+    scenario: 'nominal',
+    chemin: 'defilement?categorie=B'
+  },
+  {
     id: 'primitives',
     titre: 'Primitives',
     description: 'Chaque primitive dans ses variantes, côte à côte.',
@@ -310,6 +319,9 @@ function Index() {
  * scène nominale pour une panne.
  */
 function Scene({ children }: { children: React.ReactNode }) {
+  // Le même mécanisme que la coquille, pour que ce que l'atelier montre soit
+  // ce que l'application fait.
+  useScrollRestoration();
   const [params] = useSearchParams();
   const scenario = (params.get('sc') as Scenario) || 'nominal';
   const [pret, setPret] = useState(false);
@@ -401,6 +413,22 @@ export const Atelier: React.FC = () => (
       element={
         <Scene>
           <CalendarPage />
+        </Scene>
+      }
+    />
+    <Route
+      path="defilement"
+      element={
+        <Scene>
+          <SceneDefilementListe />
+        </Scene>
+      }
+    />
+    <Route
+      path="defilement/:id"
+      element={
+        <Scene>
+          <SceneDefilementDetail />
         </Scene>
       }
     />
