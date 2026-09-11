@@ -1,5 +1,5 @@
 import React from 'react';
-import { Table, Pagination, Spin } from 'antd';
+import { Table, Pagination, Spin, Row, Col } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { SorterResult } from 'antd/es/table/interface';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
@@ -35,7 +35,7 @@ import type { Sort } from '../../hooks/useListParams';
  * la liste et son compteur se contredisaient.
  */
 
-export interface DataViewProps<T> {
+interface DataViewBase<T> {
   /** La page courante, telle que l'API l'a rendue. Jamais filtrée ici. */
   items: T[];
   /** Nombre total d'enregistrements côté serveur. Jamais `items.length`. */
@@ -60,9 +60,7 @@ export interface DataViewProps<T> {
   /** Phrase d'accueil quand il n'y a rien, avant tout filtre. */
   emptyDescription?: string;
 
-  /** Colonnes du tableau, au-dessus de 992 px. */
-  columns: ColumnsType<T>;
-  /** Représentation en carte, sous 992 px. Obligatoire. */
+  /** Représentation en carte. Obligatoire dans les deux dispositions. */
   renderCard: (item: T) => React.ReactNode;
   rowKey: (item: T) => string;
 
@@ -74,27 +72,43 @@ export interface DataViewProps<T> {
   'aria-label': string;
 }
 
-export function DataView<T>({
-  items,
-  total,
-  page,
-  pageSize,
-  onPageChange,
-  loading = false,
-  isReloading = false,
-  error = null,
-  onRetry,
-  isFiltered = false,
-  onClearFilters,
-  emptyAction,
-  emptyDescription,
-  columns,
-  renderCard,
-  rowKey,
-  sort = null,
-  onSortChange,
-  'aria-label': ariaLabel
-}: DataViewProps<T>) {
+/**
+ * Deux dispositions, et le type le fait respecter.
+ *
+ * - `table` (défaut) : tableau au-dessus de 992 px, cartes en dessous. Les
+ *   colonnes sont **exigées** — c'est ce qui empêche un écran de livrer un
+ *   tableau sans stratégie mobile.
+ * - `grid` : cartes à toutes les largeurs, en grille responsive. Pour ce qui
+ *   se regarde autant que ça se lit — un portefeuille de biens avec ses
+ *   photos. Les colonnes y sont **interdites**, faute de quoi on ne saurait
+ *   plus laquelle des deux formes fait foi.
+ */
+export type DataViewProps<T> = DataViewBase<T> &
+  ({ layout?: 'table'; columns: ColumnsType<T> } | { layout: 'grid'; columns?: never });
+
+export function DataView<T>(props: DataViewProps<T>) {
+  const {
+    items,
+    total,
+    page,
+    pageSize,
+    onPageChange,
+    loading = false,
+    isReloading = false,
+    error = null,
+    onRetry,
+    isFiltered = false,
+    onClearFilters,
+    emptyAction,
+    emptyDescription,
+    renderCard,
+    rowKey,
+    sort = null,
+    onSortChange,
+    'aria-label': ariaLabel
+  } = props;
+  const layout = props.layout ?? 'table';
+  const columns = (props as { columns?: import('antd/es/table').ColumnsType<T> }).columns ?? [];
   const { isDesktop } = useBreakpoint();
 
   if (error) {
@@ -109,7 +123,7 @@ export function DataView<T>({
 
   // Premier chargement seulement : un rechargement garde la liste à l'écran.
   if (loading && items.length === 0) {
-    return isDesktop ? (
+    return isDesktop && layout === 'table' ? (
       <SkeletonTable
         rows={pageSize > 10 ? 8 : pageSize}
         columns={columns.length}
@@ -158,22 +172,7 @@ export function DataView<T>({
     onSortChange({ field: String(single.field), order: single.order === 'descend' ? 'desc' : 'asc' });
   };
 
-  const content = isDesktop ? (
-    <Table<T>
-      dataSource={items}
-      columns={columns}
-      rowKey={rowKey}
-      // La pagination est rendue séparément : identique en tableau et en
-      // cartes, elle ne doit pas changer de forme avec le palier.
-      pagination={false}
-      onChange={handleTableChange}
-      // Aucun `scroll={{ x }}` : au-dessus de 992 px les colonnes tiennent,
-      // en dessous ce sont des cartes. Le défilement horizontal d'un tableau
-      // est un aveu que la stratégie de colonnes n'a pas été faite.
-      size="middle"
-      aria-label={ariaLabel}
-    />
-  ) : (
+  const cardList = (
     <div role="list" aria-label={ariaLabel}>
       {items.map(item => (
         <div role="listitem" key={rowKey(item)}>
@@ -182,6 +181,43 @@ export function DataView<T>({
       ))}
     </div>
   );
+
+  /**
+   * Grille : une colonne sous 768 px, deux au palier `md`, trois au-delà
+   * (§5.1). Les paliers sont ceux d'Ant Design, alignés sur `tailwind.config.js`
+   * depuis le Lot 0 : il n'y a qu'un seul jeu de points de rupture.
+   */
+  const cardGrid = (
+    <Row gutter={[16, 16]} role="list" aria-label={ariaLabel}>
+      {items.map(item => (
+        <Col key={rowKey(item)} xs={24} md={12} lg={8} role="listitem">
+          {renderCard(item)}
+        </Col>
+      ))}
+    </Row>
+  );
+
+  const content =
+    layout === 'grid' ? (
+      cardGrid
+    ) : isDesktop ? (
+      <Table<T>
+        dataSource={items}
+        columns={columns}
+        rowKey={rowKey}
+        // La pagination est rendue séparément : identique en tableau et en
+        // cartes, elle ne doit pas changer de forme avec le palier.
+        pagination={false}
+        onChange={handleTableChange}
+        // Aucun `scroll={{ x }}` : au-dessus de 992 px les colonnes tiennent,
+        // en dessous ce sont des cartes. Le défilement horizontal d'un tableau
+        // est un aveu que la stratégie de colonnes n'a pas été faite.
+        size="middle"
+        aria-label={ariaLabel}
+      />
+    ) : (
+      cardList
+    );
 
   return (
     <div>

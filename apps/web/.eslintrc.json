@@ -61,7 +61,6 @@
         "src/components/properties/PropertyStatusWorkflow.tsx",
         "src/components/rental/AllocatePaymentForm.tsx",
         "src/pages/crm/Deals.tsx",
-        "src/pages/properties/Properties.tsx",
         "src/pages/rental/Penalties.tsx"
       ],
       "rules": {

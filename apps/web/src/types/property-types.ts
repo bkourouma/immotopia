@@ -12,25 +12,25 @@ export enum PropertyType {
   TERRAIN = 'TERRAIN',
   IMMEUBLE = 'IMMEUBLE',
   PARKING_BOX = 'PARKING_BOX',
-  LOT_PROGRAMME_NEUF = 'LOT_PROGRAMME_NEUF',
+  LOT_PROGRAMME_NEUF = 'LOT_PROGRAMME_NEUF'
 }
 
 export enum PropertyOwnershipType {
   TENANT = 'TENANT',
   PUBLIC = 'PUBLIC',
-  CLIENT = 'CLIENT',
+  CLIENT = 'CLIENT'
 }
 
 export enum PropertyTransactionMode {
   SALE = 'SALE',
   RENTAL = 'RENTAL',
-  SHORT_TERM = 'SHORT_TERM',
+  SHORT_TERM = 'SHORT_TERM'
 }
 
 export enum PropertyFurnishingStatus {
   FURNISHED = 'FURNISHED',
   UNFURNISHED = 'UNFURNISHED',
-  PARTIALLY_FURNISHED = 'PARTIALLY_FURNISHED',
+  PARTIALLY_FURNISHED = 'PARTIALLY_FURNISHED'
 }
 
 export enum PropertyStatus {
@@ -41,19 +41,19 @@ export enum PropertyStatus {
   UNDER_OFFER = 'UNDER_OFFER',
   RENTED = 'RENTED',
   SOLD = 'SOLD',
-  ARCHIVED = 'ARCHIVED',
+  ARCHIVED = 'ARCHIVED'
 }
 
 export enum PropertyAvailability {
   AVAILABLE = 'AVAILABLE',
   UNAVAILABLE = 'UNAVAILABLE',
-  SOON_AVAILABLE = 'SOON_AVAILABLE',
+  SOON_AVAILABLE = 'SOON_AVAILABLE'
 }
 
 export enum PropertyMediaType {
   PHOTO = 'PHOTO',
   VIDEO = 'VIDEO',
-  TOUR_360 = 'TOUR_360',
+  TOUR_360 = 'TOUR_360'
 }
 
 export enum PropertyDocumentType {
@@ -61,12 +61,12 @@ export enum PropertyDocumentType {
   MANDATE = 'MANDATE',
   PLAN = 'PLAN',
   TAX_DOCUMENT = 'TAX_DOCUMENT',
-  OTHER = 'OTHER',
+  OTHER = 'OTHER'
 }
 
 export enum PropertyVisitType {
   VISIT = 'VISIT',
-  APPOINTMENT = 'APPOINTMENT',
+  APPOINTMENT = 'APPOINTMENT'
 }
 
 export enum PropertyVisitGoal {
@@ -76,7 +76,7 @@ export enum PropertyVisitGoal {
   CONTRACT_SIGNING = 'CONTRACT_SIGNING',
   FOLLOW_UP = 'FOLLOW_UP',
   NEGOTIATION = 'NEGOTIATION',
-  OTHER = 'OTHER',
+  OTHER = 'OTHER'
 }
 
 export enum PropertyVisitStatus {
@@ -84,7 +84,7 @@ export enum PropertyVisitStatus {
   CONFIRMED = 'CONFIRMED',
   DONE = 'DONE',
   NO_SHOW = 'NO_SHOW',
-  CANCELED = 'CANCELED',
+  CANCELED = 'CANCELED'
 }
 
 // Property interfaces
@@ -124,11 +124,25 @@ export interface Property {
   owner?: { id: string; email: string; fullName: string | null } | null;
   _count?: { containerChildren: number };
   /** Parent building when this property is an apartment (child of an IMMEUBLE) */
-  containerParent?: { id: string; internalReference: string; title: string; rooms?: number; propertyType?: PropertyType } | null;
+  containerParent?: {
+    id: string;
+    internalReference: string;
+    title: string;
+    rooms?: number;
+    propertyType?: PropertyType;
+  } | null;
   /** For IMMEUBLE: number of child apartments with status RENTED */
   containerChildrenRentedCount?: number;
   /** For IMMEUBLE: number of child apartments available (total - rented) */
   containerChildrenAvailableCount?: number;
+  /**
+   * Vignette du bien, résolue par le endpoint de liste (§8.4).
+   *
+   * Remplace la requête `/media` que la liste lançait par carte affichée —
+   * jusqu'à vingt requêtes pour une page. `null` quand le bien n'a aucune
+   * photo ; chemin relatif, à préfixer par l'origine de l'API.
+   */
+  thumbnailUrl?: string | null;
 }
 
 export interface PropertyMedia {
@@ -393,4 +407,3 @@ export interface UpdateStatusRequest {
   status: PropertyStatus;
   notes?: string;
 }
-

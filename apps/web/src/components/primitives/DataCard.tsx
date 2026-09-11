@@ -38,6 +38,14 @@ export interface DataCardProps {
   /** Montant ou grandeur mise en avant, alignée à droite du titre. */
   highlight?: React.ReactNode;
   fields?: DataCardField[];
+  /**
+   * Visuel de tête, à ratio réservé par l'appelant.
+   *
+   * Réservé aux listes où l'image *est* de l'information — un portefeuille de
+   * biens. Ailleurs elle vole la place du texte. Le ratio doit être fixé par
+   * l'appelant, faute de quoi l'arrivée de l'image décale tout ce qui suit.
+   */
+  cover?: React.ReactNode;
   /** Ouvre le détail. Rend la carte entière actionnable. */
   onOpen?: () => void;
   /** L'unique action explicite de la carte. */
@@ -54,6 +62,7 @@ export const DataCard: React.FC<DataCardProps> = ({
   status,
   highlight,
   fields,
+  cover,
   onOpen,
   primaryAction,
   secondaryActions,
@@ -81,6 +90,7 @@ export const DataCard: React.FC<DataCardProps> = ({
             }
           : undefined
       }
+      cover={cover}
       styles={{ body: { padding: 'var(--space-4)' } }}
       style={{
         cursor: interactive ? 'pointer' : undefined,

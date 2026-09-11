@@ -6,7 +6,7 @@ import {
   UpdatePropertyRequest,
   PropertySearchRequest,
   PropertySearchResponse,
-  PropertyVisit,
+  PropertyVisit
 } from '../types/property-types';
 
 // Re-export types for convenience
@@ -17,16 +17,14 @@ export type {
   UpdatePropertyRequest,
   PropertySearchRequest,
   PropertySearchResponse,
-  PropertyVisit,
+  PropertyVisit
 };
 
 /**
  * Get all property templates
  */
 export async function getTemplates(): Promise<PropertyTypeTemplate[]> {
-  const response = await apiClient.get<{ success: boolean; data: PropertyTypeTemplate[] }>(
-    '/property-templates'
-  );
+  const response = await apiClient.get<{ success: boolean; data: PropertyTypeTemplate[] }>('/property-templates');
   return response.data.data;
 }
 
@@ -34,23 +32,15 @@ export async function getTemplates(): Promise<PropertyTypeTemplate[]> {
  * Get template by property type
  */
 export async function getTemplate(type: string): Promise<PropertyTypeTemplate> {
-  const response = await apiClient.get<{ success: boolean; data: PropertyTypeTemplate }>(
-    `/property-templates/${type}`
-  );
+  const response = await apiClient.get<{ success: boolean; data: PropertyTypeTemplate }>(`/property-templates/${type}`);
   return response.data.data;
 }
 
 /**
  * Create a property
  */
-export async function createProperty(
-  tenantId: string,
-  data: CreatePropertyRequest
-): Promise<Property> {
-  const response = await apiClient.post<{ success: boolean; data: Property }>(
-    `/tenants/${tenantId}/properties`,
-    data
-  );
+export async function createProperty(tenantId: string, data: CreatePropertyRequest): Promise<Property> {
+  const response = await apiClient.post<{ success: boolean; data: Property }>(`/tenants/${tenantId}/properties`, data);
   return response.data.data;
 }
 
@@ -82,41 +72,63 @@ export async function updateProperty(
 /**
  * Delete a property
  */
-export async function deleteProperty(
-  tenantId: string,
-  propertyId: string
-): Promise<void> {
+export async function deleteProperty(tenantId: string, propertyId: string): Promise<void> {
   await apiClient.delete(`/tenants/${tenantId}/properties/${propertyId}`);
 }
 
 /**
  * List properties with filters
  */
+export interface ListPropertiesFilters {
+  propertyType?: string;
+  ownershipType?: string;
+  status?: string;
+  transactionMode?: string;
+  /** Recherche libre : titre, adresse, référence interne. */
+  q?: string;
+  /** Commune ou zone. */
+  city?: string;
+  minPrice?: string | number;
+  maxPrice?: string | number;
+  minSurface?: string | number;
+  maxSurface?: string | number;
+  minRooms?: string | number;
+  maxRooms?: string | number;
+  minBedrooms?: string | number;
+  maxBedrooms?: string | number;
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * Tous les filtres partent au serveur (REFONTE_UI_UX.md §8.4).
+ *
+ * `properties/Properties.tsx` en appliquait dix dans le navigateur, sur la page
+ * déjà reçue, pendant que le compteur venait du serveur : la liste et son
+ * compteur se contredisaient, et un bien pouvait exister sans jamais
+ * apparaître. Les paramètres ci-dessous sont ceux que l'API accepte depuis le
+ * commit `a2e43aa`.
+ */
 export async function listProperties(
   tenantId: string,
-  filters?: {
-    propertyType?: string;
-    ownershipType?: string;
-    status?: string;
-    transactionMode?: string;
-    page?: number;
-    limit?: number;
-  }
+  filters?: ListPropertiesFilters,
+  options?: { signal?: AbortSignal }
 ): Promise<PropertySearchResponse> {
   const params = new URLSearchParams();
-  if (filters?.propertyType) params.append('propertyType', filters.propertyType);
-  if (filters?.ownershipType) params.append('ownershipType', filters.ownershipType);
-  if (filters?.status) params.append('status', filters.status);
-  if (filters?.transactionMode) params.append('transactionMode', filters.transactionMode);
-  if (filters?.page) params.append('page', filters.page.toString());
-  if (filters?.limit) params.append('limit', filters.limit.toString());
+  for (const [key, value] of Object.entries(filters ?? {})) {
+    // Une valeur vide n'est pas un filtre : `?q=` ne doit pas chercher la
+    // chaîne vide, et `?minPrice=` ne doit pas valoir zéro.
+    if (value === undefined || value === null || value === '') continue;
+    params.append(key, String(value));
+  }
 
   const response = await apiClient.get<{ success: boolean; data: Property[]; pagination: any }>(
-    `/tenants/${tenantId}/properties?${params.toString()}`
+    `/tenants/${tenantId}/properties?${params.toString()}`,
+    { signal: options?.signal }
   );
   return {
     properties: response.data.data,
-    pagination: response.data.pagination,
+    pagination: response.data.pagination
   };
 }
 
@@ -139,7 +151,7 @@ export async function searchProperties(
   }>(`/tenants/${tenantId}/properties/search`, searchRequest);
   return {
     properties: response.data.data,
-    pagination: response.data.pagination,
+    pagination: response.data.pagination
   };
 }
 
@@ -159,7 +171,7 @@ export async function createMandate(
     `/tenants/${tenantId}/properties/${propertyId}/mandates`,
     {
       propertyId,
-      ...data,
+      ...data
     }
   );
   return response.data.data;
@@ -168,11 +180,7 @@ export async function createMandate(
 /**
  * Revoke a management mandate
  */
-export async function revokeMandate(
-  tenantId: string,
-  propertyId: string,
-  mandateId: string
-): Promise<any> {
+export async function revokeMandate(tenantId: string, propertyId: string, mandateId: string): Promise<any> {
   const response = await apiClient.delete<{ success: boolean; data: any }>(
     `/tenants/${tenantId}/properties/${propertyId}/mandates/${mandateId}`
   );
@@ -182,10 +190,7 @@ export async function revokeMandate(
 /**
  * Get property mandates
  */
-export async function getPropertyMandates(
-  tenantId: string,
-  propertyId: string
-): Promise<any[]> {
+export async function getPropertyMandates(tenantId: string, propertyId: string): Promise<any[]> {
   const response = await apiClient.get<{ success: boolean; data: any[] }>(
     `/tenants/${tenantId}/properties/${propertyId}/mandates`
   );
@@ -196,9 +201,7 @@ export async function getPropertyMandates(
  * Get tenant mandates
  */
 export async function getTenantMandates(tenantId: string): Promise<any[]> {
-  const response = await apiClient.get<{ success: boolean; data: any[] }>(
-    `/tenants/${tenantId}/mandates`
-  );
+  const response = await apiClient.get<{ success: boolean; data: any[] }>(`/tenants/${tenantId}/mandates`);
   return response.data.data;
 }
 
@@ -228,8 +231,8 @@ export async function uploadMedia(
     formData,
     {
       headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+        'Content-Type': 'multipart/form-data'
+      }
     }
   );
   return response.data.data;
@@ -243,20 +246,13 @@ export async function reorderMedia(
   propertyId: string,
   mediaOrders: Array<{ mediaId: string; displayOrder: number }>
 ): Promise<void> {
-  await apiClient.post(
-    `/tenants/${tenantId}/properties/${propertyId}/media/reorder`,
-    { mediaOrders }
-  );
+  await apiClient.post(`/tenants/${tenantId}/properties/${propertyId}/media/reorder`, { mediaOrders });
 }
 
 /**
  * Set primary media
  */
-export async function setPrimaryMedia(
-  tenantId: string,
-  propertyId: string,
-  mediaId: string
-): Promise<any> {
+export async function setPrimaryMedia(tenantId: string, propertyId: string, mediaId: string): Promise<any> {
   const response = await apiClient.post<{ success: boolean; data: any }>(
     `/tenants/${tenantId}/properties/${propertyId}/media/primary`,
     { mediaId }
@@ -267,14 +263,8 @@ export async function setPrimaryMedia(
 /**
  * Delete media
  */
-export async function deleteMedia(
-  tenantId: string,
-  propertyId: string,
-  mediaId: string
-): Promise<void> {
-  await apiClient.delete(
-    `/tenants/${tenantId}/properties/${propertyId}/media/${mediaId}`
-  );
+export async function deleteMedia(tenantId: string, propertyId: string, mediaId: string): Promise<void> {
+  await apiClient.delete(`/tenants/${tenantId}/properties/${propertyId}/media/${mediaId}`);
 }
 
 /**
@@ -303,8 +293,8 @@ export async function uploadDocument(
     formData,
     {
       headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+        'Content-Type': 'multipart/form-data'
+      }
     }
   );
   return response.data.data;
@@ -323,7 +313,7 @@ export async function updateStatus(
     `/tenants/${tenantId}/properties/${propertyId}/status`,
     {
       status,
-      notes,
+      notes
     }
   );
   return response.data.data;
@@ -332,10 +322,7 @@ export async function updateStatus(
 /**
  * Get status history
  */
-export async function getStatusHistory(
-  tenantId: string,
-  propertyId: string
-): Promise<any[]> {
+export async function getStatusHistory(tenantId: string, propertyId: string): Promise<any[]> {
   const response = await apiClient.get<{ success: boolean; data: any[] }>(
     `/tenants/${tenantId}/properties/${propertyId}/status/history`
   );
@@ -345,10 +332,7 @@ export async function getStatusHistory(
 /**
  * Publish property
  */
-export async function publishProperty(
-  tenantId: string,
-  propertyId: string
-): Promise<Property> {
+export async function publishProperty(tenantId: string, propertyId: string): Promise<Property> {
   const response = await apiClient.post<{ success: boolean; data: Property }>(
     `/tenants/${tenantId}/properties/${propertyId}/publish`
   );
@@ -358,10 +342,7 @@ export async function publishProperty(
 /**
  * Unpublish property
  */
-export async function unpublishProperty(
-  tenantId: string,
-  propertyId: string
-): Promise<Property> {
+export async function unpublishProperty(tenantId: string, propertyId: string): Promise<Property> {
   const response = await apiClient.post<{ success: boolean; data: Property }>(
     `/tenants/${tenantId}/properties/${propertyId}/unpublish`
   );
@@ -371,11 +352,7 @@ export async function unpublishProperty(
 /**
  * Match properties for a deal
  */
-export async function matchPropertiesForDeal(
-  tenantId: string,
-  dealId: string,
-  limit?: number
-): Promise<any[]> {
+export async function matchPropertiesForDeal(tenantId: string, dealId: string, limit?: number): Promise<any[]> {
   const params = limit ? `?limit=${limit}` : '';
   const response = await apiClient.post<{ success: boolean; data: any[] }>(
     `/tenants/${tenantId}/crm/deals/${dealId}/properties/match${params}`
@@ -400,7 +377,7 @@ export async function addPropertyToShortlist(
       propertyId,
       matchScore,
       matchExplanation,
-      sourceOwnerContactId,
+      sourceOwnerContactId
     }
   );
   return response.data.data;
@@ -435,10 +412,7 @@ export async function scheduleVisit(
 /**
  * Get property visits
  */
-export async function getPropertyVisits(
-  tenantId: string,
-  propertyId: string
-): Promise<PropertyVisit[]> {
+export async function getPropertyVisits(tenantId: string, propertyId: string): Promise<PropertyVisit[]> {
   const response = await apiClient.get<{ success: boolean; data: PropertyVisit[] }>(
     `/tenants/${tenantId}/properties/${propertyId}/visits`
   );
@@ -456,7 +430,7 @@ export async function getCalendarVisits(
 ): Promise<Record<string, PropertyVisit[]>> {
   const params = new URLSearchParams({
     startDate,
-    endDate,
+    endDate
   });
   if (assignedToUserId) {
     params.append('assignedToUserId', assignedToUserId);
@@ -517,4 +491,3 @@ export async function completePropertyVisit(
   );
   return response.data.data;
 }
-

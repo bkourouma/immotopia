@@ -43,7 +43,25 @@ const COLUMNS = [
   { title: 'Prix', dataIndex: 'prix', key: 'prix' }
 ];
 
-function view(props: Partial<React.ComponentProps<typeof DataView<Bien>>> = {}) {
+/**
+ * Les propriétés surchargées sont nommées une à une : `DataViewProps` est une
+ * union discriminée sur `layout`, et un `Partial<>` de cette union perdrait
+ * justement la contrainte que le composant existe pour poser.
+ */
+type Overrides = {
+  items?: Bien[];
+  total?: number;
+  loading?: boolean;
+  isReloading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
+  isFiltered?: boolean;
+  onClearFilters?: () => void;
+  emptyAction?: { label: string; onClick: () => void };
+  onPageChange?: (page: number, pageSize: number) => void;
+};
+
+function view(props: Overrides = {}) {
   return render(
     <MemoryRouter>
       <DataView<Bien>
@@ -53,6 +71,25 @@ function view(props: Partial<React.ComponentProps<typeof DataView<Bien>>> = {}) 
         pageSize={20}
         onPageChange={() => {}}
         columns={COLUMNS}
+        rowKey={b => b.id}
+        renderCard={b => <DataCard title={b.titre} subtitle={`${b.prix} FCFA`} />}
+        aria-label="Biens"
+        {...props}
+      />
+    </MemoryRouter>
+  );
+}
+
+function grid(props: Overrides = {}) {
+  return render(
+    <MemoryRouter>
+      <DataView<Bien>
+        layout="grid"
+        items={BIENS}
+        total={57}
+        page={1}
+        pageSize={20}
+        onPageChange={() => {}}
         rowKey={b => b.id}
         renderCard={b => <DataCard title={b.titre} subtitle={`${b.prix} FCFA`} />}
         aria-label="Biens"
@@ -83,6 +120,21 @@ describe('DataView — représentation selon le palier', () => {
     // La recherche est bornée à la liste : la pagination d'Ant Design rend
     // elle aussi des `listitem`, et les compter fausserait le test.
     expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('en grille, rend des cartes meme au-dessus de 992 px', () => {
+    // Un portefeuille de biens se regarde autant qu'il se lit : la photo fait
+    // partie de l'information, un tableau la perdrait.
+    isDesktop.value = true;
+    grid();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'Biens' })).getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('en grille, le squelette est fait de cartes et non de lignes', () => {
+    isDesktop.value = true;
+    grid({ items: [], loading: true });
+    expect(screen.getByRole('status')).toHaveAttribute('aria-busy', 'true');
   });
 });
 

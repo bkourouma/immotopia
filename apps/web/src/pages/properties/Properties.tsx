@@ -1,784 +1,433 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import {
-  App,
-  Card,
-  Input,
-  Select,
-  Button,
-  Tag,
-  Space,
-  Row,
-  Col,
-  Typography,
-  Alert,
-  Empty,
-  Spin,
-  Collapse,
-  Badge,
-  Grid,
-  Pagination,
-  Popconfirm
-} from 'antd';
-import {
-  PlusOutlined,
-  SearchOutlined,
-  FilterOutlined,
-  EyeOutlined,
-  EditOutlined,
-  HomeOutlined,
-  CloseOutlined,
-  DeleteOutlined,
-  MailOutlined
-} from '@ant-design/icons';
-import { listProperties, Property, deleteProperty } from '../../services/property-service';
-import { PropertyMedia, PropertyMediaType } from '../../types/property-types';
-import apiClient from '../../utils/api-client';
+import React, { useMemo, useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { App, Input, Select, Row, Col } from 'antd';
+import { PlusOutlined, SearchOutlined, HomeOutlined } from '@ant-design/icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { listProperties, deleteProperty } from '../../services/property-service';
+import type { Property } from '../../types/property-types';
 import { useAuth } from '../../hooks/useAuth';
-import { GeographicLocation, getAllCommunes } from '../../services/geographic-service';
-import { CommuneSearchableSelect } from '../../components/ui/commune-searchable-select';
+import { getAllCommunes, GeographicLocation } from '../../services/geographic-service';
 import { PropertyNewsletterCampaignModal } from '../../components/newsletter/PropertyNewsletterCampaignModal';
-import { API_URL } from '../../config/api';
+import { fileUrl } from '../../config/api';
+import { queryKey, STALE_TIME } from '../../lib/query-keys';
+import { useListParams } from '../../hooks/useListParams';
+import {
+  PageHeader,
+  StateBlock,
+  StatusTag,
+  DataView,
+  DataCard,
+  FilterSheet,
+  MoneyValue,
+  useConfirmAction
+} from '../../components/primitives';
 
-const { Title, Text } = Typography;
-const { Panel } = Collapse;
-const { useBreakpoint } = Grid;
+/**
+ * Liste des biens — premier des six écrans hybrides du §9.7.
+ *
+ * L'écran cumulait quatre défauts nommés par la spécification, tous corrigés
+ * ici :
+ *
+ * 1. **Dix filtres appliqués dans le navigateur** (`:153-206` de l'ancienne
+ *    version) sur la page déjà reçue — vingt biens — pendant que le compteur
+ *    venait du serveur. La liste et son compteur se contredisaient, et un bien
+ *    pouvait exister sans jamais apparaître. Tout part désormais à l'API.
+ * 2. **Une requête `/media` par carte affichée** (`:248-276`), soit jusqu'à
+ *    vingt requêtes pour une page. Remplacée par `thumbnailUrl`, que le
+ *    endpoint de liste résout en une requête groupée.
+ * 3. **Quatre actions par carte en icône seule**, `type="link"` avec un `title`
+ *    HTML natif : sans nom accessible, et trop serrées pour le doigt. Une seule
+ *    action explicite subsiste, le reste passe derrière « ⋮ ».
+ * 4. **Un `<Collapse>` de filtres dans le flux**, qui poussait la liste hors de
+ *    l'écran sur mobile et ne disait rien, une fois replié, d'un filtre resté
+ *    posé. `<FilterSheet>` le remplace et compte les filtres actifs.
+ *
+ * L'état vit dans l'URL : une recherche filtrée se partage par copier-coller,
+ * et le retour depuis une fiche retrouve la page et les filtres.
+ */
 
-export const Properties: React.FC = () => {
-  const { message } = App.useApp();
+const PROPERTY_TYPE_LABELS: Record<string, string> = {
+  APPARTEMENT: 'Appartement',
+  MAISON_VILLA: 'Maison / Villa',
+  STUDIO: 'Studio',
+  DUPLEX_TRIPLEX: 'Duplex / Triplex',
+  CHAMBRE_COLOCATION: 'Chambre / Colocation',
+  BUREAU: 'Bureau',
+  BOUTIQUE_COMMERCIAL: 'Boutique / Commercial',
+  ENTREPOT_INDUSTRIEL: 'Entrepôt / Industriel',
+  TERRAIN: 'Terrain',
+  IMMEUBLE: 'Immeuble',
+  PARKING_BOX: 'Parking / Box',
+  LOT_PROGRAMME_NEUF: 'Lot programme neuf'
+};
 
-  const { tenantId } = useParams<{ tenantId: string }>();
-  const navigate = useNavigate();
-  const screens = useBreakpoint();
-  const { tenantMembership } = useAuth();
-  const effectiveTenantId = tenantId || tenantMembership?.tenantId;
+const TRANSACTION_MODE_LABELS: Record<string, string> = {
+  SALE: 'Vente',
+  RENTAL: 'Location',
+  SHORT_TERM: 'Location courte durée'
+};
 
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    totalPages: 0
-  });
-  const [propertyImages, setPropertyImages] = useState<Record<string, string>>({});
-  const [communes, setCommunes] = useState<GeographicLocation[]>([]);
-  const [filters, setFilters] = useState({
-    propertyType: '',
-    transactionMode: '',
-    status: '',
-    city: '',
-    minPrice: '',
-    maxPrice: '',
-    minSurface: '',
-    maxSurface: '',
-    minRooms: '',
-    maxRooms: '',
-    minBedrooms: '',
-    maxBedrooms: ''
-  });
-  const [activeFiltersCount, setActiveFiltersCount] = useState(0);
-  const [newsletterModalProperty, setNewsletterModalProperty] = useState<Property | null>(null);
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Brouillon',
+  UNDER_REVIEW: 'En révision',
+  AVAILABLE: 'Disponible',
+  RESERVED: 'Réservé',
+  UNDER_OFFER: 'Sous offre',
+  RENTED: 'Loué',
+  SOLD: 'Vendu',
+  ARCHIVED: 'Archivé'
+};
 
-  const propertyTypeLabels: Record<string, string> = {
-    APPARTEMENT: 'Appartement',
-    MAISON_VILLA: 'Maison / Villa',
-    STUDIO: 'Studio',
-    DUPLEX_TRIPLEX: 'Duplex / Triplex',
-    CHAMBRE_COLOCATION: 'Chambre / Colocation',
-    BUREAU: 'Bureau',
-    BOUTIQUE_COMMERCIAL: 'Boutique / Commercial',
-    ENTREPOT_INDUSTRIEL: 'Entrepôt / Industriel',
-    TERRAIN: 'Terrain',
-    IMMEUBLE: 'Immeuble',
-    PARKING_BOX: 'Parking / Box',
-    LOT_PROGRAMME_NEUF: 'Lot programme neuf'
-  };
+type Filters = {
+  q: string;
+  propertyType: string;
+  transactionMode: string;
+  status: string;
+  city: string;
+  minPrice: string;
+  maxPrice: string;
+  minSurface: string;
+  maxSurface: string;
+  minRooms: string;
+  maxRooms: string;
+  minBedrooms: string;
+  maxBedrooms: string;
+};
 
-  const transactionModeLabels: Record<string, string> = {
-    SALE: 'Vente',
-    RENTAL: 'Location',
-    SHORT_TERM: 'Location courte durée'
-  };
+const FILTER_KEYS = [
+  'q',
+  'propertyType',
+  'transactionMode',
+  'status',
+  'city',
+  'minPrice',
+  'maxPrice',
+  'minSurface',
+  'maxSurface',
+  'minRooms',
+  'maxRooms',
+  'minBedrooms',
+  'maxBedrooms'
+] as const;
 
-  const statusLabels: Record<string, string> = {
-    DRAFT: 'Brouillon',
-    UNDER_REVIEW: 'En révision',
-    AVAILABLE: 'Disponible',
-    RESERVED: 'Réservé',
-    UNDER_OFFER: 'Sous offre',
-    RENTED: 'Loué',
-    SOLD: 'Vendu',
-    ARCHIVED: 'Archivé'
-  };
+/** Ratio réservé : l'image ne doit pas décaler le texte en arrivant. */
+const COVER_HEIGHT = 180;
 
-  useEffect(() => {
-    const count = Object.values(filters).filter(v => v !== '').length;
-    setActiveFiltersCount(count + (searchTerm ? 1 : 0));
-  }, [filters, searchTerm]);
+function Cover({ property }: { property: Property }) {
+  const src = property.thumbnailUrl ? fileUrl(property.thumbnailUrl) : null;
 
-  useEffect(() => {
-    if (effectiveTenantId) {
-      loadProperties();
-    }
-  }, [effectiveTenantId, pagination.page]);
-
-  useEffect(() => {
-    const loadCommunes = async () => {
-      try {
-        const communesList = await getAllCommunes();
-        setCommunes(communesList);
-      } catch (err) {
-        console.error('Error loading communes:', err);
-      }
-    };
-    loadCommunes();
-  }, []);
-
-  const loadProperties = async () => {
-    if (!effectiveTenantId) return;
-
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await listProperties(effectiveTenantId, {
-        page: pagination.page,
-        limit: pagination.limit,
-        propertyType: filters.propertyType || undefined,
-        transactionMode: filters.transactionMode || undefined,
-        status: filters.status || undefined
-      });
-
-      let filteredProperties = response.properties;
-
-      if (searchTerm) {
-        const term = searchTerm.toLowerCase();
-        filteredProperties = filteredProperties.filter(
-          p =>
-            p.title?.toLowerCase().includes(term) ||
-            p.address?.toLowerCase().includes(term) ||
-            p.internalReference?.toLowerCase().includes(term)
-        );
-      }
-
-      if (filters.city) {
-        const selectedCommune = communes.find(c => c.communeId === filters.city);
-        if (selectedCommune) {
-          const communeName = selectedCommune.commune.toLowerCase();
-          const regionName = selectedCommune.region.toLowerCase();
-          filteredProperties = filteredProperties.filter(p => {
-            const addressLower = p.address?.toLowerCase() || '';
-            const locationZoneLower = p.locationZone?.toLowerCase() || '';
-            return (
-              addressLower.includes(communeName) ||
-              locationZoneLower.includes(communeName) ||
-              addressLower.includes(regionName) ||
-              locationZoneLower.includes(regionName)
-            );
-          });
-        }
-      }
-
-      if (filters.minPrice) {
-        filteredProperties = filteredProperties.filter(p => (p.price || 0) >= Number(filters.minPrice));
-      }
-      if (filters.maxPrice) {
-        filteredProperties = filteredProperties.filter(p => (p.price || 0) <= Number(filters.maxPrice));
-      }
-
-      if (filters.minSurface) {
-        filteredProperties = filteredProperties.filter(p => (p.surfaceArea || 0) >= Number(filters.minSurface));
-      }
-      if (filters.maxSurface) {
-        filteredProperties = filteredProperties.filter(p => (p.surfaceArea || 0) <= Number(filters.maxSurface));
-      }
-
-      if (filters.minRooms) {
-        filteredProperties = filteredProperties.filter(p => (p.rooms || 0) >= Number(filters.minRooms));
-      }
-      if (filters.maxRooms) {
-        filteredProperties = filteredProperties.filter(p => (p.rooms || 0) <= Number(filters.maxRooms));
-      }
-
-      if (filters.minBedrooms) {
-        filteredProperties = filteredProperties.filter(p => (p.bedrooms || 0) >= Number(filters.minBedrooms));
-      }
-      if (filters.maxBedrooms) {
-        filteredProperties = filteredProperties.filter(p => (p.bedrooms || 0) <= Number(filters.maxBedrooms));
-      }
-
-      setProperties(filteredProperties);
-      setPagination(response.pagination);
-      loadPropertyImages(filteredProperties);
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur lors du chargement des propriétés');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSearch = () => {
-    setPagination(prev => ({ ...prev, page: 1 }));
-    loadProperties();
-  };
-
-  const clearFilters = () => {
-    setSearchTerm('');
-    setFilters({
-      propertyType: '',
-      transactionMode: '',
-      status: '',
-      city: '',
-      minPrice: '',
-      maxPrice: '',
-      minSurface: '',
-      maxSurface: '',
-      minRooms: '',
-      maxRooms: '',
-      minBedrooms: '',
-      maxBedrooms: ''
-    });
-    setPagination(prev => ({ ...prev, page: 1 }));
-  };
-
-  useEffect(() => {
-    if (activeFiltersCount === 0 && effectiveTenantId) {
-      loadProperties();
-    }
-  }, [activeFiltersCount]);
-
-  const loadPropertyImages = async (props: Property[]) => {
-    if (!effectiveTenantId) return;
-
-    const imageMap: Record<string, string> = {};
-    const apiBaseUrl = API_URL;
-    const mediaBaseUrl = apiBaseUrl.replace('/api', '');
-
-    await Promise.all(
-      props.map(async property => {
-        try {
-          const response = await apiClient.get<{ success: boolean; data: PropertyMedia[] }>(
-            `/tenants/${effectiveTenantId}/properties/${property.id}/media`
-          );
-          const photos = response.data.data.filter(m => m.mediaType === PropertyMediaType.PHOTO);
-          const primaryPhoto = photos.find(p => p.isPrimary) || photos[0];
-          if (primaryPhoto) {
-            const filePath = primaryPhoto.fileUrl || primaryPhoto.filePath;
-            imageMap[property.id] = filePath.startsWith('http')
-              ? filePath
-              : `${mediaBaseUrl}${filePath.startsWith('/') ? '' : '/'}${filePath}`;
-          }
-        } catch (err) {
-          // Ignore errors
-        }
-      })
-    );
-
-    setPropertyImages(imageMap);
-  };
-
-  const formatPrice = (price?: number, currency?: string, propertyType?: string) => {
-    if (!price) return propertyType === 'IMMEUBLE' ? '' : 'Prix sur demande';
-    const formatted = new Intl.NumberFormat('fr-FR').format(price);
-    return `${formatted} ${currency || 'EUR'}`;
-  };
-
-  const handleDeleteProperty = async (propertyId: string) => {
-    if (!effectiveTenantId) return;
-
-    try {
-      await deleteProperty(effectiveTenantId, propertyId);
-      message.success('Propriété supprimée avec succès');
-      // Reload properties after deletion
-      loadProperties();
-    } catch (err: any) {
-      const errorMessage = err.response?.data?.error || err.message || 'Erreur lors de la suppression';
-      message.error(errorMessage);
-    }
-  };
-
-  /** Commune depuis typeSpecificData */
-  const getCommune = (p: Property) => {
-    const ts =
-      p.typeSpecificData && typeof p.typeSpecificData === 'object' ? (p.typeSpecificData as Record<string, any>) : {};
-    return ts.commune?.trim() || '';
-  };
-
-  /** Adresse et quartier sur une seule ligne (pour affichage carte) */
-  const getAddressAndQuartierLine = (p: Property) => {
-    const parts: string[] = [];
-    if (p.address?.trim()) parts.push(p.address.trim());
-    if (p.locationZone?.trim()) parts.push(p.locationZone.trim());
-    return parts.join(' • ');
-  };
-
-  const getStatusTag = (status: string, isPublished: boolean) => {
-    const statusConfig: Record<string, { color: string; text: string }> = {
-      DRAFT: { color: 'default', text: 'Brouillon' },
-      UNDER_REVIEW: { color: 'warning', text: 'En révision' },
-      AVAILABLE: { color: 'success', text: 'Disponible' },
-      RESERVED: { color: 'processing', text: 'Réservé' },
-      UNDER_OFFER: { color: 'processing', text: 'Sous offre' },
-      RENTED: { color: 'purple', text: 'Loué' },
-      SOLD: { color: 'error', text: 'Vendu' },
-      ARCHIVED: { color: 'default', text: 'Archivé' }
-    };
-    const config = statusConfig[status] || statusConfig.DRAFT;
+  if (!src) {
     return (
-      <Space size="small">
-        <Tag color={config.color}>{config.text}</Tag>
-        {isPublished && <Tag color="blue">Publié</Tag>}
-      </Space>
-    );
-  };
-
-  if (!effectiveTenantId) {
-    return (
-      <>
-        <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <Text type="secondary">Aucune agence sélectionnée</Text>
-        </div>
-      </>
+      <div
+        style={{
+          height: COVER_HEIGHT,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'var(--surface-sunken)'
+        }}
+      >
+        {/* Décoratif : le titre du bien porte déjà l'information. */}
+        <HomeOutlined aria-hidden="true" style={{ fontSize: 40, color: 'var(--text-tertiary)' }} />
+      </div>
     );
   }
 
   return (
-    <>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        {/* Page Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <Title level={2} style={{ margin: 0 }}>
-              Propriétés
-            </Title>
-            <Text type="secondary">Gérez toutes vos propriétés immobilières</Text>
-          </div>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => navigate(`/tenant/${effectiveTenantId}/properties/new`)}
-          >
-            Ajouter une propriété
-          </Button>
-        </div>
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      style={{ height: COVER_HEIGHT, width: '100%', objectFit: 'cover', display: 'block' }}
+      onError={event => {
+        event.currentTarget.style.visibility = 'hidden';
+      }}
+    />
+  );
+}
 
-        {/* Search and Filters */}
-        <Card>
-          <Space.Compact style={{ width: '100%', marginBottom: 16 }}>
-            <Input
-              placeholder="Rechercher par titre, adresse, référence..."
-              prefix={<SearchOutlined />}
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              onPressEnter={handleSearch}
-              style={{ flex: 1 }}
-            />
-            <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
-              Rechercher
-            </Button>
-          </Space.Compact>
+export const Properties: React.FC = () => {
+  const { message } = App.useApp();
+  const { tenantId } = useParams<{ tenantId: string }>();
+  const navigate = useNavigate();
+  const { tenantMembership } = useAuth();
+  const queryClient = useQueryClient();
+  const confirm = useConfirmAction();
+  const effectiveTenantId = tenantId || tenantMembership?.tenantId;
 
-          <Collapse
-            ghost
-            expandIcon={({ isActive }) => (
-              <Badge count={activeFiltersCount} offset={[10, 0]}>
-                <Button icon={isActive ? <CloseOutlined /> : <FilterOutlined />} iconPosition="end">
-                  Filtres avancés
-                </Button>
-              </Badge>
-            )}
-          >
-            <Panel header="" key="filters">
-              <div style={{ marginTop: 16 }}>
-                {activeFiltersCount > 0 && (
-                  <div style={{ marginBottom: 16, textAlign: 'right' }}>
-                    <Button type="link" icon={<CloseOutlined />} onClick={clearFilters}>
-                      Effacer les filtres
-                    </Button>
-                  </div>
-                )}
-                <Row gutter={[16, 16]}>
-                  <Col xs={24} sm={12} md={8} lg={6}>
-                    <Text strong>Type de bien</Text>
-                    <Select
-                      style={{ width: '100%', marginTop: 8 }}
-                      placeholder="Tous les types"
-                      value={filters.propertyType || undefined}
-                      onChange={value => setFilters(prev => ({ ...prev, propertyType: value || '' }))}
-                      allowClear
-                    >
-                      {Object.entries(propertyTypeLabels).map(([value, label]) => (
-                        <Select.Option key={value} value={value}>
-                          {label}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Col>
-                  <Col xs={24} sm={12} md={8} lg={6}>
-                    <Text strong>Mode de transaction</Text>
-                    <Select
-                      style={{ width: '100%', marginTop: 8 }}
-                      placeholder="Tous les modes"
-                      value={filters.transactionMode || undefined}
-                      onChange={value => setFilters(prev => ({ ...prev, transactionMode: value || '' }))}
-                      allowClear
-                    >
-                      {Object.entries(transactionModeLabels).map(([value, label]) => (
-                        <Select.Option key={value} value={value}>
-                          {label}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Col>
-                  <Col xs={24} sm={12} md={8} lg={6}>
-                    <Text strong>Statut</Text>
-                    <Select
-                      style={{ width: '100%', marginTop: 8 }}
-                      placeholder="Tous les statuts"
-                      value={filters.status || undefined}
-                      onChange={value => setFilters(prev => ({ ...prev, status: value || '' }))}
-                      allowClear
-                    >
-                      {Object.entries(statusLabels).map(([value, label]) => (
-                        <Select.Option key={value} value={value}>
-                          {label}
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Col>
-                  <Col xs={24} sm={12} md={8} lg={6}>
-                    <Text strong>Ville</Text>
-                    <div style={{ marginTop: 8 }}>
-                      <CommuneSearchableSelect
-                        value={filters.city}
-                        onChange={communeId => setFilters(prev => ({ ...prev, city: communeId }))}
-                        placeholder="Rechercher une ville..."
-                      />
-                    </div>
-                  </Col>
-                  <Col xs={24} sm={12} md={8} lg={6}>
-                    <Text strong>Prix minimum (FCFA)</Text>
-                    <Input
-                      type="number"
-                      placeholder="0"
-                      value={filters.minPrice}
-                      onChange={e => setFilters(prev => ({ ...prev, minPrice: e.target.value }))}
-                      style={{ marginTop: 8 }}
-                    />
-                  </Col>
-                  <Col xs={24} sm={12} md={8} lg={6}>
-                    <Text strong>Prix maximum (FCFA)</Text>
-                    <Input
-                      type="number"
-                      placeholder="Illimité"
-                      value={filters.maxPrice}
-                      onChange={e => setFilters(prev => ({ ...prev, maxPrice: e.target.value }))}
-                      style={{ marginTop: 8 }}
-                    />
-                  </Col>
-                  <Col xs={24} sm={12} md={8} lg={6}>
-                    <Text strong>Surface min (m²)</Text>
-                    <Input
-                      type="number"
-                      placeholder="0"
-                      value={filters.minSurface}
-                      onChange={e => setFilters(prev => ({ ...prev, minSurface: e.target.value }))}
-                      style={{ marginTop: 8 }}
-                    />
-                  </Col>
-                  <Col xs={24} sm={12} md={8} lg={6}>
-                    <Text strong>Surface max (m²)</Text>
-                    <Input
-                      type="number"
-                      placeholder="Illimité"
-                      value={filters.maxSurface}
-                      onChange={e => setFilters(prev => ({ ...prev, maxSurface: e.target.value }))}
-                      style={{ marginTop: 8 }}
-                    />
-                  </Col>
-                  <Col xs={24} sm={12} md={8} lg={6}>
-                    <Text strong>Pièces min</Text>
-                    <Input
-                      type="number"
-                      placeholder="0"
-                      min={0}
-                      value={filters.minRooms}
-                      onChange={e => setFilters(prev => ({ ...prev, minRooms: e.target.value }))}
-                      style={{ marginTop: 8 }}
-                    />
-                  </Col>
-                  <Col xs={24} sm={12} md={8} lg={6}>
-                    <Text strong>Pièces max</Text>
-                    <Input
-                      type="number"
-                      placeholder="Illimité"
-                      min={0}
-                      value={filters.maxRooms}
-                      onChange={e => setFilters(prev => ({ ...prev, maxRooms: e.target.value }))}
-                      style={{ marginTop: 8 }}
-                    />
-                  </Col>
-                  <Col xs={24} sm={12} md={8} lg={6}>
-                    <Text strong>Chambres min</Text>
-                    <Input
-                      type="number"
-                      placeholder="0"
-                      min={0}
-                      value={filters.minBedrooms}
-                      onChange={e => setFilters(prev => ({ ...prev, minBedrooms: e.target.value }))}
-                      style={{ marginTop: 8 }}
-                    />
-                  </Col>
-                  <Col xs={24} sm={12} md={8} lg={6}>
-                    <Text strong>Chambres max</Text>
-                    <Input
-                      type="number"
-                      placeholder="Illimité"
-                      min={0}
-                      value={filters.maxBedrooms}
-                      onChange={e => setFilters(prev => ({ ...prev, maxBedrooms: e.target.value }))}
-                      style={{ marginTop: 8 }}
-                    />
-                  </Col>
-                </Row>
-                <div style={{ marginTop: 16, textAlign: 'right' }}>
-                  <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
-                    Appliquer les filtres
-                  </Button>
-                </div>
-              </div>
-            </Panel>
-          </Collapse>
-        </Card>
+  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS, defaultPageSize: 20 });
+  const [newsletterProperty, setNewsletterProperty] = useState<Property | null>(null);
 
-        {/* Error State */}
-        {error && (
-          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
-        )}
+  /**
+   * Le champ de recherche a son propre état, le temps de la frappe.
+   *
+   * C'est la seule exception à « l'URL est la source unique », et elle est
+   * délibérée : écrire dans l'URL à chaque caractère empilerait une entrée
+   * d'historique par lettre, et le retour arrière deviendrait inutilisable.
+   * L'URL est écrite après 250 ms de silence (§8.4).
+   */
+  const [draftQuery, setDraftQuery] = useState(list.filters.q ?? '');
 
-        {/* Loading State */}
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '48px 0' }}>
-            <Spin size="large" />
-          </div>
-        ) : (
-          <>
-            {/* Properties Grid */}
-            {properties.length === 0 ? (
-              <Card>
-                <Empty
-                  image={<HomeOutlined style={{ fontSize: 64, color: '#bfbfbf' }} />}
-                  description={
-                    <Space direction="vertical" size="small">
-                      <Text strong>Aucune propriété</Text>
-                      <Text type="secondary">Commencez par créer votre première propriété</Text>
-                    </Space>
-                  }
-                >
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => navigate(`/tenant/${effectiveTenantId}/properties/new`)}
-                  >
-                    Ajouter une propriété
-                  </Button>
-                </Empty>
-              </Card>
-            ) : (
-              <>
-                <Row gutter={[16, 16]}>
-                  {properties.map(property => {
-                    const commune = getCommune(property);
-                    const addressQuartierLine = getAddressAndQuartierLine(property);
-                    return (
-                      <Col key={property.id} xs={24} sm={12} lg={8}>
-                        <Card
-                          hoverable
-                          cover={
-                            propertyImages[property.id] ? (
-                              <img
-                                alt={property.title}
-                                src={propertyImages[property.id]}
-                                style={{ height: 200, objectFit: 'cover' }}
-                                onError={e => {
-                                  e.currentTarget.style.display = 'none';
-                                }}
-                              />
-                            ) : (
-                              <div
-                                style={{
-                                  height: 200,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  backgroundColor: '#f0f0f0'
-                                }}
-                              >
-                                <HomeOutlined style={{ fontSize: 48, color: '#bfbfbf' }} />
-                              </div>
-                            )
-                          }
-                          actions={[
-                            <Button
-                              key="view"
-                              type="link"
-                              icon={<EyeOutlined />}
-                              onClick={() => navigate(`/tenant/${effectiveTenantId}/properties/${property.id}`)}
-                              title="Voir"
-                            />,
-                            <Button
-                              key="edit"
-                              type="link"
-                              icon={<EditOutlined />}
-                              onClick={() => navigate(`/tenant/${effectiveTenantId}/properties/${property.id}/edit`)}
-                              title="Modifier"
-                            />,
-                            <Button
-                              key="newsletter"
-                              type="link"
-                              icon={<MailOutlined />}
-                              onClick={e => {
-                                e.stopPropagation();
-                                setNewsletterModalProperty(property);
-                              }}
-                              title="Newsletter"
-                            />,
-                            <Popconfirm
-                              key="delete"
-                              title="Supprimer la propriété"
-                              description={`Êtes-vous sûr de vouloir supprimer "${property.title}" ? Cette action est irréversible.`}
-                              onConfirm={() => handleDeleteProperty(property.id)}
-                              okText="Supprimer"
-                              cancelText="Annuler"
-                              okButtonProps={{ danger: true }}
-                            >
-                              <Button type="link" danger icon={<DeleteOutlined />} title="Supprimer" />
-                            </Popconfirm>
-                          ]}
-                        >
-                          <Card.Meta
-                            title={
-                              <div
-                                style={{
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'flex-start',
-                                  marginBottom: 8
-                                }}
-                              >
-                                <Text strong ellipsis style={{ flex: 1, marginRight: 8 }}>
-                                  {property.title}
-                                </Text>
-                                {getStatusTag(property.status, property.isPublished)}
-                              </div>
-                            }
-                            description={
-                              <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                                <div>
-                                  <Text type="secondary">
-                                    {propertyTypeLabels[property.propertyType] || property.propertyType}
-                                  </Text>
-                                  {property.containerParent?.title && (
-                                    <Text type="secondary"> ({property.containerParent.title})</Text>
-                                  )}
-                                  {property.propertyType === 'IMMEUBLE' &&
-                                    (() => {
-                                      const total =
-                                        (property as Property & { _count?: { containerChildren: number } })._count
-                                          ?.containerChildren ?? 0;
-                                      const rented =
-                                        (property as Property & { containerChildrenRentedCount?: number })
-                                          .containerChildrenRentedCount ?? 0;
-                                      const available =
-                                        (property as Property & { containerChildrenAvailableCount?: number })
-                                          .containerChildrenAvailableCount ?? total;
-                                      if (total === 0) return null;
-                                      return (
-                                        <Text type="secondary">
-                                          {' '}
-                                          • {total} appartement{total > 1 ? 's' : ''}
-                                          {typeof rented === 'number' && typeof available === 'number' && (
-                                            <>
-                                              {' '}
-                                              • {available} disponible{available > 1 ? 's' : ''} • {rented} loué
-                                              {rented > 1 ? 's' : ''}
-                                            </>
-                                          )}
-                                        </Text>
-                                      );
-                                    })()}
-                                </div>
-                                {commune || (property.transactionModes && property.transactionModes.length > 0) ? (
-                                  <div>
-                                    <Text type="secondary">
-                                      {property.transactionModes && property.transactionModes.length > 0
-                                        ? property.transactionModes
-                                            .map((mode: string) => transactionModeLabels[mode] || mode)
-                                            .join(', ')
-                                        : ''}
-                                      {property.transactionModes?.length && commune ? ' • ' : ''}
-                                      {commune || ''}
-                                    </Text>
-                                  </div>
-                                ) : null}
-                                {addressQuartierLine ? (
-                                  <div>
-                                    <Text type="secondary" ellipsis style={{ display: 'block' }}>
-                                      {addressQuartierLine}
-                                    </Text>
-                                  </div>
-                                ) : null}
-                                <div>
-                                  {property.rooms && <Text type="secondary">{property.rooms} pièces</Text>}
-                                  {property.bedrooms && <Text type="secondary"> • {property.bedrooms} chambres</Text>}
-                                  {property.surfaceArea && <Text type="secondary"> • {property.surfaceArea} m²</Text>}
-                                </div>
-                                <Text strong style={{ fontSize: 18, color: '#1890ff' }}>
-                                  {formatPrice(property.price, property.currency, property.propertyType)}
-                                </Text>
-                              </Space>
-                            }
-                          />
-                        </Card>
-                      </Col>
-                    );
-                  })}
-                </Row>
+  useEffect(() => {
+    setDraftQuery(list.filters.q ?? '');
+  }, [list.filters.q]);
 
-                {/* Pagination */}
-                {pagination.totalPages > 1 && (
-                  <div style={{ textAlign: 'center', marginTop: 24 }}>
-                    <Pagination
-                      current={pagination.page}
-                      total={pagination.total}
-                      pageSize={pagination.limit}
-                      showSizeChanger
-                      showTotal={total => `Total: ${total} propriétés`}
-                      onChange={(page, pageSize) => {
-                        setPagination(prev => ({ ...prev, page, limit: pageSize }));
-                      }}
-                    />
-                  </div>
-                )}
-              </>
-            )}
-          </>
-        )}
-      </Space>
+  useEffect(() => {
+    const current = list.filters.q ?? '';
+    if (draftQuery === current) return;
+    const timer = setTimeout(() => list.setFilters({ q: draftQuery || undefined }), 250);
+    return () => clearTimeout(timer);
+    // `list` change à chaque rendu ; seul le texte doit relancer le minuteur.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftQuery]);
 
-      <PropertyNewsletterCampaignModal
-        open={!!newsletterModalProperty}
-        onClose={() => setNewsletterModalProperty(null)}
-        tenantId={effectiveTenantId}
-        property={newsletterModalProperty!}
-        imageUrls={
-          newsletterModalProperty && propertyImages[newsletterModalProperty.id]
-            ? [propertyImages[newsletterModalProperty.id]]
-            : []
+  const { data: communes = [] } = useQuery({
+    queryKey: queryKey('communes', null),
+    queryFn: getAllCommunes,
+    // Référentiel : les communes changent à l'échelle de l'année.
+    staleTime: STALE_TIME.reference
+  });
+
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: queryError,
+    refetch
+  } = useQuery({
+    queryKey: queryKey('properties', effectiveTenantId, list.queryParams),
+    queryFn: ({ signal }) => listProperties(effectiveTenantId as string, list.queryParams, { signal }),
+    enabled: Boolean(effectiveTenantId),
+    staleTime: STALE_TIME.list
+  });
+
+  const properties = data?.properties ?? [];
+  const total = data?.pagination?.total ?? 0;
+
+  const communeOptions = useMemo(
+    () =>
+      communes.map((commune: GeographicLocation) => ({
+        // La valeur envoyée à l'API est le NOM, pas l'identifiant : le filtre
+        // serveur cherche dans l'adresse et la zone de localisation, qui sont
+        // du texte libre.
+        value: commune.commune,
+        label: `${commune.commune} — ${commune.region}`
+      })),
+    [communes]
+  );
+
+  const handleDelete = (property: Property) => {
+    confirm({
+      title: `Supprimer « ${property.title} » ?`,
+      description: 'Cette action est irréversible.',
+      okText: 'Supprimer',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await deleteProperty(effectiveTenantId as string, property.id);
+          message.success('Bien supprimé.');
+          // Invalidation par préfixe : toutes les pages et tous les jeux de
+          // filtres de cette agence, sans avoir à les énumérer.
+          await queryClient.invalidateQueries({ queryKey: ['properties', effectiveTenantId] });
+        } catch (err: any) {
+          message.error(err?.response?.data?.error || 'La suppression a échoué.');
         }
+      }
+    });
+  };
+
+  if (!effectiveTenantId) {
+    return (
+      <StateBlock
+        variant="empty"
+        title="Aucune agence sélectionnée"
+        description="Votre compte doit être rattaché à une agence pour consulter son portefeuille."
       />
+    );
+  }
+
+  const detailPath = (id: string) => `/tenant/${effectiveTenantId}/properties/${id}`;
+
+  return (
+    <>
+      <PageHeader
+        title="Biens"
+        subtitle={total > 0 ? `${total} bien${total > 1 ? 's' : ''} au portefeuille` : undefined}
+        primaryAction={{
+          label: 'Ajouter un bien',
+          icon: <PlusOutlined />,
+          onClick: () => navigate(`/tenant/${effectiveTenantId}/properties/new`)
+        }}
+      />
+
+      <div style={{ marginBottom: 'var(--space-4)' }}>
+        <Input
+          allowClear
+          prefix={<SearchOutlined aria-hidden="true" />}
+          placeholder="Rechercher par titre, adresse ou référence"
+          aria-label="Rechercher un bien"
+          value={draftQuery}
+          onChange={event => setDraftQuery(event.target.value)}
+        />
+      </div>
+
+      <FilterSheet activeCount={Object.keys(list.filters).length} onClear={list.clearFilters} title="Filtrer les biens">
+        <Row gutter={[12, 12]} style={{ width: '100%' }}>
+          <Col xs={24} md={8} lg={6}>
+            <label htmlFor="filtre-type">Type de bien</label>
+            <Select
+              id="filtre-type"
+              style={{ width: '100%' }}
+              placeholder="Tous les types"
+              allowClear
+              value={list.filters.propertyType || undefined}
+              onChange={value => list.setFilters({ propertyType: value })}
+              options={Object.entries(PROPERTY_TYPE_LABELS).map(([value, label]) => ({ value, label }))}
+            />
+          </Col>
+          <Col xs={24} md={8} lg={6}>
+            <label htmlFor="filtre-transaction">Transaction</label>
+            <Select
+              id="filtre-transaction"
+              style={{ width: '100%' }}
+              placeholder="Tous les modes"
+              allowClear
+              value={list.filters.transactionMode || undefined}
+              onChange={value => list.setFilters({ transactionMode: value })}
+              options={Object.entries(TRANSACTION_MODE_LABELS).map(([value, label]) => ({ value, label }))}
+            />
+          </Col>
+          <Col xs={24} md={8} lg={6}>
+            <label htmlFor="filtre-statut">Statut</label>
+            <Select
+              id="filtre-statut"
+              style={{ width: '100%' }}
+              placeholder="Tous les statuts"
+              allowClear
+              value={list.filters.status || undefined}
+              onChange={value => list.setFilters({ status: value })}
+              options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))}
+            />
+          </Col>
+          <Col xs={24} md={8} lg={6}>
+            <label htmlFor="filtre-commune">Commune</label>
+            <Select
+              id="filtre-commune"
+              style={{ width: '100%' }}
+              placeholder="Toutes les communes"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={list.filters.city || undefined}
+              onChange={value => list.setFilters({ city: value })}
+              options={communeOptions}
+            />
+          </Col>
+
+          {(
+            [
+              ['minPrice', 'Prix minimum', '0'],
+              ['maxPrice', 'Prix maximum', 'Illimité'],
+              ['minSurface', 'Surface min (m²)', '0'],
+              ['maxSurface', 'Surface max (m²)', 'Illimité'],
+              ['minRooms', 'Pièces min', '0'],
+              ['maxRooms', 'Pièces max', 'Illimité'],
+              ['minBedrooms', 'Chambres min', '0'],
+              ['maxBedrooms', 'Chambres max', 'Illimité']
+            ] as const
+          ).map(([key, label, placeholder]) => (
+            <Col xs={12} md={8} lg={6} key={key}>
+              <label htmlFor={`filtre-${key}`}>{label}</label>
+              <Input
+                id={`filtre-${key}`}
+                type="number"
+                inputMode="numeric"
+                placeholder={placeholder}
+                value={list.filters[key] ?? ''}
+                onChange={event => list.setFilters({ [key]: event.target.value || undefined } as Partial<Filters>)}
+              />
+            </Col>
+          ))}
+        </Row>
+      </FilterSheet>
+
+      <DataView<Property>
+        layout="grid"
+        items={properties}
+        total={total}
+        page={list.page}
+        pageSize={list.pageSize}
+        onPageChange={(page, size) => {
+          if (size !== list.pageSize) list.setPageSize(size);
+          else list.setPage(page);
+        }}
+        loading={isPending}
+        isReloading={isFetching && !isPending}
+        error={queryError ? 'Impossible de charger le portefeuille.' : null}
+        onRetry={() => refetch()}
+        isFiltered={list.isFiltered}
+        onClearFilters={list.clearFilters}
+        emptyDescription="Aucun bien n'est encore enregistré pour cette agence."
+        emptyAction={{
+          label: 'Ajouter un bien',
+          onClick: () => navigate(`/tenant/${effectiveTenantId}/properties/new`)
+        }}
+        rowKey={property => property.id}
+        aria-label="Biens de l'agence"
+        renderCard={property => (
+          <DataCard
+            cover={<Cover property={property} />}
+            title={property.title}
+            aria-label={property.title}
+            subtitle={[property.address, property.locationZone].filter(Boolean).join(' • ')}
+            status={<StatusTag status={property.status} />}
+            highlight={
+              property.propertyType === 'IMMEUBLE' ? undefined : (
+                <MoneyValue value={property.price} currency={property.currency} />
+              )
+            }
+            fields={[
+              { label: 'Type', value: PROPERTY_TYPE_LABELS[property.propertyType] || property.propertyType },
+              {
+                label: 'Transaction',
+                value: property.transactionModes?.map(mode => TRANSACTION_MODE_LABELS[mode] || mode).join(', ') || '—'
+              },
+              {
+                label: 'Surface',
+                value:
+                  [
+                    property.rooms ? `${property.rooms} pièces` : null,
+                    property.bedrooms ? `${property.bedrooms} ch.` : null,
+                    property.surfaceArea ? `${property.surfaceArea} m²` : null
+                  ]
+                    .filter(Boolean)
+                    .join(' • ') || '—'
+              }
+            ]}
+            onOpen={() => navigate(detailPath(property.id))}
+            primaryAction={{
+              label: 'Modifier',
+              onClick: () => navigate(`${detailPath(property.id)}/edit`)
+            }}
+            secondaryActions={[
+              { key: 'view', label: 'Voir la fiche', onClick: () => navigate(detailPath(property.id)) },
+              { key: 'newsletter', label: 'Diffuser en newsletter', onClick: () => setNewsletterProperty(property) },
+              { type: 'divider' },
+              { key: 'delete', label: 'Supprimer', danger: true, onClick: () => handleDelete(property) }
+            ]}
+          />
+        )}
+      />
+
+      {newsletterProperty && (
+        <PropertyNewsletterCampaignModal
+          open
+          onClose={() => setNewsletterProperty(null)}
+          tenantId={effectiveTenantId}
+          property={newsletterProperty}
+          imageUrls={newsletterProperty.thumbnailUrl ? [fileUrl(newsletterProperty.thumbnailUrl)] : []}
+        />
+      )}
     </>
   );
 };
