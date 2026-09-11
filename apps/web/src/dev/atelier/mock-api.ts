@@ -1,6 +1,6 @@
 import type { AxiosAdapter, AxiosRequestConfig, AxiosResponse } from 'axios';
 import apiClient from '../../utils/api-client';
-import { BIENS, COMMUNES, ECHEANCES, PENALITES, PAIEMENTS, DOCUMENTS } from './fixtures';
+import { BIENS, COMMUNES, ECHEANCES, PENALITES, PAIEMENTS, DOCUMENTS, EVENEMENTS } from './fixtures';
 
 /**
  * Fausse API de l'atelier.
@@ -140,6 +140,28 @@ export function installerFausseApi(scenario: Scenario) {
         success: true,
         data: filtres,
         pagination: { page: 1, limit: 50, total: filtres.length, totalPages: 1 }
+      });
+    }
+
+    // Le calendrier rend une FENÊTRE de dates, pas une page : la réponse ne
+    // porte pas d'enveloppe `pagination`, et sa clé est `events` et non `data`.
+    if (url.pathname.includes('calendar')) {
+      return ok(config, { success: true, events: scenario === 'vide' ? [] : EVENEMENTS });
+    }
+
+    // Collaborateurs de l'agence : réponse imbriquée sous `data.members`, et
+    // non `data` directement. C'est en servant la mauvaise forme ici que la
+    // fragilité d'`AdvancedFilters` est apparue.
+    if (/\/tenants\/[^/]+\/users$/.test(url.pathname)) {
+      return ok(config, {
+        success: true,
+        data: {
+          members: [
+            { id: 'u1', userId: 'u1', user: { id: 'u1', fullName: 'Aissatou Barry', email: 'a@b.c' } },
+            { id: 'u2', userId: 'u2', user: { id: 'u2', fullName: 'Ibrahima Sow', email: 'i@b.c' } }
+          ],
+          pagination: { page: 1, limit: 100, total: 2, totalPages: 1 }
+        }
       });
     }
 

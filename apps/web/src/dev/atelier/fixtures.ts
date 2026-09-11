@@ -369,3 +369,102 @@ export const DOCUMENTS = [
     updated_at: ''
   }
 ];
+
+/**
+ * Événements d'agenda — relatifs à aujourd'hui, volontairement.
+ *
+ * Les intitulés « Aujourd'hui » et « Demain » de la vue agenda ne sont corrects
+ * que si le regroupement se fait sur le jour **local** et non sur la date UTC.
+ * Des dates fixes ne le montreraient jamais ; des dates relatives au jour de
+ * consultation, si.
+ */
+function dansNJours(n: number, heures: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  d.setHours(heures, 30, 0, 0);
+  return d.toISOString();
+}
+
+export const EVENEMENTS = [
+  {
+    eventId: 'ev-1',
+    eventType: 'FOLLOWUP',
+    title: 'Rappeler pour le dossier de location',
+    start: dansNJours(0, 9),
+    end: dansNJours(0, 9),
+    contactId: 'c1',
+    contactName: 'Aissatou Diallo',
+    dealId: 'd1',
+    dealLabel: 'Location Villa Kipé',
+    status: 'PENDING',
+    badges: ['Urgent'],
+    canEdit: true,
+    canDrag: true,
+    nextActionType: 'CALL',
+    location: null,
+    assignedToUserId: 'u1',
+    createdByUserId: 'u1',
+    propertyId: null
+  },
+  {
+    eventId: 'ev-2',
+    eventType: 'PROPERTY_VISIT',
+    title: 'Visite — Studio Matam',
+    start: dansNJours(0, 15),
+    end: dansNJours(0, 16),
+    contactId: 'c2',
+    contactName: 'Mamadou Bah',
+    dealId: null,
+    dealLabel: null,
+    status: 'CONFIRMED',
+    badges: [],
+    canEdit: true,
+    canDrag: false,
+    nextActionType: null,
+    location: 'Matam, Conakry',
+    assignedToUserId: 'u2',
+    createdByUserId: 'u1',
+    propertyId: 'prop-2'
+  },
+  {
+    eventId: 'ev-3',
+    eventType: 'FOLLOWUP',
+    title: 'Envoyer le projet de bail',
+    start: dansNJours(1, 11),
+    end: dansNJours(1, 11),
+    contactId: 'c3',
+    contactName: 'Fatoumata Camara',
+    dealId: 'd2',
+    dealLabel: 'Vente Boutique',
+    status: 'DONE',
+    badges: ['Terminé'],
+    canEdit: true,
+    canDrag: true,
+    nextActionType: 'EMAIL',
+    location: null,
+    assignedToUserId: 'u1',
+    createdByUserId: 'u1',
+    propertyId: null
+  },
+  // Titre long et créneau de deux heures : éprouve la carte comme la grille.
+  {
+    eventId: 'ev-4',
+    eventType: 'PROPERTY_VISIT',
+    title: 'Visite — Immeuble R+3, huit appartements à faire visiter dans la matinée',
+    start: dansNJours(4, 10),
+    end: dansNJours(4, 12),
+    contactId: 'c4',
+    contactName: 'SCI Kaloum',
+    dealId: null,
+    dealLabel: null,
+    status: 'SCHEDULED',
+    badges: ['Groupe'],
+    canEdit: true,
+    canDrag: false,
+    nextActionType: null,
+    location: 'Kaloum, Conakry',
+    assignedToUserId: 'u2',
+    createdByUserId: 'u2',
+    propertyId: 'prop-4'
+  }
+];

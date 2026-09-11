@@ -1,21 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  Button,
-  Input,
-  Select,
-  DatePicker,
-  Space,
-  Typography,
-  Tag,
-  Row,
-  Col,
-  Spin,
-} from 'antd';
-import {
-  FilterOutlined,
-  ClearOutlined,
-} from '@ant-design/icons';
+import { Card, Button, Input, Select, DatePicker, Space, Typography, Tag, Row, Col, Spin } from 'antd';
+import { FilterOutlined, ClearOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { listMembers, Member } from '../../services/membership-service';
 
@@ -66,7 +51,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   config,
   filters,
   onFiltersChange,
-  onClear,
+  onClear
 }) => {
   const [members, setMembers] = useState<Member[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -82,9 +67,12 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
     setLoadingMembers(true);
     try {
       const response = await listMembers(tenantId, { status: 'ACTIVE', limit: 100 });
-      if (response.success) {
-        setMembers(response.data.members);
-      }
+      // Repli explicite sur un tableau vide. `setMembers(response.data.members)`
+      // posait `undefined` des que la reponse n'avait pas exactement cette
+      // forme, et le `members.map` plus bas faisait alors tomber TOUT l'ecran
+      // dans l'ErrorBoundary — pour une liste deroulante secondaire. Constate
+      // dans l'atelier sur le calendrier.
+      setMembers(response.success ? (response.data?.members ?? []) : []);
     } catch (err) {
       console.error('Error loading members:', err);
     } finally {
@@ -95,7 +83,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
   const updateFilter = (key: keyof AdvancedFilters, value: any) => {
     onFiltersChange({
       ...filters,
-      [key]: value || undefined,
+      [key]: value || undefined
     });
   };
 
@@ -107,9 +95,9 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
     }
   };
 
-  const hasActiveFilters = Object.values(filters).some((v) => v !== undefined && v !== '');
+  const hasActiveFilters = Object.values(filters).some(v => v !== undefined && v !== '');
 
-  const activeFiltersCount = Object.values(filters).filter((v) => v !== undefined && v !== '').length;
+  const activeFiltersCount = Object.values(filters).filter(v => v !== undefined && v !== '').length;
 
   return (
     <Card
@@ -118,20 +106,13 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
         <Space>
           <FilterOutlined />
           <span>Filtres avancés</span>
-          {hasActiveFilters && (
-            <Tag color="blue">{activeFiltersCount} actif(s)</Tag>
-          )}
+          {hasActiveFilters && <Tag color="blue">{activeFiltersCount} actif(s)</Tag>}
         </Space>
       }
       extra={
         <Space>
           {hasActiveFilters && (
-            <Button
-              type="text"
-              size="small"
-              icon={<ClearOutlined />}
-              onClick={clearFilters}
-            >
+            <Button type="text" size="small" icon={<ClearOutlined />} onClick={clearFilters}>
               Effacer
             </Button>
           )}
@@ -148,12 +129,8 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               </Text>
               <RangePicker
                 style={{ width: '100%' }}
-                value={
-                  filters.startDate && filters.endDate
-                    ? [dayjs(filters.startDate), dayjs(filters.endDate)]
-                    : null
-                }
-                onChange={(dates) => {
+                value={filters.startDate && filters.endDate ? [dayjs(filters.startDate), dayjs(filters.endDate)] : null}
+                onChange={dates => {
                   if (dates && dates[0] && dates[1]) {
                     updateFilter('startDate', dates[0].format('YYYY-MM-DD'));
                     updateFilter('endDate', dates[1].format('YYYY-MM-DD'));
@@ -180,20 +157,18 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               ) : (
                 <Select
                   value={filters.assignedTo}
-                  onChange={(value) => updateFilter('assignedTo', value)}
+                  onChange={value => updateFilter('assignedTo', value)}
                   placeholder="Tous"
                   allowClear
                   style={{ width: '100%' }}
                   showSearch
                   filterOption={(input, option) => {
-                    const label = typeof option?.label === 'string' 
-                      ? option.label 
-                      : String(option?.children || '');
+                    const label = typeof option?.label === 'string' ? option.label : String(option?.children || '');
                     return label.toLowerCase().includes(input.toLowerCase());
                   }}
                   optionLabelProp="label"
                 >
-                  {members.map((member) => {
+                  {members.map(member => {
                     const label = member.user.fullName || member.user.email;
                     return (
                       <Select.Option key={member.userId} value={member.userId} label={label}>
@@ -217,7 +192,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               <Input
                 placeholder="Ex: Site web, Référence..."
                 value={filters.source || ''}
-                onChange={(e) => updateFilter('source', e.target.value)}
+                onChange={e => updateFilter('source', e.target.value)}
                 allowClear
               />
             </Space>
@@ -236,14 +211,14 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                   type="number"
                   placeholder="Min"
                   value={filters.budgetMin || ''}
-                  onChange={(e) => updateFilter('budgetMin', e.target.value ? parseFloat(e.target.value) : undefined)}
+                  onChange={e => updateFilter('budgetMin', e.target.value ? parseFloat(e.target.value) : undefined)}
                   style={{ width: '50%' }}
                 />
                 <Input
                   type="number"
                   placeholder="Max"
                   value={filters.budgetMax || ''}
-                  onChange={(e) => updateFilter('budgetMax', e.target.value ? parseFloat(e.target.value) : undefined)}
+                  onChange={e => updateFilter('budgetMax', e.target.value ? parseFloat(e.target.value) : undefined)}
                   style={{ width: '50%' }}
                 />
               </Space.Compact>
@@ -260,12 +235,12 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               </Text>
               <Select
                 value={filters.status}
-                onChange={(value) => updateFilter('status', value)}
+                onChange={value => updateFilter('status', value)}
                 placeholder="Tous"
                 allowClear
                 style={{ width: '100%' }}
               >
-                {config.statusOptions.map((option) => (
+                {config.statusOptions.map(option => (
                   <Select.Option key={option.value} value={option.value}>
                     {option.label}
                   </Select.Option>
@@ -284,12 +259,12 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               </Text>
               <Select
                 value={filters.type}
-                onChange={(value) => updateFilter('type', value)}
+                onChange={value => updateFilter('type', value)}
                 placeholder="Tous"
                 allowClear
                 style={{ width: '100%' }}
               >
-                {config.typeOptions.map((option) => (
+                {config.typeOptions.map(option => (
                   <Select.Option key={option.value} value={option.value}>
                     {option.label}
                   </Select.Option>
@@ -309,7 +284,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
               <Input
                 placeholder="Rechercher par nom..."
                 value={filters.contactName || ''}
-                onChange={(e) => updateFilter('contactName', e.target.value)}
+                onChange={e => updateFilter('contactName', e.target.value)}
                 allowClear
               />
             </Space>
@@ -319,8 +294,3 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
     </Card>
   );
 };
-
-
-
-
-

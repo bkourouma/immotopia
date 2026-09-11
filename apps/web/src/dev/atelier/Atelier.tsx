@@ -5,6 +5,7 @@ import { Installments } from '../../pages/rental/Installments';
 import { Penalties } from '../../pages/rental/Penalties';
 import { Payments } from '../../pages/rental/Payments';
 import { Documents } from '../../pages/rental/Documents';
+import { CalendarPage } from '../../pages/crm/Calendar';
 import { installerFausseApi, retirerFausseApi, type Scenario } from './mock-api';
 import {
   DataCard,
@@ -64,6 +65,7 @@ const ECHEANCES_GLOBAL = 'tenant/' + AGENCE + '/rental/installments';
 const PENALITES = 'tenant/' + AGENCE + '/rental/penalties';
 const PAIEMENTS = 'tenant/' + AGENCE + '/rental/payments';
 const DOCUMENTS = 'tenant/' + AGENCE + '/rental/documents';
+const CALENDRIER = 'tenant/' + AGENCE + '/crm/calendar';
 
 const SCENES: Scene[] = [
   {
@@ -164,6 +166,20 @@ const SCENES: Scene[] = [
     description: 'Cinq documents, dont un sans titre, un titre très long et un annulé.',
     scenario: 'nominal',
     chemin: DOCUMENTS
+  },
+  {
+    id: 'calendrier-agenda',
+    titre: 'Calendrier — agenda',
+    description: 'Vue par défaut sous 992 px. La grille et ses 60 Ko ne sont pas chargées.',
+    scenario: 'nominal',
+    chemin: CALENDRIER + '?vue=agenda'
+  },
+  {
+    id: 'calendrier-mois',
+    titre: 'Calendrier — grille mensuelle',
+    description: 'Charge react-big-calendar à la demande. Couleurs tirées des tokens.',
+    scenario: 'nominal',
+    chemin: CALENDRIER + '?vue=month'
   },
   {
     id: 'primitives',
@@ -377,6 +393,14 @@ export const Atelier: React.FC = () => (
       element={
         <Scene>
           <Documents />
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/crm/calendar"
+      element={
+        <Scene>
+          <CalendarPage />
         </Scene>
       }
     />

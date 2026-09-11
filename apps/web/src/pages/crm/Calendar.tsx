@@ -1,738 +1,479 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { lazy, Suspense, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Button, Checkbox, Space, Typography, Alert, Spin, Modal, Drawer, Tag, Divider, Row, Col } from 'antd';
-import {
-  PlusOutlined,
-  CloseOutlined,
-  ClockCircleOutlined,
-  UserOutlined,
-  ProjectOutlined,
-  CheckCircleOutlined,
-  DownloadOutlined,
-  FileExcelOutlined,
-  EnvironmentOutlined,
-  HomeOutlined,
-  CalendarOutlined
-} from '@ant-design/icons';
+import { App, Button, Checkbox, Space, Typography, Modal, Drawer, Tag, Divider, Segmented } from 'antd';
+import { PlusOutlined, DownloadOutlined, FileExcelOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import type { View } from 'react-big-calendar';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getCalendarEvents,
   rescheduleFollowUp,
   markFollowUpDone,
-  CalendarEvent,
-  CalendarEventType,
+  createActivity,
   CalendarScope,
-  CalendarFilters
+  CreateCrmActivityRequest
 } from '../../services/crm-service';
-import { Calendar as BigCalendar, dayjsLocalizer, View, Event as RBCEvent } from 'react-big-calendar';
-import dayjs from 'dayjs';
-import 'dayjs/locale/fr';
-import 'react-big-calendar/lib/css/react-big-calendar.css';
-import './Calendar.css';
 import { ActivityForm } from '../../components/crm/ActivityForm';
-import { createActivity, CreateCrmActivityRequest } from '../../services/crm-service';
 import { AdvancedFilters, AdvancedFilters as AdvancedFiltersType } from '../../components/crm/AdvancedFilters';
 import { exportToCSV, exportToExcel } from '../../utils/export-utils';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useListParams } from '../../hooks/useListParams';
+import { queryKey, STALE_TIME } from '../../lib/query-keys';
+import { PageHeader, StateBlock, StatusTag, SkeletonList, DataCard } from '../../components/primitives';
+import {
+  EvenementAgenda,
+  versEvenementAgenda,
+  filtrerEvenements,
+  grouperParJour,
+  lignesExport
+} from './calendar-model';
 
-const { Title, Text } = Typography;
+const { Text, Title } = Typography;
 
-// Configure dayjs localizer (dayjs is already the date library used by antd)
-dayjs.locale('fr');
-const localizer = dayjsLocalizer(dayjs);
+/**
+ * Calendrier CRM — dernier des six écrans hybrides (§9.7).
+ *
+ * **`react-big-calendar` ne se charge plus que sur demande.** Le §8.1 le
+ * demande nommément : « l'écran par défaut sous 992 px est la vue agenda, qui
+ * n'en a pas besoin → import dynamique à l'intérieur de la page ». La grille et
+ * sa feuille de style pèsent 191 795 o bruts et 11 828 o de CSS ; un
+ * collaborateur en tournée ne les télécharge plus.
+ *
+ * **La vue agenda est la vue par défaut sous 992 px**, et ce n'est pas qu'une
+ * question de poids : une grille mensuelle sur 375 px est illisible, et
+ * l'ancienne version la rendait quand même, dans un conteneur en
+ * `overflow: auto` — soit un calendrier qu'il fallait faire glisser dans les
+ * deux directions.
+ *
+ * **Trois couleurs littérales** — `#10b981`, `#3b82f6`, `#9ca3af` — que le
+ * §10.1 interdit et qu'aucun contrôle de contraste ne couvrait, passent aux
+ * tokens.
+ *
+ * **Deux boutons faisaient exactement la même chose.** « Nouvelle activité » et
+ * « Nouvelle relance » ouvraient le même formulaire avec les mêmes valeurs. Il
+ * n'en reste qu'un.
+ *
+ * Le bloc de préparation des données d'export, recopié à l'identique pour le
+ * CSV et pour le tableur, est écrit une fois. `draggedEvent`, écrit et jamais
+ * lu, est retiré.
+ */
 
-// Extend CalendarEvent to work with react-big-calendar
-interface CalendarEventExtended extends RBCEvent {
-  title: string;
-  start: Date;
-  end: Date;
-  eventId: string;
-  eventType: CalendarEventType;
-  contactId: string;
-  contactName: string;
-  dealId: string | null;
-  dealLabel: string | null;
-  status?: string;
-  badges: string[];
-  canEdit: boolean;
-  canDrag: boolean;
-  nextActionType?: string;
-  location?: string;
-  assignedToUserId?: string | null;
-  createdByUserId: string;
-  propertyId?: string | null; // For property visits
-  resource?: any; // Store original event for reference
+/** La grille n'est demandée qu'au moment où elle est affichée. */
+const CalendarGrid = lazy(() => import('./CalendarGrid'));
+
+type Vue = 'agenda' | 'month' | 'week' | 'day';
+type Filtres = { vue: string; perimetre: string; relances: string };
+const FILTER_KEYS = ['vue', 'perimetre', 'relances'] as const;
+
+const VUES: { value: Vue; label: string }[] = [
+  { value: 'agenda', label: 'Agenda' },
+  { value: 'month', label: 'Mois' },
+  { value: 'week', label: 'Semaine' },
+  { value: 'day', label: 'Jour' }
+];
+
+function memeJour(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function titreDeJour(jour: Date): string {
+  const aujourdhui = new Date();
+  const demain = new Date(aujourdhui);
+  demain.setDate(demain.getDate() + 1);
+
+  const formate = jour.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  if (memeJour(jour, aujourdhui)) return `Aujourd'hui — ${formate}`;
+  if (memeJour(jour, demain)) return `Demain — ${formate}`;
+  return formate.charAt(0).toUpperCase() + formate.slice(1);
+}
+
+function heure(date: Date): string {
+  return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
 export const CalendarPage: React.FC = () => {
+  const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
-  const [events, setEvents] = useState<CalendarEventExtended[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [view, setView] = useState<View>('month');
-  const [scope, setScope] = useState<CalendarScope>('GLOBAL');
-  const [showFollowups, setShowFollowups] = useState(true);
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEventExtended | null>(null);
-  const [showActivityForm, setShowActivityForm] = useState(false);
-  const [prefillContactId, setPrefillContactId] = useState<string | undefined>();
-  const [prefillDealId, setPrefillDealId] = useState<string | undefined>();
-  const [draggedEvent, setDraggedEvent] = useState<CalendarEventExtended | null>(null);
-  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFiltersType>({});
+  const queryClient = useQueryClient();
+  const { isDesktop } = useBreakpoint();
 
-  // Calculate date range based on current view
-  const dateRange = useMemo(() => {
-    const unit = view === 'month' ? 'month' : view === 'week' ? 'week' : 'day';
-    let start = dayjs(currentDate).startOf(unit);
-    let end = dayjs(currentDate).endOf(unit);
-    // Add buffer for month view.
-    // dayjs is immutable, so the results must be reassigned (moment mutated in place).
-    if (view === 'month') {
-      start = start.subtract(7, 'day');
-      end = end.add(7, 'day');
-    }
-    return { from: start.toDate(), to: end.toDate() };
-  }, [currentDate, view]);
+  const list = useListParams<Filtres>({ filterKeys: FILTER_KEYS });
+  const [dateCourante, setDateCourante] = useState(new Date());
+  const [evenementSelectionne, setEvenementSelectionne] = useState<EvenementAgenda | null>(null);
+  const [formulaireOuvert, setFormulaireOuvert] = useState(false);
+  const [filtresAvances, setFiltresAvances] = useState<AdvancedFiltersType>({});
 
-  // Load calendar events
-  const loadEvents = useCallback(async () => {
-    if (!tenantId) return;
+  /**
+   * La vue par défaut dépend du palier : agenda sous 992 px, mois au-dessus.
+   * Un choix explicite, lui, est porté par l'URL et l'emporte — y compris sur
+   * mobile, où l'on peut vouloir la grille malgré tout.
+   */
+  const vue = (list.filters.vue as Vue) || (isDesktop ? 'month' : 'agenda');
+  const perimetre: CalendarScope = list.filters.perimetre === 'mine' ? 'MINE' : 'GLOBAL';
+  const avecRelances = list.filters.relances !== 'non';
 
-    setLoading(true);
-    setError(null);
+  const fenetre = useMemo(() => {
+    const unite = vue === 'week' ? 7 : vue === 'day' ? 1 : 31;
+    const debut = new Date(dateCourante);
+    const fin = new Date(dateCourante);
+    // La fenêtre déborde de part et d'autre : une vue mensuelle montre les
+    // jours des mois voisins, et les événements qui s'y trouvent doivent être
+    // chargés aussi.
+    debut.setDate(debut.getDate() - unite);
+    fin.setDate(fin.getDate() + unite);
+    return { from: debut, to: fin };
+  }, [dateCourante, vue]);
 
-    try {
-      // Determine which types to load based on checkboxes and advanced filter
-      let typesToLoad: ('followups' | 'propertyVisits')[] = [];
+  const typesCharges = useMemo(() => {
+    if (filtresAvances.type === 'FOLLOWUP') return ['followups' as const, 'propertyVisits' as const];
+    if (filtresAvances.type) return ['propertyVisits' as const];
+    return avecRelances ? (['followups', 'propertyVisits'] as const) : (['propertyVisits'] as const);
+  }, [filtresAvances.type, avecRelances]);
 
-      // Always include property visits in the global calendar
-      typesToLoad.push('propertyVisits');
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: erreurRequete,
+    refetch
+  } = useQuery({
+    queryKey: queryKey('calendar', tenantId, {
+      from: fenetre.from.toISOString().slice(0, 10),
+      to: fenetre.to.toISOString().slice(0, 10),
+      scope: perimetre,
+      types: typesCharges.join(',')
+    }),
+    queryFn: () =>
+      getCalendarEvents(tenantId as string, {
+        from: fenetre.from,
+        to: fenetre.to,
+        scope: perimetre,
+        types: [...typesCharges]
+      }),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list
+  });
 
-      // If advanced filter has a type, use it to determine what to load
-      if (advancedFilters.type) {
-        if (advancedFilters.type === 'FOLLOWUP') {
-          typesToLoad.push('followups');
-        } else if (advancedFilters.type === 'VISITE' || advancedFilters.type === 'RDV') {
-          // Only property visits (already included)
-          typesToLoad = ['propertyVisits'];
-        }
-      } else {
-        // Use checkboxes if no advanced filter
-        if (showFollowups) {
-          typesToLoad.push('followups');
-        }
-      }
+  const evenements = useMemo(() => {
+    const bruts = (data?.events ?? []).map(versEvenementAgenda).filter(Boolean) as EvenementAgenda[];
+    return filtrerEvenements(bruts, filtresAvances);
+  }, [data, filtresAvances]);
 
-      const filters: CalendarFilters = {
-        from: dateRange.from,
-        to: dateRange.to,
-        scope,
-        types: typesToLoad.length > 0 ? typesToLoad : ['followups', 'propertyVisits']
-      };
+  const journees = useMemo(() => grouperParJour(evenements), [evenements]);
 
-      const response = await getCalendarEvents(tenantId, filters);
+  const rafraichir = () => queryClient.invalidateQueries({ queryKey: ['calendar', tenantId] });
 
-      if (response.success) {
-        // Transform events to react-big-calendar format
-        const transformedEvents: CalendarEventExtended[] = [];
-
-        for (const event of response.events) {
-          // Validate dates before creating Date objects
-          const startDate = event.start ? new Date(event.start) : null;
-          const endDate = event.end ? new Date(event.end) : null;
-
-          // Skip events with invalid start dates
-          if (!startDate || isNaN(startDate.getTime())) {
-            console.warn('Skipping event with invalid start date:', event);
-            continue;
-          }
-
-          transformedEvents.push({
-            eventId: event.eventId,
-            eventType: event.eventType,
-            title: event.title,
-            start: startDate,
-            end: endDate && !isNaN(endDate.getTime()) ? endDate : startDate, // Use start as end for follow-ups or if end is invalid
-            contactId: event.contactId,
-            contactName: event.contactName,
-            dealId: event.dealId,
-            dealLabel: event.dealLabel,
-            status: event.status,
-            badges: event.badges,
-            canEdit: event.canEdit,
-            canDrag: event.canDrag,
-            nextActionType: event.nextActionType,
-            location: event.location,
-            assignedToUserId: event.assignedToUserId,
-            createdByUserId: event.createdByUserId,
-            propertyId: event.propertyId,
-            resource: event // Store original event for reference
-          });
-        }
-
-        let filteredEvents = transformedEvents;
-
-        // Apply type filter if set
-        if (advancedFilters.type) {
-          filteredEvents = filteredEvents.filter(event => {
-            if (advancedFilters.type === 'FOLLOWUP') {
-              return event.eventType === 'FOLLOWUP';
-            }
-            if (advancedFilters.type === 'VISITE' || advancedFilters.type === 'RDV') {
-              return event.eventType === 'PROPERTY_VISIT';
-            }
-            return true;
-          });
-        }
-
-        // Apply assignedTo filter if set
-        if (advancedFilters.assignedTo) {
-          filteredEvents = filteredEvents.filter(event => {
-            return event.assignedToUserId === advancedFilters.assignedTo;
-          });
-        }
-
-        // Apply contactName filter if set
-        if (advancedFilters.contactName) {
-          const searchTerm = advancedFilters.contactName.toLowerCase().trim();
-          filteredEvents = filteredEvents.filter(event => {
-            if (!event.contactName) return false;
-            return event.contactName.toLowerCase().includes(searchTerm);
-          });
-        }
-
-        setEvents(filteredEvents);
-      } else {
-        setError('Erreur lors du chargement des événements');
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des événements');
-    } finally {
-      setLoading(false);
-    }
-  }, [tenantId, dateRange, scope, showFollowups, advancedFilters]);
-
-  useEffect(() => {
-    loadEvents();
-  }, [loadEvents]);
-
-  // Handle event selection
-  const handleSelectEvent = (event: CalendarEventExtended) => {
-    setSelectedEvent(event);
-  };
-
-  // Handle drag and drop
-  const handleEventDrop = async ({ event, start, end }: { event: CalendarEventExtended; start: Date; end: Date }) => {
+  const handleDrop = async ({ event, start }: { event: EvenementAgenda; start: Date; end: Date }) => {
     if (!tenantId || !event.canDrag) return;
-
-    // Only allow dragging for follow-ups (property visits rescheduling not yet implemented)
     if (event.eventType === 'PROPERTY_VISIT') {
-      setError("Le déplacement des visites de propriétés n'est pas encore disponible");
+      message.info("Le déplacement d'une visite de bien n'est pas encore disponible.");
       return;
     }
-
-    setDraggedEvent(event);
-    const originalStart = event.start;
-    const originalEnd = event.end;
-
-    // Optimistic update
-    setEvents(prev =>
-      prev.map(e =>
-        e.eventId === event.eventId
-          ? {
-              ...e,
-              start,
-              end: start // Follow-ups are point-in-time
-            }
-          : e
-      )
-    );
-
     try {
-      // Follow-up
-      await rescheduleFollowUp(tenantId, event.eventId, {
-        nextActionAt: start
-      });
-      // Reload events to ensure consistency
-      await loadEvents();
+      await rescheduleFollowUp(tenantId, event.eventId, { nextActionAt: start });
+      await rafraichir();
+      message.success('Relance déplacée.');
     } catch (err: any) {
-      // Revert on error
-      setEvents(prev =>
-        prev.map(e =>
-          e.eventId === event.eventId
-            ? {
-                ...e,
-                start: originalStart,
-                end: originalEnd
-              }
-            : e
-        )
-      );
-      setError(err.response?.data?.message || "Erreur lors du déplacement de l'événement");
-    } finally {
-      setDraggedEvent(null);
+      message.error(err?.response?.data?.message || 'Le déplacement a échoué.');
     }
   };
 
-  // Handle event resize
-  const handleEventResize = async ({ event, start, end }: { event: CalendarEventExtended; start: Date; end: Date }) => {
-    if (!tenantId || !event.canDrag) return;
-
-    const originalStart = event.start;
-    const originalEnd = event.end;
-
-    // Optimistic update
-    setEvents(prev =>
-      prev.map(e =>
-        e.eventId === event.eventId
-          ? {
-              ...e,
-              start,
-              end
-            }
-          : e
-      )
-    );
-
-    try {
-      // For follow-ups, reschedule with new time
-      if (event.eventType === 'FOLLOWUP') {
-        await rescheduleFollowUp(tenantId, event.eventId, {
-          nextActionAt: start
-        });
-      } else if (event.eventType === 'PROPERTY_VISIT') {
-        // Property visit resizing not yet implemented
-        setError("Le redimensionnement des visites de propriétés n'est pas encore disponible");
-        return;
-      }
-      // Reload events to ensure consistency
-      await loadEvents();
-    } catch (err: any) {
-      // Revert on error
-      setEvents(prev =>
-        prev.map(e =>
-          e.eventId === event.eventId
-            ? {
-                ...e,
-                start: originalStart,
-                end: originalEnd
-              }
-            : e
-        )
-      );
-      setError(err.response?.data?.message || "Erreur lors du redimensionnement de l'événement");
-    }
-  };
-
-  // Handle mark done
   const handleMarkDone = async () => {
-    if (!tenantId || !selectedEvent) return;
-
+    if (!tenantId || !evenementSelectionne) return;
     try {
-      if (selectedEvent.eventType === 'FOLLOWUP') {
-        await markFollowUpDone(tenantId, selectedEvent.eventId);
-      } else if (selectedEvent.eventType === 'PROPERTY_VISIT' && selectedEvent.propertyId) {
-        // For property visits, we need to extract propertyId from the event
-        // The eventId is the visitId, and we have propertyId in the event
+      if (evenementSelectionne.eventType === 'FOLLOWUP') {
+        await markFollowUpDone(tenantId, evenementSelectionne.eventId);
+      } else if (evenementSelectionne.propertyId) {
         const { completePropertyVisit } = await import('../../services/property-service');
-        await completePropertyVisit(tenantId, selectedEvent.propertyId, selectedEvent.eventId);
+        await completePropertyVisit(tenantId, evenementSelectionne.propertyId, evenementSelectionne.eventId);
       }
-      setSelectedEvent(null);
-      await loadEvents();
+      setEvenementSelectionne(null);
+      await rafraichir();
+      message.success('Événement marqué comme terminé.');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de la mise à jour');
+      message.error(err?.response?.data?.message || 'La mise à jour a échoué.');
     }
   };
 
-  // Event style getter
-  const eventStyleGetter = (event: CalendarEventExtended) => {
-    const isDone = event.status === 'DONE' || event.status === 'CANCELED';
-    const isFollowup = event.eventType === 'FOLLOWUP';
-    const isPropertyVisit = event.eventType === 'PROPERTY_VISIT';
-
-    let backgroundColor = '#10b981'; // Green for follow-ups
-    if (isPropertyVisit) {
-      backgroundColor = '#3b82f6'; // Blue for property visits
-    }
-    let borderColor = backgroundColor;
-
-    if (isDone) {
-      backgroundColor = '#9ca3af'; // Gray for done/canceled
-      borderColor = '#9ca3af';
-    }
-
-    return {
-      style: {
-        backgroundColor,
-        borderColor,
-        color: '#fff',
-        borderRadius: '4px',
-        border: 'none',
-        opacity: isDone ? 0.6 : 1,
-        fontSize: '11px',
-        padding: '2px 4px',
-        lineHeight: '1.2'
-      },
-      className: 'rbc-event-small'
-    };
-  };
-
-  // Handle create follow-up
-  const handleCreateFollowUp = async (data: CreateCrmActivityRequest) => {
+  const handleCreate = async (donnees: CreateCrmActivityRequest) => {
     if (!tenantId) return;
-
     try {
       await createActivity(tenantId, {
-        ...data,
+        ...donnees,
         activityType: 'TASK',
-        nextActionAt: data.nextActionAt || new Date()
+        nextActionAt: donnees.nextActionAt || new Date()
       });
-      setShowActivityForm(false);
-      setPrefillContactId(undefined);
-      setPrefillDealId(undefined);
-      await loadEvents();
+      setFormulaireOuvert(false);
+      await rafraichir();
+      message.success('Relance créée.');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de la création de la relance');
+      message.error(err?.response?.data?.message || 'La création a échoué.');
     }
+  };
+
+  if (!tenantId) {
+    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+  }
+
+  const agenda = (
+    <div>
+      {journees.map(({ jour, evenements: duJour }) => (
+        <section key={jour.toISOString()} style={{ marginBottom: 'var(--space-5)' }}>
+          <h3
+            style={{
+              margin: '0 0 var(--space-3)',
+              fontSize: 'var(--font-size-base)',
+              color: 'var(--text-secondary)'
+            }}
+          >
+            {titreDeJour(jour)}
+          </h3>
+          {duJour.map(evenement => (
+            <DataCard
+              key={evenement.eventId}
+              title={evenement.title}
+              aria-label={`${evenement.title}, ${titreDeJour(jour)} à ${heure(evenement.start)}`}
+              subtitle={`${heure(evenement.start)} · ${evenement.contactName}`}
+              status={
+                <StatusTag
+                  status={evenement.status}
+                  // Le type d'événement importe autant que son statut, et un
+                  // événement sans statut n'en a pas moins une nature.
+                  label={evenement.status ? undefined : evenement.eventType === 'FOLLOWUP' ? 'Relance' : 'Visite'}
+                  tone={evenement.eventType === 'FOLLOWUP' ? 'success' : 'info'}
+                />
+              }
+              fields={[
+                ...(evenement.dealLabel ? [{ label: 'Affaire', value: evenement.dealLabel }] : []),
+                ...(evenement.location ? [{ label: 'Lieu', value: evenement.location }] : [])
+              ]}
+              onOpen={() => setEvenementSelectionne(evenement)}
+            />
+          ))}
+        </section>
+      ))}
+    </div>
+  );
+
+  const contenu = () => {
+    if (erreurRequete) {
+      return (
+        <StateBlock
+          variant="error"
+          description="Impossible de charger le calendrier."
+          actions={[{ label: 'Réessayer', onClick: () => refetch(), primary: true }]}
+        />
+      );
+    }
+
+    if (isPending) {
+      return <SkeletonList rows={5} aria-label="Calendrier en cours de chargement" />;
+    }
+
+    if (vue === 'agenda') {
+      return evenements.length === 0 ? (
+        <StateBlock
+          variant="empty"
+          title="Aucun événement sur cette période"
+          description="Créez une relance, ou changez de période."
+          actions={[{ label: 'Nouvelle relance', onClick: () => setFormulaireOuvert(true), primary: true }]}
+        />
+      ) : (
+        agenda
+      );
+    }
+
+    return (
+      // Le repli du `Suspense` est un squelette et non un tourniquet : la
+      // grille pèse assez pour que son chargement se voie sur un réseau lent,
+      // et la place qu'elle occupera doit être tenue d'avance.
+      <Suspense fallback={<SkeletonList rows={6} aria-label="Grille en cours de chargement" />}>
+        <CalendarGrid
+          events={evenements}
+          view={vue as View}
+          onView={v => list.setFilters({ vue: v })}
+          date={dateCourante}
+          onNavigate={setDateCourante}
+          onSelectEvent={setEvenementSelectionne}
+          onEventDrop={handleDrop}
+          onEventResize={handleDrop}
+        />
+      </Suspense>
+    );
+  };
+
+  const exporter = (format: 'csv' | 'excel') => {
+    const lignes = lignesExport(evenements);
+    if (lignes.length === 0) {
+      message.info('Aucun événement à exporter sur cette période.');
+      return;
+    }
+    if (format === 'csv') exportToCSV(lignes, 'calendrier');
+    else exportToExcel(lignes, 'calendrier', 'Calendrier');
   };
 
   return (
     <>
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        {/* Header */}
-        <Row gutter={[16, 16]} justify="space-between" align="middle">
-          <Col xs={24} sm={24} md={12}>
-            <Title level={2} style={{ margin: 0 }}>
-              Calendrier CRM
-            </Title>
-            <Text type="secondary">Gérez vos rendez-vous et relances</Text>
-          </Col>
-          <Col xs={24} sm={24} md={12}>
-            <Space wrap style={{ width: '100%', justifyContent: 'flex-end' }}>
-              <Button.Group>
-                <Button
-                  icon={<DownloadOutlined />}
-                  onClick={() => {
-                    const exportData = events.map(event => ({
-                      Type: event.eventType === 'FOLLOWUP' ? 'Relance' : 'Visite',
-                      Titre: event.title,
-                      Contact: event.contactName,
-                      Affaire: event.dealLabel || '',
-                      'Date début':
-                        event.start && dayjs(event.start).isValid()
-                          ? dayjs(event.start).format('DD/MM/YYYY HH:mm')
-                          : 'Date invalide',
-                      'Date fin':
-                        event.end && dayjs(event.end).isValid() ? dayjs(event.end).format('DD/MM/YYYY HH:mm') : '',
-                      "Type d'action": event.nextActionType || '',
-                      Lieu: event.location || '',
-                      Statut: event.status || '',
-                      Badges: event.badges.join(', ') || ''
-                    }));
-                    exportToCSV(exportData, 'calendrier');
-                  }}
-                >
-                  CSV
-                </Button>
-                <Button
-                  icon={<FileExcelOutlined />}
-                  onClick={() => {
-                    const exportData = events.map(event => ({
-                      Type: event.eventType === 'FOLLOWUP' ? 'Relance' : 'Visite',
-                      Titre: event.title,
-                      Contact: event.contactName,
-                      Affaire: event.dealLabel || '',
-                      'Date début':
-                        event.start && dayjs(event.start).isValid()
-                          ? dayjs(event.start).format('DD/MM/YYYY HH:mm')
-                          : 'Date invalide',
-                      'Date fin':
-                        event.end && dayjs(event.end).isValid() ? dayjs(event.end).format('DD/MM/YYYY HH:mm') : '',
-                      "Type d'action": event.nextActionType || '',
-                      Lieu: event.location || '',
-                      Statut: event.status || '',
-                      Badges: event.badges.join(', ') || ''
-                    }));
-                    exportToExcel(exportData, 'calendrier', 'Calendrier');
-                  }}
-                >
-                  Excel
-                </Button>
-              </Button.Group>
-              <Button onClick={() => setCurrentDate(new Date())}>Aujourd'hui</Button>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => {
-                  setShowActivityForm(true);
-                  setPrefillContactId(undefined);
-                  setPrefillDealId(undefined);
-                }}
-              >
-                <span className="hidden sm:inline">Nouvelle activité</span>
-                <span className="sm:hidden">Activité</span>
-              </Button>
-              <Button
-                icon={<PlusOutlined />}
-                onClick={() => {
-                  setShowActivityForm(true);
-                  setPrefillContactId(undefined);
-                  setPrefillDealId(undefined);
-                }}
-              >
-                <span className="hidden sm:inline">Nouvelle relance</span>
-                <span className="sm:hidden">Relance</span>
-              </Button>
-            </Space>
-          </Col>
-        </Row>
+      <PageHeader
+        title="Calendrier"
+        subtitle={
+          evenements.length > 0 ? `${evenements.length} événement${evenements.length > 1 ? 's' : ''}` : undefined
+        }
+        // Une seule action primaire. L'ancienne version en offrait deux,
+        // « Nouvelle activité » et « Nouvelle relance », qui ouvraient le même
+        // formulaire avec les mêmes valeurs.
+        primaryAction={{ label: 'Nouvelle relance', icon: <PlusOutlined />, onClick: () => setFormulaireOuvert(true) }}
+        secondaryActions={[
+          { key: 'today', label: "Revenir à aujourd'hui", onClick: () => setDateCourante(new Date()) },
+          { type: 'divider' },
+          { key: 'csv', label: 'Exporter en CSV', icon: <DownloadOutlined />, onClick: () => exporter('csv') },
+          { key: 'xls', label: 'Exporter en tableur', icon: <FileExcelOutlined />, onClick: () => exporter('excel') }
+        ]}
+      />
 
-        {/* Filters */}
-        <Card>
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            <Row gutter={[16, 16]} align="middle">
-              <Col xs={24} sm={12} md={8}>
-                <Space wrap>
-                  <Text strong>Vue:</Text>
-                  <Button.Group>
-                    <Button type={view === 'month' ? 'primary' : 'default'} onClick={() => setView('month')}>
-                      Mois
-                    </Button>
-                    <Button type={view === 'week' ? 'primary' : 'default'} onClick={() => setView('week')}>
-                      Semaine
-                    </Button>
-                    <Button type={view === 'day' ? 'primary' : 'default'} onClick={() => setView('day')}>
-                      Jour
-                    </Button>
-                  </Button.Group>
-                </Space>
-              </Col>
-              <Col xs={24} sm={12} md={8}>
-                <Space>
-                  <Checkbox checked={scope === 'MINE'} onChange={e => setScope(e.target.checked ? 'MINE' : 'GLOBAL')}>
-                    Mon calendrier
-                  </Checkbox>
-                  <Checkbox checked={showFollowups} onChange={e => setShowFollowups(e.target.checked)}>
-                    Relances
-                  </Checkbox>
-                </Space>
-              </Col>
-            </Row>
-
-            {/* Advanced Filters */}
-            <Divider />
-            <AdvancedFilters
-              tenantId={tenantId}
-              config={{
-                showDateRange: true,
-                showAssignedTo: true,
-                showType: true,
-                showContactName: true,
-                dateRangeLabel: 'Période personnalisée',
-                typeLabel: "Type d'événement",
-                contactNameLabel: 'Nom du client',
-                typeOptions: [
-                  { value: 'RDV', label: 'Rendez-vous (RDV)' },
-                  { value: 'VISITE', label: 'Visite' },
-                  { value: 'FOLLOWUP', label: 'Relance' }
-                ]
-              }}
-              filters={advancedFilters}
-              onFiltersChange={newFilters => {
-                setAdvancedFilters(newFilters);
-                // Update date range if set
-                if (newFilters.startDate || newFilters.endDate) {
-                  const from = newFilters.startDate ? new Date(newFilters.startDate) : dateRange.from;
-                  const to = newFilters.endDate ? new Date(newFilters.endDate) : dateRange.to;
-                  setCurrentDate(from);
-                  // The dateRange will be recalculated based on currentDate and view
-                }
-              }}
-            />
-          </Space>
-        </Card>
-
-        {/* Error message */}
-        {error && <Alert message={error} type="error" showIcon closable onClose={() => setError(null)} />}
-
-        {/* Calendar */}
-        <Card>
-          <div
-            style={{
-              height: '600px',
-              minHeight: '400px',
-              overflow: 'auto'
-            }}
-            className="calendar-container"
-          >
-            {loading ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                <Spin size="large" />
-                <Text type="secondary" style={{ marginLeft: 16 }}>
-                  Chargement...
-                </Text>
-              </div>
-            ) : (
-              <div style={{ height: '100%', width: '100%' }}>
-                <BigCalendar<CalendarEventExtended>
-                  localizer={localizer}
-                  events={events}
-                  startAccessor="start"
-                  endAccessor="end"
-                  view={view}
-                  onView={setView}
-                  date={currentDate}
-                  onNavigate={setCurrentDate}
-                  onSelectEvent={handleSelectEvent}
-                  onEventDrop={handleEventDrop}
-                  onEventResize={handleEventResize}
-                  eventPropGetter={eventStyleGetter}
-                  draggableAccessor={(event: CalendarEventExtended) => event.canDrag}
-                  resizable={true}
-                  defaultDate={new Date()}
-                  messages={{
-                    next: 'Suivant',
-                    previous: 'Précédent',
-                    today: "Aujourd'hui",
-                    month: 'Mois',
-                    week: 'Semaine',
-                    day: 'Jour',
-                    agenda: 'Agenda',
-                    date: 'Date',
-                    time: 'Heure',
-                    event: 'Événement',
-                    noEventsInRange: 'Aucun événement cette période'
-                  }}
-                />
-              </div>
-            )}
-          </div>
-        </Card>
-
-        {/* Event Detail Panel */}
-        <Drawer
-          title="Détails de l'événement"
-          placement="right"
-          onClose={() => setSelectedEvent(null)}
-          open={selectedEvent !== null}
-          width={400}
-          className="event-detail-drawer"
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: 'var(--space-4)',
+          alignItems: 'center',
+          marginBottom: 'var(--space-4)'
+        }}
+      >
+        <Segmented<Vue>
+          value={vue}
+          onChange={valeur => list.setFilters({ vue: valeur })}
+          options={VUES}
+          // Le choix de vue est une navigation, pas un filtre de données :
+          // il mérite un nom accessible propre.
+          aria-label="Choisir la vue du calendrier"
+        />
+        <Checkbox
+          checked={perimetre === 'MINE'}
+          onChange={e => list.setFilters({ perimetre: e.target.checked ? 'mine' : undefined })}
         >
-          {selectedEvent && (
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <div>
-                <Title level={4} style={{ margin: 0, marginBottom: 8 }}>
-                  {selectedEvent.title}
-                </Title>
-                <Space wrap>
-                  {selectedEvent.badges.map((badge, idx) => (
-                    <Tag key={idx} color="blue">
-                      {badge}
-                    </Tag>
-                  ))}
-                </Space>
-              </div>
+          Mon calendrier
+        </Checkbox>
+        <Checkbox
+          checked={avecRelances}
+          onChange={e => list.setFilters({ relances: e.target.checked ? undefined : 'non' })}
+        >
+          Afficher les relances
+        </Checkbox>
+        {isFetching && !isPending && <Text type="secondary">Mise à jour…</Text>}
+      </div>
 
-              <Divider />
+      <AdvancedFilters
+        tenantId={tenantId}
+        config={{
+          showDateRange: true,
+          showAssignedTo: true,
+          showType: true,
+          showContactName: true,
+          dateRangeLabel: 'Période personnalisée',
+          typeLabel: "Type d'événement",
+          contactNameLabel: 'Nom du client',
+          typeOptions: [
+            { value: 'RDV', label: 'Rendez-vous' },
+            { value: 'VISITE', label: 'Visite' },
+            { value: 'FOLLOWUP', label: 'Relance' }
+          ]
+        }}
+        filters={filtresAvances}
+        onFiltersChange={nouveaux => {
+          setFiltresAvances(nouveaux);
+          if (nouveaux.startDate) setDateCourante(new Date(nouveaux.startDate));
+        }}
+      />
 
-              <Space direction="vertical" size="small" style={{ width: '100%' }}>
-                <Space>
-                  <ClockCircleOutlined />
-                  <Text>
-                    {selectedEvent.start && dayjs(selectedEvent.start).isValid()
-                      ? dayjs(selectedEvent.start).format('DD/MM/YYYY HH:mm')
-                      : 'Date invalide'}
-                    {selectedEvent.end && dayjs(selectedEvent.end).isValid() && (
-                      <> - {dayjs(selectedEvent.end).format('HH:mm')}</>
-                    )}
-                  </Text>
-                </Space>
+      <div style={{ marginTop: 'var(--space-4)' }}>{contenu()}</div>
 
-                <Space>
-                  <UserOutlined />
-                  <Button
-                    type="link"
-                    onClick={() => navigate(`/tenant/${tenantId}/crm/contacts/${selectedEvent.contactId}`)}
-                    style={{ padding: 0 }}
-                  >
-                    {selectedEvent.contactName}
-                  </Button>
-                </Space>
-
-                {selectedEvent.dealId && (
-                  <Space>
-                    <ProjectOutlined />
-                    <Button
-                      type="link"
-                      onClick={() => navigate(`/tenant/${tenantId}/crm/deals/${selectedEvent.dealId}`)}
-                      style={{ padding: 0 }}
-                    >
-                      {selectedEvent.dealLabel}
-                    </Button>
-                  </Space>
-                )}
-
-                {selectedEvent.location && (
-                  <Space>
-                    <EnvironmentOutlined />
-                    <Text>{selectedEvent.location}</Text>
-                  </Space>
-                )}
-
-                {selectedEvent.propertyId && (
-                  <Space>
-                    <HomeOutlined />
-                    <Button
-                      type="link"
-                      onClick={() => navigate(`/tenant/${tenantId}/properties/${selectedEvent.propertyId}`)}
-                      style={{ padding: 0 }}
-                    >
-                      Voir la propriété
-                    </Button>
-                  </Space>
-                )}
+      <Drawer
+        title="Détails de l'événement"
+        placement={isDesktop ? 'right' : 'bottom'}
+        height={isDesktop ? undefined : '70%'}
+        width={isDesktop ? 420 : undefined}
+        onClose={() => setEvenementSelectionne(null)}
+        open={evenementSelectionne !== null}
+      >
+        {evenementSelectionne && (
+          <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+            <div>
+              <Title level={4} style={{ margin: '0 0 var(--space-2)' }}>
+                {evenementSelectionne.title}
+              </Title>
+              <Space wrap>
+                {evenementSelectionne.badges.map(badge => (
+                  <Tag key={badge}>{badge}</Tag>
+                ))}
               </Space>
+            </div>
 
-              <Divider />
+            <Divider style={{ margin: 0 }} />
 
+            <dl style={{ display: 'grid', gap: 'var(--space-2)', margin: 0 }}>
+              <div>
+                <dt style={{ color: 'var(--text-secondary)' }}>Quand</dt>
+                <dd style={{ margin: 0 }}>
+                  {evenementSelectionne.start.toLocaleString('fr-FR')}
+                  {evenementSelectionne.end.getTime() !== evenementSelectionne.start.getTime() && (
+                    <> — {heure(evenementSelectionne.end)}</>
+                  )}
+                </dd>
+              </div>
+              {evenementSelectionne.location && (
+                <div>
+                  <dt style={{ color: 'var(--text-secondary)' }}>Lieu</dt>
+                  <dd style={{ margin: 0 }}>{evenementSelectionne.location}</dd>
+                </div>
+              )}
+            </dl>
+
+            <Space orientation="vertical" size="small" style={{ width: '100%' }}>
               <Button
-                onClick={handleMarkDone}
                 block
-                icon={<CheckCircleOutlined />}
-                disabled={selectedEvent.status === 'DONE' || selectedEvent.status === 'CANCELED'}
+                onClick={() => navigate(`/tenant/${tenantId}/crm/contacts/${evenementSelectionne.contactId}`)}
               >
-                Marquer comme terminé
+                Voir {evenementSelectionne.contactName}
               </Button>
+              {evenementSelectionne.dealId && (
+                <Button block onClick={() => navigate(`/tenant/${tenantId}/crm/deals/${evenementSelectionne.dealId}`)}>
+                  Voir l'affaire
+                </Button>
+              )}
+              {evenementSelectionne.propertyId && (
+                <Button
+                  block
+                  onClick={() => navigate(`/tenant/${tenantId}/properties/${evenementSelectionne.propertyId}`)}
+                >
+                  Voir le bien
+                </Button>
+              )}
             </Space>
-          )}
-        </Drawer>
 
-        {/* Activity Form Modal */}
-        <Modal
-          title="Nouvelle relance / tâche"
-          open={showActivityForm}
-          onCancel={() => {
-            setShowActivityForm(false);
-            setPrefillContactId(undefined);
-            setPrefillDealId(undefined);
-          }}
-          footer={null}
-          width={800}
-        >
-          {tenantId && (
-            <ActivityForm
-              tenantId={tenantId}
-              contactId={prefillContactId}
-              dealId={prefillDealId}
-              onSubmit={handleCreateFollowUp}
-              onCancel={() => {
-                setShowActivityForm(false);
-                setPrefillContactId(undefined);
-                setPrefillDealId(undefined);
-              }}
-            />
-          )}
-        </Modal>
-      </Space>
+            <Button
+              type="primary"
+              block
+              icon={<CheckCircleOutlined />}
+              onClick={handleMarkDone}
+              disabled={evenementSelectionne.status === 'DONE' || evenementSelectionne.status === 'CANCELED'}
+            >
+              Marquer comme terminé
+            </Button>
+          </Space>
+        )}
+      </Drawer>
+
+      <Modal
+        title="Nouvelle relance"
+        open={formulaireOuvert}
+        onCancel={() => setFormulaireOuvert(false)}
+        footer={null}
+        width={720}
+        destroyOnHidden
+      >
+        <ActivityForm tenantId={tenantId} onSubmit={handleCreate} onCancel={() => setFormulaireOuvert(false)} />
+      </Modal>
     </>
   );
 };
