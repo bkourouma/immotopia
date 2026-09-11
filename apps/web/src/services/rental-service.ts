@@ -6,14 +6,14 @@ export enum RentalLeaseStatus {
   ACTIVE = 'ACTIVE',
   SUSPENDED = 'SUSPENDED',
   ENDED = 'ENDED',
-  CANCELED = 'CANCELED',
+  CANCELED = 'CANCELED'
 }
 
 export enum RentalBillingFrequency {
   MONTHLY = 'MONTHLY',
   QUARTERLY = 'QUARTERLY',
   SEMIANNUAL = 'SEMIANNUAL',
-  ANNUAL = 'ANNUAL',
+  ANNUAL = 'ANNUAL'
 }
 
 export enum RentalInstallmentStatus {
@@ -21,7 +21,7 @@ export enum RentalInstallmentStatus {
   DUE = 'DUE',
   PARTIAL = 'PARTIAL',
   PAID = 'PAID',
-  OVERDUE = 'OVERDUE',
+  OVERDUE = 'OVERDUE'
 }
 
 export enum RentalPaymentMethod {
@@ -30,7 +30,7 @@ export enum RentalPaymentMethod {
   CHECK = 'CHECK',
   MOBILE_MONEY = 'MOBILE_MONEY',
   CARD = 'CARD',
-  OTHER = 'OTHER',
+  OTHER = 'OTHER'
 }
 
 export enum RentalPaymentStatus {
@@ -39,13 +39,13 @@ export enum RentalPaymentStatus {
   FAILED = 'FAILED',
   CANCELED = 'CANCELED',
   REFUNDED = 'REFUNDED',
-  PARTIALLY_REFUNDED = 'PARTIALLY_REFUNDED',
+  PARTIALLY_REFUNDED = 'PARTIALLY_REFUNDED'
 }
 
 export enum RentalPenaltyMode {
   PERCENT_OF_BALANCE = 'PERCENT_OF_BALANCE',
   PERCENT_OF_RENT = 'PERCENT_OF_RENT',
-  FIXED_AMOUNT = 'FIXED_AMOUNT',
+  FIXED_AMOUNT = 'FIXED_AMOUNT'
 }
 
 export enum RentalDocumentType {
@@ -55,13 +55,13 @@ export enum RentalDocumentType {
   RENT_QUITTANCE = 'RENT_QUITTANCE',
   DEPOSIT_RECEIPT = 'DEPOSIT_RECEIPT',
   STATEMENT = 'STATEMENT',
-  OTHER = 'OTHER',
+  OTHER = 'OTHER'
 }
 
 export enum RentalDocumentStatus {
   DRAFT = 'DRAFT',
   FINAL = 'FINAL',
-  VOID = 'VOID',
+  VOID = 'VOID'
 }
 
 export enum RentalDepositMovementType {
@@ -70,14 +70,14 @@ export enum RentalDepositMovementType {
   RELEASE = 'RELEASE',
   REFUND = 'REFUND',
   FORFEIT = 'FORFEIT',
-  ADJUSTMENT = 'ADJUSTMENT',
+  ADJUSTMENT = 'ADJUSTMENT'
 }
 
 export enum PaymentDeclarationStatus {
   PENDING = 'PENDING',
   APPROVED = 'APPROVED',
   REJECTED = 'REJECTED',
-  CANCELED = 'CANCELED',
+  CANCELED = 'CANCELED'
 }
 
 // Frontend types matching backend
@@ -217,46 +217,25 @@ export interface LeaseResponse {
 
 // ==================== LEASES ====================
 
-export async function listLeases(
-  tenantId: string,
-  filters?: LeaseFilters
-): Promise<LeaseListResponse> {
+export async function listLeases(tenantId: string, filters?: LeaseFilters): Promise<LeaseListResponse> {
   const response = await apiClient.get(`/tenants/${tenantId}/rental/leases`, {
-    params: filters,
+    params: filters
   });
   return response.data;
 }
 
-export async function getLease(
-  tenantId: string,
-  leaseId: string
-): Promise<LeaseResponse> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/rental/leases/${leaseId}`
-  );
+export async function getLease(tenantId: string, leaseId: string): Promise<LeaseResponse> {
+  const response = await apiClient.get(`/tenants/${tenantId}/rental/leases/${leaseId}`);
   return response.data;
 }
 
-export async function createLease(
-  tenantId: string,
-  data: CreateLeaseRequest
-): Promise<LeaseResponse> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/rental/leases`,
-    data
-  );
+export async function createLease(tenantId: string, data: CreateLeaseRequest): Promise<LeaseResponse> {
+  const response = await apiClient.post(`/tenants/${tenantId}/rental/leases`, data);
   return response.data;
 }
 
-export async function updateLease(
-  tenantId: string,
-  leaseId: string,
-  data: UpdateLeaseRequest
-): Promise<LeaseResponse> {
-  const response = await apiClient.patch(
-    `/tenants/${tenantId}/rental/leases/${leaseId}`,
-    data
-  );
+export async function updateLease(tenantId: string, leaseId: string, data: UpdateLeaseRequest): Promise<LeaseResponse> {
+  const response = await apiClient.patch(`/tenants/${tenantId}/rental/leases/${leaseId}`, data);
   return response.data;
 }
 
@@ -265,32 +244,17 @@ export async function updateLeaseStatus(
   leaseId: string,
   status: RentalLeaseStatus
 ): Promise<LeaseResponse> {
-  const response = await apiClient.patch(
-    `/tenants/${tenantId}/rental/leases/${leaseId}/status`,
-    { status }
-  );
+  const response = await apiClient.patch(`/tenants/${tenantId}/rental/leases/${leaseId}/status`, { status });
   return response.data;
 }
 
-export async function deleteLease(
-  tenantId: string,
-  leaseId: string
-): Promise<{ success: boolean; message: string }> {
-  const response = await apiClient.delete(
-    `/tenants/${tenantId}/rental/leases/${leaseId}`
-  );
+export async function deleteLease(tenantId: string, leaseId: string): Promise<{ success: boolean; message: string }> {
+  const response = await apiClient.delete(`/tenants/${tenantId}/rental/leases/${leaseId}`);
   return response.data;
 }
 
-export async function addCoRenter(
-  tenantId: string,
-  leaseId: string,
-  renterClientId: string
-): Promise<LeaseResponse> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/rental/leases/${leaseId}/co-renters`,
-    { renterClientId }
-  );
+export async function addCoRenter(tenantId: string, leaseId: string, renterClientId: string): Promise<LeaseResponse> {
+  const response = await apiClient.post(`/tenants/${tenantId}/rental/leases/${leaseId}/co-renters`, { renterClientId });
   return response.data;
 }
 
@@ -299,19 +263,12 @@ export async function removeCoRenter(
   leaseId: string,
   renterClientId: string
 ): Promise<{ success: boolean; message: string }> {
-  const response = await apiClient.delete(
-    `/tenants/${tenantId}/rental/leases/${leaseId}/co-renters/${renterClientId}`
-  );
+  const response = await apiClient.delete(`/tenants/${tenantId}/rental/leases/${leaseId}/co-renters/${renterClientId}`);
   return response.data;
 }
 
-export async function listCoRenters(
-  tenantId: string,
-  leaseId: string
-): Promise<{ success: boolean; data: any[] }> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/rental/leases/${leaseId}/co-renters`
-  );
+export async function listCoRenters(tenantId: string, leaseId: string): Promise<{ success: boolean; data: any[] }> {
+  const response = await apiClient.get(`/tenants/${tenantId}/rental/leases/${leaseId}/co-renters`);
   return response.data;
 }
 
@@ -364,18 +321,15 @@ export async function listInstallments(
   // Use lease-specific endpoint if leaseId is provided
   if (filters?.leaseId) {
     const { leaseId, ...otherFilters } = filters;
-    const response = await apiClient.get(
-      `/tenants/${tenantId}/rental/leases/${leaseId}/installments`,
-      {
-        params: otherFilters,
-      }
-    );
+    const response = await apiClient.get(`/tenants/${tenantId}/rental/leases/${leaseId}/installments`, {
+      params: otherFilters
+    });
     return response.data;
   }
-  
+
   // Otherwise use generic endpoint
   const response = await apiClient.get(`/tenants/${tenantId}/rental/installments`, {
-    params: filters,
+    params: filters
   });
   return response.data;
 }
@@ -384,9 +338,7 @@ export async function getInstallment(
   tenantId: string,
   installmentId: string
 ): Promise<{ success: boolean; data: RentalInstallment }> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/rental/installments/${installmentId}`
-  );
+  const response = await apiClient.get(`/tenants/${tenantId}/rental/installments/${installmentId}`);
   return response.data;
 }
 
@@ -394,9 +346,7 @@ export async function generateInstallments(
   tenantId: string,
   leaseId: string
 ): Promise<{ success: boolean; data: RentalInstallment[]; message: string }> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/rental/leases/${leaseId}/installments`
-  );
+  const response = await apiClient.post(`/tenants/${tenantId}/rental/leases/${leaseId}/installments`);
   return response.data;
 }
 
@@ -404,9 +354,7 @@ export async function recalculateInstallmentStatuses(
   tenantId: string,
   leaseId: string
 ): Promise<{ success: boolean; message: string }> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/rental/leases/${leaseId}/installments/recalculate`
-  );
+  const response = await apiClient.post(`/tenants/${tenantId}/rental/leases/${leaseId}/installments/recalculate`);
   return response.data;
 }
 
@@ -414,9 +362,7 @@ export async function deleteAllInstallments(
   tenantId: string,
   leaseId: string
 ): Promise<{ success: boolean; message: string; data: { deletedCount: number } }> {
-  const response = await apiClient.delete(
-    `/tenants/${tenantId}/rental/leases/${leaseId}/installments`
-  );
+  const response = await apiClient.delete(`/tenants/${tenantId}/rental/leases/${leaseId}/installments`);
   return response.data;
 }
 
@@ -585,12 +531,9 @@ export interface RejectPaymentDeclarationRequest {
   reviewNotes: string;
 }
 
-export async function listPayments(
-  tenantId: string,
-  filters?: PaymentFilters
-): Promise<PaymentListResponse> {
+export async function listPayments(tenantId: string, filters?: PaymentFilters): Promise<PaymentListResponse> {
   const response = await apiClient.get(`/tenants/${tenantId}/rental/payments`, {
-    params: filters,
+    params: filters
   });
   return response.data;
 }
@@ -599,9 +542,7 @@ export async function getPayment(
   tenantId: string,
   paymentId: string
 ): Promise<{ success: boolean; data: RentalPayment }> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/rental/payments/${paymentId}`
-  );
+  const response = await apiClient.get(`/tenants/${tenantId}/rental/payments/${paymentId}`);
   return response.data;
 }
 
@@ -618,10 +559,7 @@ export async function allocatePayment(
   paymentId: string,
   data: AllocatePaymentRequest
 ): Promise<{ success: boolean; data: any; message: string }> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/rental/payments/${paymentId}/allocate`,
-    data
-  );
+  const response = await apiClient.post(`/tenants/${tenantId}/rental/payments/${paymentId}/allocate`, data);
   return response.data;
 }
 
@@ -630,10 +568,7 @@ export async function updatePaymentStatus(
   paymentId: string,
   status: RentalPaymentStatus
 ): Promise<{ success: boolean; data: RentalPayment }> {
-  const response = await apiClient.patch(
-    `/tenants/${tenantId}/rental/payments/${paymentId}/status`,
-    { status }
-  );
+  const response = await apiClient.patch(`/tenants/${tenantId}/rental/payments/${paymentId}/status`, { status });
   return response.data;
 }
 
@@ -664,7 +599,16 @@ export interface PenaltyFilters {
 export interface PenaltyListResponse {
   success: boolean;
   data: RentalPenalty[];
-  pagination: {
+  /**
+   * **Jamais renvoyée par l'API.**
+   *
+   * `listPenaltiesHandler` (packages/api) ignore `page` et `limit` et rend
+   * toutes les pénalités de l'agence. Le champ était déclaré obligatoire ici,
+   * si bien que le code appelant croyait pouvoir s'y fier : l'écran en
+   * fabriquait une à partir de `data.length`. Il devient facultatif — ce qu'il
+   * est réellement — et le restera tant que le endpoint ne paginera pas.
+   */
+  pagination?: {
     page: number;
     limit: number;
     total: number;
@@ -672,12 +616,9 @@ export interface PenaltyListResponse {
   };
 }
 
-export async function listPenalties(
-  tenantId: string,
-  filters?: PenaltyFilters
-): Promise<PenaltyListResponse> {
+export async function listPenalties(tenantId: string, filters?: PenaltyFilters): Promise<PenaltyListResponse> {
   const response = await apiClient.get(`/tenants/${tenantId}/rental/penalties`, {
-    params: filters,
+    params: filters
   });
   return response.data;
 }
@@ -686,9 +627,7 @@ export async function getPenalty(
   tenantId: string,
   penaltyId: string
 ): Promise<{ success: boolean; data: RentalPenalty }> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/rental/penalties/${penaltyId}`
-  );
+  const response = await apiClient.get(`/tenants/${tenantId}/rental/penalties/${penaltyId}`);
   return response.data;
 }
 
@@ -697,7 +636,7 @@ export async function calculatePenalties(
   installmentId?: string
 ): Promise<{ success: boolean; data: RentalPenalty[]; message: string }> {
   const response = await apiClient.post(`/tenants/${tenantId}/rental/penalties/calculate`, {
-    installmentId,
+    installmentId
   });
   return response.data;
 }
@@ -708,10 +647,10 @@ export async function updatePenalty(
   adjustedAmount: number,
   adjustmentReason: string
 ): Promise<{ success: boolean; data: RentalPenalty }> {
-  const response = await apiClient.patch(
-    `/tenants/${tenantId}/rental/penalties/${penaltyId}`,
-    { amount: adjustedAmount, reason: adjustmentReason }
-  );
+  const response = await apiClient.patch(`/tenants/${tenantId}/rental/penalties/${penaltyId}`, {
+    amount: adjustedAmount,
+    reason: adjustmentReason
+  });
   return response.data;
 }
 
@@ -719,9 +658,7 @@ export async function deletePenalty(
   tenantId: string,
   penaltyId: string
 ): Promise<{ success: boolean; message: string }> {
-  const response = await apiClient.delete(
-    `/tenants/${tenantId}/rental/penalties/${penaltyId}`
-  );
+  const response = await apiClient.delete(`/tenants/${tenantId}/rental/penalties/${penaltyId}`);
   return response.data;
 }
 
@@ -732,16 +669,12 @@ export async function uploadPenaltyJustification(
 ): Promise<{ success: boolean; data: any }> {
   const formData = new FormData();
   formData.append('file', file);
-  
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/rental/penalties/${penaltyId}/justification`,
-    formData,
-    {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+
+  const response = await apiClient.post(`/tenants/${tenantId}/rental/penalties/${penaltyId}/justification`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
     }
-  );
+  });
   return response.data;
 }
 
@@ -786,9 +719,7 @@ export async function getDeposit(
   tenantId: string,
   leaseId: string
 ): Promise<{ success: boolean; data: RentalSecurityDeposit }> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/rental/leases/${leaseId}/deposit`
-  );
+  const response = await apiClient.get(`/tenants/${tenantId}/rental/leases/${leaseId}/deposit`);
   return response.data;
 }
 
@@ -798,10 +729,10 @@ export async function createDeposit(
   targetAmount: number,
   currency: string
 ): Promise<{ success: boolean; data: RentalSecurityDeposit }> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/rental/leases/${leaseId}/deposit`,
-    { targetAmount, currency }
-  );
+  const response = await apiClient.post(`/tenants/${tenantId}/rental/leases/${leaseId}/deposit`, {
+    targetAmount,
+    currency
+  });
   return response.data;
 }
 
@@ -810,10 +741,7 @@ export async function createDepositMovement(
   depositId: string,
   data: CreateDepositMovementRequest
 ): Promise<{ success: boolean; data: RentalDepositMovement }> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/rental/deposits/${depositId}/movements`,
-    data
-  );
+  const response = await apiClient.post(`/tenants/${tenantId}/rental/deposits/${depositId}/movements`, data);
   return response.data;
 }
 
@@ -821,9 +749,7 @@ export async function listDepositMovements(
   tenantId: string,
   depositId: string
 ): Promise<{ success: boolean; data: RentalDepositMovement[] }> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/rental/deposits/${depositId}/movements`
-  );
+  const response = await apiClient.get(`/tenants/${tenantId}/rental/deposits/${depositId}/movements`);
   return response.data;
 }
 
@@ -877,12 +803,9 @@ export interface DocumentListResponse {
   };
 }
 
-export async function listDocuments(
-  tenantId: string,
-  filters?: DocumentFilters
-): Promise<DocumentListResponse> {
+export async function listDocuments(tenantId: string, filters?: DocumentFilters): Promise<DocumentListResponse> {
   const response = await apiClient.get(`/tenants/${tenantId}/rental/documents`, {
-    params: filters,
+    params: filters
   });
   return response.data;
 }
@@ -891,9 +814,7 @@ export async function getDocument(
   tenantId: string,
   documentId: string
 ): Promise<{ success: boolean; data: RentalDocument }> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/rental/documents/${documentId}`
-  );
+  const response = await apiClient.get(`/tenants/${tenantId}/rental/documents/${documentId}`);
   return response.data;
 }
 
@@ -918,7 +839,7 @@ export async function generateDocument(
   };
 
   const docType = docTypeMap[data.type] || 'RENT_RECEIPT';
-  
+
   // Determine sourceKey based on document type
   const sourceKey = data.leaseId || data.paymentId || '';
   if (!sourceKey) {
@@ -940,17 +861,14 @@ export async function generateDocument(
   });
 
   try {
-    const response = await apiClient.post(
-      `/tenants/${tenantId}/documents/generate`,
-      requestBody
-    );
-    
+    const response = await apiClient.post(`/tenants/${tenantId}/documents/generate`, requestBody);
+
     console.log('✅ [rental-service] generateDocument: Success', {
       success: response.data.success,
       documentId: response.data.data?.id,
       documentNumber: response.data.data?.document_number
     });
-    
+
     return response.data;
   } catch (error: any) {
     console.error('❌ [rental-service] generateDocument: Error', {
@@ -967,10 +885,7 @@ export async function updateDocumentStatus(
   documentId: string,
   status: RentalDocumentStatus
 ): Promise<{ success: boolean; data: RentalDocument }> {
-  const response = await apiClient.patch(
-    `/tenants/${tenantId}/rental/documents/${documentId}`,
-    { status }
-  );
+  const response = await apiClient.patch(`/tenants/${tenantId}/rental/documents/${documentId}`, { status });
   return response.data;
 }
 
@@ -979,10 +894,7 @@ export async function regenerateDocument(
   documentId: string,
   templateId?: string
 ): Promise<{ success: boolean; data: RentalDocument; message: string }> {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/documents/${documentId}/regenerate`,
-    { templateId }
-  );
+  const response = await apiClient.post(`/tenants/${tenantId}/documents/${documentId}/regenerate`, { templateId });
   return response.data;
 }
 
@@ -993,7 +905,7 @@ export async function listPaymentDeclarations(
   filters?: PaymentDeclarationFilters
 ): Promise<PaymentDeclarationListResponse> {
   const response = await apiClient.get(`/tenants/${tenantId}/rental/payment-declarations`, {
-    params: filters,
+    params: filters
   });
   return response.data;
 }
@@ -1002,9 +914,7 @@ export async function getPaymentDeclaration(
   tenantId: string,
   declarationId: string
 ): Promise<PaymentDeclarationResponse> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/rental/payment-declarations/${declarationId}`
-  );
+  const response = await apiClient.get(`/tenants/${tenantId}/rental/payment-declarations/${declarationId}`);
   return response.data;
 }
 

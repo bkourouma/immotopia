@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, Route, Routes, useSearchParams } from 'react-router-dom';
 import { Properties } from '../../pages/properties/Properties';
 import { Installments } from '../../pages/rental/Installments';
+import { Penalties } from '../../pages/rental/Penalties';
 import { installerFausseApi, retirerFausseApi, type Scenario } from './mock-api';
 import {
   DataCard,
@@ -58,6 +59,7 @@ const AGENCE = 'agence-demo';
 const BIENS = 'tenant/' + AGENCE + '/properties';
 const ECHEANCES = 'tenant/' + AGENCE + '/rental/leases/bail-demo/installments';
 const ECHEANCES_GLOBAL = 'tenant/' + AGENCE + '/rental/installments';
+const PENALITES = 'tenant/' + AGENCE + '/rental/penalties';
 
 const SCENES: Scene[] = [
   {
@@ -129,6 +131,21 @@ const SCENES: Scene[] = [
     description: 'Bail sans échéances : l’écran doit renvoyer vers la génération.',
     scenario: 'vide',
     chemin: ECHEANCES
+  },
+  {
+    id: 'penalites',
+    titre: 'Pénalités — nominal',
+    description:
+      'Quatre pénalités : une brute, une ajustée avec justificatif, une raison en texte ancien, un retard de 150 jours.',
+    scenario: 'nominal',
+    chemin: PENALITES
+  },
+  {
+    id: 'penalites-vide',
+    titre: 'Pénalités — aucune',
+    description: 'Aucun retard : l’écran doit le dire sans alarmer.',
+    scenario: 'vide',
+    chemin: PENALITES
   },
   {
     id: 'primitives',
@@ -318,6 +335,14 @@ export const Atelier: React.FC = () => (
       element={
         <Scene>
           <Installments />
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/rental/penalties"
+      element={
+        <Scene>
+          <Penalties />
         </Scene>
       }
     />

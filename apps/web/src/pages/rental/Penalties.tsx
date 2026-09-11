@@ -1,598 +1,445 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  Table,
-  Button,
-  Tag,
-  Space,
-  Typography,
-  Empty,
-  Alert,
-  Input,
-  Modal,
-  Form,
-  InputNumber,
-  Upload,
-  Row,
-  Col
-} from 'antd';
+import { App, Button, Modal, Drawer, Form, Input, InputNumber, Upload, Typography, Space, Dropdown } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import {
-  ReloadOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  UploadOutlined,
-  DownloadOutlined,
-  ExclamationCircleOutlined
-} from '@ant-design/icons';
-import { Edit, X, Upload as UploadIcon, Download, FileText } from 'lucide-react';
-import { Button as UIButton } from '../../components/ui/button';
+import { ReloadOutlined, UploadOutlined, DownloadOutlined, MoreOutlined } from '@ant-design/icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listPenalties,
   calculatePenalties,
   updatePenalty,
   deletePenalty,
   uploadPenaltyJustification,
-  RentalPenalty,
-  PenaltyFilters
+  RentalPenalty
 } from '../../services/rental-service';
 import { API_URL } from '../../config/api';
-import { useConfirmAction } from '../../components/primitives';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { queryKey, STALE_TIME } from '../../lib/query-keys';
+import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, useConfirmAction } from '../../components/primitives';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
+
+/**
+ * Pénalités de retard — troisième des six écrans hybrides (§9.7).
+ *
+ * C'était le plus mélangé des quatre écrans `rental` : deux boîtes de dialogue
+ * entièrement faites à la main en Tailwind — `fixed inset-0 bg-black` — avec des
+ * boutons venus de `components/ui/`, des icônes `lucide-react`, et un
+ * `<textarea>` portant quinze classes utilitaires. Le tout à côté d'un `<Table>`
+ * d'Ant Design. Les deux boîtes deviennent une `<Modal>` au-dessus de 992 px et
+ * un `<Drawer>` pleine hauteur en dessous.
+ *
+ * **Une pagination qui n'existe pas.** Le front affichait un compteur bâti sur
+ * `data.length` et une page unique. Vérification faite côté API :
+ * `listPenaltiesHandler` **ignore `page` et `limit`** et renvoie toutes les
+ * pénalités de l'agence. Le type `PenaltyListResponse` déclarait pourtant un
+ * champ `pagination` qui n'arrive jamais. L'écran ne prétend plus paginer : il
+ * affiche ce que l'API rend, et le dit. Une agence avec plusieurs années
+ * d'historique recevra tout en une réponse — c'est une limite du endpoint, pas
+ * de cet écran, et elle est consignée en errata.
+ *
+ * **Sept colonnes derrière `scroll={{ x: 'max-content' }}`** et trois boutons
+ * pleins par ligne. Cinq colonnes désormais, une action explicite et le reste
+ * derrière « ⋮ ».
+ *
+ * Le code mort du calcul automatique — une fonction jamais appelée, son
+ * `useEffect` laissé en commentaire — est retiré.
+ */
 
 interface PenaltiesProps {
+  /** Fourni quand l'écran est monté en onglet d'un bail. */
   leaseId?: string;
 }
 
+/**
+ * La raison d'ajustement et le justificatif partagent un champ texte, où ils
+ * sont sérialisés en JSON. Le champ peut aussi contenir du texte brut, écrit
+ * avant que ce format n'existe : les deux lectures doivent survivre.
+ */
+function champRaison(penalite: RentalPenalty): string | null {
+  return (penalite as { override_reason?: string | null }).override_reason || penalite.adjustment_reason || null;
+}
+
+function raisonAjustement(penalite: RentalPenalty): string | null {
+  const brut = champRaison(penalite);
+  if (!brut) return null;
+  try {
+    return JSON.parse(brut).reason || brut;
+  } catch {
+    return brut;
+  }
+}
+
+type Justificatif = { fileUrl?: string; fileName?: string };
+
+function justificatif(penalite: RentalPenalty): Justificatif | null {
+  const brut = champRaison(penalite);
+  if (!brut) return null;
+  try {
+    return JSON.parse(brut).justification || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Montant réellement retenu : l'ajustement s'il existe, le calcul sinon. */
+function montantRetenu(penalite: RentalPenalty): number {
+  return penalite.adjusted_amount ?? penalite.amount;
+}
+
+function dateCourte(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR');
+}
+
 export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) => {
-  const confirmAction = useConfirmAction();
+  const { message } = App.useApp();
   const { tenantId, leaseId: paramLeaseId } = useParams<{ tenantId: string; leaseId?: string }>();
   const leaseId = propLeaseId || paramLeaseId;
-  const [penalties, setPenalties] = useState<RentalPenalty[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [calculating, setCalculating] = useState(false);
-  const [showAdjustForm, setShowAdjustForm] = useState(false);
-  const [showJustificationForm, setShowJustificationForm] = useState(false);
-  const [selectedPenalty, setSelectedPenalty] = useState<RentalPenalty | null>(null);
-  const [adjustAmount, setAdjustAmount] = useState('');
-  const [adjustReason, setAdjustReason] = useState('');
-  const [isAdjusting, setIsAdjusting] = useState(false);
-  const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [filters, setFilters] = useState<PenaltyFilters>({
-    leaseId: leaseId,
-    page: 1,
-    limit: 50
-  });
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 50,
-    total: 0,
-    totalPages: 0
+  const queryClient = useQueryClient();
+  const confirmAction = useConfirmAction();
+  const { isDesktop } = useBreakpoint();
+
+  const [ajustePour, setAjustePour] = useState<RentalPenalty | null>(null);
+  const [justifiePour, setJustifiePour] = useState<RentalPenalty | null>(null);
+  const [calculEnCours, setCalculEnCours] = useState(false);
+  const [envoiEnCours, setEnvoiEnCours] = useState(false);
+  const [form] = Form.useForm<{ montant: number; raison: string }>();
+
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: erreurRequete,
+    refetch
+  } = useQuery({
+    queryKey: queryKey('penalties', tenantId, { leaseId: leaseId ?? '' }),
+    queryFn: () => listPenalties(tenantId as string, { leaseId }),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list
   });
 
-  useEffect(() => {
-    if (tenantId) {
-      loadPenalties();
-    }
-  }, [tenantId, filters, leaseId]);
+  const penalites = data?.data ?? [];
 
-  // Note: Auto-calculation on mount is disabled to prevent overwriting manual penalties
-  // Users can manually trigger calculation using the "Calculer les pénalités" button
-  // useEffect(() => {
-  //   if (tenantId && leaseId) {
-  //     autoCalculatePenalties();
-  //   }
-  // }, [tenantId, leaseId]);
-
-  const loadPenalties = async () => {
-    if (!tenantId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await listPenalties(tenantId, {
-        ...filters,
-        leaseId: leaseId || filters.leaseId
-      });
-      if (response.success) {
-        setPenalties(response.data || []);
-        // Update pagination with data length since API doesn't return pagination
-        setPagination({
-          page: 1,
-          limit: 50,
-          total: (response.data || []).length,
-          totalPages: 1
-        });
-      } else {
-        setError('Erreur lors du chargement des pénalités');
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des pénalités');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const rafraichir = () => queryClient.invalidateQueries({ queryKey: ['penalties', tenantId] });
 
   const handleCalculate = async () => {
-    if (!tenantId || !leaseId) return;
-    setCalculating(true);
-    setError(null);
-    try {
-      const response = await calculatePenalties(tenantId);
-      if (response.success) {
-        await loadPenalties();
-      } else {
-        setError('Erreur lors du calcul des pénalités');
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du calcul des pénalités');
-    } finally {
-      setCalculating(false);
-    }
-  };
-
-  const autoCalculatePenalties = async () => {
     if (!tenantId) return;
+    setCalculEnCours(true);
     try {
-      // Calculate penalties silently in the background, then reload
-      const response = await calculatePenalties(tenantId);
-      if (response.success) {
-        // Silently reload penalties after auto-calculation
-        await loadPenalties();
-      }
+      await calculatePenalties(tenantId);
+      await rafraichir();
+      message.success('Pénalités calculées.');
     } catch (err: any) {
-      // Silently ignore errors for auto-calculation
-      console.error('Auto penalty calculation failed:', err);
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fr-FR');
-  };
-
-  const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency
-    }).format(amount);
-  };
-
-  const getJustificationInfo = (penalty: RentalPenalty) => {
-    // Check both override_reason (from DB) and adjustment_reason (from interface)
-    const reasonText = (penalty as any).override_reason || penalty.adjustment_reason;
-    if (!reasonText) return null;
-    try {
-      const parsed = JSON.parse(reasonText);
-      return parsed.justification || null;
-    } catch {
-      return null;
-    }
-  };
-
-  const getAdjustmentReason = (penalty: RentalPenalty) => {
-    // Check both override_reason (from DB) and adjustment_reason (from interface)
-    const reasonText = (penalty as any).override_reason || penalty.adjustment_reason;
-    if (!reasonText) return null;
-    try {
-      const parsed = JSON.parse(reasonText);
-      return parsed.reason || reasonText;
-    } catch {
-      return reasonText;
-    }
-  };
-
-  const handleOpenAdjustForm = (penalty: RentalPenalty) => {
-    setSelectedPenalty(penalty);
-    setAdjustAmount(penalty.adjusted_amount?.toString() || penalty.amount.toString());
-    setAdjustReason(getAdjustmentReason(penalty) || '');
-    setShowAdjustForm(true);
-  };
-
-  const handleOpenJustificationForm = (penalty: RentalPenalty) => {
-    setSelectedPenalty(penalty);
-    setShowJustificationForm(true);
-  };
-
-  const handleAdjustPenalty = async () => {
-    if (!tenantId || !selectedPenalty) return;
-
-    const amount = parseFloat(adjustAmount);
-    if (isNaN(amount) || amount < 0) {
-      setError('Le montant doit être un nombre positif');
-      return;
-    }
-
-    if (!adjustReason.trim()) {
-      setError("Veuillez indiquer une raison pour l'ajustement");
-      return;
-    }
-
-    setIsAdjusting(true);
-    setError(null);
-    try {
-      await updatePenalty(tenantId, selectedPenalty.id, amount, adjustReason);
-      setShowAdjustForm(false);
-      setSelectedPenalty(null);
-      setAdjustAmount('');
-      setAdjustReason('');
-      await loadPenalties();
-    } catch (err: any) {
-      setError(err.response?.data?.message || "Erreur lors de l'ajustement de la pénalité");
+      message.error(err?.response?.data?.message || 'Le calcul a échoué.');
     } finally {
-      setIsAdjusting(false);
+      setCalculEnCours(false);
     }
   };
 
-  const handleDeletePenalty = (penaltyId: string) => {
-    if (!tenantId) return;
+  const ouvrirAjustement = (penalite: RentalPenalty) => {
+    setAjustePour(penalite);
+    form.setFieldsValue({
+      montant: montantRetenu(penalite),
+      raison: raisonAjustement(penalite) || ''
+    });
+  };
 
+  const handleAdjust = async () => {
+    if (!tenantId || !ajustePour) return;
+    const valeurs = await form.validateFields();
+    try {
+      await updatePenalty(tenantId, ajustePour.id, valeurs.montant, valeurs.raison.trim());
+      setAjustePour(null);
+      form.resetFields();
+      await rafraichir();
+      message.success('Pénalité ajustée.');
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || "L'ajustement a échoué.");
+    }
+  };
+
+  const handleDelete = (penalite: RentalPenalty) => {
+    if (!tenantId) return;
     confirmAction({
       title: 'Supprimer cette pénalité ?',
-      description: 'Cette action est irréversible.',
+      description: `Pénalité de ${penalite.days_late} jour${penalite.days_late > 1 ? 's' : ''} de retard. Cette action est irréversible.`,
       okText: 'Supprimer',
       danger: true,
       onConfirm: async () => {
-        setIsDeleting(penaltyId);
-        setError(null);
         try {
-          await deletePenalty(tenantId, penaltyId);
-          await loadPenalties();
+          await deletePenalty(tenantId, penalite.id);
+          await rafraichir();
+          message.success('Pénalité supprimée.');
         } catch (err: any) {
-          setError(err.response?.data?.message || 'Erreur lors de la suppression de la pénalité');
-        } finally {
-          setIsDeleting(null);
+          message.error(err?.response?.data?.message || 'La suppression a échoué.');
         }
       }
     });
   };
 
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!tenantId || !selectedPenalty || !event.target.files || event.target.files.length === 0) return;
-
-    const file = event.target.files[0];
-    setIsUploading(true);
-    setError(null);
-
+  const handleUpload = async (fichier: File) => {
+    if (!tenantId || !justifiePour) return;
+    setEnvoiEnCours(true);
     try {
-      await uploadPenaltyJustification(tenantId, selectedPenalty.id, file);
-      setShowJustificationForm(false);
-      setSelectedPenalty(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      await loadPenalties();
+      await uploadPenaltyJustification(tenantId, justifiePour.id, fichier);
+      setJustifiePour(null);
+      await rafraichir();
+      message.success('Justificatif enregistré.');
     } catch (err: any) {
-      setError(err.response?.data?.message || "Erreur lors de l'upload du justificatif");
+      message.error(err?.response?.data?.message || "L'envoi du justificatif a échoué.");
     } finally {
-      setIsUploading(false);
+      setEnvoiEnCours(false);
     }
   };
 
-  const handleDownloadJustification = (justification: any) => {
-    if (justification?.fileUrl) {
-      // Construct full URL pointing to backend API server
-      const apiBaseUrl = API_URL;
-      // Remove /api from base URL to get the server root
-      const serverBaseUrl = apiBaseUrl.replace(/\/api$/, '');
-      const fullUrl = `${serverBaseUrl}${justification.fileUrl}`;
-      window.open(fullUrl, '_blank');
-    }
+  const ouvrirJustificatif = (fichier: Justificatif | null) => {
+    if (!fichier?.fileUrl) return;
+    window.open(`${API_URL.replace(/\/api$/, '')}${fichier.fileUrl}`, '_blank', 'noopener,noreferrer');
   };
 
-  // If used as standalone page (not in tab)
-  const isStandalone = !propLeaseId;
+  if (!tenantId) {
+    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+  }
 
-  const content = (
+  const actionsSecondaires = (p: RentalPenalty) => [
+    {
+      key: 'just',
+      label: justificatif(p) ? 'Remplacer le justificatif' : 'Ajouter un justificatif',
+      onClick: () => setJustifiePour(p)
+    },
+    { type: 'divider' as const },
+    { key: 'del', label: 'Supprimer', danger: true, onClick: () => handleDelete(p) }
+  ];
+
+  const colonnes: ColumnsType<RentalPenalty> = [
+    { title: 'Calculée le', key: 'date', render: (_, p) => dateCourte(p.calculated_at) },
+    {
+      title: 'Retard',
+      key: 'retard',
+      render: (_, p) => `${p.days_late} jour${p.days_late > 1 ? 's' : ''}`
+    },
+    {
+      title: 'Montant calculé',
+      key: 'montant',
+      align: 'right',
+      render: (_, p) => <MoneyValue value={p.amount} currency={p.currency} />
+    },
+    {
+      title: 'Montant retenu',
+      key: 'retenu',
+      align: 'right',
+      render: (_, p) => (
+        <>
+          <MoneyValue value={montantRetenu(p)} currency={p.currency} />
+          {/* La raison n'a plus sa colonne : elle tient sous le montant, là où
+              elle se lit, et ne prend de place que lorsqu'elle existe. */}
+          {p.adjusted_amount != null && raisonAjustement(p) && (
+            <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>{raisonAjustement(p)}</div>
+          )}
+        </>
+      )
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      align: 'right',
+      render: (_, p) => {
+        const fichier = justificatif(p);
+        return (
+          <Space>
+            {fichier && (
+              <Button type="link" icon={<DownloadOutlined />} onClick={() => ouvrirJustificatif(fichier)}>
+                Justificatif
+              </Button>
+            )}
+            <Button onClick={() => ouvrirAjustement(p)}>Ajuster</Button>
+            {/* Le même menu qu'en carte : ajouter ou remplacer un justificatif,
+                supprimer. Sans lui, ces deux actions n'existaient plus du tout
+                au-dessus de 992 px. */}
+            <Dropdown menu={{ items: actionsSecondaires(p) }} trigger={['click']} placement="bottomRight">
+              <Button
+                icon={<MoreOutlined />}
+                aria-label={`Autres actions pour la pénalité du ${dateCourte(p.calculated_at)}`}
+              />
+            </Dropdown>
+          </Space>
+        );
+      }
+    }
+  ];
+
+  const formulaireAjustement = (
+    <Form form={form} layout="vertical" onFinish={handleAdjust}>
+      {ajustePour && (
+        <Text type="secondary">
+          Montant calculé : <MoneyValue value={ajustePour.amount} currency={ajustePour.currency} /> ·{' '}
+          {ajustePour.days_late} jour{ajustePour.days_late > 1 ? 's' : ''} de retard
+        </Text>
+      )}
+      <Form.Item
+        label="Montant retenu"
+        name="montant"
+        rules={[{ required: true, message: 'Indiquez le montant retenu.' }]}
+        style={{ marginTop: 'var(--space-4)' }}
+      >
+        <InputNumber<number>
+          min={0}
+          style={{ width: '100%' }}
+          inputMode="numeric"
+          formatter={valeur => (valeur == null ? '' : String(valeur).replace(/\B(?=(\d{3})+(?!\d))/g, ' '))}
+          parser={texte => Number((texte || '').replace(/\s/g, '')) as 0}
+        />
+      </Form.Item>
+      <Form.Item
+        label="Raison de l'ajustement"
+        name="raison"
+        // La raison est exigée : un montant modifié sans justification écrite
+        // est indéfendable devant le locataire comme devant le propriétaire.
+        rules={[{ required: true, message: 'Indiquez pourquoi le montant est ajusté.' }]}
+      >
+        <Input.TextArea rows={4} placeholder="Geste commercial, erreur de date, accord amiable…" />
+      </Form.Item>
+      <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
+        <Button onClick={() => setAjustePour(null)} style={{ marginRight: 'var(--space-2)' }}>
+          Annuler
+        </Button>
+        <Button type="primary" htmlType="submit">
+          Enregistrer l'ajustement
+        </Button>
+      </Form.Item>
+    </Form>
+  );
+
+  const formulaireJustificatif = justifiePour && (
     <>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Row gutter={[16, 16]} justify="space-between" align="middle">
-          <Col xs={24} sm={24} md={12} lg={14}>
-            <Title level={2} style={{ margin: 0 }}>
-              Pénalités
-            </Title>
-            <Text type="secondary">{leaseId ? 'Pénalités du bail' : 'Gérez les pénalités de retard'}</Text>
-          </Col>
-          <Col xs={24} sm={24} md={12} lg={10}>
-            <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
-              {leaseId && (
-                <Button type="primary" icon={<ReloadOutlined />} onClick={handleCalculate} loading={calculating}>
-                  Calculer les pénalités
-                </Button>
-              )}
-            </div>
-          </Col>
-        </Row>
-
-        {error && (
-          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
-        )}
-
-        {penalties.length === 0 && !loading ? (
-          <Empty
-            description={
-              leaseId
-                ? 'Aucune pénalité calculée. Cliquez sur "Calculer les pénalités" pour commencer.'
-                : 'Aucune pénalité trouvée'
-            }
-          />
-        ) : (
-          <Table
-            dataSource={penalties}
-            loading={loading}
-            rowKey="id"
-            scroll={{ x: 'max-content' }}
-            columns={[
-              {
-                title: 'Date de calcul',
-                key: 'calculated_at',
-                render: (_, record) => formatDate(record.calculated_at)
-              },
-              {
-                title: 'Jours de retard',
-                key: 'days_late',
-                render: (_, record) => <Tag color="error">{record.days_late} jours</Tag>
-              },
-              {
-                title: 'Montant',
-                key: 'amount',
-                render: (_, record) => formatCurrency(record.amount, record.currency)
-              },
-              {
-                title: 'Montant ajusté',
-                key: 'adjusted_amount',
-                render: (_, record) =>
-                  record.adjusted_amount
-                    ? formatCurrency(record.adjusted_amount, record.currency)
-                    : formatCurrency(record.amount, record.currency)
-              },
-              {
-                title: "Raison d'ajustement",
-                key: 'adjustment_reason',
-                render: (_, record) => {
-                  const adjustmentReason = getAdjustmentReason(record);
-                  return adjustmentReason || '-';
-                }
-              },
-              {
-                title: 'Justificatif',
-                key: 'justification',
-                render: (_, record) => {
-                  const justification = getJustificationInfo(record);
-                  return justification ? (
-                    <Button
-                      type="link"
-                      icon={<DownloadOutlined />}
-                      onClick={() => handleDownloadJustification(justification)}
-                    >
-                      Voir
-                    </Button>
-                  ) : (
-                    <Text type="secondary">-</Text>
-                  );
-                }
-              },
-              {
-                title: 'Actions',
-                key: 'actions',
-                render: (_, record) => (
-                  <Space>
-                    <Button icon={<EditOutlined />} onClick={() => handleOpenAdjustForm(record)} size="small">
-                      Ajuster
-                    </Button>
-                    <Button icon={<UploadOutlined />} onClick={() => handleOpenJustificationForm(record)} size="small">
-                      Justificatif
-                    </Button>
-                    <Button
-                      danger
-                      icon={<DeleteOutlined />}
-                      onClick={() => handleDeletePenalty(record.id)}
-                      loading={isDeleting === record.id}
-                      size="small"
-                    >
-                      Supprimer
-                    </Button>
-                  </Space>
-                )
-              }
-            ]}
-            pagination={
-              pagination.totalPages > 1
-                ? {
-                    current: pagination.page,
-                    pageSize: pagination.limit,
-                    total: pagination.total,
-                    showSizeChanger: true,
-                    showTotal: total => `Total ${total} pénalités`,
-                    onChange: (page, pageSize) => {
-                      setFilters(prev => ({ ...prev, page, limit: pageSize }));
-                    }
-                  }
-                : false
-            }
-          />
-        )}
-
-        {/* Adjust Penalty Modal */}
-        {showAdjustForm && selectedPenalty && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full">
-              <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="bg-blue-100 rounded-full p-2">
-                    <Edit className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-semibold">Ajuster la pénalité</h2>
-                    <p className="text-sm text-muted-foreground">
-                      Montant initial: {formatCurrency(selectedPenalty.amount, selectedPenalty.currency)}
-                    </p>
-                  </div>
-                </div>
-                <UIButton
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    setShowAdjustForm(false);
-                    setSelectedPenalty(null);
-                    setAdjustAmount('');
-                    setAdjustReason('');
-                  }}
-                  className="h-8 w-8 p-0"
-                >
-                  <X className="h-5 w-5" />
-                </UIButton>
-              </div>
-
-              <div className="p-6 space-y-4">
-                <div>
-                  <label htmlFor="adjustAmount" className="block text-sm font-medium text-gray-700 mb-1">
-                    Nouveau montant
-                  </label>
-                  <Input
-                    id="adjustAmount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={adjustAmount}
-                    onChange={e => setAdjustAmount(e.target.value)}
-                    placeholder="0.00"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="adjustReason" className="block text-sm font-medium text-gray-700 mb-1">
-                    Raison de l'ajustement
-                  </label>
-                  <textarea
-                    id="adjustReason"
-                    value={adjustReason}
-                    onChange={e => setAdjustReason(e.target.value)}
-                    placeholder="Expliquez la raison de cet ajustement..."
-                    rows={4}
-                    className="flex min-h-[80px] w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 mt-1"
-                  />
-                </div>
-              </div>
-
-              <div className="p-6 border-t border-gray-200 flex justify-end gap-4">
-                <UIButton
-                  variant="outline"
-                  onClick={() => {
-                    setShowAdjustForm(false);
-                    setSelectedPenalty(null);
-                    setAdjustAmount('');
-                    setAdjustReason('');
-                  }}
-                  disabled={isAdjusting}
-                >
-                  Annuler
-                </UIButton>
-                <UIButton onClick={handleAdjustPenalty} disabled={isAdjusting}>
-                  {isAdjusting ? 'Ajustement...' : 'Ajuster la pénalité'}
-                </UIButton>
-              </div>
-            </div>
+      {justificatif(justifiePour) && (
+        <div
+          style={{
+            padding: 'var(--space-3)',
+            background: 'var(--surface-sunken)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-md)',
+            marginBottom: 'var(--space-4)'
+          }}
+        >
+          <div style={{ marginBottom: 'var(--space-2)' }}>
+            Justificatif actuel : {justificatif(justifiePour)?.fileName || 'fichier'}
           </div>
-        )}
-
-        {/* Upload Justification Modal */}
-        {showJustificationForm && selectedPenalty && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full">
-              <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="bg-green-100 rounded-full p-2">
-                    <UploadIcon className="h-5 w-5 text-green-600" />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-semibold">Ajouter un justificatif</h2>
-                    <p className="text-sm text-muted-foreground">
-                      Pénalité: {formatCurrency(selectedPenalty.amount, selectedPenalty.currency)}
-                    </p>
-                  </div>
-                </div>
-                <UIButton
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    setShowJustificationForm(false);
-                    setSelectedPenalty(null);
-                    if (fileInputRef.current) {
-                      fileInputRef.current.value = '';
-                    }
-                  }}
-                  className="h-8 w-8 p-0"
-                >
-                  <X className="h-5 w-5" />
-                </UIButton>
-              </div>
-
-              <div className="p-6 space-y-4">
-                <div>
-                  <label htmlFor="justificationFile" className="block text-sm font-medium text-gray-700 mb-1">
-                    Fichier justificatif
-                  </label>
-                  <p className="text-sm text-muted-foreground mb-2">Formats acceptés: PDF, Word, Images (JPEG, PNG)</p>
-                  <input
-                    id="justificationFile"
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileSelect}
-                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-                    className="mt-1 flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={isUploading}
-                  />
-                </div>
-                {getJustificationInfo(selectedPenalty) && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-sm font-medium text-blue-900 mb-2">Justificatif existant:</p>
-                    <div className="flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-blue-600" />
-                      <span className="text-sm text-blue-700">
-                        {getJustificationInfo(selectedPenalty)?.fileName || 'Fichier'}
-                      </span>
-                      <UIButton
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDownloadJustification(getJustificationInfo(selectedPenalty))}
-                        className="ml-auto h-8 w-8"
-                      >
-                        <Download className="h-4 w-4" />
-                      </UIButton>
-                    </div>
-                    <p className="text-xs text-blue-600 mt-2">Le nouveau fichier remplacera l'ancien.</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="p-6 border-t border-gray-200 flex justify-end gap-4">
-                <UIButton
-                  variant="outline"
-                  onClick={() => {
-                    setShowJustificationForm(false);
-                    setSelectedPenalty(null);
-                    if (fileInputRef.current) {
-                      fileInputRef.current.value = '';
-                    }
-                  }}
-                  disabled={isUploading}
-                >
-                  Annuler
-                </UIButton>
-              </div>
-            </div>
+          <Button
+            size="small"
+            icon={<DownloadOutlined />}
+            onClick={() => ouvrirJustificatif(justificatif(justifiePour))}
+          >
+            Ouvrir
+          </Button>
+          <div style={{ marginTop: 'var(--space-2)', color: 'var(--text-secondary)' }}>
+            Le nouveau fichier remplacera celui-ci.
           </div>
-        )}
-      </Space>
+        </div>
+      )}
+      <Upload.Dragger
+        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+        maxCount={1}
+        showUploadList={false}
+        disabled={envoiEnCours}
+        // L'envoi est piloté ici et non par le composant : il passe par le
+        // service, donc par `apiClient` et ses intercepteurs.
+        beforeUpload={fichier => {
+          void handleUpload(fichier as File);
+          return false;
+        }}
+      >
+        <p style={{ fontSize: 32, margin: 0 }}>
+          <UploadOutlined aria-hidden="true" />
+        </p>
+        <p>Déposez le fichier ici, ou touchez pour le choisir</p>
+        <p style={{ color: 'var(--text-secondary)' }}>PDF, Word ou image (JPEG, PNG)</p>
+      </Upload.Dragger>
     </>
   );
 
-  if (isStandalone) {
-    return <>{content}</>;
-  }
+  /**
+   * Boîte de dialogue : modale au-dessus de 992 px, feuille pleine hauteur en
+   * dessous. Le §10.1 impose une page pleine dès quatre champs sous 768 px ;
+   * `<FormSheet>` du Lot 3 unifiera les deux formes.
+   */
+  const boite = (ouvert: boolean, titre: string, fermer: () => void, contenu: React.ReactNode, hauteur: string) =>
+    isDesktop ? (
+      <Modal open={ouvert} title={titre} onCancel={fermer} footer={null} width={600} destroyOnHidden>
+        {contenu}
+      </Modal>
+    ) : (
+      <Drawer open={ouvert} title={titre} onClose={fermer} placement="bottom" height={hauteur} destroyOnHidden>
+        {contenu}
+      </Drawer>
+    );
 
-  return content;
+  return (
+    <>
+      <PageHeader
+        title="Pénalités"
+        subtitle={penalites.length > 0 ? `${penalites.length} pénalité${penalites.length > 1 ? 's' : ''}` : undefined}
+        primaryAction={{
+          label: 'Calculer les pénalités',
+          icon: <ReloadOutlined />,
+          onClick: handleCalculate,
+          loading: calculEnCours
+        }}
+      />
+
+      <DataView<RentalPenalty>
+        items={penalites}
+        // L'API ne pagine pas les pénalités : elle renvoie tout. Annoncer
+        // `items.length` n'est donc pas un raccourci, c'est le total réel de ce
+        // que le serveur a rendu. Aucune pagination ne s'affiche, parce qu'il
+        // n'y en a pas à offrir.
+        total={penalites.length}
+        page={1}
+        pageSize={Math.max(penalites.length, 1)}
+        onPageChange={() => {}}
+        loading={isPending}
+        isReloading={isFetching && !isPending}
+        error={erreurRequete ? 'Impossible de charger les pénalités.' : null}
+        onRetry={() => refetch()}
+        emptyDescription={
+          leaseId
+            ? 'Aucune pénalité pour ce bail. Lancez le calcul si des échéances sont en retard.'
+            : 'Aucune pénalité enregistrée.'
+        }
+        columns={colonnes}
+        rowKey={p => p.id}
+        aria-label="Pénalités de retard"
+        renderCard={p => {
+          const fichier = justificatif(p);
+          return (
+            <DataCard
+              title={`${p.days_late} jour${p.days_late > 1 ? 's' : ''} de retard`}
+              aria-label={`Pénalité du ${dateCourte(p.calculated_at)}`}
+              subtitle={`Calculée le ${dateCourte(p.calculated_at)}`}
+              highlight={<MoneyValue value={montantRetenu(p)} currency={p.currency} />}
+              fields={[
+                ...(p.adjusted_amount != null
+                  ? [
+                      { label: 'Montant calculé', value: <MoneyValue value={p.amount} currency={p.currency} /> },
+                      { label: 'Raison', value: raisonAjustement(p) || '—' }
+                    ]
+                  : []),
+                ...(fichier ? [{ label: 'Justificatif', value: fichier.fileName || 'fichier joint' }] : [])
+              ]}
+              primaryAction={{ label: 'Ajuster', onClick: () => ouvrirAjustement(p) }}
+              secondaryActions={[
+                ...(fichier
+                  ? [{ key: 'open', label: 'Ouvrir le justificatif', onClick: () => ouvrirJustificatif(fichier) }]
+                  : []),
+                ...actionsSecondaires(p)
+              ]}
+            />
+          );
+        }}
+      />
+
+      {boite(Boolean(ajustePour), 'Ajuster la pénalité', () => setAjustePour(null), formulaireAjustement, '80%')}
+      {boite(Boolean(justifiePour), 'Justificatif', () => setJustifiePour(null), formulaireJustificatif, '70%')}
+    </>
+  );
 };

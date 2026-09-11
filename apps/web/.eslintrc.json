@@ -35,7 +35,7 @@
   "overrides": [
     {
       "settings": {
-        "derogation": "Liste de derogation temporaire, videe a la cloture du Lot 4 (REFONTE_UI_UX.md §3.1). Enumeration litterale et non un glob : un nouveau fichier doit echouer. 29 entrees a la sortie du Lot 0, 25 a la sortie du Lot 1."
+        "derogation": "Liste de derogation temporaire, videe a la cloture du Lot 4 (REFONTE_UI_UX.md §3.1). Enumeration litterale et non un glob : un nouveau fichier doit echouer. 29 entrees a la sortie du Lot 0, 25 a la sortie du Lot 1, 23 en cours de Lot 2 (les ecrans hybrides refondus sortent de la liste)."
       },
       "files": [
         "src/components/crm/AddDealDialog.tsx",
@@ -60,8 +60,7 @@
         "src/components/properties/PropertySearchResults.tsx",
         "src/components/properties/PropertyStatusWorkflow.tsx",
         "src/components/rental/AllocatePaymentForm.tsx",
-        "src/pages/crm/Deals.tsx",
-        "src/pages/rental/Penalties.tsx"
+        "src/pages/crm/Deals.tsx"
       ],
       "rules": {
         "no-restricted-imports": "off"

@@ -1,6 +1,6 @@
 import type { AxiosAdapter, AxiosRequestConfig, AxiosResponse } from 'axios';
 import apiClient from '../../utils/api-client';
-import { BIENS, COMMUNES, ECHEANCES } from './fixtures';
+import { BIENS, COMMUNES, ECHEANCES, PENALITES } from './fixtures';
 
 /**
  * Fausse API de l'atelier.
@@ -111,6 +111,13 @@ export function installerFausseApi(scenario: Scenario) {
 
     if (/\/rental\/(leases\/[^/]+\/)?installments$/.test(url.pathname)) {
       return ok(config, listeEcheances(url, scenario));
+    }
+
+    // Les penalites ne sont PAS paginees par l API : elle rend tout, sans
+    // enveloppe `pagination`. La fausse API reproduit ce contrat exactement,
+    // faute de quoi l atelier montrerait un ecran plus capable qu il ne l est.
+    if (/\/rental\/penalties$/.test(url.pathname)) {
+      return ok(config, { success: true, data: scenario === 'vide' ? [] : PENALITES });
     }
 
     if (url.pathname.includes('/geographic') || url.pathname.includes('/communes')) {

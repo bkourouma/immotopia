@@ -151,3 +151,73 @@ export const ECHEANCES: EcheanceSimulee[] = [
   echeance(5, { status: 'DUE', amount_paid: 0 }),
   echeance(6, { status: 'DUE', amount_paid: 0, amount_other_fees: 45_000 })
 ];
+
+/**
+ * Pénalités — quatre cas qui couvrent les formes du champ « raison ».
+ *
+ * Ce champ est un texte libre où la raison d'ajustement et le justificatif sont
+ * sérialisés en JSON, sauf pour les lignes écrites avant que ce format
+ * n'existe : elles portent du texte brut. Les deux lectures doivent survivre,
+ * et l'atelier les montre côte à côte.
+ */
+export const PENALITES = [
+  // Ni ajustement, ni justificatif : le cas le plus courant.
+  {
+    id: 'pen-1',
+    tenant_id: 'agence-demo',
+    installment_id: 'ech-4',
+    amount: 132_500,
+    currency: 'GNF',
+    days_late: 10,
+    calculated_at: '2026-04-15T00:00:00.000Z',
+    adjusted_amount: null,
+    adjustment_reason: null,
+    created_at: '',
+    updated_at: ''
+  },
+  // Ajustée, raison en JSON, avec justificatif.
+  {
+    id: 'pen-2',
+    tenant_id: 'agence-demo',
+    installment_id: 'ech-3',
+    amount: 66_250,
+    currency: 'GNF',
+    days_late: 5,
+    calculated_at: '2026-03-10T00:00:00.000Z',
+    adjusted_amount: 30_000,
+    adjustment_reason: JSON.stringify({
+      reason: 'Geste commercial : premier retard du locataire en deux ans.',
+      justification: { fileUrl: '/uploads/demo/accord.pdf', fileName: 'accord-amiable.pdf' }
+    }),
+    created_at: '',
+    updated_at: ''
+  },
+  // Raison en texte brut, format antérieur : ne doit pas casser la lecture.
+  {
+    id: 'pen-3',
+    tenant_id: 'agence-demo',
+    installment_id: 'ech-2',
+    amount: 26_500,
+    currency: 'GNF',
+    days_late: 2,
+    calculated_at: '2026-02-08T00:00:00.000Z',
+    adjusted_amount: 0,
+    adjustment_reason: 'Annulée, erreur de date de valeur',
+    created_at: '',
+    updated_at: ''
+  },
+  // Retard long : le libellé doit rester lisible.
+  {
+    id: 'pen-4',
+    tenant_id: 'agence-demo',
+    installment_id: 'ech-1',
+    amount: 1_987_500,
+    currency: 'GNF',
+    days_late: 150,
+    calculated_at: '2026-01-20T00:00:00.000Z',
+    adjusted_amount: null,
+    adjustment_reason: null,
+    created_at: '',
+    updated_at: ''
+  }
+];
