@@ -32,8 +32,11 @@ import {
  * `useParams()` et son état de liste par de vrais paramètres d'URL, exactement
  * comme en production.
  *
- * **Il ne part jamais en production.** La route n'est déclarée que sous
- * `import.meta.env.DEV`, et ce module n'est donc pas dans le graphe du build.
+ * **Il ne part jamais en production.** La garde `import.meta.env.DEV` est posée
+ * sur l'IMPORT de ce module dans `App.tsx`, pas sur la route. La poser sur la
+ * seule route laissait l'import dynamique au niveau du module, et le build de
+ * production contenait alors un chunk `Atelier-*.js` complet — constaté en
+ * inspectant le bundle. Une étape de CI vérifie désormais l'absence.
  *
  * Ce qu'il ne couvre PAS, et qui reste du ressort de la recette authentifiée :
  * les droits et rôles réels, les données d'une vraie agence, les parcours qui
