@@ -43,6 +43,22 @@ const STATUS_MAP: Record<string, { tone: StatusTone; label: string }> = {
   EXPIRED: { tone: 'danger', label: 'Expiré' },
   REVOKED: { tone: 'danger', label: 'Révoqué' },
 
+  // Cycle de vie d'un bien.
+  //
+  // Manquaient a la table ecrite au Lot 0, alors que ce sont les statuts les
+  // plus affiches de l'application : la liste des biens rendait « AVAILABLE »
+  // et « RENTED » en clair a l'utilisateur. Defaut trouve a l'ecran, dans
+  // l'atelier — aucun test ne le voyait, puisque `<StatusTag>` rend fidelement
+  // le code qu'on lui donne quand il ne le connait pas.
+  AVAILABLE: { tone: 'success', label: 'Disponible' },
+  UNDER_REVIEW: { tone: 'warning', label: 'En révision' },
+  RESERVED: { tone: 'warning', label: 'Réservé' },
+  UNDER_OFFER: { tone: 'warning', label: 'Sous offre' },
+  RENTED: { tone: 'info', label: 'Loué' },
+  // Neutre et non « succes » : le bien sort du portefeuille, ce n'est pas un
+  // etat a mettre en avant dans une liste de gestion.
+  SOLD: { tone: 'neutral', label: 'Vendu' },
+
   // Encaissement
   PENDING: { tone: 'warning', label: 'En attente' },
   DUE: { tone: 'info', label: 'À échoir' },

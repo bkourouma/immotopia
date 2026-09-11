@@ -68,3 +68,27 @@ code {
 .app-drawer-header .ant-drawer-close {
   color: var(--text-on-inverse);
 }
+
+/* Zone tactile de l'icone d'effacement des champs (REFONTE_UI_UX.md §10.1).
+   Ant Design la rend en 12 x 12 px. Sous 992 px, ou le §10.1 exige 44 x 44,
+   c'est inatteignable au doigt : on vise a cote, et le champ se retrouve
+   focalise au lieu d'etre vide. Le pseudo-element etend la cible sans deplacer
+   l'icone ni changer la mise en page.
+   Trouve dans l'atelier, en mesurant les cibles a 375 px. Porte sur tous les
+   champs `allowClear` de l'application, pas seulement sur la liste des biens. */
+@media (max-width: 991px) {
+  .ant-input-clear-icon,
+  .ant-select-clear {
+    position: relative;
+  }
+
+  .ant-input-clear-icon::after,
+  .ant-select-clear::after {
+    content: '';
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}

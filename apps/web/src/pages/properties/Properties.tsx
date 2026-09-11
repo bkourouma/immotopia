@@ -114,7 +114,11 @@ const FILTER_KEYS = [
 const COVER_HEIGHT = 180;
 
 function Cover({ property }: { property: Property }) {
-  const src = property.thumbnailUrl ? fileUrl(property.thumbnailUrl) : null;
+  // Une image dont le chargement échoue doit retomber sur le substitut, pas
+  // laisser un vide : la carte garderait sa hauteur réservée sans rien montrer,
+  // ce qui ressemble à un défaut d'affichage plutôt qu'à un bien sans photo.
+  const [enEchec, setEnEchec] = useState(false);
+  const src = property.thumbnailUrl && !enEchec ? fileUrl(property.thumbnailUrl) : null;
 
   if (!src) {
     return (
@@ -139,9 +143,7 @@ function Cover({ property }: { property: Property }) {
       alt=""
       loading="lazy"
       style={{ height: COVER_HEIGHT, width: '100%', objectFit: 'cover', display: 'block' }}
-      onError={event => {
-        event.currentTarget.style.visibility = 'hidden';
-      }}
+      onError={() => setEnEchec(true)}
     />
   );
 }

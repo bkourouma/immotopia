@@ -109,5 +109,25 @@ jobs:
           fi
           echo "Aucun identifiant en clair dans le bundle."
 
+      # L'atelier de vérification visuelle (`src/dev/`) ne doit jamais partir en
+      # production : il porte des données simulées et court-circuite l'API.
+      # Sa garde est `import.meta.env.DEV` posée sur l'import lui-même. Poser
+      # cette garde sur la seule route laissait passer un chunk `Atelier-*.js`
+      # complet dans le bundle — constaté, puis corrigé. Ce grep empêche la
+      # régression, que la garde ne peut pas signaler d'elle-même.
+      - name: L'atelier ne part pas en production
+        run: |
+          if grep -rIlE '(agence-demo|installerFausseApi)' apps/web/build/assets/; then
+            echo "::error::L'atelier de developpement se retrouve dans le bundle de production."
+            exit 1
+          fi
+          echo "Aucune trace de l'atelier dans le bundle."
+
+      # Le chunk d'entrée reste sous le plafond du §8.1. Le script lit
+      # `index.html` pour identifier l'entrée : six fichiers du build s'appellent
+      # `index-<hash>.js`, et mesurer le mauvais a déjà masqué une dérive.
+      - name: Budget du chunk d'entree
+        run: npm run measure:entry -w @immotopia/web
+
       # Les tokens du §3.2 doivent rester conformes AA.
       - run: npm run a11y:contrast

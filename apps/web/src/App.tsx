@@ -6,6 +6,13 @@ import { buildAntdTheme } from './theme/antd-theme';
 import { FeedbackBridge } from './lib/feedback';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { createQueryClient } from './lib/query-client';
+// Atelier de verification visuelle. La garde est sur L IMPORT, pas seulement
+// sur la route : Vite remplace `import.meta.env.DEV` par `false` au build, le
+// ternaire se reduit a `null`, et Rollup elimine alors l import dynamique avec
+// tout le module. Garder l import au niveau du module et ne conditionner que la
+// route produisait bien un chunk `Atelier-*.js` dans le build de production —
+// verifie, puis corrige.
+const Atelier = import.meta.env.DEV ? lazy(() => import('./dev/atelier/Atelier')) : null;
 // `NotFound` est `lazy` pour la meme raison qu'`AccessDenied` : il tire
 // `Result` d'Ant Design pour un ecran que l'on n'atteint qu'en se trompant
 // d'adresse.
@@ -165,6 +172,9 @@ const TenantDetail = lazy(() =>
 );
 const TenantCreate = lazy(() =>
   import(/* webpackChunkName: "admin" */ './pages/admin/TenantCreate').then(m => ({ default: m.TenantCreate }))
+);
+const TenantEdit = lazy(() =>
+  import(/* webpackChunkName: "admin" */ './pages/admin/TenantEdit').then(m => ({ default: m.TenantEdit }))
 );
 const Statistics = lazy(() =>
   import(/* webpackChunkName: "admin" */ './pages/admin/Statistics').then(m => ({ default: m.Statistics }))
@@ -607,7 +617,7 @@ function App() {
                       <Route path="/admin/tenants" element={<TenantsList />} />
                       <Route path="/admin/tenants/new" element={<TenantCreate />} />
                       <Route path="/admin/tenants/:tenantId" element={<TenantDetail />} />
-                      <Route path="/admin/tenants/:tenantId/edit" element={<TenantDetail />} />
+                      <Route path="/admin/tenants/:tenantId/edit" element={<TenantEdit />} />
                       <Route
                         path="/admin/tenants/:tenantId/collaborators/:userId"
                         element={<AdminCollaboratorDetail />}
@@ -682,6 +692,11 @@ function App() {
                       affichait une page blanche, sans erreur ni redirection
                       (§4.3) — c'etait le cas de /properties/categories, promise
                       par le menu public et jamais implementee. */}
+                    {/* Atelier de vérification visuelle. `import.meta.env.DEV`
+                        est remplacé par `false` au build : Vite élimine alors
+                        la branche entière, et l'import dynamique avec elle. Le
+                        module n'existe pas en production, la route non plus. */}
+                    {Atelier && <Route path="/atelier/*" element={<Atelier />} />}
                     <Route path="*" element={<NotFound />} />
                   </Routes>
                 </Suspense>

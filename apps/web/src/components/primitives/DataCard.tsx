@@ -100,13 +100,20 @@ export const DataCard: React.FC<DataCardProps> = ({
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
         <div style={{ minWidth: 0, flex: 1 }}>
+          {/* Deux lignes, pas une.
+              À 375 px, une seule ligne partagée avec le montant ne laissait
+              voir qu'une vingtaine de caractères : « Villa 4 chambres avec
+              … » — soit un titre qui ne distingue plus un bien d'un autre.
+              Mesuré dans l'atelier, à cette largeur exacte. La hauteur reste
+              bornée : la grille ne peut pas se désaligner. */}
           <div
             style={{
               fontWeight: 600,
               color: 'var(--text-primary)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden'
             }}
           >
             {title}
