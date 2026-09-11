@@ -74,18 +74,39 @@ export const Tickets: React.FC = () => {
     totalPages: 0
   });
 
+  /**
+   * Filtres appliqués, distincts des filtres en cours de saisie (§8.4).
+   *
+   * L'écran chargeait DEUX fois à chaque usage : l'effet réagissait au moindre
+   * changement de `filters`, et le bouton « Appliquer les filtres » relançait
+   * la même requête avec les mêmes paramètres. Toucher un sélecteur puis
+   * valider, le geste naturel, faisait donc deux allers-retours identiques.
+   *
+   * Le bouton devient le seul déclencheur — ce que demande le §8.4 —, mais la
+   * pagination ne peut pas attendre un clic sur « Appliquer » : `page` vit
+   * dans cet état-ci, et changer de page le met à jour directement.
+   */
+  const [filtresAppliques, setFiltresAppliques] = useState(filters);
+
   useEffect(() => {
     if (effectiveTenantId) {
       loadTickets();
     }
-  }, [effectiveTenantId, filters]);
+  }, [effectiveTenantId, filtresAppliques]);
+
+  const appliquerLesFiltres = () => {
+    // Retour à la première page : la page 7 d'un autre jeu de filtres n'a pas
+    // d'équivalent, et y atterrir donne une liste vide alors que des résultats
+    // existent.
+    setFiltresAppliques({ ...filters, page: 1 });
+  };
 
   const loadTickets = async () => {
     if (!effectiveTenantId) return;
 
     setLoading(true);
     try {
-      const response = await managerMaintenanceService.listTickets(effectiveTenantId, filters);
+      const response = await managerMaintenanceService.listTickets(effectiveTenantId, filtresAppliques);
       if (response.success) {
         setTickets(response.data);
         setPagination(response.pagination);
@@ -120,7 +141,10 @@ export const Tickets: React.FC = () => {
   };
 
   const handlePageChange = (page: number) => {
+    // La page s'applique immédiatement, dans les deux états : le brouillon
+    // reste cohérent avec ce qui est affiché si l'on valide ensuite.
     setFilters(prev => ({ ...prev, page }));
+    setFiltresAppliques(prev => ({ ...prev, page }));
   };
 
   const columns = [
@@ -292,7 +316,7 @@ export const Tickets: React.FC = () => {
             </Col>
 
             <Col xs={24} sm={24} md={4} lg={6}>
-              <Button icon={<FilterOutlined />} onClick={loadTickets} block type="primary">
+              <Button icon={<FilterOutlined />} onClick={appliquerLesFiltres} block type="primary">
                 Appliquer les filtres
               </Button>
             </Col>

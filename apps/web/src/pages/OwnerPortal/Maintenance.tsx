@@ -191,10 +191,12 @@ export default function Maintenance() {
     try {
       const response = await ownerPortalService.getProperties();
       if (response.data?.success && response.data?.data?.properties) {
-        setProperties(response.data.data.properties.map((p: any) => ({
-          id: p.id,
-          address: p.address
-        })));
+        setProperties(
+          response.data.data.properties.map((p: any) => ({
+            id: p.id,
+            address: p.address
+          }))
+        );
       }
     } catch (err) {
       console.error('Error loading properties:', err);
@@ -243,52 +245,37 @@ export default function Maintenance() {
     {
       title: 'Propriété',
       dataIndex: 'propertyAddress',
-      key: 'propertyAddress',
+      key: 'propertyAddress'
     },
     {
       title: 'Titre',
       dataIndex: 'title',
-      key: 'title',
+      key: 'title'
     },
     {
       title: 'Catégorie',
       dataIndex: 'category',
       key: 'category',
-      render: (category: string) => getCategoryLabel(category),
-      filters: [
-        { text: 'Plomberie', value: 'PLUMBING' },
-        { text: 'Électricité', value: 'ELECTRICITY' },
-        { text: 'Climatisation', value: 'AC' },
-        { text: 'Autre', value: 'OTHER' },
-      ],
-      onFilter: (value: any, record: MaintenanceTicketListItem) => record.category === value,
+      render: (category: string) => getCategoryLabel(category)
+      // Les `filters`/`onFilter` de colonne sont retirés (REFONTE_UI_UX.md
+      // §8.4, « double filtrage »). Ils s'appliquaient EN PLUS du filtrage
+      // serveur, et seulement sur la page reçue : choisir « Urgente » dans le
+      // menu de colonne cachait des tickets urgents des autres pages, tout en
+      // laissant le filtre du haut de l'écran afficher autre chose. Deux
+      // commandes pour le même réglage, dont une qui ment. Les sélecteurs
+      // au-dessus du tableau, eux, partent au serveur.
     },
     {
       title: 'Priorité',
       dataIndex: 'priority',
       key: 'priority',
-      render: (priority: string) => getPriorityTag(priority),
-      filters: [
-        { text: 'Basse', value: 'LOW' },
-        { text: 'Moyenne', value: 'MEDIUM' },
-        { text: 'Haute', value: 'HIGH' },
-        { text: 'Urgente', value: 'URGENT' },
-      ],
-      onFilter: (value: any, record: MaintenanceTicketListItem) => record.priority === value,
+      render: (priority: string) => getPriorityTag(priority)
     },
     {
       title: 'Statut',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => getStatusTag(status),
-      filters: [
-        { text: 'Déclaré', value: 'DECLARED' },
-        { text: 'En cours', value: 'IN_PROGRESS' },
-        { text: 'Assigné', value: 'ASSIGNED' },
-        { text: 'Résolu', value: 'RESOLVED' },
-        { text: 'Annulé', value: 'CANCELED' },
-      ],
-      onFilter: (value: any, record: MaintenanceTicketListItem) => record.status === value,
+      render: (status: string) => getStatusTag(status)
     },
     {
       title: 'Date',
@@ -302,7 +289,7 @@ export default function Maintenance() {
         const dateA = typeof a.createdAt === 'string' ? new Date(a.createdAt) : a.createdAt;
         const dateB = typeof b.createdAt === 'string' ? new Date(b.createdAt) : b.createdAt;
         return dateA.getTime() - dateB.getTime();
-      },
+      }
     },
     {
       title: 'Actions',
@@ -316,8 +303,8 @@ export default function Maintenance() {
         >
           Détails
         </Button>
-      ),
-    },
+      )
+    }
   ];
 
   if (loading && !data) {
@@ -340,12 +327,7 @@ export default function Maintenance() {
           <Title level={2}>Maintenance</Title>
           <Text type="secondary">Suivi des tickets de maintenance</Text>
         </div>
-        <Button
-          icon={<SyncOutlined />}
-          onClick={loadTickets}
-          loading={loading}
-          aria-label="Rafraîchir les tickets"
-        >
+        <Button icon={<SyncOutlined />} onClick={loadTickets} loading={loading} aria-label="Rafraîchir les tickets">
           Actualiser
         </Button>
       </div>
@@ -405,7 +387,7 @@ export default function Maintenance() {
               placeholder="Tous les statuts"
               allowClear
               value={statusFilter}
-              onChange={(value) => setStatusFilter(value)}
+              onChange={value => setStatusFilter(value)}
             >
               <Option value="DECLARED">Déclaré</Option>
               <Option value="IN_PROGRESS">En cours</Option>
@@ -421,10 +403,12 @@ export default function Maintenance() {
               placeholder="Toutes les propriétés"
               allowClear
               value={propertyFilter}
-              onChange={(value) => setPropertyFilter(value)}
+              onChange={value => setPropertyFilter(value)}
             >
               {properties.map(prop => (
-                <Option key={prop.id} value={prop.id}>{prop.address}</Option>
+                <Option key={prop.id} value={prop.id}>
+                  {prop.address}
+                </Option>
               ))}
             </Select>
           </Space>
@@ -435,7 +419,7 @@ export default function Maintenance() {
               placeholder="Toutes les catégories"
               allowClear
               value={categoryFilter}
-              onChange={(value) => setCategoryFilter(value)}
+              onChange={value => setCategoryFilter(value)}
             >
               <Option value="PLUMBING">Plomberie</Option>
               <Option value="ELECTRICITY">Électricité</Option>
@@ -450,7 +434,7 @@ export default function Maintenance() {
               placeholder="Toutes les priorités"
               allowClear
               value={priorityFilter}
-              onChange={(value) => setPriorityFilter(value)}
+              onChange={value => setPriorityFilter(value)}
             >
               <Option value="LOW">Basse</Option>
               <Option value="MEDIUM">Moyenne</Option>
@@ -539,9 +523,10 @@ export default function Maintenance() {
                     {ticketDetails.ticket.attachments.map(att => {
                       const imageUrl = getAttachmentUrl(att.file_url);
                       // Check if file is an image based on extension or mime type
-                      const isImageFile = /\.(jpg|jpeg|png|gif|webp)$/i.test(att.file_name) || 
-                                         att.file_name.toLowerCase().includes('image');
-                      
+                      const isImageFile =
+                        /\.(jpg|jpeg|png|gif|webp)$/i.test(att.file_name) ||
+                        att.file_name.toLowerCase().includes('image');
+
                       if (!isImageFile) {
                         // For non-image files, show a file icon
                         return (
@@ -567,7 +552,7 @@ export default function Maintenance() {
                           </div>
                         );
                       }
-                      
+
                       return (
                         <Image
                           key={att.id}
@@ -579,7 +564,7 @@ export default function Maintenance() {
                           preview={{
                             mask: 'Aperçu'
                           }}
-                          onError={(e) => {
+                          onError={e => {
                             console.error('Image load error:', {
                               url: imageUrl,
                               fileUrl: att.file_url,
@@ -603,12 +588,12 @@ export default function Maintenance() {
                 </Title>
                 <List
                   dataSource={ticketDetails.ticket.comments}
-                  renderItem={(comment) => {
+                  renderItem={comment => {
                     const authorName = comment.authorUser
                       ? `${comment.authorUser.firstName} ${comment.authorUser.lastName}`
                       : comment.authorContact
-                      ? `${comment.authorContact.firstName} ${comment.authorContact.lastName}`
-                      : 'Système';
+                        ? `${comment.authorContact.firstName} ${comment.authorContact.lastName}`
+                        : 'Système';
                     return (
                       <List.Item>
                         <List.Item.Meta
@@ -638,7 +623,7 @@ export default function Maintenance() {
                 </Title>
                 <List
                   dataSource={ticketDetails.ticket.statusHistory}
-                  renderItem={(history) => {
+                  renderItem={history => {
                     const changedBy = history.changedByUser
                       ? `${history.changedByUser.firstName} ${history.changedByUser.lastName}`
                       : 'Système';
@@ -648,7 +633,9 @@ export default function Maintenance() {
                           title={
                             <Space>
                               <Text>
-                                {history.from_status ? `${history.from_status} → ${history.to_status}` : history.to_status}
+                                {history.from_status
+                                  ? `${history.from_status} → ${history.to_status}`
+                                  : history.to_status}
                               </Text>
                               <Text type="secondary" style={{ fontSize: 12 }}>
                                 {dayjs(history.changed_at).format('DD/MM/YYYY HH:mm')}

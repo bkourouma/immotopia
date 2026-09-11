@@ -1,25 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  Row,
-  Col,
-  Typography,
-  Spin,
-  Alert,
-  Table,
-  Tag,
-  Space,
-  Select,
-  DatePicker,
-  Empty,
-  Button
-} from 'antd';
-import {
-  DollarOutlined,
-  CalendarOutlined,
-  FilterOutlined,
-  SyncOutlined
-} from '@ant-design/icons';
+import { Card, Row, Col, Typography, Spin, Alert, Table, Tag, Space, Select, DatePicker, Empty, Button } from 'antd';
+import { DollarOutlined, CalendarOutlined, FilterOutlined, SyncOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import dayjs from 'dayjs';
@@ -96,10 +77,12 @@ export default function Installments() {
     try {
       const response = await ownerPortalService.getProperties();
       if (response.data?.success && response.data?.data?.properties) {
-        setProperties(response.data.data.properties.map((p: any) => ({
-          id: p.id,
-          address: p.address
-        })));
+        setProperties(
+          response.data.data.properties.map((p: any) => ({
+            id: p.id,
+            address: p.address
+          }))
+        );
       }
     } catch (err) {
       console.error('Error loading properties:', err);
@@ -134,20 +117,20 @@ export default function Installments() {
     {
       title: 'Propriété',
       dataIndex: 'propertyAddress',
-      key: 'propertyAddress',
+      key: 'propertyAddress'
     },
     {
       title: 'Locataire',
       dataIndex: 'tenantName',
-      key: 'tenantName',
+      key: 'tenantName'
     },
     {
       title: 'Période',
       dataIndex: 'period',
-      key: 'period',
+      key: 'period'
     },
     {
-      title: 'Date d\'échéance',
+      title: "Date d'échéance",
       dataIndex: 'dueDate',
       key: 'dueDate',
       render: (date: Date | string) => {
@@ -158,7 +141,7 @@ export default function Installments() {
         const dateA = typeof a.dueDate === 'string' ? new Date(a.dueDate) : a.dueDate;
         const dateB = typeof b.dueDate === 'string' ? new Date(b.dueDate) : b.dueDate;
         return dateA.getTime() - dateB.getTime();
-      },
+      }
     },
     {
       title: 'Montant',
@@ -179,31 +162,27 @@ export default function Installments() {
           )}
         </Space>
       ),
-      sorter: (a: InstallmentListItem, b: InstallmentListItem) => a.amount - b.amount,
+      sorter: (a: InstallmentListItem, b: InstallmentListItem) => a.amount - b.amount
     },
     {
       title: 'Pénalité',
       dataIndex: 'penaltyAmount',
       key: 'penaltyAmount',
-      render: (penaltyAmount: number) =>
-        Number(penaltyAmount || 0) > 0 ? formatCurrency(Number(penaltyAmount)) : '-',
+      render: (penaltyAmount: number) => (Number(penaltyAmount || 0) > 0 ? formatCurrency(Number(penaltyAmount)) : '-'),
       sorter: (a: InstallmentListItem, b: InstallmentListItem) =>
-        Number(a.penaltyAmount || 0) - Number(b.penaltyAmount || 0),
+        Number(a.penaltyAmount || 0) - Number(b.penaltyAmount || 0)
     },
     {
       title: 'Statut',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => getStatusTag(status),
-      filters: [
-        { text: 'Brouillon', value: 'DRAFT' },
-        { text: 'À payer', value: 'DUE' },
-        { text: 'Partiel', value: 'PARTIAL' },
-        { text: 'Payé', value: 'PAID' },
-        { text: 'En retard', value: 'OVERDUE' },
-      ],
-      onFilter: (value: any, record: InstallmentListItem) => record.status === value,
-    },
+      render: (status: string) => getStatusTag(status)
+      // `filters`/`onFilter` de colonne retirés (§8.4, « double filtrage »).
+      // Ils doublaient le sélecteur de statut au-dessus du tableau, avec les
+      // mêmes libellés et les mêmes valeurs, mais ne portaient que sur la page
+      // reçue : les deux commandes pouvaient afficher des états contradictoires
+      // du même écran. Celle du haut part au serveur ; elle reste.
+    }
   ];
 
   if (loading && !data) {
@@ -313,7 +292,7 @@ export default function Installments() {
               placeholder="Tous les statuts"
               allowClear
               value={statusFilter}
-              onChange={(value) => setStatusFilter(value)}
+              onChange={value => setStatusFilter(value)}
             >
               <Option value="DRAFT">Brouillon</Option>
               <Option value="DUE">À payer</Option>
@@ -329,10 +308,12 @@ export default function Installments() {
               placeholder="Toutes les propriétés"
               allowClear
               value={propertyFilter}
-              onChange={(value) => setPropertyFilter(value)}
+              onChange={value => setPropertyFilter(value)}
             >
               {properties.map(prop => (
-                <Option key={prop.id} value={prop.id}>{prop.address}</Option>
+                <Option key={prop.id} value={prop.id}>
+                  {prop.address}
+                </Option>
               ))}
             </Select>
           </Space>
@@ -340,7 +321,7 @@ export default function Installments() {
             <Text strong>Période:</Text>
             <RangePicker
               value={dateRange}
-              onChange={(dates) => setDateRange(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
+              onChange={dates => setDateRange(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
               format="DD/MM/YYYY"
             />
           </Space>

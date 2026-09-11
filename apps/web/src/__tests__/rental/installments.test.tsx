@@ -100,7 +100,7 @@ describe('Échéances — idempotence de l’encaissement', () => {
     // `Date.now()` a la clé : chaque tentative en produisait une nouvelle, donc
     // deux envois du même encaissement créaient DEUX paiements. Risque R6 du
     // §11.1, classé critique — l'erreur se voit en comptabilité, pas à l'écran.
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     createPayment.mockRejectedValueOnce(new Error('réseau coupé'));
 
     mount();
@@ -108,6 +108,11 @@ describe('Échéances — idempotence de l’encaissement', () => {
 
     await user.click(bouton);
     await waitFor(() => expect(createPayment).toHaveBeenCalledTimes(1));
+
+    // Attendre que le bouton redevienne actionnable. Pendant l'appel, il porte
+    // `loading` et Ant Design le désactive : sans délai entre les frappes, le
+    // second clic devancerait le re-rendu et serait avalé.
+    await waitFor(() => expect(bouton).not.toBeDisabled());
 
     await user.click(bouton);
     await waitFor(() => expect(createPayment).toHaveBeenCalledTimes(2));
@@ -120,7 +125,7 @@ describe('Échéances — idempotence de l’encaissement', () => {
 
   it('encaisse le reste dû, pénalités comprises', async () => {
     // 1 250 000 de loyer + 75 000 de charges + 132 500 de pénalités.
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mount();
     await user.click(await screen.findByRole('button', { name: /Encaisser/ }, { timeout: 8000 }));
 
@@ -129,7 +134,7 @@ describe('Échéances — idempotence de l’encaissement', () => {
   });
 
   it('affecte le paiement à l’échéance encaissée', async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     mount();
     await user.click(await screen.findByRole('button', { name: /Encaisser/ }, { timeout: 8000 }));
 

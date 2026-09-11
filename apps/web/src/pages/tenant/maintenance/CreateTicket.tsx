@@ -115,17 +115,44 @@ export const CreateTicket: React.FC = () => {
       if (response.success && response.data) {
         const createdTicketId = response.data.id;
 
-        // Upload files if any
+        /**
+         * Envoi des pièces jointes, une requête par fichier (§8.4, « 1+N »).
+         *
+         * Le §8.4 demande un POST multipart unique, comme le fait déjà le
+         * portail locataire. Ce n'est pas faisable ici sans changer le format
+         * de requête de `POST …/maintenance/tenant/tickets`, qui est
+         * aujourd'hui en JSON : les pièces jointes ont leur propre endpoint,
+         * un fichier à la fois. Modifier ce contrat sort du périmètre.
+         *
+         * Ce qui est corrigé, c'est le symptôme que le §8.4 nomme :
+         * « état incohérent si échec ». `Promise.all` abandonnait au premier
+         * rejet — les fichiers suivants n'étaient même pas tentés —, et
+         * l'utilisateur recevait « certaines pièces jointes » sans savoir
+         * lesquelles, ni qu'il devait les rajouter.
+         *
+         * `allSettled` tente tous les fichiers, et le message nomme ceux qui
+         * ont échoué.
+         */
         if (uploadedFiles.length > 0) {
-          try {
-            await Promise.all(
-              uploadedFiles.map(file =>
-                tenantMaintenanceService.uploadAttachment(effectiveTenantId, createdTicketId, file)
-              )
-            );
-          } catch (uploadError) {
-            console.error('Error uploading files:', uploadError);
-            message.warning("Ticket créé mais certaines pièces jointes n'ont pas pu être uploadées");
+          const resultats = await Promise.allSettled(
+            uploadedFiles.map(file =>
+              tenantMaintenanceService.uploadAttachment(effectiveTenantId, createdTicketId, file)
+            )
+          );
+
+          const echoues = uploadedFiles.filter((_, index) => resultats[index].status === 'rejected');
+
+          if (echoues.length > 0) {
+            message.warning({
+              content: `Ticket créé. ${echoues.length} pièce${echoues.length > 1 ? 's' : ''} jointe${
+                echoues.length > 1 ? 's' : ''
+              } n'a pas pu être envoyée : ${echoues.map(f => f.name).join(', ')}. Vous pouvez la rajouter depuis le ticket.`,
+              // Le message nomme des fichiers : il doit rester lisible le temps
+              // de les retrouver.
+              duration: 10
+            });
+            navigate(`/tenant/${effectiveTenantId}/maintenance/${createdTicketId}`);
+            return;
           }
         }
 

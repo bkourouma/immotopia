@@ -19,13 +19,7 @@ import {
   Tabs,
   Collapse
 } from 'antd';
-import {
-  DollarOutlined,
-  CalendarOutlined,
-  EyeOutlined,
-  FilterOutlined,
-  PlusOutlined
-} from '@ant-design/icons';
+import { DollarOutlined, CalendarOutlined, EyeOutlined, FilterOutlined, PlusOutlined } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import InstallmentDetails from '../../components/TenantPortal/InstallmentDetails';
 import PaymentDeclarationModal from '../../components/TenantPortal/PaymentDeclarationModal';
@@ -73,7 +67,7 @@ export default function TenantPayments() {
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [declarationModalVisible, setDeclarationModalVisible] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
-  
+
   // Payment history state
   const [paymentHistoryLoading, setPaymentHistoryLoading] = useState(false);
   const [paymentHistoryError, setPaymentHistoryError] = useState<string | null>(null);
@@ -85,11 +79,20 @@ export default function TenantPayments() {
   }>({});
   const [paymentHistoryPagination, setPaymentHistoryPagination] = useState({ current: 1, pageSize: 20 });
 
-  const loadRef = useRef<{ loadInstallments: () => void; loadPaymentHistory: () => void } | null>(null);
+  const loadRef = useRef<{
+    loadInstallments: (silencieux?: boolean) => void;
+    loadPaymentHistory: (silencieux?: boolean) => void;
+  } | null>(null);
+  /** Horodatage de la dernière revalidation, pour le délai de garde ci-dessous. */
+  const derniereRevalidation = useRef(Date.now());
 
-  const loadInstallments = async () => {
+  /**
+   * @param silencieux Revalidation en arrière-plan : la donnée affichée reste
+   *   à l'écran, sans repasser par le squelette.
+   */
+  const loadInstallments = async (silencieux = false) => {
     try {
-      setLoading(true);
+      if (!silencieux) setLoading(true);
       setError(null);
 
       const params: any = {
@@ -161,9 +164,10 @@ export default function TenantPayments() {
     });
   };
 
-  const loadPaymentHistory = async () => {
+  /** @param silencieux Voir `loadInstallments`. */
+  const loadPaymentHistory = async (silencieux = false) => {
     try {
-      setPaymentHistoryLoading(true);
+      if (!silencieux) setPaymentHistoryLoading(true);
       setPaymentHistoryError(null);
 
       const params: any = {
@@ -185,10 +189,10 @@ export default function TenantPayments() {
       if (response.data?.success && response.data?.data) {
         setPaymentHistoryData(response.data.data);
       } else {
-        setPaymentHistoryError('Erreur lors du chargement de l\'historique');
+        setPaymentHistoryError("Erreur lors du chargement de l'historique");
       }
     } catch (err: any) {
-      setPaymentHistoryError(err.response?.data?.message || 'Erreur lors du chargement de l\'historique');
+      setPaymentHistoryError(err.response?.data?.message || "Erreur lors du chargement de l'historique");
     } finally {
       setPaymentHistoryLoading(false);
     }
@@ -204,13 +208,32 @@ export default function TenantPayments() {
     loadPaymentHistory();
   }, [paymentHistoryFilters, paymentHistoryPagination.current, paymentHistoryPagination.pageSize]);
 
+  /**
+   * Retour sur l'onglet : revalidation en arrière-plan (REFONTE_UI_UX.md §8.4).
+   *
+   * Deux corrections par rapport à l'ancienne version :
+   *
+   * 1. **Le chargement est silencieux.** Il posait `loading = true`, ce qui
+   *    renvoyait l'écran à son squelette à chaque retour d'onglet : la mise en
+   *    page sautait et le lecteur perdait sa ligne, pour une donnée qui la
+   *    plupart du temps n'avait pas changé.
+   * 2. **Un délai de garde.** L'événement se déclenche à chaque va-et-vient
+   *    entre onglets ou applications. Sans ce seuil, consulter une notification
+   *    et revenir relançait deux requêtes complètes. Trente secondes, la même
+   *    fraîcheur que `STALE_TIME.list`.
+   */
   useEffect(() => {
+    const REVALIDATION_MIN_MS = 30_000;
+
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        loadRef.current?.loadInstallments();
-        loadRef.current?.loadPaymentHistory();
-      }
+      if (document.visibilityState !== 'visible') return;
+      const maintenant = Date.now();
+      if (maintenant - derniereRevalidation.current < REVALIDATION_MIN_MS) return;
+      derniereRevalidation.current = maintenant;
+      void loadRef.current?.loadInstallments(true);
+      void loadRef.current?.loadPaymentHistory(true);
     };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, []);
@@ -242,7 +265,7 @@ export default function TenantPayments() {
       render: (period: string) => <Text strong>{period}</Text>
     },
     {
-      title: 'Date d\'échéance',
+      title: "Date d'échéance",
       dataIndex: 'dueDate',
       key: 'dueDate',
       render: (date: string) => (
@@ -251,8 +274,7 @@ export default function TenantPayments() {
           {formatDate(date)}
         </Space>
       ),
-      sorter: (a: InstallmentItem, b: InstallmentItem) =>
-        dayjs(a.dueDate).unix() - dayjs(b.dueDate).unix()
+      sorter: (a: InstallmentItem, b: InstallmentItem) => dayjs(a.dueDate).unix() - dayjs(b.dueDate).unix()
     },
     {
       title: 'Montant total',
@@ -272,11 +294,7 @@ export default function TenantPayments() {
       title: 'Solde',
       dataIndex: 'balance',
       key: 'balance',
-      render: (balance: number) => (
-        <Text type={balance > 0 ? 'danger' : 'success'}>
-          {formatCurrency(balance)}
-        </Text>
-      ),
+      render: (balance: number) => <Text type={balance > 0 ? 'danger' : 'success'}>{formatCurrency(balance)}</Text>,
       sorter: (a: InstallmentItem, b: InstallmentItem) => a.balance - b.balance
     },
     {
@@ -289,11 +307,7 @@ export default function TenantPayments() {
       title: 'Actions',
       key: 'actions',
       render: (_: any, record: InstallmentItem) => (
-        <Button
-          type="link"
-          icon={<EyeOutlined />}
-          onClick={() => handleViewDetails(record.id)}
-        >
+        <Button type="link" icon={<EyeOutlined />} onClick={() => handleViewDetails(record.id)}>
           Détails
         </Button>
       )
@@ -320,11 +334,7 @@ export default function TenantPayments() {
           <Title level={2}>Paiements et échéances</Title>
           <Text type="secondary">Suivez vos échéances et l'historique de vos paiements</Text>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setDeclarationModalVisible(true)}
-        >
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setDeclarationModalVisible(true)}>
           Déclarer un paiement
         </Button>
       </div>
@@ -334,11 +344,7 @@ export default function TenantPayments() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <Card>
-              <Statistic
-                title="Total échéances"
-                value={data.summary.total}
-                prefix={<DollarOutlined />}
-              />
+              <Statistic title="Total échéances" value={data.summary.total} prefix={<DollarOutlined />} />
             </Card>
           </Col>
           <Col xs={24} sm={12} lg={6}>
@@ -386,7 +392,7 @@ export default function TenantPayments() {
             allowClear
             style={{ width: 150 }}
             value={statusFilter}
-            onChange={(value) => setStatusFilter(value)}
+            onChange={value => setStatusFilter(value)}
           >
             <Select.Option value="PAID">Payé</Select.Option>
             <Select.Option value="DUE">Dû</Select.Option>
@@ -397,14 +403,16 @@ export default function TenantPayments() {
           <RangePicker
             placeholder={['Date début', 'Date fin']}
             value={dateRange}
-            onChange={(dates) => setDateRange(dates as [dayjs.Dayjs, dayjs.Dayjs] | null)}
+            onChange={dates => setDateRange(dates as [dayjs.Dayjs, dayjs.Dayjs] | null)}
             format="DD/MM/YYYY"
           />
           {(statusFilter || dateRange) && (
-            <Button onClick={() => {
-              setStatusFilter(undefined);
-              setDateRange(null);
-            }}>
+            <Button
+              onClick={() => {
+                setStatusFilter(undefined);
+                setDateRange(null);
+              }}
+            >
               Réinitialiser
             </Button>
           )}
@@ -419,7 +427,13 @@ export default function TenantPayments() {
             key: 'installments',
             label: 'Échéances',
             children: (
-              <Card title={<><DollarOutlined /> Liste des échéances</>}>
+              <Card
+                title={
+                  <>
+                    <DollarOutlined /> Liste des échéances
+                  </>
+                }
+              >
                 {data && data.installments.length > 0 ? (
                   <div style={{ overflowX: 'auto' }}>
                     <Table
@@ -433,7 +447,7 @@ export default function TenantPayments() {
                         pageSize: pagination.pageSize,
                         total: data.pagination.total,
                         showSizeChanger: true,
-                        showTotal: (total) => `Total: ${total} échéances`
+                        showTotal: total => `Total: ${total} échéances`
                       }}
                       onChange={handleTableChange}
                     />
@@ -461,7 +475,7 @@ export default function TenantPayments() {
                       allowClear
                       style={{ width: 200 }}
                       value={paymentHistoryFilters.method}
-                      onChange={(value) => setPaymentHistoryFilters({ ...paymentHistoryFilters, method: value })}
+                      onChange={value => setPaymentHistoryFilters({ ...paymentHistoryFilters, method: value })}
                     >
                       <Select.Option value="CASH">Espèces</Select.Option>
                       <Select.Option value="BANK_TRANSFER">Virement bancaire</Select.Option>
@@ -472,7 +486,7 @@ export default function TenantPayments() {
                     </Select>
                     <RangePicker
                       placeholder={['Date début', 'Date fin']}
-                      onChange={(dates) => {
+                      onChange={dates => {
                         if (dates && dates[0] && dates[1]) {
                           setPaymentHistoryFilters({
                             ...paymentHistoryFilters,
@@ -490,9 +504,11 @@ export default function TenantPayments() {
                       format="DD/MM/YYYY"
                     />
                     {(paymentHistoryFilters.method || paymentHistoryFilters.startDate) && (
-                      <Button onClick={() => {
-                        setPaymentHistoryFilters({});
-                      }}>
+                      <Button
+                        onClick={() => {
+                          setPaymentHistoryFilters({});
+                        }}
+                      >
                         Réinitialiser
                       </Button>
                     )}
@@ -500,138 +516,161 @@ export default function TenantPayments() {
                 </Card>
 
                 {/* Payment History Table (T073, T074) */}
-                <Card title={<><DollarOutlined /> Historique des paiements</>}>
+                <Card
+                  title={
+                    <>
+                      <DollarOutlined /> Historique des paiements
+                    </>
+                  }
+                >
                   {paymentHistoryError ? (
                     <Alert message="Erreur" description={paymentHistoryError} type="error" showIcon />
                   ) : paymentHistoryData && paymentHistoryData.payments.length > 0 ? (
                     <div style={{ overflowX: 'auto' }}>
-                    <Table
-                      scroll={{ x: 1000 }}
-                      columns={[
-                        {
-                          title: 'Date',
-                          dataIndex: 'succeededAt',
-                          key: 'date',
-                          render: (_: string | null, record: any) => {
-                            const date = record.succeededAt || record.initiatedAt;
+                      <Table
+                        scroll={{ x: 1000 }}
+                        columns={[
+                          {
+                            title: 'Date',
+                            dataIndex: 'succeededAt',
+                            key: 'date',
+                            render: (_: string | null, record: any) => {
+                              const date = record.succeededAt || record.initiatedAt;
+                              return (
+                                <Space>
+                                  <CalendarOutlined />
+                                  {date ? formatDate(date) : '-'}
+                                  {record.isDeclaration && (
+                                    <Text type="secondary" style={{ fontSize: 11 }}>
+                                      (déclaration)
+                                    </Text>
+                                  )}
+                                </Space>
+                              );
+                            },
+                            sorter: (a: any, b: any) => {
+                              const dateA =
+                                a.succeededAt || a.initiatedAt ? dayjs(a.succeededAt || a.initiatedAt).unix() : 0;
+                              const dateB =
+                                b.succeededAt || b.initiatedAt ? dayjs(b.succeededAt || b.initiatedAt).unix() : 0;
+                              return dateA - dateB;
+                            }
+                          },
+                          {
+                            title: 'Montant',
+                            dataIndex: 'amount',
+                            key: 'amount',
+                            render: (amount: number) => <Text strong>{formatCurrency(amount)}</Text>,
+                            sorter: (a: any, b: any) => a.amount - b.amount
+                          },
+                          {
+                            title: 'Méthode',
+                            dataIndex: 'method',
+                            key: 'method',
+                            render: (method: string) => getPaymentMethodLabel(method)
+                          },
+                          {
+                            title: 'Référence',
+                            dataIndex: 'reference',
+                            key: 'reference',
+                            render: (ref: string | null) => ref || '-'
+                          },
+                          {
+                            title: 'Statut',
+                            dataIndex: 'status',
+                            key: 'status',
+                            render: (status: string, record: any) => {
+                              const declStatus = record.declarationStatus || status;
+                              const label =
+                                declStatus === 'SUCCESS' || declStatus === 'APPROVED'
+                                  ? 'Réussi'
+                                  : declStatus === 'PENDING'
+                                    ? 'En attente'
+                                    : declStatus === 'REJECTED'
+                                      ? 'Rejetée'
+                                      : status;
+                              const color =
+                                declStatus === 'SUCCESS' || declStatus === 'APPROVED'
+                                  ? 'success'
+                                  : declStatus === 'PENDING'
+                                    ? 'warning'
+                                    : declStatus === 'REJECTED'
+                                      ? 'error'
+                                      : 'default';
+                              return <Tag color={color}>{label}</Tag>;
+                            }
+                          },
+                          {
+                            title: 'Alloué',
+                            dataIndex: 'allocatedAmount',
+                            key: 'allocated',
+                            render: (amount: number) => formatCurrency(amount),
+                            align: 'right' as const
+                          },
+                          {
+                            title: 'Non alloué',
+                            dataIndex: 'unallocatedAmount',
+                            key: 'unallocated',
+                            render: (amount: number) => (
+                              <Text type={amount > 0 ? 'warning' : 'success'}>{formatCurrency(amount)}</Text>
+                            ),
+                            align: 'right' as const
+                          }
+                        ]}
+                        dataSource={paymentHistoryData.payments}
+                        rowKey={(r: any) => (r.isDeclaration ? `decl-${r.id}` : r.id)}
+                        loading={paymentHistoryLoading}
+                        pagination={{
+                          current: paymentHistoryPagination.current,
+                          pageSize: paymentHistoryPagination.pageSize,
+                          total: paymentHistoryData.pagination?.total ?? paymentHistoryData.payments.length,
+                          showSizeChanger: true,
+                          showTotal: total =>
+                            `Total: ${total} élément${total !== 1 ? 's' : ''} (paiements et déclarations)`
+                        }}
+                        onChange={handlePaymentHistoryTableChange}
+                        expandable={{
+                          expandedRowRender: (record: any) => {
+                            if (!record.allocations || record.allocations.length === 0) {
+                              return <Text type="secondary">Aucune allocation</Text>;
+                            }
                             return (
-                              <Space>
-                                <CalendarOutlined />
-                                {date ? formatDate(date) : '-'}
-                                {record.isDeclaration && <Text type="secondary" style={{ fontSize: 11 }}>(déclaration)</Text>}
-                              </Space>
+                              <Table
+                                columns={[
+                                  {
+                                    title: 'Échéance',
+                                    dataIndex: ['installment', 'period'],
+                                    key: 'period',
+                                    render: (period: string | null, row: any) =>
+                                      row?.installment?.period ?? period ?? '-'
+                                  },
+                                  {
+                                    title: "Date d'échéance",
+                                    dataIndex: ['installment', 'dueDate'],
+                                    key: 'dueDate',
+                                    render: (date: string | null, row: any) =>
+                                      (row?.installment?.dueDate ?? date)
+                                        ? formatDate(row?.installment?.dueDate ?? date)
+                                        : '-'
+                                  },
+                                  {
+                                    title: 'Montant alloué',
+                                    dataIndex: 'amount',
+                                    key: 'amount',
+                                    render: (amount: number) => formatCurrency(amount),
+                                    align: 'right' as const
+                                  }
+                                ]}
+                                dataSource={record.allocations}
+                                rowKey="id"
+                                pagination={false}
+                                size="small"
+                              />
                             );
                           },
-                          sorter: (a: any, b: any) => {
-                            const dateA = (a.succeededAt || a.initiatedAt) ? dayjs(a.succeededAt || a.initiatedAt).unix() : 0;
-                            const dateB = (b.succeededAt || b.initiatedAt) ? dayjs(b.succeededAt || b.initiatedAt).unix() : 0;
-                            return dateA - dateB;
-                          }
-                        },
-                        {
-                          title: 'Montant',
-                          dataIndex: 'amount',
-                          key: 'amount',
-                          render: (amount: number) => <Text strong>{formatCurrency(amount)}</Text>,
-                          sorter: (a: any, b: any) => a.amount - b.amount
-                        },
-                        {
-                          title: 'Méthode',
-                          dataIndex: 'method',
-                          key: 'method',
-                          render: (method: string) => getPaymentMethodLabel(method)
-                        },
-                        {
-                          title: 'Référence',
-                          dataIndex: 'reference',
-                          key: 'reference',
-                          render: (ref: string | null) => ref || '-'
-                        },
-                        {
-                          title: 'Statut',
-                          dataIndex: 'status',
-                          key: 'status',
-                          render: (status: string, record: any) => {
-                            const declStatus = record.declarationStatus || status;
-                            const label = declStatus === 'SUCCESS' || declStatus === 'APPROVED'
-                              ? 'Réussi'
-                              : declStatus === 'PENDING'
-                                ? 'En attente'
-                                : declStatus === 'REJECTED'
-                                  ? 'Rejetée'
-                                  : status;
-                            const color = declStatus === 'SUCCESS' || declStatus === 'APPROVED' ? 'success' : declStatus === 'PENDING' ? 'warning' : declStatus === 'REJECTED' ? 'error' : 'default';
-                            return <Tag color={color}>{label}</Tag>;
-                          }
-                        },
-                        {
-                          title: 'Alloué',
-                          dataIndex: 'allocatedAmount',
-                          key: 'allocated',
-                          render: (amount: number) => formatCurrency(amount),
-                          align: 'right' as const
-                        },
-                        {
-                          title: 'Non alloué',
-                          dataIndex: 'unallocatedAmount',
-                          key: 'unallocated',
-                          render: (amount: number) => (
-                            <Text type={amount > 0 ? 'warning' : 'success'}>
-                              {formatCurrency(amount)}
-                            </Text>
-                          ),
-                          align: 'right' as const
-                        }
-                      ]}
-                      dataSource={paymentHistoryData.payments}
-                      rowKey={(r: any) => r.isDeclaration ? `decl-${r.id}` : r.id}
-                      loading={paymentHistoryLoading}
-                      pagination={{
-                        current: paymentHistoryPagination.current,
-                        pageSize: paymentHistoryPagination.pageSize,
-                        total: paymentHistoryData.pagination?.total ?? paymentHistoryData.payments.length,
-                        showSizeChanger: true,
-                        showTotal: (total) => `Total: ${total} élément${total !== 1 ? 's' : ''} (paiements et déclarations)`
-                      }}
-                      onChange={handlePaymentHistoryTableChange}
-                      expandable={{
-                        expandedRowRender: (record: any) => {
-                          if (!record.allocations || record.allocations.length === 0) {
-                            return <Text type="secondary">Aucune allocation</Text>;
-                          }
-                          return (
-                            <Table
-                              columns={[
-                                {
-                                  title: 'Échéance',
-                                  dataIndex: ['installment', 'period'],
-                                  key: 'period',
-                                  render: (period: string | null, row: any) => row?.installment?.period ?? period ?? '-'
-                                },
-                                {
-                                  title: 'Date d\'échéance',
-                                  dataIndex: ['installment', 'dueDate'],
-                                  key: 'dueDate',
-                                  render: (date: string | null, row: any) => (row?.installment?.dueDate ?? date) ? formatDate(row?.installment?.dueDate ?? date) : '-'
-                                },
-                                {
-                                  title: 'Montant alloué',
-                                  dataIndex: 'amount',
-                                  key: 'amount',
-                                  render: (amount: number) => formatCurrency(amount),
-                                  align: 'right' as const
-                                }
-                              ]}
-                              dataSource={record.allocations}
-                              rowKey="id"
-                              pagination={false}
-                              size="small"
-                            />
-                          );
-                        },
-                        rowExpandable: (record: any) => record.allocations && record.allocations.length > 0
-                      }}
-                    />
+                          rowExpandable: (record: any) => record.allocations && record.allocations.length > 0
+                        }}
+                      />
                     </div>
                   ) : (
                     <Empty description="Aucun paiement trouvé" />
@@ -645,7 +684,7 @@ export default function TenantPayments() {
                       title="Total payé (tous les paiements)"
                       value={paymentHistoryData.totalPaid}
                       prefix={<DollarOutlined />}
-                      formatter={(value) => formatCurrency(Number(value))}
+                      formatter={value => formatCurrency(Number(value))}
                     />
                   </Card>
                 )}
@@ -664,9 +703,7 @@ export default function TenantPayments() {
         width={800}
         destroyOnClose
       >
-        {selectedInstallment && (
-          <InstallmentDetails installmentId={selectedInstallment} />
-        )}
+        {selectedInstallment && <InstallmentDetails installmentId={selectedInstallment} />}
       </Modal>
 
       {/* Payment Declaration Modal (T069) */}

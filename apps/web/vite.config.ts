@@ -67,8 +67,31 @@ export default defineConfig(({ mode }) => {
       // Le defaut de 5 s suffisait tant que les suites mockaient `antd` en
       // entier. Celles qui montent la vraie coquille prennent 4 s a elles
       // seules et depassaient sous la charge parallele — echec intermittent,
-      // pas defaut de code. 20 s laisse la marge sans masquer un blocage.
-      testTimeout: 20000,
+      // pas defaut de code. 20 s a tenu jusqu'au Lot 2.
+      //
+      // Porte a 40 s en cours de Lot 2 : la suite est passee de 93 a 238 tests,
+      // et plusieurs montent desormais une `<Modal>` ou un `<Drawer>` d'Ant
+      // Design, ce qui coute cher en jsdom. Les tests concernes passent en 3 a
+      // 13 s isoles et ne depassaient que sous la charge parallele — c'est un
+      // probleme de plan de charge, pas de code.
+      //
+      // Ce seuil n'est PAS la premiere reponse a un test lent : `userEvent` est
+      // configure sans delai la ou il en inserait, ce qui retire le cout au
+      // lieu de l'autoriser. Le seuil ne couvre que ce qui reste.
+      testTimeout: 40000,
+      // Parallelisme borne.
+      //
+      // Vitest ouvre par defaut un worker par coeur. Chacun monte un jsdom
+      // complet et, depuis le Lot 2, des composants Ant Design lourds :
+      // au-dela de quatre, les workers se disputent la machine et le temps de
+      // collecte a ete observe en train de TRIPLER d'une execution a l'autre,
+      // jusqu'a faire expirer des tests qui passent en 3 s isoles.
+      //
+      // Une suite qui n'est verte que sur une machine au repos ne garde rien.
+      // Quatre workers rendent le resultat independant de ce qui tourne a
+      // cote — serveur de developpement, build, autre session.
+      maxWorkers: 4,
+      minWorkers: 1,
       setupFiles: './src/setupTests.ts',
       css: false,
       include: ['src/**/*.{test,spec}.{ts,tsx}']

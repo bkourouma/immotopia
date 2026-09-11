@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Select, Spin } from 'antd';
+import { useQuery } from '@tanstack/react-query';
 import apiClient from '../../utils/api-client';
-
-const { Option } = Select;
+import { queryKey, STALE_TIME } from '../../lib/query-keys';
 
 interface Vendor {
   id: string;
@@ -16,34 +16,30 @@ interface VendorSelectProps {
   onChange?: (value: string) => void;
 }
 
+/**
+ * Choix d'un prestataire de maintenance (REFONTE_UI_UX.md §8.4).
+ *
+ * La liste était rechargée **à chaque montage** du composant. Il vit dans le
+ * détail d'un ticket : ouvrir cinq tickets à la suite déclenchait cinq fois la
+ * même requête, pour un référentiel qui change à l'échelle du mois.
+ *
+ * Elle est désormais mise en cache 5 minutes, la durée que le §8.4 fixe pour
+ * les référentiels. La clé ne porte pas de filtre : c'est la liste complète des
+ * prestataires actifs d'une agence, et deux composants montés ensemble
+ * partagent donc la même requête au lieu d'en lancer deux.
+ */
 export const VendorSelect: React.FC<VendorSelectProps> = ({ tenantId, value, onChange }) => {
-  const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (tenantId) {
-      loadVendors();
-    }
-  }, [tenantId]);
-
-  const loadVendors = async () => {
-    setLoading(true);
-    try {
+  const { data: vendors = [], isPending } = useQuery({
+    queryKey: queryKey('vendors-actifs', tenantId),
+    queryFn: async () => {
       const response = await apiClient.get<{ success: boolean; data: Vendor[] }>(
         `/tenants/${tenantId}/maintenance/vendors/active`
       );
-      
-      if (response.data.success) {
-        setVendors(response.data.data);
-      }
-    } catch (error) {
-      console.error('Error loading vendors:', error);
-      // Set empty array on error to prevent UI issues
-      setVendors([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+      return response.data.success ? response.data.data : [];
+    },
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.reference
+  });
 
   return (
     <Select
@@ -51,26 +47,17 @@ export const VendorSelect: React.FC<VendorSelectProps> = ({ tenantId, value, onC
       onChange={onChange}
       placeholder="Sélectionner un prestataire"
       allowClear
-      loading={loading}
-      notFoundContent={loading ? <Spin size="small" /> : 'Aucun prestataire disponible'}
+      loading={isPending}
+      notFoundContent={isPending ? <Spin size="small" /> : 'Aucun prestataire disponible'}
       showSearch
-      filterOption={(input, option) => {
-        const label = typeof option?.label === 'string' 
-          ? option.label 
-          : String(option?.children || '');
-        return label.toLowerCase().includes(input.toLowerCase());
-      }}
-    >
-      {vendors.map((vendor) => (
-        <Option key={vendor.id} value={vendor.id}>
-          {vendor.name}
-          {vendor.specialties && vendor.specialties.length > 0 && (
-            <span style={{ color: '#999', marginLeft: 8 }}>
-              ({vendor.specialties.join(', ')})
-            </span>
-          )}
-        </Option>
-      ))}
-    </Select>
+      optionFilterProp="label"
+      // Les spécialités accompagnent le nom dans le libellé plutôt que dans un
+      // `<span>` gris à la couleur écrite en dur : la recherche les trouve, et
+      // la couleur vient du thème.
+      options={vendors.map(vendor => ({
+        value: vendor.id,
+        label: vendor.specialties?.length ? `${vendor.name} — ${vendor.specialties.join(', ')}` : vendor.name
+      }))}
+    />
   );
 };
