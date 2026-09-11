@@ -468,3 +468,70 @@ export const EVENEMENTS = [
     propertyId: 'prop-4'
   }
 ];
+
+/** Agrégat patrimoine : des valeurs plausibles pour une agence de Conakry. */
+export const APERCU_PATRIMOINE = {
+  totalProperties: 57,
+  occupiedProperties: 49,
+  occupancyRate: 0.86,
+  totalEstimatedValue: 4_820_000_000,
+  totalLoanBalance: 1_150_000_000,
+  totalExpensesThisYear: 96_400_000,
+  totalAnnualRent: 412_000_000
+};
+
+/**
+ * Programmes de travaux de l'agence, tels que l'endpoint agrégé les rend :
+ * avec le bien joint. Un titre très long et un coût nul éprouvent les cas que
+ * des données moyennes ne montreraient pas.
+ */
+export const TRAVAUX = [
+  {
+    id: 'tr-1',
+    propertyId: 'prop-1',
+    tenantId: 'agence-demo',
+    title: 'Réfection de la toiture',
+    estimatedCost: 18_500_000,
+    currency: 'GNF',
+    plannedDate: '2026-06-15T00:00:00.000Z',
+    status: 'PLANNED',
+    isCapitalized: true,
+    property: { id: 'prop-1', title: 'Villa Kipé', internalReference: 'BIEN-2026-0001' }
+  },
+  {
+    id: 'tr-2',
+    propertyId: 'prop-2',
+    tenantId: 'agence-demo',
+    title: 'Remise aux normes électriques',
+    estimatedCost: 7_200_000,
+    currency: 'GNF',
+    plannedDate: '2026-04-02T00:00:00.000Z',
+    status: 'IN_PROGRESS',
+    isCapitalized: false,
+    property: { id: 'prop-2', title: 'Studio Matam', internalReference: 'BIEN-2026-0002' }
+  },
+  {
+    id: 'tr-3',
+    propertyId: 'prop-4',
+    tenantId: 'agence-demo',
+    title: 'Peinture des parties communes de l’immeuble, cages d’escalier comprises',
+    estimatedCost: 0,
+    currency: 'GNF',
+    plannedDate: '2026-02-10T00:00:00.000Z',
+    status: 'COMPLETED',
+    isCapitalized: false,
+    property: { id: 'prop-4', title: 'Immeuble R+3', internalReference: 'BIEN-2026-0004' }
+  },
+  {
+    id: 'tr-4',
+    propertyId: 'prop-3',
+    tenantId: 'agence-demo',
+    title: 'Étanchéité terrasse',
+    estimatedCost: 4_100_000,
+    currency: 'GNF',
+    plannedDate: '2026-09-01T00:00:00.000Z',
+    status: 'CANCELLED',
+    isCapitalized: false,
+    property: { id: 'prop-3', title: 'Bureau Almamya', internalReference: 'BIEN-2026-0003' }
+  }
+];

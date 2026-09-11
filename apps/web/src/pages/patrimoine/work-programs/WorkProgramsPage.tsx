@@ -1,83 +1,151 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Select, Space, Spin, Typography } from 'antd';
-import { WorkProgramTimeline } from '../../../components/patrimoine/WorkProgramTimeline';
-import { listWorkPrograms } from '../../../services/patrimoine-service';
-import { listProperties } from '../../../services/property-service';
-import type { WorkProgram } from '../../../types/patrimoine-types';
+import { Select } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import { useQuery } from '@tanstack/react-query';
+import { listTenantWorkPrograms, WorkProgramAvecBien } from '../../../services/patrimoine-service';
 import { useAuth } from '../../../hooks/useAuth';
+import { useListParams } from '../../../hooks/useListParams';
+import { queryKey, STALE_TIME } from '../../../lib/query-keys';
+import { PageHeader, StateBlock, StatusTag, DataView, DataCard, FilterSheet } from '../../../components/primitives';
 
-const { Title, Text } = Typography;
+/**
+ * Programmes de travaux — le même N+1, doublé d'un filtrage en mémoire (§8.4).
+ *
+ * L'écran chargeait jusqu'à 100 biens, lançait une requête de travaux par bien,
+ * **puis filtrait par statut dans le navigateur** (`:48`). Deux défauts qui se
+ * renforcent : on téléchargeait tout pour n'en montrer qu'une partie, et le
+ * coût du filtre était payé au chargement plutôt qu'au serveur.
+ *
+ * Une requête désormais, filtrée et paginée côté serveur. Le statut vit dans
+ * l'URL : une liste des travaux en retard se partage par copier-coller.
+ */
 
-type ProgramWithProperty = WorkProgram & { propertyLabel?: string };
+type Filtres = { status: string };
+const FILTER_KEYS = ['status'] as const;
+
+const STATUTS = [
+  { value: 'PLANNED', label: 'Planifié' },
+  { value: 'IN_PROGRESS', label: 'En cours' },
+  { value: 'COMPLETED', label: 'Terminé' },
+  { value: 'CANCELLED', label: 'Annulé' }
+];
+
+function dateCourte(iso?: string | null): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('fr-FR');
+}
 
 export const WorkProgramsPage: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const { tenantMembership } = useAuth();
-  const effectiveTenantId = tenantId || tenantMembership?.tenantId;
+  const agence = tenantId || tenantMembership?.tenantId;
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string | undefined>(undefined);
-  const [allPrograms, setAllPrograms] = useState<ProgramWithProperty[]>([]);
+  const list = useListParams<Filtres>({ filterKeys: FILTER_KEYS, defaultPageSize: 25 });
 
-  useEffect(() => {
-    if (!effectiveTenantId) return;
-    const run = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const propertiesResp = await listProperties(effectiveTenantId, { page: 1, limit: 100 });
-        const result = await Promise.all(
-          propertiesResp.properties.map(async property => {
-            const programs = await listWorkPrograms(effectiveTenantId, property.id);
-            return programs.map(program => ({ ...program, propertyLabel: property.title }));
-          })
-        );
-        setAllPrograms(result.flat());
-      } catch (e: any) {
-        setError(e?.response?.data?.error || 'Erreur chargement programmes travaux');
-      } finally {
-        setLoading(false);
-      }
-    };
-    void run();
-  }, [effectiveTenantId]);
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: erreur,
+    refetch
+  } = useQuery({
+    queryKey: queryKey('work-programs', agence, list.queryParams),
+    queryFn: () =>
+      listTenantWorkPrograms(agence as string, {
+        status: list.filters.status || undefined,
+        page: list.page,
+        limit: list.pageSize
+      }),
+    enabled: Boolean(agence),
+    staleTime: STALE_TIME.list
+  });
 
-  const filtered = statusFilter ? allPrograms.filter(program => program.status === statusFilter) : allPrograms;
+  if (!agence) {
+    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+  }
+
+  const programmes = data?.items ?? [];
+  const total = data?.total ?? 0;
+
+  const colonnes: ColumnsType<WorkProgramAvecBien> = [
+    {
+      title: 'Bien',
+      key: 'bien',
+      render: (_, programme) => (
+        <>
+          <div style={{ fontWeight: 600 }}>{programme.property?.title || '—'}</div>
+          {programme.property?.internalReference && (
+            <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>
+              {programme.property.internalReference}
+            </div>
+          )}
+        </>
+      )
+    },
+    { title: 'Programme', dataIndex: 'title', key: 'titre' },
+    {
+      title: 'Prévu le',
+      key: 'date',
+      render: (_, programme) => dateCourte((programme as { plannedDate?: string }).plannedDate)
+    },
+    { title: 'Statut', key: 'statut', render: (_, programme) => <StatusTag status={programme.status} /> }
+  ];
 
   return (
     <>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div>
-          <Title level={2} style={{ marginBottom: 0 }}>
-            Programmes de travaux
-          </Title>
-          <Text type="secondary">Planification et suivi des travaux par bien</Text>
+      <PageHeader
+        title="Programmes de travaux"
+        subtitle={total > 0 ? `${total} programme${total > 1 ? 's' : ''}` : 'Planification et suivi des travaux'}
+      />
+
+      <FilterSheet activeCount={list.filters.status ? 1 : 0} onClear={list.clearFilters} title="Filtrer les programmes">
+        <div style={{ minWidth: 220 }}>
+          <label htmlFor="filtre-statut-travaux">Statut</label>
+          <Select
+            id="filtre-statut-travaux"
+            style={{ width: '100%' }}
+            placeholder="Tous les statuts"
+            allowClear
+            value={list.filters.status || undefined}
+            onChange={valeur => list.setFilters({ status: valeur })}
+            options={STATUTS}
+          />
         </div>
+      </FilterSheet>
 
-        <Select
-          allowClear
-          placeholder="Filtrer par statut"
-          style={{ width: 280 }}
-          value={statusFilter}
-          onChange={value => setStatusFilter(value)}
-          options={[
-            { value: 'PLANNED', label: 'Planifié' },
-            { value: 'IN_PROGRESS', label: 'En cours' },
-            { value: 'COMPLETED', label: 'Terminé' },
-            { value: 'CANCELLED', label: 'Annulé' }
-          ]}
-        />
-
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px 0' }}>
-            <Spin />
-          </div>
-        ) : null}
-        {error ? <Alert type="error" showIcon message={error} /> : null}
-        {!loading ? <WorkProgramTimeline items={filtered} /> : null}
-      </Space>
+      <DataView<WorkProgramAvecBien>
+        items={programmes}
+        total={total}
+        page={list.page}
+        pageSize={list.pageSize}
+        onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
+        loading={isPending}
+        isReloading={isFetching && !isPending}
+        error={erreur ? 'Impossible de charger les programmes de travaux.' : null}
+        onRetry={() => refetch()}
+        isFiltered={list.isFiltered}
+        onClearFilters={list.clearFilters}
+        emptyDescription="Aucun programme de travaux n'est enregistré pour cette agence."
+        columns={colonnes}
+        rowKey={programme => programme.id}
+        aria-label="Programmes de travaux"
+        renderCard={programme => (
+          <DataCard
+            title={programme.title}
+            aria-label={`${programme.title}, ${programme.property?.title ?? 'bien inconnu'}`}
+            subtitle={programme.property?.title || 'Bien inconnu'}
+            status={<StatusTag status={programme.status} />}
+            fields={[
+              { label: 'Prévu le', value: dateCourte((programme as { plannedDate?: string }).plannedDate) },
+              ...(programme.property?.internalReference
+                ? [{ label: 'Référence', value: programme.property.internalReference }]
+                : [])
+            ]}
+          />
+        )}
+      />
     </>
   );
 };

@@ -6,6 +6,8 @@ import { Penalties } from '../../pages/rental/Penalties';
 import { Payments } from '../../pages/rental/Payments';
 import { Documents } from '../../pages/rental/Documents';
 import { CalendarPage } from '../../pages/crm/Calendar';
+import { PatrimoineOverviewPage } from '../../pages/patrimoine/PatrimoineOverviewPage';
+import { WorkProgramsPage } from '../../pages/patrimoine/work-programs/WorkProgramsPage';
 import { SceneDefilementListe, SceneDefilementDetail } from './SceneDefilement';
 import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { installerFausseApi, retirerFausseApi, type Scenario } from './mock-api';
@@ -68,6 +70,8 @@ const PENALITES = 'tenant/' + AGENCE + '/rental/penalties';
 const PAIEMENTS = 'tenant/' + AGENCE + '/rental/payments';
 const DOCUMENTS = 'tenant/' + AGENCE + '/rental/documents';
 const CALENDRIER = 'tenant/' + AGENCE + '/crm/calendar';
+const PATRIMOINE = 'tenant/' + AGENCE + '/patrimoine';
+const TRAVAUX_CHEMIN = 'tenant/' + AGENCE + '/patrimoine/work-programs';
 
 const SCENES: Scene[] = [
   {
@@ -182,6 +186,20 @@ const SCENES: Scene[] = [
     description: 'Charge react-big-calendar à la demande. Couleurs tirées des tokens.',
     scenario: 'nominal',
     chemin: CALENDRIER + '?vue=month'
+  },
+  {
+    id: 'patrimoine',
+    titre: 'Patrimoine — aperçu',
+    description: 'Deux requêtes au lieu de 101. L’agrégat, puis les travaux avec leur bien joint.',
+    scenario: 'nominal',
+    chemin: PATRIMOINE
+  },
+  {
+    id: 'travaux',
+    titre: 'Programmes de travaux',
+    description: 'Filtrage et pagination côté serveur, statut porté par l’URL.',
+    scenario: 'nominal',
+    chemin: TRAVAUX_CHEMIN
   },
   {
     id: 'defilement',
@@ -413,6 +431,22 @@ export const Atelier: React.FC = () => (
       element={
         <Scene>
           <CalendarPage />
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/patrimoine"
+      element={
+        <Scene>
+          <PatrimoineOverviewPage />
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/patrimoine/work-programs"
+      element={
+        <Scene>
+          <WorkProgramsPage />
         </Scene>
       }
     />

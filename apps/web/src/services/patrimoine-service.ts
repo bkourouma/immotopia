@@ -35,9 +35,11 @@ function buildYieldQuery(assumptions?: YieldAssumptions): string {
   if (!assumptions) return '';
   const params = new URLSearchParams();
   if (typeof assumptions.years === 'number') params.set('years', String(assumptions.years));
-  if (typeof assumptions.valueGrowthRate === 'number') params.set('valueGrowthRate', String(assumptions.valueGrowthRate));
+  if (typeof assumptions.valueGrowthRate === 'number')
+    params.set('valueGrowthRate', String(assumptions.valueGrowthRate));
   if (typeof assumptions.rentGrowthRate === 'number') params.set('rentGrowthRate', String(assumptions.rentGrowthRate));
-  if (typeof assumptions.expenseGrowthRate === 'number') params.set('expenseGrowthRate', String(assumptions.expenseGrowthRate));
+  if (typeof assumptions.expenseGrowthRate === 'number')
+    params.set('expenseGrowthRate', String(assumptions.expenseGrowthRate));
   if (typeof assumptions.vacancyRate === 'number') params.set('vacancyRate', String(assumptions.vacancyRate));
   const encoded = params.toString();
   return encoded ? `?${encoded}` : '';
@@ -48,17 +50,14 @@ export async function getPatrimoineOverview(tenantId: string): Promise<Patrimoin
   return response.data.data;
 }
 
-export async function getPatrimoinePerformance(
-  tenantId: string,
-  propertyId?: string,
-  assumptions?: YieldAssumptions
-) {
+export async function getPatrimoinePerformance(tenantId: string, propertyId?: string, assumptions?: YieldAssumptions) {
   const query = new URLSearchParams();
   if (propertyId) query.set('propertyId', propertyId);
   if (assumptions?.years !== undefined) query.set('years', String(assumptions.years));
   if (assumptions?.valueGrowthRate !== undefined) query.set('valueGrowthRate', String(assumptions.valueGrowthRate));
   if (assumptions?.rentGrowthRate !== undefined) query.set('rentGrowthRate', String(assumptions.rentGrowthRate));
-  if (assumptions?.expenseGrowthRate !== undefined) query.set('expenseGrowthRate', String(assumptions.expenseGrowthRate));
+  if (assumptions?.expenseGrowthRate !== undefined)
+    query.set('expenseGrowthRate', String(assumptions.expenseGrowthRate));
   if (assumptions?.vacancyRate !== undefined) query.set('vacancyRate', String(assumptions.vacancyRate));
   const encoded = query.toString();
   const response = await apiClient.get<ApiResponse<any>>(
@@ -143,7 +142,9 @@ export async function deleteExpense(tenantId: string, propertyId: string, expens
 }
 
 export async function listLoans(tenantId: string, propertyId: string): Promise<PropertyLoan[]> {
-  const response = await apiClient.get<ApiResponse<PropertyLoan[]>>(`/tenants/${tenantId}/properties/${propertyId}/loans`);
+  const response = await apiClient.get<ApiResponse<PropertyLoan[]>>(
+    `/tenants/${tenantId}/properties/${propertyId}/loans`
+  );
   return response.data.data;
 }
 
@@ -155,7 +156,12 @@ export async function createLoan(tenantId: string, propertyId: string, payload: 
   return response.data.data;
 }
 
-export async function updateLoan(tenantId: string, propertyId: string, loanId: string, payload: Record<string, unknown>) {
+export async function updateLoan(
+  tenantId: string,
+  propertyId: string,
+  loanId: string,
+  payload: Record<string, unknown>
+) {
   const response = await apiClient.patch<ApiResponse<PropertyLoan>>(
     `/tenants/${tenantId}/properties/${propertyId}/loans/${loanId}`,
     payload
@@ -170,6 +176,46 @@ export async function deleteLoan(tenantId: string, propertyId: string, loanId: s
 export async function listWorkPrograms(tenantId: string, propertyId: string): Promise<WorkProgram[]> {
   const response = await apiClient.get<ApiResponse<WorkProgram[]>>(
     `/tenants/${tenantId}/properties/${propertyId}/work-programs`
+  );
+  return response.data.data;
+}
+
+/** Un programme de travaux, accompagné du bien auquel il se rapporte. */
+export interface WorkProgramAvecBien extends WorkProgram {
+  property?: { id: string; title: string; internalReference: string } | null;
+}
+
+export interface TenantWorkProgramsResponse {
+  items: WorkProgramAvecBien[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+/**
+ * Tous les programmes de travaux d'une agence, en UNE requête (§8.4).
+ *
+ * Remplace un N+1 que la spécification chiffre : les deux écrans Patrimoine
+ * chargeaient jusqu'à 100 biens, puis lançaient une requête de travaux **par
+ * bien** — jusqu'à 101 requêtes au montage. Le filtrage par statut et la
+ * pagination se font côté serveur ; `property` est joint, ce qui évite un
+ * second appel pour afficher le nom du bien.
+ *
+ * Endpoint livré au commit `75f910b`.
+ */
+export async function listTenantWorkPrograms(
+  tenantId: string,
+  filtres?: { status?: string; page?: number; limit?: number }
+): Promise<TenantWorkProgramsResponse> {
+  const params = new URLSearchParams();
+  for (const [cle, valeur] of Object.entries(filtres ?? {})) {
+    if (valeur === undefined || valeur === null || valeur === '') continue;
+    params.append(cle, String(valeur));
+  }
+
+  const response = await apiClient.get<ApiResponse<TenantWorkProgramsResponse>>(
+    `/tenants/${tenantId}/work-programs?${params.toString()}`
   );
   return response.data.data;
 }

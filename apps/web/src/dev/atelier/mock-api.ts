@@ -1,6 +1,16 @@
 import type { AxiosAdapter, AxiosRequestConfig, AxiosResponse } from 'axios';
 import apiClient from '../../utils/api-client';
-import { BIENS, COMMUNES, ECHEANCES, PENALITES, PAIEMENTS, DOCUMENTS, EVENEMENTS } from './fixtures';
+import {
+  BIENS,
+  COMMUNES,
+  ECHEANCES,
+  PENALITES,
+  PAIEMENTS,
+  DOCUMENTS,
+  EVENEMENTS,
+  TRAVAUX,
+  APERCU_PATRIMOINE
+} from './fixtures';
 
 /**
  * Fausse API de l'atelier.
@@ -141,6 +151,32 @@ export function installerFausseApi(scenario: Scenario) {
         data: filtres,
         pagination: { page: 1, limit: 50, total: filtres.length, totalPages: 1 }
       });
+    }
+
+    // Programmes de travaux de l'agence : l'endpoint agrégé du §8.4, qui
+    // remplace jusqu'à 101 requêtes. Il pagine et filtre côté serveur, et
+    // joint le bien — la fausse API fait de même, sans quoi l'atelier
+    // montrerait un écran plus simple qu'il ne l'est.
+    if (/\/tenants\/[^/]+\/work-programs$/.test(url.pathname)) {
+      const statut = url.searchParams.get('status');
+      const filtres = scenario === 'vide' ? [] : TRAVAUX.filter(t => !statut || t.status === statut);
+      const page = Number(url.searchParams.get('page')) || 1;
+      const limit = Number(url.searchParams.get('limit')) || 25;
+      const debut = (page - 1) * limit;
+      return ok(config, {
+        success: true,
+        data: {
+          items: filtres.slice(debut, debut + limit),
+          total: filtres.length,
+          page,
+          limit,
+          totalPages: Math.ceil(filtres.length / limit) || 0
+        }
+      });
+    }
+
+    if (/\/patrimoine\/overview$/.test(url.pathname)) {
+      return ok(config, { success: true, data: APERCU_PATRIMOINE });
     }
 
     // Le calendrier rend une FENÊTRE de dates, pas une page : la réponse ne

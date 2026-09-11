@@ -1,91 +1,109 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Alert, Button, Empty, Space, Spin, Typography } from 'antd';
+import { useQuery } from '@tanstack/react-query';
 import { PatrimoineOverview } from '../../components/patrimoine/PatrimoineOverview';
 import { WorkProgramTimeline } from '../../components/patrimoine/WorkProgramTimeline';
-import { listProperties } from '../../services/property-service';
-import { getPatrimoineOverview, listWorkPrograms } from '../../services/patrimoine-service';
-import type { PatrimoineOverviewData, WorkProgram } from '../../types/patrimoine-types';
-import type { Property } from '../../types/property-types';
+import { getPatrimoineOverview, listTenantWorkPrograms } from '../../services/patrimoine-service';
 import { useAuth } from '../../hooks/useAuth';
+import { queryKey, STALE_TIME } from '../../lib/query-keys';
+import { PageHeader, StateBlock, SkeletonStats } from '../../components/primitives';
 
-const { Title, Text } = Typography;
-
-type ProgramWithProperty = WorkProgram & { propertyLabel?: string };
-
+/**
+ * Aperçu du patrimoine — le pire N+1 de l'application (REFONTE_UI_UX.md §8.4).
+ *
+ * L'écran chargeait jusqu'à **100 biens**, puis lançait une requête de travaux
+ * **par bien** : jusqu'à 101 requêtes au montage, là où le §10.1 en autorise
+ * trois. Sur un réseau de terrain, c'était l'écran qui ne finissait pas de
+ * charger.
+ *
+ * Il en fait deux, désormais : l'agrégat patrimoine, et la liste des programmes
+ * de travaux de l'agence — endpoint livré au commit `75f910b`, qui joint le
+ * bien à chaque programme et évite donc aussi de charger les biens pour leurs
+ * seuls titres.
+ *
+ * Corrigés au passage : un bouton qui exposait une route technique
+ * (« Voir les biens (/properties) ») et trois libellés sans accents (§3.5).
+ */
 export const PatrimoineOverviewPage: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
   const { tenantMembership } = useAuth();
-  const effectiveTenantId = tenantId || tenantMembership?.tenantId;
+  const agence = tenantId || tenantMembership?.tenantId;
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [overview, setOverview] = useState<PatrimoineOverviewData | null>(null);
-  const [workPrograms, setWorkPrograms] = useState<ProgramWithProperty[]>([]);
+  const apercu = useQuery({
+    queryKey: queryKey('patrimoine-apercu', agence),
+    queryFn: () => getPatrimoineOverview(agence as string),
+    enabled: Boolean(agence),
+    staleTime: STALE_TIME.list
+  });
 
-  useEffect(() => {
-    if (!effectiveTenantId) return;
-    const run = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [overviewData, propertiesResp] = await Promise.all([
-          getPatrimoineOverview(effectiveTenantId),
-          listProperties(effectiveTenantId, { page: 1, limit: 100 })
-        ]);
-        setOverview(overviewData);
+  const travaux = useQuery({
+    // La page est explicite : cet écran montre les travaux à venir, pas
+    // l'historique complet. Les charger tous ne servirait qu'à allonger la
+    // frise.
+    queryKey: queryKey('work-programs', agence, { limit: 20 }),
+    queryFn: () => listTenantWorkPrograms(agence as string, { limit: 20 }),
+    enabled: Boolean(agence),
+    staleTime: STALE_TIME.list
+  });
 
-        const properties = propertiesResp.properties;
-        const programsPerProperty = await Promise.all(
-          properties.map(async (property: Property) => {
-            const programs = await listWorkPrograms(effectiveTenantId, property.id);
-            return programs.map(program => ({ ...program, propertyLabel: property.title }));
-          })
-        );
-        setWorkPrograms(programsPerProperty.flat());
-      } catch (e: any) {
-        setError(e?.response?.data?.error || 'Erreur chargement dashboard patrimoine');
-      } finally {
-        setLoading(false);
-      }
-    };
-    void run();
-  }, [effectiveTenantId]);
-
-  if (!effectiveTenantId) {
+  if (!agence) {
     return (
-      <>
-        <Alert type="warning" showIcon message="Aucune agence sélectionnée" />
-      </>
+      <StateBlock
+        variant="empty"
+        title="Aucune agence sélectionnée"
+        description="Votre compte doit être rattaché à une agence pour consulter son patrimoine."
+      />
     );
   }
 
+  const enChargement = apercu.isPending || travaux.isPending;
+
   return (
     <>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <Title level={2} style={{ marginBottom: 0 }}>
-              Patrimoine
-            </Title>
-            <Text type="secondary">Vue consolidee du portefeuille immobilier</Text>
-          </div>
-          <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>
-            Voir les biens (/properties)
-          </Button>
-        </div>
+      <PageHeader
+        title="Patrimoine"
+        subtitle="Vue consolidée du portefeuille immobilier"
+        // « Voir les biens », et non « Voir les biens (/properties) » :
+        // l'adresse technique n'apprend rien à qui lit le bouton.
+        primaryAction={{ label: 'Voir les biens', onClick: () => navigate(`/tenant/${agence}/properties`) }}
+      />
 
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px 0' }}>
-            <Spin />
-          </div>
-        ) : null}
-        {error ? <Alert type="error" showIcon message={error} /> : null}
-        {!loading && !overview ? <Empty description="Aucune donnee patrimoine" /> : null}
-        {!loading && overview ? <PatrimoineOverview data={overview} /> : null}
-        {!loading ? <WorkProgramTimeline items={workPrograms} /> : null}
-      </Space>
+      {apercu.error ? (
+        <StateBlock
+          variant="error"
+          description="Impossible de charger la vue consolidée."
+          actions={[{ label: 'Réessayer', onClick: () => apercu.refetch(), primary: true }]}
+        />
+      ) : enChargement ? (
+        <SkeletonStats rows={4} aria-label="Patrimoine en cours de chargement" />
+      ) : apercu.data ? (
+        <PatrimoineOverview data={apercu.data} />
+      ) : (
+        <StateBlock variant="empty" title="Aucune donnée de patrimoine" />
+      )}
+
+      {!enChargement && !apercu.error && (
+        <div style={{ marginTop: 'var(--space-6)' }}>
+          <h2 style={{ fontSize: 'var(--font-size-h3)', marginBottom: 'var(--space-4)' }}>Programmes de travaux</h2>
+          {travaux.error ? (
+            <StateBlock
+              variant="error"
+              description="Impossible de charger les programmes de travaux."
+              actions={[{ label: 'Réessayer', onClick: () => travaux.refetch(), primary: true }]}
+            />
+          ) : (
+            <WorkProgramTimeline
+              items={(travaux.data?.items ?? []).map(programme => ({
+                ...programme,
+                // Le titre du bien vient de la jointure serveur : plus besoin
+                // de charger les biens pour l'afficher.
+                propertyLabel: programme.property?.title
+              }))}
+            />
+          )}
+        </div>
+      )}
     </>
   );
 };
