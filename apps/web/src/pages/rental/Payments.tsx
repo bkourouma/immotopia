@@ -1,340 +1,350 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Table, Button, Tag, Space, Typography, Empty, Alert, Pagination, Select, Row, Col, Tabs } from 'antd';
+import { App, Button, Select, Tabs, Modal, Drawer } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { EyeOutlined, PlusOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listPayments,
   createPayment,
   allocatePayment,
-  updatePaymentStatus,
   RentalPayment,
   RentalPaymentStatus,
   RentalPaymentMethod,
-  PaymentFilters,
   CreatePaymentRequest,
   AllocatePaymentRequest
 } from '../../services/rental-service';
 import { PaymentForm } from '../../components/rental/PaymentForm';
 import { AllocatePaymentForm } from '../../components/rental/AllocatePaymentForm';
 import { PaymentDeclarationsList } from '../../components/rental/PaymentDeclarationsList';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useListParams } from '../../hooks/useListParams';
+import { queryKey, STALE_TIME } from '../../lib/query-keys';
+import {
+  PageHeader,
+  StateBlock,
+  StatusTag,
+  MoneyValue,
+  DataView,
+  DataCard,
+  FilterSheet,
+  formatMoney
+} from '../../components/primitives';
 
-const { Text, Title } = Typography;
+/**
+ * Paiements — quatrième des six écrans hybrides (§9.7).
+ *
+ * Défauts corrigés, chacun avec son test :
+ *
+ * **Le calcul du montant affecté était écrit deux fois, à l'identique.** Deux
+ * colonnes le recalculaient chacune de leur côté, à partir des allocations et
+ * des mouvements de dépôt. Deux copies d'une règle financière finissent par
+ * diverger, et la divergence ne se voit qu'en les comparant. Il n'y en a plus
+ * qu'une.
+ *
+ * **Affecter un paiement quittait l'écran.** L'allocation réussie renvoyait
+ * vers la liste globale des échéances — y compris depuis l'onglet d'un bail,
+ * d'où l'on se retrouvait ailleurs sans l'avoir demandé. On reste, et la liste
+ * se met à jour.
+ *
+ * **Sept colonnes derrière `scroll={{ x: 'max-content' }}`**, des formulaires
+ * ouverts en pleine page qui poussaient la liste hors de l'écran, et une action
+ * en icône seule sans nom accessible.
+ *
+ * `handleStatusChange`, défini et jamais appelé, est retiré.
+ */
 
 interface PaymentsProps {
+  /** Fourni quand l'écran est monté en onglet d'un bail. */
   leaseId?: string;
 }
 
+type Filters = { status: string; onglet: string };
+const FILTER_KEYS = ['status', 'onglet'] as const;
+
+const METHOD_LABELS: Record<string, string> = {
+  CASH: 'Espèces',
+  BANK_TRANSFER: 'Virement bancaire',
+  CHECK: 'Chèque',
+  MOBILE_MONEY: 'Mobile Money',
+  CARD: 'Carte bancaire',
+  OTHER: 'Autre'
+};
+
+const STATUS_OPTIONS = [
+  { value: 'PENDING', label: 'En attente' },
+  { value: 'SUCCESS', label: 'Réussi' },
+  { value: 'FAILED', label: 'Échoué' },
+  { value: 'CANCELED', label: 'Annulé' }
+];
+
+/**
+ * Montant déjà affecté d'un paiement.
+ *
+ * Un paiement se répartit entre des échéances et des mouvements de dépôt de
+ * garantie. Les deux comptent : ne sommer que les allocations ferait apparaître
+ * comme « non affecté » un paiement entièrement versé au dépôt.
+ */
+function montantAffecte(paiement: RentalPayment): number {
+  const versEcheances = paiement.allocations?.reduce((somme, a) => somme + Number(a.amount || 0), 0) || 0;
+  const versDepot = paiement.depositMovements?.reduce((somme, m) => somme + Number(m.amount || 0), 0) || 0;
+  return versEcheances + versDepot;
+}
+
+function resteAAffecter(paiement: RentalPayment): number {
+  return Number(paiement.amount || 0) - montantAffecte(paiement);
+}
+
+function dateCourte(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR');
+}
+
 export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
+  const { message } = App.useApp();
   const { tenantId, leaseId: paramLeaseId } = useParams<{ tenantId: string; leaseId?: string }>();
   const leaseId = propLeaseId || paramLeaseId;
   const navigate = useNavigate();
-  const [payments, setPayments] = useState<RentalPayment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [showAllocateForm, setShowAllocateForm] = useState(false);
-  const [selectedPayment, setSelectedPayment] = useState<RentalPayment | null>(null);
-  const [filters, setFilters] = useState<PaymentFilters>({
-    leaseId: leaseId,
-    page: 1,
-    limit: 50
-  });
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 50,
-    total: 0,
-    totalPages: 0
+  const queryClient = useQueryClient();
+  const { isDesktop } = useBreakpoint();
+
+  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS, defaultPageSize: 50 });
+  const [saisieOuverte, setSaisieOuverte] = useState(false);
+  const [affectePour, setAffectePour] = useState<RentalPayment | null>(null);
+
+  const onglet = list.filters.onglet || 'paiements';
+
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: erreurRequete,
+    refetch
+  } = useQuery({
+    queryKey: queryKey('payments', tenantId, {
+      status: list.filters.status ?? '',
+      leaseId: leaseId ?? '',
+      page: list.page,
+      limit: list.pageSize
+    }),
+    queryFn: () =>
+      listPayments(tenantId as string, {
+        leaseId,
+        status: (list.filters.status as RentalPaymentStatus) || undefined,
+        page: list.page,
+        limit: list.pageSize
+      }),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list
   });
 
-  useEffect(() => {
-    if (tenantId) {
-      loadPayments();
-    }
-  }, [tenantId, filters, leaseId]);
+  const paiements = data?.data ?? [];
+  const total = data?.pagination?.total ?? 0;
 
-  const loadPayments = async () => {
+  const rafraichir = () => queryClient.invalidateQueries({ queryKey: ['payments', tenantId] });
+
+  const handleCreate = async (donnees: CreatePaymentRequest) => {
     if (!tenantId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await listPayments(tenantId, {
-        ...filters,
-        leaseId: leaseId || filters.leaseId
-      });
-      if (response.success) {
-        setPayments(response.data);
-        setPagination(response.pagination);
-      } else {
-        setError('Erreur lors du chargement des paiements');
+    // Les erreurs remontent au formulaire, qui les affiche lui-même.
+    await createPayment(tenantId, donnees);
+    setSaisieOuverte(false);
+    await rafraichir();
+    message.success('Paiement enregistré.');
+  };
+
+  const handleAllocate = async (donnees: AllocatePaymentRequest) => {
+    if (!tenantId || !affectePour) return;
+    await allocatePayment(tenantId, affectePour.id, donnees);
+    setAffectePour(null);
+    // On reste sur l'écran. L'ancienne version renvoyait vers la liste globale
+    // des échéances, y compris depuis l'onglet d'un bail : on se retrouvait
+    // ailleurs sans l'avoir demandé, et il fallait revenir pour affecter le
+    // paiement suivant.
+    await Promise.all([rafraichir(), queryClient.invalidateQueries({ queryKey: ['installments', tenantId] })]);
+    message.success('Paiement affecté.');
+  };
+
+  if (!tenantId) {
+    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+  }
+
+  const colonnes: ColumnsType<RentalPayment> = [
+    { title: 'Date', key: 'date', render: (_, p) => dateCourte(p.initiated_at) },
+    {
+      title: 'Montant',
+      key: 'montant',
+      align: 'right',
+      render: (_, p) => <MoneyValue value={p.amount} currency={p.currency} />
+    },
+    {
+      title: 'Reste à affecter',
+      key: 'reste',
+      align: 'right',
+      render: (_, p) => {
+        const reste = resteAAffecter(p);
+        return reste > 0 ? (
+          <MoneyValue value={reste} currency={p.currency} />
+        ) : (
+          // Un paiement entièrement affecté n'a pas besoin d'un « 0 » :
+          // le mot dit la même chose et se lit plus vite.
+          <span style={{ color: 'var(--text-secondary)' }}>Affecté</span>
+        );
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des paiements');
-    } finally {
-      setLoading(false);
+    },
+    { title: 'Méthode', key: 'methode', render: (_, p) => METHOD_LABELS[p.method] || p.method },
+    { title: 'Statut', key: 'statut', render: (_, p) => <StatusTag status={p.status} /> },
+    {
+      title: 'Actions',
+      key: 'actions',
+      align: 'right',
+      render: (_, p) => (
+        <>
+          <Button type="link" onClick={() => navigate(`/tenant/${tenantId}/rental/payments/${p.id}`)}>
+            Voir
+          </Button>
+          {resteAAffecter(p) > 0 && (
+            <Button type="primary" onClick={() => setAffectePour(p)}>
+              Affecter
+            </Button>
+          )}
+        </>
+      )
     }
-  };
+  ];
 
-  const handleCreatePayment = async (data: CreatePaymentRequest) => {
-    if (!tenantId) return;
-    // Errors propagate to the form, which renders them.
-    await createPayment(tenantId, data);
-    setShowPaymentForm(false);
-    await loadPayments();
-  };
-
-  const handleAllocate = (payment: RentalPayment) => {
-    setSelectedPayment(payment);
-    setShowAllocateForm(true);
-  };
-
-  const handleAllocatePayment = async (data: AllocatePaymentRequest) => {
-    if (!tenantId || !selectedPayment) return;
-    // Errors propagate to the form, which renders them.
-    await allocatePayment(tenantId, selectedPayment.id, data);
-    setShowAllocateForm(false);
-    setSelectedPayment(null);
-    // Redirect to installments page after successful allocation
-    navigate(`/tenant/${tenantId}/rental/installments`);
-  };
-
-  const handleStatusChange = async (paymentId: string, newStatus: RentalPaymentStatus) => {
-    if (!tenantId) return;
-    try {
-      await updatePaymentStatus(tenantId, paymentId, newStatus);
-      await loadPayments();
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de la mise à jour du statut');
-    }
-  };
-
-  const getStatusTag = (status: RentalPaymentStatus) => {
-    const statusMap: Record<RentalPaymentStatus, { label: string; color: string }> = {
-      PENDING: { label: 'En attente', color: 'default' },
-      SUCCESS: { label: 'Réussi', color: 'success' },
-      FAILED: { label: 'Échoué', color: 'error' },
-      CANCELED: { label: 'Annulé', color: 'default' },
-      REFUNDED: { label: 'Remboursé', color: 'warning' },
-      PARTIALLY_REFUNDED: { label: 'Partiellement remboursé', color: 'warning' }
-    };
-    const config = statusMap[status] || { label: status, color: 'default' };
-    return <Tag color={config.color}>{config.label}</Tag>;
-  };
-
-  const getMethodLabel = (method: RentalPaymentMethod) => {
-    const methodMap: Record<RentalPaymentMethod, string> = {
-      CASH: 'Espèces',
-      BANK_TRANSFER: 'Virement bancaire',
-      CHECK: 'Chèque',
-      MOBILE_MONEY: 'Mobile Money',
-      CARD: 'Carte bancaire',
-      OTHER: 'Autre'
-    };
-    return methodMap[method] || method;
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fr-FR');
-  };
-
-  const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency
-    }).format(amount);
-  };
-
-  // If used as standalone page (not in tab)
-  const isStandalone = !propLeaseId;
-
-  const paymentsTabContent = (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {error && (
-        <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
-      )}
-
-      {showPaymentForm && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <PaymentForm
-            tenantId={tenantId!}
-            leaseId={leaseId}
-            onSubmit={handleCreatePayment}
-            onCancel={() => setShowPaymentForm(false)}
-          />
-        </div>
-      )}
-
-      {showAllocateForm && selectedPayment && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <AllocatePaymentForm
-            tenantId={tenantId!}
-            payment={selectedPayment}
-            onSubmit={handleAllocatePayment}
-            onCancel={() => {
-              setShowAllocateForm(false);
-              setSelectedPayment(null);
-            }}
-          />
-        </div>
-      )}
-
-      <Space>
-        <Select
-          value={filters.status || 'all'}
-          onChange={value =>
-            setFilters({
-              ...filters,
-              status: value === 'all' ? undefined : (value as RentalPaymentStatus),
-              page: 1
-            })
-          }
-          style={{ width: 180 }}
-        >
-          <Select.Option value="all">Tous les statuts</Select.Option>
-          <Select.Option value="PENDING">En attente</Select.Option>
-          <Select.Option value="SUCCESS">Réussi</Select.Option>
-          <Select.Option value="FAILED">Échoué</Select.Option>
-          <Select.Option value="CANCELED">Annulé</Select.Option>
-        </Select>
-      </Space>
-
-      {payments.length === 0 && !loading ? (
-        <Empty description="Aucun paiement trouvé" />
-      ) : (
-        <Table
-          dataSource={payments}
-          loading={loading}
-          rowKey="id"
-          scroll={{ x: 'max-content' }}
-          columns={[
-            {
-              title: 'Date',
-              key: 'date',
-              render: (_, record) => formatDate(record.initiated_at)
-            },
-            {
-              title: 'Montant',
-              key: 'amount',
-              render: (_, record) => formatCurrency(record.amount, record.currency)
-            },
-            {
-              title: 'Alloué',
-              key: 'allocated',
-              render: (_, record) => {
-                const toInstallments =
-                  record.allocations?.reduce((sum, alloc) => sum + Number(alloc.amount || 0), 0) || 0;
-                const toDeposit = record.depositMovements?.reduce((sum, m) => sum + Number(m.amount || 0), 0) || 0;
-                const allocatedAmount = toInstallments + toDeposit;
-                return (
-                  <Text type={allocatedAmount > 0 ? 'success' : 'secondary'} strong={allocatedAmount > 0}>
-                    {formatCurrency(allocatedAmount, record.currency)}
-                  </Text>
-                );
-              }
-            },
-            {
-              title: 'Restant',
-              key: 'remaining',
-              render: (_, record) => {
-                const toInstallments =
-                  record.allocations?.reduce((sum, alloc) => sum + Number(alloc.amount || 0), 0) || 0;
-                const toDeposit = record.depositMovements?.reduce((sum, m) => sum + Number(m.amount || 0), 0) || 0;
-                const allocatedAmount = toInstallments + toDeposit;
-                const remainingAmount = record.amount - allocatedAmount;
-                return (
-                  <Text type={remainingAmount > 0 ? 'warning' : 'secondary'} strong={remainingAmount > 0}>
-                    {formatCurrency(remainingAmount, record.currency)}
-                  </Text>
-                );
-              }
-            },
-            {
-              title: 'Méthode',
-              key: 'method',
-              render: (_, record) => getMethodLabel(record.method)
-            },
-            {
-              title: 'Statut',
-              key: 'status',
-              render: (_, record) => getStatusTag(record.status)
-            },
-            {
-              title: 'Actions',
-              key: 'actions',
-              render: (_, record) => (
-                <Space>
-                  <Button
-                    type="text"
-                    icon={<EyeOutlined />}
-                    onClick={() => navigate(`/tenant/${tenantId}/rental/payments/${record.id}`)}
-                  />
-                  {record.status === 'PENDING' && <Button onClick={() => handleAllocate(record)}>Allouer</Button>}
-                </Space>
-              )
-            }
-          ]}
-          pagination={
-            pagination.totalPages > 1
-              ? {
-                  current: pagination.page,
-                  pageSize: pagination.limit,
-                  total: pagination.total,
-                  showSizeChanger: true,
-                  showTotal: total => `Total ${total} paiements`,
-                  onChange: (page, pageSize) => {
-                    setFilters(prev => ({ ...prev, page, limit: pageSize }));
-                  }
-                }
-              : false
-          }
-        />
-      )}
-    </Space>
-  );
-
-  const content = (
+  const listeDesPaiements = (
     <>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Row gutter={[16, 16]} justify="space-between" align="middle">
-          <Col xs={24} sm={24} md={12} lg={14}>
-            <Title level={2} style={{ margin: 0 }}>
-              Paiements
-            </Title>
-            <Text type="secondary">Gérez les paiements de location et validez les déclarations</Text>
-          </Col>
-          <Col xs={24} sm={24} md={12} lg={10}>
-            <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowPaymentForm(true)}>
-                Nouveau paiement
-              </Button>
-            </div>
-          </Col>
-        </Row>
+      <FilterSheet
+        activeCount={list.filters.status ? 1 : 0}
+        onClear={() => list.setFilters({ status: undefined })}
+        title="Filtrer les paiements"
+      >
+        <div style={{ minWidth: 220 }}>
+          <label htmlFor="filtre-statut-paiement">Statut</label>
+          <Select
+            id="filtre-statut-paiement"
+            style={{ width: '100%' }}
+            placeholder="Tous les statuts"
+            allowClear
+            value={list.filters.status || undefined}
+            onChange={valeur => list.setFilters({ status: valeur })}
+            options={STATUS_OPTIONS}
+          />
+        </div>
+      </FilterSheet>
 
-        <Tabs
-          defaultActiveKey="payments"
-          items={[
-            {
-              key: 'payments',
-              label: 'Paiements',
-              children: paymentsTabContent
-            },
-            {
-              key: 'declarations',
-              label: 'Déclarations en attente',
-              children: tenantId ? (
-                <PaymentDeclarationsList tenantId={tenantId} leaseId={leaseId} onApproveSuccess={loadPayments} />
-              ) : null
-            }
-          ]}
-        />
-      </Space>
+      <DataView<RentalPayment>
+        items={paiements}
+        total={total}
+        page={list.page}
+        pageSize={list.pageSize}
+        onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
+        loading={isPending}
+        isReloading={isFetching && !isPending}
+        error={erreurRequete ? 'Impossible de charger les paiements.' : null}
+        onRetry={() => refetch()}
+        isFiltered={Boolean(list.filters.status)}
+        onClearFilters={() => list.setFilters({ status: undefined })}
+        emptyDescription="Aucun paiement enregistré."
+        emptyAction={{ label: 'Enregistrer un paiement', onClick: () => setSaisieOuverte(true) }}
+        columns={colonnes}
+        rowKey={p => p.id}
+        aria-label="Paiements"
+        renderCard={p => {
+          const reste = resteAAffecter(p);
+          return (
+            <DataCard
+              title={<MoneyValue value={p.amount} currency={p.currency} />}
+              aria-label={`Paiement du ${dateCourte(p.initiated_at)}`}
+              subtitle={`${dateCourte(p.initiated_at)} · ${METHOD_LABELS[p.method as RentalPaymentMethod] || p.method}`}
+              status={<StatusTag status={p.status} />}
+              fields={
+                reste > 0
+                  ? [
+                      { label: 'Déjà affecté', value: <MoneyValue value={montantAffecte(p)} currency={p.currency} /> },
+                      { label: 'Reste à affecter', value: <MoneyValue value={reste} currency={p.currency} /> }
+                    ]
+                  : [{ label: 'Affectation', value: 'Intégralement affecté' }]
+              }
+              onOpen={() => navigate(`/tenant/${tenantId}/rental/payments/${p.id}`)}
+              primaryAction={reste > 0 ? { label: 'Affecter', onClick: () => setAffectePour(p) } : undefined}
+            />
+          );
+        }}
+      />
     </>
   );
 
-  if (isStandalone) {
-    return <>{content}</>;
-  }
+  /** Modale au-dessus de 992 px, feuille pleine hauteur en dessous (§10.1). */
+  const boite = (ouvert: boolean, titre: string, fermer: () => void, contenu: React.ReactNode) =>
+    isDesktop ? (
+      <Modal open={ouvert} title={titre} onCancel={fermer} footer={null} width={720} destroyOnHidden>
+        {contenu}
+      </Modal>
+    ) : (
+      <Drawer open={ouvert} title={titre} onClose={fermer} placement="bottom" height="92%" destroyOnHidden>
+        {contenu}
+      </Drawer>
+    );
 
-  return content;
+  return (
+    <>
+      <PageHeader
+        title="Paiements"
+        subtitle={total > 0 ? `${total} paiement${total > 1 ? 's' : ''}` : undefined}
+        primaryAction={{
+          label: 'Nouveau paiement',
+          icon: <PlusOutlined />,
+          onClick: () => setSaisieOuverte(true)
+        }}
+      />
+
+      <Tabs
+        activeKey={onglet}
+        // L'onglet actif vit dans l'URL : revenir depuis le détail d'un
+        // paiement retrouve l'onglet d'où l'on venait, et un lien vers les
+        // déclarations en attente est partageable.
+        onChange={cle => list.setFilters({ onglet: cle === 'paiements' ? undefined : cle })}
+        items={[
+          { key: 'paiements', label: 'Paiements', children: listeDesPaiements },
+          {
+            key: 'declarations',
+            label: 'Déclarations en attente',
+            children: (
+              <PaymentDeclarationsList
+                tenantId={tenantId}
+                leaseId={leaseId}
+                onApproveSuccess={() => void rafraichir()}
+              />
+            )
+          }
+        ]}
+      />
+
+      {boite(
+        saisieOuverte,
+        'Nouveau paiement',
+        () => setSaisieOuverte(false),
+        <PaymentForm
+          tenantId={tenantId}
+          leaseId={leaseId}
+          onSubmit={handleCreate}
+          onCancel={() => setSaisieOuverte(false)}
+        />
+      )}
+
+      {boite(
+        Boolean(affectePour),
+        affectePour ? `Affecter ${formatMoney(affectePour.amount, { currency: affectePour.currency })}` : '',
+        () => setAffectePour(null),
+        affectePour ? (
+          <AllocatePaymentForm
+            tenantId={tenantId}
+            payment={affectePour}
+            onSubmit={handleAllocate}
+            onCancel={() => setAffectePour(null)}
+          />
+        ) : null
+      )}
+    </>
+  );
 };

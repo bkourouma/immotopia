@@ -221,3 +221,73 @@ export const PENALITES = [
     updated_at: ''
   }
 ];
+
+/**
+ * Paiements — quatre cas d'affectation.
+ *
+ * Le cas piégeux est le paiement entièrement versé au dépôt de garantie :
+ * ses `allocations` sont vides, et un calcul qui ne sommerait que celles-ci le
+ * ferait apparaître comme « non affecté » alors qu'il l'est intégralement.
+ */
+export const PAIEMENTS = [
+  // Non affecté : le cas qui appelle une action.
+  {
+    id: 'pay-1',
+    tenant_id: 'agence-demo',
+    lease_id: 'bail-demo',
+    amount: 1_325_000,
+    currency: 'GNF',
+    method: 'CASH',
+    status: 'PENDING',
+    initiated_at: '2026-05-06T09:30:00.000Z',
+    allocations: [],
+    depositMovements: [],
+    created_at: '',
+    updated_at: ''
+  },
+  // Partiellement affecté.
+  {
+    id: 'pay-2',
+    tenant_id: 'agence-demo',
+    lease_id: 'bail-demo',
+    amount: 1_000_000,
+    currency: 'GNF',
+    method: 'MOBILE_MONEY',
+    status: 'SUCCESS',
+    initiated_at: '2026-04-06T11:00:00.000Z',
+    allocations: [{ id: 'a1', amount: 400_000 }],
+    depositMovements: [],
+    created_at: '',
+    updated_at: ''
+  },
+  // ENTIEREMENT verse au depot : aucune allocation, et pourtant rien a affecter.
+  {
+    id: 'pay-3',
+    tenant_id: 'agence-demo',
+    lease_id: 'bail-demo',
+    amount: 2_500_000,
+    currency: 'GNF',
+    method: 'BANK_TRANSFER',
+    status: 'SUCCESS',
+    initiated_at: '2026-01-05T08:00:00.000Z',
+    allocations: [],
+    depositMovements: [{ id: 'd1', amount: 2_500_000 }],
+    created_at: '',
+    updated_at: ''
+  },
+  // Echoue : ni affecte, ni affectable en pratique.
+  {
+    id: 'pay-4',
+    tenant_id: 'agence-demo',
+    lease_id: 'bail-demo',
+    amount: 500_000,
+    currency: 'GNF',
+    method: 'CHECK',
+    status: 'FAILED',
+    initiated_at: '2026-03-06T14:20:00.000Z',
+    allocations: [],
+    depositMovements: [],
+    created_at: '',
+    updated_at: ''
+  }
+];

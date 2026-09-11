@@ -3,6 +3,7 @@ import { Link, Route, Routes, useSearchParams } from 'react-router-dom';
 import { Properties } from '../../pages/properties/Properties';
 import { Installments } from '../../pages/rental/Installments';
 import { Penalties } from '../../pages/rental/Penalties';
+import { Payments } from '../../pages/rental/Payments';
 import { installerFausseApi, retirerFausseApi, type Scenario } from './mock-api';
 import {
   DataCard,
@@ -60,6 +61,7 @@ const BIENS = 'tenant/' + AGENCE + '/properties';
 const ECHEANCES = 'tenant/' + AGENCE + '/rental/leases/bail-demo/installments';
 const ECHEANCES_GLOBAL = 'tenant/' + AGENCE + '/rental/installments';
 const PENALITES = 'tenant/' + AGENCE + '/rental/penalties';
+const PAIEMENTS = 'tenant/' + AGENCE + '/rental/payments';
 
 const SCENES: Scene[] = [
   {
@@ -146,6 +148,13 @@ const SCENES: Scene[] = [
     description: 'Aucun retard : l’écran doit le dire sans alarmer.',
     scenario: 'vide',
     chemin: PENALITES
+  },
+  {
+    id: 'paiements',
+    titre: 'Paiements — nominal',
+    description: 'Quatre paiements : un non affecté, un partiel, un versé au dépôt, un échoué.',
+    scenario: 'nominal',
+    chemin: PAIEMENTS
   },
   {
     id: 'primitives',
@@ -343,6 +352,14 @@ export const Atelier: React.FC = () => (
       element={
         <Scene>
           <Penalties />
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/rental/payments"
+      element={
+        <Scene>
+          <Payments />
         </Scene>
       }
     />
