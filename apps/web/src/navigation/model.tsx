@@ -256,7 +256,15 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         children: [
           { key: 'finance-clients', label: 'Balance clients', href: '/tenant/:tenantId/finance/balance-clients' },
           { key: 'finance-clients-agee', label: 'Balance âgée', href: '/tenant/:tenantId/finance/balance-agee' },
-          { key: 'finance-facturation', label: 'Facturation du mois', href: '/tenant/:tenantId/finance/facturation' }
+          { key: 'finance-facturation', label: 'Facturation du mois', href: '/tenant/:tenantId/finance/facturation' },
+          { key: 'finance-fournisseurs', label: 'Fournisseurs', href: '/tenant/:tenantId/finance/fournisseurs' },
+          {
+            key: 'finance-fournisseurs-balance',
+            label: 'Balance fournisseurs',
+            href: '/tenant/:tenantId/finance/fournisseurs/balance'
+          },
+          { key: 'finance-chantiers', label: 'Chantiers', href: '/tenant/:tenantId/finance/chantiers' },
+          { key: 'finance-validation', label: 'Pièces à valider', href: '/tenant/:tenantId/finance/validation' }
         ]
       },
       {

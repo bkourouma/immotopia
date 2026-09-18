@@ -11,12 +11,20 @@
  *
  * `postDocumentEntryTx` (`accounting.ts`) est mocké — ce fichier vérifie
  * comment `cash.ts` l'appelle (lignes équilibrées, document d'origine),
- * jamais ce qu'il calcule en interne. Le magasin en mémoire simule aussi
- * `$queryRaw` : la seule commande que `cash.ts` y envoie est le verrou
- * consultatif `pg_advisory_xact_lock(hashtext(tenantId))`, que le mock
- * transforme en un vrai mutex asynchrone par tenant, relâché quand la
- * transaction englobante se termine (succès ou échec) — exactement la
- * sémantique Postgres d'un verrou `_xact_`, sans base réelle.
+ * jamais ce qu'il calcule en interne. Le magasin en mémoire simule aussi la
+ * commande brute : la seule que `cash.ts` envoie est le verrou consultatif
+ * `pg_advisory_xact_lock(hashtext(tenantId))`, que le mock transforme en un
+ * vrai mutex asynchrone par tenant, relâché quand la transaction englobante se
+ * termine (succès ou échec) — exactement la sémantique Postgres d'un verrou
+ * `_xact_`, sans base réelle.
+ *
+ * Elle est exposée sur `$executeRaw`, et **`$queryRaw` lève**. Ce n'est pas un
+ * détail de mise en œuvre. `pg_advisory_xact_lock` renvoie `void`, un type que
+ * le désérialiseur de `$queryRaw` ne sait pas lire : le code appelait d'abord
+ * `$queryRaw` et échouait donc à *chaque* création de pièce de caisse en
+ * production, pendant que ce fichier était vert. Une doublure qui accepte tout
+ * ne protège de rien ; celle-ci reproduit le refus de Postgres, pour que le
+ * défaut ne puisse plus repasser sans qu'un test tombe.
  */
 
 const postDocumentEntryTx = jest.fn();
@@ -108,7 +116,7 @@ function acquireLock(key: string): { wait: Promise<void>; release: () => void } 
   return { wait: myTurn, release };
 }
 
-function makeQueryRaw(pendingReleases: Array<() => void>) {
+function makeExecuteRaw(pendingReleases: Array<() => void>) {
   return jest.fn(async (strings: TemplateStringsArray, ...values: any[]) => {
     const sql = strings.join('?');
     if (sql.includes('pg_advisory_xact_lock')) {
@@ -116,14 +124,38 @@ function makeQueryRaw(pendingReleases: Array<() => void>) {
       const { wait, release } = acquireLock(key);
       pendingReleases.push(release);
       await wait;
-      return [];
+      // `$executeRaw` rend un nombre de lignes affectees, jamais des lignes.
+      return 1;
+    }
+    return 0;
+  });
+}
+
+/**
+ * Reproduit le refus de Postgres sur une commande sans colonnes lisibles.
+ *
+ * Voir l'en-tete du fichier : c'est ce refus, invisible tant que la doublure
+ * acceptait tout, qui cassait la caisse en production.
+ */
+function makeQueryRawQuiRefuse() {
+  return jest.fn(async (strings: TemplateStringsArray) => {
+    const sql = strings.join('?');
+    if (sql.includes('pg_advisory_xact_lock')) {
+      throw new Error(
+        "Raw query failed. Message: `Failed to deserialize column of type 'void'.` " +
+          'Une commande qui ne rend aucune colonne se passe par $executeRaw, pas par $queryRaw.'
+      );
     }
     return [];
   });
 }
 
 function makeTx(pendingReleases: Array<() => void>): Row {
-  return { ...mockPrisma, $queryRaw: makeQueryRaw(pendingReleases) };
+  return {
+    ...mockPrisma,
+    $executeRaw: makeExecuteRaw(pendingReleases),
+    $queryRaw: makeQueryRawQuiRefuse()
+  };
 }
 
 const mockPrisma: Row = {

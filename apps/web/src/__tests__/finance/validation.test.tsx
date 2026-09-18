@@ -70,7 +70,7 @@ function fileTypique(): PendingDocument[] {
     piece({
       documentType: 'CASH_VOUCHER',
       documentId: 'caisse-1',
-      label: 'Pièce de caisse PC-2026-00031 — Ousmane Touré',
+      label: 'Pièce de caisse 2026-0031 — Ousmane Touré',
       amount: 150_000,
       createdAt: '2026-09-08T07:45:00.000Z',
       createdByUserId: 'user-aissatou-barry',
@@ -262,7 +262,7 @@ describe('File de validation — vocabulaire (P-1 du PRD)', () => {
 
     await screen.findByText('Quincaillerie Almamya — Facture FA-2026-0142', {}, { timeout: 8000 });
     await screen.findByText('Transport Nongo — Règlement du 15/09/2026');
-    await screen.findByText('Pièce de caisse PC-2026-00031 — Ousmane Touré');
+    await screen.findByText('Pièce de caisse 2026-0031 — Ousmane Touré');
 
     const texte = document.body.textContent ?? '';
     const normalise = texte.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();

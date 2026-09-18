@@ -120,7 +120,7 @@ const PIECES_EN_ATTENTE: PieceSeed[] = [
   {
     documentType: 'CASH_VOUCHER',
     documentId: 'caisse-2026-00031',
-    label: 'Pièce de caisse PC-2026-00031 — Ousmane Touré',
+    label: 'Pièce de caisse 2026-0031 — Ousmane Touré',
     amount: 150_000,
     createdAt: '2026-09-08T07:45:00.000Z',
     createdByUserId: UTILISATEUR_MARIAM,
@@ -129,7 +129,7 @@ const PIECES_EN_ATTENTE: PieceSeed[] = [
   {
     documentType: 'CASH_VOUCHER',
     documentId: 'caisse-2026-00034',
-    label: 'Pièce de caisse PC-2026-00034 — Sékou Condé',
+    label: 'Pièce de caisse 2026-0034 — Sékou Condé',
     amount: 95_000,
     createdAt: '2026-09-12T13:10:00.000Z',
     createdByUserId: UTILISATEUR_FATOUMATA,
@@ -138,7 +138,7 @@ const PIECES_EN_ATTENTE: PieceSeed[] = [
   {
     documentType: 'CASH_VOUCHER',
     documentId: 'caisse-2026-00037',
-    label: 'Pièce de caisse PC-2026-00037 — Alpha Keita',
+    label: 'Pièce de caisse 2026-0037 — Alpha Keita',
     amount: 320_000,
     createdAt: '2026-09-15T15:05:00.000Z',
     createdByUserId: UTILISATEUR_IBRAHIMA,
@@ -147,7 +147,7 @@ const PIECES_EN_ATTENTE: PieceSeed[] = [
   {
     documentType: 'CASH_VOUCHER',
     documentId: 'caisse-2026-00039',
-    label: 'Pièce de caisse PC-2026-00039 — Hadja Bangoura',
+    label: 'Pièce de caisse 2026-0039 — Hadja Bangoura',
     amount: 210_000,
     createdAt: '2026-09-18T08:30:00.000Z',
     createdByUserId: UTILISATEUR_AISSATOU,

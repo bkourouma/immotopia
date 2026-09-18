@@ -101,7 +101,7 @@ function detail(overrides: Partial<SiteDetail> = {}): SiteDetail {
         costCategoryLabel: 'Gros œuvre',
         sourceType: 'CASH_VOUCHER',
         sourceId: 'piece-caisse-secrete-02',
-        sourceLabel: 'Pièce de caisse PC-2026-0033 — Sable et gravier',
+        sourceLabel: 'Pièce de caisse 2026-0033 — Sable et gravier',
         amount: 800_000
       },
       {
@@ -111,7 +111,7 @@ function detail(overrides: Partial<SiteDetail> = {}): SiteDetail {
         costCategoryLabel: "Main-d'œuvre",
         sourceType: 'CASH_VOUCHER',
         sourceId: 'piece-caisse-secrete-01',
-        sourceLabel: 'Pièce de caisse PC-2026-0032 — Salaire équipe maçons',
+        sourceLabel: 'Pièce de caisse 2026-0032 — Salaire équipe maçons',
         amount: 1_250_000
       },
       {
@@ -121,7 +121,7 @@ function detail(overrides: Partial<SiteDetail> = {}): SiteDetail {
         costCategoryLabel: "Main-d'œuvre",
         sourceType: 'CASH_VOUCHER',
         sourceId: 'piece-caisse-secrete-03',
-        sourceLabel: "Pièce de caisse PC-2026-0034 — Prime d'équipe",
+        sourceLabel: "Pièce de caisse 2026-0034 — Prime d'équipe",
         amount: 250_000
       }
     ],
@@ -136,7 +136,7 @@ function detail(overrides: Partial<SiteDetail> = {}): SiteDetail {
 function voucher(overrides: Partial<CashVoucher> = {}): CashVoucher {
   return {
     id: 'piece-1',
-    number: 'PC-2026-0107',
+    number: '2026-0107',
     siteId: 'chantier-1',
     siteLabel: 'Villa duplex — Kipé Centre',
     costCategoryId: 'poste-main-oeuvre',
@@ -303,7 +303,7 @@ describe('Détail d’un chantier', () => {
     await screen.findByRole('heading', { name: 'Villa duplex — Kipé Centre' }, { timeout: 8000 });
 
     expect(screen.getByText("Facture FC-2026-0141 — Ciments d'Afrique CI")).toBeInTheDocument();
-    expect(screen.getByText('Pièce de caisse PC-2026-0032 — Salaire équipe maçons')).toBeInTheDocument();
+    expect(screen.getByText('Pièce de caisse 2026-0032 — Salaire équipe maçons')).toBeInTheDocument();
     expect(screen.queryByText('facture-secrete-01')).not.toBeInTheDocument();
     expect(screen.queryByText('piece-caisse-secrete-01')).not.toBeInTheDocument();
   });
@@ -377,7 +377,7 @@ describe('Pièce de caisse', () => {
       amount: 450_000,
       reason: 'Salaire équipe finitions'
     });
-    expect(await screen.findByText('Pièce PC-2026-0107', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(await screen.findByText('Pièce 2026-0107', {}, { timeout: 8000 })).toBeInTheDocument();
   }, 15000);
 
   // Ce test monte l'ecran complet et enchaine plusieurs interactions dans
@@ -390,7 +390,7 @@ describe('Pièce de caisse', () => {
     validateCashVoucher.mockResolvedValue(voucher({ status: 'VALIDATED', validatedAt: '2026-09-18T10:00:00.000Z' }));
     await remplirEtEmettre(user);
 
-    await screen.findByText('Pièce PC-2026-0107', {}, { timeout: 8000 });
+    await screen.findByText('Pièce 2026-0107', {}, { timeout: 8000 });
     // Le déclencheur (« Valider la pièce ») et le bouton de confirmation
     // (okText « Valider ») portent des noms distincts, à dessein.
     await user.click(screen.getByRole('button', { name: 'Valider la pièce' }));
@@ -410,7 +410,7 @@ describe('Pièce de caisse', () => {
     const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => null);
     await remplirEtEmettre(user);
 
-    await screen.findByText('Pièce PC-2026-0107', {}, { timeout: 8000 });
+    await screen.findByText('Pièce 2026-0107', {}, { timeout: 8000 });
     await user.click(screen.getByRole('button', { name: /Imprimer le bon/ }));
 
     expect(getCashVoucherPdfUrl).toHaveBeenCalledWith('agence-1', 'piece-1');
@@ -465,6 +465,6 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     await user.type(screen.getByLabelText('Montant (FCFA)'), '450000');
     await user.type(screen.getByLabelText('Motif'), 'Salaire équipe finitions');
     await user.click(screen.getByRole('button', { name: /Émettre la pièce/ }));
-    await screen.findByText('Pièce PC-2026-0107', {}, { timeout: 8000 });
+    await screen.findByText('Pièce 2026-0107', {}, { timeout: 8000 });
   }
 });

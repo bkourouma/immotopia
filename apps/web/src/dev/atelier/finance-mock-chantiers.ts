@@ -127,7 +127,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Gros œuvre',
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-riche-01',
-    sourceLabel: 'Pièce de caisse PC-2026-0031 — Sable et gravier, livraison Kipé',
+    sourceLabel: 'Pièce de caisse 2026-0031 — Sable et gravier, livraison Kipé',
     amount: 850_000
   },
   {
@@ -137,7 +137,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: "Main-d'œuvre",
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-riche-02',
-    sourceLabel: 'Pièce de caisse PC-2026-0032 — Salaire équipe maçons (2 semaines)',
+    sourceLabel: 'Pièce de caisse 2026-0032 — Salaire équipe maçons (2 semaines)',
     amount: 1_200_000
   },
   {
@@ -157,7 +157,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: "Main-d'œuvre",
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-riche-03',
-    sourceLabel: 'Pièce de caisse PC-2026-0045 — Salaire équipe maçons (2 semaines)',
+    sourceLabel: 'Pièce de caisse 2026-0045 — Salaire équipe maçons (2 semaines)',
     amount: 1_250_000
   },
   {
@@ -177,7 +177,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Toiture',
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-riche-04',
-    sourceLabel: 'Pièce de caisse PC-2026-0058 — Transport tôles bac acier',
+    sourceLabel: 'Pièce de caisse 2026-0058 — Transport tôles bac acier',
     amount: 350_000
   },
   {
@@ -187,7 +187,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: "Main-d'œuvre",
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-riche-05',
-    sourceLabel: 'Pièce de caisse PC-2026-0061 — Salaire équipe couvreurs',
+    sourceLabel: 'Pièce de caisse 2026-0061 — Salaire équipe couvreurs',
     amount: 900_000
   },
   {
@@ -207,7 +207,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Plomberie',
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-riche-06',
-    sourceLabel: "Pièce de caisse PC-2026-0067 — Main-d'œuvre plombier, forfait",
+    sourceLabel: "Pièce de caisse 2026-0067 — Main-d'œuvre plombier, forfait",
     amount: 400_000
   },
   {
@@ -227,7 +227,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Électricité',
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-riche-07',
-    sourceLabel: "Pièce de caisse PC-2026-0074 — Main-d'œuvre électricien, forfait",
+    sourceLabel: "Pièce de caisse 2026-0074 — Main-d'œuvre électricien, forfait",
     amount: 500_000
   },
   {
@@ -257,7 +257,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: "Main-d'œuvre",
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-riche-08',
-    sourceLabel: 'Pièce de caisse PC-2026-0082 — Salaire équipe carreleurs',
+    sourceLabel: 'Pièce de caisse 2026-0082 — Salaire équipe carreleurs',
     amount: 850_000
   },
   {
@@ -267,7 +267,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Divers',
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-riche-09',
-    sourceLabel: 'Pièce de caisse PC-2026-0086 — Gardiennage du chantier, quinzaine',
+    sourceLabel: 'Pièce de caisse 2026-0086 — Gardiennage du chantier, quinzaine',
     amount: 300_000
   },
   {
@@ -297,7 +297,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: "Main-d'œuvre",
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-riche-10',
-    sourceLabel: 'Pièce de caisse PC-2026-0093 — Salaire équipe finitions',
+    sourceLabel: 'Pièce de caisse 2026-0093 — Salaire équipe finitions',
     amount: 780_000
   },
   {
@@ -307,7 +307,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Matériaux',
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-riche-11',
-    sourceLabel: 'Pièce de caisse PC-2026-0099 — Achat quincaillerie divers, finitions',
+    sourceLabel: 'Pièce de caisse 2026-0099 — Achat quincaillerie divers, finitions',
     amount: 260_000
   }
 ];
@@ -352,7 +352,7 @@ const SANS_BIEN_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: "Main-d'œuvre",
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-sans-bien-01',
-    sourceLabel: 'Pièce de caisse PC-2026-0052 — Salaire équipe fondations',
+    sourceLabel: 'Pièce de caisse 2026-0052 — Salaire équipe fondations',
     amount: 950_000
   },
   {
@@ -362,7 +362,7 @@ const SANS_BIEN_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Divers',
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-sans-bien-02',
-    sourceLabel: 'Pièce de caisse PC-2026-0071 — Location de terrain, quittance mensuelle',
+    sourceLabel: 'Pièce de caisse 2026-0071 — Location de terrain, quittance mensuelle',
     amount: 400_000
   },
   {
@@ -412,7 +412,7 @@ const CLOTURE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: "Main-d'œuvre",
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-cloture-01',
-    sourceLabel: 'Pièce de caisse PC-2025-0210 — Salaire équipe gros œuvre, solde final',
+    sourceLabel: 'Pièce de caisse 2025-0210 — Salaire équipe gros œuvre, solde final',
     amount: 2_100_000
   },
   {
@@ -442,7 +442,7 @@ const CLOTURE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Divers',
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-cloture-02',
-    sourceLabel: 'Pièce de caisse PC-2026-0018 — Nettoyage de fin de chantier et finitions',
+    sourceLabel: 'Pièce de caisse 2026-0018 — Nettoyage de fin de chantier et finitions',
     amount: 500_000
   }
 ];
@@ -503,7 +503,7 @@ export const SITES: ConstructionSite[] = SITE_DETAILS.map(detail => detail.site)
 
 const PIECE_CAISSE_EMISE: CashVoucher = {
   id: 'piece-caisse-atelier-01',
-  number: 'PC-2026-0107',
+  number: '2026-0107',
   siteId: RICHE_BASE.id,
   siteLabel: RICHE_BASE.name,
   costCategoryId: 'poste-main-oeuvre',

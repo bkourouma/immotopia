@@ -67,7 +67,18 @@ export interface Supplier {
   email: string | null;
   /** Prestataire de maintenance déjà connu, s'il y en a un. */
   maintenanceVendorId: string | null;
-  accountId: string;
+  /**
+   * Compte de tiers du fournisseur, ouvert à sa création.
+   *
+   * Nommé comme l'API le nomme, et non `accountId` : le serveur émet
+   * `thirdPartyAccountId` (contrat OpenAPI, schéma `Supplier`), et un type qui
+   * l'appelait autrement promettait un champ qui n'arrive jamais. TypeScript
+   * ne pouvait pas le voir, puisque c'est précisément ce type qui mentait.
+   *
+   * La *ligne de balance* (`SuppliersBalanceLine`), elle, dit bien `accountId`
+   * des deux côtés : l'écart ne portait que sur l'objet fournisseur.
+   */
+  thirdPartyAccountId: string;
   isActive: boolean;
 }
 

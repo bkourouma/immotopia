@@ -56,7 +56,7 @@ export const SUPPLIERS: Supplier[] = [
     phone: '+224 622 10 20 30',
     email: 'contact@materiaux-fouta.gn',
     maintenanceVendorId: null,
-    accountId: 'compte-frs-01',
+    thirdPartyAccountId: 'compte-frs-01',
     isActive: true
   },
   {
@@ -67,7 +67,7 @@ export const SUPPLIERS: Supplier[] = [
     phone: '+223 76 45 12 09',
     email: 'f.keita@btpsahel.ml',
     maintenanceVendorId: null,
-    accountId: 'compte-frs-02',
+    thirdPartyAccountId: 'compte-frs-02',
     isActive: true
   },
   {
@@ -78,7 +78,7 @@ export const SUPPLIERS: Supplier[] = [
     phone: '+223 65 88 40 12',
     email: 'boubacar.traore@elecbamako.ml',
     maintenanceVendorId: null,
-    accountId: 'compte-frs-03',
+    thirdPartyAccountId: 'compte-frs-03',
     isActive: true
   },
   {
@@ -89,7 +89,7 @@ export const SUPPLIERS: Supplier[] = [
     phone: '+225 07 09 55 21',
     email: 'aya.kouassi@plomberiemoderne.ci',
     maintenanceVendorId: null,
-    accountId: 'compte-frs-04',
+    thirdPartyAccountId: 'compte-frs-04',
     isActive: true
   },
   {
@@ -100,7 +100,7 @@ export const SUPPLIERS: Supplier[] = [
     phone: '+224 655 30 40 50',
     email: 'contact@quincaillerie-centrale.gn',
     maintenanceVendorId: null,
-    accountId: 'compte-frs-05',
+    thirdPartyAccountId: 'compte-frs-05',
     isActive: true
   },
   {
@@ -113,7 +113,7 @@ export const SUPPLIERS: Supplier[] = [
     phone: '+224 628 77 11 02',
     email: 'k.barry@groupe-securite.gn',
     maintenanceVendorId: 'prestataire-maintenance-14',
-    accountId: 'compte-frs-06',
+    thirdPartyAccountId: 'compte-frs-06',
     isActive: true
   },
   {
@@ -124,7 +124,7 @@ export const SUPPLIERS: Supplier[] = [
     phone: '+224 664 90 12 34',
     email: 'sory.conde@carrelages-peintures.gn',
     maintenanceVendorId: null,
-    accountId: 'compte-frs-07',
+    thirdPartyAccountId: 'compte-frs-07',
     isActive: true
   },
   {
@@ -135,7 +135,7 @@ export const SUPPLIERS: Supplier[] = [
     phone: '+224 622 45 60 70',
     email: 'aminata.sow@bois-ebene.gn',
     maintenanceVendorId: null,
-    accountId: 'compte-frs-08',
+    thirdPartyAccountId: 'compte-frs-08',
     isActive: true
   },
   {
@@ -146,7 +146,7 @@ export const SUPPLIERS: Supplier[] = [
     phone: '+224 611 22 33 44',
     email: 'contact@fraicheurplus.gn',
     maintenanceVendorId: null,
-    accountId: 'compte-frs-09',
+    thirdPartyAccountId: 'compte-frs-09',
     isActive: true
   },
   {
@@ -160,7 +160,7 @@ export const SUPPLIERS: Supplier[] = [
     phone: '+224 655 66 77 88',
     email: 'mariame.cisse@nettoyagepro.gn',
     maintenanceVendorId: null,
-    accountId: 'compte-frs-10',
+    thirdPartyAccountId: 'compte-frs-10',
     isActive: false
   }
 ];
@@ -403,7 +403,7 @@ const PAYMENTS: Record<string, SupplierPayment[]> = {
 
 function ligneBalance(fournisseur: Supplier, totalBilled: number, totalSettled: number): SuppliersBalanceLine {
   return {
-    accountId: fournisseur.accountId,
+    accountId: fournisseur.thirdPartyAccountId,
     supplierId: fournisseur.id,
     label: fournisseur.name,
     totalBilled,

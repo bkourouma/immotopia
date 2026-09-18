@@ -24,8 +24,19 @@ import {
 
 const router = Router();
 
-router.use(authenticate);
-router.use(requireTenantAccess);
+/**
+ * Gardes limités au préfixe que ce routeur sert réellement.
+ *
+ * Ils étaient posés en `router.use(authenticate)` sans chemin. Ce routeur étant
+ * monté sur `/api` tout entier, Express faisait traverser ce garde à **toute**
+ * requête `/api/*` avant de la proposer aux routeurs montés après lui — dont
+ * `/api/geographic`, déclaré public. Le sélecteur de commune de l'écran Biens
+ * recevait donc un 401 et restait vide, sans que rien n'indique pourquoi.
+ *
+ * Avec le chemin, le garde ne s'applique plus qu'aux routes de ce fichier, qui
+ * partagent toutes ce préfixe.
+ */
+router.use('/tenants/:tenantId/finance', authenticate, requireTenantAccess);
 
 router.get('/tenants/:tenantId/finance/clients/balance', requireReportsRead, getClientsBalanceHandler);
 

@@ -99,7 +99,19 @@ function toVoucherRecord(row: Record<string, any>): CashVoucherRecord {
 // ---------------------------------------------------------------------------
 
 async function lockTenantFinanceSequenceTx(tx: PrismaTransactionClient, tenantId: string): Promise<void> {
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
+  // `$executeRaw` et non `$queryRaw`. `pg_advisory_xact_lock` renvoie `void`,
+  // un type que le désérialiseur de `$queryRaw` ne sait pas lire : il levait
+  // « Failed to deserialize column of type 'void' » à *chaque* création de
+  // pièce de caisse, donc sur le tout premier appel de production. Les tests
+  // unitaires du lot 2 remplacent Prisma par une doublure et ne pouvaient pas
+  // le voir ; le parcours de bout en bout
+  // (`scripts/finance-e2e-lot2.ts`) l'a trouvé au premier essai.
+  //
+  // `$executeRaw` n'attend aucune colonne en retour, seulement un nombre de
+  // lignes affectées : c'est la forme juste pour une instruction qui ne
+  // rapporte rien. Le verrou reste bien posé, et reste scopé à la
+  // transaction.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${tenantId}))`;
 }
 
 async function nextVoucherNumberTx(

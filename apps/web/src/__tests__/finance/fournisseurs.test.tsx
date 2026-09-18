@@ -74,7 +74,7 @@ function fournisseur(overrides: Partial<Supplier> = {}): Supplier {
     phone: '+224 622 10 20 30',
     email: 'contact@materiaux-fouta.gn',
     maintenanceVendorId: null,
-    accountId: 'compte-frs-01',
+    thirdPartyAccountId: 'compte-frs-01',
     isActive: true,
     ...overrides
   };

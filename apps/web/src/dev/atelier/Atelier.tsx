@@ -10,6 +10,13 @@ import { BalanceClients } from '../../pages/finance/BalanceClients';
 import { BalanceAgee } from '../../pages/finance/BalanceAgee';
 import { Releve } from '../../pages/finance/Releve';
 import { Facturation } from '../../pages/finance/Facturation';
+import { Fournisseurs } from '../../pages/finance/Fournisseurs';
+import { BalanceFournisseurs } from '../../pages/finance/BalanceFournisseurs';
+import { FactureFournisseur } from '../../pages/finance/FactureFournisseur';
+import { Chantiers } from '../../pages/finance/Chantiers';
+import { ChantierDetail } from '../../pages/finance/ChantierDetail';
+import { PieceDeCaisse } from '../../pages/finance/PieceDeCaisse';
+import { FileDeValidation } from '../../pages/finance/FileDeValidation';
 import { Documents } from '../../pages/rental/Documents';
 import { DocumentTemplates } from '../../pages/documents/DocumentTemplates';
 import { CalendarPage } from '../../pages/crm/Calendar';
@@ -92,9 +99,75 @@ const BALANCE = 'tenant/' + AGENCE + '/finance/balance-clients';
 const BALANCE_AGEE = 'tenant/' + AGENCE + '/finance/balance-agee';
 const RELEVE = 'tenant/' + AGENCE + '/finance/comptes/00000000-0000-4000-8000-000000000001';
 const FACTURATION = 'tenant/' + AGENCE + '/finance/facturation';
+const FOURNISSEURS = 'tenant/' + AGENCE + '/finance/fournisseurs';
+const BALANCE_FOURNISSEURS = FOURNISSEURS + '/balance';
+const FACTURE_FOURNISSEUR = FOURNISSEURS + '/frs-02/factures';
+const CHANTIERS = 'tenant/' + AGENCE + '/finance/chantiers';
+const CHANTIER_DETAIL = CHANTIERS + '/chantier-01';
+const PIECE_DE_CAISSE = CHANTIER_DETAIL + '/caisse';
+const VALIDATION = 'tenant/' + AGENCE + '/finance/validation';
 const SIDEBAR = 'coquille/sidebar';
 
 const SCENES: Scene[] = [
+  {
+    id: 'balance-fournisseurs',
+    titre: 'Balance fournisseurs — nominal',
+    description:
+      'Le miroir de la balance clients : ce que l’agence doit, par fournisseur. Deux soldes negatifs — des acomptes verses.',
+    scenario: 'nominal',
+    chemin: BALANCE_FOURNISSEURS
+  },
+  {
+    id: 'fournisseurs',
+    titre: 'Fournisseurs — nominal',
+    description: 'Dix fournisseurs, dont un inactif et un rattache a un prestataire de maintenance deja connu.',
+    scenario: 'nominal',
+    chemin: FOURNISSEURS
+  },
+  {
+    id: 'facture-fournisseur',
+    titre: 'Facture fournisseur — saisie et imputation',
+    description: 'L’ecart d’imputation s’affiche en direct, et l’enregistrement reste bloque tant qu’il n’est pas nul.',
+    scenario: 'nominal',
+    chemin: FACTURE_FOURNISSEUR
+  },
+  {
+    id: 'chantiers',
+    titre: 'Chantiers — nominal',
+    description:
+      'Un chantier se cree sans bien prealable : c’est ce qui debloque le cas des chantiers sur terrain loue.',
+    scenario: 'nominal',
+    chemin: CHANTIERS
+  },
+  {
+    id: 'chantier-detail',
+    titre: 'Chantier — cout reel et imputations',
+    description:
+      'Le cout arrive calcule par le serveur, avec ses sous-totaux par poste. Aucun champ ne permet de le saisir.',
+    scenario: 'nominal',
+    chemin: CHANTIER_DETAIL
+  },
+  {
+    id: 'piece-de-caisse',
+    titre: 'Piece de caisse — emission',
+    description: 'Formulaire court, numerotation sequentielle, et un bon imprimable.',
+    scenario: 'nominal',
+    chemin: PIECE_DE_CAISSE
+  },
+  {
+    id: 'validation',
+    titre: 'Pieces a valider — la file du dirigeant',
+    description: 'Onze pieces des trois natures, saisies par quatre personnes. Chaque ligne nomme son saisisseur.',
+    scenario: 'nominal',
+    chemin: VALIDATION
+  },
+  {
+    id: 'validation-vide',
+    titre: 'Pieces a valider — file a jour',
+    description: 'Rien n’attend : une bonne nouvelle, pas un etat d’erreur.',
+    scenario: 'vide',
+    chemin: VALIDATION
+  },
   {
     id: 'balance-clients',
     titre: 'Balance clients — nominal',
@@ -643,6 +716,76 @@ export const Atelier: React.FC = () => (
         <Scene>
           <SessionSimulee>
             <Releve />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/fournisseurs"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <Fournisseurs />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/fournisseurs/balance"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <BalanceFournisseurs />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/fournisseurs/:supplierId/factures"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <FactureFournisseur />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/chantiers"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <Chantiers />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/chantiers/:siteId"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <ChantierDetail />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/chantiers/:siteId/caisse"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <PieceDeCaisse />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/validation"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <FileDeValidation />
           </SessionSimulee>
         </Scene>
       }

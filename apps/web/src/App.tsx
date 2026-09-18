@@ -106,6 +106,36 @@ const Releve = lazy(() =>
 const Facturation = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/Facturation').then(m => ({ default: m.Facturation }))
 );
+// Module financier, lot 2 — meme morceau que le lot 1 : les ecrans se
+// consultent a la suite (une balance fournisseurs, puis la facture qu'elle
+// ouvre), et les separer ferait payer un aller-retour reseau a chaque clic.
+const Fournisseurs = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Fournisseurs').then(m => ({ default: m.Fournisseurs }))
+);
+const BalanceFournisseurs = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/BalanceFournisseurs').then(m => ({
+    default: m.BalanceFournisseurs
+  }))
+);
+const FactureFournisseur = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/FactureFournisseur').then(m => ({
+    default: m.FactureFournisseur
+  }))
+);
+const Chantiers = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Chantiers').then(m => ({ default: m.Chantiers }))
+);
+const ChantierDetail = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/ChantierDetail').then(m => ({ default: m.ChantierDetail }))
+);
+const PieceDeCaisse = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/PieceDeCaisse').then(m => ({ default: m.PieceDeCaisse }))
+);
+const FileDeValidation = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/FileDeValidation').then(m => ({
+    default: m.FileDeValidation
+  }))
+);
 const SyndicsList = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicsList').then(m => ({ default: m.SyndicsList }))
 );
@@ -600,6 +630,16 @@ function App() {
                       <Route path="/tenant/:tenantId/finance/balance-agee" element={<BalanceAgee />} />
                       <Route path="/tenant/:tenantId/finance/comptes/:accountId" element={<Releve />} />
                       <Route path="/tenant/:tenantId/finance/facturation" element={<Facturation />} />
+                      <Route path="/tenant/:tenantId/finance/fournisseurs" element={<Fournisseurs />} />
+                      <Route path="/tenant/:tenantId/finance/fournisseurs/balance" element={<BalanceFournisseurs />} />
+                      <Route
+                        path="/tenant/:tenantId/finance/fournisseurs/:supplierId/factures"
+                        element={<FactureFournisseur />}
+                      />
+                      <Route path="/tenant/:tenantId/finance/chantiers" element={<Chantiers />} />
+                      <Route path="/tenant/:tenantId/finance/chantiers/:siteId" element={<ChantierDetail />} />
+                      <Route path="/tenant/:tenantId/finance/chantiers/:siteId/caisse" element={<PieceDeCaisse />} />
+                      <Route path="/tenant/:tenantId/finance/validation" element={<FileDeValidation />} />
                       <Route path="/tenant/:tenantId/maintenance" element={<TicketList />} />
                       <Route path="/tenant/:tenantId/maintenance/new" element={<CreateTicket />} />
                       <Route path="/tenant/:tenantId/maintenance/:ticketId/edit" element={<EditTicket />} />

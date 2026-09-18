@@ -1017,16 +1017,23 @@ components:
 
     CashVoucher:
       type: object
-      required: [id, siteId, beneficiaryName, amount, currency, reason, status]
+      required:
+        [id, number, siteId, beneficiaryName, amount, currency, reason, status]
       properties:
         id: { type: string, format: uuid }
-        voucherNumber:
+        number:
           {
-            type: integer,
-            nullable: true,
-            description: Attribue seulement a la validation,
+            type: string,
+            example: 2026-0031,
+            description:
+              "Numero affiche, AAAA-NNNN : annee puis rang dans l'annee, par
+              agence. Attribue des la SAISIE, sous verrou consultatif, et non a
+              la validation. Ce document disait l'inverse et emettait deux
+              entiers separes ; le serveur, lui, a toujours emis cette seule
+              chaine. Ecart releve a l'integration du lot 2 et tranche en
+              faveur du code. Consequence a arbitrer : un brouillon abandonne
+              consomme son numero, ce qui laisse un trou dans la suite.",
           }
-        voucherYear: { type: integer, nullable: true }
         siteId: { type: string, format: uuid }
         costCategoryId: { type: string, format: uuid }
         beneficiaryName: { type: string }
