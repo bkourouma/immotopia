@@ -18,14 +18,19 @@
  * de `ClientsBalanceLine.balance` : positif, le locataire nous doit ; négatif,
  * il est créditeur.
  *
- * **`ADVANCE_APPLIED` ne déplace pas d'argent une seconde fois.** L'avance a
- * déjà été enregistrée comme un règlement sans facture en face
- * (`ADVANCE_RECEIVED`, qui rend le compte créditeur) ; la facturer ensuite
- * (`INSTALLMENT`) absorbe mécaniquement ce crédit dans le solde courant.
- * `ADVANCE_APPLIED` ne fait que DOCUMENTER ce lien pour le lecteur du
- * relevé — quelle avance a couvert quelle échéance — sans monter ni descendre
- * le solde une deuxième fois ; c'est pour cela que sa ligne ne porte ni
- * montant facturé ni montant réglé.
+ * **Imputer une avance écrit DEUX lignes, pas une.** L'avance a été créditée
+ * en entier à l'encaissement (`ADVANCE_RECEIVED`, qui rend le compte
+ * créditeur). L'imputer revient à reprendre ce crédit (`ADVANCE_APPLIED`, au
+ * débit) puis à le reposer au titre du règlement de l'échéance (`PAYMENT`, au
+ * crédit). Les deux s'annulent : le solde ne bouge pas, mais le relevé montre
+ * distinctement l'avance consommée et le loyer réglé, ce qu'exige le besoin
+ * B4 du PRD.
+ *
+ * Ce n'est pas une élégance. C'est la seule forme qui s'accorde avec
+ * `rebuildThirdPartyAccount`, qui rejoue toute allocation comme un règlement
+ * au crédit : une campagne qui n'écrirait pas ce crédit laisserait le rejeu
+ * l'ajouter après coup, et le solde du locataire deviendrait faux sans que
+ * rien ne le signale.
  *
  * **Limite connue de l'atelier** : `mock-api.ts` (partagé entre les trois
  * gestionnaires financiers) n'appelle `repondreReleve` qu'avec le CHEMIN de
@@ -235,14 +240,28 @@ const MOUVEMENTS: ThirdPartyMovementLine[] = [
     leaseId: BAIL
   },
   {
-    // Ligne documentaire : elle dit QUELLE avance a couvert QUELLE échéance,
-    // sans redéplacer d'argent — voir l'en-tête du fichier.
+    // Première des deux lignes de l'imputation : elle reprend le crédit posé
+    // par l'avance. Voir l'en-tête du fichier pour le pourquoi de la paire.
     id: 'mvt-18',
     movementDate: '2026-07-05',
     type: 'ADVANCE_APPLIED',
-    label: 'Avance imputée sur le loyer de juillet 2026',
-    amountBilled: null,
+    label: "Reprise de l'avance, imputée au loyer de juillet 2026",
+    amountBilled: 450_000,
     amountSettled: null,
+    balanceAfter: 450_000,
+    currency: 'XOF',
+    leaseId: BAIL
+  },
+  {
+    // Seconde ligne : le crédit revient au titre du règlement de l'échéance.
+    // Le solde retombe à zéro, et le relevé dit quelle avance a couvert quel
+    // loyer — c'est ce qu'exige le besoin B4.
+    id: 'mvt-18b',
+    movementDate: '2026-07-05',
+    type: 'PAYMENT',
+    label: 'Règlement du loyer de juillet 2026',
+    amountBilled: null,
+    amountSettled: 450_000,
     balanceAfter: 0,
     currency: 'XOF',
     leaseId: BAIL

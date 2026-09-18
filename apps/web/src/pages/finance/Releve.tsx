@@ -134,8 +134,8 @@ export const Releve: React.FC = () => {
       <PageHeader
         title={data?.label ?? 'Relevé de compte'}
         breadcrumbs={[
-          { label: 'Finance', to: `/tenant/${tenantId}/finance/clients` },
-          { label: 'Clients', to: `/tenant/${tenantId}/finance/clients` },
+          { label: 'Finance', to: `/tenant/${tenantId}/finance/balance-clients` },
+          { label: 'Clients', to: `/tenant/${tenantId}/finance/balance-clients` },
           { label: 'Relevé' }
         ]}
         subtitle={

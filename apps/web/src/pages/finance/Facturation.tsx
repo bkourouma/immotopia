@@ -82,7 +82,23 @@ function capitaliser(mot: string): string {
   return mot.charAt(0).toUpperCase() + mot.slice(1);
 }
 
-/** Élision : « de septembre » mais « d'octobre », « d'avril », « d'août ». */
+/**
+ * La période nommée seule : « Septembre 2026 ».
+ *
+ * Distincte de `libellePeriode`, qui porte la préposition. Les deux existaient
+ * confondues, si bien que la colonne « Période » affichait « De novembre
+ * 2026 » — une préposition sans phrase où se rattacher.
+ */
+function periodeSeule(mois: number, annee: number): string {
+  return capitaliser(`${MOIS_FR[mois - 1] ?? String(mois)} ${annee}`);
+}
+
+/**
+ * La période dans une phrase : « de septembre 2026 », « d'octobre 2026 ».
+ *
+ * L'élision est correcte devant voyelle, y compris pour « août » que son
+ * accent circonflexe ne dispense pas de la règle.
+ */
 function libellePeriode(mois: number, annee: number): string {
   const nom = MOIS_FR[mois - 1] ?? String(mois);
   const preposition = /^[aeiouyàâäéèêëîïôöùûü]/i.test(nom) ? `d’${nom}` : `de ${nom}`;
@@ -408,7 +424,7 @@ export const Facturation: React.FC = () => {
   );
 
   const colonnesHistorique: ColumnsType<BillingRun> = [
-    { title: 'Période', key: 'periode', render: (_, c) => capitaliser(libellePeriode(c.periodMonth, c.periodYear)) },
+    { title: 'Période', key: 'periode', render: (_, c) => periodeSeule(c.periodMonth, c.periodYear) },
     { title: 'Libellé', dataIndex: 'label', key: 'libelle' },
     {
       title: 'Statut',
@@ -541,7 +557,7 @@ export const Facturation: React.FC = () => {
             <DataCard
               title={c.label}
               aria-label={`Campagne ${c.label}`}
-              subtitle={capitaliser(libellePeriode(c.periodMonth, c.periodYear))}
+              subtitle={periodeSeule(c.periodMonth, c.periodYear)}
               status={<StatusTag status={c.status} tone={s.tone} label={s.label} />}
               fields={[{ label: 'Exécutée le', value: c.finishedAt ? dateCourte(c.finishedAt) : '—' }]}
               onOpen={() => ouvrirCampagne(c.id)}

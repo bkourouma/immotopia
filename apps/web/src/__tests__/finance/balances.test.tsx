@@ -79,7 +79,7 @@ function Adresse() {
   return <span data-testid="adresse">{location.pathname + location.search}</span>;
 }
 
-function mountClients(url = '/tenant/agence-1/finance/clients') {
+function mountClients(url = '/tenant/agence-1/finance/balance-clients') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
@@ -87,7 +87,7 @@ function mountClients(url = '/tenant/agence-1/finance/clients') {
         <MemoryRouter initialEntries={[url]}>
           <Adresse />
           <Routes>
-            <Route path="/tenant/:tenantId/finance/clients" element={<BalanceClients />} />
+            <Route path="/tenant/:tenantId/finance/balance-clients" element={<BalanceClients />} />
             <Route path="/tenant/:tenantId/finance/comptes/:accountId" element={<span>relevé du compte</span>} />
           </Routes>
         </MemoryRouter>
@@ -96,7 +96,7 @@ function mountClients(url = '/tenant/agence-1/finance/clients') {
   );
 }
 
-function mountAgee(url = '/tenant/agence-1/finance/clients/agee') {
+function mountAgee(url = '/tenant/agence-1/finance/balance-agee') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
@@ -104,7 +104,7 @@ function mountAgee(url = '/tenant/agence-1/finance/clients/agee') {
         <MemoryRouter initialEntries={[url]}>
           <Adresse />
           <Routes>
-            <Route path="/tenant/:tenantId/finance/clients/agee" element={<BalanceAgee />} />
+            <Route path="/tenant/:tenantId/finance/balance-agee" element={<BalanceAgee />} />
             <Route path="/tenant/:tenantId/finance/comptes/:accountId" element={<span>relevé du compte</span>} />
           </Routes>
         </MemoryRouter>
@@ -162,7 +162,7 @@ describe('Balance clients — rendu', () => {
     // Filtre déjà posé dans l'URL, mais aucune ligne ne correspond : l'écran
     // doit proposer d'effacer les filtres, pas de créer un compte.
     getClientsBalance.mockResolvedValue({ lines: [], totalBalance: 0, currency: 'XOF' });
-    mountClients('/tenant/agence-1/finance/clients?propertyId=bien-inexistant');
+    mountClients('/tenant/agence-1/finance/balance-clients?propertyId=bien-inexistant');
 
     // Le bouton apparaît deux fois : une fois posé par `<FilterSheet>` à côté
     // des contrôles, une fois par le bloc « aucun résultat » de `<DataView>`.
@@ -179,7 +179,7 @@ describe('Balance clients — état dans l’URL', () => {
       pagination: { page: 1, limit: 200, total: 1, totalPages: 1 }
     });
 
-    mountClients('/tenant/agence-1/finance/clients?from=2026-01-01&to=2026-01-31&propertyId=bien-7');
+    mountClients('/tenant/agence-1/finance/balance-clients?from=2026-01-01&to=2026-01-31&propertyId=bien-7');
 
     await waitFor(() => expect(getClientsBalance).toHaveBeenCalled(), { timeout: 8000 });
     const appelFiltre = getClientsBalance.mock.calls.find(call => call[1]?.propertyId);
@@ -197,7 +197,7 @@ describe('Balance clients — état dans l’URL', () => {
     getClientsBalance.mockResolvedValue({ lines: [ligne()], totalBalance: 600_000, currency: 'XOF' });
     const user = userEvent.setup({ delay: null });
 
-    mountClients('/tenant/agence-1/finance/clients?from=2026-01-01&to=2026-01-31');
+    mountClients('/tenant/agence-1/finance/balance-clients?from=2026-01-01&to=2026-01-31');
     await screen.findByText('Mariam Diomandé', {}, { timeout: 8000 });
     expect(screen.getByTestId('adresse')).toHaveTextContent('from=2026-01-01');
 

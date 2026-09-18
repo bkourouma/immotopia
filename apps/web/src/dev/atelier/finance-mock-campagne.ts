@@ -161,16 +161,16 @@ const CAMPAGNE_SEPTEMBRE: BillingRun = {
       }
     ],
     excluded: [
-      { leaseId: 'BAIL-2026-0018', leaseLabel: 'Locataire — Bien', reason: 'LEASE_NOT_ACTIVE' },
-      { leaseId: 'BAIL-2026-0025', leaseLabel: 'Locataire — Bien', reason: 'PERIOD_BEFORE_LEASE_START' },
-      { leaseId: 'BAIL-2026-0033', leaseLabel: 'Locataire — Bien', reason: 'PERIOD_AFTER_LEASE_END' },
+      { leaseId: 'BAIL-2026-0018', leaseLabel: 'Kadiatou Sylla — Appartement Taouyah C1', reason: 'LEASE_NOT_ACTIVE' },
+      { leaseId: 'BAIL-2026-0025', leaseLabel: 'Sékou Condé — Villa Nongo 5', reason: 'PERIOD_BEFORE_LEASE_START' },
+      { leaseId: 'BAIL-2026-0033', leaseLabel: 'Alpha Keita — Local Matam 11', reason: 'PERIOD_AFTER_LEASE_END' },
       { leaseId: 'BAIL-2026-0044', leaseLabel: 'Hadja Bangoura — Studio Coleah 3', reason: 'LEASE_WITHOUT_AMOUNT' },
-      { leaseId: 'BAIL-2026-0050', leaseLabel: 'Locataire — Bien', reason: 'PERIOD_OFF_BILLING_CYCLE' }
+      { leaseId: 'BAIL-2026-0050', leaseLabel: 'Mariama Baldé — Duplex Kaporo 8', reason: 'PERIOD_OFF_BILLING_CYCLE' }
     ],
     advancesApplied: [
       {
         tenantClientId: 'CLI-2026-0091',
-        tenantLabel: 'Locataire',
+        tenantLabel: 'Aïssatou Barry',
         installmentId: 'ech-2026-09-0007',
         amount: 250_000,
         sourcePaymentId: 'paiement-2026-0450'

@@ -102,6 +102,7 @@ export type SectionId =
   // Collaborateur d'agence.
   | 'parc'
   | 'locatif'
+  | 'finance'
   | 'patrimoine'
   | 'commercial'
   | 'copropriete'
@@ -113,6 +114,7 @@ export type SectionId =
 export const SECTION_LABELS: Record<SectionId, string> = {
   parc: 'Parc immobilier',
   locatif: 'Gestion locative',
+  finance: 'Finance',
   patrimoine: 'Patrimoine et entretien',
   commercial: 'Commercial et communication',
   copropriete: 'Copropriété',
@@ -244,6 +246,19 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
       },
 
       // --- zone « Plus » : ce qui est rare ---------------------------------
+      {
+        key: 'finance',
+        label: 'Finance',
+        icon: <BankOutlined />,
+        zone: 'more',
+        section: 'finance',
+        href: '/tenant/:tenantId/finance/balance-clients',
+        children: [
+          { key: 'finance-clients', label: 'Balance clients', href: '/tenant/:tenantId/finance/balance-clients' },
+          { key: 'finance-clients-agee', label: 'Balance âgée', href: '/tenant/:tenantId/finance/balance-agee' },
+          { key: 'finance-facturation', label: 'Facturation du mois', href: '/tenant/:tenantId/finance/facturation' }
+        ]
+      },
       {
         key: 'patrimoine',
         label: 'Patrimoine',

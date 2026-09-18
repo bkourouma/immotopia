@@ -20,6 +20,7 @@ import propertyPublicRoutes from './routes/property-public-routes';
 import geographicRoutes from './routes/geographic-routes';
 import rentalRoutes from './routes/rental-routes';
 import documentRoutes from './routes/document-routes';
+import financeRoutes from './routes/finance-routes';
 import maintenanceRoutes from './routes/maintenance-routes';
 import emailNotificationConfigRoutes from './routes/email-notification-config-routes';
 import whatsappNotificationConfigRoutes from './routes/whatsapp-notification-config-routes';
@@ -157,6 +158,7 @@ app.use('/api/tenants', crmRoutes); // CRM routes are tenant-scoped
 app.use('/api/tenants/:tenantId/crm/contacts-search', contactSearchRoutes);
 app.use('/api/tenants', rentalRoutes); // Rental routes are tenant-scoped
 app.use('/api/tenants', documentRoutes); // Document routes are tenant-scoped
+app.use('/api', financeRoutes); // Finance : balances, releves, campagnes de facturation
 app.use('/api/tenants/:tenantId/maintenance', maintenanceRoutes); // Maintenance routes are tenant-scoped
 app.use('/api/tenants/:tenantId/email-notifications', emailNotificationConfigRoutes); // Notifications email (activation + templates)
 app.use('/api/tenants/:tenantId/whatsapp-notifications', whatsappNotificationConfigRoutes); // Notifications WhatsApp (WaSender/Twilio)

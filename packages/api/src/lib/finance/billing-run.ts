@@ -337,7 +337,7 @@ async function applyAdvancesTx(
       tenantId: args.tenantId,
       type: ThirdPartyMovementType.ADVANCE_APPLIED,
       billed: applyAmount,
-      label: `Avance imputée sur le loyer ${libellePeriode(args.periodYear, args.periodMonth)}`,
+      label: `Reprise de l'avance, imputée au loyer ${libellePeriode(args.periodYear, args.periodMonth)}`,
       sourceType: 'RENTAL_PAYMENT_ALLOCATION',
       sourceId: allocation.id,
       leaseId: args.leaseId,

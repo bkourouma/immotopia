@@ -41,6 +41,7 @@ describe('catalogue des menus — fidélité au modèle de navigation', () => {
       'Général',
       SECTION_LABELS.parc,
       SECTION_LABELS.locatif,
+      SECTION_LABELS.finance,
       SECTION_LABELS.patrimoine,
       SECTION_LABELS.commercial,
       SECTION_LABELS.copropriete,

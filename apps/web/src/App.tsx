@@ -89,6 +89,23 @@ const OwnerStatementDetailPage = lazy(() =>
     default: m.OwnerStatementDetailPage
   }))
 );
+// Module financier — regroupe dans un seul morceau : les quatre ecrans se
+// consultent a la suite (une balance, puis le releve qu'elle ouvre), et les
+// separer ferait payer un aller-retour reseau a chaque clic.
+const BalanceClients = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/BalanceClients').then(m => ({
+    default: m.BalanceClients
+  }))
+);
+const BalanceAgee = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/BalanceAgee').then(m => ({ default: m.BalanceAgee }))
+);
+const Releve = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Releve').then(m => ({ default: m.Releve }))
+);
+const Facturation = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Facturation').then(m => ({ default: m.Facturation }))
+);
 const SyndicsList = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicsList').then(m => ({ default: m.SyndicsList }))
 );
@@ -579,6 +596,10 @@ function App() {
                       />
                       <Route path="/tenant/:tenantId/rental/payments" element={<Payments />} />
                       <Route path="/tenant/:tenantId/rental/payments/:paymentId" element={<PaymentDetailPage />} />
+                      <Route path="/tenant/:tenantId/finance/balance-clients" element={<BalanceClients />} />
+                      <Route path="/tenant/:tenantId/finance/balance-agee" element={<BalanceAgee />} />
+                      <Route path="/tenant/:tenantId/finance/comptes/:accountId" element={<Releve />} />
+                      <Route path="/tenant/:tenantId/finance/facturation" element={<Facturation />} />
                       <Route path="/tenant/:tenantId/maintenance" element={<TicketList />} />
                       <Route path="/tenant/:tenantId/maintenance/new" element={<CreateTicket />} />
                       <Route path="/tenant/:tenantId/maintenance/:ticketId/edit" element={<EditTicket />} />

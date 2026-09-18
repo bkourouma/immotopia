@@ -6,6 +6,10 @@ import { PropertyDetail } from '../../pages/properties/PropertyDetail';
 import { Installments } from '../../pages/rental/Installments';
 import { Penalties } from '../../pages/rental/Penalties';
 import { Payments } from '../../pages/rental/Payments';
+import { BalanceClients } from '../../pages/finance/BalanceClients';
+import { BalanceAgee } from '../../pages/finance/BalanceAgee';
+import { Releve } from '../../pages/finance/Releve';
+import { Facturation } from '../../pages/finance/Facturation';
 import { Documents } from '../../pages/rental/Documents';
 import { DocumentTemplates } from '../../pages/documents/DocumentTemplates';
 import { CalendarPage } from '../../pages/crm/Calendar';
@@ -84,9 +88,73 @@ const MODELES = 'tenant/' + AGENCE + '/documents/templates';
 const CALENDRIER = 'tenant/' + AGENCE + '/crm/calendar';
 const PATRIMOINE = 'tenant/' + AGENCE + '/patrimoine';
 const TRAVAUX_CHEMIN = 'tenant/' + AGENCE + '/patrimoine/work-programs';
+const BALANCE = 'tenant/' + AGENCE + '/finance/balance-clients';
+const BALANCE_AGEE = 'tenant/' + AGENCE + '/finance/balance-agee';
+const RELEVE = 'tenant/' + AGENCE + '/finance/comptes/00000000-0000-4000-8000-000000000001';
+const FACTURATION = 'tenant/' + AGENCE + '/finance/facturation';
 const SIDEBAR = 'coquille/sidebar';
 
 const SCENES: Scene[] = [
+  {
+    id: 'balance-clients',
+    titre: 'Balance clients — nominal',
+    description:
+      'La réserve de la cliente, levée : dix locataires, un total de contrôle en pied, et un solde créditeur pour celle qui a payé d’avance.',
+    scenario: 'nominal',
+    chemin: BALANCE
+  },
+  {
+    id: 'balance-clients-vide',
+    titre: 'Balance clients — agence qui démarre',
+    description: 'Aucun compte ouvert : une invitation, pas une panne.',
+    scenario: 'vide',
+    chemin: BALANCE
+  },
+  {
+    id: 'balance-clients-erreur',
+    titre: 'Balance clients — panne',
+    description: 'L’agrégat ne répond pas : l’écran le dit et propose de réessayer.',
+    scenario: 'erreur',
+    chemin: BALANCE
+  },
+  {
+    id: 'balance-agee',
+    titre: 'Balance âgée — nominal',
+    description: 'La même créance, ventilée par ancienneté. Les cinq tranches somment au solde de la ligne.',
+    scenario: 'nominal',
+    chemin: BALANCE_AGEE
+  },
+  {
+    id: 'releve',
+    titre: 'Relevé de compte — nominal',
+    description:
+      'Une année de mouvements, dont une avance reçue puis absorbée par l’échéance suivante : le solde passe créditeur, puis revient.',
+    scenario: 'nominal',
+    chemin: RELEVE
+  },
+  {
+    id: 'releve-vide',
+    titre: 'Relevé de compte — période sans mouvement',
+    description:
+      'Le cas que la copropriété affiche faux : ouverture et clôture sont celles de l’époque, jamais le solde d’aujourd’hui.',
+    scenario: 'vide',
+    chemin: RELEVE
+  },
+  {
+    id: 'facturation',
+    titre: 'Facturation du mois — compte rendu',
+    description:
+      'Les baux facturés, les exclus avec leur motif en français, les avances imputées. Chaque ligne porte un nom, jamais un identifiant.',
+    scenario: 'nominal',
+    chemin: FACTURATION
+  },
+  {
+    id: 'facturation-vide',
+    titre: 'Facturation du mois — aucune campagne',
+    description: 'Avant le premier lancement : l’écran propose, il ne reproche rien.',
+    scenario: 'vide',
+    chemin: FACTURATION
+  },
   {
     id: 'sidebar-proprietaire',
     titre: 'Sidebar — portail propriétaire',
@@ -545,6 +613,46 @@ export const Atelier: React.FC = () => (
         <Scene>
           <SessionSimulee>
             <SceneSidebar />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/balance-clients"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <BalanceClients />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/balance-agee"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <BalanceAgee />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/comptes/:accountId"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <Releve />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/facturation"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <Facturation />
           </SessionSimulee>
         </Scene>
       }
