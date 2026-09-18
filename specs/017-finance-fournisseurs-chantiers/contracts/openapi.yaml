@@ -1,0 +1,1082 @@
+openapi: 3.0.3
+info:
+  title: ImmoTopia Finance Operationnelle - Fournisseurs et chantiers (lot 2) API
+  version: 1.0.0
+  description: >
+    Contrat API du lot 2 du module de gestion financiere operationnelle : moteur
+    comptable generalise (invisible dans ce contrat, voir data-model.md), fournisseurs,
+    factures recues, reglements, chantiers, imputation, pieces de caisse et file de
+    validation. Vocabulaire impose (principe P-1 du PRD, etendu par ce lot) :
+    l'utilisatrice "facture", "regle" et "impute" ; aucune reponse n'expose "debit"
+    ni "credit". Toute piece financiere (facture, reglement, piece de caisse) est
+    creee en brouillon et ne produit ni ecriture ni imputation avant sa validation
+    explicite par un appel distinct, portant le droit `finance.documents.validate`.
+servers:
+  - url: /api
+tags:
+  - name: Fournisseurs
+  - name: FacturesFournisseurs
+  - name: ReglementsFournisseurs
+  - name: BalanceFournisseurs
+  - name: Chantiers
+  - name: PiecesDeCaisse
+  - name: Validation
+  - name: Patrimoine
+
+paths:
+  /tenants/{tenantId}/finance/suppliers:
+    get:
+      tags: [Fournisseurs]
+      summary: Lister les fournisseurs
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: isActive
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Liste des fournisseurs
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/SupplierListResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Fournisseurs]
+      summary: Creer un fournisseur (cree automatiquement son compte de tiers SUPPLIER)
+      description: Voir spec.md US2. Permission `finance.documents.create`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSupplierRequest" }
+      responses:
+        "201":
+          description: Fournisseur cree
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupplierResponseWrapper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/suppliers/{supplierId}:
+    get:
+      tags: [Fournisseurs]
+      summary: Detail d'un fournisseur
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SupplierId"
+      responses:
+        "200":
+          description: Fournisseur
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupplierResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/suppliers/balance:
+    get:
+      tags: [BalanceFournisseurs]
+      summary: Balance fournisseurs - une ligne par fournisseur, montant facture, montant regle, solde
+      description: >
+        Filtrable par periode et par chantier (via les factures imputees a ce chantier).
+        Voir spec.md US5.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/PeriodStart"
+        - $ref: "#/components/parameters/PeriodEnd"
+        - $ref: "#/components/parameters/SiteId"
+      responses:
+        "200":
+          description: Balance fournisseurs
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/SuppliersBalanceResponseWrapper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/suppliers/{supplierId}/invoices:
+    post:
+      tags: [FacturesFournisseurs]
+      summary: Saisir une facture fournisseur en brouillon
+      description: >
+        Le rattachement a un chantier (`siteId`) est obligatoire si le fournisseur est
+        de nature MATERIALS ou MIXED, optionnel pour SERVICES. Voir spec.md US3.
+        Permission `finance.documents.create`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SupplierId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/CreateSupplierInvoiceRequest" }
+      responses:
+        "201":
+          description: Facture creee en brouillon
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/SupplierInvoiceResponseWrapper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/supplier-invoices/{invoiceId}:
+    get:
+      tags: [FacturesFournisseurs]
+      summary: Detail d'une facture fournisseur
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/InvoiceId"
+      responses:
+        "200":
+          description: Facture
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/SupplierInvoiceResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/supplier-invoices/{invoiceId}/validate:
+    post:
+      tags: [FacturesFournisseurs]
+      summary: Valider une facture fournisseur brouillon
+      description: >
+        Dans une seule transaction : verifie que la somme des imputations egale le
+        montant de la facture, poste l'ecriture equilibree et la verrouille, credite
+        le compte du fournisseur, cree les imputations au chantier. L'echec d'une
+        etape annule toutes les autres. Voir spec.md US3, FR-012. Permission
+        `finance.documents.validate` (distincte de la creation, voir description
+        globale de ce contrat).
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/InvoiceId"
+      responses:
+        "200":
+          description: Facture validee
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/SupplierInvoiceResponseWrapper" }
+        "400":
+          description: Somme des imputations differente du montant de la facture, ou facture deja validee/annulee
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: La facture est deja validee (immuable) ; toute correction passe par une annulation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+
+  /tenants/{tenantId}/finance/supplier-invoices/{invoiceId}/void:
+    post:
+      tags: [FacturesFournisseurs]
+      summary: Annuler une facture fournisseur validee par une piece d'annulation liee
+      description: >
+        Ne modifie jamais la facture ni son ecriture d'origine ; cree un `VoidDocument`
+        et une ecriture inverse. Voir spec.md, principe P-6 du PRD.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/InvoiceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VoidDocumentRequest" }
+      responses:
+        "201":
+          description: Piece d'annulation creee
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/VoidDocumentResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/suppliers/{supplierId}/payments:
+    post:
+      tags: [ReglementsFournisseurs]
+      summary: Enregistrer un reglement fournisseur en brouillon, total ou partiel, multi-factures
+      description: Voir spec.md US4. Permission `finance.documents.create`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SupplierId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/CreateSupplierPaymentRequest" }
+      responses:
+        "201":
+          description: Reglement cree en brouillon
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/SupplierPaymentResponseWrapper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/supplier-payments/{paymentId}/validate:
+    post:
+      tags: [ReglementsFournisseurs]
+      summary: Valider un reglement fournisseur brouillon
+      description: Permission `finance.documents.validate`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/PaymentId"
+      responses:
+        "200":
+          description: Reglement valide
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/SupplierPaymentResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/accounts/{accountId}/statement:
+    get:
+      tags: [BalanceFournisseurs]
+      summary: Releve chronologique d'un compte de tiers fournisseur
+      description: >
+        Route du lot 1, generalisee a `kind: SUPPLIER`. Solde d'ouverture calcule
+        depuis le dernier mouvement anterieur a la borne de debut, jamais depuis le
+        solde courant. Voir spec.md US6, data-model.md defaut 3.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/PeriodStart"
+        - $ref: "#/components/parameters/PeriodEnd"
+      responses:
+        "200":
+          description: Releve de compte
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/AccountStatementResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/sites:
+    get:
+      tags: [Chantiers]
+      summary: Lister les chantiers
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: status
+          in: query
+          required: false
+          schema:
+            { type: string, enum: [PLANNED, IN_PROGRESS, SUSPENDED, CLOSED] }
+      responses:
+        "200":
+          description: Liste des chantiers
+          content:
+            application/json:
+              schema:
+                {
+                  $ref: "#/components/schemas/ConstructionSiteListResponseWrapper",
+                }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Chantiers]
+      summary: Creer un chantier sans bien preexistant
+      description: >
+        `propertyId` optionnel. Le cout reel n'est jamais accepte en entree : voir
+        spec.md US7/US8, FR-018, FR-021. Permission `finance.sites.manage`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/CreateConstructionSiteRequest" }
+      responses:
+        "201":
+          description: Chantier cree
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/ConstructionSiteResponseWrapper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/sites/{siteId}:
+    get:
+      tags: [Chantiers]
+      summary: Detail d'un chantier (en-tete et cout reel derive)
+      description: >
+        `actualCost` est toujours calcule (somme des imputations validees) ; aucun
+        champ d'entree correspondant n'existe sur cette route ni sur aucune autre.
+        Voir spec.md US8, SC-003.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SiteId"
+      responses:
+        "200":
+          description: Chantier
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/ConstructionSiteResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/sites/{siteId}/detail:
+    get:
+      tags: [Chantiers]
+      summary: Detail des imputations d'un chantier, par date, nature et poste
+      description: Voir spec.md US9, FR-023.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SiteId"
+      responses:
+        "200":
+          description: Detail des imputations
+          content:
+            application/json:
+              schema:
+                {
+                  $ref: "#/components/schemas/ConstructionSiteDetailResponseWrapper",
+                }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/cost-categories:
+    get:
+      tags: [Chantiers]
+      summary: Lister les postes de depense du tenant
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Postes de depense
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/CostCategoryListResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Chantiers]
+      summary: Creer un poste de depense
+      description: Permission `finance.settings.manage`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCostCategoryRequest" }
+      responses:
+        "201":
+          description: Poste cree
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/CostCategoryResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/sites/{siteId}/cash-vouchers:
+    post:
+      tags: [PiecesDeCaisse]
+      summary: Emettre une piece de caisse en brouillon pour un chantier
+      description: >
+        Voir spec.md US10, FR-022. **Decision actee le 18 septembre 2026** : une
+        seule caisse par tenant, la gestionnaire emet, le dirigeant valide (voir
+        spec.md, section "Decision actee : la caisse") ; aucun champ
+        `cashRegisterId` n'existe sur ce contrat. Permission
+        `finance.documents.create`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SiteId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateCashVoucherRequest" }
+      responses:
+        "201":
+          description: Piece de caisse creee en brouillon
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/CashVoucherResponseWrapper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/cash-vouchers/{voucherId}/validate:
+    post:
+      tags: [PiecesDeCaisse]
+      summary: Valider une piece de caisse brouillon
+      description: >
+        Attribue le numero sequentiel (par tenant et par annee) au moment de la
+        validation, sous verrou, protege contre la concurrence. Permission
+        `finance.documents.validate`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/VoucherId"
+      responses:
+        "200":
+          description: Piece de caisse validee, numerotee
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/CashVoucherResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/cash-vouchers/{voucherId}.pdf:
+    get:
+      tags: [PiecesDeCaisse]
+      summary: Piece de caisse au format PDF, imprimable
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/VoucherId"
+      responses:
+        "200":
+          description: Document PDF de la piece de caisse
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/validation-queue:
+    get:
+      tags: [Validation]
+      summary: File des pieces financieres en attente de validation, toutes natures confondues
+      description: >
+        Voir spec.md US11, FR-025, FR-026. Permission `finance.documents.validate`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: createdByUserId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: documentType
+          in: query
+          required: false
+          schema:
+            {
+              type: string,
+              enum: [SUPPLIER_INVOICE, SUPPLIER_PAYMENT, CASH_VOUCHER],
+            }
+      responses:
+        "200":
+          description: Pieces en attente
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/ValidationQueueResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/patrimoine/work-programs/{workProgramId}/construction-site:
+    patch:
+      tags: [Patrimoine]
+      summary: Rattacher un programme de travaux existant a un chantier
+      description: >
+        Voir spec.md US12, FR-024. Des que le lien est pose, `WorkProgram.actualCost`
+        devient derive du chantier et cesse d'etre accepte en saisie par
+        `PATCH /work-programs/{id}` (voir la specification 015 du module Patrimoine
+        pour cette route existante, non repetee dans ce contrat).
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: workProgramId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [constructionSiteId]
+              properties:
+                constructionSiteId:
+                  { type: string, format: uuid, nullable: true }
+      responses:
+        "200":
+          description: Programme de travaux rattache (ou detache si constructionSiteId est nul)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    required: [id, constructionSiteId, actualCost]
+                    properties:
+                      id: { type: string, format: uuid }
+                      constructionSiteId:
+                        { type: string, format: uuid, nullable: true }
+                      actualCost:
+                        {
+                          type: number,
+                          description: Derive du chantier si rattache,
+                          sinon inchange,
+                        }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SupplierId:
+      name: supplierId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    InvoiceId:
+      name: invoiceId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PaymentId:
+      name: paymentId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SiteId:
+      name: siteId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    VoucherId:
+      name: voucherId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PeriodStart:
+      name: from
+      in: query
+      required: false
+      schema: { type: string, format: date }
+    PeriodEnd:
+      name: to
+      in: query
+      required: false
+      schema: { type: string, format: date }
+
+  responses:
+    BadRequest:
+      description: Requete invalide
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    Forbidden:
+      description: Acces interdit (hors tenant, ou permission manquante)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    Conflict:
+      description: >
+        Conflit metier : violation d'unicite traduite (defaut corrige, voir
+        data-model.md defaut 5), ou piece deja validee/annulee
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+
+  schemas:
+    ApiError:
+      type: object
+      required: [success, error]
+      properties:
+        success: { type: boolean, example: false }
+        error: { type: string }
+
+    Supplier:
+      type: object
+      required: [id, name, kind, isActive, thirdPartyAccountId]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        kind: { type: string, enum: [MATERIALS, SERVICES, MIXED] }
+        contactPhone: { type: string, nullable: true }
+        contactEmail: { type: string, nullable: true }
+        maintenanceVendorId: { type: string, format: uuid, nullable: true }
+        thirdPartyAccountId: { type: string, format: uuid }
+        balance:
+          {
+            type: number,
+            description: Solde courant du compte (positif = nous lui devons),
+          }
+        currency: { type: string, example: XOF }
+        isActive: { type: boolean }
+
+    CreateSupplierRequest:
+      type: object
+      required: [name, kind]
+      properties:
+        name: { type: string }
+        kind: { type: string, enum: [MATERIALS, SERVICES, MIXED] }
+        contactPhone: { type: string }
+        contactEmail: { type: string }
+        maintenanceVendorId: { type: string, format: uuid }
+
+    SupplierResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/Supplier" }
+
+    SupplierListResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Supplier" }
+
+    SuppliersBalanceLine:
+      type: object
+      required:
+        [
+          accountId,
+          supplierId,
+          label,
+          totalBilled,
+          totalSettled,
+          balance,
+          currency,
+        ]
+      properties:
+        accountId: { type: string, format: uuid }
+        supplierId: { type: string, format: uuid }
+        label: { type: string, description: Raison sociale du fournisseur }
+        totalBilled:
+          { type: number, description: Montant total facture sur la periode }
+        totalSettled:
+          { type: number, description: Montant total regle sur la periode }
+        balance:
+          {
+            type: number,
+            description: Solde courant du compte (positif = nous lui devons),
+          }
+        currency: { type: string, example: XOF }
+
+    SuppliersBalanceResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: object
+          required: [lines, totalBalance, currency]
+          properties:
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/SuppliersBalanceLine" }
+            totalBalance: { type: number, description: Total de controle }
+            currency: { type: string, example: XOF }
+
+    SupplierInvoiceLineInput:
+      type: object
+      required: [label, amount]
+      properties:
+        label: { type: string }
+        amount: { type: number }
+
+    CostAllocationInput:
+      type: object
+      required: [costCategoryId, amount]
+      properties:
+        costCategoryId: { type: string, format: uuid }
+        amount: { type: number }
+
+    CreateSupplierInvoiceRequest:
+      type: object
+      required: [invoiceDate, reference, amount]
+      properties:
+        invoiceDate: { type: string, format: date }
+        reference: { type: string }
+        amount: { type: number }
+        siteId:
+          {
+            type: string,
+            format: uuid,
+            nullable: true,
+            description: Obligatoire si le fournisseur est MATERIALS ou MIXED,
+          }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/SupplierInvoiceLineInput" }
+        allocations:
+          type: array
+          items: { $ref: "#/components/schemas/CostAllocationInput" }
+          description: >
+            Ventilation par poste ; la somme doit egaler `amount`. Verifiee a la
+            validation, pas seulement a la creation.
+
+    SupplierInvoice:
+      type: object
+      required:
+        [id, supplierId, invoiceDate, reference, amount, currency, status]
+      properties:
+        id: { type: string, format: uuid }
+        supplierId: { type: string, format: uuid }
+        siteId: { type: string, format: uuid, nullable: true }
+        invoiceDate: { type: string, format: date }
+        reference: { type: string }
+        amount: { type: number }
+        currency: { type: string, example: XOF }
+        status: { type: string, enum: [DRAFT, VALIDATED, VOIDED] }
+        createdByUserId: { type: string, format: uuid }
+        validatedByUserId: { type: string, format: uuid, nullable: true }
+        validatedAt: { type: string, format: date-time, nullable: true }
+
+    SupplierInvoiceResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/SupplierInvoice" }
+
+    VoidDocumentRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string }
+
+    VoidDocument:
+      type: object
+      required: [id, documentType, documentId, reason, voidedByUserId, voidedAt]
+      properties:
+        id: { type: string, format: uuid }
+        documentType:
+          {
+            type: string,
+            enum: [SUPPLIER_INVOICE, SUPPLIER_PAYMENT, CASH_VOUCHER],
+          }
+        documentId: { type: string, format: uuid }
+        reason: { type: string }
+        voidedByUserId: { type: string, format: uuid }
+        voidedAt: { type: string, format: date-time }
+
+    VoidDocumentResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/VoidDocument" }
+
+    SupplierPaymentAllocationInput:
+      type: object
+      required: [invoiceId, amount]
+      properties:
+        invoiceId: { type: string, format: uuid }
+        amount: { type: number }
+
+    CreateSupplierPaymentRequest:
+      type: object
+      required: [paymentDate, amount, method]
+      properties:
+        paymentDate: { type: string, format: date }
+        amount: { type: number }
+        method: { type: string, example: Virement }
+        allocations:
+          type: array
+          items: { $ref: "#/components/schemas/SupplierPaymentAllocationInput" }
+          description: >
+            Optionnel : un reglement sans allocation devient un acompte, qui rend
+            le compte fournisseur debiteur du montant recu.
+
+    SupplierPayment:
+      type: object
+      required: [id, supplierId, paymentDate, amount, currency, method]
+      properties:
+        id: { type: string, format: uuid }
+        supplierId: { type: string, format: uuid }
+        paymentDate: { type: string, format: date }
+        amount: { type: number }
+        currency: { type: string, example: XOF }
+        method: { type: string }
+        validatedAt: { type: string, format: date-time, nullable: true }
+
+    SupplierPaymentResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/SupplierPayment" }
+
+    ThirdPartyMovementLine:
+      type: object
+      required: [id, movementDate, type, label, balanceAfter, currency]
+      properties:
+        id: { type: string, format: uuid }
+        movementDate: { type: string, format: date-time }
+        type:
+          {
+            type: string,
+            description: Voir contracts/openapi.yaml du lot 1 pour les valeurs communes,
+          }
+        label:
+          {
+            type: string,
+            description: Libelle en francais,
+            jamais "debit"/"credit",
+          }
+        amountBilled: { type: number, nullable: true }
+        amountSettled: { type: number, nullable: true }
+        balanceAfter: { type: number }
+        currency: { type: string, example: XOF }
+
+    AccountStatementResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: object
+          required:
+            [accountId, label, openingBalance, closingBalance, currency, lines]
+          properties:
+            accountId: { type: string, format: uuid }
+            label: { type: string }
+            openingBalance:
+              {
+                type: number,
+                description: "Calcule depuis le dernier mouvement anterieur a la borne de debut, jamais depuis le solde courant (voir data-model.md defaut 3)",
+              }
+            closingBalance: { type: number }
+            currency: { type: string, example: XOF }
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/ThirdPartyMovementLine" }
+
+    CreateConstructionSiteRequest:
+      type: object
+      required: [name, zone, startDate]
+      properties:
+        name: { type: string }
+        zone: { type: string }
+        propertyId: { type: string, format: uuid, nullable: true }
+        landLeaseId:
+          {
+            type: string,
+            format: uuid,
+            nullable: true,
+            description: Reserve pour le lot 4,
+            non exploite par ce lot,
+          }
+        managerId: { type: string, format: uuid, nullable: true }
+        startDate: { type: string, format: date }
+        plannedEndDate: { type: string, format: date, nullable: true }
+
+    ConstructionSite:
+      type: object
+      required: [id, name, zone, status, startDate, actualCost, currency]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        zone: { type: string }
+        propertyId: { type: string, format: uuid, nullable: true }
+        landLeaseId: { type: string, format: uuid, nullable: true }
+        managerId: { type: string, format: uuid, nullable: true }
+        status:
+          { type: string, enum: [PLANNED, IN_PROGRESS, SUSPENDED, CLOSED] }
+        startDate: { type: string, format: date }
+        plannedEndDate: { type: string, format: date, nullable: true }
+        progressPercent: { type: integer }
+        actualCost:
+          {
+            type: number,
+            description: "Toujours calcule (somme des imputations validees). Aucune route de ce contrat n'accepte ce champ en entree (FR-021, SC-003).",
+          }
+        currency: { type: string, example: XOF }
+
+    ConstructionSiteResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/ConstructionSite" }
+
+    ConstructionSiteListResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/ConstructionSite" }
+
+    CostAllocationLine:
+      type: object
+      required:
+        [id, sourceType, sourceId, costCategoryLabel, amount, allocationDate]
+      properties:
+        id: { type: string, format: uuid }
+        sourceType: { type: string, enum: [SUPPLIER_INVOICE, CASH_VOUCHER] }
+        sourceId: { type: string, format: uuid }
+        costCategoryLabel: { type: string }
+        amount: { type: number }
+        allocationDate: { type: string, format: date-time }
+
+    CostCategorySubtotal:
+      type: object
+      required: [costCategoryId, label, total]
+      properties:
+        costCategoryId: { type: string, format: uuid }
+        label: { type: string }
+        total: { type: number }
+
+    ConstructionSiteDetailResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: object
+          required: [siteId, actualCost, allocations, subtotalsByCategory]
+          properties:
+            siteId: { type: string, format: uuid }
+            actualCost: { type: number }
+            allocations:
+              type: array
+              items: { $ref: "#/components/schemas/CostAllocationLine" }
+            subtotalsByCategory:
+              type: array
+              items: { $ref: "#/components/schemas/CostCategorySubtotal" }
+
+    CreateCostCategoryRequest:
+      type: object
+      required: [label]
+      properties:
+        label: { type: string }
+
+    CostCategory:
+      type: object
+      required: [id, label, isActive]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        isActive: { type: boolean }
+
+    CostCategoryResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/CostCategory" }
+
+    CostCategoryListResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/CostCategory" }
+
+    CreateCashVoucherRequest:
+      type: object
+      required: [beneficiaryName, amount, voucherDate, costCategoryId, reason]
+      properties:
+        beneficiaryName: { type: string }
+        amount: { type: number }
+        voucherDate: { type: string, format: date }
+        costCategoryId: { type: string, format: uuid }
+        reason: { type: string }
+
+    CashVoucher:
+      type: object
+      required: [id, siteId, beneficiaryName, amount, currency, reason, status]
+      properties:
+        id: { type: string, format: uuid }
+        voucherNumber:
+          {
+            type: integer,
+            nullable: true,
+            description: Attribue seulement a la validation,
+          }
+        voucherYear: { type: integer, nullable: true }
+        siteId: { type: string, format: uuid }
+        costCategoryId: { type: string, format: uuid }
+        beneficiaryName: { type: string }
+        amount: { type: number }
+        currency: { type: string, example: XOF }
+        reason: { type: string }
+        status: { type: string, enum: [DRAFT, VALIDATED] }
+        validatedAt: { type: string, format: date-time, nullable: true }
+
+    CashVoucherResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/CashVoucher" }
+
+    ValidationQueueItem:
+      type: object
+      required:
+        [
+          documentType,
+          documentId,
+          label,
+          amount,
+          currency,
+          createdByUserId,
+          createdAt,
+        ]
+      properties:
+        documentType:
+          {
+            type: string,
+            enum: [SUPPLIER_INVOICE, SUPPLIER_PAYMENT, CASH_VOUCHER],
+          }
+        documentId: { type: string, format: uuid }
+        label:
+          {
+            type: string,
+            description: "Libelle resolu par le serveur (ex. 'Facture QUINC-2026-014 - Quincaillerie Diallo'), jamais un identifiant technique brut (lecon retenue du lot 1, voir LOT-1-RAPPORT.md §4)",
+          }
+        amount: { type: number }
+        currency: { type: string, example: XOF }
+        createdByUserId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+
+    ValidationQueueResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/ValidationQueueItem" }
