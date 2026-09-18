@@ -17,6 +17,22 @@ tags:
   - name: Comptes
   - name: Facturation
 
+# NOTE DU 18 SEPTEMBRE 2026 — noms de parametres alignes sur l'implementation.
+#
+# Ce document nommait d'abord les bornes `periodStart`/`periodEnd`, la date de
+# reference `asOfDate` et la pagination `page`/`pageSize`. La frontiere web
+# gelee a la vague 3 (`apps/web/src/services/finance-service.ts`) envoie en
+# realite `from`/`to`, `asOf`, `skip`/`take` — un ecart introduit par le
+# superviseur, qui a gele cette frontiere sans la relire contre ce contrat.
+#
+# L'ecart a ete tranche en faveur de l'implementation : elle est construite,
+# testee et consommee par quatre ecrans. Un contrat qui decrit autre chose que
+# ce qui tourne n'est pas un contrat, c'est une seconde verite.
+#
+# L'API accepte encore les anciens noms et emet les anciens champs de reponse
+# en alias, par prudence pendant la transition. Ces alias ne sont consommes par
+# rien et seront retires au lot 2.
+
 paths:
   /tenants/{tenantId}/finance/clients/balance:
     get:
@@ -49,12 +65,12 @@ paths:
       summary: Balance clients ventilee par anciennete d'echeance
       description: >
         Meme perimetre que la balance simple, ventile en tranches a-echoir / moins-30 /
-        30-60 / 60-90 / plus-90, calculees a la date `asOfDate` (aujourd'hui par defaut).
+        30-60 / 60-90 / plus-90, calculees a la date `asOf` (aujourd'hui par defaut).
         Voir spec.md US5.
       parameters:
         - $ref: "#/components/parameters/TenantId"
         - $ref: "#/components/parameters/PropertyId"
-        - name: asOfDate
+        - name: asOf
           in: query
           required: false
           schema: { type: string, format: date }
@@ -83,11 +99,11 @@ paths:
         - $ref: "#/components/parameters/AccountId"
         - $ref: "#/components/parameters/PeriodStart"
         - $ref: "#/components/parameters/PeriodEnd"
-        - name: page
+        - name: skip
           in: query
           required: false
-          schema: { type: integer, minimum: 1, default: 1 }
-        - name: pageSize
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: take
           in: query
           required: false
           schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
@@ -199,12 +215,12 @@ components:
       schema: { type: string, format: uuid }
       description: Filtre par bien (via le bail rattache au mouvement)
     PeriodStart:
-      name: periodStart
+      name: from
       in: query
       required: false
       schema: { type: string, format: date }
     PeriodEnd:
-      name: periodEnd
+      name: to
       in: query
       required: false
       schema: { type: string, format: date }

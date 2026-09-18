@@ -8,6 +8,7 @@ import dayjs from 'dayjs';
 import { getClientsBalance } from '../../services/finance-service';
 import type { ClientsBalanceLine } from '../../types/finance-types';
 import { useListParams } from '../../hooks/useListParams';
+import { listProperties } from '../../services/property-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { exportToCSV } from '../../utils/export-utils';
 import {
@@ -75,33 +76,33 @@ export const BalanceClients: React.FC = () => {
   });
 
   /**
-   * Options du filtre « Bien », dérivées de la balance sur la même période
-   * mais SANS le filtre de bien — le même principe que le filtre locataire
-   * des échéances (`optionsLocatairesDesBaux`) : choisir un bien ne doit pas
-   * faire disparaître les autres de la liste déroulante.
+   * Options du filtre « Bien », lues sur le parc et non sur la balance.
    *
-   * Le contrat gelé (`ClientsBalanceLine`) n'expose qu'un libellé de bien
-   * (`propertyLabels`), jamais un identifiant : il n'existe pas d'endpoint
-   * pour lister les biens indépendamment de la balance. Le filtre envoie
-   * donc le libellé lui-même comme valeur de `propertyId` — un choix par
-   * défaut, faute de mieux, documenté au rapport de livraison.
+   * Deux raisons, dans cet ordre d'importance.
+   *
+   * D'abord l'exactitude : l'API attend un **identifiant** de bien, et une
+   * ligne de balance ne porte que des libellés (`propertyLabels`). Envoyer un
+   * libellé ne filtrerait rien. Le parc, lui, donne les deux.
+   *
+   * Ensuite la complétude : choisir un bien ne doit pas faire disparaître les
+   * autres de la liste déroulante, sinon on ne peut plus défiltrer. Dériver
+   * les options de la balance obligeait à la charger une seconde fois, sans
+   * filtre, pour ce seul besoin. Une requête de moins.
    */
-  const { data: donneesPourFiltre } = useQuery({
-    queryKey: queryKey('clients-balance', tenantId, { ...filtresPeriode, pour: 'filtre-bien' }),
-    queryFn: () => getClientsBalance(tenantId as string, filtresPeriode),
+  const { data: parc } = useQuery({
+    queryKey: queryKey('finance-parc', tenantId, {}),
+    queryFn: () => listProperties(tenantId as string, { page: 1, limit: 200 }),
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.list
   });
 
-  const optionsBiens = React.useMemo(() => {
-    const labels = new Set<string>();
-    for (const ligne of donneesPourFiltre?.lines ?? []) {
-      for (const bien of ligne.propertyLabels) labels.add(bien);
-    }
-    return Array.from(labels)
-      .sort((a, b) => a.localeCompare(b))
-      .map(label => ({ value: label, label }));
-  }, [donneesPourFiltre]);
+  const optionsBiens = React.useMemo(
+    () =>
+      (parc?.properties ?? [])
+        .map(bien => ({ value: bien.id, label: bien.title }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [parc]
+  );
 
   const lignes = data?.lines ?? [];
 

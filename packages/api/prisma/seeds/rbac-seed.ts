@@ -4,6 +4,7 @@ import { seedPropertyPermissions } from './property-permissions-seed';
 import { seedRentalPermissions } from './rental-permissions-seed';
 import { seedMaintenancePermissions } from './maintenance-permissions-seed';
 import { seedCommunicationPermissions } from './communication-permissions-seed';
+import { seedFinancePermissions } from './finance-permissions-seed';
 
 const prisma = new PrismaClient();
 
@@ -116,11 +117,12 @@ async function seedRBAC() {
   });
   console.log('  ✓ Created TENANT_ACCOUNTANT role');
 
-  // Seed Maintenance and Communication permissions: they assign their permissions
-  // to existing roles, so they must run after the roles above are created and
-  // before the PLATFORM_SUPER_ADMIN assignment below.
+  // Seed Maintenance, Communication and Finance permissions: they assign their
+  // permissions to existing roles, so they must run after the roles above are
+  // created and before the PLATFORM_SUPER_ADMIN assignment below.
   await seedMaintenancePermissions();
   await seedCommunicationPermissions();
+  await seedFinancePermissions();
 
   // Assign all permissions to PLATFORM_SUPER_ADMIN
   console.log('  Assigning permissions to PLATFORM_SUPER_ADMIN...');

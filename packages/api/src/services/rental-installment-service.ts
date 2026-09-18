@@ -1,7 +1,299 @@
 import { prisma } from '../utils/database';
+import type { PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
-import { RentalBillingFrequency, RentalInstallmentStatus, RentalLeaseStatus } from '@prisma/client';
+import {
+  RentalBillingFrequency,
+  RentalInstallmentStatus,
+  RentalLeaseStatus,
+  ThirdPartyMovementType
+} from '@prisma/client';
 import { buildInstallmentForPeriod } from '../lib/finance/installment-builder';
+import { appendThirdPartyMovementTx, getOrCreateTenantAccountTx } from '../lib/finance/ledger';
+import { roundMoney } from '../lib/finance/money';
+import type { FinanceSourceType } from '../lib/finance/types';
+
+// ---------------------------------------------------------------------------
+// Pont vers le grand livre des comptes de tiers — lot 1, tâche 1.3
+//
+// Ces fonctions sont partagées par les quatre services locatifs qui font
+// bouger une créance (échéances, paiements, pénalités, déclarations). Elles
+// vivent ici, et non dans `lib/finance/`, parce que ce branchement ne rouvre
+// pas le contrat gelé du grand livre : elles n'ajoutent aucune règle
+// financière, elles traduisent une pièce locative en paramètres de mouvement.
+//
+// Deux invariants les gouvernent, et rien ne doit les contourner :
+//
+//   1. **Elles n'écrivent que par un client de transaction.** Le mouvement
+//      naît dans la même transaction que la pièce qui le provoque, ou il ne
+//      naît pas (décision D3 du plan de mise en œuvre). Aucune ne prend
+//      `prisma` : leur signature l'interdit.
+//   2. **Elles reprennent les clés de source du rétro-remplissage**
+//      (`rebuildThirdPartyAccount`, `lib/finance/ledger.ts`) : même
+//      `sourceType` et même `sourceId` pour une même pièce. Sans cela, une
+//      pièce porterait deux mouvements — celui écrit au fil de l'eau, puis
+//      celui rejoué par le rétro-remplissage, que l'unicité
+//      `(source_type, source_id, type)` ne reconnaîtrait pas comme le même.
+// ---------------------------------------------------------------------------
+
+/**
+ * Noms de mois sans accent, identiques à ceux du rétro-remplissage et de la
+ * campagne de facturation : les trois chemins écrivent sur le même relevé, et
+ * « Loyer de fevrier 2026 » ne doit pas y côtoyer « Loyer de février 2026 ».
+ */
+const MOIS_FR = [
+  'janvier',
+  'fevrier',
+  'mars',
+  'avril',
+  'mai',
+  'juin',
+  'juillet',
+  'aout',
+  'septembre',
+  'octobre',
+  'novembre',
+  'decembre'
+];
+
+const MOIS_AVEC_ELISION = new Set(['avril', 'aout', 'octobre']);
+
+/** « de fevrier 2026 » ou « d'octobre 2026 », prêt à suivre « Loyer » ou « l'échéance ». */
+export function libellePeriodeEcheance(periodYear?: number | null, periodMonth?: number | null): string | null {
+  if (!periodYear || !periodMonth) {
+    return null;
+  }
+  const mois = MOIS_FR[(periodMonth - 1 + 12) % 12] ?? `mois ${periodMonth}`;
+  return `${MOIS_AVEC_ELISION.has(mois) ? `d'${mois}` : `de ${mois}`} ${periodYear}`;
+}
+
+/**
+ * Montant facturé par une échéance : loyer + charges + autres frais.
+ *
+ * `penalty_amount` en est volontairement exclu. Ce champ est un miroir
+ * dénormalisé des lignes `RentalPenalty` (voir `deletePenalty` dans
+ * `rental-penalty-service.ts`, qui le recalcule comme la somme des pénalités
+ * restantes) ; or chaque pénalité porte déjà son propre mouvement `PENALTY`.
+ * L'inclure ici facturerait deux fois la même pénalité. Même calcul que le
+ * rétro-remplissage et que la campagne de facturation.
+ */
+export function montantFactureEcheance(installment: {
+  amount_rent: unknown;
+  amount_service: unknown;
+  amount_other_fees: unknown;
+}): number {
+  return roundMoney(
+    Number(installment.amount_rent ?? 0) +
+      Number(installment.amount_service ?? 0) +
+      Number(installment.amount_other_fees ?? 0)
+  );
+}
+
+/**
+ * Compte de tiers du locataire, créé au besoin, dans la transaction courante.
+ *
+ * Échoue plutôt que de renvoyer `null` : un compte impossible à ouvrir veut
+ * dire que le `TenantClient` n'existe pas ou n'appartient pas à ce tenant. Un
+ * mouvement perdu en silence rendrait le solde faux sans que rien ne le
+ * signale — c'est exactement ce que la transaction est là pour empêcher.
+ * Même parti pris que la campagne de facturation.
+ */
+export async function compteLocataireTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  tenantClientId: string
+): Promise<string> {
+  const compte = await getOrCreateTenantAccountTx(tx, tenantId, tenantClientId);
+  if (!compte) {
+    throw new Error(`Compte de tiers introuvable ou impossible à créer pour le locataire ${tenantClientId}`);
+  }
+  return compte.id;
+}
+
+/**
+ * Compte de tiers du locataire principal d'un bail. Renvoie `null` si le bail
+ * n'existe pas ou n'appartient pas au tenant : il n'y a alors aucune créance à
+ * inscrire, et l'isolation multi-tenant est vérifiée ici comme ailleurs.
+ */
+export async function compteLocataireDuBailTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  leaseId: string
+): Promise<{ accountId: string; tenantClientId: string } | null> {
+  const bail = await tx.rentalLease.findFirst({
+    where: { id: leaseId, tenant_id: tenantId },
+    select: { primary_renter_client_id: true }
+  });
+
+  if (!bail) {
+    return null;
+  }
+
+  return {
+    accountId: await compteLocataireTx(tx, tenantId, bail.primary_renter_client_id),
+    tenantClientId: bail.primary_renter_client_id
+  };
+}
+
+/**
+ * Somme algébrique (facturé − réglé) de ce qu'une pièce a déjà inscrit au
+ * grand livre. Sert à annuler ou corriger une pièce sans faire d'hypothèse sur
+ * les mouvements qu'elle a produits : on lit ce qui est écrit plutôt que de le
+ * redéduire du montant courant de la pièce, qui a pu changer entre-temps.
+ */
+export async function soldePieceTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  sourceType: FinanceSourceType,
+  sourceId: string
+): Promise<number> {
+  const mouvements = await tx.thirdPartyMovement.findMany({
+    where: { tenantId, sourceType, sourceId },
+    select: { debit: true, credit: true }
+  });
+
+  return roundMoney(mouvements.reduce((somme, m) => somme + Number(m.debit ?? 0) - Number(m.credit ?? 0), 0));
+}
+
+/**
+ * Écrit le mouvement inverse d'une pièce annulée ou supprimée.
+ *
+ * Le sens est celui que la pièce avait réellement pris au grand livre, pas
+ * celui qu'on lui suppose : une échéance annulée se règle, une allocation
+ * annulée se refacture. Une pièce qui n'a rien inscrit, ou déjà neutralisée,
+ * ne produit aucun mouvement.
+ */
+export async function annulerPieceTx(
+  tx: PrismaTransactionClient,
+  params: {
+    tenantId: string;
+    accountId: string;
+    sourceType: FinanceSourceType;
+    sourceId: string;
+    label: string;
+    leaseId?: string | null;
+    movementDate?: Date;
+  }
+) {
+  const solde = await soldePieceTx(tx, params.tenantId, params.sourceType, params.sourceId);
+
+  if (solde === 0) {
+    return null;
+  }
+
+  return appendThirdPartyMovementTx(tx, {
+    accountId: params.accountId,
+    tenantId: params.tenantId,
+    type: ThirdPartyMovementType.VOID,
+    billed: solde < 0 ? -solde : undefined,
+    settled: solde > 0 ? solde : undefined,
+    label: params.label,
+    sourceType: params.sourceType,
+    sourceId: params.sourceId,
+    leaseId: params.leaseId ?? null,
+    movementDate: params.movementDate
+  });
+}
+
+/**
+ * Ramène au grand livre une pénalité dont le montant dû a baissé : remise
+ * accordée par la gestionnaire, recalcul à la baisse, ou suppression pure et
+ * simple (`montantRestant` vaut alors 0).
+ *
+ * Le grand livre est idempotent par `(sourceType, sourceId, type)` : une
+ * pénalité ne peut donc porter qu'un mouvement `PENALTY` et qu'un mouvement
+ * `WAIVER`. Une seconde baisse sur la même pénalité, comme une révision à la
+ * hausse, n'a pas de clé disponible : on la journalise plutôt que d'écrire un
+ * mouvement dont la clé serait absorbée en silence par l'unicité.
+ */
+export async function remettrePenaliteTx(
+  tx: PrismaTransactionClient,
+  params: {
+    tenantId: string;
+    accountId: string;
+    penaltyId: string;
+    montantRestant: number;
+    label: string;
+    leaseId?: string | null;
+    movementDate?: Date;
+  }
+) {
+  const solde = await soldePieceTx(tx, params.tenantId, 'RENTAL_PENALTY', params.penaltyId);
+  const ecart = roundMoney(solde - roundMoney(params.montantRestant));
+
+  if (ecart <= 0) {
+    if (ecart < 0) {
+      logger.warn('Pénalité revue à la hausse après inscription : écart non représentable au grand livre', {
+        tenantId: params.tenantId,
+        penaltyId: params.penaltyId,
+        soldeInscrit: solde,
+        montantRestant: params.montantRestant
+      });
+    }
+    return null;
+  }
+
+  return appendThirdPartyMovementTx(tx, {
+    accountId: params.accountId,
+    tenantId: params.tenantId,
+    type: ThirdPartyMovementType.WAIVER,
+    settled: ecart,
+    label: params.label,
+    sourceType: 'RENTAL_PENALTY',
+    sourceId: params.penaltyId,
+    leaseId: params.leaseId ?? null,
+    movementDate: params.movementDate
+  });
+}
+
+/**
+ * Inscrit au compte du locataire l'échéance devenue exigible.
+ *
+ * Appelée à chaque changement de statut vers un statut exigible, et non à la
+ * seule transition vers `DUE` : une échéance créée en `DRAFT` dont la date est
+ * déjà passée bascule directement en `OVERDUE` (voir le calcul de statut
+ * ci-dessous), et ne serait jamais facturée si l'on n'écoutait que `DUE`.
+ * L'idempotence du grand livre rend ces appels répétés sans effet : la clé
+ * `(RENTAL_INSTALLMENT, id, INSTALLMENT)` n'admet qu'un mouvement, celui-là
+ * même que la campagne de facturation ou le rétro-remplissage auraient écrit.
+ */
+export async function inscrireEcheanceFactureeTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  installment: {
+    id: string;
+    lease_id: string;
+    status: RentalInstallmentStatus;
+    due_date: Date;
+    period_year: number;
+    period_month: number;
+    amount_rent: unknown;
+    amount_service: unknown;
+    amount_other_fees: unknown;
+  }
+) {
+  if (installment.status === RentalInstallmentStatus.DRAFT || installment.status === RentalInstallmentStatus.CANCELED) {
+    return null;
+  }
+
+  const compte = await compteLocataireDuBailTx(tx, tenantId, installment.lease_id);
+  if (!compte) {
+    return null;
+  }
+
+  const periode = libellePeriodeEcheance(installment.period_year, installment.period_month);
+
+  return appendThirdPartyMovementTx(tx, {
+    accountId: compte.accountId,
+    tenantId,
+    type: ThirdPartyMovementType.INSTALLMENT,
+    billed: montantFactureEcheance(installment),
+    label: periode ? `Loyer ${periode}` : 'Loyer',
+    sourceType: 'RENTAL_INSTALLMENT',
+    sourceId: installment.id,
+    leaseId: installment.lease_id,
+    movementDate: installment.due_date
+  });
+}
 
 /**
  * Get billing period days based on frequency
@@ -413,9 +705,18 @@ export async function updateInstallmentStatus(tenantId: string, installmentId: s
 
   // Update if status changed
   if (newStatus !== installment.status) {
-    const updatedInstallment = await prisma.rentalInstallment.update({
-      where: { id: installment.id },
-      data: { status: newStatus }
+    // L'échéance exigible et le mouvement qui la porte au compte du locataire
+    // naissent ensemble : sans cette transaction, un incident entre les deux
+    // écritures laisserait une créance exigible qu'aucun relevé ne montre.
+    const updatedInstallment = await prisma.$transaction(async tx => {
+      const updated = await tx.rentalInstallment.update({
+        where: { id: installment.id },
+        data: { status: newStatus }
+      });
+
+      await inscrireEcheanceFactureeTx(tx, tenantId, updated);
+
+      return updated;
     });
 
     logger.info('Installment status updated', {
@@ -497,9 +798,17 @@ export async function recalculateInstallmentStatuses(tenantId: string, leaseId: 
 
     // Update if status changed
     if (newStatus !== installment.status) {
-      await prisma.rentalInstallment.update({
-        where: { id: installment.id },
-        data: { status: newStatus }
+      // Une transaction par échéance, et non une pour le bail entier : le
+      // recalcul reste, comme avant, un enchaînement d'échéances indépendantes
+      // dont l'échec de l'une ne défait pas les précédentes. Ce qui est
+      // indivisible, c'est le couple (statut, mouvement) d'une même échéance.
+      await prisma.$transaction(async tx => {
+        const updated = await tx.rentalInstallment.update({
+          where: { id: installment.id },
+          data: { status: newStatus }
+        });
+
+        await inscrireEcheanceFactureeTx(tx, tenantId, updated);
       });
       updatedCount++;
     }
@@ -579,10 +888,62 @@ export async function deleteAllInstallments(tenantId: string, leaseId: string, a
   }
 
   // Delete all installments (cascade will handle related items)
-  await prisma.rentalInstallment.deleteMany({
-    where: {
-      tenant_id: tenantId,
-      lease_id: leaseId
+  //
+  // La suppression et les mouvements qui la contrepassent sont indivisibles :
+  // une échéance disparue dont le débit resterait au compte laisserait le
+  // locataire débiteur d'un loyer qui n'existe plus. Les pénalités partent
+  // avec leurs échéances (cascade en base) : leurs mouvements aussi.
+  await prisma.$transaction(async tx => {
+    const supprimees = await tx.rentalInstallment.findMany({
+      where: { tenant_id: tenantId, lease_id: leaseId },
+      select: {
+        id: true,
+        period_year: true,
+        period_month: true,
+        penalties: { select: { id: true } }
+      }
+    });
+
+    await tx.rentalInstallment.deleteMany({
+      where: {
+        tenant_id: tenantId,
+        lease_id: leaseId
+      }
+    });
+
+    const compte = await compteLocataireDuBailTx(tx, tenantId, leaseId);
+    if (!compte) {
+      return;
+    }
+
+    const maintenant = new Date();
+
+    for (const echeance of supprimees) {
+      const periode = libellePeriodeEcheance(echeance.period_year, echeance.period_month);
+
+      await annulerPieceTx(tx, {
+        tenantId,
+        accountId: compte.accountId,
+        sourceType: 'RENTAL_INSTALLMENT',
+        sourceId: echeance.id,
+        label: periode ? `Annulation du loyer ${periode}` : 'Annulation du loyer',
+        leaseId,
+        movementDate: maintenant
+      });
+
+      for (const penalite of echeance.penalties) {
+        await remettrePenaliteTx(tx, {
+          tenantId,
+          accountId: compte.accountId,
+          penaltyId: penalite.id,
+          montantRestant: 0,
+          label: periode
+            ? `Annulation de la pénalité de retard sur l'échéance ${periode}`
+            : 'Annulation de la pénalité de retard',
+          leaseId,
+          movementDate: maintenant
+        });
+      }
     }
   });
 

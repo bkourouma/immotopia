@@ -12,6 +12,7 @@ import {
   validateMaintenanceAttachment,
   validatePaymentProofFile
 } from '../utils/tenant-portal-validators';
+import { handleTenantPortalFinanceStatement } from './finance-controller';
 
 export class TenantPortalController {
   private service: TenantPortalService;
@@ -706,5 +707,31 @@ export class TenantPortalController {
         ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
       });
     }
+  }
+
+  /**
+   * Solde et relevé financier du locataire connecté (lecture seule).
+   * GET /api/portal/tenant/finance/statement
+   *
+   * **Aucun identifiant de compte n'est reçu ni accepté** : c'est ce qui
+   * garantit qu'un locataire ne peut jamais lire le relevé d'un autre, quel
+   * que soit ce qu'il tente de passer en requête. Le compte de tiers est
+   * résolu depuis la session (`req.tenantPortal.tenantClientId`), exactement
+   * comme le font déjà `getLeaseDetails` et `getPaymentHistory` ci-dessus —
+   * jamais depuis un paramètre fourni par l'appelant.
+   *
+   * La logique vit dans `finance-controller.ts`
+   * (`handleTenantPortalFinanceStatement`), pas ici : c'est le même code qui
+   * résout le compte de tiers et calcule le relevé pour la route agence,
+   * réutilisé tel quel pour que le locataire voie exactement ce que verrait
+   * la gestionnaire pour son compte (US6, scénario 1). Cette délégation en
+   * une ligne évite aussi d'alourdir ce fichier, qui porte déjà une erreur
+   * TypeScript préexistante sans rapport avec ce lot (`declarePayment`
+   * ci-dessus) — ne pas y ajouter de nouvelle logique la laisse à sa place
+   * plutôt que de la faire hériter, sans le vouloir, à ce nouveau point
+   * d'entrée.
+   */
+  async getFinanceStatement(req: Request, res: Response): Promise<void> {
+    return handleTenantPortalFinanceStatement(req, res);
   }
 }

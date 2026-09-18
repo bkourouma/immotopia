@@ -7,6 +7,8 @@ import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { PaymentDeclarationStatus, RentalPaymentStatus, RentalInstallmentStatus } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
+import { compteLocataireTx, libellePeriodeEcheance } from './rental-installment-service';
+import { inscrireAllocationTx, inscrireReliquatTx, libelleMoyen } from './rental-payment-service';
 
 interface PaymentDeclarationFilters {
   status?: PaymentDeclarationStatus;
@@ -74,6 +76,17 @@ export async function approvePaymentDeclaration(
         }
       });
 
+      // Ce que la déclaration approuvée a réellement affecté à une échéance :
+      // le reste, s'il y en a, est une avance reçue à porter au compte du
+      // locataire. La somme des deux vaut toujours le montant déclaré.
+      let montantAffecte = 0;
+      let affectation: {
+        id: string;
+        leaseId: string;
+        periodYear: number | null;
+        periodMonth: number | null;
+      } | null = null;
+
       // Allocate payment to installment if specified
       if (declaration.installment_id) {
         const installment = await tx.rentalInstallment.findFirst({
@@ -106,7 +119,7 @@ export async function approvePaymentDeclaration(
           const allocationAmount = Math.min(paymentAmount, remainingDue);
 
           if (allocationAmount > 0) {
-            await tx.rentalPaymentAllocation.create({
+            const allocation = await tx.rentalPaymentAllocation.create({
               data: {
                 tenant_id: tenantId,
                 payment_id: payment.id,
@@ -115,6 +128,14 @@ export async function approvePaymentDeclaration(
                 currency: 'FCFA'
               }
             });
+
+            montantAffecte = allocationAmount;
+            affectation = {
+              id: allocation.id,
+              leaseId: installment.lease_id,
+              periodYear: installment.period_year,
+              periodMonth: installment.period_month
+            };
 
             // Calculate new total allocated
             const newTotalAllocated = allocatedToInstallment + allocationAmount;
@@ -139,6 +160,39 @@ export async function approvePaymentDeclaration(
           }
         }
       }
+
+      // Le règlement né de l'approbation est porté au compte du locataire dans
+      // la même transaction que lui : approuver une déclaration sans que le
+      // compte l'enregistre laisserait le locataire débiteur de ce qu'il vient
+      // de régler. Le déclarant est le locataire, c'est son compte qui bouge.
+      const compteId = await compteLocataireTx(tx, tenantId, declaration.declared_by);
+      const moyen = libelleMoyen(declaration.payment_method);
+      const dateReglement = declaration.payment_date;
+
+      if (affectation) {
+        await inscrireAllocationTx(tx, {
+          tenantId,
+          accountId: compteId,
+          allocationId: affectation.id,
+          montant: montantAffecte,
+          moyen,
+          periode: libellePeriodeEcheance(affectation.periodYear, affectation.periodMonth),
+          leaseId: affectation.leaseId,
+          movementDate: dateReglement,
+          // Le règlement vient d'être créé par cette même transaction : rien
+          // n'a encore été porté au compte pour lui, il n'y a donc aucune
+          // avance à imputer.
+          avanceDejaCreditee: false
+        });
+      }
+
+      await inscrireReliquatTx(tx, {
+        tenantId,
+        accountId: compteId,
+        payment,
+        dejaAffecte: montantAffecte,
+        movementDate: dateReglement
+      });
 
       // Update declaration status
       const updatedDeclaration = await tx.rentalPaymentDeclaration.update({
@@ -732,9 +786,13 @@ export async function getPaymentDeclarationById(tenantId: string, declarationId:
           include: {
             user: {
               select: {
+                // `User` ne porte pas de telephone : il vit sur `CrmContact`
+                // (`phone_primary`) et sur `TenantClient`. Le selectionner ici
+                // faisait lever Prisma a l'execution, et la valeur n'etait lue
+                // nulle part. Une des 103 erreurs de type preexistantes, qui
+                // etait aussi une panne en attente.
                 fullName: true,
-                email: true,
-                phone: true
+                email: true
               }
             }
           }

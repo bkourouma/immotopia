@@ -9,6 +9,7 @@ import dayjs from 'dayjs';
 import { getClientsAgingBalance, getClientsBalance } from '../../services/finance-service';
 import type { ClientsAgingBalanceLine } from '../../types/finance-types';
 import { useListParams, type Sort } from '../../hooks/useListParams';
+import { listProperties } from '../../services/property-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { exportToCSV } from '../../utils/export-utils';
 import {
@@ -82,23 +83,22 @@ export const BalanceAgee: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
-  /** Options du filtre « Bien » — même construction que `BalanceClients.tsx`. */
-  const { data: donneesPourFiltre } = useQuery({
-    queryKey: queryKey('clients-balance', tenantId, { ...filtresPeriode, pour: 'filtre-bien' }),
-    queryFn: () => getClientsBalance(tenantId as string, filtresPeriode),
+  /** Options du filtre « Bien » — même construction que `BalanceClients.tsx`,
+   *  lues sur le parc : l'API attend un identifiant, pas un libellé. */
+  const { data: parc } = useQuery({
+    queryKey: queryKey('finance-parc', tenantId, {}),
+    queryFn: () => listProperties(tenantId as string, { page: 1, limit: 200 }),
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.list
   });
 
-  const optionsBiens = React.useMemo(() => {
-    const labels = new Set<string>();
-    for (const ligne of donneesPourFiltre?.lines ?? []) {
-      for (const bien of ligne.propertyLabels) labels.add(bien);
-    }
-    return Array.from(labels)
-      .sort((a, b) => a.localeCompare(b))
-      .map(label => ({ value: label, label }));
-  }, [donneesPourFiltre]);
+  const optionsBiens = React.useMemo(
+    () =>
+      (parc?.properties ?? [])
+        .map(bien => ({ value: bien.id, label: bien.title }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [parc]
+  );
 
   const lignes = React.useMemo(() => trierLignes(data?.lines ?? [], list.sort), [data, list.sort]);
 

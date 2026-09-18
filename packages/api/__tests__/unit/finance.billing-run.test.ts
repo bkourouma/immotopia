@@ -454,9 +454,46 @@ describe('runRentBilling — avances', () => {
     expect(installment.status).toBe('PAID');
     expect(Number(installment.amount_paid)).toBe(100000);
     expect(store.allocations).toHaveLength(1);
+
+    // Imputer une avance ecrit DEUX mouvements, et sous la cle du
+    // retro-remplissage. C'est ce qui empeche `rebuildThirdPartyAccount`, joue
+    // apres une campagne, de creer un second credit pour la meme allocation —
+    // le compte du locataire deviendrait faux sans que rien ne le signale.
+    const allocationId = store.allocations[0].id;
+
     expect(appendThirdPartyMovementTx).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ type: 'ADVANCE_APPLIED' })
+      expect.objectContaining({
+        type: 'ADVANCE_APPLIED',
+        billed: 100000,
+        sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+        sourceId: allocationId
+      })
+    );
+
+    expect(appendThirdPartyMovementTx).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        type: 'PAYMENT',
+        settled: 100000,
+        sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+        sourceId: allocationId
+      })
+    );
+
+    // Les deux s'annulent : le solde ne bouge pas, seul le releve s'enrichit.
+    const mouvements = appendThirdPartyMovementTx.mock.calls
+      .map(appel => appel[1])
+      .filter((m: any) => m.sourceId === allocationId);
+    const net =
+      mouvements.reduce((total: number, m: any) => total + (m.billed ?? 0), 0) -
+      mouvements.reduce((total: number, m: any) => total + (m.settled ?? 0), 0);
+    expect(net).toBe(0);
+
+    // Aucun mouvement n'est ecrit sous l'ancienne cle, qui divergeait du rejeu.
+    expect(appendThirdPartyMovementTx).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ sourceType: 'RENT_BILLING_RUN' })
     );
   });
 

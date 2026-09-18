@@ -34,6 +34,9 @@ router.post('/payments/declare', upload.single('proof'), (req, res) => controlle
 // Deposit
 router.get('/deposit', (req, res) => controller.getDepositInfo(req, res));
 
+// Finance (lot 016 — solde et relevé du locataire connecté, lecture seule)
+router.get('/finance/statement', (req, res) => controller.getFinanceStatement(req, res));
+
 // Maintenance
 router.get('/maintenance', (req, res) => controller.getMaintenanceTickets(req, res));
 router.post('/maintenance', upload.array('attachments', 10), (req, res) =>

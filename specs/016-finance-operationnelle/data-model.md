@@ -42,13 +42,17 @@ enum ThirdPartyMovementType {
 **Ecart assume par rapport au plan.** Le plan de mise en oeuvre liste au §5.1 huit valeurs (`INSTALLMENT, PAYMENT, PENALTY, ADVANCE_APPLIED, WAIVER, ADJUSTMENT, OPENING_BALANCE, VOID`), mais son §5.2 (tache 1.3) decrit le reliquat non alloue d'un paiement comme un mouvement crediteur distinct, nomme `ADVANCE` dans le texte — une neuvieme valeur jamais listee dans l'enum. Les deux sections du plan se contredisent donc sur le nombre de valeurs necessaires pour representer une avance. Cette specification tranche en faveur de deux valeurs distinctes et symetriques :
 
 - `ADVANCE_RECEIVED` (credit) : pose au moment ou un paiement encaisse laisse un reliquat sans echeance a lui opposer (Recit 4, US4). C'est ce mouvement qui rend le compte crediteur.
-- `ADVANCE_APPLIED` (**sans effet sur le solde**, ni debit ni credit) : pose au moment ou la campagne de facturation impute ce reliquat sur une nouvelle echeance generee.
+- `ADVANCE_APPLIED` (**debit**) : pose au moment ou la campagne de facturation impute un reliquat sur une echeance generee. Il vient **toujours par paire** avec un `PAYMENT` au credit du meme montant, sous la meme cle de piece.
 
-  **Correction du 18 septembre 2026.** Cette valeur etait d'abord decrite comme un debit. C'est faux, et l'implementation l'a etabli : le couple `ADVANCE_RECEIVED` au credit puis `INSTALLMENT` au debit solde deja exactement le compte. Un reglement de 450 000 sans echeance en face rend le compte crediteur de 450 000 ; l'echeance du mois suivant le debite d'autant et le ramene a zero. Y ajouter un debit d'imputation le porterait a 450 000 et redemanderait au locataire un argent qu'il a deja verse.
+  **Deux corrections successives, le 18 septembre 2026.** Cette valeur a d'abord ete decrite comme un debit, puis requalifiee comme sans effet sur le solde, avant de revenir a un debit. La troisieme lecture est la bonne, et voici pourquoi les deux premieres etaient fausses.
 
-  Le mouvement subsiste donc pour la seule tracabilite, parce que le besoin B4 exige que l'imputation soit **visible sur le releve**. Sa ligne ne porte aucun montant : les deux lignes qui ont reellement deplace de l'argent sont juste au-dessus. Le montant impute figure dans `RentBillingRun.summary.advancesApplied`.
+  Un reglement encaisse sans echeance en face est credite **en entier** (`ADVANCE_RECEIVED`) : le compte passe crediteur. L'echeance du mois suivant le debite (`INSTALLMENT`). Si l'imputation s'arretait la, un debit de plus redemanderait au locataire un argent deja verse — c'est ce qui avait fait retirer le montant.
 
-Sans cette distinction, il serait impossible de savoir, en lisant le releve, si un mouvement credit represente un loyer regle a l'echeance ou une avance recue hors echeance — or le PRD (B4) exige explicitement que "l'imputation est visible sur le relevé", donc que l'avance et sa consommation soient identifiables separement d'un encaissement ordinaire. Ce point est signale dans le rapport de fin de tache comme une hypothese prise faute d'arbitrage disponible dans le plan.
+  Mais l'imputation cree une `RentalPaymentAllocation`, et `rebuildThirdPartyAccount` rejoue **toute** allocation comme un reglement au credit, sous `(RENTAL_PAYMENT_ALLOCATION, id, PAYMENT)`. Une campagne qui n'ecrirait pas ce credit laisserait le rejeu l'ajouter apres coup, et le solde deviendrait faux.
+
+  La forme correcte ecrit donc les deux : `ADVANCE_APPLIED` au debit reprend le credit de l'avance, `PAYMENT` au credit le repose au titre de l'allocation. Le solde ne bouge pas, les deux s'annulant, mais le releve montre distinctement l'avance consommee et le loyer regle — ce qu'exige le besoin B4. Et surtout, les deux chemins qui alimentent un compte, le temps reel et le rejeu, ecrivent sous les memes cles.
+
+  **La lecon vaut au-dela de ce champ.** Deux agents avaient bati deux modeles chacun coherent avec lui-meme, et la contradiction n'est apparue qu'en les faisant se rencontrer. Un invariant a verifier a chaque lot : pour toute piece, le temps reel et `rebuildThirdPartyAccount` doivent produire exactement les memes mouvements.
 
 ```prisma
 enum RentBillingRunStatus {

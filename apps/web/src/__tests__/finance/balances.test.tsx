@@ -33,6 +33,16 @@ vi.mock('../../services/finance-service', () => ({
   getClientsAgingBalance: (...a: unknown[]) => getClientsAgingBalance(...a)
 }));
 
+// Les options du filtre « Bien » viennent du parc, et non de la balance :
+// l'API attend un identifiant de bien, qu'une ligne de balance ne porte pas.
+// Sans ce mock, la liste deroulante serait vide et le filtre ne serait pas
+// reellement couvert.
+const listProperties = vi.fn();
+
+vi.mock('../../services/property-service', () => ({
+  listProperties: (...a: unknown[]) => listProperties(...a)
+}));
+
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
@@ -152,7 +162,7 @@ describe('Balance clients — rendu', () => {
     // Filtre déjà posé dans l'URL, mais aucune ligne ne correspond : l'écran
     // doit proposer d'effacer les filtres, pas de créer un compte.
     getClientsBalance.mockResolvedValue({ lines: [], totalBalance: 0, currency: 'XOF' });
-    mountClients('/tenant/agence-1/finance/clients?propertyId=Villa%20introuvable');
+    mountClients('/tenant/agence-1/finance/clients?propertyId=bien-inexistant');
 
     // Le bouton apparaît deux fois : une fois posé par `<FilterSheet>` à côté
     // des contrôles, une fois par le bloc « aucun résultat » de `<DataView>`.
@@ -164,19 +174,22 @@ describe('Balance clients — rendu', () => {
 describe('Balance clients — état dans l’URL', () => {
   it('relit la période et le bien depuis l’adresse au montage', async () => {
     getClientsBalance.mockResolvedValue({ lines: [ligne()], totalBalance: 600_000, currency: 'XOF' });
+    listProperties.mockResolvedValue({
+      properties: [{ id: 'bien-7', title: 'Villa 4 pièces - Cocody Angré' }],
+      pagination: { page: 1, limit: 200, total: 1, totalPages: 1 }
+    });
 
-    mountClients(
-      '/tenant/agence-1/finance/clients?from=2026-01-01&to=2026-01-31&propertyId=Villa%204%20pi%C3%A8ces%20-%20Cocody%20Angr%C3%A9'
-    );
+    mountClients('/tenant/agence-1/finance/clients?from=2026-01-01&to=2026-01-31&propertyId=bien-7');
 
     await waitFor(() => expect(getClientsBalance).toHaveBeenCalled(), { timeout: 8000 });
-    // Le premier appel sert aussi les options du filtre « Bien » (sans
-    // `propertyId`) : c'est l'appel qui porte le filtre complet qui compte.
     const appelFiltre = getClientsBalance.mock.calls.find(call => call[1]?.propertyId);
     expect(appelFiltre?.[1]).toMatchObject({
       from: '2026-01-01',
       to: '2026-01-31',
-      propertyId: 'Villa 4 pièces - Cocody Angré'
+      // Un IDENTIFIANT de bien, jamais son libelle : c'est ce que l'API
+      // attend, et un libelle ne filtrerait rien. La liste deroulante le tire
+      // du parc, seule source qui porte les deux.
+      propertyId: 'bien-7'
     });
   });
 

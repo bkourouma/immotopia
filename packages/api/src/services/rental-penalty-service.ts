@@ -1,10 +1,79 @@
 import { prisma } from '../utils/database';
+import type { PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
-import { RentalPenaltyMode } from '@prisma/client';
-import { updateInstallmentStatus } from './rental-installment-service';
+import { RentalPenaltyMode, ThirdPartyMovementType } from '@prisma/client';
+import {
+  compteLocataireTx,
+  libellePeriodeEcheance,
+  remettrePenaliteTx,
+  updateInstallmentStatus
+} from './rental-installment-service';
+import { appendThirdPartyMovementTx } from '../lib/finance/ledger';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+
+// ---------------------------------------------------------------------------
+// Pont vers le grand livre des comptes de tiers — lot 1, tâche 1.3
+//
+// Une pénalité appliquée est facturée au locataire (`PENALTY`), une pénalité
+// remise lui est réglée (`WAIVER`). Les deux portent la clé de source du
+// rétro-remplissage, `(RENTAL_PENALTY, id)`.
+//
+// `RentalInstallment.penalty_amount` n'entre jamais dans un mouvement : c'est
+// un miroir dénormalisé de la somme des lignes `RentalPenalty` (voir
+// `deletePenalty` plus bas, qui le recalcule ainsi). Le facturer en plus des
+// lignes doublerait chaque pénalité au compte du locataire.
+// ---------------------------------------------------------------------------
+
+/**
+ * Inscrit la pénalité au compte du locataire, puis ramène l'inscription au
+ * montant courant de la pénalité si celui-ci a baissé depuis.
+ *
+ * Les deux gestes sont dans le même appel parce qu'ils répondent à la même
+ * question — « que doit porter le compte pour cette pénalité ? » — et que le
+ * chemin de recalcul (`calculatePenalty` sur une pénalité déjà existante) peut
+ * emprunter l'un ou l'autre selon que la pénalité vient de naître ou qu'elle
+ * est réévaluée.
+ */
+async function inscrirePenaliteTx(
+  tx: PrismaTransactionClient,
+  params: {
+    tenantId: string;
+    tenantClientId: string;
+    penaltyId: string;
+    montant: number;
+    leaseId: string;
+    periodYear?: number | null;
+    periodMonth?: number | null;
+    movementDate?: Date;
+  }
+): Promise<void> {
+  const accountId = await compteLocataireTx(tx, params.tenantId, params.tenantClientId);
+  const periode = libellePeriodeEcheance(params.periodYear, params.periodMonth);
+
+  await appendThirdPartyMovementTx(tx, {
+    accountId,
+    tenantId: params.tenantId,
+    type: ThirdPartyMovementType.PENALTY,
+    billed: params.montant,
+    label: periode ? `Pénalité de retard sur l'échéance ${periode}` : 'Pénalité de retard',
+    sourceType: 'RENTAL_PENALTY',
+    sourceId: params.penaltyId,
+    leaseId: params.leaseId,
+    movementDate: params.movementDate
+  });
+
+  await remettrePenaliteTx(tx, {
+    tenantId: params.tenantId,
+    accountId,
+    penaltyId: params.penaltyId,
+    montantRestant: params.montant,
+    label: periode ? `Remise de la pénalité de retard sur l'échéance ${periode}` : 'Remise de la pénalité de retard',
+    leaseId: params.leaseId,
+    movementDate: params.movementDate
+  });
+}
 
 /**
  * Get default penalty rule for tenant (or create default if none exists)
@@ -139,53 +208,72 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
     }
   });
 
-  let penalty;
-  if (existingPenalty && !existingPenalty.is_manual_override) {
-    // Update existing penalty
-    penalty = await prisma.rentalPenalty.update({
-      where: {
-        id: existingPenalty.id
-      },
-      data: {
-        calculated_at: new Date(),
-        days_late: daysLate,
-        mode: mode,
-        rate: mode !== RentalPenaltyMode.FIXED_AMOUNT ? rate : null,
-        fixed_amount: mode === RentalPenaltyMode.FIXED_AMOUNT ? fixedAmount : null,
-        amount: penaltyAmount
-      }
-    });
-  } else {
-    // Create new penalty
-    penalty = await prisma.rentalPenalty.create({
-      data: {
-        tenant_id: tenantId,
-        installment_id: installmentId,
-        calculated_at: new Date(),
-        days_late: daysLate,
-        mode: mode,
-        rate: mode !== RentalPenaltyMode.FIXED_AMOUNT ? rate : null,
-        fixed_amount: mode === RentalPenaltyMode.FIXED_AMOUNT ? fixedAmount : null,
-        amount: penaltyAmount,
-        currency: installment.currency,
-        is_manual_override: false,
-        created_by_user_id: actorUserId || null
-      }
-    });
-  }
+  // La pénalité, le miroir qu'en garde l'échéance et le mouvement qui la
+  // facture au locataire naissent ensemble ou pas du tout : une pénalité
+  // enregistrée sans son mouvement resterait invisible du relevé, et un
+  // mouvement sans sa pénalité ferait payer une dette sans pièce.
+  const penalty = await prisma.$transaction(async tx => {
+    let ligne;
+    if (existingPenalty && !existingPenalty.is_manual_override) {
+      // Update existing penalty
+      ligne = await tx.rentalPenalty.update({
+        where: {
+          id: existingPenalty.id
+        },
+        data: {
+          calculated_at: new Date(),
+          days_late: daysLate,
+          mode: mode,
+          rate: mode !== RentalPenaltyMode.FIXED_AMOUNT ? rate : null,
+          fixed_amount: mode === RentalPenaltyMode.FIXED_AMOUNT ? fixedAmount : null,
+          amount: penaltyAmount
+        }
+      });
+    } else {
+      // Create new penalty
+      ligne = await tx.rentalPenalty.create({
+        data: {
+          tenant_id: tenantId,
+          installment_id: installmentId,
+          calculated_at: new Date(),
+          days_late: daysLate,
+          mode: mode,
+          rate: mode !== RentalPenaltyMode.FIXED_AMOUNT ? rate : null,
+          fixed_amount: mode === RentalPenaltyMode.FIXED_AMOUNT ? fixedAmount : null,
+          amount: penaltyAmount,
+          currency: installment.currency,
+          is_manual_override: false,
+          created_by_user_id: actorUserId || null
+        }
+      });
+    }
 
-  // Update installment penalty amount only if penalty was actually updated/created
-  // Don't update if existing penalty has manual override (it wasn't recalculated)
-  if (!existingPenalty || !existingPenalty.is_manual_override) {
-    await prisma.rentalInstallment.update({
-      where: {
-        id: installmentId
-      },
-      data: {
-        penalty_amount: penaltyAmount
-      }
+    // Update installment penalty amount only if penalty was actually updated/created
+    // Don't update if existing penalty has manual override (it wasn't recalculated)
+    if (!existingPenalty || !existingPenalty.is_manual_override) {
+      await tx.rentalInstallment.update({
+        where: {
+          id: installmentId
+        },
+        data: {
+          penalty_amount: penaltyAmount
+        }
+      });
+    }
+
+    await inscrirePenaliteTx(tx, {
+      tenantId,
+      tenantClientId: installment.lease.primary_renter_client_id,
+      penaltyId: ligne.id,
+      montant: penaltyAmount,
+      leaseId: installment.lease_id,
+      periodYear: installment.period_year,
+      periodMonth: installment.period_month,
+      movementDate: ligne.calculated_at
     });
-  }
+
+    return ligne;
+  });
 
   // Update installment status
   await updateInstallmentStatus(tenantId, installmentId);
@@ -336,27 +424,52 @@ export async function updatePenalty(
     throw new Error('Penalty not found');
   }
 
-  // Update penalty
-  const updatedPenalty = await prisma.rentalPenalty.update({
-    where: {
-      id: penaltyId
-    },
-    data: {
-      amount: amount,
-      is_manual_override: true,
-      override_reason: reason,
-      created_by_user_id: actorUserId
-    }
-  });
+  // Le geste commercial de la gestionnaire et sa trace au compte du locataire
+  // sont indivisibles : une pénalité ramenée à zéro dont le compte garderait le
+  // débit laisserait le locataire débiteur d'une pénalité qu'on lui a remise.
+  const updatedPenalty = await prisma.$transaction(async tx => {
+    // Update penalty
+    const ligne = await tx.rentalPenalty.update({
+      where: {
+        id: penaltyId
+      },
+      data: {
+        amount: amount,
+        is_manual_override: true,
+        override_reason: reason,
+        created_by_user_id: actorUserId
+      }
+    });
 
-  // Update installment penalty amount
-  await prisma.rentalInstallment.update({
-    where: {
-      id: penalty.installment_id
-    },
-    data: {
-      penalty_amount: amount
+    // Update installment penalty amount
+    await tx.rentalInstallment.update({
+      where: {
+        id: penalty.installment_id
+      },
+      data: {
+        penalty_amount: amount
+      }
+    });
+
+    const bail = await tx.rentalLease.findFirst({
+      where: { id: penalty.installment.lease_id, tenant_id: tenantId },
+      select: { primary_renter_client_id: true }
+    });
+
+    if (bail) {
+      await inscrirePenaliteTx(tx, {
+        tenantId,
+        tenantClientId: bail.primary_renter_client_id,
+        penaltyId,
+        montant: amount,
+        leaseId: penalty.installment.lease_id,
+        periodYear: penalty.installment.period_year,
+        periodMonth: penalty.installment.period_month,
+        movementDate: ligne.calculated_at
+      });
     }
+
+    return ligne;
   });
 
   // Update installment status
@@ -499,31 +612,57 @@ export async function deletePenalty(tenantId: string, penaltyId: string, actorUs
     throw new Error('Penalty not found');
   }
 
-  // Delete penalty
-  await prisma.rentalPenalty.delete({
-    where: {
-      id: penaltyId
-    }
-  });
+  // La suppression et la remise qu'elle vaut au compte du locataire sont
+  // indivisibles : une pénalité supprimée dont le débit resterait inscrit
+  // rendrait le solde faux sans que rien ne le signale.
+  await prisma.$transaction(async tx => {
+    // Delete penalty
+    await tx.rentalPenalty.delete({
+      where: {
+        id: penaltyId
+      }
+    });
 
-  // Recalculate installment penalty amount (set to 0 if no other penalties)
-  const remainingPenalties = await prisma.rentalPenalty.findMany({
-    where: {
-      installment_id: penalty.installment_id,
-      tenant_id: tenantId
-    }
-  });
+    // Recalculate installment penalty amount (set to 0 if no other penalties)
+    const remainingPenalties = await tx.rentalPenalty.findMany({
+      where: {
+        installment_id: penalty.installment_id,
+        tenant_id: tenantId
+      }
+    });
 
-  const totalPenaltyAmount = remainingPenalties.reduce((sum, p) => sum + Number(p.amount), 0);
+    const totalPenaltyAmount = remainingPenalties.reduce((sum, p) => sum + Number(p.amount), 0);
 
-  // Update installment penalty amount
-  await prisma.rentalInstallment.update({
-    where: {
-      id: penalty.installment_id
-    },
-    data: {
-      penalty_amount: totalPenaltyAmount
+    // Update installment penalty amount
+    await tx.rentalInstallment.update({
+      where: {
+        id: penalty.installment_id
+      },
+      data: {
+        penalty_amount: totalPenaltyAmount
+      }
+    });
+
+    const bail = await tx.rentalLease.findFirst({
+      where: { id: penalty.installment.lease_id, tenant_id: tenantId },
+      select: { primary_renter_client_id: true }
+    });
+
+    if (!bail) {
+      return;
     }
+
+    const periode = libellePeriodeEcheance(penalty.installment.period_year, penalty.installment.period_month);
+
+    await remettrePenaliteTx(tx, {
+      tenantId,
+      accountId: await compteLocataireTx(tx, tenantId, bail.primary_renter_client_id),
+      penaltyId,
+      montantRestant: 0,
+      label: periode ? `Remise de la pénalité de retard sur l'échéance ${periode}` : 'Remise de la pénalité de retard',
+      leaseId: penalty.installment.lease_id,
+      movementDate: new Date()
+    });
   });
 
   // Update installment status

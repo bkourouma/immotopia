@@ -1,7 +1,195 @@
 import { prisma } from '../utils/database';
+import type { PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
-import { RentalPaymentStatus, RentalPaymentMethod, RentalInstallmentStatus } from '@prisma/client';
+import {
+  RentalPaymentStatus,
+  RentalPaymentMethod,
+  RentalInstallmentStatus,
+  ThirdPartyMovementType
+} from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
+import { appendThirdPartyMovementTx } from '../lib/finance/ledger';
+import { roundMoney } from '../lib/finance/money';
+import {
+  annulerPieceTx,
+  compteLocataireDuBailTx,
+  compteLocataireTx,
+  libellePeriodeEcheance
+} from './rental-installment-service';
+
+// ---------------------------------------------------------------------------
+// Pont vers le grand livre des comptes de tiers — lot 1, tâche 1.3
+//
+// Un règlement encaissé se traduit au compte du locataire par une ou plusieurs
+// affectations (`PAYMENT`) et, pour ce qui n'a été affecté à aucune échéance,
+// par une avance reçue (`ADVANCE_RECEIVED`). La somme des deux vaut toujours
+// le montant du règlement : c'est l'invariant que tout ce qui suit préserve, et
+// c'est celui que le rétro-remplissage reconstruit depuis les pièces.
+//
+// Les clés de source sont celles de `rebuildThirdPartyAccount` : une allocation
+// est portée par `(RENTAL_PAYMENT_ALLOCATION, id)`, un règlement par
+// `(RENTAL_PAYMENT, id)`. Écrire sous d'autres clés ferait que le
+// rétro-remplissage, rejoué ensuite, ajouterait un second mouvement pour la
+// même pièce.
+// ---------------------------------------------------------------------------
+
+/** Mêmes intitulés de moyen de paiement que le rétro-remplissage. */
+const MOYEN_PAIEMENT_FR: Record<string, string> = {
+  CASH: 'especes',
+  BANK_TRANSFER: 'virement bancaire',
+  CHECK: 'cheque',
+  MOBILE_MONEY: 'Mobile Money',
+  CARD: 'carte',
+  OTHER: 'autre moyen'
+};
+
+export function libelleMoyen(method: string | null | undefined): string {
+  return (method && MOYEN_PAIEMENT_FR[method]) || 'moyen non precise';
+}
+
+/**
+ * Compte de tiers à mouvementer pour un règlement.
+ *
+ * `renter_client_id` d'abord, comme le rétro-remplissage, qui rattache les
+ * règlements au locataire par ce seul champ. Il est facultatif en base : quand
+ * il manque, on retombe sur le locataire principal du bail réglé, faute de quoi
+ * l'encaissement n'apparaîtrait sur aucun compte. Cette reprise ne peut pas
+ * créer de doublon, puisque le mouvement porte la clé que le rétro-remplissage
+ * utiliserait s'il voyait la pièce.
+ */
+async function comptePayeurTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  payment: { renter_client_id?: string | null; lease_id?: string | null }
+): Promise<string | null> {
+  if (payment.renter_client_id) {
+    return compteLocataireTx(tx, tenantId, payment.renter_client_id);
+  }
+
+  if (payment.lease_id) {
+    const compte = await compteLocataireDuBailTx(tx, tenantId, payment.lease_id);
+    return compte?.accountId ?? null;
+  }
+
+  return null;
+}
+
+/** Le règlement a-t-il déjà été porté au compte comme avance reçue ? */
+async function avanceDejaCrediteeTx(tx: PrismaTransactionClient, paymentId: string): Promise<boolean> {
+  const avance = await tx.thirdPartyMovement.findUnique({
+    where: {
+      sourceType_sourceId_type: {
+        sourceType: 'RENTAL_PAYMENT',
+        sourceId: paymentId,
+        type: ThirdPartyMovementType.ADVANCE_RECEIVED
+      }
+    },
+    select: { id: true }
+  });
+
+  return Boolean(avance);
+}
+
+/**
+ * Inscrit l'affectation d'un règlement à une échéance.
+ *
+ * Quand le règlement avait déjà été porté au compte en entier comme avance
+ * reçue, l'affectation ne ramène pas d'argent neuf : on inscrit alors, sous la
+ * même pièce, l'imputation de cette avance (`ADVANCE_APPLIED`) qui en reprend
+ * exactement le montant. Le relevé montre distinctement l'affectation et la
+ * consommation de l'avance (FR-011), le solde ne bouge pas, et le même argent
+ * n'est pas encaissé deux fois.
+ */
+export async function inscrireAllocationTx(
+  tx: PrismaTransactionClient,
+  params: {
+    tenantId: string;
+    accountId: string;
+    allocationId: string;
+    montant: number;
+    moyen: string;
+    periode: string | null;
+    leaseId?: string | null;
+    movementDate?: Date;
+    avanceDejaCreditee: boolean;
+  }
+): Promise<void> {
+  await appendThirdPartyMovementTx(tx, {
+    accountId: params.accountId,
+    tenantId: params.tenantId,
+    type: ThirdPartyMovementType.PAYMENT,
+    settled: params.montant,
+    label: params.periode
+      ? `Règlement (${params.moyen}) affecté à l'échéance ${params.periode}`
+      : `Règlement (${params.moyen})`,
+    sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+    sourceId: params.allocationId,
+    leaseId: params.leaseId ?? null,
+    movementDate: params.movementDate
+  });
+
+  if (!params.avanceDejaCreditee) {
+    return;
+  }
+
+  await appendThirdPartyMovementTx(tx, {
+    accountId: params.accountId,
+    tenantId: params.tenantId,
+    type: ThirdPartyMovementType.ADVANCE_APPLIED,
+    billed: params.montant,
+    label: params.periode ? `Avance imputée sur l'échéance ${params.periode}` : 'Avance imputée',
+    sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+    sourceId: params.allocationId,
+    leaseId: params.leaseId ?? null,
+    movementDate: params.movementDate
+  });
+}
+
+/**
+ * Inscrit au compte ce qu'un règlement encaissé laisse sans affectation.
+ *
+ * Le compte du locataire devient créditeur d'autant : c'est ce qui permet à la
+ * campagne de facturation d'imputer ensuite cette avance sur une échéance sans
+ * réencaisser l'argent. Rien n'est écrit quand tout est affecté.
+ */
+export async function inscrireReliquatTx(
+  tx: PrismaTransactionClient,
+  params: {
+    tenantId: string;
+    accountId: string;
+    payment: { id: string; amount: unknown; method: string | null; lease_id?: string | null };
+    dejaAffecte: number;
+    movementDate?: Date;
+  }
+) {
+  const reliquat = roundMoney(Number(params.payment.amount ?? 0) - params.dejaAffecte);
+
+  if (reliquat <= 0) {
+    return null;
+  }
+
+  return appendThirdPartyMovementTx(tx, {
+    accountId: params.accountId,
+    tenantId: params.tenantId,
+    type: ThirdPartyMovementType.ADVANCE_RECEIVED,
+    settled: reliquat,
+    label: `Règlement (${libelleMoyen(params.payment.method)}) reçu en avance, non affecté`,
+    sourceType: 'RENTAL_PAYMENT',
+    sourceId: params.payment.id,
+    leaseId: params.payment.lease_id ?? null,
+    movementDate: params.movementDate
+  });
+}
+
+/** Somme des affectations d'un règlement, telle qu'elle est en base à cet instant. */
+async function totalAffecteTx(tx: PrismaTransactionClient, paymentId: string): Promise<number> {
+  const allocations = await tx.rentalPaymentAllocation.findMany({
+    where: { payment_id: paymentId },
+    select: { amount: true }
+  });
+
+  return roundMoney(allocations.reduce((somme, a) => somme + Number(a.amount), 0));
+}
 
 interface CreatePaymentData {
   leaseId?: string;
@@ -81,32 +269,54 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
     }
 
     // Create the payment
-    const payment = await prisma.rentalPayment.create({
-      data: {
-        tenant_id: tenantId,
-        lease_id: data.leaseId,
-        renter_client_id: data.renterClientId,
-        invoice_id: data.invoiceId,
-        method: data.method,
-        amount: new Decimal(data.amount),
-        currency: data.currency || 'FCFA',
-        mm_operator: data.mmOperator as any,
-        mm_phone: data.mmPhone,
-        psp_name: data.pspName,
-        psp_transaction_id: data.pspTransactionId,
-        psp_reference: data.pspReference,
-        idempotency_key: data.idempotencyKey,
-        status: RentalPaymentStatus.SUCCESS, // Auto-mark as success for manual payments
-        succeeded_at: new Date(),
-        created_by_user_id: actorUserId
-      },
-      include: {
-        allocations: {
-          include: {
-            installment: true
+    //
+    // L'encaissement et son mouvement de compte sont indivisibles : un
+    // règlement enregistré dont le compte du locataire ne saurait rien ferait
+    // apparaître le locataire débiteur d'un loyer qu'il a payé.
+    const payment = await prisma.$transaction(async tx => {
+      const created = await tx.rentalPayment.create({
+        data: {
+          tenant_id: tenantId,
+          lease_id: data.leaseId,
+          renter_client_id: data.renterClientId,
+          invoice_id: data.invoiceId,
+          method: data.method,
+          amount: new Decimal(data.amount),
+          currency: data.currency || 'FCFA',
+          mm_operator: data.mmOperator as any,
+          mm_phone: data.mmPhone,
+          psp_name: data.pspName,
+          psp_transaction_id: data.pspTransactionId,
+          psp_reference: data.pspReference,
+          idempotency_key: data.idempotencyKey,
+          status: RentalPaymentStatus.SUCCESS, // Auto-mark as success for manual payments
+          succeeded_at: new Date(),
+          created_by_user_id: actorUserId
+        },
+        include: {
+          allocations: {
+            include: {
+              installment: true
+            }
           }
         }
+      });
+
+      // Un règlement créé ici l'est sans affectation : la totalité est reçue
+      // en avance, et l'affectation viendra plus tard (`allocatePayment` ou la
+      // campagne de facturation), sans réencaisser cet argent.
+      const compteId = await comptePayeurTx(tx, tenantId, created);
+      if (compteId && created.status === RentalPaymentStatus.SUCCESS) {
+        await inscrireReliquatTx(tx, {
+          tenantId,
+          accountId: compteId,
+          payment: created,
+          dejaAffecte: 0,
+          movementDate: created.succeeded_at ?? created.initiated_at
+        });
       }
+
+      return created;
     });
 
     logger.info(`Payment ${payment.id} created successfully for tenant ${tenantId}`);
@@ -229,14 +439,37 @@ export async function allocatePayment(
 
     // Create allocations and update installment statuses
     await prisma.$transaction(async tx => {
-      const created = await tx.rentalPaymentAllocation.createMany({
-        data: allocations
-      });
+      // Le compte du payeur est résolu une fois pour toute la transaction :
+      // toutes les affectations d'un même règlement vont au même compte.
+      const compteId = await comptePayeurTx(tx, tenantId, payment);
+      const avanceDejaCreditee = compteId ? await avanceDejaCrediteeTx(tx, paymentId) : false;
+      const moyen = libelleMoyen(payment.method);
+      const dateReglement = payment.succeeded_at ?? payment.initiated_at ?? undefined;
 
       // Update installment statuses
       for (const allocation of allocations) {
+        // Création ligne à ligne, et non `createMany` : le mouvement de compte
+        // porte l'identifiant de l'allocation, que `createMany` ne renvoie
+        // pas. Les lignes écrites sont les mêmes, et l'unicité
+        // `(payment_id, installment_id)` protège toujours des doublons.
+        const created = await tx.rentalPaymentAllocation.create({ data: allocation });
+
         const installment = installments.find(i => i.id === allocation.installment_id);
         if (!installment) continue;
+
+        if (compteId) {
+          await inscrireAllocationTx(tx, {
+            tenantId,
+            accountId: compteId,
+            allocationId: created.id,
+            montant: Number(allocation.amount),
+            moyen,
+            periode: libellePeriodeEcheance(installment.period_year, installment.period_month),
+            leaseId: installment.lease_id,
+            movementDate: dateReglement,
+            avanceDejaCreditee
+          });
+        }
 
         // Get all allocations for this installment including the new one
         const allAllocations = await tx.rentalPaymentAllocation.findMany({
@@ -270,7 +503,18 @@ export async function allocatePayment(
         });
       }
 
-      return created;
+      // Ce qui reste non affecté après cette opération est une avance reçue.
+      // Sans effet si l'avance a déjà été portée au compte à l'encaissement :
+      // la clé `(RENTAL_PAYMENT, id, ADVANCE_RECEIVED)` n'admet qu'un mouvement.
+      if (compteId && payment.status === RentalPaymentStatus.SUCCESS) {
+        await inscrireReliquatTx(tx, {
+          tenantId,
+          accountId: compteId,
+          payment,
+          dejaAffecte: await totalAffecteTx(tx, paymentId),
+          movementDate: dateReglement
+        });
+      }
     });
 
     logger.info(`Payment ${paymentId} allocated to ${allocations.length} installments`);
@@ -517,10 +761,27 @@ export async function updatePaymentStatus(
     const reversesAllocations = status === RentalPaymentStatus.CANCELED || status === RentalPaymentStatus.FAILED;
 
     const updatedPayment = await prisma.$transaction(async tx => {
+      // Résolution paresseuse : le compte de tiers est créé s'il n'existe pas,
+      // et un changement de statut sans écriture au grand livre (un règlement
+      // remboursé, un règlement antérieur au branchement) n'a aucune raison
+      // d'ouvrir un compte vide qui apparaîtrait ensuite à la balance clients.
+      let compteResolu: string | null | undefined;
+      const compteId = async () => {
+        if (compteResolu === undefined) {
+          compteResolu = await comptePayeurTx(tx, tenantId, payment);
+        }
+        return compteResolu;
+      };
+      const moyen = libelleMoyen(payment.method);
+
       if (reversesAllocations) {
         const allocations = await tx.rentalPaymentAllocation.findMany({
           where: { payment_id: paymentId },
-          select: { installment_id: true }
+          select: {
+            id: true,
+            installment_id: true,
+            installment: { select: { lease_id: true, period_year: true, period_month: true } }
+          }
         });
         const installmentIds = [...new Set(allocations.map(a => a.installment_id))];
 
@@ -528,6 +789,65 @@ export async function updatePaymentStatus(
           await tx.rentalPaymentAllocation.deleteMany({ where: { payment_id: paymentId } });
           await reverseInstallmentAllocations(tx, installmentIds);
           logger.info(`Payment ${paymentId} ${status}: reversed ${installmentIds.length} installment(s)`);
+        }
+
+        // Le retrait des affectations doit se voir au compte, sinon le
+        // locataire resterait crédité d'un règlement qui ne solde plus rien.
+        // On contrepasse ce que chaque pièce a réellement inscrit : une
+        // affectation d'avance, elle, était sans effet sur le solde et le
+        // reste. Un règlement dont rien n'a jamais été porté au grand livre
+        // n'a rien à contrepasser.
+        const inscrit = await tx.thirdPartyMovement.count({
+          where: { tenantId, sourceId: { in: [paymentId, ...allocations.map(a => a.id)] } }
+        });
+        const accountId = inscrit > 0 ? await compteId() : null;
+
+        if (accountId) {
+          const dateAnnulation = new Date();
+
+          for (const allocation of allocations) {
+            const periode = libellePeriodeEcheance(
+              allocation.installment?.period_year,
+              allocation.installment?.period_month
+            );
+
+            await annulerPieceTx(tx, {
+              tenantId,
+              accountId,
+              sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+              sourceId: allocation.id,
+              label: periode
+                ? `Annulation du règlement (${moyen}) affecté à l'échéance ${periode}`
+                : `Annulation du règlement (${moyen})`,
+              leaseId: allocation.installment?.lease_id ?? payment.lease_id ?? null,
+              movementDate: dateAnnulation
+            });
+          }
+
+          await annulerPieceTx(tx, {
+            tenantId,
+            accountId,
+            sourceType: 'RENTAL_PAYMENT',
+            sourceId: paymentId,
+            label: `Annulation du règlement (${moyen}) reçu en avance`,
+            leaseId: payment.lease_id ?? null,
+            movementDate: dateAnnulation
+          });
+        }
+      } else if (status === RentalPaymentStatus.SUCCESS) {
+        // Un règlement qui devient encaissé porte au compte ce qu'il ne solde
+        // encore aucune échéance.
+        const dejaAffecte = await totalAffecteTx(tx, paymentId);
+        const accountId = roundMoney(Number(payment.amount ?? 0) - dejaAffecte) > 0 ? await compteId() : null;
+
+        if (accountId) {
+          await inscrireReliquatTx(tx, {
+            tenantId,
+            accountId,
+            payment,
+            dejaAffecte,
+            movementDate: updateData.succeeded_at ?? payment.succeeded_at ?? payment.initiated_at
+          });
         }
       }
 

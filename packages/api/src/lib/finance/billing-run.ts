@@ -318,12 +318,39 @@ async function applyAdvancesTx(
       }
     });
 
+    // Imputer une avance, c'est DEUX mouvements, et non un seul.
+    //
+    // Le reglement avait ete credite en entier a l'encaissement
+    // (`ADVANCE_RECEIVED`). L'affecter a une echeance revient donc a reprendre
+    // ce credit, puis a le reposer au titre de l'allocation. Le solde ne bouge
+    // pas — les deux s'annulent — mais le releve montre distinctement l'avance
+    // consommee et le reglement de l'echeance, ce qu'exige le besoin B4.
+    //
+    // Ce n'est pas une elegance : c'est la seule forme qui s'accorde avec le
+    // retro-remplissage, qui rejoue toute allocation sous
+    // `(RENTAL_PAYMENT_ALLOCATION, id, PAYMENT)`. Une campagne qui ecrirait
+    // son imputation sous une autre cle laisserait le rejeu creer un second
+    // credit pour la meme allocation, et le compte du locataire deviendrait
+    // faux sans que rien ne le signale.
     await appendThirdPartyMovementTx(tx, {
       accountId: args.accountId,
       tenantId: args.tenantId,
       type: ThirdPartyMovementType.ADVANCE_APPLIED,
+      billed: applyAmount,
       label: `Avance imputée sur le loyer ${libellePeriode(args.periodYear, args.periodMonth)}`,
-      sourceType: 'RENT_BILLING_RUN',
+      sourceType: 'RENTAL_PAYMENT_ALLOCATION',
+      sourceId: allocation.id,
+      leaseId: args.leaseId,
+      movementDate: args.installment.due_date
+    });
+
+    await appendThirdPartyMovementTx(tx, {
+      accountId: args.accountId,
+      tenantId: args.tenantId,
+      type: ThirdPartyMovementType.PAYMENT,
+      settled: applyAmount,
+      label: `Règlement du loyer ${libellePeriode(args.periodYear, args.periodMonth)}`,
+      sourceType: 'RENTAL_PAYMENT_ALLOCATION',
       sourceId: allocation.id,
       leaseId: args.leaseId,
       movementDate: args.installment.due_date
