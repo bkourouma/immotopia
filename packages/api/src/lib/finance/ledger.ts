@@ -162,11 +162,23 @@ function toMovementRecord(row: any): ThirdPartyMovementRecord {
 /**
  * Voir `AppendThirdPartyMovementTx` dans `./types.ts`.
  *
- * L'idempotence ne repose pas sur une lecture prealable (qui laisserait une
- * fenetre de concurrence entre deux appels concurrents, typiquement un
- * rejeu du retro-remplissage pendant un incident) mais sur la contrainte
- * unique `(source_type, source_id, type)` posee en base : on tente
- * l'insertion, et une violation (`P2002`) est relue plutot que propagee.
+ * **L'idempotence lit avant d'ecrire, et c'est impose par PostgreSQL.**
+ *
+ * Ce code tentait d'abord l'insertion pour relire la violation `P2002`,
+ * afin de fermer la fenetre de concurrence qu'une lecture prealable laisse
+ * ouverte. Le motif est juste en theorie et ne marche pas ici : en
+ * PostgreSQL, une commande qui echoue **annule toute la transaction**, et
+ * chaque commande suivante est refusee avec l'erreur 25P02 jusqu'au
+ * rollback. La relecture de rattrapage interrogeait donc une transaction
+ * morte. Le retro-remplissage echouait sur chaque compte deja rempli.
+ *
+ * Les tests unitaires ne pouvaient pas le voir : ils simulent Prisma par un
+ * magasin en memoire, qui n'a pas cette semantique d'annulation.
+ *
+ * La fenetre de concurrence subsiste donc, mais elle est benigne : deux
+ * ecritures reellement simultanees du meme triplet leveront `P2002`, la
+ * transaction sera annulee, et l'appelant rejouera. C'est le comportement
+ * correct — mieux vaut un rejeu qu'un solde faux.
  */
 export const appendThirdPartyMovementTx: AppendThirdPartyMovementTx = async (tx, params) => {
   const account = await tx.thirdPartyAccount.findFirst({
@@ -178,13 +190,29 @@ export const appendThirdPartyMovementTx: AppendThirdPartyMovementTx = async (tx,
     return null;
   }
 
+  // Rejeu du meme triplet : le mouvement existe deja, on le renvoie sans
+  // toucher au solde, deja a jour depuis sa premiere ecriture.
+  const existant = await tx.thirdPartyMovement.findUnique({
+    where: {
+      sourceType_sourceId_type: {
+        sourceType: params.sourceType,
+        sourceId: params.sourceId,
+        type: params.type as any
+      }
+    }
+  });
+
+  if (existant) {
+    return toMovementRecord(existant);
+  }
+
   const { debit, credit, balanceAfter } = computeBalanceAfterMovement(
     Number(account.balance ?? 0),
     params.billed,
     params.settled
   );
 
-  try {
+  {
     const movement = await tx.thirdPartyMovement.create({
       data: {
         accountId: params.accountId,
@@ -207,29 +235,6 @@ export const appendThirdPartyMovementTx: AppendThirdPartyMovementTx = async (tx,
     });
 
     return toMovementRecord(movement);
-  } catch (error: any) {
-    if (error?.code !== 'P2002') {
-      throw error;
-    }
-
-    // Rejeu du meme triplet (source_type, source_id, type) : le mouvement
-    // existe deja, on le renvoie sans toucher au solde (deja a jour depuis
-    // sa premiere ecriture).
-    const existing = await tx.thirdPartyMovement.findUnique({
-      where: {
-        sourceType_sourceId_type: {
-          sourceType: params.sourceType,
-          sourceId: params.sourceId,
-          type: params.type as any
-        }
-      }
-    });
-
-    if (!existing) {
-      throw error;
-    }
-
-    return toMovementRecord(existing);
   }
 };
 
@@ -270,44 +275,25 @@ export const getOrCreateTenantAccountTx: GetOrCreateTenantAccountTx = async (tx,
 
   const label = (tenantClient as any).user?.fullName || (tenantClient as any).user?.email || 'Locataire';
 
-  try {
-    const created = await tx.thirdPartyAccount.create({
-      data: {
-        tenantId,
-        kind: 'TENANT' as any,
-        tenantClientId,
-        label,
-        balance: 0,
-        currency: 'XOF'
-      }
-    });
-
-    return { id: created.id, label: created.label, balance: toAmountOrZero(created.balance) };
-  } catch (error: any) {
-    if (error?.code !== 'P2002') {
-      throw error;
+  // Pas de rattrapage apres echec ici : en PostgreSQL, une violation de
+  // contrainte annule toute la transaction, et la relecture qui suivrait
+  // serait refusee avec l'erreur 25P02. La lecture prealable ci-dessus couvre
+  // le cas normal — un compte deja ouvert. Deux creations reellement
+  // simultanees leveront `P2002`, la transaction sera annulee, et l'appelant
+  // rejouera : c'est le bon comportement, un rejeu valant mieux qu'un solde
+  // faux. Voir l'en-tete de `appendThirdPartyMovementTx` pour le detail.
+  const created = await tx.thirdPartyAccount.create({
+    data: {
+      tenantId,
+      kind: 'TENANT' as any,
+      tenantClientId,
+      label,
+      balance: 0,
+      currency: 'XOF'
     }
+  });
 
-    // Deux appels concurrents ont tente de creer le meme compte : la
-    // contrainte unique (tenantId, kind, tenantClientId) l'a bloque, on relit
-    // celui que l'autre appel vient de creer plutot que d'echouer.
-    const racedAccount = await tx.thirdPartyAccount.findUnique({
-      where: {
-        tenantId_kind_tenantClientId: {
-          tenantId,
-          kind: 'TENANT' as any,
-          tenantClientId
-        }
-      },
-      select: { id: true, label: true, balance: true }
-    });
-
-    if (!racedAccount) {
-      throw error;
-    }
-
-    return { id: racedAccount.id, label: racedAccount.label, balance: toAmountOrZero(racedAccount.balance) };
-  }
+  return { id: created.id, label: created.label, balance: toAmountOrZero(created.balance) };
 };
 
 // ---------------------------------------------------------------------------
