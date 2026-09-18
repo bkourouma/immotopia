@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
+import { requireSitesManage } from '../middleware/finance-rbac-middleware';
 import {
   deletePropertyDocumentHandler,
   deletePropertyExpenseHandler,
@@ -22,6 +23,7 @@ import {
   getPatrimoineOverviewHandler,
   getPatrimoinePerformanceHandler,
   getPropertyYieldHandler,
+  linkWorkProgramConstructionSiteHandler,
   listPropertyDocumentsHandler,
   listPropertyExpensesHandler,
   listPropertyLoansHandler,
@@ -162,6 +164,18 @@ router.delete(
   '/tenants/:tenantId/properties/:propertyId/work-programs/:programId',
   requirePropertyPermission('PROPERTIES_EDIT'),
   deletePropertyWorkProgramHandler
+);
+
+// US12 / FR-024 : rattache (ou detache) un WorkProgram existant a un
+// ConstructionSite. Pas de :propertyId dans ce chemin (voir
+// `contracts/openapi.yaml`) : on identifie le programme par tenant + id
+// seuls, depuis l'ecran du Patrimoine. Garde financiere (`requireSitesManage`),
+// pas `requirePropertyPermission` : poser ce lien est un geste de gestion de
+// chantier, pas une edition de fiche bien.
+router.patch(
+  '/tenants/:tenantId/patrimoine/work-programs/:workProgramId/construction-site',
+  requireSitesManage,
+  linkWorkProgramConstructionSiteHandler
 );
 
 router.get(

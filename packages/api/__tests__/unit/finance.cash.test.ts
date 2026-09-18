@@ -32,6 +32,15 @@ const COMPTES_OPERATIONNELS = new Map<string, string>([
   ['605', 'compte-605']
 ]);
 
+// La synchronisation du cout des programmes de travaux appartient a
+// `cost-allocation.ts`. On la mocke ici, comme le moteur comptable : ce fichier
+// verifie qu'elle est APPELEE avec le bon chantier, pas ce qu'elle fait.
+const syncWorkProgramCostTx = jest.fn();
+
+jest.mock('../../src/lib/finance/cost-allocation', () => ({
+  syncWorkProgramCostTx: (...args: any[]) => syncWorkProgramCostTx(...args)
+}));
+
 jest.mock('../../src/lib/finance/accounting', () => ({
   postDocumentEntryTx: (...args: any[]) => postDocumentEntryTx(...args),
   ensureOperationalJournalTx: async () => 'journal-caisse',

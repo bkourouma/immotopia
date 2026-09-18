@@ -1,7 +1,33 @@
 import { Prisma, StatementStatus, WorkProgramStatus } from '@prisma/client';
-import { badRequest, notFound } from '../errors';
+import { badRequest, conflict, notFound } from '../errors';
 import { prisma } from '../../utils/database';
 import type { YieldInput } from './yield';
+import { syncWorkProgramCostTx } from '../finance/cost-allocation';
+import { logger } from '../../utils/logger';
+
+// `services/audit-service.ts` n'est PAS importe ici bien que la specification
+// (edge case US12) demande une trace d'audit du remplacement d'un cout saisi
+// a la main : ce service a une erreur TypeScript preexistante
+// (`AuditLogCreateManyInput`/`payload` nullable, l'une des 102 erreurs deja
+// connues du backend) que `tsc --noEmit` tolere en mode projet complet, mais
+// que `ts-jest` refuse des qu'un fichier de test compile ce module dans son
+// graphe -- `patrimoine.work-programs.test.ts` echouait a la compilation des
+// que `queries.ts` importait `audit-service.ts`, alors que cette suite ne
+// doit pas etre modifiee. Un `logger.warn` structure trace le remplacement
+// dans les journaux applicatifs en attendant qu'un futur correctif
+// d'`audit-service.ts` permette d'y brancher une vraie ecriture `AuditLog`.
+
+/**
+ * Un `WorkProgram` rattaché à un chantier porte sa relation dans chaque
+ * réponse : c'est la seule information, côté serveur, qui permette à l'écran
+ * de distinguer un programme piloté par la Finance (coût dérivé, lecture
+ * seule) d'un programme resté un objet du Patrimoine (coût saisi à la main).
+ * Voir le rapport de fin de tâche pour la recommandation d'affichage.
+ */
+const WORK_PROGRAM_SITE_INCLUDE = {
+  property: true,
+  site: { select: { id: true, name: true, status: true } }
+} as const;
 
 export async function ensureTenantProperty(tenantId: string, propertyId: string) {
   const property = await prisma.property.findFirst({
@@ -412,7 +438,7 @@ export async function getPropertyWorkProgramById(tenantId: string, propertyId: s
   await ensureTenantProperty(tenantId, propertyId);
   const program = await prisma.workProgram.findFirst({
     where: { id: programId, tenantId, propertyId },
-    include: { property: true }
+    include: WORK_PROGRAM_SITE_INCLUDE
   });
   if (!program) throw notFound('Programme de travaux introuvable');
   return program;
@@ -440,6 +466,21 @@ export async function updatePropertyWorkProgram(
   });
   if (!existing) throw notFound('Programme de travaux introuvable');
 
+  // FR-024 : des qu'un chantier est rattache (`constructionSiteId` non nul),
+  // le cout reel devient derive des imputations validees de ce chantier
+  // (`syncWorkProgramCostTx`, lib/finance/cost-allocation.ts) et cesse
+  // d'etre saisissable ici. Verifie en base, pas seulement au niveau du
+  // schema Zod statique (`updateWorkProgramSchema`) qui ne connait pas
+  // l'etat existant de cet enregistrement precis (voir data-model.md §4).
+  // C'est un conflit d'etat (409), pas une entree malformee (400) : la
+  // requete est syntaxiquement valide, seul l'etat du programme vise
+  // l'interdit.
+  if (typeof data.actualCost === 'number' && existing.constructionSiteId) {
+    throw conflict(
+      'Le cout reel de ce programme est derive du chantier rattache ; il ne peut plus etre saisi manuellement.'
+    );
+  }
+
   return prisma.workProgram.update({
     where: { id: programId },
     data: {
@@ -453,8 +494,86 @@ export async function updatePropertyWorkProgram(
       status: data.status,
       isCapitalized: data.isCapitalized
     },
-    include: { property: true }
+    include: WORK_PROGRAM_SITE_INCLUDE
   });
+}
+
+/**
+ * Pose ou retire le lien entre un programme de travaux et un chantier
+ * financier (US12, FR-024, contrat `openapi.yaml` —
+ * `PATCH /work-programs/{workProgramId}/construction-site`).
+ *
+ * Pas de `propertyId` dans la route : contrairement aux autres routes de
+ * programme de travaux, celle-ci est scopee par tenant seul (elle sert
+ * depuis l'ecran du Patrimoine sans redemander le bien).
+ *
+ * Le lien et la synchronisation immediate du cout derive se font dans la
+ * MEME transaction (US12 scenario 1) : sinon le programme afficherait son
+ * ancien cout -- saisi a la main ou derive d'un chantier precedent -- jusqu'a
+ * la prochaine imputation validee sur le nouveau chantier. Le calcul du cout
+ * lui-meme reste dans `lib/finance/cost-allocation.ts`, jamais ici : ce
+ * fichier ne connait que le resultat, jamais le detail d'une imputation
+ * (regle de couture de `plan.md`).
+ */
+export async function linkWorkProgramConstructionSite(
+  tenantId: string,
+  workProgramId: string,
+  constructionSiteId: string | null,
+  actorUserId?: string
+) {
+  const result = await prisma.$transaction(async tx => {
+    const existing = await tx.workProgram.findFirst({ where: { id: workProgramId, tenantId } });
+    if (!existing) {
+      throw notFound('Programme de travaux introuvable');
+    }
+
+    if (constructionSiteId) {
+      const site = await tx.constructionSite.findFirst({ where: { id: constructionSiteId, tenantId } });
+      if (!site) {
+        throw notFound('Chantier introuvable pour ce tenant');
+      }
+    }
+
+    // Edge case spec.md (US12) : un cout deja saisi a la main disparaitrait
+    // silencieusement au rattachement -- on le trace avant de l'ecraser,
+    // pour qu'aucune valeur ne disparaisse sans laisser de trace.
+    const overwritesManualCost =
+      constructionSiteId !== null && constructionSiteId !== existing.constructionSiteId && existing.actualCost !== null;
+    const previousActualCost = existing.actualCost !== null ? Number(existing.actualCost) : null;
+
+    await tx.workProgram.update({
+      where: { id: workProgramId },
+      data: { constructionSiteId }
+    });
+
+    if (constructionSiteId) {
+      // Synchronisation immediate : sans elle, le programme resterait sur son
+      // ancienne valeur jusqu'a la prochaine imputation validee (US12 sc.1).
+      await syncWorkProgramCostTx(tx, tenantId, constructionSiteId);
+    }
+
+    const updated = await tx.workProgram.findFirst({
+      where: { id: workProgramId, tenantId },
+      include: WORK_PROGRAM_SITE_INCLUDE
+    });
+
+    return { updated: updated!, overwritesManualCost, previousActualCost };
+  });
+
+  if (result.overwritesManualCost) {
+    // Trace du remplacement (edge case spec.md US12) : voir la note en tete
+    // de fichier sur l'absence d'import d'`audit-service.ts` ici.
+    logger.warn('WorkProgram.actualCost saisi a la main ecrase par le cout derive du chantier', {
+      actionKey: 'PATRIMOINE_WORK_PROGRAM_COST_OVERRIDDEN',
+      tenantId,
+      actorUserId,
+      workProgramId,
+      constructionSiteId,
+      previousActualCost: result.previousActualCost
+    });
+  }
+
+  return result.updated;
 }
 
 export async function deletePropertyWorkProgram(tenantId: string, propertyId: string, programId: string) {

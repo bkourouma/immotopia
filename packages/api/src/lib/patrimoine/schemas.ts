@@ -69,6 +69,14 @@ export const createWorkProgramSchema = z.object({
   isCapitalized: z.boolean().default(false)
 });
 
+// `actualCost` reste accepte ici a la forme : Zod ne connait que la requete,
+// jamais l'etat existant en base d'un enregistrement precis. Le refus reel
+// (409, conflit d'etat et non entree malformee) s'applique dans
+// `updatePropertyWorkProgram` (lib/patrimoine/queries.ts), qui verifie si le
+// programme vise porte deja un `constructionSiteId` -- des lors que le lien
+// existe, son cout reel est derive du chantier (FR-024, `syncWorkProgramCostTx`
+// dans lib/finance/cost-allocation.ts) et cesse d'etre saisissable. Sans lien,
+// la saisie reste permise, inchangee.
 export const updateWorkProgramSchema = createWorkProgramSchema
   .extend({
     actualCost: z.number().nonnegative().optional(),
@@ -79,6 +87,11 @@ export const updateWorkProgramSchema = createWorkProgramSchema
   .refine(value => Object.keys(value).length > 0, {
     message: 'Au moins un champ est requis pour la mise a jour du programme de travaux'
   });
+
+/** Voir US12 / FR-024 : pose ou retire le lien vers un chantier financier. */
+export const linkWorkProgramConstructionSiteSchema = z.object({
+  constructionSiteId: uuidSchema.nullable()
+});
 
 export const createDocumentSchema = z.object({
   title: z.string().min(2),
@@ -123,4 +136,3 @@ export const projectionQuerySchema = z.object({
   expenseGrowthRate: z.coerce.number().min(0).max(1).default(0.025),
   vacancyRate: z.coerce.number().min(0).max(1).default(0.05)
 });
-

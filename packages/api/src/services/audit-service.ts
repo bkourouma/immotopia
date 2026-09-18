@@ -2,6 +2,7 @@ import { prisma } from '../utils/database';
 import { AuditLogEntry, AuditActionKey } from '../types/audit-types';
 import { logger } from '../utils/logger';
 import { getRequestContext } from '../utils/request-context';
+import { Prisma } from '@prisma/client';
 
 // In-memory audit queue
 const auditQueue: AuditLogEntry[] = [];
@@ -62,7 +63,12 @@ async function flushAuditQueue(): Promise<void> {
         entityId: entry.entityId,
         ipAddress: entry.ipAddress || null,
         userAgent: entry.userAgent || null,
-        payload: entry.payload || null,
+        // `Json?` de Prisma n'accepte pas un `null` ordinaire : il faut la
+        // valeur sentinelle `DbNull`, qui ecrit un NULL SQL. Un `null` nu ne
+        // compile pas — c'etait l'une des erreurs de type preexistantes, et
+        // elle empechait `ts-jest` de charger tout test dont le graphe de
+        // modules touche ce fichier.
+        payload: (entry.payload ?? Prisma.DbNull) as Prisma.InputJsonValue | typeof Prisma.DbNull,
         createdAt: entry.createdAt || new Date()
       })),
       skipDuplicates: true
@@ -172,8 +178,8 @@ export async function getAuditLogs(filters: {
   // while the id itself is still on the log line.
   const logs = rows.map(row => ({
     ...row,
-    actor: row.actorUserId ? actorById.get(row.actorUserId) ?? null : null,
-    tenant: row.tenantId ? tenantById.get(row.tenantId) ?? null : null
+    actor: row.actorUserId ? (actorById.get(row.actorUserId) ?? null) : null,
+    tenant: row.tenantId ? (tenantById.get(row.tenantId) ?? null) : null
   }));
 
   return {

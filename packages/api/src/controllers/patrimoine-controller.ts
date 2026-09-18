@@ -6,6 +6,7 @@ import {
   createLoanSchema,
   createValuationSchema,
   createWorkProgramSchema,
+  linkWorkProgramConstructionSiteSchema,
   projectionQuerySchema,
   updateExpenseSchema,
   updateLoanSchema,
@@ -30,6 +31,7 @@ import {
   createPropertyValuation,
   createPropertyWorkProgram,
   getPatrimoineOverview,
+  linkWorkProgramConstructionSite,
   listPropertyDocuments,
   listPropertyExpenses,
   listPropertyLoans,
@@ -402,6 +404,33 @@ export async function updatePropertyWorkProgramHandler(req: Request, res: Respon
     res
       .status(typed.status || 400)
       .json({ success: false, error: typed.message || 'Echec mise a jour programme travaux' });
+  }
+}
+
+/**
+ * Rattache (ou detache, `constructionSiteId: null`) un programme de travaux
+ * a un chantier financier. Voir spec.md US12, FR-024 et
+ * `contracts/openapi.yaml` (`PATCH .../work-programs/{id}/construction-site`).
+ * Garde : `requireSitesManage` (pose en route, cote finance-rbac-middleware),
+ * pas `requirePropertyPermission` -- ce geste est un acte de gestion
+ * financiere du chantier, pas une simple edition de fiche bien.
+ */
+export async function linkWorkProgramConstructionSiteHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const parsed = linkWorkProgramConstructionSiteSchema.parse(req.body);
+    const data = await linkWorkProgramConstructionSite(
+      resolveTenantId(req),
+      resolveResourceId(req, 'workProgramId', 'WorkProgramId'),
+      parsed.constructionSiteId,
+      req.user?.userId
+    );
+    res.json({ success: true, data });
+  } catch (error: unknown) {
+    logger.error('Error linking work program to construction site', { error, body: req.body });
+    const typed = error as { status?: number; message?: string };
+    res
+      .status(typed.status || 400)
+      .json({ success: false, error: typed.message || 'Echec du rattachement au chantier' });
   }
 }
 

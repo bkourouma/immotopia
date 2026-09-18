@@ -16,6 +16,15 @@
  * ne pourraient pas voir la difference, et le lot 1 s'y est deja brule.
  */
 
+// La synchronisation du cout des programmes de travaux appartient a
+// `cost-allocation.ts`. On la mocke ici, comme le moteur comptable : ce fichier
+// verifie qu'elle est APPELEE avec le bon chantier, pas ce qu'elle fait.
+const syncWorkProgramCostTx = jest.fn();
+
+jest.mock('../../src/lib/finance/cost-allocation', () => ({
+  syncWorkProgramCostTx: (...args: any[]) => syncWorkProgramCostTx(...args)
+}));
+
 jest.mock('@prisma/client', () => {
   type Row = Record<string, any>;
 
@@ -195,6 +204,10 @@ jest.mock('@prisma/client', () => {
       })
     },
     costAllocation: {
+      // `voidDocumentTx` lit les imputations AVANT de les marquer : apres le
+      // `updateMany`, elles portent toutes `voidedAt` et on ne saurait plus
+      // lesquelles viennent d'etre annulees par cette operation.
+      findMany: jest.fn(async (args: Row) => store.costAllocations.filter(a => matches(a, args.where))),
       updateMany: jest.fn(async (args: Row) => {
         const touchees = store.costAllocations.filter(a => matches(a, args.where));
         for (const allocation of touchees) {

@@ -21,8 +21,26 @@ export interface AccountStatementPdfPayload {
   movements: ThirdPartyMovementRecord[];
 }
 
-function money(value: number, currency: string) {
-  return `${value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+/**
+ * Formate un montant pour le PDF, **sans passer par la locale**.
+ *
+ * `toLocaleString('fr-FR')` separe les milliers par une espace fine insecable
+ * (U+202F). Ce caractere est hors du jeu WinAnsi, seul encodage que les
+ * polices standard de `pdf-lib` savent ecrire : la generation levait donc une
+ * erreur au premier montant a quatre chiffres.
+ *
+ * Le defaut n'a jamais ete vu parce que le test de cet endpoint simule la
+ * construction du document. Il se serait declare au premier clic sur
+ * « Imprimer », en production.
+ *
+ * On separe donc a la main, par une espace ordinaire. Un test verifie qu'aucun
+ * caractere renvoye ne sort du jeu encodable.
+ */
+export function money(value: number, currency: string) {
+  const [entier, decimales] = Math.abs(value).toFixed(2).split('.');
+  const milliers = entier.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const signe = value < 0 ? '-' : '';
+  return `${signe}${milliers},${decimales} ${currency}`;
 }
 
 function formatDate(date?: Date) {
