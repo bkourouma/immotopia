@@ -17,6 +17,9 @@ import {
 import { repondreBalances } from './finance-mock-balances';
 import { repondreReleve } from './finance-mock-releve';
 import { repondreCampagne } from './finance-mock-campagne';
+import { repondreFournisseurs } from './finance-mock-fournisseurs';
+import { repondreChantiers } from './finance-mock-chantiers';
+import { repondreValidation } from './finance-mock-validation';
 
 /**
  * Fausse API de l'atelier.
@@ -297,7 +300,14 @@ export function installerFausseApi(scenario: Scenario) {
     // Module financier. Un gestionnaire par écran, dans son propre fichier :
     // trois agents les construisent en parallèle et ne se marchent pas dessus.
     // Chacun renvoie `null` quand l'URL ne le concerne pas.
-    for (const repondre of [repondreBalances, repondreReleve, repondreCampagne]) {
+    for (const repondre of [
+      repondreBalances,
+      repondreReleve,
+      repondreCampagne,
+      repondreFournisseurs,
+      repondreChantiers,
+      repondreValidation
+    ]) {
       const reponse = repondre(url.pathname, scenario);
       if (reponse !== null) {
         return ok(config, reponse);
