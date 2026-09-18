@@ -59,13 +59,16 @@ export async function listInstallmentsHandler(req: Request, res: Response): Prom
   try {
     const tenantId = getTenantIdFromRequest(req);
     const { leaseId: paramLeaseId } = req.params;
-    const { leaseId: queryLeaseId, status, year, month, overdue } = req.query;
+    const { leaseId: queryLeaseId, renterClientId, status, year, month, overdue } = req.query;
 
     const filters: any = {};
     // leaseId can come from route params (/:leaseId/installments) or query params (?leaseId=...)
     const leaseId = paramLeaseId || (queryLeaseId as string);
     if (leaseId) {
       filters.leaseId = leaseId;
+    }
+    if (renterClientId) {
+      filters.renterClientId = renterClientId as string;
     }
     if (status) {
       filters.status = status as RentalInstallmentStatus;

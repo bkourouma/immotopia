@@ -20,8 +20,11 @@ const listPayments = vi.fn();
 const createPayment = vi.fn();
 const allocatePayment = vi.fn();
 
+const listLeases = vi.fn();
+
 vi.mock('../../services/rental-service', () => ({
   listPayments: (...a: unknown[]) => listPayments(...a),
+  listLeases: (...a: unknown[]) => listLeases(...a),
   createPayment: (...a: unknown[]) => createPayment(...a),
   allocatePayment: (...a: unknown[]) => allocatePayment(...a),
   RentalPaymentStatus: {},
@@ -164,5 +167,47 @@ describe('Paiements — état dans l’URL', () => {
     mount([paiement()]);
     await waitFor(() => expect(listPayments).toHaveBeenCalled());
     expect(listPayments.mock.calls[0][1].status).toBeUndefined();
+  });
+});
+
+describe('Paiements — filtre par locataire', () => {
+  beforeEach(() => {
+    listLeases.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 'bail-1',
+          lease_number: 'BAIL-2026-0001',
+          primaryRenter: { id: 'cli-1', user: { fullName: 'Mariam Diomandé' } }
+        },
+        {
+          id: 'bail-2',
+          lease_number: 'BAIL-2026-0002',
+          primaryRenter: { id: 'cli-2', user: { fullName: 'Seydou Traoré' } }
+        }
+      ],
+      pagination: { page: 1, limit: 500, total: 2, totalPages: 1 }
+    });
+  });
+
+  it('transmet le locataire choisi à l’API', async () => {
+    // Le filtre vit dans l'URL : un écran filtré doit être partageable.
+    mount([], '/tenant/agence-1/rental/payments?renterClientId=cli-2');
+    await waitFor(() => expect(listPayments).toHaveBeenCalled(), { timeout: 8000 });
+    expect(listPayments.mock.calls[0][1]).toMatchObject({ renterClientId: 'cli-2' });
+  });
+
+  it('nomme le bail et le payeur sur chaque ligne', async () => {
+    // Sans ces deux colonnes, la liste montre un montant et une date sans
+    // jamais dire qui a payé quoi.
+    mount([
+      paiement({
+        lease: { id: 'bail-2', lease_number: 'BAIL-2026-0002', property: { id: 'b2', title: 'Entrepôt Treichville' } },
+        renterClient: { id: 'cli-2', user: { fullName: 'Seydou Traoré' } }
+      })
+    ]);
+    expect(await screen.findByText('BAIL-2026-0002', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByText('Entrepôt Treichville')).toBeInTheDocument();
+    expect(screen.getByText('Seydou Traoré')).toBeInTheDocument();
   });
 });

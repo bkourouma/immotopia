@@ -59,6 +59,7 @@ type Overrides = {
   onClearFilters?: () => void;
   emptyAction?: { label: string; onClick: () => void };
   onPageChange?: (page: number, pageSize: number) => void;
+  paginated?: boolean;
 };
 
 function view(props: Overrides = {}) {
@@ -181,9 +182,30 @@ describe('DataView — pagination serveur', () => {
     expect(screen.getByText(/sur 57/)).toBeInTheDocument();
   });
 
-  it('n’affiche aucune pagination quand tout tient sur une page', () => {
+  it('affiche le compteur même quand tout tient sur une page', () => {
+    // La barre ne sert pas qu'à tourner les pages : elle porte le compteur et
+    // le choix du nombre par page. La masquer sur une liste courte privait de
+    // la seule réponse à « combien y en a-t-il ? ».
+    //
+    // L'ancienne version de ce test affirmait l'inverse — et ne vérifiait rien :
+    // elle cherchait un `role="navigation"` que la pagination d'Ant Design ne
+    // porte pas, donc elle passait quel que soit le comportement.
     view({ total: 2 });
-    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(screen.getByText(/sur 2/)).toBeInTheDocument();
+  });
+
+  it('n’affiche aucune pagination quand la liste ne se pagine pas', () => {
+    // Certaines API renvoient tout d'un bloc. L'écran le déclare, au lieu de
+    // le faire deviner en posant `pageSize` égal au total.
+    view({ total: 2, paginated: false });
+    expect(screen.queryByText(/sur 2/)).not.toBeInTheDocument();
+  });
+
+  it('n’affiche aucune pagination sur une liste vide', () => {
+    // Le bloc d'état vide parle déjà ; un « 0–0 sur 0 » en dessous n'ajoute
+    // rien et encombre.
+    view({ items: [], total: 0 });
+    expect(screen.queryByText(/sur 0/)).not.toBeInTheDocument();
   });
 
   it('remonte le changement de page à l’appelant', async () => {

@@ -391,8 +391,10 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
         items={penalites}
         // L'API ne pagine pas les pénalités : elle renvoie tout. Annoncer
         // `items.length` n'est donc pas un raccourci, c'est le total réel de ce
-        // que le serveur a rendu. Aucune pagination ne s'affiche, parce qu'il
-        // n'y en a pas à offrir.
+        // que le serveur a rendu. `paginated={false}` le dit explicitement —
+        // avant, l'absence de barre tenait à l'égalité entre `total` et
+        // `pageSize`, ce qui se défaisait au premier changement du composant.
+        paginated={false}
         total={penalites.length}
         page={1}
         pageSize={Math.max(penalites.length, 1)}

@@ -40,3 +40,6 @@ export type { FilterSheetProps } from './FilterSheet';
 
 export { StatCard } from './StatCard';
 export type { StatCardProps } from './StatCard';
+
+export { StepRail } from './StepRail';
+export type { StepRailProps, StepRailItem } from './StepRail';

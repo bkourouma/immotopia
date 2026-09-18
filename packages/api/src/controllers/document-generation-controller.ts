@@ -17,6 +17,11 @@ const generateDocumentSchema = z.object({
  * POST /api/v1/documents/generate
  */
 export async function generateDocumentHandler(req: Request, res: Response): Promise<void> {
+  // Declare hors du try : le bloc catch s'en sert pour enrichir le message
+  // d'erreur « Aucun template disponible ». Declare a l'interieur, la variable
+  // etait hors de portee et le catch levait une ReferenceError.
+  let validatedData: z.infer<typeof generateDocumentSchema> | undefined;
+
   try {
     const tenantId = req.tenantContext?.tenantId;
     const actorUserId = req.user?.userId;
@@ -30,7 +35,7 @@ export async function generateDocumentHandler(req: Request, res: Response): Prom
     }
 
     // Validate request body
-    const validatedData = generateDocumentSchema.parse(req.body);
+    validatedData = generateDocumentSchema.parse(req.body);
 
     // Prepare additional params
     const additionalParams: any = {};

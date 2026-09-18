@@ -130,12 +130,22 @@ export default function TenantLease() {
     }
   };
 
+  /**
+   * Montant en francs CFA, insécable.
+   *
+   * `Intl` sépare les milliers par une espace fine insécable, mais pose une
+   * espace ORDINAIRE avant le symbole : dans une cellule étroite, le montant
+   * se coupait entre le nombre et « F CFA ». On rend toutes les espaces
+   * insécables pour que le montant reste d'un seul tenant.
+   */
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('fr-FR', {
       style: 'currency',
       currency: 'XOF',
       minimumFractionDigits: 0
-    }).format(amount);
+    })
+      .format(amount)
+      .replace(/\s/g, '\u00a0');
   };
 
   const formatDate = (dateString: string | null) => {
@@ -252,7 +262,27 @@ export default function TenantLease() {
           </>
         }
       >
-        <Descriptions bordered column={{ xs: 1, sm: 2, lg: 3 }}>
+        {/*
+          Deux colonnes au plus, jamais trois.
+
+          Une `Descriptions` bordée à trois colonnes pose SIX cellules par
+          ligne — libellé et valeur pour chacune —, soit environ 15 % de la
+          largeur par cellule. À cette taille, « Dépôt de garantie » se coupait
+          en deux et le montant lui-même se brisait en plein milieu :
+          « 1500 0 00 F CF A ». Un montant illisible sur le portail du
+          locataire, c'est-à-dire exactement là où il compte.
+
+          Les libellés ne se coupent plus (`nowrap`) et la colonne qui les
+          porte a une largeur fixe : sans elle, Ant Design la dimensionne sur
+          le plus long et le reste suit.
+        */}
+        <Descriptions
+          bordered
+          column={{ xs: 1, md: 2 }}
+          size="middle"
+          labelStyle={{ whiteSpace: 'nowrap', width: 180, verticalAlign: 'top' }}
+          contentStyle={{ verticalAlign: 'top' }}
+        >
           <Descriptions.Item label="Numéro de bail">
             <Text strong>{data.lease.lease_number}</Text>
           </Descriptions.Item>
@@ -291,9 +321,8 @@ export default function TenantLease() {
             {getBillingFrequencyLabel(data.lease.billing_frequency)}
           </Descriptions.Item>
           <Descriptions.Item label="Jour d'échéance">Le {data.lease.due_day_of_month} de chaque mois</Descriptions.Item>
-          <Descriptions.Item label="Devise">{data.lease.currency}</Descriptions.Item>
           {data.lease.notes && (
-            <Descriptions.Item label="Notes" span={3}>
+            <Descriptions.Item label="Notes" span={{ xs: 1, md: 2 }}>
               <Text>{data.lease.notes}</Text>
             </Descriptions.Item>
           )}

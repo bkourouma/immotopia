@@ -1,4 +1,4 @@
-import { NAVIGATION, MORE_TAB_HREF } from '../../navigation/model';
+import { NAVIGATION, MORE_TAB_HREF, SECTION_LABELS } from '../../navigation/model';
 import {
   contextFromPath,
   isOwnerPortalPath,
@@ -75,6 +75,55 @@ describe('modèle de navigation — intégrité', () => {
     const more = NAVIGATION.collaborateur.tree.filter(g => g.zone === 'more');
     expect(more.length).toBeGreaterThan(0);
     expect(more.map(g => g.label)).toContain('Syndic');
+  });
+
+  it('coiffe chaque entrée d’un domaine, sauf l’accueil', () => {
+    // L'accueil n'a pas de domaine : un intertitre au-dessus d'une entrée
+    // unique qui s'appelle déjà « Tableau de bord » ne dirait rien de plus.
+    const sansDomaine = NAVIGATION.collaborateur.tree.filter(g => !g.section).map(g => g.label);
+    expect(sansDomaine).toEqual(['Tableau de bord']);
+  });
+
+  it('n’emploie que des domaines déclarés', () => {
+    for (const persona of Object.values(NAVIGATION)) {
+      for (const group of persona.tree) {
+        if (group.section) expect(SECTION_LABELS[group.section]).toBeTruthy();
+      }
+    }
+  });
+
+  it('garde les entrées d’un même domaine contiguës', () => {
+    // Un domaine discontinu produirait deux intertitres de même clé : le menu
+    // dirait deux fois la même chose à deux endroits, et React verrait deux
+    // nœuds de même clé.
+    for (const persona of Object.values(NAVIGATION)) {
+      const dejaVus = new Set<string>();
+      let courant: string | undefined;
+      for (const group of persona.tree) {
+        if (group.section !== courant && group.section) {
+          expect(dejaVus.has(group.section)).toBe(false);
+          dejaVus.add(group.section);
+        }
+        courant = group.section;
+      }
+    }
+  });
+
+  it('coiffe le portail propriétaire de ses deux domaines', () => {
+    const domaines = NAVIGATION.proprietaire.tree.map(g => g.section);
+    expect(domaines).toEqual([undefined, 'portefeuille', 'portefeuille', 'batiments', undefined]);
+    // « Plus » reste sans intertitre : un titre au-dessus d'un groupe qui porte
+    // deja ce nom nommerait deux fois la meme chose.
+    expect(NAVIGATION.proprietaire.tree.filter(g => !g.section).map(g => g.label)).toEqual(['Tableau de bord', 'Plus']);
+  });
+
+  it('fait de « Gestion locative » un titre, jamais un parent', () => {
+    expect(Object.values(SECTION_LABELS)).toContain('Gestion locative');
+    const locatif = NAVIGATION.collaborateur.tree.filter(g => g.section === 'locatif');
+    expect(locatif.map(g => g.label)).toEqual(['Baux', 'Encaisser']);
+    // Les deux gardent leur href : ce sont des destinations de premier niveau,
+    // pas des accordeons qui rajoutent un tap (§4.3).
+    expect(locatif.every(g => Boolean(g.href))).toBe(true);
   });
 
   it('donne la même icône à la même destination dans l’onglet et dans l’arbre', () => {

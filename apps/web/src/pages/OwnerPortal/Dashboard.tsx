@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Typography, Spin, Alert, Space, Tag, List, Empty, Statistic, Button } from 'antd';
+import { Card, Row, Col, Typography, Spin, Alert, Space, Tag, List, Empty, Button } from 'antd';
 import {
   BankOutlined,
   DollarOutlined,
@@ -7,8 +7,6 @@ import {
   WalletOutlined,
   ToolOutlined,
   HomeOutlined,
-  ArrowUpOutlined,
-  ArrowDownOutlined,
   PercentageOutlined,
   SyncOutlined
 } from '@ant-design/icons';
@@ -119,7 +117,7 @@ export default function OwnerDashboard() {
       PAID: { label: 'Payé', color: 'success' },
       DECLARED: { label: 'Déclaré', color: 'default' },
       IN_PROGRESS: { label: 'En cours', color: 'processing' },
-      RESOLVED: { label: 'Résolu', color: 'success' },
+      RESOLVED: { label: 'Résolu', color: 'success' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -159,90 +157,88 @@ export default function OwnerDashboard() {
         </Button>
       </div>
 
-      {/* Portfolio Summary Cards (T028) */}
+      {/* Rangee d'indicateurs (T028-T030).
+          Les trois rangees d'origine — patrimoine, revenus, occupation — n'en
+          font plus qu'une, reglee sur quatre cartes par ligne. « Revenus année
+          dernière » a ete retire : c'est le seul chiffre de la serie qui ne
+          bouge plus jamais, et il repoussait l'activite sous la ligne de
+          flottaison. Restent huit indicateurs, soit deux rangees pleines — pas
+          de carte orpheline en bout de ligne, ce que faisait le taux
+          d'occupation seul sur la sienne. Le passage a quatre par ligne se fait
+          a 1200 px et non a 992 : en dessous, la barre laterale ne laisse que
+          160 px par carte, ou « 2 450 000 F CFA » ne tient pas. */}
       <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} xl={6}>
           <StatCard
+            compact
             title="Total propriétés"
             value={data.portfolioSummary.total}
             icon={<BankOutlined style={{ color: '#1890ff' }} />}
             valueStyle={{ fontSize: 24 }}
           />
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} xl={6}>
           <StatCard
+            compact
             title="Louées"
             value={data.portfolioSummary.rented}
             icon={<HomeOutlined style={{ color: '#52c41a' }} />}
             valueStyle={{ fontSize: 24, color: '#52c41a' }}
           />
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} xl={6}>
           <StatCard
+            compact
             title="Disponibles"
             value={data.portfolioSummary.available}
             icon={<HomeOutlined style={{ color: '#1890ff' }} />}
             valueStyle={{ fontSize: 24, color: '#1890ff' }}
           />
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} xl={6}>
           <StatCard
+            compact
             title="En maintenance"
             value={data.portfolioSummary.inMaintenance}
             icon={<ToolOutlined style={{ color: '#faad14' }} />}
             valueStyle={{ fontSize: 24, color: '#faad14' }}
           />
         </Col>
-      </Row>
-
-      {/* Revenue KPI Cards (T029) */}
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} xl={6}>
           <StatCard
+            compact
+            title="Taux d'occupation"
+            value={data.occupancyRate.toFixed(1)}
+            suffix="%"
+            icon={<PercentageOutlined style={{ color: '#1890ff' }} />}
+            valueStyle={{ fontSize: 24, color: '#1890ff' }}
+          />
+        </Col>
+        <Col xs={24} sm={12} xl={6}>
+          <StatCard
+            compact
             title="Revenus ce mois"
             value={formatCurrency(data.revenueMetrics.currentMonth)}
             icon={<DollarOutlined style={{ color: '#52c41a' }} />}
-            valueStyle={{ fontSize: 20, color: '#52c41a' }}
+            valueStyle={{ color: '#52c41a' }}
           />
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} xl={6}>
           <StatCard
+            compact
             title="Revenus cette année"
             value={formatCurrency(data.revenueMetrics.currentYear)}
             icon={<DollarOutlined style={{ color: '#1890ff' }} />}
-            valueStyle={{ fontSize: 20, color: '#1890ff' }}
+            valueStyle={{ color: '#1890ff' }}
           />
         </Col>
-        <Col xs={24} sm={12} lg={6}>
+        <Col xs={24} sm={12} xl={6}>
           <StatCard
+            compact
             title="Revenus mois dernier"
             value={formatCurrency(data.revenueMetrics.lastMonth)}
             icon={<DollarOutlined style={{ color: '#722ed1' }} />}
-            valueStyle={{ fontSize: 20 }}
           />
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <StatCard
-            title="Revenus année dernière"
-            value={formatCurrency(data.revenueMetrics.lastYear)}
-            icon={<DollarOutlined style={{ color: '#722ed1' }} />}
-            valueStyle={{ fontSize: 20 }}
-          />
-        </Col>
-      </Row>
-
-      {/* Occupancy Rate Card (T030) */}
-      <Row gutter={[16, 16]}>
-        <Col xs={24} sm={12} lg={6}>
-          <Card>
-            <Statistic
-              title="Taux d'occupation"
-              value={data.occupancyRate.toFixed(1)}
-              prefix={<PercentageOutlined style={{ color: '#1890ff' }} />}
-              suffix="%"
-              valueStyle={{ fontSize: 24, color: '#1890ff' }}
-            />
-          </Card>
         </Col>
       </Row>
 
@@ -251,13 +247,21 @@ export default function OwnerDashboard() {
         {/* Upcoming Payments Section (T031) */}
         <Col xs={24} lg={12}>
           <Card
-            title={<><CalendarOutlined /> Prochains paiements</>}
-            extra={<Text type="secondary" style={{ fontSize: 12 }}>5 prochaines échéances</Text>}
+            title={
+              <>
+                <CalendarOutlined /> Prochains paiements
+              </>
+            }
+            extra={
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                5 prochaines échéances
+              </Text>
+            }
           >
             {data.upcomingPayments.length > 0 ? (
               <List
                 dataSource={data.upcomingPayments}
-                renderItem={(payment) => (
+                renderItem={payment => (
                   <List.Item>
                     <List.Item.Meta
                       title={
@@ -270,7 +274,9 @@ export default function OwnerDashboard() {
                         <Space direction="vertical" size={0}>
                           <Text type="secondary">{payment.propertyAddress}</Text>
                           <Text type="secondary">Locataire: {payment.tenantName}</Text>
-                          <Text type="secondary">Période: {payment.period} - {formatDate(payment.dueDate)}</Text>
+                          <Text type="secondary">
+                            Période: {payment.period} - {formatDate(payment.dueDate)}
+                          </Text>
                         </Space>
                       }
                     />
@@ -286,13 +292,21 @@ export default function OwnerDashboard() {
         {/* Recent Activity Section (T032) */}
         <Col xs={24} lg={12}>
           <Card
-            title={<><WalletOutlined /> Paiements récents</>}
-            extra={<Text type="secondary" style={{ fontSize: 12 }}>5 derniers</Text>}
+            title={
+              <>
+                <WalletOutlined /> Paiements récents
+              </>
+            }
+            extra={
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                5 derniers
+              </Text>
+            }
           >
             {data.recentPayments.length > 0 ? (
               <List
                 dataSource={data.recentPayments}
-                renderItem={(payment) => (
+                renderItem={payment => (
                   <List.Item>
                     <List.Item.Meta
                       title={
@@ -323,13 +337,21 @@ export default function OwnerDashboard() {
       <Row gutter={[16, 16]}>
         <Col xs={24}>
           <Card
-            title={<><ToolOutlined /> Tickets de maintenance récents</>}
-            extra={<Text type="secondary" style={{ fontSize: 12 }}>5 derniers</Text>}
+            title={
+              <>
+                <ToolOutlined /> Tickets de maintenance récents
+              </>
+            }
+            extra={
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                5 derniers
+              </Text>
+            }
           >
             {data.recentTickets.length > 0 ? (
               <List
                 dataSource={data.recentTickets}
-                renderItem={(ticket) => (
+                renderItem={ticket => (
                   <List.Item>
                     <List.Item.Meta
                       title={

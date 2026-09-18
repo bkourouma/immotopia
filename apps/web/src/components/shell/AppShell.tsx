@@ -3,6 +3,7 @@ import { Button, Drawer, Layout } from 'antd';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { useDisabledMenuKeys, useFilteredNavigation } from '../../hooks/useMenuAccess';
 import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { actionForPath } from '../../navigation/actions';
 import { NAVIGATION } from '../../navigation/model';
@@ -109,7 +110,16 @@ export const AppShell: React.FC = () => {
    */
   const redirectTo = isLoadingMembership ? null : portalRedirect(location.pathname, tenantClient?.clientType);
 
-  const nav = persona && persona !== 'non-rattache' ? NAVIGATION[persona] : null;
+  const personaNav = persona && persona !== 'non-rattache' ? NAVIGATION[persona] : null;
+
+  /**
+   * Menus coupes pour ce compte (Admin > Roles et permissions > Menus).
+   * L'arbre du persona dit ce qui EXISTE ; cette carte dit ce que l'agence a
+   * decide de montrer a ce role. Sans ce filtrage, l'ecran d'administration ne
+   * serait qu'une declaration d'intention.
+   */
+  const disabledMenuKeys = useDisabledMenuKeys(navContext.tenantId);
+  const nav = useFilteredNavigation(personaNav, disabledMenuKeys);
 
   // Tant que le persona n'est pas tranché, on rend la coquille sans menu
   // plutôt qu'un menu faux : afficher le menu public à un collaborateur, même
@@ -230,8 +240,8 @@ export const AppShell: React.FC = () => {
           title="Navigation"
           width={288}
           styles={{
-            body: { padding: 0, background: 'var(--surface-inverse)' },
-            header: { background: 'var(--surface-inverse)', borderBottom: 'none' }
+            body: { padding: 0, background: 'var(--surface-nav)' },
+            header: { background: 'var(--surface-nav)', borderBottom: 'none' }
           }}
           classNames={{ header: 'app-drawer-header' }}
         >

@@ -737,6 +737,7 @@ model Invitation {
   tokenHash  String           @unique @map("token_hash")
   expiresAt  DateTime         @map("expires_at")
   status     InvitationStatus @default(PENDING)
+  roleIds    String[]         @map("role_ids")
   invitedBy  String           @map("invited_by")
   acceptedBy String?          @map("accepted_by")
   acceptedAt DateTime?        @map("accepted_at")
@@ -3815,3 +3816,27 @@ model PatrimonyDocument {
 
 
 
+
+/// Accès aux menus par rôle.
+///
+/// Le catalogue des menus vit dans le modèle de navigation du front
+/// (`apps/web/src/navigation/menu-catalog.ts`) : c'est lui qui décrit l'arbre
+/// réellement affiché. Cette table ne stocke donc pas le catalogue, seulement
+/// la décision d'un administrateur pour un couple (rôle, menu).
+///
+/// `roleKey` n'est volontairement PAS une clé étrangère vers `roles` : deux
+/// des personas de l'interface — le propriétaire et le locataire — sont
+/// déduits de `tenant_clients.client_type` et n'ont aucune ligne dans `roles`.
+/// Les clés pseudo-rôles `PORTAL_OWNER` et `PORTAL_RENTER` les représentent.
+model RoleMenuAccess {
+  id        String   @id @default(uuid())
+  roleKey   String   @map("role_key")
+  menuKey   String   @map("menu_key")
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([roleKey, menuKey])
+  @@index([roleKey])
+  @@map("role_menu_access")
+}

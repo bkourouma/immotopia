@@ -62,11 +62,31 @@ code {
   border-radius: 999px;
 }
 
-/* Le drawer de navigation reprend le fond sombre de la sidebar : son titre et
-   son bouton de fermeture doivent lire dessus. */
-.app-drawer-header .ant-drawer-title,
-.app-drawer-header .ant-drawer-close {
-  color: var(--text-on-inverse);
+/* Tableaux : les intitules d'entete tiennent sur une seule ligne.
+   Sans cela, Ant Design compresse les colonnes etroites et casse les titres en
+   deux ou trois lignes (« Date d'échéance », « Montant total »), ce qui rend
+   l'en-tete illisible et desaligne les lignes. Le tableau defile plutot que de
+   se comprimer : c'est le defilement horizontal qui absorbe l'etroitesse. */
+.ant-table-thead > tr > th {
+  white-space: nowrap;
+}
+
+/* Filet de securite pour les tableaux declares sans `scroll={{ x }}` : leur
+   conteneur doit defiler horizontalement au lieu de deborder de la page. */
+.ant-table-content,
+.ant-table-body {
+  overflow-x: auto;
+}
+
+/* Le drawer de navigation reprend le fond de la sidebar (--surface-nav) et,
+   avec lui, ses couleurs de texte. Le filet remplace la limite que donnait le
+   contraste sombre/clair : sans lui, l'en-tete flotte au-dessus du menu. */
+.app-drawer-header {
+  border-bottom: 1px solid var(--border-nav) !important;
+}
+
+.app-drawer-header .ant-drawer-title {
+  color: var(--text-primary);
 }
 
 /* Zone tactile de l'icone d'effacement des champs (REFONTE_UI_UX.md §10.1).
@@ -91,4 +111,82 @@ code {
     height: 44px;
     transform: translate(-50%, -50%);
   }
+}
+
+/* Ascenseur de la zone defilante du menu. La barre par defaut de Chrome fait
+   15 px de large et s'affiche en gris sombre : sur --surface-nav, elle pese
+   plus que les intertitres qu'elle longe. Filet de 8 px, sans piste, comme
+   pour les tableaux plus haut — mais cale sur les tokens. */
+.app-nav-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.app-nav-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.app-nav-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-nav-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+
+/* Intertitres de domaine de la sidebar (REFONTE_UI_UX.md §4.3).
+   Ant Design rend `type: 'group'` avec la meme graisse et la meme taille qu'une
+   entree : le titre se confond alors avec les destinations qu'il coiffe, et le
+   regroupement ne se lit plus. Les capitales espacees et la taille reduite en
+   font un intertitre, pas une ligne de menu de plus. --text-tertiary (4,76:1 sur
+   --surface-nav) le pose un cran sous les destinations qu'il coiffe, sans
+   descendre sous le plancher AA. */
+.ant-layout-sider .ant-menu-item-group-title,
+.ant-drawer-body .ant-menu-item-group-title {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding-block: var(--space-3) var(--space-1);
+}
+
+/* Destination courante. Sur fond clair, Ant Design ne la marque que par la
+   couleur du libelle et un bleu de fond a 1,03:1 sur le blanc : la couleur
+   seule porte l'etat, ce que WCAG 1.4.1 refuse, et le fond est indiscernable.
+   Un filet vertical de 3 px et la graisse semi-grasse ajoutent deux signaux
+   non colorimetriques. Le filet epouse le rayon de l'entree cote interieur. */
+.ant-layout-sider .ant-menu-item-selected,
+.ant-drawer-body .ant-menu-item-selected {
+  position: relative;
+  font-weight: var(--font-weight-semibold);
+}
+
+.ant-layout-sider .ant-menu-item-selected::before,
+.ant-drawer-body .ant-menu-item-selected::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 3px;
+  border-start-start-radius: var(--radius-sm);
+  border-end-start-radius: var(--radius-sm);
+  background: var(--color-primary);
+}
+
+/* Filet entre un bloc titre et une entree qui n'appartient a aucun domaine
+   (« Plus », dans le portail proprietaire). --border-subtle suffit a le poser
+   sans concurrencer les intertitres. */
+.ant-layout-sider .ant-menu-item-divider,
+.ant-drawer-body .ant-menu-item-divider {
+  border-color: var(--border-nav);
+  margin-block: var(--space-3);
+}
+
+/* Le premier intertitre suit immediatement une destination sans titre
+   (« Tableau de bord ») : sans respiration, les deux se touchent. */
+.ant-layout-sider .ant-menu-item-group + .ant-menu-item-group .ant-menu-item-group-title,
+.ant-drawer-body .ant-menu-item-group + .ant-menu-item-group .ant-menu-item-group-title {
+  padding-top: var(--space-4);
 }

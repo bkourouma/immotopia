@@ -28,10 +28,10 @@ export const InstallmentDetailPage: React.FC = () => {
       if (response.success) {
         setInstallment(response.data);
       } else {
-        setError("Erreur lors du chargement de l'Ã©chÃ©ance");
+        setError("Erreur lors du chargement de l'échéance");
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || "Erreur lors du chargement de l'Ã©chÃ©ance");
+      setError(err.response?.data?.message || "Erreur lors du chargement de l'échéance");
     } finally {
       setLoading(false);
     }
@@ -109,7 +109,7 @@ export const InstallmentDetailPage: React.FC = () => {
               <Title level={3} style={{ margin: 0 }}>
                 Échéance {installment.period_month}/{installment.period_year}
               </Title>
-              <Text type="secondary">DÃ©tails de l'Ã©chÃ©ance</Text>
+              <Text type="secondary">Détails de l'échéance</Text>
             </div>
           </Space>
           {getStatusTag(installment.status)}
@@ -121,7 +121,7 @@ export const InstallmentDetailPage: React.FC = () => {
               title={
                 <Space>
                   <DollarOutlined />
-                  Informations financiÃ¨res
+                  Informations financières
                 </Space>
               }
             >

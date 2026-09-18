@@ -9,18 +9,15 @@ const prisma = new PrismaClient();
 
 async function seedRBAC() {
   console.log('🔐 Seeding RBAC roles and permissions...');
-  
+
   // First, seed CRM permissions
   await seedCRMPermissions();
-  
+
   // Seed Property permissions
   await seedPropertyPermissions();
-  
+
   // Seed Rental permissions
   await seedRentalPermissions();
-  
-  // Seed Maintenance permissions
-  await seedMaintenancePermissions();
 
   // Create permissions
   const permissions = [
@@ -35,7 +32,7 @@ async function seedRBAC() {
     { key: 'PLATFORM_INVOICES_VIEW', description: 'View invoices' },
     { key: 'PLATFORM_INVOICES_CREATE', description: 'Create invoices' },
     { key: 'PLATFORM_INVOICES_EDIT', description: 'Edit invoices' },
-    
+
     // Tenant permissions
     { key: 'TENANT_SETTINGS_VIEW', description: 'View tenant settings' },
     { key: 'TENANT_SETTINGS_EDIT', description: 'Edit tenant settings' },
@@ -43,7 +40,7 @@ async function seedRBAC() {
     { key: 'USERS_CREATE', description: 'Create collaborators' },
     { key: 'USERS_EDIT', description: 'Edit collaborators' },
     { key: 'USERS_DISABLE', description: 'Disable collaborators' },
-    { key: 'BILLING_VIEW', description: 'View billing information' },
+    { key: 'BILLING_VIEW', description: 'View billing information' }
   ];
 
   console.log('  Creating permissions...');
@@ -51,14 +48,14 @@ async function seedRBAC() {
     await prisma.permission.upsert({
       where: { key: perm.key },
       update: {},
-      create: perm,
+      create: perm
     });
   }
   console.log(`  ✓ Created ${permissions.length} permissions`);
 
   // Create roles
   console.log('  Creating roles...');
-  
+
   const platformSuperAdmin = await prisma.role.upsert({
     where: { key: 'PLATFORM_SUPER_ADMIN' },
     update: {},
@@ -66,8 +63,8 @@ async function seedRBAC() {
       key: 'PLATFORM_SUPER_ADMIN',
       name: 'Platform Super Admin',
       description: 'Full platform access with all permissions',
-      scope: RoleScope.PLATFORM,
-    },
+      scope: RoleScope.PLATFORM
+    }
   });
   console.log('  ✓ Created PLATFORM_SUPER_ADMIN role');
 
@@ -78,8 +75,8 @@ async function seedRBAC() {
       key: 'TENANT_ADMIN',
       name: 'Tenant Admin',
       description: 'Full tenant management including users and settings',
-      scope: RoleScope.TENANT,
-    },
+      scope: RoleScope.TENANT
+    }
   });
   console.log('  ✓ Created TENANT_ADMIN role');
 
@@ -90,8 +87,8 @@ async function seedRBAC() {
       key: 'TENANT_MANAGER',
       name: 'Tenant Manager',
       description: 'Management permissions without billing edit',
-      scope: RoleScope.TENANT,
-    },
+      scope: RoleScope.TENANT
+    }
   });
   console.log('  ✓ Created TENANT_MANAGER role');
 
@@ -102,8 +99,8 @@ async function seedRBAC() {
       key: 'TENANT_AGENT',
       name: 'Tenant Agent',
       description: 'Limited permissions for viewing and creating listings',
-      scope: RoleScope.TENANT,
-    },
+      scope: RoleScope.TENANT
+    }
   });
   console.log('  ✓ Created TENANT_AGENT role');
 
@@ -114,10 +111,16 @@ async function seedRBAC() {
       key: 'TENANT_ACCOUNTANT',
       name: 'Tenant Accountant',
       description: 'Billing and accounting permissions',
-      scope: RoleScope.TENANT,
-    },
+      scope: RoleScope.TENANT
+    }
   });
   console.log('  ✓ Created TENANT_ACCOUNTANT role');
+
+  // Seed Maintenance and Communication permissions: they assign their permissions
+  // to existing roles, so they must run after the roles above are created and
+  // before the PLATFORM_SUPER_ADMIN assignment below.
+  await seedMaintenancePermissions();
+  await seedCommunicationPermissions();
 
   // Assign all permissions to PLATFORM_SUPER_ADMIN
   console.log('  Assigning permissions to PLATFORM_SUPER_ADMIN...');
@@ -127,14 +130,14 @@ async function seedRBAC() {
       where: {
         roleId_permissionId: {
           roleId: platformSuperAdmin.id,
-          permissionId: perm.id,
-        },
+          permissionId: perm.id
+        }
       },
       update: {},
       create: {
         roleId: platformSuperAdmin.id,
-        permissionId: perm.id,
-      },
+        permissionId: perm.id
+      }
     });
   }
   console.log(`  ✓ Assigned ${allPerms.length} permissions to PLATFORM_SUPER_ADMIN`);
@@ -144,60 +147,67 @@ async function seedRBAC() {
   const tenantPerms = await prisma.permission.findMany({
     where: {
       key: {
-        startsWith: 'TENANT_',
-      },
-    },
+        startsWith: 'TENANT_'
+      }
+    }
   });
   const userPerms = await prisma.permission.findMany({
     where: {
       key: {
-        startsWith: 'USERS_',
-      },
-    },
+        startsWith: 'USERS_'
+      }
+    }
   });
   const billingPerms = await prisma.permission.findMany({
     where: {
       key: {
-        startsWith: 'BILLING_',
-      },
-    },
+        startsWith: 'BILLING_'
+      }
+    }
   });
   const crmPerms = await prisma.permission.findMany({
     where: {
       key: {
-        startsWith: 'CRM_',
-      },
-    },
+        startsWith: 'CRM_'
+      }
+    }
   });
   const propertyPerms = await prisma.permission.findMany({
     where: {
       key: {
-        startsWith: 'PROPERTIES_',
-      },
-    },
+        startsWith: 'PROPERTIES_'
+      }
+    }
   });
   const rentalPerms = await prisma.permission.findMany({
     where: {
       key: {
-        startsWith: 'RENTAL_',
-      },
-    },
+        startsWith: 'RENTAL_'
+      }
+    }
   });
-  
-  const tenantAdminPerms = [...tenantPerms, ...userPerms, ...billingPerms, ...crmPerms, ...propertyPerms, ...rentalPerms];
+
+  const tenantAdminPerms = [
+    ...tenantPerms,
+    ...userPerms,
+    ...billingPerms,
+    ...crmPerms,
+    ...propertyPerms,
+    ...rentalPerms
+  ];
   for (const perm of tenantAdminPerms) {
     await prisma.rolePermission.upsert({
       where: {
         roleId_permissionId: {
           roleId: tenantAdmin.id,
-          permissionId: perm.id,
-        },
+          permissionId: perm.id
+        }
       },
       update: {},
       create: {
         roleId: tenantAdmin.id,
-        permissionId: perm.id,
-      },
+        permissionId: perm.id
+      }
     });
   }
   console.log(`  ✓ Assigned ${tenantAdminPerms.length} permissions to TENANT_ADMIN`);
@@ -207,33 +217,33 @@ async function seedRBAC() {
   const managerPerms = await prisma.permission.findMany({
     where: {
       key: {
-        in: ['TENANT_SETTINGS_VIEW', 'USERS_VIEW', 'USERS_EDIT', 'BILLING_VIEW'],
-      },
-    },
+        in: ['TENANT_SETTINGS_VIEW', 'USERS_VIEW', 'USERS_EDIT', 'BILLING_VIEW']
+      }
+    }
   });
   // Add property permissions to manager
   const managerPropertyPerms = await prisma.permission.findMany({
     where: {
       key: {
-        in: ['PROPERTIES_VIEW', 'PROPERTIES_CREATE', 'PROPERTIES_EDIT', 'PROPERTIES_VISITS_SCHEDULE'],
-      },
-    },
+        in: ['PROPERTIES_VIEW', 'PROPERTIES_CREATE', 'PROPERTIES_EDIT', 'PROPERTIES_VISITS_SCHEDULE']
+      }
+    }
   });
   // Add rental permissions to manager (all rental permissions)
   const managerRentalPerms = await prisma.permission.findMany({
     where: {
       key: {
-        startsWith: 'RENTAL_',
-      },
-    },
+        startsWith: 'RENTAL_'
+      }
+    }
   });
   // Add CRM permissions to manager (all CRM permissions)
   const managerCRMPerms = await prisma.permission.findMany({
     where: {
       key: {
-        startsWith: 'CRM_',
-      },
-    },
+        startsWith: 'CRM_'
+      }
+    }
   });
   const allManagerPerms = [...managerPerms, ...managerPropertyPerms, ...managerRentalPerms, ...managerCRMPerms];
   for (const perm of allManagerPerms) {
@@ -241,14 +251,14 @@ async function seedRBAC() {
       where: {
         roleId_permissionId: {
           roleId: tenantManager.id,
-          permissionId: perm.id,
-        },
+          permissionId: perm.id
+        }
       },
       update: {},
       create: {
         roleId: tenantManager.id,
-        permissionId: perm.id,
-      },
+        permissionId: perm.id
+      }
     });
   }
   console.log(`  ✓ Assigned ${allManagerPerms.length} permissions to TENANT_MANAGER`);
@@ -258,17 +268,17 @@ async function seedRBAC() {
   const agentPerms = await prisma.permission.findMany({
     where: {
       key: {
-        in: ['TENANT_SETTINGS_VIEW', 'USERS_VIEW'],
-      },
-    },
+        in: ['TENANT_SETTINGS_VIEW', 'USERS_VIEW']
+      }
+    }
   });
   // Add property view, create, and edit permissions to agent
   const agentPropertyPerms = await prisma.permission.findMany({
     where: {
       key: {
-        in: ['PROPERTIES_VIEW', 'PROPERTIES_CREATE', 'PROPERTIES_EDIT', 'PROPERTIES_VISITS_SCHEDULE'],
-      },
-    },
+        in: ['PROPERTIES_VIEW', 'PROPERTIES_CREATE', 'PROPERTIES_EDIT', 'PROPERTIES_VISITS_SCHEDULE']
+      }
+    }
   });
   // Add CRM permissions to agent (view and create permissions)
   const agentCRMPerms = await prisma.permission.findMany({
@@ -285,10 +295,10 @@ async function seedRBAC() {
           'CRM_ACTIVITIES_CREATE',
           'CRM_APPOINTMENTS_VIEW',
           'CRM_APPOINTMENTS_CREATE',
-          'CRM_MATCHING_VIEW',
-        ],
-      },
-    },
+          'CRM_MATCHING_VIEW'
+        ]
+      }
+    }
   });
   const allAgentPerms = [...agentPerms, ...agentPropertyPerms, ...agentCRMPerms];
   for (const perm of allAgentPerms) {
@@ -296,14 +306,14 @@ async function seedRBAC() {
       where: {
         roleId_permissionId: {
           roleId: tenantAgent.id,
-          permissionId: perm.id,
-        },
+          permissionId: perm.id
+        }
       },
       update: {},
       create: {
         roleId: tenantAgent.id,
-        permissionId: perm.id,
-      },
+        permissionId: perm.id
+      }
     });
   }
   console.log(`  ✓ Assigned ${allAgentPerms.length} permissions to TENANT_AGENT`);
@@ -315,20 +325,17 @@ async function seedRBAC() {
       where: {
         roleId_permissionId: {
           roleId: tenantAccountant.id,
-          permissionId: perm.id,
-        },
+          permissionId: perm.id
+        }
       },
       update: {},
       create: {
         roleId: tenantAccountant.id,
-        permissionId: perm.id,
-      },
+        permissionId: perm.id
+      }
     });
   }
   console.log(`  ✓ Assigned ${billingPerms.length} permissions to TENANT_ACCOUNTANT`);
-
-  // Seed Communication permissions (after roles exist)
-  await seedCommunicationPermissions();
 
   console.log('\n✅ RBAC seed completed successfully!\n');
   console.log('📋 Summary:');
@@ -343,11 +350,10 @@ async function seedRBAC() {
 }
 
 seedRBAC()
-  .catch((e) => {
+  .catch(e => {
     console.error('❌ Error seeding RBAC:', e);
     process.exit(1);
   })
   .finally(async () => {
     await prisma.$disconnect();
   });
-

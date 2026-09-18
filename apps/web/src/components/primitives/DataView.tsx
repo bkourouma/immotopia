@@ -44,6 +44,17 @@ interface DataViewBase<T> {
   pageSize: number;
   onPageChange: (page: number, pageSize: number) => void;
 
+  /**
+   * `false` quand l'API ne pagine pas et renvoie tout d'un bloc.
+   *
+   * Certains points d'entrée ignorent `page` et `limit` — les pénalités, par
+   * exemple. Afficher une barre de pagination y ferait croire à des pages qui
+   * n'existent pas. L'écran concerné le déclare ici, au lieu de le faire
+   * deviner en posant `pageSize` égal au total : une coïncidence de chiffres
+   * se défait au premier changement, une intention écrite non.
+   */
+  paginated?: boolean;
+
   /** Premier chargement : la mise en page n'existe pas encore. */
   loading?: boolean;
   /** Rechargement d'une liste déjà affichée : on garde le contenu. */
@@ -68,6 +79,22 @@ interface DataViewBase<T> {
   sort?: Sort | null;
   onSortChange?: (sort: Sort | null) => void;
 
+  /**
+   * Largeur minimale du tableau, en px, qui ACTIVE le défilement horizontal.
+   *
+   * Exception assumée à la règle posée plus bas, et volontairement opt-in : par
+   * défaut il n'y en a pas, et un écran doit la demander. Elle vaut quand les
+   * colonnes ne tiennent pas dans la zone de contenu au PLANCHER du desktop —
+   * 992 px moins la sidebar de 256 px, soit environ 690 px utiles. En dessous
+   * de cette largeur, AntD ne coupe pas les colonnes : il les comprime, et les
+   * valeurs courtes se cassent en deux (« Bail / Habitation »).
+   *
+   * Cela ne dispense de rien : `renderCard` reste obligatoire, et sous 992 px
+   * ce sont toujours des cartes. Le défilement ne sert qu'à la fenêtre
+   * 992-1200 px, où la carte n'a plus cours mais où la place manque encore.
+   */
+  scrollX?: number;
+
   /** Nom accessible de la liste. */
   'aria-label': string;
 }
@@ -90,6 +117,7 @@ export function DataView<T>(props: DataViewProps<T>) {
   const {
     items,
     total,
+    paginated = true,
     page,
     pageSize,
     onPageChange,
@@ -105,6 +133,7 @@ export function DataView<T>(props: DataViewProps<T>) {
     rowKey,
     sort = null,
     onSortChange,
+    scrollX,
     'aria-label': ariaLabel
   } = props;
   const layout = props.layout ?? 'table';
@@ -209,9 +238,12 @@ export function DataView<T>(props: DataViewProps<T>) {
         // cartes, elle ne doit pas changer de forme avec le palier.
         pagination={false}
         onChange={handleTableChange}
-        // Aucun `scroll={{ x }}` : au-dessus de 992 px les colonnes tiennent,
-        // en dessous ce sont des cartes. Le défilement horizontal d'un tableau
-        // est un aveu que la stratégie de colonnes n'a pas été faite.
+        // Pas de `scroll={{ x }}` par DÉFAUT : au-dessus de 992 px les colonnes
+        // tiennent, en dessous ce sont des cartes, et un défilement horizontal
+        // posé partout dispenserait de faire la stratégie de colonnes. Les
+        // écrans dont les colonnes ne tiennent pas au plancher du desktop le
+        // demandent explicitement par `scrollX` — la stratégie carte reste due.
+        scroll={scrollX ? { x: scrollX } : undefined}
         size="middle"
         aria-label={ariaLabel}
       />
@@ -228,7 +260,19 @@ export function DataView<T>(props: DataViewProps<T>) {
         {isReloading ? <Spin spinning>{content}</Spin> : content}
       </div>
 
-      {total > pageSize && (
+      {/* La barre paraît dès qu'il y a une ligne, et non seulement quand le
+          total dépasse une page.
+
+          Elle ne sert pas qu'à tourner les pages : elle porte le COMPTEUR et le
+          choix du nombre par page. Les masquer sur une liste qui tient d'un
+          seul tenant privait de la seule réponse à « combien y en a-t-il ? » —
+          et c'est précisément la question qu'on se pose après avoir posé un
+          filtre. Sur dix-neuf baux affichés vingt par page, l'écran ne disait
+          plus rien du tout.
+
+          Sur une liste vide, rien : le bloc d'état vide parle déjà. Sur une
+          liste non paginée non plus — voir `paginated`. */}
+      {paginated && total > 0 && (
         <div style={{ display: 'flex', justifyContent: 'center', marginTop: 'var(--space-5)' }}>
           <Pagination
             current={page}

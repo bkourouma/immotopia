@@ -81,3 +81,19 @@ export async function resetPassword(data: PasswordResetData): Promise<void> {
   return response.data;
 }
 
+/** Fournisseurs de connexion externes que le serveur sait réellement honorer. */
+export interface AuthProviders {
+  google: boolean;
+}
+
+/**
+ * Interroge le serveur sur ses fournisseurs externes.
+ *
+ * L'écran de connexion affichait le bouton « Se connecter avec Google » sans
+ * jamais vérifier que le serveur avait des identifiants OAuth. Sans eux, le
+ * clic menait à une page d'erreur JSON brute. On demande donc avant d'afficher.
+ */
+export async function getAuthProviders(): Promise<AuthProviders> {
+  const response = await apiClient.get('/auth/providers');
+  return { google: Boolean(response.data?.data?.google) };
+}

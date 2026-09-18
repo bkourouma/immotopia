@@ -1,26 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  App,
-  Table,
-  Card,
-  Button,
-  Select,
-  Tag,
-  Space,
-  Row,
-  Col,
-  Typography,
-  Alert,
-  Spin,
-  Empty,
-  Modal,
-  Form,
-  Input,
-  Upload,
-  Popconfirm
-} from 'antd';
+import { App, Card, Button, Select, Tag, Space, Row, Col, Typography, Alert, Modal, Form, Input, Upload } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { MenuProps } from 'antd';
 import {
   PlusOutlined,
   QuestionCircleOutlined,
@@ -33,6 +15,7 @@ import {
   StarFilled
 } from '@ant-design/icons';
 import apiClient from '../../utils/api-client';
+import { ConfirmAction, DataCard, DataView, StatusTag, useConfirmAction } from '../../components/primitives';
 
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
@@ -59,6 +42,28 @@ const DOC_TYPES = [
 const OPEN_BRACE = '{';
 const CLOSE_BRACE = '}';
 
+/** Libellé métier d'un type de document, ou le code brut s'il est inconnu. */
+function libelleType(docType: string): string {
+  return DOC_TYPES.find(t => t.value === docType)?.label || docType;
+}
+
+/**
+ * La liste des modèles, dans ses deux représentations (REFONTE_UI_UX.md §5.1).
+ *
+ * Le `<Table>` d'origine rendait cinq colonnes — dont une colonne d'actions
+ * portant trois boutons texte — sans aucune stratégie sous 992 px : à 375 px,
+ * « Placeholders » et « Actions » sortaient de l'écran, et rien n'indiquait
+ * qu'on pouvait faire glisser le tableau. `<DataView>` rend le tableau au-dessus
+ * de 992 px et une liste de `<DataCard>` en dessous ; `renderCard` est
+ * obligatoire, l'oubli ne compile pas.
+ *
+ * **Sur la pagination.** `<DataView>` attend un `total` serveur, jamais un
+ * `items.length` — c'est le défaut du §8.4, une liste et son compteur qui se
+ * contredisent. Ici l'endpoint ne pagine pas : il rend la collection entière,
+ * déjà filtrée par `docType`. `templates.length` EST donc le total du serveur,
+ * et la tranche est découpée localement. Les deux ne peuvent pas diverger.
+ */
+
 export function DocumentTemplates() {
   const { message } = App.useApp();
 
@@ -68,7 +73,12 @@ export function DocumentTemplates() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [filterDocType, setFilterDocType] = useState<string>('');
+  // L'endpoint rend la collection entière : la tranche est découpée ici.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [error, setError] = useState<string | null>(null);
   const [form] = Form.useForm();
+  const confirmAction = useConfirmAction();
 
   const loadTemplates = useCallback(async () => {
     try {
@@ -82,22 +92,33 @@ export function DocumentTemplates() {
 
       if (data.success) {
         setTemplates(data.data || []);
+        setError(null);
       } else {
-        message.error(data.message || 'Erreur lors du chargement des templates');
+        // Erreur de chargement portée par le bloc d'erreur de `<DataView>`, et
+        // non par un toast : le toast disparaît et laisse « Aucun modèle », qui
+        // fait croire à une liste vide alors que l'appel a échoué. Le bloc
+        // reste, et porte le bouton « Réessayer ».
+        setError(data.message || 'Impossible de charger les modèles de documents.');
       }
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors du chargement des templates');
+      setError(err.response?.data?.message || 'Impossible de charger les modèles de documents.');
       console.error(err);
     } finally {
       setLoading(false);
     }
-  }, [tenantId, filterDocType, message]);
+  }, [tenantId, filterDocType]);
 
   useEffect(() => {
     if (tenantId) {
       loadTemplates();
     }
   }, [tenantId, loadTemplates]);
+
+  // Changer de filtre remet en page 1 : rester en page 3 d'un résultat qui n'en
+  // compte qu'une afficherait une liste vide sur des données présentes.
+  useEffect(() => {
+    setPage(1);
+  }, [filterDocType]);
 
   const handleUpload = async (values: any) => {
     if (!values.file || !Array.isArray(values.file) || values.file.length === 0) {
@@ -197,14 +218,28 @@ export function DocumentTemplates() {
     }
   };
 
+  /**
+   * Colonnes du tableau, au-dessus de 992 px.
+   *
+   * Chacune porte une largeur, et les valeurs courtes portent `nowrap`. Sans
+   * cela, AntD répartit la place restante au prorata du contenu : à 1280 px
+   * avec la sidebar, « Bail Habitation » tombait sur deux lignes alors que la
+   * colonne « Placeholders » étalait ses étiquettes. La somme des largeurs
+   * (1080 px) dépasse la zone de contenu au plancher du desktop, d'où le
+   * `scrollX` passé à `<DataView>` — le tableau défile au lieu de se comprimer.
+   */
   const columns: ColumnsType<DocumentTemplate> = [
     {
       title: 'Nom',
       dataIndex: 'name',
       key: 'name',
+      width: 340,
       render: (text: string, record: DocumentTemplate) => (
         <Space direction="vertical" size="small">
-          <Space>
+          {/* `wrap` : sans lui, l'étiquette « Par défaut » garde sa place sur la
+              ligne et c'est le nom qui se casse — « Bail / Habitation /
+              Standard ». Elle passe dessous, le nom reste lisible. */}
+          <Space wrap>
             <Text strong>{text}</Text>
             {record.is_default && (
               <Tag icon={<StarFilled />} color="gold">
@@ -222,35 +257,21 @@ export function DocumentTemplates() {
       title: 'Type',
       dataIndex: 'doc_type',
       key: 'doc_type',
-      render: (docType: string) => {
-        const docTypeLabel = DOC_TYPES.find(t => t.value === docType)?.label || docType;
-        return <Text>{docTypeLabel}</Text>;
-      }
+      width: 170,
+      render: (docType: string) => <Text style={{ whiteSpace: 'nowrap' }}>{libelleType(docType)}</Text>
     },
     {
       title: 'Statut',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => (
-        <Tag color={status === 'ACTIVE' ? 'success' : 'default'}>
-          {status === 'ACTIVE' ? (
-            <Space>
-              <CheckCircleOutlined />
-              Actif
-            </Space>
-          ) : (
-            <Space>
-              <CloseCircleOutlined />
-              Inactif
-            </Space>
-          )}
-        </Tag>
-      )
+      width: 110,
+      render: (status: string) => <StatusTag status={status} />
     },
     {
       title: 'Placeholders',
       dataIndex: 'placeholders',
       key: 'placeholders',
+      width: 220,
       render: (placeholders: string[]) => (
         <Space wrap>
           {(placeholders || []).slice(0, 3).map(p => (
@@ -263,8 +284,9 @@ export function DocumentTemplates() {
     {
       title: 'Actions',
       key: 'actions',
+      width: 280,
       render: (_: any, record: DocumentTemplate) => (
-        <Space>
+        <Space wrap={false}>
           {!record.is_default && (
             <Button type="link" icon={<StarOutlined />} onClick={() => handleSetDefault(record.id)}>
               Définir par défaut
@@ -273,33 +295,70 @@ export function DocumentTemplates() {
           <Button type="link" onClick={() => handleToggleStatus(record.id, record.status)}>
             {record.status === 'ACTIVE' ? 'Désactiver' : 'Activer'}
           </Button>
-          <Popconfirm
-            title="Supprimer le template"
-            description="Êtes-vous sûr de vouloir supprimer ce template ?"
+          <ConfirmAction
+            title={`Supprimer « ${record.name} » ?`}
+            description="Le modèle ne sera plus proposé à la génération. Cette action est définitive."
+            okText="Supprimer"
+            danger
             onConfirm={() => handleDelete(record.id)}
-            okText="Oui"
-            cancelText="Non"
-            okButtonProps={{ danger: true }}
           >
             <Button type="link" danger icon={<DeleteOutlined />}>
               Supprimer
             </Button>
-          </Popconfirm>
+          </ConfirmAction>
         </Space>
       )
     }
   ];
 
+  /**
+   * Les actions d'une carte, derrière « ⋮ ». Une seule reste visible sur la
+   * carte — « Définir par défaut », la seule qu'on refait — le reste passe ici :
+   * les trois boutons texte du tableau, alignés sur 375 px, donnaient des cibles
+   * de moins de 44 px collées les unes aux autres (§10.1).
+   */
+  const actionsSecondaires = (template: DocumentTemplate): MenuProps['items'] => [
+    {
+      key: 'statut',
+      label: template.status === 'ACTIVE' ? 'Désactiver' : 'Activer',
+      icon: template.status === 'ACTIVE' ? <CloseCircleOutlined /> : <CheckCircleOutlined />,
+      onClick: () => handleToggleStatus(template.id, template.status)
+    },
+    {
+      key: 'supprimer',
+      label: 'Supprimer',
+      icon: <DeleteOutlined />,
+      danger: true,
+      // Version impérative de `<ConfirmAction>` : une entrée de menu n'est pas
+      // un élément déclencheur qu'on peut envelopper.
+      onClick: () =>
+        confirmAction({
+          title: `Supprimer « ${template.name} » ?`,
+          description: 'Le modèle ne sera plus proposé à la génération. Cette action est définitive.',
+          okText: 'Supprimer',
+          danger: true,
+          onConfirm: () => handleDelete(template.id)
+        })
+    }
+  ];
+
+  const pageCourante = templates.slice((page - 1) * pageSize, page * pageSize);
+
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Row justify="space-between" align="middle">
-          <Col>
-            <Title level={2}>Templates de Documents</Title>
+        {/* `gutter` et `Col` pleine largeur sous 576 px : sans eux, les deux
+            boutons restaient sur la ligne du titre et sortaient de l'écran de
+            43 px — mesuré à 375. */}
+        <Row justify="space-between" align="middle" gutter={[16, 16]}>
+          <Col xs={24} sm="auto">
+            <Title level={2} style={{ marginBottom: 'var(--space-1)' }}>
+              Templates de Documents
+            </Title>
             <Text type="secondary">Gérez vos templates de documents</Text>
           </Col>
-          <Col>
-            <Space>
+          <Col xs={24} sm="auto">
+            <Space wrap>
               <Button
                 icon={<QuestionCircleOutlined />}
                 onClick={() => window.open('/docs/GUIDE_TENANT_MODELES_DOCUMENTS.md', '_blank', 'noopener,noreferrer')}
@@ -348,7 +407,10 @@ export function DocumentTemplates() {
                   onClick={() =>
                     window.open('/docs/GUIDE_TENANT_MODELES_DOCUMENTS.md', '_blank', 'noopener,noreferrer')
                   }
-                  style={{ padding: 0 }}
+                  // Un `Button` AntD garde son libellé sur une seule ligne :
+                  // celui-ci mesure 504 px et débordait de l'écran. On l'autorise
+                  // à se couper, et la hauteur suit.
+                  style={{ padding: 0, height: 'auto', whiteSpace: 'normal', textAlign: 'left' }}
                 >
                   Consulter le guide complet avec toutes les variables disponibles →
                 </Button>
@@ -380,24 +442,69 @@ export function DocumentTemplates() {
           </Space>
         </Card>
 
-        {/* Table */}
-        <Card>
-          <Spin spinning={loading}>
-            {templates.length === 0 && !loading ? (
-              <Empty description="Aucun template trouvé" />
-            ) : (
-              <Table
-                columns={columns}
-                dataSource={templates.map(t => ({ ...t, key: t.id }))}
-                pagination={{
-                  pageSize: 10,
-                  showSizeChanger: true,
-                  showTotal: total => `Total: ${total} templates`
-                }}
-              />
-            )}
-          </Spin>
-        </Card>
+        {/* Liste — tableau au-dessus de 992 px, cartes en dessous. */}
+        <DataView<DocumentTemplate>
+          items={pageCourante}
+          total={templates.length}
+          page={page}
+          pageSize={pageSize}
+          onPageChange={(suivante, taille) => {
+            setPageSize(taille);
+            setPage(taille !== pageSize ? 1 : suivante);
+          }}
+          loading={loading}
+          error={error}
+          onRetry={loadTemplates}
+          isFiltered={Boolean(filterDocType)}
+          onClearFilters={() => setFilterDocType('')}
+          emptyDescription="Aucun modèle de document n'est encore enregistré pour cette agence."
+          emptyAction={{ label: 'Ajouter un template', onClick: () => setShowUploadModal(true) }}
+          columns={columns}
+          // 340 + 170 + 110 + 220 + 280. Au plancher du desktop (992 px moins
+          // la sidebar), la zone de contenu fait environ 690 px : le tableau
+          // défile plutôt que d'écraser « Type » sur deux lignes.
+          scrollX={1120}
+          rowKey={template => template.id}
+          aria-label="Modèles de documents"
+          renderCard={template => (
+            <DataCard
+              title={template.name}
+              aria-label={`Modèle ${template.name}`}
+              subtitle={template.original_filename}
+              status={<StatusTag status={template.status} />}
+              highlight={
+                template.is_default ? (
+                  <Tag icon={<StarFilled />} color="gold">
+                    Par défaut
+                  </Tag>
+                ) : undefined
+              }
+              fields={[
+                { label: 'Type', value: libelleType(template.doc_type) },
+                {
+                  // Le compte, et non les étiquettes : sur 375 px, trois
+                  // `<Tag>` alignés à droite d'un libellé repassent à la ligne
+                  // et cassent la paire libellé/valeur. Le tableau, lui, garde
+                  // les étiquettes — il a la largeur pour.
+                  label: 'Variables',
+                  value: (template.placeholders || []).length
+                    ? `${template.placeholders.length} variable${template.placeholders.length > 1 ? 's' : ''}`
+                    : 'Aucune'
+                }
+              ]}
+              primaryAction={
+                template.is_default
+                  ? undefined
+                  : {
+                      label: 'Définir par défaut',
+                      icon: <StarOutlined />,
+                      onClick: () => handleSetDefault(template.id)
+                    }
+              }
+              secondaryActions={actionsSecondaires(template)}
+            />
+          )}
+        />
 
         {/* Upload Modal */}
         <Modal

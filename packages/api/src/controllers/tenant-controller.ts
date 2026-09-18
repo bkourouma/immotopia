@@ -43,7 +43,7 @@ export async function registerAsTenantClient(req: Request, res: Response): Promi
     if (!clientType || !Object.values(ClientType).includes(clientType)) {
       res.status(400).json({
         success: false,
-        message: 'Type de client invalide. Valeurs acceptÃ©es: OWNER, RENTER, BUYER, CO_OWNER.'
+        message: 'Type de client invalide. Valeurs acceptées: OWNER, RENTER, BUYER, CO_OWNER.'
       });
       return;
     }
@@ -57,7 +57,7 @@ export async function registerAsTenantClient(req: Request, res: Response): Promi
 
     res.status(201).json({
       success: true,
-      message: 'Inscription rÃ©ussie au tenant.',
+      message: 'Inscription réussie au tenant.',
       data: tenantClient
     });
   } catch (error) {
@@ -186,7 +186,7 @@ export async function createTenantHandler(req: Request, res: Response): Promise<
     if (!validationResult.success) {
       res.status(400).json({
         success: false,
-        message: 'DonnÃ©es invalides',
+        message: 'Données invalides',
         errors: validationResult.error.errors
       });
       return;
@@ -197,7 +197,7 @@ export async function createTenantHandler(req: Request, res: Response): Promise<
 
     res.status(201).json({
       success: true,
-      message: 'Tenant crÃ©Ã© avec succÃ¨s.',
+      message: 'Tenant créé avec succès.',
       data: tenant
     });
   } catch (error) {
@@ -224,7 +224,7 @@ export async function updateTenantHandler(req: Request, res: Response): Promise<
     if (!validationResult.success) {
       res.status(400).json({
         success: false,
-        message: 'DonnÃ©es invalides',
+        message: 'Données invalides',
         errors: validationResult.error.errors
       });
       return;
@@ -235,7 +235,7 @@ export async function updateTenantHandler(req: Request, res: Response): Promise<
 
     res.status(200).json({
       success: true,
-      message: 'Tenant mis Ã  jour avec succÃ¨s.',
+      message: 'Tenant mis Ã  jour avec succès.',
       data: tenant
     });
   } catch (error) {
@@ -267,7 +267,7 @@ export async function updateTenantSelfHandler(req: Request, res: Response): Prom
     if (!validationResult.success) {
       res.status(400).json({
         success: false,
-        message: 'DonnÃ©es invalides',
+        message: 'Données invalides',
         errors: validationResult.error.errors
       });
       return;
@@ -278,7 +278,7 @@ export async function updateTenantSelfHandler(req: Request, res: Response): Prom
 
     res.status(200).json({
       success: true,
-      message: 'Informations mises Ã  jour avec succÃ¨s.',
+      message: 'Informations mises Ã  jour avec succès.',
       data: tenant
     });
   } catch (error) {
@@ -396,7 +396,7 @@ export async function suspendTenantHandler(req: Request, res: Response): Promise
 
     res.status(200).json({
       success: true,
-      message: 'Tenant suspendu avec succÃ¨s.',
+      message: 'Tenant suspendu avec succès.',
       data: tenant
     });
   } catch (error) {
@@ -498,7 +498,7 @@ export async function updateTenantModulesHandler(req: Request, res: Response): P
     if (!validationResult.success) {
       res.status(400).json({
         success: false,
-        message: 'DonnÃ©es invalides',
+        message: 'Données invalides',
         errors: validationResult.error.errors
       });
       return;
@@ -509,7 +509,7 @@ export async function updateTenantModulesHandler(req: Request, res: Response): P
 
     res.status(200).json({
       success: true,
-      message: 'Modules mis Ã  jour avec succÃ¨s.',
+      message: 'Modules mis à jour avec succès.',
       data: modules
     });
   } catch (error) {
@@ -572,7 +572,7 @@ export async function updateClientDetails(req: Request, res: Response): Promise<
     const { details } = req.body;
 
     if (!details || typeof details !== 'object') {
-      res.status(400).json({ success: false, message: 'DÃ©tails invalides.' });
+      res.status(400).json({ success: false, message: 'Détails invalides.' });
       return;
     }
 
@@ -598,7 +598,7 @@ export async function unregisterFromTenant(req: Request, res: Response): Promise
     const { tenantId } = req.params;
     await removeTenantClient(req.user.userId, tenantId);
 
-    res.status(200).json({ success: true, message: 'DÃ©sinscription rÃ©ussie.' });
+    res.status(200).json({ success: true, message: 'Désinscription réussie.' });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
     res.status(400).json({ success: false, message: errorMessage });

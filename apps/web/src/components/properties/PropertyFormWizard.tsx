@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   App,
-  Steps,
   Card,
   Space,
   Typography,
@@ -20,6 +19,7 @@ import {
 } from 'antd';
 import { SaveOutlined, ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { StepRail } from '../primitives/StepRail';
 import { PropertyTypeSelector } from './PropertyTypeSelector';
 import { LocationSelector } from '../ui/location-selector';
 import { PropertyMediaUpload } from './PropertyMediaUpload';
@@ -40,6 +40,7 @@ import {
 import { getTemplate, createProperty, updateProperty } from '../../services/property-service';
 import { GeographicLocation } from '../../services/geographic-service';
 import { useAuth } from '../../hooks/useAuth';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { listContacts, CrmContact } from '../../services/crm-service';
 
 const { TextArea } = Input;
@@ -56,7 +57,12 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
   const { message } = App.useApp();
 
   const { tenantMembership } = useAuth();
+  const { isDesktop } = useBreakpoint();
   const [currentStep, setCurrentStep] = useState(0);
+  // Etape la plus avancee atteinte : borne ce sur quoi le rail est cliquable.
+  // Sans elle, un clic sur la sixieme pastille depuis la premiere etape ne
+  // validait que l'etape courante et sautait les quatre du milieu.
+  const [maxStepReached, setMaxStepReached] = useState(0);
   const [savedPropertyId, setSavedPropertyId] = useState<string | null>(property?.id || null);
   const [isLoading, setIsLoading] = useState(false);
   const [template, setTemplate] = useState<PropertyTypeTemplate | null>(null);
@@ -366,11 +372,14 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
 
   const handleStepChange = (step: number) => {
     if (step > currentStep) {
-      if (!validateStep(currentStep)) {
+      // Le rail n'ouvre que les etapes deja atteintes ; seul « Suivant » va de
+      // l'avant, et uniquement d'un cran, apres validation.
+      if (step > maxStepReached && !validateStep(currentStep)) {
         return;
       }
     }
     setCurrentStep(step);
+    setMaxStepReached(prev => Math.max(prev, step));
   };
 
   const translateOption = (optionValue: string): string => {
@@ -748,6 +757,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     },
     {
       title: 'Caractéristiques générales',
+      shortTitle: 'Caractéristiques',
       description: 'Informations générales sur la propriété',
       content: (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -896,6 +906,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     },
     {
       title: 'Prix & Conditions',
+      shortTitle: 'Prix et conditions',
       description: 'Définissez le prix et les conditions de transaction',
       content: (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -969,6 +980,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     },
     {
       title: 'Caractéristiques spécifiques',
+      shortTitle: 'Spécificités',
       description: 'Détails spécifiques au type de bien sélectionné',
       content: (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -1172,32 +1184,84 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     }
   };
 
+  const isLastStep = currentStep === steps.length - 1;
+
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-      <Steps
-        current={currentStep}
-        onChange={handleStepChange}
-        items={steps.map((step, index) => ({
-          title: step.title,
-          description: step.description,
-          status: index < currentStep ? 'finish' : index === currentStep ? 'process' : 'wait',
-          icon: index < currentStep ? <CheckCircleOutlined /> : undefined
-        }))}
-      />
+      {/* Le rail porte la position dans le parcours ; l'en-tete du panneau
+          porte le detail de l'etape. Aucun des deux ne repete l'autre. */}
+      <Card styles={{ body: { padding: isDesktop ? 'var(--space-6)' : 'var(--space-4)' } }}>
+        <StepRail
+          items={steps.map(step => ({ title: step.title, shortTitle: step.shortTitle }))}
+          current={currentStep}
+          // En modification, tout est deja renseigne : le rail est ouvert de
+          // bout en bout, comme l ancien `Steps`.
+          furthest={property ? steps.length - 1 : maxStepReached}
+          onChange={handleStepChange}
+        />
+      </Card>
 
-      <Card style={{ marginTop: 24, minHeight: 500 }}>
+      <Card style={{ marginTop: 'var(--space-4)', minHeight: 500 }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
-          <div>
-            <Title level={3}>{steps[currentStep].title}</Title>
-            {steps[currentStep].description && <Text type="secondary">{steps[currentStep].description}</Text>}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              gap: 'var(--space-3)',
+              flexWrap: 'wrap',
+              paddingBottom: 'var(--space-4)',
+              borderBottom: '1px solid var(--border-subtle)'
+            }}
+          >
+            <div style={{ minWidth: 0, flex: '1 1 320px' }}>
+              <Title
+                level={2}
+                style={{
+                  margin: 0,
+                  fontSize: 'var(--font-size-h1)',
+                  lineHeight: 'var(--line-height-h1)'
+                }}
+              >
+                {steps[currentStep].title}
+              </Title>
+              {steps[currentStep].description && (
+                <Text type="secondary" style={{ fontSize: 'var(--font-size-small)' }}>
+                  {steps[currentStep].description}
+                </Text>
+              )}
+            </div>
+            {/* Sous 992 px le compteur est deja dans le rail replie. */}
+            {isDesktop && (
+              <Text
+                type="secondary"
+                style={{
+                  fontSize: 'var(--font-size-caption)',
+                  whiteSpace: 'nowrap',
+                  fontVariantNumeric: 'tabular-nums'
+                }}
+              >
+                Étape {currentStep + 1} sur {steps.length}
+              </Text>
+            )}
           </div>
-          <Divider />
           {steps[currentStep].content}
         </Space>
       </Card>
 
-      <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between' }}>
-        <Space>
+      {/* Sous 992 px, la barre s'empile : les deux actions de parcours passent
+          en bas et prennent toute la largeur, donc a portee de pouce (P1).
+          L'ordre visuel suit l'ordre du DOM — donc l'ordre de tabulation. */}
+      <div
+        style={{
+          marginTop: 'var(--space-6)',
+          display: 'flex',
+          flexDirection: isDesktop ? 'row' : 'column',
+          justifyContent: 'space-between',
+          alignItems: isDesktop ? 'center' : 'stretch',
+          gap: 'var(--space-3)'
+        }}
+      >
+        <Space size="small" wrap style={{ justifyContent: isDesktop ? 'flex-start' : 'center' }}>
           {onCancel && (
             <Button onClick={onCancel} disabled={isLoading}>
               Annuler
@@ -1208,39 +1272,47 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
           </Button>
         </Space>
 
-        <Space>
+        <div
+          style={{
+            display: 'flex',
+            gap: 'var(--space-2)',
+            justifyContent: 'flex-end'
+          }}
+        >
           {currentStep > 0 && (
-            <Button icon={<ArrowLeftOutlined />} onClick={() => handleStepChange(currentStep - 1)} disabled={isLoading}>
+            <Button
+              icon={<ArrowLeftOutlined />}
+              onClick={() => handleStepChange(currentStep - 1)}
+              disabled={isLoading}
+              block={!isDesktop}
+            >
               Précédent
             </Button>
           )}
-          {currentStep < steps.length - 1 ? (
-            <Button
-              type="primary"
-              icon={<ArrowRightOutlined />}
-              onClick={() => handleStepChange(currentStep + 1)}
-              disabled={!isStepValid(currentStep) || isLoading}
-            >
-              Suivant
-            </Button>
-          ) : (
+          {isLastStep ? (
             <Button
               type="primary"
               icon={<CheckCircleOutlined />}
               onClick={handleFinish}
               loading={isLoading}
               disabled={!isStepValid(currentStep)}
+              block={!isDesktop}
             >
               Terminer
             </Button>
+          ) : (
+            <Button
+              type="primary"
+              icon={<ArrowRightOutlined />}
+              iconPlacement="end"
+              onClick={() => handleStepChange(currentStep + 1)}
+              disabled={!isStepValid(currentStep) || isLoading}
+              block={!isDesktop}
+            >
+              Suivant
+            </Button>
           )}
-        </Space>
-      </div>
-
-      <div style={{ textAlign: 'center', marginTop: 16 }}>
-        <Text type="secondary">
-          Étape {currentStep + 1} sur {steps.length}
-        </Text>
+        </div>
       </div>
     </div>
   );

@@ -237,6 +237,12 @@ export async function listInstallments(
   tenantId: string,
   filters?: {
     leaseId?: string;
+    /**
+     * Locataire principal. Filtre a travers le bail : une echeance n'a pas de
+     * locataire en propre, elle en herite de son contrat. Permet de voir en un
+     * ecran ce qu'un meme locataire doit sur l'ensemble de ses baux.
+     */
+    renterClientId?: string;
     status?: RentalInstallmentStatus;
     year?: number;
     month?: number;
@@ -253,6 +259,10 @@ export async function listInstallments(
 
   if (filters?.leaseId) {
     where.lease_id = filters.leaseId;
+  }
+
+  if (filters?.renterClientId) {
+    where.lease = { primary_renter_client_id: filters.renterClientId };
   }
 
   if (filters?.status) {
@@ -294,7 +304,18 @@ export async function listInstallments(
               select: {
                 id: true,
                 internalReference: true,
+                // Le titre d'abord : c'est lui que l'ecran Baux affiche, et une
+                // reference interne ne dit rien a personne.
+                title: true,
                 address: true
+              }
+            },
+            // Sans lui, la liste globale ne dit pas de qui vient l'echeance :
+            // on voit une periode et un montant, jamais un nom.
+            primaryRenter: {
+              select: {
+                id: true,
+                user: { select: { fullName: true, email: true } }
               }
             }
           }

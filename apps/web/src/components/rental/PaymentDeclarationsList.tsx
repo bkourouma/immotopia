@@ -11,6 +11,7 @@ import {
   PaymentDeclarationFilters,
   RentalPaymentMethod
 } from '../../services/rental-service';
+import { nomDuBien, nomDeLaPersonne, ABSENT } from '../../lib/rental-labels';
 
 const { Text } = Typography;
 const { TextArea } = Input;
@@ -192,14 +193,26 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
       render: (_, record) => formatDate(record.payment_date)
     },
     {
-      title: 'Locataire',
-      key: 'declarer',
-      render: (_, record) => record.declarer?.user?.fullName || '-'
-    },
-    {
       title: 'Bail',
       key: 'lease',
-      render: (_, record) => record.lease?.lease_number || '-'
+      width: 250,
+      render: (_, record) => (
+        <>
+          <div style={{ fontWeight: 600 }}>{record.lease?.lease_number || ABSENT}</div>
+          {/* Le bien sous son numéro, comme sur les trois autres écrans du
+              module : une déclaration doit se rattacher à un bail nommé, pas à
+              une référence seule. */}
+          <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>
+            {nomDuBien(record.lease?.property)}
+          </div>
+        </>
+      )
+    },
+    {
+      title: 'Locataire',
+      key: 'declarer',
+      width: 170,
+      render: (_, record) => nomDeLaPersonne(record.declarer?.user)
     },
     {
       title: 'Échéance',

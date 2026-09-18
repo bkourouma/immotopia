@@ -291,10 +291,19 @@ export interface RentalInstallment {
   paid_at?: string | null;
   created_at: string;
   updated_at: string;
+  /** Rattachement renvoye par la liste : bail, bien et locataire principal. */
+  lease?: {
+    id: string;
+    lease_number: string;
+    property?: { id: string; internalReference?: string | null; title?: string | null; address?: string | null } | null;
+    primaryRenter?: { id: string; user?: { fullName?: string | null; email?: string | null } | null } | null;
+  } | null;
 }
 
 export interface InstallmentFilters {
   leaseId?: string;
+  /** Locataire principal : filtre a travers le bail, tous contrats confondus. */
+  renterClientId?: string;
   status?: RentalInstallmentStatus;
   year?: number;
   month?: number;
@@ -404,6 +413,13 @@ export interface RentalPayment {
   allocations?: RentalPaymentAllocation[];
   /** Amounts allocated to deposit (e.g. collect) - used for "Alloué" = allocations + depositMovements */
   depositMovements?: { id: string; amount: number; type?: RentalDepositMovementType; created_at?: string }[];
+  /** Rattachement renvoye par la liste : bail, bien et locataire payeur. */
+  lease?: {
+    id: string;
+    lease_number: string;
+    property?: { id: string; title?: string | null; address?: string | null; internalReference?: string | null } | null;
+  } | null;
+  renterClient?: { id: string; user?: { fullName?: string | null; email?: string | null } | null } | null;
 }
 
 export interface CreatePaymentRequest {
@@ -474,7 +490,9 @@ export interface RentalPaymentDeclaration {
     lease_number: string;
     property?: {
       id: string;
-      address: string;
+      title?: string | null;
+      address?: string | null;
+      internalReference?: string | null;
     };
   };
   installment?: {

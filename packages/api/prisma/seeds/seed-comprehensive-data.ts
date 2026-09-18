@@ -68,41 +68,211 @@ async function generateLeaseNumber(_tenantId: string, index: number): Promise<st
 
 // Ivorian and West African names for realistic data
 const firstNames = [
-  'KouamÃ©', 'Kouassi', 'Kouadio', 'AffouÃ©', 'Akissi', 'Aya', 'Amara', 'Aminata',
-  'Yao', 'Yapi', 'N\'Guessan', 'Assa', 'Assi', 'Bamba', 'BÃ©atrice', 'ClÃ©ment',
-  'DjÃ©djÃ©', 'Ã‰lise', 'FranÃ§ois', 'GisÃ¨le', 'Henri', 'Innocent', 'Jean', 'JosÃ©phine',
-  'Koffi', 'Martine', 'N\'Goran', 'Patrice', 'Pierre', 'Sandrine', 'Sylvain', 'ThÃ©rÃ¨se',
-  'Amadou', 'Fatima', 'Moussa', 'Mariam', 'Ibrahim', 'Aissata', 'Ousmane', 'Kadiatou',
-  'Boubacar', 'Hawa', 'SÃ©kou', 'Modibo', 'Fanta', 'Lassana', 'Kadija', 'Mamadou',
-  'Ramata', 'Sidiki', 'Bakary', 'Daouda', 'Rokia', 'Youssouf', 'Sira', 'Hamidou',
-  'Maimouna', 'Djibril', 'Nene', 'Seydou', 'Nana', 'Alassane', 'Binta', 'Tidiane',
-  'Hadja', 'Cheick', 'Djeneba', 'Ibrahima', 'Kadi', 'Mahamadou', 'Oumou', 'Salif',
-  'Awa', 'Bintou', 'Diarra', 'Fadima', 'Goundo', 'Hawa', 'Idrissa', 'Jibril',
-  'Kadiatou', 'Lassana', 'Mamadou', 'Nene', 'Ousmane', 'Penda', 'Ramatou', 'Saliou',
-  'Tidiane', 'Yacouba', 'Zainab', 'Abdoulaye', 'Aminata', 'Bakary', 'Coumba', 'Demba'
+  'Kouamé',
+  'Kouassi',
+  'Kouadio',
+  'Affoué',
+  'Akissi',
+  'Aya',
+  'Amara',
+  'Aminata',
+  'Yao',
+  'Yapi',
+  "N'Guessan",
+  'Assa',
+  'Assi',
+  'Bamba',
+  'Béatrice',
+  'Clément',
+  'Djédjé',
+  'Élise',
+  'François',
+  'Gisèle',
+  'Henri',
+  'Innocent',
+  'Jean',
+  'Joséphine',
+  'Koffi',
+  'Martine',
+  "N'Goran",
+  'Patrice',
+  'Pierre',
+  'Sandrine',
+  'Sylvain',
+  'Thérèse',
+  'Amadou',
+  'Fatima',
+  'Moussa',
+  'Mariam',
+  'Ibrahim',
+  'Aissata',
+  'Ousmane',
+  'Kadiatou',
+  'Boubacar',
+  'Hawa',
+  'Sékou',
+  'Modibo',
+  'Fanta',
+  'Lassana',
+  'Kadija',
+  'Mamadou',
+  'Ramata',
+  'Sidiki',
+  'Bakary',
+  'Daouda',
+  'Rokia',
+  'Youssouf',
+  'Sira',
+  'Hamidou',
+  'Maimouna',
+  'Djibril',
+  'Nene',
+  'Seydou',
+  'Nana',
+  'Alassane',
+  'Binta',
+  'Tidiane',
+  'Hadja',
+  'Cheick',
+  'Djeneba',
+  'Ibrahima',
+  'Kadi',
+  'Mahamadou',
+  'Oumou',
+  'Salif',
+  'Awa',
+  'Bintou',
+  'Diarra',
+  'Fadima',
+  'Goundo',
+  'Hawa',
+  'Idrissa',
+  'Jibril',
+  'Kadiatou',
+  'Lassana',
+  'Mamadou',
+  'Nene',
+  'Ousmane',
+  'Penda',
+  'Ramatou',
+  'Saliou',
+  'Tidiane',
+  'Yacouba',
+  'Zainab',
+  'Abdoulaye',
+  'Aminata',
+  'Bakary',
+  'Coumba',
+  'Demba'
 ];
 
 const lastNames = [
-  'KouamÃ©', 'Kouassi', 'Kouadio', 'DiabatÃ©', 'Ouattara', 'BÃ©diÃ©', 'Gbagbo', 'BlÃ©',
-  'SangarÃ©', 'Coulibaly', 'Yapi', 'N\'Guessan', 'Amani', 'KonÃ©', 'TraorÃ©', 'Diarra',
-  'Diallo', 'Keita', 'Camara', 'TourÃ©', 'DembÃ©lÃ©', 'Sissoko', 'Ba', 'Diawara',
-  'Doumbia', 'SidibÃ©', 'DoucourÃ©', 'SamakÃ©', 'Togola', 'Fofana', 'KantÃ©', 'KonatÃ©',
-  'Ballo', 'KonarÃ©', 'BÃ©rÃ©', 'Haidara', 'Kaba', 'Magassa', 'NiakatÃ©', 'Soumahoro',
-  'Sanogo', 'Bambara', 'Maiga', 'Bagayogo', 'Yao', 'Amani', 'BlÃ©', 'Bamba',
-  'CissÃ©', 'Diarra', 'Diallo', 'Doumbia', 'Fofana', 'Keita', 'KonatÃ©', 'SangarÃ©',
-  'SidibÃ©', 'TraorÃ©', 'TourÃ©', 'Ba', 'Camara', 'DembÃ©lÃ©', 'Diawara', 'Sissoko',
-  'Togola', 'SamakÃ©', 'KantÃ©', 'KonarÃ©', 'Ballo', 'BÃ©rÃ©', 'Haidara', 'Kaba'
+  'Kouamé',
+  'Kouassi',
+  'Kouadio',
+  'Diabaté',
+  'Ouattara',
+  'Bédié',
+  'Gbagbo',
+  'Blé',
+  'Sangaré',
+  'Coulibaly',
+  'Yapi',
+  "N'Guessan",
+  'Amani',
+  'Koné',
+  'Traoré',
+  'Diarra',
+  'Diallo',
+  'Keita',
+  'Camara',
+  'Touré',
+  'Dembélé',
+  'Sissoko',
+  'Ba',
+  'Diawara',
+  'Doumbia',
+  'Sidibé',
+  'Doucouré',
+  'Samaké',
+  'Togola',
+  'Fofana',
+  'Kanté',
+  'Konaté',
+  'Ballo',
+  'Konaré',
+  'Béré',
+  'Haidara',
+  'Kaba',
+  'Magassa',
+  'Niakaté',
+  'Soumahoro',
+  'Sanogo',
+  'Bambara',
+  'Maiga',
+  'Bagayogo',
+  'Yao',
+  'Amani',
+  'Blé',
+  'Bamba',
+  'Cissé',
+  'Diarra',
+  'Diallo',
+  'Doumbia',
+  'Fofana',
+  'Keita',
+  'Konaté',
+  'Sangaré',
+  'Sidibé',
+  'Traoré',
+  'Touré',
+  'Ba',
+  'Camara',
+  'Dembélé',
+  'Diawara',
+  'Sissoko',
+  'Togola',
+  'Samaké',
+  'Kanté',
+  'Konaré',
+  'Ballo',
+  'Béré',
+  'Haidara',
+  'Kaba'
 ];
 
 const locations = [
-  'Cocody', 'Marcory', 'Yopougon', 'Plateau', 'AdjamÃ©', 'AttÃ©coubÃ©',
-  'Abobo', 'Treichville', 'Koumassi', 'Port-BouÃ«t', 'Anyama', 'Bingerville',
-  'Abengourou', 'BouakÃ©', 'Daloa', 'Korhogo', 'Man', 'San-PÃ©dro'
+  'Cocody',
+  'Marcory',
+  'Yopougon',
+  'Plateau',
+  'Adjamé',
+  'Attécoubé',
+  'Abobo',
+  'Treichville',
+  'Koumassi',
+  'Port-Bouët',
+  'Anyama',
+  'Bingerville',
+  'Abengourou',
+  'Bouaké',
+  'Daloa',
+  'Korhogo',
+  'Man',
+  'San-Pédro'
 ];
 
 const emailDomains = [
-  'gmail.com', 'yahoo.fr', 'outlook.com', 'hotmail.com', 'live.fr',
-  'orange.ci', 'mtn.ci', 'moov.ci', 'protonmail.com', 'icloud.com'
+  'gmail.com',
+  'yahoo.fr',
+  'outlook.com',
+  'hotmail.com',
+  'live.fr',
+  'orange.ci',
+  'mtn.ci',
+  'moov.ci',
+  'protonmail.com',
+  'icloud.com'
 ];
 
 const sources = ['website', 'referral', 'walk-in', 'social', 'call', 'email', 'partner'];
@@ -185,11 +355,11 @@ async function main() {
   const tenantAdminRole = await prisma.role.findUnique({ where: { key: 'TENANT_ADMIN' } });
   const tenantManagerRole = await prisma.role.findUnique({ where: { key: 'TENANT_MANAGER' } });
   const tenantAgentRole = await prisma.role.findUnique({ where: { key: 'TENANT_AGENT' } });
-  
+
   if (!tenantAdminRole || !tenantManagerRole || !tenantAgentRole) {
     throw new Error('Tenant roles not found. Please run RBAC seed first.');
   }
-  
+
   const roleKeys = [
     'TENANT_ADMIN',
     'TENANT_MANAGER',
@@ -201,20 +371,20 @@ async function main() {
   ];
 
   const collaboratorNames = [
-    { first: 'KouamÃ©', last: 'DiabatÃ©' },
-    { first: 'AffouÃ©', last: 'SangarÃ©' },
-    { first: 'Kouassi', last: 'KouamÃ©' },
+    { first: 'Kouamé', last: 'Diabaté' },
+    { first: 'Affoué', last: 'Sangaré' },
+    { first: 'Kouassi', last: 'Kouamé' },
     { first: 'Akissi', last: 'Coulibaly' },
     { first: 'Yao', last: 'Ouattara' },
-    { first: 'Aminata', last: 'TraorÃ©' },
-    { first: 'Koffi', last: 'N\'Guessan' }
+    { first: 'Aminata', last: 'Traoré' },
+    { first: 'Koffi', last: "N'Guessan" }
   ];
 
   const members = [];
   for (let i = 0; i < 7; i++) {
     const name = collaboratorNames[i];
     const email = `collab${i + 1}.${name.first.toLowerCase()}.${name.last.toLowerCase()}@agence-mali.com`;
-    
+
     const user = await prisma.user.upsert({
       where: { email },
       update: {
@@ -257,13 +427,13 @@ async function main() {
     }
 
     const roleKey = roleKeys[i];
-    const role = roleKey === 'TENANT_ADMIN' ? tenantAdminRole : 
-                 roleKey === 'TENANT_MANAGER' ? tenantManagerRole : tenantAgentRole;
-    
+    const role =
+      roleKey === 'TENANT_ADMIN' ? tenantAdminRole : roleKey === 'TENANT_MANAGER' ? tenantManagerRole : tenantAgentRole;
+
     await prisma.userRole.deleteMany({
       where: { userId: user.id, tenantId: tenant.id }
     });
-    
+
     await prisma.userRole.create({
       data: {
         userId: user.id,
@@ -283,7 +453,7 @@ async function main() {
   // ==========================================
   console.log('\nðŸ“‡ Creating 200 contacts (60 clients, 140 leads)...');
   const contacts = [];
-  
+
   // Create 60 clients (ACTIVE_CLIENT)
   for (let i = 0; i < 60; i++) {
     const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
@@ -321,7 +491,7 @@ async function main() {
       CrmContactRoleType.COPROPRIETAIRE
     ];
     const roleType = roleTypes[Math.floor(Math.random() * roleTypes.length)];
-    
+
     await prisma.crmContactRole.create({
       data: {
         tenantId: tenant.id,
@@ -383,16 +553,19 @@ async function main() {
     const dealType = Math.random() > 0.5 ? CrmDealType.ACHAT : CrmDealType.LOCATION;
     const assignedTo = allCollaborators[Math.floor(Math.random() * allCollaborators.length)];
     const location = locations[Math.floor(Math.random() * locations.length)];
-    
+
     const stages = Object.values(CrmDealStage);
     const stage = stages[Math.floor(Math.random() * stages.length)];
-    
-    const budgetMin = dealType === CrmDealType.ACHAT 
-      ? Math.floor(Math.random() * 50000000) + 10000000
-      : Math.floor(Math.random() * 50000) + 50000;
-    const budgetMax = budgetMin + (dealType === CrmDealType.ACHAT 
-      ? Math.floor(Math.random() * 20000000) + 5000000
-      : Math.floor(Math.random() * 50000) + 50000);
+
+    const budgetMin =
+      dealType === CrmDealType.ACHAT
+        ? Math.floor(Math.random() * 50000000) + 10000000
+        : Math.floor(Math.random() * 50000) + 50000;
+    const budgetMax =
+      budgetMin +
+      (dealType === CrmDealType.ACHAT
+        ? Math.floor(Math.random() * 20000000) + 5000000
+        : Math.floor(Math.random() * 50000) + 50000);
 
     const deal = await prisma.crmDeal.create({
       data: {
@@ -411,12 +584,11 @@ async function main() {
         expectedValue: dealType === CrmDealType.ACHAT ? budgetMax : budgetMax * 12,
         probability: Math.floor(Math.random() * 40) + 40,
         assignedToUserId: assignedTo.id,
-        closedAt: stage === CrmDealStage.WON || stage === CrmDealStage.LOST
-          ? randomDate(30)
-          : null,
-        closedReason: stage === CrmDealStage.LOST
-          ? ['Budget insuffisant', 'Zone non disponible', 'Client a trouvÃ© ailleurs'][Math.floor(Math.random() * 3)]
-          : null,
+        closedAt: stage === CrmDealStage.WON || stage === CrmDealStage.LOST ? randomDate(30) : null,
+        closedReason:
+          stage === CrmDealStage.LOST
+            ? ['Budget insuffisant', 'Zone non disponible', 'Client a trouvé ailleurs'][Math.floor(Math.random() * 3)]
+            : null,
         createdAt: randomDate(90)
       }
     });
@@ -430,36 +602,40 @@ async function main() {
   // ==========================================
   console.log('\nðŸ“ž Creating 75 activities...');
   const activitySubjects = [
-    'Appel tÃ©lÃ©phonique',
+    'Appel téléphonique',
     'Email de suivi',
     'SMS de confirmation',
     'Message WhatsApp',
-    'Visite de propriÃ©tÃ©',
-    'RÃ©union client',
+    'Visite de propriété',
+    'Réunion client',
     'Note interne',
-    'TÃ¢che de suivi'
+    'Tâche de suivi'
   ];
 
   const activityContents = [
     'Discussion sur les besoins du client',
-    'Envoi de propositions immobiliÃ¨res',
+    'Envoi de propositions immobilières',
     'Confirmation de rendez-vous',
-    'RÃ©ponse Ã  une question client',
-    'Suivi aprÃ¨s visite',
-    'NÃ©gociation des conditions',
-    'Mise Ã  jour du dossier',
+    'Réponse à une question client',
+    'Suivi après visite',
+    'Négociation des conditions',
+    'Mise à jour du dossier',
     'Relance client'
   ];
 
   for (let i = 0; i < 75; i++) {
     const contact = contacts[Math.floor(Math.random() * contacts.length)];
     const deal = Math.random() > 0.3 ? deals[Math.floor(Math.random() * deals.length)] : null;
-    const activityType = Object.values(CrmActivityType)[Math.floor(Math.random() * Object.values(CrmActivityType).length)];
+    const activityType =
+      Object.values(CrmActivityType)[Math.floor(Math.random() * Object.values(CrmActivityType).length)];
     const createdBy = allCollaborators[Math.floor(Math.random() * allCollaborators.length)];
-    const direction = activityType === CrmActivityType.NOTE || activityType === CrmActivityType.TASK
-      ? CrmActivityDirection.INTERNAL
-      : (Math.random() > 0.5 ? CrmActivityDirection.OUT : CrmActivityDirection.IN);
-    
+    const direction =
+      activityType === CrmActivityType.NOTE || activityType === CrmActivityType.TASK
+        ? CrmActivityDirection.INTERNAL
+        : Math.random() > 0.5
+          ? CrmActivityDirection.OUT
+          : CrmActivityDirection.IN;
+
     const subject = activitySubjects[Math.floor(Math.random() * activitySubjects.length)];
     const content = activityContents[Math.floor(Math.random() * activityContents.length)];
 
@@ -472,7 +648,7 @@ async function main() {
         direction,
         subject,
         content: `${content} - ${contact.firstName} ${contact.lastName}`,
-        outcome: Math.random() > 0.6 ? 'SuccÃ¨s' : null,
+        outcome: Math.random() > 0.6 ? 'Succès' : null,
         occurredAt: randomDate(60),
         createdByUserId: createdBy.id,
         nextActionAt: Math.random() > 0.5 ? randomFutureDate(7) : null,
@@ -493,6 +669,17 @@ async function main() {
   console.log('\nðŸ  Creating 10 patrimoine demo properties...');
   const properties = [];
   const currentYear = new Date().getFullYear();
+
+  // Aucune fiche ne declare ici son occupation. Sept d'entre elles naissaient
+  // `status: RENTED, availability: UNAVAILABLE` sans qu'aucun bail ne vienne
+  // jamais le justifier : la colonne mentait des la creation. Le portail
+  // proprietaire y lisait « 15 biens, 6 loues, 0 disponibles » — un bien marque
+  // loue sans bail ne tombait dans aucune case, « loue » se comptant sur le bail
+  // et « disponible » exigeant `status === AVAILABLE`.
+  //
+  // Les biens naissent donc disponibles, et ceux qui recoivent un bail actif
+  // passent en RENTED apres la creation des baux (voir plus bas), quand le fait
+  // existe vraiment.
   const demoProperties = [
     {
       title: 'Appartement 3 pieces renove - Cocody Riviera',
@@ -509,14 +696,38 @@ async function main() {
       rooms: 4,
       bedrooms: 3,
       bathrooms: 2,
-      status: PropertyStatus.RENTED,
-      availability: PropertyAvailability.UNAVAILABLE,
+      status: PropertyStatus.AVAILABLE,
+      availability: PropertyAvailability.AVAILABLE,
       qualityScore: 84,
-      valuation: { estimatedValue: 82500000, acquisitionCost: 69000000, acquisitionDate: '2019-06-15', method: ValuationMethod.MARKET_ESTIMATE },
-      loan: { lender: 'NSIA Banque', capitalAmount: 52000000, remainingCapital: 41000000, interestRate: 7.1, monthlyPayment: 468000, startDate: '2021-02-01', endDate: '2036-02-01', status: LoanStatus.ACTIVE },
+      valuation: {
+        estimatedValue: 82500000,
+        acquisitionCost: 69000000,
+        acquisitionDate: '2019-06-15',
+        method: ValuationMethod.MARKET_ESTIMATE
+      },
+      loan: {
+        lender: 'NSIA Banque',
+        capitalAmount: 52000000,
+        remainingCapital: 41000000,
+        interestRate: 7.1,
+        monthlyPayment: 468000,
+        startDate: '2021-02-01',
+        endDate: '2036-02-01',
+        status: LoanStatus.ACTIVE
+      },
       expenses: [
-        { category: ExpenseCategory.CONDO_FEES, label: 'Charges copropriete annuelles', amount: 540000, paidAt: `${currentYear}-02-15` },
-        { category: ExpenseCategory.INSURANCE, label: 'Assurance multirisque', amount: 220000, paidAt: `${currentYear}-01-20` }
+        {
+          category: ExpenseCategory.CONDO_FEES,
+          label: 'Charges copropriete annuelles',
+          amount: 540000,
+          paidAt: `${currentYear}-02-15`
+        },
+        {
+          category: ExpenseCategory.INSURANCE,
+          label: 'Assurance multirisque',
+          amount: 220000,
+          paidAt: `${currentYear}-01-20`
+        }
       ]
     },
     {
@@ -537,13 +748,43 @@ async function main() {
       status: PropertyStatus.AVAILABLE,
       availability: PropertyAvailability.AVAILABLE,
       qualityScore: 92,
-      valuation: { estimatedValue: 245000000, acquisitionCost: 198000000, acquisitionDate: '2018-11-08', method: ValuationMethod.EXPERT_APPRAISAL },
-      loan: { lender: 'Coris Bank', capitalAmount: 160000000, remainingCapital: 128000000, interestRate: 6.8, monthlyPayment: 1320000, startDate: '2020-04-01', endDate: '2040-04-01', status: LoanStatus.ACTIVE },
+      valuation: {
+        estimatedValue: 245000000,
+        acquisitionCost: 198000000,
+        acquisitionDate: '2018-11-08',
+        method: ValuationMethod.EXPERT_APPRAISAL
+      },
+      loan: {
+        lender: 'Coris Bank',
+        capitalAmount: 160000000,
+        remainingCapital: 128000000,
+        interestRate: 6.8,
+        monthlyPayment: 1320000,
+        startDate: '2020-04-01',
+        endDate: '2040-04-01',
+        status: LoanStatus.ACTIVE
+      },
       expenses: [
-        { category: ExpenseCategory.ROUTINE_MAINTENANCE, label: 'Entretien jardin et piscine', amount: 860000, paidAt: `${currentYear}-03-05` },
-        { category: ExpenseCategory.PROPERTY_TAX, label: 'Taxe fonciere annuelle', amount: 620000, paidAt: `${currentYear}-01-30` }
+        {
+          category: ExpenseCategory.ROUTINE_MAINTENANCE,
+          label: 'Entretien jardin et piscine',
+          amount: 860000,
+          paidAt: `${currentYear}-03-05`
+        },
+        {
+          category: ExpenseCategory.PROPERTY_TAX,
+          label: 'Taxe fonciere annuelle',
+          amount: 620000,
+          paidAt: `${currentYear}-01-30`
+        }
       ],
-      workProgram: { title: 'Renovation terrasse', estimatedCost: 3500000, status: WorkProgramStatus.PLANNED, plannedDate: `${currentYear}-07-15`, isCapitalized: true }
+      workProgram: {
+        title: 'Renovation terrasse',
+        estimatedCost: 3500000,
+        status: WorkProgramStatus.PLANNED,
+        plannedDate: `${currentYear}-07-15`,
+        isCapitalized: true
+      }
     },
     {
       title: 'Studio meuble rendement eleve - Marcory',
@@ -560,13 +801,28 @@ async function main() {
       rooms: 1,
       bedrooms: 1,
       bathrooms: 1,
-      status: PropertyStatus.RENTED,
-      availability: PropertyAvailability.UNAVAILABLE,
+      status: PropertyStatus.AVAILABLE,
+      availability: PropertyAvailability.AVAILABLE,
       qualityScore: 78,
-      valuation: { estimatedValue: 36000000, acquisitionCost: 28500000, acquisitionDate: '2022-09-01', method: ValuationMethod.MANUAL },
+      valuation: {
+        estimatedValue: 36000000,
+        acquisitionCost: 28500000,
+        acquisitionDate: '2022-09-01',
+        method: ValuationMethod.MANUAL
+      },
       expenses: [
-        { category: ExpenseCategory.CONDO_FEES, label: 'Charges syndic annuelles', amount: 280000, paidAt: `${currentYear}-02-10` },
-        { category: ExpenseCategory.UTILITIES, label: 'Abonnement energie parties communes', amount: 95000, paidAt: `${currentYear}-01-12` }
+        {
+          category: ExpenseCategory.CONDO_FEES,
+          label: 'Charges syndic annuelles',
+          amount: 280000,
+          paidAt: `${currentYear}-02-10`
+        },
+        {
+          category: ExpenseCategory.UTILITIES,
+          label: 'Abonnement energie parties communes',
+          amount: 95000,
+          paidAt: `${currentYear}-01-12`
+        }
       ]
     },
     {
@@ -584,14 +840,38 @@ async function main() {
       rooms: 6,
       bedrooms: 4,
       bathrooms: 3,
-      status: PropertyStatus.RENTED,
-      availability: PropertyAvailability.UNAVAILABLE,
+      status: PropertyStatus.AVAILABLE,
+      availability: PropertyAvailability.AVAILABLE,
       qualityScore: 89,
-      valuation: { estimatedValue: 158000000, acquisitionCost: 131000000, acquisitionDate: '2020-01-10', method: ValuationMethod.MARKET_ESTIMATE },
-      loan: { lender: 'BOA', capitalAmount: 98000000, remainingCapital: 73000000, interestRate: 7.4, monthlyPayment: 870000, startDate: '2020-02-01', endDate: '2038-02-01', status: LoanStatus.ACTIVE },
+      valuation: {
+        estimatedValue: 158000000,
+        acquisitionCost: 131000000,
+        acquisitionDate: '2020-01-10',
+        method: ValuationMethod.MARKET_ESTIMATE
+      },
+      loan: {
+        lender: 'BOA',
+        capitalAmount: 98000000,
+        remainingCapital: 73000000,
+        interestRate: 7.4,
+        monthlyPayment: 870000,
+        startDate: '2020-02-01',
+        endDate: '2038-02-01',
+        status: LoanStatus.ACTIVE
+      },
       expenses: [
-        { category: ExpenseCategory.INSURANCE, label: 'Assurance immeuble', amount: 290000, paidAt: `${currentYear}-01-18` },
-        { category: ExpenseCategory.ROUTINE_MAINTENANCE, label: 'Maintenance climatisation', amount: 410000, paidAt: `${currentYear}-03-11` }
+        {
+          category: ExpenseCategory.INSURANCE,
+          label: 'Assurance immeuble',
+          amount: 290000,
+          paidAt: `${currentYear}-01-18`
+        },
+        {
+          category: ExpenseCategory.ROUTINE_MAINTENANCE,
+          label: 'Maintenance climatisation',
+          amount: 410000,
+          paidAt: `${currentYear}-03-11`
+        }
       ]
     },
     {
@@ -609,16 +889,46 @@ async function main() {
       rooms: 10,
       bedrooms: 0,
       bathrooms: 4,
-      status: PropertyStatus.RENTED,
-      availability: PropertyAvailability.UNAVAILABLE,
+      status: PropertyStatus.AVAILABLE,
+      availability: PropertyAvailability.AVAILABLE,
       qualityScore: 91,
-      valuation: { estimatedValue: 195000000, acquisitionCost: 166000000, acquisitionDate: '2017-05-24', method: ValuationMethod.EXPERT_APPRAISAL },
-      loan: { lender: 'SIB', capitalAmount: 120000000, remainingCapital: 96000000, interestRate: 6.9, monthlyPayment: 990000, startDate: '2019-10-01', endDate: '2039-10-01', status: LoanStatus.ACTIVE },
+      valuation: {
+        estimatedValue: 195000000,
+        acquisitionCost: 166000000,
+        acquisitionDate: '2017-05-24',
+        method: ValuationMethod.EXPERT_APPRAISAL
+      },
+      loan: {
+        lender: 'SIB',
+        capitalAmount: 120000000,
+        remainingCapital: 96000000,
+        interestRate: 6.9,
+        monthlyPayment: 990000,
+        startDate: '2019-10-01',
+        endDate: '2039-10-01',
+        status: LoanStatus.ACTIVE
+      },
       expenses: [
-        { category: ExpenseCategory.MANAGEMENT_FEES, label: 'Honoraires gestion technique', amount: 780000, paidAt: `${currentYear}-02-28` },
-        { category: ExpenseCategory.PROPERTY_TAX, label: 'Taxe professionnelle', amount: 940000, paidAt: `${currentYear}-01-25` }
+        {
+          category: ExpenseCategory.MANAGEMENT_FEES,
+          label: 'Honoraires gestion technique',
+          amount: 780000,
+          paidAt: `${currentYear}-02-28`
+        },
+        {
+          category: ExpenseCategory.PROPERTY_TAX,
+          label: 'Taxe professionnelle',
+          amount: 940000,
+          paidAt: `${currentYear}-01-25`
+        }
       ],
-      workProgram: { title: 'Mise aux normes incendie', estimatedCost: 5200000, status: WorkProgramStatus.IN_PROGRESS, plannedDate: `${currentYear}-04-10`, isCapitalized: true }
+      workProgram: {
+        title: 'Mise aux normes incendie',
+        estimatedCost: 5200000,
+        status: WorkProgramStatus.IN_PROGRESS,
+        plannedDate: `${currentYear}-04-10`,
+        isCapitalized: true
+      }
     },
     {
       title: 'Boutique commerciale angle passant - Yopougon',
@@ -635,14 +945,38 @@ async function main() {
       rooms: 2,
       bedrooms: 0,
       bathrooms: 1,
-      status: PropertyStatus.RENTED,
-      availability: PropertyAvailability.UNAVAILABLE,
+      status: PropertyStatus.AVAILABLE,
+      availability: PropertyAvailability.AVAILABLE,
       qualityScore: 80,
-      valuation: { estimatedValue: 64000000, acquisitionCost: 51000000, acquisitionDate: '2021-07-19', method: ValuationMethod.MARKET_ESTIMATE },
-      loan: { lender: 'Banque Atlantique', capitalAmount: 35000000, remainingCapital: 22500000, interestRate: 8.2, monthlyPayment: 355000, startDate: '2022-01-01', endDate: '2032-01-01', status: LoanStatus.ACTIVE },
+      valuation: {
+        estimatedValue: 64000000,
+        acquisitionCost: 51000000,
+        acquisitionDate: '2021-07-19',
+        method: ValuationMethod.MARKET_ESTIMATE
+      },
+      loan: {
+        lender: 'Banque Atlantique',
+        capitalAmount: 35000000,
+        remainingCapital: 22500000,
+        interestRate: 8.2,
+        monthlyPayment: 355000,
+        startDate: '2022-01-01',
+        endDate: '2032-01-01',
+        status: LoanStatus.ACTIVE
+      },
       expenses: [
-        { category: ExpenseCategory.UTILITIES, label: 'Electricite local commercial', amount: 145000, paidAt: `${currentYear}-02-07` },
-        { category: ExpenseCategory.INSURANCE, label: 'Assurance local', amount: 125000, paidAt: `${currentYear}-01-14` }
+        {
+          category: ExpenseCategory.UTILITIES,
+          label: 'Electricite local commercial',
+          amount: 145000,
+          paidAt: `${currentYear}-02-07`
+        },
+        {
+          category: ExpenseCategory.INSURANCE,
+          label: 'Assurance local',
+          amount: 125000,
+          paidAt: `${currentYear}-01-14`
+        }
       ]
     },
     {
@@ -663,9 +997,19 @@ async function main() {
       status: PropertyStatus.AVAILABLE,
       availability: PropertyAvailability.AVAILABLE,
       qualityScore: 74,
-      valuation: { estimatedValue: 48000000, acquisitionCost: 32000000, acquisitionDate: '2016-03-04', method: ValuationMethod.MANUAL },
+      valuation: {
+        estimatedValue: 48000000,
+        acquisitionCost: 32000000,
+        acquisitionDate: '2016-03-04',
+        method: ValuationMethod.MANUAL
+      },
       expenses: [
-        { category: ExpenseCategory.PROPERTY_TAX, label: 'Taxe fonciere terrain', amount: 180000, paidAt: `${currentYear}-01-22` }
+        {
+          category: ExpenseCategory.PROPERTY_TAX,
+          label: 'Taxe fonciere terrain',
+          amount: 180000,
+          paidAt: `${currentYear}-01-22`
+        }
       ]
     },
     {
@@ -683,23 +1027,53 @@ async function main() {
       rooms: 24,
       bedrooms: 18,
       bathrooms: 14,
-      status: PropertyStatus.RENTED,
-      availability: PropertyAvailability.UNAVAILABLE,
+      status: PropertyStatus.AVAILABLE,
+      availability: PropertyAvailability.AVAILABLE,
       qualityScore: 88,
-      valuation: { estimatedValue: 415000000, acquisitionCost: 305000000, acquisitionDate: '2015-09-21', method: ValuationMethod.EXPERT_APPRAISAL },
-      loan: { lender: 'Ecobank', capitalAmount: 290000000, remainingCapital: 255000000, interestRate: 6.5, monthlyPayment: 2415000, startDate: '2018-05-01', endDate: '2043-05-01', status: LoanStatus.ACTIVE },
+      valuation: {
+        estimatedValue: 415000000,
+        acquisitionCost: 305000000,
+        acquisitionDate: '2015-09-21',
+        method: ValuationMethod.EXPERT_APPRAISAL
+      },
+      loan: {
+        lender: 'Ecobank',
+        capitalAmount: 290000000,
+        remainingCapital: 255000000,
+        interestRate: 6.5,
+        monthlyPayment: 2415000,
+        startDate: '2018-05-01',
+        endDate: '2043-05-01',
+        status: LoanStatus.ACTIVE
+      },
       expenses: [
-        { category: ExpenseCategory.ROUTINE_MAINTENANCE, label: 'Maintenance ascenseur et parties communes', amount: 1260000, paidAt: `${currentYear}-03-01` },
-        { category: ExpenseCategory.CONDO_FEES, label: 'Charges copropriete immeuble', amount: 920000, paidAt: `${currentYear}-02-03` }
+        {
+          category: ExpenseCategory.ROUTINE_MAINTENANCE,
+          label: 'Maintenance ascenseur et parties communes',
+          amount: 1260000,
+          paidAt: `${currentYear}-03-01`
+        },
+        {
+          category: ExpenseCategory.CONDO_FEES,
+          label: 'Charges copropriete immeuble',
+          amount: 920000,
+          paidAt: `${currentYear}-02-03`
+        }
       ],
-      workProgram: { title: 'Refection cage escalier', estimatedCost: 4100000, status: WorkProgramStatus.PLANNED, plannedDate: `${currentYear}-09-01`, isCapitalized: true }
+      workProgram: {
+        title: 'Refection cage escalier',
+        estimatedCost: 4100000,
+        status: WorkProgramStatus.PLANNED,
+        plannedDate: `${currentYear}-09-01`,
+        isCapitalized: true
+      }
     },
     {
       title: 'Maison familiale 4 chambres - Bouake',
       description: 'Maison de ville bien entretenue, potentiel de plus-value modere.',
       propertyType: PropertyType.MAISON_VILLA,
-      locationZone: 'BouakÃ©',
-      address: '56 Quartier Commerce, BouakÃ©',
+      locationZone: 'Bouaké',
+      address: '56 Quartier Commerce, Bouaké',
       latitude: 7.6905,
       longitude: -5.0308,
       price: 86000000,
@@ -709,14 +1083,38 @@ async function main() {
       rooms: 6,
       bedrooms: 4,
       bathrooms: 2,
-      status: PropertyStatus.RENTED,
-      availability: PropertyAvailability.UNAVAILABLE,
+      status: PropertyStatus.AVAILABLE,
+      availability: PropertyAvailability.AVAILABLE,
       qualityScore: 82,
-      valuation: { estimatedValue: 92000000, acquisitionCost: 74000000, acquisitionDate: '2019-02-17', method: ValuationMethod.MARKET_ESTIMATE },
-      loan: { lender: 'Orabank', capitalAmount: 46000000, remainingCapital: 38000000, interestRate: 7.7, monthlyPayment: 452000, startDate: '2019-03-01', endDate: '2034-03-01', status: LoanStatus.ACTIVE },
+      valuation: {
+        estimatedValue: 92000000,
+        acquisitionCost: 74000000,
+        acquisitionDate: '2019-02-17',
+        method: ValuationMethod.MARKET_ESTIMATE
+      },
+      loan: {
+        lender: 'Orabank',
+        capitalAmount: 46000000,
+        remainingCapital: 38000000,
+        interestRate: 7.7,
+        monthlyPayment: 452000,
+        startDate: '2019-03-01',
+        endDate: '2034-03-01',
+        status: LoanStatus.ACTIVE
+      },
       expenses: [
-        { category: ExpenseCategory.INSURANCE, label: 'Assurance habitation', amount: 170000, paidAt: `${currentYear}-01-09` },
-        { category: ExpenseCategory.ROUTINE_MAINTENANCE, label: 'Reparation plomberie', amount: 210000, paidAt: `${currentYear}-02-26` }
+        {
+          category: ExpenseCategory.INSURANCE,
+          label: 'Assurance habitation',
+          amount: 170000,
+          paidAt: `${currentYear}-01-09`
+        },
+        {
+          category: ExpenseCategory.ROUTINE_MAINTENANCE,
+          label: 'Reparation plomberie',
+          amount: 210000,
+          paidAt: `${currentYear}-02-26`
+        }
       ]
     },
     {
@@ -737,13 +1135,43 @@ async function main() {
       status: PropertyStatus.AVAILABLE,
       availability: PropertyAvailability.SOON_AVAILABLE,
       qualityScore: 90,
-      valuation: { estimatedValue: 132000000, acquisitionCost: 109000000, acquisitionDate: '2020-10-12', method: ValuationMethod.MARKET_ESTIMATE },
-      loan: { lender: 'UBA', capitalAmount: 76000000, remainingCapital: 57000000, interestRate: 7, monthlyPayment: 695000, startDate: '2021-01-01', endDate: '2041-01-01', status: LoanStatus.ACTIVE },
+      valuation: {
+        estimatedValue: 132000000,
+        acquisitionCost: 109000000,
+        acquisitionDate: '2020-10-12',
+        method: ValuationMethod.MARKET_ESTIMATE
+      },
+      loan: {
+        lender: 'UBA',
+        capitalAmount: 76000000,
+        remainingCapital: 57000000,
+        interestRate: 7,
+        monthlyPayment: 695000,
+        startDate: '2021-01-01',
+        endDate: '2041-01-01',
+        status: LoanStatus.ACTIVE
+      },
       expenses: [
-        { category: ExpenseCategory.CONDO_FEES, label: 'Charges residence securisee', amount: 430000, paidAt: `${currentYear}-02-12` },
-        { category: ExpenseCategory.UTILITIES, label: 'Maintenance groupe electrogene', amount: 185000, paidAt: `${currentYear}-03-02` }
+        {
+          category: ExpenseCategory.CONDO_FEES,
+          label: 'Charges residence securisee',
+          amount: 430000,
+          paidAt: `${currentYear}-02-12`
+        },
+        {
+          category: ExpenseCategory.UTILITIES,
+          label: 'Maintenance groupe electrogene',
+          amount: 185000,
+          paidAt: `${currentYear}-03-02`
+        }
       ],
-      workProgram: { title: 'Remise a neuf cuisine', estimatedCost: 2800000, status: WorkProgramStatus.COMPLETED, plannedDate: `${currentYear - 1}-11-05`, isCapitalized: true }
+      workProgram: {
+        title: 'Remise a neuf cuisine',
+        estimatedCost: 2800000,
+        status: WorkProgramStatus.COMPLETED,
+        plannedDate: `${currentYear - 1}-11-05`,
+        isCapitalized: true
+      }
     }
   ];
 
@@ -885,11 +1313,11 @@ async function main() {
   // Get or create tenant clients for renters and owners
   const renterClients = [];
   const ownerClients = [];
-  
+
   // Create renter clients
   for (let i = 0; i < 25; i++) {
     const clientContact = clientContacts[i % clientContacts.length];
-    
+
     // Find or create user for this contact
     let renterUser = await prisma.user.findUnique({
       where: { email: clientContact.email }
@@ -934,7 +1362,7 @@ async function main() {
   // Create owner clients (different contacts)
   for (let i = 0; i < 10; i++) {
     const ownerContact = clientContacts[(i + 30) % clientContacts.length];
-    
+
     // Find or create user for this contact
     let ownerUser = await prisma.user.findUnique({
       where: { email: `owner.${ownerContact.email}` }
@@ -980,15 +1408,41 @@ async function main() {
     where: { tenant_id: tenant.id }
   });
 
+  // ----------------------------------------------------- repartition des baux
+  //
+  // Les 25 baux etaient tires au hasard, avec remise, sur les 10 biens, et tous
+  // crees ACTIFS. Un meme bien se retrouvait donc porteur de deux ou trois baux
+  // actifs a la fois — loue trois fois en meme temps. Et comme la probabilite
+  // qu'un bien echappe aux 25 tirages est d'environ 7 %, le catalogue ne gardait
+  // quasiment aucun bien disponible a montrer.
+  //
+  // Un bien porte desormais au plus un bail actif. Les `BIENS_LOUES` premiers
+  // biens sont loues, les autres restent a louer : le catalogue garde un melange
+  // credible. Les baux suivants sont des baux termines, repartis sur l'ensemble
+  // des biens — ils donnent l'historique d'echeances, de paiements et de
+  // quittances sans pretendre occuper quoi que ce soit aujourd'hui.
+  const BIENS_LOUES = Math.min(6, properties.length);
+  const JOUR = 24 * 60 * 60 * 1000;
+
   for (let i = 0; i < 25; i++) {
-    const property = properties[Math.floor(Math.random() * properties.length)];
+    const actif = i < BIENS_LOUES;
+
+    // Les baux actifs prennent chacun un bien distinct ; les baux termines
+    // repassent sur l'ensemble, un bien pouvant avoir eu plusieurs locataires.
+    const property = actif ? properties[i] : properties[i % properties.length];
+
     const renterClient = renterClients[i];
     const ownerClient = ownerClients[i % ownerClients.length]; // Use owner clients
     const leaseNumber = await generateLeaseNumber(tenant.id, existingLeaseCount + i);
-    const startDate = randomDate(365);
+
+    // Un bail actif a commence dans l'annee et court encore ; un bail termine a
+    // commence il y a deux a cinq ans et s'est acheve un an plus tard, donc
+    // toujours avant aujourd'hui. Les bornes sont choisies pour que le statut ne
+    // puisse jamais contredire les dates, quel que soit le tirage.
+    const startDate = actif ? randomDate(365) : new Date(Date.now() - (730 + Math.floor(Math.random() * 1095)) * JOUR);
     const endDate = new Date(startDate);
-    endDate.setFullYear(endDate.getFullYear() + Math.floor(Math.random() * 2) + 1);
-    
+    endDate.setFullYear(endDate.getFullYear() + (actif ? 2 + Math.floor(Math.random() * 2) : 1));
+
     const rentAmount = Math.floor(Math.random() * 200000) + 50000;
     const serviceCharge = Math.floor(Math.random() * 50000) + 10000;
     const securityDeposit = rentAmount * 2;
@@ -1000,7 +1454,7 @@ async function main() {
         primary_renter_client_id: renterClient.id,
         owner_client_id: ownerClient.id,
         lease_number: leaseNumber,
-        status: RentalLeaseStatus.ACTIVE,
+        status: actif ? RentalLeaseStatus.ACTIVE : RentalLeaseStatus.ENDED,
         start_date: startDate,
         end_date: endDate,
         move_in_date: startDate,
@@ -1025,11 +1479,14 @@ async function main() {
         currency: 'FCFA',
         target_amount: securityDeposit,
         collected_amount: securityDeposit,
-        held_amount: securityDeposit
+        // Un bail clos rend sa caution. La laisser « detenue » ferait figurer,
+        // dans les encours de depots, de l'argent qui n'est plus la.
+        held_amount: actif ? securityDeposit : 0,
+        refunded_amount: actif ? 0 : securityDeposit
       }
     });
 
-    // Create installments (Ã©chÃ©ances) for the lease
+    // Create installments (échéances) for the lease
     const installments = [];
     const monthsSinceStart = Math.floor((new Date().getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30));
     const monthsToCreate = Math.min(monthsSinceStart + 3, 12); // Up to 12 months or until now + 3 months
@@ -1043,9 +1500,17 @@ async function main() {
       dueDate.setDate(5); // Due on 5th of each month
 
       const isPastDue = dueDate < new Date();
-      const status = isPastDue && month < monthsSinceStart
-        ? (Math.random() > 0.3 ? RentalInstallmentStatus.PAID : RentalInstallmentStatus.OVERDUE)
-        : RentalInstallmentStatus.DUE;
+
+      // Un bail termine est un bail solde : toutes ses echeances sont payees.
+      // Laisser des impayes sur un bail clos ferait trainer, dans les tableaux
+      // de bord, une dette que plus personne ne recouvrera.
+      const status = !actif
+        ? RentalInstallmentStatus.PAID
+        : isPastDue && month < monthsSinceStart
+          ? Math.random() > 0.3
+            ? RentalInstallmentStatus.PAID
+            : RentalInstallmentStatus.OVERDUE
+          : RentalInstallmentStatus.DUE;
 
       const installment = await prisma.rentalInstallment.upsert({
         where: {
@@ -1090,7 +1555,8 @@ async function main() {
             tenant_id: tenant.id,
             lease_id: lease.id,
             renter_client_id: renterClient.id,
-            method: Object.values(RentalPaymentMethod)[Math.floor(Math.random() * Object.values(RentalPaymentMethod).length)],
+            method:
+              Object.values(RentalPaymentMethod)[Math.floor(Math.random() * Object.values(RentalPaymentMethod).length)],
             status: RentalPaymentStatus.SUCCESS,
             currency: 'FCFA',
             amount: rentAmount + serviceCharge,
@@ -1126,7 +1592,7 @@ async function main() {
             file_url: `https://storage.example.com/rentals/${lease.id}/receipts/receipt_${installment.id}.pdf`,
             mime_type: 'application/pdf',
             issued_at: payment.succeeded_at,
-            title: `ReÃ§u de loyer - ${periodDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`,
+            title: `Reçu de loyer - ${periodDate.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`,
             created_by_user_id: allCollaborators[Math.floor(Math.random() * allCollaborators.length)].id
           }
         });
@@ -1152,7 +1618,28 @@ async function main() {
 
     leases.push(lease);
   }
-  console.log('  âœ“ Created 25 leases with installments, payments, and documents');
+
+  // ------------------------------------------- occupation : le bail fait foi
+  //
+  // Contrepartie des fiches ci-dessus, qui ne declarent plus d'occupation : les
+  // biens qui portent un bail actif passent en RENTED maintenant que ces baux
+  // existent. Sans cette passe, la boucle laisserait des biens loues affiches
+  // comme disponibles — le mensonge inverse de celui qu'on vient d'enlever.
+  const biensLoues = Array.from(
+    new Set(leases.filter(l => l.status === RentalLeaseStatus.ACTIVE).map(l => l.property_id))
+  );
+
+  if (biensLoues.length > 0) {
+    await prisma.property.updateMany({
+      where: { id: { in: biensLoues } },
+      data: { status: PropertyStatus.RENTED, availability: PropertyAvailability.UNAVAILABLE }
+    });
+  }
+  console.log(`  + ${biensLoues.length} bien(s) passe(s) en RENTED d'apres leurs baux actifs`);
+  console.log(
+    `  + 25 baux crees : ${BIENS_LOUES} actifs (un par bien) et ${25 - BIENS_LOUES} termines, ` +
+      'avec echeances, paiements et documents'
+  );
 
   // ==========================================
   // Summary
@@ -1171,7 +1658,7 @@ async function main() {
 }
 
 main()
-  .catch((e) => {
+  .catch(e => {
     console.error('âŒ Error seeding comprehensive data:', e);
     process.exit(1);
   })

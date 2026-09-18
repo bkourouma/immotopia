@@ -475,7 +475,7 @@ async function exportDataCSV(
         lease: {
           include: {
             property: true,
-            primary_renter: {
+            primaryRenter: {
               include: {
                 user: true
               }
@@ -489,9 +489,7 @@ async function exportDataCSV(
       rows.push([
         payment.id,
         payment.lease?.property?.address || '-',
-        payment.lease?.primary_renter?.user
-          ? `${payment.lease.primary_renter.user.firstName} ${payment.lease.primary_renter.user.lastName}`
-          : '-',
+        payment.lease?.primaryRenter?.user?.fullName || '-',
         payment.amount,
         payment.succeeded_at ? format(payment.succeeded_at, 'dd/MM/yyyy') : '-',
         payment.method,
@@ -519,7 +517,7 @@ async function exportDataCSV(
         lease: {
           include: {
             property: true,
-            primary_renter: {
+            primaryRenter: {
               include: {
                 user: true
               }
@@ -538,9 +536,7 @@ async function exportDataCSV(
       rows.push([
         inst.id,
         inst.lease?.property?.address || '-',
-        inst.lease?.primary_renter?.user
-          ? `${inst.lease.primary_renter.user.firstName} ${inst.lease.primary_renter.user.lastName}`
-          : '-',
+        inst.lease?.primaryRenter?.user?.fullName || '-',
         `${inst.period_month}/${inst.period_year}`,
         format(inst.due_date, 'dd/MM/yyyy'),
         totalAmount,
@@ -558,7 +554,7 @@ async function exportDataCSV(
       },
       include: {
         property: true,
-        primary_renter: {
+        primaryRenter: {
           include: {
             user: true
           }
@@ -570,12 +566,10 @@ async function exportDataCSV(
       rows.push([
         lease.id,
         lease.property?.address || '-',
-        lease.primary_renter?.user
-          ? `${lease.primary_renter.user.firstName} ${lease.primary_renter.user.lastName}`
-          : '-',
+        lease.primaryRenter?.user?.fullName || '-',
         format(lease.start_date, 'dd/MM/yyyy'),
         lease.end_date ? format(lease.end_date, 'dd/MM/yyyy') : '-',
-        lease.monthly_rent,
+        lease.rent_amount,
         lease.status
       ]);
     }
@@ -625,7 +619,7 @@ async function exportDataExcel(
         lease: {
           include: {
             property: true,
-            primary_renter: {
+            primaryRenter: {
               include: {
                 user: true
               }
@@ -639,9 +633,7 @@ async function exportDataExcel(
       worksheet.addRow({
         id: payment.id,
         property: payment.lease?.property?.address || '-',
-        tenant: payment.lease?.primary_renter?.user
-          ? `${payment.lease.primary_renter.user.firstName} ${payment.lease.primary_renter.user.lastName}`
-          : '-',
+        tenant: payment.lease?.primaryRenter?.user?.fullName || '-',
         amount: Number(payment.amount),
         date: payment.succeeded_at ? format(payment.succeeded_at, 'dd/MM/yyyy') : '-',
         method: payment.method,
@@ -679,7 +671,7 @@ async function exportDataExcel(
         lease: {
           include: {
             property: true,
-            primary_renter: {
+            primaryRenter: {
               include: {
                 user: true
               }
@@ -698,9 +690,7 @@ async function exportDataExcel(
       worksheet.addRow({
         id: inst.id,
         property: inst.lease?.property?.address || '-',
-        tenant: inst.lease?.primary_renter?.user
-          ? `${inst.lease.primary_renter.user.firstName} ${inst.lease.primary_renter.user.lastName}`
-          : '-',
+        tenant: inst.lease?.primaryRenter?.user?.fullName || '-',
         period: `${inst.period_month}/${inst.period_year}`,
         dueDate: format(inst.due_date, 'dd/MM/yyyy'),
         amount: totalAmount,
@@ -727,7 +717,7 @@ async function exportDataExcel(
       },
       include: {
         property: true,
-        primary_renter: {
+        primaryRenter: {
           include: {
             user: true
           }
@@ -739,12 +729,10 @@ async function exportDataExcel(
       worksheet.addRow({
         id: lease.id,
         property: lease.property?.address || '-',
-        tenant: lease.primary_renter?.user
-          ? `${lease.primary_renter.user.firstName} ${lease.primary_renter.user.lastName}`
-          : '-',
+        tenant: lease.primaryRenter?.user?.fullName || '-',
         startDate: format(lease.start_date, 'dd/MM/yyyy'),
         endDate: lease.end_date ? format(lease.end_date, 'dd/MM/yyyy') : '-',
-        rent: Number(lease.monthly_rent),
+        rent: Number(lease.rent_amount),
         status: lease.status
       });
     }

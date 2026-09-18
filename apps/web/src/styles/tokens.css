@@ -84,7 +84,24 @@
   --surface-card: var(--white);
   --surface-raised: var(--white); /* bottom-sheet, popover */
   --surface-sunken: var(--neutral-100); /* en-tête de tableau, zones d'aide */
-  --surface-inverse: var(--neutral-900); /* sidebar */
+  --surface-inverse: var(--neutral-900); /* fond sombre : pastilles, calendrier */
+
+  /**
+   * NAVIGATION — sidebar, rail et drawer.
+   *
+   * Rôle distinct de `--surface-inverse`, et c'est le fond de la navigation qui
+   * a changé, pas l'inverse : le logo de la marque n'existe qu'en bleu marine
+   * (#0d2160) et tombait à 1,1:1 sur slate-900 — « Immo » et le slogan
+   * disparaissaient, seul « Topia » orange survivait. Le poser sur un cartouche
+   * blanc dans une sidebar sombre revenait à coller une vignette ; la
+   * navigation passe donc sur fond clair, et le logo s'y lit sans retouche.
+   *
+   * Le texte du menu reprend les rôles de texte ordinaires (`--text-primary`,
+   * `--text-secondary`, `--text-tertiary`) : leurs ratios, mesurés sur
+   * `--surface-page` (#F8FAFC), sont très légèrement meilleurs sur le blanc.
+   */
+  --surface-nav: var(--white);
+  --border-nav: var(--border-subtle);
 
   --border-subtle: var(--neutral-200);
   --border-default: var(--neutral-300);

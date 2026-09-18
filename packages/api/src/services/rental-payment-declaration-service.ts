@@ -616,7 +616,11 @@ export async function getPaymentDeclarations(
               property: {
                 select: {
                   id: true,
-                  address: true
+                  // Le titre d'abord : c'est lui que les autres ecrans du
+                  // module affichent, l'adresse n'est qu'un repli.
+                  title: true,
+                  address: true,
+                  internalReference: true
                 }
               }
             }

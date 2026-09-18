@@ -2,16 +2,46 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { prisma } from '../utils/database';
 import { GlobalRole } from '@prisma/client';
+import { env } from './env';
+import { logger } from '../utils/logger';
+
+/**
+ * La stratégie Google a-t-elle été enregistrée au démarrage ?
+ *
+ * Sans cet indicateur, les routes appelaient `passport.authenticate('google')`
+ * quelles que soient les circonstances. Faute d'identifiants, passport levait
+ * `Unknown authentication strategy "google"` et l'utilisateur recevait un 500
+ * `INTERNAL` opaque au lieu d'apprendre que le fournisseur n'est pas configuré.
+ */
+let googleOAuthEnabled = false;
+
+export function isGoogleOAuthEnabled(): boolean {
+  return googleOAuthEnabled;
+}
 
 export function configurePassport() {
-  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-  const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-  const GOOGLE_CALLBACK_URL = process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3000/api/auth/google/callback';
+  const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '').trim();
+  const GOOGLE_CLIENT_SECRET = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
+
+  // Déduite de BACKEND_URL quand elle n'est pas fournie. L'ancien repli était
+  // `http://localhost:3000/api/auth/google/callback` : en production, renseigner
+  // seulement l'identifiant et le secret suffisait à obtenir un `redirect_uri`
+  // pointant sur la machine du visiteur, et Google refusait l'échange avec un
+  // `redirect_uri_mismatch` impossible à relier à sa cause.
+  const GOOGLE_CALLBACK_URL =
+    (process.env.GOOGLE_CALLBACK_URL || '').trim() || `${env.BACKEND_URL.replace(/\/$/, '')}/api/auth/google/callback`;
 
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    console.warn('Google OAuth credentials not found. Google login will be disabled.');
+    logger.warn(
+      'Connexion Google désactivée : GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET sont absents ou vides. ' +
+        'Le bouton reste affiché ; /api/auth/google renvoie vers l’écran de connexion.'
+    );
     return;
   }
+
+  // Journalisée telle quelle : c'est l'URL EXACTE à déclarer dans les URI de
+  // redirection autorisés de la console Google, au caractère près.
+  logger.info(`Connexion Google activée. URI de redirection attendue : ${GOOGLE_CALLBACK_URL}`);
 
   passport.use(
     new GoogleStrategy(
@@ -81,4 +111,6 @@ export function configurePassport() {
       done(error, null);
     }
   });
+
+  googleOAuthEnabled = true;
 }

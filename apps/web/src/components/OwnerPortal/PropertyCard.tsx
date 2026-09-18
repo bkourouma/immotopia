@@ -35,7 +35,7 @@ const propertyTypeLabels: Record<string, string> = {
   TERRAIN: 'Terrain',
   IMMEUBLE: 'Immeuble',
   PARKING_BOX: 'Parking / Box',
-  LOT_PROGRAMME_NEUF: 'Lot programme neuf',
+  LOT_PROGRAMME_NEUF: 'Lot programme neuf'
 };
 
 const statusLabels: Record<string, { label: string; color: string }> = {
@@ -46,13 +46,13 @@ const statusLabels: Record<string, { label: string; color: string }> = {
   UNDER_OFFER: { label: 'Sous offre', color: 'warning' },
   RENTED: { label: 'Loué', color: 'success' },
   SOLD: { label: 'Vendu', color: 'default' },
-  ARCHIVED: { label: 'Archivé', color: 'default' },
+  ARCHIVED: { label: 'Archivé', color: 'default' }
 };
 
 const transactionModeLabels: Record<string, string> = {
   SALE: 'Vente',
   RENTAL: 'Location',
-  SHORT_TERM: 'Location courte durée',
+  SHORT_TERM: 'Location courte durée'
 };
 
 const formatCurrency = (amount: number) => {
@@ -65,18 +65,24 @@ const formatCurrency = (amount: number) => {
 
 export const PropertyCard: React.FC<PropertyCardProps> = ({ property }) => {
   const navigate = useNavigate();
-  const statusConfig = statusLabels[property.status] || { label: property.status, color: 'default' };
+
+  /**
+   * Le bail fait foi sur l'occupation, comme pour les compteurs du portefeuille.
+   * Un bien dont la colonne `status` dit RENTED alors qu'aucun bail actif ne lui
+   * est rattache n'est pas loue : il est a louer. Sans cette regle, la carte
+   * affiche « Loue » sans locataire ni loyer, pendant que le compteur au-dessus
+   * la range dans les disponibles.
+   */
+  const isStaleRented = property.status === 'RENTED' && !property.currentLease;
+  const effectiveStatus = isStaleRented ? 'AVAILABLE' : property.status;
+  const statusConfig = statusLabels[effectiveStatus] || { label: property.status, color: 'default' };
 
   return (
     <Card
       hoverable
       style={{ marginBottom: 16 }}
       actions={[
-        <Button
-          type="link"
-          icon={<EyeOutlined />}
-          onClick={() => navigate(`/owner/properties/${property.id}`)}
-        >
+        <Button type="link" icon={<EyeOutlined />} onClick={() => navigate(`/owner/properties/${property.id}`)}>
           Voir les détails
         </Button>
       ]}
@@ -102,14 +108,12 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property }) => {
                 <HomeOutlined /> Bail actif
               </Text>
               <Text strong>Locataire: {property.currentLease.tenantName}</Text>
-              <Text type="secondary">
-                Loyer: {formatCurrency(property.currentLease.monthlyRent)} / mois
-              </Text>
+              <Text type="secondary">Loyer: {formatCurrency(property.currentLease.monthlyRent)} / mois</Text>
             </Space>
           </div>
         )}
 
-        {!property.currentLease && property.status === 'AVAILABLE' && (
+        {!property.currentLease && effectiveStatus === 'AVAILABLE' && (
           <div style={{ padding: '12px', background: '#e6f7ff', borderRadius: 4 }}>
             <Text type="secondary">Propriété disponible</Text>
           </div>

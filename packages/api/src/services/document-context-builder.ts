@@ -15,13 +15,36 @@ function formatDate(date: Date | null | undefined): string {
 }
 
 /**
- * Format amount in FCFA (no decimals, thousands separator)
+ * Nombre entier, separateur de milliers francais. Sans unite : c'est le modele
+ * qui pose la sienne (une surface s'ecrit en m2, pas en francs).
  */
-function formatAmount(amount: number | string | null | undefined): string {
-  if (amount === null || amount === undefined) return '0';
-  const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+function formatNumber(value: number | string | null | undefined): string {
+  if (value === null || value === undefined) return '0';
+  const num = typeof value === 'string' ? parseFloat(value) : value;
   if (isNaN(num)) return '0';
   return Math.round(num).toLocaleString('fr-FR');
+}
+
+/**
+ * Libelle de devise tel qu'un lecteur ivoirien l'ecrit.
+ *
+ * Le code ISO de la zone UEMOA est `XOF`, mais personne ne l'ecrit ainsi sur un
+ * contrat : on ecrit FCFA. Les autres devises sont laissees telles quelles.
+ */
+function currencyLabel(currency: string | null | undefined): string {
+  const code = (currency || '').toUpperCase();
+  if (!code || code === 'XOF' || code === 'CFA' || code === 'XAF') return 'FCFA';
+  return code;
+}
+
+/**
+ * Montant suivi de sa devise.
+ *
+ * Sans la devise, un contrat porte « Le loyer est fixe a 120 000 » — une somme
+ * sans unite, qu'un bailleur ne peut pas signer en l'etat.
+ */
+function formatAmount(amount: number | string | null | undefined, currency?: string | null): string {
+  return `${formatNumber(amount)} ${currencyLabel(currency)}`;
 }
 
 /**
@@ -217,11 +240,14 @@ export async function buildLeaseHabitationContext(tenantId: string, leaseId: str
   // Helper function to format billing frequency
   const formatBillingFrequency = (freq: string | null | undefined): string => {
     if (!freq) return '';
+    // Accorde au feminin et en minuscules : la valeur s'insere dans une phrase
+    // (« la facturation est trimestrielle »), pas dans une case de tableau.
+    // « La facturation est TRIMESTRIEL » se lit deux fois mal.
     const mapping: Record<string, string> = {
-      MONTHLY: 'MENSUEL',
-      QUARTERLY: 'TRIMESTRIEL',
-      SEMIANNUAL: 'SEMESTRIEL',
-      ANNUAL: 'ANNUEL'
+      MONTHLY: 'mensuelle',
+      QUARTERLY: 'trimestrielle',
+      SEMIANNUAL: 'semestrielle',
+      ANNUAL: 'annuelle'
     };
     return mapping[freq.toUpperCase()] || freq;
   };
@@ -236,7 +262,8 @@ export async function buildLeaseHabitationContext(tenantId: string, leaseId: str
     // Property info
     BIEN_ADRESSE: lease.property.address || '',
     BIEN_TYPE: lease.property.propertyType || '',
-    BIEN_SURFACE: formatAmount(lease.property.surfaceArea),
+    // Une surface n'est pas une somme : pas de devise ici.
+    BIEN_SURFACE: formatNumber(lease.property.surfaceArea),
     BIEN_PIECES: lease.property.rooms?.toString() || '',
     BIEN_CHAMBRES: lease.property.bedrooms?.toString() || '',
 
@@ -244,9 +271,9 @@ export async function buildLeaseHabitationContext(tenantId: string, leaseId: str
     BAIL_NUMERO: lease.lease_number || '',
     BAIL_DATE_DEBUT: formatDate(lease.start_date),
     BAIL_DATE_FIN: lease.end_date ? formatDate(lease.end_date) : '',
-    BAIL_LOYER_MENSUEL: formatAmount(lease.rent_amount),
-    BAIL_CHARGES: formatAmount(lease.service_charge_amount),
-    BAIL_DEPOT_GARANTIE: formatAmount(lease.security_deposit_amount),
+    BAIL_LOYER_MENSUEL: formatAmount(lease.rent_amount, lease.currency),
+    BAIL_CHARGES: formatAmount(lease.service_charge_amount, lease.currency),
+    BAIL_DEPOT_GARANTIE: formatAmount(lease.security_deposit_amount, lease.currency),
     BAIL_FREQUENCE: formatBillingFrequency(lease.billing_frequency),
     BAIL_JOUR_ECHEANCE: lease.due_day_of_month?.toString() || '',
 
@@ -384,7 +411,7 @@ export async function buildRentReceiptContext(
 
     // Lease info
     BAIL_NUMERO: payment.lease?.lease_number || '',
-    BAIL_LOYER_MENSUEL: formatAmount(payment.lease?.rent_amount),
+    BAIL_LOYER_MENSUEL: formatAmount(payment.lease?.rent_amount, payment.lease?.currency),
 
     // Renter info
     LOCATAIRE_NOM: payment.renterClient?.user?.fullName || payment.lease?.primaryRenter?.user?.fullName || '',
@@ -393,7 +420,7 @@ export async function buildRentReceiptContext(
       (await getPhoneFromClient(payment.renterClient || payment.lease?.primaryRenter, tenantId, 'LOCATAIRE')) || '',
 
     // Payment info
-    PAIEMENT_MONTANT: formatAmount(payment.amount),
+    PAIEMENT_MONTANT: formatAmount(payment.amount, payment.currency),
     PAIEMENT_METHODE: payment.method || '',
     PAIEMENT_DATE: formatDate(payment.succeeded_at || payment.initiated_at),
     PAIEMENT_NUMERO: payment.id.substring(0, 8).toUpperCase(),
@@ -484,7 +511,7 @@ export async function buildRentStatementContext(
 
     // Lease info
     BAIL_NUMERO: lease.lease_number || '',
-    BAIL_LOYER_MENSUEL: formatAmount(lease.rent_amount),
+    BAIL_LOYER_MENSUEL: formatAmount(lease.rent_amount, lease.currency),
 
     // Renter info
     LOCATAIRE_NOM: lease.primaryRenter?.user?.fullName || '',
@@ -496,9 +523,9 @@ export async function buildRentStatementContext(
     PERIODE_FIN: formatDate(endDate),
 
     // Totals
-    TOTAL_DU: formatAmount(totalDue),
-    TOTAL_PAYE: formatAmount(totalPaid),
-    SOLDE: formatAmount(totalDue - totalPaid),
+    TOTAL_DU: formatAmount(totalDue, lease.currency),
+    TOTAL_PAYE: formatAmount(totalPaid, lease.currency),
+    SOLDE: formatAmount(totalDue - totalPaid, lease.currency),
 
     // Installments detail
     ECHEANCES: installments.map(inst => ({
@@ -508,9 +535,10 @@ export async function buildRentStatementContext(
         Number(inst.amount_rent) +
           Number(inst.amount_service) +
           Number(inst.amount_other_fees) +
-          Number(inst.penalty_amount || 0)
+          Number(inst.penalty_amount || 0),
+        inst.currency || lease.currency
       ),
-      MONTANT_PAYE: formatAmount(inst.amount_paid),
+      MONTANT_PAYE: formatAmount(inst.amount_paid, inst.currency || lease.currency),
       STATUT: inst.status
     })),
 

@@ -70,6 +70,46 @@ import {
 } from '../utils/report-generator';
 import { getDocumentFile } from './document-generation-service';
 
+/**
+ * Statuts qui sortent un bien du portefeuille locatif : ni loue, ni a louer.
+ * Un bien vendu, archive ou encore en brouillon n'a pas a gonfler le compteur
+ * « Disponibles ».
+ */
+const OUT_OF_RENTAL_PORTFOLIO: PropertyStatus[] = [PropertyStatus.SOLD, PropertyStatus.ARCHIVED, PropertyStatus.DRAFT];
+
+/**
+ * Repartit un portefeuille en loue / en maintenance / disponible.
+ *
+ * Les trois compteurs se lisaient chacun a sa source : « louees » comptait les
+ * baux actifs, « disponibles » exigeait en plus `status === AVAILABLE`. Un bien
+ * dont la colonne `status` dit RENTED alors qu'aucun bail ne lui est rattache
+ * — cas frequent des qu'un bail est resilie sans remise a jour du statut —
+ * n'entrait alors dans aucune des trois cases : le proprietaire lisait
+ * « 15 biens, 6 loues, 0 disponibles » et les neuf autres disparaissaient.
+ *
+ * Le bail fait foi pour l'occupation, et les cases sont exclusives dans cet
+ * ordre : un bien loue reste loue, sinon la maintenance l'emporte, sinon il est
+ * a louer. La somme des trois redonne le total, aux biens hors portefeuille
+ * pres (`OUT_OF_RENTAL_PORTFOLIO`).
+ */
+function summarizePortfolio(properties: Array<{ status: PropertyStatus; rentalLeases?: unknown[] }>): PortfolioSummary {
+  let rented = 0;
+  let inMaintenance = 0;
+  let available = 0;
+
+  for (const property of properties) {
+    if (property.rentalLeases && property.rentalLeases.length > 0) {
+      rented += 1;
+    } else if (property.status === PropertyStatus.UNDER_REVIEW) {
+      inMaintenance += 1;
+    } else if (!OUT_OF_RENTAL_PORTFOLIO.includes(property.status)) {
+      available += 1;
+    }
+  }
+
+  return { total: properties.length, rented, available, inMaintenance };
+}
+
 export class OwnerPortalService {
   /**
    * Get dashboard data for owner portal
@@ -158,16 +198,7 @@ export class OwnerPortalService {
       }
     });
 
-    const total = properties.length;
-    const rented = properties.filter(p => p.rentalLeases && p.rentalLeases.length > 0).length;
-    const available = properties.filter(
-      p => (!p.rentalLeases || p.rentalLeases.length === 0) && p.status === PropertyStatus.AVAILABLE
-    ).length;
-    const inMaintenance = properties.filter(
-      p => p.status === PropertyStatus.UNDER_REVIEW // Assuming UNDER_REVIEW means maintenance
-    ).length;
-
-    return { total, rented, available, inMaintenance };
+    return summarizePortfolio(properties);
   }
 
   /**
@@ -449,7 +480,23 @@ export class OwnerPortalService {
         tenantId: tenantId
       };
 
-      if (filters?.status) {
+      // Le filtre « Loue » / « Disponible » interroge le bail, pas la colonne
+      // `status` : sans cela il contredirait les compteurs juste au-dessus de
+      // lui, qui comptent eux le bail (voir `summarizePortfolio`). Les autres
+      // statuts — reserve, sous offre, en revision... — n'ont pas d'equivalent
+      // cote bail et restent lus sur la colonne.
+      if (filters?.status === PropertyStatus.RENTED) {
+        where.rentalLeases = {
+          some: { tenant_id: tenantId, status: RentalLeaseStatus.ACTIVE }
+        };
+      } else if (filters?.status === PropertyStatus.AVAILABLE) {
+        where.rentalLeases = {
+          none: { tenant_id: tenantId, status: RentalLeaseStatus.ACTIVE }
+        };
+        where.status = {
+          notIn: [...OUT_OF_RENTAL_PORTFOLIO, PropertyStatus.UNDER_REVIEW]
+        };
+      } else if (filters?.status) {
         where.status = filters.status;
       }
 
@@ -492,12 +539,7 @@ export class OwnerPortalService {
       });
 
       // T036: Calculate portfolio summary
-      const total = properties.length;
-      const rented = properties.filter(p => p.rentalLeases.length > 0).length;
-      const available = properties.filter(
-        p => p.rentalLeases.length === 0 && p.status === PropertyStatus.AVAILABLE
-      ).length;
-      const inMaintenance = properties.filter(p => p.status === PropertyStatus.UNDER_REVIEW).length;
+      const summary = summarizePortfolio(properties);
 
       // Map to PropertyListItem
       const propertyList: PropertyListItem[] = properties.map(property => ({
@@ -521,7 +563,7 @@ export class OwnerPortalService {
 
       return {
         properties: propertyList,
-        summary: { total, rented, available, inMaintenance }
+        summary
       };
     } catch (error) {
       logger.error('Error getting owner properties:', error);

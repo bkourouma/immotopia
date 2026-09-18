@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Card,
   Button,
-  Tag,
   Space,
   Row,
   Col,
@@ -17,7 +16,6 @@ import {
   Tabs
 } from 'antd';
 import {
-  ArrowLeftOutlined,
   EditOutlined,
   FileTextOutlined,
   HomeOutlined,
@@ -28,7 +26,7 @@ import {
   MailOutlined,
   BankOutlined
 } from '@ant-design/icons';
-import { Property, PropertyStatus, PropertyMedia, PropertyMediaType } from '../../types/property-types';
+import { Property, PropertyMedia, PropertyMediaType } from '../../types/property-types';
 import { getProperty } from '../../services/property-service';
 import apiClient from '../../utils/api-client';
 import { useAuth } from '../../hooks/useAuth';
@@ -38,8 +36,9 @@ import { PropertyApartments } from '../../components/properties/PropertyApartmen
 import { PropertyNewsletterCampaignModal } from '../../components/newsletter/PropertyNewsletterCampaignModal';
 import { PropertyPatrimoineTab } from '../../components/patrimoine/PropertyPatrimoineTab';
 import { API_URL } from '../../config/api';
+import { PageHeader, StatusTag } from '../../components/primitives';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 export const PropertyDetail: React.FC = () => {
   const { tenantId, id } = useParams<{ tenantId: string; id: string }>();
@@ -114,21 +113,6 @@ export const PropertyDetail: React.FC = () => {
     return `${formatted} ${currency || 'EUR'}`;
   };
 
-  const getStatusTag = (status?: PropertyStatus) => {
-    const statusConfig: Record<PropertyStatus, { color: string; text: string }> = {
-      DRAFT: { color: 'default', text: 'Brouillon' },
-      UNDER_REVIEW: { color: 'warning', text: 'En révision' },
-      AVAILABLE: { color: 'success', text: 'Disponible' },
-      RESERVED: { color: 'processing', text: 'Réservé' },
-      UNDER_OFFER: { color: 'processing', text: 'Sous offre' },
-      RENTED: { color: 'purple', text: 'Loué' },
-      SOLD: { color: 'error', text: 'Vendu' },
-      ARCHIVED: { color: 'default', text: 'Archivé' }
-    };
-    const config = status ? statusConfig[status] : { color: 'default', text: 'N/A' };
-    return <Tag color={config.color}>{config.text}</Tag>;
-  };
-
   if (!effectiveTenantId) {
     return (
       <>
@@ -172,49 +156,59 @@ export const PropertyDetail: React.FC = () => {
 
   return (
     <>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <Space>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>
-              Retour
-            </Button>
-            <div>
-              <Space>
-                <Title level={2} style={{ margin: 0 }}>
-                  {property.title}
-                </Title>
-                {getStatusTag(property.status)}
-                {property.isPublished && <Tag color="blue">Publié</Tag>}
-              </Space>
-              <div style={{ marginTop: 8 }}>
-                <Text type="secondary">
-                  <EnvironmentOutlined /> {property.address}
-                  {property.locationZone && `, ${property.locationZone}`}
-                </Text>
-              </div>
-            </div>
-          </Space>
-          <Space>
-            <Button icon={<MailOutlined />} onClick={() => setNewsletterModalOpen(true)}>
-              Créer campagne newsletter
-            </Button>
-            <Button
-              icon={<FileTextOutlined />}
-              onClick={() => navigate(`/tenant/${effectiveTenantId}/rental/leases/new`, { state: { propertyId: id } })}
-            >
-              Générer un contrat de bail
-            </Button>
-            <Button
-              type="primary"
-              icon={<EditOutlined />}
-              onClick={() => navigate(`/tenant/${effectiveTenantId}/properties/${id}/edit`)}
-            >
-              Modifier
-            </Button>
-          </Space>
-        </div>
+      {/*
+        En-tête unique (REFONTE_UI_UX.md §3.6, et le contre-exemple P2 qui
+        citait nommément cet écran).
 
+        L'ancien en-tête posait le titre dans un `<Space>` — donc dans un
+        élément de flex qui ne se comprime pas — face a trois boutons de meme
+        poids alignés sans repli ni point de rupture. Les boutons gardaient
+        leur largeur, le titre prenait ce qui restait : sur un écran large, il
+        se repliait mot par mot dans une colonne de quelques caractères.
+
+        `<PageHeader>` inverse le rapport. Le titre prend la place, UNE action
+        primaire reste visible, les deux autres passent derrière « … », et le
+        retour à la liste est porté par le fil d'Ariane plutôt que par un
+        bouton posé devant le titre.
+      */}
+      <PageHeader
+        title={property.title}
+        breadcrumbs={[
+          { label: 'Biens', to: `/tenant/${effectiveTenantId}/properties` },
+          { label: property.internalReference || property.title }
+        ]}
+        subtitle={
+          <Space size="small" wrap>
+            <StatusTag status={property.status} />
+            {property.isPublished && <StatusTag status="PUBLISHED" />}
+            <span>
+              <EnvironmentOutlined aria-hidden="true" /> {property.address}
+              {property.locationZone && `, ${property.locationZone}`}
+            </span>
+          </Space>
+        }
+        primaryAction={{
+          label: 'Modifier',
+          icon: <EditOutlined />,
+          onClick: () => navigate(`/tenant/${effectiveTenantId}/properties/${id}/edit`)
+        }}
+        secondaryActions={[
+          {
+            key: 'bail',
+            label: 'Générer un contrat de bail',
+            icon: <FileTextOutlined />,
+            onClick: () => navigate(`/tenant/${effectiveTenantId}/rental/leases/new`, { state: { propertyId: id } })
+          },
+          {
+            key: 'newsletter',
+            label: 'Créer une campagne newsletter',
+            icon: <MailOutlined />,
+            onClick: () => setNewsletterModalOpen(true)
+          }
+        ]}
+      />
+
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Main Content */}
         <Row gutter={[24, 24]}>
           {/* Left Column */}

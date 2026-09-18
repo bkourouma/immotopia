@@ -6,6 +6,7 @@ import { ThunderboltOutlined, CreditCardOutlined, PlusOutlined } from '@ant-desi
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listInstallments,
+  listLeases,
   generateInstallments,
   recalculateInstallmentStatuses,
   deleteAllInstallments,
@@ -21,6 +22,7 @@ import { PaymentForm } from '../../components/rental/PaymentForm';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useListParams } from '../../hooks/useListParams';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
+import { nomDuBien, nomDeLaPersonne, optionsLocatairesDesBaux } from '../../lib/rental-labels';
 import {
   PageHeader,
   StateBlock,
@@ -64,8 +66,8 @@ interface InstallmentsProps {
   leaseId?: string;
 }
 
-type Filters = { status: string; overdue: string };
-const FILTER_KEYS = ['status', 'overdue'] as const;
+type Filters = { status: string; overdue: string; renterClientId: string };
+const FILTER_KEYS = ['status', 'overdue', 'renterClientId'] as const;
 
 const STATUS_OPTIONS = [
   { value: 'DUE', label: 'À échoir' },
@@ -136,6 +138,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
     leaseId,
     status: (list.filters.status as RentalInstallmentStatus) || undefined,
     overdue: list.filters.overdue === 'true' ? true : undefined,
+    renterClientId: list.filters.renterClientId || undefined,
     page: list.page,
     limit: list.pageSize
   };
@@ -152,6 +155,25 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.list
   });
+
+  /**
+   * Locataires du portefeuille, pour le filtre.
+   *
+   * Ils sont derives des baux : une echeance n'a pas de locataire en propre,
+   * elle en herite de son contrat. On ne propose donc que les locataires qui
+   * ont effectivement un bail — un filtre qui ne ramene jamais rien est pire
+   * qu'un filtre absent.
+   *
+   * Inutile dans l'onglet d'un bail : le locataire y est deja unique.
+   */
+  const { data: donneesBaux } = useQuery({
+    queryKey: queryKey('leases', tenantId, { pour: 'filtre-locataire' }),
+    queryFn: () => listLeases(tenantId as string, { limit: 500 }),
+    enabled: Boolean(tenantId) && !leaseId,
+    staleTime: STALE_TIME.list
+  });
+
+  const optionsLocataires = React.useMemo(() => optionsLocatairesDesBaux(donneesBaux?.data), [donneesBaux]);
 
   const echeances = data?.data ?? [];
   const total = data?.pagination?.total ?? 0;
@@ -287,6 +309,34 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
    * les résume, et le détail de l'échéance les porte toutes les deux.
    */
   const colonnes: ColumnsType<RentalInstallment> = [
+    // Dans l'onglet d'un bail, le locataire est deja connu : la colonne
+    // repeterait la meme valeur sur toutes les lignes.
+    ...(leaseId
+      ? []
+      : [
+          {
+            title: 'Bail',
+            key: 'bail',
+            width: 260,
+            render: (_: unknown, e: RentalInstallment) => (
+              <>
+                <div style={{ fontWeight: 600 }}>{e.lease?.lease_number || '—'}</div>
+                {/* Le bien sous son numéro : le bail se lit d'abord, le bien
+                    le précise. Le locataire a sa propre colonne — on filtre
+                    dessus, il doit se lire seul. */}
+                <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>
+                  {nomDuBien(e.lease?.property)}
+                </div>
+              </>
+            )
+          },
+          {
+            title: 'Locataire',
+            key: 'locataire',
+            width: 170,
+            render: (_: unknown, e: RentalInstallment) => nomDeLaPersonne(e.lease?.primaryRenter?.user)
+          }
+        ]),
     { title: 'Période', key: 'periode', render: (_, e) => periode(e) },
     { title: 'Échéance', key: 'due', render: (_, e) => dateCourte(e.due_date) },
     {
@@ -385,6 +435,22 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
         onClear={list.clearFilters}
         title="Filtrer les échéances"
       >
+        {!leaseId && (
+          <div style={{ minWidth: 240 }}>
+            <label htmlFor="filtre-locataire-echeance">Locataire</label>
+            <Select
+              id="filtre-locataire-echeance"
+              style={{ width: '100%' }}
+              placeholder="Tous les locataires"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={list.filters.renterClientId || undefined}
+              onChange={value => list.setFilters({ renterClientId: value })}
+              options={optionsLocataires}
+            />
+          </div>
+        )}
         <div style={{ minWidth: 200 }}>
           <label htmlFor="filtre-statut-echeance">Statut</label>
           <Select
@@ -412,6 +478,12 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
       </FilterSheet>
 
       <DataView<RentalInstallment>
+        // Huit colonnes hors onglet de bail — le bail, le locataire, la
+        // période, l'échéance, deux montants, le statut et les actions. Elles
+        // ne tiennent pas dans les ~690 px utiles au plancher du desktop :
+        // sans défilement, Ant Design les comprime et casse les valeurs en
+        // deux. Dans l'onglet d'un bail il n'y en a que six, elles tiennent.
+        scrollX={leaseId ? undefined : 1180}
         items={echeances}
         total={total}
         page={list.page}
@@ -438,7 +510,11 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
             <DataCard
               title={`Échéance ${periode(e)}`}
               aria-label={`Échéance ${periode(e)}`}
-              subtitle={`À payer le ${dateCourte(e.due_date)}`}
+              subtitle={
+                leaseId
+                  ? `À payer le ${dateCourte(e.due_date)}`
+                  : `${nomDuBien(e.lease?.property)} · ${nomDeLaPersonne(e.lease?.primaryRenter?.user)} — à payer le ${dateCourte(e.due_date)}`
+              }
               status={<StatusTag status={e.status} />}
               // Le reste à payer est LA donnée de cet écran : elle passe en
               // tête de carte, alors qu'elle était la cinquième colonne d'un

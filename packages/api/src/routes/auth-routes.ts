@@ -35,6 +35,7 @@ import { generateAccessToken, generateRefreshToken } from '../utils/jwt-utils';
 import { prisma } from '../utils/database';
 import { setAuthCookies } from '../utils/auth-cookies';
 import { frontendUrl, isProduction } from '../config/env';
+import { isGoogleOAuthEnabled } from '../config/passport';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -58,12 +59,7 @@ router.post('/logout', logout);
 
 // Password Management
 router.post('/forgot-password', forgotPasswordRateLimiter, validate(forgotPasswordSchema), forgotPasswordHandler);
-router.post(
-  '/reset-password',
-  resetPasswordRateLimiter,
-  validate(resetPasswordSchema),
-  resetPasswordHandler
-);
+router.post('/reset-password', resetPasswordRateLimiter, validate(resetPasswordSchema), resetPasswordHandler);
 
 // Invitation Acceptance (public route)
 router.post('/invitations/accept', invitationAcceptRateLimiter, acceptInvitationHandler);
@@ -87,7 +83,40 @@ function oauthFailureRedirect(res: Response, reason: string): void {
   res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(reason)}`);
 }
 
-router.get('/google', (req: Request, res: Response, next: NextFunction) => {
+/**
+ * Quels fournisseurs externes ce serveur sait-il réellement honorer ?
+ *
+ * Publique et sans authentification : l'écran de connexion l'interroge avant
+ * d'afficher ses boutons. Ne renvoie que des booléens, jamais un identifiant
+ * client ni quoi que ce soit de sensible.
+ */
+router.get('/providers', (_req: Request, res: Response) => {
+  res.json({ success: true, data: { google: isGoogleOAuthEnabled() } });
+});
+
+/**
+ * Refuse proprement quand la stratégie Google n'a pas été enregistrée.
+ *
+ * Sans ce garde-fou, `passport.authenticate('google')` levait
+ * `Unknown authentication strategy "google"`, que le gestionnaire d'erreurs
+ * transformait en 500 `INTERNAL` — un message qui ne dit pas que le serveur
+ * n'a tout simplement pas d'identifiants Google.
+ */
+function requireGoogleOAuth(req: Request, res: Response, next: NextFunction): void {
+  if (isGoogleOAuthEnabled()) {
+    next();
+    return;
+  }
+
+  logger.warn('Tentative de connexion Google alors que le fournisseur est non configuré', {
+    path: req.path
+  });
+
+  // Le clic vient du navigateur : un JSON 503 en pleine page est illisible.
+  oauthFailureRedirect(res, 'google_unavailable');
+}
+
+router.get('/google', requireGoogleOAuth, (req: Request, res: Response, next: NextFunction) => {
   const state = crypto.randomBytes(32).toString('hex');
 
   res.cookie(OAUTH_STATE_COOKIE, state, {
@@ -112,11 +141,7 @@ function verifyOAuthState(req: Request, res: Response, next: NextFunction): void
   const expectedBuf = Buffer.from(String(expected || ''));
   const receivedBuf = Buffer.from(received);
 
-  if (
-    !expected ||
-    expectedBuf.length !== receivedBuf.length ||
-    !crypto.timingSafeEqual(expectedBuf, receivedBuf)
-  ) {
+  if (!expected || expectedBuf.length !== receivedBuf.length || !crypto.timingSafeEqual(expectedBuf, receivedBuf)) {
     logger.warn('Google OAuth state mismatch', { hasCookie: Boolean(expected) });
     oauthFailureRedirect(res, 'invalid_state');
     return;
@@ -127,6 +152,7 @@ function verifyOAuthState(req: Request, res: Response, next: NextFunction): void
 
 router.get(
   '/google/callback',
+  requireGoogleOAuth,
   verifyOAuthState,
   (req: Request, res: Response, next: NextFunction) => {
     passport.authenticate('google', { session: false }, (err: Error | null, user: any) => {

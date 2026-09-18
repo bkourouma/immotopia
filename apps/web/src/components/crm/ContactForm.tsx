@@ -259,16 +259,27 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
 
       await onSubmit(submitData);
     } catch (error: any) {
-      if (error.response?.data?.errors) {
-        const apiErrors: Record<string, string> = {};
-        error.response.data.errors.forEach((err: { field: string; message: string }) => {
-          apiErrors[err.field] = err.message;
+      // Le detail du probleme doit toujours remonter a l'ecran : sans cela un
+      // echec de validation passait totalement inapercu (champs marques dans un
+      // onglet non affiche, aucun message), et une panne reseau se resumait a
+      // un « une erreur est survenue » impossible a diagnostiquer.
+      const fieldErrors: Array<{ field: string; message: string }> | undefined = error.response?.data?.errors;
+
+      if (fieldErrors && fieldErrors.length > 0) {
+        fieldErrors.forEach(err => {
           form.setFields([{ name: err.field, errors: [err.message] }]);
         });
+        const invalidFields = fieldErrors.map(err => err.field).join(', ');
+        message.error(`Champs invalides : ${invalidFields}. Verifiez les onglets du formulaire.`);
       } else if (error.response?.data?.message) {
         message.error(error.response.data.message);
+      } else if (error.response) {
+        message.error(`Enregistrement refuse par le serveur (HTTP ${error.response.status}).`);
       } else {
-        message.error("Une erreur est survenue lors de l'enregistrement du contact");
+        // Aucune reponse HTTP : reseau coupe, session expiree pendant l'envoi,
+        // ou erreur survenue avant la requete. On affiche la cause reelle.
+        message.error(`Enregistrement impossible : ${error.message || 'aucune reponse du serveur'}`);
+        console.error('Echec de creation du contact', error);
       }
       return;
     }

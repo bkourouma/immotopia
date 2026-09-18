@@ -22,6 +22,7 @@ import { Installments } from '../../pages/rental/Installments';
  */
 
 const listInstallments = vi.fn();
+const listLeases = vi.fn();
 const createPayment = vi.fn();
 const allocatePayment = vi.fn();
 const recalculateInstallmentStatuses = vi.fn();
@@ -31,6 +32,7 @@ const deleteAllInstallments = vi.fn();
 
 vi.mock('../../services/rental-service', () => ({
   listInstallments: (...a: unknown[]) => listInstallments(...a),
+  listLeases: (...a: unknown[]) => listLeases(...a),
   createPayment: (...a: unknown[]) => createPayment(...a),
   allocatePayment: (...a: unknown[]) => allocatePayment(...a),
   recalculateInstallmentStatuses: (...a: unknown[]) => recalculateInstallmentStatuses(...a),
@@ -83,8 +85,40 @@ function mount(url = '/tenant/agence-1/rental/leases/bail-1/installments') {
   );
 }
 
+/** Ecran global « Encaisser › Echeances », hors onglet de bail. */
+function mountGlobal(url = '/tenant/agence-1/rental/installments') {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <AntApp>
+        <MemoryRouter initialEntries={[url]}>
+          <Routes>
+            <Route path="/tenant/:tenantId/rental/installments" element={<Installments />} />
+          </Routes>
+        </MemoryRouter>
+      </AntApp>
+    </QueryClientProvider>
+  );
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  listLeases.mockResolvedValue({
+    success: true,
+    data: [
+      {
+        id: 'bail-1',
+        lease_number: 'BAIL-2026-0001',
+        primaryRenter: { id: 'cli-1', user: { fullName: 'Mariam Diomande' } }
+      },
+      {
+        id: 'bail-2',
+        lease_number: 'BAIL-2026-0002',
+        primaryRenter: { id: 'cli-2', user: { fullName: 'Seydou Traore' } }
+      }
+    ],
+    pagination: { page: 1, limit: 500, total: 2, totalPages: 1 }
+  });
   listInstallments.mockResolvedValue({
     success: true,
     data: [echeance()],
@@ -197,5 +231,91 @@ describe('Échéances — filtrage serveur', () => {
     mount();
     await waitFor(() => expect(listInstallments).toHaveBeenCalled());
     expect(listInstallments.mock.calls[0][1].overdue).toBeUndefined();
+  });
+});
+
+describe('Échéances — filtre par locataire', () => {
+  it('transmet le locataire choisi à l’API', async () => {
+    // Le filtre vit dans l'URL comme les autres : un écran filtré doit être
+    // partageable et rechargeable tel quel.
+    mountGlobal('/tenant/agence-1/rental/installments?renterClientId=cli-2');
+
+    await waitFor(() => expect(listInstallments).toHaveBeenCalled(), { timeout: 8000 });
+    expect(listInstallments.mock.calls[0][1]).toMatchObject({ renterClientId: 'cli-2' });
+  });
+
+  it('nomme le bail comme l’écran Baux : numéro, bien et locataire', async () => {
+    // Deux listes qui désignent le même bail doivent le nommer pareil. Sans
+    // cette colonne, la vue portefeuille montrait une période et un montant
+    // sans jamais dire d'où venait l'échéance.
+    listInstallments.mockResolvedValue({
+      success: true,
+      data: [
+        echeance({
+          lease: {
+            id: 'bail-2',
+            lease_number: 'BAIL-2026-0002',
+            property: { id: 'bien-2', title: 'Entrepôt 1 200 m² - Treichville' },
+            primaryRenter: { id: 'cli-2', user: { fullName: 'Seydou Traoré' } }
+          }
+        })
+      ],
+      pagination: { page: 1, limit: 50, total: 1, totalPages: 1 }
+    });
+
+    mountGlobal();
+    expect(await screen.findByText('BAIL-2026-0002', {}, { timeout: 8000 })).toBeInTheDocument();
+    // Le bien sous le numéro de bail...
+    expect(screen.getByText('Entrepôt 1 200 m² - Treichville')).toBeInTheDocument();
+    // ...et le locataire dans sa propre colonne, puisqu'on filtre dessus.
+    expect(screen.getByText('Seydou Traoré')).toBeInTheDocument();
+  });
+
+  it('retombe sur l’adresse quand le bien n’a pas de titre', async () => {
+    // Même règle que sur l'écran Baux : titre, puis adresse, puis référence
+    // interne. Une référence interne seule ne dit rien à personne.
+    listInstallments.mockResolvedValue({
+      success: true,
+      data: [
+        echeance({
+          lease: {
+            id: 'bail-3',
+            lease_number: 'BAIL-2026-0003',
+            property: { id: 'bien-3', title: null, address: 'Boulevard Nangui Abrogoua' },
+            primaryRenter: { id: 'cli-3', user: { fullName: 'Awa Konan' } }
+          }
+        })
+      ],
+      pagination: { page: 1, limit: 50, total: 1, totalPages: 1 }
+    });
+
+    mountGlobal();
+    expect(await screen.findByText('Boulevard Nangui Abrogoua', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByText('Awa Konan')).toBeInTheDocument();
+  });
+
+  it('n’ajoute pas la colonne dans l’onglet d’un bail', async () => {
+    // Le locataire y est déjà unique : la colonne répéterait la même valeur
+    // sur toutes les lignes.
+    listInstallments.mockResolvedValue({
+      success: true,
+      data: [
+        echeance({
+          lease: {
+            id: 'bail-1',
+            lease_number: 'BAIL-2026-0001',
+            primaryRenter: { id: 'cli-1', user: { fullName: 'Mariam Diomandé' } }
+          }
+        })
+      ],
+      pagination: { page: 1, limit: 50, total: 1, totalPages: 1 }
+    });
+
+    mount();
+    await screen.findByRole('button', { name: /Encaisser/ }, { timeout: 8000 });
+    expect(screen.queryByText('BAIL-2026-0001')).toBeNull();
+    expect(screen.queryByText(/Mariam Diomandé/)).toBeNull();
+    // Et la liste des baux n'est pas chargée pour rien.
+    expect(listLeases).not.toHaveBeenCalled();
   });
 });

@@ -4,6 +4,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import AuthContext from '../../context/AuthContext';
 import type { AuthContextType } from '../../types/auth-types';
 import { AppShell } from '../../components/shell/AppShell';
+import { AppNavigation } from '../../components/shell/AppNavigation';
+import { NAVIGATION } from '../../navigation/model';
 
 /**
  * La coquille est le changement le plus étendu du Lot 1 : elle sert les 100
@@ -187,6 +189,52 @@ describe('AppShell — action primaire sortie du menu', () => {
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
       unmount();
     }
+  });
+});
+
+describe('AppNavigation — intertitres de domaine', () => {
+  function renderNav(variant: 'sidebar' | 'rail') {
+    return render(
+      <MemoryRouter initialEntries={[`/tenant/${TENANT}/rental/leases`]}>
+        <AppNavigation persona={NAVIGATION.collaborateur} context={{ tenantId: TENANT }} variant={variant} />
+      </MemoryRouter>
+    );
+  }
+
+  it('coiffe Baux et Encaisser d’un titre « Gestion locative »', () => {
+    renderNav('sidebar');
+    expect(screen.getByText('Gestion locative')).toBeInTheDocument();
+    // Le titre n'est pas une destination : rien ne se replie sous lui, rien ne
+    // se clique. C'est toute la difference avec l'accordeon que le §4.3 defait.
+    expect(screen.queryByRole('menuitem', { name: 'Gestion locative' })).toBeNull();
+  });
+
+  it('laisse Baux à un clic, sous son titre', () => {
+    renderNav('sidebar');
+    // Une destination, pas un en-tete de sous-menu : le titre de domaine ne l'a
+    // pas transformee en accordeon.
+    const baux = screen.getByText('Baux').closest('li');
+    expect(baux).not.toBeNull();
+    expect(baux!.className).toContain('ant-menu-item');
+    expect(baux!.className).not.toContain('ant-menu-submenu');
+  });
+
+  it('laisse le rail plat : un intertitre y serait tronque', () => {
+    renderNav('rail');
+    expect(screen.queryByText('Gestion locative')).toBeNull();
+  });
+
+  it('coiffe le portail propriétaire de « Mon portefeuille » et « Suivi des bâtiments »', () => {
+    render(
+      <MemoryRouter initialEntries={['/owner/revenues']}>
+        <AppNavigation persona={NAVIGATION.proprietaire} context={{}} variant="sidebar" />
+      </MemoryRouter>
+    );
+    expect(screen.getByText('Mon portefeuille')).toBeInTheDocument();
+    expect(screen.getByText('Suivi des bâtiments')).toBeInTheDocument();
+    // « Plus » n'appartient a aucun domaine : un filet l'empeche de se lire
+    // comme la derniere entree de « Suivi des batiments ».
+    expect(document.querySelector('.ant-menu-item-divider')).not.toBeNull();
   });
 });
 

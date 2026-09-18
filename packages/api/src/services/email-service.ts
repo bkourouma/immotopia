@@ -47,6 +47,24 @@ function normalizeEmailForSmtp(email: string): string {
   return `${local}@${domain}`;
 }
 
+/**
+ * True when the process can actually deliver mail.
+ *
+ * Login currently blocks unverified accounts and "resends" a link. If SMTP /
+ * the API key are empty, that mail never leaves the server and the user is
+ * stuck. Callers should skip the verification gate in that case.
+ */
+export function isEmailDeliveryConfigured(): boolean {
+  const type = (process.env.EMAIL_SERVICE_TYPE || '').trim().toLowerCase();
+  const apiKey = (process.env.EMAIL_SERVICE_API_KEY || '').trim();
+  if (type === 'sendgrid' || type === 'ses') {
+    return apiKey.length > 0;
+  }
+  const user = (process.env.EMAIL_SMTP_USER || '').trim();
+  const pass = (process.env.EMAIL_SMTP_PASS || '').trim();
+  return user.length > 0 && pass.length > 0;
+}
+
 export class EmailService {
   private transporter: Transporter;
 
@@ -124,17 +142,19 @@ export class EmailService {
     });
   }
 
-  async sendInviteEmail(to: string, token: string, tenantName: string, role: string): Promise<void> {
+  async sendInviteEmail(
+    to: string,
+    token: string,
+    tenantName: string,
+    roleLabels: string[],
+    expiresAt: Date
+  ): Promise<void> {
+    const { getInvitationTemplate } = await import('../utils/email-templates');
     const link = `${getBaseUrl()}/auth/accept-invite?token=${token}`;
     await this.sendEmail({
       to,
-      subject: `Invitation to join ${tenantName}`,
-      html: `
-        <h1>You've been invited!</h1>
-        <p>You have been invited to join <strong>${tenantName}</strong> as a <strong>${role}</strong>.</p>
-        <p>Click the link below to accept the invitation and set up your account:</p>
-        <a href="${link}">${link}</a>
-      `
+      subject: `Invitation à rejoindre ${tenantName} sur ImmoTopia`,
+      html: getInvitationTemplate(link, tenantName, roleLabels, expiresAt)
     });
   }
 

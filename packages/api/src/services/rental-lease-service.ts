@@ -477,11 +477,38 @@ export async function createLease(
     const renterDetails = (primaryRenterClient?.details || {}) as { crmContactId?: string };
     const ownerDetails = (ownerClient?.details || {}) as { crmContactId?: string };
 
+    // Le compte utilisateur peut avoir ete cree sans nom (ex: rattachement d'un
+    // proprietaire a un bien). La fiche CRM, elle, porte toujours l'identite
+    // saisie par l'agence : on s'en sert plutot que d'ecrire « Bonjour Proprietaire ».
+    const contactIds = [
+      data.primaryRenterContactId || renterDetails.crmContactId,
+      data.ownerContactId || ownerDetails.crmContactId
+    ].filter((id): id is string => Boolean(id));
+
+    const crmNames = new Map<string, string>();
+    if (contactIds.length > 0) {
+      const crmContacts = await prisma.crmContact.findMany({
+        where: { id: { in: contactIds }, tenantId },
+        select: { id: true, firstName: true, lastName: true, legalName: true }
+      });
+      crmContacts.forEach(contact => {
+        const label = contact.legalName?.trim() || `${contact.firstName} ${contact.lastName}`.trim();
+        if (label) crmNames.set(contact.id, label);
+      });
+    }
+
+    const resolveName = (userName: string | null | undefined, contactId: string | null, fallback: string) =>
+      userName?.trim() || (contactId ? crmNames.get(contactId) : undefined) || fallback;
+
     const recipients = [
       {
         role: 'RENTER',
         email: primaryRenterClient?.user?.email || null,
-        name: primaryRenterClient?.user?.fullName || 'Locataire',
+        name: resolveName(
+          primaryRenterClient?.user?.fullName,
+          data.primaryRenterContactId || renterDetails.crmContactId || null,
+          'Locataire'
+        ),
         explicitContactId: data.primaryRenterContactId || null,
         fallbackContactId: renterDetails.crmContactId || null,
         isNewUser: Boolean(primaryRenterResult?.isNewUser && primaryRenterResult.passwordResetToken),
@@ -490,7 +517,11 @@ export async function createLease(
       {
         role: 'OWNER',
         email: ownerClient?.user?.email || null,
-        name: ownerClient?.user?.fullName || 'Propriétaire',
+        name: resolveName(
+          ownerClient?.user?.fullName,
+          data.ownerContactId || ownerDetails.crmContactId || null,
+          'Propriétaire'
+        ),
         explicitContactId: data.ownerContactId || null,
         fallbackContactId: ownerDetails.crmContactId || null,
         isNewUser: Boolean(ownerResult?.isNewUser && ownerResult.passwordResetToken),
@@ -512,6 +543,9 @@ export async function createLease(
       const leaseStartDate = data.startDate ? new Date(data.startDate).toLocaleDateString('fr-FR') : '';
       const leaseEndDate = data.endDate ? new Date(data.endDate).toLocaleDateString('fr-FR') : 'Non définie';
       const rentAmount = `${Number(data.rentAmount || 0).toLocaleString('fr-FR')} ${data.currency || 'FCFA'}`;
+      const serviceChargeLabel = Number(data.serviceChargeAmount || 0)
+        ? `${Number(data.serviceChargeAmount).toLocaleString('fr-FR')} ${data.currency || 'FCFA'}`
+        : undefined;
       const agencyName = tenant?.name || "L'agence";
       const propertyAddress = lease.property?.address || '';
 
@@ -520,17 +554,23 @@ export async function createLease(
           const resetUrl = recipient.resetToken ? `${frontendUrl}/reset-password?token=${recipient.resetToken}` : null;
 
           if (emailConfig.enabled && recipient.email) {
-            const subject = `Bail activé - ${lease.lease_number}`;
-            const accessBlock =
-              recipient.isNewUser && resetUrl
-                ? `<p style="margin:16px 0 0 0; font-size:14px;">Pour activer votre compte, définissez votre mot de passe ici : <a href="${resetUrl}">${resetUrl}</a></p>`
-                : `<p style="margin:16px 0 0 0; font-size:14px;">Votre compte existe déjà. Connectez-vous ici : <a href="${loginUrl}">${loginUrl}</a></p>
-<p style="margin:8px 0 0 0; font-size:14px;">Si besoin, utilisez « Mot de passe oublié » : <a href="${forgotPasswordUrl}">${forgotPasswordUrl}</a></p>`;
-            const html = `<h1 style="margin:0 0 8px 0; font-size:22px; color:#166534;">Bail activé</h1>
-<p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour ${recipient.name || 'Client'},</p>
-<p style="margin:0 0 20px 0;">Votre bail ${lease.lease_number}${propertyAddress ? ` (${propertyAddress})` : ''} a été activé. Période : ${leaseStartDate} à ${leaseEndDate}. Loyer : ${rentAmount}.</p>
-${accessBlock}
-<p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>${agencyName}</p>`;
+            const { getLeaseActivatedTemplate } = await import('../utils/email-templates');
+            const subject = `Votre bail ${lease.lease_number} est activé — ${agencyName}`;
+            const html = getLeaseActivatedTemplate({
+              recipientName: recipient.name,
+              recipientRole: recipient.role === 'RENTER' ? 'RENTER' : 'OWNER',
+              agencyName,
+              leaseNumber: lease.lease_number,
+              propertyAddress,
+              leaseStartDate,
+              leaseEndDate,
+              rentAmount,
+              serviceChargeAmount: serviceChargeLabel,
+              dueDayOfMonth: data.dueDayOfMonth,
+              accessUrl: recipient.isNewUser && resetUrl ? resetUrl : loginUrl,
+              forgotPasswordUrl,
+              isNewAccount: Boolean(recipient.isNewUser && resetUrl)
+            });
             await emailService.sendEmail({
               to: recipient.email,
               subject,

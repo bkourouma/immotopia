@@ -37,11 +37,11 @@ export const WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES: Record<WhatsappNotificatio
   PORTAL_ACCOUNT_CREATED:
     'Bonjour {{userName}}, votre compte ImmoTopia a ete cree pour {{tenantName}}. Definissez votre mot de passe ici :\n{{resetUrl}}',
   OWNER_STATEMENT_SENT:
-    'Bonjour {{ownerName}}, votre relevÃ© de gÃ©rance pour la pÃ©riode {{period}} est disponible. Revenus : {{totalRevenue}} {{currency}}, charges : {{totalExpenses}} {{currency}}, net : {{netAmount}} {{currency}}.',
+    'Bonjour {{ownerName}}, votre relevé de gérance pour la période {{period}} est disponible. Revenus : {{totalRevenue}} {{currency}}, charges : {{totalExpenses}} {{currency}}, net : {{netAmount}} {{currency}}.',
   CHARGE_CALL_ISSUED:
-    'Bonjour {{ownerName}}, un nouvel appel de charges a Ã©tÃ© Ã©mis pour votre lot {{lotLabel}} dans la copropriÃ©tÃ© {{syndicateName}}. Montant : {{amount}} {{currency}}. Ã‰chÃ©ance : {{dueDate}}.',
+    'Bonjour {{ownerName}}, un nouvel appel de charges a été émis pour votre lot {{lotLabel}} dans la copropriété {{syndicateName}}. Montant : {{amount}} {{currency}}. Échéance : {{dueDate}}.',
   CHARGE_CALL_REMINDER:
-    'Bonjour {{ownerName}}, rappel pour l appel de charges de la pÃ©riode {{period}} concernant le lot {{lotLabel}}. Montant restant : {{remainingAmount}} {{currency}}. Ã‰chÃ©ance : {{dueDate}}.',
+    'Bonjour {{ownerName}}, rappel pour l appel de charges de la période {{period}} concernant le lot {{lotLabel}}. Montant restant : {{remainingAmount}} {{currency}}. Échéance : {{dueDate}}.',
   GENERAL_MEETING_CONVOCATION:
     'Bonjour {{ownerName}}, vous etes convoque a l assemblee generale de la copropriete {{syndicateName}} le {{meetingDate}} a {{meetingTime}}, lieu : {{meetingLocation}}.',
   GENERAL_MEETING_MINUTES:

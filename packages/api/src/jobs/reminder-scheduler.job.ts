@@ -34,7 +34,7 @@ export async function runReminderScheduler(): Promise<{ installmentReminders: nu
     where: {
       due_date: { gte: startDue, lte: endDue },
       status: {
-        in: [RentalInstallmentStatus.DRAFT, RentalInstallmentStatus.PENDING, RentalInstallmentStatus.PARTIALLY_PAID]
+        in: [RentalInstallmentStatus.DRAFT, RentalInstallmentStatus.DUE, RentalInstallmentStatus.PARTIAL]
       }
     },
     include: { lease: true }

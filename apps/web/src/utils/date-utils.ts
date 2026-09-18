@@ -1,8 +1,10 @@
 import dayjs from 'dayjs';
 import 'dayjs/locale/fr';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
+import relativeTime from 'dayjs/plugin/relativeTime';
 
 dayjs.extend(customParseFormat);
+dayjs.extend(relativeTime);
 dayjs.locale('fr');
 
 /**
@@ -59,4 +61,19 @@ export function formatCompactDate(date: string | Date | null | undefined): strin
  */
 export function formatTimelineDate(date: string | Date | null | undefined): string {
   return safeFormatDate(date, 'DD MMM YYYY [à] HH:mm', 'Date invalide');
+}
+
+/**
+ * Format a date as elapsed time, e.g. "il y a 2 heures".
+ *
+ * @param date - Date string, Date object, or null/undefined
+ * @param fallback - Text to display if the date is missing or invalid
+ */
+export function formatRelativeDate(date: string | Date | null | undefined, fallback: string = ''): string {
+  if (!date) {
+    return fallback;
+  }
+
+  const parsed = dayjs(date);
+  return parsed.isValid() ? parsed.fromNow() : fallback;
 }

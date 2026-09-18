@@ -1,245 +1,234 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  App,
-  Button,
-  Input,
-  Table,
-  Card,
-  Tag,
-  Space,
-  Row,
-  Col,
-  Spin,
-  Empty,
-  Alert,
-  Pagination,
-  Select,
-  Typography,
-  Tooltip
-} from 'antd';
-import {
-  PlusOutlined,
-  SearchOutlined,
-  EditOutlined,
-  EyeOutlined,
-  FileTextOutlined,
-  DeleteOutlined
-} from '@ant-design/icons';
-import {
-  listLeases,
-  updateLeaseStatus,
-  deleteLease,
-  RentalLease,
-  RentalLeaseStatus,
-  LeaseFilters
-} from '../../services/rental-service';
-import { PropertyTransactionMode } from '../../types/property-types';
+import { App, Button, Input, Select, Space, Dropdown } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useConfirmAction } from '../../components/primitives';
+import { PlusOutlined, SearchOutlined, MoreOutlined } from '@ant-design/icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { listLeases, deleteLease, RentalLease, RentalLeaseStatus } from '../../services/rental-service';
+import { PropertyTransactionMode } from '../../types/property-types';
+import { useListParams } from '../../hooks/useListParams';
+import { queryKey, STALE_TIME } from '../../lib/query-keys';
+import { nomDuBien, nomDeLaPersonne, optionsLocatairesDesBaux } from '../../lib/rental-labels';
+import {
+  PageHeader,
+  StateBlock,
+  StatusTag,
+  MoneyValue,
+  DataView,
+  DataCard,
+  FilterSheet,
+  useConfirmAction
+} from '../../components/primitives';
 
-const { Title, Text } = Typography;
-const { Search: InputSearch } = Input;
+/**
+ * Baux — l'entrée du module de gestion locative (REFONTE_UI_UX.md §5.1).
+ *
+ * Quatre défauts nommés par la spécification, tous corrigés :
+ *
+ * **Deux déclencheurs pour une seule recherche.** Le champ appelait `onChange`
+ * — qui relançait l'effet — ET `onSearch` sur validation, qui relançait la même
+ * requête. Taper puis appuyer sur Entrée, le geste naturel, faisait deux
+ * allers-retours. Un seul déclencheur demeure, avec 250 ms de silence (§8.4).
+ *
+ * **Huit colonnes derrière `scroll={{ x: 'max-content' }}`.** Cinq désormais :
+ * le bien et le locataire tiennent dans la même colonne, puisqu'ils se lisent
+ * ensemble, et les dates de début et de fin forment une période.
+ *
+ * **La pagination vivait dans une `Card` séparée**, sous le tableau, alors que
+ * les trois autres écrans du module l'intègrent. `<DataView>` la rend, à la
+ * même place partout.
+ *
+ * **Trois actions en icône seule.** Une action nommée et un menu « ⋮ ».
+ *
+ * `handleStatusChange`, défini et jamais appelé, est retiré — le troisième de
+ * ce lot.
+ */
+
+type Filtres = { q: string; status: string; primaryRenterClientId: string };
+const FILTER_KEYS = ['q', 'status', 'primaryRenterClientId'] as const;
+
+const STATUTS = [
+  { value: 'DRAFT', label: 'Brouillon' },
+  { value: 'ACTIVE', label: 'Actif' },
+  { value: 'SUSPENDED', label: 'Suspendu' },
+  { value: 'ENDED', label: 'Terminé' },
+  { value: 'CANCELED', label: 'Annulé' }
+];
+
+function dateCourte(iso?: string | null): string {
+  if (!iso) return '—';
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('fr-FR');
+}
+
+/**
+ * Montant de référence du bail.
+ *
+ * Un bien uniquement en vente n'a pas de loyer : c'est son prix qui fait foi.
+ * La règle existait déjà et elle est juste ; elle est simplement nommée.
+ */
+function montantDeReference(bail: RentalLease): { montant: number; devise: string } {
+  const modes = bail.property?.transactionModes ?? [];
+  const venteSeule =
+    modes.includes(PropertyTransactionMode.SALE) &&
+    !modes.includes(PropertyTransactionMode.RENTAL) &&
+    !modes.includes(PropertyTransactionMode.SHORT_TERM);
+
+  return {
+    montant: venteSeule ? (bail.property?.price ?? 0) : bail.rent_amount,
+    devise: bail.property?.currency || bail.currency
+  };
+}
 
 export const Leases: React.FC = () => {
   const { message } = App.useApp();
-  const confirmAction = useConfirmAction();
-
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
-  const [leases, setLeases] = useState<RentalLease[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<LeaseFilters>({
-    page: 1,
-    limit: 20
-  });
-  const [pagination, setPagination] = useState({
-    page: 1,
-    limit: 20,
-    total: 0,
-    totalPages: 0
-  });
-  const [searchTerm, setSearchTerm] = useState('');
+  const queryClient = useQueryClient();
+  const confirmAction = useConfirmAction();
+
+  const list = useListParams<Filtres>({ filterKeys: FILTER_KEYS, defaultPageSize: 20 });
+
+  /**
+   * Le champ de recherche garde son texte le temps de la frappe, et l'URL n'est
+   * écrite qu'après 250 ms de silence. Écrire à chaque caractère empilerait une
+   * entrée d'historique par lettre.
+   */
+  const [saisie, setSaisie] = useState(list.filters.q ?? '');
 
   useEffect(() => {
-    if (tenantId) {
-      loadLeases();
-    }
-  }, [tenantId, filters, searchTerm]);
+    setSaisie(list.filters.q ?? '');
+  }, [list.filters.q]);
 
-  const loadLeases = async () => {
+  useEffect(() => {
+    const courant = list.filters.q ?? '';
+    if (saisie === courant) return;
+    const minuteur = setTimeout(() => list.setFilters({ q: saisie || undefined }), 250);
+    return () => clearTimeout(minuteur);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saisie]);
+
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: erreur,
+    refetch
+  } = useQuery({
+    queryKey: queryKey('leases', tenantId, list.queryParams),
+    queryFn: () =>
+      listLeases(tenantId as string, {
+        search: list.filters.q || undefined,
+        status: (list.filters.status as RentalLeaseStatus) || undefined,
+        primaryRenterClientId: list.filters.primaryRenterClientId || undefined,
+        page: list.page,
+        limit: list.pageSize
+      }),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list
+  });
+
+  /**
+   * Locataires du portefeuille, pour le filtre.
+   *
+   * Requête distincte, volontairement : dériver les options de la liste
+   * affichée les réduirait au fur et à mesure qu'on filtre, et on ne pourrait
+   * plus passer d'un locataire à l'autre sans effacer le filtre d'abord.
+   */
+  const { data: tousLesBaux } = useQuery({
+    queryKey: queryKey('leases', tenantId, { pour: 'filtre-locataire' }),
+    queryFn: () => listLeases(tenantId as string, { limit: 500 }),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list
+  });
+
+  const optionsLocataires = React.useMemo(() => optionsLocatairesDesBaux(tousLesBaux?.data), [tousLesBaux]);
+
+  const baux = data?.data ?? [];
+  const total = data?.pagination?.total ?? 0;
+
+  const handleDelete = (bail: RentalLease) => {
     if (!tenantId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await listLeases(tenantId, {
-        ...filters,
-        search: searchTerm || undefined
-      });
-      if (response.success) {
-        setLeases(response.data);
-        setPagination(response.pagination);
-      } else {
-        setError('Erreur lors du chargement des baux');
-      }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des baux');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getStatusTag = (status: RentalLeaseStatus) => {
-    const statusMap: Record<RentalLeaseStatus, { label: string; color: string }> = {
-      DRAFT: { label: 'Brouillon', color: 'default' },
-      ACTIVE: { label: 'Actif', color: 'green' },
-      SUSPENDED: { label: 'Suspendu', color: 'orange' },
-      ENDED: { label: 'Terminé', color: 'blue' },
-      CANCELED: { label: 'Annulé', color: 'red' }
-    };
-    const config = statusMap[status] || { label: status, color: 'default' };
-    return <Tag color={config.color}>{config.label}</Tag>;
-  };
-
-  const formatDate = (dateString: string | null | undefined) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('fr-FR');
-  };
-
-  const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat('fr-FR', {
-      style: 'currency',
-      currency: currency === 'FCFA' ? 'XOF' : currency
-    }).format(amount);
-  };
-
-  const getPropertyDisplayName = (record: RentalLease) => {
-    const title = record.property?.title?.trim();
-    const address = record.property?.address?.trim();
-    const internalReference = record.property?.internalReference?.trim();
-    return title || address || internalReference || '-';
-  };
-
-  const handleStatusChange = async (leaseId: string, newStatus: RentalLeaseStatus) => {
-    if (!tenantId) return;
-    try {
-      await updateLeaseStatus(tenantId, leaseId, newStatus);
-      message.success('Statut mis à jour avec succès');
-      loadLeases();
-    } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors de la mise à jour du statut');
-    }
-  };
-
-  const handleDelete = (leaseId: string, leaseNumber: string) => {
-    if (!tenantId) return;
-
     confirmAction({
-      title: 'Supprimer le bail',
-      description: `Êtes-vous sûr de vouloir supprimer le bail "${leaseNumber}" ? Cette action est irréversible.`,
+      title: `Supprimer le bail ${bail.lease_number} ?`,
+      description: `${nomDuBien(bail.property)} · ${nomDeLaPersonne(bail.primaryRenter?.user)}. Cette action est irréversible.`,
       okText: 'Supprimer',
       danger: true,
-      cancelText: 'Annuler',
       onConfirm: async () => {
         try {
-          await deleteLease(tenantId, leaseId);
-          message.success('Bail supprimé avec succès');
-          loadLeases();
+          await deleteLease(tenantId, bail.id);
+          await queryClient.invalidateQueries({ queryKey: ['leases', tenantId] });
+          message.success('Bail supprimé.');
         } catch (err: any) {
-          message.error(err.response?.data?.message || 'Erreur lors de la suppression du bail');
+          message.error(err?.response?.data?.message || 'La suppression a échoué.');
         }
       }
     });
   };
 
-  const columns: ColumnsType<RentalLease> = [
+  if (!tenantId) {
+    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+  }
+
+  const cheminDetail = (id: string) => `/tenant/${tenantId}/rental/leases/${id}`;
+
+  const actionsSecondaires = (bail: RentalLease) => [
+    { key: 'edit', label: 'Modifier le bail', onClick: () => navigate(`${cheminDetail(bail.id)}/edit`) },
+    { type: 'divider' as const },
+    { key: 'del', label: 'Supprimer', danger: true, onClick: () => handleDelete(bail) }
+  ];
+
+  const colonnes: ColumnsType<RentalLease> = [
     {
-      title: 'Numéro',
-      dataIndex: 'lease_number',
-      key: 'lease_number',
-      render: text => <Text strong>{text}</Text>
-    },
-    {
-      title: 'Propriété',
-      key: 'property',
-      render: (_, record) => getPropertyDisplayName(record)
+      title: 'Bail',
+      key: 'bail',
+      width: 260,
+      render: (_, bail) => (
+        <>
+          <div style={{ fontWeight: 600 }}>{bail.lease_number}</div>
+          {/* Le bien sous son numéro. Le locataire a sa propre colonne : on
+              filtre dessus, il doit se lire seul. */}
+          <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>
+            {nomDuBien(bail.property)}
+          </div>
+        </>
+      )
     },
     {
       title: 'Locataire',
-      key: 'renter',
-      render: (_, record) => record.primaryRenter?.user?.fullName || record.primaryRenter?.userId || '-'
+      key: 'locataire',
+      width: 170,
+      render: (_, bail) => nomDeLaPersonne(bail.primaryRenter?.user)
     },
     {
-      title: 'Date début',
-      key: 'start_date',
-      render: (_, record) => formatDate(record.start_date)
-    },
-    {
-      title: 'Date fin',
-      key: 'end_date',
-      render: (_, record) => formatDate(record.end_date)
+      title: 'Période',
+      key: 'periode',
+      render: (_, bail) => `${dateCourte(bail.start_date)} → ${dateCourte(bail.end_date)}`
     },
     {
       title: 'Montant',
-      key: 'amount',
-      render: (_, record) => {
-        const modes = record.property?.transactionModes ?? [];
-        const isSale =
-          modes.includes(PropertyTransactionMode.SALE) &&
-          !modes.includes(PropertyTransactionMode.RENTAL) &&
-          !modes.includes(PropertyTransactionMode.SHORT_TERM);
-        const amount = isSale ? (record.property?.price ?? 0) : record.rent_amount;
-        const currency = record.property?.currency || record.currency;
-        return <Text>{formatCurrency(amount, currency)}</Text>;
+      key: 'montant',
+      align: 'right',
+      render: (_, bail) => {
+        const { montant, devise } = montantDeReference(bail);
+        return <MoneyValue value={montant} currency={devise} />;
       }
     },
-    {
-      title: 'Statut',
-      key: 'status',
-      render: (_, record) => getStatusTag(record.status)
-    },
+    { title: 'Statut', key: 'statut', render: (_, bail) => <StatusTag status={bail.status} /> },
     {
       title: 'Actions',
       key: 'actions',
-      width: 200,
-      render: (_, record) => (
+      align: 'right',
+      render: (_, bail) => (
         <Space>
-          <Tooltip title="Voir les détails">
-            <Button
-              type="text"
-              icon={<EyeOutlined />}
-              onClick={e => {
-                e.stopPropagation();
-                navigate(`/tenant/${tenantId}/rental/leases/${record.id}`);
-              }}
-            />
-          </Tooltip>
-          <Tooltip title="Modifier">
-            <Button
-              type="text"
-              icon={<EditOutlined />}
-              onClick={e => {
-                e.stopPropagation();
-                navigate(`/tenant/${tenantId}/rental/leases/${record.id}/edit`);
-              }}
-            />
-          </Tooltip>
-          <Tooltip title="Supprimer">
-            <Button
-              type="text"
-              danger
-              icon={<DeleteOutlined />}
-              data-lease-id={record.id}
-              data-lease-number={record.lease_number}
-              onClick={e => {
-                e.stopPropagation();
-                const leaseId = (e.currentTarget as HTMLButtonElement).dataset.leaseId;
-                const leaseNumber = (e.currentTarget as HTMLButtonElement).dataset.leaseNumber ?? '';
-                if (leaseId) handleDelete(leaseId, leaseNumber);
-              }}
-            />
-          </Tooltip>
+          <Button type="link" onClick={() => navigate(cheminDetail(bail.id))}>
+            Voir
+          </Button>
+          {/* Le même menu qu'en carte. Sans lui, modifier et supprimer
+              n'existeraient plus du tout au-dessus de 992 px. */}
+          <Dropdown menu={{ items: actionsSecondaires(bail) }} trigger={['click']} placement="bottomRight">
+            <Button icon={<MoreOutlined />} aria-label={`Autres actions pour le bail ${bail.lease_number}`} />
+          </Dropdown>
         </Space>
       )
     }
@@ -247,142 +236,99 @@ export const Leases: React.FC = () => {
 
   return (
     <>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Row justify="space-between" align="middle" gutter={[16, 16]}>
-          <Col xs={24} sm={24} md={12}>
-            <Title level={2} style={{ margin: 0 }}>
-              Gestion Locative
-            </Title>
-            <Text type="secondary">Gérez les baux et locations</Text>
-          </Col>
-          <Col xs={24} sm={24} md={12} style={{ textAlign: 'right' }}>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => navigate(`/tenant/${tenantId}/rental/leases/new`)}
-            >
-              Nouveau bail
-            </Button>
-          </Col>
-        </Row>
+      <PageHeader
+        title="Baux"
+        subtitle={total > 0 ? `${total} ${total > 1 ? 'baux' : 'bail'} en gestion` : 'Gestion locative'}
+        primaryAction={{
+          label: 'Nouveau bail',
+          icon: <PlusOutlined />,
+          onClick: () => navigate(`/tenant/${tenantId}/rental/leases/new`)
+        }}
+      />
 
-        {error && (
-          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
-        )}
+      <div style={{ marginBottom: 'var(--space-4)' }}>
+        <Input
+          allowClear
+          prefix={<SearchOutlined aria-hidden="true" />}
+          placeholder="Rechercher par numéro de bail"
+          aria-label="Rechercher un bail"
+          value={saisie}
+          onChange={evenement => setSaisie(evenement.target.value)}
+        />
+      </div>
 
-        <Card>
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-            <Row gutter={[16, 16]}>
-              <Col xs={24} sm={16}>
-                <InputSearch
-                  placeholder="Rechercher par numéro de bail..."
-                  allowClear
-                  enterButton={<SearchOutlined />}
-                  size="large"
-                  value={searchTerm}
-                  onChange={e => {
-                    setSearchTerm(e.target.value);
-                    setFilters({ ...filters, page: 1 });
-                  }}
-                  onSearch={value => {
-                    setSearchTerm(value);
-                    setFilters({ ...filters, page: 1, search: value || undefined });
-                  }}
-                />
-              </Col>
-              <Col xs={24} sm={8}>
-                <Select
-                  style={{ width: '100%' }}
-                  size="large"
-                  placeholder="Tous les statuts"
-                  value={filters.status || undefined}
-                  onChange={value =>
-                    setFilters({
-                      ...filters,
-                      status: value as RentalLeaseStatus | undefined,
-                      page: 1
-                    })
-                  }
-                  allowClear
-                >
-                  <Select.Option value="DRAFT">Brouillon</Select.Option>
-                  <Select.Option value="ACTIVE">Actif</Select.Option>
-                  <Select.Option value="SUSPENDED">Suspendu</Select.Option>
-                  <Select.Option value="ENDED">Terminé</Select.Option>
-                  <Select.Option value="CANCELED">Annulé</Select.Option>
-                </Select>
-              </Col>
-            </Row>
-          </Space>
-        </Card>
+      <FilterSheet
+        activeCount={[list.filters.status, list.filters.primaryRenterClientId].filter(Boolean).length}
+        onClear={() => list.setFilters({ status: undefined, primaryRenterClientId: undefined })}
+        title="Filtrer les baux"
+      >
+        <div style={{ minWidth: 240 }}>
+          <label htmlFor="filtre-locataire-bail">Locataire</label>
+          <Select
+            id="filtre-locataire-bail"
+            style={{ width: '100%' }}
+            placeholder="Tous les locataires"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            value={list.filters.primaryRenterClientId || undefined}
+            onChange={valeur => list.setFilters({ primaryRenterClientId: valeur })}
+            options={optionsLocataires}
+          />
+        </div>
+        <div style={{ minWidth: 220 }}>
+          <label htmlFor="filtre-statut-bail">Statut</label>
+          <Select
+            id="filtre-statut-bail"
+            style={{ width: '100%' }}
+            placeholder="Tous les statuts"
+            allowClear
+            value={list.filters.status || undefined}
+            onChange={valeur => list.setFilters({ status: valeur })}
+            options={STATUTS}
+          />
+        </div>
+      </FilterSheet>
 
-        {loading ? (
-          <Card>
-            <div style={{ textAlign: 'center', padding: '48px 0' }}>
-              <Spin size="large" />
-              <div style={{ marginTop: 16 }}>
-                <Text>Chargement des baux...</Text>
-              </div>
-            </div>
-          </Card>
-        ) : leases.length === 0 ? (
-          <Card>
-            <Empty
-              image={<FileTextOutlined style={{ fontSize: 64, color: '#bfbfbf' }} />}
-              imageStyle={{ height: 64 }}
-              description={
-                <Space direction="vertical" size="small">
-                  <Text strong>Aucun bail trouvé</Text>
-                  <Text type="secondary">Commencez par créer votre premier bail.</Text>
-                </Space>
-              }
-            >
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => navigate(`/tenant/${tenantId}/rental/leases/new`)}
-              >
-                Créer un bail
-              </Button>
-            </Empty>
-          </Card>
-        ) : (
-          <>
-            <Card>
-              <Table
-                columns={columns}
-                dataSource={leases}
-                rowKey={record => record.id}
-                loading={loading}
-                pagination={false}
-                scroll={{ x: 'max-content' }}
-              />
-            </Card>
-
-            {pagination.totalPages > 1 && (
-              <Card>
-                <Row justify="space-between" align="middle" gutter={[16, 16]}>
-                  <Col xs={24} sm={12}>
-                    <Text type="secondary">
-                      Page {pagination.page} sur {pagination.totalPages} ({pagination.total} baux)
-                    </Text>
-                  </Col>
-                  <Col xs={24} sm={12} style={{ textAlign: 'right' }}>
-                    <Pagination
-                      current={pagination.page}
-                      total={pagination.total}
-                      pageSize={pagination.limit}
-                      showSizeChanger={false}
-                      showTotal={(total, range) => `${range[0]}-${range[1]} sur ${total}`}
-                      onChange={page => setFilters({ ...filters, page })}
-                    />
-                  </Col>
-                </Row>
-              </Card>
-            )}
-          </>
-        )}
-      </Space>
+      <DataView<RentalLease>
+        // Six colonnes depuis que le locataire a la sienne : elles ne tiennent
+        // plus dans les ~690 px utiles au plancher du desktop.
+        scrollX={1080}
+        items={baux}
+        total={total}
+        page={list.page}
+        pageSize={list.pageSize}
+        onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
+        loading={isPending}
+        isReloading={isFetching && !isPending}
+        error={erreur ? 'Impossible de charger les baux.' : null}
+        onRetry={() => refetch()}
+        isFiltered={list.isFiltered}
+        onClearFilters={list.clearFilters}
+        emptyDescription="Aucun bail n'est encore enregistré pour cette agence."
+        emptyAction={{
+          label: 'Créer un bail',
+          onClick: () => navigate(`/tenant/${tenantId}/rental/leases/new`)
+        }}
+        columns={colonnes}
+        rowKey={bail => bail.id}
+        aria-label="Baux de l'agence"
+        renderCard={bail => {
+          const { montant, devise } = montantDeReference(bail);
+          return (
+            <DataCard
+              title={bail.lease_number}
+              aria-label={`Bail ${bail.lease_number}, ${nomDuBien(bail.property)}`}
+              subtitle={`${nomDuBien(bail.property)} · ${nomDeLaPersonne(bail.primaryRenter?.user)}`}
+              status={<StatusTag status={bail.status} />}
+              highlight={<MoneyValue value={montant} currency={devise} />}
+              fields={[{ label: 'Période', value: `${dateCourte(bail.start_date)} → ${dateCourte(bail.end_date)}` }]}
+              onOpen={() => navigate(cheminDetail(bail.id))}
+              secondaryActions={actionsSecondaires(bail)}
+            />
+          );
+        }}
+      />
     </>
   );
 };

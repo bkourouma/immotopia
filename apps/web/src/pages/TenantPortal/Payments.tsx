@@ -66,6 +66,8 @@ export default function TenantPayments() {
   const [selectedInstallment, setSelectedInstallment] = useState<string | null>(null);
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [declarationModalVisible, setDeclarationModalVisible] = useState(false);
+  // Echeance visee quand la declaration est lancee depuis une ligne du tableau.
+  const [declarationFor, setDeclarationFor] = useState<InstallmentItem | null>(null);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
 
   // Payment history state
@@ -262,12 +264,14 @@ export default function TenantPayments() {
       title: 'Période',
       dataIndex: 'period',
       key: 'period',
+      width: 110,
       render: (period: string) => <Text strong>{period}</Text>
     },
     {
       title: "Date d'échéance",
       dataIndex: 'dueDate',
       key: 'dueDate',
+      width: 160,
       render: (date: string) => (
         <Space>
           <CalendarOutlined />
@@ -280,6 +284,7 @@ export default function TenantPayments() {
       title: 'Montant total',
       dataIndex: 'amount',
       key: 'amount',
+      width: 150,
       render: (amount: number) => <Text strong>{formatCurrency(amount)}</Text>,
       sorter: (a: InstallmentItem, b: InstallmentItem) => a.amount - b.amount
     },
@@ -287,6 +292,7 @@ export default function TenantPayments() {
       title: 'Payé',
       dataIndex: 'paid',
       key: 'paid',
+      width: 130,
       render: (paid: number) => formatCurrency(paid),
       sorter: (a: InstallmentItem, b: InstallmentItem) => a.paid - b.paid
     },
@@ -294,6 +300,7 @@ export default function TenantPayments() {
       title: 'Solde',
       dataIndex: 'balance',
       key: 'balance',
+      width: 140,
       render: (balance: number) => <Text type={balance > 0 ? 'danger' : 'success'}>{formatCurrency(balance)}</Text>,
       sorter: (a: InstallmentItem, b: InstallmentItem) => a.balance - b.balance
     },
@@ -301,15 +308,32 @@ export default function TenantPayments() {
       title: 'Statut',
       dataIndex: 'status',
       key: 'status',
+      width: 120,
       render: (status: string) => getStatusTag(status)
     },
     {
       title: 'Actions',
       key: 'actions',
+      width: 190,
       render: (_: any, record: InstallmentItem) => (
-        <Button type="link" icon={<EyeOutlined />} onClick={() => handleViewDetails(record.id)}>
-          Détails
-        </Button>
+        <Space>
+          {record.balance > 0 && (
+            <Button
+              type="primary"
+              size="small"
+              icon={<DollarOutlined />}
+              onClick={() => {
+                setDeclarationFor(record);
+                setDeclarationModalVisible(true);
+              }}
+            >
+              Payer
+            </Button>
+          )}
+          <Button type="link" icon={<EyeOutlined />} onClick={() => handleViewDetails(record.id)}>
+            Détails
+          </Button>
+        </Space>
       )
     }
   ];
@@ -329,12 +353,31 @@ export default function TenantPayments() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <Title level={2}>Paiements et échéances</Title>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          // Sur un ecran etroit le titre et le bouton se chevauchaient : on
+          // autorise le passage a la ligne plutot que la compression.
+          flexWrap: 'wrap',
+          gap: 16
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <Title level={2} style={{ marginBottom: 4 }}>
+            Paiements et échéances
+          </Title>
           <Text type="secondary">Suivez vos échéances et l'historique de vos paiements</Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setDeclarationModalVisible(true)}>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => {
+            setDeclarationFor(null);
+            setDeclarationModalVisible(true);
+          }}
+        >
           Déclarer un paiement
         </Button>
       </div>
@@ -441,7 +484,8 @@ export default function TenantPayments() {
                       dataSource={data.installments}
                       rowKey="id"
                       loading={loading}
-                      scroll={{ x: 800 }}
+                      size="middle"
+                      scroll={{ x: 1000 }}
                       pagination={{
                         current: pagination.current,
                         pageSize: pagination.pageSize,
@@ -709,8 +753,15 @@ export default function TenantPayments() {
       {/* Payment Declaration Modal (T069) */}
       <PaymentDeclarationModal
         open={declarationModalVisible}
-        onCancel={() => setDeclarationModalVisible(false)}
+        installmentId={declarationFor?.id}
+        defaultAmount={declarationFor?.balance}
+        installmentLabel={declarationFor?.period}
+        onCancel={() => {
+          setDeclarationModalVisible(false);
+          setDeclarationFor(null);
+        }}
         onSuccess={() => {
+          setDeclarationFor(null);
           loadInstallments();
           loadPaymentHistory();
         }}

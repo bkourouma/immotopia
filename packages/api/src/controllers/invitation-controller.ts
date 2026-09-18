@@ -52,12 +52,12 @@ export async function inviteCollaboratorHandler(req: Request, res: Response): Pr
       invitedByUserId: req.user.userId
     });
 
+    // Le token n'est jamais renvoye par l'API : seul son hash est stocke en base et
+    // seul le destinataire de l'email doit le connaitre.
     res.status(201).json({
       success: true,
       message: 'Invitation envoyée avec succès.',
-      data: result.invitation,
-      // Token only included in development/testing
-      ...(process.env.NODE_ENV !== 'production' && { token: result.token })
+      data: result.invitation
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
@@ -113,13 +113,12 @@ export async function resendInvitationHandler(req: Request, res: Response): Prom
     const { invitationId } = req.params;
     const result = await resendInvitation(invitationId, req.user.userId);
 
+    // Comme a l'invitation, le nouveau token n'est jamais renvoye par l'API.
     res.status(200).json({
       success: true,
       message: 'Invitation renvoyée avec succès.',
       data: {
-        expiresAt: result.expiresAt,
-        // Token only included in development/testing
-        ...(process.env.NODE_ENV !== 'production' && { token: result.token })
+        expiresAt: result.expiresAt
       }
     });
   } catch (error) {

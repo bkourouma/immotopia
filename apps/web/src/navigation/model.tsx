@@ -40,6 +40,12 @@ import {
  *   - **La zone `more`** matérialise la frontière du §4.2 : quatre destinations
  *     directes, le reste derrière l'onglet « Plus ». Sans ce marqueur, le
  *     drawer devrait réinventer la règle.
+ *   - **Les domaines coiffent les entrées sans les enterrer.** Onze entrées à
+ *     plat ne disent pas de quel métier elles relèvent ; onze accordéons
+ *     rajoutent un tap devant chacune. `section` pose un intertitre non
+ *     cliquable au-dessus de chaque bloc — « Gestion locative » redevient un
+ *     titre, pas un parent. L'arbre est ordonné par domaine pour que chaque
+ *     titre coiffe un bloc contigu.
  *   - **Suppressions actées** : `/properties/categories` (route inexistante),
  *     le groupe « Clients » (fusionné dans CRM › Contacts), les
  *     pages-passerelles « Transactions » et « Rapports ».
@@ -78,6 +84,43 @@ export const MORE_TAB_HREF = '#plus';
  */
 export type NavZone = 'primary' | 'more';
 
+/**
+ * Titres de domaine de la sidebar.
+ *
+ * Ce ne sont **pas** des accordéons : rien ne se replie sous eux et rien ne se
+ * clique. Ce sont les intertitres non interactifs d'AntD (`type: 'group'`), qui
+ * disent de quel métier relèvent les entrées qui suivent. La distinction est
+ * exactement celle que défait le §4.3 : « Gestion locative » redevient un
+ * *titre* au-dessus de Baux et d'Encaisser, jamais le *parent* qui les enterrait
+ * à trois taps dans `sidebar.tsx:271`. Les deux entrées restent des
+ * destinations de premier niveau, atteignables en un clic.
+ *
+ * Conséquence sur l'ordre de l'arbre : les entrées d'un même domaine sont
+ * contiguës, sinon le titre coifferait un bloc discontinu. C'est testé.
+ */
+export type SectionId =
+  // Collaborateur d'agence.
+  | 'parc'
+  | 'locatif'
+  | 'patrimoine'
+  | 'commercial'
+  | 'copropriete'
+  | 'parametrage'
+  // Propriétaire : deux questions, pas six métiers.
+  | 'portefeuille'
+  | 'batiments';
+
+export const SECTION_LABELS: Record<SectionId, string> = {
+  parc: 'Parc immobilier',
+  locatif: 'Gestion locative',
+  patrimoine: 'Patrimoine et entretien',
+  commercial: 'Commercial et communication',
+  copropriete: 'Copropriété',
+  parametrage: 'Paramétrage',
+  portefeuille: 'Mon portefeuille',
+  batiments: 'Suivi des bâtiments'
+};
+
 export interface NavLeaf {
   key: string;
   label: string;
@@ -89,6 +132,8 @@ export interface NavGroup {
   label: string;
   icon: React.ReactNode;
   zone: NavZone;
+  /** Domaine métier coiffant l'entrée. Absent = pas d'intertitre (l'accueil). */
+  section?: SectionId;
   href?: string;
   children?: NavLeaf[];
 }
@@ -166,6 +211,7 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         label: 'Biens',
         icon: <ApartmentOutlined />,
         zone: 'primary',
+        section: 'parc',
         href: '/tenant/:tenantId/properties',
         children: [
           { key: 'properties-list', label: 'Toutes les propriétés', href: '/tenant/:tenantId/properties' },
@@ -181,6 +227,7 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         label: 'Baux',
         icon: <FileTextOutlined />,
         zone: 'primary',
+        section: 'locatif',
         href: '/tenant/:tenantId/rental/leases'
       },
       {
@@ -188,6 +235,7 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         label: 'Encaisser',
         icon: <WalletOutlined />,
         zone: 'primary',
+        section: 'locatif',
         href: '/tenant/:tenantId/rental/installments',
         children: [
           { key: 'rental-installments', label: 'Échéances', href: '/tenant/:tenantId/rental/installments' },
@@ -197,10 +245,58 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
 
       // --- zone « Plus » : ce qui est rare ---------------------------------
       {
+        key: 'patrimoine',
+        label: 'Patrimoine',
+        icon: <GoldOutlined />,
+        zone: 'more',
+        section: 'patrimoine',
+        href: '/tenant/:tenantId/patrimoine',
+        children: [
+          { key: 'patrimoine-overview', label: 'Vue consolidée', href: '/tenant/:tenantId/patrimoine' },
+          {
+            key: 'patrimoine-performance',
+            label: 'Performance',
+            href: '/tenant/:tenantId/patrimoine/performance'
+          },
+          {
+            key: 'patrimoine-work-programs',
+            label: 'Travaux',
+            href: '/tenant/:tenantId/patrimoine/work-programs'
+          },
+          {
+            key: 'patrimoine-statements',
+            label: 'Relevés',
+            href: '/tenant/:tenantId/patrimoine/statements'
+          }
+        ]
+      },
+      {
+        key: 'maintenance',
+        label: 'Maintenance',
+        icon: <ToolOutlined />,
+        zone: 'more',
+        section: 'patrimoine',
+        href: '/tenant/:tenantId/admin/maintenance/tickets',
+        children: [
+          {
+            key: 'maintenance-agence-tickets',
+            label: "Tickets de l'agence",
+            href: '/tenant/:tenantId/admin/maintenance/tickets'
+          },
+          { key: 'maintenance-mes-demandes', label: 'Mes demandes', href: '/tenant/:tenantId/maintenance' },
+          {
+            key: 'maintenance-agence-vendors',
+            label: 'Prestataires',
+            href: '/tenant/:tenantId/admin/maintenance/vendors'
+          }
+        ]
+      },
+      {
         key: 'crm',
         label: 'CRM',
         icon: <RiseOutlined />,
         zone: 'more',
+        section: 'commercial',
         href: '/tenant/:tenantId/crm/dashboard',
         children: [
           { key: 'crm-dashboard', label: 'Tableau de bord CRM', href: '/tenant/:tenantId/crm/dashboard' },
@@ -211,10 +307,47 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         ]
       },
       {
+        key: 'communication',
+        label: 'Communication',
+        icon: <MailOutlined />,
+        zone: 'more',
+        section: 'commercial',
+        href: '/tenant/:tenantId/communication/email-notifications',
+        children: [
+          {
+            key: 'communication-email',
+            label: 'Notifications e-mail',
+            href: '/tenant/:tenantId/communication/email-notifications'
+          },
+          {
+            key: 'communication-whatsapp',
+            label: 'Notifications WhatsApp',
+            href: '/tenant/:tenantId/communication/whatsapp-notifications'
+          },
+          {
+            key: 'communication-whatsapp-groupe',
+            label: 'Message groupé WhatsApp',
+            href: '/tenant/:tenantId/communication/whatsapp-group-message'
+          },
+          { key: 'newsletter-lists', label: 'Newsletter — Listes', href: '/tenant/:tenantId/newsletter/lists' },
+          {
+            key: 'newsletter-campaigns',
+            label: 'Newsletter — Campagnes',
+            href: '/tenant/:tenantId/newsletter/campaigns'
+          },
+          {
+            key: 'newsletter-templates',
+            label: 'Newsletter — Modèles',
+            href: '/tenant/:tenantId/newsletter/templates'
+          }
+        ]
+      },
+      {
         key: 'syndic',
         label: 'Syndic',
         icon: <BankOutlined />,
         zone: 'more',
+        section: 'copropriete',
         href: '/tenant/:tenantId/syndics',
         children: [
           { key: 'syndics-list', label: 'Copropriétés', href: '/tenant/:tenantId/syndics' },
@@ -260,90 +393,11 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         ]
       },
       {
-        key: 'patrimoine',
-        label: 'Patrimoine',
-        icon: <GoldOutlined />,
-        zone: 'more',
-        href: '/tenant/:tenantId/patrimoine',
-        children: [
-          { key: 'patrimoine-overview', label: 'Vue consolidée', href: '/tenant/:tenantId/patrimoine' },
-          {
-            key: 'patrimoine-performance',
-            label: 'Performance',
-            href: '/tenant/:tenantId/patrimoine/performance'
-          },
-          {
-            key: 'patrimoine-work-programs',
-            label: 'Travaux',
-            href: '/tenant/:tenantId/patrimoine/work-programs'
-          },
-          {
-            key: 'patrimoine-statements',
-            label: 'Relevés',
-            href: '/tenant/:tenantId/patrimoine/statements'
-          }
-        ]
-      },
-      {
-        key: 'maintenance',
-        label: 'Maintenance',
-        icon: <ToolOutlined />,
-        zone: 'more',
-        href: '/tenant/:tenantId/admin/maintenance/tickets',
-        children: [
-          {
-            key: 'maintenance-agence-tickets',
-            label: "Tickets de l'agence",
-            href: '/tenant/:tenantId/admin/maintenance/tickets'
-          },
-          { key: 'maintenance-mes-demandes', label: 'Mes demandes', href: '/tenant/:tenantId/maintenance' },
-          {
-            key: 'maintenance-agence-vendors',
-            label: 'Prestataires',
-            href: '/tenant/:tenantId/admin/maintenance/vendors'
-          }
-        ]
-      },
-      {
-        key: 'communication',
-        label: 'Communication',
-        icon: <MailOutlined />,
-        zone: 'more',
-        href: '/tenant/:tenantId/communication/email-notifications',
-        children: [
-          {
-            key: 'communication-email',
-            label: 'Notifications e-mail',
-            href: '/tenant/:tenantId/communication/email-notifications'
-          },
-          {
-            key: 'communication-whatsapp',
-            label: 'Notifications WhatsApp',
-            href: '/tenant/:tenantId/communication/whatsapp-notifications'
-          },
-          {
-            key: 'communication-whatsapp-groupe',
-            label: 'Message groupé WhatsApp',
-            href: '/tenant/:tenantId/communication/whatsapp-group-message'
-          },
-          { key: 'newsletter-lists', label: 'Newsletter — Listes', href: '/tenant/:tenantId/newsletter/lists' },
-          {
-            key: 'newsletter-campaigns',
-            label: 'Newsletter — Campagnes',
-            href: '/tenant/:tenantId/newsletter/campaigns'
-          },
-          {
-            key: 'newsletter-templates',
-            label: 'Newsletter — Modèles',
-            href: '/tenant/:tenantId/newsletter/templates'
-          }
-        ]
-      },
-      {
         key: 'documents',
         label: 'Documents',
         icon: <FolderOutlined />,
         zone: 'more',
+        section: 'parametrage',
         href: '/tenant/:tenantId/documents/templates',
         children: [
           {
@@ -358,6 +412,7 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         label: 'Agence',
         icon: <TeamOutlined />,
         zone: 'more',
+        section: 'parametrage',
         href: '/tenant/:tenantId/collaborators',
         children: [
           { key: 'agence-collaborators', label: 'Collaborateurs', href: '/tenant/:tenantId/collaborators' },
@@ -380,10 +435,34 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
     ],
     tree: [
       { key: 'accueil', label: 'Tableau de bord', icon: <DashboardOutlined />, zone: 'primary', href: '/owner' },
-      { key: 'biens', label: 'Mes biens', icon: <ApartmentOutlined />, zone: 'primary', href: '/owner/properties' },
-      { key: 'revenus', label: 'Revenus', icon: <DollarOutlined />, zone: 'primary', href: '/owner/revenues' },
-      { key: 'incidents', label: 'Incidents', icon: <ToolOutlined />, zone: 'primary', href: '/owner/maintenance' },
       {
+        key: 'biens',
+        label: 'Mes biens',
+        icon: <ApartmentOutlined />,
+        zone: 'primary',
+        section: 'portefeuille',
+        href: '/owner/properties'
+      },
+      {
+        key: 'revenus',
+        label: 'Revenus',
+        icon: <DollarOutlined />,
+        zone: 'primary',
+        section: 'portefeuille',
+        href: '/owner/revenues'
+      },
+      {
+        key: 'incidents',
+        label: 'Incidents',
+        icon: <ToolOutlined />,
+        zone: 'primary',
+        section: 'batiments',
+        href: '/owner/maintenance'
+      },
+      {
+        // Sans `section` : un intertitre au-dessus d'un groupe qui s'appelle
+        // deja « Plus » nommerait deux fois la meme chose. C'est un contenant,
+        // pas un domaine.
         key: 'plus',
         label: 'Plus',
         icon: <EllipsisOutlined />,

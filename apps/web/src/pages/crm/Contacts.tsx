@@ -218,21 +218,11 @@ export const Contacts: React.FC = () => {
     }
   };
 
-  const getStatusBadgeTag = (status: string) => {
-    const statusConfig = {
-      LEAD: { text: 'Prospect', color: 'blue' },
-      ACTIVE_CLIENT: { text: 'Client actif', color: 'green' },
-      ARCHIVED: { text: 'Archivé', color: 'default' }
-    };
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.ARCHIVED;
-    return <AntTag color={config.color}>{config.text}</AntTag>;
-  };
-
   const handleExportCSV = () => {
     const exportData = contacts.map(contact => ({
       Nom: `${contact.firstName} ${contact.lastName}`,
       Email: contact.email,
-      Téléphone: contact.phone || '',
+      Téléphone: contact.phonePrimary || contact.phone || '',
       Statut: contact.status === 'LEAD' ? 'Prospect' : contact.status === 'ACTIVE_CLIENT' ? 'Client actif' : 'Archivé',
       Source: contact.source || '',
       'Prochaine action': contact.nextAction
@@ -251,7 +241,7 @@ export const Contacts: React.FC = () => {
     const exportData = contacts.map(contact => ({
       Nom: `${contact.firstName} ${contact.lastName}`,
       Email: contact.email,
-      Téléphone: contact.phone || '',
+      Téléphone: contact.phonePrimary || contact.phone || '',
       Statut: contact.status === 'LEAD' ? 'Prospect' : contact.status === 'ACTIVE_CLIENT' ? 'Client actif' : 'Archivé',
       Source: contact.source || '',
       'Prochaine action': contact.nextAction
@@ -279,20 +269,10 @@ export const Contacts: React.FC = () => {
     },
     {
       title: 'Téléphone',
-      dataIndex: 'phone',
       key: 'phone',
-      render: phone => phone || '-'
-    },
-    {
-      title: 'Statut',
-      key: 'status',
-      render: (_, record) => getStatusBadgeTag(record.status)
-    },
-    {
-      title: 'Source',
-      dataIndex: 'source',
-      key: 'source',
-      render: source => source || '-'
+      // `phone` est un champ historique que l'API ne renseigne plus : le numero
+      // vit dans `phonePrimary`. On garde le repli pour les contacts anciens.
+      render: (_, record) => record.phonePrimary || record.phone || '-'
     },
     {
       title: 'Prochaine action',

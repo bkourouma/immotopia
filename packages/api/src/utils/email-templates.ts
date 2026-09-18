@@ -206,3 +206,208 @@ export function getMaintenanceTicketStatusChangedTemplate(
 </html>
   `.trim();
 }
+
+/**
+ * Echappe les valeurs interpolees dans un template HTML.
+ * Le nom de l'agence et les libelles de roles proviennent de donnees saisies :
+ * ils ne doivent pas pouvoir injecter de balises dans l'email.
+ */
+function escapeHtml(value: string): string {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/**
+ * Invitation d'un collaborateur a rejoindre une agence
+ * @param inviteUrl - URL complete d'acceptation (avec le token)
+ * @param tenantName - Nom de l'agence qui invite
+ * @param roleLabels - Libelles francais des roles attribues (peut etre vide)
+ * @param expiresAt - Date d'expiration de l'invitation
+ * @returns HTML email template
+ */
+export function getInvitationTemplate(
+  inviteUrl: string,
+  tenantName: string,
+  roleLabels: string[],
+  expiresAt: Date
+): string {
+  const agency = escapeHtml(tenantName);
+  const roles = roleLabels.length > 0 ? roleLabels.map(escapeHtml).join(', ') : 'Collaborateur';
+  const expiry = expiresAt.toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric'
+  });
+
+  return `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invitation à rejoindre ${agency}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #eef2f7;">
+  <div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 24px 16px;">
+
+    <div style="background-color: #2c3e50; padding: 28px 32px; border-radius: 8px 8px 0 0; text-align: center;">
+      <p style="margin: 0; color: #ffffff; font-size: 22px; font-weight: bold; letter-spacing: 0.5px;">ImmoTopia</p>
+      <p style="margin: 6px 0 0; color: #aebfd0; font-size: 13px;">Plateforme de gestion immobilière</p>
+    </div>
+
+    <div style="background-color: #ffffff; padding: 32px; border-radius: 0 0 8px 8px;">
+      <h1 style="color: #2c3e50; font-size: 21px; margin: 0 0 20px;">Invitation à rejoindre ${agency}</h1>
+
+      <p style="margin: 0 0 16px;">Madame, Monsieur,</p>
+      <p style="margin: 0 0 16px;">
+        L'agence <strong>${agency}</strong> vous invite à rejoindre son espace de travail sur ImmoTopia.
+        Vous y gérerez ses biens, ses baux et ses encaissements selon les droits qui vous sont attribués.
+      </p>
+
+      <table style="width: 100%; border-collapse: collapse; background-color: #f7f9fc; border-left: 4px solid #3498db; border-radius: 4px; margin: 24px 0;">
+        <tr>
+          <td style="padding: 14px 16px 4px; color: #6b7c8f; font-size: 13px;">Agence</td>
+        </tr>
+        <tr>
+          <td style="padding: 0 16px 12px; font-size: 15px;"><strong>${agency}</strong></td>
+        </tr>
+        <tr>
+          <td style="padding: 0 16px 4px; color: #6b7c8f; font-size: 13px;">Rôle${roleLabels.length > 1 ? 's' : ''} attribué${roleLabels.length > 1 ? 's' : ''}</td>
+        </tr>
+        <tr>
+          <td style="padding: 0 16px 14px; font-size: 15px;"><strong>${roles}</strong></td>
+        </tr>
+      </table>
+
+      <p style="margin: 0 0 8px;">Pour activer votre accès, définissez votre mot de passe en cliquant ci-dessous :</p>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${inviteUrl}" style="background-color: #3498db; color: #ffffff; padding: 14px 36px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold; font-size: 15px;">Accepter l'invitation</a>
+      </div>
+
+      <p style="margin: 0 0 6px; font-size: 14px; color: #6b7c8f;">Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :</p>
+      <p style="margin: 0 0 20px; word-break: break-all; font-size: 13px;"><a href="${inviteUrl}" style="color: #3498db;">${inviteUrl}</a></p>
+
+      <p style="margin: 0 0 16px; background-color: #fff8e6; border-left: 4px solid #f0ad4e; padding: 12px 16px; border-radius: 4px; font-size: 14px;">
+        <strong>Cette invitation expire le ${expiry}.</strong> Passé ce délai, demandez à l'agence de vous la renvoyer.
+      </p>
+
+      <p style="margin: 0; font-size: 14px; color: #6b7c8f;">
+        Si vous n'attendiez pas cette invitation, ignorez simplement ce message : aucun compte ne sera créé
+        tant que vous n'aurez pas défini de mot de passe.
+      </p>
+
+      <hr style="border: none; border-top: 1px solid #e6ebf1; margin: 28px 0 16px;">
+      <p style="margin: 0; font-size: 12px; color: #98a6b5; text-align: center;">
+        Cet email vous a été envoyé automatiquement à la demande de l'agence ${agency}, merci de ne pas y répondre.
+      </p>
+    </div>
+
+  </div>
+</body>
+</html>
+  `.trim();
+}
+
+/**
+ * Activation d'un bail - notification au locataire et au proprietaire
+ * @param params.recipientName - Nom reel du destinataire (jamais un libelle generique)
+ * @param params.recipientRole - RENTER ou OWNER, change le texte d'accompagnement
+ * @param params.accessUrl - Lien de definition du mot de passe (compte neuf) ou de connexion
+ * @param params.isNewAccount - true si le destinataire doit encore definir son mot de passe
+ * @returns HTML email template
+ */
+export function getLeaseActivatedTemplate(params: {
+  recipientName: string;
+  recipientRole: 'RENTER' | 'OWNER';
+  agencyName: string;
+  leaseNumber: string;
+  propertyAddress: string;
+  leaseStartDate: string;
+  leaseEndDate: string;
+  rentAmount: string;
+  serviceChargeAmount?: string;
+  dueDayOfMonth?: number;
+  accessUrl: string;
+  forgotPasswordUrl: string;
+  isNewAccount: boolean;
+}): string {
+  const name = escapeHtml(params.recipientName);
+  const agency = escapeHtml(params.agencyName);
+  const lease = escapeHtml(params.leaseNumber);
+  const address = escapeHtml(params.propertyAddress);
+  const isRenter = params.recipientRole === 'RENTER';
+
+  const intro = isRenter
+    ? `Votre bail de location vient d'être activé par l'agence <strong>${agency}</strong>. Vous trouverez ci-dessous les informations essentielles de votre contrat.`
+    : `Le bail de location de votre bien vient d'être activé par l'agence <strong>${agency}</strong>. Vous pouvez désormais suivre les encaissements et les reversements depuis votre espace.`;
+
+  const portalLine = isRenter
+    ? 'Votre espace locataire vous permet de consulter vos échéances, de déclarer vos paiements et de télécharger vos quittances.'
+    : 'Votre espace propriétaire vous permet de suivre les loyers encaissés, les reversements et les incidents déclarés sur votre bien.';
+
+  const accessBlock = params.isNewAccount
+    ? `<p style="margin: 0 0 8px;">Pour activer votre accès, définissez votre mot de passe :</p>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="${params.accessUrl}" style="background-color: #166534; color: #ffffff; padding: 14px 36px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold; font-size: 15px;">Définir mon mot de passe</a>
+      </div>
+      <p style="margin: 0 0 4px; font-size: 14px; color: #6b7c8f;">Si le bouton ne fonctionne pas, copiez ce lien :</p>
+      <p style="margin: 0 0 20px; word-break: break-all; font-size: 13px;"><a href="${params.accessUrl}" style="color: #166534;">${params.accessUrl}</a></p>`
+    : `<p style="margin: 0 0 8px;">Votre compte existe déjà : connectez-vous pour consulter votre dossier.</p>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="${params.accessUrl}" style="background-color: #166534; color: #ffffff; padding: 14px 36px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold; font-size: 15px;">Accéder à mon espace</a>
+      </div>
+      <p style="margin: 0 0 20px; font-size: 14px; color: #6b7c8f;">Mot de passe oublié ? <a href="${params.forgotPasswordUrl}" style="color: #166534;">Réinitialisez-le ici</a>.</p>`;
+
+  const row = (label: string, value: string) => `
+        <tr>
+          <td style="padding: 10px 16px; color: #6b7c8f; font-size: 13px; border-bottom: 1px solid #e6ebf1; width: 45%;">${label}</td>
+          <td style="padding: 10px 16px; font-size: 14px; border-bottom: 1px solid #e6ebf1;"><strong>${value}</strong></td>
+        </tr>`;
+
+  return `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bail activé — ${lease}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #eef2f7;">
+  <div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 24px 16px;">
+
+    <div style="background-color: #166534; padding: 28px 32px; border-radius: 8px 8px 0 0; text-align: center;">
+      <p style="margin: 0; color: #ffffff; font-size: 22px; font-weight: bold; letter-spacing: 0.5px;">${agency}</p>
+      <p style="margin: 6px 0 0; color: #b7d4be; font-size: 13px;">Gestion locative</p>
+    </div>
+
+    <div style="background-color: #ffffff; padding: 32px; border-radius: 0 0 8px 8px;">
+      <h1 style="color: #166534; font-size: 21px; margin: 0 0 20px;">Votre bail est activé</h1>
+
+      <p style="margin: 0 0 16px;">Bonjour ${name},</p>
+      <p style="margin: 0 0 24px;">${intro}</p>
+
+      <table style="width: 100%; border-collapse: collapse; background-color: #f7f9fc; border-radius: 4px; margin: 0 0 24px;">
+        ${row('Référence du bail', lease)}
+        ${address ? row('Bien concerné', address) : ''}
+        ${row('Période', `${params.leaseStartDate} au ${params.leaseEndDate}`)}
+        ${row(isRenter ? 'Loyer mensuel' : 'Loyer perçu', params.rentAmount)}
+        ${params.serviceChargeAmount ? row('Charges', params.serviceChargeAmount) : ''}
+        ${params.dueDayOfMonth ? row('Échéance', `le ${params.dueDayOfMonth} de chaque mois`) : ''}
+      </table>
+
+      ${accessBlock}
+
+      <p style="margin: 0 0 16px; font-size: 14px; color: #6b7c8f;">${portalLine}</p>
+
+      <hr style="border: none; border-top: 1px solid #e6ebf1; margin: 28px 0 16px;">
+      <p style="margin: 0 0 4px; font-size: 13px; color: #6b7c8f;">Cordialement,<br><strong>${agency}</strong></p>
+      <p style="margin: 12px 0 0; font-size: 12px; color: #98a6b5;">
+        Cet email vous a été envoyé automatiquement, merci de ne pas y répondre.
+      </p>
+    </div>
+
+  </div>
+</body>
+</html>
+  `.trim();
+}

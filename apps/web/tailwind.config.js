@@ -82,10 +82,13 @@ module.exports = {
           card: 'var(--surface-card)',
           raised: 'var(--surface-raised)',
           sunken: 'var(--surface-sunken)',
-          inverse: 'var(--surface-inverse)'
+          inverse: 'var(--surface-inverse)',
+          // Sidebar, rail et drawer.
+          nav: 'var(--surface-nav)'
         },
         line: {
           subtle: 'var(--border-subtle)',
+          nav: 'var(--border-nav)',
           DEFAULT: 'var(--border-default)',
           strong: 'var(--border-strong)',
           // Bordure d'un controle interactif — conforme a WCAG 1.4.11.

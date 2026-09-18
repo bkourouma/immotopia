@@ -1,7 +1,7 @@
 import { GlobalRole } from '@prisma/client';
 import crypto from 'crypto';
 import { hashPassword, validatePasswordStrength, comparePassword } from '../utils/password-utils';
-import { emailService } from './email-service';
+import { emailService, isEmailDeliveryConfigured } from './email-service';
 import { generateAccessToken, generateRefreshToken } from '../utils/jwt-utils';
 import { RegisterRequest, LoginRequest, PasswordResetRequest, ForgotPasswordRequest } from '../types/auth-types';
 import { logger } from '../utils/logger';
@@ -197,14 +197,25 @@ export async function loginUser(data: LoginRequest) {
 
   // Check if email is verified
   if (!user.emailVerified) {
-    // Resend verification email automatically
-    try {
-      await resendVerificationEmail(user.email);
-      logger.info('Verification email auto-resent on login attempt', { userId: user.id, email: user.email });
-    } catch (error) {
-      logger.error('Failed to resend verification email on login', { userId: user.id, email: user.email, error });
+    if (!isEmailDeliveryConfigured()) {
+      // No mailer: the verification link can never arrive. Mark the address
+      // verified so the same account is not blocked on every subsequent login.
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerified: true }
+      });
+      logger.warn('Email verification skipped at login: mailer is not configured', {
+        userId: user.id
+      });
+    } else {
+      try {
+        await resendVerificationEmail(user.email);
+        logger.info('Verification email auto-resent on login attempt', { userId: user.id, email: user.email });
+      } catch (error) {
+        logger.error('Failed to resend verification email on login', { userId: user.id, email: user.email, error });
+      }
+      throw new Error('Veuillez vérifier votre adresse email. Un nouveau lien de vérification a été envoyé.');
     }
-    throw new Error('Veuillez vérifier votre adresse email. Un nouveau lien de vérification a été envoyé.');
   }
 
   // Verify password
@@ -515,11 +526,17 @@ export async function resetPassword(data: PasswordResetRequest) {
 
   // Update password and mark token as used in transaction
   await prisma.$transaction(async tx => {
-    // Update user password
+    // Update user password.
+    // Le lien de reinitialisation a ete envoye a l'adresse du compte : en
+    // l'utilisant, la personne prouve qu'elle en a le controle. On valide donc
+    // l'email au passage, sinon un compte cree par l'agence (portail locataire
+    // ou proprietaire) reste bloque au login par le controle emailVerified,
+    // sans autre issue que de chercher un second email de verification.
     await tx.user.update({
       where: { id: resetToken.userId },
       data: {
-        passwordHash: passwordHash
+        passwordHash: passwordHash,
+        emailVerified: true
       }
     });
 

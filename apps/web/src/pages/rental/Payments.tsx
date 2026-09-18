@@ -6,6 +6,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   listPayments,
+  listLeases,
   createPayment,
   allocatePayment,
   RentalPayment,
@@ -20,6 +21,7 @@ import { PaymentDeclarationsList } from '../../components/rental/PaymentDeclarat
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useListParams } from '../../hooks/useListParams';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
+import { nomDuBien, nomDeLaPersonne, optionsLocatairesDesBaux } from '../../lib/rental-labels';
 import {
   PageHeader,
   StateBlock,
@@ -59,8 +61,8 @@ interface PaymentsProps {
   leaseId?: string;
 }
 
-type Filters = { status: string; onglet: string };
-const FILTER_KEYS = ['status', 'onglet'] as const;
+type Filters = { status: string; onglet: string; renterClientId: string };
+const FILTER_KEYS = ['status', 'onglet', 'renterClientId'] as const;
 
 const METHOD_LABELS: Record<string, string> = {
   CASH: 'Espèces',
@@ -122,6 +124,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   } = useQuery({
     queryKey: queryKey('payments', tenantId, {
       status: list.filters.status ?? '',
+      renterClientId: list.filters.renterClientId ?? '',
       leaseId: leaseId ?? '',
       page: list.page,
       limit: list.pageSize
@@ -130,12 +133,31 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       listPayments(tenantId as string, {
         leaseId,
         status: (list.filters.status as RentalPaymentStatus) || undefined,
+        renterClientId: list.filters.renterClientId || undefined,
         page: list.page,
         limit: list.pageSize
       }),
     enabled: Boolean(tenantId),
     staleTime: STALE_TIME.list
   });
+
+  /**
+   * Locataires du portefeuille, pour le filtre.
+   *
+   * Dérivés des baux et non des paiements affichés : un locataire qui n'a
+   * encore rien versé doit rester sélectionnable, ne serait-ce que pour
+   * constater qu'il n'a rien versé.
+   *
+   * Inutile dans l'onglet d'un bail : le payeur y est déjà unique.
+   */
+  const { data: tousLesBaux } = useQuery({
+    queryKey: queryKey('leases', tenantId, { pour: 'filtre-locataire' }),
+    queryFn: () => listLeases(tenantId as string, { limit: 500 }),
+    enabled: Boolean(tenantId) && !leaseId,
+    staleTime: STALE_TIME.list
+  });
+
+  const optionsLocataires = React.useMemo(() => optionsLocatairesDesBaux(tousLesBaux?.data), [tousLesBaux]);
 
   const paiements = data?.data ?? [];
   const total = data?.pagination?.total ?? 0;
@@ -168,6 +190,31 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   }
 
   const colonnes: ColumnsType<RentalPayment> = [
+    // Dans l'onglet d'un bail, ces deux colonnes répéteraient la même valeur
+    // sur chaque ligne.
+    ...(leaseId
+      ? []
+      : [
+          {
+            title: 'Bail',
+            key: 'bail',
+            width: 250,
+            render: (_: unknown, p: RentalPayment) => (
+              <>
+                <div style={{ fontWeight: 600 }}>{p.lease?.lease_number || '—'}</div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>
+                  {nomDuBien(p.lease?.property)}
+                </div>
+              </>
+            )
+          },
+          {
+            title: 'Locataire',
+            key: 'locataire',
+            width: 170,
+            render: (_: unknown, p: RentalPayment) => nomDeLaPersonne(p.renterClient?.user)
+          }
+        ]),
     { title: 'Date', key: 'date', render: (_, p) => dateCourte(p.initiated_at) },
     {
       title: 'Montant',
@@ -214,10 +261,26 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   const listeDesPaiements = (
     <>
       <FilterSheet
-        activeCount={list.filters.status ? 1 : 0}
-        onClear={() => list.setFilters({ status: undefined })}
+        activeCount={[list.filters.status, list.filters.renterClientId].filter(Boolean).length}
+        onClear={() => list.setFilters({ status: undefined, renterClientId: undefined })}
         title="Filtrer les paiements"
       >
+        {!leaseId && (
+          <div style={{ minWidth: 240 }}>
+            <label htmlFor="filtre-locataire-paiement">Locataire</label>
+            <Select
+              id="filtre-locataire-paiement"
+              style={{ width: '100%' }}
+              placeholder="Tous les locataires"
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={list.filters.renterClientId || undefined}
+              onChange={valeur => list.setFilters({ renterClientId: valeur })}
+              options={optionsLocataires}
+            />
+          </div>
+        )}
         <div style={{ minWidth: 220 }}>
           <label htmlFor="filtre-statut-paiement">Statut</label>
           <Select
@@ -233,6 +296,10 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       </FilterSheet>
 
       <DataView<RentalPayment>
+        // Neuf colonnes hors onglet de bail — le bail et le locataire s'ajoutent
+        // aux sept d'origine. Elles ne tiennent pas dans les ~690 px utiles au
+        // plancher du desktop.
+        scrollX={leaseId ? undefined : 1320}
         items={paiements}
         total={total}
         page={list.page}

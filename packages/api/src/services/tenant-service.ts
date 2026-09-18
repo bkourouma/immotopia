@@ -96,7 +96,7 @@ export async function createTenant(
   });
 
   if (existingTenant) {
-    throw new Error('Un tenant avec ce slug existe dÃ©jÃ .');
+    throw new Error('Un tenant avec ce slug existe déjà.');
   }
 
   // Check if subdomain already exists (if provided)
@@ -105,7 +105,7 @@ export async function createTenant(
       where: { subdomain: data.subdomain }
     });
     if (existingSubdomain) {
-      throw new Error('Ce sous-domaine est dÃ©jÃ  utilisÃ©.');
+      throw new Error('Ce sous-domaine est déjà utilisé.');
     }
   }
 
@@ -482,7 +482,7 @@ export async function registerTenantClient(data: RegisterTenantClientRequest) {
   });
 
   if (existingClient) {
-    throw new Error('Vous Ãªtes dÃ©jÃ  enregistrÃ© comme client de ce tenant.');
+    throw new Error('Vous êtes déjà enregistré comme client de ce tenant.');
   }
 
   // Create tenant client relationship

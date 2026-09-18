@@ -12,6 +12,7 @@ import tenantRoutes from './routes/tenant-routes';
 import adminRoutes from './routes/admin-routes';
 import roleRoutes from './routes/role-routes';
 import crmRoutes from './routes/crm-routes';
+import dashboardRoutes from './routes/dashboard-routes';
 import contactSearchRoutes from './routes/contact-search-routes';
 import propertyRoutes from './routes/property-routes';
 import syndicRoutes from './routes/syndic-routes';
@@ -144,8 +145,14 @@ app.get('/health', (_req, res) => {
 app.use('/api', whatsappWebhookRoutes);
 app.use('/api/auth', authRoutes);
 // Keep non-tenant endpoints before broad tenant-scoped routers mounted on /api.
+// The syndic/patrimoine/owner-statements routers below call requireTenantAccess
+// at router level, so they run for EVERY /api/* request that reaches them and
+// reject anything without a tenant id in the path. /api/admin is platform-wide,
+// so it has to be mounted before them or the whole back-office answers 400.
+app.use('/api/admin', adminRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/tenants', tenantRoutes);
+app.use('/api/tenants', dashboardRoutes); // Generic tenant dashboard figures
 app.use('/api/tenants', crmRoutes); // CRM routes are tenant-scoped
 app.use('/api/tenants/:tenantId/crm/contacts-search', contactSearchRoutes);
 app.use('/api/tenants', rentalRoutes); // Rental routes are tenant-scoped
@@ -167,7 +174,6 @@ app.use('/api', propertyRoutes); // Property routes (tenant-scoped)
 app.use('/api', syndicRoutes); // Syndic (copropriétés) routes (tenant-scoped)
 app.use('/api', patrimoineRoutes); // Patrimoine routes (tenant-scoped)
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)
-app.use('/api/admin', adminRoutes);
 
 // 404 handler for unmatched routes (before the error handler, which only runs
 // for actual errors).

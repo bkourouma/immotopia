@@ -1,18 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { App, Card, Button, Table, Tag, Space, Modal, Form, Input, InputNumber, Select, Upload } from 'antd';
-import {
-  PlusOutlined,
-  EyeOutlined,
-  DeleteOutlined,
-  UploadOutlined,
-  PictureOutlined,
-  VideoCameraOutlined
-} from '@ant-design/icons';
-import { Property, PropertyType, PropertyStatus, PropertyMediaType } from '../../types/property-types';
+import { App, Card, Button, Modal, Form, Input, InputNumber, Select, Upload } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import { PlusOutlined, DeleteOutlined, UploadOutlined, PictureOutlined, VideoCameraOutlined } from '@ant-design/icons';
+import { Property, PropertyMediaType } from '../../types/property-types';
 import apiClient from '../../utils/api-client';
 import { useNavigate } from 'react-router-dom';
 import { uploadMedia } from '../../services/property-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { DataCard, DataView, MoneyValue, StatusTag } from '../primitives';
 
 interface PropertyApartmentsProps {
   propertyId: string;
@@ -27,6 +22,14 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  /**
+   * Pagination en memoire, et c'est assume : l'endpoint des sous-biens rend
+   * la liste complete d'un immeuble, sans enveloppe de pagination. Decouper
+   * ici evite d'afficher quarante lignes d'un coup ; le jour ou l'API
+   * paginera, seules ces deux lignes changent.
+   */
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [form] = Form.useForm();
   const navigate = useNavigate();
 
@@ -228,72 +231,62 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
     }
   };
 
-  const columns = [
+  /**
+   * Colonnes par priorite (REFONTE_UI_UX.md §5.1).
+   *
+   * L'ancien tableau alignait six colonnes sans largeur ni troncature, dans
+   * une carte deja retrecie par la colonne de droite de la fiche : le titre
+   * d'un appartement se repliait un mot par ligne et la colonne « Actions »
+   * sortait du cadre. Les colonnes qualifient maintenant leur largeur, le
+   * titre se coupe proprement, et surface et pieces disparaissent sous
+   * 1200 px plutot que d'ecraser le reste.
+   */
+  const colonnes: ColumnsType<Property> = [
+    { title: 'Appartement', dataIndex: 'title', key: 'title', ellipsis: true },
     {
-      title: 'Titre',
-      dataIndex: 'title',
-      key: 'title'
-    },
-    {
-      title: 'Surface (m²)',
+      title: 'Surface',
       dataIndex: 'surfaceArea',
       key: 'surfaceArea',
-      render: (value: number) => value || '-'
+      width: 110,
+      align: 'right',
+      responsive: ['xl'],
+      render: (valeur: number) => (valeur ? `${valeur} m²` : '—')
     },
     {
       title: 'Pièces',
       dataIndex: 'rooms',
       key: 'rooms',
-      render: (value: number) => value || '-'
+      width: 90,
+      align: 'right',
+      responsive: ['xl'],
+      render: (valeur: number) => valeur || '—'
     },
     {
       title: 'Prix',
       dataIndex: 'price',
       key: 'price',
-      render: (value: number, record: Property) =>
-        value ? `${new Intl.NumberFormat('fr-FR').format(value)} ${record.currency || 'EUR'}` : '-'
+      width: 170,
+      align: 'right',
+      render: (valeur: number, appartement: Property) => (
+        <MoneyValue value={valeur} currency={appartement.currency || 'FCFA'} />
+      )
     },
     {
       title: 'Statut',
       dataIndex: 'status',
       key: 'status',
-      render: (status: PropertyStatus) => {
-        const statusLabels: Record<string, string> = {
-          DRAFT: 'Brouillon',
-          UNDER_REVIEW: 'En révision',
-          AVAILABLE: 'Disponible',
-          RESERVED: 'Réservé',
-          UNDER_OFFER: 'Sous offre',
-          RENTED: 'Loué',
-          SOLD: 'Vendu',
-          ARCHIVED: 'Archivé'
-        };
-        const colors: Record<string, string> = {
-          DRAFT: 'default',
-          UNDER_REVIEW: 'warning',
-          AVAILABLE: 'success',
-          RESERVED: 'processing',
-          UNDER_OFFER: 'processing',
-          RENTED: 'purple',
-          SOLD: 'error',
-          ARCHIVED: 'default'
-        };
-        return <Tag color={colors[status] || 'default'}>{statusLabels[status] || status}</Tag>;
-      }
+      width: 130,
+      render: (statut: string) => <StatusTag status={statut} />
     },
     {
       title: 'Actions',
       key: 'actions',
-      render: (_: any, record: Property) => (
-        <Space>
-          <Button
-            type="link"
-            icon={<EyeOutlined />}
-            onClick={() => navigate(`/tenant/${tenantId}/properties/${record.id}`)}
-          >
-            Voir
-          </Button>
-        </Space>
+      width: 100,
+      align: 'right',
+      render: (_: unknown, appartement: Property) => (
+        <Button type="link" onClick={() => navigate(`/tenant/${tenantId}/properties/${appartement.id}`)}>
+          Voir
+        </Button>
       )
     }
   ];
@@ -302,16 +295,67 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
     return null;
   }
 
+  const pageCourante = apartments.slice((page - 1) * pageSize, page * pageSize);
+
   return (
-    <Card
-      title="Appartements"
-      extra={
+    <Card>
+      {/* En-tete dans le corps et non dans `title`/`extra` : la barre d'en-tete
+          d'Ant Design ne se replie pas, et « Ajouter un appartement » passait
+          par-dessus le titre sur un ecran etroit. */}
+      <header
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 'var(--space-2)',
+          marginBottom: 'var(--space-4)'
+        }}
+      >
+        <strong style={{ fontSize: 'var(--font-size-h3)' }}>
+          Appartements{apartments.length > 0 && ` (${apartments.length})`}
+        </strong>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
           Ajouter un appartement
         </Button>
-      }
-    >
-      <Table dataSource={apartments} columns={columns} loading={loading} rowKey="id" pagination={{ pageSize: 10 }} />
+      </header>
+
+      {/* Tableau au-dessus de 992 px, cartes en dessous (§5.1). Le tableau ne
+          defile plus horizontalement : sous ce palier, ce sont des cartes. */}
+      <DataView
+        aria-label="Appartements de l'immeuble"
+        items={pageCourante}
+        total={apartments.length}
+        page={page}
+        pageSize={pageSize}
+        onPageChange={(pageSuivante, taille) => {
+          setPage(pageSuivante);
+          setPageSize(taille);
+        }}
+        loading={loading}
+        rowKey={appartement => appartement.id}
+        columns={colonnes}
+        emptyDescription="Cet immeuble ne contient encore aucun appartement."
+        emptyAction={{ label: 'Ajouter un appartement', onClick: () => setModalVisible(true) }}
+        renderCard={appartement => (
+          <DataCard
+            title={appartement.title}
+            subtitle={[
+              appartement.surfaceArea ? `${appartement.surfaceArea} m²` : null,
+              appartement.rooms ? `${appartement.rooms} pièce${appartement.rooms > 1 ? 's' : ''}` : null
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+            status={<StatusTag status={appartement.status} />}
+            highlight={
+              appartement.price ? (
+                <MoneyValue value={appartement.price} currency={appartement.currency || 'FCFA'} />
+              ) : undefined
+            }
+            onOpen={() => navigate(`/tenant/${tenantId}/properties/${appartement.id}`)}
+          />
+        )}
+      />
 
       <Modal
         title="Créer des appartements"

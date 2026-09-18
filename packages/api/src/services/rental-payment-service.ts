@@ -421,6 +421,60 @@ export async function allocatePayment(
 }
 
 /**
+ * Recalcule le montant paye et le statut d'echeances dont les allocations ont
+ * change. Les allocations font foi : `amount_paid` en est toujours la somme.
+ * Le statut suit la meme regle que `updateInstallmentStatus` du service des
+ * echeances (solde, puis date d'echeance).
+ */
+async function reverseInstallmentAllocations(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  installmentIds: string[]
+): Promise<void> {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  for (const installmentId of installmentIds) {
+    const installment = await tx.rentalInstallment.findUnique({ where: { id: installmentId } });
+    if (!installment) continue;
+
+    const remaining = await tx.rentalPaymentAllocation.findMany({
+      where: { installment_id: installmentId },
+      select: { amount: true }
+    });
+    const totalPaid = remaining.reduce((sum, alloc) => sum + Number(alloc.amount), 0);
+
+    const totalDue =
+      Number(installment.amount_rent) +
+      Number(installment.amount_service) +
+      Number(installment.amount_other_fees) +
+      Number(installment.penalty_amount);
+
+    const dueDate = new Date(installment.due_date);
+    dueDate.setHours(0, 0, 0, 0);
+
+    let status: RentalInstallmentStatus;
+    if (totalDue > 0 && totalPaid >= totalDue) {
+      status = RentalInstallmentStatus.PAID;
+    } else if (totalPaid > 0) {
+      status = RentalInstallmentStatus.PARTIAL;
+    } else if (dueDate < today) {
+      status = RentalInstallmentStatus.OVERDUE;
+    } else {
+      status = RentalInstallmentStatus.DUE;
+    }
+
+    await tx.rentalInstallment.update({
+      where: { id: installmentId },
+      data: {
+        amount_paid: new Decimal(totalPaid),
+        status,
+        paid_at: status === RentalInstallmentStatus.PAID ? installment.paid_at : null
+      }
+    });
+  }
+}
+
+/**
  * Update payment status
  * @param tenantId - Tenant ID
  * @param paymentId - Payment ID
@@ -457,16 +511,37 @@ export async function updatePaymentStatus(
       updateData.canceled_at = new Date();
     }
 
-    const updatedPayment = await prisma.rentalPayment.update({
-      where: { id: paymentId },
-      data: updateData,
-      include: {
-        allocations: {
-          include: {
-            installment: true
-          }
+    // Un paiement annule ou echoue ne doit plus solder quoi que ce soit : sans
+    // ce retrait, l'echeance restait PAID et le loyer continuait d'apparaitre
+    // encaisse (reversement proprietaire et quittance compris).
+    const reversesAllocations = status === RentalPaymentStatus.CANCELED || status === RentalPaymentStatus.FAILED;
+
+    const updatedPayment = await prisma.$transaction(async tx => {
+      if (reversesAllocations) {
+        const allocations = await tx.rentalPaymentAllocation.findMany({
+          where: { payment_id: paymentId },
+          select: { installment_id: true }
+        });
+        const installmentIds = [...new Set(allocations.map(a => a.installment_id))];
+
+        if (installmentIds.length > 0) {
+          await tx.rentalPaymentAllocation.deleteMany({ where: { payment_id: paymentId } });
+          await reverseInstallmentAllocations(tx, installmentIds);
+          logger.info(`Payment ${paymentId} ${status}: reversed ${installmentIds.length} installment(s)`);
         }
       }
+
+      return tx.rentalPayment.update({
+        where: { id: paymentId },
+        data: updateData,
+        include: {
+          allocations: {
+            include: {
+              installment: true
+            }
+          }
+        }
+      });
     });
 
     logger.info(`Payment ${paymentId} status updated to ${status}`);
@@ -578,7 +653,13 @@ export async function listPayments(
               property: true
             }
           },
-          renterClient: true
+          // `renterClient: true` ne ramenait que la ligne du client, sans le
+          // compte : la liste avait un identifiant mais aucun nom a afficher.
+          renterClient: {
+            include: {
+              user: { select: { fullName: true, email: true } }
+            }
+          }
         },
         orderBy: { created_at: 'desc' },
         skip,

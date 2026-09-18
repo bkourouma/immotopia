@@ -10,6 +10,52 @@ function getFrontendBaseUrl(): string {
   return (process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
 }
 
+/** Libelles francais des roles de scope TENANT, pour l'email d'invitation. */
+const TENANT_ROLE_LABELS_FR: Record<string, string> = {
+  TENANT_ADMIN: "Administrateur de l'agence",
+  TENANT_MANAGER: 'Gestionnaire',
+  TENANT_AGENT: 'Agent immobilier',
+  TENANT_ACCOUNTANT: 'Comptable'
+};
+
+/**
+ * Verifie que les roles demandes existent et sont bien de scope TENANT.
+ * Sans ce controle, l'endpoint d'invitation permettrait d'attribuer un role
+ * PLATFORM a un simple collaborateur.
+ */
+async function assertTenantRoles(roleIds: string[]): Promise<void> {
+  if (!roleIds || roleIds.length === 0) return;
+  const roles = await prisma.role.findMany({
+    where: { id: { in: roleIds } },
+    select: { id: true, scope: true }
+  });
+  if (roles.length !== roleIds.length) {
+    throw new Error('Un ou plusieurs roles sont introuvables.');
+  }
+  if (roles.some(role => role.scope !== 'TENANT')) {
+    throw new Error("Seuls les roles d'agence peuvent etre attribues par invitation.");
+  }
+}
+
+/**
+ * Resout les libelles francais des roles attribues a une invitation.
+ * Les noms stockes en base sont en anglais : on les traduit quand la cle est
+ * connue, sinon on retombe sur le nom de la base.
+ */
+async function resolveRoleLabels(roleIds: string[]): Promise<string[]> {
+  if (!roleIds || roleIds.length === 0) return [];
+  try {
+    const roles = await prisma.role.findMany({
+      where: { id: { in: roleIds } },
+      select: { key: true, name: true }
+    });
+    return roles.map(role => TENANT_ROLE_LABELS_FR[role.key] || role.name);
+  } catch (error) {
+    logger.warn('Failed to resolve role labels for invitation email', { error });
+    return [];
+  }
+}
+
 async function sendInvitationWhatsapp(params: {
   tenantId: string;
   email: string;
@@ -82,7 +128,7 @@ function generateInvitationToken(): { token: string; hash: string } {
 /**
  * Invite a collaborator to a tenant
  * @param data - Invitation data
- * @returns Invitation with token (token only returned for new invitations)
+ * @returns L'invitation creee (sans le token, qui reste interne au serveur)
  */
 export async function inviteCollaborator(data: InviteCollaboratorRequest) {
   // Verify tenant exists and is active
@@ -132,6 +178,8 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
     }
   }
 
+  await assertTenantRoles(data.roleIds);
+
   // Generate token
   const { token, hash } = generateInvitationToken();
   const expiresAt = new Date();
@@ -145,17 +193,20 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
       tokenHash: hash,
       expiresAt,
       status: InvitationStatus.PENDING,
+      roleIds: data.roleIds ?? [],
       invitedBy: data.invitedByUserId
     }
   });
 
   // Send invitation email (don't fail if email fails)
+  const roleLabels = await resolveRoleLabels(data.roleIds);
   try {
     await emailService.sendInviteEmail(
       data.email,
       token, // Send plain token, not hash
       tenant.name,
-      'Collaborator' // Role will be assigned on acceptance
+      roleLabels,
+      expiresAt
     );
     logger.info('Invitation email sent', {
       invitationId: invitation.id,
@@ -191,15 +242,15 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
     }
   });
 
-  // Return invitation with token (for testing/API response)
+  // Le token en clair reste interne au serveur (email + WhatsApp) : il ne doit
+  // jamais etre expose dans la reponse HTTP, seul son hash est persiste.
   return {
     invitation: {
       id: invitation.id,
       email: invitation.email,
       expiresAt: invitation.expiresAt,
       status: invitation.status
-    },
-    token // Only returned for new invitations
+    }
   };
 }
 
@@ -342,8 +393,31 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
     }
   });
 
-  // TODO: Assign default roles (TENANT_AGENT or based on invitation metadata)
-  // For now, roles will be assigned separately by tenant admin
+  // Attribution des roles choisis au moment de l'invitation. Les permissions
+  // sont calculees uniquement a partir de user_roles : sans cette etape, le
+  // collaborateur arrive sans aucun droit et toutes les routes repondent 403.
+  if (invitation.roleIds.length > 0) {
+    await prisma.userRole.createMany({
+      data: invitation.roleIds.map(roleId => ({
+        userId: user.id,
+        roleId,
+        tenantId: invitation.tenantId
+      })),
+      skipDuplicates: true
+    });
+    logger.info('Invitation roles assigned', {
+      invitationId: invitation.id,
+      userId: user.id,
+      tenantId: invitation.tenantId,
+      roleIds: invitation.roleIds
+    });
+  } else {
+    logger.warn('Invitation accepted without any role', {
+      invitationId: invitation.id,
+      userId: user.id,
+      tenantId: invitation.tenantId
+    });
+  }
 
   logger.info('Invitation accepted', {
     invitationId: invitation.id,
@@ -379,7 +453,7 @@ export async function acceptInvitation(data: AcceptInvitationRequest) {
  * Resend invitation email
  * @param invitationId - Invitation ID
  * @param actorUserId - User resending (for audit)
- * @returns New token (if invitation was regenerated)
+ * @returns La nouvelle date d'expiration (le token reste interne au serveur)
  */
 export async function resendInvitation(invitationId: string, actorUserId: string) {
   const invitation = await prisma.invitation.findUnique({
@@ -414,7 +488,8 @@ export async function resendInvitation(invitationId: string, actorUserId: string
 
   // Send email
   try {
-    await emailService.sendInviteEmail(invitation.email, token, invitation.tenant.name, 'Collaborator');
+    const roleLabels = await resolveRoleLabels(invitation.roleIds);
+    await emailService.sendInviteEmail(invitation.email, token, invitation.tenant.name, roleLabels, expiresAt);
     logger.info('Invitation email resent', {
       invitationId,
       email: invitation.email,
@@ -437,7 +512,7 @@ export async function resendInvitation(invitationId: string, actorUserId: string
     token
   });
 
-  return { token, expiresAt };
+  return { expiresAt };
 }
 
 /**

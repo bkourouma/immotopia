@@ -14,13 +14,19 @@ interface PaymentDeclarationModalProps {
   onCancel: () => void;
   onSuccess: () => void;
   installmentId?: string;
+  /** Solde restant de l'echeance visee, pre-rempli comme montant propose. */
+  defaultAmount?: number;
+  /** Periode de l'echeance visee, rappelee dans le titre (ex. « 09/2026 »). */
+  installmentLabel?: string;
 }
 
 export default function PaymentDeclarationModal({
   open,
   onCancel,
   onSuccess,
-  installmentId
+  installmentId,
+  defaultAmount,
+  installmentLabel
 }: PaymentDeclarationModalProps) {
   const { message } = App.useApp();
 
@@ -98,7 +104,9 @@ export default function PaymentDeclarationModal({
       title={
         <Space>
           <DollarOutlined />
-          <span>Déclarer un paiement</span>
+          <span>
+            {installmentLabel ? `Déclarer un paiement — échéance ${installmentLabel}` : 'Déclarer un paiement'}
+          </span>
         </Space>
       }
       open={open}
@@ -113,7 +121,10 @@ export default function PaymentDeclarationModal({
         onFinish={handleSubmit}
         initialValues={{
           paymentDate: dayjs(),
-          paymentMethod: 'CASH'
+          paymentMethod: 'CASH',
+          // Propose le solde restant quand la declaration part d'une echeance
+          // precise ; reste modifiable pour un paiement partiel.
+          ...(defaultAmount && defaultAmount > 0 ? { amount: defaultAmount } : {})
         }}
       >
         <Form.Item

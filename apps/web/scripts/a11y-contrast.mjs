@@ -60,7 +60,15 @@ const PAIRS = [
   ['--text-primary', '--surface-sunken', 'text'],
   ['--text-secondary', '--surface-sunken', 'text'],
 
-  // Sidebar
+  // Navigation : sidebar, rail et drawer, sur --surface-nav
+  ['--text-primary', '--surface-nav', 'text'],
+  ['--text-secondary', '--surface-nav', 'text'],
+  ['--text-tertiary', '--surface-nav', 'text'],
+  // Filet qui separe la navigation de la page : decoratif, ni texte ni
+  // delimitation de controle — verifie pour memoire, pas bloquant.
+  ['--border-nav', '--surface-nav', 'info'],
+
+  // Fond sombre : pastilles d'evenement du calendrier
   ['--text-on-inverse', '--surface-inverse', 'text'],
   ['--text-on-inverse-muted', '--surface-inverse', 'text'],
 

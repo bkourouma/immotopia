@@ -10,9 +10,7 @@ export async function listRolesHandler(req: Request, res: Response): Promise<voi
   try {
     const rawScope = Array.isArray(req.query.scope) ? req.query.scope[0] : req.query.scope;
     const scope =
-      typeof rawScope === 'string' && rawScope.trim().length > 0
-        ? rawScope.trim().toUpperCase()
-        : undefined;
+      typeof rawScope === 'string' && rawScope.trim().length > 0 ? rawScope.trim().toUpperCase() : undefined;
 
     if (scope && scope !== RoleScope.PLATFORM && scope !== RoleScope.TENANT) {
       res.status(400).json({
@@ -54,9 +52,7 @@ export async function listRolesHandler(req: Request, res: Response): Promise<voi
         orderBy: { name: 'asc' }
       });
 
-      roles = scope
-        ? allRoles.filter((r) => String(r.scope).toUpperCase() === scope)
-        : allRoles;
+      roles = scope ? allRoles.filter(r => String(r.scope).toUpperCase() === scope) : allRoles;
 
       console.warn('[roles] filtered query failed, fallback applied:', filteredQueryError);
     }
@@ -264,6 +260,116 @@ export async function updateRolePermissionsHandler(req: Request, res: Response):
       success: true,
       data: formattedRole,
       message: 'Permissions mises à jour avec succès.'
+    });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
+    res.status(400).json({ success: false, message: errorMessage });
+  }
+}
+
+/**
+ * Accès aux menus par rôle
+ * GET /api/roles/menu-access
+ */
+export async function listMenuAccessHandler(_req: Request, res: Response): Promise<void> {
+  try {
+    const { getAllMenuAccess } = await import('../services/role-menu-service');
+    const data = await getAllMenuAccess();
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
+    res.status(400).json({ success: false, message: errorMessage });
+  }
+}
+
+/**
+ * Menus coupés pour l'utilisateur courant
+ * GET /api/roles/menu-access/me
+ *
+ * L'interface n'a pas besoin de connaître les rôles de la personne connectée
+ * pour masquer une entrée : elle a besoin de savoir quelles entrées masquer.
+ * On ne renvoie donc que cela.
+ */
+export async function getMyMenuAccessHandler(req: Request, res: Response): Promise<void> {
+  try {
+    if (!req.user?.userId) {
+      res.status(401).json({ success: false, message: 'Authentification requise.' });
+      return;
+    }
+
+    const rawTenantId = Array.isArray(req.query.tenantId) ? req.query.tenantId[0] : req.query.tenantId;
+    const tenantId =
+      typeof rawTenantId === 'string' && rawTenantId.trim().length > 0
+        ? rawTenantId.trim()
+        : req.tenantContext?.tenantId;
+
+    const { getDisabledMenusForUser } = await import('../services/role-menu-service');
+    const disabledMenuKeys = await getDisabledMenusForUser(req.user.userId, tenantId);
+
+    res.status(200).json({ success: true, data: { disabledMenuKeys } });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
+    res.status(400).json({ success: false, message: errorMessage });
+  }
+}
+
+/**
+ * Remplace les accès aux menus d'un rôle
+ * PUT /api/roles/menu-access/:roleKey
+ *
+ * `roleKey` et non `id` : deux des personas de l'interface — propriétaire et
+ * locataire — n'ont pas de ligne dans `roles`, donc pas d'identifiant. Les
+ * pseudo-clés `PORTAL_OWNER` / `PORTAL_RENTER` les désignent.
+ */
+export async function updateMenuAccessHandler(req: Request, res: Response): Promise<void> {
+  try {
+    const { roleKey } = req.params;
+    const { menus } = req.body;
+
+    if (!roleKey || roleKey.trim().length === 0) {
+      res.status(400).json({ success: false, message: 'Clé de rôle manquante.' });
+      return;
+    }
+
+    if (!menus || typeof menus !== 'object' || Array.isArray(menus)) {
+      res.status(400).json({
+        success: false,
+        message: 'menus doit être un objet { clé de menu: booléen }.'
+      });
+      return;
+    }
+
+    const invalid = Object.entries(menus).find(
+      ([menuKey, enabled]) => typeof menuKey !== 'string' || typeof enabled !== 'boolean'
+    );
+    if (invalid) {
+      res.status(400).json({
+        success: false,
+        message: `Entrée de menu invalide: ${invalid[0]}. Un booléen est attendu.`
+      });
+      return;
+    }
+
+    const { PORTAL_OWNER_ROLE_KEY, PORTAL_RENTER_ROLE_KEY, replaceMenuAccessForRole } =
+      await import('../services/role-menu-service');
+
+    // Un rôle inexistant n'est accepté que s'il s'agit d'un pseudo-rôle connu :
+    // sinon une faute de frappe créerait silencieusement des lignes orphelines.
+    const isPortalRole = roleKey === PORTAL_OWNER_ROLE_KEY || roleKey === PORTAL_RENTER_ROLE_KEY;
+    if (!isPortalRole) {
+      const role = await prisma.role.findUnique({ where: { key: roleKey }, select: { id: true } });
+      if (!role) {
+        res.status(404).json({ success: false, message: `Rôle inconnu: ${roleKey}.` });
+        return;
+      }
+    }
+
+    const data = await replaceMenuAccessForRole(roleKey, menus as Record<string, boolean>);
+
+    res.status(200).json({
+      success: true,
+      data,
+      message: 'Menus mis à jour avec succès.'
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';

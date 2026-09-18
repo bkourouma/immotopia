@@ -134,10 +134,9 @@ export function buildAntdTheme(): ThemeConfig {
         // silence.
         colorTextDisabled: token('--text-tertiary')
       }),
-      Menu: { darkItemBg: 'transparent' },
       Layout: defined({
         bodyBg: token('--surface-page'),
-        siderBg: token('--surface-inverse'),
+        siderBg: token('--surface-nav'),
         headerBg: token('--surface-card')
       })
     }

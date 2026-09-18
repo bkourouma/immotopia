@@ -7,9 +7,12 @@ import {
   PENALITES,
   PAIEMENTS,
   DOCUMENTS,
+  MODELES_DOCUMENTS,
   EVENEMENTS,
   TRAVAUX,
-  APERCU_PATRIMOINE
+  APERCU_PATRIMOINE,
+  TABLEAU_DE_BORD,
+  APPARTEMENTS
 } from './fixtures';
 
 /**
@@ -26,7 +29,55 @@ import {
  * s'y verrait tout de suite, puisque la fausse API, elle, filtre pour de bon.
  */
 
-export type Scenario = 'nominal' | 'vide' | 'erreur' | 'lent';
+export type Scenario = 'nominal' | 'vide' | 'erreur' | 'lent' | 'partiel';
+
+/**
+ * Tableau de bord d'une agence qui vient d'ouvrir : tout est à zéro, mais rien
+ * n'est interdit. C'est l'état le plus facile à rater — un écran qui n'a que
+ * des zéros ne doit ni ressembler à une panne, ni à une permission manquante.
+ */
+function tableauVide() {
+  return {
+    ...TABLEAU_DE_BORD,
+    properties: { total: 0, published: 0, occupancyRate: null, byStatus: [], byType: [] },
+    clients: { total: 0, byStatus: [] },
+    monthlyRevenue: { ...TABLEAU_DE_BORD.monthlyRevenue, amount: 0, previousAmount: 0, expected: 0 },
+    transactions: { total: 0, deals: 0, leases: 0 },
+    revenueSeries: TABLEAU_DE_BORD.revenueSeries.map(point => ({ ...point, encaisse: 0, attendu: 0 })),
+    rental: {
+      activeLeases: 0,
+      leasesByStatus: [],
+      installmentsByStatus: [],
+      paymentsByMethod: [],
+      overdue: { count: 0, amount: 0 },
+      dueThisWeek: { count: 0, amount: 0 },
+      pendingDeclarations: 0
+    },
+    pipeline: [],
+    maintenance: { open: 0, byStatus: [], byPriority: [] },
+    syndic: { syndicates: 0, lots: 0, chargeCallsByStatus: [], recoveryRate: null },
+    patrimoine: { workProgramsByStatus: [], plannedCost: 0 },
+    workQueue: [],
+    recentActivity: []
+  };
+}
+
+/**
+ * Collaborateur sans accès au CRM, à la maintenance ni à la copropriété : ces
+ * sections valent `null`, et l'écran doit alors écrire « — » et retirer les
+ * cartes correspondantes — jamais afficher zéro.
+ */
+function tableauPartiel() {
+  return {
+    ...TABLEAU_DE_BORD,
+    clients: null,
+    pipeline: null,
+    maintenance: null,
+    syndic: null,
+    patrimoine: null,
+    transactions: { total: 25, deals: null, leases: 25 }
+  };
+}
 
 function ok<T>(config: AxiosRequestConfig, data: T): AxiosResponse {
   return { data: data as never, status: 200, statusText: 'OK', headers: {}, config: config as never };
@@ -115,8 +166,34 @@ export function installerFausseApi(scenario: Scenario) {
       throw erreur;
     }
 
+    // Tableau de bord d'accueil : un seul appel, tout l'écran (§10.1).
+    if (/\/tenants\/[^/]+\/dashboard$/.test(url.pathname)) {
+      const data = scenario === 'vide' ? tableauVide() : scenario === 'partiel' ? tableauPartiel() : TABLEAU_DE_BORD;
+      return ok(config, { success: true, data });
+    }
+
     if (/\/tenants\/[^/]+\/properties$/.test(url.pathname)) {
       return ok(config, listeBiens(url, scenario));
+    }
+
+    // Appartements d'un immeuble : la fiche du bien conteneur les liste.
+    if (/\/properties\/[^/]+\/sub-properties$/.test(url.pathname)) {
+      return ok(config, { success: true, data: scenario === 'vide' ? [] : APPARTEMENTS });
+    }
+
+    // Medias d'un bien : la fiche les charge apres le bien lui-meme. L'ordre
+    // des tests compte, ce chemin etant plus long que celui de la fiche.
+    if (/\/tenants\/[^/]+\/properties\/[^/]+\/media$/.test(url.pathname)) {
+      return ok(config, { success: true, data: [] });
+    }
+
+    // Fiche d'un bien. L'identifiant de l'URL fait foi quand il existe dans le
+    // jeu de donnees ; sinon le premier bien sert de doublure, ce qui rend la
+    // scene atteignable sans connaitre les identifiants simules.
+    const fiche = /\/tenants\/[^/]+\/properties\/([^/]+)$/.exec(url.pathname);
+    if (fiche) {
+      const bien = BIENS.find(candidat => candidat.id === fiche[1]) ?? BIENS[0];
+      return ok(config, { success: true, data: bien });
     }
 
     if (/\/rental\/(leases\/[^/]+\/)?installments$/.test(url.pathname)) {
@@ -139,6 +216,15 @@ export function installerFausseApi(scenario: Scenario) {
         data: filtres,
         pagination: { page: 1, limit: 50, total: filtres.length, totalPages: 1 }
       });
+    }
+
+    // Modeles de documents : l endpoint ne pagine pas, il rend la collection
+    // entiere, filtree par `docType`. La fausse API reproduit ce contrat — un
+    // ecran qui attendrait une enveloppe `pagination` se casserait ici.
+    if (/\/tenants\/[^/]+\/documents\/templates$/.test(url.pathname)) {
+      const liste = scenario === 'vide' ? [] : MODELES_DOCUMENTS;
+      const type = url.searchParams.get('docType');
+      return ok(config, { success: true, data: type ? liste.filter(m => m.doc_type === type) : liste });
     }
 
     if (/\/rental\/documents$/.test(url.pathname)) {

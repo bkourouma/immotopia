@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="ImmoTopia - Plateforme immobilière" />
+    <!-- Icones derivees du logotype (apps/web/scripts/make-favicon.py).
+         Sans ces balises, le navigateur demande /favicon.ico et le repli SPA
+         `try_files ... /index.html` lui renvoyait index.html en text/html. -->
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <!-- Inter variable auto-hebergee (§8.3). Seul le jeu latin est precharge :
          latin-ext n'est telecharge que si un caractere de sa plage apparait. -->
     <link

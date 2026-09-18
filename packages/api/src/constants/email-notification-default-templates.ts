@@ -1,6 +1,6 @@
 ﻿/**
- * Templates par dÃ©faut (sujet + corps HTML) pour chaque notification email.
- * UtilisÃ©s pour afficher le modÃ¨le d'origine dans l'interface d'Ã©dition.
+ * Templates par défaut (sujet + corps HTML) pour chaque notification email.
+ * Utilisés pour afficher le modèle d'origine dans l'interface d'édition.
  * Les variables sont au format {{nom}} (ex: {{ticketTitle}}, {{agencyName}}).
  */
 import type { EmailNotificationKey } from './email-notification-keys';
@@ -15,23 +15,23 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
     subject: 'Nouveau ticket de maintenance - {{ticketTitle}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#fa8c16;">Nouveau ticket de maintenance</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{agencyUserName}},</p>
-<p style="margin:0 0 20px 0;"><strong>{{renterName}}</strong> a crÃ©Ã© une nouvelle demande de maintenance pour <strong>{{agencyName}}</strong>.</p>
+<p style="margin:0 0 20px 0;"><strong>{{renterName}}</strong> a créé une nouvelle demande de maintenance pour <strong>{{agencyName}}</strong>.</p>
 <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
   <tr><td style="padding:8px 0;"><strong>Sujet :</strong> {{ticketTitle}}</td></tr>
-  <tr><td style="padding:8px 0;"><strong>PropriÃ©tÃ© :</strong> {{propertyReference}}</td></tr>
-  <tr><td style="padding:8px 0;"><strong>Date de crÃ©ation :</strong> {{ticketCreatedAt}}</td></tr>
+  <tr><td style="padding:8px 0;"><strong>Propriété :</strong> {{propertyReference}}</td></tr>
+  <tr><td style="padding:8px 0;"><strong>Date de création :</strong> {{ticketCreatedAt}}</td></tr>
 </table>
 <p style="margin:20px 0 0 0; padding:14px; background:#fff7e6; border-radius:8px; color:#ad6800; font-size:14px;"><a href="{{validationUrl}}" style="color:#fa8c16; font-weight:600; text-decoration:underline;">Connectez-vous pour consulter le ticket</a></p>`
   },
   MAINTENANCE_TICKET_CREATED_TENANT: {
-    subject: 'Votre ticket a bien Ã©tÃ© enregistrÃ© - {{ticketTitle}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Ticket de maintenance enregistrÃ©</h1>
+    subject: 'Votre ticket a bien été enregistré - {{ticketTitle}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Ticket de maintenance enregistré</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{tenantName}},</p>
-<p style="margin:0 0 20px 0;">Votre demande de maintenance a bien Ã©tÃ© enregistrÃ©e par <strong>{{agencyName}}</strong>.</p>
+<p style="margin:0 0 20px 0;">Votre demande de maintenance a bien été enregistrée par <strong>{{agencyName}}</strong>.</p>
 <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
   <tr><td style="padding:8px 0;"><strong>Sujet :</strong> {{ticketTitle}}</td></tr>
-  <tr><td style="padding:8px 0;"><strong>PropriÃ©tÃ© :</strong> {{propertyReference}}</td></tr>
-  <tr><td style="padding:8px 0;"><strong>Date de crÃ©ation :</strong> {{ticketCreatedAt}}</td></tr>
+  <tr><td style="padding:8px 0;"><strong>Propriété :</strong> {{propertyReference}}</td></tr>
+  <tr><td style="padding:8px 0;"><strong>Date de création :</strong> {{ticketCreatedAt}}</td></tr>
 </table>
 <p style="margin:20px 0 0 0; padding:14px; background:#e6f7ff; border-radius:8px; color:#0050b3; font-size:14px;"><a href="{{portalUrl}}" style="color:#1890ff; font-weight:600; text-decoration:underline;">Suivre votre ticket dans le portail locataire</a></p>`
   },
@@ -39,116 +39,116 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
     subject: 'Nouveau ticket sur votre bien - {{ticketTitle}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Ticket de maintenance sur votre bien</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
-<p style="margin:0 0 20px 0;">Un ticket de maintenance a Ã©tÃ© crÃ©Ã© par le locataire <strong>{{renterName}}</strong> pour votre bien gÃ©rÃ© par <strong>{{agencyName}}</strong>.</p>
+<p style="margin:0 0 20px 0;">Un ticket de maintenance a été créé par le locataire <strong>{{renterName}}</strong> pour votre bien géré par <strong>{{agencyName}}</strong>.</p>
 <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
   <tr><td style="padding:8px 0;"><strong>Sujet :</strong> {{ticketTitle}}</td></tr>
-  <tr><td style="padding:8px 0;"><strong>PropriÃ©tÃ© :</strong> {{propertyReference}}</td></tr>
-  <tr><td style="padding:8px 0;"><strong>Date de crÃ©ation :</strong> {{ticketCreatedAt}}</td></tr>
+  <tr><td style="padding:8px 0;"><strong>Propriété :</strong> {{propertyReference}}</td></tr>
+  <tr><td style="padding:8px 0;"><strong>Date de création :</strong> {{ticketCreatedAt}}</td></tr>
 </table>
-<p style="margin:20px 0 0 0; font-size:14px; color:#555;">Votre agence vous tiendra informÃ© de l'avancement.</p>`
+<p style="margin:20px 0 0 0; font-size:14px; color:#555;">Votre agence vous tiendra informé de l'avancement.</p>`
   },
   MAINTENANCE_TICKET_STATUS_CHANGED_TENANT: {
-    subject: 'Mise Ã  jour de votre ticket - {{ticketTitle}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Mise Ã  jour de votre ticket de maintenance</h1>
+    subject: 'Mise à jour de votre ticket - {{ticketTitle}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Mise à jour de votre ticket de maintenance</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{tenantName}},</p>
-<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> a mis Ã  jour le statut de votre demande.</p>
+<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> a mis à jour le statut de votre demande.</p>
 <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
   <tr><td style="padding:8px 0;"><strong>Sujet :</strong> {{ticketTitle}}</td></tr>
   <tr><td style="padding:8px 0;"><strong>Nouveau statut :</strong> {{newStatusLabel}}</td></tr>
-  <tr><td style="padding:8px 0;"><strong>Date de crÃ©ation :</strong> {{ticketCreatedAt}}</td></tr>
-  <tr><td style="padding:8px 0;"><strong>Date de mise Ã  jour :</strong> {{ticketUpdatedAt}}</td></tr>
+  <tr><td style="padding:8px 0;"><strong>Date de création :</strong> {{ticketCreatedAt}}</td></tr>
+  <tr><td style="padding:8px 0;"><strong>Date de mise à jour :</strong> {{ticketUpdatedAt}}</td></tr>
 </table>
 <p style="margin:20px 0 0 0; padding:14px; background:#e6f7ff; border-radius:8px; color:#0050b3; font-size:14px;"><a href="{{portalUrl}}" style="color:#1890ff; font-weight:600; text-decoration:underline;">Consultez votre ticket dans le portail locataire</a></p>`
   },
   MAINTENANCE_TICKET_STATUS_CHANGED_OWNER: {
-    subject: 'Mise Ã  jour du ticket de maintenance - {{ticketTitle}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Mise Ã  jour du ticket de maintenance</h1>
+    subject: 'Mise à jour du ticket de maintenance - {{ticketTitle}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Mise à jour du ticket de maintenance</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
-<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> a mis Ã  jour le statut du ticket de maintenance concernant votre bien.</p>
+<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> a mis à jour le statut du ticket de maintenance concernant votre bien.</p>
 <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
   <tr><td style="padding:8px 0;"><strong>Sujet :</strong> {{ticketTitle}}</td></tr>
   <tr><td style="padding:8px 0;"><strong>Ancien statut :</strong> {{oldStatusLabel}}</td></tr>
   <tr><td style="padding:8px 0;"><strong>Nouveau statut :</strong> {{newStatusLabel}}</td></tr>
-  <tr><td style="padding:8px 0;"><strong>Date de crÃ©ation :</strong> {{ticketCreatedAt}}</td></tr>
-  <tr><td style="padding:8px 0;"><strong>Date de mise Ã  jour :</strong> {{ticketUpdatedAt}}</td></tr>
+  <tr><td style="padding:8px 0;"><strong>Date de création :</strong> {{ticketCreatedAt}}</td></tr>
+  <tr><td style="padding:8px 0;"><strong>Date de mise à jour :</strong> {{ticketUpdatedAt}}</td></tr>
 </table>
-<p style="margin:20px 0 0 0; font-size:14px; color:#555;">Contactez votre agence pour plus de dÃ©tails.</p>`
+<p style="margin:20px 0 0 0; font-size:14px; color:#555;">Contactez votre agence pour plus de détails.</p>`
   },
   PAYMENT_DECLARATION_AGENCY: {
-    subject: 'Nouvelle dÃ©claration de paiement - Bail {{leaseNumber}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1a1a2e;">Nouvelle dÃ©claration de paiement</h1>
+    subject: 'Nouvelle déclaration de paiement - Bail {{leaseNumber}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1a1a2e;">Nouvelle déclaration de paiement</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{agencyUserName}},</p>
-<p style="margin:0 0 20px 0;">Un locataire a dÃ©clarÃ© un paiement en attente de validation pour <strong>{{agencyName}}</strong>.</p>
+<p style="margin:0 0 20px 0;">Un locataire a déclaré un paiement en attente de validation pour <strong>{{agencyName}}</strong>.</p>
 <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
-  <tr><td style="padding:8px 0;"><strong>DÃ©clarant :</strong> {{declarerName}}</td></tr>
+  <tr><td style="padding:8px 0;"><strong>Déclarant :</strong> {{declarerName}}</td></tr>
   <tr><td style="padding:8px 0;"><strong>Bail :</strong> {{leaseLabel}}</td></tr>
 </table>
-<p style="margin:20px 0 0 0; padding:14px; background:#eff6ff; border-radius:8px; color:#1e40af; font-size:14px;">Connectez-vous Ã  {{agencyName}} pour valider ou rejeter cette dÃ©claration : <a href="{{validationUrl}}" style="color:#1e40af; font-weight:600;">{{validationUrl}}</a></p>`
+<p style="margin:20px 0 0 0; padding:14px; background:#eff6ff; border-radius:8px; color:#1e40af; font-size:14px;">Connectez-vous à {{agencyName}} pour valider ou rejeter cette déclaration : <a href="{{validationUrl}}" style="color:#1e40af; font-weight:600;">{{validationUrl}}</a></p>`
   },
   PAYMENT_APPROVED_TENANT: {
-    subject: 'Paiement approuvÃ© - Bail {{leaseNumber}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#166534;">Paiement approuvÃ©</h1>
+    subject: 'Paiement approuvé - Bail {{leaseNumber}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#166534;">Paiement approuvé</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{tenantName}},</p>
-<p style="margin:0 0 20px 0;">Votre dÃ©claration de paiement a Ã©tÃ© <strong style="color:#166534;">approuvÃ©e</strong> par <strong>{{agencyName}}</strong>. Ce paiement a bien Ã©tÃ© enregistrÃ©.</p>
+<p style="margin:0 0 20px 0;">Votre déclaration de paiement a été <strong style="color:#166534;">approuvée</strong> par <strong>{{agencyName}}</strong>. Ce paiement a bien été enregistré.</p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Montant : {{amount}} FCFA. Bail : {{leaseLabel}}</p>
 <p style="margin:16px 0 0 0; font-size:14px;"><a href="{{portalUrl}}" style="color:#166534; font-weight:600;">Consultez votre historique des paiements dans le portail locataire.</a></p>`
   },
   PAYMENT_APPROVED_OWNER: {
-    subject: 'Paiement du locataire approuvÃ© - Bail {{leaseNumber}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#166534;">Paiement du locataire approuvÃ©</h1>
+    subject: 'Paiement du locataire approuvé - Bail {{leaseNumber}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#166534;">Paiement du locataire approuvé</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
-<p style="margin:0 0 20px 0;">La dÃ©claration de paiement de votre locataire <strong>{{renterName}}</strong> a Ã©tÃ© <strong style="color:#166534;">approuvÃ©e</strong> par <strong>{{agencyName}}</strong>.</p>
+<p style="margin:0 0 20px 0;">La déclaration de paiement de votre locataire <strong>{{renterName}}</strong> a été <strong style="color:#166534;">approuvée</strong> par <strong>{{agencyName}}</strong>.</p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Montant : {{amount}} FCFA. Bail : {{leaseLabel}}</p>`
   },
   PAYMENT_REJECTED_TENANT: {
-    subject: 'DÃ©claration de paiement rejetÃ©e - Bail {{leaseNumber}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b91c1c;">DÃ©claration de paiement rejetÃ©e</h1>
+    subject: 'Déclaration de paiement rejetée - Bail {{leaseNumber}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b91c1c;">Déclaration de paiement rejetée</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{tenantName}},</p>
-<p style="margin:0 0 20px 0;">Votre dÃ©claration de paiement a Ã©tÃ© <strong style="color:#b91c1c;">rejetÃ©e</strong> par <strong>{{agencyName}}</strong>.</p>
+<p style="margin:0 0 20px 0;">Votre déclaration de paiement a été <strong style="color:#b91c1c;">rejetée</strong> par <strong>{{agencyName}}</strong>.</p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Bail : {{leaseLabel}}. Montant : {{amount}} FCFA.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">{{reviewNotes}}</p>
-<p><a href="{{portalUrl}}" style="color:#1e40af; font-weight:600;">Connectez-vous au portail locataire</a> pour plus de dÃ©tails.</p>`
+<p><a href="{{portalUrl}}" style="color:#1e40af; font-weight:600;">Connectez-vous au portail locataire</a> pour plus de détails.</p>`
   },
   PAYMENT_REJECTED_OWNER: {
-    subject: 'DÃ©claration de paiement du locataire rejetÃ©e - Bail {{leaseNumber}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b91c1c;">DÃ©claration de paiement du locataire rejetÃ©e</h1>
+    subject: 'Déclaration de paiement du locataire rejetée - Bail {{leaseNumber}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b91c1c;">Déclaration de paiement du locataire rejetée</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
-<p style="margin:0 0 20px 0;">La dÃ©claration de paiement de votre locataire <strong>{{renterName}}</strong> a Ã©tÃ© <strong style="color:#b91c1c;">rejetÃ©e</strong> par <strong>{{agencyName}}</strong>.</p>
+<p style="margin:0 0 20px 0;">La déclaration de paiement de votre locataire <strong>{{renterName}}</strong> a été <strong style="color:#b91c1c;">rejetée</strong> par <strong>{{agencyName}}</strong>.</p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Bail : {{leaseLabel}}. Montant : {{amount}} FCFA.</p>
 <p style="margin:20px 0 0 0;">{{reviewNotes}}</p>`
   },
   PAYMENT_ALLOCATED_TENANT: {
-    subject: 'Paiement allouÃ© aux Ã©chÃ©ances - Bail {{leaseNumber}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#166534;">Paiement allouÃ© aux Ã©chÃ©ances</h1>
+    subject: 'Paiement alloué aux échéances - Bail {{leaseNumber}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#166534;">Paiement alloué aux échéances</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{tenantName}},</p>
-<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> a allouÃ© un montant de <strong>{{amountAllocated}} FCFA</strong> de votre paiement aux Ã©chÃ©ances suivantes : {{installmentPeriods}}</p>
+<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> a alloué un montant de <strong>{{amountAllocated}} FCFA</strong> de votre paiement aux échéances suivantes : {{installmentPeriods}}</p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Bail : {{leaseLabel}}</p>
-<p style="margin:16px 0 0 0; font-size:14px;"><a href="{{portalUrl}}" style="color:#166534; font-weight:600;">Consultez vos Ã©chÃ©ances dans le portail locataire.</a></p>`
+<p style="margin:16px 0 0 0; font-size:14px;"><a href="{{portalUrl}}" style="color:#166534; font-weight:600;">Consultez vos échéances dans le portail locataire.</a></p>`
   },
   PAYMENT_ALLOCATED_OWNER: {
-    subject: 'Paiement du locataire allouÃ© aux Ã©chÃ©ances - Bail {{leaseNumber}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#166534;">Paiement du locataire allouÃ© aux Ã©chÃ©ances</h1>
+    subject: 'Paiement du locataire alloué aux échéances - Bail {{leaseNumber}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#166534;">Paiement du locataire alloué aux échéances</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
-<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> a allouÃ© un montant de <strong>{{amountAllocated}} FCFA</strong> du paiement de votre locataire <strong>{{renterName}}</strong> aux Ã©chÃ©ances : {{installmentPeriods}}</p>
+<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> a alloué un montant de <strong>{{amountAllocated}} FCFA</strong> du paiement de votre locataire <strong>{{renterName}}</strong> aux échéances : {{installmentPeriods}}</p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Bail : {{leaseLabel}}</p>`
   },
   DEPOSIT_MOVEMENT_TENANT: {
-    subject: 'DÃ©pÃ´t de garantie - {{movementTypeLabel}} - Bail {{leaseNumber}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Mouvement sur votre dÃ©pÃ´t de garantie</h1>
+    subject: 'Dépôt de garantie - {{movementTypeLabel}} - Bail {{leaseNumber}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Mouvement sur votre dépôt de garantie</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{tenantName}},</p>
-<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> a enregistrÃ© un mouvement sur le dÃ©pÃ´t de garantie de votre bail.</p>
+<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> a enregistré un mouvement sur le dépôt de garantie de votre bail.</p>
 <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
   <tr><td style="padding:8px 0;"><strong>Type :</strong> {{movementTypeLabel}}</td></tr>
   <tr><td style="padding:8px 0;"><strong>Montant :</strong> {{amount}} {{currency}}</td></tr>
   <tr><td style="padding:8px 0;"><strong>Bail :</strong> {{leaseLabel}}</td></tr>
 </table>
-<p style="margin:20px 0 0 0; font-size:14px;"><a href="{{portalUrl}}" style="color:#1890ff; font-weight:600;">Consultez votre dÃ©pÃ´t de garantie dans le portail locataire</a></p>`
+<p style="margin:20px 0 0 0; font-size:14px;"><a href="{{portalUrl}}" style="color:#1890ff; font-weight:600;">Consultez votre dépôt de garantie dans le portail locataire</a></p>`
   },
   DEPOSIT_MOVEMENT_OWNER: {
-    subject: 'DÃ©pÃ´t de garantie - {{movementTypeLabel}} - Bail {{leaseNumber}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Mouvement sur le dÃ©pÃ´t de garantie</h1>
+    subject: 'Dépôt de garantie - {{movementTypeLabel}} - Bail {{leaseNumber}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Mouvement sur le dépôt de garantie</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
-<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> a enregistrÃ© un mouvement sur le dÃ©pÃ´t de garantie du bail de votre locataire <strong>{{renterName}}</strong>.</p>
+<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> a enregistré un mouvement sur le dépôt de garantie du bail de votre locataire <strong>{{renterName}}</strong>.</p>
 <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom:20px;">
   <tr><td style="padding:8px 0;"><strong>Type :</strong> {{movementTypeLabel}}</td></tr>
   <tr><td style="padding:8px 0;"><strong>Montant :</strong> {{amount}} {{currency}}</td></tr>
@@ -156,95 +156,95 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 </table>`
   },
   PAYMENT_RECEIVED: {
-    subject: 'Paiement reÃ§u - {{amount}} - Bail {{leaseNumber}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#166534;">Paiement reÃ§u</h1>
+    subject: 'Paiement reçu - {{amount}} - Bail {{leaseNumber}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#166534;">Paiement reçu</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{contactName}},</p>
-<p style="margin:0 0 20px 0;">Nous vous confirmons la rÃ©ception de votre paiement de <strong>{{amount}}</strong> pour le bail {{leaseLabel}}.</p>
+<p style="margin:0 0 20px 0;">Nous vous confirmons la réception de votre paiement de <strong>{{amount}}</strong> pour le bail {{leaseLabel}}.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   PAYMENT_CONFIRMED: {
-    subject: 'Paiement confirmÃ© - Bail {{leaseNumber}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#166534;">Paiement confirmÃ©</h1>
+    subject: 'Paiement confirmé - Bail {{leaseNumber}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#166534;">Paiement confirmé</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{contactName}},</p>
-<p style="margin:0 0 20px 0;">Votre paiement a Ã©tÃ© confirmÃ© par <strong>{{agencyName}}</strong>. Montant : {{amount}}. Bail : {{leaseLabel}}.</p>
+<p style="margin:0 0 20px 0;">Votre paiement a été confirmé par <strong>{{agencyName}}</strong>. Montant : {{amount}}. Bail : {{leaseLabel}}.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   INSTALLMENT_DUE_REMINDER: {
-    subject: 'Rappel : Ã©chÃ©ance le {{dueDate}} - {{dueAmount}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#d97706;">Rappel d'Ã©chÃ©ance</h1>
+    subject: 'Rappel : échéance le {{dueDate}} - {{dueAmount}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#d97706;">Rappel d'échéance</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{contactName}},</p>
-<p style="margin:0 0 20px 0;">Nous vous rappelons qu'une Ã©chÃ©ance de <strong>{{dueAmount}}</strong> est prÃ©vue le <strong>{{dueDate}}</strong> pour le bail {{leaseLabel}}.</p>
+<p style="margin:0 0 20px 0;">Nous vous rappelons qu'une échéance de <strong>{{dueAmount}}</strong> est prévue le <strong>{{dueDate}}</strong> pour le bail {{leaseLabel}}.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   INSTALLMENT_OVERDUE: {
-    subject: 'Ã‰chÃ©ance en retard - Bail {{leaseNumber}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b91c1c;">Ã‰chÃ©ance dÃ©passÃ©e</h1>
+    subject: 'Échéance en retard - Bail {{leaseNumber}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b91c1c;">Échéance dépassée</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{contactName}},</p>
-<p style="margin:0 0 20px 0;">L'Ã©chÃ©ance du <strong>{{dueDate}}</strong> (montant : {{dueAmount}}) pour le bail {{leaseLabel}} n'a pas Ã©tÃ© rÃ©glÃ©e. Merci de rÃ©gulariser au plus tÃ´t.</p>
+<p style="margin:0 0 20px 0;">L'échéance du <strong>{{dueDate}}</strong> (montant : {{dueAmount}}) pour le bail {{leaseLabel}} n'a pas été réglée. Merci de régulariser au plus tôt.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   LEASE_ACTIVATED: {
-    subject: 'Votre bail est activÃ© - {{leaseLabel}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#166534;">Bail activÃ©</h1>
+    subject: 'Votre bail est activé - {{leaseLabel}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#166534;">Bail activé</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{contactName}},</p>
-<p style="margin:0 0 20px 0;">Votre bail {{leaseLabel}} ({{propertyAddress}}) a Ã©tÃ© activÃ©. PÃ©riode : {{leaseStartDate}} Ã  {{leaseEndDate}}. Loyer : {{rentAmount}}.</p>
+<p style="margin:0 0 20px 0;">Votre bail {{leaseLabel}} ({{propertyAddress}}) a été activé. Période : {{leaseStartDate}} à {{leaseEndDate}}. Loyer : {{rentAmount}}.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   LEASE_ENDING_SOON: {
     subject: 'Fin de bail prochaine - {{leaseLabel}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#d97706;">Fin de bail prochaine</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{contactName}},</p>
-<p style="margin:0 0 20px 0;">Votre bail {{leaseLabel}} arrive Ã  Ã©chÃ©ance le <strong>{{leaseEndDate}}</strong>. Merci de prendre contact avec {{agencyName}} pour les suites Ã  donner.</p>
+<p style="margin:0 0 20px 0;">Votre bail {{leaseLabel}} arrive à échéance le <strong>{{leaseEndDate}}</strong>. Merci de prendre contact avec {{agencyName}} pour les suites à donner.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   DEAL_CREATED: {
     subject: 'Nouvelle affaire - {{dealId}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Nouvelle affaire crÃ©Ã©e</h1>
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Nouvelle affaire créée</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{contactName}},</p>
-<p style="margin:0 0 20px 0;">Une nouvelle affaire a Ã©tÃ© crÃ©Ã©e pour vous par <strong>{{agencyName}}</strong>. Valeur : {{dealValue}}. Ã‰tape : {{dealStage}}.</p>
+<p style="margin:0 0 20px 0;">Une nouvelle affaire a été créée pour vous par <strong>{{agencyName}}</strong>. Valeur : {{dealValue}}. Étape : {{dealStage}}.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   DEAL_STAGE_CHANGED: {
-    subject: 'Mise Ã  jour affaire - {{dealId}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Ã‰tape de l'affaire modifiÃ©e</h1>
+    subject: 'Mise à jour affaire - {{dealId}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Étape de l'affaire modifiée</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{contactName}},</p>
-<p style="margin:0 0 20px 0;">L'affaire {{dealId}} a changÃ© d'Ã©tape : <strong>{{dealStage}}</strong>. Valeur : {{dealValue}}.</p>
+<p style="margin:0 0 20px 0;">L'affaire {{dealId}} a changé d'étape : <strong>{{dealStage}}</strong>. Valeur : {{dealValue}}.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   APPOINTMENT_REMINDER: {
     subject: 'Rappel : rendez-vous le {{appointmentDate}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#7c3aed;">Rappel de rendez-vous</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{contactName}},</p>
-<p style="margin:0 0 20px 0;">Nous vous rappelons votre rendez-vous prÃ©vu le <strong>{{appointmentDate}}</strong> Ã  {{appointmentTime}} avec {{agencyName}}.</p>
+<p style="margin:0 0 20px 0;">Nous vous rappelons votre rendez-vous prévu le <strong>{{appointmentDate}}</strong> à {{appointmentTime}} avec {{agencyName}}.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   PROPERTY_PUBLISHED: {
-    subject: 'PropriÃ©tÃ© publiÃ©e - {{propertyAddress}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#059669;">PropriÃ©tÃ© publiÃ©e</h1>
+    subject: 'Propriété publiée - {{propertyAddress}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#059669;">Propriété publiée</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
-<p style="margin:0 0 20px 0;">La propriÃ©tÃ© <strong>{{propertyAddress}}</strong> ({{propertyType}}, {{propertyCity}}) a Ã©tÃ© publiÃ©e par {{agencyName}}.</p>
+<p style="margin:0 0 20px 0;">La propriété <strong>{{propertyAddress}}</strong> ({{propertyType}}, {{propertyCity}}) a été publiée par {{agencyName}}.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   DOCUMENT_EXPIRING: {
-    subject: 'Document bientÃ´t expirÃ©',
+    subject: 'Document bientôt expiré',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#d97706;">Document expirant</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{contactName}},</p>
-<p style="margin:0 0 20px 0;">Un document associÃ© Ã  votre dossier arrive Ã  expiration prochainement. Merci de le mettre Ã  jour auprÃ¨s de {{agencyName}}.</p>
+<p style="margin:0 0 20px 0;">Un document associé à votre dossier arrive à expiration prochainement. Merci de le mettre à jour auprès de {{agencyName}}.</p>
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   },
   CHARGE_CALL_ISSUED: {
     subject: 'Nouvel appel de charges - {{period}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Nouvel appel de charges</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
-<p style="margin:0 0 20px 0;">Un nouvel appel de charges a Ã©tÃ© Ã©mis pour votre lot dans la copropriÃ©tÃ© <strong>{{syndicateName}}</strong>.</p>
-<p style="margin:0 0 12px 0; font-size:14px; color:#555;">PÃ©riode : {{period}}. Lot : {{lotLabel}}. Montant : {{amount}} {{currency}}. Ã‰chÃ©ance : {{dueDate}}.</p>`
+<p style="margin:0 0 20px 0;">Un nouvel appel de charges a été émis pour votre lot dans la copropriété <strong>{{syndicateName}}</strong>.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Période : {{period}}. Lot : {{lotLabel}}. Montant : {{amount}} {{currency}}. Échéance : {{dueDate}}.</p>`
   },
   CHARGE_CALL_REMINDER: {
     subject: 'Rappel d appel de charges - {{period}}',
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#b45309;">Rappel d appel de charges</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
-<p style="margin:0 0 20px 0;">Rappel pour l appel de charges de la pÃ©riode <strong>{{period}}</strong> concernant votre lot {{lotLabel}}.</p>
-<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Montant restant : {{remainingAmount}} {{currency}}. Ã‰chÃ©ance : {{dueDate}}.</p>`
+<p style="margin:0 0 20px 0;">Rappel pour l appel de charges de la période <strong>{{period}}</strong> concernant votre lot {{lotLabel}}.</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Montant restant : {{remainingAmount}} {{currency}}. Échéance : {{dueDate}}.</p>`
   },
   GENERAL_MEETING_CONVOCATION: {
     subject: 'Convocation a l assemblee generale du {{meetingDate}}',
@@ -275,10 +275,10 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Description : {{incidentDescription}}</p>`
   },
   OWNER_STATEMENT_SENT: {
-    subject: 'Votre relevÃ© de gÃ©rance - {{period}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">RelevÃ© de gÃ©rance</h1>
+    subject: 'Votre relevé de gérance - {{period}}',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Relevé de gérance</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
-<p style="margin:0 0 20px 0;">Votre relevÃ© pour la pÃ©riode <strong>{{period}}</strong> est disponible.</p>
+<p style="margin:0 0 20px 0;">Votre relevé pour la période <strong>{{period}}</strong> est disponible.</p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">Total des revenus : {{totalRevenue}} {{currency}} - Total des charges : {{totalExpenses}} {{currency}} - Net : {{netAmount}} {{currency}}</p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">{{statementLines}}</p>`
   },
@@ -303,18 +303,18 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
   },
   INVITATION: {
     subject: 'Invitation - {{agencyName}}',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Vous Ãªtes invitÃ©(e)</h1>
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Vous êtes invité(e)</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
-<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> vous invite Ã  rejoindre sa plateforme. Cliquez sur le lien ci-dessous pour accepter l'invitation.</p>
+<p style="margin:0 0 20px 0;"><strong>{{agencyName}}</strong> vous invite à rejoindre sa plateforme. Cliquez sur le lien ci-dessous pour accepter l'invitation.</p>
 <p style="margin:20px 0 0 0; padding:14px; background:#e6f7ff; border-radius:8px;"><a href="{{invitationUrl}}" style="color:#1890ff; font-weight:600;">Accepter l'invitation</a></p>`
   },
   PASSWORD_RESET: {
-    subject: 'RÃ©initialisation de votre mot de passe',
-    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">RÃ©initialisation du mot de passe</h1>
+    subject: 'Réinitialisation de votre mot de passe',
+    bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1890ff;">Réinitialisation du mot de passe</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour,</p>
-<p style="margin:0 0 20px 0;">Vous avez demandÃ© la rÃ©initialisation de votre mot de passe. Cliquez sur le lien ci-dessous pour dÃ©finir un nouveau mot de passe (lien valide limitÃ© dans le temps).</p>
-<p style="margin:20px 0 0 0; padding:14px; background:#e6f7ff; border-radius:8px;"><a href="{{resetUrl}}" style="color:#1890ff; font-weight:600;">RÃ©initialiser mon mot de passe</a></p>
-<p style="margin:16px 0 0 0; font-size:12px; color:#999;">Si vous n'Ãªtes pas Ã  l'origine de cette demande, ignorez cet email.</p>`
+<p style="margin:0 0 20px 0;">Vous avez demandé la réinitialisation de votre mot de passe. Cliquez sur le lien ci-dessous pour définir un nouveau mot de passe (lien valide limité dans le temps).</p>
+<p style="margin:20px 0 0 0; padding:14px; background:#e6f7ff; border-radius:8px;"><a href="{{resetUrl}}" style="color:#1890ff; font-weight:600;">Réinitialiser mon mot de passe</a></p>
+<p style="margin:16px 0 0 0; font-size:12px; color:#999;">Si vous n'êtes pas à l'origine de cette demande, ignorez cet email.</p>`
   },
   CUSTOM: {
     subject: '{{subject}}',
@@ -324,4 +324,3 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
 <p style="margin:20px 0 0 0; font-size:14px;">Cordialement,<br/>{{agencyName}}</p>`
   }
 };
-

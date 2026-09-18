@@ -87,6 +87,54 @@ export const BIENS: Property[] = [
   })
 ];
 
+/**
+ * Appartements d'un immeuble, pour la fiche du bien conteneur.
+ *
+ * Les titres sont volontairement longs : c'est exactement ce qui cassait le
+ * tableau, un mot par ligne dans la colonne « Titre ».
+ */
+export const APPARTEMENTS: Property[] = [
+  bien('a1', {
+    title: 'Appartement A1 - 3 pièces, rez-de-chaussée - Immeuble Bingerville',
+    propertyType: 'APPARTEMENT',
+    surfaceArea: 78,
+    rooms: 3,
+    bedrooms: 2,
+    price: 150_000,
+    currency: 'FCFA'
+  }),
+  bien('a2', {
+    title: 'Appartement A2 - 3 pièces, premier étage - Immeuble Bingerville',
+    propertyType: 'APPARTEMENT',
+    surfaceArea: 78,
+    rooms: 3,
+    bedrooms: 2,
+    price: 150_000,
+    currency: 'FCFA',
+    status: 'RENTED'
+  }),
+  bien('a3', {
+    title: 'Studio B1 - deuxième étage',
+    propertyType: 'STUDIO',
+    surfaceArea: 32,
+    rooms: 1,
+    bedrooms: 1,
+    price: 90_000,
+    currency: 'FCFA',
+    status: 'RESERVED'
+  }),
+  // Sans prix ni surface : deux absences dans la même ligne.
+  bien('a4', {
+    title: 'Appartement C1 - lot non finalisé',
+    propertyType: 'APPARTEMENT',
+    surfaceArea: undefined,
+    rooms: undefined,
+    price: undefined,
+    currency: 'FCFA',
+    status: 'DRAFT'
+  })
+];
+
 export const COMMUNES = [
   { communeId: 'c1', commune: 'Ratoma', region: 'Conakry' },
   { communeId: 'c2', commune: 'Matam', region: 'Conakry' },
@@ -300,6 +348,69 @@ export const PAIEMENTS = [
  * fiable : c'est lui qui porte la colonne, le titre l'accompagne quand il
  * existe.
  */
+/**
+ * Modèles de documents d'une agence.
+ *
+ * Trois cas que la liste doit encaisser sans casser sous 375 px : un modèle par
+ * défaut, un modèle inactif, et un nom long accompagné de onze variables — la
+ * carte affiche leur compte, le tableau les trois premières.
+ */
+export const MODELES_DOCUMENTS = [
+  {
+    id: 'tpl-1',
+    doc_type: 'LEASE_HABITATION',
+    name: 'Bail Habitation Standard',
+    status: 'ACTIVE',
+    is_default: true,
+    original_filename: 'bail-habitation-2026.docx',
+    placeholders: ['AGENCE_NOM', 'BAIL_LOYER_MENSUEL', 'LOCATAIRE_NOM', 'BIEN_ADRESSE'],
+    created_at: '2026-01-12T00:00:00.000Z'
+  },
+  {
+    id: 'tpl-2',
+    doc_type: 'LEASE_COMMERCIAL',
+    name: 'Bail commercial — locaux de bureau, version longue revue par le conseil juridique',
+    status: 'ACTIVE',
+    is_default: false,
+    original_filename: 'bail-commercial-v3-revision-juridique-fevrier.docx',
+    placeholders: [
+      'AGENCE_NOM',
+      'AGENCE_RCCM',
+      'BAIL_LOYER_MENSUEL',
+      'BAIL_DEPOT_GARANTIE',
+      'BAIL_DATE_DEBUT',
+      'BAIL_DATE_FIN',
+      'LOCATAIRE_NOM',
+      'LOCATAIRE_RCCM',
+      'BIEN_ADRESSE',
+      'BIEN_SURFACE',
+      'BIEN_USAGE'
+    ],
+    created_at: '2026-02-02T00:00:00.000Z'
+  },
+  {
+    id: 'tpl-3',
+    doc_type: 'RENT_RECEIPT',
+    name: 'Reçu de loyer',
+    status: 'INACTIVE',
+    is_default: false,
+    original_filename: 'recu-loyer.docx',
+    placeholders: ['LOCATAIRE_NOM', 'BAIL_LOYER_MENSUEL'],
+    created_at: '2026-02-20T00:00:00.000Z'
+  },
+  // Sans variable : le modèle est valide, la carte ne doit pas afficher un vide.
+  {
+    id: 'tpl-4',
+    doc_type: 'RENT_STATEMENT',
+    name: 'Relevé de compte annuel',
+    status: 'ACTIVE',
+    is_default: false,
+    original_filename: 'releve-compte.docx',
+    placeholders: [],
+    created_at: '2026-03-01T00:00:00.000Z'
+  }
+];
+
 export const DOCUMENTS = [
   {
     id: 'doc-1',
@@ -535,3 +646,224 @@ export const TRAVAUX = [
     property: { id: 'prop-3', title: 'Bureau Almamya', internalReference: 'BIEN-2026-0003' }
   }
 ];
+
+/**
+ * Tableau de bord d'accueil — un mois de septembre pénible.
+ *
+ * Le jeu est construit pour montrer ce qu'une capture sage cacherait : un mois
+ * en cours à peine entamé (l'encaissé plonge sur le dernier point de la
+ * courbe), un écart qui se creuse entre l'attendu et l'encaissé, huit types de
+ * bien dont trois à une ou deux unités, un entonnoir où « Visite » pèse plus
+ * que « Qualifiée », et un titre de tâche volontairement trop long.
+ */
+const AGENCE_DEMO = '/tenant/agence-demo';
+
+export const TABLEAU_DE_BORD = {
+  properties: {
+    total: 57,
+    published: 41,
+    occupancyRate: 71.9,
+    byStatus: [
+      { key: 'RENTED', count: 38, href: `${AGENCE_DEMO}/properties?status=RENTED` },
+      { key: 'AVAILABLE', count: 11, href: `${AGENCE_DEMO}/properties?status=AVAILABLE` },
+      { key: 'UNDER_OFFER', count: 4, href: `${AGENCE_DEMO}/properties?status=UNDER_OFFER` },
+      { key: 'SOLD', count: 3, href: `${AGENCE_DEMO}/properties?status=SOLD` },
+      { key: 'DRAFT', count: 1, href: `${AGENCE_DEMO}/properties?status=DRAFT` }
+    ],
+    byType: [
+      { key: 'APPARTEMENT', count: 22, href: `${AGENCE_DEMO}/properties?propertyType=APPARTEMENT` },
+      { key: 'MAISON_VILLA', count: 14, href: `${AGENCE_DEMO}/properties?propertyType=MAISON_VILLA` },
+      { key: 'STUDIO', count: 9, href: `${AGENCE_DEMO}/properties?propertyType=STUDIO` },
+      { key: 'DUPLEX_TRIPLEX', count: 5, href: `${AGENCE_DEMO}/properties?propertyType=DUPLEX_TRIPLEX` },
+      { key: 'BOUTIQUE_COMMERCIAL', count: 3, href: `${AGENCE_DEMO}/properties?propertyType=BOUTIQUE_COMMERCIAL` },
+      { key: 'ENTREPOT_INDUSTRIEL', count: 2, href: `${AGENCE_DEMO}/properties?propertyType=ENTREPOT_INDUSTRIEL` },
+      { key: 'TERRAIN', count: 1, href: `${AGENCE_DEMO}/properties?propertyType=TERRAIN` },
+      { key: 'PARKING_BOX', count: 1, href: `${AGENCE_DEMO}/properties?propertyType=PARKING_BOX` }
+    ]
+  },
+  clients: {
+    total: 214,
+    byStatus: [
+      { key: 'LEAD', count: 128, href: `${AGENCE_DEMO}/crm/contacts` },
+      { key: 'ACTIVE_CLIENT', count: 74, href: `${AGENCE_DEMO}/crm/contacts` },
+      { key: 'ARCHIVED', count: 12, href: `${AGENCE_DEMO}/crm/contacts` }
+    ]
+  },
+  monthlyRevenue: {
+    amount: 12_400_000,
+    previousAmount: 15_900_000,
+    expected: 21_300_000,
+    currency: 'GNF',
+    periodStart: '2026-09-01T00:00:00.000Z',
+    periodEnd: '2026-10-01T00:00:00.000Z'
+  },
+  transactions: { total: 163, deals: 138, leases: 25 },
+  revenueSeries: [
+    { month: '2025-10-01T00:00:00.000Z', encaisse: 14_100_000, attendu: 15_000_000 },
+    { month: '2025-11-01T00:00:00.000Z', encaisse: 14_800_000, attendu: 15_600_000 },
+    { month: '2025-12-01T00:00:00.000Z', encaisse: 16_200_000, attendu: 16_400_000 },
+    { month: '2026-01-01T00:00:00.000Z', encaisse: 15_050_000, attendu: 17_100_000 },
+    { month: '2026-02-01T00:00:00.000Z', encaisse: 16_900_000, attendu: 17_900_000 },
+    { month: '2026-03-01T00:00:00.000Z', encaisse: 17_400_000, attendu: 18_600_000 },
+    { month: '2026-04-01T00:00:00.000Z', encaisse: 18_050_000, attendu: 19_200_000 },
+    { month: '2026-05-01T00:00:00.000Z', encaisse: 17_200_000, attendu: 19_800_000 },
+    { month: '2026-06-01T00:00:00.000Z', encaisse: 18_900_000, attendu: 20_400_000 },
+    { month: '2026-07-01T00:00:00.000Z', encaisse: 16_400_000, attendu: 20_900_000 },
+    { month: '2026-08-01T00:00:00.000Z', encaisse: 15_900_000, attendu: 21_100_000 },
+    { month: '2026-09-01T00:00:00.000Z', encaisse: 12_400_000, attendu: 21_300_000 }
+  ],
+  rental: {
+    activeLeases: 25,
+    leasesByStatus: [
+      { key: 'ACTIVE', count: 25, amount: 19_400_000, href: `${AGENCE_DEMO}/rental/leases?status=ACTIVE` },
+      { key: 'DRAFT', count: 3, amount: 2_100_000, href: `${AGENCE_DEMO}/rental/leases?status=DRAFT` },
+      { key: 'ENDED', count: 8, amount: 5_600_000, href: `${AGENCE_DEMO}/rental/leases?status=ENDED` }
+    ],
+    installmentsByStatus: [
+      { key: 'OVERDUE', count: 11, amount: 8_900_000, href: `${AGENCE_DEMO}/rental/installments?status=OVERDUE` },
+      { key: 'PARTIAL', count: 4, amount: 1_450_000, href: `${AGENCE_DEMO}/rental/installments?status=PARTIAL` },
+      { key: 'DUE', count: 19, amount: 12_300_000, href: `${AGENCE_DEMO}/rental/installments?status=DUE` },
+      { key: 'PAID', count: 186, amount: 0, href: `${AGENCE_DEMO}/rental/installments?status=PAID` }
+    ],
+    paymentsByMethod: [
+      { key: 'MOBILE_MONEY', count: 142, amount: 118_400_000, href: `${AGENCE_DEMO}/rental/payments` },
+      { key: 'CASH', count: 54, amount: 44_200_000, href: `${AGENCE_DEMO}/rental/payments` },
+      { key: 'BANK_TRANSFER', count: 21, amount: 29_800_000, href: `${AGENCE_DEMO}/rental/payments` },
+      { key: 'CHECK', count: 3, amount: 4_100_000, href: `${AGENCE_DEMO}/rental/payments` }
+    ],
+    overdue: { count: 11, amount: 8_900_000 },
+    dueThisWeek: { count: 7, amount: 4_350_000 },
+    pendingDeclarations: 3
+  },
+  pipeline: [
+    { key: 'NEW', count: 46, amount: 0, href: `${AGENCE_DEMO}/crm/deals` },
+    { key: 'QUALIFIED', count: 18, amount: 240_000_000, href: `${AGENCE_DEMO}/crm/deals` },
+    { key: 'VISIT', count: 21, amount: 310_000_000, href: `${AGENCE_DEMO}/crm/deals` },
+    { key: 'NEGOTIATION', count: 9, amount: 155_000_000, href: `${AGENCE_DEMO}/crm/deals` },
+    { key: 'WON', count: 6, amount: 98_000_000, href: `${AGENCE_DEMO}/crm/deals` },
+    { key: 'LOST', count: 38, amount: 0, href: `${AGENCE_DEMO}/crm/deals` }
+  ],
+  maintenance: {
+    open: 9,
+    byStatus: [
+      { key: 'DECLARED', count: 4, href: `${AGENCE_DEMO}/admin/maintenance/tickets` },
+      { key: 'IN_PROGRESS', count: 3, href: `${AGENCE_DEMO}/admin/maintenance/tickets` },
+      { key: 'ASSIGNED', count: 2, href: `${AGENCE_DEMO}/admin/maintenance/tickets` },
+      { key: 'RESOLVED', count: 51, href: `${AGENCE_DEMO}/admin/maintenance/tickets` },
+      { key: 'CANCELED', count: 6, href: `${AGENCE_DEMO}/admin/maintenance/tickets` }
+    ],
+    byPriority: [
+      { key: 'URGENT', count: 2, href: `${AGENCE_DEMO}/admin/maintenance/tickets` },
+      { key: 'HIGH', count: 3, href: `${AGENCE_DEMO}/admin/maintenance/tickets` },
+      { key: 'MEDIUM', count: 3, href: `${AGENCE_DEMO}/admin/maintenance/tickets` },
+      { key: 'LOW', count: 1, href: `${AGENCE_DEMO}/admin/maintenance/tickets` }
+    ]
+  },
+  syndic: {
+    syndicates: 3,
+    lots: 128,
+    chargeCallsByStatus: [
+      { key: 'PAID', count: 96, amount: 48_000_000, href: `${AGENCE_DEMO}/syndics` },
+      { key: 'PENDING', count: 24, amount: 12_000_000, href: `${AGENCE_DEMO}/syndics` },
+      { key: 'OVERDUE', count: 14, amount: 7_400_000, href: `${AGENCE_DEMO}/syndics` },
+      { key: 'PARTIAL', count: 6, amount: 2_100_000, href: `${AGENCE_DEMO}/syndics` }
+    ],
+    recoveryRate: 68.9
+  },
+  patrimoine: {
+    workProgramsByStatus: [
+      { key: 'PLANNED', count: 5, amount: 34_000_000, href: `${AGENCE_DEMO}/patrimoine/work-programs?status=PLANNED` },
+      {
+        key: 'IN_PROGRESS',
+        count: 2,
+        amount: 18_500_000,
+        href: `${AGENCE_DEMO}/patrimoine/work-programs?status=IN_PROGRESS`
+      },
+      {
+        key: 'COMPLETED',
+        count: 7,
+        amount: 51_200_000,
+        href: `${AGENCE_DEMO}/patrimoine/work-programs?status=COMPLETED`
+      },
+      {
+        key: 'CANCELLED',
+        count: 1,
+        amount: 3_000_000,
+        href: `${AGENCE_DEMO}/patrimoine/work-programs?status=CANCELLED`
+      }
+    ],
+    plannedCost: 52_500_000
+  },
+  workQueue: [
+    {
+      id: 'installment:e-1',
+      kind: 'OVERDUE_INSTALLMENT',
+      title: 'BAIL-2026-0184 · Villa 4 chambres avec piscine, quartier de Kipé Centre',
+      description: '2 450 000 GNF · 42 j de retard',
+      amount: 2_450_000,
+      currency: 'GNF',
+      occurredAt: '2026-08-05T00:00:00.000Z',
+      severity: 'danger',
+      href: `${AGENCE_DEMO}/rental/installments/e-1`
+    },
+    {
+      id: 'installment:e-2',
+      kind: 'OVERDUE_INSTALLMENT',
+      title: 'BAIL-2026-0177 · Studio Ratoma',
+      description: '650 000 GNF · 12 j de retard',
+      amount: 650_000,
+      currency: 'GNF',
+      occurredAt: '2026-09-03T00:00:00.000Z',
+      severity: 'danger',
+      href: `${AGENCE_DEMO}/rental/installments/e-2`
+    },
+    {
+      id: 'declaration:d-1',
+      kind: 'PENDING_DECLARATION',
+      title: 'Déclaration à valider · BAIL-2026-0161',
+      description: '1 200 000 GNF · Mobile Money',
+      amount: 1_200_000,
+      currency: 'GNF',
+      occurredAt: '2026-09-12T00:00:00.000Z',
+      severity: 'warning',
+      href: `${AGENCE_DEMO}/rental/payments?onglet=declarations`
+    },
+    {
+      id: 'ticket:t-1',
+      kind: 'URGENT_TICKET',
+      title: 'Fuite au plafond du 3e étage',
+      description: 'Immeuble Kaloum, 12 logements',
+      amount: null,
+      currency: null,
+      occurredAt: '2026-09-13T08:30:00.000Z',
+      severity: 'danger',
+      href: `${AGENCE_DEMO}/admin/maintenance/tickets/t-1`
+    }
+  ],
+  recentActivity: [
+    {
+      id: 'payment:p-1',
+      type: 'PAYMENT_SUCCEEDED',
+      title: 'Paiement encaissé',
+      description: '1 250 000 GNF - bail BAIL-2026-0183',
+      occurredAt: '2026-09-14T14:02:00.000Z',
+      href: `${AGENCE_DEMO}/rental/payments/p-1`
+    },
+    {
+      id: 'property:b-1',
+      type: 'PROPERTY_CREATED',
+      title: 'Nouvelle propriété ajoutée',
+      description: 'Villa Kipé - Kipé, Ratoma',
+      occurredAt: '2026-09-14T11:20:00.000Z',
+      href: `${AGENCE_DEMO}/properties/b-1`
+    },
+    {
+      id: 'contact:c-1',
+      type: 'CONTACT_CREATED',
+      title: 'Nouveau client enregistré',
+      description: 'Aissatou Barry - aissatou@example.com',
+      occurredAt: '2026-09-13T16:45:00.000Z',
+      href: `${AGENCE_DEMO}/crm/contacts/c-1`
+    }
+  ]
+};
