@@ -1,0 +1,139 @@
+# Pile de PRODUCTION d'ImmoTopia sur app.immotopia.cloud.
+#
+# Ce fichier n'a rien a voir avec le docker-compose.yml de la racine, qui est un
+# outil de developpement et publie Postgres sur 5432 et l'API sur 8001 — deux
+# ports deja pris sur ce serveur. Ne jamais deployer celui de la racine.
+#
+# Utilisation (toujours via infra/scripts/deploy.sh, qui pose les bons flags) :
+#   docker compose -p immotopia-saas \
+#     --env-file /home/deployer/immotopia-saas.env \
+#     -f infra/compose/docker-compose.prod.yml <commande>
+#
+# Le serveur heberge une vingtaine d'autres applications : TOUT ce qui est
+# nomme ici porte le prefixe immotopia-saas, et aucun port n'est publie
+# ailleurs que sur 127.0.0.1. Le nginx de l'hote est la seule porte d'entree.
+
+name: immotopia-saas
+
+x-restart: &restart unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: immotopia-saas-postgres
+    restart: *restart
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER manquant dans le fichier d environnement}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant dans le fichier d environnement}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB manquant dans le fichier d environnement}
+      # Sinon initdb herite de la locale du conteneur et le tri des chaines
+      # peut differer d'une reconstruction a l'autre.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    # Publie uniquement en local, pour les sauvegardes et le diagnostic.
+    # 5432 a 5435 sont deja pris par d'autres projets.
+    ports:
+      - "127.0.0.1:5436:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      default:
+        aliases:
+          - immotopia-saas-postgres
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  api:
+    build:
+      # Contexte = racine du depot : lockfile unique des workspaces npm.
+      context: ../..
+      dockerfile: packages/api/Dockerfile
+      target: runtime
+    image: immotopia-saas-api:latest
+    container_name: immotopia-saas-api
+    restart: *restart
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Le fichier porte aussi les integrations optionnelles (SMTP, Twilio,
+    # WaSender, Google OAuth) que le code lit directement dans process.env.
+    env_file:
+      - ${IMMOTOPIA_ENV_FILE:-/home/deployer/immotopia-saas.env}
+    environment:
+      PORT: "8001"
+      # Les documents televerses vivent sur un volume, hors du repertoire de
+      # deploiement : ils doivent survivre a une reconstruction d'image.
+      UPLOADS_DIR: /data/uploads
+    # AUCUN port publie : l'API n'est joignable que depuis le reseau Docker,
+    # par le nginx du conteneur web.
+    volumes:
+      - uploads-data:/data/uploads
+    networks:
+      default:
+        aliases:
+          - immotopia-saas-api
+    # Le HEALTHCHECK est defini dans packages/api/Dockerfile (GET /health).
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/compose/Dockerfile.web
+      target: runtime
+      args:
+        # Fige a la compilation. Changer ces valeurs impose --build.
+        VITE_API_ORIGIN: ${PUBLIC_ORIGIN:-https://app.immotopia.cloud}
+        VITE_API_URL: /api
+        VITE_SHOW_DEMO_ACCOUNTS: "true"
+    image: immotopia-saas-web:latest
+    container_name: immotopia-saas-web
+    restart: *restart
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3019:80"
+    networks:
+      default:
+        aliases:
+          - immotopia-saas-web
+
+  # Migrations Prisma. Sous profil : `docker compose up` ne le demarre pas.
+  #   docker compose --profile tools run --rm migrate
+  # Pas de container_name : incompatible avec `run --rm`.
+  migrate:
+    build:
+      context: ../..
+      dockerfile: packages/api/Dockerfile
+      target: migrate
+    image: immotopia-saas-api-migrate:latest
+    profiles: ["tools"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - ${IMMOTOPIA_ENV_FILE:-/home/deployer/immotopia-saas.env}
+    networks:
+      - default
+    command:
+      [
+        "npx",
+        "prisma",
+        "migrate",
+        "deploy",
+        "--schema",
+        "packages/api/prisma/schema.prisma",
+      ]
+
+networks:
+  default:
+    name: immotopia-saas-network
+
+volumes:
+  postgres-data:
+    name: immotopia-saas-postgres-data
+  uploads-data:
+    name: immotopia-saas-uploads-data
