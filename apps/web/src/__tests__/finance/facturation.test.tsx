@@ -47,10 +47,25 @@ function run(overrides: Partial<BillingRun> = {}): BillingRun {
     startedAt: '2026-09-01T07:00:00.000Z',
     finishedAt: '2026-09-01T07:00:05.000Z',
     summary: {
-      billed: [{ leaseId: 'BAIL-2026-0001', installmentId: 'ech-1', amount: 1_250_000 }],
-      excluded: [{ leaseId: 'BAIL-2026-0002', reason: 'LEASE_NOT_ACTIVE' }],
+      billed: [
+        {
+          leaseId: 'BAIL-2026-0001',
+          leaseLabel: 'Fatoumata Diallo — Villa Kipé 12',
+          installmentId: 'ech-1',
+          amount: 1_250_000
+        }
+      ],
+      excluded: [
+        { leaseId: 'BAIL-2026-0002', leaseLabel: 'Ousmane Touré — Local Madina 9', reason: 'LEASE_NOT_ACTIVE' }
+      ],
       advancesApplied: [
-        { tenantClientId: 'CLI-2026-0009', installmentId: 'ech-1', amount: 100_000, sourcePaymentId: 'paiement-1' }
+        {
+          tenantClientId: 'CLI-2026-0009',
+          tenantLabel: 'Aïssatou Barry',
+          installmentId: 'ech-1',
+          amount: 100_000,
+          sourcePaymentId: 'paiement-1'
+        }
       ]
     },
     ...overrides
@@ -147,14 +162,21 @@ describe('Facturation — le compte rendu', () => {
     ).toBeInTheDocument();
 
     expect(screen.getByText('Baux facturés')).toBeInTheDocument();
-    expect(screen.getByText('BAIL-2026-0001')).toBeInTheDocument();
+    // Le compte rendu nomme le bail, il n'affiche pas son identifiant : une
+    // gestionnaire qui lit « BAIL-2026-0001 » ne peut rien en faire. Les deux
+    // assertions vont ensemble — la seconde est celle qui empêche une
+    // regression silencieuse vers l'identifiant brut.
+    expect(screen.getByText('Fatoumata Diallo — Villa Kipé 12')).toBeInTheDocument();
+    expect(screen.queryByText('BAIL-2026-0001')).not.toBeInTheDocument();
 
     expect(screen.getByText('Baux exclus')).toBeInTheDocument();
-    expect(screen.getByText('BAIL-2026-0002')).toBeInTheDocument();
+    expect(screen.getByText('Ousmane Touré — Local Madina 9')).toBeInTheDocument();
+    expect(screen.queryByText('BAIL-2026-0002')).not.toBeInTheDocument();
     expect(screen.getByText("Le bail n'est pas actif")).toBeInTheDocument();
 
     expect(screen.getByText('Avances imputées')).toBeInTheDocument();
-    expect(screen.getByText('CLI-2026-0009')).toBeInTheDocument();
+    expect(screen.getByText('Aïssatou Barry')).toBeInTheDocument();
+    expect(screen.queryByText('CLI-2026-0009')).not.toBeInTheDocument();
   });
 
   it('affiche chacun des six motifs d’exclusion en français, jamais sous sa forme brute', async () => {
@@ -164,12 +186,12 @@ describe('Facturation — le compte rendu', () => {
         summary: {
           billed: [],
           excluded: [
-            { leaseId: 'B-1', reason: 'PERIOD_BEFORE_LEASE_START' },
-            { leaseId: 'B-2', reason: 'PERIOD_AFTER_LEASE_END' },
-            { leaseId: 'B-3', reason: 'PERIOD_OFF_BILLING_CYCLE' },
-            { leaseId: 'B-4', reason: 'LEASE_NOT_ACTIVE' },
-            { leaseId: 'B-5', reason: 'INSTALLMENT_ALREADY_EXISTS' },
-            { leaseId: 'B-6', reason: 'LEASE_WITHOUT_AMOUNT' }
+            { leaseId: 'B-1', leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', reason: 'PERIOD_BEFORE_LEASE_START' },
+            { leaseId: 'B-2', leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', reason: 'PERIOD_AFTER_LEASE_END' },
+            { leaseId: 'B-3', leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', reason: 'PERIOD_OFF_BILLING_CYCLE' },
+            { leaseId: 'B-4', leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', reason: 'LEASE_NOT_ACTIVE' },
+            { leaseId: 'B-5', leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', reason: 'INSTALLMENT_ALREADY_EXISTS' },
+            { leaseId: 'B-6', leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', reason: 'LEASE_WITHOUT_AMOUNT' }
           ],
           advancesApplied: []
         }
@@ -199,8 +221,16 @@ describe('Facturation — le compte rendu', () => {
         summary: {
           billed: [],
           excluded: [
-            { leaseId: 'BAIL-2026-0001', reason: 'INSTALLMENT_ALREADY_EXISTS' },
-            { leaseId: 'BAIL-2026-0002', reason: 'INSTALLMENT_ALREADY_EXISTS' }
+            {
+              leaseId: 'BAIL-2026-0001',
+              leaseLabel: 'Fatoumata Diallo — Villa Kipé 12',
+              reason: 'INSTALLMENT_ALREADY_EXISTS'
+            },
+            {
+              leaseId: 'BAIL-2026-0002',
+              leaseLabel: 'Ousmane Touré — Local Madina 9',
+              reason: 'INSTALLMENT_ALREADY_EXISTS'
+            }
           ],
           advancesApplied: []
         }
@@ -226,7 +256,9 @@ describe('Facturation — le compte rendu', () => {
       run({
         id: 'sans-exclusion',
         summary: {
-          billed: [{ leaseId: 'B-1', installmentId: 'e-1', amount: 500_000 }],
+          billed: [
+            { leaseId: 'B-1', leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', installmentId: 'e-1', amount: 500_000 }
+          ],
           excluded: [],
           advancesApplied: []
         }

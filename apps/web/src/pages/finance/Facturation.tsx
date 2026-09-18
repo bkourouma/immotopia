@@ -53,11 +53,14 @@ const { Text, Title } = Typography;
  * préciser `currency` : la devise stockée (`XOF`) s'affiche « FCFA » par le
  * défaut du composant.
  *
- * **Limite du contrat gelé.** `BillingRunSummary` ne porte que des
- * identifiants (`leaseId`, `installmentId`, `tenantClientId`) — jamais de
- * libellé lisible (numéro de bail, nom de locataire). L'écran les affiche
- * tels que l'API les renvoie ; enrichir le compte rendu de libellés humains
- * suppose d'étendre ce contrat, ce qui n'est pas du ressort de cet écran.
+ * **Le compte rendu se lit sans rien aller chercher.** Chaque ligne porte un
+ * libellé — « Fatoumata Diallo — Villa Kipé 12 » — résolu par le serveur au
+ * moment de la campagne et stocké avec elle. L'identifiant reste dans la
+ * donnée, pour les clés de ligne, mais ne s'affiche jamais : une gestionnaire
+ * qui lit « Bail 3f2a9b8c-… » ne peut rien en faire.
+ *
+ * Les libellés sont recopiés, pas joints : un compte rendu est une trace. Il
+ * doit rester lisible des mois plus tard, même si le bail a été clos depuis.
  */
 
 const MOIS_FR = [
@@ -124,7 +127,7 @@ type LigneExclue = BillingRunSummary['excluded'][number];
 type LigneAvance = BillingRunSummary['advancesApplied'][number];
 
 const COLONNES_FACTUREES: ColumnsType<LigneFacturee> = [
-  { title: 'Bail', dataIndex: 'leaseId', key: 'bail' },
+  { title: 'Bail', dataIndex: 'leaseLabel', key: 'bail' },
   {
     title: 'Montant facturé',
     key: 'montant',
@@ -134,13 +137,12 @@ const COLONNES_FACTUREES: ColumnsType<LigneFacturee> = [
 ];
 
 const COLONNES_EXCLUES: ColumnsType<LigneExclue> = [
-  { title: 'Bail', dataIndex: 'leaseId', key: 'bail' },
+  { title: 'Bail', dataIndex: 'leaseLabel', key: 'bail' },
   { title: 'Motif', key: 'motif', render: (_, ligne) => libelleMotif(ligne.reason) }
 ];
 
 const COLONNES_AVANCES: ColumnsType<LigneAvance> = [
-  { title: 'Client', dataIndex: 'tenantClientId', key: 'client' },
-  { title: 'Échéance', dataIndex: 'installmentId', key: 'echeance' },
+  { title: 'Client', dataIndex: 'tenantLabel', key: 'client' },
   {
     title: 'Montant imputé',
     key: 'montant',
@@ -238,8 +240,8 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
             aria-label="Baux facturés"
             renderCard={ligne => (
               <DataCard
-                title={ligne.leaseId}
-                aria-label={`Bail ${ligne.leaseId} facturé`}
+                title={ligne.leaseLabel}
+                aria-label={`Bail ${ligne.leaseLabel} facturé`}
                 highlight={<MoneyValue value={ligne.amount} />}
               />
             )}
@@ -263,8 +265,8 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
             aria-label="Baux exclus"
             renderCard={ligne => (
               <DataCard
-                title={ligne.leaseId}
-                aria-label={`Bail ${ligne.leaseId} exclu`}
+                title={ligne.leaseLabel}
+                aria-label={`Bail ${ligne.leaseLabel} exclu`}
                 fields={[{ label: 'Motif', value: libelleMotif(ligne.reason) }]}
               />
             )}
@@ -286,9 +288,8 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
             aria-label="Avances imputées"
             renderCard={ligne => (
               <DataCard
-                title={ligne.tenantClientId}
-                aria-label={`Avance imputée pour ${ligne.tenantClientId}`}
-                subtitle={`Échéance ${ligne.installmentId}`}
+                title={ligne.tenantLabel}
+                aria-label={`Avance imputée pour ${ligne.tenantLabel}`}
                 highlight={<MoneyValue value={ligne.amount} />}
               />
             )}

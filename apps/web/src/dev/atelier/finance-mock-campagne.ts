@@ -37,10 +37,30 @@ const CAMPAGNE_NOVEMBRE: BillingRun = {
   finishedAt: '2026-11-02T08:05:03.000Z',
   summary: {
     billed: [
-      { leaseId: 'BAIL-2026-0007', installmentId: 'ech-2026-11-0007', amount: 1_250_000 },
-      { leaseId: 'BAIL-2026-0012', installmentId: 'ech-2026-11-0012', amount: 980_000 },
-      { leaseId: 'BAIL-2026-0015', installmentId: 'ech-2026-11-0015', amount: 1_500_000 },
-      { leaseId: 'BAIL-2026-0040', installmentId: 'ech-2026-11-0040', amount: 750_000 }
+      {
+        leaseId: 'BAIL-2026-0007',
+        leaseLabel: 'Fatoumata Diallo — Villa Kipé 12',
+        installmentId: 'ech-2026-11-0007',
+        amount: 1_250_000
+      },
+      {
+        leaseId: 'BAIL-2026-0012',
+        leaseLabel: 'Mamadou Bah — Appartement Almamya B3',
+        installmentId: 'ech-2026-11-0012',
+        amount: 980_000
+      },
+      {
+        leaseId: 'BAIL-2026-0015',
+        leaseLabel: 'Aïssatou Barry — Duplex Ratoma 4',
+        installmentId: 'ech-2026-11-0015',
+        amount: 1_500_000
+      },
+      {
+        leaseId: 'BAIL-2026-0040',
+        leaseLabel: 'Mariam Camara — Villa Lambanyi 2',
+        installmentId: 'ech-2026-11-0040',
+        amount: 750_000
+      }
     ],
     excluded: [],
     advancesApplied: []
@@ -66,12 +86,35 @@ const CAMPAGNE_RELANCE_OCTOBRE: BillingRun = {
   startedAt: '2026-10-01T07:58:00.000Z',
   finishedAt: '2026-10-01T07:58:02.000Z',
   summary: {
-    billed: [{ leaseId: 'BAIL-2026-0031', installmentId: 'ech-2026-10-0031', amount: 1_100_000 }],
+    billed: [
+      {
+        leaseId: 'BAIL-2026-0031',
+        leaseLabel: 'Ibrahima Sow — Studio Dixinn 7',
+        installmentId: 'ech-2026-10-0031',
+        amount: 1_100_000
+      }
+    ],
     excluded: [
-      { leaseId: 'BAIL-2026-0007', reason: 'INSTALLMENT_ALREADY_EXISTS' },
-      { leaseId: 'BAIL-2026-0012', reason: 'INSTALLMENT_ALREADY_EXISTS' },
-      { leaseId: 'BAIL-2026-0015', reason: 'INSTALLMENT_ALREADY_EXISTS' },
-      { leaseId: 'BAIL-2026-0040', reason: 'INSTALLMENT_ALREADY_EXISTS' }
+      {
+        leaseId: 'BAIL-2026-0007',
+        leaseLabel: 'Fatoumata Diallo — Villa Kipé 12',
+        reason: 'INSTALLMENT_ALREADY_EXISTS'
+      },
+      {
+        leaseId: 'BAIL-2026-0012',
+        leaseLabel: 'Mamadou Bah — Appartement Almamya B3',
+        reason: 'INSTALLMENT_ALREADY_EXISTS'
+      },
+      {
+        leaseId: 'BAIL-2026-0015',
+        leaseLabel: 'Aïssatou Barry — Duplex Ratoma 4',
+        reason: 'INSTALLMENT_ALREADY_EXISTS'
+      },
+      {
+        leaseId: 'BAIL-2026-0040',
+        leaseLabel: 'Mariam Camara — Villa Lambanyi 2',
+        reason: 'INSTALLMENT_ALREADY_EXISTS'
+      }
     ],
     advancesApplied: []
   }
@@ -92,21 +135,42 @@ const CAMPAGNE_SEPTEMBRE: BillingRun = {
   finishedAt: '2026-09-01T07:30:05.000Z',
   summary: {
     billed: [
-      { leaseId: 'BAIL-2026-0007', installmentId: 'ech-2026-09-0007', amount: 1_250_000 },
-      { leaseId: 'BAIL-2026-0012', installmentId: 'ech-2026-09-0012', amount: 980_000 },
-      { leaseId: 'BAIL-2026-0015', installmentId: 'ech-2026-09-0015', amount: 1_500_000 },
-      { leaseId: 'BAIL-2026-0040', installmentId: 'ech-2026-09-0040', amount: 750_000 }
+      {
+        leaseId: 'BAIL-2026-0007',
+        leaseLabel: 'Fatoumata Diallo — Villa Kipé 12',
+        installmentId: 'ech-2026-09-0007',
+        amount: 1_250_000
+      },
+      {
+        leaseId: 'BAIL-2026-0012',
+        leaseLabel: 'Mamadou Bah — Appartement Almamya B3',
+        installmentId: 'ech-2026-09-0012',
+        amount: 980_000
+      },
+      {
+        leaseId: 'BAIL-2026-0015',
+        leaseLabel: 'Aïssatou Barry — Duplex Ratoma 4',
+        installmentId: 'ech-2026-09-0015',
+        amount: 1_500_000
+      },
+      {
+        leaseId: 'BAIL-2026-0040',
+        leaseLabel: 'Mariam Camara — Villa Lambanyi 2',
+        installmentId: 'ech-2026-09-0040',
+        amount: 750_000
+      }
     ],
     excluded: [
-      { leaseId: 'BAIL-2026-0018', reason: 'LEASE_NOT_ACTIVE' },
-      { leaseId: 'BAIL-2026-0025', reason: 'PERIOD_BEFORE_LEASE_START' },
-      { leaseId: 'BAIL-2026-0033', reason: 'PERIOD_AFTER_LEASE_END' },
-      { leaseId: 'BAIL-2026-0044', reason: 'LEASE_WITHOUT_AMOUNT' },
-      { leaseId: 'BAIL-2026-0050', reason: 'PERIOD_OFF_BILLING_CYCLE' }
+      { leaseId: 'BAIL-2026-0018', leaseLabel: 'Locataire — Bien', reason: 'LEASE_NOT_ACTIVE' },
+      { leaseId: 'BAIL-2026-0025', leaseLabel: 'Locataire — Bien', reason: 'PERIOD_BEFORE_LEASE_START' },
+      { leaseId: 'BAIL-2026-0033', leaseLabel: 'Locataire — Bien', reason: 'PERIOD_AFTER_LEASE_END' },
+      { leaseId: 'BAIL-2026-0044', leaseLabel: 'Hadja Bangoura — Studio Coleah 3', reason: 'LEASE_WITHOUT_AMOUNT' },
+      { leaseId: 'BAIL-2026-0050', leaseLabel: 'Locataire — Bien', reason: 'PERIOD_OFF_BILLING_CYCLE' }
     ],
     advancesApplied: [
       {
         tenantClientId: 'CLI-2026-0091',
+        tenantLabel: 'Locataire',
         installmentId: 'ech-2026-09-0007',
         amount: 250_000,
         sourcePaymentId: 'paiement-2026-0450'

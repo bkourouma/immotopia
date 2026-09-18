@@ -118,11 +118,20 @@ export const BILLING_EXCLUSION_LABELS: Record<BillingExclusionReason, string> = 
   LEASE_WITHOUT_AMOUNT: 'Le bail ne porte aucun montant'
 };
 
+/**
+ * Chaque ligne du compte rendu porte un libelle lisible en plus de son
+ * identifiant : « Fatoumata Diallo — Villa Kipe 12 », et non un UUID.
+ *
+ * Les libelles sont resolus par le serveur au moment de la campagne et
+ * stockes avec elle. Un compte rendu est une trace, pas une vue : il doit
+ * rester lisible des mois plus tard, meme si le bail a depuis ete clos.
+ */
 export interface BillingRunSummary {
-  billed: Array<{ leaseId: string; installmentId: string; amount: number }>;
-  excluded: Array<{ leaseId: string; reason: BillingExclusionReason }>;
+  billed: Array<{ leaseId: string; leaseLabel: string; installmentId: string; amount: number }>;
+  excluded: Array<{ leaseId: string; leaseLabel: string; reason: BillingExclusionReason }>;
   advancesApplied: Array<{
     tenantClientId: string;
+    tenantLabel: string;
     installmentId: string;
     amount: number;
     sourcePaymentId: string;

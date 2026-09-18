@@ -96,6 +96,8 @@ function isUniqueConstraintViolation(error: unknown): boolean {
 type BillableLease = LeaseForInstallmentBuilding & {
   status: RentalLeaseStatus;
   primary_renter_client_id: string;
+  property: { title: string } | null;
+  primaryRenter: { user: { fullName: string | null; email: string } | null } | null;
 };
 
 const LEASE_SELECT = {
@@ -109,8 +111,39 @@ const LEASE_SELECT = {
   due_day_of_month: true,
   currency: true,
   rent_amount: true,
-  service_charge_amount: true
-} satisfies Record<keyof BillableLease, true>;
+  service_charge_amount: true,
+  // Le compte rendu doit se lire sans aller chercher ailleurs : « Fatoumata
+  // Diallo — Villa Kipe 12 », jamais un identifiant. On resout les deux noms
+  // ici, en une requete, plutot qu'a l'affichage ligne par ligne.
+  property: { select: { title: true } },
+  primaryRenter: { select: { user: { select: { fullName: true, email: true } } } }
+} satisfies Record<keyof BillableLease, unknown>;
+
+/**
+ * Nom lisible d'un bail : le locataire, puis le bien.
+ *
+ * Les replis en cascade evitent qu'une donnee manquante fasse reapparaitre un
+ * identifiant a l'ecran. En dernier recours seulement, on montre l'identifiant
+ * abrege, qui reste plus utile qu'une chaine vide pour retrouver la ligne.
+ */
+function libelleBail(lease: BillableLease): string {
+  const locataire = lease.primaryRenter?.user?.fullName || lease.primaryRenter?.user?.email;
+  const bien = lease.property?.title;
+
+  if (locataire && bien) return `${locataire} — ${bien}`;
+  if (locataire) return locataire;
+  if (bien) return bien;
+  return `Bail ${lease.id.slice(0, 8)}`;
+}
+
+/** Nom lisible d'un locataire, memes replis. */
+function libelleLocataire(lease: BillableLease): string {
+  return (
+    lease.primaryRenter?.user?.fullName ||
+    lease.primaryRenter?.user?.email ||
+    `Locataire ${lease.primary_renter_client_id.slice(0, 8)}`
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Campagne — récupération ou création
@@ -228,6 +261,7 @@ async function applyAdvancesTx(
   args: {
     tenantId: string;
     tenantClientId: string;
+    tenantLabel: string;
     accountId: string;
     leaseId: string;
     installment: InstallmentForAdvance;
@@ -300,6 +334,7 @@ async function applyAdvancesTx(
 
     args.summary.advancesApplied.push({
       tenantClientId: args.tenantClientId,
+      tenantLabel: args.tenantLabel,
       installmentId: args.installment.id,
       amount: applyAmount,
       sourcePaymentId: payment.id
@@ -346,13 +381,13 @@ export const runRentBilling: RunRentBilling = async (tenantId, params, actorUser
 
     for (const lease of leases) {
       if (lease.status !== RentalLeaseStatus.ACTIVE) {
-        summary.excluded.push({ leaseId: lease.id, reason: 'LEASE_NOT_ACTIVE' });
+        summary.excluded.push({ leaseId: lease.id, leaseLabel: libelleBail(lease), reason: 'LEASE_NOT_ACTIVE' });
         continue;
       }
 
       const built = buildInstallmentForPeriod(lease, periodYear, periodMonth);
       if (!built.included) {
-        summary.excluded.push({ leaseId: lease.id, reason: built.reason });
+        summary.excluded.push({ leaseId: lease.id, leaseLabel: libelleBail(lease), reason: built.reason });
         continue;
       }
 
@@ -369,7 +404,7 @@ export const runRentBilling: RunRentBilling = async (tenantId, params, actorUser
       // argent qui lui est du, sans que rien ne le signale : une exclusion est
       // motivee, donc discrete, et personne ne la relirait.
       if (totalAmountDue <= 0) {
-        summary.excluded.push({ leaseId: lease.id, reason: 'LEASE_WITHOUT_AMOUNT' });
+        summary.excluded.push({ leaseId: lease.id, leaseLabel: libelleBail(lease), reason: 'LEASE_WITHOUT_AMOUNT' });
         continue;
       }
 
@@ -403,6 +438,7 @@ export const runRentBilling: RunRentBilling = async (tenantId, params, actorUser
           await applyAdvancesTx(tx, {
             tenantId,
             tenantClientId: lease.primary_renter_client_id,
+            tenantLabel: libelleLocataire(lease),
             accountId: account.id,
             leaseId: lease.id,
             installment: { id: installment.id, currency: installment.currency, due_date: installment.due_date },
@@ -416,7 +452,11 @@ export const runRentBilling: RunRentBilling = async (tenantId, params, actorUser
         });
       } catch (error) {
         if (isUniqueConstraintViolation(error)) {
-          summary.excluded.push({ leaseId: lease.id, reason: 'INSTALLMENT_ALREADY_EXISTS' });
+          summary.excluded.push({
+            leaseId: lease.id,
+            leaseLabel: libelleBail(lease),
+            reason: 'INSTALLMENT_ALREADY_EXISTS'
+          });
           continue;
         }
         // Toute autre erreur (grand livre en échec, compte introuvable…) fait
@@ -426,7 +466,12 @@ export const runRentBilling: RunRentBilling = async (tenantId, params, actorUser
         throw error;
       }
 
-      summary.billed.push({ leaseId: lease.id, installmentId, amount: totalAmountDue });
+      summary.billed.push({
+        leaseId: lease.id,
+        leaseLabel: libelleBail(lease),
+        installmentId,
+        amount: totalAmountDue
+      });
     }
 
     const finished = await prisma.rentBillingRun.update({

@@ -156,11 +156,25 @@ export type BillingExclusionReason =
   | 'INSTALLMENT_ALREADY_EXISTS'
   | 'LEASE_WITHOUT_AMOUNT';
 
+/**
+ * Chaque ligne du compte rendu porte un libelle lisible en plus de son
+ * identifiant.
+ *
+ * Sans lui, l'ecran afficherait « Bail 3f2a9b8c-… : 450 000 FCFA », ce qui ne
+ * dit rien a la gestionnaire. Les libelles sont resolus une fois, a la
+ * campagne, plutot que par une requete par ligne au moment de l'affichage :
+ * le compte rendu est stocke tel quel dans `RentBillingRun.summary`, et doit
+ * rester lisible des mois plus tard, meme si le bail a ete renomme ou clos.
+ *
+ * C'est aussi pour cela qu'ils sont recopies et non joints : un compte rendu
+ * est une trace, pas une vue.
+ */
 export interface BillingRunSummary {
-  billed: Array<{ leaseId: string; installmentId: string; amount: number }>;
-  excluded: Array<{ leaseId: string; reason: BillingExclusionReason }>;
+  billed: Array<{ leaseId: string; leaseLabel: string; installmentId: string; amount: number }>;
+  excluded: Array<{ leaseId: string; leaseLabel: string; reason: BillingExclusionReason }>;
   advancesApplied: Array<{
     tenantClientId: string;
+    tenantLabel: string;
     installmentId: string;
     amount: number;
     sourcePaymentId: string;

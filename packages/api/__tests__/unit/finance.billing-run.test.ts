@@ -206,6 +206,11 @@ function seedLease(overrides: Partial<Row> = {}): Row {
     currency: 'FCFA',
     rent_amount: 100000,
     service_charge_amount: 0,
+    // Le compte rendu nomme chaque ligne. Sans ces deux relations, la campagne
+    // se rabattrait sur l'identifiant abrege et le test ne verifierait rien de
+    // ce que la gestionnaire lit reellement.
+    property: { title: 'Villa Kipé 12' },
+    primaryRenter: { user: { fullName: 'Fatoumata Diallo', email: 'f.diallo@example.ci' } },
     ...overrides
   };
   store.leases.push(lease);
@@ -257,8 +262,18 @@ describe('runRentBilling — campagne nominale', () => {
     expect(result.label).toBe('Loyer de septembre 2026');
     expect(result.summary?.billed).toEqual(
       expect.arrayContaining([
-        { leaseId: leaseA.id, installmentId: expect.any(String), amount: 105000 },
-        { leaseId: leaseB.id, installmentId: expect.any(String), amount: 80000 }
+        {
+          leaseId: leaseA.id,
+          leaseLabel: 'Fatoumata Diallo — Villa Kipé 12',
+          installmentId: expect.any(String),
+          amount: 105000
+        },
+        {
+          leaseId: leaseB.id,
+          leaseLabel: 'Fatoumata Diallo — Villa Kipé 12',
+          installmentId: expect.any(String),
+          amount: 80000
+        }
       ])
     );
     expect(result.summary?.excluded).toEqual([]);
@@ -296,7 +311,9 @@ describe('runRentBilling — idempotence', () => {
     expect(store.billingRuns).toHaveLength(1);
     expect(first.summary?.billed).toHaveLength(1);
     expect(second.summary?.billed).toHaveLength(0);
-    expect(second.summary?.excluded).toEqual([{ leaseId: lease.id, reason: 'INSTALLMENT_ALREADY_EXISTS' }]);
+    expect(second.summary?.excluded).toEqual([
+      { leaseId: lease.id, leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', reason: 'INSTALLMENT_ALREADY_EXISTS' }
+    ]);
     expect(second.status).toBe('DONE');
     expect(second.id).toBe(first.id);
   });
@@ -308,7 +325,9 @@ describe('runRentBilling — motifs d’exclusion', () => {
 
     const result = await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 9 }, ACTOR_ID);
 
-    expect(result.summary?.excluded).toEqual([{ leaseId: lease.id, reason: 'LEASE_NOT_ACTIVE' }]);
+    expect(result.summary?.excluded).toEqual([
+      { leaseId: lease.id, leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', reason: 'LEASE_NOT_ACTIVE' }
+    ]);
   });
 
   it('PERIOD_BEFORE_LEASE_START : une periode anterieure au bail est exclue', async () => {
@@ -316,7 +335,9 @@ describe('runRentBilling — motifs d’exclusion', () => {
 
     const result = await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 9 }, ACTOR_ID);
 
-    expect(result.summary?.excluded).toEqual([{ leaseId: lease.id, reason: 'PERIOD_BEFORE_LEASE_START' }]);
+    expect(result.summary?.excluded).toEqual([
+      { leaseId: lease.id, leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', reason: 'PERIOD_BEFORE_LEASE_START' }
+    ]);
   });
 
   it('PERIOD_AFTER_LEASE_END : une periode posterieure a la fin du bail est exclue', async () => {
@@ -327,7 +348,9 @@ describe('runRentBilling — motifs d’exclusion', () => {
 
     const result = await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 9 }, ACTOR_ID);
 
-    expect(result.summary?.excluded).toEqual([{ leaseId: lease.id, reason: 'PERIOD_AFTER_LEASE_END' }]);
+    expect(result.summary?.excluded).toEqual([
+      { leaseId: lease.id, leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', reason: 'PERIOD_AFTER_LEASE_END' }
+    ]);
   });
 
   it('PERIOD_OFF_BILLING_CYCLE : un bail trimestriel hors cycle est exclu', async () => {
@@ -338,7 +361,9 @@ describe('runRentBilling — motifs d’exclusion', () => {
 
     const result = await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 2 }, ACTOR_ID);
 
-    expect(result.summary?.excluded).toEqual([{ leaseId: lease.id, reason: 'PERIOD_OFF_BILLING_CYCLE' }]);
+    expect(result.summary?.excluded).toEqual([
+      { leaseId: lease.id, leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', reason: 'PERIOD_OFF_BILLING_CYCLE' }
+    ]);
   });
 
   it('LEASE_WITHOUT_AMOUNT : un bail qui ne doit rien est exclu', async () => {
@@ -346,7 +371,9 @@ describe('runRentBilling — motifs d’exclusion', () => {
 
     const result = await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 9 }, ACTOR_ID);
 
-    expect(result.summary?.excluded).toEqual([{ leaseId: lease.id, reason: 'LEASE_WITHOUT_AMOUNT' }]);
+    expect(result.summary?.excluded).toEqual([
+      { leaseId: lease.id, leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', reason: 'LEASE_WITHOUT_AMOUNT' }
+    ]);
   });
 
   it('INSTALLMENT_ALREADY_EXISTS : une echeance deja presente en base est exclue sans etre recreee', async () => {
@@ -370,7 +397,9 @@ describe('runRentBilling — motifs d’exclusion', () => {
     const result = await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 9 }, ACTOR_ID);
 
     expect(store.installments).toHaveLength(1);
-    expect(result.summary?.excluded).toEqual([{ leaseId: lease.id, reason: 'INSTALLMENT_ALREADY_EXISTS' }]);
+    expect(result.summary?.excluded).toEqual([
+      { leaseId: lease.id, leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', reason: 'INSTALLMENT_ALREADY_EXISTS' }
+    ]);
   });
 });
 
@@ -386,9 +415,25 @@ describe('runRentBilling — bail trimestriel', () => {
     const fevrier = await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 2 }, ACTOR_ID);
     const avril = await runRentBilling(TENANT_ID, { periodYear: 2026, periodMonth: 4 }, ACTOR_ID);
 
-    expect(janvier.summary?.billed).toEqual([{ leaseId: lease.id, installmentId: expect.any(String), amount: 300000 }]);
-    expect(fevrier.summary?.excluded).toEqual([{ leaseId: lease.id, reason: 'PERIOD_OFF_BILLING_CYCLE' }]);
-    expect(avril.summary?.billed).toEqual([{ leaseId: lease.id, installmentId: expect.any(String), amount: 300000 }]);
+    expect(janvier.summary?.billed).toEqual([
+      {
+        leaseId: lease.id,
+        leaseLabel: 'Fatoumata Diallo — Villa Kipé 12',
+        installmentId: expect.any(String),
+        amount: 300000
+      }
+    ]);
+    expect(fevrier.summary?.excluded).toEqual([
+      { leaseId: lease.id, leaseLabel: 'Fatoumata Diallo — Villa Kipé 12', reason: 'PERIOD_OFF_BILLING_CYCLE' }
+    ]);
+    expect(avril.summary?.billed).toEqual([
+      {
+        leaseId: lease.id,
+        leaseLabel: 'Fatoumata Diallo — Villa Kipé 12',
+        installmentId: expect.any(String),
+        amount: 300000
+      }
+    ]);
     expect(store.installments).toHaveLength(2);
   });
 });
