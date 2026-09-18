@@ -1,6 +1,7 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { RentalBillingFrequency, RentalInstallmentStatus, RentalLeaseStatus } from '@prisma/client';
+import { buildInstallmentForPeriod } from '../lib/finance/installment-builder';
 
 /**
  * Get billing period days based on frequency
@@ -57,34 +58,6 @@ function calculatePeriodEnd(startDate: Date, frequency: RentalBillingFrequency):
 }
 
 /**
- * Calculate due date for a period
- * @param periodStartDate - Start date of the billing period
- * @param dueDayOfMonth - Day of month when payment is due
- * @returns Due date for the installment
- */
-function calculateDueDate(periodStartDate: Date, dueDayOfMonth: number): Date {
-  // Due date should be in the same month as the period start
-  const dueDate = new Date(periodStartDate);
-  dueDate.setDate(dueDayOfMonth);
-
-  // Handle edge case where the day doesn't exist in the target month (e.g., Feb 31)
-  // In that case, setDate will automatically adjust to the last day of the month
-  // We want to ensure we use the dueDayOfMonth if it exists, otherwise use last day
-  const targetMonth = dueDate.getMonth();
-  const targetYear = dueDate.getFullYear();
-  const lastDayOfMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
-
-  // If the requested day doesn't exist in the month, use the last day
-  if (dueDayOfMonth > lastDayOfMonth) {
-    dueDate.setDate(lastDayOfMonth);
-  } else {
-    dueDate.setDate(dueDayOfMonth);
-  }
-
-  return dueDate;
-}
-
-/**
  * Generate installments for a lease
  * @param tenantId - Tenant ID
  * @param leaseId - Lease ID
@@ -131,7 +104,6 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
 
   const billingFrequency = lease.billing_frequency;
   const billingPeriodDays = getBillingPeriodDays(billingFrequency);
-  const dueDayOfMonth = lease.due_day_of_month || 5;
 
   // Calculate number of periods
   const totalDays = Math.floor((effectiveEndDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -160,12 +132,24 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
       break;
     }
 
-    const dueDate = calculateDueDate(currentPeriodStart, dueDayOfMonth);
-
     // Extract period year and month from the period start date
     // This represents which month/year the installment covers (the billing period)
     const periodYear = currentPeriodStart.getFullYear();
     const periodMonth = currentPeriodStart.getMonth() + 1; // JavaScript months are 0-indexed
+
+    // Délègue le calcul de l'échéance (montants, date d'échéance) à la fonction
+    // pure partagée avec la campagne de facturation (lot 1). L'avancement de
+    // currentPeriodStart ci-dessus garantit que periodYear/periodMonth tombe
+    // toujours dans le cycle de facturation du bail : le cas « non inclus » ne
+    // devrait jamais se produire ici, mais on le traite comme une période à
+    // ignorer plutôt que de dupliquer le calcul.
+    const built = buildInstallmentForPeriod(lease, periodYear, periodMonth);
+
+    if (!built.included) {
+      currentPeriodStart = new Date(periodEnd);
+      currentPeriodStart.setDate(currentPeriodStart.getDate() + 1);
+      continue;
+    }
 
     // Check for duplicate (should not happen, but safety check)
     const existing = await prisma.rentalInstallment.findUnique({
@@ -192,20 +176,7 @@ export async function generateInstallments(tenantId: string, leaseId: string, ac
 
     // Create installment
     const installment = await prisma.rentalInstallment.create({
-      data: {
-        tenant_id: tenantId,
-        lease_id: leaseId,
-        period_year: periodYear,
-        period_month: periodMonth,
-        due_date: dueDate,
-        status: RentalInstallmentStatus.DRAFT,
-        currency: lease.currency || 'FCFA',
-        amount_rent: lease.rent_amount,
-        amount_service: lease.service_charge_amount || 0,
-        amount_other_fees: 0,
-        penalty_amount: 0,
-        amount_paid: 0
-      }
+      data: built.data
     });
 
     installments.push(installment);

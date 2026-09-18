@@ -6,6 +6,9 @@ import { logger } from '../../utils/logger';
 // Shared client: a second `new PrismaClient()` here doubled the connection
 // pool and escaped the graceful-shutdown handlers in utils/database.
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
+// Grand livre partage avec les futurs comptes de tiers (decision D1, lot 1) :
+// extrait de ce fichier vers lib/finance/ledger.ts, sans changement de comportement.
+import { appendOwnerAccountTransactionTx, supportsOwnerAccount, type OwnerAccountTxClient } from '../finance/ledger';
 
 export type PaginationInput = {
   page?: number;
@@ -101,10 +104,7 @@ export async function assertSyndicateTenantOwnership(tenantId: string, syndicate
   }
 }
 
-async function syncSyndicateLotCount(
-  tx: PrismaTransactionClient,
-  syndicateId: string
-) {
+async function syncSyndicateLotCount(tx: PrismaTransactionClient, syndicateId: string) {
   const totalLots = await tx.syndicateLot.count({
     where: { syndicateId }
   });
@@ -113,12 +113,6 @@ async function syncSyndicateLotCount(
     where: { id: syndicateId },
     data: { totalLots }
   });
-}
-
-type OwnerAccountTxClient = PrismaTransactionClient;
-
-function supportsOwnerAccount(tx: any): tx is OwnerAccountTxClient {
-  return Boolean(tx?.ownerAccount && tx?.ownerAccountTransaction && tx?.syndicateLot);
 }
 
 async function ensureOwnerAccountForLotTx(
@@ -209,59 +203,6 @@ async function ensureOwnerAccountForLotTx(
       balance: 0
     }
   });
-}
-
-async function appendOwnerAccountTransactionTx(
-  tx: OwnerAccountTxClient,
-  params: {
-    accountId: string;
-    type: 'CHARGE_CALL' | 'PAYMENT' | 'PENALTY' | 'WAIVER' | 'ADJUSTMENT' | 'FUND_TRANSFER';
-    debit?: number;
-    credit?: number;
-    label: string;
-    reference?: string | null;
-    sourceId?: string | null;
-    transactionDate?: Date;
-  }
-) {
-  if (!supportsOwnerAccount(tx)) {
-    return null;
-  }
-
-  const account = await tx.ownerAccount.findUnique({
-    where: { id: params.accountId },
-    select: { id: true, balance: true }
-  });
-
-  if (!account) {
-    return null;
-  }
-
-  const debit = roundMoney(params.debit ?? 0);
-  const credit = roundMoney(params.credit ?? 0);
-  const currentBalance = roundMoney(Number(account.balance ?? 0));
-  const balanceAfter = roundMoney(currentBalance + debit - credit);
-
-  const transaction = await tx.ownerAccountTransaction.create({
-    data: {
-      accountId: params.accountId,
-      transactionDate: params.transactionDate ?? new Date(),
-      type: params.type as any,
-      debit: debit > 0 ? debit : undefined,
-      credit: credit > 0 ? credit : undefined,
-      balanceAfter,
-      label: params.label,
-      reference: params.reference ?? undefined,
-      sourceId: params.sourceId ?? undefined
-    }
-  });
-
-  await tx.ownerAccount.update({
-    where: { id: params.accountId },
-    data: { balance: balanceAfter }
-  });
-
-  return transaction;
 }
 
 export async function listSyndicatesByTenant(tenantId: string, pagination?: PaginationInput) {
@@ -516,7 +457,9 @@ export async function createSyndicateLot(
   }
 
   if (property.propertyType === 'IMMEUBLE') {
-    throw unprocessableEntity("Un lot ne peut pas etre un immeuble parent; selectionnez une unite (appartement, villa, bureau, etc.)");
+    throw unprocessableEntity(
+      'Un lot ne peut pas etre un immeuble parent; selectionnez une unite (appartement, villa, bureau, etc.)'
+    );
   }
 
   if (data.coownerId) {
@@ -587,11 +530,7 @@ function inferLotTypeFromPropertyType(
   }
 }
 
-function inferLotNumberFromProperty(property: {
-  internalReference: string;
-  title: string;
-  id: string;
-}) {
+function inferLotNumberFromProperty(property: { internalReference: string; title: string; id: string }) {
   return property.internalReference || property.title || property.id;
 }
 
@@ -746,9 +685,7 @@ export async function importLotsFromPropertiesBySyndicate(
   });
 
   // Auto-release links coming from liquidated syndicates.
-  const liquidatedLotIds = existingLots
-    .filter(lot => lot.syndicate.status === 'IN_LIQUIDATION')
-    .map(lot => lot.id);
+  const liquidatedLotIds = existingLots.filter(lot => lot.syndicate.status === 'IN_LIQUIDATION').map(lot => lot.id);
 
   if (liquidatedLotIds.length > 0) {
     await prisma.syndicateLot.updateMany({
@@ -761,9 +698,9 @@ export async function importLotsFromPropertiesBySyndicate(
   existingLots
     .filter(lot => lot.syndicate.status !== 'IN_LIQUIDATION')
     .forEach(lot => {
-    if (lot.propertyId) {
-      existingByPropertyId.set(lot.propertyId, { id: lot.id, syndicateId: lot.syndicateId });
-    }
+      if (lot.propertyId) {
+        existingByPropertyId.set(lot.propertyId, { id: lot.id, syndicateId: lot.syndicateId });
+      }
     });
 
   const created: Array<{ lotId: string; propertyId: string; lotNumber: string; sourceBuildingId: string | null }> = [];

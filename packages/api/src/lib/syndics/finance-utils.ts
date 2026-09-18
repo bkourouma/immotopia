@@ -1,8 +1,9 @@
-export const MONEY_PRECISION = 2;
-
-export function roundMoney(value: number): number {
-  return Number(value.toFixed(MONEY_PRECISION));
-}
+// MONEY_PRECISION et roundMoney vivent desormais dans lib/finance/money.ts,
+// partagees avec les futurs comptes de tiers (lot 1, decision D1). Re-exportees
+// ici pour que les nombreux imports existants depuis finance-utils continuent
+// de fonctionner sans modification, et reimportees pour l'usage local ci-dessous.
+import { MONEY_PRECISION, roundMoney } from '../finance/money';
+export { MONEY_PRECISION, roundMoney };
 
 export function clampNonNegative(value: number): number {
   return value < 0 ? 0 : value;
