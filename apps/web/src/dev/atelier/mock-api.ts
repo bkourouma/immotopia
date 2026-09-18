@@ -14,6 +14,9 @@ import {
   TABLEAU_DE_BORD,
   APPARTEMENTS
 } from './fixtures';
+import { repondreBalances } from './finance-mock-balances';
+import { repondreReleve } from './finance-mock-releve';
+import { repondreCampagne } from './finance-mock-campagne';
 
 /**
  * Fausse API de l'atelier.
@@ -289,6 +292,16 @@ export function installerFausseApi(scenario: Scenario) {
 
     if (url.pathname.includes('/geographic') || url.pathname.includes('/communes')) {
       return ok(config, { success: true, data: COMMUNES });
+    }
+
+    // Module financier. Un gestionnaire par écran, dans son propre fichier :
+    // trois agents les construisent en parallèle et ne se marchent pas dessus.
+    // Chacun renvoie `null` quand l'URL ne le concerne pas.
+    for (const repondre of [repondreBalances, repondreReleve, repondreCampagne]) {
+      const reponse = repondre(url.pathname, scenario);
+      if (reponse !== null) {
+        return ok(config, reponse);
+      }
     }
 
     // Tout le reste répond « rien », plutôt que d'échouer : l'atelier ne

@@ -427,6 +427,7 @@ model User {
 
   newsletterCampaignsCreated NewsletterCampaign[]
   savedContactSearches      SavedContactSearch[]
+  rentBillingRuns           RentBillingRun[]
 
   @@index([email])
   @@map("users")
@@ -531,6 +532,9 @@ model Tenant {
   ownerStatements           OwnerStatement[]
   workPrograms              WorkProgram[]
   patrimonyDocuments        PatrimonyDocument[]
+  thirdPartyAccounts        ThirdPartyAccount[]
+  thirdPartyMovements       ThirdPartyMovement[]
+  rentBillingRuns           RentBillingRun[]
 
   @@index([slug])
   @@index([status])
@@ -564,6 +568,7 @@ model TenantClient {
   // Communication relationships
   communicationsAsRecipient Communication[] @relation("CommRecipientClient")
   communicationPreferences  CommunicationPreference[]
+  thirdPartyAccounts        ThirdPartyAccount[]
 
   @@unique([userId, tenantId])
   @@index([userId])
@@ -1725,6 +1730,7 @@ model RentalLease {
   payments      RentalPayment[]
   paymentDeclarations RentalPaymentDeclaration[] @relation("RentalPaymentDeclarationLease")
   maintenanceTickets MaintenanceTicket[]
+  thirdPartyMovements ThirdPartyMovement[]
 
   @@unique([tenant_id, lease_number])
   @@index([tenant_id])
@@ -3839,4 +3845,150 @@ model RoleMenuAccess {
   @@unique([roleKey, menuKey])
   @@index([roleKey])
   @@map("role_menu_access")
+}
+
+// =============================================================
+// FINANCE OPERATIONNELLE — Lot 1, volet clients
+//
+// Specification : specs/016-finance-operationnelle/
+// Decisions     : docs/finance/PLAN-mise-en-oeuvre.md §12
+//
+// Trois tables neuves, aucune table existante modifiee hors relations
+// inverses. Le compte de tiers est volontairement SEPARE de `OwnerAccount`
+// (decision D1) : `OwnerAccount.lotId` est obligatoire et unique par lot de
+// copropriete, et son contact est un `CrmContact` la ou le locataire est un
+// `TenantClient`. Generaliser cette table en place casserait la copropriete.
+// Ce qui est partage, c'est le CODE de calcul du solde, extrait dans
+// `src/lib/finance/ledger.ts`, pas le stockage.
+//
+// Aucune ecriture en partie double a ce lot (decision D2) : la balance et le
+// releve se lisent sur les seuls mouvements de tiers. Les journaux arrivent
+// au lot 2 avec les fournisseurs.
+//
+// Montants en Decimal(14,2) et devise stockee "XOF" (decision D9) ;
+// l'affichage dit « FCFA », via le composant MoneyValue.
+// =============================================================
+
+/// Nature du tiers. Seul TENANT est peuple par le lot 1 ; les cinq autres
+/// arrivent aux lots 2 et 4. L'enum est fige en entier des maintenant :
+/// ajouter une valeur a un enum Postgres est sans risque, en retirer une ne
+/// l'est pas.
+enum ThirdPartyKind {
+  TENANT
+  SUPPLIER
+  LANDLORD
+  CONTRACTOR
+  PARTNER
+  EMPLOYEE
+}
+
+/// Nature d'un mouvement de compte de tiers.
+///
+/// ADVANCE_RECEIVED et ADVANCE_APPLIED sont deux valeurs distinctes et
+/// symetriques, et non une seule : sans cette distinction, un credit sur le
+/// releve ne dirait pas s'il s'agit d'un loyer regle a l'echeance ou d'une
+/// avance recue hors echeance. Le PRD (besoin B4) exige que l'imputation
+/// d'une avance soit visible sur le releve.
+enum ThirdPartyMovementType {
+  INSTALLMENT
+  PAYMENT
+  ADVANCE_RECEIVED
+  ADVANCE_APPLIED
+  PENALTY
+  WAIVER
+  ADJUSTMENT
+  OPENING_BALANCE
+  VOID
+}
+
+enum RentBillingRunStatus {
+  RUNNING
+  DONE
+  FAILED
+}
+
+/// Compte de tiers a solde courant.
+///
+/// Un compte par `TenantClient`, et non par bail : le releve suit la
+/// personne, meme si elle change de bail.
+model ThirdPartyAccount {
+  id             String         @id @default(uuid()) @db.Uuid
+  tenantId       String         @map("tenant_id")
+  kind           ThirdPartyKind
+  tenantClientId String?        @map("tenant_client_id")
+  label          String
+  balance        Decimal        @default(0) @db.Decimal(14, 2)
+  currency       String         @default("XOF")
+  isActive       Boolean        @default(true) @map("is_active")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantClient TenantClient?        @relation(fields: [tenantClientId], references: [id], onDelete: Cascade)
+  movements    ThirdPartyMovement[]
+
+  @@unique([tenantId, kind, tenantClientId])
+  @@index([tenantId])
+  @@index([tenantId, kind])
+  @@index([tenantClientId])
+  @@map("third_party_accounts")
+}
+
+/// Une ligne de releve.
+///
+/// Nait exclusivement d'une piece existante — echeance, paiement, penalite,
+/// annulation — ou de la campagne de facturation pour une avance imputee.
+/// Jamais de saisie libre : c'est le principe P-2 du PRD, la piece precede
+/// l'ecriture.
+model ThirdPartyMovement {
+  id           String                 @id @default(uuid()) @db.Uuid
+  accountId    String                 @map("account_id") @db.Uuid
+  tenantId     String                 @map("tenant_id")
+  movementDate DateTime               @map("movement_date")
+  type         ThirdPartyMovementType
+  debit        Decimal?               @db.Decimal(14, 2)
+  credit       Decimal?               @db.Decimal(14, 2)
+  balanceAfter Decimal                @map("balance_after") @db.Decimal(14, 2)
+  label        String
+  sourceType   String                 @map("source_type")
+  sourceId     String                 @map("source_id")
+  leaseId      String?                @map("lease_id") @db.Uuid
+  createdAt    DateTime               @default(now()) @map("created_at")
+
+  account ThirdPartyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  tenant  Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lease   RentalLease?      @relation(fields: [leaseId], references: [id], onDelete: SetNull)
+
+  @@unique([sourceType, sourceId, type])
+  @@index([accountId, movementDate, createdAt])
+  @@index([tenantId, movementDate])
+  @@index([leaseId])
+  @@map("third_party_movements")
+}
+
+/// Campagne de facturation mensuelle : « Loyer de septembre 2026 ».
+///
+/// Un objet par periode et par tenant. L'unicite sur (tenant, annee, mois)
+/// fait qu'une relance met a jour la meme campagne au lieu d'en creer une
+/// seconde : c'est la moitie de l'idempotence exigee par le besoin B3.
+/// L'autre moitie vient de la contrainte unique deja posee sur
+/// `rental_installments`.
+model RentBillingRun {
+  id              String               @id @default(uuid()) @db.Uuid
+  tenantId        String               @map("tenant_id")
+  periodYear      Int                  @map("period_year")
+  periodMonth     Int                  @map("period_month")
+  label           String
+  status          RentBillingRunStatus @default(RUNNING)
+  startedAt       DateTime             @default(now()) @map("started_at")
+  finishedAt      DateTime?            @map("finished_at")
+  createdByUserId String               @map("created_by_user_id")
+  summary         Json?
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation(fields: [createdByUserId], references: [id])
+
+  @@unique([tenantId, periodYear, periodMonth])
+  @@index([tenantId, status])
+  @@map("rent_billing_runs")
 }
