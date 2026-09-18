@@ -1,0 +1,513 @@
+openapi: 3.0.3
+info:
+  title: ImmoTopia Finance Operationnelle - Volet clients (lot 1) API
+  version: 1.0.0
+  description: >
+    Contrat API du lot 1 du module de gestion financiere operationnelle : balance clients,
+    balance agee, releve de compte de tiers et campagne de facturation mensuelle.
+    Ce lot ne produit aucune ecriture en partie double (decision D2 du plan de mise en
+    oeuvre) : le compte de tiers (`ThirdPartyAccount`) et ses mouvements
+    (`ThirdPartyMovement`) suffisent a produire balance et releve. Vocabulaire impose
+    (principe P-1 du PRD) : l'utilisatrice "facture" et "regle" ; aucune reponse
+    n'expose "debit" ni "credit".
+servers:
+  - url: /api
+tags:
+  - name: BalanceClients
+  - name: Comptes
+  - name: Facturation
+
+paths:
+  /tenants/{tenantId}/finance/clients/balance:
+    get:
+      tags: [BalanceClients]
+      summary: Balance clients - une ligne par locataire, montant facture, montant regle, solde
+      description: >
+        Filtrable par periode et par bien. Le total de controle en pied de reponse est
+        la somme des soldes des lignes retournees. Voir spec.md US1.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/PeriodStart"
+        - $ref: "#/components/parameters/PeriodEnd"
+        - $ref: "#/components/parameters/PropertyId"
+        - $ref: "#/components/parameters/Format"
+      responses:
+        "200":
+          description: Balance clients
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/ClientsBalanceResponseWrapper" }
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/clients/balance-agee:
+    get:
+      tags: [BalanceClients]
+      summary: Balance clients ventilee par anciennete d'echeance
+      description: >
+        Meme perimetre que la balance simple, ventile en tranches a-echoir / moins-30 /
+        30-60 / 60-90 / plus-90, calculees a la date `asOfDate` (aujourd'hui par defaut).
+        Voir spec.md US5.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/PropertyId"
+        - name: asOfDate
+          in: query
+          required: false
+          schema: { type: string, format: date }
+          description: Date de reference du calcul des tranches d'anciennete (aujourd'hui par defaut)
+      responses:
+        "200":
+          description: Balance clients agee
+          content:
+            application/json:
+              schema:
+                {
+                  $ref: "#/components/schemas/ClientsAgingBalanceResponseWrapper",
+                }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/accounts/{accountId}/statement:
+    get:
+      tags: [Comptes]
+      summary: Releve chronologique d'un compte de tiers
+      description: >
+        Chronologie bornee par dates, avec solde d'ouverture, solde de cloture et solde
+        apres chaque mouvement. Voir spec.md US2.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/PeriodStart"
+        - $ref: "#/components/parameters/PeriodEnd"
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        "200":
+          description: Releve de compte
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/AccountStatementResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/accounts/{accountId}/statement.pdf:
+    get:
+      tags: [Comptes]
+      summary: Releve de compte au format PDF, imprimable
+      description: Memes lignes, soldes et bornes que l'endpoint JSON du releve. Voir spec.md US2.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/AccountId"
+        - $ref: "#/components/parameters/PeriodStart"
+        - $ref: "#/components/parameters/PeriodEnd"
+      responses:
+        "200":
+          description: Document PDF du releve
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/billing-runs:
+    get:
+      tags: [Facturation]
+      summary: Lister les campagnes de facturation
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [RUNNING, DONE, FAILED] }
+      responses:
+        "200":
+          description: Liste des campagnes
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/BillingRunListResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Facturation]
+      summary: Lancer la campagne de facturation du mois pour tous les baux actifs
+      description: >
+        Idempotent sur `(tenantId, periodYear, periodMonth)` : relancer sur une periode
+        deja traitee ne cree aucune echeance supplementaire et renvoie un compte rendu
+        equivalent. Applique les avances disponibles (reglements non alloues) avant de
+        clore. Voir spec.md US3 et US4.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateBillingRunRequest" }
+      responses:
+        "201": { $ref: "#/components/responses/BillingRunCreated" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/billing-runs/{runId}:
+    get:
+      tags: [Facturation]
+      summary: Detail d'une campagne de facturation (compte rendu complet)
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Detail de la campagne
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/BillingRunDetailResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PropertyId:
+      name: propertyId
+      in: query
+      required: false
+      schema: { type: string, format: uuid }
+      description: Filtre par bien (via le bail rattache au mouvement)
+    PeriodStart:
+      name: periodStart
+      in: query
+      required: false
+      schema: { type: string, format: date }
+    PeriodEnd:
+      name: periodEnd
+      in: query
+      required: false
+      schema: { type: string, format: date }
+    Format:
+      name: format
+      in: query
+      required: false
+      schema: { type: string, enum: [json, csv], default: json }
+
+  responses:
+    BadRequest:
+      description: Requete invalide
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    Forbidden:
+      description: Acces interdit (hors tenant, ou permission manquante)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    BillingRunCreated:
+      description: Campagne creee ou mise a jour (idempotence sur la periode)
+      content:
+        application/json:
+          schema:
+            { $ref: "#/components/schemas/BillingRunDetailResponseWrapper" }
+
+  schemas:
+    ApiError:
+      type: object
+      required: [success, error]
+      properties:
+        success: { type: boolean, example: false }
+        error: { type: string }
+
+    ClientsBalanceLine:
+      type: object
+      required:
+        [
+          accountId,
+          tenantClientId,
+          label,
+          totalBilled,
+          totalSettled,
+          balance,
+          currency,
+        ]
+      properties:
+        accountId: { type: string, format: uuid }
+        tenantClientId: { type: string, format: uuid }
+        label: { type: string, description: Nom du locataire }
+        propertyLabels:
+          type: array
+          items: { type: string }
+          description: Biens rattaches aux baux du locataire dans le perimetre filtre
+        totalBilled:
+          { type: number, description: Montant total facture sur la periode }
+        totalSettled:
+          { type: number, description: Montant total regle sur la periode }
+        balance:
+          {
+            type: number,
+            description: Solde courant du compte (positif = le locataire doit),
+          }
+        currency: { type: string, example: XOF }
+
+    ClientsBalanceResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: object
+          required: [lines, totalBalance, currency]
+          properties:
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/ClientsBalanceLine" }
+            totalBalance:
+              {
+                type: number,
+                description: Total de controle,
+                somme des soldes des lignes,
+              }
+            currency: { type: string, example: XOF }
+
+    ClientsAgingBalanceLine:
+      type: object
+      required:
+        [
+          accountId,
+          tenantClientId,
+          label,
+          dueSoon,
+          overdue0to30,
+          overdue30to60,
+          overdue60to90,
+          overdue90plus,
+          balance,
+          currency,
+        ]
+      properties:
+        accountId: { type: string, format: uuid }
+        tenantClientId: { type: string, format: uuid }
+        label: { type: string }
+        dueSoon: { type: number, description: A echoir }
+        overdue0to30: { type: number }
+        overdue30to60: { type: number }
+        overdue60to90: { type: number }
+        overdue90plus: { type: number }
+        balance: { type: number }
+        currency: { type: string, example: XOF }
+
+    ClientsAgingBalanceResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: object
+          required: [lines, asOfDate, currency]
+          properties:
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/ClientsAgingBalanceLine" }
+            asOfDate: { type: string, format: date }
+            currency: { type: string, example: XOF }
+
+    ThirdPartyMovementLine:
+      type: object
+      required:
+        [
+          id,
+          movementDate,
+          type,
+          label,
+          amountBilled,
+          amountSettled,
+          balanceAfter,
+          currency,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        movementDate: { type: string, format: date-time }
+        type:
+          type: string
+          enum:
+            [
+              INSTALLMENT,
+              PAYMENT,
+              ADVANCE_RECEIVED,
+              ADVANCE_APPLIED,
+              PENALTY,
+              WAIVER,
+              ADJUSTMENT,
+              OPENING_BALANCE,
+              VOID,
+            ]
+        label:
+          {
+            type: string,
+            description: Libelle en francais,
+            jamais "debit"/"credit",
+          }
+        amountBilled:
+          {
+            type: number,
+            nullable: true,
+            description: Montant facture pour ce mouvement,
+            si applicable,
+          }
+        amountSettled:
+          {
+            type: number,
+            nullable: true,
+            description: Montant regle pour ce mouvement,
+            si applicable,
+          }
+        balanceAfter: { type: number }
+        currency: { type: string, example: XOF }
+        leaseId: { type: string, format: uuid, nullable: true }
+
+    AccountStatementResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: object
+          required:
+            [
+              accountId,
+              label,
+              openingBalance,
+              closingBalance,
+              currency,
+              lines,
+              page,
+              pageSize,
+              totalLines,
+            ]
+          properties:
+            accountId: { type: string, format: uuid }
+            label: { type: string }
+            openingBalance: { type: number }
+            closingBalance: { type: number }
+            currency: { type: string, example: XOF }
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/ThirdPartyMovementLine" }
+            page: { type: integer }
+            pageSize: { type: integer }
+            totalLines: { type: integer }
+
+    CreateBillingRunRequest:
+      type: object
+      required: [periodYear, periodMonth, label]
+      properties:
+        periodYear: { type: integer, minimum: 2000 }
+        periodMonth: { type: integer, minimum: 1, maximum: 12 }
+        label: { type: string, example: Loyer de septembre 2026 }
+
+    BillingRunExclusion:
+      type: object
+      required: [leaseId, reason]
+      properties:
+        leaseId: { type: string, format: uuid }
+        reason:
+          type: string
+          enum:
+            [
+              BAIL_SUSPENDU,
+              PERIODE_HORS_BAIL,
+              ECHEANCE_DEJA_EXISTANTE,
+              LOYER_NON_RENSEIGNE,
+            ]
+
+    BillingRunBilledLease:
+      type: object
+      required: [leaseId, installmentId, amount]
+      properties:
+        leaseId: { type: string, format: uuid }
+        installmentId: { type: string, format: uuid }
+        amount: { type: number }
+
+    BillingRunAdvanceApplied:
+      type: object
+      required: [tenantClientId, installmentId, amount, sourcePaymentId]
+      properties:
+        tenantClientId: { type: string, format: uuid }
+        installmentId: { type: string, format: uuid }
+        amount: { type: number }
+        sourcePaymentId: { type: string, format: uuid }
+
+    BillingRunSummary:
+      type: object
+      properties:
+        billed:
+          type: array
+          items: { $ref: "#/components/schemas/BillingRunBilledLease" }
+        excluded:
+          type: array
+          items: { $ref: "#/components/schemas/BillingRunExclusion" }
+        advancesApplied:
+          type: array
+          items: { $ref: "#/components/schemas/BillingRunAdvanceApplied" }
+
+    BillingRun:
+      type: object
+      required:
+        [id, periodYear, periodMonth, label, status, startedAt, createdByUserId]
+      properties:
+        id: { type: string, format: uuid }
+        periodYear: { type: integer }
+        periodMonth: { type: integer }
+        label: { type: string }
+        status: { type: string, enum: [RUNNING, DONE, FAILED] }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time, nullable: true }
+        createdByUserId: { type: string, format: uuid }
+
+    BillingRunListResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/BillingRun" }
+
+    BillingRunDetailResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          allOf:
+            - $ref: "#/components/schemas/BillingRun"
+            - type: object
+              properties:
+                summary: { $ref: "#/components/schemas/BillingRunSummary" }
