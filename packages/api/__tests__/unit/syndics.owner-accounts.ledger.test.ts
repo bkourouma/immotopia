@@ -3,8 +3,16 @@
  *
  * Objectif : figer le comportement ACTUEL de `appendOwnerAccountTransactionTx`
  * (calcul du solde courant) et des fonctions publiques qui l'exposent, avant la
- * generalisation multi-tenant du lot 2. Aucun test ici ne juge le comportement :
- * il le decrit, y compris quand il surprend (cas explicitement annotes).
+ * generalisation multi-tenant du lot 2. Au lot 0, aucun test d'ici ne jugeait le
+ * comportement : il le decrivait, y compris quand il surprenait.
+ *
+ * Le lot 2 fait evoluer les deux cas du releve de compte qui repliaient
+ * ouverture et cloture sur le solde courant (defaut n°3 du §6.1 bis du plan) ;
+ * chacun porte au-dessus de lui le commentaire qui dit pourquoi. Le cas
+ * « roundMoney arrondit 100.005 vers le bas » (defaut n°4) reste inchange : la
+ * precision a l'unite decidee pour le franc CFA n'est appliquee qu'au chemin
+ * d'ecriture du lot 2 (`roundMoneyXof`), et la copropriete continue de compter
+ * en centimes comme ses donnees deja en base.
  *
  * Prisma est remplace par un magasin en memoire : aucune base n'est requise.
  */
@@ -149,6 +157,20 @@ jest.mock('@prisma/client', () => {
         const skip = args.skip ?? 0;
         const take = args.take ?? rows.length;
         return rows.slice(skip, skip + take);
+      }),
+      // Ajoute au lot 2 : le releve remonte desormais la chaine des mouvements
+      // pour trouver son solde d'ouverture, au lieu de se replier sur le solde
+      // courant du compte (defaut n°3). `lt` est la seule borne utilisee, d'ou
+      // ce filtre plus simple que celui de `findMany`.
+      findFirst: jest.fn(async (args: Row) => {
+        const where = args.where ?? {};
+        const rows = store.transactions
+          .filter(t => t.accountId === where.accountId)
+          .filter(t =>
+            where.transactionDate?.lt ? new Date(t.transactionDate) < new Date(where.transactionDate.lt) : true
+          )
+          .sort(buildComparator(args.orderBy));
+        return rows[0] ?? null;
       })
     }
   };
@@ -429,14 +451,22 @@ describe('Caracterisation - grand livre du compte de lot', () => {
       expect(statement.summary.closingBalance).toBe(12000);
     });
 
-    it('sans aucun mouvement, ouverture et cloture valent le solde courant du compte', async () => {
+    // Corrige au lot 2 (defaut n°3, voir `data-model.md#defaut-3`). Ce cas
+    // decrivait le meme defaut que le « SURPRISE » ci-dessous, sans en porter le
+    // nom : ouverture et cloture se repliaient sur `OwnerAccount.balance`,
+    // c'est-a-dire sur le solde du jour. Le releve s'ancre desormais sur la
+    // chaine des mouvements, comme le grand livre des comptes de tiers du lot 1
+    // (`getBalanceStrictlyBefore`, `lib/finance/reports.ts`). Un compte sans
+    // aucun mouvement n'a donc rien a montrer : zero, et non un solde que rien
+    // n'explique. Le changement est voulu.
+    it('corrige (lot 2) : sans aucun mouvement, le releve affiche zero et non le solde courant', async () => {
       seedOwnerAccount(4200);
 
       const statement = await getOwnerAccountStatementByLot(TENANT_ID, SYNDIC_ID, LOT_ID);
 
       expect(statement.transactions).toHaveLength(0);
-      expect(statement.summary.openingBalance).toBe(4200);
-      expect(statement.summary.closingBalance).toBe(4200);
+      expect(statement.summary.openingBalance).toBe(0);
+      expect(statement.summary.closingBalance).toBe(0);
     });
 
     it('borne le releve par dates et recalcule l ouverture sur le 1er mouvement de la periode', async () => {
@@ -456,7 +486,15 @@ describe('Caracterisation - grand livre du compte de lot', () => {
       expect(statement.summary.closingBalance).toBe(12000);
     });
 
-    it('SURPRISE : sur une periode sans mouvement, le releve affiche le solde ACTUEL, pas celui de la periode', async () => {
+    // Corrige au lot 2 (defaut n°3, voir `data-model.md#defaut-3`). Ce cas
+    // perd son prefixe SURPRISE : le releve ne se replie plus sur le solde
+    // courant quand la periode est vide. Il lit le solde atteint par le dernier
+    // mouvement anterieur a la borne de debut — ici aucun, le compte n'ayant
+    // rien connu avant 2026 — et la cloture le suit, puisque rien n'a bouge
+    // entre les deux bornes. Un releve 2025 montre donc 2025, ce qui etait tout
+    // l'enjeu : un chiffre juste a la mauvaise date est pire qu'un chiffre
+    // absent. Le changement est voulu.
+    it('corrige (lot 2) : sur une periode sans mouvement, le releve affiche le solde de la periode', async () => {
       seedOwnerAccount(0);
       await ajuster('DEBIT', 10000, 'Janvier', new Date('2026-01-10T00:00:00.000Z'));
       await ajuster('DEBIT', 6000, 'Fevrier', new Date('2026-02-10T00:00:00.000Z'));
@@ -467,7 +505,26 @@ describe('Caracterisation - grand livre du compte de lot', () => {
       });
 
       expect(statement.transactions).toHaveLength(0);
-      // Le compte etait a 0 en 2025 ; le releve annonce pourtant 16000.
+      // Le compte etait a 0 en 2025, et le releve le dit desormais.
+      expect(statement.summary.openingBalance).toBe(0);
+      expect(statement.summary.closingBalance).toBe(0);
+    });
+
+    // Contre-epreuve du meme defaut : une periode vide *posterieure* a des
+    // mouvements doit montrer le solde atteint avant elle, pas zero ni le solde
+    // du jour. Sans ce cas, la correction ci-dessus passerait aussi avec un
+    // simple « toujours zero quand la periode est vide ».
+    it('corrige (lot 2) : une periode vide posterieure montre le solde atteint avant elle', async () => {
+      seedOwnerAccount(0);
+      await ajuster('DEBIT', 10000, 'Janvier', new Date('2026-01-10T00:00:00.000Z'));
+      await ajuster('DEBIT', 6000, 'Fevrier', new Date('2026-02-10T00:00:00.000Z'));
+
+      const statement = await getOwnerAccountStatementByLot(TENANT_ID, SYNDIC_ID, LOT_ID, {
+        from: new Date('2026-06-01T00:00:00.000Z'),
+        to: new Date('2026-06-30T00:00:00.000Z')
+      });
+
+      expect(statement.transactions).toHaveLength(0);
       expect(statement.summary.openingBalance).toBe(16000);
       expect(statement.summary.closingBalance).toBe(16000);
     });

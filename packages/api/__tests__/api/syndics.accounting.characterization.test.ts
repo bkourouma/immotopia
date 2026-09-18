@@ -7,8 +7,14 @@
  * uniquement Prisma : le plan de comptes, les journaux, les ecritures, le
  * verrouillage et la balance sont donc reellement executes.
  *
- * Aucun test ici ne corrige le comportement : il le decrit, y compris quand il
- * surprend (cas explicitement annotes SURPRISE).
+ * Au lot 0, aucun test d'ici ne corrigeait le comportement : il le decrivait, y
+ * compris quand il surprenait (cas annotes SURPRISE). Le lot 2 fait evoluer
+ * deux de ces cas — les defauts n°1 et n°5 du §6.1 bis du plan — et chacun
+ * porte au-dessus de lui le commentaire qui dit pourquoi le changement est
+ * voulu, avec le renvoi vers la section de la specification qui l'a decide. Les
+ * SURPRISE restants decrivent des comportements deliberement laisses
+ * identiques : les corriger changerait la copropriete deja en service, hors du
+ * perimetre de ce lot.
  */
 
 jest.mock('../../src/middleware/auth-middleware', () => ({
@@ -372,7 +378,19 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
       });
     });
 
-    it('SURPRISE : la violation d unicite (syndicateId, accountNumber) ressort en 400 Prisma brut', async () => {
+    // Corrige au lot 2 (defaut n°5, voir
+    // `specs/017-finance-fournisseurs-chantiers/data-model.md#defaut-5`).
+    //
+    // Ce cas change sa propre assertion, et c'est voulu : la correction porte
+    // des deux cotes, copropriete comprise, parce qu'elle est le garde-fou exact
+    // de la migration `generalize_accounting_scope`. C'est justement l'ancienne
+    // contrainte `@@unique([syndicateId, accountNumber])` que cette migration
+    // remplace par deux index uniques partiels : le chemin d'erreur qui la
+    // couvre devait etre juste avant que la contrainte ne change de forme.
+    //
+    // Le message technique de Prisma ne fuit plus vers la gestionnaire, et un
+    // doublon est un conflit (409), pas une requete malformee (400).
+    it('corrige (lot 2) : la violation d unicite (syndicateId, accountNumber) renvoie 409 avec un message metier', async () => {
       seedAccount(ACCOUNT_1_ID, '401', 'Fournisseurs');
 
       const response = await request(app).post(`${base()}/comptes`).send({
@@ -382,10 +400,10 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
         accountType: 'LIABILITY'
       });
 
-      // Aucun code ne traduit P2002 en 409 Conflit : le message Prisma fuit tel quel.
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(409);
       expect(response.body.success).toBe(false);
-      expect(response.body.error).toContain('Unique constraint failed');
+      expect(response.body.error).toContain('401');
+      expect(response.body.error).not.toContain('Unique constraint failed');
     });
 
     it('le meme numero de compte reste acceptable dans une autre copropriete', async () => {
@@ -659,7 +677,21 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
       expect(response.body.data.lines.map((l: any) => l.debit)).toEqual([33.33, 66.67, 0]);
     });
 
-    it('SURPRISE : l equilibre est verifie AVANT arrondi, une ecriture stockee peut donc etre desequilibree', async () => {
+    // Corrige au lot 2 (defaut n°1, voir
+    // `specs/017-finance-fournisseurs-chantiers/data-model.md#defaut-1`).
+    //
+    // Ce cas perd son prefixe SURPRISE et change d attente, et c est voulu :
+    // `isJournalEntryBalanced` arrondit desormais chaque ligne AVANT de la
+    // sommer, exactement comme l insertion le fait. Le controle porte donc sur
+    // les memes nombres que la base. Les deux demi-centimes ne se compensent
+    // pas plus qu avant — 0.01 + 0.01 = 0.02 contre 0.01 — mais le refus
+    // intervient maintenant AVANT stockage, au lieu de laisser entrer une
+    // ecriture qui rendait la balance fausse en silence.
+    //
+    // Un autre cas de ce fichier verifie qu une repartition legitime
+    // (33.333 + 66.667 contre 100) reste acceptee : la correction ferme le
+    // trou sans durcir l arrondi.
+    it('corrige (lot 2) : l equilibre est verifie APRES arrondi, une ecriture desequilibree est refusee', async () => {
       const response = await request(app)
         .post(`${base()}/ecritures`)
         .send({
@@ -675,13 +707,11 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
           ]
         });
 
-      // Controle d equilibre : 0.005 + 0.005 = 0.01 == 0.01, l ecriture est acceptee.
-      expect(response.status).toBe(201);
-      // Lignes reellement stockees : 0.01 + 0.01 = 0.02 au debit contre 0.01 au credit.
-      const totalDebit = response.body.data.lines.reduce((sum: number, l: any) => sum + l.debit, 0);
-      const totalCredit = response.body.data.lines.reduce((sum: number, l: any) => sum + l.credit, 0);
-      expect(totalDebit).toBe(0.02);
-      expect(totalCredit).toBe(0.01);
+      expect(response.status).toBe(422);
+      expect(response.body.error).toContain('Ecriture non equilibree');
+      // Et rien n a ete stocke : le refus precede l ecriture.
+      expect(store.entries).toHaveLength(0);
+      expect(store.lines).toHaveLength(0);
     });
 
     it('liste les ecritures de la plus recente a la plus ancienne', async () => {

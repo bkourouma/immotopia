@@ -206,6 +206,15 @@ export interface PendingDocument {
   amount: number;
   currency: string;
   createdAt: string;
+  /**
+   * L'identifiant du saisisseur, et non son seul nom.
+   *
+   * Oubli de ma transcription : le contrat serveur le porte depuis le debut.
+   * Sans lui, le filtre « Saisi par » enverrait un libelle la ou l'API attend
+   * un identifiant — exactement le defaut corrige au lot 1 sur le filtre par
+   * bien. Deux homonymes suffiraient a le rendre faux.
+   */
+  createdByUserId: string;
   createdByLabel: string;
 }
 
