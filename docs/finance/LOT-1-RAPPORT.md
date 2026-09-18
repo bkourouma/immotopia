@@ -107,6 +107,8 @@ Sept au total, sur les vagues 4 et 5. **Tous ont été signalés par les agents 
 
 **Les colonnes exactes de la balance attendent l'export du tableur de la cliente**, qui n'a pas été fourni.
 
+**Les cinq questions ouvertes du PRD sont tranchées** depuis le 18 septembre 2026, et consignées dans la spécification 017. Le lot 5 cesse d'être conditionnel : un suivi des matériaux existe déjà, tenu à la main.
+
 **Les questions 3 à 7 du PRD** restent à trancher avant le lot 2 : suivi des matériaux, pratique budgétaire, statut des ouvriers, états aux associés, organisation de la caisse.
 
 ---
@@ -128,7 +130,44 @@ Reproduire : `npx ts-node packages/api/scripts/finance-baseline.ts`.
 
 ---
 
-## 8. Ce que la prochaine visioconférence doit montrer
+## 8. Vérifié contre une vraie base
+
+Le 18 septembre 2026, après que le lot 1 a été livré. C'est cette étape qui a trouvé le défaut de transaction décrit au § 4, invisible aux 285 tests backend.
+
+**Rétro-remplissage**, agence Ivoire Résidences, 19 baux et 414 échéances :
+
+| Contrôle                                           | Résultat    |
+| -------------------------------------------------- | ----------- |
+| Comptes créés                                      | 18          |
+| Mouvements écrits                                  | 571         |
+| Comptes dont le solde diverge du dernier mouvement | 0           |
+| Somme des soldes                                   | 160 494 750 |
+| Total facturé moins total réglé                    | 160 494 750 |
+
+**Campagne de facturation**, agence Immobilière du Mali, sur une période vierge. Le chemin complet est exercé : création de compte, création d'échéance et écriture du mouvement dans une seule transaction.
+
+|                  | Première passe | Seconde passe |
+| ---------------- | -------------- | ------------- |
+| Baux facturés    | 23             | 0             |
+| Baux exclus      | 2              | 25            |
+| Comptes créés    | 23             | 0             |
+| Somme des soldes | 3 707 695      | inchangée     |
+
+La somme des soldes égale au franc la somme des échéances de la période. L'état après les deux passes est rigoureusement identique : l'idempotence tient contre PostgreSQL, et non plus seulement contre un simulacre.
+
+**Banc de charge** à l'échelle du critère de sortie, 500 tiers et 12 000 mouvements, médiane sur trois exécutions :
+
+| Fonction         | Médiane  | Marge sur le seuil de 3 s |
+| ---------------- | -------- | ------------------------- |
+| Balance clients  | 88,8 ms  | 34 fois                   |
+| Balance âgée     | 124,5 ms | 24 fois                   |
+| Relevé de compte | 49,6 ms  | 60 fois                   |
+
+Reproduire : `npx ts-node --project packages/api/tsconfig.json packages/api/scripts/finance-bench-reports.ts`. Le script crée son propre tenant jetable et le supprime, y compris si une mesure échoue.
+
+---
+
+## 9. Ce que la prochaine visioconférence doit montrer
 
 Dans cet ordre, depuis l'atelier ou l'application :
 
