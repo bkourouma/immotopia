@@ -1,0 +1,486 @@
+/**
+ * Tests de caracterisation du grand livre des comptes de lot (compte coproprietaire).
+ *
+ * Objectif : figer le comportement ACTUEL de `appendOwnerAccountTransactionTx`
+ * (calcul du solde courant) et des fonctions publiques qui l'exposent, avant la
+ * generalisation multi-tenant du lot 2. Aucun test ici ne juge le comportement :
+ * il le decrit, y compris quand il surprend (cas explicitement annotes).
+ *
+ * Prisma est remplace par un magasin en memoire : aucune base n'est requise.
+ */
+
+jest.mock('@prisma/client', () => {
+  type Row = Record<string, any>;
+
+  const store = {
+    syndicates: [] as Row[],
+    lots: [] as Row[],
+    accounts: [] as Row[],
+    transactions: [] as Row[],
+    seq: 0
+  };
+
+  const nextSeq = () => {
+    store.seq += 1;
+    return store.seq;
+  };
+
+  /** Horodatage technique strictement croissant, pour un tri `createdAt` deterministe. */
+  const nextCreatedAt = () => new Date(Date.UTC(2000, 0, 1) + nextSeq() * 1000);
+
+  const matchesDateFilter = (value: Date, filter?: Row) => {
+    if (!filter) {
+      return true;
+    }
+    if (filter.gte && value < new Date(filter.gte)) {
+      return false;
+    }
+    if (filter.lte && value > new Date(filter.lte)) {
+      return false;
+    }
+    return true;
+  };
+
+  const syndicateOfTenant = (syndicateId: string, tenantId?: string) =>
+    store.syndicates.find(
+      s => s.id === syndicateId && (tenantId === undefined || s.tenantId === tenantId) && s.status !== 'IN_LIQUIDATION'
+    );
+
+  /** Construit un comparateur a partir d'un `orderBy` Prisma de la forme [{champ: 'asc'}]. */
+  const buildComparator = (orderBy?: Row[]) => (a: Row, b: Row) => {
+    for (const clause of orderBy ?? []) {
+      const [field, direction] = Object.entries(clause)[0] as [string, string];
+      const left = new Date(a[field]).getTime();
+      const right = new Date(b[field]).getTime();
+      if (left !== right) {
+        return direction === 'desc' ? right - left : left - right;
+      }
+    }
+    return 0;
+  };
+
+  const client: Row = {
+    syndicate: {
+      findFirst: jest.fn(async (args: Row) => {
+        const found = syndicateOfTenant(args.where.id, args.where.tenantId);
+        return found ? { id: found.id } : null;
+      })
+    },
+    syndicateLot: {
+      findFirst: jest.fn(async (args: Row) => {
+        const where = args.where;
+        const lot = store.lots.find(l => l.id === where.id && l.syndicateId === where.syndicateId);
+        if (!lot) {
+          return null;
+        }
+        const tenantId = where.syndicate?.tenantId;
+        if (tenantId && !syndicateOfTenant(lot.syndicateId, tenantId)) {
+          return null;
+        }
+        return {
+          id: lot.id,
+          coownerId: lot.coownerId ?? null,
+          ownerContactId: lot.ownerContactId ?? null,
+          property: lot.property ?? null
+        };
+      }),
+      update: jest.fn(async (args: Row) => {
+        const lot: any = store.lots.find(l => l.id === args.where.id);
+        Object.assign(lot ?? {}, args.data);
+        return lot;
+      })
+    },
+    crmContact: {
+      findFirst: jest.fn(async () => null)
+    },
+    crmContactRole: {
+      findFirst: jest.fn(async () => null),
+      create: jest.fn(async (args: Row) => args.data),
+      update: jest.fn(async (args: Row) => args.data)
+    },
+    ownerAccount: {
+      findUnique: jest.fn(async (args: Row) => {
+        const where = args.where;
+        const found = store.accounts.find(a => (where.id !== undefined ? a.id === where.id : a.lotId === where.lotId));
+        return found ?? null;
+      }),
+      findFirst: jest.fn(async (args: Row) => {
+        const where = args.where;
+        const account = store.accounts.find(a => a.lotId === where.lotId && a.syndicateId === where.syndicateId);
+        if (!account) {
+          return null;
+        }
+        const tenantId = where.syndicate?.tenantId;
+        const syndicate = syndicateOfTenant(account.syndicateId, tenantId);
+        if (tenantId && !syndicate) {
+          return null;
+        }
+        const lot = store.lots.find(l => l.id === account.lotId);
+        return {
+          ...account,
+          syndicate: syndicate ?? null,
+          lot: lot ? { ...lot, owner: null } : null,
+          contact: { id: account.contactId, firstName: 'Awa', lastName: 'Diop' }
+        };
+      }),
+      create: jest.fn(async (args: Row) => {
+        const created = { id: `acc-${nextSeq()}`, currency: 'XOF', ...args.data };
+        store.accounts.push(created);
+        return created;
+      }),
+      update: jest.fn(async (args: Row) => {
+        const account: any = store.accounts.find(a => a.id === args.where.id);
+        Object.assign(account ?? {}, args.data);
+        return account;
+      })
+    },
+    ownerAccountTransaction: {
+      create: jest.fn(async (args: Row) => {
+        const created = { id: `tx-${nextSeq()}`, createdAt: nextCreatedAt(), ...args.data };
+        store.transactions.push(created);
+        return created;
+      }),
+      findMany: jest.fn(async (args: Row) => {
+        const where = args.where ?? {};
+        const rows = store.transactions
+          .filter(t => t.accountId === where.accountId)
+          .filter(t => matchesDateFilter(new Date(t.transactionDate), where.transactionDate))
+          .sort(buildComparator(args.orderBy));
+        const skip = args.skip ?? 0;
+        const take = args.take ?? rows.length;
+        return rows.slice(skip, skip + take);
+      })
+    }
+  };
+
+  client.$transaction = jest.fn(async (callback: any) => callback(client));
+
+  return {
+    PrismaClient: jest.fn(() => client),
+    __mockPrisma: client,
+    __store: store
+  };
+});
+
+import {
+  createOwnerAccountAdjustmentByLot,
+  getOwnerAccountByLot,
+  getOwnerAccountStatementByLot,
+  listOwnerAccountTransactionsByLot
+} from '../../src/lib/syndics/queries';
+
+const { __mockPrisma: mockPrisma, __store: store } = jest.requireMock('@prisma/client') as {
+  __mockPrisma: any;
+  __store: any;
+};
+
+const TENANT_ID = 'tenant-1';
+const OTHER_TENANT_ID = 'tenant-2';
+const SYNDIC_ID = 'syndic-1';
+const LOT_ID = 'lot-1';
+const LOT_SANS_PROPRIETAIRE_ID = 'lot-sans-proprietaire';
+const CONTACT_ID = 'contact-1';
+
+/** Cree le compte de lot directement dans le magasin, avec le solde de depart voulu. */
+function seedOwnerAccount(balance = 0) {
+  const account = {
+    id: 'acc-seed',
+    syndicateId: SYNDIC_ID,
+    lotId: LOT_ID,
+    contactId: CONTACT_ID,
+    balance,
+    currency: 'XOF'
+  };
+  store.accounts.push(account);
+  return account;
+}
+
+async function ajuster(direction: 'DEBIT' | 'CREDIT', amount: number, label: string, transactionDate?: Date) {
+  return createOwnerAccountAdjustmentByLot(TENANT_ID, SYNDIC_ID, LOT_ID, {
+    direction,
+    amount,
+    label,
+    transactionDate
+  });
+}
+
+describe('Caracterisation - grand livre du compte de lot', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    store.syndicates.length = 0;
+    store.lots.length = 0;
+    store.accounts.length = 0;
+    store.transactions.length = 0;
+    store.seq = 0;
+
+    store.syndicates.push({ id: SYNDIC_ID, tenantId: TENANT_ID, status: 'ACTIVE' });
+    store.lots.push({ id: LOT_ID, syndicateId: SYNDIC_ID, coownerId: CONTACT_ID, ownerContactId: CONTACT_ID });
+    store.lots.push({
+      id: LOT_SANS_PROPRIETAIRE_ID,
+      syndicateId: SYNDIC_ID,
+      coownerId: null,
+      ownerContactId: null
+    });
+  });
+
+  describe('Acces au compte de lot', () => {
+    it('cree le compte de lot a la volee avec un solde initial de 0', async () => {
+      const account = await getOwnerAccountByLot(TENANT_ID, SYNDIC_ID, LOT_ID);
+
+      expect(account.balance).toBe(0);
+      expect(account.contactId).toBe(CONTACT_ID);
+      expect(mockPrisma.ownerAccount.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('reutilise le compte existant plutot que d en creer un second', async () => {
+      seedOwnerAccount(1500);
+
+      const account = await getOwnerAccountByLot(TENANT_ID, SYNDIC_ID, LOT_ID);
+
+      expect(account.id).toBe('acc-seed');
+      expect(account.balance).toBe(1500);
+      expect(mockPrisma.ownerAccount.create).not.toHaveBeenCalled();
+    });
+
+    it('leve notFound (404) quand le lot n a aucun proprietaire rattache', async () => {
+      await expect(getOwnerAccountByLot(TENANT_ID, SYNDIC_ID, LOT_SANS_PROPRIETAIRE_ID)).rejects.toMatchObject({
+        status: 404,
+        message: 'Compte lot introuvable ou lot sans proprietaire'
+      });
+    });
+
+    it('leve une erreur d isolation tenant (403) pour une copropriete d un autre tenant', async () => {
+      seedOwnerAccount(1000);
+
+      await expect(getOwnerAccountByLot(OTHER_TENANT_ID, SYNDIC_ID, LOT_ID)).rejects.toMatchObject({
+        status: 403,
+        code: 'TENANT_ISOLATION_ERROR'
+      });
+    });
+  });
+
+  describe('Sens et enchainement du solde courant', () => {
+    it('un debit AUGMENTE le solde du compte de lot', async () => {
+      seedOwnerAccount(0);
+
+      const transaction: any = await ajuster('DEBIT', 25000, 'Appel de charges');
+
+      expect(transaction.debit).toBe(25000);
+      expect(transaction.credit).toBeUndefined();
+      expect(Number(transaction.balanceAfter)).toBe(25000);
+      expect(store.accounts[0].balance).toBe(25000);
+    });
+
+    it('un credit DIMINUE le solde du compte de lot', async () => {
+      seedOwnerAccount(25000);
+
+      const transaction: any = await ajuster('CREDIT', 10000, 'Encaissement');
+
+      expect(transaction.credit).toBe(10000);
+      expect(transaction.debit).toBeUndefined();
+      expect(Number(transaction.balanceAfter)).toBe(15000);
+      expect(store.accounts[0].balance).toBe(15000);
+    });
+
+    it('chaine balanceAfter sur plusieurs mouvements : chaque solde vaut le precedent + debit - credit', async () => {
+      seedOwnerAccount(0);
+
+      const t1: any = await ajuster('DEBIT', 30000, 'Appel T1');
+      const t2: any = await ajuster('CREDIT', 12000, 'Acompte');
+      const t3: any = await ajuster('DEBIT', 4500, 'Penalite');
+      const t4: any = await ajuster('CREDIT', 22500, 'Solde');
+
+      expect([t1, t2, t3, t4].map(t => Number(t.balanceAfter))).toEqual([30000, 18000, 22500, 0]);
+      expect(store.accounts[0].balance).toBe(0);
+    });
+
+    it('laisse le solde devenir negatif : aucun plancher a zero n est applique', async () => {
+      seedOwnerAccount(5000);
+
+      const transaction: any = await ajuster('CREDIT', 8000, 'Trop-percu');
+
+      expect(Number(transaction.balanceAfter)).toBe(-3000);
+      expect(store.accounts[0].balance).toBe(-3000);
+    });
+
+    it('arrondit chaque mouvement au centime (roundMoney) avant de l ajouter au solde', async () => {
+      seedOwnerAccount(0);
+
+      const t1: any = await ajuster('DEBIT', 33.333, 'Quote-part 1');
+      const t2: any = await ajuster('DEBIT', 33.333, 'Quote-part 2');
+      const t3: any = await ajuster('DEBIT', 33.333, 'Quote-part 3');
+
+      // Le montant est arrondi AVANT l addition : 33.33 x 3 = 99.99, et non 100.00.
+      expect([t1.debit, t2.debit, t3.debit]).toEqual([33.33, 33.33, 33.33]);
+      expect([t1, t2, t3].map(t => Number(t.balanceAfter))).toEqual([33.33, 66.66, 99.99]);
+    });
+
+    it('SURPRISE : roundMoney arrondit 100.005 a 100.00 (vers le bas), suite au binaire flottant', async () => {
+      seedOwnerAccount(0);
+
+      const transaction: any = await ajuster('DEBIT', 100.005, 'Arrondi a la baisse');
+
+      expect(transaction.debit).toBe(100);
+      expect(Number(transaction.balanceAfter)).toBe(100);
+    });
+
+    it('SURPRISE : un ajustement de montant 0 cree une transaction sans debit ni credit', async () => {
+      seedOwnerAccount(7000);
+
+      // `debit > 0 ? debit : undefined` : a montant nul, les deux colonnes restent NULL.
+      // Le schema HTTP interdit amount <= 0, mais la couche requete, elle, l accepte.
+      const transaction: any = await ajuster('DEBIT', 0, 'Ajustement nul');
+
+      expect(transaction.debit).toBeUndefined();
+      expect(transaction.credit).toBeUndefined();
+      expect(transaction.type).toBe('ADJUSTMENT');
+      expect(Number(transaction.balanceAfter)).toBe(7000);
+      expect(store.accounts[0].balance).toBe(7000);
+    });
+
+    it('type un ajustement en ADJUSTMENT et reporte le libelle et la date fournis', async () => {
+      seedOwnerAccount(0);
+      const date = new Date('2026-04-15T00:00:00.000Z');
+
+      const transaction: any = await createOwnerAccountAdjustmentByLot(TENANT_ID, SYNDIC_ID, LOT_ID, {
+        direction: 'DEBIT',
+        amount: 1200,
+        label: 'Regularisation exercice 2025',
+        reference: 'REG-2025-07',
+        transactionDate: date
+      });
+
+      expect(transaction.type).toBe('ADJUSTMENT');
+      expect(transaction.label).toBe('Regularisation exercice 2025');
+      expect(transaction.reference).toBe('REG-2025-07');
+      expect(transaction.transactionDate).toEqual(date);
+    });
+
+    it('leve unprocessableEntity (422) quand la transaction ne peut pas etre ecrite', async () => {
+      seedOwnerAccount(0);
+      // Le compte disparait entre sa lecture (findFirst) et l ecriture du mouvement,
+      // qui le relit par identifiant : appendOwnerAccountTransactionTx renvoie null.
+      const implementationInitiale = mockPrisma.ownerAccount.findUnique.getMockImplementation();
+      mockPrisma.ownerAccount.findUnique.mockImplementation(async (args: any) =>
+        args.where.id !== undefined ? null : implementationInitiale(args)
+      );
+
+      try {
+        await expect(ajuster('DEBIT', 1000, 'Mouvement orphelin')).rejects.toMatchObject({
+          status: 422,
+          message: 'Impossible de creer la transaction de compte lot'
+        });
+      } finally {
+        mockPrisma.ownerAccount.findUnique.mockImplementation(implementationInitiale);
+      }
+    });
+  });
+
+  describe('Listage des transactions', () => {
+    it('trie les transactions du plus recent au plus ancien', async () => {
+      seedOwnerAccount(0);
+      await ajuster('DEBIT', 1000, 'Janvier', new Date('2026-01-10T00:00:00.000Z'));
+      await ajuster('DEBIT', 2000, 'Mars', new Date('2026-03-10T00:00:00.000Z'));
+      await ajuster('DEBIT', 3000, 'Fevrier', new Date('2026-02-10T00:00:00.000Z'));
+
+      const rows = await listOwnerAccountTransactionsByLot(TENANT_ID, SYNDIC_ID, LOT_ID);
+
+      expect(rows.map((r: any) => r.label)).toEqual(['Mars', 'Fevrier', 'Janvier']);
+    });
+
+    it('borne le listage par les dates from et to (bornes incluses)', async () => {
+      seedOwnerAccount(0);
+      await ajuster('DEBIT', 1000, 'Janvier', new Date('2026-01-10T00:00:00.000Z'));
+      await ajuster('DEBIT', 2000, 'Fevrier', new Date('2026-02-10T00:00:00.000Z'));
+      await ajuster('DEBIT', 3000, 'Mars', new Date('2026-03-10T00:00:00.000Z'));
+
+      const rows = await listOwnerAccountTransactionsByLot(TENANT_ID, SYNDIC_ID, LOT_ID, {
+        range: { from: new Date('2026-02-01T00:00:00.000Z'), to: new Date('2026-02-28T00:00:00.000Z') }
+      });
+
+      expect(rows.map((r: any) => r.label)).toEqual(['Fevrier']);
+    });
+
+    it('applique la pagination (page 2, limite 1) sur la liste triee', async () => {
+      seedOwnerAccount(0);
+      await ajuster('DEBIT', 1000, 'Janvier', new Date('2026-01-10T00:00:00.000Z'));
+      await ajuster('DEBIT', 2000, 'Fevrier', new Date('2026-02-10T00:00:00.000Z'));
+      await ajuster('DEBIT', 3000, 'Mars', new Date('2026-03-10T00:00:00.000Z'));
+
+      const rows = await listOwnerAccountTransactionsByLot(TENANT_ID, SYNDIC_ID, LOT_ID, {
+        pagination: { page: 2, limit: 1 }
+      });
+
+      expect(rows.map((r: any) => r.label)).toEqual(['Fevrier']);
+    });
+  });
+
+  describe('Releve de compte', () => {
+    it('ordonne le releve chronologiquement et calcule ouverture et cloture', async () => {
+      seedOwnerAccount(10000);
+      await ajuster('DEBIT', 5000, 'Appel', new Date('2026-01-10T00:00:00.000Z'));
+      await ajuster('CREDIT', 3000, 'Paiement', new Date('2026-02-10T00:00:00.000Z'));
+
+      const statement = await getOwnerAccountStatementByLot(TENANT_ID, SYNDIC_ID, LOT_ID);
+
+      expect(statement.transactions.map((t: any) => t.label)).toEqual(['Appel', 'Paiement']);
+      // Ouverture = balanceAfter du 1er mouvement - son debit + son credit = 15000 - 5000 + 0.
+      expect(statement.summary.openingBalance).toBe(10000);
+      expect(statement.summary.closingBalance).toBe(12000);
+    });
+
+    it('sans aucun mouvement, ouverture et cloture valent le solde courant du compte', async () => {
+      seedOwnerAccount(4200);
+
+      const statement = await getOwnerAccountStatementByLot(TENANT_ID, SYNDIC_ID, LOT_ID);
+
+      expect(statement.transactions).toHaveLength(0);
+      expect(statement.summary.openingBalance).toBe(4200);
+      expect(statement.summary.closingBalance).toBe(4200);
+    });
+
+    it('borne le releve par dates et recalcule l ouverture sur le 1er mouvement de la periode', async () => {
+      seedOwnerAccount(0);
+      await ajuster('DEBIT', 10000, 'Janvier', new Date('2026-01-10T00:00:00.000Z'));
+      await ajuster('DEBIT', 6000, 'Fevrier', new Date('2026-02-10T00:00:00.000Z'));
+      await ajuster('CREDIT', 4000, 'Mars', new Date('2026-03-10T00:00:00.000Z'));
+
+      const statement = await getOwnerAccountStatementByLot(TENANT_ID, SYNDIC_ID, LOT_ID, {
+        from: new Date('2026-02-01T00:00:00.000Z'),
+        to: new Date('2026-03-31T00:00:00.000Z')
+      });
+
+      expect(statement.transactions.map((t: any) => t.label)).toEqual(['Fevrier', 'Mars']);
+      // 16000 (apres Fevrier) - 6000 = 10000, soit bien le solde a l ouverture de la periode.
+      expect(statement.summary.openingBalance).toBe(10000);
+      expect(statement.summary.closingBalance).toBe(12000);
+    });
+
+    it('SURPRISE : sur une periode sans mouvement, le releve affiche le solde ACTUEL, pas celui de la periode', async () => {
+      seedOwnerAccount(0);
+      await ajuster('DEBIT', 10000, 'Janvier', new Date('2026-01-10T00:00:00.000Z'));
+      await ajuster('DEBIT', 6000, 'Fevrier', new Date('2026-02-10T00:00:00.000Z'));
+
+      const statement = await getOwnerAccountStatementByLot(TENANT_ID, SYNDIC_ID, LOT_ID, {
+        from: new Date('2025-01-01T00:00:00.000Z'),
+        to: new Date('2025-12-31T00:00:00.000Z')
+      });
+
+      expect(statement.transactions).toHaveLength(0);
+      // Le compte etait a 0 en 2025 ; le releve annonce pourtant 16000.
+      expect(statement.summary.openingBalance).toBe(16000);
+      expect(statement.summary.closingBalance).toBe(16000);
+    });
+
+    it('arrondit ouverture et cloture au centime', async () => {
+      seedOwnerAccount(0);
+      await ajuster('DEBIT', 33.333, 'Quote-part 1', new Date('2026-01-10T00:00:00.000Z'));
+      await ajuster('DEBIT', 33.333, 'Quote-part 2', new Date('2026-01-11T00:00:00.000Z'));
+
+      const statement = await getOwnerAccountStatementByLot(TENANT_ID, SYNDIC_ID, LOT_ID);
+
+      expect(statement.summary.openingBalance).toBe(0);
+      expect(statement.summary.closingBalance).toBe(66.66);
+    });
+  });
+});
