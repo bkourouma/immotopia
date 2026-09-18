@@ -116,3 +116,26 @@ export async function appendOwnerAccountTransactionTx(
 
   return transaction;
 }
+
+// ---------------------------------------------------------------------------
+// Grand livre des comptes de tiers — lot 1
+//
+// Les trois fonctions ci-dessous existent d'abord sous forme de talons, avec
+// leur signature definitive. C'est ce qui permet aux agents qui ecrivent la
+// campagne et la restitution de compiler et de se tester avant que
+// l'implementation n'arrive : ils importent un nom qui existe deja.
+//
+// Le contrat qu'elles honorent est dans `./types.ts`. Il ne bouge plus.
+// ---------------------------------------------------------------------------
+
+import type { AppendThirdPartyMovementTx, GetOrCreateTenantAccountTx, RebuildThirdPartyAccount } from './types';
+import { appendThirdPartyMovementTxStub, getOrCreateTenantAccountTxStub, rebuildThirdPartyAccountStub } from './types';
+
+/** Voir `AppendThirdPartyMovementTx` dans `./types.ts`. */
+export const appendThirdPartyMovementTx: AppendThirdPartyMovementTx = appendThirdPartyMovementTxStub;
+
+/** Voir `GetOrCreateTenantAccountTx` dans `./types.ts`. */
+export const getOrCreateTenantAccountTx: GetOrCreateTenantAccountTx = getOrCreateTenantAccountTxStub;
+
+/** Voir `RebuildThirdPartyAccount` dans `./types.ts`. */
+export const rebuildThirdPartyAccount: RebuildThirdPartyAccount = rebuildThirdPartyAccountStub;
