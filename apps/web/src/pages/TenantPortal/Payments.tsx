@@ -20,10 +20,16 @@ import {
   Collapse
 } from 'antd';
 import { DollarOutlined, CalendarOutlined, EyeOutlined, FilterOutlined, PlusOutlined } from '@ant-design/icons';
+import { useQuery } from '@tanstack/react-query';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import InstallmentDetails from '../../components/TenantPortal/InstallmentDetails';
 import PaymentDeclarationModal from '../../components/TenantPortal/PaymentDeclarationModal';
 import dayjs from 'dayjs';
+import { useAuth } from '../../hooks/useAuth';
+import { getMyStatement } from '../../services/finance-service';
+import type { ThirdPartyMovementLine } from '../../types/finance-types';
+import { natureLabel } from '../finance/Releve';
+import { MoneyValue, StateBlock, SkeletonTable } from '../../components/primitives';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -55,6 +61,127 @@ interface InstallmentsData {
     total: number;
     totalPages: number;
   };
+}
+
+/**
+ * Onglet « Mon relevé » — Récit 6 du spec, tâche 1.15 du plan.
+ *
+ * Le même document que celui que verrait la gestionnaire pour ce compte
+ * (`pages/finance/Releve.tsx`), mais en LECTURE SEULE : aucun bouton
+ * d'impression, aucune action, et surtout aucun moyen d'atteindre le compte
+ * d'un autre locataire — `getMyStatement` ne prend aucun identifiant de
+ * compte, la session résout seule le locataire. `tenantClient` ne sert ici
+ * qu'à distinguer un profil non encore relié à un bail (état vide).
+ *
+ * `natureLabel` est réimporté de l'écran agence plutôt que redéfini ici :
+ * les deux surfaces doivent afficher exactement le même vocabulaire (P-1), et
+ * une seule table de correspondance ne peut pas diverger d'elle-même.
+ */
+function MonReleve() {
+  const { tenantClient } = useAuth();
+  const tenantId = tenantClient?.tenantId;
+
+  // Aucun identifiant de compte n'est passe ici, et c'est deliberé : la route
+  // du portail resout le locataire depuis sa session. Le compte de tiers
+  // porte son propre identifiant, distinct de celui du `TenantClient` ; les
+  // confondre ne trouverait rien, et exposer l'un ou l'autre a l'ecran
+  // ouvrirait la porte au releve du voisin.
+  const {
+    data: releve,
+    isPending,
+    error,
+    refetch
+  } = useQuery({
+    queryKey: ['account-statement', 'portail', tenantId],
+    queryFn: () => getMyStatement(),
+    enabled: Boolean(tenantId)
+  });
+
+  if (!tenantId) {
+    return (
+      <StateBlock
+        variant="empty"
+        title="Aucun compte rattaché"
+        description="Votre profil n'est pas encore relié à un compte locataire."
+      />
+    );
+  }
+
+  if (isPending) {
+    return <SkeletonTable rows={6} columns={6} aria-label="Relevé en cours de chargement" />;
+  }
+
+  if (error) {
+    return (
+      <StateBlock
+        variant="error"
+        description="Impossible de charger votre relevé."
+        actions={[{ label: 'Réessayer', onClick: () => void refetch(), primary: true }]}
+      />
+    );
+  }
+
+  const mouvements = releve?.movements ?? [];
+
+  return (
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <Card>
+        <Descriptions column={{ xs: 1, sm: 2 }} size="small">
+          <Descriptions.Item label="Compte">{releve?.label}</Descriptions.Item>
+          <Descriptions.Item label="Solde d'ouverture">
+            <MoneyValue value={releve?.openingBalance} />
+          </Descriptions.Item>
+          <Descriptions.Item label="Solde de clôture">
+            <MoneyValue value={releve?.closingBalance} />
+          </Descriptions.Item>
+        </Descriptions>
+      </Card>
+
+      {mouvements.length === 0 ? (
+        <Empty description="Aucun mouvement enregistré." />
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <Table
+            rowKey="id"
+            dataSource={mouvements}
+            pagination={false}
+            scroll={{ x: 800 }}
+            columns={[
+              {
+                title: 'Date',
+                key: 'date',
+                render: (_: unknown, m: ThirdPartyMovementLine) => new Date(m.movementDate).toLocaleDateString('fr-FR')
+              },
+              {
+                title: 'Nature',
+                key: 'nature',
+                render: (_: unknown, m: ThirdPartyMovementLine) => natureLabel(m.type)
+              },
+              { title: 'Libellé', dataIndex: 'label', key: 'libelle' },
+              {
+                title: 'Facturé',
+                key: 'facture',
+                align: 'right' as const,
+                render: (_: unknown, m: ThirdPartyMovementLine) => <MoneyValue value={m.amountBilled} />
+              },
+              {
+                title: 'Réglé',
+                key: 'regle',
+                align: 'right' as const,
+                render: (_: unknown, m: ThirdPartyMovementLine) => <MoneyValue value={m.amountSettled} />
+              },
+              {
+                title: 'Solde après',
+                key: 'solde',
+                align: 'right' as const,
+                render: (_: unknown, m: ThirdPartyMovementLine) => <MoneyValue value={m.balanceAfter} />
+              }
+            ]}
+          />
+        </div>
+      )}
+    </Space>
+  );
 }
 
 export default function TenantPayments() {
@@ -734,6 +861,11 @@ export default function TenantPayments() {
                 )}
               </Space>
             )
+          },
+          {
+            key: 'releve',
+            label: 'Mon relevé',
+            children: <MonReleve />
           }
         ]}
       />

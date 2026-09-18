@@ -92,6 +92,25 @@ export function getAccountStatementPdfUrl(tenantId: string, accountId: string, f
   )}`;
 }
 
+/**
+ * Relevé du locataire connecté, pour son portail.
+ *
+ * Point d'entrée distinct de `getAccountStatement`, et non un raccourci :
+ * le locataire ne connaît pas l'identifiant de son compte de tiers, et ne
+ * doit surtout pas pouvoir en passer un. La route du portail ne prend donc
+ * aucun paramètre — la session résout le locataire, comme le font déjà
+ * `/portal/tenant/lease` et `/portal/tenant/payments`.
+ *
+ * C'est cette absence de paramètre qui garantit qu'un locataire ne peut pas
+ * lire le relevé d'un autre.
+ */
+export async function getMyStatement(filters?: StatementFilters): Promise<AccountStatement> {
+  const response = await apiClient.get<ApiResponse<AccountStatement>>(
+    `/portal/tenant/finance/statement${toQuery(filters as Record<string, string | number | undefined>)}`
+  );
+  return response.data.data;
+}
+
 /** Historique des campagnes de facturation, de la plus récente à la plus ancienne. */
 export async function listBillingRuns(tenantId: string): Promise<BillingRun[]> {
   const response = await apiClient.get<ApiResponse<BillingRun[]>>(`${base(tenantId)}/billing-runs`);

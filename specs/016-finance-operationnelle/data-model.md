@@ -42,7 +42,11 @@ enum ThirdPartyMovementType {
 **Ecart assume par rapport au plan.** Le plan de mise en oeuvre liste au §5.1 huit valeurs (`INSTALLMENT, PAYMENT, PENALTY, ADVANCE_APPLIED, WAIVER, ADJUSTMENT, OPENING_BALANCE, VOID`), mais son §5.2 (tache 1.3) decrit le reliquat non alloue d'un paiement comme un mouvement crediteur distinct, nomme `ADVANCE` dans le texte — une neuvieme valeur jamais listee dans l'enum. Les deux sections du plan se contredisent donc sur le nombre de valeurs necessaires pour representer une avance. Cette specification tranche en faveur de deux valeurs distinctes et symetriques :
 
 - `ADVANCE_RECEIVED` (credit) : pose au moment ou un paiement encaisse laisse un reliquat sans echeance a lui opposer (Recit 4, US4). C'est ce mouvement qui rend le compte crediteur.
-- `ADVANCE_APPLIED` (debit, montant egal ou inferieur au `ADVANCE_RECEIVED` d'origine) : pose au moment ou la campagne de facturation impute ce reliquat sur une nouvelle echeance generee.
+- `ADVANCE_APPLIED` (**sans effet sur le solde**, ni debit ni credit) : pose au moment ou la campagne de facturation impute ce reliquat sur une nouvelle echeance generee.
+
+  **Correction du 18 septembre 2026.** Cette valeur etait d'abord decrite comme un debit. C'est faux, et l'implementation l'a etabli : le couple `ADVANCE_RECEIVED` au credit puis `INSTALLMENT` au debit solde deja exactement le compte. Un reglement de 450 000 sans echeance en face rend le compte crediteur de 450 000 ; l'echeance du mois suivant le debite d'autant et le ramene a zero. Y ajouter un debit d'imputation le porterait a 450 000 et redemanderait au locataire un argent qu'il a deja verse.
+
+  Le mouvement subsiste donc pour la seule tracabilite, parce que le besoin B4 exige que l'imputation soit **visible sur le releve**. Sa ligne ne porte aucun montant : les deux lignes qui ont reellement deplace de l'argent sont juste au-dessus. Le montant impute figure dans `RentBillingRun.summary.advancesApplied`.
 
 Sans cette distinction, il serait impossible de savoir, en lisant le releve, si un mouvement credit represente un loyer regle a l'echeance ou une avance recue hors echeance — or le PRD (B4) exige explicitement que "l'imputation est visible sur le relevé", donc que l'avance et sa consommation soient identifiables separement d'un encaissement ordinaire. Ce point est signale dans le rapport de fin de tache comme une hypothese prise faute d'arbitrage disponible dans le plan.
 
