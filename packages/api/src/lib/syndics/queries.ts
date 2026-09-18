@@ -2649,6 +2649,9 @@ export async function createChartOfAccountBySyndicate(
   return prisma.chartOfAccount.create({
     data: {
       syndicateId,
+      // Le tenant devient une colonne au lot 2. La portee reste SYNDICATE par
+      // defaut : ce chemin est celui de la copropriete, et il ne change pas.
+      tenantId,
       accountNumber: data.accountNumber,
       accountName: data.accountName,
       accountClass: data.accountClass,
@@ -2686,6 +2689,7 @@ export async function createAccountingJournalBySyndicate(
   return prisma.accountingJournal.create({
     data: {
       syndicateId,
+      tenantId,
       journalType: data.journalType as any,
       label: data.label,
       code: data.code,
@@ -2791,6 +2795,7 @@ export async function createJournalEntryBySyndicate(
     const entry = await tx.journalEntry.create({
       data: {
         journalId: data.journalId,
+        tenantId,
         entryDate: data.entryDate,
         reference: data.reference,
         description: data.description,
