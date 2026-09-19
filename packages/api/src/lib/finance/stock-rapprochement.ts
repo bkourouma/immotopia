@@ -46,7 +46,7 @@
  * ```
  * invoicedAmount       ce que les fournisseurs ont facturé au chantier
  *                      DEPUIS la bascule
- * receivedValue        ce qui est réellement entré en stock au lieu du chantier
+ * receivedValue        ce qui est entré au lieu du chantier DEPUIS UNE FACTURE
  * ------------------------------------------------------------------------
  * unreconciledAmount   la différence, et elle est réelle
  * ```
@@ -57,20 +57,32 @@
  * aucun libellé de ce fichier ne qualifie l'écart de « perte », de « vol » ni
  * d'« anomalie ». Il est montré, pas jugé.
  *
+ * ### Une livraison interne n'est pas un achat
+ *
+ * Les transferts reçus sont comptés **à part**, dans `transferredInValue`, et
+ * n'entrent PAS dans l'écart. Les mêler au reçu — ce que faisait le premier
+ * jet de ce fichier — se trompait dans le cas le plus courant : un chantier
+ * alimenté depuis un magasin central n'a aucune facture à son nom,
+ * `invoicedAmount` vaut zéro, et l'écart affichait l'opposé de tout ce qu'on
+ * lui avait livré. Cette matière a été payée ailleurs, ou jamais.
+ *
+ * Elle reste exposée, parce qu'elle explique une bonne part du restant — et
+ * qu'un restant sans explication se lit comme une anomalie.
+ *
  * ---------------------------------------------------------------------------
- * Une asymétrie VOULUE entre le consommé et les deux autres quantités
+ * Une asymétrie VOULUE entre le consommé et les autres quantités
  * ---------------------------------------------------------------------------
  *
  * - `issuedQuantity` compte les sorties imputées à CE chantier, **depuis
  *   n'importe quel lieu** : on sort couramment d'un magasin central vers un
  *   chantier, et ne compter que les sorties depuis le lieu du chantier
  *   effacerait l'essentiel de ce qu'il a consommé.
- * - `receivedQuantity` et `remainingQuantity` portent sur **le lieu du
- *   chantier** : elles disent ce qui est arrivé sur place et ce qui y reste,
- *   ce qui n'a de sens que pour un lieu.
+ * - `receivedQuantity`, `transferredInQuantity` et `remainingQuantity`
+ *   portent sur **le lieu du chantier** : elles disent ce qui est arrivé sur
+ *   place et ce qui y reste, ce qui n'a de sens que pour un lieu.
  *
- * Les trois ne se soustraient donc pas entre elles, et le contrat ne leur
- * demande pas de le faire.
+ * Elles ne se soustraient donc pas entre elles, et le contrat ne leur demande
+ * pas de le faire.
  *
  * ---------------------------------------------------------------------------
  * Tout est calculé, rien n'est une colonne
@@ -302,14 +314,26 @@ export const isSiteStockEnabledTx: IsSiteStockEnabledTx = async (tx, tenantId, s
 /** Les totaux d'un article, accumulés avant d'être rendus en ligne. */
 interface LineAccumulator {
   receivedQuantity: number;
+  receivedValue: number;
+  transferredInQuantity: number;
+  transferredInValue: number;
   issuedQuantity: number;
-  remainingQuantity: number;
   issuedValue: number;
+  remainingQuantity: number;
   remainingValue: number;
 }
 
 function emptyAccumulator(): LineAccumulator {
-  return { receivedQuantity: 0, issuedQuantity: 0, remainingQuantity: 0, issuedValue: 0, remainingValue: 0 };
+  return {
+    receivedQuantity: 0,
+    receivedValue: 0,
+    transferredInQuantity: 0,
+    transferredInValue: 0,
+    issuedQuantity: 0,
+    issuedValue: 0,
+    remainingQuantity: 0,
+    remainingValue: 0
+  };
 }
 
 /**
@@ -355,7 +379,26 @@ export const getSiteStockReconciliation: GetSiteStockReconciliation = async (ten
 
   const location = await findSiteLocation(prisma, tenantId, siteId);
 
-  const [invoiced, entries, issues, balances] = await Promise.all([
+  /** Les entrées d'un lieu, d'une seule nature, groupées par article. */
+  const entreesDuLieu = (type: 'RECEIPT' | 'TRANSFER'): Promise<Array<Record<string, any>>> =>
+    location
+      ? (prisma.stockMovement.groupBy({
+          by: ['itemId'],
+          where: {
+            tenantId,
+            locationId: location.id,
+            type: type as any,
+            // Écarte la moitié SORTANTE d'un transfert, qui porte le même type
+            // et le même groupe : chaque mouvement ne touche qu'un lieu, et
+            // celui-ci n'entre que d'un côté.
+            isDecrease: false,
+            ...depuisLaBascule
+          },
+          _sum: { quantity: true, totalValue: true }
+        }) as Promise<Array<Record<string, any>>>)
+      : Promise.resolve([] as Array<Record<string, any>>);
+
+  const [invoiced, receipts, transfersIn, issues, balances] = await Promise.all([
     // LES QUATRE CONDITIONS, et pas trois : validée, non annulée, rattachée au
     // chantier, POSTÉRIEURE à la bascule. `status: 'VALIDATED'` porte les deux
     // premières — `VOIDED` est un statut, pas une colonne à part. La date
@@ -374,26 +417,20 @@ export const getSiteStockReconciliation: GetSiteStockReconciliation = async (ten
         })
       : Promise.resolve({ _sum: { amount: null } } as Record<string, any>),
 
-    // CE QUI EST ENTRÉ AU LIEU DU CHANTIER : réceptions et transferts reçus
-    // (contrat, `receivedQuantity`). `isDecrease: false` écarte la moitié
-    // sortante d'un transfert, qui porte le même type. Les ajustements
-    // d'inventaire n'y sont PAS : un excédent de comptage n'a été ni facturé
-    // ni livré, et le compter comme une entrée réduirait l'écart sans qu'aucun
-    // fournisseur n'ait rien apporté. Ils restent visibles dans le restant,
-    // que le solde porte.
-    location
-      ? prisma.stockMovement.groupBy({
-          by: ['itemId'],
-          where: {
-            tenantId,
-            locationId: location.id,
-            type: { in: ['RECEIPT', 'TRANSFER'] as any },
-            isDecrease: false,
-            ...depuisLaBascule
-          },
-          _sum: { quantity: true, totalValue: true }
-        })
-      : Promise.resolve([] as Array<Record<string, any>>),
+    // LE REÇU : ce qui est entré au lieu du chantier DEPUIS UNE FACTURE.
+    // C'est la seule entrée qui se confronte au facturé.
+    entreesDuLieu('RECEIPT'),
+
+    // LE TRANSFÉRÉ : ce qui est venu d'un AUTRE LIEU de l'agence. Compté à
+    // part, jamais mêlé au reçu — une livraison interne n'est pas un achat :
+    // elle a été payée ailleurs, ou jamais. Les mêler ferait afficher, sur un
+    // chantier alimenté depuis un magasin central et sans facture à son nom,
+    // l'opposé de tout ce qu'on lui a livré.
+    //
+    // Les ajustements d'inventaire ne sont dans NI L'UNE NI L'AUTRE : un
+    // excédent de comptage n'a été ni facturé ni livré. Ils restent visibles
+    // dans le restant, que le solde porte.
+    entreesDuLieu('TRANSFER'),
 
     // LE CONSOMMÉ : les sorties imputées à CE chantier, DEPUIS N'IMPORTE QUEL
     // LIEU — pas seulement depuis le lieu du chantier. On sort couramment d'un
@@ -428,11 +465,20 @@ export const getSiteStockReconciliation: GetSiteStockReconciliation = async (ten
     return accumulator;
   };
 
-  let receivedValue = 0;
-  for (const row of entries as Array<Record<string, any>>) {
+  for (const row of receipts as Array<Record<string, any>>) {
     const accumulator = accumulatorFor(row.itemId as string);
     accumulator.receivedQuantity = roundQuantity(accumulator.receivedQuantity + toAmountOrZero(row._sum?.quantity));
-    receivedValue = roundMoneyXof(receivedValue + toAmountOrZero(row._sum?.totalValue));
+    accumulator.receivedValue = roundMoneyXof(accumulator.receivedValue + toAmountOrZero(row._sum?.totalValue));
+  }
+
+  for (const row of transfersIn as Array<Record<string, any>>) {
+    const accumulator = accumulatorFor(row.itemId as string);
+    accumulator.transferredInQuantity = roundQuantity(
+      accumulator.transferredInQuantity + toAmountOrZero(row._sum?.quantity)
+    );
+    accumulator.transferredInValue = roundMoneyXof(
+      accumulator.transferredInValue + toAmountOrZero(row._sum?.totalValue)
+    );
   }
 
   for (const row of issues as Array<Record<string, any>>) {
@@ -471,8 +517,11 @@ export const getSiteStockReconciliation: GetSiteStockReconciliation = async (ten
         itemLabel: (item?.label as string) ?? 'Article inconnu',
         itemUnit: (item?.unit as string) ?? '',
         receivedQuantity: accumulator.receivedQuantity,
+        transferredInQuantity: accumulator.transferredInQuantity,
         issuedQuantity: accumulator.issuedQuantity,
         remainingQuantity: accumulator.remainingQuantity,
+        receivedValue: accumulator.receivedValue,
+        transferredInValue: accumulator.transferredInValue,
         issuedValue: accumulator.issuedValue,
         remainingValue: accumulator.remainingValue,
         currency: DEFAULT_CURRENCY
@@ -481,6 +530,8 @@ export const getSiteStockReconciliation: GetSiteStockReconciliation = async (ten
     .sort((a, b) => a.itemReference.localeCompare(b.itemReference) || a.itemLabel.localeCompare(b.itemLabel));
 
   const invoicedAmount = roundMoneyXof(toAmountOrZero((invoiced as Record<string, any>)?._sum?.amount));
+  const receivedValue = roundMoneyXof(lines.reduce((sum, line) => sum + line.receivedValue, 0));
+  const transferredInValue = roundMoneyXof(lines.reduce((sum, line) => sum + line.transferredInValue, 0));
   const issuedValue = roundMoneyXof(lines.reduce((sum, line) => sum + line.issuedValue, 0));
   const remainingValue = roundMoneyXof(lines.reduce((sum, line) => sum + line.remainingValue, 0));
 
@@ -490,8 +541,16 @@ export const getSiteStockReconciliation: GetSiteStockReconciliation = async (ten
     stockEnabledAt,
     invoicedAmount,
     receivedValue,
+    // Exposé, et ne se confronte à rien : cette matière a été payée ailleurs,
+    // ou jamais. Elle est là parce qu'elle explique une bonne part du restant,
+    // et qu'un restant sans explication se lit comme une anomalie.
+    transferredInValue,
     // L'ÉCART, et il est réel. Il n'est ni nommé, ni qualifié, ni interprété :
     // un vol et des frais de transport se ressemblent dans une soustraction.
+    //
+    // LES TRANSFERTS REÇUS N'Y SONT PAS : une livraison interne a déjà été
+    // payée ailleurs, ou ne l'a jamais été, et la compter réduirait un écart
+    // sans qu'aucun fournisseur n'ait rien apporté.
     //
     // SANS BASCULE, il vaut zéro — et surtout PAS la soustraction. Un chantier
     // non basculé peut avoir un lieu et y avoir reçu : `0 − receivedValue`

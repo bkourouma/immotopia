@@ -77,6 +77,30 @@
  * C'est aussi l'écart entre le compte 311 et la valeur du stock, annoncé dans
  * l'en-tête du contrat des mouvements.
  *
+ * ### Correction : une livraison interne n'est pas un achat
+ *
+ * Ce contrat mettait d'abord les réceptions **et** les transferts reçus dans
+ * une seule grandeur, `receivedValue`, confrontée à `invoicedAmount`. C'était
+ * faux, et faux dans le cas le plus courant : un chantier alimenté depuis un
+ * magasin central n'a aucune facture à son nom, `invoicedAmount` vaut zéro,
+ * et l'écart affichait l'opposé de tout ce qui lui avait été livré — un
+ * nombre négatif qui ne voulait rien dire.
+ *
+ * Les deux entrées sont donc séparées, parce que ce sont deux choses
+ * différentes :
+ *
+ *   `receivedValue`      ce qui est entré depuis une facture fournisseur
+ *   `transferredInValue` ce qui est venu d'un autre lieu de l'agence
+ *
+ * Seule la première se confronte au facturé. La seconde a déjà été payée
+ * ailleurs, ou ne l'a jamais été — la compter réduirait un écart sans qu'aucun
+ * fournisseur n'ait rien apporté.
+ *
+ * Relevé par l'agent du service, qui a écrit que sur un chantier alimenté
+ * surtout par transferts l'écart serait « structurellement négatif et
+ * difficile à lire ». Un indicateur qui se trompe dans le cas courant est pire
+ * qu'un indicateur absent.
+ *
  * ### Et par article, en quantités
  *
  * Reçu, sorti, restant. Ces trois-là se lisent, ne se soustraient pas entre
@@ -154,12 +178,23 @@ export interface SiteStockReconciliationLine {
   itemReference: string;
   itemLabel: string;
   itemUnit: string;
-  /** Entré dans le lieu du chantier : réceptions et transferts reçus. */
+  /** Entré dans le lieu du chantier depuis une FACTURE. */
   receivedQuantity: number;
+  /**
+   * Entré depuis un autre lieu de l'agence.
+   *
+   * Compté à part, jamais mêlé au reçu : une livraison interne n'est pas un
+   * achat, et la confondre fausse l'écart. Voir l'en-tête.
+   */
+  transferredInQuantity: number;
   /** Sorti vers ce chantier, depuis n'importe quel lieu. C'est le consommé. */
   issuedQuantity: number;
   /** Ce qui reste au lieu du chantier, à l'instant de la lecture. */
   remainingQuantity: number;
+  /** Valeur entrée depuis une facture. */
+  receivedValue: number;
+  /** Valeur venue d'un autre lieu. Comptée à part — voir l'en-tête. */
+  transferredInValue: number;
   /** Valeur de ce qui a été consommé. C'est ce qui est entré dans le coût. */
   issuedValue: number;
   /** Valeur de ce qui reste. */
@@ -178,14 +213,33 @@ export interface SiteStockReconciliationRecord {
    * `stockEnabledAt`.
    */
   invoicedAmount: number;
-  /** Ce qui est réellement entré en stock, en valeur. */
+  /**
+   * Ce qui est réellement entré en stock **depuis une facture**, en valeur.
+   *
+   * Les transferts reçus n'y sont pas : voir `transferredInValue`.
+   */
   receivedValue: number;
+  /**
+   * Ce qui est venu d'un autre lieu de l'agence.
+   *
+   * Ne se confronte à rien : cette matière a été payée ailleurs, ou jamais.
+   * Exposée parce qu'elle explique une bonne part du restant, et qu'un
+   * restant sans explication se lit comme une anomalie.
+   */
+  transferredInValue: number;
   /**
    * `invoicedAmount − receivedValue`. **L'écart, et il est réel.**
    *
    * Positif : on a facturé plus qu'il n'est entré. Vol, erreur, ou frais de
    * transport que la facture portait — le système ne sait pas les distinguer
    * et ne prétend pas le faire. Voir l'en-tête.
+   *
+   * **Vaut zéro quand le chantier n'a pas basculé**, et n'est alors pas
+   * déduit : sans période de bascule il n'y a aucune facture à confronter, et
+   * la soustraction rendrait l'opposé de tout ce qui est entré.
+   *
+   * Les transferts reçus n'entrent PAS dans ce calcul. Une livraison interne
+   * n'est pas un achat.
    */
   unreconciledAmount: number;
   /** Total consommé, en valeur. C'est la part du coût du chantier qui vient du stock. */

@@ -91,9 +91,10 @@ function reconciliationRecord(overrides: Partial<Record<string, unknown>> = {}) 
     stockEnabledAt: new Date('2026-03-15'),
     invoicedAmount: 1_000_000,
     receivedValue: 900_000,
+    transferredInValue: 300_000,
     unreconciledAmount: 100_000,
     issuedValue: 400_000,
-    remainingValue: 500_000,
+    remainingValue: 800_000,
     currency: 'XOF',
     lines: [
       {
@@ -102,10 +103,13 @@ function reconciliationRecord(overrides: Partial<Record<string, unknown>> = {}) 
         itemLabel: 'Ciment CPJ 45',
         itemUnit: 'sac',
         receivedQuantity: 90,
+        transferredInQuantity: 30,
         issuedQuantity: 40,
-        remainingQuantity: 50,
+        remainingQuantity: 80,
+        receivedValue: 900_000,
+        transferredInValue: 300_000,
         issuedValue: 400_000,
-        remainingValue: 500_000,
+        remainingValue: 800_000,
         currency: 'XOF'
       }
     ],
@@ -263,8 +267,11 @@ describe('GET /tenants/:tenantId/finance/sites/:siteId/stock/reconciliation', ()
     expect(res.status).toBe(200);
     expect(res.body.data.invoicedAmount).toBe(1_000_000);
     expect(res.body.data.receivedValue).toBe(900_000);
+    // Le transféré sort du même point d'entrée, dans sa propre colonne.
+    expect(res.body.data.transferredInValue).toBe(300_000);
     expect(res.body.data.unreconciledAmount).toBe(100_000);
     expect(res.body.data.lines).toHaveLength(1);
+    expect(res.body.data.lines[0].transferredInQuantity).toBe(30);
     expect(getSiteStockReconciliation).toHaveBeenCalledWith(TENANT_A, SITE_A);
   });
 

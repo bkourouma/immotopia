@@ -564,7 +564,7 @@ describe('getSiteStockReconciliation — par article', () => {
     expect(rapport.remainingValue).toBe(300_000);
   });
 
-  it('compte un TRANSFERT REÇU comme une entrée, et pas sa moitié sortante', async () => {
+  it('compte un TRANSFERT REÇU À PART du reçu, et ignore sa moitié sortante', async () => {
     const { site, location } = seedSwitchedSite();
     const magasin = seedLocation({ label: 'Magasin central' });
     const fer = seedItem({ reference: 'FER-12' });
@@ -591,8 +591,88 @@ describe('getSiteStockReconciliation — par article', () => {
 
     const rapport = await getSiteStockReconciliation(TENANT_ID, site.id);
 
-    expect(rapport.lines[0].receivedQuantity).toBe(20);
-    expect(rapport.receivedValue).toBe(240_000);
+    // Une livraison interne n'est pas un achat : elle a sa propre colonne.
+    expect(rapport.lines[0].transferredInQuantity).toBe(20);
+    expect(rapport.transferredInValue).toBe(240_000);
+    expect(rapport.lines[0].receivedQuantity).toBe(0);
+    expect(rapport.receivedValue).toBe(0);
+  });
+
+  it('UN CHANTIER ALIMENTÉ PAR TRANSFERT, SANS AUCUNE FACTURE, n’a pas d’écart — surtout pas négatif', async () => {
+    // Le cas le plus COURANT : un chantier approvisionné depuis un magasin
+    // central n'a aucune facture à son nom. Mêler le transfert au reçu ferait
+    // afficher −300 000, c'est-à-dire l'opposé de tout ce qu'on lui a livré —
+    // un indicateur qui se trompe dans le cas le plus fréquent est pire qu'un
+    // indicateur absent.
+    const { site, location } = seedSwitchedSite();
+    const magasin = seedLocation({ label: 'Magasin central' });
+    const ciment = seedItem();
+
+    seedMovement({
+      type: 'TRANSFER',
+      itemId: ciment.id,
+      locationId: magasin.id,
+      isDecrease: true,
+      quantity: 30,
+      totalValue: 300_000
+    });
+    seedMovement({
+      type: 'TRANSFER',
+      itemId: ciment.id,
+      locationId: location.id,
+      isDecrease: false,
+      quantity: 30,
+      totalValue: 300_000
+    });
+    seedBalance({ itemId: ciment.id, locationId: location.id, quantity: 30, value: 300_000 });
+
+    const rapport = await getSiteStockReconciliation(TENANT_ID, site.id);
+
+    expect(rapport.transferredInValue).toBe(300_000);
+    expect(rapport.receivedValue).toBe(0);
+    expect(rapport.invoicedAmount).toBe(0);
+    expect(rapport.unreconciledAmount).toBe(0);
+    expect(rapport.unreconciledAmount).not.toBe(-300_000);
+
+    // Le transfert explique le restant, et c'est pour cela qu'il est exposé :
+    // un restant sans explication se lit comme une anomalie.
+    expect(rapport.remainingValue).toBe(300_000);
+  });
+
+  it('FACTURE ET TRANSFERT ENSEMBLE : chaque grandeur dans sa colonne, l’écart ne voit que la facture', async () => {
+    const { site, location } = seedSwitchedSite();
+    const ciment = seedItem();
+
+    // Facturé 1 000 000, reçu 900 000 depuis cette facture : l'écart vaut
+    // 100 000, et les 300 000 venus du magasin n'y changent RIEN.
+    seedInvoice(site, 1_000_000);
+    seedMovement({ itemId: ciment.id, locationId: location.id, quantity: 90, totalValue: 900_000 });
+    seedMovement({
+      type: 'TRANSFER',
+      itemId: ciment.id,
+      locationId: location.id,
+      isDecrease: false,
+      quantity: 30,
+      totalValue: 300_000
+    });
+    seedBalance({ itemId: ciment.id, locationId: location.id, quantity: 120, value: 1_200_000 });
+
+    const rapport = await getSiteStockReconciliation(TENANT_ID, site.id);
+
+    expect(rapport.invoicedAmount).toBe(1_000_000);
+    expect(rapport.receivedValue).toBe(900_000);
+    expect(rapport.transferredInValue).toBe(300_000);
+    expect(rapport.unreconciledAmount).toBe(100_000);
+
+    expect(rapport.lines).toHaveLength(1);
+    expect(rapport.lines[0]).toMatchObject({
+      receivedQuantity: 90,
+      receivedValue: 900_000,
+      transferredInQuantity: 30,
+      transferredInValue: 300_000,
+      remainingQuantity: 120,
+      remainingValue: 1_200_000
+    });
   });
 
   it('ne compte PAS un ajustement d’inventaire comme une entrée, alors qu’il reste dans le restant', async () => {

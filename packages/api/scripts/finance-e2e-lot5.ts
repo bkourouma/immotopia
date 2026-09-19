@@ -433,15 +433,22 @@ async function main(): Promise<void> {
     // « recu » de son point de vue, et l'ecart vaut donc toute la facture.
     // C'est le comportement documente, et il se lit.
     constater('le consomme est la valeur sortie', 400_000, rapprochement.issuedValue);
-    // Du point de vue du CHANTIER, seul le transfert est entre : vingt sacs au
-    // cout moyen de dix mille, soit deux cent mille. La reception, elle, est
-    // allee au magasin central.
-    constater('le recu est ce qui est entre au lieu du chantier', 200_000, rapprochement.receivedValue);
+    // Du point de vue du CHANTIER, rien n'est entre DEPUIS UNE FACTURE : la
+    // reception est allee au magasin central. Les vingt sacs qu'il a recus
+    // sont venus par transfert, et un transfert n'est pas un achat — il a ete
+    // paye ailleurs. Separer les deux est ce qui empeche l'ecart de devenir
+    // negatif sur un chantier alimente depuis un magasin central, c'est-a-dire
+    // le cas courant.
+    constater('rien n est entre depuis une facture', 0, rapprochement.receivedValue);
+    constater('vingt sacs sont venus par transfert', 200_000, rapprochement.transferredInValue);
     // Chiffre en dur, et non `MONTANT_FACTURE - receivedValue` : un attendu
     // calcule depuis le constate ne peut pas echouer, et un test qui ne peut
     // pas echouer ne prouve rien. C'est le reproche fait aux tests unitaires
     // de la campagne de facturation au lot 4 ; il vaut aussi pour moi.
-    constater('l ecart est expose, jamais interprete', 800_000, rapprochement.unreconciledAmount);
+    // Un million facture, rien recu DEPUIS CETTE FACTURE au lieu du chantier :
+    // l ecart vaut le million. Chiffre en dur, et non deduit du constate — un
+    // attendu calcule depuis le resultat ne peut pas echouer.
+    constater('l ecart ne confronte que le facture au recu', 1_000_000, rapprochement.unreconciledAmount);
   } catch (erreur) {
     console.error('\nLe parcours a echoue avant son terme.');
     console.error(erreur instanceof Error ? (erreur.stack ?? erreur.message) : String(erreur));
