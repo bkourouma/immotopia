@@ -74,7 +74,7 @@ import {
 } from './accounting';
 import { syncWorkProgramCostTx } from './cost-allocation';
 import { assertSiteOpenTx } from './site-closing';
-import { roundMoneyXof } from './money';
+import { roundMoneyXof, roundQuantity } from './money';
 import { toAmountOrZero } from './types';
 import type {
   ListStockBalances,
@@ -89,8 +89,6 @@ import type {
 const DEFAULT_CURRENCY = 'XOF';
 
 /** `Decimal(16,4)` : la précision des quantités, qui n'est pas celle des montants. */
-const QUANTITY_PRECISION = 4;
-const QUANTITY_SCALE = 10 ** QUANTITY_PRECISION;
 
 /**
  * Arrondit une QUANTITÉ, à quatre décimales.
@@ -98,14 +96,6 @@ const QUANTITY_SCALE = 10 ** QUANTITY_PRECISION;
  * Ce n'est pas `roundMoneyXof`, et ce ne doit jamais le devenir : le franc CFA
  * n'a pas de subdivision, une tonne de ciment en a quatre. Voir l'en-tête.
  */
-function roundQuantity(value: number): number {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) {
-    return 0;
-  }
-  const rounded = Math.round(numeric * QUANTITY_SCALE) / QUANTITY_SCALE;
-  return rounded === 0 ? 0 : rounded;
-}
 
 /**
  * Le coût moyen pondéré d'un emplacement. **Calculé, jamais stocké.**

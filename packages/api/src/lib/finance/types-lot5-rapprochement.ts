@@ -202,9 +202,25 @@ export interface SiteStockReconciliationRecord {
  * **Lecture seule, et tout y est calculé.** Aucun de ces chiffres n'est une
  * colonne.
  *
- * Fonctionne aussi sur un chantier qui n'a pas basculé : tout y vaut zéro, et
- * `stockEnabledAt` nul le dit. Refuser serait obliger l'écran à savoir
- * d'avance ce qu'il vient demander.
+ * Fonctionne aussi sur un chantier qui n'a pas basculé. Refuser serait
+ * obliger l'écran à savoir d'avance ce qu'il vient demander.
+ *
+ * ### Correction : un chantier non basculé ne montre PAS que des zéros
+ *
+ * Ce paragraphe disait « tout y vaut zéro ». C'était faux, et cela cachait
+ * une donnée réelle : rien n'empêche de sortir du stock d'un magasin central
+ * vers un chantier qui n'a pas basculé, et ces sorties ont bel et bien imputé
+ * son coût. Les afficher à zéro aurait fait mentir l'écran sur un chiffre qui
+ * existe.
+ *
+ * Ce qui vaut zéro sans bascule, ce sont les **deux seuls chiffres qui en
+ * dépendent** : `invoicedAmount` — il n'y a pas de période de bascule, donc
+ * aucune facture à confronter — et par conséquent `unreconciledAmount`. Le
+ * consommé, le reçu et le restant disent la vérité dans tous les cas.
+ *
+ * Relevé par l'agent du service, qui a implémenté la lettre du contrat tout
+ * en écrivant que c'était le seul endroit où son rendu cachait une donnée
+ * réelle. C'était la bonne réaction, et c'est le contrat qui avait tort.
  */
 export type GetSiteStockReconciliation = (tenantId: string, siteId: string) => Promise<SiteStockReconciliationRecord>;
 

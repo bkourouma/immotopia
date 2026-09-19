@@ -35,7 +35,10 @@ const COMPTES_OPERATIONNELS = new Map<string, string>([
   ['411', 'compte-411'],
   ['571', 'compte-571'],
   ['601', 'compte-601'],
-  ['605', 'compte-605']
+  ['605', 'compte-605'],
+  // Lot 5 : le 311 recoit la valeur d'une facture imputee a un chantier passe
+  // au stock, a la place du compte de charge du poste (principe P-7).
+  ['311', 'compte-311']
 ]);
 
 // La synchronisation du cout des programmes de travaux appartient a

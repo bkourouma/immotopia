@@ -54,6 +54,7 @@ import {
 import { appendThirdPartyMovementTx } from './ledger';
 import { syncWorkProgramCostTx } from './cost-allocation';
 import { assertSiteOpenTx } from './site-closing';
+import { isSiteStockEnabledTx } from './stock-rapprochement';
 import { raiseBudgetAlertIfNeededTx } from './budget-alerts';
 import { roundMoneyXof } from './money';
 import type { FinanceSourceType } from './types';
@@ -113,6 +114,21 @@ interface OperationalAccounts {
   fournisseursAccountId: string;
   achatsAccountId: string;
   banqueAccountId: string;
+  /**
+   * 311 — Stocks de matieres et fournitures.
+   *
+   * Recoit la valeur d'une facture imputee a un chantier passe au stock, a la
+   * place du compte de charge du poste : le materiau n'est pas encore une
+   * charge, il est un actif qu'on peut compter. C'est la SORTIE de magasin
+   * qui en fera une charge (principe P-7, lot 5).
+   *
+   * **Nul quand le plan ne le porte pas**, et exige seulement au moment ou
+   * une imputation au stock se presente. Le rendre obligatoire ici faisait
+   * echouer toute validation de facture sur une agence dont le plan de
+   * comptes precede le lot 5 — et, accessoirement, toutes les doublures de
+   * test ecrites avant lui. On n'exige pas un compte dont on ne se sert pas.
+   */
+  stocksAccountId: string | null;
 }
 
 /**
@@ -151,7 +167,8 @@ async function resolveOperationalAccounts(
     achatsAccountId: exiger('601'),
     // La tresorerie est le compte 571, comme pour la caisse. C'est le meme
     // argent, et il ne sort pas par deux portes.
-    banqueAccountId: exiger('571')
+    banqueAccountId: exiger('571'),
+    stocksAccountId: comptes.get('311') ?? null
   };
 }
 
@@ -406,18 +423,56 @@ export const validateSupplierInvoiceTx: ValidateSupplierInvoiceTx = async (
   // donc equilibree par construction, et le regroupement par compte ne peut
   // pas introduire d'ecart puisqu'il redistribue les memes montants deja
   // arrondis.
+  // ---------------------------------------------------------------------
+  // LE STOCK REDEFINIT LE COUT, IL NE S'Y AJOUTE PAS — principe P-7, lot 5.
+  // ---------------------------------------------------------------------
+  //
+  // Une imputation dont le chantier est passe au stock ne devient PAS une
+  // charge ici : sa valeur entre au 311, et c'est la sortie de magasin qui la
+  // rendra charge et l'imputera au cout du chantier. Sans cette separation,
+  // le ciment serait compte deux fois — une fois par la facture, une fois par
+  // la sortie — et le chantier paraitrait couter le double de ce qu'il coute.
+  //
+  // La bascule se juge sur la DATE DE LA FACTURE, pas sur l'instant present :
+  // une facture du mois dernier, saisie aujourd'hui sur un chantier bascule
+  // hier, appartient a l'avant et doit s'imputer comme avant.
+  //
+  // Le tri se fait imputation par imputation : une facture peut porter un
+  // chantier au stock et un autre qui ne l'est pas.
+  const imputationsAuStock: Array<Record<string, any>> = [];
+  const imputationsEnCharge: Array<Record<string, any>> = [];
+
+  for (const allocation of allocations as Array<Record<string, any>>) {
+    const auStock = await isSiteStockEnabledTx(tx, tenantId, allocation.siteId, invoice.invoiceDate);
+    (auStock ? imputationsAuStock : imputationsEnCharge).push(allocation);
+  }
+
   const lignesDeCharge: Array<{ accountId: string; debit: number; label: string }> = [];
 
-  if (allocations.length > 0) {
+  if (imputationsAuStock.length > 0) {
+    if (!accounts.stocksAccountId) {
+      throw new Error('Compte operationnel 311 absent : une facture ne peut pas entrer en stock sans compte de stock.');
+    }
+    const valeurEnStock = roundMoneyXof(
+      imputationsAuStock.reduce((somme, a) => somme + roundMoneyXof(toAmountOrZero(a.amount)), 0)
+    );
+    lignesDeCharge.push({
+      accountId: accounts.stocksAccountId,
+      debit: valeurEnStock,
+      label: `Entrée en stock — ${supplier.name}`
+    });
+  }
+
+  if (imputationsEnCharge.length > 0) {
     const comptesParPoste = await resolveExpenseAccountsByCostCategoryTx(
       tx,
       tenantId,
-      allocations.map((a: any) => a.costCategoryId),
+      imputationsEnCharge.map((a: any) => a.costCategoryId),
       accounts.achatsAccountId
     );
 
     const parCompte = new Map<string, number>();
-    for (const allocation of allocations as Array<Record<string, any>>) {
+    for (const allocation of imputationsEnCharge) {
       const compte = comptesParPoste.get(allocation.costCategoryId) ?? accounts.achatsAccountId;
       const montant = roundMoneyXof(toAmountOrZero(allocation.amount));
       parCompte.set(compte, roundMoneyXof((parCompte.get(compte) ?? 0) + montant));
@@ -426,7 +481,9 @@ export const validateSupplierInvoiceTx: ValidateSupplierInvoiceTx = async (
     for (const [compte, montant] of parCompte) {
       lignesDeCharge.push({ accountId: compte, debit: montant, label: `Achats — ${supplier.name}` });
     }
-  } else {
+  }
+
+  if (allocations.length === 0) {
     lignesDeCharge.push({
       accountId: accounts.achatsAccountId,
       debit: invoiceAmount,
@@ -470,12 +527,22 @@ export const validateSupplierInvoiceTx: ValidateSupplierInvoiceTx = async (
     await assertSiteOpenTx(tx, tenantId, allocation.siteId);
   }
 
-  if (allocations.length > 0) {
+  // Seules les imputations EN CHARGE se valident. Celles dont le chantier est
+  // au stock restent brouillon a vie : leur valeur est entree au 311, et c'est
+  // la sortie de magasin qui produira l'imputation reelle. Les valider ici
+  // ferait monter le cout du chantier une premiere fois, puis la sortie une
+  // seconde — le double comptage que le principe P-7 existe pour empecher.
+  //
+  // Elles ne sont pas SUPPRIMEES : elles disent quel poste la facture visait,
+  // et l'ecran de rapprochement en a besoin. `sumSiteActualCost` ne lit que
+  // les imputations validees, donc elles ne polluent aucun cout.
+  if (imputationsEnCharge.length > 0) {
     await tx.costAllocation.updateMany({
       where: {
         tenantId,
         sourceType: 'SUPPLIER_INVOICE',
         sourceId: invoiceId,
+        siteId: { in: [...new Set(imputationsEnCharge.map(a => a.siteId as string))] },
         validatedAt: null,
         voidedAt: null
       },
@@ -486,7 +553,7 @@ export const validateSupplierInvoiceTx: ValidateSupplierInvoiceTx = async (
     // lui est rattache doit suivre, dans CETTE transaction. Sinon il
     // afficherait son ancien montant jusqu'a la prochaine imputation, et
     // personne ne saurait lequel des deux croire.
-    for (const siteId of new Set(allocations.map(a => a.siteId))) {
+    for (const siteId of new Set(imputationsEnCharge.map(a => a.siteId as string))) {
       await syncWorkProgramCostTx(tx, tenantId, siteId);
 
       // L'engage du chantier vient de monter : c'est l'un des trois seuls

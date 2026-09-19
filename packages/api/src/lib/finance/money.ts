@@ -95,3 +95,33 @@ export function roundPercent(value: number): number {
   const rounded = Math.round(numeric * 100) / 100;
   return rounded === 0 ? 0 : rounded;
 }
+
+/**
+ * Arrondit une QUANTITÉ de stock, à quatre décimales.
+ *
+ * Troisième fonction d'arrondi de ce fichier, et la troisième fois qu'il faut
+ * dire pourquoi elle est distincte. **Une quantité n'est pas un montant.** Un
+ * quart de mètre cube vaut 0,25 ; arrondi comme un franc CFA, il vaudrait
+ * zéro, et le stock se viderait tout seul. Le défaut symétrique — un
+ * pourcentage arrondi à l'unité — a déjà été commis dans ce projet, et c'est
+ * un test qui l'avait rattrapé, pas une relecture.
+ *
+ * Quatre décimales, parce que le schéma stocke `Decimal(16, 4)` : arrondir
+ * ici plus finement que la base laisserait le calcul et le stockage dire deux
+ * choses différentes.
+ *
+ * Elle vivait en trois copies privées, une par fichier du lot 5, chacune
+ * signalée par son agent comme une dette à remonter ici. Deux copies finissent
+ * par diverger — c'est ce qui avait donné cinq versions de la formule du coût
+ * réel avant `site-cost.ts`.
+ */
+export function roundQuantity(value: number): number {
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+
+  const rounded = Math.round(numeric * 10_000) / 10_000;
+  return rounded === 0 ? 0 : rounded;
+}

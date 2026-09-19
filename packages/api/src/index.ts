@@ -34,6 +34,8 @@ import financeRetentionsRoutes from './routes/finance-retentions-routes';
 import financeSiteClosingRoutes from './routes/finance-site-closing-routes';
 import financeStockReferentielRoutes from './routes/finance-stock-referentiel-routes';
 import financeStockMouvementsRoutes from './routes/finance-stock-mouvements-routes';
+import financeStockInventaireRoutes from './routes/finance-stock-inventaire-routes';
+import financeStockRapprochementRoutes from './routes/finance-stock-rapprochement-routes';
 import maintenanceRoutes from './routes/maintenance-routes';
 import emailNotificationConfigRoutes from './routes/email-notification-config-routes';
 import whatsappNotificationConfigRoutes from './routes/whatsapp-notification-config-routes';
@@ -196,6 +198,8 @@ app.use('/api', financeRetentionsRoutes); // Finance lot 4 : retenues de garanti
 app.use('/api', financeSiteClosingRoutes); // Finance lot 4 : lots, cout de revient, cloture
 app.use('/api', financeStockReferentielRoutes); // Finance lot 5 : articles, lieux, valorisation
 app.use('/api', financeStockMouvementsRoutes); // Finance lot 5 : receptions, sorties, soldes
+app.use('/api', financeStockInventaireRoutes); // Finance lot 5 : transferts et inventaire
+app.use('/api', financeStockRapprochementRoutes); // Finance lot 5 : bascule et rapprochement
 app.use('/api/tenants/:tenantId/maintenance', maintenanceRoutes); // Maintenance routes are tenant-scoped
 app.use('/api/tenants/:tenantId/email-notifications', emailNotificationConfigRoutes); // Notifications email (activation + templates)
 app.use('/api/tenants/:tenantId/whatsapp-notifications', whatsappNotificationConfigRoutes); // Notifications WhatsApp (WaSender/Twilio)
