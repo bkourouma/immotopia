@@ -48,6 +48,7 @@ import { badRequest, conflict, notFound } from '../errors';
 import { ensureOperationalChartOfAccountsTx, ensureOperationalJournalTx, postDocumentEntryTx } from './accounting';
 import { appendThirdPartyMovementTx } from './ledger';
 import { syncWorkProgramCostTx } from './cost-allocation';
+import { raiseBudgetAlertIfNeededTx } from './budget-alerts';
 import { roundMoneyXof } from './money';
 import type { FinanceSourceType } from './types';
 import { toAmountOrZero } from './types';
@@ -420,6 +421,18 @@ export const validateSupplierInvoiceTx: ValidateSupplierInvoiceTx = async (
     // personne ne saurait lequel des deux croire.
     for (const siteId of new Set(allocations.map(a => a.siteId))) {
       await syncWorkProgramCostTx(tx, tenantId, siteId);
+
+      // L'engage du chantier vient de monter : c'est l'un des trois seuls
+      // moments ou une alerte de depassement peut naitre (validation de
+      // facture, validation de piece de caisse, emission de bon). Levee ICI,
+      // dans la meme transaction que la piece : une alerte qui naitrait apres
+      // coup pourrait manquer si la transaction est annulee.
+      //
+      // Elle ne leve JAMAIS d'exception pour cause de depassement. Une alerte
+      // informe, elle n'interdit pas : refuser la validation d'une facture
+      // parce qu'un budget est depasse bloquerait l'enregistrement d'une
+      // depense qui, elle, a bien eu lieu.
+      await raiseBudgetAlertIfNeededTx(tx, tenantId, siteId);
     }
   }
 

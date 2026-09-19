@@ -91,6 +91,18 @@ export interface SiteBudgetRecord {
   lines: SiteBudgetLineRecord[];
   /** Somme des lignes. **Calculé, jamais stocké.** */
   totalForecast: number;
+  /**
+   * Initial plus la somme des avenants **VALIDÉS**. Calculé, jamais stocké.
+   *
+   * Ajouté à l'intégration. Sans lui, l'écran du budget ne pouvait montrer que
+   * l'initial et la liste des avenants, en laissant la gestionnaire faire
+   * l'addition — ou en la refaisant lui-même, ce que le principe P-4 interdit
+   * précisément. L'agent des écrans a refusé de le recomposer à la main, et il
+   * a eu raison : c'était au serveur de le rendre.
+   *
+   * Égal à `totalForecast` tant qu'aucun avenant n'est validé.
+   */
+  revisedTotal: number;
 }
 
 /**

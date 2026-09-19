@@ -79,6 +79,7 @@ import { toAmountOrZero } from './types';
 import { roundMoney } from './money';
 import { ensureOperationalChartOfAccountsTx, ensureOperationalJournalTx, postDocumentEntryTx } from './accounting';
 import { syncWorkProgramCostTx } from './cost-allocation';
+import { raiseBudgetAlertIfNeededTx } from './budget-alerts';
 import type { CashVoucherRecord, CreateCashVoucherTx, ValidateCashVoucherTx } from './types-lot2';
 
 // ---------------------------------------------------------------------------
@@ -326,6 +327,18 @@ export const validateCashVoucherTx: ValidateCashVoucherTx = async (tx, tenantId,
   // Meme raison qu'a la validation d'une facture : le cout du chantier vient
   // de bouger, les programmes de travaux rattaches doivent suivre ici.
   await syncWorkProgramCostTx(tx, tenantId, voucher.siteId);
+
+  // L'engage du chantier vient de monter : c'est l'un des trois seuls
+  // moments ou une alerte de depassement peut naitre (validation de
+  // facture, validation de piece de caisse, emission de bon). Levee ICI,
+  // dans la meme transaction que la piece : une alerte qui naitrait apres
+  // coup pourrait manquer si la transaction est annulee.
+  //
+  // Elle ne leve JAMAIS d'exception pour cause de depassement. Une alerte
+  // informe, elle n'interdit pas : refuser la validation d'une facture
+  // parce qu'un budget est depasse bloquerait l'enregistrement d'une
+  // depense qui, elle, a bien eu lieu.
+  await raiseBudgetAlertIfNeededTx(tx, tenantId, voucher.siteId);
 
   // Mise à jour conditionnelle plutôt qu'inconditionnelle : si une autre
   // transaction a validé cette même pièce entre notre lecture initiale et cet

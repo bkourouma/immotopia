@@ -63,7 +63,18 @@ function attachBudgetIncludes(row: Row): Row {
     .filter(l => l.budgetId === row.id)
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
     .map(l => ({ ...l, costCategory: categoryOf(l.costCategoryId) }));
-  return { ...row, lines, validatedBy: userOf(row.validatedByUserId) };
+  // Les avenants VALIDÉS seulement, et seulement leurs écarts : c'est ce que
+  // `BUDGET_INCLUDE` demande à Prisma pour le total révisé. La doublure doit
+  // modéliser ce que le vrai client rend, sans quoi elle laisse passer un code
+  // qui ne marche qu'ici — la leçon de la caisse au lot 2, où la doublure
+  // acceptait un appel que PostgreSQL refusait.
+  const amendments = store.amendments
+    .filter(a => a.budgetId === row.id && a.status === 'VALIDATED')
+    .map(a => ({
+      lines: store.amendmentLines.filter(l => l.amendmentId === a.id).map(l => ({ amountDelta: l.amountDelta }))
+    }));
+
+  return { ...row, lines, amendments, validatedBy: userOf(row.validatedByUserId) };
 }
 
 function attachAmendmentIncludes(row: Row): Row {
@@ -579,6 +590,61 @@ describe('createBudgetAmendmentTx', () => {
 // ---------------------------------------------------------------------------
 // E. validateBudgetAmendmentTx
 // ---------------------------------------------------------------------------
+
+describe('revisedTotal — l’initial plus les avenants VALIDÉS', () => {
+  it("vaut l'initial tant qu'aucun avenant n'est validé", async () => {
+    const siteId = createSite();
+    const catA = createCategory();
+    const draft = await createDraftBudget(siteId, [catA], { amounts: [500000] });
+    const budget = await validateSiteBudgetTx(tx(), TENANT_ID, draft.id, USER_ID);
+
+    // Un avenant en BROUILLON ne compte pour rien, exactement comme une pièce
+    // en brouillon au lot 2.
+    await createBudgetAmendmentTx(tx(), TENANT_ID, {
+      budgetId: budget.id,
+      amendmentDate: new Date('2026-09-19'),
+      reason: 'Encore à l’étude',
+      lines: [{ costCategoryId: catA, amountDelta: 300000 }],
+      createdByUserId: USER_ID
+    });
+
+    const relu = await getValidatedSiteBudget(TENANT_ID, siteId);
+    expect(relu?.totalForecast).toBe(500000);
+    expect(relu?.revisedTotal).toBe(500000);
+  });
+
+  it('additionne les avenants validés, y compris ceux qui réduisent', async () => {
+    const siteId = createSite();
+    const catA = createCategory();
+    const draft = await createDraftBudget(siteId, [catA], { amounts: [500000] });
+    const budget = await validateSiteBudgetTx(tx(), TENANT_ID, draft.id, USER_ID);
+
+    const hausse = await createBudgetAmendmentTx(tx(), TENANT_ID, {
+      budgetId: budget.id,
+      amendmentDate: new Date('2026-03-01'),
+      reason: 'Surcoût fondations',
+      lines: [{ costCategoryId: catA, amountDelta: 200000 }],
+      createdByUserId: USER_ID
+    });
+    await validateBudgetAmendmentTx(tx(), TENANT_ID, hausse.id, USER_ID);
+
+    // Un avenant réduit parfois une enveloppe : l'écart est SIGNÉ.
+    const baisse = await createBudgetAmendmentTx(tx(), TENANT_ID, {
+      budgetId: budget.id,
+      amendmentDate: new Date('2026-05-01'),
+      reason: 'Périmètre réduit',
+      lines: [{ costCategoryId: catA, amountDelta: -50000 }],
+      createdByUserId: USER_ID
+    });
+    await validateBudgetAmendmentTx(tx(), TENANT_ID, baisse.id, USER_ID);
+
+    const relu = await getValidatedSiteBudget(TENANT_ID, siteId);
+
+    // L'initial ne bouge JAMAIS : on amende, on ne réécrit pas.
+    expect(relu?.totalForecast).toBe(500000);
+    expect(relu?.revisedTotal).toBe(650000);
+  });
+});
 
 describe('validateBudgetAmendmentTx', () => {
   async function avenantBrouillon(siteId: string, catA: string, amountDelta = 10000) {

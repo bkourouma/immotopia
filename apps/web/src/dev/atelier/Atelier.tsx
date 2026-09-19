@@ -17,6 +17,10 @@ import { Chantiers } from '../../pages/finance/Chantiers';
 import { ChantierDetail } from '../../pages/finance/ChantierDetail';
 import { PieceDeCaisse } from '../../pages/finance/PieceDeCaisse';
 import { FileDeValidation } from '../../pages/finance/FileDeValidation';
+import { BudgetChantier } from '../../pages/finance/BudgetChantier';
+import { BonsDeCommande } from '../../pages/finance/BonsDeCommande';
+import { BonDeCommande } from '../../pages/finance/BonDeCommande';
+import { TableauDeBordChantiers } from '../../pages/finance/TableauDeBordChantiers';
 import { Documents } from '../../pages/rental/Documents';
 import { DocumentTemplates } from '../../pages/documents/DocumentTemplates';
 import { CalendarPage } from '../../pages/crm/Calendar';
@@ -104,11 +108,49 @@ const BALANCE_FOURNISSEURS = FOURNISSEURS + '/balance';
 const FACTURE_FOURNISSEUR = 'tenant/' + AGENCE + '/finance/factures-fournisseurs?fournisseur=frs-02';
 const CHANTIERS = 'tenant/' + AGENCE + '/finance/chantiers';
 const CHANTIER_DETAIL = CHANTIERS + '/chantier-01';
-const PIECE_DE_CAISSE = CHANTIER_DETAIL + '/caisse';
+const PIECE_DE_CAISSE = 'tenant/' + AGENCE + '/finance/caisse?chantierId=chantier-01';
 const VALIDATION = 'tenant/' + AGENCE + '/finance/validation';
+// Lot 3. Le chantier « riche » de la maquette est celui qui porte un budget,
+// des avenants et une alerte : c'est lui qui montre quelque chose.
+const BUDGET_CHANTIER = 'tenant/' + AGENCE + '/finance/chantiers/chantier-riche-01/budget';
+const BONS_DE_COMMANDE = 'tenant/' + AGENCE + '/finance/bons-de-commande';
+const BON_DE_COMMANDE_NOUVEAU = BONS_DE_COMMANDE + '/nouveau?chantierId=chantier-riche-01';
+const TABLEAU_DE_BORD_CHANTIERS = 'tenant/' + AGENCE + '/finance/tableau-de-bord-chantiers';
 const SIDEBAR = 'coquille/sidebar';
 
 const SCENES: Scene[] = [
+  {
+    id: 'tableau-de-bord-chantiers',
+    titre: 'Tableau de bord des chantiers — nominal',
+    description:
+      'Budget initial, revise, engage, realise et avancement, en un seul appel. Le code couleur porte sur l’ecart contre le revise, jamais contre l’initial.',
+    scenario: 'nominal',
+    chemin: TABLEAU_DE_BORD_CHANTIERS
+  },
+  {
+    id: 'budget-chantier',
+    titre: 'Budget de chantier — initial, revise et avenants',
+    description:
+      'Un avenant valide de +1 200 000 compte dans le revise ; un avenant encore en brouillon, de -300 000, ne compte pour rien. C’est la regle que cet ecran doit rendre lisible.',
+    scenario: 'nominal',
+    chemin: BUDGET_CHANTIER
+  },
+  {
+    id: 'bons-de-commande',
+    titre: 'Bons de commande — liste filtrable',
+    description:
+      'Le statut decide (brouillon, emis, annule) et l’etat de facturation (non facture, partiel, solde) sont deux colonnes distinctes : la seconde est calculee, jamais stockee.',
+    scenario: 'nominal',
+    chemin: BONS_DE_COMMANDE
+  },
+  {
+    id: 'bon-de-commande-nouveau',
+    titre: 'Bon de commande — saisie',
+    description:
+      'Lignes par poste de depense, total calcule. L’emission est irreversible et le dit avant : c’est elle qui fait entrer le bon dans l’engage.',
+    scenario: 'nominal',
+    chemin: BON_DE_COMMANDE_NOUVEAU
+  },
   {
     id: 'balance-fournisseurs',
     titre: 'Balance fournisseurs — nominal',
@@ -771,7 +813,7 @@ export const Atelier: React.FC = () => (
       }
     />
     <Route
-      path="tenant/:tenantId/finance/chantiers/:siteId/caisse"
+      path="tenant/:tenantId/finance/caisse"
       element={
         <Scene>
           <SessionSimulee>
@@ -786,6 +828,61 @@ export const Atelier: React.FC = () => (
         <Scene>
           <SessionSimulee>
             <FileDeValidation />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/chantiers/:siteId/budget"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <BudgetChantier />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    {/*
+      « nouveau » AVANT « :orderId », comme dans `App.tsx` : sans cela, React
+      Router rangerait le mot « nouveau » dans le parametre et l'ecran
+      chercherait un bon de commande qui n'existe pas.
+    */}
+    <Route
+      path="tenant/:tenantId/finance/bons-de-commande"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <BonsDeCommande />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/bons-de-commande/nouveau"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <BonDeCommande />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/bons-de-commande/:orderId"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <BonDeCommande />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/tableau-de-bord-chantiers"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <TableauDeBordChantiers />
           </SessionSimulee>
         </Scene>
       }

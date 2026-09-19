@@ -43,6 +43,20 @@ const COMPTES_OPERATIONNELS = new Map<string, string>([
 // verifie qu'elle est APPELEE avec le bon chantier, pas ce qu'elle fait.
 const syncWorkProgramCostTx = jest.fn();
 
+const raiseBudgetAlertIfNeededTx = jest.fn();
+
+// L'alerte de depassement (lot 3) est appelee a la validation d'une piece,
+// parce que c'est l'un des trois seuls moments ou l'engage d'un chantier peut
+// monter. Elle est mockee ici comme le sont deja l'imputation et le moteur
+// comptable : ce fichier verifie COMMENT les fonctions fournisseurs
+// l'appellent, jamais ce qu'elle calcule — le lot 3 a ses propres tests pour
+// cela, et son parcours de bout en bout.
+//
+// Elle rend `null` par defaut : aucune alerte a lever.
+jest.mock('../../src/lib/finance/budget-alerts', () => ({
+  raiseBudgetAlertIfNeededTx: (...args: any[]) => raiseBudgetAlertIfNeededTx(...args)
+}));
+
 jest.mock('../../src/lib/finance/cost-allocation', () => ({
   syncWorkProgramCostTx: (...args: any[]) => syncWorkProgramCostTx(...args)
 }));
@@ -320,6 +334,7 @@ function tx(): any {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  raiseBudgetAlertIfNeededTx.mockResolvedValue(null);
   store.thirdPartyAccounts = [];
   store.suppliers = [];
   store.invoices = [];
@@ -528,6 +543,23 @@ describe('validateSupplierInvoiceTx', () => {
       expect.anything(),
       expect.objectContaining({ billed: 60000 })
     );
+  });
+
+  it("evalue l'alerte de depassement sur chaque chantier impute", async () => {
+    const supplier = await createSupplier('MATERIALS');
+    const { siteId, costCategoryId } = await createSiteAndCategory();
+    const invoice = await createDraftInvoice(supplier.id, {
+      amount: 500000,
+      allocations: [{ siteId, costCategoryId, amount: 500000 }]
+    });
+
+    await validateSupplierInvoiceTx(tx(), TENANT_ID, invoice.id, USER_ID);
+
+    // Valider une facture fait monter l'engage du chantier : c'est l'un des
+    // trois seuls moments ou une alerte peut naitre. Sans cet appel, le seuil
+    // configure par la cliente ne se declencherait jamais par ce chemin — et
+    // rien, hors ce test, ne le dirait.
+    expect(raiseBudgetAlertIfNeededTx).toHaveBeenCalledWith(expect.anything(), TENANT_ID, siteId);
   });
 
   it('refuse de revalider une facture deja validee (piece en lecture seule)', async () => {

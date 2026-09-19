@@ -67,6 +67,7 @@ import { badRequest, conflict, notFound } from '../errors';
 import { roundMoneyXof } from './money';
 import { toAmountOrZero } from './types';
 import { sumSiteActualCost } from './site-cost';
+import { raiseBudgetAlertIfNeededTx } from './budget-alerts';
 import type {
   CancelPurchaseOrderTx,
   CreatePurchaseOrderTx,
@@ -309,7 +310,7 @@ export const createPurchaseOrderTx: CreatePurchaseOrderTx = async (tx, tenantId,
 export const issuePurchaseOrderTx: IssuePurchaseOrderTx = async (tx, tenantId, orderId, issuedByUserId) => {
   const order = await tx.purchaseOrder.findFirst({
     where: { id: orderId, tenantId },
-    select: { id: true, status: true }
+    select: { id: true, status: true, siteId: true }
   });
   if (!order) {
     throw notFound('Bon de commande introuvable');
@@ -330,6 +331,14 @@ export const issuePurchaseOrderTx: IssuePurchaseOrderTx = async (tx, tenantId, o
     throw conflict("Ce bon de commande vient d'être émis ou annulé par ailleurs");
   }
 
+  // L'emission fait entrer le bon dans l'engage : un brouillon n'engage
+  // personne. C'est donc ici, et pas a la creation, que l'alerte de
+  // depassement s'evalue — l'un des trois seuls moments ou l'engage monte.
+  //
+  // Elle ne leve jamais d'exception : une alerte informe, elle n'interdit
+  // pas d'emettre un bon.
+  await raiseBudgetAlertIfNeededTx(tx, tenantId, order.siteId);
+
   return loadOrderRecord(tx, tenantId, orderId);
 };
 
@@ -339,14 +348,23 @@ export const issuePurchaseOrderTx: IssuePurchaseOrderTx = async (tx, tenantId, o
 
 /** Voir `CancelPurchaseOrderTx` dans `./types-lot3.ts`. */
 export const cancelPurchaseOrderTx: CancelPurchaseOrderTx = async (tx, tenantId, orderId, reason) => {
-  // `PurchaseOrder` ne porte aucune colonne de motif — voir l'en-tête du
-  // fichier. Le paramètre est accepté pour respecter le contrat gelé, mais
-  // n'est persisté nulle part.
-  void reason;
+  // Le motif est obligatoire, et il est desormais STOCKE.
+  //
+  // Le schema gele n'avait pas de colonne pour lui : le contrat demandait un
+  // motif que rien ne conservait, ce que deux agents ont releve
+  // independamment. La colonne `cancellation_reason` a ete ajoutee a
+  // l'integration (migration `20260919160000`). Annuler un bon est un geste
+  // irreversible sur un engagement ; une annulation sans trace est un chiffre
+  // qui disparait sans explication, et le lot 2 exige deja un motif pour
+  // toute annulation de piece.
+  const motif = reason?.trim();
+  if (!motif) {
+    throw badRequest("Le motif d'annulation est obligatoire");
+  }
 
   const order = await tx.purchaseOrder.findFirst({
     where: { id: orderId, tenantId },
-    select: { id: true, status: true }
+    select: { id: true, status: true, siteId: true }
   });
   if (!order) {
     throw notFound('Bon de commande introuvable');
@@ -371,7 +389,7 @@ export const cancelPurchaseOrderTx: CancelPurchaseOrderTx = async (tx, tenantId,
 
   const updateResult = await tx.purchaseOrder.updateMany({
     where: { id: orderId, tenantId, status: order.status as any },
-    data: { status: 'CANCELLED' as any, cancelledAt: new Date() }
+    data: { status: 'CANCELLED' as any, cancelledAt: new Date(), cancellationReason: motif }
   });
   if (updateResult.count !== 1) {
     throw conflict('Ce bon de commande a été modifié entre-temps');

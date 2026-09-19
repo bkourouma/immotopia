@@ -579,7 +579,17 @@ components:
 
     SiteBudget:
       type: object
-      required: [id, siteId, label, status, currency, lines, totalForecast]
+      required:
+        [
+          id,
+          siteId,
+          label,
+          status,
+          currency,
+          lines,
+          totalForecast,
+          revisedTotal,
+        ]
       properties:
         id: { type: string, format: uuid }
         siteId: { type: string, format: uuid }
@@ -603,6 +613,17 @@ components:
           {
             type: number,
             description: "Calcule : somme des lignes. Jamais stocke.",
+          }
+        revisedTotal:
+          {
+            type: number,
+            description:
+              "Calcule : l'initial plus la somme signee des avenants VALIDES.
+              Jamais stocke. Egal a totalForecast tant qu'aucun avenant n'est
+              valide -- un avenant en brouillon ne compte pour rien. Ajoute a
+              l'integration : sans lui, l'ecran du budget ne pouvait montrer
+              que l'initial, et devait faire l'addition lui-meme, ce que le
+              principe P-4 interdit.",
           }
 
     CreateSiteBudgetRequest:

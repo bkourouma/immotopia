@@ -95,7 +95,17 @@ const BUDGET_INCLUDE = {
   // validateur. Ajouté le 19 septembre 2026, additivement au contrat gelé :
   // `SiteBudgetRecord.validatedByLabel` nomme désormais qui a validé, comme
   // `BudgetAmendmentRecord.createdByLabel` nomme déjà qui a créé l'avenant.
-  validatedBy: { select: { fullName: true, email: true } }
+  validatedBy: { select: { fullName: true, email: true } },
+  // Les avenants VALIDÉS seulement, et seulement leurs écarts : c'est tout ce
+  // qu'il faut pour le total révisé, et c'est lu par la même jointure que le
+  // reste — jamais par une requête de plus une fois le budget chargé.
+  //
+  // Un avenant en brouillon ne compte pour rien, exactement comme une pièce en
+  // brouillon au lot 2.
+  amendments: {
+    where: { status: 'VALIDATED' as const },
+    select: { lines: { select: { amountDelta: true } } }
+  }
 } as const;
 
 type BudgetRow = Record<string, any>;
@@ -114,6 +124,20 @@ function toBudgetRecord(row: BudgetRow): SiteBudgetRecord {
   // pas (P-4), c'est ici et seulement ici que le total prend forme.
   const totalForecast = round(lines.reduce((sum, line) => sum + line.amountForecast, 0));
 
+  // Le total RÉVISÉ : l'initial plus la somme signée des avenants validés.
+  // Calculé ici, une seule fois, et jamais recomposé à l'écran — l'agent des
+  // écrans avait refusé de le faire à la main, et il avait raison.
+  const delta = ((row.amendments ?? []) as BudgetRow[]).reduce(
+    (total: number, amendment: BudgetRow) =>
+      total +
+      ((amendment.lines ?? []) as BudgetRow[]).reduce(
+        (sousTotal: number, ligne: BudgetRow) => sousTotal + round(toAmountOrZero(ligne.amountDelta)),
+        0
+      ),
+    0
+  );
+  const revisedTotal = round(totalForecast + delta);
+
   return {
     id: row.id,
     tenantId: row.tenantId,
@@ -129,7 +153,8 @@ function toBudgetRecord(row: BudgetRow): SiteBudgetRecord {
     validatedByLabel: row.validatedByUserId ? labelCreator(row.validatedBy, row.validatedByUserId) : null,
     currency: row.currency ?? DEFAULT_CURRENCY,
     lines,
-    totalForecast
+    totalForecast,
+    revisedTotal
   };
 }
 

@@ -23,6 +23,9 @@ import documentRoutes from './routes/document-routes';
 import financeRoutes from './routes/finance-routes';
 import financeSuppliersRoutes from './routes/finance-suppliers-routes';
 import financeSitesRoutes from './routes/finance-sites-routes';
+import financeBudgetsRoutes from './routes/finance-budgets-routes';
+import financePurchaseOrdersRoutes from './routes/finance-purchase-orders-routes';
+import financePilotageRoutes from './routes/finance-pilotage-routes';
 import maintenanceRoutes from './routes/maintenance-routes';
 import emailNotificationConfigRoutes from './routes/email-notification-config-routes';
 import whatsappNotificationConfigRoutes from './routes/whatsapp-notification-config-routes';
@@ -162,7 +165,20 @@ app.use('/api/tenants', rentalRoutes); // Rental routes are tenant-scoped
 app.use('/api/tenants', documentRoutes); // Document routes are tenant-scoped
 app.use('/api', financeRoutes); // Finance : balances, releves, campagnes de facturation
 app.use('/api', financeSuppliersRoutes); // Finance lot 2 : fournisseurs, factures, reglements
+// ORDRE DE MONTAGE : le pilotage passe AVANT les chantiers du lot 2.
+//
+// `GET /finance/sites/dashboard` (lot 3) et `GET /finance/sites/:siteId`
+// (lot 2) ont la meme forme. Express essaie les routeurs dans leur ordre de
+// montage : si celui du lot 2 venait d'abord, il happerait « dashboard » comme
+// un identifiant de chantier et le rejetterait en 400, sans jamais laisser la
+// requete atteindre le tableau de bord.
+//
+// Risque signale par l'agent du pilotage dans sa rubrique d'hypotheses, depuis
+// son propre territoire, alors que le montage ne lui appartenait pas.
+app.use('/api', financePilotageRoutes); // Finance lot 3 : avancement, alertes, tableau de bord
 app.use('/api', financeSitesRoutes); // Finance lot 2 : chantiers, caisse, file de validation
+app.use('/api', financeBudgetsRoutes); // Finance lot 3 : budgets de chantier et avenants
+app.use('/api', financePurchaseOrdersRoutes); // Finance lot 3 : bons de commande et engage
 app.use('/api/tenants/:tenantId/maintenance', maintenanceRoutes); // Maintenance routes are tenant-scoped
 app.use('/api/tenants/:tenantId/email-notifications', emailNotificationConfigRoutes); // Notifications email (activation + templates)
 app.use('/api/tenants/:tenantId/whatsapp-notifications', whatsappNotificationConfigRoutes); // Notifications WhatsApp (WaSender/Twilio)

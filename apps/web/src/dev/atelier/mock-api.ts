@@ -20,6 +20,7 @@ import { repondreCampagne } from './finance-mock-campagne';
 import { repondreFournisseurs } from './finance-mock-fournisseurs';
 import { repondreChantiers } from './finance-mock-chantiers';
 import { repondreValidation } from './finance-mock-validation';
+import { repondreLot3 } from './finance-mock-lot3';
 
 /**
  * Fausse API de l'atelier.
@@ -306,7 +307,8 @@ export function installerFausseApi(scenario: Scenario) {
       repondreCampagne,
       repondreFournisseurs,
       repondreChantiers,
-      repondreValidation
+      repondreValidation,
+      repondreLot3
     ]) {
       const reponse = repondre(url.pathname, scenario);
       if (reponse !== null) {

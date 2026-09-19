@@ -131,6 +131,26 @@ const ChantierDetail = lazy(() =>
 const PieceDeCaisse = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/PieceDeCaisse').then(m => ({ default: m.PieceDeCaisse }))
 );
+const BudgetChantier = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/BudgetChantier').then(m => ({
+    default: m.BudgetChantier
+  }))
+);
+const BonsDeCommande = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/BonsDeCommande').then(m => ({
+    default: m.BonsDeCommande
+  }))
+);
+const BonDeCommande = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/BonDeCommande').then(m => ({
+    default: m.BonDeCommande
+  }))
+);
+const TableauDeBordChantiers = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/TableauDeBordChantiers').then(m => ({
+    default: m.TableauDeBordChantiers
+  }))
+);
 const FileDeValidation = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/FileDeValidation').then(m => ({
     default: m.FileDeValidation
@@ -645,8 +665,37 @@ function App() {
                       <Route path="/tenant/:tenantId/finance/factures-fournisseurs" element={<FactureFournisseur />} />
                       <Route path="/tenant/:tenantId/finance/chantiers" element={<Chantiers />} />
                       <Route path="/tenant/:tenantId/finance/chantiers/:siteId" element={<ChantierDetail />} />
-                      <Route path="/tenant/:tenantId/finance/chantiers/:siteId/caisse" element={<PieceDeCaisse />} />
+                      {/*
+                        Le chantier voyage en PARAMETRE DE REQUETE
+                        (`?chantierId=`), comme l'ecran le lit : il porte son
+                        propre selecteur et s'ouvre legitimement sans chantier
+                        choisi. Le detail d'un chantier pointe vers cette
+                        adresse depuis toujours ; c'est la route qui portait
+                        l'identifiant dans le chemin, si bien que le bouton
+                        « Nouvelle piece de caisse » ne menait nulle part.
+                        Meme defaut que sur les factures fournisseurs, corrige
+                        la veille, et reste ici. Trouve par l'agent des ecrans
+                        du lot 3, hors de son territoire.
+                      */}
+                      <Route path="/tenant/:tenantId/finance/caisse" element={<PieceDeCaisse />} />
                       <Route path="/tenant/:tenantId/finance/validation" element={<FileDeValidation />} />
+
+                      {/*
+                        Lot 3. L'ordre compte : « nouveau » AVANT
+                        « :orderId », sinon React Router rangerait le mot
+                        « nouveau » dans le parametre et l'ecran chercherait un
+                        bon de commande qui n'existe pas. Le classement de
+                        React Router par specificite ne departage pas un
+                        segment fixe d'un segment variable au meme rang.
+                      */}
+                      <Route path="/tenant/:tenantId/finance/chantiers/:siteId/budget" element={<BudgetChantier />} />
+                      <Route path="/tenant/:tenantId/finance/bons-de-commande" element={<BonsDeCommande />} />
+                      <Route path="/tenant/:tenantId/finance/bons-de-commande/nouveau" element={<BonDeCommande />} />
+                      <Route path="/tenant/:tenantId/finance/bons-de-commande/:orderId" element={<BonDeCommande />} />
+                      <Route
+                        path="/tenant/:tenantId/finance/tableau-de-bord-chantiers"
+                        element={<TableauDeBordChantiers />}
+                      />
                       <Route path="/tenant/:tenantId/maintenance" element={<TicketList />} />
                       <Route path="/tenant/:tenantId/maintenance/new" element={<CreateTicket />} />
                       <Route path="/tenant/:tenantId/maintenance/:ticketId/edit" element={<EditTicket />} />

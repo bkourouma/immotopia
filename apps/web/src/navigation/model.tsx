@@ -257,6 +257,16 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
           { key: 'finance-clients', label: 'Balance clients', href: '/tenant/:tenantId/finance/balance-clients' },
           { key: 'finance-clients-agee', label: 'Balance âgée', href: '/tenant/:tenantId/finance/balance-agee' },
           { key: 'finance-facturation', label: 'Facturation du mois', href: '/tenant/:tenantId/finance/facturation' },
+          {
+            key: 'finance-tableau-de-bord-chantiers',
+            label: 'Tableau de bord chantiers',
+            href: '/tenant/:tenantId/finance/tableau-de-bord-chantiers'
+          },
+          {
+            key: 'finance-bons-de-commande',
+            label: 'Bons de commande',
+            href: '/tenant/:tenantId/finance/bons-de-commande'
+          },
           { key: 'finance-fournisseurs', label: 'Fournisseurs', href: '/tenant/:tenantId/finance/fournisseurs' },
           {
             key: 'finance-fournisseurs-balance',

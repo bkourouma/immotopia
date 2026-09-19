@@ -45,6 +45,20 @@ const COMPTES_OPERATIONNELS = new Map<string, string>([
 // verifie qu'elle est APPELEE avec le bon chantier, pas ce qu'elle fait.
 const syncWorkProgramCostTx = jest.fn();
 
+const raiseBudgetAlertIfNeededTx = jest.fn();
+
+// L'alerte de depassement (lot 3) est appelee a la validation d'une piece,
+// parce que c'est l'un des trois seuls moments ou l'engage d'un chantier peut
+// monter. Elle est mockee ici comme le sont deja l'imputation et le moteur
+// comptable : ce fichier verifie COMMENT les fonctions fournisseurs
+// l'appellent, jamais ce qu'elle calcule — le lot 3 a ses propres tests pour
+// cela, et son parcours de bout en bout.
+//
+// Elle rend `null` par defaut : aucune alerte a lever.
+jest.mock('../../src/lib/finance/budget-alerts', () => ({
+  raiseBudgetAlertIfNeededTx: (...args: any[]) => raiseBudgetAlertIfNeededTx(...args)
+}));
+
 jest.mock('../../src/lib/finance/cost-allocation', () => ({
   syncWorkProgramCostTx: (...args: any[]) => syncWorkProgramCostTx(...args)
 }));
@@ -356,6 +370,7 @@ async function validateVoucher(voucherId: string) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  raiseBudgetAlertIfNeededTx.mockResolvedValue(null);
   store.sites = [];
   store.categories = [];
   store.vouchers = [];
@@ -482,6 +497,18 @@ describe('validateCashVoucherTx — écriture et imputation, en une transaction'
       sourceType: 'CASH_VOUCHER',
       sourceId: voucher.id
     });
+  });
+
+  it("evalue l'alerte de depassement sur le chantier de la piece", async () => {
+    const site = seedSite();
+    const category = seedCategory();
+    const piece = await createVoucher(site, category);
+
+    await validateVoucher(piece.id);
+
+    // Meme raison qu'a la validation d'une facture : la piece de caisse fait
+    // monter l'engage du chantier.
+    expect(raiseBudgetAlertIfNeededTx).toHaveBeenCalledWith(expect.anything(), TENANT_ID, site.id);
   });
 
   it('refuse de valider une pièce déjà validée (immutabilité, principe P-6)', async () => {

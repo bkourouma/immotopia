@@ -4592,6 +4592,14 @@ model PurchaseOrder {
   issuedByUserId  String?            @map("issued_by_user_id")
   issuedAt        DateTime?          @map("issued_at")
   cancelledAt     DateTime?          @map("cancelled_at")
+  /// Motif de l'annulation. Obligatoire des lors qu'on annule.
+  ///
+  /// Manquait au gel : `CancelPurchaseOrderTx` recevait un motif que rien ne
+  /// stockait, ce que deux agents ont releve independamment. Annuler un bon
+  /// est un geste irreversible sur un engagement ; le lot 2 exige un motif
+  /// pour toute annulation de piece, et il n'y a pas de raison de faire
+  /// autrement ici.
+  cancellationReason String?         @map("cancellation_reason")
   createdAt       DateTime           @default(now()) @map("created_at")
   updatedAt       DateTime           @updatedAt @map("updated_at")
 

@@ -1,0 +1,15 @@
+-- Motif d'annulation d'un bon de commande.
+--
+-- `CancelPurchaseOrderTx` recevait un motif que rien ne stockait : le contrat
+-- gele le demandait, le schema ne l'avait pas. Deux agents l'ont releve
+-- independamment dans leur rubrique d'hypotheses, l'un en implementant le
+-- service, l'autre en cablant l'ecran.
+--
+-- Annuler un bon est un geste irreversible sur un engagement. Le lot 2 exige
+-- un motif pour toute annulation de piece (`void_documents.reason`), et il n'y
+-- a pas de raison de faire autrement ici : une annulation sans motif est un
+-- chiffre qui disparait sans explication.
+--
+-- Nullable, parce que les bons deja annules -- s'il en existe -- n'en ont pas.
+-- Le service, lui, l'exige a chaque nouvelle annulation.
+ALTER TABLE "purchase_orders" ADD COLUMN "cancellation_reason" TEXT;

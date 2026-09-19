@@ -1,0 +1,282 @@
+import React from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Button, Checkbox, Select, Space, Tooltip } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { acknowledgeBudgetAlert, getSitesDashboard } from '../../services/finance-lot3-service';
+import type { SiteDashboardRow } from '../../types/finance-lot3-types';
+import { SITE_STATUS_LABELS } from '../../types/finance-lot2-types';
+import { useListParams } from '../../hooks/useListParams';
+import { queryKey, STALE_TIME } from '../../lib/query-keys';
+import {
+  PageHeader,
+  StateBlock,
+  MoneyValue,
+  DataView,
+  DataCard,
+  FilterSheet,
+  StatusTag
+} from '../../components/primitives';
+import type { StatusTone } from '../../components/primitives';
+
+/**
+ * Tableau de bord des chantiers — écran de pilotage du lot 3
+ * (specs/018-finance-budget-pilotage/data-model.md §4, §5,
+ * `GET /tenants/{tenantId}/finance/sites/dashboard`).
+ *
+ * Un seul appel, agrégé côté serveur (critère de sortie 4 du modèle) : cet
+ * écran n'agrège rien lui-même, il rend `SitesDashboard.rows` telles quelles.
+ *
+ * **Aucun total n'est recalculé ici.** `initialBudget`, `revisedBudget`,
+ * `engagedAmount`, `actualCost`, `variance`, `variancePercent` arrivent tous
+ * déjà calculés — en particulier `revisedBudget` et `variance`, qui n'ont pas
+ * d'équivalent recomposable côté écran (`variance` se calcule contre le
+ * budget **révisé**, une grandeur que ce lot ne stocke jamais, §2 du modèle).
+ *
+ * **Le code couleur demandé porte sur deux choses distinctes, toutes deux
+ * tirées de données déjà calculées, jamais d'un nouveau calcul :**
+ * - l'écart (`variance`) : `<MoneyValue signed>` le colore déjà en rouge s'il
+ *   est négatif ; un `<StatusTag>` à côté lit seulement le SIGNE déjà connu
+ *   pour nommer l'état (« Dans le budget » / « Dépassement »), sans reprendre
+ *   le calcul de l'écart lui-même ;
+ * - l'alerte (`openAlert`) : présente ou non sur la ligne, rendue par un tag
+ *   distinct, jamais confondue avec l'écart — un chantier peut avoir franchi
+ *   un SEUIL d'alerte (`thresholdPercent`, souvent inférieur à 100 %) sans
+ *   être en dépassement, et inversement un chantier sans budget n'a ni écart
+ *   ni alerte (`variance` et `openAlert` valent alors tous deux `null`).
+ *
+ * **Acquittement d'une alerte.** Route dédiée (§5,
+ * `POST budget-alerts/{alertId}/acknowledge`), confirmée mais sans la
+ * solennité d'une validation ou d'une annulation : « une alerte informe, elle
+ * n'interdit pas » (§6 du modèle).
+ *
+ * **Les filtres envoient un identifiant ou un code, jamais un libellé.**
+ * `status` est le code brut (`PLANNED`, `IN_PROGRESS`…), au même titre que
+ * `Chantiers.tsx` ; `onlyOverBudget` est un booléen porté par l'URL sous la
+ * forme du texte `'true'`, l'unique valeur que `useListParams` sait
+ * distinguer d'une absence de filtre.
+ *
+ * **Vocabulaire (P-1).** On *engage*, on *budgète*, jamais « débit » ni
+ * « crédit ».
+ */
+
+type Filters = { status: string; onlyOverBudget: string };
+const FILTER_KEYS = ['status', 'onlyOverBudget'] as const;
+
+const OPTIONS_STATUT = Object.entries(SITE_STATUS_LABELS).map(([value, label]) => ({ value, label }));
+
+/** Lit le SIGNE d'un écart déjà calculé — ne recalcule jamais l'écart lui-même. */
+function toneEcart(variance: number | null): StatusTone {
+  if (variance === null) return 'neutral';
+  return variance < 0 ? 'danger' : 'success';
+}
+
+function labelEcart(variance: number | null): string {
+  if (variance === null) return 'Sans budget';
+  return variance < 0 ? 'Dépassement' : 'Dans le budget';
+}
+
+export const TableauDeBordChantiers: React.FC = () => {
+  const { tenantId } = useParams<{ tenantId: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const list = useListParams<Filters>({ filterKeys: FILTER_KEYS });
+
+  const filtresApi = {
+    status: list.filters.status || undefined,
+    onlyOverBudget: list.filters.onlyOverBudget === 'true'
+  };
+
+  const {
+    data,
+    isPending,
+    isFetching,
+    error: erreurRequete,
+    refetch
+  } = useQuery({
+    queryKey: queryKey('sites-dashboard', tenantId, {
+      status: filtresApi.status,
+      onlyOverBudget: filtresApi.onlyOverBudget ? 'true' : undefined
+    }),
+    queryFn: () => getSitesDashboard(tenantId as string, filtresApi),
+    enabled: Boolean(tenantId),
+    staleTime: STALE_TIME.list
+  });
+
+  const lignes = data?.rows ?? [];
+  const nombreFiltres = [list.filters.status, list.filters.onlyOverBudget].filter(Boolean).length;
+
+  const acquitter = async (ligne: SiteDashboardRow) => {
+    if (!tenantId || !ligne.openAlert) return;
+    try {
+      await acknowledgeBudgetAlert(tenantId, ligne.openAlert.id);
+      await queryClient.invalidateQueries({ queryKey: queryKey('sites-dashboard', tenantId, {}) });
+    } catch {
+      // Le message d'erreur générique suffit ici : acquitter une alerte n'a
+      // pas de conséquence si l'on réessaie, contrairement à une validation.
+    }
+  };
+
+  if (!tenantId) {
+    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+  }
+
+  const ouvrirBudget = (ligne: SiteDashboardRow) =>
+    navigate(`/tenant/${tenantId}/finance/chantiers/${ligne.siteId}/budget`);
+
+  const colonnes: ColumnsType<SiteDashboardRow> = [
+    { title: 'Chantier', key: 'chantier', render: (_, r) => r.siteLabel },
+    { title: 'Zone', key: 'zone', render: (_, r) => r.zone || '—' },
+    { title: 'Statut', key: 'statut', render: (_, r) => <StatusTag status={r.status} /> },
+    { title: 'Avancement', key: 'avancement', align: 'right', render: (_, r) => `${r.progressPercent} %` },
+    {
+      title: 'Budget initial',
+      key: 'budget-initial',
+      align: 'right',
+      render: (_, r) => <MoneyValue value={r.initialBudget} />
+    },
+    {
+      title: 'Budget révisé',
+      key: 'budget-revise',
+      align: 'right',
+      render: (_, r) => <MoneyValue value={r.revisedBudget} />
+    },
+    { title: 'Engagé', key: 'engage', align: 'right', render: (_, r) => <MoneyValue value={r.engagedAmount} /> },
+    { title: 'Réalisé', key: 'realise', align: 'right', render: (_, r) => <MoneyValue value={r.actualCost} /> },
+    {
+      title: 'Écart',
+      key: 'ecart',
+      align: 'right',
+      render: (_, r) => (
+        <StatusTag status={labelEcart(r.variance)} tone={toneEcart(r.variance)} label={labelEcart(r.variance)} />
+      )
+    },
+    {
+      title: 'Alerte',
+      key: 'alerte',
+      render: (_, r) =>
+        r.openAlert ? (
+          <Tooltip
+            title={`Seuil de ${r.openAlert.thresholdPercent} % franchi — ${r.openAlert.consumedPercent} % du budget consommé`}
+          >
+            <StatusTag status="alerte" tone="danger" label="Alerte" />
+          </Tooltip>
+        ) : (
+          '—'
+        )
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      align: 'right',
+      render: (_, r) => (
+        <Space size="small">
+          <Button type="link" onClick={() => ouvrirBudget(r)}>
+            Voir le budget
+          </Button>
+          {r.openAlert && (
+            <Button type="link" onClick={() => acquitter(r)}>
+              Acquitter l'alerte
+            </Button>
+          )}
+        </Space>
+      )
+    }
+  ];
+
+  return (
+    <>
+      <PageHeader
+        title="Tableau de bord des chantiers"
+        subtitle={lignes.length > 0 ? `${lignes.length} chantier${lignes.length > 1 ? 's' : ''}` : undefined}
+      />
+
+      <FilterSheet
+        activeCount={nombreFiltres}
+        onClear={() => list.setFilters({ status: undefined, onlyOverBudget: undefined })}
+        title="Filtrer le tableau de bord"
+      >
+        <div style={{ minWidth: 200 }}>
+          <label htmlFor="filtre-tdb-statut">Statut</label>
+          <Select
+            id="filtre-tdb-statut"
+            style={{ width: '100%' }}
+            placeholder="Tous les statuts"
+            allowClear
+            value={list.filters.status || undefined}
+            onChange={valeur => list.setFilters({ status: valeur })}
+            options={OPTIONS_STATUT}
+          />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', height: 32 }}>
+          <Checkbox
+            checked={list.filters.onlyOverBudget === 'true'}
+            onChange={event => list.setFilters({ onlyOverBudget: event.target.checked ? 'true' : undefined })}
+          >
+            Chantiers en dépassement uniquement
+          </Checkbox>
+        </div>
+      </FilterSheet>
+
+      <DataView<SiteDashboardRow>
+        // Le tableau de bord ne pagine pas (contrat gelé, §5 du modèle) : un
+        // seul appel rend tous les chantiers de l'agence.
+        paginated={false}
+        scrollX={1200}
+        items={lignes}
+        total={lignes.length}
+        page={1}
+        pageSize={Math.max(lignes.length, 1)}
+        onPageChange={() => {}}
+        loading={isPending}
+        isReloading={isFetching && !isPending}
+        error={erreurRequete ? 'Impossible de charger le tableau de bord des chantiers.' : null}
+        onRetry={() => refetch()}
+        isFiltered={list.isFiltered}
+        onClearFilters={() => list.setFilters({ status: undefined, onlyOverBudget: undefined })}
+        emptyDescription="Aucun chantier ne correspond à ces critères."
+        columns={colonnes}
+        rowKey={r => r.siteId}
+        aria-label="Tableau de bord des chantiers"
+        renderCard={r => (
+          <DataCard
+            title={r.siteLabel}
+            aria-label={r.siteLabel}
+            subtitle={r.zone || undefined}
+            status={<StatusTag status={r.status} />}
+            highlight={<MoneyValue value={r.engagedAmount} />}
+            fields={[
+              { label: 'Budget initial', value: <MoneyValue value={r.initialBudget} /> },
+              { label: 'Budget révisé', value: <MoneyValue value={r.revisedBudget} /> },
+              { label: 'Réalisé', value: <MoneyValue value={r.actualCost} /> },
+              {
+                label: 'Écart',
+                value: (
+                  <StatusTag
+                    status={labelEcart(r.variance)}
+                    tone={toneEcart(r.variance)}
+                    label={labelEcart(r.variance)}
+                  />
+                )
+              },
+              ...(r.openAlert
+                ? [
+                    {
+                      label: 'Alerte',
+                      value: `Seuil de ${r.openAlert.thresholdPercent} % franchi (${r.openAlert.consumedPercent} %)`
+                    }
+                  ]
+                : [])
+            ]}
+            primaryAction={{ label: 'Voir le budget', onClick: () => ouvrirBudget(r) }}
+            secondaryActions={
+              r.openAlert ? [{ key: 'acquitter', label: "Acquitter l'alerte", onClick: () => acquitter(r) }] : undefined
+            }
+          />
+        )}
+      />
+    </>
+  );
+};
+
+export default TableauDeBordChantiers;

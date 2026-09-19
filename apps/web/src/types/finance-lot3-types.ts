@@ -91,6 +91,15 @@ export interface SiteBudget {
    * résultats le jour où l'une des deux oublie un cas.
    */
   totalForecast: number;
+  /**
+   * Initial plus la somme des avenants **validés**, calculé par le serveur.
+   *
+   * L'écran l'affiche à côté de l'initial : c'est l'enveloppe réellement
+   * accordée, celle contre laquelle se lit l'écart. Il ne le recompose jamais
+   * à partir de la liste des avenants — ce serait refaire un calcul que le
+   * serveur fait déjà, et les deux finiraient par différer.
+   */
+  revisedTotal: number;
 }
 
 export interface CreateSiteBudgetInput {
