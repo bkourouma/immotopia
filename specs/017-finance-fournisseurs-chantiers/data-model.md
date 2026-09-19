@@ -519,6 +519,25 @@ model CashVoucher {
 
 **Numerotation sequentielle sous concurrence** (FR-022) : `voucherNumber` n'est **pas** `@default(autoincrement())` -- un auto-increment Postgres est global a la table, alors que la sequence exigee ici est **par tenant et par annee**. La numerotation passe par une fonction `nextCashVoucherNumber(tx, tenantId, voucherYear)` qui verrouille une ligne de compteur (`SELECT ... FOR UPDATE` sur une table `finance_sequence_counters(tenant_id, sequence_name, year, last_value)`, nouvelle table de support minimale, non listee separement ci-dessus car elle ne porte aucune donnee metier) avant d'incrementer, dans la transaction de validation de la piece de caisse -- jamais a la lecture, jamais hors transaction. C'est le meme risque que celui deja identifie par le plan (§11, "Sequence de bons de caisse en double sous concurrence") et le meme remede que celui qu'il propose.
 
+> **Mise a jour du 19 septembre 2026 — ce qui a ete implemente.** Deux ecarts
+> avec le paragraphe ci-dessus, tous deux constates a l'integration du lot 2.
+>
+> _Le mecanisme._ La table de compteur `finance_sequence_counters` n'existe pas.
+> Le verrou est un verrou consultatif Postgres scope a la transaction
+> (`pg_advisory_xact_lock`, cle par tenant), pose dans `lib/finance/cash.ts`.
+> Il joue le meme role qu'un `SELECT ... FOR UPDATE` sur une ligne de compteur,
+> avec un avantage decisif : il n'a pas besoin qu'une ligne existe deja pour se
+> poser, et protege donc aussi la toute premiere piece de l'annee — cas ou un
+> verrou de ligne ne verrouillerait rien, faute de ligne a verrouiller.
+>
+> _Le moment._ La premiere implementation numerotait des la **saisie**, contre
+> la lettre de ce paragraphe. La cliente a tranche en faveur du document : le
+> numero est attribue **a la validation**, `voucherNumber` et `voucherYear`
+> sont nuls pour un brouillon (migration
+> `20260919090000_number_cash_voucher_at_validation`), et un brouillon
+> abandonne ne consomme donc aucun rang. L'annee de la sequence suit la date de
+> la piece, jamais le jour de la validation.
+
 **Sur la decision de caisse unique** (actee le 18 septembre 2026, voir `spec.md` et `research.md` §4.1) : ce modele ne porte volontairement aucun champ `cashRegisterId`. Ce choix laisse un risque residuel, chiffre plutot que laisse dans le flou : si l'organisation de la cliente evoluait vers plusieurs caisses, la migration a prevoir serait d'ajouter `CashRegister` (id, tenantId, label) et `cashRegisterId` sur `CashVoucher`, de retro-remplir avec une caisse unique par defaut pour les pieces deja emises, puis de rendre le champ obligatoire -- une migration de meme forme que celle du §1, mais sans son risque d'unicite (aucune contrainte n'existerait encore sur une colonne qui n'existe pas encore).
 
 ## 4. WorkProgram (existant, etendu)

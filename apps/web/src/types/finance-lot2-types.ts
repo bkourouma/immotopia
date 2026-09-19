@@ -184,8 +184,18 @@ export interface SiteDetail {
 
 export interface CashVoucher {
   id: string;
-  /** Numéroté séquentiellement par agence et par année. */
-  number: string;
+  /**
+   * Numéro affiché, `AAAA-NNNN`, séquentiel par agence et par année.
+   *
+   * **Nul tant que la pièce est un brouillon.** Le numéro est attribué à la
+   * validation, pas à la saisie : un brouillon abandonné ne doit pas consommer
+   * un numéro et laisser un trou dans le carnet, ce qu'un contrôle comptable
+   * relève. Décision de la cliente du 19 septembre 2026 (rapport du lot 2, §6).
+   *
+   * L'écran ne doit donc jamais l'afficher sans se demander s'il existe, ni le
+   * remplacer par un tiret — qui se lirait comme un numéro.
+   */
+  number: string | null;
   siteId: string;
   siteLabel: string;
   costCategoryId: string;

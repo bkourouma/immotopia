@@ -503,7 +503,10 @@ export const SITES: ConstructionSite[] = SITE_DETAILS.map(detail => detail.site)
 
 const PIECE_CAISSE_EMISE: CashVoucher = {
   id: 'piece-caisse-atelier-01',
-  number: '2026-0107',
+  // Un brouillon n'a pas de numero : il lui est attribue a la validation
+  // (decision du 19 septembre 2026). La maquette doit le montrer ainsi, sans
+  // quoi l'ecran serait mis au point sur un cas qui n'arrive jamais.
+  number: null,
   siteId: RICHE_BASE.id,
   siteLabel: RICHE_BASE.name,
   costCategoryId: 'poste-main-oeuvre',
@@ -519,6 +522,8 @@ const PIECE_CAISSE_EMISE: CashVoucher = {
 
 const PIECE_CAISSE_VALIDEE: CashVoucher = {
   ...PIECE_CAISSE_EMISE,
+  // Le numero apparait ici, et nulle part avant.
+  number: '2026-0107',
   status: 'VALIDATED',
   validatedAt: '2026-09-18T10:00:00.000Z'
 };

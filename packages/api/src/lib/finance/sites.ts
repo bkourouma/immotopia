@@ -353,7 +353,10 @@ async function resolveAllocationSources(
   for (const voucher of vouchers as Array<Record<string, any>>) {
     resolved.set(voucher.id, {
       date: voucher.voucherDate,
-      label: `Bon de caisse ${formatCashVoucherNumber(voucher.voucherYear, voucher.voucherNumber)} — ${voucher.beneficiaryName}`
+      // Une imputation ne nait qu'a la validation : la piece qui la porte a
+      // donc toujours un numero ici. Le repli reste ecrit au cas ou une
+      // donnee anterieure a la regle du 19 septembre 2026 traine en base.
+      label: `Bon de caisse ${formatCashVoucherNumber(voucher.voucherYear, voucher.voucherNumber) ?? 'sans numéro'} — ${voucher.beneficiaryName}`
     });
   }
 

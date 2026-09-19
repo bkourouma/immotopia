@@ -241,17 +241,27 @@ async function verifierVentilationComplete(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Un index unique `(tenantId, voucherYear, voucherNumber)` porte déjà cette
- * règle en base. Ce contrôle ne la remplace pas : il la constate, et surtout
- * il compte les pièces, ce qui distingue « aucun doublon » de « aucune pièce ».
+ * Un index unique `(tenantId, voucherYear, voucherNumber)` porte déjà l'unicité
+ * en base. Ce contrôle ne la remplace pas : il la constate, il compte les
+ * pièces — ce qui distingue « aucun doublon » de « aucune pièce » — et il
+ * vérifie en plus les deux règles que l'index ne peut pas exprimer.
+ *
+ * **Seules les pièces validées portent un numéro.** Depuis la décision du
+ * 19 septembre 2026, il est attribué à la validation : un brouillon numéroté
+ * serait le signe que l'ancienne règle est revenue par une porte dérobée.
+ *
+ * **Les brouillons sont exclus du contrôle d'unicité.** Leurs deux colonnes
+ * sont nulles, et PostgreSQL traite deux NULL comme distincts : les compter
+ * ensemble ferait voir autant de « doublons » qu'il y a de brouillons.
  */
 async function verifierNumerotation(): Promise<void> {
-  const pieces = await prisma.cashVoucher.findMany({
+  const numerotees = await prisma.cashVoucher.findMany({
+    where: { voucherNumber: { not: null } },
     select: { tenantId: true, voucherYear: true, voucherNumber: true }
   });
 
   const vus = new Map<string, number>();
-  for (const piece of pieces) {
+  for (const piece of numerotees) {
     const cle = `${piece.tenantId}|${piece.voucherYear}|${piece.voucherNumber}`;
     vus.set(cle, (vus.get(cle) ?? 0) + 1);
   }
@@ -264,7 +274,22 @@ async function verifierNumerotation(): Promise<void> {
     }
   }
 
-  enregistrer('I4', 'Numéro de pièce de caisse unique par agence et par année', pieces.length, ecarts);
+  const brouillonsNumerotes = await prisma.cashVoucher.count({
+    where: { validatedAt: null, voucherNumber: { not: null } }
+  });
+  if (brouillonsNumerotes > 0) {
+    ecarts.push(`${brouillonsNumerotes} brouillon(s) portent déjà un numéro : il doit être attribué à la validation`);
+  }
+
+  const validesSansNumero = await prisma.cashVoucher.count({
+    where: { validatedAt: { not: null }, voucherNumber: null }
+  });
+  if (validesSansNumero > 0) {
+    ecarts.push(`${validesSansNumero} pièce(s) validée(s) sans numéro`);
+  }
+
+  const total = await prisma.cashVoucher.count();
+  enregistrer('I4', 'Numéro attribué à la validation, et unique par agence et par année', total, ecarts);
 }
 
 // ---------------------------------------------------------------------------

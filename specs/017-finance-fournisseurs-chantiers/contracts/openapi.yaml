@@ -1017,22 +1017,34 @@ components:
 
     CashVoucher:
       type: object
-      required:
-        [id, number, siteId, beneficiaryName, amount, currency, reason, status]
+      required: [id, siteId, beneficiaryName, amount, currency, reason, status]
       properties:
         id: { type: string, format: uuid }
         number:
           {
             type: string,
+            nullable: true,
             example: 2026-0031,
             description:
               "Numero affiche, AAAA-NNNN : annee puis rang dans l'annee, par
-              agence. Attribue des la SAISIE, sous verrou consultatif, et non a
-              la validation. Ce document disait l'inverse et emettait deux
-              entiers separes ; le serveur, lui, a toujours emis cette seule
-              chaine. Ecart releve a l'integration du lot 2 et tranche en
-              faveur du code. Consequence a arbitrer : un brouillon abandonne
-              consomme son numero, ce qui laisse un trou dans la suite.",
+              agence. NUL tant que la piece est un brouillon : le numero est
+              attribue a la VALIDATION, sous verrou consultatif, jamais a la
+              saisie. Un brouillon abandonne ne consomme donc aucun rang, et le
+              carnet reste continu. L'annee suit la DATE DE LA PIECE, pas le
+              jour de la validation. Decision de la cliente du 19 septembre
+              2026, apres le rapport du lot 2.",
+          }
+        voucherNumber:
+          {
+            type: integer,
+            nullable: true,
+            description: "Rang seul, redérive de `number`. Nul pour un brouillon.",
+          }
+        voucherYear:
+          {
+            type: integer,
+            nullable: true,
+            description: "Annee seule, redérivee de `number`. Nulle pour un brouillon.",
           }
         siteId: { type: string, format: uuid }
         costCategoryId: { type: string, format: uuid }

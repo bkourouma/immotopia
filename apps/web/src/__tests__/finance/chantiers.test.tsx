@@ -136,7 +136,11 @@ function detail(overrides: Partial<SiteDetail> = {}): SiteDetail {
 function voucher(overrides: Partial<CashVoucher> = {}): CashVoucher {
   return {
     id: 'piece-1',
-    number: '2026-0107',
+    // La fixture par defaut est un BROUILLON, donc sans numero : il est
+    // attribue a la validation (decision du 19 septembre 2026). Un test qui
+    // partirait d'un brouillon numerote mettrait au point un cas qui n'existe
+    // pas.
+    number: null,
     siteId: 'chantier-1',
     siteLabel: 'Villa duplex — Kipé Centre',
     costCategoryId: 'poste-main-oeuvre',
@@ -365,7 +369,7 @@ describe('Pièce de caisse', () => {
     await user.click(screen.getByRole('button', { name: /Émettre la pièce/ }));
   }
 
-  it('émet une pièce de caisse numérotée par le serveur', async () => {
+  it('émet une pièce de caisse sans numéro, et ne fait pas mine d’en avoir un', async () => {
     const user = userEvent.setup({ delay: null, pointerEventsCheck: 0 });
     await remplirEtEmettre(user);
 
@@ -377,7 +381,12 @@ describe('Pièce de caisse', () => {
       amount: 450_000,
       reason: 'Salaire équipe finitions'
     });
-    expect(await screen.findByText('Pièce 2026-0107', {}, { timeout: 8000 })).toBeInTheDocument();
+    // Un brouillon se designe par son beneficiaire, faute de numero.
+    expect(await screen.findByText('Pièce à valider — Sékou Traoré', {}, { timeout: 8000 })).toBeInTheDocument();
+    // Et surtout : aucun numero n'est affiche, pas meme un tiret de
+    // remplacement, qui se lirait comme un numero sur une piece papier.
+    expect(screen.queryByText(/Pièce\s+\d{4}-\d{4}/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Pièce\s+[—-]\s*$/)).not.toBeInTheDocument();
   }, 15000);
 
   // Ce test monte l'ecran complet et enchaine plusieurs interactions dans
@@ -387,10 +396,14 @@ describe('Pièce de caisse', () => {
   // suite instable apprend a ignorer les echecs.
   it('présente la validation comme irréversible, avant de la déclencher', async () => {
     const user = userEvent.setup({ delay: null, pointerEventsCheck: 0 });
-    validateCashVoucher.mockResolvedValue(voucher({ status: 'VALIDATED', validatedAt: '2026-09-18T10:00:00.000Z' }));
+    // Le serveur rend la piece numerotee : c'est la validation qui pose le
+    // numero, et cet appel est le seul endroit ou il peut apparaitre.
+    validateCashVoucher.mockResolvedValue(
+      voucher({ status: 'VALIDATED', number: '2026-0107', validatedAt: '2026-09-18T10:00:00.000Z' })
+    );
     await remplirEtEmettre(user);
 
-    await screen.findByText('Pièce 2026-0107', {}, { timeout: 8000 });
+    await screen.findByText('Pièce à valider — Sékou Traoré', {}, { timeout: 8000 });
     // Le déclencheur (« Valider la pièce ») et le bouton de confirmation
     // (okText « Valider ») portent des noms distincts, à dessein.
     await user.click(screen.getByRole('button', { name: 'Valider la pièce' }));
@@ -403,6 +416,8 @@ describe('Pièce de caisse', () => {
 
     await waitFor(() => expect(validateCashVoucher).toHaveBeenCalledWith('agence-1', 'piece-1'));
     expect(await screen.findByText('Validée', {}, { timeout: 8000 })).toBeInTheDocument();
+    // Le numero n'apparait qu'ici, une fois la piece validee.
+    expect(await screen.findByText('Pièce 2026-0107', {}, { timeout: 8000 })).toBeInTheDocument();
   }, 60000);
 
   it('imprime le bon via l’URL fournie par le service', async () => {
@@ -410,7 +425,7 @@ describe('Pièce de caisse', () => {
     const ouvrir = vi.spyOn(window, 'open').mockImplementation(() => null);
     await remplirEtEmettre(user);
 
-    await screen.findByText('Pièce 2026-0107', {}, { timeout: 8000 });
+    await screen.findByText('Pièce à valider — Sékou Traoré', {}, { timeout: 8000 });
     await user.click(screen.getByRole('button', { name: /Imprimer le bon/ }));
 
     expect(getCashVoucherPdfUrl).toHaveBeenCalledWith('agence-1', 'piece-1');
@@ -465,6 +480,6 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     await user.type(screen.getByLabelText('Montant (FCFA)'), '450000');
     await user.type(screen.getByLabelText('Motif'), 'Salaire équipe finitions');
     await user.click(screen.getByRole('button', { name: /Émettre la pièce/ }));
-    await screen.findByText('Pièce 2026-0107', {}, { timeout: 8000 });
+    await screen.findByText('Pièce à valider — Sékou Traoré', {}, { timeout: 8000 });
   }
 });

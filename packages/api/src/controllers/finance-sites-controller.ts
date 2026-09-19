@@ -123,17 +123,23 @@ function toCostCategoryResponse(category: CostCategoryRecord) {
 }
 
 /**
- * `CashVoucherRecord.number` (`./types-lot2.ts`) porte déjà le format affiché
- * `AAAA-NNNN` (`cash.ts`, `formatCashVoucherNumber`). Le contrat
- * (`CashVoucher`) attend en plus les deux composantes séparées
- * `voucherNumber`/`voucherYear`, décrites comme « attribuées seulement à la
- * validation » — en réalité déjà posées à l'émission dans l'implémentation
- * gelée de ce lot (`createCashVoucherTx`), qui numérote dès le brouillon. On
- * les redérive ici du format affiché plutôt que de dupliquer une seconde
- * source de vérité : la forme canonique reste `number`.
+ * `CashVoucherRecord.number` (`./types-lot2.ts`) porte le format affiché
+ * `AAAA-NNNN` (`cash.ts`, `formatCashVoucherNumber`), ou `null` tant que la
+ * pièce est un brouillon. Le contrat attend en plus les deux composantes
+ * séparées `voucherNumber`/`voucherYear`, nulles elles aussi jusqu'à la
+ * validation.
+ *
+ * Elles sont redérivées du format affiché plutôt que dupliquées depuis les
+ * colonnes : la forme canonique reste `number`, et une seule source de vérité
+ * ne peut pas diverger d'elle-même.
+ *
+ * Le contrat disait « attribuées seulement à la validation » alors que la
+ * première implémentation numérotait dès la saisie. La cliente a tranché le
+ * 19 septembre 2026 en faveur du contrat : le document et le code disent
+ * désormais la même chose.
  */
 function toCashVoucherResponse(voucher: CashVoucherRecord) {
-  const match = /^(\d{4})-(\d+)$/.exec(voucher.number);
+  const match = voucher.number ? /^(\d{4})-(\d+)$/.exec(voucher.number) : null;
   return {
     id: voucher.id,
     number: voucher.number,
@@ -337,7 +343,8 @@ function formatDate(date?: Date | null): string {
  * retrouve, brouillon comme validée.
  */
 async function buildCashVoucherPdf(payload: {
-  number: string;
+  /** Nul pour un brouillon : le numéro est attribué à la validation. */
+  number: string | null;
   beneficiary: string;
   amount: number;
   currency: string;
@@ -359,7 +366,11 @@ async function buildCashVoucherPdf(payload: {
 
   page.drawText('Bon de caisse', { x: left, y, size: 18, font: bold, color: rgb(0.1, 0.1, 0.1) });
   y -= 26;
-  page.drawText(`Pièce n° ${payload.number}`, { x: left, y, size: 13, font: bold });
+  // Un brouillon n'a pas de numéro, et le bon imprimé le dit en toutes lettres.
+  // Un tiret ou une chaîne vide se liraient comme un numéro sur une pièce
+  // papier qu'on remet à quelqu'un, ce qui est exactement ce qu'il faut éviter.
+  const numeroImprime = payload.number ? `Pièce n° ${payload.number}` : 'Pièce n° : attribué à la validation';
+  page.drawText(numeroImprime, { x: left, y, size: 13, font: bold });
   y -= 30;
 
   const line = (label: string, value: string) => {

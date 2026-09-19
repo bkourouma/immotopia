@@ -401,16 +401,20 @@ async function main(): Promise<void> {
         createdByUserId: saisisseur.id
       })
     );
-    console.log(`  piece de caisse saisie : ${piece.number}`);
+    console.log(`  piece de caisse saisie, sans numero`);
+
+    constater('Une piece de caisse saisie n’a pas encore de numero', null, piece.number);
+
+    const pieceValidee = await prisma.$transaction(tx =>
+      validateCashVoucherTx(tx, tenantId as string, piece.id, validateur.id)
+    );
+    console.log(`  piece de caisse validee : ${pieceValidee.number}`);
 
     constater(
-      'La premiere piece de caisse de l’annee porte le numero 1',
+      'La validation lui donne le premier numero de l’annee',
       formatCashVoucherNumber(2026, 1),
-      piece.number
+      pieceValidee.number
     );
-
-    await prisma.$transaction(tx => validateCashVoucherTx(tx, tenantId as string, piece.id, validateur.id));
-    console.log(`  piece de caisse validee : ${piece.number}`);
 
     const chantierApresCaisse = await getSiteDetail(tenantId, chantier.id);
     constater(
@@ -431,7 +435,7 @@ async function main(): Promise<void> {
         createdByUserId: saisisseur.id
       })
     );
-    constater('La piece suivante prend le numero 2', formatCashVoucherNumber(2026, 2), piece2.number);
+    constater('La piece suivante, restee brouillon, n’a toujours pas de numero', null, piece2.number);
 
     const chantierApresPiece2 = await getSiteDetail(tenantId, chantier.id);
     constater(
@@ -546,12 +550,26 @@ async function main(): Promise<void> {
       detailFinal.site.actualCost
     );
 
-    const numeros = await prisma.cashVoucher.findMany({
-      where: { tenantId },
+    const numerotees = await prisma.cashVoucher.findMany({
+      where: { tenantId, voucherNumber: { not: null } },
       select: { voucherYear: true, voucherNumber: true }
     });
-    const clesNumeros = new Set(numeros.map(n => `${n.voucherYear}|${n.voucherNumber}`));
-    constater('Aucun numero de piece de caisse en double', numeros.length, clesNumeros.size);
+    const clesNumeros = new Set(numerotees.map(n => `${n.voucherYear}|${n.voucherNumber}`));
+    constater('Aucun numero de piece de caisse en double', numerotees.length, clesNumeros.size);
+
+    // Le coeur de la regle arbitree le 19 septembre 2026 : seules les pieces
+    // validees portent un numero, et le carnet ne saute aucun rang.
+    const brouillonsNumerotes = await prisma.cashVoucher.count({
+      where: { tenantId, validatedAt: null, voucherNumber: { not: null } }
+    });
+    constater('Aucun brouillon ne porte de numero', 0, brouillonsNumerotes);
+
+    const rangs = numerotees.map(n => n.voucherNumber as number).sort((a, b) => a - b);
+    constater(
+      'Les numeros attribues forment une suite continue depuis 1',
+      rangs.map((_, index) => index + 1),
+      rangs
+    );
   } catch (erreur) {
     console.error('');
     console.error('Le parcours a casse :');

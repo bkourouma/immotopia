@@ -80,16 +80,28 @@ export const getValidationQueue: GetValidationQueue = async (tenantId, filters) 
       createdByUserId: payment.createdByUserId,
       createdByLabel: labelCreator(payment.createdBy, payment.createdByUserId)
     })),
-    ...(vouchers as Array<Record<string, any>>).map(voucher => ({
-      documentType: 'CASH_VOUCHER' as const,
-      documentId: voucher.id,
-      label: `Bon de caisse ${formatCashVoucherNumber(voucher.voucherYear, voucher.voucherNumber)} — ${voucher.beneficiaryName}`,
-      amount: toAmountOrZero(voucher.amount),
-      currency: voucher.currency,
-      createdAt: voucher.createdAt,
-      createdByUserId: voucher.createdByUserId,
-      createdByLabel: labelCreator(voucher.createdBy, voucher.createdByUserId)
-    }))
+    ...(vouchers as Array<Record<string, any>>).map(voucher => {
+      // Cette file ne montre QUE des brouillons, et un brouillon n'a pas encore
+      // de numero : il est attribue a la validation. On nomme donc la piece par
+      // son beneficiaire et sa date, les deux seules choses qui la distinguent
+      // a l'oeil du validateur. Le cas numerote reste ecrit pour une donnee
+      // anterieure a la regle du 19 septembre 2026.
+      const numero = formatCashVoucherNumber(voucher.voucherYear, voucher.voucherNumber);
+      const jour = new Date(voucher.voucherDate).toLocaleDateString('fr-FR');
+
+      return {
+        documentType: 'CASH_VOUCHER' as const,
+        documentId: voucher.id,
+        label: numero
+          ? `Bon de caisse ${numero} — ${voucher.beneficiaryName}`
+          : `Bon de caisse du ${jour} — ${voucher.beneficiaryName}`,
+        amount: toAmountOrZero(voucher.amount),
+        currency: voucher.currency,
+        createdAt: voucher.createdAt,
+        createdByUserId: voucher.createdByUserId,
+        createdByLabel: labelCreator(voucher.createdBy, voucher.createdByUserId)
+      };
+    })
   ];
 
   // Plus ancienne d'abord : c'est l'ordre dans lequel un validateur, seul face

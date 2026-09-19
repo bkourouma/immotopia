@@ -26,8 +26,14 @@ const { Title, Text } = Typography;
  *
  * Formulaire court — bénéficiaire, montant, date, chantier, poste, motif — qui
  * émet la pièce, puis la présente avec ses deux gestes suivants : valider et
- * imprimer. Le numéro (`CashVoucher.number`) est posé par le serveur à
- * l'émission, jamais saisi.
+ * imprimer.
+ *
+ * **Le numéro (`CashVoucher.number`) n'existe pas avant la validation.** Il est
+ * posé par le serveur à ce moment-là, jamais saisi, et vaut `null` tant que la
+ * pièce est un brouillon — un brouillon abandonné ne consomme ainsi aucun
+ * numéro et ne laisse pas de trou dans le carnet (décision de la cliente du
+ * 19 septembre 2026). Cet écran désigne donc une pièce non validée par son
+ * bénéficiaire, jamais par un numéro qu'elle n'a pas encore.
  *
  * **La caisse est unique par agence (décision actée le 18 septembre 2026,
  * spec.md « Décision actée : la caisse »).** La gestionnaire émet, le
@@ -125,7 +131,8 @@ export const PieceDeCaisse: React.FC = () => {
         reason: motif.trim()
       });
       setPiece(nouvellePiece);
-      message.success(`Pièce de caisse ${nouvellePiece.number} émise.`);
+      // Pas de numéro à annoncer : il sera attribué à la validation.
+      message.success(`Pièce de caisse émise pour ${nouvellePiece.beneficiary}.`);
     } catch (err: any) {
       message.error(err?.response?.data?.message || "L'émission de la pièce de caisse a échoué.");
     } finally {
@@ -139,6 +146,7 @@ export const PieceDeCaisse: React.FC = () => {
     try {
       const pieceValidee = await validateCashVoucher(tenantId, piece.id);
       setPiece(pieceValidee);
+      // Ici le numéro existe : c'est la validation qui vient de le poser.
       message.success(`Pièce ${pieceValidee.number} validée.`);
     } catch (err: any) {
       message.error(err?.response?.data?.message || 'La validation a échoué.');
@@ -275,7 +283,7 @@ export const PieceDeCaisse: React.FC = () => {
           >
             <div>
               <Title level={4} style={{ margin: 0 }}>
-                Pièce {piece.number}
+                {piece.number ? `Pièce ${piece.number}` : `Pièce à valider — ${piece.beneficiary}`}
               </Title>
               <Text type="secondary">
                 {piece.siteLabel} · {piece.costCategoryLabel}
@@ -302,8 +310,8 @@ export const PieceDeCaisse: React.FC = () => {
           <Space wrap>
             {piece.status === 'DRAFT' && (
               <ConfirmAction
-                title={`Valider la pièce ${piece.number} ?`}
-                description="La validation est irréversible : une fois validée, cette pièce ne peut plus être ni modifiée ni reprise depuis cet écran."
+                title={`Valider la pièce de ${piece.beneficiary} ?`}
+                description="La validation est irréversible : une fois validée, cette pièce ne peut plus être ni modifiée ni reprise depuis cet écran. C'est à cet instant qu'elle reçoit son numéro."
                 okText="Valider"
                 danger
                 onConfirm={valider}

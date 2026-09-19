@@ -55,13 +55,15 @@ La leçon ne porte pas sur Prisma. **Une suite qui simule sa base ne peut rien d
 
 Même faiblesse qu'au lot 1, et pour la même raison : j'ai gelé seul des contrats que personne n'a relus avant que les agents ne les implémentent fidèlement.
 
-| Défaut                                                                                                      | Conséquence si livré                                                                                           |
-| ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `Supplier.accountId` côté web, `thirdPartyAccountId` sur le fil                                             | Le champ arrivait toujours `undefined`, et TypeScript ne pouvait pas le voir : c'est le type qui mentait       |
-| `PendingDocument` sans `createdByUserId`                                                                    | Le filtre « Saisi par » aurait envoyé un libellé là où l'API attend un identifiant. Deux homonymes suffisaient |
-| Numéro de pièce de caisse : deux entiers attribués à la validation, contre une chaîne attribuée à la saisie | Le document décrivait une fonctionnalité que personne n'avait écrite                                           |
+| Défaut                                                                                    | Conséquence si livré                                                                                           |
+| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `Supplier.accountId` côté web, `thirdPartyAccountId` sur le fil                           | Le champ arrivait toujours `undefined`, et TypeScript ne pouvait pas le voir : c'est le type qui mentait       |
+| `PendingDocument` sans `createdByUserId`                                                  | Le filtre « Saisi par » aurait envoyé un libellé là où l'API attend un identifiant. Deux homonymes suffisaient |
+| Numéro de pièce de caisse : attribué à la validation au contrat, à la saisie dans le code | Un brouillon abandonné consommait son numéro et laissait un trou dans le carnet                                |
 
-Les deux premiers sont corrigés. Le troisième soulève une vraie question de métier, laissée à votre arbitrage (§6).
+Les trois sont corrigés. Le troisième méritait un arbitrage, et l'a reçu : voir §6.
+
+Il mérite aussi une nuance. Le contrat OpenAPI et le modèle de données disaient **tous deux** « attribué à la validation », et le modèle de données le disait mot pour mot depuis le gel du lot. C'est donc l'implémentation qui a dérivé du document, et non l'inverse comme pour les deux autres. Personne ne l'a vu, parce que personne ne relit un document quand le code compile et que les tests passent.
 
 ### Un schéma qui ne tenait pas debout
 
@@ -94,11 +96,11 @@ L'**arrondi monétaire**, restreint au seul chemin d'écriture du lot 2. Je dema
 
 ## 5. Vérifié contre une vraie base
 
-Le parcours de bout en bout crée un chantier, un fournisseur de matériaux, une facture imputée sur deux postes, la valide, saisit et valide deux pièces de caisse, règle une partie de la facture, verse un acompte sans facture, puis relit tout. Il produit **trente constats, tous tenus**, et supprime son tenant jetable derrière lui.
+Le parcours de bout en bout crée un chantier, un fournisseur de matériaux, une facture imputée sur deux postes, la valide, saisit deux pièces de caisse et n'en valide qu'une, règle une partie de la facture, verse un acompte sans facture, puis relit tout. Il produit **trente-trois constats, tous tenus**, et supprime son tenant jetable derrière lui.
 
 Les totaux sont choisis pour se vérifier de tête. La facture de 5 000 000 se retrouve à l'identique dans le compte du fournisseur, dans le coût réel du chantier et dans la somme des sous-totaux par poste. La pièce de caisse validée s'y ajoute, la seconde pièce non validée ne s'y ajoute pas. Le règlement puis l'acompte ramènent le solde à 3 300 000, que la balance fournisseurs affiche et totalise.
 
-Trois contrôles portent sur des invariants plutôt que sur des montants : aucune écriture déséquilibrée, toutes verrouillées, aucun numéro de pièce en double.
+Cinq contrôles portent sur des invariants plutôt que sur des montants : aucune écriture déséquilibrée, toutes verrouillées, aucun numéro en double, aucun brouillon numéroté, et une suite de numéros continue depuis 1 — c'est ce dernier qui donne corps à la décision du 19 septembre.
 
 Un second script (`scripts/finance-verify-lot2.ts`) contrôle ces mêmes invariants sur une base quelconque, en lecture seule. Il refuse de compter un succès quand il n'a rien examiné : un contrôle qui tourne à vide n'est pas un contrôle qui passe.
 
@@ -106,7 +108,17 @@ Un second script (`scripts/finance-verify-lot2.ts`) contrôle ces mêmes invaria
 
 ## 6. Ce qui reste ouvert
 
-**Un point demande votre arbitrage.** Le numéro d'une pièce de caisse est attribué à la **saisie**, pas à la validation. Un brouillon abandonné consomme donc son numéro et laisse un trou dans la suite. Un carnet de pièces à numérotation continue est une attente habituelle en contrôle comptable, et un contrôleur demandera pourquoi la pièce 0007 n'existe pas. L'attribuer à la validation supprime les trous, mais interdit de remettre un numéro au bénéficiaire avant que le validateur ne soit passé. Le code fait aujourd'hui le premier choix ; le contrat disait le second. J'ai aligné le contrat sur le code plutôt que l'inverse, parce que refaire la numérotation en fin d'intégration touchait cinq fichiers et trois écrans sur une question que vous n'aviez jamais été invité à trancher.
+**Le point d'arbitrage est tranché.** Le numéro d'une pièce de caisse est attribué à la **validation**, décision de la cliente du 19 septembre 2026. Un brouillon abandonné ne consomme donc aucun rang, et le carnet reste continu — ce qu'un contrôle comptable attend, et ce qu'un carnet à souches fait naturellement.
+
+Ce qui a changé :
+
+- `voucherNumber` et `voucherYear` deviennent facultatifs en base (migration `20260919090000_number_cash_voucher_at_validation`). L'index unique tient toujours : PostgreSQL considère deux valeurs nulles comme distinctes, si bien que les brouillons coexistent sans se gêner.
+- La saisie ne prend plus le verrou de séquence : sans numéro à tirer, elle n'a plus rien à protéger. Le verrou passe à la validation, où il sert.
+- Le numéro est écrit dans la même mise à jour conditionnelle que la validation elle-même. Ou les deux passent, ou aucun des deux : si une autre transaction valide la pièce entre-temps, le rang tiré repart avec l'abandon sans avoir été consommé.
+- L'année de la séquence suit la **date de la pièce**, jamais le jour de la validation. Une pièce datée du 31 décembre validée le 2 janvier appartient à l'exercice de sa date, comme l'écriture qui la porte.
+- Le bon imprimé d'un brouillon porte « Pièce n° : attribué à la validation », et non un tiret, qui se lirait comme un numéro sur un papier qu'on remet à quelqu'un.
+
+**La contrepartie, assumée.** On ne peut plus remettre un numéro au bénéficiaire avant que le validateur ne soit passé. C'est le prix d'un carnet sans trou.
 
 Le reste, par ordre d'importance :
 
@@ -126,13 +138,13 @@ Le reste, par ordre d'importance :
 | ------------------------------ | ------------ | ------------ |
 | Suites de tests backend        | 35           | 42           |
 | dont ignorées                  | 4            | 4            |
-| Tests backend                  | 289          | 430          |
+| Tests backend                  | 289          | 432          |
 | dont ignorés                   | 4            | 4            |
 | Fichiers de tests web          | 37           | 41           |
 | Tests web                      | 351          | 405          |
 | Erreurs de typage, API         | 102          | **101**      |
 | Erreurs de typage, web         | 0            | 0            |
-| Constats contre une vraie base | 0            | **30**       |
+| Constats contre une vraie base | 0            | **33**       |
 
 Le décompte d'erreurs de type baisse encore d'une unité, comme au lot 1 et pour la même raison : la ligne retirée était une panne en attente, pas une gêne de typage. Aucun fichier auparavant à zéro erreur n'en a gagné.
 
@@ -147,7 +159,7 @@ Dans cet ordre, parce qu'il suit celui du travail réel.
 1. Une facture fournisseur saisie, imputée sur deux postes d'un chantier, puis **laissée en brouillon**. Montrer que le chantier ne coûte encore rien.
 2. La même facture validée par quelqu'un d'autre, depuis la file « Pièces à valider ». Le coût du chantier bouge alors, sans que personne n'ait tapé un montant de coût.
 3. La fiche du chantier : sept postes, des sous-totaux qui somment au coût réel, et chaque imputation qui **nomme la pièce dont elle vient** plutôt que d'afficher son identifiant.
-4. Une pièce de caisse saisie, imprimée, validée.
+4. Une pièce de caisse saisie : elle n'a **pas** de numéro, et le bon imprimé le dit en toutes lettres. La même validée : le numéro apparaît à cet instant, jamais avant.
 5. La balance fournisseurs, avec un acompte qui apparaît en négatif, et le total de contrôle en pied de liste.
 6. Une tentative de modification d'une facture validée, qui échoue.
 

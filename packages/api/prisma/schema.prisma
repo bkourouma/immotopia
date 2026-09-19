@@ -4151,6 +4151,9 @@ model Supplier {
   tenantId            String       @map("tenant_id")
   name                String
   kind                SupplierKind
+  // Le contrat l'accepte depuis le debut ; sans colonne, la saisie etait
+  // perdue en silence.
+  contactName         String?      @map("contact_name")
   contactPhone        String?      @map("contact_phone")
   contactEmail        String?      @map("contact_email")
   // `MaintenanceVendor.id` est un UUID : sans cette annotation, Postgres
@@ -4284,12 +4287,16 @@ model ConstructionSite {
   id                      String                 @id @default(uuid()) @db.Uuid
   tenantId                String                 @map("tenant_id")
   name                    String
-  zone                    String
+  // Facultatives, et c'est deliberé. Un chantier se cree parfois avant que
+  // sa zone ou sa date de demarrage ne soient arretees. Les exiger obligeait a
+  // combler par une chaine vide et la date du jour — une valeur inventee est
+  // pire qu'une valeur absente, parce qu'elle se lit comme une vraie.
+  zone                    String?
   propertyId              String?                @map("property_id")
   landLeaseId             String?                @map("land_lease_id") @db.Uuid
   managerId               String?                @map("manager_id")
   status                  ConstructionSiteStatus @default(PLANNED)
-  startDate               DateTime               @map("start_date")
+  startDate               DateTime?              @map("start_date")
   plannedEndDate          DateTime?              @map("planned_end_date")
   progressPercent         Int                    @default(0) @map("progress_percent")
   closedAt                DateTime?              @map("closed_at")
@@ -4313,10 +4320,16 @@ model ConstructionSite {
   @@map("construction_sites")
 }
 
+/// Poste de depense d'une agence.
+///
+/// `position` porte l'ordre d'affichage voulu par la gestionnaire, que le
+/// contrat promet. Sans colonne, il se deduisait de l'ordre de creation, si
+/// bien qu'un poste ajoute apres coup ne pouvait jamais etre remonte.
 model CostCategory {
   id        String   @id @default(uuid()) @db.Uuid
   tenantId  String   @map("tenant_id")
   label     String
+  position  Int      @default(0)
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
 
@@ -4359,8 +4372,16 @@ model CostAllocation {
 model CashVoucher {
   id              String    @id @default(uuid()) @db.Uuid
   tenantId        String    @map("tenant_id")
-  voucherNumber   Int       @map("voucher_number")
-  voucherYear     Int       @map("voucher_year")
+  // Nuls tant que la piece est un brouillon. Le numero est attribue a la
+  // VALIDATION, pas a la saisie : un brouillon abandonne ne doit pas consommer
+  // un numero et laisser un trou dans le carnet, ce qu'un controleur
+  // comptable releverait. Decision du 19 septembre 2026, arbitree par la
+  // cliente apres le rapport du lot 2 (§6).
+  //
+  // L'index unique ci-dessous reste valable : PostgreSQL considere deux NULL
+  // comme distincts, si bien que les brouillons coexistent sans se gener.
+  voucherNumber   Int?      @map("voucher_number")
+  voucherYear     Int?      @map("voucher_year")
   siteId          String    @map("site_id") @db.Uuid
   costCategoryId  String    @map("cost_category_id") @db.Uuid
   beneficiaryName String    @map("beneficiary_name")

@@ -350,6 +350,10 @@ async function createVoucher(site: Row, category: Row, overrides: Partial<Row> =
   );
 }
 
+async function validateVoucher(voucherId: string) {
+  return runTransaction((tx: any) => validateCashVoucherTx(tx, TENANT_ID, voucherId, DIRIGEANT_ID));
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   store.sites = [];
@@ -371,17 +375,36 @@ beforeEach(() => {
 });
 
 describe('createCashVoucherTx — brouillon', () => {
-  it("n'écrit ni écriture ni imputation, et reçoit un premier numéro", async () => {
+  it("n'écrit ni écriture ni imputation, et ne reçoit aucun numéro", async () => {
     const site = seedSite();
     const category = seedCategory();
 
     const voucher = await createVoucher(site, category);
 
     expect(voucher.status).toBe('DRAFT');
-    expect(voucher.number).toBe(formatCashVoucherNumber(2026, 1));
+    // Le numéro est attribué à la validation, pas ici : un brouillon
+    // abandonné ne doit consommer aucun rang, sans quoi le carnet garde un
+    // trou que personne ne peut plus expliquer (décision du 19/09/2026).
+    expect(voucher.number).toBeNull();
     expect(voucher.validatedAt).toBeNull();
     expect(postDocumentEntryTx).not.toHaveBeenCalled();
     expect(store.allocations).toHaveLength(0);
+  });
+
+  it('un brouillon abandonné ne consomme aucun numéro', async () => {
+    const site = seedSite();
+    const category = seedCategory();
+
+    // Trois brouillons, dont deux resteront tels quels. Sous l'ancienne règle
+    // ils auraient pris les rangs 1, 2 et 3, et la pièce validée serait
+    // repartie au 4 en laissant trois trous derrière elle.
+    await createVoucher(site, category);
+    await createVoucher(site, category);
+    const troisieme = await createVoucher(site, category);
+
+    const validee = await validateVoucher(troisieme.id);
+
+    expect(validee.number).toBe(formatCashVoucherNumber(2026, 1));
   });
 
   it('refuse un montant nul ou négatif', async () => {
@@ -396,15 +419,34 @@ describe('createCashVoucherTx — brouillon', () => {
     await expect(createVoucher(site, category)).rejects.toThrow(/désactivé/i);
   });
 
-  it('numérote de façon croissante, deux émissions successives du même tenant', async () => {
+  it('numérote de façon croissante, deux validations successives du même tenant', async () => {
     const site = seedSite();
     const category = seedCategory();
 
     const first = await createVoucher(site, category);
     const second = await createVoucher(site, category);
 
-    expect(first.number).toBe(formatCashVoucherNumber(2026, 1));
-    expect(second.number).toBe(formatCashVoucherNumber(2026, 2));
+    const firstValidee = await validateVoucher(first.id);
+    const secondValidee = await validateVoucher(second.id);
+
+    expect(firstValidee.number).toBe(formatCashVoucherNumber(2026, 1));
+    expect(secondValidee.number).toBe(formatCashVoucherNumber(2026, 2));
+  });
+
+  it("l'ordre des numéros suit celui des validations, pas celui des saisies", async () => {
+    const site = seedSite();
+    const category = seedCategory();
+
+    const premierSaisi = await createVoucher(site, category);
+    const secondSaisi = await createVoucher(site, category);
+
+    // Le validateur prend la seconde pièce d'abord : c'est elle qui reçoit le
+    // rang 1. Le carnet est celui des pièces validées, pas celui des saisies.
+    const secondValide = await validateVoucher(secondSaisi.id);
+    const premierValide = await validateVoucher(premierSaisi.id);
+
+    expect(secondValide.number).toBe(formatCashVoucherNumber(2026, 1));
+    expect(premierValide.number).toBe(formatCashVoucherNumber(2026, 2));
   });
 });
 
@@ -479,17 +521,25 @@ describe('validateCashVoucherTx — écriture et imputation, en une transaction'
   });
 });
 
-describe('createCashVoucherTx — numérotation sous concurrence (FR-022)', () => {
-  it("n'attribue jamais deux fois le même numéro à des émissions simultanées du même tenant", async () => {
+describe('validateCashVoucherTx — numérotation sous concurrence (FR-022)', () => {
+  it("n'attribue jamais deux fois le même numéro à des validations simultanées du même tenant", async () => {
     const site = seedSite();
     const category = seedCategory();
     const CONCURRENT = 25;
 
-    // Toutes lancées en même temps : sans le verrou, chacune lirait le même
-    // "dernier numéro" avant qu'aucune n'ait écrit le sien, et plusieurs
-    // recevraient le même rang. C'est exactement le scénario que la
-    // spécification demande de prouver (US10, scénario 2).
-    const vouchers = await Promise.all(Array.from({ length: CONCURRENT }, () => createVoucher(site, category)));
+    // Les brouillons sont saisis d'abord, tranquillement : la saisie ne tire
+    // plus de numéro et ne prend plus le verrou.
+    const drafts = [];
+    for (let i = 0; i < CONCURRENT; i += 1) {
+      drafts.push(await createVoucher(site, category));
+    }
+
+    // Les validations, elles, partent toutes en même temps : sans le verrou,
+    // chacune lirait le même « dernier numéro » avant qu'aucune n'ait écrit le
+    // sien, et plusieurs recevraient le même rang. C'est le scénario que la
+    // spécification demande de prouver (US10, scénario 2), déplacé de
+    // l'émission vers la validation avec la règle qu'il protège.
+    const vouchers = await Promise.all(drafts.map(draft => validateVoucher(draft.id)));
 
     const numbers = vouchers.map(v => v.number);
     const uniqueNumbers = new Set(numbers);
@@ -505,8 +555,14 @@ describe('createCashVoucherTx — numérotation sous concurrence (FR-022)', () =
     const site = seedSite();
     const category = seedCategory();
 
-    const v2026 = await createVoucher(site, category, { voucherDate: new Date('2026-12-31T00:00:00.000Z') });
-    const v2027 = await createVoucher(site, category, { voucherDate: new Date('2027-01-02T00:00:00.000Z') });
+    // L'année de la séquence suit la DATE DE LA PIÈCE, jamais le jour de la
+    // validation : les deux pièces ci-dessous sont validées le même jour, et
+    // tombent pourtant dans deux carnets distincts.
+    const d2026 = await createVoucher(site, category, { voucherDate: new Date('2026-12-31T00:00:00.000Z') });
+    const d2027 = await createVoucher(site, category, { voucherDate: new Date('2027-01-02T00:00:00.000Z') });
+
+    const v2026 = await validateVoucher(d2026.id);
+    const v2027 = await validateVoucher(d2027.id);
 
     expect(v2026.number).toBe(formatCashVoucherNumber(2026, 1));
     expect(v2027.number).toBe(formatCashVoucherNumber(2027, 1));

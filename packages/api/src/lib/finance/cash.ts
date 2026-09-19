@@ -30,26 +30,46 @@
  *
  * Il est relâché automatiquement à la fin de la transaction (commit ou
  * rollback) : c'est le sens de son suffixe `_xact_`, et c'est pour cela que
- * `createCashVoucherTx` et `validateCashVoucherTx` — toutes deux à écriture,
- * toutes deux prenant un client de transaction — peuvent le reposer chacune
- * sans jamais avoir à le relâcher explicitement.
+ * `validateCashVoucherTx` peut le poser sans jamais avoir à le relâcher.
+ *
+ * ---------------------------------------------------------------------------
+ * Quand le numéro est attribué : à la validation.
+ * ---------------------------------------------------------------------------
+ *
+ * Une pièce en brouillon n'a **pas** de numéro : `voucherNumber` et
+ * `voucherYear` sont nuls jusqu'à sa validation, et `number` vaut alors `null`.
+ *
+ * La première version numérotait dès la saisie. Un brouillon abandonné
+ * consommait donc son numéro, et le carnet gardait un trou que personne ne
+ * pouvait plus expliquer — ce qu'un contrôle comptable relève, et ce qu'un
+ * carnet à souches ne fait pas. La cliente a tranché le 19 septembre 2026, au
+ * vu du §6 du rapport du lot 2.
+ *
+ * Conséquence assumée : on ne peut pas remettre un numéro au bénéficiaire
+ * avant que le validateur ne soit passé. Le bon imprimé d'un brouillon le dit
+ * explicitement plutôt que d'afficher un tiret qui se lirait comme un numéro.
+ *
+ * L'année de la séquence suit la **date de la pièce**, jamais celle du jour de
+ * validation : une pièce datée du 31 décembre validée le 2 janvier appartient
+ * à l'exercice de sa date, comme l'écriture comptable qui la porte.
  *
  * **Ce que ce choix ne fait pas** : il ne rejoue pas le motif « tenter
  * l'écriture puis relire la violation » que `ledger.ts` a dû abandonner. Ce
  * motif suppose une contrainte d'unicité déjà posée en base pour intercepter
  * la collision ; ici, le verrou empêche la collision de se produire du tout,
- * en série toute émission ou validation d'un même tenant. C'est plus
- * conservateur qu'un verrouillage par tenant *et* par année (deux années
- * différentes du même tenant s'attendent inutilement), mais correct, simple à
- * raisonner, et sans coût réel pour une caisse qui, par construction, n'a
- * qu'une seule gestionnaire émettrice et un seul dirigeant validateur.
+ * en série toute validation d'un même tenant. C'est plus conservateur qu'un
+ * verrouillage par tenant *et* par année (deux années différentes du même
+ * tenant s'attendent inutilement), mais correct, simple à raisonner, et sans
+ * coût réel pour une caisse qui, par construction, n'a qu'un seul dirigeant
+ * validateur. La saisie, elle, ne prend plus aucun verrou : sans numéro à
+ * tirer, elle n'a plus de séquence à protéger.
  *
  * Le test de concurrence (`finance.cash.test.ts`) simule ce verrou par un
  * mutex asynchrone par clé côté magasin en mémoire, qui reproduit la même
  * sémantique (exclusion mutuelle, relâchée à la fin de la transaction) sans
- * nécessiter une vraie base PostgreSQL : il prouve que N émissions concurrentes
- * du même tenant reçoivent N numéros séquentiels distincts, sans trou ni
- * collision.
+ * nécessiter une vraie base PostgreSQL : il prouve que N validations
+ * concurrentes du même tenant reçoivent N numéros séquentiels distincts, sans
+ * trou ni collision.
  */
 
 import { Decimal } from '@prisma/client/runtime/library';
@@ -71,7 +91,22 @@ import type { CashVoucherRecord, CreateCashVoucherTx, ValidateCashVoucherTx } fr
  * `validation-queue.ts` (file de validation), qui en ont besoin pour un
  * libellé lisible, jamais pour recalculer quoi que ce soit.
  */
-export function formatCashVoucherNumber(voucherYear: number, voucherNumber: number): string {
+export function formatCashVoucherNumber(
+  voucherYear: number | null | undefined,
+  voucherNumber: number | null | undefined
+): string | null {
+  // Un brouillon n'a pas encore de numero, et n'en montre donc aucun. Renvoyer
+  // une chaine de remplacement (« — », « sans numero ») serait pire : elle se
+  // lirait comme un numero et finirait recopiee sur une piece papier.
+  //
+  // Comparaison lache (`== null`) a dessein : elle attrape `null` comme
+  // `undefined`. Une projection Prisma qui n'a pas demande la colonne rend
+  // `undefined`, et un `=== null` laissait alors passer la valeur absente
+  // jusqu'a produire la chaine « undefined-undefined » — qui se serait
+  // imprimee telle quelle sur un bon de caisse.
+  if (voucherYear == null || voucherNumber == null) {
+    return null;
+  }
   return `${voucherYear}-${String(voucherNumber).padStart(4, '0')}`;
 }
 
@@ -197,19 +232,13 @@ export const createCashVoucherTx: CreateCashVoucherTx = async (tx, tenantId, par
     throw new ConflictError('Ce poste de dépense est désactivé.');
   }
 
-  const voucherYear = params.voucherDate.getFullYear();
-
-  // Voir l'en-tête du fichier : le verrou ferme la fenêtre de concurrence,
-  // y compris pour le tout premier bon de l'année, avant même de lire le
-  // dernier numéro attribué.
-  await lockTenantFinanceSequenceTx(tx, tenantId);
-  const voucherNumber = await nextVoucherNumberTx(tx, tenantId, voucherYear);
-
+  // Aucun numero ici, et c'est le point de la regle : il est attribue a la
+  // validation (`validateCashVoucherTx`). Un brouillon abandonne ne consomme
+  // donc rien, et le carnet reste continu. Pas de verrou non plus a prendre :
+  // sans numero a tirer, il n'y a plus de sequence a proteger a la saisie.
   const created = await tx.cashVoucher.create({
     data: {
       tenantId,
-      voucherNumber,
-      voucherYear,
       siteId: params.siteId,
       costCategoryId: params.costCategoryId,
       beneficiaryName: beneficiary,
@@ -247,15 +276,24 @@ export const validateCashVoucherTx: ValidateCashVoucherTx = async (tx, tenantId,
     throw new NotFoundError('Chantier ou poste de dépense introuvable pour cette pièce.');
   }
 
+  // L'annee de la sequence suit la DATE DE LA PIECE, jamais celle du jour de
+  // validation : une piece datee du 31 decembre validee le 2 janvier appartient
+  // a l'exercice de sa date, comme son ecriture comptable, postee ci-dessous
+  // avec cette meme date.
+  const voucherYear = voucher.voucherDate.getFullYear();
+
+  // Le verrou ferme la fenetre de concurrence sur la sequence, y compris pour
+  // la toute premiere piece de l'annee — un verrou de ligne ne verrouillerait
+  // rien, faute de ligne a verrouiller. Il est pris AVANT la lecture du dernier
+  // numero, et tient jusqu'a la fin de la transaction.
   await lockTenantFinanceSequenceTx(tx, tenantId);
-  const { journalId, cashAccountId, expenseAccountId } = await ensureOperationalAccountsTx(
-    tx,
-    tenantId,
-    voucher.voucherYear
-  );
+  const voucherNumber = await nextVoucherNumberTx(tx, tenantId, voucherYear);
+
+  const { journalId, cashAccountId, expenseAccountId } = await ensureOperationalAccountsTx(tx, tenantId, voucherYear);
 
   const amount = toAmountOrZero(voucher.amount);
-  const number = formatCashVoucherNumber(voucher.voucherYear, voucher.voucherNumber);
+  // Le numero vient d'etre tire : il est forcement present ici.
+  const number = formatCashVoucherNumber(voucherYear, voucherNumber) as string;
 
   const entry = await postDocumentEntryTx(tx, {
     tenantId,
@@ -294,9 +332,19 @@ export const validateCashVoucherTx: ValidateCashVoucherTx = async (tx, tenantId,
   // instant, `count` vaut 0 et on abandonne — l'écriture et l'imputation qu'on
   // vient de créer dans cette transaction repartent avec elle au rollback,
   // rien ne subsiste en double.
+  // Le numero est ecrit ICI, dans la meme mise a jour conditionnelle que la
+  // validation elle-meme : ou les deux passent, ou aucun des deux. Si une autre
+  // transaction a valide cette piece entre-temps, `count` vaut 0, on abandonne,
+  // et le numero qu'on avait tire repart avec le rollback sans etre consomme.
   const updateResult = await tx.cashVoucher.updateMany({
     where: { id: voucher.id, tenantId, validatedAt: null },
-    data: { validatedAt: new Date(), validatedByUserId, journalEntryId: entry.entryId }
+    data: {
+      voucherNumber,
+      voucherYear,
+      validatedAt: new Date(),
+      validatedByUserId,
+      journalEntryId: entry.entryId
+    }
   });
   if (updateResult.count !== 1) {
     throw new ConflictError('Cette pièce de caisse vient d’être validée par ailleurs.');

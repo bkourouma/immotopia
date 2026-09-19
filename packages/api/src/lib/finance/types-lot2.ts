@@ -393,8 +393,15 @@ export type ListCostCategories = (tenantId: string) => Promise<CostCategoryRecor
 
 export interface CashVoucherRecord {
   id: string;
-  /** Numéroté séquentiellement par agence et par année. */
-  number: string;
+  /**
+   * Numéro affiché, `AAAA-NNNN`, séquentiel par agence et par année.
+   *
+   * **Nul tant que la pièce est un brouillon.** Le numéro est attribué à la
+   * validation, pas à la saisie : un brouillon abandonné ne doit pas consommer
+   * un numéro et laisser un trou dans le carnet. Décision de la cliente du
+   * 19 septembre 2026 (rapport du lot 2, §6).
+   */
+  number: string | null;
   tenantId: string;
   siteId: string;
   costCategoryId: string;
