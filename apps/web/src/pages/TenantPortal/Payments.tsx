@@ -552,7 +552,7 @@ export default function TenantPayments() {
 
       {/* Filters (T052, T053) */}
       <Card>
-        <Space size="middle" wrap>
+        <div className="it-toolbar__actions">
           <Space>
             <FilterOutlined />
             <Text strong>Filtres :</Text>
@@ -586,7 +586,7 @@ export default function TenantPayments() {
               Réinitialiser
             </Button>
           )}
-        </Space>
+        </div>
       </Card>
 
       {/* Tabs for Installments and Payment History */}
@@ -636,7 +636,7 @@ export default function TenantPayments() {
               <Space direction="vertical" size="large" style={{ width: '100%' }}>
                 {/* Payment History Filters (T075) */}
                 <Card>
-                  <Space size="middle" wrap>
+                  <div className="it-toolbar__actions">
                     <Space>
                       <FilterOutlined />
                       <Text strong>Filtres :</Text>
@@ -683,7 +683,7 @@ export default function TenantPayments() {
                         Réinitialiser
                       </Button>
                     )}
-                  </Space>
+                  </div>
                 </Card>
 
                 {/* Payment History Table (T073, T074) */}

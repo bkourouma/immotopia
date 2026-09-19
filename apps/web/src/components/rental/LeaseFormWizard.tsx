@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Select, Button, Steps, Row, Col, Alert, InputNumber, DatePicker, Space } from 'antd';
+import { Form, Input, Select, Button, Row, Col, Alert, InputNumber, DatePicker, Space } from 'antd';
 import dayjs, { Dayjs } from 'dayjs';
 import {
   CreateLeaseRequest,
@@ -11,6 +11,7 @@ import { listProperties, getProperty, Property } from '../../services/property-s
 import { PropertyType, PropertyTransactionMode, PropertyStatus } from '../../types/property-types';
 import { listContacts, CrmContact } from '../../services/crm-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { StepRail } from '../primitives/StepRail';
 
 const { TextArea } = Input;
 
@@ -948,38 +949,33 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
     }
   };
 
-  const stepItems = [
+  /**
+   * Le rail ne porte que le titre : la description de chaque etape est deja
+   * repetee dans le panneau qu'elle coiffe. `shortTitle` sert au repli sous
+   * 1 200 px, ou la colonne d'une etape tombe sous 120 px.
+   */
+  const stepItems: { title: string; shortTitle: string; invalid?: boolean }[] = [
     {
       title: 'Informations générales',
-      description: 'Numéro, propriété et dates du bail',
-      ...(getStepValidity(stepIndices[0]) ? { status: 'finish' as const } : { status: 'error' as const })
+      shortTitle: 'Général',
+      invalid: !getStepValidity(stepIndices[0])
     },
     {
       title: 'Parties impliquées',
-      description: 'Locataire principal et propriétaire',
-      ...(getStepValidity(stepIndices[1]) ? { status: 'finish' as const } : { status: 'error' as const })
+      shortTitle: 'Parties',
+      invalid: !getStepValidity(stepIndices[1])
     },
     ...(isSaleOnly
       ? []
       : [
           {
             title: 'Informations financières',
-            description: 'Montants, devise et fréquence de facturation',
-            ...(getStepValidity(stepIndices[2]) ? { status: 'finish' as const } : { status: 'error' as const })
+            shortTitle: 'Finances',
+            invalid: !getStepValidity(stepIndices[2])
           }
         ]),
-    ...(isSaleOnly
-      ? []
-      : [
-          {
-            title: 'Pénalités',
-            description: 'Configuration des pénalités de retard'
-          }
-        ]),
-    {
-      title: 'Notes',
-      description: 'Informations complémentaires'
-    }
+    ...(isSaleOnly ? [] : [{ title: 'Pénalités', shortTitle: 'Pénalités' }]),
+    { title: 'Notes', shortTitle: 'Notes' }
   ];
 
   const stepComponents = [step1Component, step2Component, step3Component, step4Component, step5Component];
@@ -998,11 +994,27 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
         </div>
       )}
 
-      <Steps current={currentStep} onChange={handleStepChange} items={stepItems} style={{ marginBottom: 32 }} />
+      {/* `Steps` horizontal repartissait la largeur entre le titre ET la
+          description des cinq etapes : sous 992 px chaque colonne tombait sous
+          70 px et « Informations financières » se cassait au milieu d'un mot.
+          `<StepRail>` est le remplacant prevu au-dela de quatre etapes — il
+          rend une barre de progression sous ce palier. */}
+      <div style={{ marginBottom: 32 }}>
+        <StepRail
+          items={stepItems.map(step => ({ title: step.title, shortTitle: step.shortTitle }))}
+          current={currentStep}
+          // Ouvert de bout en bout, comme l'ancien `Steps` : c'est
+          // `handleStepChange` qui refuse d'avancer sur une etape invalide,
+          // pas le rail.
+          furthest={stepItems.length - 1}
+          onChange={handleStepChange}
+          invalid={stepItems.map((step, index) => (step.invalid ? index : -1)).filter(index => index >= 0)}
+        />
+      </div>
 
       <div style={{ minHeight: 400, marginBottom: 24 }}>{stepComponents[currentLogicalStep]}</div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+      <div className="it-toolbar">
         <Button disabled={isFirstStep || isSubmitting || loading} onClick={() => handleStepChange(currentStep - 1)}>
           Précédent
         </Button>

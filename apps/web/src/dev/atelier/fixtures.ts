@@ -43,6 +43,13 @@ function bien(id: string, overrides: Partial<Record<keyof Property, unknown>> = 
 
 export const BIENS: Property[] = [
   bien('1', {
+    // Description telle que l'import l'écrit : la phrase finale nomme le vrai
+    // propriétaire et porte un UUID, que la fiche ne doit pas afficher brut.
+    description: [
+      'Villa de standing sur 320 m², piscine, dépendance de deux pièces et jardin clos.',
+      '',
+      'Propriétaire : Arsène Djédjé (contact CRM 2fb9a016-ec59-4296-aa6a-bfb1398037c1).'
+    ].join('\n'),
     title: 'Villa 4 chambres avec piscine et dépendance, quartier résidentiel de Kipé Centre',
     propertyType: 'MAISON_VILLA',
     price: 12_500_000,

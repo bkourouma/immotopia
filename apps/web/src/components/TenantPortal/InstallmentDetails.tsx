@@ -1,23 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Descriptions,
-  Typography,
-  Spin,
-  Alert,
-  Table,
-  Tag,
-  Space,
-  Card,
-  Empty,
-  Row,
-  Col
-} from 'antd';
-import {
-  DollarOutlined,
-  CalendarOutlined,
-  CheckCircleOutlined,
-  CloseCircleOutlined
-} from '@ant-design/icons';
+import { Descriptions, Typography, Spin, Alert, Table, Tag, Space, Card, Empty, Row, Col } from 'antd';
+import { DollarOutlined, CalendarOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import dayjs from 'dayjs';
 
@@ -235,9 +218,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
       dataIndex: ['payment', 'status'],
       key: 'status',
       render: (status: string) => (
-        <Tag color={status === 'SUCCESS' ? 'success' : 'default'}>
-          {status === 'SUCCESS' ? 'Réussi' : status}
-        </Tag>
+        <Tag color={status === 'SUCCESS' ? 'success' : 'default'}>{status === 'SUCCESS' ? 'Réussi' : status}</Tag>
       )
     },
     {
@@ -263,24 +244,18 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
             }
           >
             <Descriptions column={1} bordered size="small">
-              <Descriptions.Item label="Loyer">
-                {formatCurrency(installment.amount_rent)}
-              </Descriptions.Item>
+              <Descriptions.Item label="Loyer">{formatCurrency(installment.amount_rent)}</Descriptions.Item>
               <Descriptions.Item label="Charges de service">
                 {formatCurrency(installment.amount_service)}
               </Descriptions.Item>
               <Descriptions.Item label="Autres frais">
                 {formatCurrency(installment.amount_other_fees)}
               </Descriptions.Item>
-              <Descriptions.Item label="Pénalités">
-                {formatCurrency(installment.penalty_amount || 0)}
-              </Descriptions.Item>
+              <Descriptions.Item label="Pénalités">{formatCurrency(installment.penalty_amount || 0)}</Descriptions.Item>
               <Descriptions.Item label="Total dû">
                 <Text strong>{formatCurrency(installment.totalAmount)}</Text>
               </Descriptions.Item>
-              <Descriptions.Item label="Montant payé">
-                {formatCurrency(installment.amount_paid)}
-              </Descriptions.Item>
+              <Descriptions.Item label="Montant payé">{formatCurrency(installment.amount_paid)}</Descriptions.Item>
               <Descriptions.Item label="Reste à payer">
                 <Text strong type={installment.balance > 0 ? 'danger' : 'success'}>
                   {formatCurrency(installment.balance)}
@@ -304,18 +279,10 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
                   ? `${installment.period_month}/${installment.period_year}`
                   : '-'}
               </Descriptions.Item>
-              <Descriptions.Item label="Date d'échéance">
-                {formatDate(installment.due_date)}
-              </Descriptions.Item>
-              <Descriptions.Item label="Statut">
-                {getStatusTag(installment.status)}
-              </Descriptions.Item>
-              <Descriptions.Item label="Bail">
-                {installment.lease.lease_number}
-              </Descriptions.Item>
-              <Descriptions.Item label="Propriété">
-                {installment.lease.property?.address || '-'}
-              </Descriptions.Item>
+              <Descriptions.Item label="Date d'échéance">{formatDate(installment.due_date)}</Descriptions.Item>
+              <Descriptions.Item label="Statut">{getStatusTag(installment.status)}</Descriptions.Item>
+              <Descriptions.Item label="Bail">{installment.lease.lease_number}</Descriptions.Item>
+              <Descriptions.Item label="Propriété">{installment.lease.property?.address || '-'}</Descriptions.Item>
             </Descriptions>
           </Card>
         </Col>
@@ -323,13 +290,20 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
 
       {/* Items Breakdown (T056) */}
       {installment.items && installment.items.length > 0 && (
-        <Card title={<><DollarOutlined /> Détail des éléments</>}>
+        <Card
+          title={
+            <>
+              <DollarOutlined /> Détail des éléments
+            </>
+          }
+        >
           <Table
+            scroll={{ x: 'max-content' }}
             columns={itemsColumns}
             dataSource={installment.items}
             rowKey="id"
             pagination={false}
-            summary={(pageData) => {
+            summary={pageData => {
               const total = pageData.reduce((sum, item) => sum + Number(item.amount), 0);
               return (
                 <Table.Summary fixed>
@@ -353,6 +327,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
       {installment.penalties && installment.penalties.length > 0 && (
         <Card title="Pénalités appliquées">
           <Table
+            scroll={{ x: 'max-content' }}
             columns={[
               {
                 title: 'Montant',
@@ -368,7 +343,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
                 render: (reason: string | null) => reason || '-'
               },
               {
-                title: 'Date d\'application',
+                title: "Date d'application",
                 dataIndex: 'applied_at',
                 key: 'applied_at',
                 render: (date: string) => formatDate(date)
@@ -385,6 +360,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
       <Card title="Historique des paiements">
         {installment.payments && installment.payments.length > 0 ? (
           <Table
+            scroll={{ x: 'max-content' }}
             columns={paymentsColumns}
             dataSource={installment.payments}
             rowKey="id"

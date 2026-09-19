@@ -14,7 +14,7 @@ import {
   Empty,
   Tabs,
   List,
-  Statistic,
+  Statistic
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -22,7 +22,7 @@ import {
   DollarOutlined,
   FileTextOutlined,
   ToolOutlined,
-  CalendarOutlined,
+  CalendarOutlined
 } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 
@@ -134,7 +134,7 @@ const propertyTypeLabels: Record<string, string> = {
 
 const propertyStatusLabels: Record<string, string> = {
   DRAFT: 'Brouillon',
-  UNDER_REVIEW: 'En cours d\'examen',
+  UNDER_REVIEW: "En cours d'examen",
   AVAILABLE: 'Disponible',
   RESERVED: 'Réservé',
   UNDER_OFFER: 'Sous offre',
@@ -143,11 +143,9 @@ const propertyStatusLabels: Record<string, string> = {
   ARCHIVED: 'Archivé'
 };
 
-const translatePropertyType = (value: string) =>
-  propertyTypeLabels[value] || value;
+const translatePropertyType = (value: string) => propertyTypeLabels[value] || value;
 
-const translatePropertyStatus = (value: string) =>
-  propertyStatusLabels[value] || value;
+const translatePropertyStatus = (value: string) => propertyStatusLabels[value] || value;
 
 const transactionModeLabels: Record<string, string> = {
   SALE: 'Vente',
@@ -155,8 +153,7 @@ const transactionModeLabels: Record<string, string> = {
   SHORT_TERM: 'Location courte durée'
 };
 
-const translateTransactionMode = (value: string) =>
-  transactionModeLabels[value] || value;
+const translateTransactionMode = (value: string) => transactionModeLabels[value] || value;
 
 export default function PropertyDetails() {
   const { id } = useParams<{ id: string }>();
@@ -205,11 +202,7 @@ export default function PropertyDetails() {
         description={error}
         type="error"
         showIcon
-        action={
-          <Button onClick={() => navigate('/owner/properties')}>
-            Retour à la liste
-          </Button>
-        }
+        action={<Button onClick={() => navigate('/owner/properties')}>Retour à la liste</Button>}
       />
     );
   }
@@ -222,11 +215,7 @@ export default function PropertyDetails() {
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Header */}
       <div>
-        <Button
-          icon={<ArrowLeftOutlined />}
-          onClick={() => navigate('/owner/properties')}
-          style={{ marginBottom: 16 }}
-        >
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/owner/properties')} style={{ marginBottom: 16 }}>
           Retour
         </Button>
         <Title level={2}>{data.property.title}</Title>
@@ -235,9 +224,16 @@ export default function PropertyDetails() {
 
       <Tabs defaultActiveKey="info">
         {/* T048: Property Information Section */}
-        <TabPane tab={<><HomeOutlined /> Informations</>} key="info">
+        <TabPane
+          tab={
+            <>
+              <HomeOutlined /> Informations
+            </>
+          }
+          key="info"
+        >
           <Card title="Informations de la propriété">
-            <Descriptions column={2} bordered>
+            <Descriptions column={{ xs: 1, sm: 2 }} bordered>
               <Descriptions.Item label="Adresse">{data.property.address}</Descriptions.Item>
               <Descriptions.Item label="Type">{translatePropertyType(data.property.propertyType)}</Descriptions.Item>
               <Descriptions.Item label="Statut">
@@ -258,19 +254,22 @@ export default function PropertyDetails() {
         </TabPane>
 
         {/* T049: Current Lease Section */}
-        <TabPane tab={<><FileTextOutlined /> Bail actif</>} key="lease">
+        <TabPane
+          tab={
+            <>
+              <FileTextOutlined /> Bail actif
+            </>
+          }
+          key="lease"
+        >
           {data.currentLease ? (
             <Card title="Bail actif">
-              <Descriptions column={2} bordered>
+              <Descriptions column={{ xs: 1, sm: 2 }} bordered>
                 <Descriptions.Item label="Locataire principal">
                   {data.currentLease.primaryRenter.user.fullName}
                 </Descriptions.Item>
-                <Descriptions.Item label="Email">
-                  {data.currentLease.primaryRenter.user.email}
-                </Descriptions.Item>
-                <Descriptions.Item label="Date de début">
-                  {formatDate(data.currentLease.start_date)}
-                </Descriptions.Item>
+                <Descriptions.Item label="Email">{data.currentLease.primaryRenter.user.email}</Descriptions.Item>
+                <Descriptions.Item label="Date de début">{formatDate(data.currentLease.start_date)}</Descriptions.Item>
                 <Descriptions.Item label="Date de fin">
                   {data.currentLease.end_date ? formatDate(data.currentLease.end_date) : 'Non définie'}
                 </Descriptions.Item>
@@ -292,12 +291,9 @@ export default function PropertyDetails() {
                   <Title level={4}>Co-locataires</Title>
                   <List
                     dataSource={data.currentLease.coRenters}
-                    renderItem={(coRenter) => (
+                    renderItem={coRenter => (
                       <List.Item>
-                        <List.Item.Meta
-                          title={coRenter.user.fullName}
-                          description={coRenter.user.email}
-                        />
+                        <List.Item.Meta title={coRenter.user.fullName} description={coRenter.user.email} />
                       </List.Item>
                     )}
                   />
@@ -310,12 +306,19 @@ export default function PropertyDetails() {
         </TabPane>
 
         {/* T050: Lease History Section */}
-        <TabPane tab={<><CalendarOutlined /> Historique des baux</>} key="history">
+        <TabPane
+          tab={
+            <>
+              <CalendarOutlined /> Historique des baux
+            </>
+          }
+          key="history"
+        >
           {data.leaseHistory.length > 0 ? (
             <Card title="Historique des baux">
               <List
                 dataSource={data.leaseHistory}
-                renderItem={(lease) => (
+                renderItem={lease => (
                   <List.Item>
                     <List.Item.Meta
                       title={
@@ -329,9 +332,7 @@ export default function PropertyDetails() {
                           <Text type="secondary">
                             Du {formatDate(lease.start_date)} au {lease.end_date ? formatDate(lease.end_date) : 'N/A'}
                           </Text>
-                          <Text type="secondary">
-                            Loyer: {formatCurrency(Number(lease.rent_amount))} / mois
-                          </Text>
+                          <Text type="secondary">Loyer: {formatCurrency(Number(lease.rent_amount))} / mois</Text>
                         </Space>
                       }
                     />
@@ -345,7 +346,14 @@ export default function PropertyDetails() {
         </TabPane>
 
         {/* T051: Revenue Statistics Section */}
-        <TabPane tab={<><DollarOutlined /> Statistiques de revenus</>} key="revenue">
+        <TabPane
+          tab={
+            <>
+              <DollarOutlined /> Statistiques de revenus
+            </>
+          }
+          key="revenue"
+        >
           <Card title="Statistiques de revenus">
             <Row gutter={[16, 16]}>
               <Col xs={24} sm={12} lg={8}>
@@ -374,20 +382,25 @@ export default function PropertyDetails() {
         </TabPane>
 
         {/* T052: Maintenance History Section */}
-        <TabPane tab={<><ToolOutlined /> Historique maintenance</>} key="maintenance">
+        <TabPane
+          tab={
+            <>
+              <ToolOutlined /> Historique maintenance
+            </>
+          }
+          key="maintenance"
+        >
           {data.maintenanceHistory.length > 0 ? (
             <Card title="Historique de maintenance">
               <List
                 dataSource={data.maintenanceHistory}
-                renderItem={(ticket) => (
+                renderItem={ticket => (
                   <List.Item>
                     <List.Item.Meta
                       title={
                         <Space>
                           <Text strong>{ticket.title}</Text>
-                          <Tag color={ticket.status === 'RESOLVED' ? 'success' : 'processing'}>
-                            {ticket.status}
-                          </Tag>
+                          <Tag color={ticket.status === 'RESOLVED' ? 'success' : 'processing'}>{ticket.status}</Tag>
                         </Space>
                       }
                       description={

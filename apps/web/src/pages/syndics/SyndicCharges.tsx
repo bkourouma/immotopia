@@ -321,7 +321,7 @@ export const SyndicCharges: React.FC = () => {
           </Form.Item>
 
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Date de début"
                 name="periodStart"
@@ -330,7 +330,7 @@ export const SyndicCharges: React.FC = () => {
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Date de fin"
                 name="periodEnd"
@@ -342,7 +342,7 @@ export const SyndicCharges: React.FC = () => {
           </Row>
 
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Montant"
                 name="amount"
@@ -351,7 +351,7 @@ export const SyndicCharges: React.FC = () => {
                 <InputNumber min={1} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Devise"
                 name="currency"
@@ -387,7 +387,7 @@ export const SyndicCharges: React.FC = () => {
             {({ getFieldValue }) =>
               getFieldValue('isRecurring') ? (
                 <Row gutter={12}>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       label="Fréquence"
                       name="recurrenceFrequency"
@@ -396,7 +396,7 @@ export const SyndicCharges: React.FC = () => {
                       <Select options={recurrenceFrequencyOptions} />
                     </Form.Item>
                   </Col>
-                  <Col span={12}>
+                  <Col xs={24} md={12}>
                     <Form.Item
                       label="Occurrences"
                       name="recurrenceCount"

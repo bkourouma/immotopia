@@ -157,7 +157,7 @@ export const InvitationsList: React.FC = () => {
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div className="it-toolbar it-toolbar--start">
           <div>
             <Title level={2} style={{ margin: 0 }}>
               Invitations

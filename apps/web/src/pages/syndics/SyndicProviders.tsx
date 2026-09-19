@@ -98,14 +98,14 @@ export const SyndicProviders: React.FC = () => {
           >
             Retour à la fiche syndic
           </Button>
-          <Space align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
-            <Title level={2} style={{ margin: 0 }}>
+          <div className="it-toolbar">
+            <Title level={2} className="it-toolbar__title" style={{ margin: 0 }}>
               Prestataires et contrats
             </Title>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenCreateContract(true)}>
               Nouveau contrat
             </Button>
-          </Space>
+          </div>
           <Paragraph type="secondary" style={{ marginBottom: 0 }}>
             Contrats actifs, prestataires relies et actifs des parties communes.
           </Paragraph>

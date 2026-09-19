@@ -133,6 +133,7 @@ export const OwnerStatementsPage: React.FC = () => {
 
         <Card title="Historique des relevés">
           <Table
+            scroll={{ x: 'max-content' }}
             loading={loading}
             rowKey="id"
             dataSource={statements}

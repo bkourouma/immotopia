@@ -144,7 +144,13 @@ export default function TenantDashboard() {
       </div>
 
       {/* Lease Overview Card (T028) */}
-      <Card title={<><HomeOutlined /> Informations du bail</>}>
+      <Card
+        title={
+          <>
+            <HomeOutlined /> Informations du bail
+          </>
+        }
+      >
         <Row gutter={16}>
           <Col xs={24} sm={12} md={8}>
             <Text type="secondary">Adresse</Text>
@@ -178,9 +184,7 @@ export default function TenantDashboard() {
           </Col>
           <Col xs={24} sm={12} md={8} style={{ marginTop: 16 }}>
             <Text type="secondary">Statut</Text>
-            <div style={{ marginTop: 4 }}>
-              {getStatusTag(data.lease.status)}
-            </div>
+            <div style={{ marginTop: 4 }}>{getStatusTag(data.lease.status)}</div>
           </Col>
         </Row>
       </Card>
@@ -245,7 +249,9 @@ export default function TenantDashboard() {
             <Statistic
               title="Dépôt de garantie"
               value={formatCurrency(data.depositInfo.collectedAmount)}
-              prefix={<SafetyOutlined style={{ color: data.depositInfo.status === 'COLLECTED' ? '#52c41a' : '#722ed1' }} />}
+              prefix={
+                <SafetyOutlined style={{ color: data.depositInfo.status === 'COLLECTED' ? '#52c41a' : '#722ed1' }} />
+              }
               valueStyle={{ color: data.depositInfo.status === 'COLLECTED' ? '#52c41a' : '#722ed1' }}
               suffix={data.depositInfo.amount > 0 ? ` / ${formatCurrency(data.depositInfo.amount)}` : ''}
             />
@@ -267,13 +273,21 @@ export default function TenantDashboard() {
         {/* Recent Payments List (T032) */}
         <Col xs={24} lg={12}>
           <Card
-            title={<><WalletOutlined /> Paiements récents</>}
-            extra={<Text type="secondary" style={{ fontSize: 12 }}>5 derniers</Text>}
+            title={
+              <>
+                <WalletOutlined /> Paiements récents
+              </>
+            }
+            extra={
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                5 derniers
+              </Text>
+            }
           >
             {data.recentPayments.length > 0 ? (
               <List
                 dataSource={data.recentPayments}
-                renderItem={(payment) => (
+                renderItem={payment => (
                   <List.Item>
                     <List.Item.Meta
                       title={
@@ -295,30 +309,32 @@ export default function TenantDashboard() {
 
         {/* Maintenance Summary Section (T033) */}
         <Col xs={24} lg={12}>
-          <Card title={<><ToolOutlined /> Résumé maintenance</>}>
+          <Card
+            title={
+              <>
+                <ToolOutlined /> Résumé maintenance
+              </>
+            }
+          >
             <Row gutter={16}>
-              <Col span={12}>
-                <Statistic
-                  title="Total"
-                  value={data.maintenanceTickets.total}
-                  valueStyle={{ fontSize: 24 }}
-                />
+              <Col xs={24} sm={12}>
+                <Statistic title="Total" value={data.maintenanceTickets.total} valueStyle={{ fontSize: 24 }} />
               </Col>
-              <Col span={12}>
+              <Col xs={24} sm={12}>
                 <Statistic
                   title="Ouverts"
                   value={data.maintenanceTickets.open}
                   valueStyle={{ color: '#faad14', fontSize: 24 }}
                 />
               </Col>
-              <Col span={12} style={{ marginTop: 16 }}>
+              <Col xs={24} sm={12} style={{ marginTop: 16 }}>
                 <Statistic
                   title="En cours"
                   value={data.maintenanceTickets.inProgress}
                   valueStyle={{ color: '#1890ff', fontSize: 24 }}
                 />
               </Col>
-              <Col span={12} style={{ marginTop: 16 }}>
+              <Col xs={24} sm={12} style={{ marginTop: 16 }}>
                 <Statistic
                   title="Résolus"
                   value={data.maintenanceTickets.resolved}

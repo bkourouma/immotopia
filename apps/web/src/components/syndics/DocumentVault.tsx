@@ -65,6 +65,7 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({ documents, loading
 
   return (
     <Table
+      scroll={{ x: 'max-content' }}
       rowKey="id"
       dataSource={documents}
       columns={columns}

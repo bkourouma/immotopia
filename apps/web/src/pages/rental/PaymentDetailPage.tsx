@@ -183,7 +183,7 @@ export const PaymentDetailPage: React.FC = () => {
         {error && (
           <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
         )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="it-toolbar">
           <Space>
             <Button
               icon={<ArrowLeftOutlined />}

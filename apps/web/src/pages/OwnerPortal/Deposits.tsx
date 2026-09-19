@@ -1,24 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  Row,
-  Col,
-  Typography,
-  Spin,
-  Alert,
-  Table,
-  Tag,
-  Space,
-  Button,
-  Modal,
-  Empty
-} from 'antd';
-import {
-  DollarOutlined,
-  WalletOutlined,
-  EyeOutlined,
-  SyncOutlined
-} from '@ant-design/icons';
+import { Card, Row, Col, Typography, Spin, Alert, Table, Tag, Space, Button, Modal, Empty } from 'antd';
+import { DollarOutlined, WalletOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import dayjs from 'dayjs';
@@ -176,32 +158,32 @@ export default function Deposits() {
     {
       title: 'Propriété',
       dataIndex: 'propertyAddress',
-      key: 'propertyAddress',
+      key: 'propertyAddress'
     },
     {
       title: 'Locataire',
       dataIndex: 'tenantName',
-      key: 'tenantName',
+      key: 'tenantName'
     },
     {
       title: 'Montant du dépôt',
       dataIndex: 'depositAmount',
       key: 'depositAmount',
       render: (amount: number) => formatCurrency(amount),
-      sorter: (a: DepositListItem, b: DepositListItem) => a.depositAmount - b.depositAmount,
+      sorter: (a: DepositListItem, b: DepositListItem) => a.depositAmount - b.depositAmount
     },
     {
       title: 'Montant retenu',
       dataIndex: 'currentHeldAmount',
       key: 'currentHeldAmount',
       render: (amount: number) => formatCurrency(amount),
-      sorter: (a: DepositListItem, b: DepositListItem) => a.currentHeldAmount - b.currentHeldAmount,
+      sorter: (a: DepositListItem, b: DepositListItem) => a.currentHeldAmount - b.currentHeldAmount
     },
     {
       title: 'Statut',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => getStatusTag(status),
+      render: (status: string) => getStatusTag(status)
     },
     {
       title: 'Actions',
@@ -215,8 +197,8 @@ export default function Deposits() {
         >
           Mouvements
         </Button>
-      ),
-    },
+      )
+    }
   ];
 
   if (loading && !data) {
@@ -234,17 +216,12 @@ export default function Deposits() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="it-toolbar">
         <div>
           <Title level={2}>Dépôts de garantie</Title>
           <Text type="secondary">Suivi des dépôts de garantie de vos propriétés</Text>
         </div>
-        <Button
-          icon={<SyncOutlined />}
-          onClick={loadDeposits}
-          loading={loading}
-          aria-label="Rafraîchir les dépôts"
-        >
+        <Button icon={<SyncOutlined />} onClick={loadDeposits} loading={loading} aria-label="Rafraîchir les dépôts">
           Actualiser
         </Button>
       </div>
@@ -283,6 +260,7 @@ export default function Deposits() {
       <Card title="Liste des dépôts de garantie">
         {data && data.deposits.length > 0 ? (
           <Table
+            scroll={{ x: 'max-content' }}
             columns={columns}
             dataSource={data.deposits}
             rowKey="id"
@@ -317,6 +295,7 @@ export default function Deposits() {
           </div>
         ) : movements.length > 0 ? (
           <Table
+            scroll={{ x: 'max-content' }}
             columns={movementColumns}
             dataSource={movements}
             rowKey="id"

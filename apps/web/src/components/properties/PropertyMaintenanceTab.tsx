@@ -1,16 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  Card,
-  Table,
-  Select,
-  Space,
-  Typography,
-  Empty,
-  Spin,
-  Tag,
-  Button
-} from 'antd';
+import { Card, Table, Select, Space, Typography, Empty, Spin, Tag, Button } from 'antd';
 import { EyeOutlined } from '@ant-design/icons';
 import { TicketStatusBadge } from '../maintenance/TicketStatusBadge';
 import { propertyMaintenanceService } from '../../services/maintenance-service';
@@ -46,10 +36,7 @@ interface PropertyMaintenanceTabProps {
   tenantId: string;
 }
 
-export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({
-  propertyId,
-  tenantId
-}) => {
+export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ propertyId, tenantId }) => {
   const navigate = useNavigate();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,7 +68,7 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({
   };
 
   const handleFilterChange = (key: string, value: any) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
+    setFilters(prev => ({ ...prev, [key]: value }));
   };
 
   const columns = [
@@ -90,10 +77,7 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({
       dataIndex: 'title',
       key: 'title',
       render: (text: string, record: Ticket) => (
-        <Button
-          type="link"
-          onClick={() => navigate(`/tenant/${tenantId}/admin/maintenance/tickets/${record.id}`)}
-        >
+        <Button type="link" onClick={() => navigate(`/tenant/${tenantId}/admin/maintenance/tickets/${record.id}`)}>
           {text}
         </Button>
       )
@@ -108,9 +92,7 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({
       title: 'Priorité',
       dataIndex: 'priority',
       key: 'priority',
-      render: (priority: string) => (
-        <Tag color={priorityColors[priority]}>{priorityLabels[priority] || priority}</Tag>
-      )
+      render: (priority: string) => <Tag color={priorityColors[priority]}>{priorityLabels[priority] || priority}</Tag>
     },
     {
       title: 'Statut',
@@ -135,17 +117,17 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({
   return (
     <div>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Title level={5} style={{ margin: 0 }}>
+        <div className="it-toolbar">
+          <Title level={5} className="it-toolbar__title" style={{ margin: 0 }}>
             Historique de maintenance
           </Title>
-          <Space>
+          <div className="it-toolbar__actions">
             <Select
               placeholder="Filtrer par statut"
               allowClear
               style={{ width: 200 }}
               value={filters.status}
-              onChange={(value) => handleFilterChange('status', value)}
+              onChange={value => handleFilterChange('status', value)}
             >
               <Option value="DECLARED">Déclaré</Option>
               <Option value="IN_PROGRESS">En cours</Option>
@@ -159,21 +141,18 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({
               allowClear
               style={{ width: 200 }}
               value={filters.category}
-              onChange={(value) => handleFilterChange('category', value)}
+              onChange={value => handleFilterChange('category', value)}
             >
               <Option value="PLUMBING">Plomberie</Option>
               <Option value="ELECTRICITY">Électricité</Option>
               <Option value="AC">Climatisation</Option>
               <Option value="OTHER">Autre</Option>
             </Select>
-          </Space>
+          </div>
         </div>
 
         {tickets.length === 0 && !loading ? (
-          <Empty
-            description="Aucun ticket de maintenance pour cette propriété"
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-          />
+          <Empty description="Aucun ticket de maintenance pour cette propriété" image={Empty.PRESENTED_IMAGE_SIMPLE} />
         ) : (
           <Table
             columns={columns}
@@ -181,6 +160,10 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({
             rowKey="id"
             loading={loading}
             pagination={false}
+            size="middle"
+            // Six colonnes ne tiennent pas sous 992 px : le tableau defile
+            // horizontalement plutot que de comprimer ses colonnes.
+            scroll={{ x: 'max-content' }}
           />
         )}
       </Space>

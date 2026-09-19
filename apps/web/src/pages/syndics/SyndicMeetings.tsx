@@ -136,6 +136,7 @@ export const SyndicMeetings: React.FC = () => {
         ) : (
           <Card title="Liste des assemblées">
             <Table
+              scroll={{ x: 'max-content' }}
               rowKey="id"
               dataSource={meetings}
               columns={[

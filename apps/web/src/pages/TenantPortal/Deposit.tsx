@@ -1,18 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  Row,
-  Col,
-  Typography,
-  Spin,
-  Alert,
-  Table,
-  Tag,
-  Space,
-  Statistic,
-  Descriptions,
-  Empty
-} from 'antd';
+import { Card, Row, Col, Typography, Spin, Alert, Table, Tag, Space, Statistic, Descriptions, Empty } from 'antd';
 import {
   DollarOutlined,
   CalendarOutlined,
@@ -174,7 +161,7 @@ export default function TenantDeposit() {
               title="Montant cible"
               value={deposit.targetAmount}
               prefix={<DollarOutlined />}
-              formatter={(value) => formatCurrency(Number(value))}
+              formatter={value => formatCurrency(Number(value))}
             />
           </Card>
         </Col>
@@ -185,7 +172,7 @@ export default function TenantDeposit() {
               value={deposit.collectedAmount}
               valueStyle={{ color: '#3f8600' }}
               prefix={<DollarOutlined />}
-              formatter={(value) => formatCurrency(Number(value))}
+              formatter={value => formatCurrency(Number(value))}
             />
           </Card>
         </Col>
@@ -196,7 +183,7 @@ export default function TenantDeposit() {
               value={currentHeldAmount}
               valueStyle={{ color: '#faad14' }}
               prefix={<DollarOutlined />}
-              formatter={(value) => formatCurrency(Number(value))}
+              formatter={value => formatCurrency(Number(value))}
             />
           </Card>
         </Col>
@@ -207,26 +194,26 @@ export default function TenantDeposit() {
               value={availableAmount}
               valueStyle={{ color: availableAmount > 0 ? '#3f8600' : '#cf1322' }}
               prefix={<DollarOutlined />}
-              formatter={(value) => formatCurrency(Number(value))}
+              formatter={value => formatCurrency(Number(value))}
             />
           </Card>
         </Col>
       </Row>
 
       {/* Deposit Details (T081) */}
-      <Card title={<><WalletOutlined /> Détails du dépôt</>}>
+      <Card
+        title={
+          <>
+            <WalletOutlined /> Détails du dépôt
+          </>
+        }
+      >
         <Descriptions bordered column={{ xs: 1, sm: 2 }}>
-          <Descriptions.Item label="Numéro de bail">
-            {deposit.lease.lease_number}
-          </Descriptions.Item>
+          <Descriptions.Item label="Numéro de bail">{deposit.lease.lease_number}</Descriptions.Item>
           {deposit.lease.lease_label && (
-            <Descriptions.Item label="Nom du bail">
-              {deposit.lease.lease_label}
-            </Descriptions.Item>
+            <Descriptions.Item label="Nom du bail">{deposit.lease.lease_label}</Descriptions.Item>
           )}
-          <Descriptions.Item label="Devise">
-            {deposit.currency}
-          </Descriptions.Item>
+          <Descriptions.Item label="Devise">{deposit.currency}</Descriptions.Item>
           <Descriptions.Item label="Montant cible">
             <Text strong>{formatCurrency(deposit.targetAmount)}</Text>
           </Descriptions.Item>
@@ -236,9 +223,7 @@ export default function TenantDeposit() {
           <Descriptions.Item label="Montant retenu">
             <Text type="warning">{formatCurrency(deposit.heldAmount)}</Text>
           </Descriptions.Item>
-          <Descriptions.Item label="Montant remboursé">
-            {formatCurrency(deposit.refundedAmount)}
-          </Descriptions.Item>
+          <Descriptions.Item label="Montant remboursé">{formatCurrency(deposit.refundedAmount)}</Descriptions.Item>
           <Descriptions.Item label="Montant confisqué">
             <Text type="danger">{formatCurrency(deposit.forfeitedAmount)}</Text>
           </Descriptions.Item>
@@ -251,9 +236,16 @@ export default function TenantDeposit() {
       </Card>
 
       {/* Movements History (T082) */}
-      <Card title={<><CalendarOutlined /> Historique des mouvements</>}>
+      <Card
+        title={
+          <>
+            <CalendarOutlined /> Historique des mouvements
+          </>
+        }
+      >
         {movements && movements.length > 0 ? (
           <Table
+            scroll={{ x: 'max-content' }}
             columns={[
               {
                 title: 'Date',
@@ -279,11 +271,12 @@ export default function TenantDeposit() {
                 dataIndex: 'amount',
                 key: 'amount',
                 render: (amount: number, record: DepositMovement) => {
-                  const isPositive = ['COLLECT', 'ADJUSTMENT'].includes(record.type) || 
-                                     (record.type === 'ADJUSTMENT' && amount > 0);
+                  const isPositive =
+                    ['COLLECT', 'ADJUSTMENT'].includes(record.type) || (record.type === 'ADJUSTMENT' && amount > 0);
                   return (
                     <Text type={isPositive ? 'success' : 'danger'}>
-                      {isPositive ? '+' : '-'}{formatCurrency(Math.abs(amount))}
+                      {isPositive ? '+' : '-'}
+                      {formatCurrency(Math.abs(amount))}
                     </Text>
                   );
                 },
@@ -333,7 +326,7 @@ export default function TenantDeposit() {
             pagination={{
               pageSize: 20,
               showSizeChanger: true,
-              showTotal: (total) => `Total: ${total} mouvements`
+              showTotal: total => `Total: ${total} mouvements`
             }}
           />
         ) : (

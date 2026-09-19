@@ -12,6 +12,7 @@ import {
   Typography,
   Alert,
   Checkbox,
+  Radio,
   DatePicker,
   InputNumber,
   Divider,
@@ -440,10 +441,10 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
               allowClear
               loading={loadingOwners}
             >
+              {/* Le nom seul : l'adresse reste la valeur, elle n'a pas à être lue. */}
               {owners.map(owner => (
                 <Select.Option key={owner.id} value={owner.userId}>
                   {owner.user.fullName || owner.user.email}
-                  {owner.user.email && owner.user.fullName ? ` (${owner.user.email})` : ''}
                 </Select.Option>
               ))}
             </Select>
@@ -453,12 +454,10 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
             <Input placeholder="Ex: Appartement 3 pièces à Cocody" />
           </Form.Item>
 
-          <Form.Item
-            label="Description"
-            name="description"
-            rules={[{ required: true, message: 'La description est requise' }]}
-          >
-            <TextArea rows={5} placeholder="Description détaillée du bien..." />
+          {/* Facultative, comme sur l'écran de création. La colonne est
+              `NOT NULL` en base mais sans défaut : la chaîne vide la satisfait. */}
+          <Form.Item label="Description" name="description">
+            <TextArea rows={5} placeholder="Décrivez la propriété (facultatif)..." />
           </Form.Item>
 
           <Row gutter={16}>
@@ -618,18 +617,34 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
 
         {/* SECTION 4: PRIX & CONDITIONS */}
         <Card title="4. Prix & Conditions">
+          {/* Un bien est mis en vente **ou** en location, pas les deux — même
+              règle que l'écran de création. Les cases à cocher permettaient les
+              deux à la fois, alors que le modèle n'a qu'une colonne `price` :
+              le loyer n'avait alors nulle part où se loger et disparaissait
+              sans un mot.
+
+              « Location courte durée » n'est plus proposée. Un bien qui la
+              porte déjà s'affiche sur « Location » et la conserve tant qu'on ne
+              choisit pas autre chose. */}
           <Form.Item
             label="Type d'opération"
             name="transactionModes"
-            rules={[{ required: true, message: 'Au moins un mode de transaction est requis' }]}
+            rules={[{ required: true, message: 'Un mode de transaction est requis' }]}
+            getValueProps={(modes: PropertyTransactionMode[] = []) => ({
+              value: modes.includes(PropertyTransactionMode.SALE)
+                ? PropertyTransactionMode.SALE
+                : modes.length > 0
+                  ? PropertyTransactionMode.RENTAL
+                  : undefined
+            })}
+            getValueFromEvent={(event: { target: { value: PropertyTransactionMode } }) => [event.target.value]}
           >
-            <Checkbox.Group>
+            <Radio.Group>
               <Space>
-                <Checkbox value={PropertyTransactionMode.SALE}>Vente</Checkbox>
-                <Checkbox value={PropertyTransactionMode.RENTAL}>Location</Checkbox>
-                <Checkbox value={PropertyTransactionMode.SHORT_TERM}>Location courte durée</Checkbox>
+                <Radio value={PropertyTransactionMode.SALE}>Vente</Radio>
+                <Radio value={PropertyTransactionMode.RENTAL}>Location</Radio>
               </Space>
-            </Checkbox.Group>
+            </Radio.Group>
           </Form.Item>
 
           <Form.Item
@@ -643,16 +658,17 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
               const transactionModes = getFieldValue('transactionModes') || [];
               const propertyType = getFieldValue('propertyType') || selectedType || property?.propertyType;
               const isSale = transactionModes.includes(PropertyTransactionMode.SALE);
-              const hideRentAndFees =
-                propertyType === PropertyType.IMMEUBLE &&
-                (transactionModes.includes(PropertyTransactionMode.RENTAL) ||
-                  transactionModes.includes(PropertyTransactionMode.SHORT_TERM));
+              // La courte durée reste une location, caution comprise.
+              const isRental =
+                transactionModes.includes(PropertyTransactionMode.RENTAL) ||
+                transactionModes.includes(PropertyTransactionMode.SHORT_TERM);
+              const hideRentAndFees = propertyType === PropertyType.IMMEUBLE && isRental;
               return (
                 <Row gutter={16}>
                   {!hideRentAndFees && (
                     <>
                       <Col xs={24} sm={8}>
-                        <Form.Item label={isSale ? 'Prix (vente)' : 'Loyer (location)'} name="price">
+                        <Form.Item label={isSale ? 'Prix de vente' : 'Loyer mensuel'} name="price">
                           <Input
                             placeholder="Ex: 50 000 000"
                             onChange={e => {
@@ -664,7 +680,10 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                         </Form.Item>
                       </Col>
                       <Col xs={24} sm={8}>
-                        <Form.Item label="Charges" name="fees">
+                        <Form.Item
+                          label={isSale ? 'Charges de copropriété' : 'Charges (provision mensuelle)'}
+                          name="fees"
+                        >
                           <Input
                             placeholder="Ex: 50 000"
                             onChange={e => {
@@ -677,16 +696,10 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                       </Col>
                     </>
                   )}
-                  <Col xs={24} sm={8}>
-                    <Form.Item label="Devise" name="currency">
-                      <Select>
-                        <Select.Option value="CFA">CFA</Select.Option>
-                        <Select.Option value="EUR">EUR</Select.Option>
-                        <Select.Option value="USD">USD</Select.Option>
-                      </Select>
-                    </Form.Item>
-                  </Col>
-                  {transactionModes.includes(PropertyTransactionMode.RENTAL) && (
+                  {/* Le champ « Devise » a été retiré : tous les biens sont
+                      libellés en francs CFA. La valeur continue de partir à
+                      l'API — c'est le choix qui disparaît, pas la donnée. */}
+                  {isRental && (
                     <Col xs={24} sm={8}>
                       <Form.Item label="Dépôt de garantie" name="deposit">
                         <Input
@@ -700,30 +713,10 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                       </Form.Item>
                     </Col>
                   )}
-                  <Col xs={24} sm={8}>
-                    <Form.Item label="Mode de commission" name="commissionMode">
-                      <Select placeholder="Sélectionner...">
-                        <Select.Option value="FIXE">Fixe</Select.Option>
-                        <Select.Option value="POURCENTAGE">Pourcentage</Select.Option>
-                      </Select>
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} sm={8}>
-                    <Form.Item label="Commission / Honoraires" name="commissionAmount">
-                      <Input
-                        placeholder="Ex: 1 000 000"
-                        onChange={e => {
-                          const cleaned = parseNumber(e.target.value);
-                          form.setFieldsValue({ commissionAmount: cleaned });
-                        }}
-                        value={
-                          form.getFieldValue('commissionAmount')
-                            ? formatNumber(form.getFieldValue('commissionAmount'))
-                            : ''
-                        }
-                      />
-                    </Form.Item>
-                  </Col>
+                  {/* Mode de commission et honoraires retirés : la rémunération
+                      d'agence ne se gère pas depuis la fiche d'un bien. Les clés
+                      restent dans `typeSpecificData` pour les biens qui les
+                      portent déjà. */}
                 </Row>
               );
             }}
@@ -734,23 +727,23 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         {selectedType && shouldShowRooms(selectedType) && (
           <Card title="5. Caractéristiques physiques">
             <Row gutter={16}>
-              <Col xs={24} sm={8}>
+              <Col xs={24} sm={12}>
                 <Form.Item label="Nombre de pièces" name="rooms">
                   <InputNumber style={{ width: '100%' }} placeholder="Ex: 3" />
                 </Form.Item>
               </Col>
-              <Col xs={24} sm={8}>
+              <Col xs={24} sm={12}>
                 <Form.Item label="Chambres" name="bedrooms">
                   <InputNumber style={{ width: '100%' }} placeholder="Ex: 2" />
                 </Form.Item>
               </Col>
-              <Col xs={24} sm={8}>
+              <Col xs={24} sm={12}>
                 <Form.Item label="Salles de bain / WC" name="bathrooms">
                   <InputNumber style={{ width: '100%' }} placeholder="Ex: 1" />
                 </Form.Item>
               </Col>
               {selectedType === PropertyType.MAISON_VILLA && (
-                <Col xs={24} sm={8}>
+                <Col xs={24} sm={12}>
                   <Form.Item label="Surface terrain (m²)" name="surfaceTerrain">
                     <InputNumber style={{ width: '100%' }} placeholder="Ex: 500" />
                   </Form.Item>
@@ -759,7 +752,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
               {(selectedType === PropertyType.APPARTEMENT ||
                 selectedType === PropertyType.STUDIO ||
                 selectedType === PropertyType.DUPLEX_TRIPLEX) && (
-                <Col xs={24} sm={8}>
+                <Col xs={24} sm={12}>
                   <Form.Item label="Meublé" name="furnishingStatus">
                     <Select>
                       <Select.Option value={PropertyFurnishingStatus.UNFURNISHED}>Non meublé</Select.Option>

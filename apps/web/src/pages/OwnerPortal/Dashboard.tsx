@@ -142,7 +142,7 @@ export default function OwnerDashboard() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="it-toolbar">
         <div>
           <Title level={2}>Tableau de bord</Title>
           <Text type="secondary">Vue d'ensemble de votre portefeuille immobilier</Text>

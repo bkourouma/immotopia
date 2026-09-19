@@ -207,9 +207,9 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
           <img
             src={logoImmoTopia}
             alt="ImmoTopia"
-            width={184}
-            height={57}
-            style={{ display: 'block', width: 184, maxWidth: '100%', height: 'auto' }}
+            width={148}
+            height={46}
+            style={{ display: 'block', width: 148, maxWidth: '100%', height: 'auto' }}
           />
           <div
             style={{

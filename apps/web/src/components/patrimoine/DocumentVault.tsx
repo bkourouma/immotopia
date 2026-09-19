@@ -46,12 +46,17 @@ export const DocumentVault: React.FC<Props> = ({ documents, onDelete, deletingId
   return (
     <Card title="Coffre-fort documentaire">
       <Table
+        scroll={{ x: 'max-content' }}
         rowKey="id"
         dataSource={documents}
         pagination={{ pageSize: 5 }}
         columns={[
           { title: 'Titre', dataIndex: 'title' },
-          { title: 'Type', dataIndex: 'type', render: (value: PatrimonyDocument['type']) => <Tag>{documentTypeLabel(value)}</Tag> },
+          {
+            title: 'Type',
+            dataIndex: 'type',
+            render: (value: PatrimonyDocument['type']) => <Tag>{documentTypeLabel(value)}</Tag>
+          },
           {
             title: 'Expiration',
             dataIndex: 'expiresAt',

@@ -376,7 +376,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
                     .filter((role: any) => role.active)
                     .map((role: any) => (
                       <Card key={role.id} size="small" style={{ border: '1px solid #f0f0f0' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div className="it-toolbar">
                           <Space>
                             <Text strong>{role.role}</Text>
                             <Tag color="success" icon={<CheckCircleOutlined />}>
@@ -471,7 +471,7 @@ export const ContactDetail: React.FC<ContactDetailProps> = ({ tenantId, contactI
                     onClick={() => navigate(`/tenant/${tenantId}/crm/deals/${deal.id}`)}
                     style={{ border: '1px solid #f0f0f0', cursor: 'pointer' }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="it-toolbar">
                       <Space>
                         <Text strong>{deal.type}</Text>
                         <Text type="secondary">- {getDealStageLabel(deal.stage)}</Text>

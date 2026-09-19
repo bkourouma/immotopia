@@ -24,7 +24,12 @@ export const ContractList: React.FC<ContractListProps> = ({ contracts, loading =
   const columns: ColumnsType<MaintenanceContract> = [
     { title: 'Prestataire', key: 'provider', render: (_: unknown, item) => item.provider?.name || item.providerId },
     { title: 'Nature', dataIndex: 'nature', key: 'nature', render: (value: string) => <Text strong>{value}</Text> },
-    { title: 'Début', dataIndex: 'startDate', key: 'startDate', render: (value: string) => dayjs(value).format('DD/MM/YYYY') },
+    {
+      title: 'Début',
+      dataIndex: 'startDate',
+      key: 'startDate',
+      render: (value: string) => dayjs(value).format('DD/MM/YYYY')
+    },
     {
       title: 'Fin',
       dataIndex: 'endDate',
@@ -45,12 +50,15 @@ export const ContractList: React.FC<ContractListProps> = ({ contracts, loading =
       title: 'Statut',
       dataIndex: 'status',
       key: 'status',
-      render: (value: MaintenanceContract['status']) => <Tag color={statusColor[value]}>{contractStatusLabels[value]}</Tag>
+      render: (value: MaintenanceContract['status']) => (
+        <Tag color={statusColor[value]}>{contractStatusLabels[value]}</Tag>
+      )
     }
   ];
 
   return (
     <Table
+      scroll={{ x: 'max-content' }}
       rowKey="id"
       dataSource={contracts}
       columns={columns}

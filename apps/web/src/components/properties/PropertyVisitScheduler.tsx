@@ -1,21 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  App,
-  Form,
-  Input,
-  Select,
-  Button,
-  DatePicker,
-  TimePicker,
-  Checkbox,
-  Space,
-  Typography,
-  Alert,
-  Spin,
-  Row,
-  Col
-} from 'antd';
+import { App, Form, Input, Select, Button, DatePicker, TimePicker, Space, Typography, Alert, Row, Col } from 'antd';
 import {
   CalendarOutlined,
   ClockCircleOutlined,
@@ -24,7 +9,6 @@ import {
   UserOutlined,
   ProjectOutlined,
   AimOutlined,
-  TeamOutlined,
   CheckCircleOutlined
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
@@ -105,6 +89,14 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
     }
   };
 
+  /**
+   * Contact choisi, SUIVI. `form.getFieldValue('contactId')` lu pendant le
+   * rendu ne s'abonne à rien : l'apparition du champ « Affaire » ne tenait
+   * qu'au re-rendu provoqué incidemment par `loadDeals`. La mise en page à
+   * deux colonnes en dépend maintenant, `useWatch` la rend explicite.
+   */
+  const contactId = Form.useWatch('contactId', form);
+
   const handleContactChange = (contactId: string) => {
     form.setFieldsValue({ contactId, dealId: undefined });
     if (contactId) {
@@ -156,11 +148,14 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
         visitType: PropertyVisitType.VISIT,
         goal: values.goal || undefined,
         scheduledAt: scheduledDateTime.toISOString(),
-        duration: values.duration ? parseInt(values.duration, 10) : undefined,
+        // Ni `duration` ni `collaboratorIds` : les deux champs ont été retirés
+        // du formulaire. Tous deux sont facultatifs côté API (`duration Int?`,
+        // et le calendrier n'affiche « (n min) » que si la durée existe), la
+        // visite est donc enregistrée sans eux plutôt qu'avec une valeur que
+        // personne n'a saisie. Un collaborateur reste désignable par « Assigné
+        // à », qui couvrait déjà le besoin.
         location: values.location || undefined,
         assignedToUserId: values.assignedToUserId || undefined,
-        collaboratorIds:
-          values.collaboratorIds && values.collaboratorIds.length > 0 ? values.collaboratorIds : undefined,
         notes: values.notes || undefined
       });
 
@@ -188,22 +183,14 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
   };
 
   return (
-    <Form
-      form={form}
-      layout="vertical"
-      onFinish={handleSubmit}
-      initialValues={{
-        duration: '60',
-        collaboratorIds: []
-      }}
-    >
+    <Form form={form} layout="vertical" onFinish={handleSubmit}>
       {/* Success Message */}
       {successMessage && (
         <Alert
           message="Succès"
           description={
             <Space>
-              <CheckCircleOutlined style={{ color: '#52c41a' }} />
+              <CheckCircleOutlined style={{ color: 'var(--color-success)' }} />
               <span>{successMessage}</span>
               <Text type="secondary" style={{ fontSize: 12 }}>
                 Redirection en cours...
@@ -216,66 +203,92 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
         />
       )}
 
-      {/* Contact */}
-      <Form.Item
-        label={
-          <Space>
-            <UserOutlined />
-            Contact (optionnel)
-          </Space>
-        }
-        name="contactId"
-      >
-        <ContactSearchableSelect
-          tenantId={tenantId}
-          value={form.getFieldValue('contactId')}
-          onChange={handleContactChange}
-          placeholder="Rechercher un contact..."
-        />
-      </Form.Item>
+      {/*
+        Deux champs par ligne à partir de 576 px.
 
-      {/* Deal */}
-      {form.getFieldValue('contactId') && (
-        <Form.Item
-          label={
-            <Space>
-              <ProjectOutlined />
-              Affaire (optionnel)
-            </Space>
-          }
-          name="dealId"
-        >
-          <Select placeholder="Aucune affaire" loading={loadingDeals} allowClear>
-            {deals.map(deal => (
-              <Select.Option key={deal.id} value={deal.id}>
-                {getDealTypeLabel(deal.type)} - {deal.stage}
-              </Select.Option>
-            ))}
-          </Select>
-        </Form.Item>
-      )}
+        Ce formulaire vivait dans une colonne étroite de la fiche du bien, où
+        l'empilement d'un champ par ligne était la seule mise en page possible.
+        Il occupe désormais la largeur d'un onglet : quatorze lignes pour huit
+        champs y laissaient deux tiers de la largeur vides et repoussaient le
+        bouton sous la ligne de flottaison.
 
-      {/* Goal */}
-      <Form.Item
-        label={
-          <Space>
-            <AimOutlined />
-            Objectif (optionnel)
-          </Space>
-        }
-        name="goal"
-      >
-        <Select placeholder="Sélectionner un objectif" allowClear>
-          {goalOptions.map(option => (
-            <Select.Option key={option.value} value={option.value}>
-              {option.label}
-            </Select.Option>
-          ))}
-        </Select>
-      </Form.Item>
-
-      {/* Date and Time */}
+        Trois contrôles restent pleine largeur, faute de tenir en demi-colonne :
+        la liste défilante des collaborateurs, la zone de notes et le bouton.
+      */}
       <Row gutter={16}>
+        {/* Contact */}
+        <Col xs={24} sm={12}>
+          <Form.Item
+            label={
+              <Space>
+                <UserOutlined />
+                Contact
+              </Space>
+            }
+            name="contactId"
+            rules={[{ required: true, message: 'Le contact est requis.' }]}
+          >
+            <ContactSearchableSelect
+              tenantId={tenantId}
+              value={contactId}
+              onChange={handleContactChange}
+              placeholder="Rechercher un contact..."
+            />
+          </Form.Item>
+        </Col>
+
+        {/* Objectif */}
+        <Col xs={24} sm={12}>
+          <Form.Item
+            label={
+              <Space>
+                <AimOutlined />
+                Objectif
+              </Space>
+            }
+            name="goal"
+            rules={[{ required: true, message: "L'objectif est requis." }]}
+          >
+            <Select placeholder="Sélectionner un objectif" allowClear>
+              {goalOptions.map(option => (
+                <Select.Option key={option.value} value={option.value}>
+                  {option.label}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+        </Col>
+
+        {/* Affaire : n'apparaît qu'une fois le contact choisi, sur sa propre
+            ligne. La demi-colonne vide qui la suit garde « Date » et « Heure »
+            appariées : sans elle, « Date » remonterait à côté d'« Affaire » et
+            tout le reste se décalerait au moment où l'on choisit un contact. */}
+        {contactId && (
+          <>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                label={
+                  <Space>
+                    <ProjectOutlined />
+                    Affaire (optionnel)
+                  </Space>
+                }
+                name="dealId"
+              >
+                <Select placeholder="Aucune affaire" loading={loadingDeals} allowClear>
+                  {deals.map(deal => (
+                    <Select.Option key={deal.id} value={deal.id}>
+                      {getDealTypeLabel(deal.type)} - {deal.stage}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={0} sm={12} aria-hidden="true" />
+          </>
+        )}
+
+        {/* Date */}
         <Col xs={24} sm={12}>
           <Form.Item
             label={
@@ -293,6 +306,8 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
             />
           </Form.Item>
         </Col>
+
+        {/* Heure */}
         <Col xs={24} sm={12}>
           <Form.Item
             label={
@@ -307,104 +322,65 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
             <TimePicker style={{ width: '100%' }} format="HH:mm" />
           </Form.Item>
         </Col>
-      </Row>
 
-      {/* Duration */}
-      <Form.Item label="Durée (minutes)" name="duration">
-        <Input type="number" min={15} step={15} placeholder="60" />
-      </Form.Item>
+        {/* Lieu */}
+        <Col xs={24} sm={12}>
+          <Form.Item
+            label={
+              <Space>
+                <EnvironmentOutlined />
+                Lieu (optionnel)
+              </Space>
+            }
+            name="location"
+          >
+            <Input placeholder="Adresse de la propriété par défaut" />
+          </Form.Item>
+        </Col>
 
-      {/* Location */}
-      <Form.Item
-        label={
-          <Space>
-            <EnvironmentOutlined />
-            Lieu (optionnel)
-          </Space>
-        }
-        name="location"
-      >
-        <Input placeholder="Adresse de la propriété par défaut" />
-      </Form.Item>
-
-      {/* Assigned To */}
-      <Form.Item label="Assigné à (optionnel)" name="assignedToUserId">
-        <Select
-          placeholder="Sélectionner un collaborateur"
-          allowClear
-          showSearch
-          filterOption={(input, option) => {
-            const label = String(option?.label || option?.children || '');
-            return label.toLowerCase().includes(input.toLowerCase());
-          }}
-        >
-          {members.map(member => (
-            <Select.Option
-              key={member.user.id}
-              value={member.user.id}
-              label={member.user.fullName || member.user.email}
-            >
-              {member.user.fullName || member.user.email}
-            </Select.Option>
-          ))}
-        </Select>
-      </Form.Item>
-
-      {/* Collaborators */}
-      <Form.Item
-        label={
-          <Space>
-            <TeamOutlined />
-            Collaborateurs (optionnel)
-          </Space>
-        }
-        name="collaboratorIds"
-      >
-        {loadingMembers ? (
-          <div style={{ padding: '16px', textAlign: 'center' }}>
-            <Spin />
-            <Text type="secondary" style={{ marginLeft: 8 }}>
-              Chargement des collaborateurs...
-            </Text>
-          </div>
-        ) : members.length === 0 ? (
-          <Text type="secondary">Aucun collaborateur disponible</Text>
-        ) : (
-          <Checkbox.Group style={{ width: '100%' }}>
-            <div
-              style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid #d9d9d9', borderRadius: 4, padding: 8 }}
+        {/* Assigné à */}
+        <Col xs={24} sm={12}>
+          <Form.Item label="Assigné à (optionnel)" name="assignedToUserId">
+            <Select
+              placeholder="Sélectionner un collaborateur"
+              // Reprend l'indicateur qui servait à la liste de collaborateurs
+              // retirée : les deux consommaient la même requête.
+              loading={loadingMembers}
+              allowClear
+              showSearch
+              filterOption={(input, option) => {
+                const label = String(option?.label || option?.children || '');
+                return label.toLowerCase().includes(input.toLowerCase());
+              }}
             >
               {members.map(member => (
-                <div key={member.user.id} style={{ padding: '4px 0' }}>
-                  <Checkbox value={member.user.id}>
-                    <div>
-                      <div style={{ fontWeight: 500 }}>{member.user.fullName || member.user.email}</div>
-                      {member.user.fullName && (
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          {member.user.email}
-                        </Text>
-                      )}
-                    </div>
-                  </Checkbox>
-                </div>
+                <Select.Option
+                  key={member.user.id}
+                  value={member.user.id}
+                  label={member.user.fullName || member.user.email}
+                >
+                  {member.user.fullName || member.user.email}
+                </Select.Option>
               ))}
-            </div>
-          </Checkbox.Group>
-        )}
-      </Form.Item>
+            </Select>
+          </Form.Item>
+        </Col>
 
-      {/* Notes */}
-      <Form.Item
-        label={
-          <Space>
-            <FileTextOutlined />
-            Notes (optionnel)
-          </Space>
-        }
-        name="notes"
-      >
-        <TextArea rows={3} placeholder="Notes supplémentaires sur la visite..." />
-      </Form.Item>
+        {/* Notes : zone de texte, pleine largeur. */}
+        <Col xs={24}>
+          <Form.Item
+            label={
+              <Space>
+                <FileTextOutlined />
+                Notes (optionnel)
+              </Space>
+            }
+            name="notes"
+          >
+            <TextArea rows={3} placeholder="Notes supplémentaires sur la visite..." />
+          </Form.Item>
+        </Col>
+      </Row>
 
       {/* Submit */}
       <Form.Item>

@@ -307,7 +307,14 @@ export function WhatsAppNotificationsPage() {
 
       <Card title="Liste des notifications WhatsApp">
         <Spin spinning={loading}>
-          <Table rowKey="key" columns={columns} dataSource={items} pagination={false} size="middle" />
+          <Table
+            scroll={{ x: 'max-content' }}
+            rowKey="key"
+            columns={columns}
+            dataSource={items}
+            pagination={false}
+            size="middle"
+          />
         </Spin>
       </Card>
     </>

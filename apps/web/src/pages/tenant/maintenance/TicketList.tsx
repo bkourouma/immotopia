@@ -115,7 +115,7 @@ export const TicketList: React.FC = () => {
   return (
     <>
       <div style={{ padding: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div className="it-toolbar" style={{ marginBottom: 24 }}>
           <Title level={2}>Mes tickets de maintenance</Title>
           <Button
             type="primary"

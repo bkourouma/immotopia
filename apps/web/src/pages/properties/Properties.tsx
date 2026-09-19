@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { App, Input, Select, Row, Col } from 'antd';
-import { PlusOutlined, SearchOutlined, HomeOutlined } from '@ant-design/icons';
+import { App, Input, Select, Row, Col, Slider, Button } from 'antd';
+import { PlusOutlined, SearchOutlined, HomeOutlined, DownOutlined, UpOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { listProperties, deleteProperty } from '../../services/property-service';
 import type { Property } from '../../types/property-types';
@@ -11,6 +11,7 @@ import { PropertyNewsletterCampaignModal } from '../../components/newsletter/Pro
 import { fileUrl } from '../../config/api';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { useListParams } from '../../hooks/useListParams';
+import { useBreakpoint } from '../../hooks/useBreakpoint';
 import {
   PageHeader,
   StateBlock,
@@ -61,21 +62,32 @@ const PROPERTY_TYPE_LABELS: Record<string, string> = {
   LOT_PROGRAMME_NEUF: 'Lot programme neuf'
 };
 
+/**
+ * Types retirés du filtre, sans être retirés de `PROPERTY_TYPE_LABELS`.
+ *
+ * Le libellé doit rester : les cartes lisent la même table pour nommer le type
+ * d'un bien, et l'en retirer afficherait « BOUTIQUE_COMMERCIAL » en clair sur
+ * les fiches existantes. Seule l'offre du filtre se réduit.
+ */
+const TYPES_RETIRES: string[] = ['CHAMBRE_COLOCATION', 'BOUTIQUE_COMMERCIAL', 'LOT_PROGRAMME_NEUF'];
+
 const TRANSACTION_MODE_LABELS: Record<string, string> = {
   SALE: 'Vente',
   RENTAL: 'Location',
   SHORT_TERM: 'Location courte durée'
 };
 
+/**
+ * Les deux seuls statuts proposés au filtre.
+ *
+ * L'énumération en porte huit — brouillon, en révision, réservé, sous offre,
+ * vendu, archivé — mais ce sont des états de cycle de vie, pas des questions
+ * qu'on pose à un portefeuille locatif. Ils restent lisibles sur la fiche de
+ * chaque bien, par `<StatusTag>` ; ils ne sont simplement plus offerts ici.
+ */
 const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Brouillon',
-  UNDER_REVIEW: 'En révision',
   AVAILABLE: 'Disponible',
-  RESERVED: 'Réservé',
-  UNDER_OFFER: 'Sous offre',
-  RENTED: 'Loué',
-  SOLD: 'Vendu',
-  ARCHIVED: 'Archivé'
+  RENTED: 'Loué'
 };
 
 type Filters = {
@@ -86,10 +98,6 @@ type Filters = {
   city: string;
   minPrice: string;
   maxPrice: string;
-  minSurface: string;
-  maxSurface: string;
-  minRooms: string;
-  maxRooms: string;
   minBedrooms: string;
   maxBedrooms: string;
 };
@@ -102,13 +110,86 @@ const FILTER_KEYS = [
   'city',
   'minPrice',
   'maxPrice',
-  'minSurface',
-  'maxSurface',
-  'minRooms',
-  'maxRooms',
   'minBedrooms',
   'maxBedrooms'
 ] as const;
+
+/**
+ * Borne haute du curseur des chambres, affichée « 10+ ».
+ *
+ * Au-delà, on ne filtre plus : aucun `maxBedrooms` ne part à l'API, sinon un
+ * curseur poussé à fond exclurait justement les biens les plus grands.
+ */
+const CHAMBRES_MAX = 10;
+
+/**
+ * Les filtres avancés à valeur simple, hors curseurs.
+ *
+ * Seule la recherche plein texte reste hors du dépliant : c'est la porte
+ * d'entrée de l'écran, elle doit être visible sans un clic préalable. Les
+ * bornes de prix et de chambres sont comptées à part : chacune écrit deux
+ * paramètres dans l'URL pour une seule question posée.
+ */
+const AVANCES_SIMPLES = [
+  'propertyType',
+  'transactionMode',
+  'status',
+  'city'
+] as const satisfies readonly (keyof Filters)[];
+
+/**
+ * Paliers du curseur de prix.
+ *
+ * Le portefeuille va du loyer mensuel au prix de vente — 35 000 à 850 000 000
+ * F CFA dans le jeu réel, quatre ordres de grandeur dans la même liste. Une
+ * graduation linéaire écraserait toute la bande locative sur le premier pixel
+ * de la piste : un curseur poussé d'un cran sauterait de zéro à quarante
+ * millions, et aucun loyer ne serait atteignable.
+ *
+ * La barre porte donc l'indice du palier, pas le montant. Les paliers sont
+ * resserrés là où les biens sont nombreux (50 000 à 1 M pour la location) et
+ * s'espacent ensuite. Chacun est un montant rond, lisible sans conversion.
+ */
+const PALIERS_PRIX = [
+  0, 50_000, 100_000, 150_000, 200_000, 300_000, 500_000, 750_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000,
+  25_000_000, 50_000_000, 100_000_000, 200_000_000, 350_000_000, 500_000_000, 750_000_000, 1_000_000_000
+];
+
+/** Dernier palier : au-delà, on ne borne plus — comme « 10+ » pour les chambres. */
+const PRIX_INDEX_MAX = PALIERS_PRIX.length - 1;
+
+/** Index du palier le plus proche d'un montant, pour poser la poignée. */
+function indexPrix(montant: number): number {
+  let proche = 0;
+  for (let i = 1; i < PALIERS_PRIX.length; i += 1) {
+    if (Math.abs(PALIERS_PRIX[i] - montant) < Math.abs(PALIERS_PRIX[proche] - montant)) proche = i;
+  }
+  return proche;
+}
+
+/** Un montant en clair et court : « 150 000 », « 2,5 M », « 1 Md ». */
+function montantCompact(montant: number): string {
+  if (montant >= 1_000_000_000)
+    return `${(montant / 1_000_000_000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Md`;
+  if (montant >= 1_000_000) return `${(montant / 1_000_000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} M`;
+  return montant.toLocaleString('fr-FR');
+}
+
+/** Ce que dit le curseur de prix, en toutes lettres à côté de lui. */
+function libellePrix([min, max]: [number, number], sansBorneHaute: boolean): string {
+  if (min === 0 && sansBorneHaute) return 'Tous les prix';
+  if (sansBorneHaute) return `à partir de ${montantCompact(min)}`;
+  if (min === 0) return `jusqu'à ${montantCompact(max)}`;
+  return `${montantCompact(min)} à ${montantCompact(max)}`;
+}
+
+/** Ce que dit le curseur, en toutes lettres à côté de lui. */
+function libelleChambres([min, max]: [number, number]): string {
+  if (min === 0 && max >= CHAMBRES_MAX) return 'Toutes';
+  if (min === max) return `${min} chambre${min > 1 ? 's' : ''}`;
+  const borneHaute = max >= CHAMBRES_MAX ? `${CHAMBRES_MAX}+` : String(max);
+  return `${min} à ${borneHaute} chambres`;
+}
 
 /** Ratio réservé : l'image ne doit pas décaler le texte en arrivant. */
 const COVER_HEIGHT = 180;
@@ -182,6 +263,96 @@ export const Properties: React.FC = () => {
     // `list` change à chaque rendu ; seul le texte doit relancer le minuteur.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftQuery]);
+
+  /**
+   * Le curseur des chambres, lu depuis l'URL puis glissé localement.
+   *
+   * Même exception que le champ de recherche, et pour la même raison : écrire
+   * dans l'URL à chaque cran parcouru empilerait une entrée d'historique par
+   * pixel. L'URL est écrite au relâchement, et relue ici dès qu'elle change —
+   * retour arrière et « Effacer les filtres » compris.
+   */
+  const chambresPosees = useMemo<[number, number]>(
+    () => [
+      Number(list.filters.minBedrooms) || 0,
+      list.filters.maxBedrooms ? Number(list.filters.maxBedrooms) : CHAMBRES_MAX
+    ],
+    [list.filters.minBedrooms, list.filters.maxBedrooms]
+  );
+  const [chambresGlissees, setChambresGlissees] = useState<[number, number]>(chambresPosees);
+
+  useEffect(() => {
+    setChambresGlissees(chambresPosees);
+  }, [chambresPosees]);
+
+  const chambresFiltrees = chambresPosees[0] > 0 || chambresPosees[1] < CHAMBRES_MAX;
+
+  /**
+   * Le curseur de prix, sur le même modèle — sauf qu'il porte des indices de
+   * palier et non des montants, `PALIERS_PRIX` expliquant pourquoi.
+   */
+  const prixPoses = useMemo<[number, number]>(
+    () => [Number(list.filters.minPrice) || 0, Number(list.filters.maxPrice) || 0],
+    [list.filters.minPrice, list.filters.maxPrice]
+  );
+  const prixSansBorneHaute = !list.filters.maxPrice;
+  const prixIndexPoses = useMemo<[number, number]>(
+    () => [indexPrix(prixPoses[0]), prixSansBorneHaute ? PRIX_INDEX_MAX : indexPrix(prixPoses[1])],
+    [prixPoses, prixSansBorneHaute]
+  );
+  const [prixGlisses, setPrixGlisses] = useState<[number, number]>(prixIndexPoses);
+  const [prixEnCoursDeGlissement, setPrixEnCoursDeGlissement] = useState(false);
+
+  useEffect(() => {
+    setPrixGlisses(prixIndexPoses);
+  }, [prixIndexPoses]);
+
+  /**
+   * Ce que le libellé affiche : le palier sous la poignée pendant le
+   * glissement, le montant qui filtre vraiment au repos.
+   *
+   * La nuance n'est pas cosmétique. Une URL écrite à la main peut porter un
+   * montant qui ne tombe sur aucun palier — `minPrice=175000`. La poignée se
+   * pose alors sur le palier le plus proche, mais afficher ce palier
+   * reviendrait à annoncer un filtre qui n'est pas celui qui s'applique.
+   */
+  const prixLus: [number, number] = prixEnCoursDeGlissement
+    ? [PALIERS_PRIX[prixGlisses[0]], PALIERS_PRIX[prixGlisses[1]]]
+    : prixPoses;
+  const prixLuSansBorneHaute = prixEnCoursDeGlissement ? prixGlisses[1] === PRIX_INDEX_MAX : prixSansBorneHaute;
+
+  const prixFiltre = Boolean(list.filters.minPrice || list.filters.maxPrice);
+
+  /**
+   * Nombre de filtres avancés posés.
+   *
+   * Chaque curseur compte pour un, pas pour deux : il écrit bien deux
+   * paramètres dans l'URL — `minPrice`/`maxPrice`, `minBedrooms`/`maxBedrooms`
+   * — mais c'est une seule question posée à l'utilisateur, et un compteur qui
+   * dirait « 2 » pour une poignée déplacée l'enverrait chercher un second
+   * filtre inexistant.
+   */
+  const nbFiltresAvances =
+    AVANCES_SIMPLES.filter(cle => list.filters[cle]).length + (prixFiltre ? 1 : 0) + (chambresFiltrees ? 1 : 0);
+
+  /**
+   * Un filtre posé ne reste jamais caché derrière un repli.
+   *
+   * C'est le défaut nommé au point 4 ci-dessus, que `<FilterSheet>` corrige
+   * pour le panneau entier ; le replier à l'intérieur le réintroduirait. La
+   * section s'ouvre donc d'elle-même quand l'URL porte un filtre, et le
+   * déclencheur en affiche le compte quand elle est fermée.
+   *
+   * Sous 992 px, elle est ouverte d'emblée : `<FilterSheet>` y est déjà une
+   * feuille qu'on a délibérément ouverte pour filtrer, et n'y trouver qu'un
+   * bouton « Filtres avancés » coûterait une tape pour ne rien montrer.
+   */
+  const { isDesktop } = useBreakpoint();
+  const [avancesOuverts, setAvancesOuverts] = useState(!isDesktop || nbFiltresAvances > 0);
+
+  useEffect(() => {
+    if (!isDesktop || nbFiltresAvances > 0) setAvancesOuverts(true);
+  }, [isDesktop, nbFiltresAvances]);
 
   const { data: communes = [] } = useQuery({
     queryKey: queryKey('communes', null),
@@ -275,6 +446,36 @@ export const Properties: React.FC = () => {
 
       <FilterSheet activeCount={Object.keys(list.filters).length} onClear={list.clearFilters} title="Filtrer les biens">
         <Row gutter={[12, 12]} style={{ width: '100%' }}>
+          {/* Filtres avancés — tout sauf la recherche plein texte.
+              La rangée déroulait huit contrôles en permanence, dont six champs
+              numériques (surface, pièces, chambres, chacun en min et en max)
+              qui demandaient deux saisies au clavier pour exprimer « trois
+              chambres ». La surface disparaît, les pièces aussi : elles
+              disaient la même chose que les chambres au bruit près, et doubler
+              la question ne double pas la précision. Le reste passe derrière
+              ce dépliant, et les chambres derrière une seule poignée à deux
+              bouts qui montre les bornes disponibles au lieu de les faire
+              deviner. */}
+          <Col span={24}>
+            <Button
+              type="link"
+              size="small"
+              style={{ paddingInline: 0 }}
+              aria-expanded={avancesOuverts}
+              aria-controls="filtres-avances"
+              icon={avancesOuverts ? <UpOutlined /> : <DownOutlined />}
+              onClick={() => setAvancesOuverts(ouvert => !ouvert)}
+            >
+              {nbFiltresAvances > 0 ? `Filtres avancés (${nbFiltresAvances})` : 'Filtres avancés'}
+            </Button>
+          </Col>
+        </Row>
+
+        <Row
+          gutter={[12, 12]}
+          id="filtres-avances"
+          style={{ width: '100%', display: avancesOuverts ? undefined : 'none' }}
+        >
           <Col xs={24} md={8} lg={6}>
             <label htmlFor="filtre-type">Type de bien</label>
             <Select
@@ -284,7 +485,9 @@ export const Properties: React.FC = () => {
               allowClear
               value={list.filters.propertyType || undefined}
               onChange={value => list.setFilters({ propertyType: value })}
-              options={Object.entries(PROPERTY_TYPE_LABELS).map(([value, label]) => ({ value, label }))}
+              options={Object.entries(PROPERTY_TYPE_LABELS)
+                .filter(([value]) => !TYPES_RETIRES.includes(value))
+                .map(([value, label]) => ({ value, label }))}
             />
           </Col>
           <Col xs={24} md={8} lg={6}>
@@ -326,30 +529,81 @@ export const Properties: React.FC = () => {
             />
           </Col>
 
-          {(
-            [
-              ['minPrice', 'Prix minimum', '0'],
-              ['maxPrice', 'Prix maximum', 'Illimité'],
-              ['minSurface', 'Surface min (m²)', '0'],
-              ['maxSurface', 'Surface max (m²)', 'Illimité'],
-              ['minRooms', 'Pièces min', '0'],
-              ['maxRooms', 'Pièces max', 'Illimité'],
-              ['minBedrooms', 'Chambres min', '0'],
-              ['maxBedrooms', 'Chambres max', 'Illimité']
-            ] as const
-          ).map(([key, label, placeholder]) => (
-            <Col xs={12} md={8} lg={6} key={key}>
-              <label htmlFor={`filtre-${key}`}>{label}</label>
-              <Input
-                id={`filtre-${key}`}
-                type="number"
-                inputMode="numeric"
-                placeholder={placeholder}
-                value={list.filters[key] ?? ''}
-                onChange={event => list.setFilters({ [key]: event.target.value || undefined } as Partial<Filters>)}
-              />
-            </Col>
-          ))}
+          <Col xs={24} md={12} lg={8}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+              <span>Prix (F CFA)</span>
+              <span style={{ color: 'var(--text-secondary)' }}>{libellePrix(prixLus, prixLuSansBorneHaute)}</span>
+            </div>
+            <Slider
+              range
+              min={0}
+              max={PRIX_INDEX_MAX}
+              step={1}
+              value={prixGlisses}
+              marks={{
+                0: '0',
+                [PALIERS_PRIX.indexOf(1_000_000)]: '1 M',
+                [PALIERS_PRIX.indexOf(100_000_000)]: '100 M',
+                [PRIX_INDEX_MAX]: '1 Md+'
+              }}
+              tooltip={{
+                formatter: indice =>
+                  indice === PRIX_INDEX_MAX ? 'Sans limite' : montantCompact(PALIERS_PRIX[indice ?? 0])
+              }}
+              ariaLabelForHandle={['Prix minimum', 'Prix maximum']}
+              // Les poignées portent un indice de palier ; un lecteur d'écran
+              // annoncerait « 8 sur 19 » sans ce formateur.
+              ariaValueTextFormatterForHandle={indice =>
+                indice === PRIX_INDEX_MAX ? 'Sans limite' : `${montantCompact(PALIERS_PRIX[indice])} francs CFA`
+              }
+              onChange={valeur => {
+                setPrixEnCoursDeGlissement(true);
+                setPrixGlisses(valeur as [number, number]);
+              }}
+              onChangeComplete={valeur => {
+                const [min, max] = valeur as [number, number];
+                setPrixEnCoursDeGlissement(false);
+                list.setFilters({
+                  minPrice: min > 0 ? String(PALIERS_PRIX[min]) : undefined,
+                  // Poussé à fond, le curseur ne borne plus rien : envoyer le
+                  // dernier palier écarterait les biens au-dessus d'un
+                  // milliard, que « 1 Md+ » promet justement d'inclure.
+                  maxPrice: max < PRIX_INDEX_MAX ? String(PALIERS_PRIX[max]) : undefined
+                });
+              }}
+            />
+          </Col>
+
+          <Col xs={24} md={12} lg={8}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+              <span>Chambres</span>
+              <span style={{ color: 'var(--text-secondary)' }}>{libelleChambres(chambresGlissees)}</span>
+            </div>
+            <Slider
+              range
+              min={0}
+              max={CHAMBRES_MAX}
+              step={1}
+              value={chambresGlissees}
+              marks={{ 0: '0', 5: '5', [CHAMBRES_MAX]: `${CHAMBRES_MAX}+` }}
+              tooltip={{ formatter: valeur => (valeur === CHAMBRES_MAX ? `${CHAMBRES_MAX}+` : String(valeur)) }}
+              // Les deux poignées portent leur propre nom : « curseur » seul ne
+              // dit pas à un lecteur d'écran laquelle des deux bornes il
+              // déplace.
+              ariaLabelForHandle={['Nombre de chambres minimum', 'Nombre de chambres maximum']}
+              onChange={valeur => setChambresGlissees(valeur as [number, number])}
+              onChangeComplete={valeur => {
+                const [min, max] = valeur as [number, number];
+                list.setFilters({
+                  minBedrooms: min > 0 ? String(min) : undefined,
+                  // Poussé à fond, le curseur ne borne plus rien : envoyer
+                  // `maxBedrooms=10` écarterait les biens de onze chambres, que
+                  // « 10+ » promet justement d'inclure.
+                  maxBedrooms: max < CHAMBRES_MAX ? String(max) : undefined
+                });
+              }}
+            />
+          </Col>
         </Row>
       </FilterSheet>
 

@@ -228,7 +228,7 @@ export const Vendors: React.FC = () => {
   return (
     <>
       <div style={{ padding: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div className="it-toolbar" style={{ marginBottom: 24 }}>
           <Title level={2}>Gestion des prestataires</Title>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
             Nouveau prestataire
@@ -262,7 +262,14 @@ export const Vendors: React.FC = () => {
             <Empty description="Aucun prestataire" />
           ) : (
             <>
-              <Table columns={columns} dataSource={vendors} rowKey="id" pagination={false} loading={loading} />
+              <Table
+                scroll={{ x: 'max-content' }}
+                columns={columns}
+                dataSource={vendors}
+                rowKey="id"
+                pagination={false}
+                loading={loading}
+              />
 
               {pagination.totalPages > 1 && (
                 <div style={{ textAlign: 'center', marginTop: 24 }}>

@@ -15,7 +15,7 @@ import {
   Tabs,
   List,
   Statistic,
-  Table,
+  Table
 } from 'antd';
 import type { TabsProps } from 'antd';
 import {
@@ -25,7 +25,7 @@ import {
   CalendarOutlined,
   DollarOutlined,
   SafetyOutlined,
-  WalletOutlined,
+  WalletOutlined
 } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 
@@ -127,7 +127,7 @@ const getStatusTag = (status: string) => {
     ENDED: { label: 'Terminé', color: 'default' },
     SUSPENDED: { label: 'Suspendu', color: 'warning' },
     CANCELED: { label: 'Annulé', color: 'error' },
-    DRAFT: { label: 'Brouillon', color: 'default' },
+    DRAFT: { label: 'Brouillon', color: 'default' }
   };
   const config = statusMap[status] || { label: status, color: 'default' };
   return <Tag color={config.color}>{config.label}</Tag>;
@@ -151,7 +151,7 @@ const getInstallmentStatusTag = (status: string) => {
     OVERDUE: { label: 'En retard', color: 'error' },
     PAID: { label: 'Payé', color: 'success' },
     PARTIAL: { label: 'Partiel', color: 'processing' },
-    DRAFT: { label: 'Brouillon', color: 'default' },
+    DRAFT: { label: 'Brouillon', color: 'default' }
   };
   const config = statusMap[status] || { label: status, color: 'default' };
   return <Tag color={config.color}>{config.label}</Tag>;
@@ -164,7 +164,7 @@ const getDepositMovementTypeLabel = (type: string) => {
     RELEASE: 'Libération',
     REFUND: 'Remboursement',
     FORFEIT: 'Confiscation',
-    ADJUSTMENT: 'Ajustement',
+    ADJUSTMENT: 'Ajustement'
   };
   return types[type] || type;
 };
@@ -216,11 +216,7 @@ export default function LeaseDetails() {
         description={error}
         type="error"
         showIcon
-        action={
-          <Button onClick={() => navigate('/owner/leases')}>
-            Retour à la liste
-          </Button>
-        }
+        action={<Button onClick={() => navigate('/owner/leases')}>Retour à la liste</Button>}
       />
     );
   }
@@ -236,7 +232,7 @@ export default function LeaseDetails() {
       render: (record: any) => `${record.period_year}-${String(record.period_month).padStart(2, '0')}`
     },
     {
-      title: 'Date d\'échéance',
+      title: "Date d'échéance",
       dataIndex: 'due_date',
       key: 'due_date',
       render: (date: string) => formatDate(date)
@@ -244,12 +240,13 @@ export default function LeaseDetails() {
     {
       title: 'Montant',
       key: 'amount',
-      render: (record: any) => formatCurrency(
-        Number(record.amount_rent) +
-        Number(record.amount_service) +
-        Number(record.amount_other_fees) +
-        Number(record.penalty_amount || 0)
-      )
+      render: (record: any) =>
+        formatCurrency(
+          Number(record.amount_rent) +
+            Number(record.amount_service) +
+            Number(record.amount_other_fees) +
+            Number(record.penalty_amount || 0)
+        )
     },
     {
       title: 'Payé',
@@ -269,11 +266,7 @@ export default function LeaseDetails() {
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Header */}
       <div>
-        <Button
-          icon={<ArrowLeftOutlined />}
-          onClick={() => navigate('/owner/leases')}
-          style={{ marginBottom: 16 }}
-        >
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/owner/leases')} style={{ marginBottom: 16 }}>
           Retour
         </Button>
         <Title level={2}>Bail {data.lease.lease_number}</Title>
@@ -282,9 +275,16 @@ export default function LeaseDetails() {
 
       <Tabs defaultActiveKey="info">
         {/* T067: Lease Information Section */}
-        <TabPane tab={<><FileTextOutlined /> Informations</>} key="info">
+        <TabPane
+          tab={
+            <>
+              <FileTextOutlined /> Informations
+            </>
+          }
+          key="info"
+        >
           <Card title="Informations du bail">
-            <Descriptions column={2} bordered>
+            <Descriptions column={{ xs: 1, sm: 2 }} bordered>
               <Descriptions.Item label="Propriété">{data.lease.property.address}</Descriptions.Item>
               <Descriptions.Item label="Numéro de bail">{data.lease.lease_number}</Descriptions.Item>
               <Descriptions.Item label="Date de début">{formatDate(data.lease.start_date)}</Descriptions.Item>
@@ -300,17 +300,22 @@ export default function LeaseDetails() {
               <Descriptions.Item label="Dépôt de garantie">
                 {formatCurrency(Number(data.lease.security_deposit_amount))}
               </Descriptions.Item>
-              <Descriptions.Item label="Statut">
-                {getStatusTag(data.lease.status)}
-              </Descriptions.Item>
+              <Descriptions.Item label="Statut">{getStatusTag(data.lease.status)}</Descriptions.Item>
             </Descriptions>
           </Card>
         </TabPane>
 
         {/* T068: Renters Section */}
-        <TabPane tab={<><UserOutlined /> Locataires</>} key="renters">
+        <TabPane
+          tab={
+            <>
+              <UserOutlined /> Locataires
+            </>
+          }
+          key="renters"
+        >
           <Card title="Locataire principal">
-            <Descriptions column={2} bordered>
+            <Descriptions column={{ xs: 1, sm: 2 }} bordered>
               <Descriptions.Item label="Nom">{data.lease.primaryRenter.user.fullName}</Descriptions.Item>
               <Descriptions.Item label="Email">{data.lease.primaryRenter.user.email}</Descriptions.Item>
             </Descriptions>
@@ -320,12 +325,9 @@ export default function LeaseDetails() {
             <Card title="Co-locataires" style={{ marginTop: 16 }}>
               <List
                 dataSource={data.lease.coRenters}
-                renderItem={(coRenter) => (
+                renderItem={coRenter => (
                   <List.Item>
-                    <List.Item.Meta
-                      title={coRenter.user.fullName}
-                      description={coRenter.user.email}
-                    />
+                    <List.Item.Meta title={coRenter.user.fullName} description={coRenter.user.email} />
                   </List.Item>
                 )}
               />
@@ -334,10 +336,18 @@ export default function LeaseDetails() {
         </TabPane>
 
         {/* T069: Installment Schedule Section */}
-        <TabPane tab={<><CalendarOutlined /> Échéances</>} key="installments">
+        <TabPane
+          tab={
+            <>
+              <CalendarOutlined /> Échéances
+            </>
+          }
+          key="installments"
+        >
           <Card title="Calendrier des échéances">
             {data.installments.length > 0 ? (
               <Table
+                scroll={{ x: 'max-content' }}
                 columns={installmentColumns}
                 dataSource={data.installments}
                 rowKey="id"
@@ -350,12 +360,19 @@ export default function LeaseDetails() {
         </TabPane>
 
         {/* T070: Payment History Section */}
-        <TabPane tab={<><WalletOutlined /> Historique des paiements</>} key="payments">
+        <TabPane
+          tab={
+            <>
+              <WalletOutlined /> Historique des paiements
+            </>
+          }
+          key="payments"
+        >
           <Card title="Historique des paiements">
             {data.paymentHistory.length > 0 ? (
               <List
                 dataSource={data.paymentHistory}
-                renderItem={(payment) => (
+                renderItem={payment => (
                   <List.Item>
                     <List.Item.Meta
                       title={
@@ -369,7 +386,8 @@ export default function LeaseDetails() {
                           <Text type="secondary">{formatDate(payment.succeeded_at)}</Text>
                           {payment.allocations.length > 0 && (
                             <Text type="secondary" style={{ fontSize: 12 }}>
-                              Allocations: {payment.allocations.map((allocation, idx) => {
+                              Allocations:{' '}
+                              {payment.allocations.map((allocation, idx) => {
                                 const inst = allocation.installment;
                                 const periodLabel = inst
                                   ? `${inst.period_year}-${String(inst.period_month).padStart(2, '0')}`
@@ -396,7 +414,14 @@ export default function LeaseDetails() {
         </TabPane>
 
         {/* T071: Balance Section */}
-        <TabPane tab={<><DollarOutlined /> Solde</>} key="balance">
+        <TabPane
+          tab={
+            <>
+              <DollarOutlined /> Solde
+            </>
+          }
+          key="balance"
+        >
           <Card title="Solde du bail">
             <Row gutter={[16, 16]}>
               <Col xs={24} sm={12} lg={8}>
@@ -420,7 +445,7 @@ export default function LeaseDetails() {
                   title="Reste à payer"
                   value={formatCurrency(data.balance.remaining)}
                   prefix={<DollarOutlined />}
-                  valueStyle={{ 
+                  valueStyle={{
                     color: data.balance.remaining > 0 ? '#ff4d4f' : '#52c41a',
                     fontWeight: 'bold'
                   }}
@@ -440,7 +465,14 @@ export default function LeaseDetails() {
         </TabPane>
 
         {/* T072: Security Deposit Section */}
-        <TabPane tab={<><SafetyOutlined /> Dépôt de garantie</>} key="deposit">
+        <TabPane
+          tab={
+            <>
+              <SafetyOutlined /> Dépôt de garantie
+            </>
+          }
+          key="deposit"
+        >
           {data.deposit ? (
             <>
               <Card title="Dépôt de garantie">
@@ -475,7 +507,7 @@ export default function LeaseDetails() {
                 <Card title="Historique des mouvements" style={{ marginTop: 16 }}>
                   <List
                     dataSource={data.deposit.movements}
-                    renderItem={(movement) => (
+                    renderItem={movement => (
                       <List.Item>
                         <List.Item.Meta
                           title={

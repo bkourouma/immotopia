@@ -1,25 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  Row,
-  Col,
-  Typography,
-  Spin,
-  Alert,
-  Table,
-  Tag,
-  Space,
-  Select,
-  DatePicker,
-  Button,
-  Empty
-} from 'antd';
-import {
-  DollarOutlined,
-  FilterOutlined,
-  EyeOutlined,
-  SyncOutlined
-} from '@ant-design/icons';
+import { Card, Row, Col, Typography, Spin, Alert, Table, Tag, Space, Select, DatePicker, Button, Empty } from 'antd';
+import { DollarOutlined, FilterOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { PaymentDetailsModal } from '../../components/OwnerPortal/PaymentDetailsModal';
@@ -107,10 +88,12 @@ export default function Payments() {
     try {
       const response = await ownerPortalService.getProperties();
       if (response.data?.success && response.data?.data?.properties) {
-        setProperties(response.data.data.properties.map((p: any) => ({
-          id: p.id,
-          address: p.address
-        })));
+        setProperties(
+          response.data.data.properties.map((p: any) => ({
+            id: p.id,
+            address: p.address
+          }))
+        );
       }
     } catch (err) {
       console.error('Error loading properties:', err);
@@ -161,19 +144,19 @@ export default function Payments() {
     {
       title: 'Propriété',
       dataIndex: 'propertyAddress',
-      key: 'propertyAddress',
+      key: 'propertyAddress'
     },
     {
       title: 'Locataire',
       dataIndex: 'tenantName',
-      key: 'tenantName',
+      key: 'tenantName'
     },
     {
       title: 'Montant',
       dataIndex: 'amount',
       key: 'amount',
       render: (amount: number) => formatCurrency(amount),
-      sorter: (a: PaymentListItem, b: PaymentListItem) => a.amount - b.amount,
+      sorter: (a: PaymentListItem, b: PaymentListItem) => a.amount - b.amount
     },
     {
       title: 'Date',
@@ -187,7 +170,7 @@ export default function Payments() {
         const dateA = typeof a.date === 'string' ? new Date(a.date) : a.date;
         const dateB = typeof b.date === 'string' ? new Date(b.date) : b.date;
         return dateA.getTime() - dateB.getTime();
-      },
+      }
     },
     {
       title: 'Méthode',
@@ -199,15 +182,15 @@ export default function Payments() {
         { text: 'Virement bancaire', value: 'BANK_TRANSFER' },
         { text: 'Espèces', value: 'CASH' },
         { text: 'Chèque', value: 'CHECK' },
-        { text: 'Carte bancaire', value: 'CARD' },
+        { text: 'Carte bancaire', value: 'CARD' }
       ],
-      onFilter: (value: any, record: PaymentListItem) => record.method === value,
+      onFilter: (value: any, record: PaymentListItem) => record.method === value
     },
     {
       title: 'Statut',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => getStatusTag(status),
+      render: (status: string) => getStatusTag(status)
     },
     {
       title: 'Actions',
@@ -221,8 +204,8 @@ export default function Payments() {
         >
           Détails
         </Button>
-      ),
-    },
+      )
+    }
   ];
 
   if (loading && !data) {
@@ -240,17 +223,12 @@ export default function Payments() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="it-toolbar">
         <div>
           <Title level={2}>Paiements</Title>
           <Text type="secondary">Historique des paiements reçus</Text>
         </div>
-        <Button
-          icon={<SyncOutlined />}
-          onClick={loadPayments}
-          loading={loading}
-          aria-label="Rafraîchir les paiements"
-        >
+        <Button icon={<SyncOutlined />} onClick={loadPayments} loading={loading} aria-label="Rafraîchir les paiements">
           Actualiser
         </Button>
       </div>
@@ -302,29 +280,31 @@ export default function Payments() {
           </Space>
         }
       >
-        <Space wrap>
-          <Space>
-            <Text strong>Propriété:</Text>
+        <div className="it-filters">
+          <div className="it-filters__field">
+            <Text strong>Propriété</Text>
             <Select
               style={{ width: 200 }}
               placeholder="Toutes les propriétés"
               allowClear
               value={propertyFilter}
-              onChange={(value) => setPropertyFilter(value)}
+              onChange={value => setPropertyFilter(value)}
             >
               {properties.map(prop => (
-                <Option key={prop.id} value={prop.id}>{prop.address}</Option>
+                <Option key={prop.id} value={prop.id}>
+                  {prop.address}
+                </Option>
               ))}
             </Select>
-          </Space>
-          <Space>
-            <Text strong>Méthode:</Text>
+          </div>
+          <div className="it-filters__field">
+            <Text strong>Méthode</Text>
             <Select
               style={{ width: 150 }}
               placeholder="Toutes les méthodes"
               allowClear
               value={methodFilter}
-              onChange={(value) => setMethodFilter(value)}
+              onChange={value => setMethodFilter(value)}
             >
               <Option value="MOBILE_MONEY">Mobile Money</Option>
               <Option value="BANK_TRANSFER">Virement bancaire</Option>
@@ -332,22 +312,23 @@ export default function Payments() {
               <Option value="CHECK">Chèque</Option>
               <Option value="CARD">Carte bancaire</Option>
             </Select>
-          </Space>
-          <Space>
-            <Text strong>Période:</Text>
+          </div>
+          <div className="it-filters__field">
+            <Text strong>Période</Text>
             <RangePicker
               value={dateRange}
-              onChange={(dates) => setDateRange(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
+              onChange={dates => setDateRange(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
               format="DD/MM/YYYY"
             />
-          </Space>
-        </Space>
+          </div>
+        </div>
       </Card>
 
       {/* Payments Table (T106) */}
       <Card title="Historique des paiements">
         {data && data.payments.length > 0 ? (
           <Table
+            scroll={{ x: 'max-content' }}
             columns={columns}
             dataSource={data.payments}
             rowKey="id"

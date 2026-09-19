@@ -600,6 +600,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         }
       >
         <Table
+          scroll={{ x: 'max-content' }}
           rowKey="id"
           dataSource={valuations}
           pagination={{ pageSize: 5 }}
@@ -648,6 +649,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         }
       >
         <Table
+          scroll={{ x: 'max-content' }}
           rowKey="id"
           dataSource={expenses}
           pagination={{ pageSize: 5 }}
@@ -697,6 +699,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         }
       >
         <Table
+          scroll={{ x: 'max-content' }}
           rowKey="id"
           dataSource={loans}
           pagination={{ pageSize: 5 }}
@@ -741,6 +744,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         }
       >
         <Table
+          scroll={{ x: 'max-content' }}
           rowKey="id"
           dataSource={workPrograms}
           pagination={{ pageSize: 5 }}

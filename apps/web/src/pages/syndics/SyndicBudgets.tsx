@@ -298,6 +298,7 @@ export const SyndicBudgets: React.FC = () => {
           <>
             <Card title="Budgets">
               <Table
+                scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={budgets}
                 pagination={{ pageSize: 8 }}
@@ -367,6 +368,7 @@ export const SyndicBudgets: React.FC = () => {
               title={allocationBudgetLabel ? `Répartition des lots - ${allocationBudgetLabel}` : 'Répartition des lots'}
             >
               <Table
+                scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={allocationRows}
                 pagination={{ pageSize: 8 }}
@@ -394,6 +396,7 @@ export const SyndicBudgets: React.FC = () => {
 
             <Card title="Batches d'appels">
               <Table
+                scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={batches}
                 pagination={{ pageSize: 8 }}

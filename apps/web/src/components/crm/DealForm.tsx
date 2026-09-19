@@ -1,18 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Form,
-  Input,
-  Select,
-  Button,
-  Checkbox,
-  InputNumber,
-  Row,
-  Col,
-  Card,
-  Alert,
-  Space,
-  Typography,
-} from 'antd';
+import { Form, Input, Select, Button, Checkbox, InputNumber, Row, Col, Card, Alert, Space, Typography } from 'antd';
 import { LocationSelector } from '../ui/location-selector';
 import { GeographicLocation } from '../../services/geographic-service';
 import { CreateCrmDealRequest, UpdateCrmDealRequest, CrmDeal, CrmContact } from '../../types/crm-types';
@@ -38,7 +25,7 @@ export const DealForm: React.FC<DealFormProps> = ({
   tenantId,
   onSubmit,
   onCancel,
-  loading = false,
+  loading = false
 }) => {
   const [formData, setFormData] = useState({
     contactId: deal?.contactId || contactId || '',
@@ -84,7 +71,7 @@ export const DealForm: React.FC<DealFormProps> = ({
     parkingSpaces: (deal?.criteriaJson as any)?.parkingSpaces?.toString() || '',
     occupancyRate: (deal?.criteriaJson as any)?.occupancyRate?.toString() || '',
     standing: (deal?.criteriaJson as any)?.standing || '',
-    hasElevatorImmeuble: (deal?.criteriaJson as any)?.hasElevator || false,
+    hasElevatorImmeuble: (deal?.criteriaJson as any)?.hasElevator || false
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -109,7 +96,7 @@ export const DealForm: React.FC<DealFormProps> = ({
 
   useEffect(() => {
     if (deal) {
-      const criteria = deal.criteriaJson as any || {};
+      const criteria = (deal.criteriaJson as any) || {};
       setFormData({
         contactId: deal.contactId,
         type: deal.type,
@@ -146,7 +133,7 @@ export const DealForm: React.FC<DealFormProps> = ({
         parkingSpaces: criteria.parkingSpaces?.toString() || '',
         occupancyRate: criteria.occupancyRate?.toString() || '',
         standing: criteria.standing || '',
-        hasElevatorImmeuble: criteria.hasElevator || false,
+        hasElevatorImmeuble: criteria.hasElevator || false
       });
     }
   }, [deal]);
@@ -159,7 +146,7 @@ export const DealForm: React.FC<DealFormProps> = ({
         // Fetch all contacts with a high limit to get all of them
         const response = await listContacts(tenantId, {
           page: 1,
-          limit: 1000, // High limit to get all contacts
+          limit: 1000 // High limit to get all contacts
         });
         if (response.success) {
           setContacts(response.contacts);
@@ -202,14 +189,14 @@ export const DealForm: React.FC<DealFormProps> = ({
     try {
       // Build criteriaJson with property details based on property type
       const criteriaJson: Record<string, unknown> = {};
-      
+
       // Common fields
       if (formData.propertyType) criteriaJson.propertyType = formData.propertyType;
       if (formData.description) criteriaJson.description = formData.description.trim();
       if (formData.rooms) criteriaJson.rooms = parseInt(formData.rooms);
       if (formData.surface) criteriaJson.surface = parseFloat(formData.surface);
       if (formData.furnishingStatus) criteriaJson.furnishingStatus = formData.furnishingStatus;
-      
+
       // Apartment/Studio/Duplex fields
       if (['APPARTEMENT', 'STUDIO', 'DUPLEX', 'PENTHOUSE'].includes(formData.propertyType)) {
         if (formData.floor) criteriaJson.floor = parseInt(formData.floor);
@@ -217,7 +204,7 @@ export const DealForm: React.FC<DealFormProps> = ({
         if (formData.hasParking) criteriaJson.hasParking = formData.hasParking;
         if (formData.hasBalcony) criteriaJson.hasBalcony = formData.hasBalcony;
       }
-      
+
       // Villa/House fields
       if (['VILLA', 'MAISON'].includes(formData.propertyType)) {
         if (formData.hasGarden) criteriaJson.hasGarden = formData.hasGarden;
@@ -225,7 +212,7 @@ export const DealForm: React.FC<DealFormProps> = ({
         if (formData.hasGarage) criteriaJson.hasGarage = formData.hasGarage;
         if (formData.hasParking) criteriaJson.hasParking = formData.hasParking;
       }
-      
+
       // Land fields
       if (formData.propertyType === 'TERRAIN') {
         if (formData.landArea) criteriaJson.landArea = parseFloat(formData.landArea);
@@ -233,26 +220,26 @@ export const DealForm: React.FC<DealFormProps> = ({
         if (formData.isServiced) criteriaJson.isServiced = formData.isServiced;
         if (formData.isBuildable) criteriaJson.isBuildable = formData.isBuildable;
       }
-      
+
       // Office fields
       if (formData.propertyType === 'BUREAU') {
         if (formData.officeCount) criteriaJson.officeCount = parseInt(formData.officeCount);
         if (formData.hasReception) criteriaJson.hasReception = formData.hasReception;
         if (formData.hasParking) criteriaJson.hasParking = formData.hasParking;
       }
-      
+
       // Commercial fields
       if (formData.propertyType === 'COMMERCE') {
         if (formData.commercialType) criteriaJson.commercialType = formData.commercialType;
         if (formData.hasStorefront) criteriaJson.hasStorefront = formData.hasStorefront;
         if (formData.hasParking) criteriaJson.hasParking = formData.hasParking;
       }
-      
+
       // Penthouse specific
       if (formData.propertyType === 'PENTHOUSE') {
         if (formData.hasTerrace) criteriaJson.hasTerrace = formData.hasTerrace;
       }
-      
+
       // Immeuble specific
       if (formData.propertyType === 'IMMEUBLE') {
         if (formData.floorsCount) criteriaJson.floorsCount = parseInt(formData.floorsCount);
@@ -273,7 +260,7 @@ export const DealForm: React.FC<DealFormProps> = ({
         expectedValue: formData.expectedValue ? parseFloat(formData.expectedValue) : undefined,
         assignedToUserId: formData.assignedToUserId || undefined,
         criteriaJson: Object.keys(criteriaJson).length > 0 ? criteriaJson : undefined,
-        ...(deal ? { version: deal.version } : {}),
+        ...(deal ? { version: deal.version } : {})
       };
 
       await onSubmit(submitData);
@@ -287,7 +274,7 @@ export const DealForm: React.FC<DealFormProps> = ({
       } else if (error.response?.data?.message) {
         setErrors({ submit: error.response.data.message });
       } else {
-        setErrors({ submit: 'Une erreur est survenue lors de l\'enregistrement de l\'affaire' });
+        setErrors({ submit: "Une erreur est survenue lors de l'enregistrement de l'affaire" });
       }
     } finally {
       setIsSubmitting(false);
@@ -295,9 +282,9 @@ export const DealForm: React.FC<DealFormProps> = ({
   };
 
   const handleChange = (field: string, value: string | boolean | GeographicLocation | null) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
-      setErrors((prev) => {
+      setErrors(prev => {
         const newErrors = { ...prev };
         delete newErrors[field];
         return newErrors;
@@ -309,9 +296,9 @@ export const DealForm: React.FC<DealFormProps> = ({
     // Parse the value to remove formatting
     const numericValue = parseNumber(value);
     // Store the numeric value (without spaces)
-    setFormData((prev) => ({ ...prev, [field]: numericValue }));
+    setFormData(prev => ({ ...prev, [field]: numericValue }));
     if (errors[field]) {
-      setErrors((prev) => {
+      setErrors(prev => {
         const newErrors = { ...prev };
         delete newErrors[field];
         return newErrors;
@@ -321,9 +308,7 @@ export const DealForm: React.FC<DealFormProps> = ({
 
   return (
     <Form onFinish={handleSubmit} layout="vertical" className="space-y-6">
-      {errors.submit && (
-        <Alert message={errors.submit} type="error" showIcon className="mb-4" />
-      )}
+      {errors.submit && <Alert message={errors.submit} type="error" showIcon className="mb-4" />}
 
       {/* Section: Informations générales et Budget en 2 colonnes */}
       <Row gutter={[16, 16]}>
@@ -331,15 +316,10 @@ export const DealForm: React.FC<DealFormProps> = ({
         <Col xs={24} lg={12}>
           <Card title="Informations générales" size="small">
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <Form.Item
-                label="Type d'affaire"
-                required
-                validateStatus={errors.type ? 'error' : ''}
-                help={errors.type}
-              >
+              <Form.Item label="Type d'affaire" required validateStatus={errors.type ? 'error' : ''} help={errors.type}>
                 <Select
                   value={formData.type}
-                  onChange={(value) => handleChange('type', value)}
+                  onChange={value => handleChange('type', value)}
                   placeholder="Sélectionner un type"
                 >
                   <Select.Option value="ACHAT">Achat</Select.Option>
@@ -362,18 +342,16 @@ export const DealForm: React.FC<DealFormProps> = ({
                   ) : (
                     <Select
                       value={formData.contactId}
-                      onChange={(value) => handleChange('contactId', value)}
+                      onChange={value => handleChange('contactId', value)}
                       placeholder="Sélectionner un contact"
                       showSearch
                       filterOption={(input, option) => {
-                        const label = typeof option?.label === 'string' 
-                          ? option.label 
-                          : String(option?.children || '');
+                        const label = typeof option?.label === 'string' ? option.label : String(option?.children || '');
                         return label.toLowerCase().includes(input.toLowerCase());
                       }}
                       optionLabelProp="label"
                     >
-                      {contacts.map((contact) => {
+                      {contacts.map(contact => {
                         const label = `${contact.firstName} ${contact.lastName} ${contact.email ? `(${contact.email})` : ''}`;
                         return (
                           <Select.Option key={contact.id} value={contact.id} label={label}>
@@ -394,22 +372,22 @@ export const DealForm: React.FC<DealFormProps> = ({
           <Card title="Budget et localisation" size="small">
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
               <Row gutter={16}>
-                <Col span={12}>
+                <Col xs={24} md={12}>
                   <Form.Item label="Budget minimum (FCFA)">
                     <InputNumber
                       value={formData.budgetMin ? parseFloat(formData.budgetMin) : undefined}
-                      onChange={(value) => handleNumberChange('budgetMin', value?.toString() || '')}
+                      onChange={value => handleNumberChange('budgetMin', value?.toString() || '')}
                       placeholder="0"
                       style={{ width: '100%' }}
-                      formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
-                      parser={(value) => {
+                      formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
+                      parser={value => {
                         const parsed = value!.replace(/\s?/g, '');
                         return parsed ? parseFloat(parsed) : 0;
                       }}
                     />
                   </Form.Item>
                 </Col>
-                <Col span={12}>
+                <Col xs={24} md={12}>
                   <Form.Item
                     label="Budget maximum (FCFA)"
                     validateStatus={errors.budgetMax ? 'error' : ''}
@@ -417,11 +395,11 @@ export const DealForm: React.FC<DealFormProps> = ({
                   >
                     <InputNumber
                       value={formData.budgetMax ? parseFloat(formData.budgetMax) : undefined}
-                      onChange={(value) => handleNumberChange('budgetMax', value?.toString() || '')}
+                      onChange={value => handleNumberChange('budgetMax', value?.toString() || '')}
                       placeholder="0"
                       style={{ width: '100%' }}
-                      formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
-                      parser={(value) => {
+                      formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
+                      parser={value => {
                         const parsed = value!.replace(/\s?/g, '');
                         return parsed ? parseFloat(parsed) : 0;
                       }}
@@ -433,7 +411,7 @@ export const DealForm: React.FC<DealFormProps> = ({
               <Form.Item label="Zone géographique (Commune)">
                 <LocationSelector
                   value={formData.location?.communeId}
-                  onChange={(location) => {
+                  onChange={location => {
                     if (location) {
                       handleChange('locationZone', location.commune);
                       handleChange('location', location);
@@ -459,7 +437,7 @@ export const DealForm: React.FC<DealFormProps> = ({
               <Form.Item label="Type de bien">
                 <Select
                   value={formData.propertyType}
-                  onChange={(value) => handleChange('propertyType', value)}
+                  onChange={value => handleChange('propertyType', value)}
                   placeholder="Sélectionner un type"
                   allowClear
                 >
@@ -480,11 +458,11 @@ export const DealForm: React.FC<DealFormProps> = ({
               <Form.Item label="Valeur estimée de la transaction (FCFA)">
                 <InputNumber
                   value={formData.expectedValue ? parseFloat(formData.expectedValue) : undefined}
-                  onChange={(value) => handleNumberChange('expectedValue', value?.toString() || '')}
+                  onChange={value => handleNumberChange('expectedValue', value?.toString() || '')}
                   placeholder="0"
                   style={{ width: '100%' }}
-                  formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
-                  parser={(value) => {
+                  formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')}
+                  parser={value => {
                     const parsed = value!.replace(/\s?/g, '');
                     return parsed ? parseFloat(parsed) : 0;
                   }}
@@ -501,7 +479,9 @@ export const DealForm: React.FC<DealFormProps> = ({
         <Col xs={24} lg={12}>
           {!formData.propertyType ? (
             <Card title="Critères spécifiques" size="small">
-              <Text type="secondary" italic>Sélectionnez un type de bien pour voir les critères disponibles</Text>
+              <Text type="secondary" italic>
+                Sélectionnez un type de bien pour voir les critères disponibles
+              </Text>
             </Card>
           ) : (
             <Card
@@ -509,15 +489,26 @@ export const DealForm: React.FC<DealFormProps> = ({
                 <Space>
                   <div style={{ width: 8, height: 8, backgroundColor: '#1890ff', borderRadius: '50%' }}></div>
                   <span>
-                    Critères spécifiques - {formData.propertyType === 'APPARTEMENT' ? 'Appartement' :
-                      formData.propertyType === 'VILLA' ? 'Villa' :
-                      formData.propertyType === 'MAISON' ? 'Maison' :
-                      formData.propertyType === 'TERRAIN' ? 'Terrain' :
-                      formData.propertyType === 'BUREAU' ? 'Bureau' :
-                      formData.propertyType === 'COMMERCE' ? 'Local commercial' :
-                      formData.propertyType === 'STUDIO' ? 'Studio' :
-                      formData.propertyType === 'DUPLEX' ? 'Duplex' :
-                      formData.propertyType === 'PENTHOUSE' ? 'Penthouse' : 'Autre'}
+                    Critères spécifiques -{' '}
+                    {formData.propertyType === 'APPARTEMENT'
+                      ? 'Appartement'
+                      : formData.propertyType === 'VILLA'
+                        ? 'Villa'
+                        : formData.propertyType === 'MAISON'
+                          ? 'Maison'
+                          : formData.propertyType === 'TERRAIN'
+                            ? 'Terrain'
+                            : formData.propertyType === 'BUREAU'
+                              ? 'Bureau'
+                              : formData.propertyType === 'COMMERCE'
+                                ? 'Local commercial'
+                                : formData.propertyType === 'STUDIO'
+                                  ? 'Studio'
+                                  : formData.propertyType === 'DUPLEX'
+                                    ? 'Duplex'
+                                    : formData.propertyType === 'PENTHOUSE'
+                                      ? 'Penthouse'
+                                      : 'Autre'}
                   </span>
                 </Space>
               }
@@ -525,17 +516,18 @@ export const DealForm: React.FC<DealFormProps> = ({
               style={{ background: 'linear-gradient(to bottom right, #e6f7ff, #f0f5ff)', border: '2px solid #91d5ff' }}
             >
               <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-
                 {/* Common fields for most property types */}
-                {['APPARTEMENT', 'VILLA', 'MAISON', 'STUDIO', 'DUPLEX', 'PENTHOUSE'].includes(formData.propertyType) && (
+                {['APPARTEMENT', 'VILLA', 'MAISON', 'STUDIO', 'DUPLEX', 'PENTHOUSE'].includes(
+                  formData.propertyType
+                ) && (
                   <>
                     <Row gutter={16}>
                       {formData.propertyType !== 'STUDIO' && (
-                        <Col span={12}>
+                        <Col xs={24} md={12}>
                           <Form.Item label="Nombre de pièces">
                             <InputNumber
                               value={formData.rooms ? parseInt(formData.rooms) : undefined}
-                              onChange={(value) => handleChange('rooms', value?.toString() || '')}
+                              onChange={value => handleChange('rooms', value?.toString() || '')}
                               placeholder="ex. : 3"
                               min={0}
                               style={{ width: '100%' }}
@@ -543,11 +535,11 @@ export const DealForm: React.FC<DealFormProps> = ({
                           </Form.Item>
                         </Col>
                       )}
-                      <Col span={formData.propertyType === 'STUDIO' ? 24 : 12}>
+                      <Col xs={24} md={formData.propertyType === 'STUDIO' ? 24 : 12}>
                         <Form.Item label="Surface (m²)">
                           <InputNumber
                             value={formData.surface ? parseFloat(formData.surface) : undefined}
-                            onChange={(value) => handleChange('surface', value?.toString() || '')}
+                            onChange={value => handleChange('surface', value?.toString() || '')}
                             placeholder="ex. : 120"
                             min={0}
                             step={0.01}
@@ -560,7 +552,7 @@ export const DealForm: React.FC<DealFormProps> = ({
                     <Form.Item label="État du meublé">
                       <Select
                         value={formData.furnishingStatus}
-                        onChange={(value) => handleChange('furnishingStatus', value)}
+                        onChange={value => handleChange('furnishingStatus', value)}
                         placeholder="Indifférent"
                         allowClear
                       >
@@ -575,34 +567,34 @@ export const DealForm: React.FC<DealFormProps> = ({
                 {/* Apartment/Studio/Duplex specific fields */}
                 {['APPARTEMENT', 'STUDIO', 'DUPLEX'].includes(formData.propertyType) && (
                   <Row gutter={16}>
-                    <Col span={12}>
+                    <Col xs={24} md={12}>
                       <Form.Item label="Étage">
                         <InputNumber
                           value={formData.floor ? parseInt(formData.floor) : undefined}
-                          onChange={(value) => handleChange('floor', value?.toString() || '')}
+                          onChange={value => handleChange('floor', value?.toString() || '')}
                           placeholder="ex. : 2"
                           style={{ width: '100%' }}
                         />
                       </Form.Item>
                     </Col>
-                    <Col span={12}>
+                    <Col xs={24} md={12}>
                       <Form.Item label="Équipements">
                         <Space direction="vertical">
                           <Checkbox
                             checked={formData.hasElevator}
-                            onChange={(e) => handleChange('hasElevator', e.target.checked)}
+                            onChange={e => handleChange('hasElevator', e.target.checked)}
                           >
                             Ascenseur
                           </Checkbox>
                           <Checkbox
                             checked={formData.hasParking}
-                            onChange={(e) => handleChange('hasParking', e.target.checked)}
+                            onChange={e => handleChange('hasParking', e.target.checked)}
                           >
                             Parking
                           </Checkbox>
                           <Checkbox
                             checked={formData.hasBalcony}
-                            onChange={(e) => handleChange('hasBalcony', e.target.checked)}
+                            onChange={e => handleChange('hasBalcony', e.target.checked)}
                           >
                             Balcon
                           </Checkbox>
@@ -616,11 +608,11 @@ export const DealForm: React.FC<DealFormProps> = ({
                 {['VILLA', 'MAISON'].includes(formData.propertyType) && (
                   <>
                     <Row gutter={16}>
-                      <Col span={12}>
+                      <Col xs={24} md={12}>
                         <Form.Item label="Surface habitable (m²)">
                           <InputNumber
                             value={formData.surface ? parseFloat(formData.surface) : undefined}
-                            onChange={(value) => handleChange('surface', value?.toString() || '')}
+                            onChange={value => handleChange('surface', value?.toString() || '')}
                             placeholder="ex. : 200"
                             min={0}
                             step={0.01}
@@ -628,11 +620,11 @@ export const DealForm: React.FC<DealFormProps> = ({
                           />
                         </Form.Item>
                       </Col>
-                      <Col span={12}>
+                      <Col xs={24} md={12}>
                         <Form.Item label="Surface du terrain (m²)">
                           <InputNumber
                             value={formData.landArea ? parseFloat(formData.landArea) : undefined}
-                            onChange={(value) => handleChange('landArea', value?.toString() || '')}
+                            onChange={value => handleChange('landArea', value?.toString() || '')}
                             placeholder="ex. : 500"
                             min={0}
                             step={0.01}
@@ -644,34 +636,34 @@ export const DealForm: React.FC<DealFormProps> = ({
                     <Form.Item label="Équipements">
                       <Checkbox.Group>
                         <Row>
-                          <Col span={6}>
+                          <Col xs={12} md={6}>
                             <Checkbox
                               checked={formData.hasGarden}
-                              onChange={(e) => handleChange('hasGarden', e.target.checked)}
+                              onChange={e => handleChange('hasGarden', e.target.checked)}
                             >
                               Jardin
                             </Checkbox>
                           </Col>
-                          <Col span={6}>
+                          <Col xs={12} md={6}>
                             <Checkbox
                               checked={formData.hasPool}
-                              onChange={(e) => handleChange('hasPool', e.target.checked)}
+                              onChange={e => handleChange('hasPool', e.target.checked)}
                             >
                               Piscine
                             </Checkbox>
                           </Col>
-                          <Col span={6}>
+                          <Col xs={12} md={6}>
                             <Checkbox
                               checked={formData.hasGarage}
-                              onChange={(e) => handleChange('hasGarage', e.target.checked)}
+                              onChange={e => handleChange('hasGarage', e.target.checked)}
                             >
                               Garage
                             </Checkbox>
                           </Col>
-                          <Col span={6}>
+                          <Col xs={12} md={6}>
                             <Checkbox
                               checked={formData.hasParking}
-                              onChange={(e) => handleChange('hasParking', e.target.checked)}
+                              onChange={e => handleChange('hasParking', e.target.checked)}
                             >
                               Parking
                             </Checkbox>
@@ -686,11 +678,11 @@ export const DealForm: React.FC<DealFormProps> = ({
                 {formData.propertyType === 'TERRAIN' && (
                   <>
                     <Row gutter={16}>
-                      <Col span={12}>
+                      <Col xs={24} md={12}>
                         <Form.Item label="Superficie (m²)">
                           <InputNumber
                             value={formData.landArea ? parseFloat(formData.landArea) : undefined}
-                            onChange={(value) => handleChange('landArea', value?.toString() || '')}
+                            onChange={value => handleChange('landArea', value?.toString() || '')}
                             placeholder="ex. : 500"
                             min={0}
                             step={0.01}
@@ -698,11 +690,11 @@ export const DealForm: React.FC<DealFormProps> = ({
                           />
                         </Form.Item>
                       </Col>
-                      <Col span={12}>
+                      <Col xs={24} md={12}>
                         <Form.Item label="Type de terrain">
                           <Select
                             value={formData.landType}
-                            onChange={(value) => handleChange('landType', value)}
+                            onChange={value => handleChange('landType', value)}
                             placeholder="Sélectionner"
                             allowClear
                           >
@@ -718,13 +710,13 @@ export const DealForm: React.FC<DealFormProps> = ({
                       <Space direction="vertical">
                         <Checkbox
                           checked={formData.isServiced}
-                          onChange={(e) => handleChange('isServiced', e.target.checked)}
+                          onChange={e => handleChange('isServiced', e.target.checked)}
                         >
                           Viabilisé (eau, électricité, etc.)
                         </Checkbox>
                         <Checkbox
                           checked={formData.isBuildable}
-                          onChange={(e) => handleChange('isBuildable', e.target.checked)}
+                          onChange={e => handleChange('isBuildable', e.target.checked)}
                         >
                           Constructible
                         </Checkbox>
@@ -737,11 +729,11 @@ export const DealForm: React.FC<DealFormProps> = ({
                 {formData.propertyType === 'BUREAU' && (
                   <>
                     <Row gutter={16}>
-                      <Col span={12}>
+                      <Col xs={24} md={12}>
                         <Form.Item label="Surface (m²)">
                           <InputNumber
                             value={formData.surface ? parseFloat(formData.surface) : undefined}
-                            onChange={(value) => handleChange('surface', value?.toString() || '')}
+                            onChange={value => handleChange('surface', value?.toString() || '')}
                             placeholder="ex. : 150"
                             min={0}
                             step={0.01}
@@ -749,11 +741,11 @@ export const DealForm: React.FC<DealFormProps> = ({
                           />
                         </Form.Item>
                       </Col>
-                      <Col span={12}>
+                      <Col xs={24} md={12}>
                         <Form.Item label="Nombre de bureaux">
                           <InputNumber
                             value={formData.officeCount ? parseInt(formData.officeCount) : undefined}
-                            onChange={(value) => handleChange('officeCount', value?.toString() || '')}
+                            onChange={value => handleChange('officeCount', value?.toString() || '')}
                             placeholder="ex. : 5"
                             min={0}
                             style={{ width: '100%' }}
@@ -765,13 +757,13 @@ export const DealForm: React.FC<DealFormProps> = ({
                       <Space direction="vertical">
                         <Checkbox
                           checked={formData.hasReception}
-                          onChange={(e) => handleChange('hasReception', e.target.checked)}
+                          onChange={e => handleChange('hasReception', e.target.checked)}
                         >
                           Réception
                         </Checkbox>
                         <Checkbox
                           checked={formData.hasParking}
-                          onChange={(e) => handleChange('hasParking', e.target.checked)}
+                          onChange={e => handleChange('hasParking', e.target.checked)}
                         >
                           Parking
                         </Checkbox>
@@ -784,11 +776,11 @@ export const DealForm: React.FC<DealFormProps> = ({
                 {formData.propertyType === 'COMMERCE' && (
                   <>
                     <Row gutter={16}>
-                      <Col span={12}>
+                      <Col xs={24} md={12}>
                         <Form.Item label="Surface (m²)">
                           <InputNumber
                             value={formData.surface ? parseFloat(formData.surface) : undefined}
-                            onChange={(value) => handleChange('surface', value?.toString() || '')}
+                            onChange={value => handleChange('surface', value?.toString() || '')}
                             placeholder="ex. : 80"
                             min={0}
                             step={0.01}
@@ -796,11 +788,11 @@ export const DealForm: React.FC<DealFormProps> = ({
                           />
                         </Form.Item>
                       </Col>
-                      <Col span={12}>
+                      <Col xs={24} md={12}>
                         <Form.Item label="Type de commerce">
                           <Select
                             value={formData.commercialType}
-                            onChange={(value) => handleChange('commercialType', value)}
+                            onChange={value => handleChange('commercialType', value)}
                             placeholder="Sélectionner"
                             allowClear
                           >
@@ -818,13 +810,13 @@ export const DealForm: React.FC<DealFormProps> = ({
                       <Space direction="vertical">
                         <Checkbox
                           checked={formData.hasStorefront}
-                          onChange={(e) => handleChange('hasStorefront', e.target.checked)}
+                          onChange={e => handleChange('hasStorefront', e.target.checked)}
                         >
                           Vitrine
                         </Checkbox>
                         <Checkbox
                           checked={formData.hasParking}
-                          onChange={(e) => handleChange('hasParking', e.target.checked)}
+                          onChange={e => handleChange('hasParking', e.target.checked)}
                         >
                           Parking
                         </Checkbox>
@@ -836,34 +828,34 @@ export const DealForm: React.FC<DealFormProps> = ({
                 {/* Penthouse specific fields */}
                 {formData.propertyType === 'PENTHOUSE' && (
                   <Row gutter={16}>
-                    <Col span={12}>
+                    <Col xs={24} md={12}>
                       <Form.Item label="Étage">
                         <InputNumber
                           value={formData.floor ? parseInt(formData.floor) : undefined}
-                          onChange={(value) => handleChange('floor', value?.toString() || '')}
+                          onChange={value => handleChange('floor', value?.toString() || '')}
                           placeholder="ex. : 10"
                           style={{ width: '100%' }}
                         />
                       </Form.Item>
                     </Col>
-                    <Col span={12}>
+                    <Col xs={24} md={12}>
                       <Form.Item label="Équipements">
                         <Space direction="vertical">
                           <Checkbox
                             checked={formData.hasTerrace}
-                            onChange={(e) => handleChange('hasTerrace', e.target.checked)}
+                            onChange={e => handleChange('hasTerrace', e.target.checked)}
                           >
                             Terrasse
                           </Checkbox>
                           <Checkbox
                             checked={formData.hasElevator}
-                            onChange={(e) => handleChange('hasElevator', e.target.checked)}
+                            onChange={e => handleChange('hasElevator', e.target.checked)}
                           >
                             Ascenseur
                           </Checkbox>
                           <Checkbox
                             checked={formData.hasParking}
-                            onChange={(e) => handleChange('hasParking', e.target.checked)}
+                            onChange={e => handleChange('hasParking', e.target.checked)}
                           >
                             Parking
                           </Checkbox>
@@ -879,13 +871,13 @@ export const DealForm: React.FC<DealFormProps> = ({
                     <Space direction="vertical">
                       <Checkbox
                         checked={formData.hasBalcony}
-                        onChange={(e) => handleChange('hasBalcony', e.target.checked)}
+                        onChange={e => handleChange('hasBalcony', e.target.checked)}
                       >
                         Balcon
                       </Checkbox>
                       <Checkbox
                         checked={formData.hasParking}
-                        onChange={(e) => handleChange('hasParking', e.target.checked)}
+                        onChange={e => handleChange('hasParking', e.target.checked)}
                       >
                         Parking
                       </Checkbox>
@@ -897,22 +889,22 @@ export const DealForm: React.FC<DealFormProps> = ({
                 {formData.propertyType === 'IMMEUBLE' && (
                   <>
                     <Row gutter={16}>
-                      <Col span={12}>
+                      <Col xs={24} md={12}>
                         <Form.Item label="Nombre d'étages">
                           <InputNumber
                             value={formData.floorsCount ? parseInt(formData.floorsCount) : undefined}
-                            onChange={(value) => handleChange('floorsCount', value?.toString() || '')}
+                            onChange={value => handleChange('floorsCount', value?.toString() || '')}
                             placeholder="ex. : 5"
                             min={1}
                             style={{ width: '100%' }}
                           />
                         </Form.Item>
                       </Col>
-                      <Col span={12}>
+                      <Col xs={24} md={12}>
                         <Form.Item label="Nombre d'appartements">
                           <InputNumber
                             value={formData.apartmentsCount ? parseInt(formData.apartmentsCount) : undefined}
-                            onChange={(value) => handleChange('apartmentsCount', value?.toString() || '')}
+                            onChange={value => handleChange('apartmentsCount', value?.toString() || '')}
                             placeholder="ex. : 18"
                             min={0}
                             style={{ width: '100%' }}
@@ -923,7 +915,7 @@ export const DealForm: React.FC<DealFormProps> = ({
                     <Form.Item label="Standing">
                       <Select
                         value={formData.standing}
-                        onChange={(value) => handleChange('standing', value)}
+                        onChange={value => handleChange('standing', value)}
                         placeholder="Sélectionner un standing"
                         allowClear
                       >
@@ -935,22 +927,22 @@ export const DealForm: React.FC<DealFormProps> = ({
                       </Select>
                     </Form.Item>
                     <Row gutter={16}>
-                      <Col span={12}>
+                      <Col xs={24} md={12}>
                         <Form.Item label="Places de parking">
                           <InputNumber
                             value={formData.parkingSpaces ? parseInt(formData.parkingSpaces) : undefined}
-                            onChange={(value) => handleChange('parkingSpaces', value?.toString() || '')}
+                            onChange={value => handleChange('parkingSpaces', value?.toString() || '')}
                             placeholder="ex. : 15"
                             min={0}
                             style={{ width: '100%' }}
                           />
                         </Form.Item>
                       </Col>
-                      <Col span={12}>
+                      <Col xs={24} md={12}>
                         <Form.Item label="Taux d'occupation (%)">
                           <InputNumber
                             value={formData.occupancyRate ? parseFloat(formData.occupancyRate) : undefined}
-                            onChange={(value) => handleChange('occupancyRate', value?.toString() || '')}
+                            onChange={value => handleChange('occupancyRate', value?.toString() || '')}
                             placeholder="ex. : 75"
                             min={0}
                             max={100}
@@ -963,7 +955,7 @@ export const DealForm: React.FC<DealFormProps> = ({
                     <Form.Item>
                       <Checkbox
                         checked={formData.hasElevatorImmeuble}
-                        onChange={(e) => handleChange('hasElevatorImmeuble', e.target.checked)}
+                        onChange={e => handleChange('hasElevatorImmeuble', e.target.checked)}
                       >
                         Ascenseur
                       </Checkbox>
@@ -976,7 +968,7 @@ export const DealForm: React.FC<DealFormProps> = ({
                   <Form.Item label="Description du type de bien">
                     <TextArea
                       value={formData.description}
-                      onChange={(e) => handleChange('description', e.target.value)}
+                      onChange={e => handleChange('description', e.target.value)}
                       placeholder="Décrivez le type de bien recherché (ex: entrepôt, hangar, local industriel, etc.)"
                       rows={4}
                     />
@@ -993,7 +985,7 @@ export const DealForm: React.FC<DealFormProps> = ({
         <Form.Item label="Description / Besoins spécifiques">
           <TextArea
             value={formData.description}
-            onChange={(e) => handleChange('description', e.target.value)}
+            onChange={e => handleChange('description', e.target.value)}
             placeholder="Décrivez les besoins spécifiques du client, contraintes particulières, équipements souhaités, etc."
             rows={4}
           />
@@ -1008,11 +1000,10 @@ export const DealForm: React.FC<DealFormProps> = ({
             </Button>
           )}
           <Button type="primary" htmlType="submit" loading={isSubmitting || loading}>
-            {deal ? 'Mettre à jour l\'affaire' : 'Créer l\'affaire'}
+            {deal ? "Mettre à jour l'affaire" : "Créer l'affaire"}
           </Button>
         </Space>
       </Form.Item>
     </Form>
   );
 };
-

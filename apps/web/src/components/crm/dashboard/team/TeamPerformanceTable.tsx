@@ -25,11 +25,7 @@ export const TeamPerformanceTable: React.FC<TeamPerformanceTableProps> = ({ data
   };
 
   if (sortedMembers.length === 0) {
-    return (
-      <div className="text-center py-8 text-slate-500">
-        Aucune donnée de performance disponible
-      </div>
-    );
+    return <div className="text-center py-8 text-slate-500">Aucune donnée de performance disponible</div>;
   }
 
   return (
@@ -40,14 +36,14 @@ export const TeamPerformanceTable: React.FC<TeamPerformanceTableProps> = ({ data
           <p className="text-sm text-slate-600">Total affaires gagnées: {data.totalWonDeals}</p>
         </div>
         {data.avgResponseTimeHours && (
-          <Badge variant="outline">
-            Temps de réponse moyen: {formatTime(data.avgResponseTimeHours)}
-          </Badge>
+          <Badge variant="outline">Temps de réponse moyen: {formatTime(data.avgResponseTimeHours)}</Badge>
         )}
       </div>
 
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
+      <div className="border rounded-lg overflow-x-auto">
+        {/* Six colonnes ne tiennent pas sous 768 px : le tableau garde sa
+            largeur utile et le conteneur defile. */}
+        <Table className="min-w-[680px]">
           <TableHeader>
             <TableRow>
               <TableHead className="w-12">#</TableHead>
@@ -62,9 +58,7 @@ export const TeamPerformanceTable: React.FC<TeamPerformanceTableProps> = ({ data
             {sortedMembers.map((member, index) => (
               <TableRow
                 key={member.userId}
-                className={`hover:bg-slate-50 transition-colors ${
-                  onMemberClick ? 'cursor-pointer' : ''
-                }`}
+                className={`hover:bg-slate-50 transition-colors ${onMemberClick ? 'cursor-pointer' : ''}`}
                 onClick={() => onMemberClick?.(member.userId)}
               >
                 <TableCell>
@@ -77,9 +71,7 @@ export const TeamPerformanceTable: React.FC<TeamPerformanceTableProps> = ({ data
                 <TableCell>
                   <div>
                     <p className="font-medium text-slate-900">{member.userName}</p>
-                    {member.userEmail && (
-                      <p className="text-xs text-slate-500">{member.userEmail}</p>
-                    )}
+                    {member.userEmail && <p className="text-xs text-slate-500">{member.userEmail}</p>}
                   </div>
                 </TableCell>
                 <TableCell className="text-right">{member.activitiesCount}</TableCell>

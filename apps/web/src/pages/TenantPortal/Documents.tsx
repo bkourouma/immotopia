@@ -154,7 +154,7 @@ export default function TenantDocuments() {
 
       {/* Filter (T111) */}
       <Card>
-        <Space size="middle" wrap>
+        <div className="it-toolbar__actions">
           <Space>
             <FilterOutlined />
             <Text strong>Filtre :</Text>
@@ -173,7 +173,7 @@ export default function TenantDocuments() {
             ))}
           </Select>
           {typeFilter && <Button onClick={() => setTypeFilter(undefined)}>Réinitialiser</Button>}
-        </Space>
+        </div>
       </Card>
 
       {/* Documents Grouped by Type (T110) */}

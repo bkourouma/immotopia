@@ -41,7 +41,7 @@ const propertyTypeOptions = [
   { value: 'DUPLEX_TRIPLEX', label: 'Duplex / Triplex' },
   { value: 'BUREAU', label: 'Bureau' },
   { value: 'BOUTIQUE_COMMERCIAL', label: 'Boutique / Commercial' },
-  { value: 'TERRAIN', label: 'Terrain' },
+  { value: 'TERRAIN', label: 'Terrain' }
 ];
 
 const statusOptions = [
@@ -50,14 +50,14 @@ const statusOptions = [
   { value: 'RENTED', label: 'Loué' },
   { value: 'UNDER_REVIEW', label: 'En révision' },
   { value: 'RESERVED', label: 'Réservé' },
-  { value: 'UNDER_OFFER', label: 'Sous offre' },
+  { value: 'UNDER_OFFER', label: 'Sous offre' }
 ];
 
 const transactionModeOptions = [
   { value: '', label: 'Tous les modes' },
   { value: 'RENTAL', label: 'Location' },
   { value: 'SALE', label: 'Vente' },
-  { value: 'SHORT_TERM', label: 'Location courte durée' },
+  { value: 'SHORT_TERM', label: 'Location courte durée' }
 ];
 
 export default function Properties() {
@@ -116,7 +116,7 @@ export default function Properties() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="it-toolbar">
         <div>
           <Title level={2}>Mes propriétés</Title>
           <Text type="secondary">Gérez votre portefeuille immobilier</Text>
@@ -174,7 +174,7 @@ export default function Properties() {
             style={{ width: 200 }}
             placeholder="Statut"
             value={filters.status || undefined}
-            onChange={(value) => setFilters({ ...filters, status: value || '' })}
+            onChange={value => setFilters({ ...filters, status: value || '' })}
             allowClear
           >
             {statusOptions.map(opt => (
@@ -188,7 +188,7 @@ export default function Properties() {
             style={{ width: 200 }}
             placeholder="Type de propriété"
             value={filters.propertyType || undefined}
-            onChange={(value) => setFilters({ ...filters, propertyType: value || '' })}
+            onChange={value => setFilters({ ...filters, propertyType: value || '' })}
             allowClear
           >
             {propertyTypeOptions.map(opt => (
@@ -202,7 +202,7 @@ export default function Properties() {
             style={{ width: 200 }}
             placeholder="Mode de transaction"
             value={filters.transactionMode || undefined}
-            onChange={(value) => setFilters({ ...filters, transactionMode: value || '' })}
+            onChange={value => setFilters({ ...filters, transactionMode: value || '' })}
             allowClear
           >
             {transactionModeOptions.map(opt => (

@@ -186,6 +186,7 @@ export const SyndicOwnerAccount: React.FC = () => {
 
             <Card title="Historique des transactions">
               <Table
+                scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={transactions}
                 pagination={{ pageSize: 12 }}

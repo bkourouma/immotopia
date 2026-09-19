@@ -322,7 +322,7 @@ export default function Maintenance() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="it-toolbar">
         <div>
           <Title level={2}>Maintenance</Title>
           <Text type="secondary">Suivi des tickets de maintenance</Text>
@@ -379,9 +379,9 @@ export default function Maintenance() {
           </Space>
         }
       >
-        <Space wrap>
-          <Space>
-            <Text strong>Statut:</Text>
+        <div className="it-filters">
+          <div className="it-filters__field">
+            <Text strong>Statut</Text>
             <Select
               style={{ width: 150 }}
               placeholder="Tous les statuts"
@@ -395,9 +395,9 @@ export default function Maintenance() {
               <Option value="RESOLVED">Résolu</Option>
               <Option value="CANCELED">Annulé</Option>
             </Select>
-          </Space>
-          <Space>
-            <Text strong>Propriété:</Text>
+          </div>
+          <div className="it-filters__field">
+            <Text strong>Propriété</Text>
             <Select
               style={{ width: 200 }}
               placeholder="Toutes les propriétés"
@@ -411,9 +411,9 @@ export default function Maintenance() {
                 </Option>
               ))}
             </Select>
-          </Space>
-          <Space>
-            <Text strong>Catégorie:</Text>
+          </div>
+          <div className="it-filters__field">
+            <Text strong>Catégorie</Text>
             <Select
               style={{ width: 150 }}
               placeholder="Toutes les catégories"
@@ -426,9 +426,9 @@ export default function Maintenance() {
               <Option value="AC">Climatisation</Option>
               <Option value="OTHER">Autre</Option>
             </Select>
-          </Space>
-          <Space>
-            <Text strong>Priorité:</Text>
+          </div>
+          <div className="it-filters__field">
+            <Text strong>Priorité</Text>
             <Select
               style={{ width: 150 }}
               placeholder="Toutes les priorités"
@@ -441,14 +441,15 @@ export default function Maintenance() {
               <Option value="HIGH">Haute</Option>
               <Option value="URGENT">Urgente</Option>
             </Select>
-          </Space>
-        </Space>
+          </div>
+        </div>
       </Card>
 
       {/* Tickets Table (T126) */}
       <Card title="Liste des tickets">
         {data && data.tickets.length > 0 ? (
           <Table
+            scroll={{ x: 'max-content' }}
             columns={columns}
             dataSource={data.tickets}
             rowKey="id"
@@ -484,7 +485,7 @@ export default function Maintenance() {
         ) : ticketDetails?.ticket ? (
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             {/* Ticket Information */}
-            <Descriptions bordered column={2}>
+            <Descriptions bordered column={{ xs: 1, sm: 2 }}>
               <Descriptions.Item label="Titre">{ticketDetails.ticket.title}</Descriptions.Item>
               <Descriptions.Item label="Statut">{getStatusTag(ticketDetails.ticket.status)}</Descriptions.Item>
               <Descriptions.Item label="Catégorie">{getCategoryLabel(ticketDetails.ticket.category)}</Descriptions.Item>

@@ -71,7 +71,7 @@ export const OwnerStatementDetailPage: React.FC = () => {
         {error ? <Alert type="error" showIcon message={error} /> : null}
         <Card loading={loading}>
           {statement ? (
-            <Descriptions bordered column={2}>
+            <Descriptions bordered column={{ xs: 1, sm: 2 }}>
               <Descriptions.Item label="Référence">{statement.id}</Descriptions.Item>
               <Descriptions.Item label="Statut">
                 <Tag>{statementStatusLabel(statement.status)}</Tag>
@@ -96,6 +96,7 @@ export const OwnerStatementDetailPage: React.FC = () => {
 
         <Card title="Lignes du relevé" loading={loading}>
           <Table
+            scroll={{ x: 'max-content' }}
             rowKey="id"
             dataSource={statement?.items ?? []}
             pagination={false}

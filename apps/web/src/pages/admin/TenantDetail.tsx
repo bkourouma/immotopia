@@ -214,7 +214,7 @@ export const TenantDetail: React.FC = () => {
         <div className="bg-white rounded-lg shadow p-6">
           {activeTab === 'overview' && (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Nom</label>
                   <p className="mt-1 text-sm text-gray-900">{tenant.name}</p>
@@ -262,7 +262,7 @@ export const TenantDetail: React.FC = () => {
           )}
 
           {activeTab === 'stats' && stats && (
-            <div className="grid grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Proprietes</label>
                 <p className="mt-1 text-2xl font-bold text-gray-900">{stats.totalProperties}</p>

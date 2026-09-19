@@ -190,3 +190,191 @@ code {
 .ant-drawer-body .ant-menu-item-group + .ant-menu-item-group .ant-menu-item-group-title {
   padding-top: var(--space-4);
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Barres d'outils d'écran — mobile first (REFONTE_UI_UX.md §3.4, §10.1)
+
+   Le motif le plus répandu du dépôt était un en-tête de section écrit à la
+   main : `display:flex; justify-content:space-between` SANS `flex-wrap`, avec
+   à droite deux `Select` de 200 px en dur. Sous 576 px, la ligne ne peut pas
+   se replier : le titre est comprimé jusqu'à une lettre par ligne
+   (« H/i/s/t/o/r/i/q/u/e ») pendant que les filtres débordent de la carte.
+   Constaté à 375 px sur l'onglet Maintenance d'une fiche de bien, puis
+   retrouvé sur 46 en-têtes.
+
+   Trois règles, posées ici une fois plutôt que réécrites à chaque écran :
+
+   1. la ligne se replie (`flex-wrap`) au lieu de comprimer ;
+   2. chaque enfant a `min-width: 0` — sans lui, un mot long ou un contrôle à
+      largeur intrinsèque impose son minimum et la compression reprend ;
+   3. sous 576 px les contrôles passent pleine largeur : un `Select` de 200 px
+      à côté d'un autre ne laisse pas 44 px de cible tactile (§10.1).
+
+   `.it-toolbar__actions` s'applique aussi bien à un `<div>` qu'à un
+   `<Space>` : les sélecteurs visent les deux formes d'enfant.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.it-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* Le bloc de titre cède le premier : c'est lui qui doit se replier sur
+   plusieurs lignes, pas se réduire à une colonne de lettres. */
+.it-toolbar > * {
+  min-width: 0;
+}
+
+.it-toolbar__title {
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+/* Variante « haut » : le bloc de droite s'aligne sur la premiere ligne du
+   titre plutot que sur son milieu. Utile quand le titre tient sur deux lignes
+   et que la droite porte un seul bouton. */
+.it-toolbar--start {
+  align-items: flex-start;
+}
+
+.it-toolbar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.it-toolbar__actions > *,
+.it-toolbar__actions > .ant-space-item {
+  min-width: 0;
+}
+
+@media (max-width: 575px) {
+  .it-toolbar__actions {
+    width: 100%;
+  }
+
+  /* Deux filtres se partagent la ligne ; trois se replient en deux rangées.
+     `9rem` est le plancher en dessous duquel un libellé de filtre français
+     (« Filtrer par catégorie ») n'est plus lisible. */
+  .it-toolbar__actions > *,
+  .it-toolbar__actions > .ant-space-item {
+    flex: 1 1 9rem;
+  }
+
+  /* Les largeurs en dur posées en `style` sur les contrôles sont neutralisées
+     ici, et seulement ici : au-dessus de 576 px elles restent en vigueur. */
+  .it-toolbar__actions .ant-select,
+  .it-toolbar__actions .ant-picker,
+  .it-toolbar__actions .ant-input,
+  .it-toolbar__actions .ant-input-affix-wrapper,
+  .it-toolbar__actions .ant-input-search,
+  .it-toolbar__actions .ant-input-group-wrapper,
+  .it-toolbar__actions .ant-btn,
+  .it-toolbar__actions .ant-segmented {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+/* Le titre d'une carte AntD subit le même écrasement que les en-têtes
+   ci-dessus quand `extra` porte des contrôles larges : l'en-tête de `Card` est
+   une ligne flex sans repli. */
+.ant-card-head-wrapper {
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.ant-card-head-title {
+  min-width: 0;
+}
+
+.ant-card-extra {
+  min-width: 0;
+  margin-inline-start: 0;
+}
+
+@media (max-width: 575px) {
+  .ant-card-extra {
+    width: 100%;
+  }
+}
+
+/* Onglets : sous 992 px, une barre d'onglets plus large que l'écran doit
+   défiler avec des chevrons, jamais couper le dernier onglet. AntD le fait
+   déjà, à condition que le conteneur ne l'en empêche pas. */
+.ant-tabs-nav-wrap {
+  min-width: 0;
+}
+
+/* Les `Descriptions` en deux colonnes tiennent à partir de 576 px ; en dessous
+   leur libellé et leur valeur se partagent moins de 150 px chacun. Le filet
+   couvre les écrans qui n'ont pas déclaré de `column` responsive. */
+@media (max-width: 575px) {
+  .ant-descriptions-row > th,
+  .ant-descriptions-row > td {
+    display: block;
+    width: 100% !important;
+  }
+}
+
+/* Aucune page ne défile horizontalement dans son ensemble : le défilement
+   appartient au composant qui déborde (un tableau), pas à la page. */
+.ant-layout-content {
+  min-width: 0;
+  overflow-x: clip;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   Barres de filtres — mobile first (REFONTE_UI_UX.md §3.4, §10.1)
+
+   Le motif du depot etait `<Space wrap>` contenant, par filtre, un `<Space>`
+   « libelle : controle » avec une largeur en dur de 150 ou 200 px. Le `Space`
+   interieur ne se replie pas : a 320 px, « Propriete : » plus un select de
+   200 px demandent 280 px la ou la carte en offre 240, et le select deborde.
+   Le libelle a cote du champ coute par ailleurs la moitie de la largeur
+   disponible sur un telephone.
+
+   La grille remplace les deux : le libelle passe AU-DESSUS du champ, une
+   colonne sous 576 px, puis autant de colonnes de 220 px que la largeur en
+   autorise. Aucune largeur n'est ecrite par filtre — c'est la grille qui
+   decide, donc un filtre ajoute ne casse plus la rangee.
+   ════════════════════════════════════════════════════════════════════════ */
+
+.it-filters {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+@media (min-width: 576px) {
+  .it-filters {
+    grid-template-columns: repeat(auto-fit, minmax(13.75rem, 1fr));
+  }
+}
+
+.it-filters__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* Les largeurs en dur restees sur les controles sont neutralisees : dans une
+   grille, c'est la colonne qui porte la largeur. */
+.it-filters .ant-select,
+.it-filters .ant-picker,
+.it-filters .ant-input,
+.it-filters .ant-input-affix-wrapper,
+.it-filters .ant-input-number,
+.it-filters .ant-input-group-wrapper,
+.it-filters .ant-btn {
+  width: 100% !important;
+  min-width: 0 !important;
+}

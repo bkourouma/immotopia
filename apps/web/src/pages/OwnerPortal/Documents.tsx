@@ -175,7 +175,7 @@ export default function Documents() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="it-toolbar">
         <div>
           <Title level={2}>Documents</Title>
           <Text type="secondary">Accès aux documents de location</Text>
@@ -194,9 +194,9 @@ export default function Documents() {
           </Space>
         }
       >
-        <Space wrap>
-          <Space>
-            <Text strong>Type:</Text>
+        <div className="it-filters">
+          <div className="it-filters__field">
+            <Text strong>Type</Text>
             <Select
               style={{ width: 200 }}
               placeholder="Tous les types"
@@ -210,9 +210,9 @@ export default function Documents() {
                 </Option>
               ))}
             </Select>
-          </Space>
-          <Space>
-            <Text strong>Propriété:</Text>
+          </div>
+          <div className="it-filters__field">
+            <Text strong>Propriété</Text>
             <Select
               style={{ width: 200 }}
               placeholder="Toutes les propriétés"
@@ -226,8 +226,8 @@ export default function Documents() {
                 </Option>
               ))}
             </Select>
-          </Space>
-        </Space>
+          </div>
+        </div>
       </Card>
 
       {/* Documents Grouped by Type (T136) */}

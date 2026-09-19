@@ -268,7 +268,7 @@ export default function TenantMaintenance() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="it-toolbar">
         <div>
           <Title level={2}>Maintenance</Title>
           <Text type="secondary">Gérez vos demandes de maintenance</Text>
@@ -321,7 +321,7 @@ export default function TenantMaintenance() {
 
       {/* Filters (T099) */}
       <Card>
-        <Space size="middle" wrap>
+        <div className="it-toolbar__actions">
           <Space>
             <FilterOutlined />
             <Text strong>Filtres :</Text>
@@ -340,7 +340,7 @@ export default function TenantMaintenance() {
             <Select.Option value="CANCELED">Annulé</Select.Option>
           </Select>
           {statusFilter && <Button onClick={() => setStatusFilter(undefined)}>Réinitialiser</Button>}
-        </Space>
+        </div>
       </Card>
 
       {/* Tickets Table (T098, T099) */}
@@ -359,6 +359,7 @@ export default function TenantMaintenance() {
           <Alert message="Erreur" description={error} type="error" showIcon />
         ) : data && data.tickets.length > 0 ? (
           <Table
+            scroll={{ x: 'max-content' }}
             columns={columns}
             dataSource={data.tickets}
             rowKey="id"
@@ -413,7 +414,7 @@ export default function TenantMaintenance() {
         ) : selectedTicket ? (
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             {/* Ticket Details */}
-            <Descriptions bordered column={2}>
+            <Descriptions bordered column={{ xs: 1, sm: 2 }}>
               <Descriptions.Item label="Statut">{getStatusTag(selectedTicket.status)}</Descriptions.Item>
               <Descriptions.Item label="Priorité">{getPriorityTag(selectedTicket.priority)}</Descriptions.Item>
               <Descriptions.Item label="Catégorie">{getCategoryLabel(selectedTicket.category)}</Descriptions.Item>

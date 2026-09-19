@@ -137,7 +137,7 @@ export const Statistics: React.FC = () => {
               {Object.entries(stats.moduleActivations).map(([moduleKey, count]) => (
                 <Col xs={24} sm={12} key={moduleKey}>
                   <Card size="small" style={{ background: 'var(--ant-color-fill-quaternary)' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="it-toolbar">
                       <Text>{moduleKey}</Text>
                       <Text strong>{count}</Text>
                     </div>

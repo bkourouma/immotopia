@@ -98,14 +98,14 @@ export const SyndicDocuments: React.FC = () => {
           >
             Retour à la fiche syndic
           </Button>
-          <Space align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
-            <Title level={2} style={{ margin: 0 }}>
+          <div className="it-toolbar">
+            <Title level={2} className="it-toolbar__title" style={{ margin: 0 }}>
               Coffre documentaire
             </Title>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenCreate(true)}>
               Ajouter un document
             </Button>
-          </Space>
+          </div>
           <Paragraph type="secondary" style={{ marginBottom: 0 }}>
             Consultez les documents de copropriété et surveillez les expirations.
           </Paragraph>

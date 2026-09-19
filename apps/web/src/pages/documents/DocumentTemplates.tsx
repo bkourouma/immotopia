@@ -50,7 +50,7 @@ function libelleType(docType: string): string {
 /**
  * La liste des modèles, dans ses deux représentations (REFONTE_UI_UX.md §5.1).
  *
- * Le `<Table>` d'origine rendait cinq colonnes — dont une colonne d'actions
+ * Le `<Table scroll={{ x: 'max-content' }}>` d'origine rendait cinq colonnes — dont une colonne d'actions
  * portant trois boutons texte — sans aucune stratégie sous 992 px : à 375 px,
  * « Placeholders » et « Actions » sortaient de l'écran, et rien n'indiquait
  * qu'on pouvait faire glisser le tableau. `<DataView>` rend le tableau au-dessus
@@ -424,22 +424,24 @@ export function DocumentTemplates() {
 
         {/* Filter */}
         <Card>
-          <Space>
-            <Text strong>Filtrer par type :</Text>
-            <Select
-              value={filterDocType || undefined}
-              onChange={value => setFilterDocType(value || '')}
-              placeholder="Tous les types"
-              allowClear
-              style={{ width: 200 }}
-            >
-              {DOC_TYPES.map(type => (
-                <Option key={type.value} value={type.value}>
-                  {type.label}
-                </Option>
-              ))}
-            </Select>
-          </Space>
+          <div className="it-filters">
+            <div className="it-filters__field">
+              <Text strong>Filtrer par type</Text>
+              <Select
+                value={filterDocType || undefined}
+                onChange={value => setFilterDocType(value || '')}
+                placeholder="Tous les types"
+                allowClear
+                style={{ width: 200 }}
+              >
+                {DOC_TYPES.map(type => (
+                  <Option key={type.value} value={type.value}>
+                    {type.label}
+                  </Option>
+                ))}
+              </Select>
+            </div>
+          </div>
         </Card>
 
         {/* Liste — tableau au-dessus de 992 px, cartes en dessous. */}

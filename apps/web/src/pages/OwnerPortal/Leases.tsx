@@ -30,7 +30,7 @@ const statusOptions = [
   { value: 'ACTIVE', label: 'Actif' },
   { value: 'ENDED', label: 'Terminé' },
   { value: 'SUSPENDED', label: 'Suspendu' },
-  { value: 'CANCELED', label: 'Annulé' },
+  { value: 'CANCELED', label: 'Annulé' }
 ];
 
 const formatCurrency = (amount: number) => {
@@ -56,7 +56,7 @@ const getStatusTag = (status: string) => {
     ENDED: { label: 'Terminé', color: 'default' },
     SUSPENDED: { label: 'Suspendu', color: 'warning' },
     CANCELED: { label: 'Annulé', color: 'error' },
-    DRAFT: { label: 'Brouillon', color: 'default' },
+    DRAFT: { label: 'Brouillon', color: 'default' }
   };
   const config = statusMap[status] || { label: status, color: 'default' };
   return <Tag color={config.color}>{config.label}</Tag>;
@@ -116,17 +116,12 @@ export default function Leases() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="it-toolbar">
         <div>
           <Title level={2}>Mes baux</Title>
           <Text type="secondary">Gérez vos contrats de location</Text>
         </div>
-        <Button
-          icon={<SyncOutlined />}
-          onClick={loadLeases}
-          loading={loading}
-          aria-label="Rafraîchir les baux"
-        >
+        <Button icon={<SyncOutlined />} onClick={loadLeases} loading={loading} aria-label="Rafraîchir les baux">
           Actualiser
         </Button>
       </div>
@@ -166,7 +161,7 @@ export default function Leases() {
             style={{ width: 200 }}
             placeholder="Statut"
             value={filters.status || undefined}
-            onChange={(value) => setFilters({ ...filters, status: value || '' })}
+            onChange={value => setFilters({ ...filters, status: value || '' })}
             allowClear
           >
             {statusOptions.map(opt => (
@@ -183,14 +178,10 @@ export default function Leases() {
         {data.leases.length > 0 ? (
           <List
             dataSource={data.leases}
-            renderItem={(lease) => (
+            renderItem={lease => (
               <List.Item
                 actions={[
-                  <Button
-                    type="link"
-                    icon={<EyeOutlined />}
-                    onClick={() => navigate(`/owner/leases/${lease.id}`)}
-                  >
+                  <Button type="link" icon={<EyeOutlined />} onClick={() => navigate(`/owner/leases/${lease.id}`)}>
                     Voir les détails
                   </Button>
                 ]}

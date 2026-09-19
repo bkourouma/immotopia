@@ -171,6 +171,7 @@ export const StepRail: React.FC<StepRailProps> = ({ items, current, furthest, on
         <div
           style={{
             display: 'flex',
+            flexWrap: 'wrap',
             alignItems: 'baseline',
             justifyContent: 'space-between',
             gap: 'var(--space-3)',

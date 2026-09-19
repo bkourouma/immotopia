@@ -234,7 +234,7 @@ export const AdminCollaboratorDetail: React.FC = () => {
         {/* User Info */}
         <div className="bg-white rounded-lg shadow p-6 space-y-6">
           <h2 className="text-lg font-medium text-gray-900">Informations</h2>
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-gray-700">Email</label>
               <p className="mt-1 text-sm text-gray-900">{member.user.email}</p>

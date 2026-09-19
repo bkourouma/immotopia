@@ -22,6 +22,7 @@ export const ExpenseTracker: React.FC<Props> = ({ expenses }) => {
   return (
     <Card title="Charges et dépenses">
       <Table
+        scroll={{ x: 'max-content' }}
         rowKey="id"
         dataSource={expenses}
         pagination={{ pageSize: 6 }}
@@ -40,7 +41,8 @@ export const ExpenseTracker: React.FC<Props> = ({ expenses }) => {
           {
             title: 'Montant',
             dataIndex: 'amount',
-            render: (value: number, record: PropertyExpense) => `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
+            render: (value: number, record: PropertyExpense) =>
+              `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
           }
         ]}
       />

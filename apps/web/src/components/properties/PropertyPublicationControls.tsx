@@ -69,7 +69,7 @@ export const PropertyPublicationControls: React.FC<PropertyPublicationControlsPr
     <Card>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         {/* Publication Status */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div className="it-toolbar it-toolbar--start">
           <div>
             <Typography.Title level={5} style={{ margin: 0, marginBottom: 4 }}>
               Publication

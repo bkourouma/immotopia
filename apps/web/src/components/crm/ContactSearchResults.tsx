@@ -28,12 +28,12 @@ export function ContactSearchResults({
   const rowSelection =
     mode === 'select'
       ? {
-          selectedRowKeys: selectedContacts.map((c) => c.id),
+          selectedRowKeys: selectedContacts.map(c => c.id),
           onChange: (_: React.Key[], selectedRows: ContactSearchResultItem[]) => {
             if (onSelectionChange) {
               onSelectionChange(selectedRows);
             } else if (onSelectContact) {
-              if (multiSelect) selectedRows.forEach((r) => onSelectContact(r));
+              if (multiSelect) selectedRows.forEach(r => onSelectContact(r));
               else if (selectedRows.length) onSelectContact(selectedRows[0]);
             }
           },
@@ -47,8 +47,7 @@ export function ContactSearchResults({
     {
       title: 'Nom',
       key: 'name',
-      render: (_: unknown, r: ContactSearchResultItem) =>
-        `${r.firstName} ${r.lastName}`.trim() || '—'
+      render: (_: unknown, r: ContactSearchResultItem) => `${r.firstName} ${r.lastName}`.trim() || '—'
     },
     {
       title: 'Email',
@@ -83,7 +82,7 @@ export function ContactSearchResults({
       key: 'tags',
       render: (_: unknown, r: ContactSearchResultItem) =>
         r.tags?.length
-          ? r.tags.map((t) => (
+          ? r.tags.map(t => (
               <Tag key={t.id} color={t.color ?? undefined}>
                 {t.name}
               </Tag>
@@ -94,6 +93,7 @@ export function ContactSearchResults({
 
   return (
     <Table<ContactSearchResultItem>
+      scroll={{ x: 'max-content' }}
       rowKey="id"
       loading={loading}
       dataSource={contacts}
@@ -106,7 +106,7 @@ export function ContactSearchResults({
               pageSize: pagination.limit,
               total: pagination.total,
               showSizeChanger: true,
-              showTotal: (total) => `Total: ${total}`,
+              showTotal: total => `Total: ${total}`,
               onChange: (page, pageSize) => onPageChange(page, pageSize ?? pagination.limit)
             }
           : false

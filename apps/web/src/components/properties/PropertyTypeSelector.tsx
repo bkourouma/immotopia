@@ -21,17 +21,36 @@ const propertyTypeConfig: Record<PropertyType, { label: string; icon: React.Reac
   TERRAIN: { label: 'Terrain', icon: <MapPin className="h-5 w-5" /> },
   IMMEUBLE: { label: 'Immeuble', icon: <Building className="h-5 w-5" /> },
   PARKING_BOX: { label: 'Parking/Box', icon: <Car className="h-5 w-5" /> },
-  LOT_PROGRAMME_NEUF: { label: 'Lot (Programme neuf)', icon: <Building className="h-5 w-5" /> },
+  LOT_PROGRAMME_NEUF: { label: 'Lot (Programme neuf)', icon: <Building className="h-5 w-5" /> }
 };
+
+/**
+ * Types retirés du choix, sans être retirés du modèle.
+ *
+ * Leur libellé reste dans `propertyTypeConfig` : un bien déjà enregistré sous
+ * l'un d'eux doit continuer de s'afficher sous son nom, et non sous la valeur
+ * brute de l'énumération. Un type masqué reste donc proposé s'il est celui du
+ * bien ouvert — sinon, ouvrir une fiche existante en modification effacerait
+ * son type au premier enregistrement.
+ */
+const TYPES_MASQUES: PropertyType[] = [
+  'CHAMBRE_COLOCATION',
+  'BOUTIQUE_COMMERCIAL',
+  'LOT_PROGRAMME_NEUF'
+] as PropertyType[];
 
 export const PropertyTypeSelector: React.FC<PropertyTypeSelectorProps> = ({
   selectedType,
   onSelect,
-  disabled = false,
+  disabled = false
 }) => {
+  const typesProposes = Object.entries(propertyTypeConfig).filter(
+    ([type]) => !TYPES_MASQUES.includes(type as PropertyType) || type === selectedType
+  );
+
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-      {Object.entries(propertyTypeConfig).map(([type, config]) => (
+      {typesProposes.map(([type, config]) => (
         <button
           key={type}
           type="button"
@@ -46,17 +65,10 @@ export const PropertyTypeSelector: React.FC<PropertyTypeSelectorProps> = ({
             disabled && 'cursor-not-allowed opacity-50'
           )}
         >
-          <div className={cn(selectedType === type ? 'text-blue-600' : 'text-slate-400')}>
-            {config.icon}
-          </div>
+          <div className={cn(selectedType === type ? 'text-blue-600' : 'text-slate-400')}>{config.icon}</div>
           <span className="text-sm font-medium">{config.label}</span>
         </button>
       ))}
     </div>
   );
 };
-
-
-
-
-

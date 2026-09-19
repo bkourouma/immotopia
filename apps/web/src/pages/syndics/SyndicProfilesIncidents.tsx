@@ -340,6 +340,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
           <>
             <Card title="Profils propriétaires">
               <Table
+                scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={ownerProfiles}
                 pagination={{ pageSize: 8 }}
@@ -380,6 +381,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
 
             <Card title="Profils locataires">
               <Table
+                scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={tenantProfiles}
                 pagination={{ pageSize: 8 }}
@@ -416,12 +418,14 @@ export const SyndicProfilesIncidents: React.FC = () => {
 
             <Card title="Incidents et imputations">
               <Table
+                scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={incidents}
                 pagination={{ pageSize: 8 }}
                 expandable={{
                   expandedRowRender: incident => (
                     <Table
+                      scroll={{ x: 'max-content' }}
                       rowKey="id"
                       dataSource={incident.imputations || []}
                       pagination={false}

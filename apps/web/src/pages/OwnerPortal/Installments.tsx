@@ -200,7 +200,7 @@ export default function Installments() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="it-toolbar">
         <div>
           <Title level={2}>Échéances</Title>
           <Text type="secondary">Suivi des échéances de paiement</Text>
@@ -284,9 +284,9 @@ export default function Installments() {
           </Space>
         }
       >
-        <Space wrap>
-          <Space>
-            <Text strong>Statut:</Text>
+        <div className="it-filters">
+          <div className="it-filters__field">
+            <Text strong>Statut</Text>
             <Select
               style={{ width: 150 }}
               placeholder="Tous les statuts"
@@ -300,9 +300,9 @@ export default function Installments() {
               <Option value="PAID">Payé</Option>
               <Option value="OVERDUE">En retard</Option>
             </Select>
-          </Space>
-          <Space>
-            <Text strong>Propriété:</Text>
+          </div>
+          <div className="it-filters__field">
+            <Text strong>Propriété</Text>
             <Select
               style={{ width: 200 }}
               placeholder="Toutes les propriétés"
@@ -316,22 +316,23 @@ export default function Installments() {
                 </Option>
               ))}
             </Select>
-          </Space>
-          <Space>
-            <Text strong>Période:</Text>
+          </div>
+          <div className="it-filters__field">
+            <Text strong>Période</Text>
             <RangePicker
               value={dateRange}
               onChange={dates => setDateRange(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
               format="DD/MM/YYYY"
             />
-          </Space>
-        </Space>
+          </div>
+        </div>
       </Card>
 
       {/* Installments Table (T097) */}
       <Card title="Liste des échéances">
         {data && data.installments.length > 0 ? (
           <Table
+            scroll={{ x: 'max-content' }}
             columns={columns}
             dataSource={data.installments}
             rowKey="id"

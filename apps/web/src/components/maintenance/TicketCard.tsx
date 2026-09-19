@@ -39,7 +39,8 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, onEdit,
   const formattedDate = safeFormatDate(ticket.createdAt, 'DD MMM YYYY', 'Date invalide');
   const canEdit = ticket.status === MaintenanceTicketStatus.DECLARED;
   // Can delete permanently only if DECLARED or CANCELED
-  const canDelete = ticket.status === MaintenanceTicketStatus.DECLARED || ticket.status === MaintenanceTicketStatus.CANCELED;
+  const canDelete =
+    ticket.status === MaintenanceTicketStatus.DECLARED || ticket.status === MaintenanceTicketStatus.CANCELED;
 
   const handleEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -63,45 +64,41 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, onEdit,
       onClick={onClick}
       style={{ cursor: onClick ? 'pointer' : 'default', marginBottom: 16 }}
       actions={
-        (onEdit || onDelete) ? [
-          canEdit && onEdit ? (
-            <Button
-              key="edit"
-              type="text"
-              icon={<EditOutlined />}
-              onClick={handleEdit}
-              style={{ width: '100%' }}
-            >
-              Modifier
-            </Button>
-          ) : null,
-          canDelete && onDelete ? (
-            <Popconfirm
-              key="delete"
-              title="Supprimer définitivement le ticket"
-              description="Êtes-vous sûr de vouloir supprimer définitivement ce ticket ? Cette action est irréversible."
-              onConfirm={handleDelete}
-              onCancel={(e) => e?.stopPropagation()}
-              okText="Oui, supprimer"
-              cancelText="Non"
-              okButtonProps={{ danger: true }}
-            >
-              <Button
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={(e) => e.stopPropagation()}
-                style={{ width: '100%' }}
-              >
-                Supprimer
-              </Button>
-            </Popconfirm>
-          ) : null
-        ].filter(Boolean) : undefined
+        onEdit || onDelete
+          ? [
+              canEdit && onEdit ? (
+                <Button key="edit" type="text" icon={<EditOutlined />} onClick={handleEdit} style={{ width: '100%' }}>
+                  Modifier
+                </Button>
+              ) : null,
+              canDelete && onDelete ? (
+                <Popconfirm
+                  key="delete"
+                  title="Supprimer définitivement le ticket"
+                  description="Êtes-vous sûr de vouloir supprimer définitivement ce ticket ? Cette action est irréversible."
+                  onConfirm={handleDelete}
+                  onCancel={e => e?.stopPropagation()}
+                  okText="Oui, supprimer"
+                  cancelText="Non"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={e => e.stopPropagation()}
+                    style={{ width: '100%' }}
+                  >
+                    Supprimer
+                  </Button>
+                </Popconfirm>
+              ) : null
+            ].filter(Boolean)
+          : undefined
       }
     >
       <Space direction="vertical" size="small" style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div className="it-toolbar it-toolbar--start">
           <Title level={5} style={{ margin: 0, flex: 1 }}>
             {ticket.title}
           </Title>
@@ -110,9 +107,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, onEdit,
 
         <div>
           <Tag>{categoryLabels[ticket.category] || ticket.category}</Tag>
-          <Tag color={priorityColors[ticket.priority]}>
-            {priorityLabels[ticket.priority] || ticket.priority}
-          </Tag>
+          <Tag color={priorityColors[ticket.priority]}>{priorityLabels[ticket.priority] || ticket.priority}</Tag>
         </div>
 
         <Text type="secondary" ellipsis style={{ display: 'block' }}>

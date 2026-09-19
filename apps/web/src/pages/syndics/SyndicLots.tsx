@@ -581,7 +581,7 @@ export const SyndicLots: React.FC = () => {
       >
         <Form form={form} layout="vertical" initialValues={{ lotType: 'APARTMENT' }}>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Numéro de lot"
                 name="lotNumber"
@@ -590,7 +590,7 @@ export const SyndicLots: React.FC = () => {
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Type de lot"
                 name="lotType"
@@ -602,7 +602,7 @@ export const SyndicLots: React.FC = () => {
           </Row>
 
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Tantièmes généraux"
                 name="generalShares"
@@ -611,7 +611,7 @@ export const SyndicLots: React.FC = () => {
                 <InputNumber min={1} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item label="Tantièmes spéciaux" name="specialShares">
                 <InputNumber min={1} style={{ width: '100%' }} />
               </Form.Item>
@@ -720,7 +720,7 @@ export const SyndicLots: React.FC = () => {
             />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Date de début"
                 name="startDate"
@@ -729,7 +729,7 @@ export const SyndicLots: React.FC = () => {
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item label="Date de fin" name="endDate">
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>

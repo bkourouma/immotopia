@@ -110,9 +110,9 @@ export const Login: React.FC = () => {
               <img
                 src={logoImmoTopia}
                 alt="ImmoTopia, l'ERP immobilier le plus complet"
-                width={220}
-                height={68}
-                style={{ display: 'block', margin: '0 auto', width: '100%', maxWidth: 220, height: 'auto' }}
+                width={176}
+                height={54}
+                style={{ display: 'block', margin: '0 auto', width: '100%', maxWidth: 176, height: 'auto' }}
               />
             </Title>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>

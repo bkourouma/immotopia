@@ -283,6 +283,7 @@ export const SyndicAccounting: React.FC = () => {
 
             <Card title="Plan comptable">
               <Table
+                scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={accounts}
                 pagination={{ pageSize: 10 }}
@@ -306,6 +307,7 @@ export const SyndicAccounting: React.FC = () => {
 
             <Card title="Journaux comptables">
               <Table
+                scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={journals}
                 pagination={{ pageSize: 10 }}
@@ -325,6 +327,7 @@ export const SyndicAccounting: React.FC = () => {
 
             <Card title="Écritures comptables">
               <Table
+                scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={entries}
                 pagination={{ pageSize: 10 }}
@@ -369,6 +372,7 @@ export const SyndicAccounting: React.FC = () => {
               <Col xs={24} xl={12}>
                 <Card title="Balance de vérification">
                   <Table
+                    scroll={{ x: 'max-content' }}
                     rowKey="accountId"
                     dataSource={trialBalance.items}
                     pagination={{ pageSize: 8 }}
@@ -392,6 +396,7 @@ export const SyndicAccounting: React.FC = () => {
               <Col xs={24} xl={12}>
                 <Card title="Grand livre">
                   <Table
+                    scroll={{ x: 'max-content' }}
                     rowKey="id"
                     dataSource={ledger}
                     pagination={{ pageSize: 8 }}
@@ -433,7 +438,7 @@ export const SyndicAccounting: React.FC = () => {
           initialValues={{ accountType: 'ASSET', accountClass: 1, isAuxiliary: false }}
         >
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Numéro compte"
                 name="accountNumber"
@@ -442,7 +447,7 @@ export const SyndicAccounting: React.FC = () => {
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item label="Classe" name="accountClass" rules={[{ required: true, message: 'Classe obligatoire' }]}>
                 <InputNumber min={1} max={9} style={{ width: '100%' }} />
               </Form.Item>
@@ -484,12 +489,12 @@ export const SyndicAccounting: React.FC = () => {
           initialValues={{ journalType: 'GENERAL', fiscalYear: new Date().getFullYear() }}
         >
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item label="Code" name="code" rules={[{ required: true, message: 'Code obligatoire' }]}>
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Exercice"
                 name="fiscalYear"
@@ -537,12 +542,12 @@ export const SyndicAccounting: React.FC = () => {
           }}
         >
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item label="Journal" name="journalId" rules={[{ required: true, message: 'Journal obligatoire' }]}>
                 <Select options={journalOptions} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Date écriture"
                 name="entryDate"
@@ -553,7 +558,7 @@ export const SyndicAccounting: React.FC = () => {
             </Col>
           </Row>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Référence"
                 name="reference"
@@ -562,7 +567,7 @@ export const SyndicAccounting: React.FC = () => {
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item label="Source" name="sourceType" rules={[{ required: true, message: 'Source obligatoire' }]}>
                 <Select options={sourceTypeOptions} />
               </Form.Item>
@@ -581,7 +586,7 @@ export const SyndicAccounting: React.FC = () => {
               <Space direction="vertical" style={{ width: '100%' }} size={8}>
                 {fields.map((field, index) => (
                   <Row gutter={12} key={field.key}>
-                    <Col span={8}>
+                    <Col xs={24} md={8}>
                       <Form.Item
                         {...field}
                         label={`Compte #${index + 1}`}
@@ -591,17 +596,17 @@ export const SyndicAccounting: React.FC = () => {
                         <Select options={accountOptions} />
                       </Form.Item>
                     </Col>
-                    <Col span={4}>
+                    <Col xs={12} md={4}>
                       <Form.Item {...field} label="Débit" name={[field.name, 'debit']}>
                         <InputNumber min={0} style={{ width: '100%' }} />
                       </Form.Item>
                     </Col>
-                    <Col span={4}>
+                    <Col xs={12} md={4}>
                       <Form.Item {...field} label="Credit" name={[field.name, 'credit']}>
                         <InputNumber min={0} style={{ width: '100%' }} />
                       </Form.Item>
                     </Col>
-                    <Col span={6}>
+                    <Col xs={24} md={6}>
                       <Form.Item
                         {...field}
                         label="Libelle ligne"
@@ -611,7 +616,7 @@ export const SyndicAccounting: React.FC = () => {
                         <Input />
                       </Form.Item>
                     </Col>
-                    <Col span={2} style={{ display: 'flex', alignItems: 'center' }}>
+                    <Col xs={24} md={2} style={{ display: 'flex', alignItems: 'center' }}>
                       <Button danger onClick={() => remove(field.name)} disabled={fields.length <= 2}>
                         X
                       </Button>

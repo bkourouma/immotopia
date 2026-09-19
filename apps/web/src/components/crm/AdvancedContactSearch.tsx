@@ -229,6 +229,8 @@ export function AdvancedContactSearch({
                 background: '#fafafa',
                 borderRadius: 8,
                 display: 'flex',
+                flexWrap: 'wrap',
+                gap: 8,
                 justifyContent: 'space-between',
                 alignItems: 'center'
               }}

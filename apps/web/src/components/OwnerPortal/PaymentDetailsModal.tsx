@@ -96,27 +96,21 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
         {/* Payment Information */}
         <div>
           <Title level={4}>Informations du paiement</Title>
-          <Descriptions bordered column={2}>
+          <Descriptions bordered column={{ xs: 1, sm: 2 }}>
             <Descriptions.Item label="Montant">
               <Text strong>{formatCurrency(Number(payment.amount))}</Text>
             </Descriptions.Item>
-            <Descriptions.Item label="Statut">
-              {getStatusTag(payment.status)}
-            </Descriptions.Item>
-            <Descriptions.Item label="Méthode">
-              {getMethodLabel(payment.method)}
-            </Descriptions.Item>
+            <Descriptions.Item label="Statut">{getStatusTag(payment.status)}</Descriptions.Item>
+            <Descriptions.Item label="Méthode">{getMethodLabel(payment.method)}</Descriptions.Item>
             <Descriptions.Item label="Date">
               {payment.succeeded_at
                 ? dayjs(payment.succeeded_at).format('DD/MM/YYYY HH:mm')
                 : payment.initiated_at
-                ? dayjs(payment.initiated_at).format('DD/MM/YYYY HH:mm')
-                : '-'}
+                  ? dayjs(payment.initiated_at).format('DD/MM/YYYY HH:mm')
+                  : '-'}
             </Descriptions.Item>
             {payment.lease?.property && (
-              <Descriptions.Item label="Propriété">
-                {payment.lease.property.address}
-              </Descriptions.Item>
+              <Descriptions.Item label="Propriété">{payment.lease.property.address}</Descriptions.Item>
             )}
             {payment.lease?.primary_renter?.user && (
               <Descriptions.Item label="Locataire">
@@ -124,24 +118,16 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
               </Descriptions.Item>
             )}
             {payment.psp_transaction_id && (
-              <Descriptions.Item label="ID Transaction PSP">
-                {payment.psp_transaction_id}
-              </Descriptions.Item>
+              <Descriptions.Item label="ID Transaction PSP">{payment.psp_transaction_id}</Descriptions.Item>
             )}
             {payment.psp_reference && (
-              <Descriptions.Item label="Référence PSP">
-                {payment.psp_reference}
-              </Descriptions.Item>
+              <Descriptions.Item label="Référence PSP">{payment.psp_reference}</Descriptions.Item>
             )}
             {payment.mm_operator && (
-              <Descriptions.Item label="Opérateur Mobile Money">
-                {payment.mm_operator}
-              </Descriptions.Item>
+              <Descriptions.Item label="Opérateur Mobile Money">{payment.mm_operator}</Descriptions.Item>
             )}
             {payment.mm_phone && (
-              <Descriptions.Item label="Téléphone Mobile Money">
-                {payment.mm_phone}
-              </Descriptions.Item>
+              <Descriptions.Item label="Téléphone Mobile Money">{payment.mm_phone}</Descriptions.Item>
             )}
           </Descriptions>
         </div>
@@ -151,6 +137,7 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
           <div>
             <Title level={4}>Allocations aux échéances</Title>
             <Table
+              scroll={{ x: 'max-content' }}
               columns={allocationColumns}
               dataSource={payment.allocations}
               rowKey="id"

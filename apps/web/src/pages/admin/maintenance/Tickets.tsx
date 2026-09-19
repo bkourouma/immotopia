@@ -269,7 +269,7 @@ export const Tickets: React.FC = () => {
   return (
     <>
       <div style={{ padding: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        <div className="it-toolbar" style={{ marginBottom: 24 }}>
           <Title level={2}>Gestion des tickets de maintenance</Title>
         </div>
 

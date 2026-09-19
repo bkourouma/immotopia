@@ -8,6 +8,7 @@ import {
   Select,
   Button,
   Checkbox,
+  Radio,
   InputNumber,
   DatePicker,
   Row,
@@ -17,13 +18,14 @@ import {
   Empty,
   Divider
 } from 'antd';
-import { SaveOutlined, ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { StepRail } from '../primitives/StepRail';
 import { PropertyTypeSelector } from './PropertyTypeSelector';
 import { LocationSelector } from '../ui/location-selector';
 import { PropertyMediaUpload } from './PropertyMediaUpload';
 import { PropertyMediaGallery } from './PropertyMediaGallery';
+import apiClient from '../../utils/api-client';
 import {
   CreatePropertyRequest,
   UpdatePropertyRequest,
@@ -46,6 +48,105 @@ import { listContacts, CrmContact } from '../../services/crm-service';
 const { TextArea } = Input;
 const { Title, Text } = Typography;
 
+/**
+ * Les étapes du parcours, désignées par un nom et non par leur rang.
+ *
+ * Le rang était la seule identité d'une étape : la validation branchait sur
+ * `case 3`, l'enregistrement préalable aux médias sur `currentStep === 5`.
+ * Tant que les six étapes étaient les mêmes pour tous les types de bien, cela
+ * tenait. Dès qu'une étape disparaît — un parking n'a pas de caractéristiques
+ * générales — ou s'ajoute — un immeuble a des appartements — tous les rangs
+ * glissent et chaque branche désigne l'étape d'à côté.
+ */
+type CleEtape = 'identification' | 'localisation' | 'caracteristiques' | 'prix' | 'specificites' | 'medias';
+
+/** Étapes qui exigent que le bien existe déjà en base pour fonctionner. */
+const ETAPES_APRES_ENREGISTREMENT: CleEtape[] = ['medias'];
+
+/**
+ * Un appartement saisi au fil de la création de l'immeuble.
+ *
+ * Les lots se créaient un par un dans une fenêtre modale, après coup, depuis la
+ * fiche de l'immeuble. Ils se saisissent maintenant dans la page, à la suite des
+ * caractéristiques de l'immeuble : le nombre d'appartements déclaré fait
+ * apparaître autant de lignes, pré-titrées et modifiables. Rien ne part en base
+ * avant le bouton final.
+ */
+interface AppartementSaisi {
+  titre: string;
+  surface: string;
+  pieces: string;
+  chambres: string;
+  sallesDeBain: string;
+  prix: string;
+}
+
+/**
+ * Plafond du nombre de lignes générées.
+ *
+ * Une faute de frappe dans « Nombre total d'appartements » — 1200 au lieu de 12
+ * — ne doit pas tenter de peindre douze cents formulaires et figer l'onglet.
+ */
+const MAX_APPARTEMENTS = 60;
+
+function appartementVide(rang: number): AppartementSaisi {
+  return { titre: `Appartement ${rang}`, surface: '', pieces: '', chambres: '', sallesDeBain: '', prix: '' };
+}
+
+/**
+ * Ce que « Caractéristiques générales » a à demander, type par type.
+ *
+ * L'écran posait ces questions à tout le monde, en excluant au cas par cas au
+ * fil du JSX. Un parking n'y trouvait donc **aucun champ** : l'étape s'affichait
+ * vide, et il fallait cliquer « Suivant » sur une page blanche. Un terrain n'y
+ * lisait qu'un encart annonçant l'étape suivante.
+ *
+ * La table dit qui demande quoi. Quand elle ne retient rien, l'étape n'existe
+ * pas — c'est `aDesCaracteristiquesGenerales` qui le décide.
+ */
+function caracteristiquesGenerales(type: PropertyType) {
+  const batiDatable = ![PropertyType.TERRAIN, PropertyType.PARKING_BOX, PropertyType.LOT_PROGRAMME_NEUF].includes(type);
+  const habitable = [
+    PropertyType.APPARTEMENT,
+    PropertyType.STUDIO,
+    PropertyType.DUPLEX_TRIPLEX,
+    PropertyType.MAISON_VILLA,
+    PropertyType.CHAMBRE_COLOCATION
+  ].includes(type);
+
+  return {
+    // L'immeuble non plus : sa surface est la somme de celle de ses
+    // appartements, saisies lot par lot. Une « surface principale » d'immeuble
+    // ne serait ni vérifiable ni utilisée.
+    surface: ![PropertyType.TERRAIN, PropertyType.PARKING_BOX, PropertyType.IMMEUBLE].includes(type),
+    anneeEtEtat: batiDatable,
+    // Le standing classe un logement ou un immeuble de bureaux. Il ne veut rien
+    // dire d'un entrepôt, d'un terrain ou d'une place de parking.
+    standing: habitable || [PropertyType.IMMEUBLE, PropertyType.BUREAU].includes(type),
+    pieces: habitable,
+    surfaceTerrain: type === PropertyType.MAISON_VILLA,
+    meuble: [PropertyType.APPARTEMENT, PropertyType.STUDIO, PropertyType.DUPLEX_TRIPLEX].includes(type)
+  };
+}
+
+function aDesCaracteristiquesGenerales(type: PropertyType): boolean {
+  return Object.values(caracteristiquesGenerales(type)).some(Boolean);
+}
+
+/**
+ * Le nom affiché d'un propriétaire dans la liste.
+ *
+ * L'adresse e-mail suivait le nom entre parenthèses ; elle reste la valeur
+ * envoyée, mais n'a plus à être lue. Le repli n'est pas décoratif : un contact
+ * de type `COMPANY` porte sa raison sociale et peut n'avoir ni prénom ni nom,
+ * et une option vide serait impossible à choisir. Il n'y en a aucun dans le
+ * jeu actuel — le type en autorise.
+ */
+function nomProprietaire(owner: CrmContact): string {
+  const nom = `${owner.firstName || ''} ${owner.lastName || ''}`.trim();
+  return owner.legalName?.trim() || nom || owner.email || 'Contact sans nom';
+}
+
 interface PropertyFormWizardProps {
   property?: Property;
   tenantId: string;
@@ -64,6 +165,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
   // validait que l'etape courante et sautait les quatre du milieu.
   const [maxStepReached, setMaxStepReached] = useState(0);
   const [savedPropertyId, setSavedPropertyId] = useState<string | null>(property?.id || null);
+  const [appartements, setAppartements] = useState<AppartementSaisi[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [template, setTemplate] = useState<PropertyTypeTemplate | null>(null);
   const [loadingTemplate, setLoadingTemplate] = useState(false);
@@ -80,7 +182,6 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     description: property?.description || '',
     status: property?.status || PropertyStatus.DRAFT,
     availability: property?.availability || PropertyAvailability.AVAILABLE,
-    availabilityDate: '',
     location: null as GeographicLocation | null,
     locationZone: property?.locationZone || '',
     address: property?.address || '',
@@ -95,6 +196,9 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     transactionModes: property?.transactionModes || [PropertyTransactionMode.SALE],
     price: property?.price?.toString() || '',
     fees: property?.fees?.toString() || '',
+    // Le champ « Devise » a été retiré de l'écran : tous les biens sont
+    // libellés en francs CFA. La valeur continue de partir à l'API, la colonne
+    // existe toujours — c'est le choix qui disparaît, pas la donnée.
     currency: property?.currency || 'CFA',
     deposit: '',
     commissionMode: '',
@@ -200,65 +304,6 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     return processed;
   };
 
-  const handleSaveDraft = async () => {
-    setIsLoading(true);
-    try {
-      const submitData: CreatePropertyRequest | UpdatePropertyRequest = {
-        ...(property ? {} : { propertyType: formData.propertyType, ownershipType: formData.ownershipType }),
-        ownerUserId: formData.ownerUserId && !formData.ownerUserId.includes('@') ? formData.ownerUserId : undefined,
-        ownerEmail: formData.ownerUserId && formData.ownerUserId.includes('@') ? formData.ownerUserId : undefined,
-        title: formData.title.trim() || 'Brouillon',
-        description: formData.description.trim() || '',
-        address: formData.address.trim() || undefined,
-        locationZone: formData.locationZone.trim() || undefined,
-        latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
-        longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
-        transactionModes: formData.transactionModes,
-        price: formData.price ? parseFloat(parseNumber(formData.price)) : undefined,
-        fees: formData.fees ? parseFloat(parseNumber(formData.fees)) : undefined,
-        currency: formData.currency,
-        surfaceArea: formData.surfaceArea ? parseFloat(formData.surfaceArea) : undefined,
-        surfaceUseful: formData.surfaceUseful ? parseFloat(formData.surfaceUseful) : undefined,
-        surfaceTerrain: formData.surfaceTerrain ? parseFloat(formData.surfaceTerrain) : undefined,
-        rooms: formData.rooms ? parseInt(formData.rooms, 10) : undefined,
-        bedrooms: formData.bedrooms ? parseInt(formData.bedrooms, 10) : undefined,
-        bathrooms: formData.bathrooms ? parseInt(formData.bathrooms, 10) : undefined,
-        furnishingStatus: formData.furnishingStatus,
-        availability: formData.availability,
-        typeSpecificData: processTypeSpecificData({
-          ...formData.typeSpecificData,
-          country: formData.location?.country,
-          countryId: formData.location?.countryId,
-          region: formData.location?.region,
-          regionId: formData.location?.regionId,
-          commune: formData.location?.commune,
-          communeId: formData.location?.communeId,
-          pointsOfInterest: formData.pointsOfInterest,
-          constructionYear: formData.constructionYear ? parseInt(formData.constructionYear, 10) : undefined,
-          generalCondition: formData.generalCondition,
-          standing: formData.standing,
-          deposit: formData.deposit ? parseFloat(parseNumber(formData.deposit)) : undefined,
-          commissionMode: formData.commissionMode,
-          commissionAmount: formData.commissionAmount ? parseFloat(parseNumber(formData.commissionAmount)) : undefined,
-          availabilityDate: formData.availabilityDate || undefined
-        })
-      };
-
-      if (savedPropertyId) {
-        await updateProperty(tenantId, savedPropertyId, submitData);
-      } else {
-        const newProperty = await createProperty(tenantId, submitData as CreatePropertyRequest);
-        setSavedPropertyId(newProperty.id);
-      }
-      message.success('Brouillon enregistré avec succès !');
-    } catch (error: any) {
-      console.error('Error saving draft:', error);
-      message.error(error.response?.data?.error || "Erreur lors de l'enregistrement du brouillon");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleFinish = async () => {
     setIsLoading(true);
     try {
@@ -298,8 +343,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
           standing: formData.standing,
           deposit: formData.deposit ? parseFloat(parseNumber(formData.deposit)) : undefined,
           commissionMode: formData.commissionMode,
-          commissionAmount: formData.commissionAmount ? parseFloat(parseNumber(formData.commissionAmount)) : undefined,
-          availabilityDate: formData.availabilityDate || undefined
+          commissionAmount: formData.commissionAmount ? parseFloat(parseNumber(formData.commissionAmount)) : undefined
         })
       };
 
@@ -309,6 +353,10 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
       } else {
         const newProperty = await createProperty(tenantId, submitData as CreatePropertyRequest);
         finalPropertyId = newProperty.id;
+      }
+
+      if (finalPropertyId && (formData.propertyType as PropertyType) === PropertyType.IMMEUBLE) {
+        await creerLesAppartements(finalPropertyId);
       }
 
       if (onComplete && finalPropertyId) {
@@ -325,32 +373,29 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
   const validateStep = (step: number): boolean => {
     const newErrors: Record<string, string> = {};
 
-    switch (step) {
-      case 0:
+    switch (cleEtape(step)) {
+      case 'identification':
         if (!formData.propertyType) {
           newErrors.propertyType = 'Le type de propriété est requis';
         }
         if (!formData.title.trim()) {
           newErrors.title = 'Le titre est requis';
         }
-        if (!formData.description.trim()) {
-          newErrors.description = 'La description est requise';
-        }
         if (!formData.ownerUserId || !String(formData.ownerUserId).trim()) {
           newErrors.ownerUserId = 'Le propriétaire est requis';
         }
         break;
-      case 1:
+      case 'localisation':
         if (!formData.location) {
           newErrors.location = 'La localisation est requise';
         }
         break;
-      case 3:
+      case 'prix':
         if (formData.transactionModes.length === 0) {
-          newErrors.transactionModes = 'Au moins un mode de transaction est requis';
+          newErrors.transactionModes = 'Un mode de transaction est requis';
         }
         break;
-      case 4:
+      case 'specificites':
         if (template && template.sections) {
           template.sections.forEach((section: any) => {
             section.fieldDefinitions?.forEach((field: any) => {
@@ -426,6 +471,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               {field.unit && <Text type="secondary"> ({field.unit})</Text>}
             </Text>
             <Input
+              aria-label={field.label}
               value={value}
               onChange={e => {
                 setFormData(prev => ({
@@ -456,6 +502,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               {field.unit && <Text type="secondary"> ({field.unit})</Text>}
             </Text>
             <InputNumber
+              aria-label={field.label}
               style={{ width: '100%' }}
               value={value ? Number(value) : undefined}
               onChange={val => {
@@ -483,6 +530,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
         return (
           <div key={fieldKey}>
             <Checkbox
+              aria-label={field.label}
               checked={!!value}
               onChange={e => {
                 setFormData(prev => ({
@@ -513,6 +561,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               {field.required && <Text type="danger"> *</Text>}
             </Text>
             <Select
+              aria-label={field.label}
               style={{ width: '100%' }}
               value={value || undefined}
               onChange={val => {
@@ -584,6 +633,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               {field.required && <Text type="danger"> *</Text>}
             </Text>
             <DatePicker
+              aria-label={field.label}
               style={{ width: '100%' }}
               value={value ? dayjs(value) : undefined}
               onChange={date => {
@@ -609,26 +659,113 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     }
   };
 
-  const shouldShowRoomFields = (propertyType: PropertyType): boolean => {
-    return (
-      propertyType === PropertyType.APPARTEMENT ||
-      propertyType === PropertyType.STUDIO ||
-      propertyType === PropertyType.DUPLEX_TRIPLEX ||
-      propertyType === PropertyType.MAISON_VILLA ||
-      propertyType === PropertyType.CHAMBRE_COLOCATION
+  /**
+   * Le nombre d'appartements déclaré fait apparaître autant de lignes.
+   *
+   * Les lignes déjà saisies sont conservées quand le nombre augmente : corriger
+   * « 10 » en « 12 » ajoute deux lignes, il ne repart pas de zéro. Quand il
+   * diminue, seules les dernières tombent.
+   */
+  const nbAppartementsDeclare = Number((formData.typeSpecificData as Record<string, unknown>)?.units_count) || 0;
+
+  useEffect(() => {
+    if ((formData.propertyType as PropertyType) !== PropertyType.IMMEUBLE) return;
+    const voulu = Math.min(Math.max(0, Math.floor(nbAppartementsDeclare)), MAX_APPARTEMENTS);
+
+    setAppartements(precedents => {
+      if (precedents.length === voulu) return precedents;
+      if (voulu < precedents.length) return precedents.slice(0, voulu);
+      const ajoutes = Array.from({ length: voulu - precedents.length }, (_, i) =>
+        appartementVide(precedents.length + i + 1)
+      );
+      return [...precedents, ...ajoutes];
+    });
+  }, [nbAppartementsDeclare, formData.propertyType]);
+
+  const modifierAppartement = (rang: number, champ: keyof AppartementSaisi, valeur: string) => {
+    setAppartements(precedents =>
+      precedents.map((appartement, i) => (i === rang ? { ...appartement, [champ]: valeur } : appartement))
     );
   };
 
-  const shouldShowFurnishingField = (propertyType: PropertyType): boolean => {
-    return (
-      propertyType === PropertyType.APPARTEMENT ||
-      propertyType === PropertyType.STUDIO ||
-      propertyType === PropertyType.DUPLEX_TRIPLEX
-    );
+  /**
+   * Crée les lots une fois l'immeuble enregistré.
+   *
+   * Par lots de cinq, et avec `allSettled` : un appartement refusé ne doit pas
+   * emporter les onze autres, et l'utilisateur doit savoir combien sont passés.
+   */
+  const creerLesAppartements = async (immeubleId: string) => {
+    const aCreer = appartements.filter(a => a.titre.trim());
+    if (aCreer.length === 0) return;
+
+    const charge = aCreer.map(appartement => ({
+      propertyType: PropertyType.APPARTEMENT,
+      ownershipType: formData.ownershipType,
+      title: appartement.titre.trim(),
+      address: formData.address.trim() || undefined,
+      locationZone: formData.locationZone.trim() || undefined,
+      transactionModes: formData.transactionModes,
+      currency: formData.currency,
+      price: appartement.prix ? parseFloat(parseNumber(appartement.prix)) : undefined,
+      surfaceArea: appartement.surface ? parseFloat(appartement.surface) : undefined,
+      rooms: appartement.pieces ? parseInt(appartement.pieces, 10) : undefined,
+      bedrooms: appartement.chambres ? parseInt(appartement.chambres, 10) : undefined,
+      bathrooms: appartement.sallesDeBain ? parseInt(appartement.sallesDeBain, 10) : undefined,
+      availability: PropertyAvailability.AVAILABLE,
+      status: PropertyStatus.AVAILABLE
+    }));
+
+    const TAILLE_LOT = 5;
+    let crees = 0;
+    for (let i = 0; i < charge.length; i += TAILLE_LOT) {
+      const resultats = await Promise.allSettled(
+        charge
+          .slice(i, i + TAILLE_LOT)
+          .map(corps => apiClient.post(`/tenants/${tenantId}/properties/${immeubleId}/sub-properties`, corps))
+      );
+      crees += resultats.filter(r => r.status === 'fulfilled').length;
+    }
+
+    if (crees < charge.length) {
+      message.warning(
+        `${crees} appartement(s) créé(s) sur ${charge.length}. Les autres sont à reprendre sur la fiche.`
+      );
+    } else {
+      message.success(`${crees} appartement(s) créé(s).`);
+    }
   };
 
-  const steps = [
+  /** Ce que l'étape « Caractéristiques générales » demande pour ce type. */
+  const carac = caracteristiquesGenerales(formData.propertyType as PropertyType);
+
+  /**
+   * Le mode d'opération coché, d'où découlent les conditions à saisir.
+   *
+   * `location` couvre aussi la courte durée : la case n'est plus proposée, mais
+   * un bien qui la porte déjà reste un bien à louer, avec sa caution.
+   *
+   * Les deux cases ne s'excluent pas — un bien peut être proposé à la vente et
+   * à la location. Le modèle n'a pourtant qu'une colonne `price` : dans ce cas
+   * de figure, le montant saisi vaut pour la vente et le loyer n'a pas où se
+   * loger. C'est une limite du modèle, pas de cet écran.
+   */
+  const vente = formData.transactionModes.includes(PropertyTransactionMode.SALE);
+  const location =
+    formData.transactionModes.includes(PropertyTransactionMode.RENTAL) ||
+    formData.transactionModes.includes(PropertyTransactionMode.SHORT_TERM);
+
+  /** Un immeuble mis en location se valorise lot par lot, pas en bloc. */
+  const masquerPrixEtCharges = (formData.propertyType as PropertyType) === PropertyType.IMMEUBLE && location;
+
+  const toutesLesEtapes: Array<{
+    cle: CleEtape;
+    title: string;
+    shortTitle?: string;
+    description: string;
+    content: React.ReactNode;
+  }> = [
     {
+      cle: 'identification',
       title: 'Type et identification',
       description: 'Sélectionnez le type de bien et les informations de base',
       content: (
@@ -667,24 +804,6 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
 
           <div>
             <Text strong>
-              Description <Text type="danger">*</Text>
-            </Text>
-            <TextArea
-              value={formData.description}
-              onChange={e => handleChange('description', e.target.value)}
-              rows={6}
-              placeholder="Décrivez la propriété..."
-              status={errors.description ? 'error' : ''}
-            />
-            {errors.description && (
-              <Text type="danger" style={{ fontSize: 12 }}>
-                {errors.description}
-              </Text>
-            )}
-          </div>
-
-          <div>
-            <Text strong>
               Propriétaire <Text type="danger">*</Text>
             </Text>
             <Select
@@ -698,8 +817,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
             >
               {owners.map(owner => (
                 <Select.Option key={owner.id} value={owner.email}>
-                  {owner.firstName} {owner.lastName}
-                  {owner.email ? ` (${owner.email})` : ''}
+                  {nomProprietaire(owner)}
                 </Select.Option>
               ))}
             </Select>
@@ -709,10 +827,26 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               </Text>
             )}
           </div>
+
+          {/* La description ferme l'étape : c'est le seul champ facultatif des
+              quatre, et le seul long. Placée avant le propriétaire, elle
+              séparait deux champs obligatoires par six lignes de saisie libre,
+              et une liste déroulante requise passait sous la ligne de
+              flottaison. L'ordre visuel est aussi l'ordre de tabulation. */}
+          <div>
+            <Text strong>Description</Text>
+            <TextArea
+              value={formData.description}
+              onChange={e => handleChange('description', e.target.value)}
+              rows={6}
+              placeholder="Décrivez la propriété (facultatif)..."
+            />
+          </div>
         </Space>
       )
     },
     {
+      cle: 'localisation',
       title: 'Localisation',
       description: "Indiquez l'emplacement de la propriété",
       content: (
@@ -756,89 +890,83 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
       )
     },
     {
+      cle: 'caracteristiques',
       title: 'Caractéristiques générales',
       shortTitle: 'Caractéristiques',
       description: 'Informations générales sur la propriété',
       content: (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
-          {(formData.propertyType as PropertyType) === PropertyType.TERRAIN ||
-          (formData.propertyType as PropertyType) === PropertyType.LOT_PROGRAMME_NEUF ? (
-            <Alert
-              message={
-                (formData.propertyType as PropertyType) === PropertyType.TERRAIN
-                  ? "Les caractéristiques spécifiques du terrain seront renseignées dans l'étape suivante."
-                  : "Les informations sur le programme seront renseignées dans l'étape suivante."
-              }
-              type="info"
-              showIcon
-            />
-          ) : (
+          {/* Chaque champ est ici parce que `caracteristiquesGenerales` le
+              retient pour ce type, et non parce qu'il n'a pas été exclu. La
+              différence se voit sur un parking : aucune de ces questions ne le
+              concerne, l'étape n'apparaît donc pas du tout au lieu de s'ouvrir
+              sur une page vide. */}
+          {
             <Row gutter={16}>
-              {(formData.propertyType as PropertyType) !== PropertyType.TERRAIN &&
-                (formData.propertyType as PropertyType) !== PropertyType.PARKING_BOX && (
-                  <Col xs={24} sm={12}>
-                    <Text strong>Surface principale (m²)</Text>
-                    <InputNumber
-                      style={{ width: '100%' }}
-                      value={formData.surfaceArea ? Number(formData.surfaceArea) : undefined}
-                      onChange={val => handleChange('surfaceArea', val ? String(val) : '')}
-                      placeholder="Ex: 75"
-                    />
-                  </Col>
-                )}
-              {(formData.propertyType as PropertyType) !== PropertyType.TERRAIN &&
-                (formData.propertyType as PropertyType) !== PropertyType.LOT_PROGRAMME_NEUF &&
-                (formData.propertyType as PropertyType) !== PropertyType.PARKING_BOX && (
-                  <Col xs={24} sm={12}>
-                    <Text strong>Année de construction</Text>
-                    <InputNumber
-                      style={{ width: '100%' }}
-                      value={formData.constructionYear ? Number(formData.constructionYear) : undefined}
-                      onChange={val => handleChange('constructionYear', val ? String(val) : '')}
-                      min={1800}
-                      max={new Date().getFullYear()}
-                      placeholder="Ex: 2020"
-                    />
-                  </Col>
-                )}
-              {(formData.propertyType as PropertyType) !== PropertyType.TERRAIN &&
-                (formData.propertyType as PropertyType) !== PropertyType.LOT_PROGRAMME_NEUF &&
-                (formData.propertyType as PropertyType) !== PropertyType.PARKING_BOX && (
-                  <Col xs={24} sm={12}>
-                    <Text strong>État général</Text>
-                    <Select
-                      style={{ width: '100%' }}
-                      value={formData.generalCondition || undefined}
-                      onChange={val => handleChange('generalCondition', val)}
-                      placeholder="Sélectionner..."
-                    >
-                      <Select.Option value="NEUF">Neuf</Select.Option>
-                      <Select.Option value="BON">Bon</Select.Option>
-                      <Select.Option value="A_RENOVER">À rénover</Select.Option>
-                      <Select.Option value="EN_CHANTIER">En chantier</Select.Option>
-                    </Select>
-                  </Col>
-                )}
-              {(formData.propertyType as PropertyType) !== PropertyType.TERRAIN &&
-                (formData.propertyType as PropertyType) !== PropertyType.PARKING_BOX && (
-                  <Col xs={24} sm={12}>
-                    <Text strong>Standing</Text>
-                    <Select
-                      style={{ width: '100%' }}
-                      value={formData.standing || undefined}
-                      onChange={val => handleChange('standing', val)}
-                      placeholder="Sélectionner..."
-                    >
-                      <Select.Option value="ECONOMIQUE">Économique</Select.Option>
-                      <Select.Option value="STANDARD">Standard</Select.Option>
-                      <Select.Option value="HAUT_STANDING">Haut standing</Select.Option>
-                      <Select.Option value="LUXE">Luxe</Select.Option>
-                    </Select>
-                  </Col>
-                )}
-              {shouldShowRoomFields(formData.propertyType as PropertyType) && (
+              {carac.surface && (
+                <Col xs={24} sm={12}>
+                  <Text strong>Surface principale (m²)</Text>
+                  <InputNumber
+                    style={{ width: '100%' }}
+                    value={formData.surfaceArea ? Number(formData.surfaceArea) : undefined}
+                    onChange={val => handleChange('surfaceArea', val ? String(val) : '')}
+                    placeholder="Ex: 75"
+                  />
+                </Col>
+              )}
+              {carac.anneeEtEtat && (
+                <Col xs={24} sm={12}>
+                  <Text strong>Année de construction</Text>
+                  <InputNumber
+                    style={{ width: '100%' }}
+                    value={formData.constructionYear ? Number(formData.constructionYear) : undefined}
+                    onChange={val => handleChange('constructionYear', val ? String(val) : '')}
+                    min={1800}
+                    max={new Date().getFullYear()}
+                    placeholder="Ex: 2020"
+                  />
+                </Col>
+              )}
+              {carac.anneeEtEtat && (
+                <Col xs={24} sm={12}>
+                  <Text strong>État général</Text>
+                  <Select
+                    style={{ width: '100%' }}
+                    value={formData.generalCondition || undefined}
+                    onChange={val => handleChange('generalCondition', val)}
+                    placeholder="Sélectionner..."
+                  >
+                    <Select.Option value="NEUF">Neuf</Select.Option>
+                    <Select.Option value="BON">Bon</Select.Option>
+                    <Select.Option value="A_RENOVER">À rénover</Select.Option>
+                    <Select.Option value="EN_CHANTIER">En chantier</Select.Option>
+                  </Select>
+                </Col>
+              )}
+              {carac.standing && (
+                <Col xs={24} sm={12}>
+                  <Text strong>Standing</Text>
+                  <Select
+                    style={{ width: '100%' }}
+                    value={formData.standing || undefined}
+                    onChange={val => handleChange('standing', val)}
+                    placeholder="Sélectionner..."
+                  >
+                    <Select.Option value="ECONOMIQUE">Économique</Select.Option>
+                    <Select.Option value="STANDARD">Standard</Select.Option>
+                    <Select.Option value="HAUT_STANDING">Haut standing</Select.Option>
+                    <Select.Option value="LUXE">Luxe</Select.Option>
+                  </Select>
+                </Col>
+              )}
+              {/* Demi-largeur, comme les quatre champs qui precedent : l'etape
+                  garde une seule trame a deux colonnes. En tiers, les trois
+                  comptages remplissaient une ligne a eux seuls et le statut
+                  d'ameublement — ou la surface du terrain — restait seul sur la
+                  suivante. */}
+              {carac.pieces && (
                 <>
-                  <Col xs={24} sm={8}>
+                  <Col xs={24} sm={12}>
                     <Text strong>Nombre de pièces</Text>
                     <InputNumber
                       style={{ width: '100%' }}
@@ -848,7 +976,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                       placeholder="Ex: 3"
                     />
                   </Col>
-                  <Col xs={24} sm={8}>
+                  <Col xs={24} sm={12}>
                     <Text strong>Nombre de chambres</Text>
                     <InputNumber
                       style={{ width: '100%' }}
@@ -858,7 +986,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                       placeholder="Ex: 2"
                     />
                   </Col>
-                  <Col xs={24} sm={8}>
+                  <Col xs={24} sm={12}>
                     <Text strong>Nombre de salles de bain</Text>
                     <InputNumber
                       style={{ width: '100%' }}
@@ -870,8 +998,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                   </Col>
                 </>
               )}
-              {(formData.propertyType as PropertyType) === PropertyType.MAISON_VILLA && (
-                <Col xs={24} sm={8}>
+              {carac.surfaceTerrain && (
+                <Col xs={24} sm={12}>
                   <Text strong>Surface terrain (m²)</Text>
                   <InputNumber
                     style={{ width: '100%' }}
@@ -883,8 +1011,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                   />
                 </Col>
               )}
-              {shouldShowFurnishingField(formData.propertyType as PropertyType) && (
-                <Col xs={24} sm={8}>
+              {carac.meuble && (
+                <Col xs={24} sm={12}>
                   <Text strong>Statut d'ameublement</Text>
                   <Select
                     style={{ width: '100%' }}
@@ -900,11 +1028,12 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                 </Col>
               )}
             </Row>
-          )}
+          }
         </Space>
       )
     },
     {
+      cle: 'prix',
       title: 'Prix & Conditions',
       shortTitle: 'Prix et conditions',
       description: 'Définissez le prix et les conditions de transaction',
@@ -914,18 +1043,26 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
             <Text strong>
               Type d'opération <Text type="danger">*</Text>
             </Text>
-            <Checkbox.Group
-              value={formData.transactionModes}
-              onChange={checkedValues => {
-                handleChange('transactionModes', checkedValues as PropertyTransactionMode[]);
-              }}
+            {/* Un bien est mis en vente **ou** en location, pas les deux.
+                C'étaient des cases à cocher : on pouvait donc cocher les deux,
+                alors que le modèle n'a qu'une colonne `price`. Le loyer n'avait
+                alors nulle part où se loger, et le montant saisi valait pour la
+                vente — le loyer était perdu sans que rien ne le dise. Des
+                boutons radio rendent la situation impossible.
+
+                « Location courte durée » n'est plus proposée à la saisie. Le
+                mode reste dans le modèle : un bien qui le porte déjà s'affiche
+                sur « Location » et le conserve tant qu'on ne choisit pas
+                autre chose. */}
+            <Radio.Group
+              value={vente ? PropertyTransactionMode.SALE : location ? PropertyTransactionMode.RENTAL : undefined}
+              onChange={event => handleChange('transactionModes', [event.target.value as PropertyTransactionMode])}
             >
               <Space>
-                <Checkbox value={PropertyTransactionMode.SALE}>Vente</Checkbox>
-                <Checkbox value={PropertyTransactionMode.RENTAL}>Location</Checkbox>
-                <Checkbox value={PropertyTransactionMode.SHORT_TERM}>Location courte durée</Checkbox>
+                <Radio value={PropertyTransactionMode.SALE}>Vente</Radio>
+                <Radio value={PropertyTransactionMode.RENTAL}>Location</Radio>
               </Space>
-            </Checkbox.Group>
+            </Radio.Group>
             {errors.transactionModes && (
               <Text type="danger" style={{ fontSize: 12 }}>
                 {errors.transactionModes}
@@ -933,27 +1070,44 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
             )}
           </div>
 
+          {/* Conditions de l'opération.
+              Vente et location ne demandent pas la même chose. Le dépôt de
+              garantie n'a aucun sens en vente : il n'apparaît qu'en location,
+              comme dans l'écran Modifier. Les libellés du prix, des charges et
+              des honoraires suivent le mode coché plutôt que de rester neutres
+              — « Charges » ne veut pas dire la même chose selon qu'on achète
+              ou qu'on loue.
+
+              Le dépôt, la commission et la date de disponibilité étaient déjà
+              déclarés dans l'état de ce formulaire et envoyés à l'API, mais
+              n'étaient demandés nulle part : ils partaient vides à chaque
+              création, et il fallait rouvrir le bien en modification pour les
+              saisir. */}
+          {(formData.propertyType as PropertyType) === PropertyType.IMMEUBLE && (
+            <Alert
+              type="info"
+              showIcon
+              message={
+                location
+                  ? "La location se gère appartement par appartement : le loyer se saisit sur chaque lot, à l'étape « Appartements ». Aucun loyer n'est demandé pour l'immeuble lui-même."
+                  : "Ce prix est celui de l'immeuble entier. Un appartement peut aussi se vendre seul : son prix se saisit alors sur le lot, à l'étape « Appartements »."
+              }
+            />
+          )}
+
           <Row gutter={16}>
-            {!(
-              (formData.propertyType as PropertyType) === PropertyType.IMMEUBLE &&
-              (formData.transactionModes.includes(PropertyTransactionMode.RENTAL) ||
-                formData.transactionModes.includes(PropertyTransactionMode.SHORT_TERM))
-            ) && (
+            {!masquerPrixEtCharges && (
               <>
                 <Col xs={24} sm={8}>
-                  <Text strong>
-                    {formData.transactionModes.includes(PropertyTransactionMode.SALE)
-                      ? 'Prix (vente)'
-                      : 'Loyer (location)'}
-                  </Text>
+                  <Text strong>{vente ? 'Prix de vente' : 'Loyer mensuel'}</Text>
                   <Input
                     value={formatNumber(formData.price)}
                     onChange={e => handleNumberChange('price', e.target.value)}
-                    placeholder="Ex: 50 000 000"
+                    placeholder={vente ? 'Ex: 50 000 000' : 'Ex: 150 000'}
                   />
                 </Col>
                 <Col xs={24} sm={8}>
-                  <Text strong>Charges</Text>
+                  <Text strong>{vente ? 'Charges de copropriété' : 'Charges (provision mensuelle)'}</Text>
                   <Input
                     value={formatNumber(formData.fees)}
                     onChange={e => handleNumberChange('fees', e.target.value)}
@@ -962,23 +1116,27 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                 </Col>
               </>
             )}
-            <Col xs={24} sm={8}>
-              <Text strong>Devise</Text>
-              <Select
-                style={{ width: '100%' }}
-                value={formData.currency}
-                onChange={val => handleChange('currency', val)}
-              >
-                <Select.Option value="CFA">CFA</Select.Option>
-                <Select.Option value="EUR">EUR</Select.Option>
-                <Select.Option value="USD">USD</Select.Option>
-              </Select>
-            </Col>
+            {location && (
+              <Col xs={24} sm={8}>
+                <Text strong>Dépôt de garantie</Text>
+                <Input
+                  value={formatNumber(formData.deposit)}
+                  onChange={e => handleNumberChange('deposit', e.target.value)}
+                  placeholder="Ex: 300 000"
+                />
+              </Col>
+            )}
+
+            {/* Le mode de commission et les honoraires ne sont plus demandés :
+                la rémunération d'agence ne se gère pas depuis la fiche d'un
+                bien. Les deux clés restent dans `typeSpecificData` pour les
+                biens qui les portent déjà — masquer la saisie n'efface rien. */}
           </Row>
         </Space>
       )
     },
     {
+      cle: 'specificites',
       title: 'Caractéristiques spécifiques',
       shortTitle: 'Spécificités',
       description: 'Détails spécifiques au type de bien sélectionné',
@@ -1024,10 +1182,110 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               }
             />
           )}
+
+          {/* Les appartements, à la suite des caractéristiques de l'immeuble.
+              Ils occupaient une étape à part, et chaque lot se saisissait dans
+              une fenêtre modale, après l'enregistrement de l'immeuble. Le
+              nombre déclaré juste au-dessus fait maintenant apparaître autant
+              de lignes, pré-titrées, modifiables, dans la page. Rien ne part en
+              base avant le bouton final. */}
+          {(formData.propertyType as PropertyType) === PropertyType.IMMEUBLE && (
+            <Card type="inner" title={`Appartements (${appartements.length})`}>
+              {appartements.length === 0 ? (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="Indiquez le nombre total d'appartements ci-dessus : autant de lignes apparaîtront ici."
+                />
+              ) : (
+                <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                  {nbAppartementsDeclare > MAX_APPARTEMENTS && (
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message={`Seuls les ${MAX_APPARTEMENTS} premiers appartements sont saisissables ici. Les suivants se créeront depuis la fiche de l'immeuble.`}
+                    />
+                  )}
+
+                  {/* Les libellés une seule fois, en tête : les répéter sur
+                      chaque ligne noierait la grille. Chaque champ garde son
+                      propre nom accessible. */}
+                  {isDesktop && (
+                    <Row gutter={8} style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-small)' }}>
+                      <Col sm={7}>Titre</Col>
+                      <Col sm={4}>Surface (m²)</Col>
+                      <Col sm={3}>Pièces</Col>
+                      <Col sm={3}>Chambres</Col>
+                      <Col sm={3}>SdB</Col>
+                      <Col sm={4}>{vente ? 'Prix' : 'Loyer'}</Col>
+                    </Row>
+                  )}
+
+                  {appartements.map((appartement, rang) => (
+                    <Row gutter={[8, 8]} key={rang} align="middle">
+                      <Col xs={24} sm={7}>
+                        <Input
+                          aria-label={`Titre de l'appartement ${rang + 1}`}
+                          value={appartement.titre}
+                          onChange={e => modifierAppartement(rang, 'titre', e.target.value)}
+                          placeholder={`Appartement ${rang + 1}`}
+                        />
+                      </Col>
+                      <Col xs={12} sm={4}>
+                        <InputNumber
+                          aria-label={`Surface de l'appartement ${rang + 1}`}
+                          style={{ width: '100%' }}
+                          min={0}
+                          value={appartement.surface ? Number(appartement.surface) : undefined}
+                          onChange={val => modifierAppartement(rang, 'surface', val != null ? String(val) : '')}
+                          placeholder="m²"
+                        />
+                      </Col>
+                      <Col xs={12} sm={3}>
+                        <InputNumber
+                          aria-label={`Pièces de l'appartement ${rang + 1}`}
+                          style={{ width: '100%' }}
+                          min={0}
+                          value={appartement.pieces ? Number(appartement.pieces) : undefined}
+                          onChange={val => modifierAppartement(rang, 'pieces', val != null ? String(val) : '')}
+                        />
+                      </Col>
+                      <Col xs={12} sm={3}>
+                        <InputNumber
+                          aria-label={`Chambres de l'appartement ${rang + 1}`}
+                          style={{ width: '100%' }}
+                          min={0}
+                          value={appartement.chambres ? Number(appartement.chambres) : undefined}
+                          onChange={val => modifierAppartement(rang, 'chambres', val != null ? String(val) : '')}
+                        />
+                      </Col>
+                      <Col xs={12} sm={3}>
+                        <InputNumber
+                          aria-label={`Salles de bain de l'appartement ${rang + 1}`}
+                          style={{ width: '100%' }}
+                          min={0}
+                          value={appartement.sallesDeBain ? Number(appartement.sallesDeBain) : undefined}
+                          onChange={val => modifierAppartement(rang, 'sallesDeBain', val != null ? String(val) : '')}
+                        />
+                      </Col>
+                      <Col xs={24} sm={4}>
+                        <Input
+                          aria-label={`${vente ? 'Prix' : 'Loyer'} de l'appartement ${rang + 1}`}
+                          value={formatNumber(appartement.prix)}
+                          onChange={e => modifierAppartement(rang, 'prix', parseNumber(e.target.value))}
+                          placeholder={vente ? 'Ex: 25 000 000' : 'Ex: 150 000'}
+                        />
+                      </Col>
+                    </Row>
+                  ))}
+                </Space>
+              )}
+            </Card>
+          )}
         </Space>
       )
     },
     {
+      cle: 'medias',
       title: 'Médias',
       description: 'Ajoutez des photos et vidéos de la propriété',
       content: (
@@ -1083,15 +1341,43 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     }
   ];
 
+  /**
+   * Les étapes réellement parcourues pour ce type de bien.
+   *
+   * Un parking ou un terrain saute « Caractéristiques générales », qui n'a rien
+   * à leur demander. Tant qu'aucun type n'est choisi, on garde le parcours
+   * complet : le rail doit annoncer le chemin, pas se réécrire à chaque clic sur
+   * une vignette de type.
+   */
+  const steps = toutesLesEtapes.filter(etape => {
+    if (!formData.propertyType) return true;
+    const type = formData.propertyType as PropertyType;
+    if (etape.cle === 'caracteristiques') return aDesCaracteristiquesGenerales(type);
+    return true;
+  });
+
+  const cleEtape = (index: number): CleEtape | undefined => steps[index]?.cle;
+
+  /**
+   * Le rang de l'etape courante peut devenir invalide : changer de type de bien
+   * raccourcit le parcours. Sans ce garde, on resterait sur un indice qui ne
+   * designe plus rien et l'ecran se viderait.
+   */
+  useEffect(() => {
+    if (currentStep > steps.length - 1) {
+      setCurrentStep(steps.length - 1);
+      setMaxStepReached(prev => Math.min(prev, steps.length - 1));
+    }
+  }, [steps.length, currentStep]);
+
   useEffect(() => {
     const autoSaveForMedia = async () => {
-      if (currentStep === 5 && !savedPropertyId && !isLoading && !property && !autoSaveAttemptedRef.current) {
+      const cle = cleEtape(currentStep);
+      const exigeUnBienEnregistre = cle !== undefined && ETAPES_APRES_ENREGISTREMENT.includes(cle);
+
+      if (exigeUnBienEnregistre && !savedPropertyId && !isLoading && !property && !autoSaveAttemptedRef.current) {
         const requiredStepsValid =
-          formData.propertyType &&
-          formData.title.trim() &&
-          formData.description.trim() &&
-          formData.location &&
-          formData.transactionModes.length > 0;
+          formData.propertyType && formData.title.trim() && formData.location && formData.transactionModes.length > 0;
 
         if (requiredStepsValid) {
           autoSaveAttemptedRef.current = true;
@@ -1113,8 +1399,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               commissionMode: formData.commissionMode,
               commissionAmount: formData.commissionAmount
                 ? parseFloat(parseNumber(formData.commissionAmount))
-                : undefined,
-              availabilityDate: formData.availabilityDate || undefined
+                : undefined
             });
 
             const submitData: CreatePropertyRequest = {
@@ -1160,24 +1445,26 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
   }, [currentStep, savedPropertyId, tenantId]);
 
   useEffect(() => {
-    if (currentStep !== 5) {
+    const cle = cleEtape(currentStep);
+    if (cle === undefined || !ETAPES_APRES_ENREGISTREMENT.includes(cle)) {
       autoSaveAttemptedRef.current = false;
     }
-  }, [currentStep]);
+    // `steps` change avec le type de bien ; la cle de l'etape courante aussi.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, steps.length]);
 
   const isStepValid = (stepIndex: number): boolean => {
-    switch (stepIndex) {
-      case 0:
+    switch (cleEtape(stepIndex)) {
+      case 'identification':
         return !!(
           formData.propertyType &&
           formData.title.trim() &&
-          formData.description.trim() &&
           formData.ownerUserId &&
           String(formData.ownerUserId).trim()
         );
-      case 1:
+      case 'localisation':
         return !!formData.location;
-      case 3:
+      case 'prix':
         return formData.transactionModes.length > 0;
       default:
         return true;
@@ -1267,9 +1554,6 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               Annuler
             </Button>
           )}
-          <Button icon={<SaveOutlined />} onClick={handleSaveDraft} disabled={isLoading}>
-            Enregistrer en brouillon
-          </Button>
         </Space>
 
         <div

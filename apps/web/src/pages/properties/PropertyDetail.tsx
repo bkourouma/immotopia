@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import {
   Card,
   Button,
@@ -13,18 +13,23 @@ import {
   Carousel,
   Descriptions,
   Empty,
-  Tabs
+  Tabs,
+  Badge
 } from 'antd';
+import type { DescriptionsProps, TabsProps } from 'antd';
 import {
   EditOutlined,
   FileTextOutlined,
   HomeOutlined,
   EnvironmentOutlined,
   CalendarOutlined,
+  PictureOutlined,
   PlayCircleOutlined,
   ToolOutlined,
   MailOutlined,
-  BankOutlined
+  BankOutlined,
+  ProfileOutlined,
+  ApartmentOutlined
 } from '@ant-design/icons';
 import { Property, PropertyMedia, PropertyMediaType } from '../../types/property-types';
 import { getProperty } from '../../services/property-service';
@@ -38,13 +43,167 @@ import { PropertyPatrimoineTab } from '../../components/patrimoine/PropertyPatri
 import { API_URL } from '../../config/api';
 import { PageHeader, StatusTag } from '../../components/primitives';
 
-const { Text } = Typography;
+const { Text, Title } = Typography;
+
+/**
+ * Fiche d'un bien, en onglets.
+ *
+ * L'écran empilait auparavant huit cartes sur deux colonnes : galerie,
+ * description, caractéristiques, lots, un `<Tabs>` interne pour maintenance et
+ * patrimoine, puis prix, informations, localisation et planificateur de visite.
+ * Tout était monté d'un coup et il fallait défiler sur plus de trois hauteurs
+ * d'écran pour atteindre la maintenance — deux colonnes de longueurs très
+ * inégales, dont la plus courte laissait un vide de plusieurs centaines de
+ * pixels.
+ *
+ * Les onglets répondent à une question chacun :
+ *
+ *   - **Aperçu** — ce que le bien EST : description, caractéristiques,
+ *     informations administratives, localisation ;
+ *   - **Médias** — photos et vidéos, avec leur compte sur l'onglet ;
+ *   - **Lots** — les appartements, pour un IMMEUBLE seulement ;
+ *   - **Maintenance** et **Patrimoine** — les deux onglets qui existaient déjà,
+ *     remontés au niveau de l'écran plutôt qu'enterrés dans une carte en bas
+ *     de colonne ;
+ *   - **Visites** — la planification.
+ *
+ * Deux propriétés valent d'être notées :
+ *
+ * **Le prix et les chiffres clés ne sont dans aucun onglet.** Ils identifient
+ * le bien autant que son titre : les cacher derrière un onglet obligerait à
+ * revenir sur « Aperçu » pour lire un prix pendant qu'on regarde les photos.
+ * Ils tiennent dans un bandeau posé sous l'en-tête, toujours visible.
+ *
+ * **L'onglet courant est dans l'URL** (`?onglet=medias`). Un lien vers la
+ * maintenance d'un bien est ainsi partageable, le retour arrière revient à
+ * l'onglet quitté, et un rechargement ne ramène pas sur « Aperçu ».
+ */
+
+const TYPE_LABELS: Record<string, string> = {
+  APPARTEMENT: 'Appartement',
+  MAISON_VILLA: 'Maison / Villa',
+  STUDIO: 'Studio',
+  DUPLEX_TRIPLEX: 'Duplex / Triplex',
+  CHAMBRE_COLOCATION: 'Chambre en colocation',
+  BUREAU: 'Bureau',
+  BOUTIQUE_COMMERCIAL: 'Boutique / Local commercial',
+  ENTREPOT_INDUSTRIEL: 'Entrepôt / Local industriel',
+  TERRAIN: 'Terrain',
+  IMMEUBLE: 'Immeuble',
+  PARKING_BOX: 'Parking / Box',
+  LOT_PROGRAMME_NEUF: 'Lot de programme neuf'
+};
+
+const TRANSACTION_LABELS: Record<string, string> = {
+  SALE: 'Vente',
+  RENTAL: 'Location',
+  SHORT_TERM: 'Court terme'
+};
+
+const FURNISHING_LABELS: Record<string, string> = {
+  FURNISHED: 'Meublé',
+  UNFURNISHED: 'Non meublé',
+  PARTIALLY_FURNISHED: 'Partiellement meublé'
+};
+
+const AVAILABILITY_LABELS: Record<string, string> = {
+  AVAILABLE: 'Disponible',
+  UNAVAILABLE: 'Indisponible',
+  SOON_AVAILABLE: 'Bientôt disponible'
+};
+
+/**
+ * Qui possède le bien.
+ *
+ * Quatre cas dans l'ordre de priorité, inchangés : le propriétaire chargé fait
+ * toujours foi, puis le type de détention décide de ce qu'on affiche à défaut.
+ * La logique était une fonction anonyme de quarante lignes au milieu du JSX ;
+ * elle est nommée ici, à comportement identique.
+ */
+function proprietaireAffiche(property: Property): string {
+  if (property.owner && (property.owner.fullName || property.owner.email)) {
+    return property.owner.fullName || property.owner.email;
+  }
+
+  if (property.ownershipType === 'TENANT') {
+    if (property.ownerUserId) return property.owner?.email || 'Propriétaire sélectionné';
+    const tenant = (property as unknown as { tenant?: { name?: string } }).tenant;
+    return tenant?.name || 'Agence';
+  }
+
+  if (property.ownershipType === 'PUBLIC') {
+    if (property.ownerUserId) return property.owner?.email || property.owner?.fullName || 'Propriétaire privé';
+    return 'Publique';
+  }
+
+  if (property.ownershipType === 'CLIENT') {
+    if (property.ownerUserId) return property.owner?.fullName || property.owner?.email || 'Client';
+    return 'Client';
+  }
+
+  return 'Agence';
+}
+
+/**
+ * Le vrai propriétaire, quand il n'est écrit que dans la description.
+ *
+ * 80 des 91 biens de la base portent, en fin de description, une phrase de la
+ * forme « Propriétaire : Arsène Djédjé (contact CRM 2fb9a016-…). » — écrite par
+ * l'import, pas par l'interface. Deux conséquences, toutes deux visibles à
+ * l'écran :
+ *
+ *   - un UUID s'affiche tel quel dans le corps de la description, où il ne veut
+ *     rien dire pour personne ;
+ *   - `ownerUserId` ne pointe PAS cette personne. Sur les 80 biens concernés il
+ *     désigne le même compte collaborateur — celui qui a fait l'import — si
+ *     bien que la ligne « Propriété de » affichait un propriétaire faux avec
+ *     aplomb, contredit deux paragraphes plus haut par la description.
+ *
+ * On lit donc la phrase plutôt que de l'ignorer : le nom alimente « Propriété
+ * de » et renvoie vers la fiche du contact, et la phrase sort du corps de la
+ * description, qui retrouve son propos. C'est un CONTOURNEMENT : `Property`
+ * n'a aucun lien vers `CrmContact`, la correction durable est un champ dédié
+ * plus une reprise des données.
+ */
+const MOTIF_PROPRIETAIRE = /\n*\s*Propriétaire\s*:\s*(.+?)\s*\(contact CRM\s+([0-9a-fA-F-]{36})\)\s*\.?\s*$/;
+
+function proprietaireDecrit(description?: string): { nom: string; contactId: string } | null {
+  if (!description) return null;
+  const trouve = description.match(MOTIF_PROPRIETAIRE);
+  return trouve ? { nom: trouve[1].trim(), contactId: trouve[2] } : null;
+}
+
+/** La description sans la phrase technique de fin. */
+function descriptionUtile(description?: string): string {
+  if (!description) return '';
+  return description.replace(MOTIF_PROPRIETAIRE, '').trim();
+}
+
+/** Un chiffre clé du bandeau de synthèse. */
+const ChiffreCle: React.FC<{ valeur: React.ReactNode; libelle: string }> = ({ valeur, libelle }) => (
+  <div>
+    <div
+      style={{
+        fontSize: 'var(--font-size-h3)',
+        fontWeight: 'var(--font-weight-semibold)' as unknown as number,
+        color: 'var(--text-primary)',
+        lineHeight: 1.2
+      }}
+    >
+      {valeur}
+    </div>
+    <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
+      {libelle}
+    </Text>
+  </div>
+);
 
 export const PropertyDetail: React.FC = () => {
   const { tenantId, id } = useParams<{ tenantId: string; id: string }>();
   const navigate = useNavigate();
   const { tenantMembership } = useAuth();
   const effectiveTenantId = tenantId || tenantMembership?.tenantId;
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [property, setProperty] = useState<Property | null>(null);
   const [media, setMedia] = useState<PropertyMedia[]>([]);
@@ -115,44 +274,299 @@ export const PropertyDetail: React.FC = () => {
 
   if (!effectiveTenantId) {
     return (
-      <>
-        <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <Text type="secondary">Aucune agence sélectionnée</Text>
-        </div>
-      </>
+      <div style={{ textAlign: 'center', padding: '48px 0' }}>
+        <Text type="secondary">Aucune agence sélectionnée</Text>
+      </div>
     );
   }
 
   if (loading) {
     return (
-      <>
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-          <Spin size="large" />
-        </div>
-      </>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <Spin size="large" />
+      </div>
     );
   }
 
   if (error || !property) {
     return (
-      <>
-        <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <Alert
-            message="Erreur"
-            description={error || 'Propriété non trouvée'}
-            type="error"
-            showIcon
-            action={
-              <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>Retour à la liste</Button>
-            }
-          />
-        </div>
-      </>
+      <div style={{ textAlign: 'center', padding: '48px 0' }}>
+        <Alert
+          message="Erreur"
+          description={error || 'Propriété non trouvée'}
+          type="error"
+          showIcon
+          action={
+            <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>Retour à la liste</Button>
+          }
+        />
+      </div>
     );
   }
 
   const photos = media.filter(m => m.mediaType === PropertyMediaType.PHOTO);
   const videos = media.filter(m => m.mediaType === PropertyMediaType.VIDEO);
+  const estImmeuble = property.propertyType === 'IMMEUBLE';
+  const contactProprietaire = proprietaireDecrit(property.description);
+
+  /* ------------------------------------------------------------------ */
+  /* Onglet « Aperçu »                                                   */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Caractéristiques physiques. Les champs vides sont RETIRÉS, pas rendus avec
+   * un tiret : une fiche de terrain n'a ni chambre ni salle de bain, et vingt
+   * lignes « — » enterreraient les trois qui portent l'information.
+   */
+  const caracteristiques: DescriptionsProps['items'] = [
+    property.surfaceArea ? { key: 'surface', label: 'Surface', children: `${property.surfaceArea} m²` } : null,
+    property.surfaceUseful
+      ? { key: 'surfaceUseful', label: 'Surface utile', children: `${property.surfaceUseful} m²` }
+      : null,
+    property.surfaceTerrain
+      ? { key: 'surfaceTerrain', label: 'Surface du terrain', children: `${property.surfaceTerrain} m²` }
+      : null,
+    property.rooms ? { key: 'rooms', label: 'Pièces', children: property.rooms } : null,
+    property.bedrooms ? { key: 'bedrooms', label: 'Chambres', children: property.bedrooms } : null,
+    property.bathrooms ? { key: 'bathrooms', label: 'Salles de bain', children: property.bathrooms } : null,
+    property.furnishingStatus
+      ? {
+          key: 'furnishing',
+          label: 'Ameublement',
+          children: FURNISHING_LABELS[property.furnishingStatus] || property.furnishingStatus
+        }
+      : null
+  ].filter(Boolean) as DescriptionsProps['items'];
+
+  const informations: DescriptionsProps['items'] = [
+    { key: 'reference', label: 'Référence', children: property.internalReference || '—' },
+    {
+      key: 'type',
+      label: 'Type de bien',
+      children: TYPE_LABELS[property.propertyType] || property.propertyType
+    },
+    {
+      key: 'owner',
+      label: 'Propriété de',
+      // Le contact nommé par la description l'emporte sur `ownerUserId` : c'est
+      // la seule des deux sources qui désigne le vrai propriétaire du bien.
+      children: contactProprietaire ? (
+        <Link to={`/tenant/${effectiveTenantId}/crm/contacts/${contactProprietaire.contactId}`}>
+          {contactProprietaire.nom}
+        </Link>
+      ) : (
+        proprietaireAffiche(property)
+      )
+    },
+    {
+      key: 'transaction',
+      label: 'Mise en marché',
+      children: property.transactionModes.map(mode => TRANSACTION_LABELS[mode] || mode).join(' • ') || '—'
+    },
+    {
+      key: 'availability',
+      label: 'Disponibilité',
+      children: AVAILABILITY_LABELS[property.availability] || property.availability
+    }
+    // Ni « Publication », ni « Créé le », ni « Dernière modification ». La
+    // première est déjà portée par l'étiquette « Publié » de l'en-tête, visible
+    // depuis n'importe quel onglet ; les deux autres sont des métadonnées de
+    // base de données, pas des informations sur le bien. La carte ne garde que
+    // ce qui le décrit.
+  ];
+
+  const localisation: DescriptionsProps['items'] = [
+    { key: 'address', label: 'Adresse', children: property.address || '—' },
+    property.locationZone ? { key: 'zone', label: 'Zone', children: property.locationZone } : null,
+    property.latitude && property.longitude
+      ? {
+          key: 'gps',
+          label: 'Coordonnées',
+          children: `${property.latitude.toFixed(6)}, ${property.longitude.toFixed(6)}`
+        }
+      : null
+  ].filter(Boolean) as DescriptionsProps['items'];
+
+  /** Deux colonnes à partir du palier md, une seule en dessous (§5.1). */
+  const colonnes = { xs: 1, md: 2 };
+
+  const ongletApercu = (
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <Card title="Description">
+        <Text style={{ whiteSpace: 'pre-wrap' }}>
+          {descriptionUtile(property.description) || 'Aucune description disponible'}
+        </Text>
+      </Card>
+
+      {caracteristiques && caracteristiques.length > 0 && (
+        <Card title="Caractéristiques">
+          <Descriptions column={colonnes} size="small" bordered items={caracteristiques} />
+        </Card>
+      )}
+
+      <Card title="Informations">
+        <Descriptions column={colonnes} size="small" bordered items={informations} />
+      </Card>
+
+      <Card
+        title={
+          <Space>
+            <EnvironmentOutlined aria-hidden="true" />
+            Localisation
+          </Space>
+        }
+      >
+        <Descriptions column={colonnes} size="small" bordered items={localisation} />
+      </Card>
+    </Space>
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* Onglet « Médias »                                                   */
+  /* ------------------------------------------------------------------ */
+
+  const ongletMedias = (
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <Card
+        title={
+          <Space>
+            <PictureOutlined aria-hidden="true" />
+            Photos
+          </Space>
+        }
+      >
+        {photos.length === 0 ? (
+          <Empty
+            image={<HomeOutlined style={{ fontSize: 64, color: 'var(--icon-muted)' }} />}
+            description="Aucune photo pour ce bien"
+          />
+        ) : (
+          <Carousel autoplay>
+            {photos.map(photo => (
+              <div key={photo.id}>
+                <Image
+                  src={getMediaUrl(photo)}
+                  alt={photo.fileName}
+                  style={{ width: '100%', height: 400, objectFit: 'cover' }}
+                  preview={{ mask: 'Voir' }}
+                />
+              </div>
+            ))}
+          </Carousel>
+        )}
+      </Card>
+
+      <Card
+        title={
+          <Space>
+            <PlayCircleOutlined aria-hidden="true" />
+            Vidéos
+          </Space>
+        }
+      >
+        {videos.length === 0 ? (
+          <Empty description="Aucune vidéo pour ce bien" />
+        ) : (
+          <Row gutter={[16, 16]}>
+            {videos.map(video => (
+              <Col key={video.id} xs={24} sm={12}>
+                <video src={getMediaUrl(video)} controls style={{ width: '100%', borderRadius: 'var(--radius-lg)' }} />
+              </Col>
+            ))}
+          </Row>
+        )}
+      </Card>
+    </Space>
+  );
+
+  /* ------------------------------------------------------------------ */
+  /* Assemblage                                                          */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Le libellé porte l'icône ET le texte : une icône seule n'a pas de nom
+   * accessible. Le compte des médias est un `<Badge>` plutôt qu'un « (3) »
+   * dans le texte, pour ne pas le faire lire comme une partie du nom.
+   */
+  const onglets: TabsProps['items'] = [
+    {
+      key: 'apercu',
+      label: (
+        <Space size="small">
+          <ProfileOutlined aria-hidden="true" />
+          Aperçu
+        </Space>
+      ),
+      children: ongletApercu
+    },
+    {
+      key: 'medias',
+      label: (
+        <Space size="small">
+          <PictureOutlined aria-hidden="true" />
+          Médias
+          {media.length > 0 && <Badge count={media.length} color="var(--color-primary)" />}
+        </Space>
+      ),
+      children: ongletMedias
+    },
+    estImmeuble
+      ? {
+          key: 'lots',
+          label: (
+            <Space size="small">
+              <ApartmentOutlined aria-hidden="true" />
+              Lots
+            </Space>
+          ),
+          children: <PropertyApartments propertyId={id!} tenantId={effectiveTenantId} property={property} />
+        }
+      : null,
+    {
+      key: 'maintenance',
+      label: (
+        <Space size="small">
+          <ToolOutlined aria-hidden="true" />
+          Maintenance
+        </Space>
+      ),
+      children: <PropertyMaintenanceTab propertyId={id!} tenantId={effectiveTenantId} />
+    },
+    {
+      key: 'patrimoine',
+      label: (
+        <Space size="small">
+          <BankOutlined aria-hidden="true" />
+          Patrimoine
+        </Space>
+      ),
+      children: <PropertyPatrimoineTab propertyId={id!} tenantId={effectiveTenantId} />
+    },
+    {
+      key: 'visites',
+      label: (
+        <Space size="small">
+          <CalendarOutlined aria-hidden="true" />
+          Visites
+        </Space>
+      ),
+      children: (
+        <Card title="Planifier une visite">
+          <PropertyVisitScheduler propertyId={id!} tenantId={effectiveTenantId} onVisitScheduled={() => {}} />
+        </Card>
+      )
+    }
+  ].filter(Boolean) as TabsProps['items'];
+
+  /**
+   * Onglet demandé par l'URL, validé contre la liste réelle : `?onglet=lots`
+   * sur une villa, ou un onglet renommé dans un lien ancien, retombe sur
+   * « Aperçu » au lieu de rendre un écran vide.
+   */
+  const ongletDemande = searchParams.get('onglet');
+  const ongletActif = onglets?.some(item => item?.key === ongletDemande) ? ongletDemande! : 'apercu';
+
+  const prix = formatPrice(property.price, property.currency, property.propertyType);
 
   return (
     <>
@@ -209,277 +623,59 @@ export const PropertyDetail: React.FC = () => {
       />
 
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        {/* Main Content */}
-        <Row gutter={[24, 24]}>
-          {/* Left Column */}
-          <Col xs={24} lg={16}>
-            <Space direction="vertical" size="large" style={{ width: '100%' }}>
-              {/* Property Images Gallery */}
-              <Card>
-                {photos.length === 0 ? (
-                  <div
-                    style={{
-                      height: 400,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      backgroundColor: '#f0f0f0'
-                    }}
-                  >
-                    <Empty
-                      image={<HomeOutlined style={{ fontSize: 64, color: '#bfbfbf' }} />}
-                      description="Aucune photo disponible"
-                    />
-                  </div>
-                ) : (
-                  <Carousel autoplay>
-                    {photos.map(photo => (
-                      <div key={photo.id}>
-                        <Image
-                          src={getMediaUrl(photo)}
-                          alt={photo.fileName}
-                          style={{ width: '100%', height: 400, objectFit: 'cover' }}
-                          preview={{
-                            mask: 'Voir'
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </Carousel>
-                )}
-              </Card>
-
-              {/* Videos Section */}
-              {videos.length > 0 && (
-                <Card
-                  title={
-                    <>
-                      <PlayCircleOutlined /> Vidéos
-                    </>
-                  }
-                >
-                  <Row gutter={[16, 16]}>
-                    {videos.map(video => (
-                      <Col key={video.id} xs={24} sm={12}>
-                        <video src={getMediaUrl(video)} controls style={{ width: '100%', borderRadius: 8 }} />
-                      </Col>
-                    ))}
-                  </Row>
-                </Card>
+        {/* Bandeau de synthèse : hors onglets, parce qu'il identifie le bien. */}
+        <Card>
+          <Row gutter={[24, 16]} align="middle">
+            <Col xs={24} md={estImmeuble && !prix ? 24 : 10}>
+              {prix && (
+                <Title level={2} style={{ margin: 0, color: 'var(--color-primary)' }}>
+                  {prix}
+                </Title>
               )}
+              <Text type="secondary">
+                {property.transactionModes.map(mode => TRANSACTION_LABELS[mode] || mode).join(' • ')}
+                {property.fees
+                  ? ` · Frais : ${formatPrice(property.fees, property.currency, property.propertyType)}`
+                  : ''}
+              </Text>
+            </Col>
+            <Col xs={24} md={estImmeuble && !prix ? 24 : 14}>
+              <Space size="large" wrap>
+                {property.surfaceArea && <ChiffreCle valeur={`${property.surfaceArea} m²`} libelle="Surface" />}
+                {property.rooms && <ChiffreCle valeur={property.rooms} libelle="Pièces" />}
+                {property.bedrooms && <ChiffreCle valeur={property.bedrooms} libelle="Chambres" />}
+                {property.bathrooms && <ChiffreCle valeur={property.bathrooms} libelle="Salles de bain" />}
+                {estImmeuble && property._count?.containerChildren ? (
+                  <ChiffreCle valeur={property._count.containerChildren} libelle="Lots" />
+                ) : null}
+              </Space>
+            </Col>
+          </Row>
+        </Card>
 
-              {/* Description */}
-              <Card title="Description">
-                <Text style={{ whiteSpace: 'pre-wrap' }}>
-                  {property.description || 'Aucune description disponible'}
-                </Text>
-              </Card>
-
-              {/* Characteristics */}
-              <Card title="Caractéristiques">
-                <Row gutter={[16, 16]}>
-                  {property.surfaceArea && (
-                    <Col xs={12} sm={6}>
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1890ff' }}>{property.surfaceArea}</div>
-                        <Text type="secondary">m²</Text>
-                      </div>
-                    </Col>
-                  )}
-                  {property.rooms && (
-                    <Col xs={12} sm={6}>
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1890ff' }}>{property.rooms}</div>
-                        <Text type="secondary">Pièces</Text>
-                      </div>
-                    </Col>
-                  )}
-                  {property.bedrooms && (
-                    <Col xs={12} sm={6}>
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1890ff' }}>{property.bedrooms}</div>
-                        <Text type="secondary">Chambres</Text>
-                      </div>
-                    </Col>
-                  )}
-                  {property.bathrooms && (
-                    <Col xs={12} sm={6}>
-                      <div style={{ textAlign: 'center' }}>
-                        <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1890ff' }}>{property.bathrooms}</div>
-                        <Text type="secondary">Salles de bain</Text>
-                      </div>
-                    </Col>
-                  )}
-                </Row>
-              </Card>
-
-              {/* Apartments Section - Only for IMMEUBLE type */}
-              {property.propertyType === 'IMMEUBLE' && (
-                <PropertyApartments propertyId={id!} tenantId={effectiveTenantId!} property={property} />
-              )}
-
-              {/* Maintenance History Tab */}
-              <Card>
-                <Tabs
-                  defaultActiveKey="maintenance"
-                  type="line"
-                  items={[
-                    {
-                      key: 'maintenance',
-                      label: (
-                        <span>
-                          <ToolOutlined />
-                          Maintenance
-                        </span>
-                      ),
-                      children: <PropertyMaintenanceTab propertyId={id!} tenantId={effectiveTenantId!} />
-                    },
-                    {
-                      key: 'patrimoine',
-                      label: (
-                        <span>
-                          <BankOutlined />
-                          Patrimoine
-                        </span>
-                      ),
-                      children: <PropertyPatrimoineTab propertyId={id!} tenantId={effectiveTenantId!} />
-                    }
-                  ]}
-                />
-              </Card>
-            </Space>
-          </Col>
-
-          {/* Right Column - Sidebar */}
-          <Col xs={24} lg={8}>
-            <Space direction="vertical" size="large" style={{ width: '100%' }}>
-              {/* Price Card */}
-              <Card>
-                <div style={{ fontSize: 32, fontWeight: 'bold', color: '#1890ff', marginBottom: 16 }}>
-                  {formatPrice(property.price, property.currency, property.propertyType)}
-                </div>
-                <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-                  {property.transactionModes
-                    .map(mode => (mode === 'SALE' ? 'Vente' : mode === 'RENTAL' ? 'Location' : 'Court terme'))
-                    .join(' • ')}
-                </Text>
-                {property.fees && (
-                  <Text type="secondary">
-                    Frais: {formatPrice(property.fees, property.currency, property.propertyType)}
-                  </Text>
-                )}
-              </Card>
-
-              {/* Property Info */}
-              <Card title="Informations">
-                <Descriptions column={1} size="small">
-                  <Descriptions.Item label="Référence">{property.internalReference}</Descriptions.Item>
-                  <Descriptions.Item label="Type">{property.propertyType}</Descriptions.Item>
-                  <Descriptions.Item label="Propriété de">
-                    {(() => {
-                      // Priority 1: If owner is loaded and has name/email, display it
-                      if (property.owner && (property.owner.fullName || property.owner.email)) {
-                        return property.owner.fullName || property.owner.email;
-                      }
-
-                      // Priority 2: If ownershipType is TENANT
-                      if (property.ownershipType === 'TENANT') {
-                        // If ownerUserId exists, it means a specific owner was selected
-                        if (property.ownerUserId) {
-                          // Owner was selected but not loaded - show generic message
-                          return property.owner?.email || 'Propriétaire sélectionné';
-                        }
-                        // No specific owner, show tenant name
-                        const tenant = (property as any).tenant;
-                        return tenant?.name || 'Agence';
-                      }
-
-                      // Priority 3: If ownershipType is PUBLIC
-                      if (property.ownershipType === 'PUBLIC') {
-                        if (property.ownerUserId) {
-                          // Owner selected but not loaded
-                          return property.owner?.email || property.owner?.fullName || 'Propriétaire privé';
-                        }
-                        return 'Publique';
-                      }
-
-                      // Priority 4: If ownershipType is CLIENT
-                      if (property.ownershipType === 'CLIENT') {
-                        if (property.ownerUserId) {
-                          return property.owner?.fullName || property.owner?.email || 'Client';
-                        }
-                        return 'Client';
-                      }
-
-                      // Default fallback
-                      return 'Agence';
-                    })()}
-                  </Descriptions.Item>
-                  {property.furnishingStatus && (
-                    <Descriptions.Item label="Meublé">
-                      {property.furnishingStatus === 'FURNISHED'
-                        ? 'Oui'
-                        : property.furnishingStatus === 'UNFURNISHED'
-                          ? 'Non'
-                          : 'Partiellement'}
-                    </Descriptions.Item>
-                  )}
-                  {property.availability && (
-                    <Descriptions.Item label="Disponibilité">
-                      {property.availability === 'AVAILABLE'
-                        ? 'Disponible'
-                        : property.availability === 'UNAVAILABLE'
-                          ? 'Indisponible'
-                          : 'Bientôt disponible'}
-                    </Descriptions.Item>
-                  )}
-                </Descriptions>
-              </Card>
-
-              {/* Location */}
-              {property.locationZone && (
-                <Card
-                  title={
-                    <Space>
-                      <EnvironmentOutlined />
-                      Localisation
-                    </Space>
-                  }
-                >
-                  <Text strong style={{ display: 'block', marginBottom: 4 }}>
-                    {property.address}
-                  </Text>
-                  <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-                    {property.locationZone}
-                  </Text>
-                  {property.latitude && property.longitude && (
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      Coordonnées: {property.latitude.toFixed(6)}, {property.longitude.toFixed(6)}
-                    </Text>
-                  )}
-                </Card>
-              )}
-
-              {/* Visit Scheduler */}
-              <Card
-                title={
-                  <Space>
-                    <CalendarOutlined />
-                    Planifier une visite
-                  </Space>
-                }
-              >
-                <PropertyVisitScheduler propertyId={id!} tenantId={effectiveTenantId!} onVisitScheduled={() => {}} />
-              </Card>
-            </Space>
-          </Col>
-        </Row>
+        <Tabs
+          activeKey={ongletActif}
+          items={onglets}
+          // `replace` : parcourir les onglets ne doit pas remplir l'historique,
+          // sinon le retour arrière rejoue les onglets un à un au lieu de
+          // ramener à la liste des biens.
+          onChange={key =>
+            setSearchParams(
+              previous => {
+                const suivant = new URLSearchParams(previous);
+                suivant.set('onglet', key);
+                return suivant;
+              },
+              { replace: true }
+            )
+          }
+        />
       </Space>
 
       <PropertyNewsletterCampaignModal
         open={newsletterModalOpen}
         onClose={() => setNewsletterModalOpen(false)}
-        tenantId={effectiveTenantId!}
+        tenantId={effectiveTenantId}
         property={property}
         imageUrls={photos.map(p => getMediaUrl(p))}
         onSuccess={() => setNewsletterModalOpen(false)}

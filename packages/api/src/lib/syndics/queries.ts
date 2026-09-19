@@ -1,6 +1,6 @@
 import { LotType, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { notFound, tenantIsolationError, unprocessableEntity } from '../errors';
+import { conflict, notFound, tenantIsolationError, unprocessableEntity } from '../errors';
 import { computeChargeCallStatus, computeOutstanding, isJournalEntryBalanced, roundMoney } from './finance-utils';
 import { logger } from '../../utils/logger';
 // Shared client: a second `new PrismaClient()` here doubled the connection
@@ -2567,6 +2567,47 @@ export async function createOwnerAccountAdjustmentByLot(
   });
 }
 
+/**
+ * Solde du compte de lot juste avant `before`, lu sur le dernier mouvement
+ * strictement anterieur a cette borne.
+ *
+ * Sans borne, la periode part de la genese du compte : rien ne la precede,
+ * l'ouverture est nulle. Jamais le solde courant — c'est tout l'objet du
+ * defaut n°3. Meme regle et meme calcul que `getBalanceStrictlyBefore` du
+ * grand livre des comptes de tiers (`lib/finance/reports.ts`), auquel ce
+ * releve s'aligne.
+ */
+async function getOwnerBalanceStrictlyBefore(accountId: string, before?: Date): Promise<number> {
+  if (!before) {
+    return 0;
+  }
+
+  const dernier = await prisma.ownerAccountTransaction.findFirst({
+    where: { accountId, transactionDate: { lt: before } },
+    orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
+    select: { balanceAfter: true }
+  });
+
+  return dernier ? roundMoney(Number(dernier.balanceAfter ?? 0)) : 0;
+}
+
+/**
+ * Releve du compte de lot sur une periode.
+ *
+ * **Le solde d'ouverture ne se replie jamais sur le solde courant.** C'est la
+ * correction du defaut n°3 du §6.1 bis du plan : quand la periode demandee ne
+ * contenait aucun mouvement, ce releve renvoyait `account.balance`, c'est-a-dire
+ * le solde du jour. Un releve de 2025 d'un compte mouvemente en 2026 affichait
+ * donc le solde de 2026, en ouverture comme en cloture — un chiffre juste, mais
+ * a la mauvaise date, ce qui est pire qu'un chiffre absent.
+ *
+ * Le releve s'ancre desormais sur la chaine des mouvements, jamais sur le solde
+ * courant, exactement comme le lot 1 l'a fait pour le compte de tiers
+ * (`getBalanceStrictlyBefore` / `getBalanceAtOrBefore`, `lib/finance/reports.ts`).
+ * Sur une periode vide, ouverture et cloture valent le solde atteint avant la
+ * borne de debut : rien ne s'est passe entre les deux bornes, donc rien n'a
+ * bouge.
+ */
 export async function getOwnerAccountStatementByLot(
   tenantId: string,
   syndicateId: string,
@@ -2583,6 +2624,9 @@ export async function getOwnerAccountStatementByLot(
     orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }]
   });
 
+  // Periode mouvementee : le premier mouvement porte deja l'ouverture, par
+  // soustraction de son propre montant. Une lecture de moins, et un resultat
+  // identique a la remontee de la chaine.
   const openingBalance =
     transactions.length > 0
       ? roundMoney(
@@ -2590,12 +2634,10 @@ export async function getOwnerAccountStatementByLot(
             Number(transactions[0].debit ?? 0) +
             Number(transactions[0].credit ?? 0)
         )
-      : roundMoney(Number(account.balance));
+      : await getOwnerBalanceStrictlyBefore(account.id, range?.from);
 
   const closingBalance =
-    transactions.length > 0
-      ? roundMoney(Number(transactions[transactions.length - 1].balanceAfter))
-      : roundMoney(Number(account.balance));
+    transactions.length > 0 ? roundMoney(Number(transactions[transactions.length - 1].balanceAfter)) : openingBalance;
 
   return {
     account,
@@ -2646,20 +2688,39 @@ export async function createChartOfAccountBySyndicate(
     }
   }
 
-  return prisma.chartOfAccount.create({
-    data: {
-      syndicateId,
-      // Le tenant devient une colonne au lot 2. La portee reste SYNDICATE par
-      // defaut : ce chemin est celui de la copropriete, et il ne change pas.
-      tenantId,
-      accountNumber: data.accountNumber,
-      accountName: data.accountName,
-      accountClass: data.accountClass,
-      accountType: data.accountType as any,
-      isAuxiliary: data.isAuxiliary ?? false,
-      parentAccountId: data.parentAccountId ?? undefined
+  try {
+    return await prisma.chartOfAccount.create({
+      data: {
+        syndicateId,
+        // Le tenant devient une colonne au lot 2. La portee reste SYNDICATE par
+        // defaut : ce chemin est celui de la copropriete, et il ne change pas.
+        tenantId,
+        accountNumber: data.accountNumber,
+        accountName: data.accountName,
+        accountClass: data.accountClass,
+        accountType: data.accountType as any,
+        isAuxiliary: data.isAuxiliary ?? false,
+        parentAccountId: data.parentAccountId ?? undefined
+      }
+    });
+  } catch (error: any) {
+    // Defaut n°5 du §6.1 bis : la violation d'unicite du numero de compte
+    // remontait telle quelle, avec le message technique de Prisma, en 400. Une
+    // gestionnaire lisait « Unique constraint failed on the fields... » la ou
+    // il fallait lui dire que ce numero est deja pris.
+    //
+    // **Ce rattrapage est sur, ici, parce qu'on n'est pas dans une
+    // transaction.** En PostgreSQL une commande qui echoue annule toute la
+    // transaction en cours, et toute commande suivante est refusee jusqu'au
+    // rollback : le motif « tenter puis rattraper » ne vaut que pour une
+    // commande isolee, ce qu'est cette creation. Le chemin operationnel du
+    // lot 2, lui, ecrit dans une transaction et lit donc avant d'ecrire.
+    // Voir l'en-tete de `appendThirdPartyMovementTx` (`lib/finance/ledger.ts`).
+    if (error?.code === 'P2002') {
+      throw conflict(`Le numero de compte ${data.accountNumber} existe deja pour cette copropriete`);
     }
-  });
+    throw error;
+  }
 }
 
 export async function listAccountingJournalsBySyndicate(tenantId: string, syndicateId: string, fiscalYear?: number) {

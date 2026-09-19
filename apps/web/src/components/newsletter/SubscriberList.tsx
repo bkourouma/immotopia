@@ -89,6 +89,7 @@ export function SubscriberList({
         </Button>
       </div>
       <Table
+        scroll={{ x: 'max-content' }}
         loading={loading}
         columns={columns}
         dataSource={subscribers}
@@ -98,7 +99,7 @@ export function SubscriberList({
           pageSize: pagination.limit,
           total: pagination.total,
           showSizeChanger: true,
-          showTotal: (t) => `Total: ${t} abonnés`,
+          showTotal: t => `Total: ${t} abonnés`,
           onChange: onPageChange
         }}
       />

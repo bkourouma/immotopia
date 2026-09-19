@@ -16,36 +16,36 @@ export const VoteBoard: React.FC<VoteBoardProps> = ({ quorum, resolutions }) => 
     PENDING: 'En attente',
     APPROVED: 'Approuvée',
     REJECTED: 'Rejetée',
-    DEFERRED: 'Reportée',
+    DEFERRED: 'Reportée'
   };
 
   const columns: ColumnsType<MeetingResolution> = [
     {
       title: 'Resolution',
       dataIndex: 'title',
-      key: 'title',
+      key: 'title'
     },
     {
       title: 'Pour',
       dataIndex: 'votesFor',
-      key: 'votesFor',
+      key: 'votesFor'
     },
     {
       title: 'Contre',
       dataIndex: 'votesAgainst',
-      key: 'votesAgainst',
+      key: 'votesAgainst'
     },
     {
       title: 'Abstention',
       dataIndex: 'votesAbstain',
-      key: 'votesAbstain',
+      key: 'votesAbstain'
     },
     {
       title: 'Resultat',
       dataIndex: 'result',
       key: 'result',
-      render: (value: string) => resultLabels[value] || value,
-    },
+      render: (value: string) => resultLabels[value] || value
+    }
   ];
 
   return (
@@ -59,6 +59,7 @@ export const VoteBoard: React.FC<VoteBoardProps> = ({ quorum, resolutions }) => 
       <Col xs={24} md={16}>
         <Card title="Resultats des resolutions">
           <Table
+            scroll={{ x: 'max-content' }}
             rowKey="id"
             dataSource={resolutions}
             columns={columns}

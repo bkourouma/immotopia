@@ -100,21 +100,21 @@ export default function Revenues() {
     {
       title: 'Propriété',
       dataIndex: 'propertyAddress',
-      key: 'propertyAddress',
+      key: 'propertyAddress'
     },
     {
       title: 'Revenus',
       dataIndex: 'revenue',
       key: 'revenue',
       render: (amount: number) => formatCurrency(amount),
-      sorter: (a: RevenueByPropertyData, b: RevenueByPropertyData) => a.revenue - b.revenue,
+      sorter: (a: RevenueByPropertyData, b: RevenueByPropertyData) => a.revenue - b.revenue
     },
     {
       title: 'Nombre de paiements',
       dataIndex: 'paymentCount',
       key: 'paymentCount',
-      sorter: (a: RevenueByPropertyData, b: RevenueByPropertyData) => a.paymentCount - b.paymentCount,
-    },
+      sorter: (a: RevenueByPropertyData, b: RevenueByPropertyData) => a.paymentCount - b.paymentCount
+    }
   ];
 
   if (loading) {
@@ -132,17 +132,12 @@ export default function Revenues() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="it-toolbar">
         <div>
           <Title level={2}>Revenus</Title>
           <Text type="secondary">Analyse de vos revenus locatifs</Text>
         </div>
-        <Button
-          icon={<SyncOutlined />}
-          onClick={loadRevenueData}
-          loading={loading}
-          aria-label="Rafraîchir les revenus"
-        >
+        <Button icon={<SyncOutlined />} onClick={loadRevenueData} loading={loading} aria-label="Rafraîchir les revenus">
           Actualiser
         </Button>
       </div>
@@ -187,28 +182,26 @@ export default function Revenues() {
 
       {/* Filters (T088) */}
       <Card title="Filtres">
-        <Space wrap>
-          <Space>
-            <Text strong>Période:</Text>
+        <div className="it-filters">
+          <div className="it-filters__field">
+            <Text strong>Période</Text>
             <RangePicker
               value={dateRange}
-              onChange={(dates) => setDateRange(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
+              onChange={dates => setDateRange(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
               format="DD/MM/YYYY"
             />
-          </Space>
-          <Space>
-            <Text strong>Année (revenus mensuels):</Text>
-            <Select
-              style={{ width: 150 }}
-              value={selectedYear}
-              onChange={(value) => setSelectedYear(value)}
-            >
+          </div>
+          <div className="it-filters__field">
+            <Text strong>Année (revenus mensuels)</Text>
+            <Select style={{ width: 150 }} value={selectedYear} onChange={value => setSelectedYear(value)}>
               {yearOptions.map(year => (
-                <Option key={year} value={year}>{year}</Option>
+                <Option key={year} value={year}>
+                  {year}
+                </Option>
               ))}
             </Select>
-          </Space>
-        </Space>
+          </div>
+        </div>
       </Card>
 
       {/* Revenue by Month Chart (T085) */}
@@ -221,12 +214,7 @@ export default function Revenues() {
         }
       >
         {revenuesByMonth.length > 0 ? (
-          <RevenueChart
-            data={revenuesByMonth}
-            type="line"
-            dataKey="revenue"
-            xAxisKey="monthName"
-          />
+          <RevenueChart data={revenuesByMonth} type="line" dataKey="revenue" xAxisKey="monthName" />
         ) : (
           <Empty description="Aucune donnée disponible pour cette année" />
         )}
@@ -236,15 +224,11 @@ export default function Revenues() {
       <Card title="Revenus par propriété">
         {revenuesByProperty.length > 0 ? (
           <>
-            <RevenueChart
-              data={revenuesByProperty}
-              type="bar"
-              dataKey="revenue"
-              xAxisKey="propertyAddress"
-            />
+            <RevenueChart data={revenuesByProperty} type="bar" dataKey="revenue" xAxisKey="propertyAddress" />
             {/* Revenue by Property Table (T087) */}
             <div style={{ marginTop: 24 }}>
               <Table
+                scroll={{ x: 'max-content' }}
                 columns={propertyTableColumns}
                 dataSource={revenuesByProperty}
                 rowKey="propertyId"

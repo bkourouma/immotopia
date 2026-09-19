@@ -128,7 +128,7 @@ export const TicketDetail: React.FC = () => {
 
           <Card>
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div className="it-toolbar it-toolbar--start">
                 <div>
                   <Title level={3} style={{ margin: 0 }}>
                     {ticket.title}

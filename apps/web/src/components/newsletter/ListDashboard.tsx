@@ -1,12 +1,6 @@
 import React from 'react';
 import { Card, Row, Col, Statistic, Tag, Button, Typography, Space } from 'antd';
-import {
-  TeamOutlined,
-  UserOutlined,
-  MailOutlined,
-  EditOutlined,
-  DeleteOutlined
-} from '@ant-design/icons';
+import { TeamOutlined, UserOutlined, MailOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { NewsletterList } from '../../services/newsletter.service';
 
 const { Title, Text } = Typography;
@@ -37,7 +31,7 @@ export function ListDashboard({
 }: ListDashboardProps) {
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+      <div className="it-toolbar" style={{ marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>
           Listes de diffusion
         </Title>
@@ -47,7 +41,7 @@ export function ListDashboard({
       </div>
 
       <Row gutter={[16, 16]}>
-        {lists.map((list) => (
+        {lists.map(list => (
           <Col xs={24} sm={12} lg={8} xl={6} key={list.id}>
             <Card
               loading={loading}
@@ -55,10 +49,29 @@ export function ListDashboard({
               onClick={() => onSelectList(list)}
               style={{ cursor: 'pointer' }}
               actions={[
-                <Button type="link" size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); onEditList(list); }} key="edit">
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<EditOutlined />}
+                  onClick={e => {
+                    e.stopPropagation();
+                    onEditList(list);
+                  }}
+                  key="edit"
+                >
                   Modifier
                 </Button>,
-                <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={(e) => { e.stopPropagation(); onDeleteList(list); }} key="delete">
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={e => {
+                    e.stopPropagation();
+                    onDeleteList(list);
+                  }}
+                  key="delete"
+                >
                   Supprimer
                 </Button>
               ]}
@@ -82,7 +95,12 @@ export function ListDashboard({
                   <Statistic title="Total" value={list.totalCount ?? 0} prefix={<TeamOutlined />} />
                 </Col>
                 <Col span={8}>
-                  <Statistic title="Actifs" value={list.activeCount ?? 0} valueStyle={{ color: '#52c41a' }} prefix={<UserOutlined />} />
+                  <Statistic
+                    title="Actifs"
+                    value={list.activeCount ?? 0}
+                    valueStyle={{ color: '#52c41a' }}
+                    prefix={<UserOutlined />}
+                  />
                 </Col>
                 <Col span={8}>
                   <Statistic title="Désabonnés" value={list.unsubscribedCount ?? 0} valueStyle={{ color: '#999' }} />

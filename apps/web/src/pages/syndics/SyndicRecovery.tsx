@@ -359,6 +359,7 @@ export const SyndicRecovery: React.FC = () => {
 
             <Card title="Dashboard retards">
               <Table
+                scroll={{ x: 'max-content' }}
                 rowKey="chargeCallId"
                 dataSource={dashboard.items}
                 pagination={{ pageSize: 10 }}
@@ -398,6 +399,7 @@ export const SyndicRecovery: React.FC = () => {
 
             <Card title="Historique relances">
               <Table
+                scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={reminders}
                 pagination={{ pageSize: 10 }}
@@ -422,6 +424,7 @@ export const SyndicRecovery: React.FC = () => {
 
             <Card title="Pénalités de retard">
               <Table
+                scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={penalties}
                 pagination={{ pageSize: 10 }}
@@ -462,6 +465,7 @@ export const SyndicRecovery: React.FC = () => {
 
             <Card title="Échéanciers">
               <Table
+                scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={schedules}
                 pagination={{ pageSize: 10 }}
@@ -515,12 +519,12 @@ export const SyndicRecovery: React.FC = () => {
             <Select showSearch optionFilterProp="label" options={chargeOptions} />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item label="Niveau" name="reminderLevel" rules={[{ required: true }]}>
                 <InputNumber min={1} max={4} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item label="Canal" name="channel" rules={[{ required: true }]}>
                 <Select options={reminderChannelOptions} />
               </Form.Item>
@@ -547,7 +551,7 @@ export const SyndicRecovery: React.FC = () => {
             <Select showSearch optionFilterProp="label" options={chargeOptions} />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Taux (%)"
                 name="penaltyRate"
@@ -556,7 +560,7 @@ export const SyndicRecovery: React.FC = () => {
                 <InputNumber min={0.01} max={100} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item label="Jours de retard (optionnel)" name="daysLate">
                 <InputNumber min={1} style={{ width: '100%' }} />
               </Form.Item>
@@ -590,7 +594,7 @@ export const SyndicRecovery: React.FC = () => {
             <Select showSearch optionFilterProp="label" options={chargeOptions} />
           </Form.Item>
           <Row gutter={12}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Montant total"
                 name="totalAmount"
@@ -599,7 +603,7 @@ export const SyndicRecovery: React.FC = () => {
                 <InputNumber min={1} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item label="Date accord (optionnel)" name="agreedAt">
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
@@ -611,7 +615,7 @@ export const SyndicRecovery: React.FC = () => {
               <Space direction="vertical" style={{ width: '100%' }} size={8}>
                 {fields.map((field, index) => (
                   <Row gutter={12} key={field.key}>
-                    <Col span={10}>
+                    <Col xs={24} md={10}>
                       <Form.Item
                         {...field}
                         label={`Échéance #${index + 1}`}
@@ -621,7 +625,7 @@ export const SyndicRecovery: React.FC = () => {
                         <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
                       </Form.Item>
                     </Col>
-                    <Col span={10}>
+                    <Col xs={24} md={10}>
                       <Form.Item
                         {...field}
                         label="Montant"
@@ -631,7 +635,7 @@ export const SyndicRecovery: React.FC = () => {
                         <InputNumber min={1} style={{ width: '100%' }} />
                       </Form.Item>
                     </Col>
-                    <Col span={4} style={{ display: 'flex', alignItems: 'center' }}>
+                    <Col xs={24} md={4} style={{ display: 'flex', alignItems: 'center' }}>
                       <Button danger onClick={() => remove(field.name)} disabled={fields.length <= 1}>
                         Supprimer
                       </Button>

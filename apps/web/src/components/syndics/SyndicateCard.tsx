@@ -9,7 +9,7 @@ const { Paragraph, Text, Title } = Typography;
 const statusConfig: Record<Syndicate['status'], { color: string; label: string }> = {
   ACTIVE: { color: 'green', label: 'Active' },
   IN_LIQUIDATION: { color: 'orange', label: 'En liquidation' },
-  IN_DISPUTE: { color: 'red', label: 'En litige' },
+  IN_DISPUTE: { color: 'red', label: 'En litige' }
 };
 
 interface SyndicateCardProps {
@@ -34,19 +34,13 @@ export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantI
         <Link key="lots" to={`/tenant/${tenantId}/syndics/${syndicate.id}/lots`}>
           Voir les lots
         </Link>,
-        <Button
-          key="delete"
-          type="link"
-          danger
-          loading={deleting}
-          onClick={() => onDelete?.(syndicate.id)}
-        >
+        <Button key="delete" type="link" danger loading={deleting} onClick={() => onDelete?.(syndicate.id)}>
           Supprimer
-        </Button>,
+        </Button>
       ]}
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-        <Space style={{ justifyContent: 'space-between', width: '100%' }} align="start">
+        <Space style={{ justifyContent: 'space-between', width: '100%' }} align="start" wrap>
           <Space>
             <div
               style={{
@@ -57,7 +51,7 @@ export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantI
                 alignItems: 'center',
                 justifyContent: 'center',
                 background: 'linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%)',
-                color: '#1d4ed8',
+                color: '#1d4ed8'
               }}
             >
               <BankOutlined />

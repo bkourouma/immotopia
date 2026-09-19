@@ -17,6 +17,7 @@ export const ValuationHistory: React.FC<Props> = ({ valuations }) => {
   return (
     <Card title="Historique des valorisations">
       <Table
+        scroll={{ x: 'max-content' }}
         rowKey="id"
         dataSource={valuations}
         pagination={{ pageSize: 5 }}
@@ -29,7 +30,8 @@ export const ValuationHistory: React.FC<Props> = ({ valuations }) => {
           {
             title: 'Valeur',
             dataIndex: 'estimatedValue',
-            render: (value: number, record: AssetValuation) => `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
+            render: (value: number, record: AssetValuation) =>
+              `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
           },
           {
             title: 'Méthode',
