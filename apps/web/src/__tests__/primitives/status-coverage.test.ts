@@ -18,10 +18,29 @@ import { PropertyStatus, PropertyVisitStatus, PropertyFurnishingStatus } from '.
  * « AVAILABLE » et « RENTED » à l'utilisateur, puis celle des documents
  * « VOID ». Les deux ont été découverts à l'œil, dans l'atelier.
  *
- * L'invariant est simple et mécanique : tout code déclaré dans une énumération
- * de statut du dépôt doit avoir un libellé français. Il se vérifie à partir des
- * énumérations elles-mêmes, pas d'une liste recopiée — une liste recopiée
- * oublierait le prochain code ajouté, ce qui est exactement le problème.
+ * L'invariant est simple : tout code de statut affichable doit avoir un
+ * libellé français.
+ *
+ * ---------------------------------------------------------------------------
+ * Ce que ce test couvre, et ce qu'il ne couvre pas — dit franchement
+ * ---------------------------------------------------------------------------
+ *
+ * `ENUMS` réunit des objets d'énumération **exécutables** : le test itère leurs
+ * valeurs, si bien qu'un code ajouté à l'une d'elles est couvert sans que
+ * personne ne touche à ce fichier. C'est le cas idéal.
+ *
+ * `UNIONS_FINANCE` est autre chose, et il faut le dire plutôt que de laisser
+ * croire. Les statuts du module financier sont des **unions de types
+ * TypeScript** (`type DocumentStatus = 'DRAFT' | …`) : elles s'effacent à la
+ * compilation et n'ont aucune forme qu'un test puisse parcourir. Les codes
+ * sont donc recopiés ici, à la main, avec ce que cela suppose — le prochain
+ * code ajouté à une union n'apparaîtra pas tout seul.
+ *
+ * Cette limite n'est pas théorique : ce fichier affirmait couvrir « tout code
+ * déclaré dans une énumération du dépôt », les statuts financiers n'y étaient
+ * pas, et `ISSUED` s'affichait en anglais sur l'écran des bons de commande
+ * depuis le lot 3. Un test qui promet plus qu'il ne tient est pire qu'un test
+ * absent : on cesse de regarder.
  */
 
 const ENUMS: Record<string, Record<string, string>> = {
@@ -35,6 +54,24 @@ const ENUMS: Record<string, Record<string, string>> = {
   PropertyFurnishingStatus
 };
 
+/**
+ * Statuts du module financier. Recopiés — voir l'en-tête pour pourquoi.
+ *
+ * La source de vérité reste `apps/web/src/types/finance-*-types.ts`. Quand une
+ * union y gagne un code, il vient ici aussi, sans quoi il s'affichera en
+ * anglais à un utilisateur.
+ */
+const UNIONS_FINANCE: Record<string, string[]> = {
+  DocumentStatus: ['DRAFT', 'VALIDATED', 'VOIDED'],
+  ConstructionSiteStatus: ['PLANNED', 'IN_PROGRESS', 'SUSPENDED', 'CLOSED'],
+  SiteBudgetStatus: ['DRAFT', 'VALIDATED'],
+  PurchaseOrderStatus: ['DRAFT', 'ISSUED', 'CANCELLED'],
+  LandLeaseDocumentStatus: ['DRAFT', 'VALIDATED'],
+  SalaryDocumentStatus: ['DRAFT', 'VALIDATED', 'VOIDED'],
+  ContractorDocumentStatus: ['DRAFT', 'VALIDATED', 'VOIDED'],
+  RetentionStatus: ['HELD', 'RELEASED']
+};
+
 describe('StatusTag — couverture des statuts du dépôt', () => {
   for (const [nom, valeurs] of Object.entries(ENUMS)) {
     describe(nom, () => {
@@ -44,6 +81,18 @@ describe('StatusTag — couverture des statuts du dépôt', () => {
           expect(libelle, `« ${code} » (${nom}) s'afficherait en anglais à l'utilisateur`).not.toBeNull();
           // Un libellé identique au code n'est pas une traduction : il signale
           // une entrée ajoutée pour faire taire le test sans rien traduire.
+          expect(libelle).not.toBe(code);
+        });
+      }
+    });
+  }
+
+  for (const [nom, codes] of Object.entries(UNIONS_FINANCE)) {
+    describe(nom, () => {
+      for (const code of codes) {
+        it(`traduit ${code}`, () => {
+          const libelle = statusLabel(code);
+          expect(libelle, `« ${code} » (${nom}) s'afficherait en anglais à l'utilisateur`).not.toBeNull();
           expect(libelle).not.toBe(code);
         });
       }

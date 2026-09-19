@@ -109,7 +109,20 @@ const STATUS_MAP: Record<string, { tone: StatusTone; label: string }> = {
   FINAL: { tone: 'success', label: 'Final' },
   PUBLISHED: { tone: 'success', label: 'Publié' },
   WON: { tone: 'success', label: 'Gagnée' },
-  LOST: { tone: 'danger', label: 'Perdue' }
+  LOST: { tone: 'danger', label: 'Perdue' },
+
+  // Pieces et engagements du module financier operationnel (lots 2 a 4).
+  //
+  // Ces quatre codes manquaient, et `ISSUED` s'affichait donc en anglais sur
+  // l'ecran des bons de commande, livre depuis le lot 3. C'est exactement le
+  // defaut que `status-coverage.test.ts` existe pour empecher : il ne l'a pas
+  // vu parce que sa liste d'enumerations est recopiee a la main et que les
+  // statuts financiers sont des unions TypeScript, sans forme executable. La
+  // note de ce test dit desormais ce qu'il couvre reellement.
+  VOIDED: { tone: 'danger', label: 'Annulée' },
+  ISSUED: { tone: 'info', label: 'Émis' },
+  HELD: { tone: 'warning', label: 'Détenue' },
+  RELEASED: { tone: 'success', label: 'Libérée' }
 };
 
 export interface StatusTagProps {
