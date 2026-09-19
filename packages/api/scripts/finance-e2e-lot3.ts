@@ -517,7 +517,9 @@ async function main(): Promise<void> {
 
     const compteMainOeuvre = await prisma.$transaction(tx =>
       createOperationalAccountTx(tx, tenantId as string, {
-        accountNumber: '661',
+        // 606 et non 661 : le 661 est desormais seme d'office pour les salaires
+        // (lot 4), et le creer ici leverait un conflit de numero.
+        accountNumber: '606',
         accountName: "Main-d'oeuvre de chantier",
         accountClass: 6,
         accountType: 'EXPENSE' as any
@@ -530,7 +532,7 @@ async function main(): Promise<void> {
     constater('Le poste porte desormais son compte', compteMainOeuvre.id, posteRattache.chartOfAccountId);
     constater(
       'Et il le NOMME, jamais son identifiant seul',
-      "661 — Main-d'oeuvre de chantier",
+      "606 — Main-d'oeuvre de chantier",
       posteRattache.chartOfAccountLabel
     );
 

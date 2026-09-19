@@ -253,7 +253,12 @@ export const OPERATIONAL_ACCOUNT_SEEDS: OperationalAccountSeed[] = [
     accountClass: 4,
     accountType: 'ASSET'
   },
-  { accountNumber: '613', accountName: 'Locations', accountClass: 6, accountType: 'EXPENSE' }
+  { accountNumber: '613', accountName: 'Locations', accountClass: 6, accountType: 'EXPENSE' },
+  // Lot 4, sous-lot 3 : les salaires. Le 661 recoit la charge, le 422 la
+  // dette envers le salarie — un salaire constate n'est pas un salaire paye,
+  // et l'un des deux doit pouvoir exister sans l'autre.
+  { accountNumber: '422', accountName: 'Personnel, remunerations dues', accountClass: 4, accountType: 'LIABILITY' },
+  { accountNumber: '661', accountName: 'Charges de personnel', accountClass: 6, accountType: 'EXPENSE' }
 ];
 
 /**

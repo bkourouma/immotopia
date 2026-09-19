@@ -444,6 +444,10 @@ model User {
   siteBudgetAlertsSeen      SiteBudgetAlert[]  @relation("SiteBudgetAlertAcknowledgedBy")
   landLeasePaymentsCreated  LandLeasePayment[] @relation("LandLeasePaymentCreatedBy")
   landLeasePaymentsValidated LandLeasePayment[] @relation("LandLeasePaymentValidatedBy")
+  salaryNotesCreated        SalaryNote[]       @relation("SalaryNoteCreatedBy")
+  salaryNotesValidated      SalaryNote[]       @relation("SalaryNoteValidatedBy")
+  salaryPaymentsCreated     SalaryPayment[]    @relation("SalaryPaymentCreatedBy")
+  salaryPaymentsValidated   SalaryPayment[]    @relation("SalaryPaymentValidatedBy")
   voidedDocuments           VoidDocument[]
 
   @@index([email])
@@ -570,6 +574,9 @@ model Tenant {
   landLeaseAccruals         LandLeaseAccrual[]
   partnerships              Partnership[]
   partnershipDistributions  PartnershipDistribution[]
+  employees                 Employee[]
+  salaryNotes               SalaryNote[]
+  salaryPayments            SalaryPayment[]
   // Nouvelles au lot 2 : ces trois tables n'avaient aucune relation
   // Tenant avant la generalisation du moteur comptable.
   chartOfAccounts           ChartOfAccount[]
@@ -2785,6 +2792,9 @@ enum SourceType {
   // pour toutes les autres pieces du module.
   LAND_LEASE_PAYMENT
   LAND_LEASE_ACCRUAL
+  // Lot 4, sous-lot 3 : les salaires.
+  SALARY_NOTE
+  SALARY_PAYMENT
 }
 
 /// Portee d'un plan de comptes, d'un journal ou d'une ecriture.
@@ -3585,6 +3595,8 @@ model JournalEntry {
   landLeasePayments LandLeasePayment[] @relation("LandLeasePaymentEntry")
   landLeaseAccruals LandLeaseAccrual[] @relation("LandLeaseAccrualEntry")
 
+  salaryNotes      SalaryNote[]      @relation("SalaryNoteEntry")
+  salaryPayments   SalaryPayment[]   @relation("SalaryPaymentEntry")
   @@index([journalId])
   @@index([entryDate])
   @@index([tenantId])
@@ -4060,6 +4072,7 @@ model ThirdPartyAccount {
 
   landLeases LandLease[]
   partnershipShares PartnershipShare[]
+  employees Employee[]
   @@unique([tenantId, kind, tenantClientId])
   @@index([tenantId])
   @@index([tenantId, kind])
@@ -4364,6 +4377,7 @@ model ConstructionSite {
   budgetAlerts   SiteBudgetAlert[]
   landLease      LandLease?       @relation(fields: [landLeaseId], references: [id], onDelete: SetNull)
 
+  salaryNotes    SalaryNote[]
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([propertyId])
@@ -4404,6 +4418,7 @@ model CostCategory {
   purchaseOrderLines PurchaseOrderLine[]
   landLeases         LandLease[]
   chartOfAccount ChartOfAccount? @relation(fields: [chartOfAccountId], references: [id], onDelete: SetNull)
+  salaryNotes        SalaryNote[]
   @@unique([tenantId, label])
   @@index([tenantId])
   @@map("cost_categories")
@@ -4412,6 +4427,10 @@ model CostCategory {
 enum CostAllocationSourceType {
   SUPPLIER_INVOICE
   CASH_VOUCHER
+  /// Lot 4, sous-lot 3. Une note de salaire rattachee a un chantier s'impute
+  /// a son cout : c'est le besoin P9 du PRD, et c'est ce qui fait qu'un
+  /// chantier connait sa main-d'oeuvre.
+  SALARY_NOTE
   /// Lot 4. Sans cette valeur, la constatation mensuelle d'un loyer de
   /// terrain ne pouvait produire aucune imputation, et le loyer n'entrait
   /// donc JAMAIS dans le cout reel du chantier — ce qui vidait le sous-lot
@@ -5001,4 +5020,130 @@ model PartnershipDistribution {
   @@index([tenantId])
   @@index([partnershipId, periodYear, periodMonth])
   @@map("partnership_distributions")
+}
+
+// ===========================================================================
+// LOT 4, sous-lot 3 — Salaires (PRD E8, besoins B11 et P9)
+// ===========================================================================
+//
+// AUCUN CALCUL SOCIAL, et c'est une exigence du PRD, pas un raccourci. Le
+// module constate une depense et une dette envers un salarie ; il ne calcule
+// ni cotisation, ni retenue, ni net a payer. Ce qui est saisi est ce qui sera
+// verse.
+//
+// LE CYCLE, calque sur celui du fournisseur au lot 2, parce que c'est le meme
+// mouvement d'argent : une piece cree la dette, une autre l'eteint.
+//
+//   1. La note de salaire est saisie, puis validee : la charge nait, et le
+//      compte de l'employe devient crediteur de ce qu'on lui doit.
+//   2. Quand la note porte un chantier, la charge s'impute a son cout — c'est
+//      le besoin P9, et c'est ce qui fait qu'un chantier connait sa
+//      main-d'oeuvre.
+//   3. Le reglement eteint la dette.
+//
+// UNE NOTE PAR EMPLOYE ET PAR MOIS. L'unicite l'impose : sans elle, une double
+// saisie ferait payer deux fois le meme mois, et personne ne s'en apercevrait
+// avant que le salarie ne le signale.
+
+/// Un salarie de l'entreprise, et son compte de tiers.
+///
+/// Distinct de `User`, qui est un compte d'acces a l'application : un macon
+/// n'ouvre pas l'application, et un comptable qui l'ouvre n'est pas
+/// forcement paye par ce module.
+model Employee {
+  id                  String   @id @default(uuid()) @db.Uuid
+  tenantId            String   @map("tenant_id")
+  fullName            String   @map("full_name")
+  /// Ce qu'il fait, en clair : « Macon », « Chef de chantier ». Libre.
+  role                String?
+  thirdPartyAccountId String   @map("third_party_account_id") @db.Uuid
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  thirdPartyAccount ThirdPartyAccount @relation(fields: [thirdPartyAccountId], references: [id], onDelete: Restrict)
+  salaryNotes       SalaryNote[]
+  salaryPayments    SalaryPayment[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("employees")
+}
+
+/// La note de salaire d'un mois, pour un employe.
+model SalaryNote {
+  id                String                @id @default(uuid()) @db.Uuid
+  tenantId          String                @map("tenant_id")
+  employeeId        String                @map("employee_id") @db.Uuid
+  periodYear        Int                   @map("period_year")
+  periodMonth       Int                   @map("period_month")
+  amount            Decimal               @db.Decimal(14, 2)
+  currency          String                @default("XOF")
+  /// Chantier auquel ce salaire se rattache, s'il y en a un.
+  ///
+  /// Facultatif : un comptable d'agence n'est rattache a aucun chantier. Quand
+  /// il est renseigne, la charge s'impute au cout du chantier (besoin P9).
+  siteId            String?               @map("site_id") @db.Uuid
+  /// Poste de depense de l'imputation. Exige des qu'un chantier est renseigne.
+  ///
+  /// Le PRD dit « poste main-d'oeuvre ». On ne le devine PAS depuis un
+  /// libelle : les postes sont propres a chaque agence et librement
+  /// renommables, et resoudre par le texte casserait le jour ou quelqu'un
+  /// ecrit « Main d'oeuvre » sans apostrophe. L'ecran le presente
+  /// pre-selectionne ; le domaine, lui, l'exige.
+  costCategoryId    String?               @map("cost_category_id") @db.Uuid
+  status            SupplierInvoiceStatus @default(DRAFT)
+  journalEntryId    String?               @map("journal_entry_id") @db.Uuid
+  createdByUserId   String                @map("created_by_user_id")
+  validatedByUserId String?               @map("validated_by_user_id")
+  validatedAt       DateTime?             @map("validated_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
+
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee     Employee          @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  site         ConstructionSite? @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  costCategory CostCategory?     @relation(fields: [costCategoryId], references: [id], onDelete: SetNull)
+  journalEntry JournalEntry?     @relation("SalaryNoteEntry", fields: [journalEntryId], references: [id], onDelete: SetNull)
+  createdBy    User              @relation("SalaryNoteCreatedBy", fields: [createdByUserId], references: [id])
+  validatedBy  User?             @relation("SalaryNoteValidatedBy", fields: [validatedByUserId], references: [id])
+
+  /// Une note par employe et par mois. Sans cette contrainte, une double
+  /// saisie ferait payer deux fois le meme mois.
+  @@unique([employeeId, periodYear, periodMonth])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([siteId])
+  @@map("salary_notes")
+}
+
+/// Le reglement d'un salarie : ce qui eteint la dette.
+///
+/// Sans affectation a des notes precises, contrairement au reglement
+/// fournisseur du lot 2 : on paie un salarie, pas une facture. Le solde de son
+/// compte dit ce qui lui reste du, et c'est la seule question qu'on se pose.
+model SalaryPayment {
+  id                String                @id @default(uuid()) @db.Uuid
+  tenantId          String                @map("tenant_id")
+  employeeId        String                @map("employee_id") @db.Uuid
+  paymentDate       DateTime              @map("payment_date")
+  amount            Decimal               @db.Decimal(14, 2)
+  currency          String                @default("XOF")
+  status            SupplierInvoiceStatus @default(DRAFT)
+  journalEntryId    String?               @map("journal_entry_id") @db.Uuid
+  createdByUserId   String                @map("created_by_user_id")
+  validatedByUserId String?               @map("validated_by_user_id")
+  validatedAt       DateTime?             @map("validated_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee     Employee      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry? @relation("SalaryPaymentEntry", fields: [journalEntryId], references: [id], onDelete: SetNull)
+  createdBy    User          @relation("SalaryPaymentCreatedBy", fields: [createdByUserId], references: [id])
+  validatedBy  User?         @relation("SalaryPaymentValidatedBy", fields: [validatedByUserId], references: [id])
+
+  @@index([tenantId])
+  @@index([employeeId])
+  @@map("salary_payments")
 }
