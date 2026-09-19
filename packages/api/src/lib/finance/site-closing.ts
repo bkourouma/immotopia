@@ -701,12 +701,12 @@ async function collectClosureBlockers(
   siteId: string
 ): Promise<SiteClosureBlocker[]> {
   const [invoices, vouchers, salaryNotes, statements] = await Promise.all([
-    client.supplierInvoice.count({ where: { tenantId, siteId, status: 'DRAFT' as any } }),
+    client.supplierInvoice.count({ where: { tenantId, siteId, status: 'DRAFT' } }),
     // La pièce de caisse n'a pas de colonne `status` : son brouillon se lit à
     // `validatedAt` nul, exactement comme `cash.ts` le fait pour l'afficher.
     client.cashVoucher.count({ where: { tenantId, siteId, validatedAt: null } }),
-    client.salaryNote.count({ where: { tenantId, siteId, status: 'DRAFT' as any } }),
-    client.progressStatement.count({ where: { tenantId, status: 'DRAFT' as any, contract: { siteId } } })
+    client.salaryNote.count({ where: { tenantId, siteId, status: 'DRAFT' } }),
+    client.progressStatement.count({ where: { tenantId, status: 'DRAFT', contract: { siteId } } })
   ]);
 
   const blockers: SiteClosureBlocker[] = [];
@@ -788,7 +788,7 @@ export const closeSiteTx: CloseSiteTx = async (tx, tenantId, siteId, params) => 
   // abandonne plutôt que d'écraser son `finalCost`.
   const updated = await tx.constructionSite.updateMany({
     where: { id: siteId, tenantId, closedAt: null },
-    data: { status: 'CLOSED' as any, closedAt, finalCost, closedByUserId: params.closedByUserId }
+    data: { status: 'CLOSED', closedAt, finalCost, closedByUserId: params.closedByUserId }
   });
   if (updated.count !== 1) {
     throw conflict("Ce chantier vient d'être clôturé par ailleurs");
@@ -836,7 +836,7 @@ export const reopenSiteTx: ReopenSiteTx = async (tx, tenantId, siteId) => {
 
   const updated = await tx.constructionSite.updateMany({
     where: { id: siteId, tenantId, closedAt: { not: null } },
-    data: { status: 'IN_PROGRESS' as any, closedAt: null, finalCost: null, closedByUserId: null }
+    data: { status: 'IN_PROGRESS', closedAt: null, finalCost: null, closedByUserId: null }
   });
   if (updated.count !== 1) {
     throw conflict("Ce chantier vient d'être rouvert par ailleurs");
@@ -960,7 +960,7 @@ export const capitalizeSiteLotTx: CapitalizeSiteLotTx = async (tx, tenantId, lot
       currency: DEFAULT_CURRENCY,
       acquisitionCost: record.costPrice,
       acquisitionDate: params.acquisitionDate,
-      method: 'MANUAL' as any
+      method: 'MANUAL'
     }
   });
 
