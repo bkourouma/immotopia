@@ -163,6 +163,12 @@ export type CreateSiteLotTx = (
  *
  * Refuse dès que le lot a basculé au patrimoine : le bien créé porte déjà le
  * coût calculé, et le recalculer ici le laisserait mentir.
+ *
+ * **Refusé dès qu'un lot QUELCONQUE du chantier a basculé**, pas seulement
+ * celui qu'on touche. Corriger un lot change la part de tous les autres, et
+ * l'un d'eux porte déjà un bien dont la valeur d'acquisition en découle.
+ * Cette portée n'était pas écrite ici ; le service l'applique depuis le
+ * début, et l'agent des écrans l'a relevée.
  */
 export type UpdateSiteLotTx = (
   tx: PrismaTransactionClient,
@@ -176,6 +182,12 @@ export type UpdateSiteLotTx = (
  *
  * Refuse s'il a basculé : le bien existe, et un lot supprimé le laisserait
  * orphelin de toute explication sur d'où vient sa valeur.
+ *
+ * **Refusé dès qu'un lot QUELCONQUE du chantier a basculé**, pas seulement
+ * celui qu'on touche. Corriger un lot change la part de tous les autres, et
+ * l'un d'eux porte déjà un bien dont la valeur d'acquisition en découle.
+ * Cette portée n'était pas écrite ici ; le service l'applique depuis le
+ * début, et l'agent des écrans l'a relevée.
  */
 export type DeleteSiteLotTx = (tx: PrismaTransactionClient, tenantId: string, lotId: string) => Promise<void>;
 
@@ -192,6 +204,9 @@ export type DeleteSiteLotTx = (tx: PrismaTransactionClient, tenantId: string, lo
  * Refuse plutôt que de répartir à moitié. Une clé qui ne s'applique pas
  * produirait des coûts de revient faux sans le dire, et personne ne s'en
  * apercevrait avant de vendre au mauvais prix.
+ *
+ * **Refusé aussi dès qu'un lot du chantier a basculé** : changer la clé
+ * change toutes les parts, et l'une d'elles a déjà produit un bien.
  */
 export type SetLotAllocationMethodTx = (
   tx: PrismaTransactionClient,
@@ -220,13 +235,23 @@ export interface SiteCostBreakdownRecord {
   allocationMethod: SiteLotAllocationMethod | null;
   lots: SiteLotRecord[];
   /**
-   * Ce qui n'est réparti sur aucun lot.
+   * Ce qui n'est réparti sur aucun lot : `totalCost` moins la somme des coûts
+   * de revient.
    *
-   * Vaut `totalCost` quand le chantier n'a pas de lot, et **zéro** dès qu'il
-   * en a un — la répartition est exhaustive par construction, reliquat
-   * d'arrondi compris. Exposé quand même : un chantier qui coûte et ne produit
-   * aucun lot est un cas réel, et l'écran doit pouvoir le montrer plutôt que
-   * d'afficher un tableau vide sous un total.
+   * Il vaut **zéro dès qu'une clé de répartition est posée**, lots existants —
+   * la répartition est alors exhaustive, reliquat d'arrondi compris.
+   *
+   * Il vaut `totalCost` dans deux cas, et pas un seul : quand le chantier n'a
+   * aucun lot, **et quand il en a mais qu'aucune clé n'a été choisie**. Sans
+   * clé, rien n'est réparti et chaque lot porte zéro — verser le coût entier
+   * au premier au titre du reliquat aurait été un chiffre faux d'apparence
+   * juste.
+   *
+   * Ce commentaire disait le contraire — « zéro dès qu'il y a un lot » — et
+   * c'était le contrat qui avait tort, pas le code. Relevé par l'agent des
+   * écrans, qui a construit son écran sur le comportement réel plutôt que sur
+   * la promesse. Corrigé ici parce qu'un commentaire qui ment est pire qu'un
+   * commentaire absent.
    */
   unallocatedCost: number;
   currency: string;

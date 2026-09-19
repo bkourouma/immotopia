@@ -186,6 +186,16 @@ const Tacheron = lazy(() =>
     default: m.Tacheron
   }))
 );
+const RetenuesDeGarantie = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/RetenuesDeGarantie').then(m => ({
+    default: m.RetenuesDeGarantie
+  }))
+);
+const ClotureChantier = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/ClotureChantier').then(m => ({
+    default: m.ClotureChantier
+  }))
+);
 const TableauDeBordChantiers = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/TableauDeBordChantiers').then(m => ({
     default: m.TableauDeBordChantiers
@@ -750,6 +760,8 @@ function App() {
                       <Route path="/tenant/:tenantId/finance/salaires/:employeeId" element={<Salarie />} />
                       <Route path="/tenant/:tenantId/finance/tacherons" element={<Tacherons />} />
                       <Route path="/tenant/:tenantId/finance/tacherons/:contractorId" element={<Tacheron />} />
+                      <Route path="/tenant/:tenantId/finance/retenues" element={<RetenuesDeGarantie />} />
+                      <Route path="/tenant/:tenantId/finance/chantiers/:siteId/cloture" element={<ClotureChantier />} />
                       <Route path="/tenant/:tenantId/maintenance" element={<TicketList />} />
                       <Route path="/tenant/:tenantId/maintenance/new" element={<CreateTicket />} />
                       <Route path="/tenant/:tenantId/maintenance/:ticketId/edit" element={<EditTicket />} />

@@ -52,9 +52,26 @@
  * service **ferme cette fenêtre pour les factures**, dont les règlements sont
  * affectés pièce par pièce (`SupplierPaymentAllocation`) et donc lisibles. Il
  * **ne le peut pas pour les situations**, dont les règlements ne sont affectés
- * à rien — on règle un tâcheron, pas une situation. Dit franchement plutôt que
- * masqué : l'écran pose la retenue dans la foulée de la validation, et c'est
- * la seule garantie qu'on ait de ce côté.
+ * à rien — on règle un tâcheron, pas une situation.
+ *
+ * ### Correction : la mitigation annoncée ici n'existe pas
+ *
+ * Ce paragraphe disait : « l'écran pose la retenue dans la foulée de la
+ * validation, et c'est la seule garantie qu'on ait de ce côté ». **C'était
+ * faux.** L'écran des retenues est une liste autonome, atteinte plus tard
+ * depuis le menu ; aucun écran ne propose de poser une retenue au moment où
+ * l'on valide une situation ou une facture.
+ *
+ * Relevé par l'agent des écrans, qui a constaté qu'on lui demandait de tenir
+ * une promesse écrite dans un contrat qu'il n'avait pas rédigé. Un contrat
+ * qui décrit une garantie inexistante est plus dangereux que l'absence de
+ * garantie : on cesse de chercher le trou.
+ *
+ * **La fenêtre est donc ouverte, côté situations d'avancement, et rien ne la
+ * ferme aujourd'hui.** La refermer demande un bouton « Poser une retenue »
+ * sur `pages/finance/Tacheron.tsx` et `pages/finance/FactureFournisseur.tsx`,
+ * au moment de la validation. C'est consigné comme tel dans le rapport de
+ * lot, à arbitrer plutôt qu'à supposer réglé.
  *
  * ---------------------------------------------------------------------------
  * Le montant est dérivé du taux, jamais saisi

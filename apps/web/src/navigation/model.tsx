@@ -287,6 +287,11 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
             label: 'Tâcherons',
             href: '/tenant/:tenantId/finance/tacherons'
           },
+          {
+            key: 'finance-retenues',
+            label: 'Retenues de garantie',
+            href: '/tenant/:tenantId/finance/retenues'
+          },
           { key: 'finance-fournisseurs', label: 'Fournisseurs', href: '/tenant/:tenantId/finance/fournisseurs' },
           {
             key: 'finance-fournisseurs-balance',

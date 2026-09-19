@@ -142,6 +142,17 @@ export const ChantierDetail: React.FC = () => {
           label: 'Nouvelle pièce de caisse',
           onClick: () => navigate(`/tenant/${tenantId}/finance/caisse?chantierId=${siteId}`)
         }}
+        // Les lots et la clôture vivent sur leur propre écran (lot 4,
+        // sous-lot 6). Sans ce chemin, il n'était atteignable que par le
+        // menu, qui ne connaît pas le chantier qu'on regarde — et l'écran
+        // serait resté aussi introuvable que la caisse l'était au lot 2.
+        secondaryActions={[
+          {
+            key: 'cloture',
+            label: 'Lots et clôture',
+            onClick: () => navigate(`/tenant/${tenantId}/finance/chantiers/${siteId}/cloture`)
+          }
+        ]}
         extra={<StatusTag status={site.status} label={SITE_STATUS_LABELS[site.status]} />}
       />
 
