@@ -73,6 +73,12 @@ jest.mock('../../src/lib/finance/sites', () => ({
   createCostCategory: (...args: any[]) => createCostCategory(...args)
 }));
 
+const voidDocumentTx = jest.fn();
+
+jest.mock('../../src/lib/finance/accounting', () => ({
+  voidDocumentTx: (...args: any[]) => voidDocumentTx(...args)
+}));
+
 const createCashVoucherTx = jest.fn();
 const validateCashVoucherTx = jest.fn();
 
@@ -94,7 +100,13 @@ jest.mock('../../src/lib/finance/validation-queue', () => ({
 }));
 
 const cashVoucherFindFirst = jest.fn();
-const transactionMock = jest.fn(async (callback: any) => callback({}));
+const voidDocumentFindUniqueOrThrow = jest.fn();
+
+// Le client de transaction porte `voidDocument` : le gestionnaire d'annulation
+// relit la piece qu'il vient de creer, dans la meme transaction.
+const transactionMock = jest.fn(async (callback: any) =>
+  callback({ voidDocument: { findUniqueOrThrow: (...args: any[]) => voidDocumentFindUniqueOrThrow(...args) } })
+);
 
 jest.mock('../../src/utils/database', () => ({
   prisma: {
@@ -606,5 +618,65 @@ describe('GET /tenants/:tenantId/finance/validation-queue', () => {
 
     expect(guardCalls).toEqual(['documentsValidate']);
     expect(guardCalls).not.toContain('accountsRead');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST cash-vouchers/:voucherId/void
+//
+// Route ajoutee le 19 septembre 2026. Le principe P-6 veut qu'une piece validee
+// se corrige par une piece d'annulation liee ; seule la facture fournisseur
+// avait cette voie, si bien qu'une erreur sur une piece de caisse validee etait
+// definitive et que le cout du chantier restait faux pour toujours.
+// ---------------------------------------------------------------------------
+
+describe('POST /tenants/:tenantId/finance/cash-vouchers/:voucherId/void', () => {
+  beforeEach(() => {
+    voidDocumentTx.mockReset();
+    voidDocumentFindUniqueOrThrow.mockResolvedValue({
+      id: 'void-1',
+      documentType: 'CASH_VOUCHER',
+      documentId: VOUCHER_A,
+      reason: 'Erreur sur le bénéficiaire',
+      voidedByUserId: 'user-1',
+      voidedAt: new Date('2026-09-19')
+    });
+  });
+
+  it("crée la pièce d'annulation (201)", async () => {
+    voidDocumentTx.mockResolvedValue({ voidDocumentId: 'void-1', reversingEntryId: 'entry-1' });
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/cash-vouchers/${VOUCHER_A}/void`)
+      .send({ reason: 'Erreur sur le bénéficiaire' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data.documentType).toBe('CASH_VOUCHER');
+    expect(voidDocumentTx).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ documentType: 'CASH_VOUCHER', documentId: VOUCHER_A })
+    );
+  });
+
+  it('exige un motif : rejette en 400 un corps sans `reason`', async () => {
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/cash-vouchers/${VOUCHER_A}/void`)
+      .send({});
+
+    expect(response.status).toBe(400);
+    expect(voidDocumentTx).not.toHaveBeenCalled();
+  });
+
+  it('est réservée au droit de validation, jamais au seul droit de saisie', async () => {
+    voidDocumentTx.mockResolvedValue({ voidDocumentId: 'void-1', reversingEntryId: 'entry-1' });
+
+    await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/cash-vouchers/${VOUCHER_A}/void`)
+      .send({ reason: 'Erreur de saisie' });
+
+    // Annuler une pièce validée est la même responsabilité que la valider
+    // (décision D7), jamais celle de la saisir.
+    expect(guardCalls).toEqual(['documentsValidate']);
+    expect(guardCalls).not.toContain('documentsCreate');
   });
 });

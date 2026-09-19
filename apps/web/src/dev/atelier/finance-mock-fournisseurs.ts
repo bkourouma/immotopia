@@ -514,5 +514,14 @@ export function repondreFournisseurs(chemin: string, scenario: Scenario): unknow
     return { success: true, data: { ...reglement, status: 'VALIDATED' } };
   }
 
+  // Annulation d'un règlement validé. Même parti pris que pour la facture : la
+  // fausse API ne lit pas le corps de la requête, donc elle ne voit pas le
+  // motif, mais elle rend la pièce annulée pour que la scène se voie.
+  const annulationReglement = /\/tenants\/[^/]+\/finance\/supplier-payments\/([^/]+)\/void$/.exec(chemin);
+  if (annulationReglement) {
+    const reglement = tousLesReglements().find(p => p.id === annulationReglement[1]) ?? tousLesReglements()[0];
+    return { success: true, data: { ...reglement, status: 'VOIDED' } };
+  }
+
   return null;
 }

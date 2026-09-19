@@ -11,6 +11,8 @@ import {
   createSupplierHandler,
   createSupplierInvoiceHandler,
   createSupplierPaymentHandler,
+  validateSupplierPaymentHandler,
+  voidSupplierPaymentHandler,
   getSupplierHandler,
   getSupplierInvoiceHandler,
   getSuppliersBalanceHandler,
@@ -94,6 +96,23 @@ router.post(
   '/tenants/:tenantId/finance/suppliers/:supplierId/payments',
   requireDocumentsCreate,
   createSupplierPaymentHandler
+);
+
+// Validation et annulation d'un reglement. Toutes deux portent le droit de
+// VALIDATION, jamais celui de creation : saisir, valider et annuler sont trois
+// responsabilites distinctes (decision D7). Ajoutees le 19 septembre 2026 —
+// la validation figurait au contrat depuis le gel sans avoir jamais ete
+// ecrite, et l'annulation n'existait que pour la facture.
+router.post(
+  '/tenants/:tenantId/finance/supplier-payments/:paymentId/validate',
+  requireDocumentsValidate,
+  validateSupplierPaymentHandler
+);
+
+router.post(
+  '/tenants/:tenantId/finance/supplier-payments/:paymentId/void',
+  requireDocumentsValidate,
+  voidSupplierPaymentHandler
 );
 
 export default router;

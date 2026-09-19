@@ -632,10 +632,17 @@ function App() {
                       <Route path="/tenant/:tenantId/finance/facturation" element={<Facturation />} />
                       <Route path="/tenant/:tenantId/finance/fournisseurs" element={<Fournisseurs />} />
                       <Route path="/tenant/:tenantId/finance/fournisseurs/balance" element={<BalanceFournisseurs />} />
-                      <Route
-                        path="/tenant/:tenantId/finance/fournisseurs/:supplierId/factures"
-                        element={<FactureFournisseur />}
-                      />
+                      {/*
+                        Le fournisseur voyage en PARAMETRE DE REQUETE
+                        (`?fournisseur=`), et non dans le chemin : cet ecran
+                        porte son propre selecteur et s'ouvre legitimement sans
+                        fournisseur choisi. La liste des fournisseurs pointe
+                        vers cette adresse depuis toujours ; c'est la route
+                        declaree ici qui avait une autre forme, si bien que
+                        cliquer un fournisseur ne menait nulle part. Corrige le
+                        19 septembre 2026.
+                      */}
+                      <Route path="/tenant/:tenantId/finance/factures-fournisseurs" element={<FactureFournisseur />} />
                       <Route path="/tenant/:tenantId/finance/chantiers" element={<Chantiers />} />
                       <Route path="/tenant/:tenantId/finance/chantiers/:siteId" element={<ChantierDetail />} />
                       <Route path="/tenant/:tenantId/finance/chantiers/:siteId/caisse" element={<PieceDeCaisse />} />

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { App, Button, Card, DatePicker, Input, InputNumber, Select, Space, Typography } from 'antd';
+import { App, Button, Card, DatePicker, Input, InputNumber, Modal, Select, Space, Typography } from 'antd';
 import { PrinterOutlined, SendOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs, { Dayjs } from 'dayjs';
@@ -9,7 +9,8 @@ import {
   getCashVoucherPdfUrl,
   listConstructionSites,
   listCostCategories,
-  validateCashVoucher
+  validateCashVoucher,
+  voidCashVoucher
 } from '../../services/finance-lot2-service';
 import { DOCUMENT_STATUS_LABELS } from '../../types/finance-lot2-types';
 import type { CashVoucher, DocumentStatus } from '../../types/finance-lot2-types';
@@ -80,6 +81,9 @@ export const PieceDeCaisse: React.FC = () => {
 
   const [emissionEnCours, setEmissionEnCours] = useState(false);
   const [validationEnCours, setValidationEnCours] = useState(false);
+  const [annulationOuverte, setAnnulationOuverte] = useState(false);
+  const [motifAnnulation, setMotifAnnulation] = useState('');
+  const [annulationEnCours, setAnnulationEnCours] = useState(false);
   const [piece, setPiece] = useState<CashVoucher | null>(null);
 
   const { data: chantiers } = useQuery({
@@ -152,6 +156,30 @@ export const PieceDeCaisse: React.FC = () => {
       message.error(err?.response?.data?.message || 'La validation a échoué.');
     } finally {
       setValidationEnCours(false);
+    }
+  };
+
+  /**
+   * Annule une pièce validée, par une pièce d'annulation liée.
+   *
+   * On ne modifie jamais une pièce validée (principe P-6) : on en crée une
+   * seconde qui porte l'écriture inverse, et l'historique montre les deux. Le
+   * coût du chantier retombe tout seul, puisqu'il est dérivé des imputations
+   * validées et non annulées.
+   */
+  const annuler = async () => {
+    if (!tenantId || !piece || !motifAnnulation.trim()) return;
+    setAnnulationEnCours(true);
+    try {
+      await voidCashVoucher(tenantId, piece.id, motifAnnulation.trim());
+      setPiece({ ...piece, status: 'VOIDED' });
+      setAnnulationOuverte(false);
+      setMotifAnnulation('');
+      message.success('Pièce de caisse annulée.');
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || "L'annulation a échoué.");
+    } finally {
+      setAnnulationEnCours(false);
     }
   };
 
@@ -321,12 +349,43 @@ export const PieceDeCaisse: React.FC = () => {
                 </Button>
               </ConfirmAction>
             )}
+            {piece.status === 'VALIDATED' && (
+              <Button danger onClick={() => setAnnulationOuverte(true)}>
+                Annuler la pièce
+              </Button>
+            )}
             <Button icon={<PrinterOutlined />} onClick={imprimer}>
               Imprimer le bon
             </Button>
           </Space>
         </Card>
       )}
+
+      <Modal
+        title="Annuler cette pièce de caisse ?"
+        open={annulationOuverte}
+        onCancel={() => setAnnulationOuverte(false)}
+        onOk={annuler}
+        okText="Confirmer l'annulation"
+        okButtonProps={{ danger: true, disabled: !motifAnnulation.trim(), loading: annulationEnCours }}
+        cancelText="Renoncer"
+        destroyOnHidden
+      >
+        <Text type="secondary">
+          Une pièce d'annulation liée sera créée. La pièce d'origine reste conservée avec son numéro, mais son montant
+          ne compte plus dans le coût du chantier.
+        </Text>
+        <div style={{ marginTop: 'var(--space-4)' }}>
+          <label htmlFor="motif-annulation-piece">Motif de l'annulation</label>
+          <Input.TextArea
+            id="motif-annulation-piece"
+            rows={3}
+            value={motifAnnulation}
+            onChange={event => setMotifAnnulation(event.target.value)}
+            placeholder="Ex. Erreur sur le bénéficiaire"
+          />
+        </div>
+      </Modal>
     </>
   );
 };

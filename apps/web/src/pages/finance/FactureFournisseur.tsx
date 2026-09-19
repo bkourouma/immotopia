@@ -26,6 +26,7 @@ import {
   voidSupplierInvoice,
   createSupplierPayment,
   validateSupplierPayment,
+  voidSupplierPayment,
   listConstructionSites,
   listCostCategories
 } from '../../services/finance-lot2-service';
@@ -335,6 +336,9 @@ export const FactureFournisseur: React.FC = () => {
   // Aucun `listSupplierPayments` dans le contrat gelé (voir l'en-tête) : les
   // règlements de cette session sont gardés ici, pas relus du serveur.
   const [reglements, setReglements] = useState<SupplierPayment[]>([]);
+  const [cibleAnnulationReglement, setCibleAnnulationReglement] = useState<SupplierPayment | null>(null);
+  const [motifAnnulationReglement, setMotifAnnulationReglement] = useState('');
+  const [annulationReglementEnCours, setAnnulationReglementEnCours] = useState(false);
 
   useEffect(() => {
     setDateReglement(dayjs());
@@ -396,6 +400,31 @@ export const FactureFournisseur: React.FC = () => {
       message.success('Règlement validé.');
     } catch (err: any) {
       message.error(err?.response?.data?.message || 'La validation a échoué.');
+    }
+  };
+
+  /**
+   * Annule un règlement validé, par une pièce d'annulation liée.
+   *
+   * Même règle que pour la facture (principe P-6) : on ne modifie pas une pièce
+   * validée, on en crée une seconde qui porte l'écriture inverse. Le solde du
+   * fournisseur remonte d'autant, sans aucune correction à la main.
+   */
+  const confirmerAnnulationReglement = async () => {
+    if (!tenantId || !cibleAnnulationReglement || !motifAnnulationReglement.trim()) return;
+    setAnnulationReglementEnCours(true);
+    try {
+      await voidSupplierPayment(tenantId, cibleAnnulationReglement.id, motifAnnulationReglement.trim());
+      setReglements(prev =>
+        prev.map(r => (r.id === cibleAnnulationReglement.id ? { ...r, status: 'VOIDED' as DocumentStatus } : r))
+      );
+      message.success('Règlement annulé.');
+      setCibleAnnulationReglement(null);
+      setMotifAnnulationReglement('');
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || "L'annulation a échoué.");
+    } finally {
+      setAnnulationReglementEnCours(false);
     }
   };
 
@@ -813,6 +842,10 @@ export const FactureFournisseur: React.FC = () => {
                           >
                             <Button type="link">Valider</Button>
                           </ConfirmAction>
+                        ) : r.status === 'VALIDATED' ? (
+                          <Button type="link" danger onClick={() => setCibleAnnulationReglement(r)}>
+                            Annuler
+                          </Button>
                         ) : null
                     }
                   ]}
@@ -852,7 +885,9 @@ export const FactureFournisseur: React.FC = () => {
                                   onConfirm: () => validerReglement(r)
                                 })
                             }
-                          : undefined
+                          : r.status === 'VALIDATED'
+                            ? { label: 'Annuler', onClick: () => setCibleAnnulationReglement(r) }
+                            : undefined
                       }
                     />
                   )}
@@ -885,6 +920,36 @@ export const FactureFournisseur: React.FC = () => {
             value={motifAnnulation}
             onChange={event => setMotifAnnulation(event.target.value)}
             placeholder="Ex. Erreur de saisie sur le montant"
+          />
+        </div>
+      </Modal>
+
+      <Modal
+        title="Annuler ce règlement ?"
+        open={Boolean(cibleAnnulationReglement)}
+        onCancel={() => setCibleAnnulationReglement(null)}
+        onOk={confirmerAnnulationReglement}
+        okText="Confirmer l'annulation"
+        okButtonProps={{
+          danger: true,
+          disabled: !motifAnnulationReglement.trim(),
+          loading: annulationReglementEnCours
+        }}
+        cancelText="Renoncer"
+        destroyOnHidden
+      >
+        <Text type="secondary">
+          Une pièce d'annulation liée sera créée. Le règlement d'origine reste conservé, mais son montant ne compte plus
+          dans le solde du fournisseur : ce que nous lui devons remonte d'autant.
+        </Text>
+        <div style={{ marginTop: 'var(--space-4)' }}>
+          <label htmlFor="motif-annulation-reglement">Motif de l'annulation</label>
+          <Input.TextArea
+            id="motif-annulation-reglement"
+            rows={3}
+            value={motifAnnulationReglement}
+            onChange={event => setMotifAnnulationReglement(event.target.value)}
+            placeholder="Ex. Virement rejeté par la banque"
           />
         </div>
       </Modal>

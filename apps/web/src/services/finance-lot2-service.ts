@@ -146,6 +146,18 @@ export async function validateSupplierPayment(tenantId: string, paymentId: strin
   return response.data.data;
 }
 
+/**
+ * Annule un règlement validé, par une pièce d'annulation liée.
+ *
+ * Le principe P-6 du PRD veut qu'une pièce validée ne se modifie plus : on la
+ * corrige par une annulation, qui produit l'écriture inverse, et l'historique
+ * montre les deux. Le motif est obligatoire, sans quoi le grand livre garde une
+ * annulation inexpliquée.
+ */
+export async function voidSupplierPayment(tenantId: string, paymentId: string, reason: string): Promise<void> {
+  await apiClient.post(`${base(tenantId)}/supplier-payments/${paymentId}/void`, { reason });
+}
+
 // ---------------------------------------------------------------------------
 // Chantiers
 // ---------------------------------------------------------------------------
@@ -200,6 +212,17 @@ export async function validateCashVoucher(tenantId: string, voucherId: string): 
     {}
   );
   return response.data.data;
+}
+
+/**
+ * Annule une pièce de caisse validée, par une pièce d'annulation liée.
+ *
+ * Le coût du chantier retombe de lui-même : il est dérivé des imputations
+ * validées et non annulées, jamais stocké (principe P-4). Rien à recalculer à
+ * l'écran, rien à corriger à la main.
+ */
+export async function voidCashVoucher(tenantId: string, voucherId: string, reason: string): Promise<void> {
+  await apiClient.post(`${base(tenantId)}/cash-vouchers/${voucherId}/void`, { reason });
 }
 
 /** URL du bon imprimable. L'impression passe par le navigateur, comme le relevé. */

@@ -11,6 +11,7 @@ import {
   listCostCategories
 } from '../lib/finance/sites';
 import { createCashVoucherTx, formatCashVoucherNumber, validateCashVoucherTx } from '../lib/finance/cash';
+import { voidDocumentTx } from '../lib/finance/accounting';
 import { getValidationQueue } from '../lib/finance/validation-queue';
 import type {
   CashVoucherRecord,
@@ -25,6 +26,7 @@ import {
   createCostCategorySchema,
   listConstructionSitesQuerySchema,
   uuidPathParamSchema,
+  voidCashVoucherSchema,
   validationQueueQuerySchema
 } from '../lib/finance/schemas-sites';
 
@@ -393,6 +395,54 @@ async function buildCashVoucherPdf(payload: {
   const bytes = await pdfDoc.save();
   return Buffer.from(bytes);
 }
+
+// ---------------------------------------------------------------------------
+// POST cash-vouchers/:voucherId/void
+//
+// Le principe P-6 veut qu'une piece validee se corrige par une piece
+// d'annulation liee, jamais par une modification. Seule la facture fournisseur
+// avait cette voie au lot 2 ; une erreur sur une piece de caisse validee etait
+// donc definitive, et le cout du chantier restait faux pour toujours.
+// Ajoutee le 19 septembre 2026.
+//
+// `voidDocumentTx` produit l'ecriture inverse ET marque les imputations comme
+// annulees, ce qui fait retomber le cout reel du chantier de lui-meme : il est
+// derive, jamais stocke (principe P-4).
+//
+// Porte le droit de validation, jamais celui de creation : annuler une piece
+// validee est la meme responsabilite que la valider (decision D7).
+// ---------------------------------------------------------------------------
+
+export const voidCashVoucherHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = requireTenantId(req);
+  const voucherId = requireUuidParam(req, 'voucherId');
+  const body = voidCashVoucherSchema.parse(req.body ?? {});
+  const actorUserId = requireActorUserId(req);
+
+  const voidDocument = await prisma.$transaction(async tx => {
+    const result = await voidDocumentTx(tx, {
+      tenantId,
+      documentType: 'CASH_VOUCHER' as any,
+      documentId: voucherId,
+      reason: body.reason,
+      voidedByUserId: actorUserId
+    });
+
+    return tx.voidDocument.findUniqueOrThrow({ where: { id: result.voidDocumentId } });
+  });
+
+  res.status(201).json({
+    success: true,
+    data: {
+      id: voidDocument.id,
+      documentType: voidDocument.documentType,
+      documentId: voidDocument.documentId,
+      reason: voidDocument.reason,
+      voidedByUserId: voidDocument.voidedByUserId,
+      voidedAt: voidDocument.voidedAt
+    }
+  });
+});
 
 export const printCashVoucherHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = requireTenantId(req);

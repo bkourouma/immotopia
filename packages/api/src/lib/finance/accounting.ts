@@ -52,6 +52,7 @@ import type {
 } from './types-lot2';
 import type { PeriodRange } from './types';
 import { syncWorkProgramCostTx } from './cost-allocation';
+import { appendThirdPartyMovementTx } from './ledger';
 
 /** Devise unique du module financier (decision D9 du plan). */
 const DEFAULT_CURRENCY = 'XOF';
@@ -477,6 +478,107 @@ export const postDocumentEntryTx: PostDocumentEntryTx = async (tx, params) => {
  * principe P-6 interdit, et ce qui viderait de son sens le verrou pose par
  * `postDocumentEntryTx`. Le lien porte donc de l'annulation vers l'annulee.
  */
+/**
+ * Les mouvements de compte de tiers qu'une piece a produits.
+ *
+ * Une facture en produit un seul, sous son propre identifiant. Un reglement en
+ * produit un par affectation — chacun sous l'identifiant de l'affectation, pas
+ * du reglement — plus un pour le reliquat verse en acompte, celui-la sous
+ * l'identifiant du reglement. Une piece de caisse n'en produit aucun : elle ne
+ * met en jeu aucun tiers.
+ *
+ * Cette fonction existe pour que `voidDocumentTx` puisse les retrouver tous
+ * sans connaitre la forme de chaque nature de piece.
+ */
+async function mouvementsDeLaPiece(
+  tx: PrismaTransactionClient,
+  documentType: string,
+  documentId: string
+): Promise<Array<{ sourceType: string; sourceId: string }>> {
+  if (documentType === 'SUPPLIER_INVOICE') {
+    return [{ sourceType: 'SUPPLIER_INVOICE', sourceId: documentId }];
+  }
+
+  if (documentType === 'SUPPLIER_PAYMENT') {
+    const affectations = await tx.supplierPaymentAllocation.findMany({
+      where: { paymentId: documentId },
+      select: { id: true }
+    });
+    return [
+      { sourceType: 'SUPPLIER_PAYMENT', sourceId: documentId },
+      ...affectations.map((a: { id: string }) => ({
+        sourceType: 'SUPPLIER_PAYMENT_ALLOCATION',
+        sourceId: a.id
+      }))
+    ];
+  }
+
+  // CASH_VOUCHER : une sortie de caisse imputee a un chantier ne passe par
+  // aucun compte de tiers.
+  return [];
+}
+
+/**
+ * Remet le compte de tiers dans l'etat ou il etait avant la piece annulee.
+ *
+ * **Pourquoi ceci existe.** `voidDocumentTx` inversait l'ecriture comptable et
+ * annulait les imputations de chantier, mais ne touchait pas au compte de
+ * tiers : annuler une facture laissait donc le fournisseur creancier de son
+ * montant, et annuler un reglement laissait la dette eteinte. Le solde, qui est
+ * la raison d'etre de ce module, restait faux apres toute annulation. Le defaut
+ * n'avait jamais ete vu parce que l'annulation n'etait exposee que pour la
+ * facture, et qu'aucun test ne relisait le solde ensuite. Trouve par le
+ * parcours de bout en bout le 19 septembre 2026.
+ *
+ * **Comment.** Un mouvement d'inversion par mouvement d'origine, de sens
+ * oppose : ce qui etait porte au debit revient au credit, et reciproquement.
+ * On n'efface rien — le releve montre les deux lignes, comme il montre les deux
+ * ecritures.
+ *
+ * La cle d'idempotence du grand livre est le triplet
+ * `(sourceType, sourceId, type)`. L'inversion prend donc `VOID` pour
+ * `sourceType` et **l'identifiant du mouvement d'origine** pour `sourceId` :
+ * unique par construction, y compris quand un meme reglement inverse plusieurs
+ * affectations du meme type. Rejouer l'annulation ne double donc rien.
+ */
+async function inverserMouvementsDeTiersTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  documentType: string,
+  documentId: string,
+  motif: string
+): Promise<void> {
+  const sources = await mouvementsDeLaPiece(tx, documentType, documentId);
+  if (sources.length === 0) {
+    return;
+  }
+
+  const mouvements = await tx.thirdPartyMovement.findMany({
+    where: {
+      tenantId,
+      OR: sources.map(s => ({ sourceType: s.sourceType, sourceId: s.sourceId }))
+    }
+  });
+
+  for (const mouvement of mouvements) {
+    const porteAuDebit = roundMoneyXof(Number(mouvement.debit ?? 0));
+    const porteAuCredit = roundMoneyXof(Number(mouvement.credit ?? 0));
+
+    await appendThirdPartyMovementTx(tx, {
+      accountId: mouvement.accountId,
+      tenantId,
+      type: mouvement.type as any,
+      // Les deux sens echanges : c'est toute l'inversion.
+      billed: porteAuCredit > 0 ? porteAuCredit : undefined,
+      settled: porteAuDebit > 0 ? porteAuDebit : undefined,
+      label: `Annulation : ${mouvement.label} (${motif})`,
+      sourceType: 'VOID',
+      sourceId: mouvement.id,
+      movementDate: new Date()
+    });
+  }
+}
+
 export const voidDocumentTx: VoidDocumentTx = async (tx, params) => {
   const { tenantId, documentType, documentId, reason, voidedByUserId } = params;
 
@@ -586,6 +688,11 @@ export const voidDocumentTx: VoidDocumentTx = async (tx, params) => {
       await syncWorkProgramCostTx(tx, tenantId, siteId);
     }
   }
+
+  // Le compte de tiers revient a son etat anterieur. Sans cela, l'ecriture
+  // serait inversee mais le solde resterait celui d'avant l'annulation — et
+  // c'est le solde que la gestionnaire regarde.
+  await inverserMouvementsDeTiersTx(tx, tenantId, documentType, documentId, reason);
 
   return { voidDocumentId: voidDocument.id, reversingEntryId: reversing.id };
 };

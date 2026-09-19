@@ -35,6 +35,9 @@ jest.mock('@prisma/client', () => {
     lines: [] as Row[],
     voidDocuments: [] as Row[],
     costAllocations: [] as Row[],
+    movements: [] as Row[],
+    paymentAllocations: [] as Row[],
+    thirdPartyAccounts: [] as Row[],
     seq: 0
   };
 
@@ -214,6 +217,49 @@ jest.mock('@prisma/client', () => {
           Object.assign(allocation, args.data);
         }
         return { count: touchees.length };
+      })
+    },
+
+    // Les affectations d'un reglement : `voidDocumentTx` les lit pour retrouver
+    // les mouvements de compte de tiers qu'elles ont produits, chacun etant
+    // pose sous l'identifiant de l'affectation et non sous celui du reglement.
+    supplierPaymentAllocation: {
+      findMany: jest.fn(async (args: Row) => store.paymentAllocations.filter(a => matches(a, args.where)))
+    },
+
+    // Le grand livre des comptes de tiers. Il ne figurait pas dans cette
+    // doublure, si bien que rien n'exigeait de `voidDocumentTx` qu'il y touche
+    // — et il n'y touchait pas : annuler une facture laissait le fournisseur
+    // creancier de son montant. Defaut trouve le 19 septembre 2026 par le
+    // parcours de bout en bout, jamais par cette suite.
+    thirdPartyMovement: {
+      findMany: jest.fn(async (args: Row) => {
+        const conditions: Row[] = args.where?.OR ?? [];
+        return store.movements.filter(m =>
+          conditions.some(c => m.sourceType === c.sourceType && m.sourceId === c.sourceId)
+        );
+      }),
+      findUnique: jest.fn(async (args: Row) => {
+        const cle = args.where?.sourceType_sourceId_type ?? {};
+        return (
+          store.movements.find(
+            m => m.sourceType === cle.sourceType && m.sourceId === cle.sourceId && m.type === cle.type
+          ) ?? null
+        );
+      }),
+      create: jest.fn(async (args: Row) => {
+        const cree = { id: `mvt-${store.movements.length + 1}`, ...args.data };
+        store.movements.push(cree);
+        return cree;
+      })
+    },
+
+    thirdPartyAccount: {
+      findFirst: jest.fn(async (args: Row) => store.thirdPartyAccounts.find(a => matches(a, args.where)) ?? null),
+      update: jest.fn(async (args: Row) => {
+        const compte = store.thirdPartyAccounts.find(a => a.id === args.where.id);
+        if (compte) Object.assign(compte, args.data);
+        return { ...compte };
       })
     }
   };
@@ -643,6 +689,45 @@ describe('voidDocumentTx', () => {
     // Le lien porte de l annulation vers l annulee, pour ne pas avoir a
     // modifier une ecriture verrouillee.
     expect(inverse.voidedByEntryId).toBe(entryId);
+  });
+
+  it('remet le compte du fournisseur dans l etat ou il etait avant la piece', async () => {
+    await posterFacture(150000, 'facture-1');
+
+    // Le compte du fournisseur, et le mouvement que la facture y a pose.
+    store.thirdPartyAccounts.push({ id: 'compte-frs', tenantId: TENANT_ID, balance: 150000 });
+    store.movements.push({
+      id: 'mvt-facture',
+      accountId: 'compte-frs',
+      tenantId: TENANT_ID,
+      type: 'INVOICE',
+      debit: 150000,
+      credit: null,
+      label: 'Facture fournisseur',
+      sourceType: 'SUPPLIER_INVOICE',
+      sourceId: 'facture-1'
+    });
+
+    await voidDocumentTx(tx, {
+      tenantId: TENANT_ID,
+      documentType: 'SUPPLIER_INVOICE',
+      documentId: 'facture-1',
+      reason: 'Montant errone',
+      voidedByUserId: 'user-1'
+    });
+
+    // Le defaut que ce test epingle : jusqu'au 19 septembre 2026, l ecriture
+    // etait inversee et les imputations retirees, mais le compte de tiers
+    // n etait jamais touche. Le solde, qui est la raison d etre de ce module,
+    // restait donc celui d avant l annulation.
+    const compte = store.thirdPartyAccounts.find((c: any) => c.id === 'compte-frs');
+    expect(compte.balance).toBe(0);
+
+    // Rien n est efface : le releve montre les deux lignes.
+    const inversion = store.movements.find((m: any) => m.sourceType === 'VOID');
+    expect(inversion.sourceId).toBe('mvt-facture');
+    expect(Number(inversion.credit)).toBe(150000);
+    expect(store.movements).toHaveLength(2);
   });
 
   it('echange les deux sens, ligne a ligne, sans toucher aux montants', async () => {

@@ -59,7 +59,22 @@ export type FinanceSourceType =
   | 'RENTAL_PAYMENT_ALLOCATION'
   | 'RENTAL_PENALTY'
   | 'RENT_BILLING_RUN'
-  | 'OPENING_BALANCE';
+  | 'OPENING_BALANCE'
+  // Sources du lot 2, ajoutees le 19 septembre 2026. On AJOUTE a ce contrat
+  // gele, on ne le reecrit pas : les six valeurs ci-dessus sont inchangees.
+  //
+  // Elles manquaient, et `lib/finance/suppliers.ts` s'en tirait par une
+  // fonction de transtypage (`asFinanceSourceType`) qui affirmait au
+  // compilateur ce que le type niait. Les nommer ici rend ce detour inutile et
+  // redonne au type son role : refuser une source inventee.
+  | 'SUPPLIER_INVOICE'
+  | 'SUPPLIER_PAYMENT'
+  | 'SUPPLIER_PAYMENT_ALLOCATION'
+  | 'CASH_VOUCHER'
+  // Mouvement d'inversion, pose par `voidDocumentTx` quand une piece est
+  // annulee. Son `sourceId` est celui du mouvement inverse, ce qui le rend
+  // unique sans effort.
+  | 'VOID';
 
 // ---------------------------------------------------------------------------
 // Grand livre des comptes de tiers

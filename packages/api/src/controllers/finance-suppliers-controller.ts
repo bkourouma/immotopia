@@ -4,6 +4,7 @@ import { voidDocumentTx } from '../lib/finance/accounting';
 import {
   createSupplierInvoiceTx,
   createSupplierPaymentTx,
+  validateSupplierPaymentTx,
   createSupplierTx,
   getSuppliersBalance,
   validateSupplierInvoiceTx
@@ -200,17 +201,66 @@ function toSupplierInvoiceResponseFromRow(row: {
   });
 }
 
+/**
+ * Serialise un reglement pour la frontiere reseau.
+ *
+ * Emet `status` et, pour chaque affectation, la REFERENCE de la facture — les
+ * deux champs que l'ecran lit reellement (`SupplierPayment` dans
+ * `apps/web/src/types/finance-lot2-types.ts`). Ce serialiseur emettait jusqu'au
+ * 19 septembre 2026 `method` et `validatedAt`, que personne ne lit, et taisait
+ * ceux-la : l'ecran affichait donc un statut vide et des references vides,
+ * sans que rien ne le signale.
+ *
+ * Meme lecon qu'au lot 1 sur le compte rendu de campagne : un libelle lisible,
+ * jamais un identifiant, et resolu par une requete PAR LOT, jamais ligne a
+ * ligne.
+ */
 function toSupplierPaymentResponse(input: {
   id: string;
   supplierId: string;
+  supplierLabel: string;
   paymentDate: Date;
   amount: number;
   currency: string;
-  method: string;
-  validatedAt: Date | null;
-  allocations: SupplierPaymentRecord['allocations'];
+  status: string;
+  allocations: Array<{ invoiceId: string; invoiceReference: string; amount: number }>;
 }) {
   return { ...input };
+}
+
+/**
+ * Complete un reglement de ce que le service ne porte pas : le nom du
+ * fournisseur et la reference de chaque facture affectee.
+ *
+ * Deux requetes au plus, jamais une par ligne.
+ */
+async function enrichirReglement(tenantId: string, record: SupplierPaymentRecord) {
+  const [supplier, invoices] = await Promise.all([
+    prisma.supplier.findFirst({ where: { id: record.supplierId, tenantId }, select: { name: true } }),
+    record.allocations.length > 0
+      ? prisma.supplierInvoice.findMany({
+          where: { id: { in: record.allocations.map(a => a.invoiceId) }, tenantId },
+          select: { id: true, reference: true }
+        })
+      : Promise.resolve([] as Array<{ id: string; reference: string }>)
+  ]);
+
+  const referenceById = new Map(invoices.map(i => [i.id, i.reference]));
+
+  return toSupplierPaymentResponse({
+    id: record.id,
+    supplierId: record.supplierId,
+    supplierLabel: supplier?.name ?? 'Fournisseur inconnu',
+    paymentDate: record.paymentDate,
+    amount: record.amount,
+    currency: record.currency,
+    status: record.status,
+    allocations: record.allocations.map(a => ({
+      invoiceId: a.invoiceId,
+      invoiceReference: referenceById.get(a.invoiceId) ?? 'Facture inconnue',
+      amount: a.amount
+    }))
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -405,6 +455,69 @@ export const validateSupplierInvoiceHandler = asyncHandler(async (req: Request, 
 });
 
 // ---------------------------------------------------------------------------
+// H bis. POST supplier-payments/:paymentId/validate
+//
+// Cette route figurait au contrat OpenAPI depuis le gel du lot 2 et n'avait
+// jamais ete ecrite : le reglement naissait deja valide. L'ecran web
+// l'appelait pourtant, et recevait un 404 ; la file de validation, qui filtre
+// sur l'absence de validation, ne montrait donc jamais aucun reglement.
+// Ajoutee le 19 septembre 2026.
+//
+// Porte le droit de validation, jamais celui de creation : saisir et valider
+// sont deux responsabilites distinctes (decision D7).
+// ---------------------------------------------------------------------------
+
+export const validateSupplierPaymentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = requireTenantId(req);
+  const paymentId = requireUuidParam(req, 'paymentId');
+  const actorUserId = requireActorUserId(req);
+
+  const payment = await prisma.$transaction(tx => validateSupplierPaymentTx(tx, tenantId, paymentId, actorUserId));
+
+  res.status(200).json({ success: true, data: await enrichirReglement(tenantId, payment) });
+});
+
+// ---------------------------------------------------------------------------
+// H ter. POST supplier-payments/:paymentId/void
+//
+// Le principe P-6 veut qu'une piece validee se corrige par une piece
+// d'annulation liee, jamais par une modification. Seule la facture avait cette
+// voie ; le reglement et la piece de caisse n'en avaient aucune, et une erreur
+// de saisie y etait donc definitive. Ajoutee le 19 septembre 2026.
+// ---------------------------------------------------------------------------
+
+export const voidSupplierPaymentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = requireTenantId(req);
+  const paymentId = requireUuidParam(req, 'paymentId');
+  const body = voidSupplierInvoiceSchema.parse(req.body ?? {});
+  const actorUserId = requireActorUserId(req);
+
+  const voidDocument = await prisma.$transaction(async tx => {
+    const result = await voidDocumentTx(tx, {
+      tenantId,
+      documentType: 'SUPPLIER_PAYMENT' as any,
+      documentId: paymentId,
+      reason: body.reason,
+      voidedByUserId: actorUserId
+    });
+
+    return tx.voidDocument.findUniqueOrThrow({ where: { id: result.voidDocumentId } });
+  });
+
+  res.status(201).json({
+    success: true,
+    data: {
+      id: voidDocument.id,
+      documentType: voidDocument.documentType,
+      documentId: voidDocument.documentId,
+      reason: voidDocument.reason,
+      voidedByUserId: voidDocument.voidedByUserId,
+      voidedAt: voidDocument.voidedAt
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // I. POST supplier-invoices/:invoiceId/void
 //
 // Porte aussi le droit de validation, jamais celui de création : annuler une
@@ -452,38 +565,17 @@ export const createSupplierPaymentHandler = asyncHandler(async (req: Request, re
   const body = createSupplierPaymentSchema.parse(req.body ?? {});
   const actorUserId = requireActorUserId(req);
 
-  const { payment, methodAndValidation } = await prisma.$transaction(async tx => {
-    const created = await createSupplierPaymentTx(tx, tenantId, {
+  const payment = await prisma.$transaction(tx =>
+    createSupplierPaymentTx(tx, tenantId, {
       supplierId,
       paymentDate: body.paymentDate,
       amount: body.amount,
       allocations: body.allocations,
       createdByUserId: actorUserId
-    });
-
-    // `method` et `validatedAt` sont écrits par le domaine mais absents de
-    // `SupplierPaymentRecord` (voir l'en-tête de `lib/finance/suppliers.ts`
-    // pour l'écart entre le contrat gelé et le schéma) : on les relit dans la
-    // même transaction plutôt que de deviner la valeur par défaut du domaine.
-    const row = await tx.supplierPayment.findUniqueOrThrow({
-      where: { id: created.id },
-      select: { method: true, validatedAt: true }
-    });
-
-    return { payment: created, methodAndValidation: row };
-  });
-
-  res.status(201).json({
-    success: true,
-    data: toSupplierPaymentResponse({
-      id: payment.id,
-      supplierId: payment.supplierId,
-      paymentDate: payment.paymentDate,
-      amount: payment.amount,
-      currency: payment.currency,
-      method: methodAndValidation.method,
-      validatedAt: methodAndValidation.validatedAt,
-      allocations: payment.allocations
     })
-  });
+  );
+
+  // Le reglement nait BROUILLON depuis le 19 septembre 2026 : son statut sort
+  // du domaine, il n'y a plus rien a relire en base pour le deviner.
+  res.status(201).json({ success: true, data: await enrichirReglement(tenantId, payment) });
 });

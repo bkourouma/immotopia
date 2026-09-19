@@ -49,6 +49,26 @@ La leçon ne porte pas sur Prisma. **Une suite qui simule sa base ne peut rien d
 
 ---
 
+## 2 bis. Trois trous trouvés après la livraison, et un quatrième en les bouchant
+
+Le lot avait été déclaré livré. Un recensement de ce qui restait à faire, le 19 septembre, a montré que trois choses annoncées comme faites ne l'étaient pas. Elles sont corrigées.
+
+**L'écran de saisie des factures fournisseurs était inatteignable.** La liste des fournisseurs pointe vers une adresse portant le fournisseur en paramètre de requête, et l'écran lit bien ce paramètre. La route déclarée au câblage avait une autre forme, avec l'identifiant dans le chemin. Cliquer un fournisseur ne menait nulle part. Faute de ma part, au câblage, et les tests ne pouvaient pas la voir puisqu'ils déclarent eux-mêmes leurs routes.
+
+**La validation d'un règlement n'existait pas.** Le contrat la portait depuis le gel du lot, l'écran l'appelait, et aucune route ne l'implémentait : le règlement naissait déjà validé. Trois conséquences, toutes silencieuses. Le bouton répondait 404. L'écran annonçait un brouillon qui n'en était pas un. Et la file de validation, qui filtre sur l'absence de validation, ne montrait **jamais aucun règlement** — sa colonne était vide par construction, alors que l'organisation de la cliente est justement plusieurs saisisseurs pour un validateur.
+
+**Deux pièces sur trois ne pouvaient pas être corrigées.** Le principe P-6 veut qu'une pièce validée se corrige par une pièce d'annulation liée. Seule la facture fournisseur avait cette voie. Une erreur sur une pièce de caisse ou sur un règlement validés était définitive, et le coût du chantier restait faux pour toujours.
+
+### Le quatrième, trouvé en bouchant le troisième
+
+En vérifiant que l'annulation d'un acompte remet bien le solde du fournisseur en place, le parcours de bout en bout a montré qu'elle ne le remet pas. **Le moteur d'annulation inversait l'écriture comptable et retirait les imputations du chantier, mais ne touchait jamais au compte de tiers.**
+
+Ce défaut était déjà là, dans la seule voie d'annulation qui avait été livrée : annuler une facture laissait le fournisseur créancier de son montant. Le solde, qui est la raison d'être de ce module, restait faux après toute annulation. Personne ne l'avait vu parce qu'aucun test ne relisait le solde après une annulation.
+
+L'annulation pose désormais un mouvement de sens opposé par mouvement d'origine. Rien n'est effacé : le relevé montre les deux lignes, comme il montre les deux écritures.
+
+---
+
 ## 3. Les autres défauts trouvés à l'intégration
 
 ### Trois trous dans le contrat, tous de ma main
@@ -96,9 +116,13 @@ L'**arrondi monétaire**, restreint au seul chemin d'écriture du lot 2. Je dema
 
 ## 5. Vérifié contre une vraie base
 
-Le parcours de bout en bout crée un chantier, un fournisseur de matériaux, une facture imputée sur deux postes, la valide, saisit deux pièces de caisse et n'en valide qu'une, règle une partie de la facture, verse un acompte sans facture, puis relit tout. Il produit **trente-trois constats, tous tenus**, et supprime son tenant jetable derrière lui.
+Le parcours de bout en bout joue le travail de la gestionnaire d'un bout à l'autre : un chantier, un fournisseur de matériaux, une facture imputée sur deux postes puis validée, deux pièces de caisse dont une seule validée, un règlement partiel, un acompte sans facture, la file de validation, la balance, puis deux annulations. Il produit **quarante-deux constats, tous tenus**, et supprime son tenant jetable derrière lui.
 
-Les totaux sont choisis pour se vérifier de tête. La facture de 5 000 000 se retrouve à l'identique dans le compte du fournisseur, dans le coût réel du chantier et dans la somme des sous-totaux par poste. La pièce de caisse validée s'y ajoute, la seconde pièce non validée ne s'y ajoute pas. Le règlement puis l'acompte ramènent le solde à 3 300 000, que la balance fournisseurs affiche et totalise.
+Les totaux sont choisis pour se vérifier de tête. La facture de 5 000 000 se retrouve à l'identique dans le compte du fournisseur, dans le coût réel du chantier et dans la somme des sous-totaux par poste. La pièce de caisse validée s'y ajoute, la seconde pièce restée brouillon ne s'y ajoute pas. Les règlements ramènent le solde à 3 250 000, que la balance fournisseurs affiche et totalise.
+
+Chaque état intermédiaire est vérifié, pas seulement le résultat. Une facture en brouillon ne coûte rien au chantier. Un règlement en brouillon ne bouge pas le solde. Une pièce de caisse en brouillon n'a pas de numéro. La file de validation montre bien les trois natures de pièce en attente, et nomme qui les a saisies.
+
+Les deux annulations closent le parcours, et ce sont elles qui ont trouvé le défaut du moteur d'annulation. Annuler une pièce de caisse fait retomber le coût du chantier sans rien recalculer, puisqu'il est dérivé. Annuler un acompte fait remonter d'autant ce que nous devons au fournisseur.
 
 Cinq contrôles portent sur des invariants plutôt que sur des montants : aucune écriture déséquilibrée, toutes verrouillées, aucun numéro en double, aucun brouillon numéroté, et une suite de numéros continue depuis 1 — c'est ce dernier qui donne corps à la décision du 19 septembre.
 
@@ -123,7 +147,7 @@ Ce qui a changé :
 Le reste, par ordre d'importance :
 
 - Les tests unitaires du lot 2 simulent entièrement Prisma. Tant que cela reste vrai, le parcours de bout en bout est le seul filet contre les défauts de schéma, et il doit tourner à chaque intégration.
-- `POST supplier-payments/{id}/validate` figure au contrat mais n'existe pas : un règlement naît déjà validé. `listSupplierPayments` existe mais ne figure pas au contrat. À réconcilier.
+- `listSupplierPayments` existe côté web mais ne figure pas au contrat, et aucune route ne liste les règlements d'un fournisseur : l'écran ne connaît que ceux de sa propre session. À traiter au lot 3.
 - Aucun lien entre un poste de dépense et un compte du plan comptable. Prévu au lot 3, sans quoi l'imputation analytique et l'imputation comptable resteront deux mondes séparés.
 - Deux écarts mineurs hérités de la copropriété, relevés au lot 0 et toujours là : un intervalle de dates invalide donne 500 sur les écritures et 400 sur la balance ; le filtre `onlyActive` ne reconnaît que la chaîne exacte `false`.
 - L'API émet encore des alias de champs hérités, que rien ne lit.
@@ -138,13 +162,13 @@ Le reste, par ordre d'importance :
 | ------------------------------ | ------------ | ------------ |
 | Suites de tests backend        | 35           | 42           |
 | dont ignorées                  | 4            | 4            |
-| Tests backend                  | 289          | 432          |
+| Tests backend                  | 289          | 444          |
 | dont ignorés                   | 4            | 4            |
 | Fichiers de tests web          | 37           | 41           |
 | Tests web                      | 351          | 405          |
 | Erreurs de typage, API         | 102          | **101**      |
 | Erreurs de typage, web         | 0            | 0            |
-| Constats contre une vraie base | 0            | **33**       |
+| Constats contre une vraie base | 0            | **42**       |
 
 Le décompte d'erreurs de type baisse encore d'une unité, comme au lot 1 et pour la même raison : la ligne retirée était une panne en attente, pas une gêne de typage. Aucun fichier auparavant à zéro erreur n'en a gagné.
 

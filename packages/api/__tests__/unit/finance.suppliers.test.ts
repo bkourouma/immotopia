@@ -72,6 +72,7 @@ const store = {
   chartOfAccounts: [] as Row[],
   journals: [] as Row[],
   payments: [] as Row[],
+  voidDocuments: [] as Row[],
   paymentAllocations: [] as Row[],
   movements: [] as Row[],
   seq: 0
@@ -185,15 +186,30 @@ const mockPrisma: Row = {
 
   supplierPayment: {
     create: jest.fn(async ({ data }: Row) => {
-      const created = { id: nextId('pay'), journalEntryId: null, ...data };
+      const created = { id: nextId('pay'), journalEntryId: null, validatedAt: null, ...data };
       store.payments.push(created);
       return created;
     }),
+    findFirst: jest.fn(async ({ where }: Row) => store.payments.find(p => matchesFlat(p, where)) ?? null),
     update: jest.fn(async ({ where, data }: Row) => {
       const payment = store.payments.find(p => p.id === where.id);
       if (!payment) return null;
       Object.assign(payment, data);
       return { ...payment };
+    }),
+    updateMany: jest.fn(async ({ where, data }: Row) => {
+      const rows = store.payments.filter(p => matchesFlat(p, where));
+      rows.forEach(p => Object.assign(p, data));
+      return { count: rows.length };
+    })
+  },
+
+  voidDocument: {
+    findFirst: jest.fn(async ({ where }: Row) => store.voidDocuments.find(v => matchesFlat(v, where)) ?? null),
+    create: jest.fn(async ({ data }: Row) => {
+      const created = { id: nextId('void'), ...data };
+      store.voidDocuments.push(created);
+      return created;
     })
   },
 
@@ -291,7 +307,8 @@ import {
   createSupplierPaymentTx,
   createSupplierTx,
   getSuppliersBalance,
-  validateSupplierInvoiceTx
+  validateSupplierInvoiceTx,
+  validateSupplierPaymentTx
 } from '../../src/lib/finance/suppliers';
 
 const TENANT_ID = 'tenant-1';
@@ -311,6 +328,7 @@ beforeEach(() => {
   store.chartOfAccounts = [];
   store.journals = [];
   store.payments = [];
+  store.voidDocuments = [];
   store.paymentAllocations = [];
   store.movements = [];
   store.seq = 0;
@@ -549,11 +567,12 @@ describe('validateSupplierInvoiceTx', () => {
 // D. Reglement
 // ---------------------------------------------------------------------------
 
-describe('createSupplierPaymentTx', () => {
-  it('reglement partiel : le solde fournisseur diminue du montant regle', async () => {
+describe('createSupplierPaymentTx — brouillon', () => {
+  it('ne bouge ni le solde du fournisseur, ni le grand livre', async () => {
     const supplier = await createSupplier('SERVICES');
     const invoice = await createDraftInvoice(supplier.id, { amount: 500000, allocations: [] });
     await validateSupplierInvoiceTx(tx(), TENANT_ID, invoice.id, USER_ID);
+    postDocumentEntryTx.mockClear();
 
     const payment = await createSupplierPaymentTx(tx(), TENANT_ID, {
       supplierId: supplier.id,
@@ -563,17 +582,25 @@ describe('createSupplierPaymentTx', () => {
       createdByUserId: USER_ID
     });
 
+    // Jusqu'au 19 septembre 2026 un reglement naissait valide, ce qui rendait
+    // la file de validation vide de reglements par construction : elle les
+    // filtre sur l'absence de validation.
+    expect(payment.status).toBe('DRAFT');
     expect(payment.amount).toBe(200000);
+
+    // Un reglement saisi n'a encore rien regle.
+    expect(postDocumentEntryTx).not.toHaveBeenCalled();
     const account = store.thirdPartyAccounts.find(a => a.id === supplier.thirdPartyAccountId)!;
-    expect(account.balance).toBe(300000); // 500000 factures - 200000 regles
+    expect(account.balance).toBe(500000);
   });
 
-  it('reglement couvrant deux factures en une seule fois', async () => {
+  it('les affectations naissent avec le brouillon, sans mouvement', async () => {
     const supplier = await createSupplier('SERVICES');
     const invoiceA = await createDraftInvoice(supplier.id, { amount: 100000, allocations: [] });
     const invoiceB = await createDraftInvoice(supplier.id, { amount: 150000, allocations: [] });
     await validateSupplierInvoiceTx(tx(), TENANT_ID, invoiceA.id, USER_ID);
     await validateSupplierInvoiceTx(tx(), TENANT_ID, invoiceB.id, USER_ID);
+    const mouvementsAvant = store.movements.length;
 
     const payment = await createSupplierPaymentTx(tx(), TENANT_ID, {
       supplierId: supplier.id,
@@ -587,25 +614,8 @@ describe('createSupplierPaymentTx', () => {
     });
 
     expect(payment.allocations).toHaveLength(2);
-    const account = store.thirdPartyAccounts.find(a => a.id === supplier.thirdPartyAccountId)!;
-    expect(account.balance).toBe(0);
-  });
-
-  it('un acompte sans facture en face rend le compte fournisseur debiteur', async () => {
-    const supplier = await createSupplier('SERVICES');
-
-    await createSupplierPaymentTx(tx(), TENANT_ID, {
-      supplierId: supplier.id,
-      paymentDate: new Date('2026-09-05T00:00:00.000Z'),
-      amount: 80000,
-      allocations: [],
-      createdByUserId: USER_ID
-    });
-
-    const account = store.thirdPartyAccounts.find(a => a.id === supplier.thirdPartyAccountId)!;
-    // Positif = nous lui devons ; un acompte sans facture rend le solde
-    // negatif = le fournisseur nous doit (symetrique de l'avance locataire).
-    expect(account.balance).toBe(-80000);
+    expect(store.paymentAllocations).toHaveLength(2);
+    expect(store.movements).toHaveLength(mouvementsAvant);
   });
 
   it('refuse un reglement dont les imputations depassent le montant regle, avant toute ecriture', async () => {
@@ -626,6 +636,90 @@ describe('createSupplierPaymentTx', () => {
 
     expect(postDocumentEntryTx).not.toHaveBeenCalled();
     expect(store.payments).toHaveLength(0);
+  });
+});
+
+describe('validateSupplierPaymentTx', () => {
+  async function saisirReglement(
+    supplierId: string,
+    amount: number,
+    allocations: Array<{ invoiceId: string; amount: number }>
+  ) {
+    return createSupplierPaymentTx(tx(), TENANT_ID, {
+      supplierId,
+      paymentDate: new Date('2026-09-10T00:00:00.000Z'),
+      amount,
+      allocations,
+      createdByUserId: USER_ID
+    });
+  }
+
+  it('reglement partiel : le solde fournisseur diminue du montant regle', async () => {
+    const supplier = await createSupplier('SERVICES');
+    const invoice = await createDraftInvoice(supplier.id, { amount: 500000, allocations: [] });
+    await validateSupplierInvoiceTx(tx(), TENANT_ID, invoice.id, USER_ID);
+
+    const draft = await saisirReglement(supplier.id, 200000, [{ invoiceId: invoice.id, amount: 200000 }]);
+    const payment = await validateSupplierPaymentTx(tx(), TENANT_ID, draft.id, USER_ID);
+
+    expect(payment.status).toBe('VALIDATED');
+    const account = store.thirdPartyAccounts.find(a => a.id === supplier.thirdPartyAccountId)!;
+    expect(account.balance).toBe(300000); // 500000 factures - 200000 regles
+  });
+
+  it('reglement couvrant deux factures en une seule fois', async () => {
+    const supplier = await createSupplier('SERVICES');
+    const invoiceA = await createDraftInvoice(supplier.id, { amount: 100000, allocations: [] });
+    const invoiceB = await createDraftInvoice(supplier.id, { amount: 150000, allocations: [] });
+    await validateSupplierInvoiceTx(tx(), TENANT_ID, invoiceA.id, USER_ID);
+    await validateSupplierInvoiceTx(tx(), TENANT_ID, invoiceB.id, USER_ID);
+
+    const draft = await saisirReglement(supplier.id, 250000, [
+      { invoiceId: invoiceA.id, amount: 100000 },
+      { invoiceId: invoiceB.id, amount: 150000 }
+    ]);
+    const payment = await validateSupplierPaymentTx(tx(), TENANT_ID, draft.id, USER_ID);
+
+    expect(payment.allocations).toHaveLength(2);
+    const account = store.thirdPartyAccounts.find(a => a.id === supplier.thirdPartyAccountId)!;
+    expect(account.balance).toBe(0);
+  });
+
+  it('un acompte sans facture en face rend le compte fournisseur debiteur', async () => {
+    const supplier = await createSupplier('SERVICES');
+
+    const draft = await saisirReglement(supplier.id, 80000, []);
+    await validateSupplierPaymentTx(tx(), TENANT_ID, draft.id, USER_ID);
+
+    const account = store.thirdPartyAccounts.find(a => a.id === supplier.thirdPartyAccountId)!;
+    // Positif = nous lui devons ; un acompte sans facture rend le solde
+    // negatif = le fournisseur nous doit (symetrique de l'avance locataire).
+    expect(account.balance).toBe(-80000);
+  });
+
+  it('refuse de valider deux fois (immutabilite, principe P-6)', async () => {
+    const supplier = await createSupplier('SERVICES');
+    const draft = await saisirReglement(supplier.id, 50000, []);
+    await validateSupplierPaymentTx(tx(), TENANT_ID, draft.id, USER_ID);
+
+    await expect(validateSupplierPaymentTx(tx(), TENANT_ID, draft.id, USER_ID)).rejects.toThrow(/deja valide/i);
+  });
+
+  it('refuse de valider un reglement dont la facture visee a ete annulee entre-temps', async () => {
+    const supplier = await createSupplier('SERVICES');
+    const invoice = await createDraftInvoice(supplier.id, { amount: 500000, allocations: [] });
+    await validateSupplierInvoiceTx(tx(), TENANT_ID, invoice.id, USER_ID);
+
+    const draft = await saisirReglement(supplier.id, 200000, [{ invoiceId: invoice.id, amount: 200000 }]);
+
+    // La facture est annulee apres la saisie du reglement, avant sa validation.
+    // Le controle de la saisie ne pouvait pas le voir : il faut le refaire ici.
+    const row = store.invoices.find(i => i.id === invoice.id)!;
+    row.status = 'VOIDED';
+    postDocumentEntryTx.mockClear();
+
+    await expect(validateSupplierPaymentTx(tx(), TENANT_ID, draft.id, USER_ID)).rejects.toThrow(/plus validee/i);
+    expect(postDocumentEntryTx).not.toHaveBeenCalled();
   });
 });
 

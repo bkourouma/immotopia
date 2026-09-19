@@ -18,6 +18,7 @@ import {
   listConstructionSitesHandler,
   listCostCategoriesHandler,
   printCashVoucherHandler,
+  voidCashVoucherHandler,
   validateCashVoucherHandler
 } from '../controllers/finance-sites-controller';
 
@@ -76,6 +77,16 @@ router.post(
 );
 
 router.get('/tenants/:tenantId/finance/cash-vouchers/:voucherId.pdf', requireAccountsRead, printCashVoucherHandler);
+
+// Annulation d'une piece de caisse validee. Droit de VALIDATION : annuler une
+// piece est la meme responsabilite que la valider (decision D7). Ajoutee le
+// 19 septembre 2026 — sans elle, une erreur sur une piece validee etait
+// definitive, et le cout du chantier restait faux pour toujours.
+router.post(
+  '/tenants/:tenantId/finance/cash-vouchers/:voucherId/void',
+  requireDocumentsValidate,
+  voidCashVoucherHandler
+);
 
 // ---------------------------------------------------------------------------
 // File de validation

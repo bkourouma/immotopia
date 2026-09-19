@@ -101,7 +101,7 @@ const RELEVE = 'tenant/' + AGENCE + '/finance/comptes/00000000-0000-4000-8000-00
 const FACTURATION = 'tenant/' + AGENCE + '/finance/facturation';
 const FOURNISSEURS = 'tenant/' + AGENCE + '/finance/fournisseurs';
 const BALANCE_FOURNISSEURS = FOURNISSEURS + '/balance';
-const FACTURE_FOURNISSEUR = FOURNISSEURS + '/frs-02/factures';
+const FACTURE_FOURNISSEUR = 'tenant/' + AGENCE + '/finance/factures-fournisseurs?fournisseur=frs-02';
 const CHANTIERS = 'tenant/' + AGENCE + '/finance/chantiers';
 const CHANTIER_DETAIL = CHANTIERS + '/chantier-01';
 const PIECE_DE_CAISSE = CHANTIER_DETAIL + '/caisse';
@@ -741,7 +741,7 @@ export const Atelier: React.FC = () => (
       }
     />
     <Route
-      path="tenant/:tenantId/finance/fournisseurs/:supplierId/factures"
+      path="tenant/:tenantId/finance/factures-fournisseurs"
       element={
         <Scene>
           <SessionSimulee>

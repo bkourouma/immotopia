@@ -39,6 +39,7 @@ jest.mock('../../src/middleware/finance-rbac-middleware', () => ({
 const createSupplierTx = jest.fn();
 const createSupplierInvoiceTx = jest.fn();
 const createSupplierPaymentTx = jest.fn();
+const validateSupplierPaymentTx = jest.fn();
 const validateSupplierInvoiceTx = jest.fn();
 const getSuppliersBalance = jest.fn();
 
@@ -47,6 +48,7 @@ jest.mock('../../src/lib/finance/suppliers', () => ({
   createSupplierInvoiceTx: (...args: any[]) => createSupplierInvoiceTx(...args),
   createSupplierPaymentTx: (...args: any[]) => createSupplierPaymentTx(...args),
   validateSupplierInvoiceTx: (...args: any[]) => validateSupplierInvoiceTx(...args),
+  validateSupplierPaymentTx: (...args: any[]) => validateSupplierPaymentTx(...args),
   getSuppliersBalance: (...args: any[]) => getSuppliersBalance(...args)
 }));
 
@@ -109,6 +111,7 @@ const TENANT_A = 'tenant-A';
 const TENANT_B = 'tenant-B';
 const SUPPLIER_A = '11111111-1111-4111-8111-111111111111';
 const INVOICE_A = '33333333-3333-4333-8333-333333333333';
+const PAYMENT_A = '44444444-4444-4444-8444-444444444444';
 const SITE_A = '44444444-4444-4444-8444-444444444444';
 const CATEGORY_A = '55555555-5555-4555-8555-555555555555';
 const ACCOUNT_A = '66666666-6666-4666-8666-666666666666';
@@ -192,7 +195,9 @@ function paymentRecord(overrides: Partial<Record<string, unknown>> = {}) {
     paymentDate: new Date('2026-09-12'),
     amount: 500_000,
     currency: 'XOF',
-    status: 'VALIDATED',
+    // Un reglement nait BROUILLON depuis le 19 septembre 2026 : il se valide
+    // par un appel distinct, comme la facture et la piece de caisse.
+    status: 'DRAFT',
     allocations: [{ invoiceId: INVOICE_A, amount: 500_000 }],
     ...overrides
   };
@@ -581,13 +586,85 @@ describe('POST /tenants/:tenantId/finance/supplier-invoices/:invoiceId/void', ()
 });
 
 // ---------------------------------------------------------------------------
+// J bis. POST supplier-payments/:paymentId/validate et /void
+//
+// Deux routes ajoutees le 19 septembre 2026. La validation figurait au contrat
+// depuis le gel du lot sans avoir jamais ete ecrite : l'ecran l'appelait et
+// recevait un 404, et la file de validation — qui filtre sur l'absence de
+// validation — ne montrait donc jamais aucun reglement. L'annulation, elle,
+// n'existait que pour la facture : une erreur sur un reglement valide etait
+// definitive.
+// ---------------------------------------------------------------------------
+
+describe('POST /tenants/:tenantId/finance/supplier-payments/:paymentId/validate', () => {
+  it('valide le règlement et le rend validé (200)', async () => {
+    validateSupplierPaymentTx.mockResolvedValue(paymentRecord({ status: 'VALIDATED' }));
+    supplierFindFirst.mockResolvedValue({ name: 'Ciments du Fouta' });
+    supplierInvoiceFindMany.mockResolvedValue([{ id: INVOICE_A, reference: 'FC-2026-0141' }]);
+
+    const response = await request(app).post(
+      `/api/tenants/${TENANT_A}/finance/supplier-payments/${PAYMENT_A}/validate`
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.status).toBe('VALIDATED');
+    expect(validateSupplierPaymentTx).toHaveBeenCalledWith(expect.anything(), TENANT_A, PAYMENT_A, 'user-1');
+  });
+
+  it('renvoie 409 pour un règlement déjà validé (immutabilité, P-6)', async () => {
+    validateSupplierPaymentTx.mockRejectedValue(conflict('Ce reglement est deja valide'));
+
+    const response = await request(app).post(
+      `/api/tenants/${TENANT_A}/finance/supplier-payments/${PAYMENT_A}/validate`
+    );
+
+    expect(response.status).toBe(409);
+  });
+});
+
+describe('POST /tenants/:tenantId/finance/supplier-payments/:paymentId/void', () => {
+  it("crée la pièce d'annulation (201)", async () => {
+    voidDocumentTx.mockResolvedValue({ voidDocumentId: 'void-2', reversingEntryId: 'entry-2' });
+    voidDocumentFindUniqueOrThrow.mockResolvedValue({
+      id: 'void-2',
+      documentType: 'SUPPLIER_PAYMENT',
+      documentId: PAYMENT_A,
+      reason: 'Virement rejeté par la banque',
+      voidedByUserId: 'user-1',
+      voidedAt: new Date('2026-09-19')
+    });
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/supplier-payments/${PAYMENT_A}/void`)
+      .send({ reason: 'Virement rejeté par la banque' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data.documentType).toBe('SUPPLIER_PAYMENT');
+    expect(voidDocumentTx).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ documentType: 'SUPPLIER_PAYMENT', documentId: PAYMENT_A })
+    );
+  });
+
+  it('exige un motif : rejette en 400 un corps sans `reason`', async () => {
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/supplier-payments/${PAYMENT_A}/void`)
+      .send({});
+
+    expect(response.status).toBe(400);
+    expect(voidDocumentTx).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // J. POST suppliers/:supplierId/payments — règlement
 // ---------------------------------------------------------------------------
 
 describe('POST /tenants/:tenantId/finance/suppliers/:supplierId/payments', () => {
-  it('enregistre le règlement (cas nominal, 201)', async () => {
+  it('enregistre le règlement en brouillon (cas nominal, 201)', async () => {
     createSupplierPaymentTx.mockResolvedValue(paymentRecord());
-    supplierPaymentFindUniqueOrThrow.mockResolvedValue({ method: 'Virement', validatedAt: new Date('2026-09-12') });
+    supplierFindFirst.mockResolvedValue({ name: 'Ciments du Fouta' });
+    supplierInvoiceFindMany.mockResolvedValue([{ id: INVOICE_A, reference: 'FC-2026-0141' }]);
 
     const response = await request(app)
       .post(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/payments`)
@@ -599,8 +676,14 @@ describe('POST /tenants/:tenantId/finance/suppliers/:supplierId/payments', () =>
       });
 
     expect(response.status).toBe(201);
-    expect(response.body.data.method).toBe('Virement');
-    expect(response.body.data.allocations).toEqual([{ invoiceId: INVOICE_A, amount: 500_000 }]);
+    expect(response.body.data.status).toBe('DRAFT');
+    // Le fournisseur et la facture sont NOMMES, jamais reduits a leur
+    // identifiant : c'est la lecon du compte rendu de campagne du lot 1, et
+    // ces deux champs manquaient a la reponse jusqu'au 19 septembre 2026.
+    expect(response.body.data.supplierLabel).toBe('Ciments du Fouta');
+    expect(response.body.data.allocations).toEqual([
+      { invoiceId: INVOICE_A, invoiceReference: 'FC-2026-0141', amount: 500_000 }
+    ]);
     expect(createSupplierPaymentTx).toHaveBeenCalledWith(
       expect.anything(),
       TENANT_A,

@@ -59,9 +59,12 @@ import {
   createSupplierInvoiceTx,
   validateSupplierInvoiceTx,
   createSupplierPaymentTx,
+  validateSupplierPaymentTx,
   getSuppliersBalance
 } from '../src/lib/finance/suppliers';
 import { createCashVoucherTx, validateCashVoucherTx, formatCashVoucherNumber } from '../src/lib/finance/cash';
+import { getValidationQueue } from '../src/lib/finance/validation-queue';
+import { voidDocumentTx } from '../src/lib/finance/accounting';
 
 const RUN_ID = uuidv4().slice(0, 8);
 const TENANT_SLUG = `e2e-finance-lot2-jetable-${RUN_ID}`;
@@ -73,6 +76,8 @@ const MONTANT_FACTURE = FACTURE_GROS_OEUVRE + FACTURE_MATERIAUX; // 5 000 000
 const MONTANT_PIECE_CAISSE = 450_000;
 const MONTANT_REGLEMENT = 1_500_000;
 const MONTANT_ACOMPTE = 200_000;
+/** Petit reglement supplementaire, sert a prouver que la file de validation le voit. */
+const MONTANT_REGLEMENT_FILE = 50_000;
 
 const constats: Array<{ intitule: string; attendu: unknown; constate: unknown; tenu: boolean }> = [];
 
@@ -448,7 +453,7 @@ async function main(): Promise<void> {
     // 6. Règlement partiel, puis acompte sans facture
     // -----------------------------------------------------------------------
 
-    await prisma.$transaction(tx =>
+    const reglement = await prisma.$transaction(tx =>
       createSupplierPaymentTx(tx, tenantId as string, {
         supplierId: fournisseur.id,
         paymentDate: new Date('2026-09-15'),
@@ -457,19 +462,34 @@ async function main(): Promise<void> {
         createdByUserId: saisisseur.id
       })
     );
-    console.log(`  reglement partiel enregistre`);
+    console.log(`  reglement partiel saisi`);
+
+    constater('Un reglement nait brouillon', 'DRAFT', reglement.status);
+
+    const compteApresSaisie = await prisma.thirdPartyAccount.findUnique({
+      where: { id: fournisseur.thirdPartyAccountId },
+      select: { balance: true }
+    });
+    constater('Un reglement saisi ne bouge pas encore le solde', MONTANT_FACTURE, nombre(compteApresSaisie?.balance));
+
+    const reglementValide = await prisma.$transaction(tx =>
+      validateSupplierPaymentTx(tx, tenantId as string, reglement.id, validateur.id)
+    );
+    console.log(`  reglement partiel valide`);
+
+    constater('La validation le passe en valide', 'VALIDATED', reglementValide.status);
 
     const compteApresReglement = await prisma.thirdPartyAccount.findUnique({
       where: { id: fournisseur.thirdPartyAccountId },
       select: { balance: true }
     });
     constater(
-      'Le solde du fournisseur diminue du reglement',
+      'Le solde du fournisseur diminue alors du reglement',
       MONTANT_FACTURE - MONTANT_REGLEMENT,
       nombre(compteApresReglement?.balance)
     );
 
-    await prisma.$transaction(tx =>
+    const acompte = await prisma.$transaction(tx =>
       createSupplierPaymentTx(tx, tenantId as string, {
         supplierId: fournisseur.id,
         paymentDate: new Date('2026-09-16'),
@@ -478,7 +498,8 @@ async function main(): Promise<void> {
         createdByUserId: saisisseur.id
       })
     );
-    console.log(`  acompte sans facture enregistre`);
+    await prisma.$transaction(tx => validateSupplierPaymentTx(tx, tenantId as string, acompte.id, validateur.id));
+    console.log(`  acompte sans facture enregistre et valide`);
 
     const compteApresAcompte = await prisma.thirdPartyAccount.findUnique({
       where: { id: fournisseur.thirdPartyAccountId },
@@ -491,6 +512,39 @@ async function main(): Promise<void> {
     );
 
     // -----------------------------------------------------------------------
+    // 6 bis. La file de validation voit les brouillons, toutes natures
+    // -----------------------------------------------------------------------
+
+    const brouillonReglement = await prisma.$transaction(tx =>
+      createSupplierPaymentTx(tx, tenantId as string, {
+        supplierId: fournisseur.id,
+        paymentDate: new Date('2026-09-17'),
+        amount: MONTANT_REGLEMENT_FILE,
+        allocations: [],
+        createdByUserId: saisisseur.id
+      })
+    );
+
+    const file = await getValidationQueue(tenantId, {});
+    const naturesEnAttente = new Set(file.map(p => p.documentType));
+
+    // Jusqu'au 19 septembre 2026 cette colonne etait vide par construction :
+    // la file filtre sur l'absence de validation, et un reglement naissait
+    // valide. Personne ne pouvait donc valider un reglement depuis cet ecran.
+    constater('La file de validation montre le reglement en attente', true, naturesEnAttente.has('SUPPLIER_PAYMENT'));
+    constater('Elle montre aussi la piece de caisse restee brouillon', true, naturesEnAttente.has('CASH_VOUCHER'));
+    constater(
+      'Et elle nomme qui a saisi, jamais un identifiant seul',
+      true,
+      file.every(p => p.createdByLabel.length > 0 && p.createdByLabel !== p.createdByUserId)
+    );
+
+    // On le valide pour ne pas laisser trainer un brouillon dans la suite.
+    await prisma.$transaction(tx =>
+      validateSupplierPaymentTx(tx, tenantId as string, brouillonReglement.id, validateur.id)
+    );
+
+    // -----------------------------------------------------------------------
     // 7. Balance fournisseurs
     // -----------------------------------------------------------------------
 
@@ -500,16 +554,92 @@ async function main(): Promise<void> {
     const ligne = balance.lines[0];
     constater('Elle le nomme, et ne montre pas son identifiant', fournisseur.name, ligne.label);
     constater('Elle totalise le facture', MONTANT_FACTURE, ligne.totalBilled);
-    constater('Elle totalise le regle', MONTANT_REGLEMENT + MONTANT_ACOMPTE, ligne.totalSettled);
+    constater(
+      'Elle totalise le regle',
+      MONTANT_REGLEMENT + MONTANT_ACOMPTE + MONTANT_REGLEMENT_FILE,
+      ligne.totalSettled
+    );
     constater(
       'Son solde est facture moins regle',
-      MONTANT_FACTURE - MONTANT_REGLEMENT - MONTANT_ACOMPTE,
+      MONTANT_FACTURE - MONTANT_REGLEMENT - MONTANT_ACOMPTE - MONTANT_REGLEMENT_FILE,
       ligne.balance
     );
     constater(
       'Le total de controle egale la somme des lignes',
       balance.lines.reduce((total, l) => total + l.balance, 0),
       balance.totalBalance
+    );
+
+    // -----------------------------------------------------------------------
+    // 8. Annulation — la seule facon de corriger une piece validee (P-6)
+    // -----------------------------------------------------------------------
+    //
+    // Jusqu'au 19 septembre 2026, seule la facture fournisseur avait cette
+    // voie : une erreur sur une piece de caisse ou sur un reglement valides
+    // etait donc definitive, et le cout du chantier restait faux pour
+    // toujours.
+
+    console.log('');
+    console.log('Annulations');
+    console.log('');
+
+    const coutAvantAnnulation = (await getSiteDetail(tenantId, chantier.id)).site.actualCost;
+
+    await prisma.$transaction(tx =>
+      voidDocumentTx(tx, {
+        tenantId: tenantId as string,
+        documentType: 'CASH_VOUCHER',
+        documentId: piece.id,
+        reason: 'Erreur sur le beneficiaire',
+        voidedByUserId: validateur.id
+      })
+    );
+    console.log('  piece de caisse annulee');
+
+    const detailApresAnnulation = await getSiteDetail(tenantId, chantier.id);
+    constater(
+      'Annuler une piece de caisse fait retomber le cout du chantier, sans rien recalculer',
+      coutAvantAnnulation - MONTANT_PIECE_CAISSE,
+      detailApresAnnulation.site.actualCost
+    );
+    constater(
+      'La piece annulee quitte les imputations du chantier',
+      false,
+      detailApresAnnulation.allocations.some(a => a.sourceId === piece.id)
+    );
+
+    const soldeAvantAnnulationReglement = nombre(
+      (
+        await prisma.thirdPartyAccount.findUnique({
+          where: { id: fournisseur.thirdPartyAccountId },
+          select: { balance: true }
+        })
+      )?.balance
+    );
+
+    await prisma.$transaction(tx =>
+      voidDocumentTx(tx, {
+        tenantId: tenantId as string,
+        documentType: 'SUPPLIER_PAYMENT',
+        documentId: acompte.id,
+        reason: 'Virement rejete par la banque',
+        voidedByUserId: validateur.id
+      })
+    );
+    console.log('  acompte annule');
+
+    const soldeApresAnnulationReglement = nombre(
+      (
+        await prisma.thirdPartyAccount.findUnique({
+          where: { id: fournisseur.thirdPartyAccountId },
+          select: { balance: true }
+        })
+      )?.balance
+    );
+    constater(
+      'Annuler un acompte fait remonter d’autant ce que nous devons au fournisseur',
+      soldeAvantAnnulationReglement + MONTANT_ACOMPTE,
+      soldeApresAnnulationReglement
     );
 
     // -----------------------------------------------------------------------
@@ -545,8 +675,8 @@ async function main(): Promise<void> {
       detailFinal.site.actualCost
     );
     constater(
-      'Et il vaut bien ce que le parcours a engage',
-      MONTANT_FACTURE + MONTANT_PIECE_CAISSE,
+      'Et il vaut bien ce que le parcours a engage, la piece de caisse annulee en moins',
+      MONTANT_FACTURE,
       detailFinal.site.actualCost
     );
 

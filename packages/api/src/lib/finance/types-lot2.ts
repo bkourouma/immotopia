@@ -276,6 +276,30 @@ export type CreateSupplierPaymentTx = (
   }
 ) => Promise<SupplierPaymentRecord>;
 
+/**
+ * Valide un règlement fournisseur : écriture, mouvements de compte, dans la
+ * même transaction.
+ *
+ * **Ajoutée le 19 septembre 2026, après le lot 2.** Le contrat OpenAPI portait
+ * `POST supplier-payments/{id}/validate` depuis le gel, l'écran web l'appelait,
+ * et aucune route ne l'implémentait : le règlement naissait déjà validé. Trois
+ * conséquences, toutes silencieuses — le bouton « Valider le règlement »
+ * répondait 404, l'écran annonçait un « brouillon » qui n'en était pas un, et
+ * la file de validation, qui filtre sur `validatedAt: null`, ne montrait jamais
+ * aucun règlement.
+ *
+ * Un règlement suit donc désormais le même cycle que la facture et la pièce de
+ * caisse : brouillon à la saisie, écriture à la validation. C'est la règle de
+ * l'organisation de la cliente — plusieurs saisisseurs, un validateur — et elle
+ * ne souffre pas d'exception par nature de pièce.
+ */
+export type ValidateSupplierPaymentTx = (
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  paymentId: string,
+  validatedByUserId: string
+) => Promise<SupplierPaymentRecord>;
+
 export interface SuppliersBalanceLine {
   accountId: string;
   supplierId: string;
@@ -509,6 +533,10 @@ export const validateSupplierInvoiceTxStub: ValidateSupplierInvoiceTx = async ()
 
 export const createSupplierPaymentTxStub: CreateSupplierPaymentTx = async () => {
   throw new NotImplementedYetError('createSupplierPaymentTx (lib/finance/suppliers.ts)');
+};
+
+export const validateSupplierPaymentTxStub: ValidateSupplierPaymentTx = async () => {
+  throw new NotImplementedYetError('validateSupplierPaymentTx');
 };
 
 export const getSuppliersBalanceStub: GetSuppliersBalance = async () => {

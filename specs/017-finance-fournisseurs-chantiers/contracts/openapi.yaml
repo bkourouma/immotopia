@@ -247,6 +247,66 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /tenants/{tenantId}/finance/supplier-payments/{paymentId}/void:
+    post:
+      tags: [ReglementsFournisseurs]
+      summary: Annuler un reglement fournisseur valide par une piece d'annulation liee
+      description: >
+        Ne modifie jamais le reglement ni son ecriture d'origine ; cree un
+        `VoidDocument`, une ecriture inverse, et des mouvements de sens oppose sur
+        le compte du fournisseur — ce que nous lui devons remonte d'autant.
+        Ajoutee le 19 septembre 2026 : seule la facture avait cette voie, si bien
+        qu'une erreur sur un reglement valide etait definitive.
+        Permission `finance.documents.validate`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/PaymentId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VoidDocumentRequest" }
+      responses:
+        "201":
+          description: Piece d'annulation creee
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/VoidDocumentResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/cash-vouchers/{voucherId}/void:
+    post:
+      tags: [Caisse]
+      summary: Annuler une piece de caisse validee par une piece d'annulation liee
+      description: >
+        Cree un `VoidDocument` et l'ecriture inverse, et marque les imputations de
+        la piece comme annulees. Le cout du chantier retombe de lui-meme : il est
+        derive des imputations validees et non annulees, jamais stocke (principe
+        P-4). La piece conserve son numero — un carnet garde ses pieces annulees,
+        sinon l'annulation serait invisible.
+        Ajoutee le 19 septembre 2026. Permission `finance.documents.validate`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/VoucherId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VoidDocumentRequest" }
+      responses:
+        "201":
+          description: Piece d'annulation creee
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/VoidDocumentResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /tenants/{tenantId}/finance/accounts/{accountId}/statement:
     get:
       tags: [BalanceFournisseurs]

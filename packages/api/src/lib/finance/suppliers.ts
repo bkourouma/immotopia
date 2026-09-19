@@ -54,6 +54,7 @@ import { toAmountOrZero } from './types';
 import type {
   CreateSupplierInvoiceTx,
   CreateSupplierPaymentTx,
+  ValidateSupplierPaymentTx,
   CreateSupplierTx,
   GetSuppliersBalance,
   SupplierInvoiceRecord,
@@ -183,17 +184,23 @@ function toInvoiceRecord(row: any): SupplierInvoiceRecord {
   };
 }
 
-function toPaymentRecord(row: any, allocations: Array<{ invoiceId: string; amount: number }>): SupplierPaymentRecord {
+function toPaymentRecord(
+  row: any,
+  allocations: Array<{ invoiceId: string; amount: number }>,
+  voided = false
+): SupplierPaymentRecord {
   return {
     id: row.id,
     supplierId: row.supplierId,
     paymentDate: row.paymentDate,
     amount: toAmountOrZero(row.amount),
     currency: row.currency,
-    // `SupplierPayment` n'a pas de colonne `status` : ce lot poste un
-    // reglement immediatement (pas de brouillon a valider separement, a la
-    // difference des factures), donc l'etat expose est toujours VALIDATED.
-    status: 'VALIDATED' as any,
+    // `SupplierPayment` n'a pas de colonne `status` : il se deduit de
+    // `validatedAt` et de la presence d'une pièce d'annulation, comme pour la
+    // piece de caisse. Jusqu'au 19 septembre 2026 ce champ valait toujours
+    // VALIDATED, parce que le reglement naissait valide — ce qui rendait la
+    // file de validation vide de reglements par construction.
+    status: voided ? ('VOIDED' as any) : row.validatedAt ? ('VALIDATED' as any) : ('DRAFT' as any),
     allocations
   };
 }
@@ -477,11 +484,9 @@ export const createSupplierPaymentTx: CreateSupplierPaymentTx = async (tx, tenan
     }
   }
 
-  const accounts = await resolveOperationalAccounts(tx, tenantId, params.paymentDate);
-
-  // La piece precede l'ecriture (P-2) : le reglement nait d'abord, sans son
-  // ecriture, pour que `postDocumentEntryTx` puisse designer son
-  // `documentId` — impossible a connaitre avant que la ligne n'existe.
+  // BROUILLON. Ni ecriture, ni mouvement de compte : un reglement saisi n'a
+  // encore rien regle. Tout cela nait a la validation
+  // (`validateSupplierPaymentTx`), comme pour la facture et la piece de caisse.
   const payment = await tx.supplierPayment.create({
     data: {
       tenantId,
@@ -490,17 +495,88 @@ export const createSupplierPaymentTx: CreateSupplierPaymentTx = async (tx, tenan
       amount,
       currency: DEFAULT_CURRENCY,
       method: DEFAULT_PAYMENT_METHOD,
-      createdByUserId: params.createdByUserId,
-      validatedByUserId: params.createdByUserId,
-      validatedAt: new Date()
+      createdByUserId: params.createdByUserId
     }
   });
+
+  // Les affectations naissent avec le brouillon : ce sont ses lignes, au meme
+  // titre que les lignes d'une facture. Elles ne portent aucun mouvement tant
+  // que la piece n'est pas validee.
+  const allocationRecords: Array<{ invoiceId: string; amount: number }> = [];
+  for (const allocation of roundedAllocations) {
+    await tx.supplierPaymentAllocation.create({
+      data: { paymentId: payment.id, invoiceId: allocation.invoiceId, amount: allocation.amount }
+    });
+    allocationRecords.push({ invoiceId: allocation.invoiceId, amount: allocation.amount });
+  }
+
+  return toPaymentRecord(payment, allocationRecords);
+};
+
+/** Voir `ValidateSupplierPaymentTx` dans `./types-lot2.ts`. */
+export const validateSupplierPaymentTx: ValidateSupplierPaymentTx = async (
+  tx,
+  tenantId,
+  paymentId,
+  validatedByUserId
+) => {
+  const payment = await tx.supplierPayment.findFirst({ where: { id: paymentId, tenantId } });
+  if (!payment) {
+    throw notFound('Reglement introuvable');
+  }
+  if (payment.validatedAt) {
+    // Ce qui est valide ne bouge plus (P-6) : une seconde validation n'est pas
+    // une mise a jour, c'est un refus.
+    throw conflict('Ce reglement est deja valide');
+  }
+
+  const dejaAnnule = await tx.voidDocument.findFirst({
+    where: { documentType: 'SUPPLIER_PAYMENT' as any, documentId: paymentId },
+    select: { id: true }
+  });
+  if (dejaAnnule) {
+    throw conflict('Ce reglement a ete annule : il ne peut plus etre valide');
+  }
+
+  const supplier = await tx.supplier.findFirst({
+    where: { id: payment.supplierId, tenantId },
+    select: { id: true, name: true, thirdPartyAccountId: true }
+  });
+  if (!supplier) {
+    throw notFound('Fournisseur introuvable');
+  }
+
+  const allocations = await tx.supplierPaymentAllocation.findMany({
+    where: { paymentId: payment.id }
+  });
+
+  // Les factures visees sont RE-verifiees ici, et non seulement a la saisie :
+  // entre le brouillon et sa validation, une facture a pu etre annulee. Un
+  // reglement ne peut pas s'affecter a une facture qui n'est plus valide.
+  if (allocations.length > 0) {
+    const invoices = await tx.supplierInvoice.findMany({
+      where: { id: { in: allocations.map((a: any) => a.invoiceId) }, tenantId, supplierId: supplier.id }
+    });
+    const invoiceById = new Map(invoices.map((i: any) => [i.id, i]));
+    for (const allocation of allocations) {
+      const invoice = invoiceById.get(allocation.invoiceId);
+      if (!invoice) {
+        throw notFound(`Facture ${allocation.invoiceId} introuvable pour ce fournisseur`);
+      }
+      if (invoice.status !== 'VALIDATED') {
+        throw conflict(`La facture ${invoice.reference} n'est plus validee — ce reglement ne peut pas s'y affecter`);
+      }
+    }
+  }
+
+  const amount = toAmountOrZero(payment.amount);
+  const accounts = await resolveOperationalAccounts(tx, tenantId, payment.paymentDate);
 
   const entry = await postDocumentEntryTx(tx, {
     tenantId,
     journalId: accounts.journalId,
-    entryDate: params.paymentDate,
-    reference: `REG-${params.supplierId}-${params.paymentDate.getTime()}`,
+    entryDate: payment.paymentDate,
+    reference: `REG-${supplier.id}-${payment.paymentDate.getTime()}`,
     description: `Reglement fournisseur — ${supplier.name}`,
     documentType: 'SUPPLIER_PAYMENT' as any,
     documentId: payment.id,
@@ -510,34 +586,27 @@ export const createSupplierPaymentTx: CreateSupplierPaymentTx = async (tx, tenan
     ]
   });
 
-  await tx.supplierPayment.update({
-    where: { id: payment.id },
-    data: { journalEntryId: entry.entryId }
-  });
-
   const allocationRecords: Array<{ invoiceId: string; amount: number }> = [];
+  let allocatedTotal = 0;
 
-  for (const allocation of roundedAllocations) {
-    const allocationRow = await tx.supplierPaymentAllocation.create({
-      data: { paymentId: payment.id, invoiceId: allocation.invoiceId, amount: allocation.amount }
-    });
-
+  for (const allocation of allocations) {
+    const montant = toAmountOrZero(allocation.amount);
     await appendThirdPartyMovementTx(tx, {
       accountId: supplier.thirdPartyAccountId,
       tenantId,
       type: 'PAYMENT' as any,
-      settled: allocation.amount,
+      settled: montant,
       label: 'Reglement affecte a une facture',
       sourceType: asFinanceSourceType('SUPPLIER_PAYMENT_ALLOCATION'),
-      sourceId: allocationRow.id,
-      movementDate: params.paymentDate
+      sourceId: allocation.id,
+      movementDate: payment.paymentDate
     });
-
-    allocationRecords.push({ invoiceId: allocation.invoiceId, amount: allocation.amount });
+    allocationRecords.push({ invoiceId: allocation.invoiceId, amount: montant });
+    allocatedTotal = roundMoneyXof(allocatedTotal + montant);
   }
 
-  // Reliquat non affecte : acompte. Le compte fournisseur devient debiteur
-  // du surplus, symetrique exact de l'avance locataire du lot 1.
+  // Reliquat non affecte : acompte. Le compte fournisseur devient debiteur du
+  // surplus, symetrique exact de l'avance locataire du lot 1.
   const remainder = roundMoneyXof(amount - allocatedTotal);
   if (remainder > 0) {
     await appendThirdPartyMovementTx(tx, {
@@ -548,11 +617,24 @@ export const createSupplierPaymentTx: CreateSupplierPaymentTx = async (tx, tenan
       label: 'Acompte verse, non affecte a une facture',
       sourceType: asFinanceSourceType('SUPPLIER_PAYMENT'),
       sourceId: payment.id,
-      movementDate: params.paymentDate
+      movementDate: payment.paymentDate
     });
   }
 
-  return toPaymentRecord(payment, allocationRecords);
+  // Mise a jour conditionnelle, meme discipline qu'a la piece de caisse : si
+  // une autre transaction a valide ce reglement entre notre lecture et cet
+  // instant, `count` vaut 0 et on abandonne. L'ecriture et les mouvements
+  // crees ici repartent avec le rollback, rien ne subsiste en double.
+  const updateResult = await tx.supplierPayment.updateMany({
+    where: { id: payment.id, tenantId, validatedAt: null },
+    data: { validatedAt: new Date(), validatedByUserId, journalEntryId: entry.entryId }
+  });
+  if (updateResult.count !== 1) {
+    throw conflict("Ce reglement vient d'etre valide par ailleurs");
+  }
+
+  const updated = await tx.supplierPayment.findFirst({ where: { id: payment.id, tenantId } });
+  return toPaymentRecord(updated, allocationRecords);
 };
 
 // ---------------------------------------------------------------------------

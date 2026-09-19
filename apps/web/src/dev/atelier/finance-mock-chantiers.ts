@@ -547,6 +547,13 @@ export function repondreChantiers(chemin: string, scenario: Scenario): unknown |
     return { success: true, data: PIECE_CAISSE_VALIDEE };
   }
 
+  // Annulation d'une pièce validée. Elle garde son numéro : une pièce annulée
+  // reste au carnet, avec sa pièce d'annulation en face, sinon le carnet
+  // aurait un trou et l'annulation serait invisible.
+  if (/\/tenants\/[^/]+\/finance\/cash-vouchers\/[^/]+\/void$/.test(chemin)) {
+    return { success: true, data: { ...PIECE_CAISSE_VALIDEE, status: 'VOIDED' as const } };
+  }
+
   // Voir l'en-tête du fichier : cette branche répond aussi bien à
   // `GET .../finance/sites` (liste) qu'à `POST .../finance/sites` (création),
   // l'atelier ne distinguant pas les méthodes. La création n'y est donc pas

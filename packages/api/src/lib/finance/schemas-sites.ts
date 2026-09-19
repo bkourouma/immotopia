@@ -115,3 +115,21 @@ export const validationQueueQuerySchema = z.object({
 });
 
 export type ValidationQueueQuery = z.infer<typeof validationQueueQuerySchema>;
+
+// ---------------------------------------------------------------------------
+// POST cash-vouchers/:voucherId/void
+// ---------------------------------------------------------------------------
+
+/**
+ * Le motif est obligatoire, et c'est le point.
+ *
+ * Une piece validee ne se modifie pas (principe P-6) : on la corrige par une
+ * piece d'annulation liee, qui porte l'ecriture inverse. L'historique montre
+ * alors les deux mouvements, et le motif dit pourquoi — sans quoi la lecture
+ * du grand livre laisse une annulation inexpliquee.
+ */
+export const voidCashVoucherSchema = z.object({
+  reason: z.string().min(1, "Le motif d'annulation est obligatoire.")
+});
+
+export type VoidCashVoucherInput = z.infer<typeof voidCashVoucherSchema>;
