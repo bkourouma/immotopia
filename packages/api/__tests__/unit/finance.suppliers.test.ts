@@ -89,6 +89,12 @@ const store = {
   invoices: [] as Row[],
   invoiceLines: [] as Row[],
   costAllocations: [] as Row[],
+  // La garde « chantier clos » du sous-lot 6 lit le chantier avant d'imputer.
+  // Vide par defaut : un chantier absent laisse passer, exactement comme le
+  // fait `assertSiteOpenTx` en vrai — elle ne se prononce pas sur ce qui
+  // n'existe pas. Les tests qui veulent prouver le refus poussent un chantier
+  // clos ici.
+  constructionSites: [] as Row[],
   chartOfAccounts: [] as Row[],
   journals: [] as Row[],
   payments: [] as Row[],
@@ -170,6 +176,10 @@ const mockPrisma: Row = {
       store.invoiceLines.push(created);
       return created;
     })
+  },
+
+  constructionSite: {
+    findFirst: jest.fn(async ({ where }: Row) => store.constructionSites.find(c => matchesFlat(c, where)) ?? null)
   },
 
   costAllocation: {
@@ -346,6 +356,7 @@ beforeEach(() => {
   store.invoices = [];
   store.invoiceLines = [];
   store.costAllocations = [];
+  store.constructionSites = [];
   store.chartOfAccounts = [];
   store.journals = [];
   store.payments = [];
@@ -824,6 +835,48 @@ describe('getSuppliersBalance', () => {
 
     expect(balance.lines).toHaveLength(2);
     expect(balance.totalBalance).toBe(350000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Chantier clos — le CABLAGE de la garde du sous-lot 6, pas la garde elle-meme
+// ---------------------------------------------------------------------------
+//
+// `assertSiteOpenTx` est testee chez elle. Ce qui n'etait teste nulle part,
+// c'est qu'elle soit APPELEE d'ici : une garde ecrite, exportee, documentee et
+// branchee nulle part ne protege rien, et rien dans la suite ne l'aurait dit.
+
+describe('chantier cloture — refus d imputer', () => {
+  it('refuse une facture imputee a un chantier clos, a la saisie', async () => {
+    const supplier = await createSupplier('MATERIALS', { name: 'Quincaillerie du Plateau' });
+    const { siteId, costCategoryId } = await createSiteAndCategory();
+    store.constructionSites.push({
+      id: siteId,
+      tenantId: TENANT_ID,
+      name: 'Residence Akwaba',
+      closedAt: new Date('2026-08-31T00:00:00.000Z')
+    });
+
+    await expect(
+      createDraftInvoice(supplier.id, { amount: 120000, allocations: [{ siteId, costCategoryId, amount: 120000 }] })
+    ).rejects.toThrow(/clôturé/);
+
+    // Rien n'a ete ecrit : la transaction refuse avant, pas apres.
+    expect(store.costAllocations).toHaveLength(0);
+  });
+
+  it('laisse passer un chantier ouvert', async () => {
+    const supplier = await createSupplier('MATERIALS', { name: 'Quincaillerie de Cocody' });
+    const { siteId, costCategoryId } = await createSiteAndCategory();
+    store.constructionSites.push({ id: siteId, tenantId: TENANT_ID, name: 'Residence Akwaba', closedAt: null });
+
+    const invoice = await createDraftInvoice(supplier.id, {
+      amount: 120000,
+      allocations: [{ siteId, costCategoryId, amount: 120000 }]
+    });
+
+    expect(invoice.id).toBeTruthy();
+    expect(store.costAllocations).toHaveLength(1);
   });
 });
 

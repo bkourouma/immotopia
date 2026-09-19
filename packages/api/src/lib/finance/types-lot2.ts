@@ -87,8 +87,24 @@ export interface PostDocumentEntryParams {
    * puis en rejouant le mois — mais elle produit bien une écriture, et
    * l'écriture doit porter sa nature. Sans ces deux valeurs, le service
    * transtypait pour compiler.
+   *
+   * Même raisonnement pour les six natures des sous-lots 3, 4 et 5 : aucune
+   * n'est annulable, toutes écrivent. Celles de la retenue vont par paire —
+   * la pose et la libération sont deux écritures portant le même identifiant
+   * de retenue, et `JournalEntry` refuse deux écritures pour un même couple
+   * (nature, pièce).
    */
-  documentType: VoidableDocumentType | 'VOID' | 'LAND_LEASE_PAYMENT' | 'LAND_LEASE_ACCRUAL';
+  documentType:
+    | VoidableDocumentType
+    | 'VOID'
+    | 'LAND_LEASE_PAYMENT'
+    | 'LAND_LEASE_ACCRUAL'
+    | 'SALARY_NOTE'
+    | 'SALARY_PAYMENT'
+    | 'PROGRESS_STATEMENT'
+    | 'CONTRACTOR_PAYMENT'
+    | 'RETENTION_HELD'
+    | 'RETENTION_RELEASED';
   documentId: string;
   lines: JournalLineInput[];
 }

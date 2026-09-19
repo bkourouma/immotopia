@@ -81,7 +81,25 @@ export type FinanceSourceType =
   // affirme au compilateur ce que le type nie ; le nommer ici rend le detour
   // inutile et redonne au type son role.
   | 'LAND_LEASE_PAYMENT'
-  | 'LAND_LEASE_ACCRUAL';
+  | 'LAND_LEASE_ACCRUAL'
+  // Sources des sous-lots 3, 4 et 5 du lot 4 : salaires, tacherons, retenues
+  // de garantie. Ajoutees a l'integration, pour la troisieme fois et pour la
+  // meme raison — chaque sous-lot a d'abord transtype pour compiler, parce
+  // que son contrat etait gele avant que cette union ne le soit.
+  //
+  // La retenue en porte DEUX, la pose et la liberation : ce sont deux
+  // ecritures sur le meme identifiant de retenue, et une seule valeur les
+  // rendrait indistinguables.
+  // Sous-lot 2 : la ventilation entre associés. Elle n'écrit aucune écriture
+  // comptable — seulement un mouvement de compte de tiers — et n'a donc pas
+  // d'équivalent dans `PostDocumentEntryParams.documentType`.
+  | 'PARTNERSHIP_DISTRIBUTION'
+  | 'SALARY_NOTE'
+  | 'SALARY_PAYMENT'
+  | 'PROGRESS_STATEMENT'
+  | 'CONTRACTOR_PAYMENT'
+  | 'RETENTION_HELD'
+  | 'RETENTION_RELEASED';
 
 // ---------------------------------------------------------------------------
 // Grand livre des comptes de tiers

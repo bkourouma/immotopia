@@ -42,6 +42,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { appendThirdPartyMovementTx, getOrCreateTenantAccountTx } from './ledger';
+import { distributeInstallmentToPartnersTx } from './partnerships';
 import { buildInstallmentForPeriod } from './installment-builder';
 import type { LeaseForInstallmentBuilding } from './installment-builder';
 import { roundMoney } from './money';
@@ -96,6 +97,12 @@ function isUniqueConstraintViolation(error: unknown): boolean {
 type BillableLease = LeaseForInstallmentBuilding & {
   status: RentalLeaseStatus;
   primary_renter_client_id: string;
+  /**
+   * Le bien loué. Ajouté au lot 4 : la ventilation entre associés part du
+   * bien, pas du bail — c'est le bien qui appartient à une association, et
+   * deux baux successifs sur le même bien alimentent les mêmes associés.
+   */
+  property_id: string;
   property: { title: string } | null;
   primaryRenter: { user: { fullName: string | null; email: string } | null } | null;
 };
@@ -112,6 +119,7 @@ const LEASE_SELECT = {
   currency: true,
   rent_amount: true,
   service_charge_amount: true,
+  property_id: true,
   // Le compte rendu doit se lire sans aller chercher ailleurs : « Fatoumata
   // Diallo — Villa Kipe 12 », jamais un identifiant. On resout les deux noms
   // ici, en une requete, plutot qu'a l'affichage ligne par ligne.
@@ -461,6 +469,31 @@ export const runRentBilling: RunRentBilling = async (tenantId, params, actorUser
           if (!movement) {
             throw new Error(`Mouvement de facturation impossible à écrire pour le bail ${lease.id}`);
           }
+
+          // Lot 4 : ce qui revient aux associés du bien, s'il en a.
+          //
+          // ICI, et pas ailleurs. Dans la transaction du bail, juste après le
+          // mouvement : une ventilation écrite hors de cette transaction
+          // survivrait à un bail qui échoue, et l'agence devrait de l'argent
+          // pour un loyer qu'elle n'a jamais facturé.
+          //
+          // On lui passe `totalAmountDue`, c'est-à-dire loyer + charges +
+          // autres frais — la même grandeur que `rentBilled` de l'état de
+          // quote-part, sans quoi le relevé d'un associé contredirait ce qu'il
+          // a réellement reçu. Que les charges locatives, qui sont un
+          // remboursement de frais plutôt qu'un produit, doivent ou non entrer
+          // dans la quote-part est une question pour la cliente ; les deux
+          // moitiés du mécanisme répondent au moins la même chose.
+          //
+          // Cette fonction ne lève jamais : une association mal configurée ne
+          // doit pas empêcher de facturer un locataire qui n'y est pour rien.
+          await distributeInstallmentToPartnersTx(tx, tenantId, {
+            rentalInstallmentId: installment.id,
+            propertyId: lease.property_id,
+            amount: totalAmountDue,
+            periodYear,
+            periodMonth
+          });
 
           await applyAdvancesTx(tx, {
             tenantId,

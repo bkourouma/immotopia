@@ -27,6 +27,11 @@ import financeBudgetsRoutes from './routes/finance-budgets-routes';
 import financePurchaseOrdersRoutes from './routes/finance-purchase-orders-routes';
 import financePilotageRoutes from './routes/finance-pilotage-routes';
 import financeLandLeasesRoutes from './routes/finance-land-leases-routes';
+import financeSalariesRoutes from './routes/finance-salaries-routes';
+import financePartnershipsRoutes from './routes/finance-partnerships-routes';
+import financeContractorsRoutes from './routes/finance-contractors-routes';
+import financeRetentionsRoutes from './routes/finance-retentions-routes';
+import financeSiteClosingRoutes from './routes/finance-site-closing-routes';
 import maintenanceRoutes from './routes/maintenance-routes';
 import emailNotificationConfigRoutes from './routes/email-notification-config-routes';
 import whatsappNotificationConfigRoutes from './routes/whatsapp-notification-config-routes';
@@ -182,6 +187,11 @@ app.use('/api', financeSitesRoutes); // Finance lot 2 : chantiers, caisse, file 
 app.use('/api', financeBudgetsRoutes); // Finance lot 3 : budgets de chantier et avenants
 app.use('/api', financePurchaseOrdersRoutes); // Finance lot 3 : bons de commande et engage
 app.use('/api', financeLandLeasesRoutes); // Finance lot 4 : baux de terrain
+app.use('/api', financeSalariesRoutes); // Finance lot 4 : salaires
+app.use('/api', financePartnershipsRoutes); // Finance lot 4 : associations
+app.use('/api', financeContractorsRoutes); // Finance lot 4 : tacherons
+app.use('/api', financeRetentionsRoutes); // Finance lot 4 : retenues de garantie
+app.use('/api', financeSiteClosingRoutes); // Finance lot 4 : lots, cout de revient, cloture
 app.use('/api/tenants/:tenantId/maintenance', maintenanceRoutes); // Maintenance routes are tenant-scoped
 app.use('/api/tenants/:tenantId/email-notifications', emailNotificationConfigRoutes); // Notifications email (activation + templates)
 app.use('/api/tenants/:tenantId/whatsapp-notifications', whatsappNotificationConfigRoutes); // Notifications WhatsApp (WaSender/Twilio)

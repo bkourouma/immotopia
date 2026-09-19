@@ -454,9 +454,15 @@ describe('Plan de comptes operationnel', () => {
     // lot 4 pour les baux de terrain — un loyer paye d'avance est une creance
     // de jouissance (486) qui se consomme mois apres mois en location (613),
     // et non une charge le jour du paiement.
+    //
+    // Le 4047 est arrive avec les retenues de garantie : ce qu'on retient a un
+    // fournisseur ou a un tacheron reste du, mais n'est plus exigible, et le
+    // laisser sur le 401 ou le 402 ferait croire a une campagne de reglement
+    // qu'il faut le payer maintenant.
     expect(Array.from(comptes.keys()).sort()).toEqual([
       '401',
       '402',
+      '4047',
       '411',
       '422',
       '486',

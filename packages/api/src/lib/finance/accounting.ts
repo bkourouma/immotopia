@@ -77,7 +77,17 @@ const SOURCE_TYPE_BY_DOCUMENT: Record<string, string> = {
   // toutes les autres pieces du module. Releve par l'agent du service dans sa
   // rubrique d'hypotheses, alors que la table ne lui appartenait pas.
   LAND_LEASE_PAYMENT: 'LAND_LEASE_PAYMENT',
-  LAND_LEASE_ACCRUAL: 'LAND_LEASE_ACCRUAL'
+  LAND_LEASE_ACCRUAL: 'LAND_LEASE_ACCRUAL',
+  // Sous-lots 3, 4 et 5 du lot 4. Meme raison qu'au-dessus, et la meme
+  // vigilance : ce que cette table ne connait pas retombe sur `MANUAL`, en
+  // silence. C'est un defaut qui ne casse aucun test — le grand livre reste
+  // equilibre, il devient seulement illisible.
+  SALARY_NOTE: 'SALARY_NOTE',
+  SALARY_PAYMENT: 'SALARY_PAYMENT',
+  PROGRESS_STATEMENT: 'PROGRESS_STATEMENT',
+  CONTRACTOR_PAYMENT: 'CONTRACTOR_PAYMENT',
+  RETENTION_HELD: 'RETENTION_HELD',
+  RETENTION_RELEASED: 'RETENTION_RELEASED'
 };
 
 /**
@@ -263,7 +273,17 @@ export const OPERATIONAL_ACCOUNT_SEEDS: OperationalAccountSeed[] = [
   // quoi la balance generale melerait deux populations qui ne se lisent pas
   // de la meme façon — un fournisseur facture, un tacheron presente des
   // situations sur un marche.
-  { accountNumber: '402', accountName: 'Tacherons', accountClass: 4, accountType: 'LIABILITY' }
+  { accountNumber: '402', accountName: 'Tacherons', accountClass: 4, accountType: 'LIABILITY' },
+  // Lot 4, sous-lot 5 : les retenues de garantie. Ce qu'on retient reste du,
+  // mais n'est plus exigible : le laisser sur le 401 ou le 402 ferait croire a
+  // une campagne de reglement qu'il faut le payer maintenant. Un compte
+  // distinct est la seule facon de dire « du, mais pas encore ».
+  {
+    accountNumber: '4047',
+    accountName: 'Fournisseurs et tacherons, retenues de garantie',
+    accountClass: 4,
+    accountType: 'LIABILITY'
+  }
 ];
 
 /**

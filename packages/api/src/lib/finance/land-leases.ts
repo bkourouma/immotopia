@@ -111,6 +111,14 @@ function asDocumentType(value: LandLeaseSourceType): any {
  * rien. Un chantier sans aucun statut « actif » au sens ci-dessous se comporte
  * comme un bail sans chantier (allocations vides).
  */
+/**
+ * Les statuts qui absorbent le loyer du terrain.
+ *
+ * `CLOSED` en est absent, et c'est ce qui tient lieu ici de la garde
+ * `assertSiteOpenTx` du sous-lot 6 : un chantier clos sort de la repartition,
+ * et le loyer se repartit sur les chantiers restants. L'appel explicite serait
+ * du code mort — un chantier clos n'arrive jamais jusqu'a l'imputation.
+ */
 const ACTIVE_SITE_STATUSES = ['PLANNED', 'IN_PROGRESS', 'SUSPENDED'] as const;
 
 // ---------------------------------------------------------------------------
@@ -520,7 +528,7 @@ export const validateLandLeasePaymentTx: ValidateLandLeasePaymentTx = async (
   const movement = await appendThirdPartyMovementTx(tx, {
     accountId: lease.landlordAccountId,
     tenantId,
-    type: 'PAYMENT' as any,
+    type: 'PAYMENT',
     settled: amount,
     label: `Paiement annuel — ${lease.landLabel}`,
     sourceType: asFinanceSourceType('LAND_LEASE_PAYMENT'),
@@ -679,7 +687,7 @@ async function loadPersistedAllocationsTx(
   const rows = await client.costAllocation.findMany({
     where: {
       tenantId,
-      sourceType: 'LAND_LEASE_ACCRUAL' as any,
+      sourceType: 'LAND_LEASE_ACCRUAL',
       sourceId: { in: accrualIds },
       voidedAt: null
     },
@@ -829,7 +837,7 @@ async function recordLandLeaseAccrualInternalTx(
   const movement = await appendThirdPartyMovementTx(tx, {
     accountId: lease.landlordAccountId,
     tenantId,
-    type: 'INSTALLMENT' as any,
+    type: 'INSTALLMENT',
     billed: amount,
     label: `Constatation de loyer — ${lease.landLabel}`,
     sourceType: asFinanceSourceType('LAND_LEASE_ACCRUAL'),
@@ -866,7 +874,7 @@ async function recordLandLeaseAccrualInternalTx(
         tenantId,
         siteId: site.id,
         costCategoryId: lease.costCategoryId,
-        sourceType: 'LAND_LEASE_ACCRUAL' as any,
+        sourceType: 'LAND_LEASE_ACCRUAL',
         sourceId: accrual.id,
         amount: share,
         validatedAt: new Date(),

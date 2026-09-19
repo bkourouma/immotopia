@@ -84,6 +84,7 @@ import {
   resolveExpenseAccountsByCostCategoryTx
 } from './accounting';
 import { syncWorkProgramCostTx } from './cost-allocation';
+import { assertSiteOpenTx } from './site-closing';
 import { raiseBudgetAlertIfNeededTx } from './budget-alerts';
 import type { CashVoucherRecord, CreateCashVoucherTx, ValidateCashVoucherTx } from './types-lot2';
 
@@ -335,6 +336,13 @@ export const validateCashVoucherTx: ValidateCashVoucherTx = async (tx, tenantId,
 
   // L'imputation naît ici, jamais avant : une pièce de caisse brouillon n'a
   // encore imputé aucun montant à personne (invariant transverse §6).
+  // Lot 4, sous-lot 6 : un chantier clos n'accepte plus aucune depense.
+  //
+  // C'est LA garde qui rend `finalCost` vrai. Sans elle, une piece validee le
+  // lendemain d'une cloture ferait diverger le cout fige du cout reel, et les
+  // deux chiffres se contrediraient sans que rien ne le signale.
+  await assertSiteOpenTx(tx, tenantId, voucher.siteId);
+
   await tx.costAllocation.create({
     data: {
       tenantId,

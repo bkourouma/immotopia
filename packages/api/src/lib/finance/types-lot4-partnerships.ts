@@ -229,6 +229,19 @@ export interface PartnerStatementRecord {
    * compte dit ce qui lui reste dû.
    */
   totalPaidOut: number;
+  /**
+   * Ce qui lui reste dû, à l'instant de la lecture : le solde de son compte.
+   *
+   * **Positif quand nous lui devons.** Ajouté à la relecture : le contrat
+   * évoquait cette grandeur en prose — « le solde de ce compte dit ce qui lui
+   * reste dû » — sans jamais l'exposer, si bien que l'écran ne pouvait pas
+   * l'afficher. C'est pourtant le chiffre qu'un associé regarde en premier.
+   *
+   * Il ne se déduit pas des trois autres : `totalShare` et `totalPaidOut`
+   * portent sur la période du relevé, le solde porte sur toute l'histoire du
+   * compte.
+   */
+  accountBalance: number;
   currency: string;
 }
 

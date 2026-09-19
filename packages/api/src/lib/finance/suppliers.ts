@@ -53,6 +53,7 @@ import {
 } from './accounting';
 import { appendThirdPartyMovementTx } from './ledger';
 import { syncWorkProgramCostTx } from './cost-allocation';
+import { assertSiteOpenTx } from './site-closing';
 import { raiseBudgetAlertIfNeededTx } from './budget-alerts';
 import { roundMoneyXof } from './money';
 import type { FinanceSourceType } from './types';
@@ -305,13 +306,22 @@ export const createSupplierInvoiceTx: CreateSupplierInvoiceTx = async (tx, tenan
   // Les imputations naissent non validees (`validatedAt` nul) : elles
   // n'entrent dans aucun cout de chantier tant que la facture n'est pas
   // validee (P-2, P-4). C'est `validateSupplierInvoiceTx` qui les valide.
+  // Lot 4, sous-lot 6 : un chantier clos n'accepte plus aucune depense.
+  //
+  // C'est LA garde qui rend `finalCost` vrai. Sans elle, une piece validee le
+  // lendemain d'une cloture ferait diverger le cout fige du cout reel, et les
+  // deux chiffres se contrediraient sans que rien ne le signale.
+  for (const allocation of params.allocations) {
+    await assertSiteOpenTx(tx, tenantId, allocation.siteId);
+  }
+
   for (const allocation of params.allocations) {
     await tx.costAllocation.create({
       data: {
         tenantId,
         siteId: allocation.siteId,
         costCategoryId: allocation.costCategoryId,
-        sourceType: 'SUPPLIER_INVOICE' as any,
+        sourceType: 'SUPPLIER_INVOICE',
         sourceId: invoice.id,
         amount: roundMoneyXof(allocation.amount)
       }
@@ -351,7 +361,7 @@ export const validateSupplierInvoiceTx: ValidateSupplierInvoiceTx = async (
   const allocations = await tx.costAllocation.findMany({
     where: {
       tenantId,
-      sourceType: 'SUPPLIER_INVOICE' as any,
+      sourceType: 'SUPPLIER_INVOICE',
       sourceId: invoiceId,
       validatedAt: null,
       voidedAt: null
@@ -430,7 +440,7 @@ export const validateSupplierInvoiceTx: ValidateSupplierInvoiceTx = async (
     entryDate: invoice.invoiceDate,
     reference: invoice.reference,
     description: `Facture fournisseur ${invoice.reference} — ${supplier.name}`,
-    documentType: 'SUPPLIER_INVOICE' as any,
+    documentType: 'SUPPLIER_INVOICE',
     documentId: invoice.id,
     lines: [
       ...lignesDeCharge,
@@ -445,7 +455,7 @@ export const validateSupplierInvoiceTx: ValidateSupplierInvoiceTx = async (
   const movement = await appendThirdPartyMovementTx(tx, {
     accountId: supplier.thirdPartyAccountId,
     tenantId,
-    type: 'INSTALLMENT' as any,
+    type: 'INSTALLMENT',
     billed: invoiceAmount,
     label: `Facture ${invoice.reference}`,
     sourceType: asFinanceSourceType('SUPPLIER_INVOICE'),
@@ -456,11 +466,15 @@ export const validateSupplierInvoiceTx: ValidateSupplierInvoiceTx = async (
     throw notFound('Compte fournisseur introuvable');
   }
 
+  for (const allocation of allocations) {
+    await assertSiteOpenTx(tx, tenantId, allocation.siteId);
+  }
+
   if (allocations.length > 0) {
     await tx.costAllocation.updateMany({
       where: {
         tenantId,
-        sourceType: 'SUPPLIER_INVOICE' as any,
+        sourceType: 'SUPPLIER_INVOICE',
         sourceId: invoiceId,
         validatedAt: null,
         voidedAt: null
@@ -597,7 +611,7 @@ export const validateSupplierPaymentTx: ValidateSupplierPaymentTx = async (
   }
 
   const dejaAnnule = await tx.voidDocument.findFirst({
-    where: { documentType: 'SUPPLIER_PAYMENT' as any, documentId: paymentId },
+    where: { documentType: 'SUPPLIER_PAYMENT', documentId: paymentId },
     select: { id: true }
   });
   if (dejaAnnule) {
@@ -644,7 +658,7 @@ export const validateSupplierPaymentTx: ValidateSupplierPaymentTx = async (
     entryDate: payment.paymentDate,
     reference: `REG-${supplier.id}-${payment.paymentDate.getTime()}`,
     description: `Reglement fournisseur — ${supplier.name}`,
-    documentType: 'SUPPLIER_PAYMENT' as any,
+    documentType: 'SUPPLIER_PAYMENT',
     documentId: payment.id,
     lines: [
       { accountId: accounts.fournisseursAccountId, debit: amount, label: `Reglement — ${supplier.name}` },
@@ -660,7 +674,7 @@ export const validateSupplierPaymentTx: ValidateSupplierPaymentTx = async (
     await appendThirdPartyMovementTx(tx, {
       accountId: supplier.thirdPartyAccountId,
       tenantId,
-      type: 'PAYMENT' as any,
+      type: 'PAYMENT',
       settled: montant,
       label: 'Reglement affecte a une facture',
       sourceType: asFinanceSourceType('SUPPLIER_PAYMENT_ALLOCATION'),
@@ -678,7 +692,7 @@ export const validateSupplierPaymentTx: ValidateSupplierPaymentTx = async (
     await appendThirdPartyMovementTx(tx, {
       accountId: supplier.thirdPartyAccountId,
       tenantId,
-      type: 'ADVANCE_RECEIVED' as any,
+      type: 'ADVANCE_RECEIVED',
       settled: remainder,
       label: 'Acompte verse, non affecte a une facture',
       sourceType: asFinanceSourceType('SUPPLIER_PAYMENT'),
