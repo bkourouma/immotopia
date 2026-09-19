@@ -71,14 +71,26 @@ const SOURCE_TYPE_BY_DOCUMENT: Record<string, string> = {
   SUPPLIER_INVOICE: 'SUPPLIER_INVOICE',
   SUPPLIER_PAYMENT: 'SUPPLIER_PAYMENT',
   CASH_VOUCHER: 'CASH_VOUCHER',
-  VOID: 'VOID'
+  VOID: 'VOID',
+  // Lot 4. Sans ces deux entrees, chaque ecriture de bail de terrain portait
+  // `MANUAL` et le grand livre general perdait une distinction qu'il a pour
+  // toutes les autres pieces du module. Releve par l'agent du service dans sa
+  // rubrique d'hypotheses, alors que la table ne lui appartenait pas.
+  LAND_LEASE_PAYMENT: 'LAND_LEASE_PAYMENT',
+  LAND_LEASE_ACCRUAL: 'LAND_LEASE_ACCRUAL'
 };
 
 /**
  * Pieces dont l'annulation doit aussi annuler les imputations de chantier.
  *
- * `CostAllocationSourceType` ne connait que ces deux natures : un reglement
- * fournisseur ne s'impute pas a un chantier, c'est la facture qui l'a fait.
+ * Un reglement fournisseur ne s'impute pas a un chantier : c'est la facture
+ * qui l'a fait.
+ *
+ * La constatation de loyer, elle, produit bien des imputations depuis le
+ * lot 4 — mais elle n'est pas annulable : `VoidableDocumentType` ne la connait
+ * pas, et personne ne l'a demande. Une constatation erronee se corrige en
+ * corrigeant le bail, puis en rejouant le mois. Consigne ici pour qu'on le
+ * sache, plutot que de laisser croire a un oubli.
  */
 const ALLOCATION_SOURCE_BY_DOCUMENT: Partial<Record<VoidableDocumentType, string>> = {
   SUPPLIER_INVOICE: 'SUPPLIER_INVOICE',

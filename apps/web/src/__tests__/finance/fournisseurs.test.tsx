@@ -132,6 +132,8 @@ function chantier(overrides: Partial<ConstructionSite> = {}): ConstructionSite {
     propertyId: null,
     propertyLabel: null,
     managerLabel: null,
+    // Aucun bail de terrain par defaut : c'est le cas courant.
+    landLeaseId: null,
     status: 'IN_PROGRESS',
     startDate: '2026-01-01',
     plannedEndDate: null,

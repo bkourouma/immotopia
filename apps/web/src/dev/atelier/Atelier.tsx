@@ -21,6 +21,8 @@ import { BudgetChantier } from '../../pages/finance/BudgetChantier';
 import { BonsDeCommande } from '../../pages/finance/BonsDeCommande';
 import { BonDeCommande } from '../../pages/finance/BonDeCommande';
 import { TableauDeBordChantiers } from '../../pages/finance/TableauDeBordChantiers';
+import { BauxDeTerrain } from '../../pages/finance/BauxDeTerrain';
+import { BailDeTerrain } from '../../pages/finance/BailDeTerrain';
 import { Documents } from '../../pages/rental/Documents';
 import { DocumentTemplates } from '../../pages/documents/DocumentTemplates';
 import { CalendarPage } from '../../pages/crm/Calendar';
@@ -116,9 +118,29 @@ const BUDGET_CHANTIER = 'tenant/' + AGENCE + '/finance/chantiers/chantier-riche-
 const BONS_DE_COMMANDE = 'tenant/' + AGENCE + '/finance/bons-de-commande';
 const BON_DE_COMMANDE_NOUVEAU = BONS_DE_COMMANDE + '/nouveau?chantierId=chantier-riche-01';
 const TABLEAU_DE_BORD_CHANTIERS = 'tenant/' + AGENCE + '/finance/tableau-de-bord-chantiers';
+// Lot 4. Le bail « riche » de la maquette est celui qui porte un paiement
+// valide et plusieurs constatations : c'est lui qui montre le mecanisme.
+const BAUX_DE_TERRAIN = 'tenant/' + AGENCE + '/finance/baux-terrain';
+const BAIL_DE_TERRAIN = BAUX_DE_TERRAIN + '/bail-nongo-01';
 const SIDEBAR = 'coquille/sidebar';
 
 const SCENES: Scene[] = [
+  {
+    id: 'bail-de-terrain',
+    titre: 'Bail de terrain — le mecanisme des douze mois',
+    description:
+      'On paie une fois par an, d’avance, et la charge se repand sur douze mois. L’ecran dit ce qui a ete paye, ce qui est deja consomme, et ce qu’il reste — jamais le solde brut, qui est negatif et ne se lit pas.',
+    scenario: 'nominal',
+    chemin: BAIL_DE_TERRAIN
+  },
+  {
+    id: 'baux-de-terrain',
+    titre: 'Baux de terrain — liste',
+    description:
+      'Les terrains loues par l’entreprise, leur loyer annuel, le poste de depense qui recoit la charge, et les chantiers qui en dependent.',
+    scenario: 'nominal',
+    chemin: BAUX_DE_TERRAIN
+  },
   {
     id: 'tableau-de-bord-chantiers',
     titre: 'Tableau de bord des chantiers — nominal',
@@ -883,6 +905,26 @@ export const Atelier: React.FC = () => (
         <Scene>
           <SessionSimulee>
             <TableauDeBordChantiers />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/baux-terrain"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <BauxDeTerrain />
+          </SessionSimulee>
+        </Scene>
+      }
+    />
+    <Route
+      path="tenant/:tenantId/finance/baux-terrain/:landLeaseId"
+      element={
+        <Scene>
+          <SessionSimulee>
+            <BailDeTerrain />
           </SessionSimulee>
         </Scene>
       }

@@ -78,6 +78,7 @@ function toSiteRecord(row: Record<string, any>, actualCost: number): Constructio
     zone: row.zone ?? null,
     propertyId: row.propertyId ?? null,
     managerId: row.managerId ?? null,
+    landLeaseId: row.landLeaseId ?? null,
     status: row.status,
     startDate: row.startDate ?? null,
     plannedEndDate: row.plannedEndDate ?? null,

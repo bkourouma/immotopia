@@ -89,6 +89,10 @@ export interface LandLeaseRecord {
   landlordName: string;
   landLabel: string;
   annualAmount: number;
+  /** Poste auquel le loyer s'impute dans le coût des chantiers. */
+  costCategoryId: string;
+  /** Nom du poste, résolu. L'écran ne montre jamais l'identifiant. */
+  costCategoryLabel: string;
   /**
    * `annualAmount / 12`, arrondi à l'unité de franc. **Calculé, jamais stocké.**
    *
@@ -129,6 +133,19 @@ export type CreateLandLeaseTx = (
     landlordName: string;
     landLabel: string;
     annualAmount: number;
+    /**
+     * Poste de dépense auquel le loyer s'imputera.
+     *
+     * Obligatoire, et demandé plutôt que deviné : c'est la gestionnaire qui
+     * sait si le loyer d'un terrain relève des « Divers » ou d'un poste
+     * qu'elle a créé pour cela. Un poste deviné se lirait comme un choix, et
+     * personne ne saurait qu'il n'en était pas un.
+     *
+     * Sans lui, la constatation mensuelle ne pourrait produire aucune
+     * imputation — `CostAllocation` exige un poste — et le loyer n'entrerait
+     * jamais dans le coût du chantier.
+     */
+    costCategoryId: string;
     startDate: Date;
     endDate?: Date | null;
   }

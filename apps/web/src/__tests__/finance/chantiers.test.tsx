@@ -59,6 +59,8 @@ function chantier(overrides: Partial<ConstructionSite> = {}): ConstructionSite {
     propertyId: 'bien-1',
     propertyLabel: 'Villa duplex — Kipé Centre (en construction)',
     managerLabel: 'Mamadou Bah',
+    // Aucun bail de terrain par defaut : c'est le cas courant.
+    landLeaseId: null,
     status: 'IN_PROGRESS',
     startDate: '2026-04-01',
     plannedEndDate: '2026-11-30',

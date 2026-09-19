@@ -267,6 +267,11 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
             label: 'Bons de commande',
             href: '/tenant/:tenantId/finance/bons-de-commande'
           },
+          {
+            key: 'finance-baux-terrain',
+            label: 'Baux de terrain',
+            href: '/tenant/:tenantId/finance/baux-terrain'
+          },
           { key: 'finance-fournisseurs', label: 'Fournisseurs', href: '/tenant/:tenantId/finance/fournisseurs' },
           {
             key: 'finance-fournisseurs-balance',

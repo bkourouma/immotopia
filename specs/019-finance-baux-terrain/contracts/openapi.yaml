@@ -1,0 +1,549 @@
+openapi: 3.0.3
+info:
+  title: ImmoTopia Finance Operationnelle - Baux de terrain (lot 4, sous-lot 1) API
+  version: 1.0.0
+  description: >
+    Contrat API du premier sous-lot du lot 4 du module financier : les baux de
+    terrain (PRD epique E7, besoin B10). Cycle en trois temps : le bail ouvre
+    le compte de tiers du bailleur, le paiement annuel est saisi puis valide
+    et avance ce compte, chaque mois un douzieme est constate et le fait
+    revenir vers zero. Vocabulaire impose (principe P-1 du PRD) : on *paie* un
+    bailleur, on *constate* une charge, on *impute* a un chantier ; aucune
+    reponse n'expose "debit" ni "credit". Aucune permission neuve : celles des
+    lots 1 et 2. Contrat gele cote serveur :
+    `packages/api/src/lib/finance/types-lot4.ts`. Contrat gele cote web :
+    `apps/web/src/types/finance-lot4-types.ts`. Voir
+    `specs/019-finance-baux-terrain/data-model.md`.
+servers:
+  - url: /api
+tags:
+  - name: BauxTerrain
+  - name: PaiementsAnnuels
+  - name: ConstatationsMensuelles
+
+paths:
+  /tenants/{tenantId}/finance/land-leases:
+    get:
+      tags: [BauxTerrain]
+      summary: Lister les baux de terrain
+      description: >
+        Filtrable par `onlyActive`. Chaque bail rend le solde courant de son
+        compte de tiers (`accountBalance`) et son douzieme mensuel
+        (`monthlyAmount`), tous deux calcules. Permission
+        `finance.accounts.read`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: onlyActive
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Liste des baux de terrain
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/LandLeaseListResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [BauxTerrain]
+      summary: Enregistrer un bail et ouvrir le compte de tiers du bailleur
+      description: >
+        Le compte de tiers nait avec le bail, dans la meme transaction : un
+        bail sans compte ne pourrait rien devoir. Le montant annuel doit etre
+        strictement positif, et la date de fin, quand elle existe, posterieure
+        a la date de debut. Permission `finance.sites.manage`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateLandLeaseRequest" }
+      responses:
+        "201":
+          description: Bail enregistre
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LandLeaseResponseWrapper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/land-leases/{landLeaseId}:
+    get:
+      tags: [BauxTerrain]
+      summary: Detail d'un bail de terrain
+      description: Permission `finance.accounts.read`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/LandLeaseId"
+      responses:
+        "200":
+          description: Bail de terrain
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LandLeaseResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/sites/{siteId}/land-lease:
+    put:
+      tags: [BauxTerrain]
+      summary: Rattacher un chantier a un bail, ou l'en detacher
+      description: >
+        Passer `landLeaseId: null` detache le chantier. Un chantier depend
+        d'au plus un bail : rattacher un chantier deja rattache ailleurs
+        remplace le lien, sans erreur -- c'est une correction, pas un conflit.
+        Ne recalcule aucune constatation passee : rattacher un chantier en
+        cours d'annee ne lui fait pas porter les mois deja constates.
+        Permission `finance.sites.manage`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SiteId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/AttachSiteToLandLeaseRequest" }
+      responses:
+        "200":
+          description: >
+            Le bail desormais rattache au chantier, ou null si l'appel a
+            detache le chantier (landLeaseId envoye a null)
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/LandLeaseOrNullResponseWrapper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/land-leases/{landLeaseId}/payments:
+    get:
+      tags: [PaiementsAnnuels]
+      summary: Lister les paiements annuels d'un bail
+      description: Permission `finance.accounts.read`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/LandLeaseId"
+      responses:
+        "200":
+          description: Liste des paiements du bail
+          content:
+            application/json:
+              schema:
+                {
+                  $ref: "#/components/schemas/LandLeasePaymentListResponseWrapper",
+                }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [PaiementsAnnuels]
+      summary: Saisir le paiement annuel a l'etat brouillon
+      description: >
+        Aucune ecriture, aucun mouvement de compte a la saisie : un paiement
+        saisi n'a encore rien paye. Tout nait a la validation, comme pour
+        toute piece depuis le lot 2. La periode couverte est obligatoire et
+        doit etre coherente (fin apres debut) : c'est elle qui dira, a la
+        constatation, quels mois couvrir. Permission `finance.documents.create`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/LandLeaseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/CreateLandLeasePaymentRequest" }
+      responses:
+        "201":
+          description: Paiement cree en brouillon
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/LandLeasePaymentResponseWrapper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/land-lease-payments/{paymentId}/validate:
+    post:
+      tags: [PaiementsAnnuels]
+      summary: Valider le paiement annuel
+      description: >
+        Ecriture et mouvement de compte, en une seule transaction. Journal :
+        debit des charges constatees d'avance (486), credit de la caisse
+        (571). Compte de tiers : le bailleur devient debiteur du montant
+        verse. Permission `finance.documents.validate`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/PaymentId"
+      responses:
+        "200":
+          description: Paiement valide
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/LandLeasePaymentResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/land-leases/{landLeaseId}/accruals:
+    get:
+      tags: [ConstatationsMensuelles]
+      summary: Lister les constatations mensuelles d'un bail
+      description: Permission `finance.accounts.read`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/LandLeaseId"
+      responses:
+        "200":
+          description: Liste des constatations du bail
+          content:
+            application/json:
+              schema:
+                {
+                  $ref: "#/components/schemas/LandLeaseAccrualListResponseWrapper",
+                }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [ConstatationsMensuelles]
+      summary: Constater a la main le douzieme du loyer pour un mois donne
+      description: >
+        Sert quand le travail programme du 1er du mois n'a pas tourne.
+        **Idempotente** : un second appel sur le meme mois ne cree rien et
+        renvoie la constatation existante -- garanti par l'unicite en base du
+        triplet (bail, annee, mois) et par une lecture prealable dans le
+        service. Pas d'etat brouillon : la constatation nait validee, avec son
+        ecriture ; personne ne la saisit et il n'y aurait personne pour la
+        valider. Permission `finance.documents.validate`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/LandLeaseId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/RecordLandLeaseAccrualRequest" }
+      responses:
+        "201":
+          description: Constatation creee, ou constatation existante si le mois etait deja constate
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/LandLeaseAccrualResponseWrapper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    LandLeaseId:
+      name: landLeaseId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SiteId:
+      name: siteId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PaymentId:
+      name: paymentId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: Requete invalide
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    Forbidden:
+      description: Acces interdit (hors tenant, ou permission manquante)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    Conflict:
+      description: Conflit metier (par exemple un paiement deja valide)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+
+  schemas:
+    ApiError:
+      type: object
+      required: [success, error]
+      properties:
+        success: { type: boolean, example: false }
+        error: { type: string }
+
+    LandLeaseDocumentStatus:
+      type: string
+      enum: [DRAFT, VALIDATED]
+      description: Cycle d'un paiement au bailleur -- brouillon, puis valide.
+
+    # -------------------------------------------------------------------------
+    # Le bail
+    # -------------------------------------------------------------------------
+
+    LandLeaseSiteRef:
+      type: object
+      required: [siteId, siteLabel, status]
+      properties:
+        siteId: { type: string, format: uuid }
+        siteLabel:
+          {
+            type: string,
+            description: "Nom du chantier. L'ecran ne montre jamais l'identifiant.",
+          }
+        status: { type: string }
+
+    LandLease:
+      type: object
+      required:
+        [
+          id,
+          landlordName,
+          landLabel,
+          annualAmount,
+          monthlyAmount,
+          currency,
+          startDate,
+          isActive,
+          sites,
+          accountBalance,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        landlordName: { type: string }
+        landLabel:
+          {
+            type: string,
+            description: "Ce qu'on loue, en clair : « Terrain de Nongo, 800 m2 ».",
+          }
+        annualAmount: { type: number }
+        monthlyAmount:
+          {
+            type: number,
+            description:
+              "Calcule, jamais stocke : annualAmount / 12, arrondi a l'unite
+              de franc. Le reliquat d'arrondi des douze mois est porte par la
+              DERNIERE constatation de la periode, sans quoi douze douziemes
+              ne feraient pas un an et le compte du bailleur n'atteindrait
+              jamais zero.",
+          }
+        currency: { type: string, example: XOF }
+        startDate: { type: string, format: date }
+        endDate:
+          {
+            type: string,
+            format: date,
+            nullable: true,
+            description: "Nulle en tacite reconduction, ce qui est le cas courant.",
+          }
+        isActive: { type: boolean }
+        sites:
+          type: array
+          items: { $ref: "#/components/schemas/LandLeaseSiteRef" }
+        accountBalance:
+          {
+            type: number,
+            description:
+              "Calcule : solde du compte de tiers du bailleur, a l'instant de
+              la lecture. NEGATIF quand nous avons paye d'avance -- meme
+              convention de signe qu'au lot 2 pour l'acompte verse a un
+              fournisseur.",
+          }
+
+    CreateLandLeaseRequest:
+      type: object
+      required: [landlordName, landLabel, annualAmount, startDate]
+      properties:
+        landlordName: { type: string }
+        landLabel: { type: string }
+        annualAmount: { type: number }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date, nullable: true }
+
+    AttachSiteToLandLeaseRequest:
+      type: object
+      required: [landLeaseId]
+      properties:
+        landLeaseId:
+          {
+            type: string,
+            format: uuid,
+            nullable: true,
+            description: "Passer null detache le chantier du bail.",
+          }
+
+    LandLeaseResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/LandLease" }
+
+    LandLeaseListResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/LandLease" }
+
+    LandLeaseOrNullResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          {
+            allOf: [{ $ref: "#/components/schemas/LandLease" }],
+            nullable: true,
+            description: "null quand l'appel a detache le chantier (landLeaseId envoye a null).",
+          }
+
+    # -------------------------------------------------------------------------
+    # Le paiement annuel
+    # -------------------------------------------------------------------------
+
+    LandLeasePayment:
+      type: object
+      required:
+        [
+          id,
+          landLeaseId,
+          landlordName,
+          paymentDate,
+          amount,
+          currency,
+          coverageStartDate,
+          coverageEndDate,
+          status,
+          createdByLabel,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        landLeaseId: { type: string, format: uuid }
+        landlordName: { type: string }
+        paymentDate: { type: string, format: date }
+        amount: { type: number }
+        currency: { type: string, example: XOF }
+        coverageStartDate: { type: string, format: date }
+        coverageEndDate: { type: string, format: date }
+        status: { $ref: "#/components/schemas/LandLeaseDocumentStatus" }
+        createdByLabel:
+          {
+            type: string,
+            description: "Nom de qui a saisi. L'ecran du validateur en a besoin.",
+          }
+        validatedAt: { type: string, format: date-time, nullable: true }
+
+    CreateLandLeasePaymentRequest:
+      type: object
+      required: [paymentDate, amount, coverageStartDate, coverageEndDate]
+      properties:
+        paymentDate: { type: string, format: date }
+        amount: { type: number }
+        coverageStartDate: { type: string, format: date }
+        coverageEndDate: { type: string, format: date }
+
+    LandLeasePaymentResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/LandLeasePayment" }
+
+    LandLeasePaymentListResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/LandLeasePayment" }
+
+    # -------------------------------------------------------------------------
+    # La constatation mensuelle
+    # -------------------------------------------------------------------------
+
+    LandLeaseAccrualAllocation:
+      type: object
+      required: [siteId, siteLabel, amount]
+      properties:
+        siteId: { type: string, format: uuid }
+        siteLabel: { type: string }
+        amount: { type: number }
+
+    LandLeaseAccrual:
+      type: object
+      required:
+        [
+          id,
+          landLeaseId,
+          landlordName,
+          periodYear,
+          periodMonth,
+          amount,
+          currency,
+          allocations,
+          createdAt,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        landLeaseId: { type: string, format: uuid }
+        landlordName: { type: string }
+        periodYear: { type: integer }
+        periodMonth: { type: integer, minimum: 1, maximum: 12 }
+        amount: { type: number }
+        currency: { type: string, example: XOF }
+        allocations:
+          type: array
+          items: { $ref: "#/components/schemas/LandLeaseAccrualAllocation" }
+          description:
+            "Les imputations produites, par chantier. Vide quand le bail n'a
+            aucun chantier actif : la charge a bien eu lieu, elle n'est
+            simplement imputable a rien."
+        createdAt: { type: string, format: date-time }
+
+    RecordLandLeaseAccrualRequest:
+      type: object
+      required: [periodYear, periodMonth]
+      properties:
+        periodYear: { type: integer }
+        periodMonth: { type: integer, minimum: 1, maximum: 12 }
+
+    LandLeaseAccrualResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/LandLeaseAccrual" }
+
+    LandLeaseAccrualListResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/LandLeaseAccrual" }

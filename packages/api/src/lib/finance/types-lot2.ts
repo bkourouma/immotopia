@@ -78,8 +78,17 @@ export interface PostDocumentEntryParams {
   entryDate: Date;
   reference: string;
   description: string;
-  /** La pièce d'origine. Aucune écriture n'existe sans elle. */
-  documentType: VoidableDocumentType | 'VOID';
+  /**
+   * La pièce d'origine. Aucune écriture n'existe sans elle.
+   *
+   * Les deux natures du lot 4 sont nommées ici bien qu'elles ne figurent pas
+   * dans `VoidableDocumentType` : une pièce de bail de terrain n'est pas
+   * annulable — une constatation erronée se corrige en corrigeant le bail
+   * puis en rejouant le mois — mais elle produit bien une écriture, et
+   * l'écriture doit porter sa nature. Sans ces deux valeurs, le service
+   * transtypait pour compiler.
+   */
+  documentType: VoidableDocumentType | 'VOID' | 'LAND_LEASE_PAYMENT' | 'LAND_LEASE_ACCRUAL';
   documentId: string;
   lines: JournalLineInput[];
 }
@@ -336,6 +345,17 @@ export interface ConstructionSiteRecord {
   /** Facultatif : un chantier peut n'avoir aucun bien au patrimoine. */
   propertyId: string | null;
   managerId: string | null;
+  /**
+   * Bail de terrain dont dépend le chantier, s'il y en a un.
+   *
+   * Ajouté au lot 4. Sans lui, l'écran d'un bail ne pouvait pas savoir qu'un
+   * chantier appartenait déjà à un AUTRE bail : le rattacher l'aurait
+   * silencieusement volé, et les loyers de l'autre bail auraient cessé de s'y
+   * imputer sans que personne ne s'en aperçoive. Le serveur accepte ce
+   * remplacement — c'est une correction légitime — mais l'écran doit pouvoir
+   * prévenir avant.
+   */
+  landLeaseId: string | null;
   status: ConstructionSiteStatus;
   startDate: Date | null;
   plannedEndDate: Date | null;

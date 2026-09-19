@@ -146,6 +146,16 @@ const BonDeCommande = lazy(() =>
     default: m.BonDeCommande
   }))
 );
+const BauxDeTerrain = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/BauxDeTerrain').then(m => ({
+    default: m.BauxDeTerrain
+  }))
+);
+const BailDeTerrain = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/BailDeTerrain').then(m => ({
+    default: m.BailDeTerrain
+  }))
+);
 const TableauDeBordChantiers = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/TableauDeBordChantiers').then(m => ({
     default: m.TableauDeBordChantiers
@@ -696,6 +706,14 @@ function App() {
                         path="/tenant/:tenantId/finance/tableau-de-bord-chantiers"
                         element={<TableauDeBordChantiers />}
                       />
+
+                      {/* Lot 4 : les baux de terrain. L'identifiant du bail
+                        voyage dans le CHEMIN, et c'est bien ce que l'ecran
+                        lit — verifie par un test de navigation dedie du cote
+                        de l'ecran, apres deux occurrences du defaut inverse
+                        aux lots 2 et 3. */}
+                      <Route path="/tenant/:tenantId/finance/baux-terrain" element={<BauxDeTerrain />} />
+                      <Route path="/tenant/:tenantId/finance/baux-terrain/:landLeaseId" element={<BailDeTerrain />} />
                       <Route path="/tenant/:tenantId/maintenance" element={<TicketList />} />
                       <Route path="/tenant/:tenantId/maintenance/new" element={<CreateTicket />} />
                       <Route path="/tenant/:tenantId/maintenance/:ticketId/edit" element={<EditTicket />} />

@@ -74,7 +74,14 @@ export type FinanceSourceType =
   // Mouvement d'inversion, pose par `voidDocumentTx` quand une piece est
   // annulee. Son `sourceId` est celui du mouvement inverse, ce qui le rend
   // unique sans effort.
-  | 'VOID';
+  | 'VOID'
+  // Sources du lot 4, baux de terrain. Ajoutees a l'integration : sans elles,
+  // le service transtypait pour compiler, exactement comme `suppliers.ts` le
+  // faisait au lot 2 avant que cette union soit etendue. Un transtypage
+  // affirme au compilateur ce que le type nie ; le nommer ici rend le detour
+  // inutile et redonne au type son role.
+  | 'LAND_LEASE_PAYMENT'
+  | 'LAND_LEASE_ACCRUAL';
 
 // ---------------------------------------------------------------------------
 // Grand livre des comptes de tiers

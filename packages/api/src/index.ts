@@ -26,6 +26,7 @@ import financeSitesRoutes from './routes/finance-sites-routes';
 import financeBudgetsRoutes from './routes/finance-budgets-routes';
 import financePurchaseOrdersRoutes from './routes/finance-purchase-orders-routes';
 import financePilotageRoutes from './routes/finance-pilotage-routes';
+import financeLandLeasesRoutes from './routes/finance-land-leases-routes';
 import maintenanceRoutes from './routes/maintenance-routes';
 import emailNotificationConfigRoutes from './routes/email-notification-config-routes';
 import whatsappNotificationConfigRoutes from './routes/whatsapp-notification-config-routes';
@@ -37,6 +38,7 @@ import ownerPortalRoutes from './routes/owner-portal-routes';
 import patrimoineRoutes from './routes/patrimoine-routes';
 import ownerStatementsRoutes from './routes/owner-statements-routes';
 import { startPenaltyCalculationJob } from './jobs/penalty-calculation-job';
+import { startLandLeaseAccrualJob } from './jobs/land-lease-accrual-job';
 import { startReminderSchedulerJob } from './jobs/reminder-scheduler.job';
 import { startNewsletterCampaignSchedulerJob } from './jobs/newsletter-campaign-scheduler.job';
 import { corsMiddleware } from './middleware/cors-middleware';
@@ -179,6 +181,7 @@ app.use('/api', financePilotageRoutes); // Finance lot 3 : avancement, alertes, 
 app.use('/api', financeSitesRoutes); // Finance lot 2 : chantiers, caisse, file de validation
 app.use('/api', financeBudgetsRoutes); // Finance lot 3 : budgets de chantier et avenants
 app.use('/api', financePurchaseOrdersRoutes); // Finance lot 3 : bons de commande et engage
+app.use('/api', financeLandLeasesRoutes); // Finance lot 4 : baux de terrain
 app.use('/api/tenants/:tenantId/maintenance', maintenanceRoutes); // Maintenance routes are tenant-scoped
 app.use('/api/tenants/:tenantId/email-notifications', emailNotificationConfigRoutes); // Notifications email (activation + templates)
 app.use('/api/tenants/:tenantId/whatsapp-notifications', whatsappNotificationConfigRoutes); // Notifications WhatsApp (WaSender/Twilio)
@@ -231,6 +234,9 @@ app.listen(PORT, () => {
   // Start scheduled jobs
   if (env.NODE_ENV !== 'test') {
     startPenaltyCalculationJob();
+    // Lot 4 : le 2 de chaque mois, un douzieme du loyer de chaque bail de
+    // terrain est constate. Idempotent : le rejouer ne double rien.
+    startLandLeaseAccrualJob();
     startReminderSchedulerJob();
     startNewsletterCampaignSchedulerJob();
   }

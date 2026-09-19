@@ -2771,6 +2771,11 @@ enum SourceType {
   SUPPLIER_PAYMENT
   CASH_VOUCHER
   VOID
+  // Lot 4 : les pieces des baux de terrain. Sans elles, chaque ecriture de
+  // bail portait `MANUAL` et le grand livre perdait une distinction qu'il a
+  // pour toutes les autres pieces du module.
+  LAND_LEASE_PAYMENT
+  LAND_LEASE_ACCRUAL
 }
 
 /// Portee d'un plan de comptes, d'un journal ou d'une ecriture.
@@ -4387,6 +4392,7 @@ model CostCategory {
   budgetLines        SiteBudgetLine[]
   amendmentLines     BudgetAmendmentLine[]
   purchaseOrderLines PurchaseOrderLine[]
+  landLeases         LandLease[]
   chartOfAccount ChartOfAccount? @relation(fields: [chartOfAccountId], references: [id], onDelete: SetNull)
   @@unique([tenantId, label])
   @@index([tenantId])
@@ -4396,6 +4402,16 @@ model CostCategory {
 enum CostAllocationSourceType {
   SUPPLIER_INVOICE
   CASH_VOUCHER
+  /// Lot 4. Sans cette valeur, la constatation mensuelle d'un loyer de
+  /// terrain ne pouvait produire aucune imputation, et le loyer n'entrait
+  /// donc JAMAIS dans le cout reel du chantier — ce qui vidait le sous-lot
+  /// de son sens, puisque c'est exactement ce que le PRD demande.
+  ///
+  /// Le schema avait ete gele a moitie : `ThirdPartyKind` portait deja
+  /// LANDLORD et les comptes 486/613 etaient semes, mais cette enumeration-ci
+  /// et les deux suivantes avaient ete oubliees. Releve par l'agent du
+  /// service dans sa rubrique d'hypotheses.
+  LAND_LEASE_ACCRUAL
 }
 
 model CostAllocation {
@@ -4787,6 +4803,17 @@ model LandLease {
   landLabel        String    @map("land_label")
   /// Montant ANNUEL. Le douzieme mensuel s'en deduit, il ne se stocke pas.
   annualAmount     Decimal   @map("annual_amount") @db.Decimal(14, 2)
+  /// Poste de depense auquel le loyer s'impute dans le cout des chantiers.
+  ///
+  /// Obligatoire, et choisi a la creation du bail. `CostAllocation` exige un
+  /// poste : sans lui, la constatation mensuelle ne pourrait produire aucune
+  /// imputation et le loyer n'entrerait pas dans le cout du chantier.
+  ///
+  /// Le demander plutot que de deviner : c'est la gestionnaire qui sait si le
+  /// loyer d'un terrain releve des « Divers » ou d'un poste qu'elle a cree
+  /// pour cela. Un poste devine se lirait comme un choix, et personne ne
+  /// saurait qu'il n'en etait pas un.
+  costCategoryId   String    @map("cost_category_id") @db.Uuid
   currency         String    @default("XOF")
   startDate        DateTime  @map("start_date")
   /// Nulle en tacite reconduction, ce qui est le cas courant a Conakry.
@@ -4797,6 +4824,7 @@ model LandLease {
 
   tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   landlordAccount ThirdPartyAccount  @relation(fields: [landlordAccountId], references: [id], onDelete: Restrict)
+  costCategory    CostCategory       @relation(fields: [costCategoryId], references: [id], onDelete: Restrict)
   sites           ConstructionSite[]
   payments        LandLeasePayment[]
   accruals        LandLeaseAccrual[]

@@ -138,6 +138,13 @@ export interface ConstructionSite {
   propertyId: string | null;
   propertyLabel: string | null;
   managerLabel: string | null;
+  /**
+   * Bail de terrain dont dépend le chantier, s'il y en a un.
+   *
+   * Ajouté au lot 4 : l'écran d'un bail s'en sert pour prévenir qu'un
+   * chantier appartient déjà à un autre bail avant de le rattacher.
+   */
+  landLeaseId: string | null;
   status: ConstructionSiteStatus;
   startDate: string | null;
   plannedEndDate: string | null;

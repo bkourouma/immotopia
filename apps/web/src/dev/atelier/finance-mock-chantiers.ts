@@ -100,6 +100,8 @@ const RICHE_BASE: ChantierBase = {
   propertyId: 'bien-chantier-riche-01',
   propertyLabel: 'Villa duplex — Kipé Centre (en construction)',
   managerLabel: 'Mamadou Bah',
+  // Aucun bail de terrain par defaut : c'est le cas courant.
+  landLeaseId: null,
   status: 'IN_PROGRESS',
   startDate: '2026-04-01',
   plannedEndDate: '2026-11-30',
@@ -325,6 +327,8 @@ const SANS_BIEN_BASE: ChantierBase = {
   propertyId: null,
   propertyLabel: null,
   managerLabel: 'Ibrahima Sow',
+  // Aucun bail de terrain par defaut : c'est le cas courant.
+  landLeaseId: null,
   status: 'IN_PROGRESS',
   startDate: '2026-06-01',
   plannedEndDate: '2026-12-31',
@@ -456,6 +460,8 @@ const CLOTURE_BASE: ChantierBase = {
   propertyId: 'bien-cloture-01',
   propertyLabel: 'Immeuble R+3 — Matam (livré)',
   managerLabel: 'Aïssatou Barry',
+  // Aucun bail de terrain par defaut : c'est le cas courant.
+  landLeaseId: null,
   status: 'CLOSED',
   startDate: '2025-09-01',
   plannedEndDate: '2026-03-31',
@@ -481,6 +487,8 @@ const NOUVEAU_BASE: ChantierBase = {
   propertyId: 'bien-nouveau-01',
   propertyLabel: 'Villa Lambanyi 2 (extension)',
   managerLabel: 'Mamadou Bah',
+  // Aucun bail de terrain par defaut : c'est le cas courant.
+  landLeaseId: null,
   status: 'PLANNED',
   startDate: '2026-09-15',
   plannedEndDate: '2027-02-28',

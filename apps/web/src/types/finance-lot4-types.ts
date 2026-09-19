@@ -49,6 +49,9 @@ export interface LandLease {
   /** Ce qu'on loue, en clair : « Terrain de Nongo, 800 m² ». */
   landLabel: string;
   annualAmount: number;
+  costCategoryId: string;
+  /** Nom du poste auquel le loyer s'impute. L'écran montre ce nom. */
+  costCategoryLabel: string;
   /**
    * Le douzième mensuel, calculé par le serveur.
    *
@@ -77,6 +80,13 @@ export interface CreateLandLeaseInput {
   landlordName: string;
   landLabel: string;
   annualAmount: number;
+  /**
+   * Poste de dépense auquel le loyer s'imputera. Obligatoire.
+   *
+   * L'écran le demande : c'est la gestionnaire qui sait si le loyer d'un
+   * terrain relève des « Divers » ou d'un poste créé pour cela.
+   */
+  costCategoryId: string;
   startDate: string;
   endDate?: string | null;
 }
@@ -129,4 +139,21 @@ export interface LandLeaseAccrual {
    */
   allocations: Array<{ siteId: string; siteLabel: string; amount: number }>;
   createdAt: string;
+}
+
+/**
+ * Corps de la constatation manuelle d'un mois.
+ *
+ * Manquait au gel : chaque autre route de création avait son type d'entrée,
+ * celle-ci non, et l'agent des écrans a dû la supposer. Déclarée ici pour que
+ * personne n'ait plus à deviner.
+ *
+ * L'identifiant du bail voyage dans le CHEMIN, pas dans ce corps — les
+ * schémas du serveur sont en mode strict, et répéter l'identifiant ferait
+ * échouer la requête en 400. C'est le défaut qui cassait quatre créations des
+ * lots 2 et 3.
+ */
+export interface RecordLandLeaseAccrualInput {
+  periodYear: number;
+  periodMonth: number;
 }
