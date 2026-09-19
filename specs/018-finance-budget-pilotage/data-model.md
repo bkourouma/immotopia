@@ -82,7 +82,7 @@ Deux index partiels, posés en SQL brut parce que le langage de Prisma ne conna�
 
 ## 5. Les points d'entrée
 
-Vingt routes, toutes sous `/tenants/{tenantId}/finance`. Les permissions sont celles des lots 1 et 2 : **aucune permission neuve**.
+Dix-neuf routes, toutes sous `/tenants/{tenantId}/finance`. Les permissions sont celles des lots 1 et 2 : **aucune permission neuve**.
 
 | Méthode | Chemin                                  | Permission           | Rend                    |
 | ------- | --------------------------------------- | -------------------- | ----------------------- |

@@ -74,6 +74,14 @@ export interface SiteBudget {
   label: string;
   status: SiteBudgetStatus;
   validatedAt: string | null;
+  /**
+   * Nom de qui a validé. Nul tant que le budget est un brouillon.
+   *
+   * L'écran affiche ce nom, jamais un identifiant. L'avenant en fait autant
+   * avec `createdByLabel` : les deux se lisent côte à côte, ils doivent se
+   * lire de la même façon.
+   */
+  validatedByLabel: string | null;
   currency: string;
   lines: SiteBudgetLine[];
   /**

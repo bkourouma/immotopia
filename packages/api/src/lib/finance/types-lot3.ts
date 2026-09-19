@@ -78,6 +78,15 @@ export interface SiteBudgetRecord {
   status: SiteBudgetStatus;
   validatedAt: Date | null;
   validatedByUserId: string | null;
+  /**
+   * Nom de qui a validé, résolu. Nul tant que le budget est un brouillon.
+   *
+   * Ajouté le 19 septembre 2026, à la relecture du contrat : l'avenant juste à
+   * côté nomme son auteur, et le budget ne nommait pas son validateur. Un
+   * dirigeant qui lit « Validé le 12/09 » sans savoir par qui n'a qu'une
+   * moitié de trace, alors que le PRD demande que la décision soit tracée.
+   */
+  validatedByLabel: string | null;
   currency: string;
   lines: SiteBudgetLineRecord[];
   /** Somme des lignes. **Calculé, jamais stocké.** */

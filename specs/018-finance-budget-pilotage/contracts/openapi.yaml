@@ -1,0 +1,1045 @@
+openapi: 3.0.3
+info:
+  title: ImmoTopia Finance Operationnelle - Budget de chantier et pilotage (lot 3) API
+  version: 1.0.0
+  description: >
+    Contrat API du lot 3 du module de gestion financiere operationnelle : budget de
+    chantier, avenants, bons de commande, engage, avancement physique, alerte de
+    depassement et tableau de bord (PRD epique E5). Vocabulaire impose (principe P-1
+    du PRD) : on *budgete*, on *engage*, on *realise*, on *amende* ; aucune reponse
+    n'expose "debit" ni "credit". Aucune permission neuve : celles des lots 1 et 2.
+    Contrat gele cote serveur : `packages/api/src/lib/finance/types-lot3.ts`. Contrat
+    gele cote web : `apps/web/src/types/finance-lot3-types.ts`. Voir
+    `specs/018-finance-budget-pilotage/data-model.md`.
+servers:
+  - url: /api
+tags:
+  - name: BudgetsChantier
+  - name: Avenants
+  - name: BonsDeCommande
+  - name: Engagement
+  - name: AvancementPhysique
+  - name: AlertesDepassement
+  - name: TableauDeBord
+
+paths:
+  /tenants/{tenantId}/finance/sites/{siteId}/budgets:
+    get:
+      tags: [BudgetsChantier]
+      summary: Lister les budgets d'un chantier, brouillons compris
+      description: >
+        Du plus recent au plus ancien. Un budget brouillon ne compte pour rien :
+        ni dans l'ecart, ni dans l'alerte de depassement. Plusieurs brouillons
+        peuvent coexister sur un meme chantier. Permission `finance.accounts.read`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SiteId"
+      responses:
+        "200":
+          description: Liste des budgets du chantier
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/SiteBudgetListResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [BudgetsChantier]
+      summary: Creer un budget de chantier a l'etat brouillon, avec ses lignes
+      description: >
+        Refuse deux lignes sur le meme poste de depense : une enveloppe par poste,
+        sans quoi l'ecart par poste devient ambigu. Permission `finance.sites.manage`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SiteId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSiteBudgetRequest" }
+      responses:
+        "201":
+          description: Budget cree en brouillon
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteBudgetResponseWrapper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/sites/{siteId}/budget:
+    get:
+      tags: [BudgetsChantier]
+      summary: Le budget valide d'un chantier
+      description: >
+        404 si le chantier n'a pas encore de budget valide. Un seul budget valide
+        par chantier : garanti en base par un index partiel
+        (`site_budgets_one_validated_per_site`). Permission `finance.accounts.read`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SiteId"
+      responses:
+        "200":
+          description: Budget valide du chantier
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteBudgetResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/site-budgets/{budgetId}/validate:
+    post:
+      tags: [BudgetsChantier]
+      summary: Valider un budget brouillon, qui devient le budget initial du chantier
+      description: >
+        Valider un second budget alors qu'un autre l'est deja sur le meme chantier
+        est un conflit (409), pas un remplacement : on amende un budget valide, on
+        ne le remplace pas en silence. Permission `finance.documents.validate`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/BudgetId"
+      responses:
+        "200":
+          description: Budget valide
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SiteBudgetResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/site-budgets/{budgetId}/amendments:
+    get:
+      tags: [Avenants]
+      summary: Lister les avenants d'un budget
+      description: Permission `finance.accounts.read`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/BudgetId"
+      responses:
+        "200":
+          description: Liste des avenants du budget
+          content:
+            application/json:
+              schema:
+                {
+                  $ref: "#/components/schemas/BudgetAmendmentListResponseWrapper",
+                }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Avenants]
+      summary: Saisir un avenant a l'etat brouillon, sur un budget deja valide
+      description: >
+        Refuse un avenant sur un budget qui n'est pas valide : on n'amende pas un
+        brouillon, on le modifie. Le motif est obligatoire : un avenant sans motif
+        est un chiffre que personne ne saura expliquer six mois plus tard.
+        Permission `finance.sites.manage`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/BudgetId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/CreateBudgetAmendmentRequest" }
+      responses:
+        "201":
+          description: Avenant cree en brouillon
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/BudgetAmendmentResponseWrapper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/budget-amendments/{id}/validate:
+    post:
+      tags: [Avenants]
+      summary: Valider un avenant, qui entre alors dans le budget revise
+      description: >
+        Un avenant ne figure pas dans la file de validation partagee du lot 2, qui
+        ne montre que les pieces deplacant de l'argent : un avenant deplace une
+        prevision. Il se valide depuis l'ecran du budget, par le meme droit.
+        Permission `finance.documents.validate`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/BudgetAmendmentId"
+      responses:
+        "200":
+          description: Avenant valide
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/BudgetAmendmentResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/purchase-orders:
+    get:
+      tags: [BonsDeCommande]
+      summary: Lister les bons de commande, filtrables par chantier, fournisseur et statut
+      description: Permission `finance.accounts.read`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: siteId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: supplierId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/PurchaseOrderStatus" }
+      responses:
+        "200":
+          description: Liste des bons de commande
+          content:
+            application/json:
+              schema:
+                {
+                  $ref: "#/components/schemas/PurchaseOrderListResponseWrapper",
+                }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [BonsDeCommande]
+      summary: Creer un bon de commande a l'etat brouillon
+      description: >
+        Un brouillon n'engage rien : c'est l'emission qui fait entrer le bon dans
+        l'engage. Permission `finance.documents.create`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePurchaseOrderRequest" }
+      responses:
+        "201":
+          description: Bon de commande cree en brouillon
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/PurchaseOrderResponseWrapper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/purchase-orders/{orderId}:
+    get:
+      tags: [BonsDeCommande]
+      summary: Detail d'un bon de commande
+      description: Permission `finance.accounts.read`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "200":
+          description: Bon de commande
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/PurchaseOrderResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/purchase-orders/{orderId}/issue:
+    post:
+      tags: [BonsDeCommande]
+      summary: Emettre un bon de commande brouillon
+      description: >
+        C'est l'emission qui fait entrer le bon dans l'engage : un brouillon
+        n'engage personne. C'est aussi a cet instant que l'alerte de depassement
+        est evaluee (`raiseBudgetAlertIfNeededTx`). Permission
+        `finance.documents.validate`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/OrderId"
+      responses:
+        "200":
+          description: Bon de commande emis
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/PurchaseOrderResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/purchase-orders/{orderId}/cancel:
+    post:
+      tags: [BonsDeCommande]
+      summary: Annuler un bon de commande
+      description: >
+        Refuse des qu'une facture y est rapprochee : on ne fait pas disparaitre un
+        engagement qui a deja produit une dette. Il faut d'abord defaire le
+        rapprochement, ou annuler la facture. Permission
+        `finance.documents.validate`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/OrderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CancelPurchaseOrderRequest" }
+      responses:
+        "200":
+          description: Bon de commande annule
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/PurchaseOrderResponseWrapper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/supplier-invoices/{id}/purchase-order:
+    post:
+      tags: [BonsDeCommande]
+      summary: Rapprocher une facture recue d'un bon de commande, ou defaire le rapprochement
+      description: >
+        Passer `purchaseOrderId: null` defait le rapprochement, et la reponse rend
+        alors `data: null`. Controles, tous avant ecriture : meme agence, meme
+        fournisseur, meme chantier, bon emis et non annule. Une facture validee ne
+        se rapproche plus : ce qui est valide ne bouge plus (P-6). Permission
+        `finance.documents.create`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SupplierInvoiceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/LinkInvoiceToPurchaseOrderRequest" }
+      responses:
+        "200":
+          description: Bon de commande rapproche, ou null si le rapprochement a ete defait
+          content:
+            application/json:
+              schema:
+                {
+                  $ref: "#/components/schemas/PurchaseOrderOrNullResponseWrapper",
+                }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /tenants/{tenantId}/finance/sites/{siteId}/engagement:
+    get:
+      tags: [Engagement]
+      summary: Ce qu'un chantier a engage, et ce qu'il a reellement depense
+      description: >
+        `engagedAmount` vaut `actualCost + openCommitments`, ou `openCommitments`
+        est le reste a facturer des bons emis et non annules — jamais leur montant
+        entier, sans quoi une facture rapprochee d'un bon compterait deux fois, une
+        fois dans le realise et une fois dans le bon. Permission
+        `finance.accounts.read`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SiteId"
+      responses:
+        "200":
+          description: Engage du chantier
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/SiteEngagementResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/sites/{siteId}/progress:
+    get:
+      tags: [AvancementPhysique]
+      summary: L'historique d'avancement d'un chantier, du plus recent au plus ancien
+      description: Permission `finance.accounts.read`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SiteId"
+      responses:
+        "200":
+          description: Historique d'avancement
+          content:
+            application/json:
+              schema:
+                {
+                  $ref: "#/components/schemas/SiteProgressEntryListResponseWrapper",
+                }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [AvancementPhysique]
+      summary: Enregistrer un point d'avancement, et recopier le pourcentage sur le chantier
+      description: >
+        L'historique est conserve : on ajoute une ligne, on ne modifie jamais la
+        precedente. `percent` est borne a [0, 100]. Un avancement qui recule est
+        permis. La copie sur `ConstructionSite.progressPercent` suit la derniere
+        saisie au sens de la date de saisie (`entryDate`), pas de la date
+        d'enregistrement. Permission `finance.sites.manage`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/SiteId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordSiteProgressRequest" }
+      responses:
+        "201":
+          description: Point d'avancement enregistre
+          content:
+            application/json:
+              schema:
+                {
+                  $ref: "#/components/schemas/SiteProgressEntryResponseWrapper",
+                }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/budget-alerts:
+    get:
+      tags: [AlertesDepassement]
+      summary: Lister les alertes de depassement ouvertes, tous chantiers confondus
+      description: Permission `finance.reports.read`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+      responses:
+        "200":
+          description: Alertes ouvertes
+          content:
+            application/json:
+              schema:
+                {
+                  $ref: "#/components/schemas/SiteBudgetAlertListResponseWrapper",
+                }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /tenants/{tenantId}/finance/budget-alerts/{alertId}/acknowledge:
+    post:
+      tags: [AlertesDepassement]
+      summary: Acquitter une alerte de depassement
+      description: >
+        Une alerte informe, elle n'interdit pas : elle ne bloque jamais la
+        validation d'une piece. Permission `finance.documents.validate`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/AlertId"
+      responses:
+        "200":
+          description: Alerte acquittee
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/SiteBudgetAlertResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tenants/{tenantId}/finance/sites/dashboard:
+    get:
+      tags: [TableauDeBord]
+      summary: Le tableau de bord des chantiers, en un seul appel
+      description: >
+        Meme parti pris que l'endpoint agrege des programmes de travaux : un
+        ecran qui appelle une route par chantier devient inutilisable des la
+        trentieme ligne. L'agregation se fait en SQL, jamais en memoire.
+        Permission `finance.reports.read`.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: status
+          in: query
+          required: false
+          schema: { type: string }
+        - name: onlyOverBudget
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Tableau de bord des chantiers
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/SitesDashboardResponseWrapper" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+components:
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SiteId:
+      name: siteId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    BudgetId:
+      name: budgetId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    BudgetAmendmentId:
+      name: id
+      in: path
+      required: true
+      description: Identifiant de l'avenant
+      schema: { type: string, format: uuid }
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SupplierInvoiceId:
+      name: id
+      in: path
+      required: true
+      description: Identifiant de la facture fournisseur
+      schema: { type: string, format: uuid }
+    AlertId:
+      name: alertId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: Requete invalide
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    Forbidden:
+      description: Acces interdit (hors tenant, ou permission manquante)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+    Conflict:
+      description: >
+        Conflit metier : deuxieme budget valide sur un meme chantier, piece deja
+        validee/annulee, ou bon de commande deja rapproche d'une facture
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ApiError" }
+
+  schemas:
+    ApiError:
+      type: object
+      required: [success, error]
+      properties:
+        success: { type: boolean, example: false }
+        error: { type: string }
+
+    SiteBudgetStatus:
+      type: string
+      enum: [DRAFT, VALIDATED]
+      description: Cycle d'un budget de chantier et de ses avenants
+
+    PurchaseOrderStatus:
+      type: string
+      enum: [DRAFT, ISSUED, CANCELLED]
+      description: Cycle decide d'un bon de commande. Voir PurchaseOrderInvoicingState pour l'etat de facturation, distinct et calcule.
+
+    PurchaseOrderInvoicingState:
+      type: string
+      enum: [NOT_INVOICED, PARTIALLY_INVOICED, SETTLED]
+      description: >
+        Etat de facturation d'un bon. Calcule, jamais stocke : NOT_INVOICED si
+        aucune facture validee n'y est rapprochee, PARTIALLY_INVOICED si la somme
+        des factures rapprochees est inferieure au montant du bon, SETTLED si elle
+        l'egale ou le depasse.
+
+    # -------------------------------------------------------------------------
+    # Budget de chantier
+    # -------------------------------------------------------------------------
+
+    SiteBudgetLine:
+      type: object
+      required: [id, costCategoryId, costCategoryLabel, label, amountForecast]
+      properties:
+        id: { type: string, format: uuid }
+        costCategoryId: { type: string, format: uuid }
+        costCategoryLabel:
+          {
+            type: string,
+            description: "Nom du poste de depense, resolu. Jamais un identifiant seul a l'ecran.",
+          }
+        label: { type: string }
+        amountForecast: { type: number }
+
+    SiteBudget:
+      type: object
+      required: [id, siteId, label, status, currency, lines, totalForecast]
+      properties:
+        id: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        label: { type: string }
+        status: { $ref: "#/components/schemas/SiteBudgetStatus" }
+        validatedAt: { type: string, format: date-time, nullable: true }
+        validatedByLabel:
+          {
+            type: string,
+            nullable: true,
+            description:
+              "Nom de qui a valide le budget. Nul tant qu'il est en brouillon.
+              L'ecran affiche ce nom, jamais un identifiant -- l'avenant en fait
+              autant avec createdByLabel, et les deux se lisent cote a cote.",
+          }
+        currency: { type: string, example: XOF }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/SiteBudgetLine" }
+        totalForecast:
+          {
+            type: number,
+            description: "Calcule : somme des lignes. Jamais stocke.",
+          }
+
+    CreateSiteBudgetRequest:
+      type: object
+      required: [label, lines]
+      properties:
+        label: { type: string }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [costCategoryId, label, amountForecast]
+            properties:
+              costCategoryId: { type: string, format: uuid }
+              label: { type: string }
+              amountForecast: { type: number }
+
+    SiteBudgetResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/SiteBudget" }
+
+    SiteBudgetListResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/SiteBudget" }
+
+    # -------------------------------------------------------------------------
+    # Avenants
+    # -------------------------------------------------------------------------
+
+    BudgetAmendmentLine:
+      type: object
+      required: [id, costCategoryId, costCategoryLabel, amountDelta]
+      properties:
+        id: { type: string, format: uuid }
+        costCategoryId: { type: string, format: uuid }
+        costCategoryLabel: { type: string }
+        amountDelta:
+          {
+            type: number,
+            description: "Signe : un avenant reduit parfois une enveloppe.",
+          }
+
+    BudgetAmendment:
+      type: object
+      required:
+        [
+          id,
+          budgetId,
+          amendmentDate,
+          reason,
+          status,
+          createdByLabel,
+          lines,
+          totalDelta,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        budgetId: { type: string, format: uuid }
+        amendmentDate: { type: string, format: date }
+        reason: { type: string }
+        status: { $ref: "#/components/schemas/SiteBudgetStatus" }
+        createdByLabel:
+          {
+            type: string,
+            description: "Nom de qui l'a saisi. L'ecran du validateur en a besoin.",
+          }
+        validatedAt: { type: string, format: date-time, nullable: true }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/BudgetAmendmentLine" }
+        totalDelta:
+          {
+            type: number,
+            description: "Calcule : somme signee des lignes. Jamais stocke.",
+          }
+
+    CreateBudgetAmendmentRequest:
+      type: object
+      required: [amendmentDate, reason, lines]
+      properties:
+        amendmentDate: { type: string, format: date }
+        reason:
+          {
+            type: string,
+            description: "Obligatoire. L'ecran le verifie avant l'envoi, le serveur aussi.",
+          }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [costCategoryId, amountDelta]
+            properties:
+              costCategoryId: { type: string, format: uuid }
+              amountDelta: { type: number }
+
+    BudgetAmendmentResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/BudgetAmendment" }
+
+    BudgetAmendmentListResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/BudgetAmendment" }
+
+    # -------------------------------------------------------------------------
+    # Bons de commande
+    # -------------------------------------------------------------------------
+
+    PurchaseOrderLine:
+      type: object
+      required: [id, costCategoryId, costCategoryLabel, label, amount]
+      properties:
+        id: { type: string, format: uuid }
+        costCategoryId: { type: string, format: uuid }
+        costCategoryLabel: { type: string }
+        label: { type: string }
+        amount: { type: number }
+
+    PurchaseOrder:
+      type: object
+      required:
+        [
+          id,
+          siteId,
+          siteLabel,
+          supplierId,
+          supplierLabel,
+          reference,
+          orderDate,
+          status,
+          currency,
+          lines,
+          totalAmount,
+          invoicedAmount,
+          remainingAmount,
+          invoicingState,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        siteLabel: { type: string }
+        supplierId: { type: string, format: uuid }
+        supplierLabel: { type: string }
+        reference: { type: string }
+        orderDate: { type: string, format: date }
+        status: { $ref: "#/components/schemas/PurchaseOrderStatus" }
+        currency: { type: string, example: XOF }
+        lines:
+          type: array
+          items: { $ref: "#/components/schemas/PurchaseOrderLine" }
+        totalAmount:
+          { type: number, description: "Calcule : somme des lignes." }
+        invoicedAmount:
+          {
+            type: number,
+            description: "Calcule : somme des factures VALIDEES rapprochees de ce bon.",
+          }
+        remainingAmount:
+          {
+            type: number,
+            description: "Calcule : totalAmount - invoicedAmount, borne a zero. C'est cette part, et seulement elle, qui compte dans l'engage (voir SiteEngagement.engagedAmount).",
+          }
+        invoicingState:
+          { $ref: "#/components/schemas/PurchaseOrderInvoicingState" }
+
+    CreatePurchaseOrderRequest:
+      type: object
+      required: [siteId, supplierId, reference, orderDate, lines]
+      properties:
+        siteId: { type: string, format: uuid }
+        supplierId: { type: string, format: uuid }
+        reference: { type: string }
+        orderDate: { type: string, format: date }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [costCategoryId, label, amount]
+            properties:
+              costCategoryId: { type: string, format: uuid }
+              label: { type: string }
+              amount: { type: number }
+
+    CancelPurchaseOrderRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string }
+
+    LinkInvoiceToPurchaseOrderRequest:
+      type: object
+      required: [purchaseOrderId]
+      properties:
+        purchaseOrderId:
+          {
+            type: string,
+            format: uuid,
+            nullable: true,
+            description: "Passer null defait le rapprochement en cours.",
+          }
+
+    PurchaseOrderResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/PurchaseOrder" }
+
+    PurchaseOrderListResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/PurchaseOrder" }
+
+    PurchaseOrderOrNullResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          {
+            allOf: [{ $ref: "#/components/schemas/PurchaseOrder" }],
+            nullable: true,
+            description: "null quand l'appel a defait un rapprochement (purchaseOrderId envoye a null).",
+          }
+
+    # -------------------------------------------------------------------------
+    # Engage
+    # -------------------------------------------------------------------------
+
+    SiteEngagement:
+      type: object
+      required: [siteId, actualCost, openCommitments, engagedAmount, currency]
+      properties:
+        siteId: { type: string, format: uuid }
+        actualCost:
+          {
+            type: number,
+            description: "Calcule : somme des imputations validees et non annulees du chantier (identique a getSiteActualCost du lot 2).",
+          }
+        openCommitments:
+          {
+            type: number,
+            description: "Calcule : somme, sur les bons de commande EMIS et non annules du chantier, de leur reste a facturer (remainingAmount).",
+          }
+        engagedAmount:
+          {
+            type: number,
+            description: "Calcule : actualCost + openCommitments, c'est-a-dire le realise plus le RESTE A FACTURER des bons emis — jamais leur montant entier, sans quoi une facture rapprochee d'un bon compterait deux fois, une fois dans le realise et une fois dans le bon.",
+          }
+        currency: { type: string, example: XOF }
+
+    SiteEngagementResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/SiteEngagement" }
+
+    # -------------------------------------------------------------------------
+    # Avancement physique
+    # -------------------------------------------------------------------------
+
+    SiteProgressEntry:
+      type: object
+      required: [id, siteId, entryDate, percent, createdByLabel, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        entryDate: { type: string, format: date }
+        percent: { type: number, minimum: 0, maximum: 100 }
+        note: { type: string, nullable: true }
+        createdByLabel: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    RecordSiteProgressRequest:
+      type: object
+      required: [entryDate, percent]
+      properties:
+        entryDate: { type: string, format: date }
+        percent: { type: number, minimum: 0, maximum: 100 }
+        note: { type: string, nullable: true }
+
+    SiteProgressEntryResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/SiteProgressEntry" }
+
+    SiteProgressEntryListResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/SiteProgressEntry" }
+
+    # -------------------------------------------------------------------------
+    # Alerte de depassement
+    # -------------------------------------------------------------------------
+
+    SiteBudgetAlert:
+      type: object
+      required:
+        [
+          id,
+          siteId,
+          siteLabel,
+          budgetId,
+          thresholdPercent,
+          engagedAmount,
+          budgetAmount,
+          consumedPercent,
+          raisedAt,
+          currency,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        siteLabel: { type: string }
+        budgetId: { type: string, format: uuid }
+        thresholdPercent: { type: number }
+        engagedAmount: { type: number }
+        budgetAmount: { type: number }
+        consumedPercent:
+          {
+            type: number,
+            description: "Calcule : part de l'engage dans le budget, en pourcentage (engagedAmount / budgetAmount * 100).",
+          }
+        raisedAt: { type: string, format: date-time }
+        acknowledgedAt: { type: string, format: date-time, nullable: true }
+        currency: { type: string, example: XOF }
+
+    SiteBudgetAlertResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/SiteBudgetAlert" }
+
+    SiteBudgetAlertListResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/SiteBudgetAlert" }
+
+    # -------------------------------------------------------------------------
+    # Tableau de bord
+    # -------------------------------------------------------------------------
+
+    SiteDashboardRow:
+      type: object
+      required:
+        [
+          siteId,
+          siteLabel,
+          status,
+          engagedAmount,
+          actualCost,
+          progressPercent,
+          currency,
+        ]
+      properties:
+        siteId: { type: string, format: uuid }
+        siteLabel: { type: string }
+        zone: { type: string, nullable: true }
+        status: { type: string }
+        initialBudget:
+          {
+            type: number,
+            nullable: true,
+            description: "Budget initial : le budget valide du chantier. Nul si le chantier n'en a pas.",
+          }
+        revisedBudget:
+          {
+            type: number,
+            nullable: true,
+            description: "Calcule : initial plus la somme des avenants VALIDES. Nul s'il n'y a pas de budget.",
+          }
+        engagedAmount: { type: number }
+        actualCost: { type: number }
+        progressPercent: { type: number }
+        variance:
+          {
+            type: number,
+            nullable: true,
+            description: "Calcule : revisedBudget - engagedAmount. Negatif quand on depasse. Nul quand il n'y a pas de budget.",
+          }
+        variancePercent:
+          {
+            type: number,
+            nullable: true,
+            description: "Calcule : l'ecart (variance) en part du budget revise. Nul quand il n'y a pas de budget.",
+          }
+        openAlert:
+          {
+            allOf: [{ $ref: "#/components/schemas/SiteBudgetAlert" }],
+            nullable: true,
+            description: "L'alerte ouverte de ce chantier, s'il y en a une.",
+          }
+        currency: { type: string, example: XOF }
+
+    SitesDashboard:
+      type: object
+      required: [rows, currency]
+      properties:
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/SiteDashboardRow" }
+        currency: { type: string, example: XOF }
+
+    SitesDashboardResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/SitesDashboard" }
