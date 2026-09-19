@@ -460,6 +460,7 @@ describe('Plan de comptes operationnel', () => {
     // laisser sur le 401 ou le 402 ferait croire a une campagne de reglement
     // qu'il faut le payer maintenant.
     expect(Array.from(comptes.keys()).sort()).toEqual([
+      '311',
       '401',
       '402',
       '4047',
@@ -468,6 +469,7 @@ describe('Plan de comptes operationnel', () => {
       '486',
       '571',
       '601',
+      '603',
       '605',
       '613',
       '661'

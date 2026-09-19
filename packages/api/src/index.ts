@@ -32,6 +32,8 @@ import financePartnershipsRoutes from './routes/finance-partnerships-routes';
 import financeContractorsRoutes from './routes/finance-contractors-routes';
 import financeRetentionsRoutes from './routes/finance-retentions-routes';
 import financeSiteClosingRoutes from './routes/finance-site-closing-routes';
+import financeStockReferentielRoutes from './routes/finance-stock-referentiel-routes';
+import financeStockMouvementsRoutes from './routes/finance-stock-mouvements-routes';
 import maintenanceRoutes from './routes/maintenance-routes';
 import emailNotificationConfigRoutes from './routes/email-notification-config-routes';
 import whatsappNotificationConfigRoutes from './routes/whatsapp-notification-config-routes';
@@ -192,6 +194,8 @@ app.use('/api', financePartnershipsRoutes); // Finance lot 4 : associations
 app.use('/api', financeContractorsRoutes); // Finance lot 4 : tacherons
 app.use('/api', financeRetentionsRoutes); // Finance lot 4 : retenues de garantie
 app.use('/api', financeSiteClosingRoutes); // Finance lot 4 : lots, cout de revient, cloture
+app.use('/api', financeStockReferentielRoutes); // Finance lot 5 : articles, lieux, valorisation
+app.use('/api', financeStockMouvementsRoutes); // Finance lot 5 : receptions, sorties, soldes
 app.use('/api/tenants/:tenantId/maintenance', maintenanceRoutes); // Maintenance routes are tenant-scoped
 app.use('/api/tenants/:tenantId/email-notifications', emailNotificationConfigRoutes); // Notifications email (activation + templates)
 app.use('/api/tenants/:tenantId/whatsapp-notifications', whatsappNotificationConfigRoutes); // Notifications WhatsApp (WaSender/Twilio)

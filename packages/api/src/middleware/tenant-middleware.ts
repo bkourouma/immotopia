@@ -40,6 +40,25 @@ export const requireTenantAccess = async (req: Request, res: Response, next: Nex
       return;
     }
 
+    // Deja resolu pour CETTE requete et CE tenant : on ne recommence pas.
+    //
+    // Ce garde-fou vaut cher. Cette fonction fait DEUX requetes en base
+    // (`membership.findUnique` puis `userRole.findMany`), et douze routeurs du
+    // module financier sont montes sur `/api`, chacun avec sa propre garde sur
+    // le prefixe `/tenants/:tenantId/finance`. Express execute le `use` de
+    // CHAQUE routeur dont le prefixe correspond, jusqu'a trouver la route :
+    // une seule requete financiere pouvait donc faire vingt-quatre
+    // allers-retours en base, dont vingt-deux pour rien.
+    //
+    // Le tenant est compare, et pas seulement la presence du contexte : deux
+    // gardes sur des tenants differents dans une meme requete resteraient
+    // deux verifications distinctes. Le cas n'existe pas aujourd'hui, mais
+    // s'en remettre a cela serait poser un piege pour plus tard.
+    if (req.tenantContext && req.tenantContext.tenantId === tenantId) {
+      next();
+      return;
+    }
+
     // Super admin bypass - always allow access
     if (req.user.globalRole === 'SUPER_ADMIN') {
       req.tenantContext = {

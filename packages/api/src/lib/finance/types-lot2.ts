@@ -104,7 +104,15 @@ export interface PostDocumentEntryParams {
     | 'PROGRESS_STATEMENT'
     | 'CONTRACTOR_PAYMENT'
     | 'RETENTION_HELD'
-    | 'RETENTION_RELEASED';
+    | 'RETENTION_RELEASED'
+    // Lot 5 : le stock. La sortie ecrit (debit du poste, credit du 311) et
+    // l'ajustement d'inventaire aussi. La RECEPTION, elle, n'ecrit rien — la
+    // facture a deja porte la valeur au 311, et la doubler gonflerait
+    // l'actif ; sa nature figure quand meme ici, parce que l'enum Postgres la
+    // porte et qu'une nature declaree a moitie est un piege.
+    | 'STOCK_RECEIPT'
+    | 'STOCK_ISSUE'
+    | 'STOCK_ADJUSTMENT';
   documentId: string;
   lines: JournalLineInput[];
 }

@@ -2,6 +2,21 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt-utils';
 
 export const authenticate = (req: Request, res: Response, next: NextFunction) => {
+  // Deja authentifie pour CETTE requete : on ne recommence pas.
+  //
+  // Ce n'est pas une micro-optimisation. Douze routeurs du module financier
+  // sont montes sur `/api`, et chacun pose sa propre garde sur le prefixe
+  // `/tenants/:tenantId/finance`. Express execute le `use` de CHAQUE routeur
+  // dont le prefixe correspond, jusqu'a trouver la route : une seule requete
+  // financiere verifiait donc le jeton jusqu'a douze fois.
+  //
+  // Le resultat est identique — le jeton d'une requete ne change pas en cours
+  // de route — et le travail cryptographique est fait une fois.
+  if (req.user) {
+    next();
+    return;
+  }
+
   // Try to get token from cookies first (for browser requests)
   let token = req.cookies?.accessToken;
 

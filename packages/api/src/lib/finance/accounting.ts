@@ -87,7 +87,14 @@ const SOURCE_TYPE_BY_DOCUMENT: Record<string, string> = {
   PROGRESS_STATEMENT: 'PROGRESS_STATEMENT',
   CONTRACTOR_PAYMENT: 'CONTRACTOR_PAYMENT',
   RETENTION_HELD: 'RETENTION_HELD',
-  RETENTION_RELEASED: 'RETENTION_RELEASED'
+  RETENTION_RELEASED: 'RETENTION_RELEASED',
+  // Lot 5 : le stock. Quatrieme fois que cette table est oubliee par un lot,
+  // et quatrieme fois qu'un agent le signale depuis un fichier qui ne lui
+  // appartient pas. Ce qu'elle ne connait pas retombe sur `MANUAL`, en
+  // silence : le grand livre reste equilibre et devient illisible.
+  STOCK_RECEIPT: 'STOCK_RECEIPT',
+  STOCK_ISSUE: 'STOCK_ISSUE',
+  STOCK_ADJUSTMENT: 'STOCK_ADJUSTMENT'
 };
 
 /**
@@ -283,6 +290,26 @@ export const OPERATIONAL_ACCOUNT_SEEDS: OperationalAccountSeed[] = [
     accountName: 'Fournisseurs et tacherons, retenues de garantie',
     accountClass: 4,
     accountType: 'LIABILITY'
+  },
+  // Lot 5 : le stock. Un materiau achete et pas encore consomme n'est pas une
+  // charge, c'est un actif : il est toujours la, on peut le compter. Le 311
+  // le porte de la reception a la sortie, et c'est la sortie qui le fait
+  // devenir une charge (principe P-7).
+  {
+    accountNumber: '311',
+    accountName: 'Stocks de matieres et fournitures',
+    accountClass: 3,
+    accountType: 'ASSET'
+  },
+  // Lot 5, inventaire. Un ecart d'inventaire n'est ni un achat ni une vente :
+  // c'est une variation de stock, et le 603 va dans les deux sens — debite
+  // quand on trouve moins que prevu, credite quand on trouve plus. Un compte
+  // de charge seul ne saurait pas dire le second cas.
+  {
+    accountNumber: '603',
+    accountName: 'Variations des stocks de biens achetes',
+    accountClass: 6,
+    accountType: 'EXPENSE'
   }
 ];
 

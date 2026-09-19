@@ -455,6 +455,9 @@ model User {
   retentionsCreated           RetentionGuarantee[] @relation("RetentionCreatedBy")
   retentionsReleased          RetentionGuarantee[] @relation("RetentionReleasedBy")
   sitesClosed                 ConstructionSite[]   @relation("ConstructionSiteClosedBy")
+  stockMovementsCreated       StockMovement[]      @relation("StockMovementCreatedBy")
+  stockCountsCreated          StockCount[]         @relation("StockCountCreatedBy")
+  stockCountsValidated        StockCount[]         @relation("StockCountValidatedBy")
   voidedDocuments             VoidDocument[]
 
   @@index([email])
@@ -590,6 +593,12 @@ model Tenant {
   contractorPayments       ContractorPayment[]
   retentionGuarantees      RetentionGuarantee[]
   siteLots                 SiteLot[]
+  stockSettings            StockSettings?
+  stockItems               StockItem[]
+  stockLocations           StockLocation[]
+  stockBalances            StockBalance[]
+  stockMovements           StockMovement[]
+  stockCounts              StockCount[]
   // Nouvelles au lot 2 : ces trois tables n'avaient aucune relation
   // Tenant avant la generalisation du moteur comptable.
   chartOfAccounts          ChartOfAccount[]
@@ -2821,6 +2830,13 @@ enum SourceType {
   // impossible a enregistrer.
   RETENTION_HELD
   RETENTION_RELEASED
+  // Lot 5 : le stock. La reception entre en stock, la sortie en sort et
+  // devient une charge, l'ajustement constate un ecart d'inventaire. Le
+  // transfert n'ecrit rien : deplacer du stock ne cree ni ne detruit de
+  // valeur, et le compte 311 ne bouge pas.
+  STOCK_RECEIPT
+  STOCK_ISSUE
+  STOCK_ADJUSTMENT
 }
 
 /// Portee d'un plan de comptes, d'un journal ou d'une ecriture.
@@ -3629,6 +3645,8 @@ model JournalEntry {
   retentionsHeld     RetentionGuarantee[] @relation("RetentionHeldEntry")
   retentionsReleased RetentionGuarantee[] @relation("RetentionReleasedEntry")
 
+  stockMovements StockMovement[] @relation("StockMovementEntry")
+
   @@index([journalId])
   @@index([entryDate])
   @@index([tenantId])
@@ -4296,6 +4314,8 @@ model SupplierInvoice {
   // `ThirdPartyMovement.sourceId` au lot 1 : on les lit par une requete
   // explicite sur ce couple, jamais par une jointure declaree ici.
 
+  stockReceipts StockMovement[] @relation("StockReceiptInvoice")
+
   @@unique([tenantId, supplierId, reference])
   @@index([tenantId, status])
   @@index([supplierId])
@@ -4418,6 +4438,9 @@ model ConstructionSite {
   closedBy            User?                @relation("ConstructionSiteClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
   lots                SiteLot[]
 
+  stockLocation  StockLocation?
+  stockMovements StockMovement[]
+
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([propertyId])
@@ -4461,6 +4484,9 @@ model CostCategory {
   salaryNotes         SalaryNote[]
   contractorContracts ContractorContract[]
 
+  stockItems     StockItem[]
+  stockMovements StockMovement[]
+
   @@unique([tenantId, label])
   @@index([tenantId])
   @@map("cost_categories")
@@ -4469,6 +4495,10 @@ model CostCategory {
 enum CostAllocationSourceType {
   SUPPLIER_INVOICE
   CASH_VOUCHER
+  /// Lot 5. Une SORTIE de magasin impute le materiau au cout du chantier.
+  /// C'est le principe P-7 : des que le stock est actif, le cout des
+  /// materiaux vient de la sortie et non de la facture.
+  STOCK_ISSUE
   /// Lot 4, sous-lot 4. Une situation d'avancement validee s'impute au cout
   /// du chantier de son marche : c'est le travail du tacheron, et il coute.
   PROGRESS_STATEMENT
@@ -5494,4 +5524,326 @@ model SiteLot {
   @@index([tenantId])
   @@index([siteId])
   @@map("site_lots")
+}
+
+// ===========================================================================
+// LOT 5 - Stock de materiaux (PRD E9, besoins S1 a S7)
+// ===========================================================================
+//
+// LE STOCK REDEFINIT LE COUT, IL NE S'Y AJOUTE PAS (principe P-7 du PRD).
+// Des que le stock est active sur un chantier, le cout de ses materiaux vient
+// des SORTIES de magasin et non des factures. Une facture qui continuerait a
+// s'imputer pendant que les sorties s'imputent aussi compterait le ciment
+// deux fois, et le chantier paraitrait couter le double de ce qu'il coute.
+//
+// Le basculement est explicite, par chantier, et IRREVERSIBLE :
+// `ConstructionSite.stockEnabledAt` porte la date depuis le lot 2, ou elle
+// avait ete posee en prevision et que personne ne lisait. Pas de route pour
+// la remettre a nul — revenir en arriere obligerait a rejouer l'imputation
+// de toutes les factures posterieures, et le cout du chantier changerait
+// sous les pieds de celui qui le regarde.
+//
+// ---------------------------------------------------------------------------
+// La valorisation : cout moyen pondere, et pourquoi le solde se stocke
+// ---------------------------------------------------------------------------
+//
+// Un cout moyen pondere DEPEND DU CHEMIN : il ne se deduit pas de l'ensemble
+// des mouvements, il se construit en les rejouant dans l'ordre. C'est la
+// seule grandeur de ce module qui echappe a la doctrine « ce qui se calcule
+// ne se stocke pas », et elle y echappe pour une raison, pas par facilite.
+//
+// Le depot suit deja ce schema ailleurs : `ThirdPartyAccount.balance` porte
+// le solde, `ThirdPartyMovement.balanceAfter` porte l'etat apres chaque
+// mouvement. `StockBalance` et `StockMovement.quantityAfter` reprennent
+// exactement ce couple, pour la meme raison et avec la meme discipline.
+//
+// LE COUT MOYEN EST PAR (ARTICLE, LIEU), pas par article. Le besoin S4 exige
+// une quantite ET une valeur par depot et par chantier : un cout moyen global
+// ne saurait pas dire ce que vaut le stock d'un depot.
+//
+// ---------------------------------------------------------------------------
+// Un transfert s'ecrit en DEUX mouvements
+// ---------------------------------------------------------------------------
+//
+// Une sortie du lieu d'origine, une entree au lieu d'arrivee, liees par
+// `transferGroupId`. Un mouvement unique portant deux lieux obligerait chaque
+// calcul de solde a se demander de quel cote il se trouve ; la ou chaque
+// mouvement ne touche qu'un lieu, l'arithmetique est la meme partout.
+//
+// La valeur transferee part au cout moyen du lieu d'origine et recalcule
+// celui du lieu d'arrivee. Transferer ne cree ni ne detruit de valeur.
+
+enum StockLocationKind {
+  /// Un magasin. Le stock y attend d'etre consomme.
+  WAREHOUSE
+  /// Le stock pose sur un chantier. Il n'est pas encore consomme pour autant :
+  /// c'est la SORTIE qui impute, pas la livraison sur place.
+  SITE
+}
+
+enum StockMovementType {
+  /// Entree, rattachee a une facture fournisseur (besoin S2).
+  RECEIPT
+  /// Sortie vers un chantier. C'est elle qui impute au cout (besoin S3).
+  ISSUE
+  /// Deplacement entre deux lieux. S'ecrit en deux mouvements.
+  TRANSFER
+  /// Ecart d'inventaire : casse, perte, vol (besoin S6).
+  ADJUSTMENT
+}
+
+enum StockValuationMethod {
+  /// Cout moyen pondere. La seule methode offerte aujourd'hui, et le defaut
+  /// que le PRD retient (besoin S5).
+  ///
+  /// L'enumeration n'a qu'une valeur, et c'est volontaire : elle existe pour
+  /// que le CHOIX soit enregistre et date, pas pour laisser croire qu'un
+  /// autre choix est disponible. En ajouter un (PEPS, cout standard) est un
+  /// travail a part entiere, pas une ligne de configuration.
+  WEIGHTED_AVERAGE
+}
+
+enum StockCountStatus {
+  DRAFT
+  VALIDATED
+}
+
+/// La methode de valorisation de l'agence, figee et datee (besoin S5).
+///
+/// Une table a part plutot qu'une colonne sur `Tenant` : `Tenant` est partage
+/// par tous les modules du produit, et un reglage propre a la finance des
+/// chantiers n'a rien a y faire.
+model StockSettings {
+  id              String               @id @default(uuid()) @db.Uuid
+  tenantId        String               @unique @map("tenant_id")
+  valuationMethod StockValuationMethod @default(WEIGHTED_AVERAGE) @map("valuation_method")
+  /// Quand la methode a ete arretee. Le PRD veut qu'un changement soit une
+  /// decision documentee ; sans date ni motif, ce n'en serait pas une.
+  decidedAt       DateTime             @default(now()) @map("decided_at")
+  /// Pourquoi cette methode. Libre, et exige a chaque changement.
+  decisionNote    String?              @map("decision_note")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("stock_settings")
+}
+
+/// Un article du referentiel (besoin S1).
+model StockItem {
+  id                    String   @id @default(uuid()) @db.Uuid
+  tenantId              String   @map("tenant_id")
+  /// Reference interne, unique dans l'agence. C'est ce qu'on lit sur un bon.
+  reference             String
+  label                 String
+  /// Sac, tonne, barre, metre cube. Texte libre : les unites d'une agence
+  /// ivoirienne ne sont pas celles d'une autre, et une enumeration figee
+  /// obligerait a livrer une version pour ajouter « fut ».
+  unit                  String
+  /// Famille d'articles, en clair : « Ciment », « Fer a beton ». Libre.
+  category              String?
+  /// Poste de depense PROPOSE a la sortie. Une proposition, jamais une
+  /// autorite : la sortie exige son poste, et l'ecran le presente
+  /// pre-selectionne. Meme parti pris qu'au poste « main-d'oeuvre » des
+  /// salaires, et pour la meme raison — un poste devine se lirait comme un
+  /// choix sans en etre un.
+  defaultCostCategoryId String?  @map("default_cost_category_id") @db.Uuid
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  tenant              Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  defaultCostCategory CostCategory?    @relation(fields: [defaultCostCategoryId], references: [id], onDelete: SetNull)
+  balances            StockBalance[]
+  movements           StockMovement[]
+  countLines          StockCountLine[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("stock_items")
+}
+
+/// Un lieu de stockage : un magasin, ou un chantier (besoin S4).
+model StockLocation {
+  id        String            @id @default(uuid()) @db.Uuid
+  tenantId  String            @map("tenant_id")
+  kind      StockLocationKind
+  label     String
+  /// Le chantier, quand `kind` vaut SITE. Nul pour un magasin.
+  ///
+  /// UN SEUL LIEU PAR CHANTIER : l'unicite l'impose. Deux lieux pour le meme
+  /// chantier partageraient son stock en deux soldes dont aucun ne dirait la
+  /// verite.
+  siteId    String?           @unique @map("site_id") @db.Uuid
+  isActive  Boolean           @default(true) @map("is_active")
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site      ConstructionSite? @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  balances  StockBalance[]
+  movements StockMovement[]
+  counts    StockCount[]
+
+  @@unique([tenantId, label])
+  @@index([tenantId])
+  @@map("stock_locations")
+}
+
+/// Ce qu'il reste d'un article dans un lieu, et ce que ca vaut.
+///
+/// Stocke, contrairement a tout le reste du module — voir l'en-tete : un cout
+/// moyen pondere depend du chemin et ne se deduit pas d'un ensemble de
+/// mouvements. Meme couple que `ThirdPartyAccount.balance` /
+/// `ThirdPartyMovement.balanceAfter`, deja en place depuis le lot 1.
+model StockBalance {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id")
+  itemId     String   @map("item_id") @db.Uuid
+  locationId String   @map("location_id") @db.Uuid
+  /// Quantite en stock. Quatre decimales : on compte des tonnes et des
+  /// metres cubes, pas seulement des sacs entiers.
+  quantity   Decimal  @default(0) @db.Decimal(16, 4)
+  /// Valeur du stock. Le cout moyen unitaire s'en deduit : `value / quantity`
+  /// quand la quantite n'est pas nulle. Il ne se stocke PAS — ce serait une
+  /// troisieme grandeur a tenir d'accord avec les deux autres.
+  value      Decimal  @default(0) @db.Decimal(16, 2)
+  currency   String   @default("XOF")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  item     StockItem     @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  location StockLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@unique([itemId, locationId])
+  @@index([tenantId])
+  @@index([locationId])
+  @@map("stock_balances")
+}
+
+/// Un mouvement de stock. Table unique, typee.
+///
+/// Chaque mouvement ne touche QU'UN lieu. Un transfert s'ecrit donc en deux
+/// lignes liees par `transferGroupId` — voir l'en-tete.
+model StockMovement {
+  id           String            @id @default(uuid()) @db.Uuid
+  tenantId     String            @map("tenant_id")
+  type         StockMovementType
+  itemId       String            @map("item_id") @db.Uuid
+  locationId   String            @map("location_id") @db.Uuid
+  movementDate DateTime          @map("movement_date")
+
+  /// Toujours POSITIVE. C'est `type` qui dit le sens, jamais le signe : une
+  /// quantite negative sur une reception serait indechiffrable six mois plus
+  /// tard, et rien n'empecherait d'en saisir une par erreur.
+  ///
+  /// Un ajustement d'inventaire negatif s'ecrit donc avec `isDecrease`.
+  quantity   Decimal @db.Decimal(16, 4)
+  /// Vrai quand le mouvement diminue le stock du lieu. Redondant avec `type`
+  /// pour RECEIPT et ISSUE, indispensable pour ADJUSTMENT, qui va dans les
+  /// deux sens.
+  isDecrease Boolean @default(false) @map("is_decrease")
+
+  /// Prix unitaire de l'entree, pour une reception. Pour une sortie ou un
+  /// transfert, c'est le cout moyen du lieu au moment du mouvement — calcule,
+  /// jamais saisi (principe P-4).
+  unitCost   Decimal @map("unit_cost") @db.Decimal(16, 4)
+  /// `quantity x unitCost`, arrondi. La valeur qui bouge.
+  totalValue Decimal @map("total_value") @db.Decimal(16, 2)
+  currency   String  @default("XOF")
+
+  /// L'etat du lieu APRES ce mouvement. Piste d'audit, jamais relue pour
+  /// calculer : c'est `StockBalance` qui fait autorite.
+  quantityAfter Decimal @map("quantity_after") @db.Decimal(16, 4)
+  valueAfter    Decimal @map("value_after") @db.Decimal(16, 2)
+
+  /// Le chantier impute, pour une SORTIE. C'est ce qui fait entrer le
+  /// materiau dans le cout (besoin S3).
+  siteId         String? @map("site_id") @db.Uuid
+  /// Le poste de la sortie. Exige des qu'il y a un chantier : une imputation
+  /// sans poste n'existe pas.
+  costCategoryId String? @map("cost_category_id") @db.Uuid
+  /// Qui a demande la sortie, en clair. Le PRD l'exige (besoin S3).
+  requestedBy    String? @map("requested_by")
+
+  /// La facture qui a valorise la reception (besoin S2).
+  supplierInvoiceId String? @map("supplier_invoice_id") @db.Uuid
+  /// Les deux moities d'un transfert portent le meme identifiant.
+  transferGroupId   String? @map("transfer_group_id") @db.Uuid
+  /// L'inventaire dont cet ajustement decoule.
+  stockCountId      String? @map("stock_count_id") @db.Uuid
+  /// Pourquoi, pour un ajustement : casse, perte, vol. Exige.
+  reason            String?
+
+  journalEntryId  String?  @map("journal_entry_id") @db.Uuid
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  item            StockItem         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  location        StockLocation     @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  site            ConstructionSite? @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  costCategory    CostCategory?     @relation(fields: [costCategoryId], references: [id], onDelete: SetNull)
+  supplierInvoice SupplierInvoice?  @relation("StockReceiptInvoice", fields: [supplierInvoiceId], references: [id], onDelete: SetNull)
+  stockCount      StockCount?       @relation(fields: [stockCountId], references: [id], onDelete: SetNull)
+  journalEntry    JournalEntry?     @relation("StockMovementEntry", fields: [journalEntryId], references: [id], onDelete: SetNull)
+  createdBy       User              @relation("StockMovementCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([tenantId])
+  @@index([itemId, locationId, createdAt])
+  @@index([siteId])
+  @@index([transferGroupId])
+  @@map("stock_movements")
+}
+
+/// Un inventaire physique (besoin S6).
+model StockCount {
+  id                String           @id @default(uuid()) @db.Uuid
+  tenantId          String           @map("tenant_id")
+  locationId        String           @map("location_id") @db.Uuid
+  countedAt         DateTime         @map("counted_at")
+  status            StockCountStatus @default(DRAFT)
+  createdByUserId   String           @map("created_by_user_id")
+  validatedByUserId String?          @map("validated_by_user_id")
+  validatedAt       DateTime?        @map("validated_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  location    StockLocation    @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  createdBy   User             @relation("StockCountCreatedBy", fields: [createdByUserId], references: [id])
+  validatedBy User?            @relation("StockCountValidatedBy", fields: [validatedByUserId], references: [id])
+  lines       StockCountLine[]
+  adjustments StockMovement[]
+
+  @@index([tenantId])
+  @@index([locationId])
+  @@map("stock_counts")
+}
+
+/// Une ligne de comptage : ce qu'on a trouve, face a ce que le systeme disait.
+model StockCountLine {
+  id               String  @id @default(uuid()) @db.Uuid
+  countId          String  @map("count_id") @db.Uuid
+  itemId           String  @map("item_id") @db.Uuid
+  /// Ce que le systeme disait au moment du comptage. FIGE a la saisie.
+  ///
+  /// Recopie, et c'est voulu : relire le solde a la validation comparerait le
+  /// comptage d'hier au stock d'aujourd'hui, et l'ecart ne voudrait plus rien
+  /// dire.
+  expectedQuantity Decimal @map("expected_quantity") @db.Decimal(16, 4)
+  /// Ce qu'on a compte.
+  countedQuantity  Decimal @map("counted_quantity") @db.Decimal(16, 4)
+  /// Pourquoi l'ecart. Exige des qu'il y en a un : un ecart sans motif est
+  /// une perte que personne n'expliquera.
+  reason           String?
+
+  count StockCount @relation(fields: [countId], references: [id], onDelete: Cascade)
+  item  StockItem  @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([countId, itemId])
+  @@index([countId])
+  @@map("stock_count_lines")
 }

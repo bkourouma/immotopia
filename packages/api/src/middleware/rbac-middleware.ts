@@ -10,13 +10,18 @@ declare module 'express-serve-static-core' {
       email: string;
       globalRole?: string;
     };
-    tenantContext?: {
-      tenantId: string;
-      role?: string;
-      isCollaborator?: boolean;
-      isClient?: boolean;
-      isSuperAdmin?: boolean;
-    };
+    // `tenantContext` n'est PAS declare ici, et c'est deliberé.
+    //
+    // Il l'etait, avec une forme plus laxiste que celle de
+    // `tenant-middleware.ts` — `role?: string` contre `role: string | null`,
+    // les drapeaux facultatifs contre obligatoires. TypeScript refuse de
+    // fusionner deux declarations d'une meme propriete aux types
+    // incompatibles : les deux fichiers ne pouvaient donc jamais etre importes
+    // dans une meme compilation, et toute suite de tests qui les chargeait
+    // tous les deux ne compilait pas.
+    //
+    // La declaration qui fait foi est celle du fichier qui POSE le contexte,
+    // `tenant-middleware.ts`. Celui-ci ne fait que le lire.
     subscriptionAccess?: {
       isReadOnly: boolean;
       reason?: string;
