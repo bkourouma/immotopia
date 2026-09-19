@@ -454,7 +454,18 @@ describe('Plan de comptes operationnel', () => {
     // lot 4 pour les baux de terrain — un loyer paye d'avance est une creance
     // de jouissance (486) qui se consomme mois apres mois en location (613),
     // et non une charge le jour du paiement.
-    expect(Array.from(comptes.keys()).sort()).toEqual(['401', '411', '422', '486', '571', '601', '605', '613', '661']);
+    expect(Array.from(comptes.keys()).sort()).toEqual([
+      '401',
+      '402',
+      '411',
+      '422',
+      '486',
+      '571',
+      '601',
+      '605',
+      '613',
+      '661'
+    ]);
     expect(store.accounts).toHaveLength(OPERATIONAL_ACCOUNT_SEEDS.length);
     // Un plan operationnel n appartient a aucune copropriete.
     expect(store.accounts.every((a: any) => a.syndicateId === null)).toBe(true);

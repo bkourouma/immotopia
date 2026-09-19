@@ -448,6 +448,10 @@ model User {
   salaryNotesValidated      SalaryNote[]       @relation("SalaryNoteValidatedBy")
   salaryPaymentsCreated     SalaryPayment[]    @relation("SalaryPaymentCreatedBy")
   salaryPaymentsValidated   SalaryPayment[]    @relation("SalaryPaymentValidatedBy")
+  progressStatementsCreated   ProgressStatement[] @relation("ProgressStatementCreatedBy")
+  progressStatementsValidated ProgressStatement[] @relation("ProgressStatementValidatedBy")
+  contractorPaymentsCreated   ContractorPayment[] @relation("ContractorPaymentCreatedBy")
+  contractorPaymentsValidated ContractorPayment[] @relation("ContractorPaymentValidatedBy")
   voidedDocuments           VoidDocument[]
 
   @@index([email])
@@ -577,6 +581,10 @@ model Tenant {
   employees                 Employee[]
   salaryNotes               SalaryNote[]
   salaryPayments            SalaryPayment[]
+  contractors               Contractor[]
+  contractorContracts       ContractorContract[]
+  progressStatements        ProgressStatement[]
+  contractorPayments        ContractorPayment[]
   // Nouvelles au lot 2 : ces trois tables n'avaient aucune relation
   // Tenant avant la generalisation du moteur comptable.
   chartOfAccounts           ChartOfAccount[]
@@ -2795,6 +2803,9 @@ enum SourceType {
   // Lot 4, sous-lot 3 : les salaires.
   SALARY_NOTE
   SALARY_PAYMENT
+  // Lot 4, sous-lot 4 : les tacherons.
+  PROGRESS_STATEMENT
+  CONTRACTOR_PAYMENT
 }
 
 /// Portee d'un plan de comptes, d'un journal ou d'une ecriture.
@@ -3597,6 +3608,8 @@ model JournalEntry {
 
   salaryNotes      SalaryNote[]      @relation("SalaryNoteEntry")
   salaryPayments   SalaryPayment[]   @relation("SalaryPaymentEntry")
+  progressStatements ProgressStatement[] @relation("ProgressStatementEntry")
+  contractorPayments ContractorPayment[] @relation("ContractorPaymentEntry")
   @@index([journalId])
   @@index([entryDate])
   @@index([tenantId])
@@ -4073,6 +4086,7 @@ model ThirdPartyAccount {
   landLeases LandLease[]
   partnershipShares PartnershipShare[]
   employees Employee[]
+  contractors Contractor[]
   @@unique([tenantId, kind, tenantClientId])
   @@index([tenantId])
   @@index([tenantId, kind])
@@ -4378,6 +4392,7 @@ model ConstructionSite {
   landLease      LandLease?       @relation(fields: [landLeaseId], references: [id], onDelete: SetNull)
 
   salaryNotes    SalaryNote[]
+  contractorContracts ContractorContract[]
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([propertyId])
@@ -4419,6 +4434,7 @@ model CostCategory {
   landLeases         LandLease[]
   chartOfAccount ChartOfAccount? @relation(fields: [chartOfAccountId], references: [id], onDelete: SetNull)
   salaryNotes        SalaryNote[]
+  contractorContracts ContractorContract[]
   @@unique([tenantId, label])
   @@index([tenantId])
   @@map("cost_categories")
@@ -4427,6 +4443,9 @@ model CostCategory {
 enum CostAllocationSourceType {
   SUPPLIER_INVOICE
   CASH_VOUCHER
+  /// Lot 4, sous-lot 4. Une situation d'avancement validee s'impute au cout
+  /// du chantier de son marche : c'est le travail du tacheron, et il coute.
+  PROGRESS_STATEMENT
   /// Lot 4, sous-lot 3. Une note de salaire rattachee a un chantier s'impute
   /// a son cout : c'est le besoin P9 du PRD, et c'est ce qui fait qu'un
   /// chantier connait sa main-d'oeuvre.
@@ -5146,4 +5165,142 @@ model SalaryPayment {
   @@index([tenantId])
   @@index([employeeId])
   @@map("salary_payments")
+}
+
+// ===========================================================================
+// LOT 4, sous-lot 4 — Tacherons (PRD E8, besoin P10)
+// ===========================================================================
+//
+// UN TACHERON N'EST PAS UN FOURNISSEUR, meme s'il lui ressemble. Il ne
+// facture pas : il convient d'un MARCHE pour un ouvrage, puis presente des
+// SITUATIONS d'avancement a mesure qu'il avance. Le solde de son marche est
+// ce qui reste a executer ; le solde de son compte est ce qu'on lui doit.
+// Deux soldes distincts, et les confondre est l'erreur a ne pas faire.
+//
+//   marche restant = montant convenu − situations validees
+//   ce qu'on lui doit = situations validees − reglements
+//
+// LES ACOMPTES SE DEDUISENT TOUT SEULS. Un reglement verse avant toute
+// situation rend le compte debiteur ; la premiere situation le ramene vers
+// zero. C'est exactement le mecanisme de l'acompte fournisseur du lot 2, et il
+// n'y a rien de plus a modeliser — le PRD parle d'« acomptes deduits », et ils
+// le sont par le solde lui-meme.
+//
+// UN DEPASSEMENT DE MARCHE N'EST PAS REFUSE. Si le tacheron a fait davantage,
+// la situation dit ce qui a ete fait : la refuser empecherait d'enregistrer un
+// travail reel, et c'est la meme erreur que bloquer une facture parce qu'un
+// budget est depasse — leçon deja tiree au lot 3 avec l'alerte. Le
+// depassement est EXPOSE, pas interdit.
+
+/// Un tacheron, et son compte de tiers.
+model Contractor {
+  id                  String   @id @default(uuid()) @db.Uuid
+  tenantId            String   @map("tenant_id")
+  fullName            String   @map("full_name")
+  /// Son corps de metier, en clair : « Macon », « Carreleur ». Libre.
+  trade               String?
+  thirdPartyAccountId String   @map("third_party_account_id") @db.Uuid
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  thirdPartyAccount ThirdPartyAccount    @relation(fields: [thirdPartyAccountId], references: [id], onDelete: Restrict)
+  contracts         ContractorContract[]
+  payments          ContractorPayment[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("contractors")
+}
+
+/// Le marche convenu avec un tacheron, sur un chantier et un poste.
+model ContractorContract {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id")
+  contractorId   String   @map("contractor_id") @db.Uuid
+  siteId         String   @map("site_id") @db.Uuid
+  /// Poste de depense auquel les situations s'imputeront. Exige, jamais
+  /// devine : les postes sont propres a chaque agence et renommables.
+  costCategoryId String   @map("cost_category_id") @db.Uuid
+  reference      String
+  /// Le montant convenu. Ce qui reste a executer s'en deduit, il ne se
+  /// stocke pas.
+  agreedAmount   Decimal  @map("agreed_amount") @db.Decimal(14, 2)
+  currency       String   @default("XOF")
+  signedDate     DateTime @map("signed_date")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contractor   Contractor          @relation(fields: [contractorId], references: [id], onDelete: Restrict)
+  site         ConstructionSite    @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  costCategory CostCategory        @relation(fields: [costCategoryId], references: [id], onDelete: Restrict)
+  statements   ProgressStatement[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId])
+  @@index([contractorId])
+  @@index([siteId])
+  @@map("contractor_contracts")
+}
+
+/// Une situation d'avancement : ce que le tacheron a execute a une date.
+model ProgressStatement {
+  id                String                @id @default(uuid()) @db.Uuid
+  tenantId          String                @map("tenant_id")
+  contractId        String                @map("contract_id") @db.Uuid
+  statementDate     DateTime              @map("statement_date")
+  amount            Decimal               @db.Decimal(14, 2)
+  currency          String                @default("XOF")
+  /// Ce qui a ete fait, en clair. Une situation sans description est un
+  /// chiffre que personne ne saura justifier six mois plus tard.
+  description       String
+  status            SupplierInvoiceStatus @default(DRAFT)
+  journalEntryId    String?               @map("journal_entry_id") @db.Uuid
+  createdByUserId   String                @map("created_by_user_id")
+  validatedByUserId String?               @map("validated_by_user_id")
+  validatedAt       DateTime?             @map("validated_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contract     ContractorContract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry?      @relation("ProgressStatementEntry", fields: [journalEntryId], references: [id], onDelete: SetNull)
+  createdBy    User               @relation("ProgressStatementCreatedBy", fields: [createdByUserId], references: [id])
+  validatedBy  User?              @relation("ProgressStatementValidatedBy", fields: [validatedByUserId], references: [id])
+
+  @@index([tenantId])
+  @@index([contractId])
+  @@map("progress_statements")
+}
+
+/// Le reglement d'un tacheron.
+///
+/// Sans affectation a des situations precises : on regle un tacheron, et le
+/// solde de son compte dit ce qui lui reste du. Un reglement verse avant toute
+/// situation est un acompte, et il se deduit tout seul.
+model ContractorPayment {
+  id                String                @id @default(uuid()) @db.Uuid
+  tenantId          String                @map("tenant_id")
+  contractorId      String                @map("contractor_id") @db.Uuid
+  paymentDate       DateTime              @map("payment_date")
+  amount            Decimal               @db.Decimal(14, 2)
+  currency          String                @default("XOF")
+  status            SupplierInvoiceStatus @default(DRAFT)
+  journalEntryId    String?               @map("journal_entry_id") @db.Uuid
+  createdByUserId   String                @map("created_by_user_id")
+  validatedByUserId String?               @map("validated_by_user_id")
+  validatedAt       DateTime?             @map("validated_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contractor   Contractor    @relation(fields: [contractorId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry? @relation("ContractorPaymentEntry", fields: [journalEntryId], references: [id], onDelete: SetNull)
+  createdBy    User          @relation("ContractorPaymentCreatedBy", fields: [createdByUserId], references: [id])
+  validatedBy  User?         @relation("ContractorPaymentValidatedBy", fields: [validatedByUserId], references: [id])
+
+  @@index([tenantId])
+  @@index([contractorId])
+  @@map("contractor_payments")
 }

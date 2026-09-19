@@ -258,7 +258,12 @@ export const OPERATIONAL_ACCOUNT_SEEDS: OperationalAccountSeed[] = [
   // dette envers le salarie — un salaire constate n'est pas un salaire paye,
   // et l'un des deux doit pouvoir exister sans l'autre.
   { accountNumber: '422', accountName: 'Personnel, remunerations dues', accountClass: 4, accountType: 'LIABILITY' },
-  { accountNumber: '661', accountName: 'Charges de personnel', accountClass: 6, accountType: 'EXPENSE' }
+  { accountNumber: '661', accountName: 'Charges de personnel', accountClass: 6, accountType: 'EXPENSE' },
+  // Lot 4, sous-lot 4 : les tacherons. Distinct du 401 des fournisseurs, sans
+  // quoi la balance generale melerait deux populations qui ne se lisent pas
+  // de la meme façon — un fournisseur facture, un tacheron presente des
+  // situations sur un marche.
+  { accountNumber: '402', accountName: 'Tacherons', accountClass: 4, accountType: 'LIABILITY' }
 ];
 
 /**
