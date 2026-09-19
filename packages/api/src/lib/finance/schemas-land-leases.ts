@@ -85,6 +85,11 @@ export const createLandLeasePaymentSchema = z
     coverageStartDate: z.coerce.date({ errorMap: () => ({ message: 'Date de début de période couverte invalide.' }) }),
     coverageEndDate: z.coerce.date({ errorMap: () => ({ message: 'Date de fin de période couverte invalide.' }) })
   })
+  // `.strict()` AVANT `.refine()` : `refine` rend un `ZodEffects`, qui ne
+  // porte plus `.strict()`. Durci a l'integration du lot 4 — sans cela, un
+  // corps qui repetait l'identifiant du chemin passait en silence, et le
+  // defaut restait invisible jusqu'au jour ou quelqu'un durcirait le schema.
+  .strict()
   .refine(value => value.coverageEndDate > value.coverageStartDate, {
     message: 'La période couverte doit se terminer après son début.',
     path: ['coverageEndDate']

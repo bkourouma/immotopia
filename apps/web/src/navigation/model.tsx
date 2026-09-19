@@ -272,6 +272,21 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
             label: 'Baux de terrain',
             href: '/tenant/:tenantId/finance/baux-terrain'
           },
+          {
+            key: 'finance-associations',
+            label: 'Associations',
+            href: '/tenant/:tenantId/finance/associations'
+          },
+          {
+            key: 'finance-salaires',
+            label: 'Salaires',
+            href: '/tenant/:tenantId/finance/salaires'
+          },
+          {
+            key: 'finance-tacherons',
+            label: 'Tâcherons',
+            href: '/tenant/:tenantId/finance/tacherons'
+          },
           { key: 'finance-fournisseurs', label: 'Fournisseurs', href: '/tenant/:tenantId/finance/fournisseurs' },
           {
             key: 'finance-fournisseurs-balance',

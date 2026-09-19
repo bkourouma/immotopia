@@ -139,6 +139,12 @@ const RELEVES_PAR_PART: Record<string, PartnerStatement> = {
     // l'associé, un solde que ce relevé ne recalcule pas (voir le contrat
     // gelé, `PartnerStatementRecord.totalPaidOut`).
     totalPaidOut: 450_000,
+    // Volontairement DIFFERENT de `totalShare - totalPaidOut` (150 000).
+    // Le releve est borne a deux mois ; le solde du compte court sur toute
+    // l'histoire, et porte 60 000 de plus, restes d'un mois anterieur. Des
+    // chiffres qui coincideraient laisseraient croire que l'un se deduit de
+    // l'autre — c'est precisement ce que ce champ existe pour dementir.
+    accountBalance: 210_000,
     currency: 'XOF'
   },
   [PART_NONGO_DIALLO]: {
@@ -165,6 +171,8 @@ const RELEVES_PAR_PART: Record<string, PartnerStatement> = {
     ],
     totalShare: 400_000,
     totalPaidOut: 400_000,
+    // Soldee : rien ne lui reste du, ni sur la periode ni avant.
+    accountBalance: 0,
     currency: 'XOF'
   },
   [PART_KOBAYA_BAH]: {
@@ -183,6 +191,8 @@ const RELEVES_PAR_PART: Record<string, PartnerStatement> = {
     ],
     totalShare: 1_440_000,
     totalPaidOut: 0,
+    // Rien ne lui a encore ete reverse : le solde vaut sa quote-part entiere.
+    accountBalance: 1_440_000,
     currency: 'XOF'
   }
 };

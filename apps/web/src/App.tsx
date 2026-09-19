@@ -156,6 +156,36 @@ const BailDeTerrain = lazy(() =>
     default: m.BailDeTerrain
   }))
 );
+const Associations = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Associations').then(m => ({
+    default: m.Associations
+  }))
+);
+const Association = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Association').then(m => ({
+    default: m.Association
+  }))
+);
+const Salaires = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Salaires').then(m => ({
+    default: m.Salaires
+  }))
+);
+const Salarie = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Salarie').then(m => ({
+    default: m.Salarie
+  }))
+);
+const Tacherons = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Tacherons').then(m => ({
+    default: m.Tacherons
+  }))
+);
+const Tacheron = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Tacheron').then(m => ({
+    default: m.Tacheron
+  }))
+);
 const TableauDeBordChantiers = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/TableauDeBordChantiers').then(m => ({
     default: m.TableauDeBordChantiers
@@ -714,6 +744,12 @@ function App() {
                         aux lots 2 et 3. */}
                       <Route path="/tenant/:tenantId/finance/baux-terrain" element={<BauxDeTerrain />} />
                       <Route path="/tenant/:tenantId/finance/baux-terrain/:landLeaseId" element={<BailDeTerrain />} />
+                      <Route path="/tenant/:tenantId/finance/associations" element={<Associations />} />
+                      <Route path="/tenant/:tenantId/finance/associations/:partnershipId" element={<Association />} />
+                      <Route path="/tenant/:tenantId/finance/salaires" element={<Salaires />} />
+                      <Route path="/tenant/:tenantId/finance/salaires/:employeeId" element={<Salarie />} />
+                      <Route path="/tenant/:tenantId/finance/tacherons" element={<Tacherons />} />
+                      <Route path="/tenant/:tenantId/finance/tacherons/:contractorId" element={<Tacheron />} />
                       <Route path="/tenant/:tenantId/maintenance" element={<TicketList />} />
                       <Route path="/tenant/:tenantId/maintenance/new" element={<CreateTicket />} />
                       <Route path="/tenant/:tenantId/maintenance/:ticketId/edit" element={<EditTicket />} />

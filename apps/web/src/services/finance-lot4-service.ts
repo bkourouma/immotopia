@@ -98,9 +98,19 @@ export async function createLandLeasePayment(
   tenantId: string,
   params: CreateLandLeasePaymentInput
 ): Promise<LandLeasePayment> {
+  // Le corps ne repete PAS `landLeaseId` : le chemin le porte deja.
+  //
+  // Il le repetait, et cela ne cassait rien — seulement parce que
+  // `createLandLeasePaymentSchema` n'etait pas `.strict()` et que Zod retirait
+  // le champ en silence. Le jour ou ce schema serait durci comme ceux des
+  // sous-lots suivants, cette creation serait tombee en 400. C'etait la
+  // cinquieme occurrence du defaut que `corps-des-requetes.test.ts` existe
+  // pour attraper, relevee par l'agent des ecrans des tacherons en lisant un
+  // fichier qui ne lui appartenait pas.
+  const { landLeaseId, ...corps } = params;
   const response = await apiClient.post<ApiResponse<LandLeasePayment>>(
-    `${base(tenantId)}/land-leases/${params.landLeaseId}/payments`,
-    params
+    `${base(tenantId)}/land-leases/${landLeaseId}/payments`,
+    corps
   );
   return response.data.data;
 }

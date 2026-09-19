@@ -65,12 +65,33 @@ if (process.env.NODE_ENV !== 'production') {
   globalThis.prisma = prisma;
 }
 
+/**
+ * Ferme la connexion, une fois et une seule.
+ *
+ * **Le drapeau n'est pas une precaution, il est indispensable.** Sans lui,
+ * `process.on('beforeExit')` ci-dessous boucle a l'infini : `beforeExit` se
+ * declenche chaque fois que la boucle d'evenements se vide, le gestionnaire
+ * `async` y replace aussitot du travail, la boucle ne se vide donc jamais
+ * pour de bon, et l'evenement se redeclenche. Un script qui a fini son
+ * travail en trois secondes tourne alors sans fin en ecrivant la meme ligne
+ * de journal — un fichier de 1,4 Go observe en pratique, et un script qu'on
+ * croit bloque alors qu'il a deja tout fait.
+ */
+let deconnexionFaite = false;
+
 // Graceful shutdown handler
 export async function disconnectDatabase(): Promise<void> {
+  if (deconnexionFaite) {
+    return;
+  }
+  deconnexionFaite = true;
+
   try {
     await prisma.$disconnect();
     logger.info('Database disconnected gracefully');
   } catch (error) {
+    // Le drapeau reste pose : une deconnexion qui echoue ne se retente pas en
+    // boucle, sans quoi on retrouverait exactement le probleme qu'il corrige.
     logger.error('Error disconnecting database', { error });
     throw error;
   }

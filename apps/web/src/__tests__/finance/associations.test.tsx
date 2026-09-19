@@ -104,6 +104,11 @@ function statement(overrides: Partial<PartnerStatement> = {}): PartnerStatement 
     ],
     totalShare: 300_000,
     totalPaidOut: 180_000,
+    // Volontairement different de `totalShare - totalPaidOut` (120 000) : le
+    // releve est borne a un mois, le solde court sur toute l'histoire du
+    // compte. Un fixture ou les deux coincideraient laisserait passer un
+    // ecran qui afficherait la soustraction a la place du solde.
+    accountBalance: 175_000,
     currency: 'XOF',
     ...overrides
   };

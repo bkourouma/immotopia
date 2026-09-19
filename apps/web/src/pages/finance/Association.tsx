@@ -534,6 +534,14 @@ export const Association: React.FC = () => {
             >
               <StatCard label="Total de sa part sur la période" value={<MoneyValue value={releve.totalShare} />} />
               <StatCard label="Déjà reversé" value={<MoneyValue value={releve.totalPaidOut} />} />
+              {/*
+                Le chiffre qu'un associé regarde en premier, et il ne se déduit
+                PAS des deux précédents : ceux-là sont bornés à la période du
+                relevé, celui-ci court sur toute l'histoire de son compte. La
+                mention de la période est là pour que personne ne fasse la
+                soustraction de tête et s'étonne de tomber sur autre chose.
+              */}
+              <StatCard label="Reste dû, toutes périodes" value={<MoneyValue value={releve.accountBalance} />} />
             </div>
           )}
         </Space>

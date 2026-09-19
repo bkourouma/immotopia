@@ -22,6 +22,12 @@ import { repondreChantiers } from './finance-mock-chantiers';
 import { repondreValidation } from './finance-mock-validation';
 import { repondreLot3 } from './finance-mock-lot3';
 import { repondreLot4 } from './finance-mock-lot4';
+// Lot 4, sous-lots 2 a 4. Celui des associations attendait depuis sa
+// livraison : ecrit, teste, et servi par personne — l'atelier montrait un
+// ecran vide sans que rien ne le signale.
+import { repondrePartnerships } from './finance-mock-partnerships';
+import { repondreSalaries } from './finance-mock-salaries';
+import { repondreContractors } from './finance-mock-contractors';
 
 /**
  * Fausse API de l'atelier.
@@ -310,7 +316,10 @@ export function installerFausseApi(scenario: Scenario) {
       repondreChantiers,
       repondreValidation,
       repondreLot3,
-      repondreLot4
+      repondreLot4,
+      repondrePartnerships,
+      repondreSalaries,
+      repondreContractors
     ]) {
       const reponse = repondre(url.pathname, scenario);
       if (reponse !== null) {
