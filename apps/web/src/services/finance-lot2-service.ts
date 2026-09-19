@@ -199,10 +199,24 @@ export async function listCostCategories(tenantId: string): Promise<CostCategory
 // ---------------------------------------------------------------------------
 
 export async function createCashVoucher(tenantId: string, params: CreateCashVoucherInput): Promise<CashVoucher> {
-  const response = await apiClient.post<ApiResponse<CashVoucher>>(
-    `${base(tenantId)}/sites/${params.siteId}/cash-vouchers`,
-    params
-  );
+  // DEUX ecarts avec le serveur, tous deux corriges ici le 19 septembre 2026.
+  //
+  // 1. Le corps repetait `siteId`, que le chemin porte deja. Le schema Zod du
+  //    serveur est en mode strict : un champ inattendu fait echouer la
+  //    requete en 400.
+  // 2. Le serveur attend `beneficiaryName`, du nom de sa colonne ; ce service
+  //    envoyait `beneficiary`, du nom que la REPONSE porte. Le champ attendu
+  //    manquait donc, et un champ inconnu s'y ajoutait.
+  //
+  // La creation d'une piece de caisse echouait ainsi a tous les coups, depuis
+  // le lot 2, sans que rien ne le dise : les tests d'ecran remplacent ce
+  // service par une doublure, et le parcours de bout en bout appelle les
+  // fonctions de domaine sans passer par HTTP.
+  const { siteId, beneficiary, ...reste } = params;
+  const response = await apiClient.post<ApiResponse<CashVoucher>>(`${base(tenantId)}/sites/${siteId}/cash-vouchers`, {
+    ...reste,
+    beneficiaryName: beneficiary
+  });
   return response.data.data;
 }
 

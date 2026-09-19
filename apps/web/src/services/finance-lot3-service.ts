@@ -79,10 +79,18 @@ export async function listSiteBudgets(tenantId: string, siteId: string): Promise
  * composer les lignes entièrement avant d'envoyer cette création.
  */
 export async function createSiteBudget(tenantId: string, params: CreateSiteBudgetInput): Promise<SiteBudget> {
-  const response = await apiClient.post<ApiResponse<SiteBudget>>(
-    `${base(tenantId)}/sites/${params.siteId}/budgets`,
-    params
-  );
+  //
+  // Le corps ne repete PAS l'identifiant que le chemin porte deja.
+  //
+  // Les schemas Zod du serveur sont en mode strict : un champ inattendu fait
+  // echouer la requete en 400. Envoyer l'objet d'entree en bloc, identifiant
+  // compris, cassait donc cette creation a tous les coups — et rien ne le
+  // disait, parce que les tests d'ecran remplacent ce service par une
+  // doublure et que les parcours de bout en bout appellent les fonctions de
+  // domaine sans passer par HTTP. Trouve le 19 septembre 2026 en transcrivant
+  // le contrat du lot 4.
+  const { siteId, ...corps } = params;
+  const response = await apiClient.post<ApiResponse<SiteBudget>>(`${base(tenantId)}/sites/${siteId}/budgets`, corps);
   return response.data.data;
 }
 
@@ -135,9 +143,20 @@ export async function createBudgetAmendment(
   tenantId: string,
   params: CreateBudgetAmendmentInput
 ): Promise<BudgetAmendment> {
+  //
+  // Le corps ne repete PAS l'identifiant que le chemin porte deja.
+  //
+  // Les schemas Zod du serveur sont en mode strict : un champ inattendu fait
+  // echouer la requete en 400. Envoyer l'objet d'entree en bloc, identifiant
+  // compris, cassait donc cette creation a tous les coups — et rien ne le
+  // disait, parce que les tests d'ecran remplacent ce service par une
+  // doublure et que les parcours de bout en bout appellent les fonctions de
+  // domaine sans passer par HTTP. Trouve le 19 septembre 2026 en transcrivant
+  // le contrat du lot 4.
+  const { budgetId, ...corps } = params;
   const response = await apiClient.post<ApiResponse<BudgetAmendment>>(
-    `${base(tenantId)}/site-budgets/${params.budgetId}/amendments`,
-    params
+    `${base(tenantId)}/site-budgets/${budgetId}/amendments`,
+    corps
   );
   return response.data.data;
 }
@@ -255,9 +274,20 @@ export async function recordSiteProgress(
   tenantId: string,
   params: RecordSiteProgressInput
 ): Promise<SiteProgressEntry> {
+  //
+  // Le corps ne repete PAS l'identifiant que le chemin porte deja.
+  //
+  // Les schemas Zod du serveur sont en mode strict : un champ inattendu fait
+  // echouer la requete en 400. Envoyer l'objet d'entree en bloc, identifiant
+  // compris, cassait donc cette creation a tous les coups — et rien ne le
+  // disait, parce que les tests d'ecran remplacent ce service par une
+  // doublure et que les parcours de bout en bout appellent les fonctions de
+  // domaine sans passer par HTTP. Trouve le 19 septembre 2026 en transcrivant
+  // le contrat du lot 4.
+  const { siteId, ...corps } = params;
   const response = await apiClient.post<ApiResponse<SiteProgressEntry>>(
-    `${base(tenantId)}/sites/${params.siteId}/progress`,
-    params
+    `${base(tenantId)}/sites/${siteId}/progress`,
+    corps
   );
   return response.data.data;
 }
