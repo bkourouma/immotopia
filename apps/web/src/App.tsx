@@ -186,6 +186,24 @@ const Tacheron = lazy(() =>
     default: m.Tacheron
   }))
 );
+const Stock = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Stock').then(m => ({ default: m.Stock }))
+);
+const StockReferentiel = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/StockReferentiel').then(m => ({
+    default: m.StockReferentiel
+  }))
+);
+const StockInventaire = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/StockInventaire').then(m => ({
+    default: m.StockInventaire
+  }))
+);
+const StockChantier = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/StockChantier').then(m => ({
+    default: m.StockChantier
+  }))
+);
 const RetenuesDeGarantie = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/RetenuesDeGarantie').then(m => ({
     default: m.RetenuesDeGarantie
@@ -760,6 +778,10 @@ function App() {
                       <Route path="/tenant/:tenantId/finance/salaires/:employeeId" element={<Salarie />} />
                       <Route path="/tenant/:tenantId/finance/tacherons" element={<Tacherons />} />
                       <Route path="/tenant/:tenantId/finance/tacherons/:contractorId" element={<Tacheron />} />
+                      <Route path="/tenant/:tenantId/finance/stock" element={<Stock />} />
+                      <Route path="/tenant/:tenantId/finance/stock/parametrage" element={<StockReferentiel />} />
+                      <Route path="/tenant/:tenantId/finance/stock/inventaire" element={<StockInventaire />} />
+                      <Route path="/tenant/:tenantId/finance/chantiers/:siteId/stock" element={<StockChantier />} />
                       <Route path="/tenant/:tenantId/finance/retenues" element={<RetenuesDeGarantie />} />
                       <Route path="/tenant/:tenantId/finance/chantiers/:siteId/cloture" element={<ClotureChantier />} />
                       <Route path="/tenant/:tenantId/maintenance" element={<TicketList />} />

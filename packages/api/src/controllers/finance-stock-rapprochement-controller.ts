@@ -98,9 +98,15 @@ export const getSiteStockStatusHandler = asyncHandler(async (req: Request, res: 
 // ---------------------------------------------------------------------------
 // C. GET /sites/:siteId/stock/reconciliation — acheté / consommé / restant
 //
-// Répond aussi pour un chantier qui n'a pas basculé : tout y vaut zéro et
-// `stockEnabledAt` nul le dit. Refuser obligerait l'écran à savoir d'avance ce
-// qu'il vient demander.
+// Répond aussi pour un chantier qui n'a pas basculé. Refuser obligerait
+// l'écran à savoir d'avance ce qu'il vient demander.
+//
+// Ce commentaire disait « tout y vaut zéro ». C'est faux, et le contrat l'a
+// démenti depuis : seuls `invoicedAmount` et `unreconciledAmount` valent zéro
+// sans bascule, parce qu'il n'y a pas de période à confronter. Le consommé, le
+// reçu et le restant disent la vérité dans tous les cas — un magasin central
+// peut très bien avoir livré des sorties qui ont déjà imputé le coût du
+// chantier, et les afficher à zéro ferait mentir l'écran.
 // ---------------------------------------------------------------------------
 
 export const getSiteStockReconciliationHandler = asyncHandler(async (req: Request, res: Response) => {

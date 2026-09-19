@@ -33,18 +33,24 @@
  * n'en a pas : sans lieu, une réception pour ce chantier n'aurait nulle part
  * où atterrir, et l'utilisateur découvrirait le manque au pire moment.
  *
- * ### Ce qu'elle NE fait pas, et qui revient au superviseur
+ * ### Ce que ce sous-lot ne faisait pas, et qui a été posé à l'intégration
  *
  * Brancher la bascule dans la validation de facture — faire que
  * `validateSupplierInvoiceTx` débite le 311 au lieu du compte de charge et
  * n'écrive aucune imputation quand le chantier est au stock — est un geste
- * transverse, dans un fichier qui n'appartient pas à ce sous-lot. Il est posé
- * à l'intégration, exactement comme `assertSiteOpenTx` au lot 4.
+ * transverse, dans un fichier qui n'appartient à aucun sous-lot du stock.
  *
- * **Tant qu'il n'est pas posé, la bascule ne change rien et le coût est
- * compté deux fois.** C'est écrit ici pour que personne ne suppose le
- * contraire : la leçon du lot 4, où trois sous-lots sont restés du code mort
- * faute de ce branchement, a coûté assez cher pour être retenue.
+ * **C'est fait.** `suppliers.ts` appelle `isSiteStockEnabledTx` imputation par
+ * imputation, sur la date de la facture, et le parcours
+ * `scripts/finance-e2e-lot5.ts` le prouve contre une vraie base : avant
+ * bascule la facture fait monter le coût, après bascule elle ne le fait plus,
+ * et c'est la sortie qui le fait.
+ *
+ * Ce paragraphe avertissait « tant qu'il n'est pas posé, le coût est compté
+ * deux fois » — la leçon du lot 4, où trois sous-lots étaient restés du code
+ * mort faute de ce branchement. L'avertissement a servi, puis il a survécu au
+ * geste qu'il réclamait, et un agent des écrans l'a lu comme l'état actuel.
+ * Un avertissement périmé se lit comme un avertissement.
  *
  * ---------------------------------------------------------------------------
  * Le rapprochement : ce qu'on a payé face à ce qui est arrivé

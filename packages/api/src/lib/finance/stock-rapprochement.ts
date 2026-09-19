@@ -113,17 +113,6 @@ import type {
 /** Devise unique du module (décision D9 du plan, actée au lot 1). */
 const DEFAULT_CURRENCY = 'XOF';
 
-/**
- * `Decimal(16,4)` : la précision des QUANTITÉS, qui n'est pas celle des
- * montants.
- *
- * Recopié de `stock-mouvements.ts`, où `roundQuantity` est un détail
- * d'implémentation privé, non exporté. L'exporter aurait voulu dire modifier
- * un fichier livré et vert, hors du territoire de ce sous-lot ; le mutualiser
- * dans `money.ts` aussi. La duplication est signalée dans le rapport plutôt
- * que faite en silence.
- */
-
 // ---------------------------------------------------------------------------
 // Lectures partagées
 // ---------------------------------------------------------------------------

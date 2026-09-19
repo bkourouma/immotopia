@@ -151,6 +151,11 @@ export const ChantierDetail: React.FC = () => {
             key: 'cloture',
             label: 'Lots et clôture',
             onClick: () => navigate(`/tenant/${tenantId}/finance/chantiers/${siteId}/cloture`)
+          },
+          {
+            key: 'stock',
+            label: 'Stock du chantier',
+            onClick: () => navigate(`/tenant/${tenantId}/finance/chantiers/${siteId}/stock`)
           }
         ]}
         extra={<StatusTag status={site.status} label={SITE_STATUS_LABELS[site.status]} />}

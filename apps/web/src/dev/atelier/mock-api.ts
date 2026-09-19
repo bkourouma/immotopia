@@ -30,6 +30,19 @@ import { repondreSalaries } from './finance-mock-salaries';
 import { repondreContractors } from './finance-mock-contractors';
 import { repondreSiteClosing } from './finance-mock-site-closing';
 import { repondreRetentions } from './finance-mock-retentions';
+// Lot 5, le stock. L'ORDRE DE CETTE LISTE COMPTE, et c'est la seule fois dans
+// ce fichier. Quatre bancs repondent au meme `/stock/items` et au meme
+// `/stock/locations` — chaque sous-lot a du composer ses propres listes
+// d'articles et de lieux, faute de pouvoir importer celles d'un voisin ecrit
+// en parallele. Le premier inscrit l'emporte, et c'est le REFERENTIEL qui
+// doit gagner : c'est lui qui possede ces deux routes. Les trois autres
+// gardent leurs copies pour tourner seuls, elles ne servent qu'en son
+// absence. Deux agents ont signale la collision ; elle est resolue par
+// l'ordre plutot que par une reecriture de leurs bancs.
+import { repondreStockReferentiel } from './finance-mock-stock-referentiel';
+import { repondreStockMouvements } from './finance-mock-stock-mouvements';
+import { repondreStockInventaire } from './finance-mock-stock-inventaire';
+import { repondreStockRapprochement } from './finance-mock-stock-rapprochement';
 
 /**
  * Fausse API de l'atelier.
@@ -323,7 +336,11 @@ export function installerFausseApi(scenario: Scenario) {
       repondreSalaries,
       repondreContractors,
       repondreSiteClosing,
-      repondreRetentions
+      repondreRetentions,
+      repondreStockReferentiel,
+      repondreStockMouvements,
+      repondreStockInventaire,
+      repondreStockRapprochement
     ]) {
       const reponse = repondre(url.pathname, scenario);
       if (reponse !== null) {

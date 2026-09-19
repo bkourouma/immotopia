@@ -282,6 +282,7 @@ function toMovementRecord(row: any): StockMovementRecord {
     costCategoryLabel: row.costCategory?.label ?? null,
     requestedBy: row.requestedBy ?? null,
     supplierInvoiceReference: row.supplierInvoice?.reference ?? null,
+    transferGroupId: row.transferGroupId ?? null,
     createdByLabel: toCreatedByLabel(row.createdBy),
     createdAt: row.createdAt
   };

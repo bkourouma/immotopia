@@ -292,6 +292,17 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
             label: 'Retenues de garantie',
             href: '/tenant/:tenantId/finance/retenues'
           },
+          { key: 'finance-stock', label: 'Stock', href: '/tenant/:tenantId/finance/stock' },
+          {
+            key: 'finance-stock-inventaire',
+            label: 'Inventaire',
+            href: '/tenant/:tenantId/finance/stock/inventaire'
+          },
+          {
+            key: 'finance-stock-parametrage',
+            label: 'Articles et lieux',
+            href: '/tenant/:tenantId/finance/stock/parametrage'
+          },
           { key: 'finance-fournisseurs', label: 'Fournisseurs', href: '/tenant/:tenantId/finance/fournisseurs' },
           {
             key: 'finance-fournisseurs-balance',

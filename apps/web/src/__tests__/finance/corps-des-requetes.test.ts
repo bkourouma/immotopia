@@ -40,7 +40,14 @@ vi.mock('../../utils/api-client', () => ({
   default: {
     get: vi.fn(async () => ({ data: { data: null } })),
     post: vi.fn(async () => ({ data: { data: null } })),
-    put: vi.fn(async () => ({ data: { data: null } }))
+    put: vi.fn(async () => ({ data: { data: null } })),
+    // `patch` et `delete` ajoutes a l'integration du lot 5. Deux agents ont
+    // signale ne pas pouvoir epingler leurs gestes ici faute de ces deux
+    // verbes, et avoir du le faire dans leur propre test d'ecran. Ce fichier
+    // existe pour rassembler ces epinglages : lui manquer un verbe le prive
+    // de sa raison d'etre.
+    patch: vi.fn(async () => ({ data: { data: null } })),
+    delete: vi.fn(async () => ({ data: { data: null } }))
   }
 }));
 
@@ -68,7 +75,37 @@ import {
   reopenSite,
   setLotAllocationMethod
 } from '../../services/finance-site-closing-service';
+import {
+  enableSiteStock,
+  getSiteStockReconciliation,
+  getSiteStockStatus
+} from '../../services/finance-stock-rapprochement-service';
+import {
+  listStockBalances,
+  listStockItems,
+  listStockLocations,
+  listStockMovements,
+  listSupplierInvoicesForReceipt,
+  recordStockIssue,
+  recordStockReceipt
+} from '../../services/finance-stock-mouvements-service';
+import {
+  createStockCount,
+  createStockTransfer,
+  getStockCount,
+  listStockCounts,
+  setStockCountLine,
+  validateStockCount
+} from '../../services/finance-stock-inventaire-service';
 import { PropertyOwnershipType, PropertyType } from '../../types/finance-site-closing-types';
+// Lot 5, premier sous-lot : le référentiel du stock (bloc en fin de fichier).
+import {
+  createStockItem,
+  createStockLocation,
+  listStockItems,
+  listStockLocations,
+  setStockValuationMethod
+} from '../../services/finance-stock-referentiel-service';
 
 const TENANT = 'agence-1';
 const SITE = 'chantier-1';
@@ -451,5 +488,463 @@ describe('Retenues de garantie — le corps ne répète jamais un identifiant, e
     await getRetentionSummary(TENANT, { siteId: SITE });
 
     expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/retentions/summary?siteId=${SITE}`);
+  });
+});
+
+/**
+ * Lot 5, deuxième sous-lot : réceptions, sorties et valorisation du stock.
+ *
+ * Les schémas Zod du serveur
+ * (`packages/api/src/lib/finance/schemas-stock-mouvements.ts`) sont `.strict()`
+ * et ne déclarent **pas** `tenantId` : il vient du chemin, et lui seul. Deux
+ * risques distincts sont épinglés ici :
+ *
+ * - **la sortie ne doit envoyer AUCUN prix**, sous aucun nom. Le prix est
+ *   dérivé du coût moyen du lieu avant la sortie (principe P-4), et
+ *   `createStockIssueSchema` ne déclare ni `unitCost`, ni `totalValue`, ni
+ *   `averageUnitCost`. Étant strict, il répond 400 à un corps qui en porterait
+ *   un — bruyamment, plutôt que de laisser croire qu'un prix saisi a compté ;
+ * - **la réception, elle, PORTE `supplierInvoiceId` dans son corps**, et ce
+ *   n'est pas une répétition : le chemin ne le porte nulle part, et c'est lui
+ *   qui valorise l'entrée (besoin S2, principe P-2). Un test qui l'interdirait
+ *   « par symétrie » casserait la seule création correcte du lot.
+ */
+describe('Stock — aucun prix sur une sortie, et la facture reste dans le corps d’une réception', () => {
+  const LIEU = 'lieu-magasin-01';
+  const ARTICLE = 'article-ciment-01';
+  const SABLE = 'article-sable-03';
+  const FACTURE = 'facture-0142';
+  const FOURNISSEUR = 'frs-1';
+  const getMock = apiClient.get as unknown as ReturnType<typeof vi.fn>;
+
+  it('sortie : les sept champs du schéma, et AUCUN prix sous aucun nom', async () => {
+    await recordStockIssue(TENANT, {
+      locationId: LIEU,
+      itemId: ARTICLE,
+      quantity: 12,
+      siteId: SITE,
+      costCategoryId: 'poste-gros-oeuvre',
+      requestedBy: 'Mamadou Diallo',
+      issueDate: '2026-09-19'
+    });
+
+    const { adresse, corps } = dernierAppel();
+    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/issues`);
+    expect(Object.keys(corps).sort()).toEqual([
+      'costCategoryId',
+      'issueDate',
+      'itemId',
+      'locationId',
+      'quantity',
+      'requestedBy',
+      'siteId'
+    ]);
+
+    // Le prix est DÉRIVÉ du coût moyen du lieu, jamais transmis.
+    expect(corps).not.toHaveProperty('unitCost');
+    expect(corps).not.toHaveProperty('totalValue');
+    expect(corps).not.toHaveProperty('averageUnitCost');
+    expect(corps).not.toHaveProperty('tenantId');
+  });
+
+  it('sortie : le demandeur part sans ses espaces de bord, que le serveur refuserait', async () => {
+    await recordStockIssue(TENANT, {
+      locationId: LIEU,
+      itemId: ARTICLE,
+      quantity: 1,
+      siteId: SITE,
+      costCategoryId: 'poste-gros-oeuvre',
+      requestedBy: '  Mamadou Diallo  ',
+      issueDate: '2026-09-19'
+    });
+
+    const { corps } = dernierAppel();
+    expect(corps.requestedBy).toBe('Mamadou Diallo');
+  });
+
+  it('réception : quatre champs, `supplierInvoiceId` compris — le chemin ne le porte pas', async () => {
+    await recordStockReceipt(TENANT, {
+      locationId: LIEU,
+      supplierInvoiceId: FACTURE,
+      receiptDate: '2026-09-02',
+      lines: [
+        { itemId: ARTICLE, quantity: 400, unitCost: 4_700 },
+        // Le zéro est accepté : un don, une reprise, une chute récupérée
+        // entrent en stock à valeur nulle. Seul le négatif est refusé.
+        { itemId: SABLE, quantity: 24.5, unitCost: 0 }
+      ]
+    });
+
+    const { adresse, corps } = dernierAppel();
+    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/receipts`);
+    expect(Object.keys(corps).sort()).toEqual(['lines', 'locationId', 'receiptDate', 'supplierInvoiceId']);
+    expect(corps).not.toHaveProperty('tenantId');
+    // UNE LIGNE PAR ARTICLE, et chaque ligne ne porte que ses trois champs :
+    // le schéma de ligne est lui aussi `.strict()`.
+    expect(corps.lines).toEqual([
+      { itemId: ARTICLE, quantity: 400, unitCost: 4_700 },
+      { itemId: SABLE, quantity: 24.5, unitCost: 0 }
+    ]);
+  });
+
+  it('soldes : les trois filtres partent en requête, et `onlyInStock` faux est OMIS', async () => {
+    await listStockBalances(TENANT, { locationId: LIEU, itemId: ARTICLE, onlyInStock: true });
+    expect(getMock).toHaveBeenCalledWith(
+      `/tenants/${TENANT}/finance/stock/balances?locationId=${LIEU}&itemId=${ARTICLE}&onlyInStock=true`
+    );
+
+    // `onlyInStock: false` partirait « false », que `z.coerce.boolean()` aurait
+    // lu comme vrai côté serveur : l'écran l'omet, et l'URL redevient celle du
+    // premier chargement — même clé de cache.
+    await listStockBalances(TENANT, { onlyInStock: undefined });
+    expect(getMock).toHaveBeenLastCalledWith(`/tenants/${TENANT}/finance/stock/balances`);
+  });
+
+  it('journal : les cinq filtres partent en requête, jamais dans le chemin', async () => {
+    await listStockMovements(TENANT, {
+      itemId: ARTICLE,
+      locationId: LIEU,
+      siteId: SITE,
+      type: 'ISSUE',
+      from: '2026-09-01',
+      to: '2026-09-30'
+    });
+
+    expect(getMock).toHaveBeenCalledWith(
+      `/tenants/${TENANT}/finance/stock/movements?itemId=${ARTICLE}&locationId=${LIEU}&siteId=${SITE}&type=ISSUE&from=2026-09-01&to=2026-09-30`
+    );
+  });
+
+  it('référentiel appelé directement : les routes du sous-lot voisin, sans importer son service', async () => {
+    await listStockItems(TENANT, { onlyActive: true });
+    expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items?onlyActive=true`);
+
+    await listStockLocations(TENANT, { onlyActive: true, kind: 'WAREHOUSE' });
+    expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/locations?onlyActive=true&kind=WAREHOUSE`);
+  });
+
+  it('factures réceptionnables : composées depuis les factures VALIDÉES du fournisseur', async () => {
+    // Aucune route ne liste les factures « sans réception » : le détour est
+    // isolé dans cette seule fonction, et il écarte ce que le serveur
+    // refuserait plutôt que de le proposer.
+    getMock.mockResolvedValueOnce({
+      data: {
+        data: [
+          { id: FACTURE, reference: 'F-2026-0142', status: 'VALIDATED' },
+          { id: 'facture-brouillon', reference: 'F-2026-0199', status: 'DRAFT' }
+        ]
+      }
+    });
+
+    const factures = await listSupplierInvoicesForReceipt(TENANT, FOURNISSEUR);
+
+    expect(getMock).toHaveBeenLastCalledWith(`/tenants/${TENANT}/finance/suppliers/${FOURNISSEUR}/invoices`);
+    expect(factures.map(f => f.id)).toEqual([FACTURE]);
+  });
+});
+
+/**
+ * Lot 5, quatrième et dernier sous-lot : la bascule d'un chantier au stock et
+ * le rapprochement acheté / consommé / restant.
+ *
+ * Les schémas Zod du serveur
+ * (`packages/api/src/lib/finance/schemas-stock-rapprochement.ts`) sont
+ * `.strict()` et **VIDES** — les trois : celui de la bascule comme ceux des
+ * deux lectures. `tenantId` et `siteId` viennent du chemin, et rien d'autre
+ * n'a le droit de voyager.
+ *
+ * **Le point qui vaut plus que les autres ici : la bascule n'accepte aucune
+ * date.** `enableSiteStockSchema` est `z.object({}).strict()`, et un corps
+ * portant `enabledAt` reçoit un 400. Ce n'est pas une économie de champ :
+ * accepter une date choisie par l'appelant laisserait antidater la bascule,
+ * c'est-à-dire reclasser après coup des factures déjà imputées. La date est
+ * celle de l'instant de la décision, et le contrôleur la pose lui-même.
+ *
+ * C'est exactement le genre de champ qu'on rajoute « pour bien faire », comme
+ * l'auteur de la clôture du lot 4 — d'où cette épingle.
+ */
+describe('Stock du chantier — la bascule ne porte AUCUN corps, et surtout pas de date', () => {
+  const getMock = apiClient.get as unknown as ReturnType<typeof vi.fn>;
+
+  it('bascule : corps VIDE — la date vient du serveur, jamais de l’appelant', async () => {
+    await enableSiteStock(TENANT, SITE);
+
+    const { adresse, corps } = dernierAppel();
+    expect(adresse).toBe(`/tenants/${TENANT}/finance/sites/${SITE}/stock/enable`);
+    expect(corps).toEqual({});
+    // Le schéma serveur refuse la moindre clé. Une date choisie permettrait
+    // d'antidater la bascule.
+    expect(corps).not.toHaveProperty('enabledAt');
+    expect(corps).not.toHaveProperty('stockEnabledAt');
+    expect(corps).not.toHaveProperty('siteId');
+    expect(corps).not.toHaveProperty('tenantId');
+  });
+
+  it('état du chantier : un chemin propre, sans aucun paramètre de requête', async () => {
+    await getSiteStockStatus(TENANT, SITE);
+
+    // `siteStockQuerySchema` est vide et strict : pas de borne de période
+    // saisie de l'extérieur, et donc rien à mettre en requête.
+    expect(getMock).toHaveBeenLastCalledWith(`/tenants/${TENANT}/finance/sites/${SITE}/stock/status`);
+  });
+
+  it('rapprochement : un chemin propre, distinct de l’état, et sans filtre', async () => {
+    await getSiteStockReconciliation(TENANT, SITE);
+
+    expect(getMock).toHaveBeenLastCalledWith(`/tenants/${TENANT}/finance/sites/${SITE}/stock/reconciliation`);
+  });
+});
+
+/**
+ * Lot 5, sous-lot « transferts et inventaire physique ». Quatre écritures, et
+ * chacune porte un risque distinct contre les schémas `.strict()` du serveur
+ * (`packages/api/src/lib/finance/schemas-stock-inventaire.ts`) :
+ *
+ * - **le transfert** porte ses DEUX lieux dans le corps, et ce n'est pas une
+ *   répétition : le chemin ne porte que `tenantId`. Il ne porte en revanche
+ *   aucun prix — la valeur part au coût moyen du lieu d'origine (principe P-4)
+ *   — et aucun chantier : un transfert n'impute rien, seule la sortie impute
+ *   (principe P-7). Un corps qui porterait l'un ou l'autre recevrait un 400.
+ * - **la ligne de comptage** ne porte JAMAIS `expectedQuantity`. Le serveur la
+ *   lit dans le stock au moment de la saisie et la fige ;
+ *   `setStockCountLineSchema` ne la déclare pas, et la laisser entrer
+ *   permettrait de fabriquer un écart nul — exactement ce que le besoin S6
+ *   empêche. `variance` et `varianceValue`, tout aussi dérivées, sont refusées
+ *   pour la même raison. `countId`, lui, est dans le CHEMIN.
+ * - **le motif vide** est OMIS plutôt qu'envoyé en chaîne vide : le contrôleur
+ *   pose `reason ?? null`, si bien que l'absence efface le motif. Une chaîne
+ *   vide enregistrerait un motif qui n'en est pas un, et la validation le
+ *   laisserait passer alors que le besoin S6 l'exige.
+ * - **la validation** envoie un corps VIDE. Son schéma est
+ *   `z.object({}).strict()` : `countId` est dans le chemin, et l'auteur vient
+ *   du jeton d'authentification — un corps qui le porterait permettrait de
+ *   valider une perte au nom de quelqu'un d'autre.
+ */
+describe('Transferts et inventaire — aucun identifiant répété, aucun attendu saisi', () => {
+  const COMPTAGE = 'comptage-1';
+  const ARTICLE = 'article-1';
+  const getMock = apiClient.get as unknown as ReturnType<typeof vi.fn>;
+
+  it('transfert : les cinq champs du schéma, sans prix ni chantier', async () => {
+    await createStockTransfer(TENANT, {
+      fromLocationId: 'lieu-magasin-1',
+      toLocationId: 'lieu-chantier-1',
+      itemId: ARTICLE,
+      quantity: 50,
+      transferDate: '2026-09-19'
+    });
+
+    const { adresse, corps } = dernierAppel();
+    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/transfers`);
+    expect(Object.keys(corps).sort()).toEqual(['fromLocationId', 'itemId', 'quantity', 'toLocationId', 'transferDate']);
+    // Aucun prix : la valeur part au coût moyen du lieu d'origine.
+    expect(corps).not.toHaveProperty('unitCost');
+    expect(corps).not.toHaveProperty('value');
+    // Aucun chantier : déplacer n'est pas consommer.
+    expect(corps).not.toHaveProperty('siteId');
+    expect(corps).not.toHaveProperty('costCategoryId');
+    expect(corps).not.toHaveProperty('tenantId');
+  });
+
+  it('ouverture d’un comptage : le lieu et la date, rien de plus', async () => {
+    await createStockCount(TENANT, { locationId: 'lieu-magasin-1', countedAt: '2026-09-18' });
+
+    const { adresse, corps } = dernierAppel();
+    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/counts`);
+    expect(Object.keys(corps).sort()).toEqual(['countedAt', 'locationId']);
+    expect(corps).not.toHaveProperty('tenantId');
+    // Le comptage s'ouvre SANS ligne : on compte une allée après l'autre.
+    expect(corps).not.toHaveProperty('lines');
+  });
+
+  it('ligne de comptage : ni `countId`, et surtout AUCUNE quantité attendue', async () => {
+    const put = apiClient.put as unknown as ReturnType<typeof vi.fn>;
+    put.mockClear();
+    put.mockResolvedValue({ data: { data: {} } });
+
+    await setStockCountLine(TENANT, COMPTAGE, {
+      itemId: ARTICLE,
+      countedQuantity: 188,
+      reason: '  Vol constaté  '
+    });
+
+    const [adresse, corps] = put.mock.calls[put.mock.calls.length - 1] as [string, Record<string, unknown>];
+    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/counts/${COMPTAGE}/lines`);
+    expect(Object.keys(corps).sort()).toEqual(['countedQuantity', 'itemId', 'reason']);
+    // Le motif part détouré : le serveur le `trim()` de son côté, et une
+    // chaîne d'espaces n'est pas un motif.
+    expect(corps.reason).toBe('Vol constaté');
+    // Le cœur de ce sous-lot. Le serveur lit l'attendu et le FIGE ; l'envoyer
+    // vaudrait un 400, et le laisser entrer permettrait de fabriquer un écart
+    // nul — ce que le besoin S6 empêche.
+    expect(corps).not.toHaveProperty('expectedQuantity');
+    expect(corps).not.toHaveProperty('variance');
+    expect(corps).not.toHaveProperty('varianceValue');
+    expect(corps).not.toHaveProperty('countId');
+    expect(corps).not.toHaveProperty('tenantId');
+  });
+
+  it('ligne de comptage : un motif vide est OMIS, jamais envoyé en chaîne vide', async () => {
+    const put = apiClient.put as unknown as ReturnType<typeof vi.fn>;
+    put.mockClear();
+    put.mockResolvedValue({ data: { data: {} } });
+
+    await setStockCountLine(TENANT, COMPTAGE, { itemId: ARTICLE, countedQuantity: 0, reason: '   ' });
+
+    const [, corps] = put.mock.calls[put.mock.calls.length - 1] as [string, Record<string, unknown>];
+    // L'absence efface le motif ; la chaîne vide en enregistrerait un faux,
+    // que la validation laisserait passer.
+    expect(Object.keys(corps).sort()).toEqual(['countedQuantity', 'itemId']);
+    // Le ZÉRO voyage : « on a compté, il n'y a rien » est un résultat.
+    expect(corps.countedQuantity).toBe(0);
+  });
+
+  it('validation : le corps est VIDE — `countId` est dans le chemin, l’auteur dans le jeton', async () => {
+    await validateStockCount(TENANT, COMPTAGE);
+
+    const { adresse, corps } = dernierAppel();
+    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/counts/${COMPTAGE}/validate`);
+    expect(corps).toEqual({});
+    expect(corps).not.toHaveProperty('countId');
+    expect(corps).not.toHaveProperty('validatedByUserId');
+    expect(corps).not.toHaveProperty('validatedAt');
+  });
+
+  it('liste des comptages : les filtres partent en requête, jamais dans le chemin', async () => {
+    await listStockCounts(TENANT, { locationId: 'lieu-magasin-1', status: 'DRAFT' });
+
+    expect(getMock).toHaveBeenLastCalledWith(
+      `/tenants/${TENANT}/finance/stock/counts?locationId=lieu-magasin-1&status=DRAFT`
+    );
+  });
+
+  it('détail d’un comptage : un chemin propre, et rien après lui sous `/stock/counts/`', async () => {
+    // Côté serveur, `/stock/counts/:countId` est déclarée EN DERNIER : un
+    // chemin littéral monté après elle serait avalé par le paramètre.
+    await getStockCount(TENANT, COMPTAGE);
+
+    expect(getMock).toHaveBeenLastCalledWith(`/tenants/${TENANT}/finance/stock/counts/${COMPTAGE}`);
+  });
+});
+
+/**
+ * Lot 5, premier sous-lot : le référentiel du stock. Trois gestes d'écriture,
+ * et chacun porte un risque distinct contre les schémas `.strict()` du serveur
+ * (`packages/api/src/lib/finance/schemas-stock-referentiel.ts`) :
+ *
+ * - **l'article** ne doit envoyer ni `category` ni `defaultCostCategoryId`
+ *   en chaîne VIDE. Le serveur les déclare `z.string().min(1)…optional()` et
+ *   `z.string().uuid()…optional()` : une chaîne vide est un 400 dans les deux
+ *   cas, alors que l'absence est le cas normal. Un article sans famille et
+ *   sans poste proposé est parfaitement régulier.
+ * - **le lieu de stockage** ne doit porter `siteId` QUE pour un lieu de
+ *   chantier. Le serveur l'exige quand `kind` vaut `SITE` et le **refuse**
+ *   sinon, plutôt que de l'ignorer : « accepter un champ qui ne servira à rien
+ *   laisserait croire qu'il a servi » (contrat gelé).
+ * - **la méthode de valorisation** part en `PUT`, méthode ET motif ensemble.
+ *   Le motif est exigé — un motif sans méthode, ou l'inverse, ne serait pas
+ *   une décision (besoin S5) — et il voyage `trim()`, pour que ce qui est
+ *   enregistré soit exactement ce qui sera relu.
+ *
+ * Aucune route ne supprime ici, et aucune correction ne répète son identifiant :
+ * `itemId` et `locationId` voyagent dans le CHEMIN.
+ */
+describe('Référentiel du stock — aucun identifiant du chemin dans le corps, aucune chaîne vide', () => {
+  const putMock = apiClient.put as unknown as ReturnType<typeof vi.fn>;
+  const CHANTIER = 'chantier-nongo';
+  const POSTE = '3f1b1c2a-0000-4000-8000-000000000001';
+
+  /** L'adresse et le corps du dernier `put`, calqué sur `dernierAppel()`. */
+  function dernierPutStock(): { adresse: string; corps: Record<string, unknown> } {
+    const [adresse, corps] = putMock.mock.calls[putMock.mock.calls.length - 1] as [string, Record<string, unknown>];
+    return { adresse, corps };
+  }
+
+  it('article : les trois champs obligatoires, et rien de vide', async () => {
+    await createStockItem(TENANT, {
+      reference: 'FER-12',
+      label: 'Fer à béton HA 12',
+      unit: 'barre',
+      category: '',
+      defaultCostCategoryId: null
+    });
+
+    const { adresse, corps } = dernierAppel();
+    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/items`);
+    expect(Object.keys(corps).sort()).toEqual(['label', 'reference', 'unit']);
+    // Un article sans famille et sans poste proposé est un cas NORMAL : les
+    // clés sont omises, jamais envoyées vides.
+    expect(corps).not.toHaveProperty('category');
+    expect(corps).not.toHaveProperty('defaultCostCategoryId');
+    expect(corps).not.toHaveProperty('tenantId');
+    expect(corps).not.toHaveProperty('isActive');
+  });
+
+  it('article : la famille et le poste PROPOSÉ voyagent quand ils sont renseignés', async () => {
+    await createStockItem(TENANT, {
+      reference: 'CIM-42',
+      label: 'Ciment CPJ 42,5',
+      unit: 'sac',
+      category: '  Gros œuvre  ',
+      defaultCostCategoryId: POSTE
+    });
+
+    const { corps } = dernierAppel();
+    expect(Object.keys(corps).sort()).toEqual(['category', 'defaultCostCategoryId', 'label', 'reference', 'unit']);
+    expect(corps.category).toBe('Gros œuvre');
+    // Le poste n'a AUCUNE autorité sur la sortie à venir : il n'est ici qu'une
+    // proposition, et c'est l'écran qui le dit.
+    expect(corps.defaultCostCategoryId).toBe(POSTE);
+  });
+
+  it('magasin : le corps ne porte JAMAIS de chantier', async () => {
+    await createStockLocation(TENANT, { kind: 'WAREHOUSE', label: 'Magasin central de Kipé' });
+
+    const { adresse, corps } = dernierAppel();
+    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/locations`);
+    expect(corps).toEqual({ kind: 'WAREHOUSE', label: 'Magasin central de Kipé' });
+    // Le serveur REFUSE `siteId` pour un magasin, plutôt que de l'ignorer.
+    expect(corps).not.toHaveProperty('siteId');
+    expect(corps).not.toHaveProperty('tenantId');
+  });
+
+  it('lieu de chantier : le chantier est dans le corps, et le corps ne porte rien d’autre', async () => {
+    await createStockLocation(TENANT, { kind: 'SITE', label: 'Dépôt de la Villa de Nongo', siteId: CHANTIER });
+
+    const { corps } = dernierAppel();
+    expect(corps).toEqual({ kind: 'SITE', label: 'Dépôt de la Villa de Nongo', siteId: CHANTIER });
+    expect(corps).not.toHaveProperty('locationId');
+  });
+
+  it('méthode de valorisation : la méthode ET son motif, ensemble et sans espaces parasites', async () => {
+    await setStockValuationMethod(TENANT, {
+      valuationMethod: 'WEIGHTED_AVERAGE',
+      decisionNote: '  Décision du comité de gestion du 12 mars 2026.  '
+    });
+
+    const { adresse, corps } = dernierPutStock();
+    expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/settings`);
+    expect(corps).toEqual({
+      valuationMethod: 'WEIGHTED_AVERAGE',
+      decisionNote: 'Décision du comité de gestion du 12 mars 2026.'
+    });
+    expect(corps).not.toHaveProperty('tenantId');
+    // La date de la décision est posée par le serveur : la transmettre
+    // permettrait d'antidater une décision.
+    expect(corps).not.toHaveProperty('decidedAt');
+  });
+
+  it('les filtres des deux listes partent en requête, jamais dans le chemin', async () => {
+    const getMock = apiClient.get as unknown as ReturnType<typeof vi.fn>;
+
+    await listStockItems(TENANT, { onlyActive: true, search: '  ciment  ' });
+    expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items?onlyActive=true&search=ciment`);
+
+    // Le serveur refuse la recherche VIDE (`.min(1)`) : la clé est omise.
+    await listStockItems(TENANT, { search: '   ' });
+    expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items`);
+
+    await listStockLocations(TENANT, { kind: 'SITE' });
+    expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/locations?kind=SITE`);
   });
 });

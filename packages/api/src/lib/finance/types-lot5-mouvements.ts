@@ -174,6 +174,21 @@ export interface StockMovementRecord {
   requestedBy: string | null;
   /** Référence de la facture qui a valorisé la réception. */
   supplierInvoiceReference: string | null;
+  /**
+   * Les deux moitiés d'un transfert portent le même identifiant. Nul pour
+   * tout autre mouvement.
+   *
+   * **Ajouté à la relecture, et il manquait pour une raison précise.** Le
+   * service qui écrit un transfert insiste : c'est cet identifiant, et lui
+   * seul, qui dit qu'il s'agit d'un déplacement et non d'une perte d'un côté
+   * suivie d'une apparition de l'autre. Il n'était exposé nulle part — le
+   * journal montrait donc les deux lignes sans rien qui les relie, exactement
+   * la lecture que le schéma voulait rendre impossible.
+   *
+   * Relevé par l'agent de l'écran, en lisant un fichier de service qui ne lui
+   * appartenait pas.
+   */
+  transferGroupId: string | null;
   createdByLabel: string;
   createdAt: Date;
 }
