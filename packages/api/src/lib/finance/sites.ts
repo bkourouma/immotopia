@@ -37,6 +37,7 @@ import { NotFoundError, BadRequestError, ConflictError } from '../../middleware/
 import { toAmount, toAmountOrZero } from './types';
 import { roundMoney } from './money';
 import { formatCashVoucherNumber } from './cash';
+import { sumSiteActualCost, sumSiteActualCostByIds } from './site-cost';
 import type {
   ConstructionSiteRecord,
   CostCategoryRecord,
@@ -110,11 +111,10 @@ function toCategoryRecord(row: CostCategory, position: number): CostCategoryReco
  * `GetTrialBalance` (`accounting.ts`) et la balance clients du lot 1.
  */
 async function getSiteActualCost(tenantId: string, siteId: string): Promise<number> {
-  const result = await prisma.costAllocation.aggregate({
-    where: { tenantId, siteId, validatedAt: { not: null }, voidedAt: null },
-    _sum: { amount: true }
-  });
-  return toAmountOrZero(result._sum.amount);
+  // La definition du realise vit desormais dans `site-cost.ts`, une seule
+  // fois pour tout le module : elle etait recopiee a cinq endroits a la fin du
+  // lot 3, et cinq copies finissent par diverger.
+  return sumSiteActualCost(prisma, tenantId, siteId);
 }
 
 // ---------------------------------------------------------------------------
@@ -286,17 +286,7 @@ export const listConstructionSites: ListConstructionSites = async (tenantId, fil
   // Une seule agrégation groupée pour toute la page, jamais une par ligne
   // (même discipline que `GetTrialBalance`) : le banc de charge du lot 0 a
   // mesuré un facteur trente entre les deux approches sur la balance clients.
-  const sums = siteIds.length
-    ? await prisma.costAllocation.groupBy({
-        by: ['siteId'],
-        where: { tenantId, siteId: { in: siteIds }, validatedAt: { not: null }, voidedAt: null },
-        _sum: { amount: true }
-      })
-    : [];
-
-  const sumBySite = new Map<string, number>(
-    sums.map((row: Record<string, any>) => [row.siteId as string, toAmountOrZero(row._sum?.amount)])
-  );
+  const sumBySite = await sumSiteActualCostByIds(prisma, tenantId, siteIds);
 
   return {
     sites: rows.map((row: Record<string, any>) => toSiteRecord(row, sumBySite.get(row.id) ?? 0)),

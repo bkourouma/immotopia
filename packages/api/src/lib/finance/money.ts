@@ -61,3 +61,37 @@ export function roundMoneyXof(value: number): number {
   // donc pas au sens de `toBe` de Jest, ni d'une comparaison de soldes.
   return rounded === 0 ? 0 : rounded;
 }
+
+/**
+ * Arrondit un POURCENTAGE, a deux decimales.
+ *
+ * ---------------------------------------------------------------------------
+ * Pourquoi cette fonction existe, alors que `roundMoney` ferait le meme calcul
+ * ---------------------------------------------------------------------------
+ *
+ * Parce qu'un pourcentage n'est pas un montant, et que confondre les deux
+ * produit un chiffre faux qui a l'air juste.
+ *
+ * A l'integration du lot 3, j'ai uniformise l'arrondi du lot sur
+ * `roundMoneyXof` — la bonne decision pour les montants, le franc CFA n'ayant
+ * pas de subdivision. Le remplacement a aussi touche deux pourcentages :
+ * la part d'un budget consommee, et l'ecart en pourcentage du tableau de
+ * bord. « 83,33 % consomme » est devenu « 83 % », et c'est un test qui l'a
+ * rattrape, pas une relecture.
+ *
+ * Une fonction nommee pour ce qu'elle arrondit empeche de refaire l'erreur :
+ * on ne remplace pas `roundPercent` par `roundMoneyXof` sans s'en apercevoir.
+ *
+ * Deux decimales, parce qu'un pourcentage de budget se lit au centieme —
+ * 83,33 % et 83 % ne disent pas la meme chose quand on approche d'un seuil.
+ */
+export function roundPercent(value: number): number {
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+
+  const rounded = Math.round(numeric * 100) / 100;
+  return rounded === 0 ? 0 : rounded;
+}

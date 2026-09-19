@@ -16,7 +16,7 @@
  */
 
 import type { PrismaTransactionClient } from '../../utils/database';
-import { toAmountOrZero } from './types';
+import { sumSiteActualCost } from './site-cost';
 
 /**
  * Recopie le coût réel d'un chantier sur chaque `WorkProgram` qui lui est
@@ -58,11 +58,12 @@ export async function syncWorkProgramCostTx(
     return;
   }
 
-  const result = await tx.costAllocation.aggregate({
-    where: { tenantId, siteId: constructionSiteId, validatedAt: { not: null }, voidedAt: null },
-    _sum: { amount: true }
-  });
-  const actualCost = toAmountOrZero(result._sum.amount);
+  // Meme definition du realise que partout ailleurs (`site-cost.ts`), mais lue
+  // A TRAVERS `tx` : cette fonction doit voir l'imputation qui vient d'etre
+  // ecrite dans cette transaction, invisible du client global tant qu'elle n'a
+  // pas commit. C'est exactement le remaniement que l'en-tete de ce fichier
+  // annoncait au lot 2 sans pouvoir le faire.
+  const actualCost = await sumSiteActualCost(tx, tenantId, constructionSiteId);
 
   await tx.workProgram.updateMany({
     where: { tenantId, constructionSiteId },
