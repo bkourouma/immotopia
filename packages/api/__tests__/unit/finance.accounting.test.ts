@@ -449,7 +449,12 @@ describe('Plan de comptes operationnel', () => {
   it('pose le jeu minimal a la premiere piece de l agence', async () => {
     const comptes = await ensureOperationalChartOfAccountsTx(tx, TENANT_ID);
 
-    expect(Array.from(comptes.keys()).sort()).toEqual(['401', '411', '571', '601', '605']);
+    // Le jeu est epingle a dessein : ce test tombe des qu'on y touche, et
+    // c'est ce qu'on lui demande. Les comptes 486 et 613 ont ete ajoutes au
+    // lot 4 pour les baux de terrain — un loyer paye d'avance est une creance
+    // de jouissance (486) qui se consomme mois apres mois en location (613),
+    // et non une charge le jour du paiement.
+    expect(Array.from(comptes.keys()).sort()).toEqual(['401', '411', '486', '571', '601', '605', '613']);
     expect(store.accounts).toHaveLength(OPERATIONAL_ACCOUNT_SEEDS.length);
     // Un plan operationnel n appartient a aucune copropriete.
     expect(store.accounts.every((a: any) => a.syndicateId === null)).toBe(true);

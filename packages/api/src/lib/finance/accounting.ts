@@ -228,7 +228,20 @@ export const OPERATIONAL_ACCOUNT_SEEDS: OperationalAccountSeed[] = [
   { accountNumber: '411', accountName: 'Clients', accountClass: 4, accountType: 'ASSET' },
   { accountNumber: '571', accountName: 'Caisse', accountClass: 5, accountType: 'ASSET' },
   { accountNumber: '601', accountName: 'Achats', accountClass: 6, accountType: 'EXPENSE' },
-  { accountNumber: '605', accountName: 'Charges de chantier', accountClass: 6, accountType: 'EXPENSE' }
+  { accountNumber: '605', accountName: 'Charges de chantier', accountClass: 6, accountType: 'EXPENSE' },
+  // Lot 4, baux de terrain. Un loyer paye d'avance n'est pas une charge le
+  // jour ou on le paie : c'est une creance de jouissance, qui se consomme mois
+  // apres mois. Le 486 la porte, le 613 recoit la consommation. Sans ces deux
+  // comptes, un chantier sur terrain loue porterait la totalite du loyer le
+  // mois du paiement et rien les onze suivants — son cout deviendrait
+  // illisible, ce que le PRD demande precisement d'eviter.
+  {
+    accountNumber: '486',
+    accountName: "Charges constatees d'avance",
+    accountClass: 4,
+    accountType: 'ASSET'
+  },
+  { accountNumber: '613', accountName: 'Locations', accountClass: 6, accountType: 'EXPENSE' }
 ];
 
 /**

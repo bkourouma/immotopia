@@ -442,6 +442,8 @@ model User {
   purchaseOrdersIssued      PurchaseOrder[]    @relation("PurchaseOrderIssuedBy")
   siteProgressEntriesLogged SiteProgressEntry[] @relation("SiteProgressEntryCreatedBy")
   siteBudgetAlertsSeen      SiteBudgetAlert[]  @relation("SiteBudgetAlertAcknowledgedBy")
+  landLeasePaymentsCreated  LandLeasePayment[] @relation("LandLeasePaymentCreatedBy")
+  landLeasePaymentsValidated LandLeasePayment[] @relation("LandLeasePaymentValidatedBy")
   voidedDocuments           VoidDocument[]
 
   @@index([email])
@@ -563,6 +565,9 @@ model Tenant {
   purchaseOrders            PurchaseOrder[]
   siteProgressEntries       SiteProgressEntry[]
   siteBudgetAlerts          SiteBudgetAlert[]
+  landLeases                LandLease[]
+  landLeasePayments         LandLeasePayment[]
+  landLeaseAccruals         LandLeaseAccrual[]
   // Nouvelles au lot 2 : ces trois tables n'avaient aucune relation
   // Tenant avant la generalisation du moteur comptable.
   chartOfAccounts           ChartOfAccount[]
@@ -3563,6 +3568,8 @@ model JournalEntry {
   supplierPayments SupplierPayment[] @relation("SupplierPaymentEntry")
   cashVouchers     CashVoucher[]     @relation("CashVoucherEntry")
   voidDocuments    VoidDocument[]    @relation("VoidDocumentReversingEntry")
+  landLeasePayments LandLeasePayment[] @relation("LandLeasePaymentEntry")
+  landLeaseAccruals LandLeaseAccrual[] @relation("LandLeaseAccrualEntry")
 
   @@index([journalId])
   @@index([entryDate])
@@ -4037,6 +4044,7 @@ model ThirdPartyAccount {
   // tiers de nature SUPPLIER a donc au plus un fournisseur.
   supplier     Supplier?
 
+  landLeases LandLease[]
   @@unique([tenantId, kind, tenantClientId])
   @@index([tenantId])
   @@index([tenantId, kind])
@@ -4311,6 +4319,10 @@ model ConstructionSite {
   // pire qu'une valeur absente, parce qu'elle se lit comme une vraie.
   zone                    String?
   propertyId              String?                @map("property_id")
+  /// Bail de terrain dont depend ce chantier, s'il y en a un.
+  ///
+  /// La colonne existait depuis le lot 2 sans modele ni cle etrangere : une
+  /// amorce posee en prevision du lot 4. Elle en a une desormais.
   landLeaseId             String?                @map("land_lease_id") @db.Uuid
   managerId               String?                @map("manager_id")
   status                  ConstructionSiteStatus @default(PLANNED)
@@ -4335,6 +4347,7 @@ model ConstructionSite {
   purchaseOrders PurchaseOrder[]
   progressEntries SiteProgressEntry[]
   budgetAlerts   SiteBudgetAlert[]
+  landLease      LandLease?       @relation(fields: [landLeaseId], references: [id], onDelete: SetNull)
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -4728,4 +4741,130 @@ enum PurchaseOrderStatus {
 enum SiteBudgetStatus {
   DRAFT
   VALIDATED
+}
+
+// ===========================================================================
+// LOT 4 — Baux de terrain (PRD E7, besoin B10)
+// ===========================================================================
+//
+// LE BESOIN, ET POURQUOI IL EST LE SEUL « MUST » DU LOT 4.
+//
+// L'entreprise loue des terrains pour y batir. Elle paie le bailleur UNE FOIS
+// PAR AN, d'avance, et consomme cette avance mois apres mois. Sans ce
+// mecanisme, un chantier sur terrain loue porte soit la totalite du loyer le
+// mois du paiement — et son cout devient illisible — soit rien du tout.
+//
+// LE CYCLE, EN TROIS TEMPS.
+//
+//   1. Le bail est enregistre, et ouvre le compte de tiers du bailleur.
+//   2. Le paiement annuel est saisi puis valide : l'avance est versee, et le
+//      compte du bailleur devient DEBITEUR de ce qu'il nous doit encore en
+//      jouissance du terrain.
+//   3. Chaque mois, un douzieme est CONSTATE : la charge nait, le compte du
+//      bailleur remonte d'autant, et il atteint zero au douzieme mois.
+//
+// LES DEUX VUES, comme aux lots 1 et 2. Le compte de tiers porte la vue de la
+// gestionnaire — « combien ai-je paie d'avance a ce bailleur, combien
+// reste-t-il a consommer ». Le journal porte la vue comptable : le paiement
+// debite les charges constatees d'avance (486), la constatation mensuelle les
+// vire aux locations (613). Les deux ne se contredisent jamais parce qu'elles
+// naissent de la meme piece, dans la meme transaction.
+
+/// Bail de terrain ou l'entreprise est LOCATAIRE.
+///
+/// A ne pas confondre avec `Lease`, le bail d'habitation ou l'agence gere pour
+/// le compte d'un proprietaire : ici l'entreprise paie, elle n'encaisse pas.
+model LandLease {
+  id               String    @id @default(uuid()) @db.Uuid
+  tenantId         String    @map("tenant_id")
+  /// Compte de tiers du bailleur, ouvert avec le bail.
+  ///
+  /// Un bail sans compte ne pourrait rien devoir, et le premier paiement le
+  /// trouverait manquant — meme raison qu'au lot 2 pour le fournisseur.
+  landlordAccountId String   @map("landlord_account_id") @db.Uuid
+  landlordName     String    @map("landlord_name")
+  /// Ce qu'on loue, en clair : « Terrain de Nongo, 800 m2 ».
+  landLabel        String    @map("land_label")
+  /// Montant ANNUEL. Le douzieme mensuel s'en deduit, il ne se stocke pas.
+  annualAmount     Decimal   @map("annual_amount") @db.Decimal(14, 2)
+  currency         String    @default("XOF")
+  startDate        DateTime  @map("start_date")
+  /// Nulle en tacite reconduction, ce qui est le cas courant a Conakry.
+  endDate          DateTime? @map("end_date")
+  isActive         Boolean   @default(true) @map("is_active")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  landlordAccount ThirdPartyAccount  @relation(fields: [landlordAccountId], references: [id], onDelete: Restrict)
+  sites           ConstructionSite[]
+  payments        LandLeasePayment[]
+  accruals        LandLeaseAccrual[]
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("land_leases")
+}
+
+/// Paiement au bailleur, annuel et d'avance.
+///
+/// Brouillon a la saisie, comme toute piece depuis le lot 2 : c'est la
+/// validation qui ecrit, jamais la saisie.
+model LandLeasePayment {
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id")
+  landLeaseId       String    @map("land_lease_id") @db.Uuid
+  paymentDate       DateTime  @map("payment_date")
+  amount            Decimal   @db.Decimal(14, 2)
+  currency          String    @default("XOF")
+  /// Periode couverte, pour qu'on sache ce qu'on a paye.
+  coverageStartDate DateTime  @map("coverage_start_date")
+  coverageEndDate   DateTime  @map("coverage_end_date")
+  journalEntryId    String?   @map("journal_entry_id") @db.Uuid
+  createdByUserId   String    @map("created_by_user_id")
+  validatedByUserId String?   @map("validated_by_user_id")
+  validatedAt       DateTime? @map("validated_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  landLease    LandLease     @relation(fields: [landLeaseId], references: [id], onDelete: Restrict)
+  journalEntry JournalEntry? @relation("LandLeasePaymentEntry", fields: [journalEntryId], references: [id], onDelete: SetNull)
+  createdBy    User          @relation("LandLeasePaymentCreatedBy", fields: [createdByUserId], references: [id])
+  validatedBy  User?         @relation("LandLeasePaymentValidatedBy", fields: [validatedByUserId], references: [id])
+
+  @@index([tenantId])
+  @@index([landLeaseId])
+  @@map("land_lease_payments")
+}
+
+/// Constatation mensuelle d'un douzieme du loyer annuel.
+///
+/// POSEE PAR UN TRAVAIL PROGRAMME, PAS PAR UNE PERSONNE. Elle n'a donc pas
+/// d'etat brouillon : personne ne « saisit » une constatation, et il n'y
+/// aurait personne pour la valider. Elle nait validee, avec son ecriture, dans
+/// une seule transaction — le principe P-2 est respecte (la piece precede
+/// l'ecriture), seul le cycle brouillon/valide ne s'applique pas.
+///
+/// IDEMPOTENTE PAR CONSTRUCTION. L'unicite `(bail, annee, mois)` est la
+/// garantie que le travail peut se rejouer sans rien doubler : c'est la meme
+/// discipline que la campagne de facturation du lot 1, qui se rejoue sans
+/// refacturer.
+model LandLeaseAccrual {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id")
+  landLeaseId    String   @map("land_lease_id") @db.Uuid
+  periodYear     Int      @map("period_year")
+  periodMonth    Int      @map("period_month")
+  amount         Decimal  @db.Decimal(14, 2)
+  currency       String   @default("XOF")
+  journalEntryId String?  @map("journal_entry_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  landLease    LandLease     @relation(fields: [landLeaseId], references: [id], onDelete: Cascade)
+  journalEntry JournalEntry? @relation("LandLeaseAccrualEntry", fields: [journalEntryId], references: [id], onDelete: SetNull)
+
+  @@unique([landLeaseId, periodYear, periodMonth])
+  @@index([tenantId])
+  @@map("land_lease_accruals")
 }
