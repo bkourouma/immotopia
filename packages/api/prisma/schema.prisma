@@ -568,6 +568,8 @@ model Tenant {
   landLeases                LandLease[]
   landLeasePayments         LandLeasePayment[]
   landLeaseAccruals         LandLeaseAccrual[]
+  partnerships              Partnership[]
+  partnershipDistributions  PartnershipDistribution[]
   // Nouvelles au lot 2 : ces trois tables n'avaient aucune relation
   // Tenant avant la generalisation du moteur comptable.
   chartOfAccounts           ChartOfAccount[]
@@ -1242,6 +1244,11 @@ model PropertyTypeTemplate {
 // Property
 model Property {
   id                String                @id @default(uuid())
+  /// Association qui detient ce bien, s'il y en a une.
+  ///
+  /// UN BIEN A AU PLUS UNE ASSOCIATION (besoin B9 du PRD). Nul dans le cas
+  /// courant : le bien appartient a l'agence ou a un proprietaire unique.
+  partnershipId     String?               @map("partnership_id") @db.Uuid
   internalReference String                @map("internal_reference")
   propertyType      PropertyType          @map("property_type")
   ownershipType     PropertyOwnershipType @map("ownership_type")
@@ -1325,6 +1332,7 @@ model Property {
   ownerStatementItems OwnerStatementItem[]
 
   // Agency A's "REF-001" must not block agency B's.
+  partnership Partnership? @relation(fields: [partnershipId], references: [id], onDelete: SetNull)
   @@unique([tenantId, internalReference])
   @@index([tenantId])
   @@index([tenantId, status])
@@ -1831,6 +1839,7 @@ model RentalInstallment {
   documents        RentalDocument[]
   paymentDeclarations RentalPaymentDeclaration[] @relation("RentalPaymentDeclarationInstallment")
 
+  partnershipDistributions PartnershipDistribution[]
   @@unique([lease_id, period_year, period_month])
   @@index([tenant_id])
   @@index([tenant_id, status])
@@ -4050,6 +4059,7 @@ model ThirdPartyAccount {
   supplier     Supplier?
 
   landLeases LandLease[]
+  partnershipShares PartnershipShare[]
   @@unique([tenantId, kind, tenantClientId])
   @@index([tenantId])
   @@index([tenantId, kind])
@@ -4895,4 +4905,100 @@ model LandLeaseAccrual {
   @@unique([landLeaseId, periodYear, periodMonth])
   @@index([tenantId])
   @@map("land_lease_accruals")
+}
+
+// ===========================================================================
+// LOT 4, sous-lot 2 — Associations (PRD E7, besoin B9)
+// ===========================================================================
+//
+// LE BESOIN. Certains biens appartiennent a plusieurs associes, chacun pour
+// une quote-part. L'agence encaisse le loyer entier du locataire, puis doit a
+// chaque associe sa part.
+//
+// CE QUE LE LOCATAIRE DOIT NE CHANGE PAS. Il a signe un bail pour un montant,
+// il doit ce montant, et son compte de tiers porte toujours le loyer ENTIER.
+// Ce qui se repartit, c'est le PRODUIT, pas la creance. Le PRD dit que « le
+// compte loyer principal ne recoit que la part de l'entreprise » ; cette
+// phrase suppose une comptabilisation du loyer en produit que le lot 1 n'a
+// deliberement pas construite — la campagne de facturation n'ecrit aucune
+// ecriture comptable, seulement un mouvement de compte de tiers. La part de
+// l'entreprise est donc, ici, simplement ce qui reste une fois les parts des
+// associes constatees. A confirmer avec la cliente ; consigne comme tel.
+//
+// L'IDEMPOTENCE EST HERITEE. La campagne de facturation du lot 1 se rejoue
+// sans refacturer ; la ventilation doit en faire autant, d'ou l'unicite
+// (part, echeance) sur la constatation.
+
+/// Une association d'associes qui detiennent des biens ensemble.
+model Partnership {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id")
+  label     String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shares        PartnershipShare[]
+  properties    Property[]
+  distributions PartnershipDistribution[]
+
+  @@index([tenantId])
+  @@map("partnerships")
+}
+
+/// La quote-part d'un associe, et son compte de tiers.
+///
+/// Le compte nait avec la part : un associe sans compte ne pourrait rien
+/// recevoir, et la premiere ventilation le trouverait manquant — meme raison
+/// qu'au lot 2 pour le fournisseur.
+model PartnershipShare {
+  id               String   @id @default(uuid()) @db.Uuid
+  partnershipId    String   @map("partnership_id") @db.Uuid
+  partnerAccountId String   @map("partner_account_id") @db.Uuid
+  partnerName      String   @map("partner_name")
+  /// En pourcentage, deux decimales. La somme des parts d'une association ne
+  /// peut pas depasser cent ; ce qui reste est la part de l'entreprise.
+  sharePercent     Decimal  @map("share_percent") @db.Decimal(5, 2)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  partnership    Partnership               @relation(fields: [partnershipId], references: [id], onDelete: Cascade)
+  partnerAccount ThirdPartyAccount         @relation(fields: [partnerAccountId], references: [id], onDelete: Restrict)
+  distributions  PartnershipDistribution[]
+
+  @@unique([partnershipId, partnerAccountId])
+  @@index([partnershipId])
+  @@map("partnership_shares")
+}
+
+/// La part d'un associe sur une echeance de loyer, constatee a la facturation.
+///
+/// IDEMPOTENTE PAR CONSTRUCTION. L'unicite (part, echeance) garantit qu'une
+/// campagne rejouee ne double aucune ventilation, exactement comme elle ne
+/// refacture aucun loyer. C'est la meme discipline que la constatation
+/// mensuelle d'un loyer de terrain.
+model PartnershipDistribution {
+  id                  String   @id @default(uuid()) @db.Uuid
+  tenantId            String   @map("tenant_id")
+  partnershipId       String   @map("partnership_id") @db.Uuid
+  partnershipShareId  String   @map("partnership_share_id") @db.Uuid
+  rentalInstallmentId String   @map("rental_installment_id") @db.Uuid
+  periodYear          Int      @map("period_year")
+  periodMonth         Int      @map("period_month")
+  /// La part de cet associe sur cette echeance. Le reliquat d'arrondi va au
+  /// premier associe, sans quoi la somme des parts ne vaudrait pas le produit
+  /// reparti.
+  amount              Decimal  @db.Decimal(14, 2)
+  currency            String   @default("XOF")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  partnership       Partnership       @relation(fields: [partnershipId], references: [id], onDelete: Cascade)
+  partnershipShare  PartnershipShare  @relation(fields: [partnershipShareId], references: [id], onDelete: Cascade)
+  rentalInstallment RentalInstallment @relation(fields: [rentalInstallmentId], references: [id], onDelete: Cascade)
+
+  @@unique([partnershipShareId, rentalInstallmentId])
+  @@index([tenantId])
+  @@index([partnershipId, periodYear, periodMonth])
+  @@map("partnership_distributions")
 }
