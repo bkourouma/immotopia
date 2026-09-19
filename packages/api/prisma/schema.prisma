@@ -435,6 +435,13 @@ model User {
   cashVouchersCreated       CashVoucher[]      @relation("CashVoucherCreatedBy")
   cashVouchersValidated     CashVoucher[]      @relation("CashVoucherValidatedBy")
   managedConstructionSites  ConstructionSite[] @relation("ConstructionSiteManager")
+  siteBudgetsValidated      SiteBudget[]       @relation("SiteBudgetValidatedBy")
+  budgetAmendmentsCreated   BudgetAmendment[]  @relation("BudgetAmendmentCreatedBy")
+  budgetAmendmentsValidated BudgetAmendment[]  @relation("BudgetAmendmentValidatedBy")
+  purchaseOrdersCreated     PurchaseOrder[]    @relation("PurchaseOrderCreatedBy")
+  purchaseOrdersIssued      PurchaseOrder[]    @relation("PurchaseOrderIssuedBy")
+  siteProgressEntriesLogged SiteProgressEntry[] @relation("SiteProgressEntryCreatedBy")
+  siteBudgetAlertsSeen      SiteBudgetAlert[]  @relation("SiteBudgetAlertAcknowledgedBy")
   voidedDocuments           VoidDocument[]
 
   @@index([email])
@@ -551,6 +558,11 @@ model Tenant {
   costAllocations           CostAllocation[]
   cashVouchers              CashVoucher[]
   voidDocuments             VoidDocument[]
+  siteBudgets               SiteBudget[]
+  budgetAmendments          BudgetAmendment[]
+  purchaseOrders            PurchaseOrder[]
+  siteProgressEntries       SiteProgressEntry[]
+  siteBudgetAlerts          SiteBudgetAlert[]
   // Nouvelles au lot 2 : ces trois tables n'avaient aucune relation
   // Tenant avant la generalisation du moteur comptable.
   chartOfAccounts           ChartOfAccount[]
@@ -4170,6 +4182,7 @@ model Supplier {
   invoices          SupplierInvoice[]
   payments          SupplierPayment[]
 
+  purchaseOrders PurchaseOrder[]
   @@index([tenantId])
   @@index([tenantId, isActive])
   @@index([maintenanceVendorId])
@@ -4187,6 +4200,9 @@ model SupplierInvoice {
   tenantId        String                @map("tenant_id")
   supplierId      String                @map("supplier_id") @db.Uuid
   siteId          String?               @map("site_id") @db.Uuid
+  /// Bon de commande rapproche, s'il y en a un. Une facture peut arriver sans
+  /// bon (achat direct) ; un bon peut etre facture en plusieurs fois.
+  purchaseOrderId String?               @map("purchase_order_id") @db.Uuid
   invoiceDate     DateTime              @map("invoice_date")
   reference       String
   amount          Decimal               @db.Decimal(14, 2)
@@ -4202,6 +4218,7 @@ model SupplierInvoice {
   tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   supplier     Supplier             @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   site         ConstructionSite?    @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  purchaseOrder PurchaseOrder?      @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
   journalEntry JournalEntry?        @relation("SupplierInvoiceEntry", fields: [journalEntryId], references: [id], onDelete: SetNull)
   createdBy    User                 @relation("SupplierInvoiceCreatedBy", fields: [createdByUserId], references: [id])
   validatedBy  User?                @relation("SupplierInvoiceValidatedBy", fields: [validatedByUserId], references: [id])
@@ -4313,6 +4330,10 @@ model ConstructionSite {
   invoices    SupplierInvoice[]
   cashVouchers CashVoucher[]
   workPrograms WorkProgram[]
+  budgets        SiteBudget[]
+  purchaseOrders PurchaseOrder[]
+  progressEntries SiteProgressEntry[]
+  budgetAlerts   SiteBudgetAlert[]
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -4337,6 +4358,9 @@ model CostCategory {
   allocations CostAllocation[]
   cashVouchers CashVoucher[]
 
+  budgetLines        SiteBudgetLine[]
+  amendmentLines     BudgetAmendmentLine[]
+  purchaseOrderLines PurchaseOrderLine[]
   @@unique([tenantId, label])
   @@index([tenantId])
   @@map("cost_categories")
@@ -4406,4 +4430,280 @@ model CashVoucher {
   @@index([tenantId])
   @@index([siteId])
   @@map("cash_vouchers")
+}
+
+// ===========================================================================
+// LOT 3 — Budget de chantier, engagements, pilotage (PRD E5)
+// ===========================================================================
+//
+// Deux ecarts assumes avec le plan (docs/finance/PLAN-mise-en-oeuvre.md §7),
+// tous deux constates en ouvrant le lot et documentes ici plutot qu'ailleurs,
+// parce que c'est ici qu'on les lit.
+//
+// 1. LE PLAN PREVOYAIT DE REUTILISER `BudgetLineItem`. On ne le fait pas.
+//    Ce modele porte `distributionKey` NOT NULL (une cle de repartition des
+//    charges entre lots de copropriete, qui n'a aucun sens pour un chantier),
+//    `category` en chaine libre la ou il nous faut une cle etrangere vers
+//    `CostCategory`, et surtout `amountActual` : un REALISE STOCKE. Or toute
+//    la doctrine des lots precedents est qu'un cout se derive et ne se saisit
+//    jamais (principe P-4 du PRD) ; c'est meme le defaut qu'on a corrige au
+//    lot 2 sur `WorkProgram.actualCost`. Reutiliser ce modele aurait fait
+//    entrer ce defaut dans le module neuf, et aurait donne une table dont la
+//    moitie des colonnes n'a de sens que pour l'un de ses deux parents.
+//    `SiteBudgetLine` est donc un modele distinct. Le partage voulu par le
+//    plan — le composant de saisie de lignes — reste possible : partager un
+//    composant React n'oblige pas a partager une table.
+//
+// 2. LE PLAN PREVOYAIT DE NOTIFIER VIA `NotificationEvent`. Ce modele
+//    n'existe pas. Les seules notifications du depot sont le courriel et
+//    WhatsApp, configures par agence ; il n'y a aucune notification dans
+//    l'application, que le PRD exige pourtant pour l'alerte de depassement.
+//    Plutot que de batir un systeme de notification generique dont rien
+//    d'autre ne se servirait, l'alerte est un ENREGISTREMENT de premiere
+//    classe (`SiteBudgetAlert`) : datee, motivee par un seuil franchi,
+//    acquittable, et lisible depuis le tableau de bord. C'est ce que le PRD
+//    demande, sans inventer une charpente.
+
+/// Budget d'un chantier, ligne a ligne par poste de depense.
+///
+/// Un chantier n'a qu'un seul budget VALIDE a la fois — c'est le budget
+/// initial, au sens du PRD. Les brouillons, eux, peuvent coexister : on
+/// prepare, on compare, on valide.
+///
+/// Le montant total n'a PAS de colonne : il est la somme de ses lignes. Un
+/// total stocke est un total qui se desynchronise.
+model SiteBudget {
+  id                String       @id @default(uuid()) @db.Uuid
+  tenantId          String       @map("tenant_id")
+  siteId            String       @map("site_id") @db.Uuid
+  label             String
+  status            SiteBudgetStatus @default(DRAFT)
+  validatedAt       DateTime?    @map("validated_at")
+  validatedByUserId String?      @map("validated_by_user_id")
+  currency          String       @default("XOF")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  updatedAt         DateTime     @updatedAt @map("updated_at")
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site        ConstructionSite  @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  validatedBy User?             @relation("SiteBudgetValidatedBy", fields: [validatedByUserId], references: [id])
+  lines       SiteBudgetLine[]
+  amendments  BudgetAmendment[]
+  alerts      SiteBudgetAlert[]
+
+  @@index([tenantId])
+  @@index([siteId])
+  // L'unicite « un seul budget valide par chantier » est un index partiel
+  // (WHERE status = 'VALIDATED') que le DSL Prisma ne sait pas exprimer : il
+  // est pose en SQL brut dans la migration, comme au lot 2 pour le plan
+  // comptable.
+  @@map("site_budgets")
+}
+
+/// Une ligne de budget : un poste de depense, un montant prevu.
+///
+/// Pas de `amountActual` ici, a dessein : le realise d'un poste est la somme
+/// de ses imputations validees et non annulees, calculee a la lecture.
+model SiteBudgetLine {
+  id             String   @id @default(uuid()) @db.Uuid
+  budgetId       String   @map("budget_id") @db.Uuid
+  costCategoryId String   @map("cost_category_id") @db.Uuid
+  label          String
+  amountForecast Decimal  @map("amount_forecast") @db.Decimal(14, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  budget       SiteBudget   @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  costCategory CostCategory @relation(fields: [costCategoryId], references: [id], onDelete: Restrict)
+
+  @@index([budgetId])
+  @@map("site_budget_lines")
+}
+
+/// Avenant a un budget valide.
+///
+/// On ne modifie pas un budget valide : on l'amende. Le budget revise vaut
+/// l'initial plus la somme des avenants VALIDES — un avenant en brouillon ne
+/// compte pour rien, exactement comme une piece en brouillon au lot 2.
+///
+/// Un avenant ne figure pas dans la file de validation partagee du lot 2 :
+/// celle-ci ne montre que les pieces qui deplacent de l'argent (facture,
+/// reglement, piece de caisse). Un avenant deplace une PREVISION. Il se valide
+/// donc depuis l'ecran du budget, par le meme droit.
+model BudgetAmendment {
+  id                String       @id @default(uuid()) @db.Uuid
+  tenantId          String       @map("tenant_id")
+  budgetId          String       @map("budget_id") @db.Uuid
+  amendmentDate     DateTime     @map("amendment_date")
+  /// Obligatoire. Un avenant sans motif est un chiffre qu'on ne saura pas
+  /// expliquer six mois plus tard.
+  reason            String
+  status            SiteBudgetStatus @default(DRAFT)
+  createdByUserId   String       @map("created_by_user_id")
+  validatedByUserId String?      @map("validated_by_user_id")
+  validatedAt       DateTime?    @map("validated_at")
+  createdAt         DateTime     @default(now()) @map("created_at")
+
+  tenant      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  budget      SiteBudget            @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  createdBy   User                  @relation("BudgetAmendmentCreatedBy", fields: [createdByUserId], references: [id])
+  validatedBy User?                 @relation("BudgetAmendmentValidatedBy", fields: [validatedByUserId], references: [id])
+  lines       BudgetAmendmentLine[]
+
+  @@index([tenantId])
+  @@index([budgetId])
+  @@map("budget_amendments")
+}
+
+/// Une ligne d'avenant : un poste, un ecart SIGNE.
+///
+/// `amountDelta` peut etre negatif : un avenant reduit parfois une enveloppe.
+model BudgetAmendmentLine {
+  id             String   @id @default(uuid()) @db.Uuid
+  amendmentId    String   @map("amendment_id") @db.Uuid
+  costCategoryId String   @map("cost_category_id") @db.Uuid
+  amountDelta    Decimal  @map("amount_delta") @db.Decimal(14, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  amendment    BudgetAmendment @relation(fields: [amendmentId], references: [id], onDelete: Cascade)
+  costCategory CostCategory    @relation(fields: [costCategoryId], references: [id], onDelete: Restrict)
+
+  @@index([amendmentId])
+  @@map("budget_amendment_lines")
+}
+
+/// Bon de commande passe a un fournisseur pour un chantier.
+///
+/// `status` ne porte QUE le cycle de vie qu'on decide : brouillon, emis,
+/// annule. L'etat de facturation — pas facture, partiellement facture, solde —
+/// n'est PAS stocke : c'est une fonction des factures rapprochees, calculee a
+/// la lecture. Deux choses orthogonales, deux traitements differents ; melanger
+/// les deux dans une colonne, c'est se donner une valeur qui derive des que
+/// quelqu'un valide une facture par un autre chemin.
+model PurchaseOrder {
+  id              String             @id @default(uuid()) @db.Uuid
+  tenantId        String             @map("tenant_id")
+  siteId          String             @map("site_id") @db.Uuid
+  supplierId      String             @map("supplier_id") @db.Uuid
+  reference       String
+  orderDate       DateTime           @map("order_date")
+  status          PurchaseOrderStatus @default(DRAFT)
+  currency        String             @default("XOF")
+  createdByUserId String             @map("created_by_user_id")
+  issuedByUserId  String?            @map("issued_by_user_id")
+  issuedAt        DateTime?          @map("issued_at")
+  cancelledAt     DateTime?          @map("cancelled_at")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site      ConstructionSite    @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  supplier  Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdBy User                @relation("PurchaseOrderCreatedBy", fields: [createdByUserId], references: [id])
+  issuedBy  User?               @relation("PurchaseOrderIssuedBy", fields: [issuedByUserId], references: [id])
+  lines     PurchaseOrderLine[]
+  invoices  SupplierInvoice[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId])
+  @@index([siteId])
+  @@index([supplierId])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLine {
+  id             String   @id @default(uuid()) @db.Uuid
+  orderId        String   @map("order_id") @db.Uuid
+  costCategoryId String   @map("cost_category_id") @db.Uuid
+  label          String
+  amount         Decimal  @db.Decimal(14, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  order        PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  costCategory CostCategory  @relation(fields: [costCategoryId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@map("purchase_order_lines")
+}
+
+/// Avancement physique d'un chantier, date, conserve.
+///
+/// `ConstructionSite.progressPercent` devient une COPIE de la derniere saisie,
+/// tenue par le service — meme parti pris que `WorkProgram.actualCost` au
+/// lot 2, et pour la meme raison : les ecrans du lot 2 lisent deja cette
+/// colonne, et la faire disparaitre les casserait. Le controleur d'invariants
+/// verifie que la copie dit bien ce que dit la derniere saisie.
+model SiteProgressEntry {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id")
+  siteId          String   @map("site_id") @db.Uuid
+  entryDate       DateTime @map("entry_date")
+  percent         Int
+  note            String?
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site      ConstructionSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  createdBy User             @relation("SiteProgressEntryCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([tenantId])
+  @@index([siteId, entryDate])
+  @@map("site_progress_entries")
+}
+
+/// Alerte de depassement de budget, levee sur l'ENGAGE.
+///
+/// Voir l'ecart n°2 en tete de cette section : c'est la notification « dans
+/// l'application » que le PRD demande, sans charpente de notification.
+///
+/// Levee a chaque validation de piece et a chaque emission de bon, quand
+/// l'engage franchit le seuil du chantier
+/// (`ConstructionSite.budgetThresholdPercent`). Au plus une alerte NON
+/// ACQUITTEE par budget : sans cela, chaque piece validee en produirait une
+/// nouvelle et l'ecran se remplirait de la meme alerte.
+model SiteBudgetAlert {
+  id                  String    @id @default(uuid()) @db.Uuid
+  tenantId            String    @map("tenant_id")
+  siteId              String    @map("site_id") @db.Uuid
+  budgetId            String    @map("budget_id") @db.Uuid
+  /// Le seuil qui etait configure au moment ou l'alerte est nee. Fige, pour
+  /// qu'un changement de seuil ne reecrive pas l'histoire.
+  thresholdPercent    Int       @map("threshold_percent")
+  engagedAmount       Decimal   @map("engaged_amount") @db.Decimal(14, 2)
+  budgetAmount        Decimal   @map("budget_amount") @db.Decimal(14, 2)
+  raisedAt            DateTime  @default(now()) @map("raised_at")
+  acknowledgedAt      DateTime? @map("acknowledged_at")
+  acknowledgedByUserId String?  @map("acknowledged_by_user_id")
+
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site           ConstructionSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  budget         SiteBudget       @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  acknowledgedBy User?            @relation("SiteBudgetAlertAcknowledgedBy", fields: [acknowledgedByUserId], references: [id])
+
+  @@index([tenantId])
+  @@index([siteId])
+  @@map("site_budget_alerts")
+}
+
+/// Cycle de vie decide d'un bon de commande.
+///
+/// L'etat de FACTURATION (pas facture / partiellement / solde) n'est pas ici :
+/// il se derive des factures rapprochees. Voir l'en-tete de `PurchaseOrder`.
+enum PurchaseOrderStatus {
+  DRAFT
+  ISSUED
+  CANCELLED
+}
+
+/// Cycle d'un budget de chantier et de ses avenants : brouillon, puis valide.
+///
+/// Enumeration DISTINCTE de `BudgetStatus`, qui decrit le cycle d'un budget de
+/// COPROPRIETE (DRAFT, APPROVED, REVISED, CLOSED). Deux de ses valeurs n'ont
+/// aucun sens ici -- un budget de chantier ne se « revise » pas, il s'amende,
+/// et il ne se « cloture » pas, c'est le chantier qui se cloture -- et celle
+/// dont on a besoin y manque. Reutiliser cette enumeration aurait fait entrer
+/// dans le module trois etats inatteignables et un vocabulaire d'emprunt.
+enum SiteBudgetStatus {
+  DRAFT
+  VALIDATED
 }
