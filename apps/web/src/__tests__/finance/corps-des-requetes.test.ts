@@ -99,11 +99,15 @@ import {
 } from '../../services/finance-stock-inventaire-service';
 import { PropertyOwnershipType, PropertyType } from '../../types/finance-site-closing-types';
 // Lot 5, premier sous-lot : le référentiel du stock (bloc en fin de fichier).
+// Les deux listes sont renommées : le sous-lot des mouvements expose des
+// fonctions de MÊME nom, sur les mêmes routes, avec ses propres types de
+// lecture. Les deux frontières coexistent volontairement (chaque sous-lot
+// recopie la sienne) ; ici, il faut les distinguer.
 import {
   createStockItem,
   createStockLocation,
-  listStockItems,
-  listStockLocations,
+  listStockItems as listStockItemsReferentiel,
+  listStockLocations as listStockLocationsReferentiel,
   setStockValuationMethod
 } from '../../services/finance-stock-referentiel-service';
 
@@ -937,14 +941,14 @@ describe('Référentiel du stock — aucun identifiant du chemin dans le corps, 
   it('les filtres des deux listes partent en requête, jamais dans le chemin', async () => {
     const getMock = apiClient.get as unknown as ReturnType<typeof vi.fn>;
 
-    await listStockItems(TENANT, { onlyActive: true, search: '  ciment  ' });
+    await listStockItemsReferentiel(TENANT, { onlyActive: true, search: '  ciment  ' });
     expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items?onlyActive=true&search=ciment`);
 
     // Le serveur refuse la recherche VIDE (`.min(1)`) : la clé est omise.
-    await listStockItems(TENANT, { search: '   ' });
+    await listStockItemsReferentiel(TENANT, { search: '   ' });
     expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/items`);
 
-    await listStockLocations(TENANT, { kind: 'SITE' });
+    await listStockLocationsReferentiel(TENANT, { kind: 'SITE' });
     expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/locations?kind=SITE`);
   });
 });

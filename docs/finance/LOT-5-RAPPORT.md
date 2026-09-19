@@ -103,6 +103,20 @@ Deux autres textes disaient la même chose périmée : un commentaire de contrô
 
 Le service qui écrit un transfert insiste dans son propre en-tête : c'est `transferGroupId`, et lui seul, qui dit qu'il s'agit d'un déplacement et non d'une perte d'un côté suivie d'une apparition de l'autre. **Il n'était exposé nulle part.** Le champ est ajouté au contrat de lecture et rempli par les deux services ; le regroupement à l'écran reste à faire et figure dans ce qui reste ouvert.
 
+### Une page de 1 146 lignes que rien n'avait jamais exercée
+
+L'écran de paramétrage a été livré par un agent coupé avant d'écrire ses tests. Un second agent a été chargé d'écrire cette suite **et de corriger ce qu'elle révélerait**, avec pour consigne qu'un « la page était parfaite » serait un signal d'alarme. Elle en a révélé quatre, dont un vrai trou fonctionnel.
+
+**On ne pouvait plus rien désactiver sous 992 pixels.** En dessous de ce seuil, la vue rend des cartes et non un tableau : la colonne « Actions » disparaît, et les cartes n'offraient que « Corriger ». Un article ou un lieu devenait donc indésactivable sur mobile — et rien ne le remplace, puisque **aucune route ne supprime**. La donnée était piégée.
+
+**L'avertissement sur le changement d'unité criait à faux.** Il se déclenchait dès que le champ était vidé pour être retapé, affichant « changer l'unité de "sac" en "" ». C'est le seul avertissement sérieux de cet écran ; le voir mentir à chaque frappe est la meilleure façon qu'on lui apprenne à l'ignorer.
+
+**Un message d'erreur désignait le mauvais champ** — il réclamait le libellé quand c'était le chantier qui manquait.
+
+**Un avertissement était dupliqué mot pour mot** entre le tableau et la carte : extrait en constante, parce que l'une des deux copies aurait fini par laisser croire qu'on supprime.
+
+Sur les neuf exigences vérifiées, l'écran hérité était déjà correct pour cinq d'entre elles. Le reste n'aurait été découvert qu'à l'usage.
+
 ### `roundQuantity` vivait en trois copies
 
 Une par fichier du lot, chacune signalée par son agent comme une dette à remonter. Elle rejoint `roundMoneyXof` et `roundPercent` dans `money.ts`. Deux copies finissent par diverger : c'est ce qui avait donné cinq versions de la formule du coût réel avant `site-cost.ts`.
@@ -114,6 +128,8 @@ Une par fichier du lot, chacune signalée par son agent comme une dette à remon
 **Ils ont refusé d'interpréter.** L'écran du rapprochement n'attribue **aucune couleur** à l'écart, jamais de rouge, parce qu'un rouge est déjà un verdict. Et son test ne balaie pas seulement « débit » et « crédit » : il refuse aussi « perte », « vol », « anomalie », « manquant », « détournement ». Un vol et des frais de transport se ressemblent dans une soustraction ; le système montre, il ne juge pas.
 
 **Ils ont écrit des tests qui peuvent échouer.** Les fixtures du comptage portent un écart que la soustraction ne produit pas — un écran qui recalculerait tomberait. C'est la leçon du lot 4 appliquée sans qu'on la redemande.
+
+**Un agent a testé la disposition mobile, que personne ne teste.** C'est en basculant le point de rupture qu'il a trouvé le trou de désactivation. Aucune autre suite d'écran du dépôt ne le fait : `useBreakpoint` y est figé en bureau, et tout ce qui ne vit que dans les cartes échappe donc aux tests.
 
 **Un agent a trouvé un piège de test qui vaut pour tout le dépôt.** Ant Design laisse les menus déroulants déjà déployés dans le document : un `findByText` global cliquait l'option d'une ligne précédente et modifiait la mauvaise ligne, **sans que rien n'échoue**. Sa fonction retrouve le menu par son identifiant. Les autres suites à formulaires répétés peuvent porter le même défaut silencieux.
 
@@ -145,6 +161,12 @@ Une par fichier du lot, chacune signalée par son agent comme une dette à remon
 
 **Quatre bancs de l'atelier répondent aux mêmes routes d'articles et de lieux.** Chaque sous-lot a dû composer ses propres listes, faute de pouvoir importer celles d'un voisin écrit en parallèle. Résolu par l'ordre d'inscription — le référentiel gagne — plutôt que par une réécriture.
 
+**Deux services web listent les mêmes deux routes** — articles et lieux — avec des types de lecture différents, parce que chaque sous-lot a recopié sa frontière pendant que les voisins s'écrivaient. Cela se lit comme un oubli même si c'était délibéré, et un agent l'a signalé en devant renommer ses propres imports pour éviter la collision.
+
+**Aucune suite d'écran du dépôt ne teste la disposition mobile**, sauf celle du paramétrage désormais. Tout ce qui ne vit que dans les cartes — la désactivation en était — échappe aux tests.
+
+**La recherche d'articles n'a pas d'anti-rebond** : chaque frappe déclenche une requête. Il n'existe aucune convention d'anti-rebond dans les écrans des lots précédents ; c'est un choix transversal à faire une fois.
+
 **Le banc de l'atelier ignore toujours les paramètres de requête et la méthode HTTP.** Les filtres ne filtrent pas, et les paires `GET`/`POST` partageant un chemin retombent sur la liste.
 
 **La devise est incohérente dans les jeux d'essai** : 83 occurrences de `XOF`, 18 de `GNF`, 4 de `FCFA`, et `MoneyValue` affiche « FCFA » en dur. Une agence en une autre devise afficherait faux, dans tout le module.
@@ -155,16 +177,17 @@ Une par fichier du lot, chacune signalée par son agent comme une dette à remon
 
 ## 8. Chiffres
 
-|                                 |                                        |
-| ------------------------------- | -------------------------------------- |
-| Sous-lots                       | 4, gelés et ouverts l'un après l'autre |
-| Agents                          | 8 (4 services, 4 écrans)               |
-| Tables neuves                   | 6                                      |
-| Migrations                      | 1, purement additive                   |
-| Comptes opérationnels ajoutés   | 2 (311, 603)                           |
-| Tests API du paquet, en entier  | 1255, tous verts                       |
-| Parcours de bout en bout du lot | 1, 23 constats, tous tenus             |
-| Erreurs de typage préexistantes | 101 avant le lot, 97 après             |
+|                                   |                                        |
+| --------------------------------- | -------------------------------------- |
+| Sous-lots                         | 4, gelés et ouverts l'un après l'autre |
+| Agents                            | 9 (4 services, 5 écrans)               |
+| Tables neuves                     | 6                                      |
+| Migrations                        | 1, purement additive                   |
+| Comptes opérationnels ajoutés     | 2 (311, 603)                           |
+| Tests API du paquet, en entier    | 1255, tous verts                       |
+| Tests d ecran du module financier | 522, tous verts                        |
+| Parcours de bout en bout du lot   | 1, 23 constats, tous tenus             |
+| Erreurs de typage préexistantes   | 101 avant le lot, 97 après             |
 
 ---
 
