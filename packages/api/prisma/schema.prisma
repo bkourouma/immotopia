@@ -3493,6 +3493,7 @@ model ChartOfAccount {
   journalLines JournalEntryLine[]
   budgetLines  BudgetLineItem[]
 
+  costCategories CostCategory[]
   @@index([syndicateId])
   @@index([parentAccountId])
   @@index([tenantId])
@@ -4354,6 +4355,18 @@ model CostCategory {
   isActive  Boolean  @default(true) @map("is_active")
   createdAt DateTime @default(now()) @map("created_at")
 
+  /// Compte de charge du plan comptable operationnel, s'il y en a un.
+  ///
+  /// Sans lui, toute depense de chantier frappait le MEME compte, quel que
+  /// soit le poste : le grand livre ne distinguait pas le ciment de la
+  /// main-d'oeuvre. L'imputation analytique (ce poste-ci) et l'imputation
+  /// comptable etaient deux mondes separes. C'est la limite consignee au
+  /// lot 2, promise au lot 3, et tenue ici.
+  ///
+  /// Facultatif a dessein : un poste sans compte retombe sur le compte de
+  /// charge par defaut, exactement comme avant. Rien de ce qui existe ne
+  /// change de comportement du seul fait de cette colonne.
+  chartOfAccountId String? @map("chart_of_account_id") @db.Uuid
   tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   allocations CostAllocation[]
   cashVouchers CashVoucher[]
@@ -4361,6 +4374,7 @@ model CostCategory {
   budgetLines        SiteBudgetLine[]
   amendmentLines     BudgetAmendmentLine[]
   purchaseOrderLines PurchaseOrderLine[]
+  chartOfAccount ChartOfAccount? @relation(fields: [chartOfAccountId], references: [id], onDelete: SetNull)
   @@unique([tenantId, label])
   @@index([tenantId])
   @@map("cost_categories")

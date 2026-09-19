@@ -243,6 +243,85 @@ export const OPERATIONAL_ACCOUNT_SEEDS: OperationalAccountSeed[] = [
  * Appelable a chaque piece sans cout notable : au regime de croisiere, la
  * fonction ne fait qu'une lecture et ne cree rien.
  */
+/**
+ * Le compte de charge a frapper pour chaque poste de depense.
+ *
+ * ---------------------------------------------------------------------------
+ * Pourquoi cette fonction existe
+ * ---------------------------------------------------------------------------
+ *
+ * Jusqu'au 19 septembre 2026, toute depense de chantier frappait le MEME
+ * compte, quel que soit son poste : le grand livre ne distinguait pas le ciment
+ * de la main-d'oeuvre. L'imputation analytique (`CostAllocation` vers un poste)
+ * et l'imputation comptable (l'ecriture) etaient deux mondes separes. La limite
+ * etait consignee au lot 2, promise au lot 3 par son rapport, et oubliee de la
+ * specification du lot 3.
+ *
+ * Un poste peut desormais porter son compte (`CostCategory.chartOfAccountId`).
+ * Quand il en porte un, l'ecriture le frappe. Quand il n'en porte pas, elle
+ * retombe sur le compte par defaut — celui-la meme qu'avant, si bien qu'aucune
+ * donnee existante ne change de comportement.
+ *
+ * ---------------------------------------------------------------------------
+ * Deux gardes qui comptent
+ * ---------------------------------------------------------------------------
+ *
+ * Le compte designe doit appartenir a la MEME agence et a la portee
+ * operationnelle : sans cela, une ecriture d'agence pourrait frapper un compte
+ * de copropriete, et la generalisation du lot 2 aurait ouvert une porte qu'elle
+ * voulait fermer.
+ *
+ * Il doit aussi etre ACTIF. Un compte desactive porte deja des mouvements —
+ * c'est pour cela qu'on le desactive au lieu de le supprimer — mais il n'en
+ * accepte plus de nouveaux.
+ *
+ * Dans les deux cas on retombe sur le defaut plutot que de lever : une facture
+ * qui a bien eu lieu doit pouvoir s'enregistrer, meme si le parametrage d'un
+ * poste est douteux. C'est le meme parti pris que pour l'alerte de depassement,
+ * qui informe sans interdire.
+ *
+ * Une seule requete par lot, jamais une par poste.
+ */
+export async function resolveExpenseAccountsByCostCategoryTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  costCategoryIds: string[],
+  compteParDefaut: string
+): Promise<Map<string, string>> {
+  const resultat = new Map<string, string>();
+  const uniques = [...new Set(costCategoryIds)];
+  if (uniques.length === 0) {
+    return resultat;
+  }
+
+  const postes = await tx.costCategory.findMany({
+    where: { id: { in: uniques }, tenantId },
+    select: {
+      id: true,
+      chartOfAccountId: true,
+      chartOfAccount: { select: { id: true, tenantId: true, scope: true, isActive: true } }
+    }
+  });
+
+  for (const poste of postes as Array<Record<string, any>>) {
+    const compte = poste.chartOfAccount;
+    const utilisable =
+      compte && compte.tenantId === tenantId && compte.scope === OPERATIONS && compte.isActive === true;
+    resultat.set(poste.id, utilisable ? (compte.id as string) : compteParDefaut);
+  }
+
+  // Un poste introuvable — donc d'une autre agence — retombe aussi sur le
+  // defaut : l'appelant a deja verifie l'appartenance de ses imputations, et ce
+  // n'est pas a cette fonction de lever une seconde fois.
+  for (const id of uniques) {
+    if (!resultat.has(id)) {
+      resultat.set(id, compteParDefaut);
+    }
+  }
+
+  return resultat;
+}
+
 export async function ensureOperationalChartOfAccountsTx(
   tx: PrismaTransactionClient,
   tenantId: string

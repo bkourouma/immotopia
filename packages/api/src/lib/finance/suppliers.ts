@@ -45,7 +45,12 @@
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { badRequest, conflict, notFound } from '../errors';
-import { ensureOperationalChartOfAccountsTx, ensureOperationalJournalTx, postDocumentEntryTx } from './accounting';
+import {
+  ensureOperationalChartOfAccountsTx,
+  ensureOperationalJournalTx,
+  postDocumentEntryTx,
+  resolveExpenseAccountsByCostCategoryTx
+} from './accounting';
 import { appendThirdPartyMovementTx } from './ledger';
 import { syncWorkProgramCostTx } from './cost-allocation';
 import { raiseBudgetAlertIfNeededTx } from './budget-alerts';
@@ -371,6 +376,54 @@ export const validateSupplierInvoiceTx: ValidateSupplierInvoiceTx = async (
 
   const accounts = await resolveOperationalAccounts(tx, tenantId, invoice.invoiceDate);
 
+  // ---------------------------------------------------------------------
+  // Le cote CHARGE de l'ecriture suit les postes de depense imputes.
+  // ---------------------------------------------------------------------
+  //
+  // Avant le 19 septembre 2026, une facture debitait un unique compte
+  // d'achats, quels que soient les postes imputes : le grand livre ne
+  // distinguait pas le ciment de la main-d'oeuvre, et l'imputation
+  // analytique vivait a cote de l'imputation comptable sans jamais la
+  // rencontrer.
+  //
+  // Desormais, chaque poste qui porte un compte fait sa propre ligne. Les
+  // postes qui n'en portent pas retombent sur le compte d'achats, celui-la
+  // meme qu'avant — c'est pourquoi une facture SANS imputation (une
+  // prestation) produit exactement l'ecriture d'hier, a la ligne pres.
+  //
+  // La somme des imputations egale le montant de la facture : l'invariant
+  // vient d'etre verifie ci-dessus, AVANT toute ecriture. L'ecriture reste
+  // donc equilibree par construction, et le regroupement par compte ne peut
+  // pas introduire d'ecart puisqu'il redistribue les memes montants deja
+  // arrondis.
+  const lignesDeCharge: Array<{ accountId: string; debit: number; label: string }> = [];
+
+  if (allocations.length > 0) {
+    const comptesParPoste = await resolveExpenseAccountsByCostCategoryTx(
+      tx,
+      tenantId,
+      allocations.map((a: any) => a.costCategoryId),
+      accounts.achatsAccountId
+    );
+
+    const parCompte = new Map<string, number>();
+    for (const allocation of allocations as Array<Record<string, any>>) {
+      const compte = comptesParPoste.get(allocation.costCategoryId) ?? accounts.achatsAccountId;
+      const montant = roundMoneyXof(toAmountOrZero(allocation.amount));
+      parCompte.set(compte, roundMoneyXof((parCompte.get(compte) ?? 0) + montant));
+    }
+
+    for (const [compte, montant] of parCompte) {
+      lignesDeCharge.push({ accountId: compte, debit: montant, label: `Achats — ${supplier.name}` });
+    }
+  } else {
+    lignesDeCharge.push({
+      accountId: accounts.achatsAccountId,
+      debit: invoiceAmount,
+      label: `Achats — ${supplier.name}`
+    });
+  }
+
   const entry = await postDocumentEntryTx(tx, {
     tenantId,
     journalId: accounts.journalId,
@@ -380,7 +433,7 @@ export const validateSupplierInvoiceTx: ValidateSupplierInvoiceTx = async (
     documentType: 'SUPPLIER_INVOICE' as any,
     documentId: invoice.id,
     lines: [
-      { accountId: accounts.achatsAccountId, debit: invoiceAmount, label: `Achats — ${supplier.name}` },
+      ...lignesDeCharge,
       { accountId: accounts.fournisseursAccountId, credit: invoiceAmount, label: `Fournisseur — ${supplier.name}` }
     ]
   });

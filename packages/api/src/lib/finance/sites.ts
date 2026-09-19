@@ -31,7 +31,6 @@
  * c'est ce qui rend la règle « jamais supprimé » vraie par construction.
  */
 
-import type { CostCategory } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { NotFoundError, BadRequestError, ConflictError } from '../../middleware/error-middleware';
 import { toAmount, toAmountOrZero } from './types';
@@ -90,14 +89,88 @@ function toSiteRecord(row: Record<string, any>, actualCost: number): Constructio
   };
 }
 
-function toCategoryRecord(row: CostCategory, position: number): CostCategoryRecord {
+function toCategoryRecord(row: Record<string, any>, position: number): CostCategoryRecord {
+  const compte = row.chartOfAccount;
   return {
     id: row.id,
     tenantId: row.tenantId,
     label: row.label,
     position,
-    isActive: row.isActive
+    isActive: row.isActive,
+    chartOfAccountId: row.chartOfAccountId ?? null,
+    // Le NUMERO et le NOM, jamais l'identifiant seul : « 605 — Charges de
+    // chantier » se lit, « a3f1... » non. Resolu par la meme jointure que la
+    // ligne, jamais par une requete de plus.
+    chartOfAccountLabel: compte ? `${compte.accountNumber} — ${compte.accountName}` : null
   };
+}
+
+/** Jointure commune a toutes les lectures de postes : le compte, s'il y en a un. */
+const COST_CATEGORY_INCLUDE = {
+  chartOfAccount: { select: { id: true, accountNumber: true, accountName: true } }
+} as const;
+
+/**
+ * Rattache un poste de depense a un compte de charge, ou l'en detache.
+ *
+ * ---------------------------------------------------------------------------
+ * Pourquoi cette fonction existe
+ * ---------------------------------------------------------------------------
+ *
+ * C'est la dette consignee au lot 2, promise au lot 3 par son rapport, et
+ * oubliee de la specification du lot 3 : sans elle, toute depense de chantier
+ * frappe le meme compte de charge, et l'imputation analytique ne rencontre
+ * jamais l'imputation comptable.
+ *
+ * Le compte doit appartenir a la meme agence et a la portee operationnelle :
+ * un poste d'agence ne peut pas designer un compte de copropriete, sans quoi
+ * la generalisation du lot 2 aurait ouvert une porte qu'elle voulait fermer.
+ * Ici on LEVE, contrairement au moteur d'ecriture qui retombe sur le defaut :
+ * c'est un geste de parametrage, delibere, et une erreur de parametrage doit
+ * se dire au moment ou on la commet, pas six mois plus tard dans un grand
+ * livre faux.
+ *
+ * `chartOfAccountId` a `null` detache le poste : il retombe alors sur le
+ * compte par defaut.
+ */
+export async function setCostCategoryAccount(
+  tenantId: string,
+  costCategoryId: string,
+  chartOfAccountId: string | null
+): Promise<CostCategoryRecord> {
+  const poste = await prisma.costCategory.findFirst({ where: { id: costCategoryId, tenantId } });
+  if (!poste) {
+    throw new NotFoundError('Poste de dépense introuvable.');
+  }
+
+  if (chartOfAccountId !== null) {
+    const compte = await prisma.chartOfAccount.findFirst({
+      where: { id: chartOfAccountId, tenantId },
+      select: { id: true, scope: true, isActive: true }
+    });
+    if (!compte) {
+      throw new NotFoundError('Compte comptable introuvable pour cette agence.');
+    }
+    if (compte.scope !== 'OPERATIONS') {
+      throw new ConflictError(
+        'Ce compte appartient à la comptabilité de copropriété : un poste de dépense de chantier ne peut pas le désigner.'
+      );
+    }
+    if (!compte.isActive) {
+      throw new ConflictError("Ce compte est désactivé : il n'accepte plus de nouveaux mouvements.");
+    }
+  }
+
+  await prisma.costCategory.update({ where: { id: costCategoryId }, data: { chartOfAccountId } });
+
+  // On relit la liste ordonnee pour rendre le poste avec sa POSITION juste :
+  // elle se deduit de l'ordre de creation et n'a pas de colonne.
+  const postes = await fetchOrderedCostCategories(tenantId);
+  const relu = postes.find(p => p.id === costCategoryId);
+  if (!relu) {
+    throw new NotFoundError('Poste de dépense introuvable.');
+  }
+  return relu;
 }
 
 // ---------------------------------------------------------------------------
@@ -161,6 +234,7 @@ async function fetchOrderedCostCategories(tenantId: string): Promise<CostCategor
   await ensureDefaultCostCategories(tenantId);
   const rows = await prisma.costCategory.findMany({
     where: { tenantId },
+    include: COST_CATEGORY_INCLUDE,
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
   });
   return rows.map((row, index) => toCategoryRecord(row, index + 1));

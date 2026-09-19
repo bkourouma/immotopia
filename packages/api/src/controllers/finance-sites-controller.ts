@@ -6,6 +6,7 @@ import { toAmountOrZero } from '../lib/finance/types';
 import {
   createConstructionSite,
   createCostCategory,
+  setCostCategoryAccount,
   getSiteDetail,
   listConstructionSites,
   listCostCategories
@@ -24,6 +25,7 @@ import {
   createCashVoucherSchema,
   createConstructionSiteSchema,
   createCostCategorySchema,
+  setCostCategoryAccountSchema,
   listConstructionSitesQuerySchema,
   uuidPathParamSchema,
   voidCashVoucherSchema,
@@ -256,6 +258,30 @@ export const listCostCategoriesHandler = asyncHandler(async (req: Request, res: 
 // ---------------------------------------------------------------------------
 // F. Postes de dépense — création
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// PUT cost-categories/:costCategoryId/account
+//
+// Rattache un poste de depense a un compte de charge, ou l'en detache.
+//
+// C'est la dette consignee au lot 2 et promise au lot 3 : sans ce lien, toute
+// depense de chantier frappe le meme compte, et le grand livre ne distingue pas
+// le ciment de la main-d'oeuvre. Ajoutee le 19 septembre 2026.
+//
+// Droit de PARAMETRAGE (`finance.settings.manage`), comme la creation d'un
+// poste : designer le compte d'un poste engage tout ce qui s'y imputera
+// ensuite, ce n'est pas un geste de saisie.
+// ---------------------------------------------------------------------------
+
+export const setCostCategoryAccountHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = requireTenantId(req);
+  const costCategoryId = requireUuidParam(req, 'costCategoryId');
+  const body = setCostCategoryAccountSchema.parse(req.body ?? {});
+
+  const category = await setCostCategoryAccount(tenantId, costCategoryId, body.chartOfAccountId);
+
+  res.status(200).json({ success: true, data: toCostCategoryResponse(category) });
+});
 
 export const createCostCategoryHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = requireTenantId(req);

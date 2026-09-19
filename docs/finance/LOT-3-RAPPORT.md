@@ -78,7 +78,7 @@ Troisième lot, troisième fois. Le point faible de cette organisation reste le 
 | Le budget ne portait pas son total révisé                                             | L'agent des écrans, qui a refusé de le recomposer |
 | Le lien entre poste de dépense et compte comptable, promis au lot 3, n'y figurait pas | Ma propre relecture, en écrivant ce rapport       |
 
-Les quatre premiers sont corrigés. Le cinquième reste ouvert (§6).
+Les cinq sont corrigés. Le cinquième l'a été juste après la première version de ce rapport, qui le laissait ouvert : voir §6.
 
 ### La formule du réalisé était écrite cinq fois
 
@@ -126,7 +126,11 @@ Quatre fois, un agent a rendu mieux que ce qu'on lui demandait.
 
 ## 6. Ce qui reste ouvert
 
-**Le lien entre un poste de dépense et un compte du plan comptable n'existe toujours pas.** Le rapport du lot 2 l'annonçait pour le lot 3 ; ma propre spécification du lot 3 ne l'a pas repris, et personne ne l'a vu avant ce rapport. Conséquence inchangée : toute dépense de chantier impute le même compte de charge, quel que soit le poste. L'imputation analytique et l'imputation comptable restent deux mondes séparés.
+**Le lien entre un poste de dépense et un compte du plan comptable existe désormais.** Il avait été consigné au lot 2, promis au lot 3 par le rapport de ce lot, et oublié de ma spécification du lot 3 ; je l'ai découvert en écrivant ces lignes, et livré juste après.
+
+Un poste peut porter son compte de charge. Quand il en porte un, l'écriture le frappe : une facture imputée sur plusieurs postes débite désormais un compte par poste, et une pièce de caisse frappe celui de son poste. Quand il n'en porte pas, tout retombe sur le compte par défaut, exactement comme avant — aucune donnée existante ne change de comportement du seul fait de cette colonne.
+
+Deux gardes valent d'être dites. Le compte désigné doit appartenir à la même agence et à la portée opérationnelle, sans quoi une écriture d'agence pourrait frapper un compte de copropriété. Et au paramétrage on refuse un compte invalide, alors qu'au moment d'écrire on retombe sur le défaut : une erreur de paramétrage doit se dire quand on la commet, pas six mois plus tard dans un grand livre faux, mais une facture qui a bien eu lieu doit pouvoir s'enregistrer.
 
 Le reste, par ordre d'importance :
 
@@ -151,7 +155,7 @@ Le reste, par ordre d'importance :
 | Tests web                      | 405          | 441          |
 | Erreurs de typage, API         | 101          | 101          |
 | Erreurs de typage, web         | 0            | 0            |
-| Constats contre une vraie base | 42           | 39 de plus   |
+| Constats contre une vraie base | 42           | 44 de plus   |
 
 Reproduire : `npx ts-node --transpile-only packages/api/scripts/finance-e2e-lot3.ts`. Le parcours du lot 2 tient toujours ses quarante-deux constats après les modifications de ce lot.
 
@@ -159,7 +163,7 @@ Reproduire : `npx ts-node --transpile-only packages/api/scripts/finance-e2e-lot3
 
 ## 8. Vérifié contre une vraie base
 
-Le parcours crée un chantier, son budget, un avenant, un fournisseur, deux bons de commande, une facture rapprochée, deux points d'avancement, et lit le tableau de bord. Il produit **trente-neuf constats, tous tenus**, et supprime son tenant jetable derrière lui.
+Le parcours crée un chantier, son budget, un avenant, un fournisseur, deux bons de commande, une facture rapprochée, deux points d'avancement, et lit le tableau de bord. Il produit **quarante-quatre constats, tous tenus**, et supprime son tenant jetable derrière lui.
 
 Quatre d'entre eux méritent d'être cités.
 
@@ -170,6 +174,8 @@ Quatre d'entre eux méritent d'être cités.
 **Un avenant en brouillon ne compte pour rien dans le budget révisé**, et l'initial ne bouge jamais : on amende, on ne réécrit pas.
 
 **Une seule alerte non acquittée par budget.** Sans cette règle, chaque pièce validée au-delà du seuil en produirait une nouvelle et le tableau de bord se remplirait de la même alerte.
+
+**Une pièce de caisse frappe le compte de son poste**, et un poste sans compte retombe sur le compte par défaut. C'est ce dernier constat qui garantit que le lien ajouté ne change rien à ce qui existait.
 
 ---
 

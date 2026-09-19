@@ -404,6 +404,17 @@ export interface CostCategoryRecord {
   label: string;
   position: number;
   isActive: boolean;
+  /**
+   * Compte de charge du plan comptable, s'il en porte un.
+   *
+   * Ajouté le 19 septembre 2026. Sans ce lien, toute dépense de chantier
+   * frappait le même compte, quel que soit le poste : le grand livre ne
+   * distinguait pas le ciment de la main-d'œuvre. Un poste sans compte
+   * retombe sur le compte par défaut, exactement comme avant.
+   */
+  chartOfAccountId: string | null;
+  /** Numéro et nom du compte, résolus. Nuls quand le poste n'en porte pas. */
+  chartOfAccountLabel: string | null;
 }
 
 /**

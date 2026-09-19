@@ -66,7 +66,13 @@ jest.mock('../../src/lib/finance/cost-allocation', () => ({
 jest.mock('../../src/lib/finance/accounting', () => ({
   postDocumentEntryTx: (...args: any[]) => postDocumentEntryTx(...args),
   ensureOperationalJournalTx: async () => 'journal-caisse',
-  ensureOperationalChartOfAccountsTx: async () => COMPTES_OPERATIONNELS
+  ensureOperationalChartOfAccountsTx: async () => COMPTES_OPERATIONNELS,
+  // Resout le compte de charge d'un poste. La doublure rend le compte par
+  // defaut pour chaque poste : ces fichiers verifient COMMENT l'ecriture est
+  // batie, pas quel compte un poste designe — le test du resolveur lui-meme
+  // vit dans `finance.accounting.test.ts`.
+  resolveExpenseAccountsByCostCategoryTx: async (_tx: unknown, _tenantId: string, ids: string[], parDefaut: string) =>
+    new Map(ids.map(id => [id, parDefaut]))
 }));
 
 // ---------------------------------------------------------------------------

@@ -56,6 +56,9 @@ import {
 import { recordSiteProgressTx, listSiteProgress } from '../src/lib/finance/site-progress';
 import { listOpenBudgetAlerts } from '../src/lib/finance/budget-alerts';
 import { getSitesDashboard } from '../src/lib/finance/site-dashboard';
+import { setCostCategoryAccount } from '../src/lib/finance/sites';
+import { createOperationalAccountTx } from '../src/lib/finance/accounting';
+import { createCashVoucherTx, validateCashVoucherTx } from '../src/lib/finance/cash';
 
 const RUN_ID = uuidv4().slice(0, 8);
 const TENANT_SLUG = `e2e-finance-lot3-jetable-${RUN_ID}`;
@@ -500,6 +503,93 @@ async function main(): Promise<void> {
     constater('Et son alerte ouverte', true, ligne?.openAlert !== null);
 
     // -----------------------------------------------------------------------
+    // 7. Le compte de charge suit le POSTE
+    // -----------------------------------------------------------------------
+    //
+    // La dette consignee au lot 2, promise au lot 3 par son rapport, oubliee de
+    // sa specification, et tenue le 19 septembre 2026. Sans ce lien, toute
+    // depense de chantier frappait le meme compte : le grand livre ne
+    // distinguait pas le ciment de la main-d'oeuvre.
+
+    console.log('');
+    console.log('Compte de charge par poste');
+    console.log('');
+
+    const compteMainOeuvre = await prisma.$transaction(tx =>
+      createOperationalAccountTx(tx, tenantId as string, {
+        accountNumber: '661',
+        accountName: "Main-d'oeuvre de chantier",
+        accountClass: 6,
+        accountType: 'EXPENSE' as any
+      })
+    );
+
+    const posteMainOeuvre = postes.find(p => /main/i.test(p.label)) ?? postes[4];
+    const posteRattache = await setCostCategoryAccount(tenantId, posteMainOeuvre.id, compteMainOeuvre.id);
+
+    constater('Le poste porte desormais son compte', compteMainOeuvre.id, posteRattache.chartOfAccountId);
+    constater(
+      'Et il le NOMME, jamais son identifiant seul',
+      "661 — Main-d'oeuvre de chantier",
+      posteRattache.chartOfAccountLabel
+    );
+
+    // Une piece de caisse sur ce poste doit frapper CE compte, pas le defaut.
+    const pieceMainOeuvre = await prisma.$transaction(tx =>
+      createCashVoucherTx(tx, tenantId as string, {
+        siteId: chantier.id,
+        costCategoryId: posteMainOeuvre.id,
+        beneficiary: 'Equipe maçons',
+        amount: 150_000,
+        voucherDate: new Date('2026-07-10'),
+        reason: 'Salaire quinzaine',
+        createdByUserId: saisisseur.id
+      })
+    );
+    const pieceValidee = await prisma.$transaction(tx =>
+      validateCashVoucherTx(tx, tenantId as string, pieceMainOeuvre.id, dirigeant.id)
+    );
+
+    const ecriture = await prisma.journalEntry.findFirst({
+      where: { tenantId, documentType: 'CASH_VOUCHER', documentId: pieceValidee.id },
+      include: { lines: { select: { accountId: true, debit: true, credit: true } } }
+    });
+    const ligneDeCharge = ecriture?.lines.find(l => nombre(l.debit) > 0);
+
+    constater('L’ecriture de la piece frappe le compte DU POSTE', compteMainOeuvre.id, ligneDeCharge?.accountId);
+    constater('Pour le montant de la piece', 150_000, nombre(ligneDeCharge?.debit));
+
+    // Et un poste SANS compte retombe sur le defaut : c'est ce qui garantit
+    // qu'aucune donnee existante ne change de comportement.
+    const posteSansCompte = postes.find(p => p.id !== posteMainOeuvre.id) as (typeof postes)[number];
+    const pieceDefaut = await prisma.$transaction(tx =>
+      createCashVoucherTx(tx, tenantId as string, {
+        siteId: chantier.id,
+        costCategoryId: posteSansCompte.id,
+        beneficiary: 'Fournisseur divers',
+        amount: 50_000,
+        voucherDate: new Date('2026-07-11'),
+        reason: 'Petit materiel',
+        createdByUserId: saisisseur.id
+      })
+    );
+    const pieceDefautValidee = await prisma.$transaction(tx =>
+      validateCashVoucherTx(tx, tenantId as string, pieceDefaut.id, dirigeant.id)
+    );
+
+    const ecritureDefaut = await prisma.journalEntry.findFirst({
+      where: { tenantId, documentType: 'CASH_VOUCHER', documentId: pieceDefautValidee.id },
+      include: { lines: { select: { accountId: true, debit: true } } }
+    });
+    const ligneDefaut = ecritureDefaut?.lines.find(l => nombre(l.debit) > 0);
+    const compte605 = await prisma.chartOfAccount.findFirst({
+      where: { tenantId, scope: 'OPERATIONS', accountNumber: '605' },
+      select: { id: true }
+    });
+
+    constater('Un poste sans compte retombe sur le compte de charge par defaut', compte605?.id, ligneDefaut?.accountId);
+
+    // -----------------------------------------------------------------------
     // Invariants
     // -----------------------------------------------------------------------
 
@@ -507,11 +597,16 @@ async function main(): Promise<void> {
     console.log('Invariants');
     console.log('');
 
+    // Relu MAINTENANT, et non compare a la capture faite plus haut : les deux
+    // pieces de caisse de la section precedente ont fait monter le realise
+    // depuis. Comparer a une capture perimee ferait echouer un invariant qui
+    // tient, ce qui est pire qu'un invariant absent.
     const detailFinal = await getSiteDetail(tenantId, chantier.id);
+    const engagementRelu = await getSiteEngagement(tenantId, chantier.id);
     constater(
       'Le cout reel du chantier egale le realise de l’engagement',
       detailFinal.site.actualCost,
-      engageFinal.actualCost
+      engagementRelu.actualCost
     );
 
     const derniere = await prisma.siteProgressEntry.findFirst({

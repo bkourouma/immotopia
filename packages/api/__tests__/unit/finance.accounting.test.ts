@@ -36,6 +36,7 @@ jest.mock('@prisma/client', () => {
     voidDocuments: [] as Row[],
     costAllocations: [] as Row[],
     movements: [] as Row[],
+    costCategories: [] as Row[],
     paymentAllocations: [] as Row[],
     thirdPartyAccounts: [] as Row[],
     seq: 0
@@ -223,6 +224,22 @@ jest.mock('@prisma/client', () => {
     // Les affectations d'un reglement : `voidDocumentTx` les lit pour retrouver
     // les mouvements de compte de tiers qu'elles ont produits, chacun etant
     // pose sous l'identifiant de l'affectation et non sous celui du reglement.
+    // Les postes de depense, pour le resolveur de comptes de charge.
+    costCategory: {
+      findMany: jest.fn(async (args: Row) => {
+        const ids: string[] = args.where?.id?.in ?? [];
+        return store.costCategories
+          .filter((c: Row) => ids.includes(c.id) && c.tenantId === args.where?.tenantId)
+          .map((c: Row) => ({
+            id: c.id,
+            chartOfAccountId: c.chartOfAccountId ?? null,
+            chartOfAccount: c.chartOfAccountId
+              ? (store.accounts.find((a: Row) => a.id === c.chartOfAccountId) ?? null)
+              : null
+          }));
+      })
+    },
+
     supplierPaymentAllocation: {
       findMany: jest.fn(async (args: Row) => store.paymentAllocations.filter(a => matches(a, args.where)))
     },
@@ -282,6 +299,7 @@ import {
   ensureOperationalJournalTx,
   getTrialBalance,
   postDocumentEntryTx,
+  resolveExpenseAccountsByCostCategoryTx,
   voidDocumentTx
 } from '../../src/lib/finance/accounting';
 import * as accountingModule from '../../src/lib/finance/accounting';
@@ -930,5 +948,113 @@ describe('getTrialBalance', () => {
 
     expect(balance.totalBilled).toBe(150000);
     expect(balance.lines.every(l => l.accountName !== 'Fournisseurs copropriete')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveExpenseAccountsByCostCategoryTx
+//
+// La dette du lot 2, promise au lot 3 par son rapport, oubliee de sa
+// specification, et tenue le 19 septembre 2026 : sans ce lien, toute depense de
+// chantier frappait le meme compte et le grand livre ne distinguait pas le
+// ciment de la main-d'oeuvre.
+// ---------------------------------------------------------------------------
+
+describe('resolveExpenseAccountsByCostCategoryTx', () => {
+  const PAR_DEFAUT = 'compte-par-defaut';
+
+  function semerCompte(surcharges: Record<string, unknown> = {}): Record<string, any> {
+    const compte = {
+      id: `coa-${store.accounts.length + 1}`,
+      tenantId: TENANT_ID,
+      scope: 'OPERATIONS',
+      isActive: true,
+      ...surcharges
+    };
+    store.accounts.push(compte);
+    return compte;
+  }
+
+  function semerPoste(chartOfAccountId: string | null, surcharges: Record<string, unknown> = {}): Record<string, any> {
+    const poste = {
+      id: `poste-${store.costCategories.length + 1}`,
+      tenantId: TENANT_ID,
+      chartOfAccountId,
+      ...surcharges
+    };
+    store.costCategories.push(poste);
+    return poste;
+  }
+
+  it('rend le compte du poste quand il en porte un', async () => {
+    const compte = semerCompte();
+    const poste = semerPoste(compte.id);
+
+    const comptes = await resolveExpenseAccountsByCostCategoryTx(tx, TENANT_ID, [poste.id], PAR_DEFAUT);
+
+    expect(comptes.get(poste.id)).toBe(compte.id);
+  });
+
+  it('retombe sur le defaut quand le poste n en porte aucun', async () => {
+    const poste = semerPoste(null);
+
+    const comptes = await resolveExpenseAccountsByCostCategoryTx(tx, TENANT_ID, [poste.id], PAR_DEFAUT);
+
+    // C'est ce cas qui garantit qu'aucune donnee existante ne change de
+    // comportement du seul fait de la nouvelle colonne.
+    expect(comptes.get(poste.id)).toBe(PAR_DEFAUT);
+  });
+
+  it('retombe sur le defaut quand le compte designe est desactive', async () => {
+    const compte = semerCompte({ isActive: false });
+    const poste = semerPoste(compte.id);
+
+    const comptes = await resolveExpenseAccountsByCostCategoryTx(tx, TENANT_ID, [poste.id], PAR_DEFAUT);
+
+    // Un compte desactive porte deja des mouvements — c'est pour cela qu'on le
+    // desactive au lieu de le supprimer — mais il n'en accepte plus de
+    // nouveaux. On retombe plutot que de lever : une facture qui a bien eu lieu
+    // doit pouvoir s'enregistrer, meme si le parametrage d'un poste est douteux.
+    expect(comptes.get(poste.id)).toBe(PAR_DEFAUT);
+  });
+
+  it('retombe sur le defaut quand le compte releve de la copropriete', async () => {
+    const compte = semerCompte({ scope: 'SYNDIC' });
+    const poste = semerPoste(compte.id);
+
+    const comptes = await resolveExpenseAccountsByCostCategoryTx(tx, TENANT_ID, [poste.id], PAR_DEFAUT);
+
+    // Une ecriture d'agence ne doit jamais frapper un compte de copropriete :
+    // la generalisation du lot 2 aurait ouvert une porte qu'elle voulait fermer.
+    expect(comptes.get(poste.id)).toBe(PAR_DEFAUT);
+  });
+
+  it('retombe sur le defaut quand le poste appartient a une autre agence', async () => {
+    const compte = semerCompte();
+    const poste = semerPoste(compte.id, { tenantId: 'autre-agence' });
+
+    const comptes = await resolveExpenseAccountsByCostCategoryTx(tx, TENANT_ID, [poste.id], PAR_DEFAUT);
+
+    expect(comptes.get(poste.id)).toBe(PAR_DEFAUT);
+  });
+
+  it('resout plusieurs postes en UNE seule requete', async () => {
+    const compteA = semerCompte();
+    const posteA = semerPoste(compteA.id);
+    const posteB = semerPoste(null);
+    tx.costCategory.findMany.mockClear();
+
+    const comptes = await resolveExpenseAccountsByCostCategoryTx(
+      tx,
+      TENANT_ID,
+      [posteA.id, posteB.id, posteA.id],
+      PAR_DEFAUT
+    );
+
+    expect(comptes.get(posteA.id)).toBe(compteA.id);
+    expect(comptes.get(posteB.id)).toBe(PAR_DEFAUT);
+    // Une requete par lot, jamais une par poste : la lecon du compte rendu de
+    // campagne du lot 1.
+    expect(tx.costCategory.findMany).toHaveBeenCalledTimes(1);
   });
 });

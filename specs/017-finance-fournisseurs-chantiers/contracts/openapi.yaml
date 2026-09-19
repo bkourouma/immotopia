@@ -451,6 +451,50 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /tenants/{tenantId}/finance/cost-categories/{costCategoryId}/account:
+    put:
+      tags: [Chantiers]
+      summary: Rattacher un poste de depense a un compte de charge, ou l'en detacher
+      description: >
+        C'est ce lien qui fait que l'ecriture d'une depense de chantier frappe le
+        compte du POSTE plutot qu'un compte unique. Un poste sans compte retombe
+        sur le compte par defaut, exactement comme avant : aucune donnee
+        existante ne change de comportement.
+
+
+        Le compte doit appartenir a la meme agence, a la portee operationnelle,
+        et etre actif. Ici on refuse -- contrairement au moteur d'ecriture, qui
+        retombe sur le defaut : c'est un geste de parametrage delibere, et une
+        erreur de parametrage doit se dire au moment ou on la commet, pas six
+        mois plus tard dans un grand livre faux.
+
+
+        Permission `finance.settings.manage`. Ajoutee le 19 septembre 2026 :
+        dette consignee au lot 2, promise au lot 3, tenue ici.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - name: costCategoryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/SetCostCategoryAccountRequest" }
+      responses:
+        "200":
+          description: Poste de depense mis a jour
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/CostCategoryResponseWrapper" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /tenants/{tenantId}/finance/sites/{siteId}/cash-vouchers:
     post:
       tags: [PiecesDeCaisse]
@@ -1048,6 +1092,42 @@ components:
         id: { type: string, format: uuid }
         label: { type: string }
         isActive: { type: boolean }
+        chartOfAccountId:
+          {
+            type: string,
+            format: uuid,
+            nullable: true,
+            description:
+              "Compte de charge du plan comptable operationnel, quand le poste
+              en porte un. Nul sinon : la depense retombe alors sur le compte
+              par defaut. Ajoute le 19 septembre 2026 — sans ce lien, toute
+              depense de chantier frappait le meme compte et le grand livre ne
+              distinguait pas le ciment de la main-d'oeuvre.",
+          }
+        chartOfAccountLabel:
+          {
+            type: string,
+            nullable: true,
+            example: 605 — Charges de chantier,
+            description:
+              "Numero et nom du compte, resolus. Nul quand le poste n'en porte
+              pas. L'ecran affiche ce libelle, jamais l'identifiant.",
+          }
+
+    SetCostCategoryAccountRequest:
+      type: object
+      required: [chartOfAccountId]
+      properties:
+        chartOfAccountId:
+          {
+            type: string,
+            format: uuid,
+            nullable: true,
+            description:
+              "Le compte a rattacher, ou null pour detacher le poste -- il
+              retombe alors sur le compte par defaut. `null` est une VALEUR,
+              pas une absence : omettre le champ est une requete malformee.",
+          }
 
     CostCategoryResponseWrapper:
       type: object

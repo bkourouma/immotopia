@@ -12,6 +12,7 @@ import {
   createCashVoucherHandler,
   createConstructionSiteHandler,
   createCostCategoryHandler,
+  setCostCategoryAccountHandler,
   getConstructionSiteDetailHandler,
   getConstructionSiteHandler,
   getValidationQueueHandler,
@@ -63,6 +64,16 @@ router.get('/tenants/:tenantId/finance/sites/:siteId/detail', requireAccountsRea
 router.get('/tenants/:tenantId/finance/cost-categories', requireAccountsRead, listCostCategoriesHandler);
 
 router.post('/tenants/:tenantId/finance/cost-categories', requireSettingsManage, createCostCategoryHandler);
+
+// Rattache un poste de depense a un compte de charge, ou l'en detache.
+// Droit de parametrage : designer le compte d'un poste engage tout ce qui s'y
+// imputera ensuite. Ajoutee le 19 septembre 2026 — c'est la dette du lot 2,
+// promise au lot 3, et jusque-la non tenue.
+router.put(
+  '/tenants/:tenantId/finance/cost-categories/:costCategoryId/account',
+  requireSettingsManage,
+  setCostCategoryAccountHandler
+);
 
 // ---------------------------------------------------------------------------
 // Pièces de caisse

@@ -77,7 +77,12 @@ import type { PrismaTransactionClient } from '../../utils/database';
 import { NotFoundError, BadRequestError, ConflictError } from '../../middleware/error-middleware';
 import { toAmountOrZero } from './types';
 import { roundMoney } from './money';
-import { ensureOperationalChartOfAccountsTx, ensureOperationalJournalTx, postDocumentEntryTx } from './accounting';
+import {
+  ensureOperationalChartOfAccountsTx,
+  ensureOperationalJournalTx,
+  postDocumentEntryTx,
+  resolveExpenseAccountsByCostCategoryTx
+} from './accounting';
 import { syncWorkProgramCostTx } from './cost-allocation';
 import { raiseBudgetAlertIfNeededTx } from './budget-alerts';
 import type { CashVoucherRecord, CreateCashVoucherTx, ValidateCashVoucherTx } from './types-lot2';
@@ -293,6 +298,20 @@ export const validateCashVoucherTx: ValidateCashVoucherTx = async (tx, tenantId,
   const { journalId, cashAccountId, expenseAccountId } = await ensureOperationalAccountsTx(tx, tenantId, voucherYear);
 
   const amount = toAmountOrZero(voucher.amount);
+
+  // Le compte de charge suit le POSTE de la piece, quand il en porte un.
+  //
+  // Avant le 19 septembre 2026, toute depense de chantier frappait le meme
+  // compte : le grand livre ne distinguait pas le ciment de la main-d'oeuvre.
+  // Un poste sans compte retombe sur le compte par defaut, celui-la meme
+  // qu'avant — aucune donnee existante ne change de comportement.
+  const comptesParPoste = await resolveExpenseAccountsByCostCategoryTx(
+    tx,
+    tenantId,
+    [voucher.costCategoryId],
+    expenseAccountId
+  );
+  const compteDeCharge = comptesParPoste.get(voucher.costCategoryId) ?? expenseAccountId;
   // Le numero vient d'etre tire : il est forcement present ici.
   const number = formatCashVoucherNumber(voucherYear, voucherNumber) as string;
 
@@ -305,7 +324,11 @@ export const validateCashVoucherTx: ValidateCashVoucherTx = async (tx, tenantId,
     documentType: 'CASH_VOUCHER',
     documentId: voucher.id,
     lines: [
-      { accountId: expenseAccountId, debit: amount, label: `Dépense de chantier — ${site.name} — ${category.label}` },
+      {
+        accountId: compteDeCharge,
+        debit: amount,
+        label: `Dépense de chantier — ${site.name} — ${category.label}`
+      },
       { accountId: cashAccountId, credit: amount, label: `Sortie de caisse — bon ${number}` }
     ]
   });

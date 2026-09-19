@@ -133,3 +133,21 @@ export const voidCashVoucherSchema = z.object({
 });
 
 export type VoidCashVoucherInput = z.infer<typeof voidCashVoucherSchema>;
+
+// ---------------------------------------------------------------------------
+// PUT cost-categories/:costCategoryId/account
+// ---------------------------------------------------------------------------
+
+/**
+ * Rattache un poste de depense a un compte de charge, ou l'en detache.
+ *
+ * `null` detache : le poste retombe alors sur le compte par defaut. C'est une
+ * valeur, pas une absence — d'ou `nullable()` plutot qu'`optional()`. Le
+ * distinguo compte : omettre le champ serait une requete malformee, l'envoyer
+ * a `null` est un geste delibere.
+ */
+export const setCostCategoryAccountSchema = z.object({
+  chartOfAccountId: z.string().uuid('Identifiant de compte invalide.').nullable()
+});
+
+export type SetCostCategoryAccountInput = z.infer<typeof setCostCategoryAccountSchema>;
