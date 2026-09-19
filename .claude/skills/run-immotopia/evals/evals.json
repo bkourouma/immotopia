@@ -1,0 +1,26 @@
+{
+  "skill_name": "run-immotopia",
+  "evals": [
+    {
+      "id": 0,
+      "name": "diagnostic-403-finance",
+      "prompt": "je suis sur ImmoTopia en local, l'ecran Finance > Tableau de bord chantiers me met \"Impossible de charger ces donnees\". les autres ecrans marchent bien (biens, contacts, baux, tout ca). l'API tourne, je vois les logs defiler. tu peux me dire ce qui cloche et comment corriger ? par contre ne touche a rien dans la base ni dans le code pour l'instant, je veux juste comprendre. ecris-moi ton diagnostic dans diagnostic.md",
+      "expected_output": "Un diagnostic identifiant (a) l'absence de permissions FINANCE_* en base et le seed finance-permissions-seed.ts non declare dans package.json, et (b) le cache de permissions en memoire de 5 minutes dans permission-service.ts qui impose un redemarrage de l'API apres le seed. Doit mentionner qu'une reconnexion ne suffit pas.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "api-refuse-de-demarrer",
+      "prompt": "mon collegue vient de cloner immotopia et quand il lance npm run dev:api il obtient ca :\n\n  Configuration invalide : le serveur ne peut pas demarrer.\n    - JWT_SECRET : valeur d'exemple detectee : generez un secret avec `openssl rand -base64 48`\n\nil est sous windows et il n'a pas openssl. ecris-moi les instructions exactes a lui envoyer dans fix-api.md, je veux qu'il puisse copier-coller sans reflechir. ne modifie pas mon .env a moi.",
+      "expected_output": "Un fichier fix-api.md avec une commande fonctionnelle sous Windows sans openssl (typiquement node -e avec crypto.randomBytes), ciblant packages/api/.env, produisant un secret d'au moins 32 caracteres, et ne reutilisant aucune valeur de la liste noire PLACEHOLDER_SECRETS.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "runbook-restauration-dump",
+      "prompt": "on m'a envoye un dump postgres de la demo immotopia (immotopia-backup.dump, format custom). j'ai deja une base immotopia en local avec des donnees dedans que je ne veux surtout pas perdre betement. ecris-moi un script bash restore-dump.sh qui fait la restauration proprement, avec un moyen de revenir en arriere si ca tourne mal. n'execute surtout pas le script, ecris-le seulement.",
+      "expected_output": "Un script restore-dump.sh qui preserve l'ancienne base (renommage ALTER DATABASE plutot que DROP, ou dump prealable), coupe les connexions actives, utilise pg_restore pour le format custom, et verifie l'alignement avec prisma migrate status. Doit avertir que npm run db:seed est destructif et ne doit pas suivre la restauration.",
+      "files": []
+    }
+  ]
+}
