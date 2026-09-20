@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
-import { login as loginApi, logout as logoutApi, getMe, refreshToken } from '../services/auth-service';
+import { login as loginApi, logout as logoutApi, getMe } from '../services/auth-service';
 import { User, LoginCredentials, AuthContextType, TenantMembership, TenantClient } from '../types/auth-types';
-import apiClient from '../utils/api-client';
+import apiClient, { refreshSession } from '../utils/api-client';
 import { t } from '../i18n/t';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -83,27 +83,78 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Check authentication on mount
   useEffect(() => {
+    /**
+     * UN 401 SUR `/auth/me` NE VEUT PAS DIRE « PAS CONNECTÉ ».
+     *
+     * Le cookie d'accès vit quinze minutes, celui de rafraîchissement sept
+     * jours. Le minuteur qui renouvelle le premier toutes les quatorze
+     * minutes meurt avec la page : qui ferme son onglet et revient une demi-
+     * heure plus tard a donc un cookie d'accès périmé — le navigateur ne
+     * l'envoie plus du tout — et un cookie de rafraîchissement parfaitement
+     * valable.
+     *
+     * Toutes les autres requêtes s'en tirent : l'intercepteur d'`api-client`
+     * rattrape leur 401, rafraîchit la session et les rejoue. `/auth/me` en
+     * est exclue, et c'est délibéré — un visiteur anonyme sur l'écran de
+     * connexion n'a rien à rafraîchir, et une boucle serait pire. Mais
+     * l'exclusion valait aussi pour le cas d'à côté : la session vivait, et
+     * l'écran renvoyait quand même vers la connexion. « Se souvenir de moi »
+     * ne tenait pas quinze minutes.
+     *
+     * On tente donc UN rafraîchissement, une seule fois, avant de conclure.
+     * S'il échoue, c'est qu'il n'y avait vraiment plus de session, et on
+     * conclut comme avant. Le seul coût est une requête de plus pour le
+     * visiteur anonyme, sur le seul écran de connexion.
+     *
+     * Le geste est posé ICI plutôt que dans l'intercepteur : y ouvrir
+     * `/auth/me` exposerait toutes ses autres utilisations à une boucle,
+     * alors que ce démarrage-ci sait qu'il ne s'exécute qu'une fois.
+     *
+     * Il passe par `refreshSession` d'`api-client`, et non par le service —
+     * ce fichier ne doit plus jamais appeler `auth-service.refreshToken`.
+     * Les jetons sont rotés côté serveur : deux rafraîchissements concurrents
+     * présentent le même jeton, le premier le fait tourner, et le second
+     * ressemble alors à un rejeu de jeton volé, que le serveur punit d'une
+     * déconnexion complète. La trace réseau du 20 septembre 2026 a montré ce
+     * second appel partir en 401, à côté du premier en 200.
+     */
     const checkAuth = async () => {
-      try {
+      const lire = async (): Promise<void> => {
         const response = await getMe();
         if (response.success && response.user) {
           setUser(response.user);
           setIsAuthenticated(true);
-        } else {
-          setUser(null);
-          setIsAuthenticated(false);
+          return;
         }
+        setUser(null);
+        setIsAuthenticated(false);
+      };
+
+      try {
+        await lire();
       } catch (error: any) {
-        // Silently handle 401 errors - user is just not authenticated
-        if (error.response?.status === 401) {
-          setUser(null);
-          setIsAuthenticated(false);
+        const jetonExpire = error.response?.status === 401;
+
+        // Une seule tentative, et elle ne peut pas boucler : `checkAuth` ne
+        // s'exécute qu'au montage, et `/auth/refresh` est elle-même exclue
+        // du rattrapage de l'intercepteur.
+        if (jetonExpire) {
+          try {
+            await refreshSession();
+            await lire();
+            return;
+          } catch {
+            // Le rafraîchissement a échoué : il n'y avait pas de session à
+            // reprendre. On retombe sur le comportement d'avant, qui est le
+            // bon dans ce cas — et on ne journalise rien, c'est la situation
+            // ordinaire d'un visiteur qui arrive sans être connecté.
+          }
         } else {
-          // Only log non-401 errors
           console.error('Auth check error:', error);
-          setUser(null);
-          setIsAuthenticated(false);
         }
+
+        setUser(null);
+        setIsAuthenticated(false);
       } finally {
         setIsLoading(false);
       }
@@ -129,7 +180,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const interval = setInterval(
       async () => {
         try {
-          await refreshToken();
+          await refreshSession();
         } catch (error: any) {
           // Only logout if refresh fails and we're still authenticated
           // Don't logout if it's just a 401 (already logged out)
@@ -185,7 +236,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const refresh = async (): Promise<void> => {
     try {
-      await refreshToken();
+      await refreshSession();
     } catch (error: any) {
       // Only logout if we're actually authenticated
       // Don't logout on 401 if we're already logged out

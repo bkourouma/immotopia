@@ -65,7 +65,18 @@ apiClient.interceptors.request.use(
  */
 let refreshPromise: Promise<void> | null = null;
 
-function refreshSession(): Promise<void> {
+/**
+ * EXPORTÉE, et c'est le seul rafraîchissement que l'application doit appeler.
+ *
+ * `auth-service.refreshToken()` poste directement sur `/auth/refresh` et ne
+ * partage rien : deux appels simultanés — le minuteur de quatorze minutes et
+ * la reprise de session au démarrage, par exemple — présentent le même jeton,
+ * le serveur en rote un à la première réponse, et la seconde ressemble alors
+ * à un rejeu de jeton vole. Le serveur deconnecte, entierement.
+ *
+ * Passer par ici fait converger tous les appelants sur la même promesse.
+ */
+export function refreshSession(): Promise<void> {
   if (!refreshPromise) {
     refreshPromise = apiClient
       .post('/auth/refresh')
