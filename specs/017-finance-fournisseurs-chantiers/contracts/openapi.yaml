@@ -918,6 +918,21 @@ components:
         createdByUserId: { type: string, format: uuid }
         validatedByUserId: { type: string, format: uuid, nullable: true }
         validatedAt: { type: string, format: date-time, nullable: true }
+        # Ajout additif du 20 septembre 2026 : absent de `required`, jamais
+        # retiré ni retypé. Seule la LISTE (`GET .../suppliers/{supplierId}/
+        # invoices`) le calcule et le pose ; les autres réponses qui portent
+        # ce schéma (création, validation, détail) ne l'émettent pas. `null`
+        # pour une facture qui n'est pas VALIDATED — aucune dette constatée.
+        remainingPayable:
+          type: number
+          nullable: true
+          description: >
+            Ce qui reste à payer sur la facture : `amount` diminué des
+            règlements VALIDÉS non annulés qui l'affectent, et des retenues
+            de garantie encore DÉTENUES posées sur elle (une retenue peut
+            solder le reste dû sans aucun versement). Ajouté après la
+            recette du 20 septembre 2026 : une facture entièrement soldée
+            restait proposée au règlement, faute de ce chiffre.
 
     SupplierInvoiceResponseWrapper:
       type: object

@@ -73,6 +73,14 @@ const costAllocationFindMany = jest.fn();
 const thirdPartyAccountFindUniqueOrThrow = jest.fn();
 const supplierPaymentFindUniqueOrThrow = jest.fn();
 const voidDocumentFindUniqueOrThrow = jest.fn();
+// Le reste dû d'une facture VALIDÉE (`resolveRemainingPayableByInvoice`,
+// ajout du 20 septembre 2026) lit les règlements qui l'affectent, les
+// annulations de ces règlements, et les retenues de garantie encore
+// détenues. Trois doublures de plus, sans quoi la liste des factures d'un
+// fournisseur qui en compte une VALIDÉE répondrait 500.
+const supplierPaymentAllocationFindMany = jest.fn();
+const retentionGuaranteeFindMany = jest.fn();
+const voidDocumentFindMany = jest.fn();
 
 /**
  * Le contrôleur ouvre ses transactions via `prisma.$transaction(tx => ...)`
@@ -104,11 +112,18 @@ function fakePrismaClient() {
     supplierPayment: {
       findUniqueOrThrow: (...args: any[]) => supplierPaymentFindUniqueOrThrow(...args)
     },
+    supplierPaymentAllocation: {
+      findMany: (...args: any[]) => supplierPaymentAllocationFindMany(...args)
+    },
+    retentionGuarantee: {
+      findMany: (...args: any[]) => retentionGuaranteeFindMany(...args)
+    },
     thirdPartyAccount: {
       findUniqueOrThrow: (...args: any[]) => thirdPartyAccountFindUniqueOrThrow(...args)
     },
     voidDocument: {
-      findUniqueOrThrow: (...args: any[]) => voidDocumentFindUniqueOrThrow(...args)
+      findUniqueOrThrow: (...args: any[]) => voidDocumentFindUniqueOrThrow(...args),
+      findMany: (...args: any[]) => voidDocumentFindMany(...args)
     }
   };
 }
@@ -226,6 +241,11 @@ beforeEach(() => {
   // lui-meme. `clearAllMocks` remet la doublure a `undefined`, ce qui ferait
   // echouer le `.map` du gestionnaire.
   constructionSiteFindMany.mockResolvedValue([]);
+  // Par defaut, aucun reglement ni retenue a soustraire du reste du : chaque
+  // cas qui en attend un le dit lui-meme (`resolveRemainingPayableByInvoice`).
+  supplierPaymentAllocationFindMany.mockResolvedValue([]);
+  retentionGuaranteeFindMany.mockResolvedValue([]);
+  voidDocumentFindMany.mockResolvedValue([]);
 });
 
 // ---------------------------------------------------------------------------
@@ -405,6 +425,11 @@ describe('GET /tenants/:tenantId/finance/suppliers/:supplierId/invoices', () => 
     expect(response.status).toBe(200);
     expect(response.body.data).toHaveLength(1);
     expect(response.body.data[0].amount).toBe(500_000);
+    // Une facture DRAFT n'a constaté aucune dette : son reste dû n'a pas de
+    // sens (`resolveRemainingPayableByInvoice`), et aucune requête de plus
+    // n'a été faite pour le deviner.
+    expect(response.body.data[0].remainingPayable).toBeNull();
+    expect(supplierPaymentAllocationFindMany).not.toHaveBeenCalled();
   });
 
   it('renvoie 404 quand le fournisseur est inexistant', async () => {
@@ -414,6 +439,65 @@ describe('GET /tenants/:tenantId/finance/suppliers/:supplierId/invoices', () => 
 
     expect(response.status).toBe(404);
     expect(supplierInvoiceFindMany).not.toHaveBeenCalled();
+  });
+
+  // Recette du 20 septembre 2026 : `FRS-QA-001`, réglée depuis mars, restait
+  // proposée au règlement — un second règlement de 28 000 000 avait été
+  // saisi dessus en doublon. `remainingPayable` doit dire 0 pour que l'écran
+  // cesse de la proposer.
+  it('rend un reste dû nul pour une facture VALIDÉE entièrement réglée par un règlement validé', async () => {
+    supplierFindFirst.mockResolvedValue({ id: SUPPLIER_A });
+    supplierInvoiceFindMany.mockResolvedValue([invoiceRow({ status: 'VALIDATED', amount: 500_000 })]);
+    supplierPaymentAllocationFindMany.mockResolvedValue([
+      { invoiceId: INVOICE_A, amount: 500_000, paymentId: 'payment-1' }
+    ]);
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/invoices`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data[0].remainingPayable).toBe(0);
+  });
+
+  // Nuance explicitement demandée en recette : une facture PARTIELLEMENT
+  // réglée doit rester proposée, puisqu'il reste à payer.
+  it('rend le reste dû exact pour une facture VALIDÉE partiellement réglée', async () => {
+    supplierFindFirst.mockResolvedValue({ id: SUPPLIER_A });
+    supplierInvoiceFindMany.mockResolvedValue([invoiceRow({ status: 'VALIDATED', amount: 500_000 })]);
+    supplierPaymentAllocationFindMany.mockResolvedValue([
+      { invoiceId: INVOICE_A, amount: 200_000, paymentId: 'payment-1' }
+    ]);
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/invoices`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data[0].remainingPayable).toBe(300_000);
+  });
+
+  it('ignore les affectations dont le règlement a été annulé : la facture reste due en entier', async () => {
+    supplierFindFirst.mockResolvedValue({ id: SUPPLIER_A });
+    supplierInvoiceFindMany.mockResolvedValue([invoiceRow({ status: 'VALIDATED', amount: 500_000 })]);
+    supplierPaymentAllocationFindMany.mockResolvedValue([
+      { invoiceId: INVOICE_A, amount: 500_000, paymentId: 'payment-annule' }
+    ]);
+    voidDocumentFindMany.mockResolvedValue([{ documentId: 'payment-annule' }]);
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/invoices`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data[0].remainingPayable).toBe(500_000);
+  });
+
+  // Nuance retenue de garantie, explicitement signalée en recette : elle
+  // peut solder le reste dû sans aucun versement.
+  it('une retenue de garantie DÉTENUE solde le reste dû sans aucun règlement', async () => {
+    supplierFindFirst.mockResolvedValue({ id: SUPPLIER_A });
+    supplierInvoiceFindMany.mockResolvedValue([invoiceRow({ status: 'VALIDATED', amount: 500_000 })]);
+    retentionGuaranteeFindMany.mockResolvedValue([{ sourceId: INVOICE_A, amount: 500_000 }]);
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/invoices`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data[0].remainingPayable).toBe(0);
   });
 });
 

@@ -10,6 +10,7 @@ import {
   validateSupplierInvoiceTx
 } from '../lib/finance/suppliers';
 import { resolveRange } from '../lib/finance/schemas';
+import { roundMoneyXof } from '../lib/finance/money';
 import { toAmount, toAmountOrZero } from '../lib/finance/types';
 import type { SupplierInvoiceRecord, SupplierPaymentRecord, SupplierRecord } from '../lib/finance/types-lot2';
 import {
@@ -161,6 +162,17 @@ interface SupplierInvoiceResponseInput {
   createdByUserId: string;
   validatedByUserId: string | null;
   validatedAt: Date | null;
+  /**
+   * Ajout additif du 20 septembre 2026 : ce qu'il reste à payer sur la
+   * facture (`resolveRemainingPayableByInvoice`, plus bas). Optionnel et
+   * `undefined` par défaut : seule la LISTE (`listSupplierInvoicesHandler`)
+   * le calcule et le pose — la recette du 20 septembre 2026 a montré qu'une
+   * facture soldée depuis mars restait proposée au règlement, faute de ce
+   * chiffre. Les autres réponses (création, validation, détail) ne le
+   * portent pas, et le contrat (`SupplierInvoice`, `contracts/openapi.yaml`)
+   * le décrit comme tel — un ajout, jamais un champ retypé ou retiré.
+   */
+  remainingPayable?: number | null;
 }
 
 function serializeSupplierInvoice(input: SupplierInvoiceResponseInput) {
@@ -185,19 +197,22 @@ function toSupplierInvoiceResponseFromRecord(invoice: SupplierInvoiceRecord) {
 }
 
 /** Sérialise une ligne `SupplierInvoice` lue directement en base (montant en `Decimal`). */
-function toSupplierInvoiceResponseFromRow(row: {
-  id: string;
-  supplierId: string;
-  siteId: string | null;
-  invoiceDate: Date;
-  reference: string;
-  amount: unknown;
-  currency: string;
-  status: string;
-  createdByUserId: string;
-  validatedByUserId: string | null;
-  validatedAt: Date | null;
-}) {
+function toSupplierInvoiceResponseFromRow(
+  row: {
+    id: string;
+    supplierId: string;
+    siteId: string | null;
+    invoiceDate: Date;
+    reference: string;
+    amount: unknown;
+    currency: string;
+    status: string;
+    createdByUserId: string;
+    validatedByUserId: string | null;
+    validatedAt: Date | null;
+  },
+  remainingPayable: number | null = null
+) {
   return serializeSupplierInvoice({
     id: row.id,
     supplierId: row.supplierId,
@@ -209,8 +224,91 @@ function toSupplierInvoiceResponseFromRow(row: {
     status: row.status,
     createdByUserId: row.createdByUserId,
     validatedByUserId: row.validatedByUserId,
-    validatedAt: row.validatedAt
+    validatedAt: row.validatedAt,
+    remainingPayable
   });
+}
+
+// ---------------------------------------------------------------------------
+// Reste dû, par facture — lot de requêtes, jamais une par ligne
+// ---------------------------------------------------------------------------
+
+/**
+ * Ce qui reste à payer sur chaque facture `VALIDATED` d'un lot, en deux
+ * requêtes au plus — même discipline que `nomParChantier` juste au-dessus.
+ *
+ * Reprend le calcul de `resolveSupplierInvoiceSource`
+ * (`lib/finance/retentions.ts`), qui pose la même question pièce par pièce
+ * pour poser une retenue de garantie : la dette baisse par un règlement
+ * VALIDÉ et non annulé, et par une retenue de garantie encore DÉTENUE
+ * (`HELD`) — une retenue LIBÉRÉE redevient exigible et ne compte donc plus
+ * ici. Une facture qui n'est pas `VALIDATED` n'a constaté aucune dette : son
+ * reste dû n'a pas de sens et vaut `null`, sans aucune requête.
+ *
+ * Pourquoi ce calcul ne vit pas dans `retentions.ts` : cette fonction lit
+ * hors transaction, pour un LOT de factures — l'inverse exact de
+ * `resolveSupplierInvoiceSource`, qui lit dans une transaction, une seule
+ * pièce, comme verrou avant écriture. Les deux répondent à la même question
+ * pour deux usages différents ; les fusionner aurait fait porter à l'une la
+ * contrainte de l'autre.
+ */
+async function resolveRemainingPayableByInvoice(
+  tenantId: string,
+  invoices: Array<{ id: string; amount: unknown; status: string }>
+): Promise<Map<string, number | null>> {
+  const result = new Map<string, number | null>();
+  const facturesValidees = invoices.filter(invoice => invoice.status === 'VALIDATED');
+  for (const invoice of invoices) {
+    if (invoice.status !== 'VALIDATED') {
+      result.set(invoice.id, null);
+    }
+  }
+  if (facturesValidees.length === 0) {
+    return result;
+  }
+
+  const invoiceIds = facturesValidees.map(invoice => invoice.id);
+
+  const [affectations, retenues] = await Promise.all([
+    prisma.supplierPaymentAllocation.findMany({
+      where: { invoiceId: { in: invoiceIds }, payment: { validatedAt: { not: null } } },
+      select: { invoiceId: true, amount: true, paymentId: true }
+    }),
+    prisma.retentionGuarantee.findMany({
+      where: { tenantId, sourceType: 'SUPPLIER_INVOICE', sourceId: { in: invoiceIds }, status: 'HELD' },
+      select: { sourceId: true, amount: true }
+    })
+  ]);
+
+  const paiementIds = [...new Set(affectations.map((a: any) => a.paymentId))] as string[];
+  const annulations = paiementIds.length
+    ? await prisma.voidDocument.findMany({
+        where: { tenantId, documentType: 'SUPPLIER_PAYMENT' as any, documentId: { in: paiementIds } },
+        select: { documentId: true }
+      })
+    : [];
+  const reglementsAnnules = new Set(annulations.map((a: any) => a.documentId));
+
+  const dejaRegle = new Map<string, number>();
+  for (const affectation of affectations as Array<{ invoiceId: string; amount: unknown; paymentId: string }>) {
+    if (reglementsAnnules.has(affectation.paymentId)) continue;
+    const precedent = dejaRegle.get(affectation.invoiceId) ?? 0;
+    dejaRegle.set(affectation.invoiceId, precedent + toAmountOrZero(affectation.amount as any));
+  }
+
+  const retenu = new Map<string, number>();
+  for (const retenue of retenues as Array<{ sourceId: string; amount: unknown }>) {
+    const precedent = retenu.get(retenue.sourceId) ?? 0;
+    retenu.set(retenue.sourceId, precedent + toAmountOrZero(retenue.amount as any));
+  }
+
+  for (const invoice of facturesValidees) {
+    const montant = toAmountOrZero(invoice.amount as any);
+    const reste = montant - (dejaRegle.get(invoice.id) ?? 0) - (retenu.get(invoice.id) ?? 0);
+    result.set(invoice.id, Math.max(0, roundMoneyXof(reste)));
+  }
+
+  return result;
 }
 
 /**
@@ -401,10 +499,18 @@ export const listSupplierInvoicesHandler = asyncHandler(async (req: Request, res
       : [];
   const nomParChantier = new Map(sites.map(site => [site.id, site.name]));
 
+  // Ajout additif du 20 septembre 2026 : le reste dû, pour que l'écran de
+  // règlement (`FactureFournisseur.tsx`) cesse de proposer une facture déjà
+  // soldée — voir `resolveRemainingPayableByInvoice` plus haut.
+  const resteParFacture = await resolveRemainingPayableByInvoice(
+    tenantId,
+    invoices.map((row: any) => ({ id: row.id, amount: row.amount, status: row.status }))
+  );
+
   res.status(200).json({
     success: true,
     data: invoices.map((row: any) => ({
-      ...toSupplierInvoiceResponseFromRow(row),
+      ...toSupplierInvoiceResponseFromRow(row, resteParFacture.get(row.id) ?? null),
       siteLabel: row.siteId ? (nomParChantier.get(row.siteId) ?? null) : null
     }))
   });

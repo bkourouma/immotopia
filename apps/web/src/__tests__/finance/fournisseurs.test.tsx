@@ -526,6 +526,73 @@ describe('Facture fournisseur — validation et annulation', () => {
   });
 });
 
+describe('Règlement — factures à régler', () => {
+  beforeEach(() => {
+    listSuppliers.mockResolvedValue([fournisseur({ id: 'frs-01', kind: 'MATERIALS' })]);
+  });
+
+  // Recette du 20 septembre 2026 : `FRS-QA-001`, réglée depuis mars, restait
+  // proposée au règlement, et un second règlement de 28 000 000 avait été
+  // saisi dessus en doublon.
+  it('ne propose plus une facture VALIDÉE déjà soldée (reste dû nul)', async () => {
+    listSupplierInvoices.mockResolvedValue([
+      facture({
+        id: 'fact-soldee',
+        status: 'VALIDATED',
+        reference: 'FRS-QA-001',
+        amount: 28_000_000,
+        remainingPayable: 0
+      })
+    ]);
+    mountFacture('/tenant/agence-1/finance/factures-fournisseurs?fournisseur=frs-01');
+
+    await screen.findByText('Règlement', {}, { timeout: 8000 });
+    expect(
+      await screen.findByText('Aucune facture validée pour ce fournisseur : un règlement ici sera un acompte.')
+    ).toBeInTheDocument();
+    // La facture reste visible dans le TABLEAU des factures (ce n'est pas le
+    // sujet ici) ; c'est la section « Factures à régler », elle, qui ne doit
+    // plus lui proposer de case à cocher.
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+  });
+
+  // Nuance explicitement exigée : il reste à payer, la facture doit rester
+  // proposée — et l'affectation par défaut doit se plafonner au reste dû,
+  // pas au montant total de la facture.
+  it('garde une facture VALIDÉE partiellement réglée, affectée par défaut à son reste dû', async () => {
+    listSupplierInvoices.mockResolvedValue([
+      facture({
+        id: 'fact-partielle',
+        status: 'VALIDATED',
+        reference: 'FRS-2026-0202',
+        amount: 1_200_000,
+        remainingPayable: 400_000
+      })
+    ]);
+    const user = userEvent.setup({ delay: null });
+    mountFacture('/tenant/agence-1/finance/factures-fournisseurs?fournisseur=frs-01');
+
+    await screen.findByText('Règlement', {}, { timeout: 8000 });
+    const caseACocher = await screen.findByRole('checkbox', { name: /FRS-2026-0202/ });
+    await user.click(caseACocher);
+
+    const champMontant = screen.getByLabelText('Montant affecté à FRS-2026-0202');
+    expect(champMontant).toHaveValue('400 000');
+  });
+
+  // Un champ absent (ancien cache, mock incomplet) ne doit jamais faire
+  // disparaître une dette réelle en silence.
+  it('garde une facture VALIDÉE dont le reste dû est inconnu (champ absent)', async () => {
+    listSupplierInvoices.mockResolvedValue([
+      facture({ id: 'fact-sans-reste', status: 'VALIDATED', reference: 'FRS-2026-0303', amount: 900_000 })
+    ]);
+    mountFacture('/tenant/agence-1/finance/factures-fournisseurs?fournisseur=frs-01');
+
+    await screen.findByText('Règlement', {}, { timeout: 8000 });
+    expect(await screen.findByRole('checkbox', { name: /FRS-2026-0303/ })).toBeInTheDocument();
+  });
+});
+
 describe('Règlement — acompte sans facture', () => {
   it('n’est pas traité comme une erreur : l’écran l’annonce, il ne le bloque pas', async () => {
     listSuppliers.mockResolvedValue([
@@ -564,6 +631,56 @@ describe('Règlement — acompte sans facture', () => {
       method: 'BANK_TRANSFER',
       allocations: []
     });
+  });
+});
+
+describe('Règlement — avertissement avant de valider un règlement déjà soldé', () => {
+  // Constat de recette du 20 septembre 2026 : `FRS-QA-001`, déjà soldée,
+  // avait reçu un second règlement en doublon. La saisie d'un règlement
+  // avant qu'un autre ne solde la même facture est un cas légitime (deux
+  // gestionnaires peuvent régler la même facture sans se concerter) : ce
+  // règlement doit donc pouvoir se valider quand même — mais pas sans que
+  // l'utilisateur en soit averti.
+  it('avertit, sans bloquer, quand un règlement en brouillon vise une facture déjà soldée', async () => {
+    listSuppliers.mockResolvedValue([fournisseur({ id: 'frs-01', kind: 'MATERIALS' })]);
+    listSupplierInvoices.mockResolvedValue([
+      facture({
+        id: 'fact-deja-soldee',
+        status: 'VALIDATED',
+        reference: 'FRS-QA-001',
+        amount: 28_000_000,
+        remainingPayable: 0
+      })
+    ]);
+    createSupplierPayment.mockResolvedValue(
+      reglement({
+        id: 'regl-doublon',
+        supplierId: 'frs-01',
+        amount: 28_000_000,
+        allocations: [{ invoiceId: 'fact-deja-soldee', invoiceReference: 'FRS-QA-001', amount: 28_000_000 }]
+      })
+    );
+    const user = userEvent.setup({ delay: null });
+    mountFacture('/tenant/agence-1/finance/factures-fournisseurs?fournisseur=frs-01');
+
+    await screen.findByText('Règlement', {}, { timeout: 8000 });
+    await user.type(screen.getByLabelText('Montant du règlement'), '28000000');
+    await user.click(screen.getByLabelText('Mode de règlement'));
+    await user.click(await screen.findByText('Virement bancaire'));
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le règlement' }));
+
+    await waitFor(() => expect(createSupplierPayment).toHaveBeenCalledTimes(1));
+
+    // L'alerte est visible directement dans la liste — AVANT tout clic sur
+    // « Valider », pas seulement dans la boîte de confirmation.
+    expect(await screen.findByText(/Déjà réglée\(s\) ou dépassée\(s\)/)).toBeInTheDocument();
+
+    // Le bouton « Valider » reste actif : un avertissement, pas un refus.
+    const boutonValider = screen.getByRole('button', { name: 'Valider' });
+    expect(boutonValider).not.toBeDisabled();
+
+    await user.click(boutonValider);
+    expect(await screen.findByText(/risque de payer deux fois la même facture/)).toBeInTheDocument();
   });
 });
 

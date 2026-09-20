@@ -124,6 +124,17 @@ export interface SupplierInvoice {
   currency: string;
   status: DocumentStatus;
   validatedAt: string | null;
+  /**
+   * Ce qui reste à payer sur la facture — `amount` diminué des règlements
+   * VALIDÉS non annulés et des retenues de garantie encore DÉTENUES (une
+   * retenue peut solder le reste dû sans aucun versement). `null` quand la
+   * facture n'est pas `VALIDATED` (aucune dette constatée) ou que l'appel
+   * qui a rendu cette facture ne le calcule pas (seule la LISTE
+   * — `listSupplierInvoices` — le fait ; ajout additif du 20 septembre
+   * 2026). Champ optionnel exprès : un ancien cache ou un mock qui ne le
+   * porte pas ne doit pas être lu comme « soldée ».
+   */
+  remainingPayable?: number | null;
 }
 
 /**

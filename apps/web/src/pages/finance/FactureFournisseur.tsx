@@ -441,7 +441,17 @@ export const FactureFournisseur: React.FC = () => {
   // Règlement
   // ---------------------------------------------------------------------
 
-  const facturesReglabes = listeFactures.filter(f => f.status === 'VALIDATED');
+  // Une facture déjà SOLDÉE (reste dû nul) ne se propose plus au règlement —
+  // recette du 20 septembre 2026 : `FRS-QA-001`, réglée depuis mars, restait
+  // proposée, et un second règlement de 28 000 000 avait été saisi dessus en
+  // doublon. Une facture PARTIELLEMENT réglée reste proposée (il reste à
+  // payer), et c'est bien tout l'enjeu : `remainingPayable > 0`, pas
+  // `=== amount`. `remainingPayable == null` (absent ou inconnu) laisse la
+  // facture visible — un champ qui manquerait ne doit jamais faire
+  // disparaître une dette réelle en silence.
+  const facturesReglabes = listeFactures.filter(
+    f => f.status === 'VALIDATED' && (f.remainingPayable == null || f.remainingPayable > 0)
+  );
 
   const [dateReglement, setDateReglement] = useState(() => dayjs());
   const [montantReglement, setMontantReglement] = useState<number | null>(null);
@@ -469,7 +479,10 @@ export const FactureFournisseur: React.FC = () => {
   const basculerFacture = (facture: SupplierInvoice, cochee: boolean) => {
     setSelection(prev => {
       const next = { ...prev };
-      if (cochee) next[facture.id] = facture.amount;
+      // Le reste dû, pas le montant total de la facture : une facture
+      // partiellement réglée ne doit pas proposer par défaut une affectation
+      // qui dépasse ce qu'il reste à payer.
+      if (cochee) next[facture.id] = facture.remainingPayable ?? facture.amount;
       else delete next[facture.id];
       return next;
     });
@@ -523,6 +536,51 @@ export const FactureFournisseur: React.FC = () => {
       message.error(err?.response?.data?.message || t('La validation a échoué.'));
     }
   };
+
+  /**
+   * Références des factures visées par ce règlement en brouillon qui sont
+   * déjà soldées, ou que ce règlement affecterait au-delà de leur reste dû.
+   *
+   * **AVERTIT, ne bloque pas** (contrairement au dépassement de la somme du
+   * règlement lui-même, plus haut, qui désactive le bouton) : un règlement
+   * saisi avant qu'un AUTRE règlement ne solde la même facture entre-temps
+   * est un cas légitime — deux gestionnaires peuvent régler la même facture
+   * sans se concerter, et l'un des deux règlements devient un doublon sans
+   * qu'aucune saisie n'ait été fautive. Le refuser purement et simplement
+   * empêcherait aussi de corriger : la manière de sortir de ce cas, c'est
+   * justement de NE PAS valider ce règlement (et de l'annuler si besoin),
+   * ce qu'un refus au clic ne permettrait pas de décider en connaissance de
+   * cause.
+   *
+   * Relit `listeFactures`, donc l'état COURANT des factures — pas celui
+   * qu'elles avaient quand le règlement a été saisi — puisque c'est
+   * justement un changement survenu depuis (un autre règlement validé
+   * entre-temps) qui rend celui-ci dangereux à son tour.
+   *
+   * `remainingPayable == null` (facture non retrouvée, ou champ absent) ne
+   * déclenche aucune alerte : on n'avertit que sur ce qu'on sait vraiment,
+   * jamais sur une supposition.
+   */
+  const referencesRisqueesDuReglement = (reglement: SupplierPayment): string[] => {
+    const references: string[] = [];
+    for (const affectation of reglement.allocations) {
+      const facture = listeFactures.find(f => f.id === affectation.invoiceId);
+      if (!facture || facture.remainingPayable == null) continue;
+      const dejaSoldee = facture.remainingPayable <= 0;
+      const depasseLeReste = affectation.amount > facture.remainingPayable;
+      if (dejaSoldee || depasseLeReste) {
+        references.push(affectation.invoiceReference);
+      }
+    }
+    return references;
+  };
+
+  /** Le même message, qu'il apparaisse dans la ligne ou dans la boîte de confirmation. */
+  const messageRisqueReglement = (references: string[]): string =>
+    t(
+      'Attention : {{references}} déjà réglée(s) ou dépassée(s) par ce règlement — le valider risque de payer deux fois la même facture.',
+      { references: references.join(', ') }
+    );
 
   /**
    * Annule un règlement validé, par une pièce d'annulation liée.
@@ -725,6 +783,15 @@ export const FactureFournisseur: React.FC = () => {
             </div>
 
             <Title level={5}>{t('Imputations au chantier')}</Title>
+            {/* Un seul avertissement pour toutes les lignes : chacune choisit
+                son propre chantier, mais la règle est la même partout. Même
+                modèle que la sortie de stock (Stock.tsx). */}
+            <Text
+              type="secondary"
+              style={{ display: 'block', marginBottom: 'var(--space-3)', fontSize: 'var(--font-size-sm)' }}
+            >
+              {t("Un chantier clos n'accepte plus d'imputation : la facture y serait refusée.")}
+            </Text>
 
             {rattachementManquant && (
               <Alert
@@ -920,12 +987,22 @@ export const FactureFournisseur: React.FC = () => {
                     <Space key={f.id} align="center" wrap>
                       <Checkbox checked={cochee} onChange={event => basculerFacture(f, event.target.checked)}>
                         {f.reference} — <MoneyValue value={f.amount} />
+                        {/* Reste dû affiché seulement s'il diffère du montant total : une
+                            facture jamais réglée n'a pas besoin qu'on le répète. */}
+                        {f.remainingPayable != null && f.remainingPayable !== f.amount && (
+                          <Text type="secondary">
+                            {' — '}
+                            {t('reste dû')}
+                            {' : '}
+                            <MoneyValue value={f.remainingPayable} />
+                          </Text>
+                        )}
                       </Checkbox>
                       {cochee && (
                         <InputNumber
                           aria-label={t('Montant affecté à {{reference}}', { reference: f.reference })}
                           min={0}
-                          max={f.amount}
+                          max={f.remainingPayable ?? f.amount}
                           style={{ width: 160 }}
                           value={selection[f.id]}
                           onChange={value => modifierAffectation(f.id, value as number | null)}
@@ -998,10 +1075,25 @@ export const FactureFournisseur: React.FC = () => {
                     {
                       title: 'Affectation',
                       key: 'affectation',
-                      render: (_, r) =>
-                        r.allocations.length > 0
-                          ? r.allocations.map(a => a.invoiceReference).join(' · ')
-                          : t('Acompte, sans facture')
+                      render: (_, r) => {
+                        const risques = r.status === 'DRAFT' ? referencesRisqueesDuReglement(r) : [];
+                        return (
+                          <Space orientation="vertical" size={2}>
+                            <span>
+                              {r.allocations.length > 0
+                                ? r.allocations.map(a => a.invoiceReference).join(' · ')
+                                : t('Acompte, sans facture')}
+                            </span>
+                            {risques.length > 0 && (
+                              <Text type="warning" style={{ fontSize: 12 }}>
+                                {t('Déjà réglée(s) ou dépassée(s) : {{references}}', {
+                                  references: risques.join(', ')
+                                })}
+                              </Text>
+                            )}
+                          </Space>
+                        );
+                      }
                     },
                     {
                       title: 'Statut',
@@ -1018,23 +1110,34 @@ export const FactureFournisseur: React.FC = () => {
                       title: 'Actions',
                       key: 'actions',
                       align: 'end',
-                      render: (_, r) =>
-                        r.status === 'DRAFT' ? (
+                      render: (_, r) => {
+                        if (r.status !== 'DRAFT') {
+                          return r.status === 'VALIDATED' ? (
+                            <Button type="link" danger onClick={() => setCibleAnnulationReglement(r)}>
+                              {t('Annuler')}
+                            </Button>
+                          ) : null;
+                        }
+                        // Un règlement dont les factures visées sont déjà soldées ou
+                        // dépassées se valide encore — voir `referencesRisqueesDuReglement`
+                        // — mais la boîte de confirmation le dit en clair, en plus de
+                        // l'alerte déjà visible dans la colonne « Affectation ».
+                        const risques = referencesRisqueesDuReglement(r);
+                        const description =
+                          risques.length > 0
+                            ? `${t('Cette opération est irréversible : un règlement validé ne peut plus être modifié.')} ${messageRisqueReglement(risques)}`
+                            : t('Cette opération est irréversible : un règlement validé ne peut plus être modifié.');
+                        return (
                           <ConfirmAction
                             title={t('Valider ce règlement ?')}
-                            description={t(
-                              'Cette opération est irréversible : un règlement validé ne peut plus être modifié.'
-                            )}
+                            description={description}
                             okText={t('Confirmer la validation')}
                             onConfirm={() => validerReglement(r)}
                           >
                             <Button type="link">{t('Valider')}</Button>
                           </ConfirmAction>
-                        ) : r.status === 'VALIDATED' ? (
-                          <Button type="link" danger onClick={() => setCibleAnnulationReglement(r)}>
-                            {t('Annuler')}
-                          </Button>
-                        ) : null
+                        );
+                      }
                     }
                   ]}
                   rowKey={r => r.id}
@@ -1058,21 +1161,37 @@ export const FactureFournisseur: React.FC = () => {
                             r.allocations.length > 0
                               ? r.allocations.map(a => a.invoiceReference).join(' · ')
                               : 'Acompte'
-                        }
+                        },
+                        ...(r.status === 'DRAFT' && referencesRisqueesDuReglement(r).length > 0
+                          ? [
+                              {
+                                label: t('Alerte'),
+                                value: t('Déjà réglée(s) ou dépassée(s) : {{references}}', {
+                                  references: referencesRisqueesDuReglement(r).join(', ')
+                                })
+                              }
+                            ]
+                          : [])
                       ]}
                       primaryAction={
                         r.status === 'DRAFT'
                           ? {
                               label: 'Valider',
-                              onClick: () =>
+                              onClick: () => {
+                                const risques = referencesRisqueesDuReglement(r);
+                                const description =
+                                  risques.length > 0
+                                    ? `${t('Cette opération est irréversible : un règlement validé ne peut plus être modifié.')} ${messageRisqueReglement(risques)}`
+                                    : t(
+                                        'Cette opération est irréversible : un règlement validé ne peut plus être modifié.'
+                                      );
                                 confirmerAction({
                                   title: t('Valider ce règlement ?'),
-                                  description: t(
-                                    'Cette opération est irréversible : un règlement validé ne peut plus être modifié.'
-                                  ),
+                                  description,
                                   okText: t('Confirmer la validation'),
                                   onConfirm: () => validerReglement(r)
-                                })
+                                });
+                              }
                             }
                           : r.status === 'VALIDATED'
                             ? { label: 'Annuler', onClick: () => setCibleAnnulationReglement(r) }
