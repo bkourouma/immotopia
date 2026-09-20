@@ -734,6 +734,8 @@ function Carte_SaisirNote(props: {
               <label htmlFor="note-mois">{t('Mois')}</label>
             </div>
             <Select
+              showSearch
+              optionFilterProp="label"
               id="note-mois"
               style={{ width: 160 }}
               value={props.mois ?? undefined}
@@ -760,6 +762,8 @@ function Carte_SaisirNote(props: {
               <label htmlFor="note-chantier">{t('Chantier (facultatif)')}</label>
             </div>
             <Select
+              showSearch
+              optionFilterProp="label"
               id="note-chantier"
               style={{ width: '100%' }}
               placeholder={t('Aucun chantier')}

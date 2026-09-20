@@ -493,6 +493,8 @@ export const StockInventaire: React.FC = () => {
             <label htmlFor="transfert-origine">{t('Lieu d’origine')}</label>
           </div>
           <Select
+            showSearch
+            optionFilterProp="label"
             id="transfert-origine"
             style={{ width: 260 }}
             placeholder={t('Choisir le lieu d’origine')}
@@ -507,6 +509,8 @@ export const StockInventaire: React.FC = () => {
             <label htmlFor="transfert-arrivee">{t('Lieu d’arrivée')}</label>
           </div>
           <Select
+            showSearch
+            optionFilterProp="label"
             id="transfert-arrivee"
             style={{ width: 260 }}
             placeholder={t('Choisir le lieu d’arrivée')}
@@ -1043,6 +1047,8 @@ export const StockInventaire: React.FC = () => {
             <label htmlFor="comptages-lieu">{t('Lieu')}</label>
           </div>
           <Select
+            showSearch
+            optionFilterProp="label"
             id="comptages-lieu"
             style={{ width: 260 }}
             allowClear
@@ -1057,6 +1063,8 @@ export const StockInventaire: React.FC = () => {
             <label htmlFor="comptages-statut">{t('État')}</label>
           </div>
           <Select
+            showSearch
+            optionFilterProp="label"
             id="comptages-statut"
             style={{ width: 200 }}
             allowClear
@@ -1162,6 +1170,8 @@ export const StockInventaire: React.FC = () => {
           <div>
             <label htmlFor="comptage-lieu">{t('Lieu à compter')}</label>
             <Select
+              showSearch
+              optionFilterProp="label"
               id="comptage-lieu"
               style={{ width: '100%' }}
               placeholder={t('Choisir un lieu de stockage')}

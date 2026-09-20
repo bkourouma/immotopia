@@ -968,6 +968,8 @@ export const Stock: React.FC = () => {
         <div style={{ minWidth: 220 }}>
           <label htmlFor="journal-nature">{t('Nature')}</label>
           <Select
+            showSearch
+            optionFilterProp="label"
             id="journal-nature"
             style={{ width: '100%' }}
             placeholder={t('Toutes les natures')}

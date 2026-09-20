@@ -813,6 +813,8 @@ export const FactureFournisseur: React.FC = () => {
               {imputations.map(imputation => (
                 <Space key={imputation.id} align="start" wrap>
                   <Select
+                    showSearch
+                    optionFilterProp="label"
                     aria-label={t('Chantier')}
                     placeholder={t('Chantier')}
                     style={{ width: 220 }}
