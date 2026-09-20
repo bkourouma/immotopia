@@ -75,6 +75,10 @@ function statement(overrides: Partial<AccountStatement> = {}): AccountStatement 
   return {
     accountId: 'cpt-1',
     label: 'Mariam Diomandé',
+    // Une locataire par défaut : les cas qui parlent d'un fournisseur ou d'un
+    // salarié surchargent, et c'est ainsi qu'on épingle le vocabulaire propre
+    // à chaque tiers.
+    kind: 'TENANT',
     openingBalance: 0,
     closingBalance: 0,
     currency: 'XOF',
@@ -369,5 +373,67 @@ describe('Relevé de compte — vocabulaire (écran agence)', () => {
 
     expect(normaliser(container.textContent || '')).not.toContain('debit');
     expect(normaliser(container.textContent || '')).not.toContain('credit');
+  });
+});
+
+/**
+ * Le relevé sert le vocabulaire du tiers dont il parle.
+ *
+ * L'écran du relevé client avait été repris tel quel pour tous les comptes :
+ * celui d'un fournisseur annonçait « Loyer » devant chacune de ses factures,
+ * « Avance reçue » devant un acompte que l'agence avait elle-même versé, et
+ * son fil d'Ariane indiquait « Clients ». Relevé le 20 septembre 2026.
+ */
+describe('Relevé de compte — le vocabulaire suit le tiers', () => {
+  it('parle de factures et d’acompte versé sur le compte d’un fournisseur', async () => {
+    getAccountStatement.mockResolvedValue(
+      statement({
+        kind: 'SUPPLIER',
+        label: 'QA Quincaillerie Angré',
+        movements: [
+          mouvement({ id: 'm-1', type: 'INSTALLMENT', label: 'Facture FRS-QA-004', amountBilled: 6_000_000 }),
+          mouvement({
+            id: 'm-2',
+            type: 'ADVANCE_RECEIVED',
+            label: 'Acompte versé, non affecté à une facture',
+            amountSettled: 2_000_000
+          })
+        ]
+      })
+    );
+
+    mountReleve();
+
+    expect(await screen.findByText('Facture FRS-QA-004', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByText('Facture')).toBeInTheDocument();
+    expect(screen.getByText('Acompte versé')).toBeInTheDocument();
+    // Le vocabulaire des baux n'a rien à faire ici.
+    expect(screen.queryByText('Loyer')).not.toBeInTheDocument();
+    expect(screen.queryByText('Avance reçue')).not.toBeInTheDocument();
+  });
+
+  it('mène aux fournisseurs, et non aux clients, dans le fil d’Ariane', async () => {
+    getAccountStatement.mockResolvedValue(statement({ kind: 'SUPPLIER', label: 'QA Quincaillerie Angré' }));
+
+    mountReleve();
+
+    await screen.findByText('QA Quincaillerie Angré', {}, { timeout: 8000 });
+    expect(screen.getByText('Fournisseurs')).toBeInTheDocument();
+    expect(screen.queryByText('Clients')).not.toBeInTheDocument();
+  });
+
+  it('garde le vocabulaire des baux pour un locataire', async () => {
+    getAccountStatement.mockResolvedValue(
+      statement({
+        kind: 'TENANT',
+        movements: [mouvement({ id: 'm-1', type: 'INSTALLMENT', label: 'Loyer mars 2026', amountBilled: 265_000 })]
+      })
+    );
+
+    mountReleve();
+
+    await screen.findByText('Loyer mars 2026', {}, { timeout: 8000 });
+    expect(screen.getByText('Loyer')).toBeInTheDocument();
+    expect(screen.getByText('Clients')).toBeInTheDocument();
   });
 });

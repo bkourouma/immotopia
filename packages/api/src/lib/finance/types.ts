@@ -312,6 +312,16 @@ export type GetClientsAgingBalance = (
 export interface AccountStatementResult {
   accountId: string;
   label: string;
+  /**
+   * La nature du tiers : locataire, fournisseur, salarie, tacheron, bailleur,
+   * associe.
+   *
+   * Ajoutee le 20 septembre 2026. Sans elle, l'ecran de releve ne pouvait pas
+   * savoir de qui il parlait : il servait le vocabulaire des LOCATAIRES a
+   * tout le monde, et le releve d'un fournisseur annoncait « Loyer » devant
+   * chacune de ses factures, sous un fil d'Ariane « Clients ».
+   */
+  kind: string;
   /** Solde avant la première ligne de la période, calculé depuis le dernier
    *  mouvement **antérieur** à la borne, et non depuis le solde courant.
    *  C'est le défaut n°3 du §6.1 bis du plan, qu'on ne reproduit pas ici. */

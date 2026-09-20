@@ -735,7 +735,18 @@ async function inverserMouvementsDeTiersTx(
       label: `Annulation : ${mouvement.label} (${motif})`,
       sourceType: 'VOID',
       sourceId: mouvement.id,
-      movementDate: new Date()
+      // LA DATE DU MOUVEMENT ANNULE, jamais celle du jour.
+      //
+      // Une contrepassation appartient a la date de la piece qu'elle annule.
+      // Datee du jour, elle se classait en fin de releve, apres des
+      // reglements posterieurs a la piece annulee — et le releve devenait
+      // faux, pas seulement mal trie : `balanceAfter` est un solde progressif
+      // CALCULE A L'INSERTION, et l'afficher dans un autre ordre que celui
+      // ou il a ete calcule produit des sauts impossibles. Sur le compte d'un
+      // fournisseur, le solde de cloture affichait ainsi +6 000 000 quand la
+      // balance en montrait −2 000 000. Trouve par le test de bout en bout du
+      // 20 septembre 2026.
+      movementDate: mouvement.movementDate
     });
   }
 }

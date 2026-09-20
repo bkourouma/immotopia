@@ -85,9 +85,14 @@ export interface ThirdPartyMovementLine {
   leaseId: string | null;
 }
 
+/** Les natures de tiers, telles que le serveur les nomme. */
+export type ThirdPartyKind = 'TENANT' | 'SUPPLIER' | 'LANDLORD' | 'CONTRACTOR' | 'PARTNER' | 'EMPLOYEE';
+
 export interface AccountStatement {
   accountId: string;
   label: string;
+  /** De qui parle ce relevé. Décide du vocabulaire et du fil d'Ariane. */
+  kind: ThirdPartyKind;
   openingBalance: number;
   closingBalance: number;
   currency: string;

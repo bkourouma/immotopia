@@ -6,7 +6,7 @@ import { PrinterOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs, { Dayjs } from 'dayjs';
 import { getAccountStatement, getAccountStatementPdfUrl } from '../../services/finance-service';
-import type { ThirdPartyMovementLine, ThirdPartyMovementType } from '../../types/finance-types';
+import type { ThirdPartyKind, ThirdPartyMovementLine, ThirdPartyMovementType } from '../../types/finance-types';
 import { useListParams } from '../../hooks/useListParams';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, FilterSheet } from '../../components/primitives';
@@ -52,6 +52,56 @@ export const NATURE_LABELS: Record<ThirdPartyMovementType, string> = {
  */
 export function natureLabel(type: ThirdPartyMovementLine['type']): string {
   return NATURE_LABELS[type] ?? type;
+}
+
+/**
+ * Le vocabulaire dépend de QUI l'on parle.
+ *
+ * Cet écran servait celui des locataires à tout le monde : le relevé d'un
+ * fournisseur annonçait « Loyer » devant chacune de ses factures, et
+ * « Avance reçue » devant un acompte que l'agence avait elle-même versé. Le
+ * fil d'Ariane, lui, disait « Clients ». L'écran du relevé client avait été
+ * repris tel quel (relevé du 20 septembre 2026).
+ *
+ * Seules les natures dont le sens change d'un tiers à l'autre sont
+ * surchargées : un règlement reste un règlement, une pénalité une pénalité.
+ */
+const NATURES_PAR_TIERS: Partial<Record<ThirdPartyKind, Partial<Record<ThirdPartyMovementType, string>>>> = {
+  SUPPLIER: { INSTALLMENT: t('Facture'), ADVANCE_RECEIVED: t('Acompte versé') },
+  EMPLOYEE: { INSTALLMENT: t('Note de salaire'), ADVANCE_RECEIVED: t('Avance versée') },
+  CONTRACTOR: { INSTALLMENT: t("Situation d'avancement"), ADVANCE_RECEIVED: t('Acompte versé') },
+  LANDLORD: { INSTALLMENT: t('Loyer de terrain'), ADVANCE_RECEIVED: t('Acompte versé') },
+  PARTNER: { INSTALLMENT: t('Quote-part'), ADVANCE_RECEIVED: t('Acompte versé') }
+};
+
+function natureLabelDuTiers(type: ThirdPartyMovementLine['type'], kind?: ThirdPartyKind): string {
+  if (kind && NATURES_PAR_TIERS[kind]?.[type]) {
+    return NATURES_PAR_TIERS[kind][type] as string;
+  }
+  return natureLabel(type);
+}
+
+/**
+ * Le fil d'Ariane mène là d'où l'on vient : la balance des clients pour un
+ * locataire, celle des fournisseurs pour un fournisseur. Les tiers qui n'ont
+ * pas d'écran de balance dédié portent leur nom sans lien, plutôt qu'un lien
+ * qui mentirait.
+ */
+function filDAriane(kind: ThirdPartyKind | undefined, tenantId: string): { label: string; to?: string } {
+  switch (kind) {
+    case 'SUPPLIER':
+      return { label: t('Fournisseurs'), to: `/tenant/${tenantId}/finance/fournisseurs/balance` };
+    case 'EMPLOYEE':
+      return { label: t('Salariés'), to: `/tenant/${tenantId}/finance/salaires` };
+    case 'CONTRACTOR':
+      return { label: t('Tâcherons'), to: `/tenant/${tenantId}/finance/tacherons` };
+    case 'LANDLORD':
+      return { label: t('Baux de terrain'), to: `/tenant/${tenantId}/finance/baux-terrain` };
+    case 'PARTNER':
+      return { label: t('Associations'), to: `/tenant/${tenantId}/finance/associations` };
+    default:
+      return { label: t('Clients'), to: `/tenant/${tenantId}/finance/balance-clients` };
+  }
 }
 
 function dateCourte(iso: string): string {
@@ -105,7 +155,7 @@ export const Releve: React.FC = () => {
 
   const colonnes: ColumnsType<ThirdPartyMovementLine> = [
     { title: t('Date'), key: 'date', width: 120, render: (_, m) => dateCourte(m.movementDate) },
-    { title: t('Nature'), key: 'nature', width: 160, render: (_, m) => natureLabel(m.type) },
+    { title: t('Nature'), key: 'nature', width: 160, render: (_, m) => natureLabelDuTiers(m.type, data?.kind) },
     { title: t('Libellé'), key: 'libelle', render: (_, m) => m.label },
     {
       title: t('Facturé'),
@@ -137,7 +187,7 @@ export const Releve: React.FC = () => {
         title={data?.label ?? t('Relevé de compte')}
         breadcrumbs={[
           { label: 'Finance', to: `/tenant/${tenantId}/finance/balance-clients` },
-          { label: 'Clients', to: `/tenant/${tenantId}/finance/balance-clients` },
+          filDAriane(data?.kind, tenantId as string),
           { label: t('Relevé') }
         ]}
         subtitle={
@@ -196,7 +246,7 @@ export const Releve: React.FC = () => {
         aria-label={t('Mouvements du relevé')}
         renderCard={m => (
           <DataCard
-            title={natureLabel(m.type)}
+            title={natureLabelDuTiers(m.type, data?.kind)}
             subtitle={`${dateCourte(m.movementDate)} · ${m.label}`}
             highlight={<MoneyValue value={m.balanceAfter} />}
             fields={[

@@ -71,6 +71,7 @@ export function toAccountStatementResponse(statement: AccountStatementResult, pa
   return {
     accountId: statement.accountId,
     label: statement.label,
+    kind: statement.kind,
     openingBalance: statement.openingBalance,
     closingBalance: statement.closingBalance,
     currency: statement.currency,

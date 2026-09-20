@@ -372,7 +372,7 @@ async function getBalanceAtOrBefore(tenantId: string, accountId: string, atOrBef
 export const getAccountStatement: GetAccountStatement = async (tenantId, accountId, filters) => {
   const account = await prisma.thirdPartyAccount.findFirst({
     where: { id: accountId, tenantId },
-    select: { id: true, label: true, currency: true }
+    select: { id: true, label: true, currency: true, kind: true }
   });
 
   if (!account) {
@@ -404,6 +404,7 @@ export const getAccountStatement: GetAccountStatement = async (tenantId, account
   return {
     accountId: account.id,
     label: account.label,
+    kind: account.kind as string,
     openingBalance,
     closingBalance,
     currency: account.currency,

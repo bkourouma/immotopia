@@ -761,7 +761,7 @@ export const validateSupplierPaymentTx: ValidateSupplierPaymentTx = async (
       tenantId,
       type: 'PAYMENT',
       settled: montant,
-      label: 'Reglement affecte a une facture',
+      label: 'Règlement affecté à une facture',
       sourceType: asFinanceSourceType('SUPPLIER_PAYMENT_ALLOCATION'),
       sourceId: allocation.id,
       movementDate: payment.paymentDate
@@ -779,7 +779,7 @@ export const validateSupplierPaymentTx: ValidateSupplierPaymentTx = async (
       tenantId,
       type: 'ADVANCE_RECEIVED',
       settled: remainder,
-      label: 'Acompte verse, non affecte a une facture',
+      label: 'Acompte versé, non affecté à une facture',
       sourceType: asFinanceSourceType('SUPPLIER_PAYMENT'),
       sourceId: payment.id,
       movementDate: payment.paymentDate

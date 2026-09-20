@@ -405,6 +405,8 @@ const MOUVEMENTS: ThirdPartyMovementLine[] = [
 export const RELEVE: AccountStatement = {
   accountId: ACCOUNT_ID,
   label: 'Fatoumata Kouassi — Villa Angré 12',
+  // Une locataire : c'est le vocabulaire des baux que la scène doit montrer.
+  kind: 'TENANT',
   openingBalance: 0,
   closingBalance: MOUVEMENTS[MOUVEMENTS.length - 1].balanceAfter,
   currency: 'XOF',
