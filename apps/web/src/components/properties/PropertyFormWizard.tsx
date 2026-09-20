@@ -383,7 +383,10 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
         if (!formData.title.trim()) {
           newErrors.title = t('Le titre est requis');
         }
-        if (!formData.ownerUserId || !String(formData.ownerUserId).trim()) {
+        if (
+          formData.ownershipType !== PropertyOwnershipType.TENANT &&
+          (!formData.ownerUserId || !String(formData.ownerUserId).trim())
+        ) {
           newErrors.ownerUserId = t('Le propriétaire est requis');
         }
         break;
@@ -563,6 +566,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               {field.required && <Text type="danger"> *</Text>}
             </Text>
             <Select
+              showSearch
+              optionFilterProp="children"
               aria-label={field.label}
               style={{ width: '100%' }}
               value={value || undefined}
@@ -809,9 +814,12 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
 
           <div>
             <Text strong>
-              {t('Propriétaire')} <Text type="danger">*</Text>
+              {t('Propriétaire')}{' '}
+              {formData.ownershipType !== PropertyOwnershipType.TENANT && <Text type="danger">*</Text>}
             </Text>
             <Select
+              showSearch
+              optionFilterProp="children"
               style={{ width: '100%' }}
               value={formData.ownerUserId || undefined}
               onChange={value => handleChange('ownerUserId', value || '')}
@@ -829,6 +837,11 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
             {errors.ownerUserId && (
               <Text type="danger" style={{ fontSize: 12 }}>
                 {errors.ownerUserId}
+              </Text>
+            )}
+            {formData.ownershipType === PropertyOwnershipType.TENANT && (
+              <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                {t("Ce bien appartient à l'agence : il n'a pas de propriétaire distinct.")}
               </Text>
             )}
           </div>
@@ -936,6 +949,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                 <Col xs={24} sm={12}>
                   <Text strong>{t('État général')}</Text>
                   <Select
+                    showSearch
+                    optionFilterProp="children"
                     style={{ width: '100%' }}
                     value={formData.generalCondition || undefined}
                     onChange={val => handleChange('generalCondition', val)}
@@ -952,6 +967,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                 <Col xs={24} sm={12}>
                   <Text strong>{t('Standing')}</Text>
                   <Select
+                    showSearch
+                    optionFilterProp="children"
                     style={{ width: '100%' }}
                     value={formData.standing || undefined}
                     onChange={val => handleChange('standing', val)}
@@ -1476,8 +1493,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
         return !!(
           formData.propertyType &&
           formData.title.trim() &&
-          formData.ownerUserId &&
-          String(formData.ownerUserId).trim()
+          (formData.ownershipType === PropertyOwnershipType.TENANT ||
+            (formData.ownerUserId && String(formData.ownerUserId).trim()))
         );
       case 'localisation':
         return !!formData.location;

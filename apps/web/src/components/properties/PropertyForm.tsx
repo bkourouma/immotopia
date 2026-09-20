@@ -39,6 +39,7 @@ import {
 import { getTemplate } from '../../services/property-service';
 import { useAuth } from '../../hooks/useAuth';
 import { getTenantClients, TenantClient } from '../../services/tenant-service';
+import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -342,7 +343,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
             label={field.label}
             rules={field.required ? [{ required: true, message: `${field.label} est requis` }] : []}
           >
-            <Select placeholder={t('Sélectionner...')}>
+            <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner...')}>
               {field.validation?.options && Array.isArray(field.validation.options)
                 ? field.validation.options.map((option: string) => (
                     <Select.Option key={option} value={option}>
@@ -376,6 +377,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
       form={form}
       layout="vertical"
       onFinish={handleFinish}
+      onFinishFailed={onAntFormValidationFailed(form)}
       initialValues={{
         ownershipType: property?.ownershipType || PropertyOwnershipType.TENANT,
         status: property?.status || PropertyStatus.DRAFT,
@@ -434,22 +436,46 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
           )}
 
           <Form.Item
-            label={t('Propriétaire')}
-            name="ownerUserId"
-            rules={[{ required: true, message: t('Le propriétaire est requis') }]}
+            noStyle
+            shouldUpdate={(prevValues, currentValues) => prevValues.ownershipType !== currentValues.ownershipType}
           >
-            <Select
-              placeholder={loadingOwners ? 'Chargement...' : t('Sélectionner un propriétaire')}
-              allowClear
-              loading={loadingOwners}
-            >
-              {/* Le nom seul : l'adresse reste la valeur, elle n'a pas à être lue. */}
-              {owners.map(owner => (
-                <Select.Option key={owner.id} value={owner.userId}>
-                  {owner.user.fullName || owner.user.email}
-                </Select.Option>
-              ))}
-            </Select>
+            {({ getFieldValue }) => {
+              // Sur un bien existant, `ownershipType` ne fait plus partie du
+              // formulaire (le champ n'est affiché qu'à la création) : c'est
+              // celui du bien lui-même qui fait foi. À la création, c'est la
+              // valeur choisie juste au-dessus (ou son défaut : agence).
+              const ownershipType: PropertyOwnershipType = property
+                ? property.ownershipType
+                : getFieldValue('ownershipType') || PropertyOwnershipType.TENANT;
+              const ownerRequired = ownershipType !== PropertyOwnershipType.TENANT;
+              return (
+                <Form.Item
+                  label={t('Propriétaire')}
+                  name="ownerUserId"
+                  rules={ownerRequired ? [{ required: true, message: t('Le propriétaire est requis') }] : []}
+                  extra={
+                    !ownerRequired
+                      ? t("Ce bien appartient à l'agence : il n'a pas de propriétaire distinct.")
+                      : undefined
+                  }
+                >
+                  <Select
+                    showSearch
+                    optionFilterProp="children"
+                    placeholder={loadingOwners ? 'Chargement...' : t('Sélectionner un propriétaire')}
+                    allowClear
+                    loading={loadingOwners}
+                  >
+                    {/* Le nom seul : l'adresse reste la valeur, elle n'a pas à être lue. */}
+                    {owners.map(owner => (
+                      <Select.Option key={owner.id} value={owner.userId}>
+                        {owner.user.fullName || owner.user.email}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              );
+            }}
           </Form.Item>
 
           <Form.Item
@@ -473,7 +499,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                 name="status"
                 rules={[{ required: true, message: t('Le statut est requis') }]}
               >
-                <Select>
+                <Select showSearch optionFilterProp="children">
                   <Select.Option value={PropertyStatus.DRAFT}>{t('Brouillon')}</Select.Option>
                   <Select.Option value={PropertyStatus.AVAILABLE}>{t('Disponible')}</Select.Option>
                   <Select.Option value={PropertyStatus.RESERVED}>{t('Réservé')}</Select.Option>
@@ -606,7 +632,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
             </Col>
             <Col xs={24} sm={12}>
               <Form.Item label={t('État général')} name="generalCondition">
-                <Select placeholder={t('Sélectionner...')}>
+                <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner...')}>
                   <Select.Option value="NEUF">{t('Neuf')}</Select.Option>
                   <Select.Option value="BON">{t('Bon')}</Select.Option>
                   <Select.Option value="A_RENOVER">{t('À rénover')}</Select.Option>
@@ -616,7 +642,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
             </Col>
             <Col xs={24} sm={12}>
               <Form.Item label={t('Standing')} name="standing">
-                <Select placeholder={t('Sélectionner...')}>
+                <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner...')}>
                   <Select.Option value="ECONOMIQUE">{t('Économique')}</Select.Option>
                   <Select.Option value="STANDARD">{t('Standard')}</Select.Option>
                   <Select.Option value="HAUT_STANDING">{t('Haut standing')}</Select.Option>
