@@ -387,6 +387,11 @@ export const BonDeCommande: React.FC = () => {
                 onChange={setSiteId}
                 options={optionsChantiers}
               />
+              {/* Même avertissement que la sortie de stock (Stock.tsx) : dit au
+                  moment de la saisie, pas seulement refusé à l'émission. */}
+              <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
+                {t("Un chantier clos n'accepte plus d'imputation : le bon y serait refusé.")}
+              </Text>
             </div>
             <div style={{ minWidth: 220 }}>
               <div>

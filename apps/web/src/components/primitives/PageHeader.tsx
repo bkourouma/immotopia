@@ -1,5 +1,5 @@
 import React from 'react';
-import { Breadcrumb, Button, Dropdown, Space, Typography } from 'antd';
+import { Breadcrumb, Button, Dropdown, Space, Tooltip, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import { MoreOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
@@ -33,8 +33,22 @@ export interface PageHeaderProps {
   /** Sous-titre court : reference, statut, contexte. */
   subtitle?: React.ReactNode;
   breadcrumbs?: Crumb[];
-  /** L'unique action primaire de l'ecran. */
-  primaryAction?: { label: string; onClick: () => void; icon?: React.ReactNode; loading?: boolean };
+  /**
+   * L'unique action primaire de l'ecran.
+   *
+   * `disabled` la grise sans la retirer : un bouton qui disparait ne dit pas
+   * pourquoi le geste est refuse, la ou un bouton grise avec `disabledReason`
+   * en `<Tooltip>` le dit avant meme le clic.
+   */
+  primaryAction?: {
+    label: string;
+    onClick: () => void;
+    icon?: React.ReactNode;
+    loading?: boolean;
+    disabled?: boolean;
+    /** Raison affichee en infobulle quand `disabled` est vrai. */
+    disabledReason?: string;
+  };
   /** Actions secondaires, regroupees derriere « … ». */
   secondaryActions?: MenuProps['items'];
   /** Contenu libre aligne a droite (filtres, bascule de vue). */
@@ -100,17 +114,36 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
 
         <Space size="small" wrap>
           {extra}
-          {primaryAction && (
-            <Button
-              type="primary"
-              icon={primaryAction.icon}
-              loading={primaryAction.loading}
-              onClick={primaryAction.onClick}
-              block={!isDesktop}
-            >
-              {primaryAction.label}
-            </Button>
-          )}
+          {primaryAction &&
+            (primaryAction.disabled && primaryAction.disabledReason ? (
+              <Tooltip title={primaryAction.disabledReason}>
+                {/* Un `Button` desactive ne recoit plus d'evenement souris :
+                    sans ce `span`, l'infobulle qui explique le refus ne
+                    s'afficherait jamais. */}
+                <span style={{ display: 'inline-block', width: !isDesktop ? '100%' : undefined }}>
+                  <Button
+                    type="primary"
+                    icon={primaryAction.icon}
+                    loading={primaryAction.loading}
+                    disabled
+                    block={!isDesktop}
+                  >
+                    {primaryAction.label}
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : (
+              <Button
+                type="primary"
+                icon={primaryAction.icon}
+                loading={primaryAction.loading}
+                onClick={primaryAction.onClick}
+                disabled={primaryAction.disabled}
+                block={!isDesktop}
+              >
+                {primaryAction.label}
+              </Button>
+            ))}
           {secondaryActions && secondaryActions.length > 0 && (
             <Dropdown menu={{ items: secondaryActions }} trigger={['click']}>
               <Button icon={<MoreOutlined />} aria-label={t('Autres actions')} />

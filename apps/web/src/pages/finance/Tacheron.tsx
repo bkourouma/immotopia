@@ -645,6 +645,12 @@ export const Tacheron: React.FC = () => {
               options={optionsChantiers}
               notFoundContent={t('Aucun chantier disponible')}
             />
+            {/* Le chantier se fige ici, à la convention du marché : chaque
+                situation qui en découlera l'hérite sans plus le choisir. Même
+                avertissement que la sortie de stock (Stock.tsx). */}
+            <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
+              {t("Un chantier clos n'accepte plus d'imputation : la situation y serait refusée.")}
+            </Text>
           </div>
           <div style={{ minWidth: 220 }}>
             <div>

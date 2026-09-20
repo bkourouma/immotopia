@@ -366,6 +366,38 @@ describe('Détail d’un chantier', () => {
     expect(screen.queryByText(/Passé au stock/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Voir le stock' })).not.toBeInTheDocument();
   });
+
+  // Le garde-fou serveur (`assertSiteOpenTx`) refusait déjà la validation
+  // d'une pièce sur un chantier clôturé, mais trop tard : rien n'empêchait de
+  // SAISIR un brouillon qu'on ne pouvait ensuite ni valider ni supprimer. Ces
+  // deux tests couvrent la remontée de la prévention au moment de la saisie.
+  it('désactive « Nouvelle pièce de caisse » sur un chantier clôturé, avec la raison en infobulle', async () => {
+    const user = userEvent.setup({ delay: null, pointerEventsCheck: 0 });
+    getSiteDetail.mockResolvedValue(
+      detail({ site: chantier({ status: 'CLOSED', closedAt: '2026-09-01T08:00:00.000Z' }) })
+    );
+    mountDetail();
+
+    await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
+
+    const bouton = screen.getByRole('button', { name: 'Nouvelle pièce de caisse' });
+    expect(bouton).toBeDisabled();
+
+    // La raison est dite, jamais seulement l'interdit. La recherche cible
+    // « Rouvrez-le », propre à l'infobulle : le badge de statut affiche
+    // aussi « Clôturé », qui rendrait /clôturé/i ambigu.
+    await user.hover(bouton);
+    expect(await screen.findByText(/Rouvrez-le/i, {}, { timeout: 8000 })).toBeInTheDocument();
+  });
+
+  it('laisse actif « Nouvelle pièce de caisse » sur un chantier en cours', async () => {
+    getSiteDetail.mockResolvedValue(detail());
+    mountDetail();
+
+    await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
+
+    expect(screen.getByRole('button', { name: 'Nouvelle pièce de caisse' })).not.toBeDisabled();
+  });
 });
 
 describe('Pièce de caisse', () => {
@@ -447,6 +479,49 @@ describe('Pièce de caisse', () => {
     // Le numero n'apparait qu'ici, une fois la piece validee.
     expect(await screen.findByText('Pièce 2026-0107', {}, { timeout: 8000 })).toBeInTheDocument();
   }, 60000);
+
+  // Un chantier clôturé a un coût figé : le proposer ici laisserait saisir un
+  // brouillon que la validation refuserait de toute façon (`assertSiteOpenTx`
+  // côté serveur). La prévention est remontée au sélecteur.
+  it('n’offre pas les chantiers clôturés dans le sélecteur de chantier', async () => {
+    listConstructionSites.mockResolvedValue([
+      chantier(),
+      chantier({ id: 'chantier-clos', name: 'Chantier clos — Marcory', status: 'CLOSED', closedAt: '2026-08-01' })
+    ]);
+    mountCaisse();
+
+    const comboboxes = await screen.findAllByRole('combobox', {}, { timeout: 8000 });
+    fireEvent.mouseDown(comboboxes[0]);
+
+    expect(await screen.findByText('Villa duplex — Angré Centre', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.queryByText('Chantier clos — Marcory')).not.toBeInTheDocument();
+  });
+
+  // Le bouton de la fiche est grise sur un chantier cloture, mais l'adresse
+  // reste ouvrable : un signet, un lien d'hier, un chantier cloture depuis.
+  it('RELÂCHE un chantier clôturé passé en adresse, et dit pourquoi', async () => {
+    listConstructionSites.mockResolvedValue([
+      chantier(),
+      chantier({ id: 'chantier-clos', name: 'Chantier clos — Marcory', status: 'CLOSED', closedAt: '2026-08-01' })
+    ]);
+    mountCaisse('/tenant/agence-1/finance/caisse?chantierId=chantier-clos');
+
+    expect(
+      await screen.findByText(/Ce chantier est clôturé .* Choisissez-en un autre/i, {}, { timeout: 8000 })
+    ).toBeInTheDocument();
+
+    // Et surtout : le champ ne garde pas l'identifiant brut, faute d'option
+    // portant encore son libellé.
+    expect(screen.queryByText('chantier-clos')).not.toBeInTheDocument();
+    expect(screen.queryByText('Chantier clos — Marcory')).not.toBeInTheDocument();
+  });
+
+  it('ne dit rien de tel quand le chantier passé en adresse est ouvert', async () => {
+    mountCaisse('/tenant/agence-1/finance/caisse?chantierId=chantier-1');
+
+    await screen.findAllByRole('combobox', {}, { timeout: 8000 });
+    expect(screen.queryByText(/Ce chantier est clôturé/i)).not.toBeInTheDocument();
+  });
 
   it('imprime le bon via l’URL fournie par le service', async () => {
     const user = userEvent.setup({ delay: null, pointerEventsCheck: 0 });

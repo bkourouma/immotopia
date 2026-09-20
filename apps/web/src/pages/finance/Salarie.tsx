@@ -769,6 +769,11 @@ function Carte_SaisirNote(props: {
               options={props.optionsChantiers}
               notFoundContent={t('Aucun chantier disponible')}
             />
+            {/* Même avertissement que la sortie de stock (Stock.tsx) : dit au
+                moment de la saisie, pas seulement refusé à la validation. */}
+            <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
+              {t("Un chantier clos n'accepte plus d'imputation : la note y serait refusée.")}
+            </Text>
           </div>
           {/*
             Le poste n'apparaît QUE si un chantier est renseigné : le serveur

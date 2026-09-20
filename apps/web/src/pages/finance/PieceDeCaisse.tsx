@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { App, Button, Card, DatePicker, Input, InputNumber, Modal, Select, Space, Typography } from 'antd';
 import { CopyOutlined, PrinterOutlined, SendOutlined } from '@ant-design/icons';
@@ -120,11 +120,32 @@ export const PieceDeCaisse: React.FC = () => {
 
   // Un chantier clôturé a un coût figé qui n'accepte plus d'imputation
   // (`assertSiteOpenTx`, côté serveur) : l'écarter ici évite de saisir un
-  // brouillon que la validation refusera de toute façon, sans jamais
-  // pouvoir être ni validé ni supprimé depuis cet écran.
-  const optionsChantiers = (chantiers ?? [])
-    .filter(chantier => chantier.status !== 'CLOSED')
-    .map(chantier => ({ value: chantier.id, label: chantier.name }));
+  // brouillon que la validation refusera de toute façon.
+  const chantiersOuverts = (chantiers ?? []).filter(chantier => chantier.status !== 'CLOSED');
+  const optionsChantiers = chantiersOuverts.map(chantier => ({ value: chantier.id, label: chantier.name }));
+
+  /**
+   * Le chantier passé en adresse a-t-il été clôturé entre-temps ?
+   *
+   * La fiche d'un chantier clôturé grise déjà son bouton « Nouvelle pièce de
+   * caisse », mais l'adresse reste ouvrable : un signet, un lien d'hier, un
+   * chantier clôturé depuis. Sans ce contrôle, le sélecteur afficherait
+   * l'identifiant brut à la place du nom — une option retirée n'a plus de
+   * libellé à montrer — et personne ne comprendrait pourquoi.
+   */
+  const chantierPreselectionneEstClos = Boolean(
+    chantierPreselectionne && (chantiers ?? []).some(c => c.id === chantierPreselectionne && c.status === 'CLOSED')
+  );
+
+  // La valeur pré-sélectionnée est RELÂCHÉE plutôt que conservée : une option
+  // retirée de la liste n'a plus de libellé, et le champ afficherait
+  // l'identifiant brut du chantier. Posé ici, après le calcul dont il dépend
+  // et avant tout retour anticipé — l'ordre des hooks ne se négocie pas.
+  useEffect(() => {
+    if (chantierPreselectionneEstClos && siteId === chantierPreselectionne) {
+      setSiteId(undefined);
+    }
+  }, [chantierPreselectionneEstClos, chantierPreselectionne, siteId]);
   const optionsPostes = (postes ?? [])
     .filter(poste => poste.isActive)
     .sort((a, b) => a.position - b.position)
@@ -135,7 +156,9 @@ export const PieceDeCaisse: React.FC = () => {
   }
 
   const reinitialiserFormulaire = () => {
-    setSiteId(chantierPreselectionne);
+    // Jamais le chantier de l'adresse s'il a ete cloture entre-temps : il
+    // n'a plus d'option, et le champ n'aurait qu'un identifiant a montrer.
+    setSiteId(chantierPreselectionneEstClos ? undefined : chantierPreselectionne);
     setCostCategoryId(undefined);
     setBeneficiaire('');
     setMontant(null);
@@ -307,6 +330,13 @@ export const PieceDeCaisse: React.FC = () => {
                 options={optionsChantiers}
                 disabled={formulaireVerrouille}
               />
+              {chantierPreselectionneEstClos && !piece && (
+                <Text type="warning" style={{ display: 'block', marginTop: 'var(--space-1)' }}>
+                  {t(
+                    'Ce chantier est clôturé : son coût est figé et n’accepte plus de dépense. Choisissez-en un autre, ou rouvrez-le d’abord.'
+                  )}
+                </Text>
+              )}
             </div>
             <div style={{ minWidth: 220 }}>
               <label htmlFor="caisse-poste">{t('Poste de dépense')}</label>

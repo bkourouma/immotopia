@@ -153,7 +153,16 @@ export const ChantierDetail: React.FC = () => {
           .join(' · ')}
         primaryAction={{
           label: t('Nouvelle pièce de caisse'),
-          onClick: () => navigate(`/tenant/${tenantId}/finance/caisse?chantierId=${siteId}`)
+          onClick: () => navigate(`/tenant/${tenantId}/finance/caisse?chantierId=${siteId}`),
+          // Le garde-fou serveur (`assertSiteOpenTx`) refuse déjà la
+          // validation d'une pièce sur un chantier clôturé, mais trop tard :
+          // rien n'empêchait jusqu'ici de SAISIR un brouillon qu'on ne pouvait
+          // ensuite ni valider ni supprimer. On remonte donc la prévention
+          // ici, au moment même où le geste part.
+          disabled: site.status === 'CLOSED',
+          disabledReason: t(
+            "Ce chantier est clôturé : son coût est figé et n'accepte plus de dépense. Rouvrez-le d'abord."
+          )
         }}
         // Les lots et la clôture vivent sur leur propre écran (lot 4,
         // sous-lot 6). Sans ce chemin, il n'était atteignable que par le
