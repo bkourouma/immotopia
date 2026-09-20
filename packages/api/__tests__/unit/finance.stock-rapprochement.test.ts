@@ -385,6 +385,34 @@ describe('isSiteStockEnabledTx', () => {
     await expect(isSiteStockEnabledTx(mockPrisma as any, TENANT_ID, site.id, BASCULE)).resolves.toBe(true);
   });
 
+  /**
+   * LE CAS QUI MANQUAIT, et qui a coûté une journée de test.
+   *
+   * La bascule se confirme en pleine journée — il n'y a aucune date à
+   * choisir, c'est l'instant qui est enregistré. La date d'une facture, elle,
+   * est une date métier sans heure : minuit. Comparer les deux directement
+   * classait TOUTE facture du jour de la bascule comme antérieure à elle, si
+   * bien que la bascule n'avait aucun effet le jour même : la facture de
+   * matériaux entrait dans le coût du chantier comme avant.
+   *
+   * Le jeu d'essai précédent basculait à minuit pile, et ne pouvait donc pas
+   * voir le défaut.
+   */
+  it('compte une facture du JOUR de la bascule comme postérieure, même si la bascule a eu lieu à 13 h', async () => {
+    const site = seedSite({ stockEnabledAt: new Date('2026-03-15T13:15:55.397Z') });
+    seedLocation({ kind: 'SITE', label: `Chantier ${site.name}`, siteId: site.id });
+
+    const factureDuJour = new Date('2026-03-15T00:00:00.000Z');
+    expect(factureDuJour.getTime()).toBeLessThan(new Date('2026-03-15T13:15:55.397Z').getTime());
+
+    await expect(isSiteStockEnabledTx(mockPrisma as any, TENANT_ID, site.id, factureDuJour)).resolves.toBe(true);
+
+    // La veille reste la veille : le contrôle porte sur le jour, il ne
+    // déborde pas.
+    const veille = new Date('2026-03-14T23:59:59.000Z');
+    await expect(isSiteStockEnabledTx(mockPrisma as any, TENANT_ID, site.id, veille)).resolves.toBe(false);
+  });
+
   it('ne se laisse pas décider par l’instant présent', async () => {
     const { site } = seedSwitchedSite();
 

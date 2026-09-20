@@ -276,6 +276,22 @@ export const getSiteStockStatus: GetSiteStockStatus = async (tenantId, siteId) =
  * Renvoie `false` pour un chantier inexistant plutôt que de lever : ce n'est
  * pas son travail, et l'appelant a déjà lu le chantier (contrat).
  */
+/**
+ * Le premier instant du JOUR d'une date, en temps universel.
+ *
+ * La bascule au stock se compare en JOURS, jamais en instants. La date d'une
+ * facture est une date metier sans heure — minuit —, tandis que la bascule
+ * porte l'instant exact ou on l'a confirmee, en pleine journee. Comparer les
+ * deux directement classait TOUTE facture du jour de la bascule comme
+ * anterieure a elle : la bascule n'avait alors aucun effet le jour meme, la
+ * facture de materiaux entrait dans le cout du chantier comme avant, et elle
+ * manquait au rapprochement. Trouve par le test de bout en bout du
+ * 20 septembre 2026.
+ */
+function debutDuJourUTC(date: Date): number {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
 export const isSiteStockEnabledTx: IsSiteStockEnabledTx = async (tx, tenantId, siteId, at) => {
   const site = await tx.constructionSite.findFirst({
     where: { id: siteId, tenantId },
@@ -293,7 +309,12 @@ export const isSiteStockEnabledTx: IsSiteStockEnabledTx = async (tx, tenantId, s
     return false;
   }
 
-  return at.getTime() >= (site.stockEnabledAt as Date).getTime();
+  // La DATE de la piece contre le JOUR de la bascule. C'est bien la date
+  // metier de la piece qui tranche, et non l'instant de sa saisie : une
+  // facture du mois dernier, saisie aujourd'hui sur un chantier bascule hier,
+  // appartient a l'avant et doit s'imputer comme avant — sans quoi elle
+  // creerait un stock que personne n'a jamais recu.
+  return debutDuJourUTC(at) >= debutDuJourUTC(site.stockEnabledAt as Date);
 };
 
 // ---------------------------------------------------------------------------
@@ -401,7 +422,16 @@ export const getSiteStockReconciliation: GetSiteStockReconciliation = async (ten
     // un écart contre un stock qui n'a jamais eu à les recevoir.
     stockEnabledAt
       ? prisma.supplierInvoice.aggregate({
-          where: { tenantId, siteId, status: 'VALIDATED' as any, invoiceDate: { gte: stockEnabledAt } },
+          // Le JOUR de la bascule, pas son instant : meme raison qu'a
+          // `isSiteStockEnabledTx`, et surtout meme regle. Les deux doivent
+          // basculer ensemble, faute de quoi une facture entrerait dans le
+          // cout sans jamais paraitre au rapprochement, ou l'inverse.
+          where: {
+            tenantId,
+            siteId,
+            status: 'VALIDATED' as any,
+            invoiceDate: { gte: new Date(debutDuJourUTC(stockEnabledAt)) }
+          },
           _sum: { amount: true }
         })
       : Promise.resolve({ _sum: { amount: null } } as Record<string, any>),
