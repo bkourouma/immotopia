@@ -277,19 +277,36 @@ export const getSiteStockStatus: GetSiteStockStatus = async (tenantId, siteId) =
  * pas son travail, et l'appelant a déjà lu le chantier (contrat).
  */
 /**
- * Le premier instant du JOUR d'une date, en temps universel.
+ * LA FRONTIERE DE LA BASCULE, ET SA SEULE DEFINITION DANS TOUT LE MODULE.
  *
- * La bascule au stock se compare en JOURS, jamais en instants. La date d'une
- * facture est une date metier sans heure — minuit —, tandis que la bascule
- * porte l'instant exact ou on l'a confirmee, en pleine journee. Comparer les
- * deux directement classait TOUTE facture du jour de la bascule comme
- * anterieure a elle : la bascule n'avait alors aucun effet le jour meme, la
- * facture de materiaux entrait dans le cout du chantier comme avant, et elle
- * manquait au rapprochement. Trouve par le test de bout en bout du
- * 20 septembre 2026.
+ * La bascule se compare en JOURS, jamais en instants. La date d'une piece est
+ * une date metier sans heure — minuit —, tandis que `stockEnabledAt` porte
+ * l'instant exact ou la bascule a ete confirmee, en pleine journee. Confronter
+ * les deux directement classait TOUTE piece du jour de la bascule comme
+ * anterieure a elle.
+ *
+ * **Trois lectures dependent de cette frontiere**, et elles doivent donner la
+ * meme reponse sous peine d'incoherence visible a l'ecran :
+ *
+ * | Lecture                             | Effet d'un desaccord                     |
+ * |-------------------------------------|------------------------------------------|
+ * | `isSiteStockEnabledTx`              | la facture s'impute, ou entre en stock   |
+ * | `invoicedAmount` du rapprochement   | « Facture au chantier »                  |
+ * | les agregats de MOUVEMENTS          | « Entre depuis une facture », « Consomme » |
+ *
+ * Le defaut a ete repare deux fois plutot qu'une, le 20 septembre 2026 : la
+ * premiere passe a corrige les deux premieres lectures et laisse la troisieme
+ * derriere, si bien que l'ecran annoncait 11 000 000 d'ecart sur une
+ * marchandise bel et bien entree. D'ou cette fonction unique, et l'absence
+ * deliberee de toute comparaison de dates ecrite a la main ailleurs : le
+ * prochain qui ajoute une lecture doit passer par ici.
+ *
+ * Elle rend un `Date` et non un booleen parce que Prisma en a besoin tel quel
+ * dans un `gte` — un predicat n'aurait servi qu'a un tiers des appelants, et
+ * les deux autres auraient reecrit la regle.
  */
-function debutDuJourUTC(date: Date): number {
-  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+function debutDuJourDeLaBascule(stockEnabledAt: Date): Date {
+  return new Date(Date.UTC(stockEnabledAt.getUTCFullYear(), stockEnabledAt.getUTCMonth(), stockEnabledAt.getUTCDate()));
 }
 
 export const isSiteStockEnabledTx: IsSiteStockEnabledTx = async (tx, tenantId, siteId, at) => {
@@ -314,7 +331,7 @@ export const isSiteStockEnabledTx: IsSiteStockEnabledTx = async (tx, tenantId, s
   // facture du mois dernier, saisie aujourd'hui sur un chantier bascule hier,
   // appartient a l'avant et doit s'imputer comme avant — sans quoi elle
   // creerait un stock que personne n'a jamais recu.
-  return debutDuJourUTC(at) >= debutDuJourUTC(site.stockEnabledAt as Date);
+  return at.getTime() >= debutDuJourDeLaBascule(site.stockEnabledAt as Date).getTime();
 };
 
 // ---------------------------------------------------------------------------
@@ -384,8 +401,16 @@ export const getSiteStockReconciliation: GetSiteStockReconciliation = async (ten
    * tout, sans quoi le consommé d'un chantier non basculé retomberait à zéro
    * par un détour — exactement le défaut que la correction du contrat vient
    * de supprimer.
+   *
+   * La borne est le PREMIER INSTANT DU JOUR de la bascule, jamais l'instant
+   * de la bascule lui-meme : un mouvement porte la date metier saisie au
+   * formulaire, donc minuit, et minuit precede l'heure a laquelle on bascule.
+   * Compare a l'instant brut, tout ce qui s'est recu, transfere ou sorti le
+   * jour de la bascule tombait du mauvais cote — le rapprochement affichait
+   * alors zero recu et zero consomme face a un restant juste, c'est-a-dire
+   * l'ecart le plus alarmant possible sur la marchandise la mieux rangee.
    */
-  const depuisLaBascule = stockEnabledAt ? { movementDate: { gte: stockEnabledAt } } : {};
+  const depuisLaBascule = stockEnabledAt ? { movementDate: { gte: debutDuJourDeLaBascule(stockEnabledAt) } } : {};
 
   const location = await findSiteLocation(prisma, tenantId, siteId);
 
@@ -430,7 +455,7 @@ export const getSiteStockReconciliation: GetSiteStockReconciliation = async (ten
             tenantId,
             siteId,
             status: 'VALIDATED' as any,
-            invoiceDate: { gte: new Date(debutDuJourUTC(stockEnabledAt)) }
+            invoiceDate: { gte: debutDuJourDeLaBascule(stockEnabledAt) }
           },
           _sum: { amount: true }
         })

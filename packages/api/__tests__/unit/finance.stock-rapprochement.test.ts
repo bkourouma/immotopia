@@ -764,6 +764,86 @@ describe('getSiteStockReconciliation — par article', () => {
     expect(rapport.lines[0].issuedQuantity).toBe(8);
   });
 
+  it('COMPTE LES MOUVEMENTS DU JOUR DE LA BASCULE, même quand elle a eu lieu à 13 h', async () => {
+    // ANO-19, recette du 20 septembre 2026. Tous les autres cas de ce fichier
+    // basculent à MINUIT pile, si bien qu'aucun ne pouvait voir le défaut : la
+    // bascule enregistre l'instant de sa confirmation — 13 h 15 — tandis qu'un
+    // mouvement porte la date métier saisie au formulaire, donc minuit. Minuit
+    // précède 13 h 15, et TOUT ce qui bougeait le jour de la bascule tombait
+    // hors de la période.
+    //
+    // À l'écran, cela donnait le pire message possible : « Entré depuis une
+    // facture » à zéro et « Consommé » à zéro, face à un « Restant » juste —
+    // soit un écart de la totalité du facturé, sur une marchandise pourtant
+    // bien reçue et bien rangée.
+    const site = seedSite({ stockEnabledAt: new Date('2026-09-20T13:15:55.397Z') });
+    const location = seedLocation({ kind: 'SITE', label: `Chantier ${site.name}`, siteId: site.id });
+    const ciment = seedItem({ reference: 'QA-CIM-42' });
+    const leJourDeLaBascule = new Date('2026-09-20T00:00:00.000Z');
+
+    seedInvoice(site, 11_000_000, { invoiceDate: leJourDeLaBascule });
+    seedMovement({
+      type: 'RECEIPT',
+      itemId: ciment.id,
+      locationId: location.id,
+      quantity: 800,
+      totalValue: 11_000_000,
+      movementDate: leJourDeLaBascule
+    });
+    seedMovement({
+      type: 'TRANSFER',
+      itemId: ciment.id,
+      locationId: location.id,
+      quantity: 100,
+      totalValue: 650_000,
+      movementDate: leJourDeLaBascule
+    });
+    seedMovement({
+      type: 'ISSUE',
+      itemId: ciment.id,
+      locationId: location.id,
+      siteId: site.id,
+      isDecrease: true,
+      quantity: 500,
+      totalValue: 6_550_000,
+      movementDate: leJourDeLaBascule
+    });
+
+    const rapport = await getSiteStockReconciliation(TENANT_ID, site.id);
+
+    // Les TROIS agrégats de mouvements, et pas seulement celui qui a été
+    // exercé en recette : ils partagent le même filtre, et le transfert
+    // entrant ne se serait vu qu'en production.
+    expect(rapport.receivedValue).toBe(11_000_000);
+    expect(rapport.transferredInValue).toBe(650_000);
+    expect(rapport.issuedValue).toBe(6_550_000);
+    // Le facturé et le reçu se confrontent le même jour : aucun écart.
+    expect(rapport.invoicedAmount).toBe(11_000_000);
+    expect(rapport.unreconciledAmount).toBe(0);
+  });
+
+  it('ÉCARTE les mouvements de la VEILLE d’une bascule faite à 13 h — la borne reste une borne', async () => {
+    // Le pendant du test précédent : élargir au jour entier ne doit pas
+    // avaler l'avant-veille. Sans lui, remplacer le filtre par « tout
+    // prendre » passerait le test du dessus sans que rien ne proteste.
+    const site = seedSite({ stockEnabledAt: new Date('2026-09-20T13:15:55.397Z') });
+    const location = seedLocation({ kind: 'SITE', label: `Chantier ${site.name}`, siteId: site.id });
+    const ciment = seedItem();
+
+    seedMovement({
+      type: 'RECEIPT',
+      itemId: ciment.id,
+      locationId: location.id,
+      quantity: 40,
+      totalValue: 260_000,
+      movementDate: new Date('2026-09-19T23:59:59.999Z')
+    });
+
+    const rapport = await getSiteStockReconciliation(TENANT_ID, site.id);
+
+    expect(rapport.receivedValue).toBe(0);
+  });
+
   it('conserve les quatre décimales d’une quantité — une quantité n’est pas un montant', async () => {
     const { site, location } = seedSwitchedSite();
     const sable = seedItem({ label: 'Sable', unit: 'm3' });
