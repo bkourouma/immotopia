@@ -4,6 +4,7 @@ import { App, Button, Card, Checkbox, Select, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  deleteDraftCashVoucher,
   getValidationQueue,
   validateSupplierInvoice,
   validateSupplierPayment,
@@ -228,6 +229,52 @@ export const FileDeValidation: React.FC = () => {
     }
   };
 
+  /**
+   * Jette un brouillon de pièce de caisse. Ajout du 20 septembre 2026.
+   *
+   * **Cette file n'offrait que « Valider ».** Une pièce dont la validation
+   * est refusée — celle d'un chantier clôturé, par exemple — y restait donc
+   * pour toujours : ni validable, ni supprimable. Et comme un brouillon de
+   * pièce de caisse interdit à lui seul de clôturer le chantier qu'il vise,
+   * l'écran de clôture conseillait « validez-la ou supprimez-la » en ne
+   * proposant que la première moitié.
+   *
+   * Seules les PIÈCES DE CAISSE sont concernées ici, parce qu'elles seules
+   * ont aujourd'hui un point d'entrée de suppression côté serveur. Les autres
+   * natures gardent leur unique action, et ce n'est pas un oubli : rien ne
+   * doit laisser croire qu'un brouillon de facture se jette de la même façon
+   * tant que le serveur ne le permet pas.
+   */
+  const supprimerUnBrouillon = async (doc: PendingDocument) => {
+    if (!tenantId) return;
+    setEnCours(cle(doc));
+    try {
+      await deleteDraftCashVoucher(tenantId, doc.documentId);
+      await invaliderLaFile();
+      setSelection(prev => {
+        const next = new Set(prev);
+        next.delete(cle(doc));
+        return next;
+      });
+      message.success(t('« {{label}} » a été supprimée.', { label: doc.label }));
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || t('La suppression a échoué.'));
+    } finally {
+      setEnCours(null);
+    }
+  };
+
+  const demanderSuppression = (doc: PendingDocument) => {
+    confirmAction({
+      title: t('Supprimer « {{label}} » ?', { label: doc.label }),
+      description: t(
+        "Ce brouillon n'a ni numéro, ni écriture, ni imputation : le supprimer ne laisse aucune trace et ne change aucun coût. C'est la différence avec l'annulation, qui ne vaut que pour une pièce déjà validée."
+      ),
+      okText: t('Supprimer'),
+      onConfirm: () => supprimerUnBrouillon(doc)
+    });
+  };
+
   const demanderValidation = (doc: PendingDocument) => {
     confirmAction({
       title: t('Valider « {{label}} » ?', { label: doc.label }),
@@ -323,9 +370,16 @@ export const FileDeValidation: React.FC = () => {
       key: 'actions',
       align: 'end',
       render: (_, doc) => (
-        <Button type="link" loading={enCours === cle(doc)} onClick={() => demanderValidation(doc)}>
-          {t('Valider')}
-        </Button>
+        <Space size={0}>
+          <Button type="link" loading={enCours === cle(doc)} onClick={() => demanderValidation(doc)}>
+            {t('Valider')}
+          </Button>
+          {doc.documentType === 'CASH_VOUCHER' && (
+            <Button type="link" danger disabled={enCours === cle(doc)} onClick={() => demanderSuppression(doc)}>
+              {t('Supprimer')}
+            </Button>
+          )}
+        </Space>
       )
     }
   ];
@@ -510,6 +564,23 @@ export const FileDeValidation: React.FC = () => {
               loading: enCours === cle(doc),
               onClick: () => demanderValidation(doc)
             }}
+            // Au palier mobile, la suppression passe par le menu secondaire :
+            // deux boutons de même poids sur une carte étroite inviteraient à
+            // se tromper, et celui des deux qui détruit doit demander un geste
+            // de plus. Même restriction qu'en table — les pièces de caisse
+            // seules, faute de point d'entrée serveur pour les autres natures.
+            secondaryActions={
+              doc.documentType === 'CASH_VOUCHER'
+                ? [
+                    {
+                      key: 'supprimer',
+                      danger: true,
+                      label: t('Supprimer le brouillon'),
+                      onClick: () => demanderSuppression(doc)
+                    }
+                  ]
+                : undefined
+            }
           />
         )}
       />

@@ -554,6 +554,28 @@ export type ValidateCashVoucherTx = (
   validatedByUserId: string
 ) => Promise<CashVoucherRecord>;
 
+/**
+ * Jette une pièce de caisse RESTÉE EN BROUILLON. Ajout du 20 septembre 2026.
+ *
+ * **Supprimer n'est pas annuler, et les deux ne portent pas sur les mêmes
+ * pièces.** Une pièce validée a produit une écriture, une imputation et un
+ * numéro de carnet : elle se corrige par une annulation qui laisse sa trace
+ * (principe P-6), et cette fonction la refuse. Un brouillon, lui, n'a rien
+ * produit du tout — ni numéro, ni écriture, ni imputation — et il n'y a donc
+ * rien à contrepasser ni aucun trou à laisser dans le carnet.
+ *
+ * Sans elle, une pièce saisie par erreur était définitive : on ne pouvait ni
+ * la valider — le chantier clôturé la refusait — ni s'en défaire, et elle
+ * bloquait la clôture du chantier pour toujours. L'écran conseillait déjà
+ * « validez-la ou supprimez-la » ; la seconde moitié de la phrase n'existait
+ * pas.
+ */
+export type DeleteDraftCashVoucherTx = (
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  voucherId: string
+) => Promise<void>;
+
 // ---------------------------------------------------------------------------
 // File de validation
 // ---------------------------------------------------------------------------

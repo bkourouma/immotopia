@@ -11,7 +11,12 @@ import {
   listConstructionSites,
   listCostCategories
 } from '../lib/finance/sites';
-import { createCashVoucherTx, formatCashVoucherNumber, validateCashVoucherTx } from '../lib/finance/cash';
+import {
+  createCashVoucherTx,
+  deleteDraftCashVoucherTx,
+  formatCashVoucherNumber,
+  validateCashVoucherTx
+} from '../lib/finance/cash';
 import { voidDocumentTx } from '../lib/finance/accounting';
 import { getValidationQueue } from '../lib/finance/validation-queue';
 import type {
@@ -503,6 +508,28 @@ export const voidCashVoucherHandler = asyncHandler(async (req: Request, res: Res
       voidedAt: voidDocument.voidedAt
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// Suppression d'une piece de caisse restee en BROUILLON — 20 septembre 2026
+//
+// Rien a rendre : un brouillon n'avait ni numero, ni ecriture, ni imputation,
+// et il n'en reste donc aucune trace a montrer. D'ou le 204, et non un 200
+// portant une carcasse de pièce que plus rien ne designe.
+//
+// Porte le droit de CREATION, pas celui de validation : se defaire d'un
+// brouillon est le geste symetrique de l'emettre, et rien de comptable n'a
+// encore eu lieu. Une piece validee, elle, releve de l'annulation, qui exige
+// le droit de validation — et `deleteDraftCashVoucherTx` la refuse.
+// ---------------------------------------------------------------------------
+
+export const deleteDraftCashVoucherHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = requireTenantId(req);
+  const voucherId = requireUuidParam(req, 'voucherId');
+
+  await prisma.$transaction(tx => deleteDraftCashVoucherTx(tx, tenantId, voucherId));
+
+  res.status(204).send();
 });
 
 export const printCashVoucherHandler = asyncHandler(async (req: Request, res: Response) => {

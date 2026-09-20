@@ -554,6 +554,29 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /tenants/{tenantId}/finance/cash-vouchers/{voucherId}:
+    delete:
+      tags: [PiecesDeCaisse]
+      summary: Jeter une piece de caisse restee en brouillon
+      description: >
+        Ajoute le 20 septembre 2026. Ne vaut QUE pour un brouillon : une piece
+        validee a consomme un numero de carnet, poste une ecriture et impute un
+        chantier, et se corrige par une annulation qui laisse sa trace
+        (principe P-6) — la supprimer est refuse en 409. Un brouillon n'a rien
+        produit de tout cela : le jeter ne laisse ni trou dans le carnet, ni
+        montant a contrepasser. Permission `finance.documents.create`, et non
+        `validate` : se defaire d'un brouillon est le geste symetrique de
+        l'emettre.
+      parameters:
+        - $ref: "#/components/parameters/TenantId"
+        - $ref: "#/components/parameters/VoucherId"
+      responses:
+        "204":
+          description: Brouillon supprime. Aucun corps — il n'en reste rien a montrer.
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
   /tenants/{tenantId}/finance/cash-vouchers/{voucherId}.pdf:
     get:
       tags: [PiecesDeCaisse]

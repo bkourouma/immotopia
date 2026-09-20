@@ -86,7 +86,12 @@ import {
 import { syncWorkProgramCostTx } from './cost-allocation';
 import { assertSiteOpenTx } from './site-closing';
 import { raiseBudgetAlertIfNeededTx } from './budget-alerts';
-import type { CashVoucherRecord, CreateCashVoucherTx, ValidateCashVoucherTx } from './types-lot2';
+import type {
+  CashVoucherRecord,
+  CreateCashVoucherTx,
+  DeleteDraftCashVoucherTx,
+  ValidateCashVoucherTx
+} from './types-lot2';
 
 // ---------------------------------------------------------------------------
 // Numéro affiché — pas de colonne dédiée, seulement `voucherYear`/`voucherNumber`
@@ -396,4 +401,51 @@ export const validateCashVoucherTx: ValidateCashVoucherTx = async (tx, tenantId,
 
   const updated = await tx.cashVoucher.findFirst({ where: { id: voucher.id, tenantId } });
   return toVoucherRecord(updated as Record<string, any>);
+};
+
+// ---------------------------------------------------------------------------
+// Suppression d'un brouillon — ajout du 20 septembre 2026
+// ---------------------------------------------------------------------------
+
+/**
+ * Voir `DeleteDraftCashVoucherTx` dans `./types-lot2.ts`.
+ *
+ * **Pourquoi un brouillon se supprime alors qu'une pièce validée s'annule.**
+ * Ce fichier attribue le numéro À LA VALIDATION, et l'imputation naît au même
+ * instant. Un brouillon n'a donc consommé aucun numéro, posté aucune écriture
+ * et imputé aucun chantier : le jeter ne laisse ni trou dans le carnet, ni
+ * montant à contrepasser, ni coût à recalculer. Il n'y a rien à tracer parce
+ * qu'il ne s'est rien passé.
+ *
+ * Une pièce validée, elle, a fait les trois. Elle relève de l'annulation, qui
+ * garde la pièce et pose sa contrepartie (principe P-6), et cette fonction la
+ * refuse explicitement plutôt que de laisser la suppression l'effacer.
+ *
+ * **Ce que cette fonction débloque.** Un chantier clôturé refuse toute
+ * nouvelle dépense, à juste titre — mais rien n'empêchait d'y SAISIR une
+ * pièce. Le brouillon obtenu ne pouvait alors ni être validé, ni disparaître,
+ * et il interdisait à lui seul de re-clôturer le chantier. L'écran de clôture
+ * conseillait pourtant déjà « validez-la ou supprimez-la » : la seconde
+ * moitié du conseil n'existait nulle part. Recette du 20 septembre 2026.
+ *
+ * La suppression est CONDITIONNELLE sur `validatedAt: null`, même discipline
+ * qu'à la validation : si une autre transaction valide la pièce entre notre
+ * lecture et cet instant, `count` vaut 0 et on refuse — plutôt que d'effacer
+ * une pièce qui vient, elle, de produire une écriture.
+ */
+export const deleteDraftCashVoucherTx: DeleteDraftCashVoucherTx = async (tx, tenantId, voucherId) => {
+  const voucher = await tx.cashVoucher.findFirst({ where: { id: voucherId, tenantId } });
+  if (!voucher) {
+    throw new NotFoundError('Pièce de caisse introuvable.');
+  }
+  if (voucher.validatedAt) {
+    throw new ConflictError(
+      'Cette pièce de caisse est validée : elle ne se supprime pas, elle s’annule — et son annulation reste visible.'
+    );
+  }
+
+  const deleted = await tx.cashVoucher.deleteMany({ where: { id: voucherId, tenantId, validatedAt: null } });
+  if (deleted.count !== 1) {
+    throw new ConflictError('Cette pièce de caisse vient d’être validée par ailleurs.');
+  }
 };

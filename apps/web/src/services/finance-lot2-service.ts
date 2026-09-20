@@ -324,6 +324,23 @@ export async function voidCashVoucher(tenantId: string, voucherId: string, reaso
 }
 
 /**
+ * Jette une pièce de caisse restée en BROUILLON. Ajout du 20 septembre 2026.
+ *
+ * Distincte de `voidCashVoucher`, et volontairement : un brouillon n'a
+ * consommé aucun numéro de carnet, posté aucune écriture et imputé aucun
+ * chantier, il n'y a donc rien à contrepasser ni aucun motif à demander. Une
+ * pièce validée, elle, s'annule — le serveur refuse de la supprimer.
+ *
+ * Sans elle, une pièce saisie par erreur sur un chantier clôturé ne pouvait
+ * ni être validée ni disparaître, et interdisait à elle seule de re-clôturer
+ * le chantier. L'écran de clôture conseillait pourtant déjà « validez-la ou
+ * supprimez-la ».
+ */
+export async function deleteDraftCashVoucher(tenantId: string, voucherId: string): Promise<void> {
+  await apiClient.delete(`${base(tenantId)}/cash-vouchers/${voucherId}`);
+}
+
+/**
  * URL du bon imprimable.
  *
  * **Absolue, et c'est tout l'enjeu.** Les autres fonctions de ce fichier

@@ -29,12 +29,14 @@ const getValidationQueue = vi.fn();
 const validateSupplierInvoice = vi.fn();
 const validateSupplierPayment = vi.fn();
 const validateCashVoucher = vi.fn();
+const deleteDraftCashVoucher = vi.fn();
 
 vi.mock('../../services/finance-lot2-service', () => ({
   getValidationQueue: (...a: unknown[]) => getValidationQueue(...a),
   validateSupplierInvoice: (...a: unknown[]) => validateSupplierInvoice(...a),
   validateSupplierPayment: (...a: unknown[]) => validateSupplierPayment(...a),
-  validateCashVoucher: (...a: unknown[]) => validateCashVoucher(...a)
+  validateCashVoucher: (...a: unknown[]) => validateCashVoucher(...a),
+  deleteDraftCashVoucher: (...a: unknown[]) => deleteDraftCashVoucher(...a)
 }));
 
 vi.mock('../../hooks/useBreakpoint', () => ({
@@ -100,6 +102,7 @@ beforeEach(() => {
   validateSupplierInvoice.mockResolvedValue({ id: 'facture-1', status: 'VALIDATED' });
   validateSupplierPayment.mockResolvedValue({ id: 'reglement-1', status: 'VALIDATED' });
   validateCashVoucher.mockResolvedValue({ id: 'caisse-1', status: 'VALIDATED' });
+  deleteDraftCashVoucher.mockResolvedValue(undefined);
 });
 
 describe('File de validation — les trois natures', () => {
@@ -269,5 +272,74 @@ describe('File de validation — vocabulaire (P-1 du PRD)', () => {
 
     expect(normalise).not.toMatch(/\bdebit/);
     expect(normalise).not.toMatch(/\bcredit/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Jeter un brouillon — recette du 20 septembre 2026 (ANO-20)
+// ---------------------------------------------------------------------------
+
+describe('File de validation — jeter un brouillon de pièce de caisse', () => {
+  it("N'OFFRE la suppression QUE sur une pièce de caisse", async () => {
+    // Le serveur ne sait jeter que celles-là. Proposer le geste ailleurs
+    // laisserait croire qu'un brouillon de facture se supprime aussi.
+    mount();
+
+    await screen.findByText('Pièce de caisse 2026-0031 — Ousmane Touré', {}, { timeout: 8000 });
+
+    expect(screen.getAllByRole('button', { name: 'Valider' })).toHaveLength(3);
+    expect(screen.getAllByRole('button', { name: 'Supprimer' })).toHaveLength(1);
+  });
+
+  it('DIT pourquoi supprimer un brouillon ne coûte rien, puis supprime', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount();
+
+    await screen.findByText('Pièce de caisse 2026-0031 — Ousmane Touré', {}, { timeout: 8000 });
+
+    const boutons = screen.getAllByRole('button', { name: 'Supprimer' });
+    await user.click(boutons[0]);
+
+    // La différence avec l'annulation est dite AVANT le geste : c'est elle
+    // qui explique pourquoi aucun motif n'est demandé ici.
+    expect(
+      await screen.findByText(/ni numéro, ni écriture, ni imputation/i, {}, { timeout: 8000 })
+    ).toBeInTheDocument();
+    expect(deleteDraftCashVoucher).not.toHaveBeenCalled();
+
+    const apres = await waitFor(() => {
+      const trouves = screen.getAllByRole('button', { name: 'Supprimer' });
+      expect(trouves.length).toBeGreaterThan(boutons.length);
+      return trouves;
+    });
+    await user.click(apres[apres.length - 1]);
+
+    await waitFor(() => expect(deleteDraftCashVoucher).toHaveBeenCalledWith('agence-1', 'caisse-1'));
+    // Et surtout : la suppression ne passe jamais par la validation, qui est
+    // précisément ce que le chantier clôturé refusait.
+    expect(validateCashVoucher).not.toHaveBeenCalled();
+  });
+
+  it('MONTRE le refus du serveur quand la pièce est en fait validée', async () => {
+    deleteDraftCashVoucher.mockRejectedValue({
+      response: {
+        data: { message: 'Cette pièce de caisse est validée : elle ne se supprime pas, elle s’annule.' }
+      }
+    });
+    const user = userEvent.setup({ delay: null });
+    mount();
+
+    await screen.findByText('Pièce de caisse 2026-0031 — Ousmane Touré', {}, { timeout: 8000 });
+
+    const boutons = screen.getAllByRole('button', { name: 'Supprimer' });
+    await user.click(boutons[0]);
+    const apres = await waitFor(() => {
+      const trouves = screen.getAllByRole('button', { name: 'Supprimer' });
+      expect(trouves.length).toBeGreaterThan(boutons.length);
+      return trouves;
+    });
+    await user.click(apres[apres.length - 1]);
+
+    expect(await screen.findByText(/elle ne se supprime pas/i, {}, { timeout: 8000 })).toBeInTheDocument();
   });
 });

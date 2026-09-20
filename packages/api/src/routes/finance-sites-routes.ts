@@ -12,6 +12,7 @@ import {
   createCashVoucherHandler,
   createConstructionSiteHandler,
   createCostCategoryHandler,
+  deleteDraftCashVoucherHandler,
   setCostCategoryAccountHandler,
   getConstructionSiteDetailHandler,
   getConstructionSiteHandler,
@@ -85,6 +86,18 @@ router.post(
   '/tenants/:tenantId/finance/cash-vouchers/:voucherId/validate',
   requireDocumentsValidate,
   validateCashVoucherHandler
+);
+
+// Suppression d'une piece de caisse restee en BROUILLON. Droit de CREATION,
+// et non de validation : se defaire d'un brouillon est le geste symetrique de
+// l'emettre, et rien de comptable n'a encore eu lieu — ni numero, ni ecriture,
+// ni imputation. Ajoutee le 20 septembre 2026 : une piece saisie par erreur
+// sur un chantier cloture ne pouvait ni etre validee ni disparaitre, et
+// bloquait a elle seule toute nouvelle cloture du chantier.
+router.delete(
+  '/tenants/:tenantId/finance/cash-vouchers/:voucherId',
+  requireDocumentsCreate,
+  deleteDraftCashVoucherHandler
 );
 
 router.get('/tenants/:tenantId/finance/cash-vouchers/:voucherId.pdf', requireAccountsRead, printCashVoucherHandler);

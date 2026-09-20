@@ -228,6 +228,16 @@ const mockPrisma: Row = {
       );
       for (const row of rows) Object.assign(row, data);
       return { count: rows.length };
+    }),
+    deleteMany: jest.fn(async ({ where }: Row) => {
+      const rows = store.vouchers.filter(
+        v =>
+          v.id === where.id &&
+          v.tenantId === where.tenantId &&
+          (where.validatedAt === undefined || v.validatedAt === where.validatedAt)
+      );
+      store.vouchers = store.vouchers.filter(v => !rows.includes(v));
+      return { count: rows.length };
     })
   },
 
@@ -336,7 +346,12 @@ jest.mock('../../src/utils/database', () => ({
   )
 }));
 
-import { createCashVoucherTx, validateCashVoucherTx, formatCashVoucherNumber } from '../../src/lib/finance/cash';
+import {
+  createCashVoucherTx,
+  deleteDraftCashVoucherTx,
+  validateCashVoucherTx,
+  formatCashVoucherNumber
+} from '../../src/lib/finance/cash';
 import { getValidationQueue } from '../../src/lib/finance/validation-queue';
 
 const TENANT_ID = 'tenant-1';
@@ -667,5 +682,77 @@ describe('getValidationQueue — nomme la saisisseuse', () => {
 
     const queue = await getValidationQueue(TENANT_ID);
     expect(queue.find(item => item.documentId === voucher.id)).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suppression d'un brouillon — recette du 20 septembre 2026 (ANO-20)
+// ---------------------------------------------------------------------------
+
+describe('deleteDraftCashVoucherTx — jeter un brouillon, jamais une pièce validée', () => {
+  async function supprimer(voucherId: string) {
+    return runTransaction((tx: any) => deleteDraftCashVoucherTx(tx, TENANT_ID, voucherId));
+  }
+
+  it('SUPPRIME un brouillon, et ne laisse ni écriture ni imputation derrière lui', async () => {
+    const site = seedSite();
+    const category = seedCategory();
+    const voucher = await createVoucher(site, category);
+
+    await supprimer(voucher.id);
+
+    expect(store.vouchers).toHaveLength(0);
+    expect(store.allocations).toHaveLength(0);
+    expect(postDocumentEntryTx).not.toHaveBeenCalled();
+  });
+
+  it('NE CONSOMME AUCUN NUMÉRO : le brouillon jeté ne laisse pas de trou dans le carnet', async () => {
+    // C'est la raison pour laquelle un brouillon se supprime alors qu'une
+    // pièce validée s'annule. Le numéro naît à la validation ; jeter un
+    // brouillon ne prend donc rien à la séquence, et la pièce suivante reçoit
+    // le premier numéro comme si de rien n'était.
+    const site = seedSite();
+    const category = seedCategory();
+    const jete = await createVoucher(site, category);
+    await supprimer(jete.id);
+
+    const suivant = await createVoucher(site, category);
+    const valide = await validateVoucher(suivant.id);
+
+    expect(valide.number).toBe('2026-0001');
+  });
+
+  it('REFUSE de supprimer une pièce VALIDÉE — elle s’annule, et son annulation reste visible', async () => {
+    const site = seedSite();
+    const category = seedCategory();
+    const voucher = await createVoucher(site, category);
+    await validateVoucher(voucher.id);
+
+    await expect(supprimer(voucher.id)).rejects.toThrow(/annule/i);
+    expect(store.vouchers).toHaveLength(1);
+  });
+
+  it('refuse une pièce inexistante, et une pièce d’une autre agence', async () => {
+    const site = seedSite();
+    const category = seedCategory();
+    const voucher = await createVoucher(site, category);
+    store.vouchers[0].tenantId = 'tenant-2';
+
+    await expect(supprimer('bc-inexistant')).rejects.toThrow(/introuvable/i);
+    await expect(supprimer(voucher.id)).rejects.toThrow(/introuvable/i);
+    expect(store.vouchers).toHaveLength(1);
+  });
+
+  it('DISPARAÎT de la file de validation une fois jeté', async () => {
+    // Le point de départ du défaut : la file proposait « Valider » et rien
+    // d'autre, sur une pièce que la validation refusait.
+    const site = seedSite();
+    const category = seedCategory();
+    const voucher = await createVoucher(site, category);
+    expect((await getValidationQueue(TENANT_ID)).find(item => item.documentId === voucher.id)).toBeDefined();
+
+    await supprimer(voucher.id);
+
+    expect((await getValidationQueue(TENANT_ID)).find(item => item.documentId === voucher.id)).toBeUndefined();
   });
 });

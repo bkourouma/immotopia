@@ -9,6 +9,7 @@ import {
   getCashVoucherPdfUrl,
   listConstructionSites,
   listCostCategories,
+  deleteDraftCashVoucher,
   validateCashVoucher,
   voidCashVoucher
 } from '../../services/finance-lot2-service';
@@ -97,6 +98,7 @@ export const PieceDeCaisse: React.FC = () => {
 
   const [emissionEnCours, setEmissionEnCours] = useState(false);
   const [validationEnCours, setValidationEnCours] = useState(false);
+  const [suppressionEnCours, setSuppressionEnCours] = useState(false);
   const [annulationOuverte, setAnnulationOuverte] = useState(false);
   const [motifAnnulation, setMotifAnnulation] = useState('');
   const [annulationEnCours, setAnnulationEnCours] = useState(false);
@@ -116,7 +118,13 @@ export const PieceDeCaisse: React.FC = () => {
     staleTime: STALE_TIME.reference
   });
 
-  const optionsChantiers = (chantiers ?? []).map(chantier => ({ value: chantier.id, label: chantier.name }));
+  // Un chantier clôturé a un coût figé qui n'accepte plus d'imputation
+  // (`assertSiteOpenTx`, côté serveur) : l'écarter ici évite de saisir un
+  // brouillon que la validation refusera de toute façon, sans jamais
+  // pouvoir être ni validé ni supprimé depuis cet écran.
+  const optionsChantiers = (chantiers ?? [])
+    .filter(chantier => chantier.status !== 'CLOSED')
+    .map(chantier => ({ value: chantier.id, label: chantier.name }));
   const optionsPostes = (postes ?? [])
     .filter(poste => poste.isActive)
     .sort((a, b) => a.position - b.position)
@@ -196,6 +204,33 @@ export const PieceDeCaisse: React.FC = () => {
       message.error(err?.response?.data?.message || t("L'annulation a échoué."));
     } finally {
       setAnnulationEnCours(false);
+    }
+  };
+
+  /**
+   * Jette un brouillon. Supprimer n'est PAS annuler.
+   *
+   * Un brouillon n'a consommé aucun numéro, posté aucune écriture et imputé
+   * aucun chantier : il n'y a rien à contrepasser, donc aucun motif à
+   * demander — d'où un simple `ConfirmAction` là où l'annulation ouvre une
+   * modale et exige une justification.
+   *
+   * Sans ce geste, une pièce saisie par erreur sur un chantier clôturé était
+   * définitive : la validation la refusait, et rien ne permettait de s'en
+   * défaire. Elle bloquait alors toute nouvelle clôture du chantier.
+   */
+  const supprimerLeBrouillon = async () => {
+    if (!tenantId || !piece) return;
+    setSuppressionEnCours(true);
+    try {
+      await deleteDraftCashVoucher(tenantId, piece.id);
+      message.success(t('Brouillon supprimé. Il n’avait ni numéro ni écriture : rien n’en reste.'));
+      setPiece(null);
+      reinitialiserFormulaire();
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || t('La suppression a échoué.'));
+    } finally {
+      setSuppressionEnCours(false);
     }
   };
 
@@ -410,6 +445,21 @@ export const PieceDeCaisse: React.FC = () => {
               >
                 <Button danger loading={validationEnCours}>
                   {t('Valider la pièce')}
+                </Button>
+              </ConfirmAction>
+            )}
+            {piece.status === 'DRAFT' && (
+              <ConfirmAction
+                title={t('Supprimer ce brouillon ?')}
+                description={t(
+                  "Ce brouillon n'a ni numéro, ni écriture, ni imputation : le supprimer ne laisse aucune trace et ne change aucun coût. C'est la différence avec l'annulation, qui ne vaut que pour une pièce déjà validée."
+                )}
+                okText={t('Supprimer')}
+                danger
+                onConfirm={supprimerLeBrouillon}
+              >
+                <Button danger loading={suppressionEnCours}>
+                  {t('Supprimer le brouillon')}
                 </Button>
               </ConfirmAction>
             )}
