@@ -438,8 +438,20 @@ export const getSiteDetail: GetSiteDetail = async (tenantId, siteId) => {
   // Les imputations annulées n'ont plus leur place dans le détail affiché,
   // seulement dans l'historique de leur pièce d'origine : montrer une ligne
   // annulée sans le dire ferait croire à une double dépense.
+  //
+  // **Et pas davantage celles des pièces en brouillon** (`validatedAt` nul).
+  // C'est exactement le filtre que `sumSiteActualCost` applique déjà, et
+  // l'oublier ici faisait diverger deux chiffres du même écran : la carte
+  // « Coût réel » annonçait 28 500 000 pendant que les sous-totaux juste en
+  // dessous sommaient 56 500 000, l'écart étant une facture encore en
+  // brouillon. Un comptable ne peut pas savoir lequel croire. Trouvé par le
+  // test de bout en bout du 20 septembre 2026.
+  //
+  // Une imputation de brouillon existe bel et bien en base — elle dit quel
+  // poste la pièce visera — mais elle ne compte nulle part tant que la pièce
+  // n'est pas validée.
   const allocations = await prisma.costAllocation.findMany({
-    where: { tenantId, siteId, voidedAt: null },
+    where: { tenantId, siteId, validatedAt: { not: null }, voidedAt: null },
     include: { costCategory: { select: { id: true, label: true } } },
     orderBy: [{ createdAt: 'asc' }]
   });

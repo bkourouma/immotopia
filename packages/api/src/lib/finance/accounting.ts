@@ -850,6 +850,27 @@ export const voidDocumentTx: VoidDocumentTx = async (tx, params) => {
     }
   }
 
+  // La PIECE ELLE-MEME passe a l'etat annule.
+  //
+  // Sans cela, tout le reste etait juste — ecriture inversee, imputations
+  // tombees, solde du tiers revenu en place — mais la facture continuait
+  // d'afficher « Validee ». Consequences vues au test de bout en bout du
+  // 20 septembre 2026 : l'action « Annuler » restait offerte sur une facture
+  // deja annulee, et cette facture restait proposee a la carte « Factures a
+  // regler », ou l'on pouvait donc regler ce qui n'existait plus.
+  //
+  // Seule la facture porte une colonne `status` en base. Le reglement et la
+  // piece de caisse n'en ont pas : leur etat se deduit de `validatedAt` et de
+  // la presence d'une piece d'annulation (`toPaymentRecord`, `suppliers.ts`),
+  // et ils affichaient donc « Annule » correctement des le premier jour. C'est
+  // la facture, seule a stocker son etat, qui l'oubliait.
+  if (documentType === 'SUPPLIER_INVOICE') {
+    await tx.supplierInvoice.update({
+      where: { id: documentId },
+      data: { status: 'VOIDED' as any }
+    });
+  }
+
   // Le compte de tiers revient a son etat anterieur. Sans cela, l'ecriture
   // serait inversee mais le solde resterait celui d'avant l'annulation — et
   // c'est le solde que la gestionnaire regarde.

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { App, Button, Card, DatePicker, Input, InputNumber, Select, Space, Typography } from 'antd';
+import { App, Button, Card, DatePicker, Input, InputNumber, Modal, Select, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -27,6 +27,8 @@ import {
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { montantCalcule, montantVerrouille } from '../../utils/ligne-quantite-prix';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -56,11 +58,12 @@ const { Title, Text } = Typography;
  * (§6). L'émission et l'annulation sont donc toutes deux irréversibles, et
  * l'écran le dit AVANT, dans une confirmation.
  *
- * **Écart de contrat signalé, non corrigé ici.** L'annulation
- * (`cancelPurchaseOrder`) n'accepte aucun motif dans le contrat gelé,
- * contrairement aux annulations du lot 2 — voir le commentaire de
- * `services/finance-lot3-service.ts` et la rubrique « Hypothèses » du rapport
- * de cet agent.
+ * **L'annulation exige un motif**, comme celles du lot 2. Elle se fait donc
+ * dans une fenêtre, pas dans une simple confirmation : le bouton de
+ * validation reste inerte tant que le motif est vide. L'écran s'en passait
+ * jusqu'au 20 septembre 2026, alors que le serveur l'a toujours réclamé
+ * (`cancelPurchaseOrderSchema`) : aucune annulation ne pouvait aboutir, et le
+ * bon continuait d'engager son chantier.
  *
  * **Vocabulaire (P-1).** On *émet*, on *engage*, jamais « débit » ni
  * « crédit ».
@@ -71,10 +74,29 @@ interface LigneSaisie {
   costCategoryId?: string;
   label: string;
   amount: number | null;
+  /**
+   * Quantité et prix unitaire, facultatifs. Voir
+   * `utils/ligne-quantite-prix.ts` pour la règle : renseignés tous les deux,
+   * le montant devient leur produit et son champ passe en lecture seule ;
+   * sinon le montant se saisit comme avant — un forfait de pose n'a pas de
+   * quantité.
+   */
+  quantity: number | null;
+  unitPrice: number | null;
 }
 
 function nouvelleLigne(): LigneSaisie {
-  return { id: crypto.randomUUID(), label: '', amount: null };
+  return { id: crypto.randomUUID(), label: '', amount: null, quantity: null, unitPrice: null };
+}
+
+/**
+ * Le montant retenu pour une ligne : le produit quand quantité ET prix
+ * unitaire sont là, la saisie directe sinon. Une seule fonction pour le
+ * total, pour la validation et pour la charge utile — trois lectures
+ * différentes du même montant finiraient par diverger.
+ */
+function montantDeLaLigne(ligne: LigneSaisie): number | null {
+  return montantCalcule(ligne.quantity, ligne.unitPrice) ?? ligne.amount;
 }
 
 const TONE_STATUT: Record<PurchaseOrderStatus, StatusTone> = {
@@ -168,9 +190,13 @@ export const BonDeCommande: React.FC = () => {
   const modifierLigne = (id: string, patch: Partial<LigneSaisie>) =>
     setLignes(prev => prev.map(l => (l.id === id ? { ...l, ...patch } : l)));
 
-  const montantTotal = lignes.reduce((somme, l) => somme + (l.amount ?? 0), 0);
+  const montantTotal = lignes.reduce((somme, l) => somme + (montantDeLaLigne(l) ?? 0), 0);
   const lignesInvalides =
-    lignes.length === 0 || lignes.some(l => !l.costCategoryId || !l.label.trim() || !(l.amount && l.amount > 0));
+    lignes.length === 0 ||
+    lignes.some(l => {
+      const montant = montantDeLaLigne(l);
+      return !l.costCategoryId || !l.label.trim() || !(montant && montant > 0);
+    });
 
   const peutEnregistrer =
     Boolean(siteId) && Boolean(supplierId) && Boolean(reference.trim()) && !lignesInvalides && montantTotal > 0;
@@ -187,7 +213,11 @@ export const BonDeCommande: React.FC = () => {
         lines: lignes.map(l => ({
           costCategoryId: l.costCategoryId as string,
           label: l.label.trim(),
-          amount: l.amount as number
+          amount: montantDeLaLigne(l) as number,
+          // Conservés tels quels : le serveur les range à côté du montant,
+          // il ne refait pas la multiplication.
+          quantity: l.quantity,
+          unitPrice: l.unitPrice
         }))
       });
       message.success(t('Bon {{reference}} enregistré en brouillon.', { reference: nouveauBon.reference }));
@@ -220,13 +250,26 @@ export const BonDeCommande: React.FC = () => {
     }
   };
 
+  // Le motif de l'annulation, saisi dans sa propre fenêtre plutôt que dans une
+  // simple confirmation. Le serveur l'exige (`cancelPurchaseOrderSchema`), et
+  // l'écran ne le demandait pas : chaque annulation repartait en 400, et le
+  // bon restait émis en continuant d'engager son chantier. Même geste que les
+  // annulations de facture et de règlement, pour la même raison — une
+  // annulation irréversible qui n'est pas tracée est un trou d'audit.
+  const [annulationOuverte, setAnnulationOuverte] = useState(false);
+  const [motifAnnulation, setMotifAnnulation] = useState('');
+
   const annuler = async () => {
     if (!tenantId || !bon) return;
+    const motif = motifAnnulation.trim();
+    if (!motif) return;
     setAnnulationEnCours(true);
     try {
-      await cancelPurchaseOrder(tenantId, bon.id);
+      await cancelPurchaseOrder(tenantId, bon.id, motif);
       await queryClient.invalidateQueries({ queryKey: detailKey('purchase-order', tenantId, bon.id) });
       message.success(t('Bon {{reference}} annulé.', { reference: bon.reference }));
+      setAnnulationOuverte(false);
+      setMotifAnnulation('');
     } catch (err: any) {
       message.error(err?.response?.data?.message || t("L'annulation a échoué."));
     } finally {
@@ -313,6 +356,8 @@ export const BonDeCommande: React.FC = () => {
                   style={{ width: 200 }}
                   value={ligne.costCategoryId}
                   onChange={value => modifierLigne(ligne.id, { costCategoryId: value })}
+                  showSearch
+                  optionFilterProp="label"
                   options={optionsPostes}
                 />
                 <Input
@@ -323,12 +368,34 @@ export const BonDeCommande: React.FC = () => {
                   onChange={event => modifierLigne(ligne.id, { label: event.target.value })}
                 />
                 <InputNumber
+                  aria-label={t('Quantité')}
+                  placeholder={t('Quantité')}
+                  min={0}
+                  style={{ width: 120 }}
+                  value={ligne.quantity ?? undefined}
+                  onChange={value => modifierLigne(ligne.id, { quantity: (value as number | null) ?? null })}
+                />
+                <InputNumber
+                  aria-label={t('Prix unitaire')}
+                  placeholder={t('Prix unitaire')}
+                  min={0}
+                  style={{ width: 160 }}
+                  value={ligne.unitPrice ?? undefined}
+                  onChange={value => modifierLigne(ligne.id, { unitPrice: (value as number | null) ?? null })}
+                  {...montantSaisiProps}
+                />
+                <InputNumber
                   aria-label={t('Montant de la ligne')}
                   placeholder={t('Montant')}
                   min={0}
                   style={{ width: 180 }}
-                  value={ligne.amount ?? undefined}
+                  // Lecture seule dès que le produit prend le relais : deux
+                  // chiffres contradictoires à l'écran valent moins qu'un
+                  // seul champ inerte qui dit d'où vient le montant.
+                  disabled={montantVerrouille(ligne.quantity, ligne.unitPrice)}
+                  value={montantDeLaLigne(ligne) ?? undefined}
                   onChange={value => modifierLigne(ligne.id, { amount: (value as number | null) ?? null })}
+                  {...montantSaisiProps}
                 />
                 <Button
                   aria-label={t('Retirer la ligne')}
@@ -379,9 +446,24 @@ export const BonDeCommande: React.FC = () => {
     );
   }
 
+  // Quantité et prix unitaire ne s'affichent que là où ils existent : une
+  // ligne saisie en montant direct montre une case vide plutôt qu'un « 1 »
+  // inventé, qui laisserait croire à une quantité jamais saisie.
   const colonnesLignes: ColumnsType<PurchaseOrder['lines'][number]> = [
     { title: t('Poste'), key: 'poste', render: (_, l) => l.costCategoryLabel },
     { title: t('Libellé'), key: 'libelle', render: (_, l) => l.label },
+    {
+      title: t('Quantité'),
+      key: 'quantite',
+      align: 'end',
+      render: (_, l) => (l.quantity == null ? '' : l.quantity.toLocaleString(activeLocale()))
+    },
+    {
+      title: t('Prix unitaire'),
+      key: 'prix-unitaire',
+      align: 'end',
+      render: (_, l) => (l.unitPrice == null ? '' : <MoneyValue value={l.unitPrice} />)
+    },
     { title: t('Montant'), key: 'montant', align: 'end', render: (_, l) => <MoneyValue value={l.amount} /> }
   ];
 
@@ -437,21 +519,38 @@ export const BonDeCommande: React.FC = () => {
           </ConfirmAction>
         )}
         {bon.status === 'ISSUED' && (
-          <ConfirmAction
-            title={t('Annuler le bon {{reference}} ?', { reference: bon.reference })}
-            description={t(
-              "Cette opération est irréversible : le bon annulé n'engage plus rien au chantier. S'il porte déjà des factures rapprochées, corrigez-les d'abord depuis l'écran des factures fournisseurs."
-            )}
-            okText={t("Confirmer l'annulation")}
-            danger
-            onConfirm={annuler}
-          >
-            <Button danger loading={annulationEnCours}>
-              {t('Annuler le bon')}
-            </Button>
-          </ConfirmAction>
+          <Button danger loading={annulationEnCours} onClick={() => setAnnulationOuverte(true)}>
+            {t('Annuler le bon')}
+          </Button>
         )}
       </Space>
+
+      <Modal
+        title={t('Annuler le bon {{reference}} ?', { reference: bon.reference })}
+        open={annulationOuverte}
+        onCancel={() => setAnnulationOuverte(false)}
+        onOk={annuler}
+        okText={t("Confirmer l'annulation")}
+        okButtonProps={{ danger: true, disabled: !motifAnnulation.trim(), loading: annulationEnCours }}
+        cancelText={t('Renoncer')}
+        destroyOnHidden
+      >
+        <Text type="secondary">
+          {t(
+            "Cette opération est irréversible : le bon annulé n'engage plus rien au chantier. S'il porte déjà des factures rapprochées, corrigez-les d'abord depuis l'écran des factures fournisseurs."
+          )}
+        </Text>
+        <div style={{ marginTop: 'var(--space-4)' }}>
+          <label htmlFor="motif-annulation-bon">{t("Motif de l'annulation")}</label>
+          <Input.TextArea
+            id="motif-annulation-bon"
+            rows={3}
+            value={motifAnnulation}
+            onChange={event => setMotifAnnulation(event.target.value)}
+            placeholder={t('Ex. Commande passée en double')}
+          />
+        </div>
+      </Modal>
 
       <Title level={4}>{t('Lignes du bon')}</Title>
       <DataView<PurchaseOrder['lines'][number]>
@@ -471,6 +570,17 @@ export const BonDeCommande: React.FC = () => {
             aria-label={l.label}
             subtitle={l.costCategoryLabel}
             highlight={<MoneyValue value={l.amount} />}
+            fields={
+              l.quantity != null || l.unitPrice != null
+                ? [
+                    {
+                      label: t('Quantité'),
+                      value: l.quantity == null ? '' : l.quantity.toLocaleString(activeLocale())
+                    },
+                    { label: t('Prix unitaire'), value: l.unitPrice == null ? '' : <MoneyValue value={l.unitPrice} /> }
+                  ]
+                : undefined
+            }
           />
         )}
       />

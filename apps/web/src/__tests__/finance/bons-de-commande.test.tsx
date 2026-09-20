@@ -53,8 +53,8 @@ vi.mock('../../hooks/useBreakpoint', () => ({
 function chantier(overrides: Partial<ConstructionSite> = {}): ConstructionSite {
   return {
     id: 'chantier-1',
-    name: 'Villa duplex — Kipé Centre',
-    zone: 'Kipé, Ratoma',
+    name: 'Villa duplex — Angré Centre',
+    zone: 'Angré, Cocody',
     propertyId: null,
     propertyLabel: null,
     managerLabel: null,
@@ -77,9 +77,9 @@ function fournisseur(overrides: Partial<Supplier> = {}): Supplier {
     id: 'frs-01',
     name: "Ciments d'Afrique CI",
     kind: 'MATERIALS',
-    contactName: 'Ousmane Diallo',
-    phone: '+224 622 10 20 30',
-    email: 'contact@ciments-afrique.ci',
+    contactName: 'Ousmane Kouassi',
+    contactPhone: '+225 07 22 10 20 30',
+    contactEmail: 'contact@ciments-afrique.ci',
     maintenanceVendorId: null,
     thirdPartyAccountId: 'compte-frs-01',
     isActive: true,
@@ -95,7 +95,7 @@ function bon(overrides: Partial<PurchaseOrder> = {}): PurchaseOrder {
   return {
     id: 'bon-1',
     siteId: 'chantier-1',
-    siteLabel: 'Villa duplex — Kipé Centre',
+    siteLabel: 'Villa duplex — Angré Centre',
     supplierId: 'frs-01',
     supplierLabel: "Ciments d'Afrique CI",
     reference: 'BC-2026-0041',
@@ -196,9 +196,9 @@ describe('Bons de commande — liste et filtres', () => {
     mountListe();
 
     expect(await screen.findByText('BC-2026-0041', {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByText('Villa duplex — Kipé Centre')).toBeInTheDocument();
+    expect(screen.getByText('Villa duplex — Angré Centre')).toBeInTheDocument();
     expect(screen.getByText("Ciments d'Afrique CI")).toBeInTheDocument();
-    expect(screen.getByText(/3\s500\s000\sFCFA/)).toBeInTheDocument();
+    expect(screen.getByText(/3\s500\s000/)).toBeInTheDocument();
   });
 
   it('filtre par chantier en envoyant son identifiant, jamais son nom', async () => {
@@ -210,7 +210,7 @@ describe('Bons de commande — liste et filtres', () => {
 
     const comboboxes = await screen.findAllByRole('combobox', {}, { timeout: 8000 });
     fireEvent.mouseDown(comboboxes[0]);
-    fireEvent.click(await optionParLibelle('Villa duplex — Kipé Centre'));
+    fireEvent.click(await optionParLibelle('Villa duplex — Angré Centre'));
 
     await waitFor(() =>
       expect(listPurchaseOrders).toHaveBeenLastCalledWith('agence-1', expect.objectContaining({ siteId: 'chantier-1' }))
@@ -218,7 +218,7 @@ describe('Bons de commande — liste et filtres', () => {
     // Jamais le nom du chantier envoyé comme filtre.
     expect(listPurchaseOrders).not.toHaveBeenLastCalledWith(
       'agence-1',
-      expect.objectContaining({ siteId: 'Villa duplex — Kipé Centre' })
+      expect.objectContaining({ siteId: 'Villa duplex — Angré Centre' })
     );
   });
 
@@ -271,7 +271,7 @@ describe('Bon de commande — saisie', () => {
 
     const comboboxes = await screen.findAllByRole('combobox', {}, { timeout: 8000 });
     fireEvent.mouseDown(comboboxes[0]);
-    fireEvent.click(await screen.findByText('Villa duplex — Kipé Centre'));
+    fireEvent.click(await screen.findByText('Villa duplex — Angré Centre'));
     fireEvent.mouseDown(screen.getAllByRole('combobox')[1]);
     fireEvent.click(await screen.findByText("Ciments d'Afrique CI"));
     fireEvent.mouseDown(screen.getAllByRole('combobox')[2]);
@@ -300,8 +300,88 @@ describe('Bon de commande — saisie', () => {
     await screen.findByText('Nouveau bon de commande', {}, { timeout: 8000 });
     // Le chantier prérempli se lit dans le combobox : son libellé y apparaît
     // une fois les référentiels chargés.
-    expect(await screen.findByText('Villa duplex — Kipé Centre', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(await screen.findByText('Villa duplex — Angré Centre', {}, { timeout: 8000 })).toBeInTheDocument();
   });
+});
+
+describe('Bon de commande — quantité et prix unitaire', () => {
+  it('calcule le montant de la ligne, verrouille son champ, et transmet les trois valeurs', async () => {
+    createPurchaseOrder.mockResolvedValue(bon());
+    mountBon('/tenant/agence-1/finance/bons-de-commande/nouveau');
+
+    const comboboxes = await screen.findAllByRole('combobox', {}, { timeout: 8000 });
+    fireEvent.mouseDown(comboboxes[0]);
+    fireEvent.click(await screen.findByText('Villa duplex — Angré Centre'));
+    fireEvent.mouseDown(screen.getAllByRole('combobox')[1]);
+    fireEvent.click(await screen.findByText("Ciments d'Afrique CI"));
+    fireEvent.mouseDown(screen.getAllByRole('combobox')[2]);
+    fireEvent.click(await screen.findByText('Gros œuvre'));
+
+    const user = userEvent.setup({ delay: null, pointerEventsCheck: 0 });
+    await user.type(screen.getByLabelText('Référence'), 'BC-2026-0042');
+    await user.type(screen.getByLabelText('Libellé de la ligne'), 'Ciment CPJ 45');
+    await user.type(screen.getByLabelText('Quantité'), '40');
+    await user.type(screen.getByLabelText('Prix unitaire'), '87500');
+
+    // 40 × 87 500 = 3 500 000, et le montant n'est plus à la main.
+    const champMontant = screen.getByLabelText('Montant de la ligne');
+    await waitFor(() => expect(champMontant).toBeDisabled());
+    // Le champ regroupe les milliers pendant la frappe (espace insécable
+    // étroite, comme `<MoneyValue>`) : 3500000 s'affiche « 3 500 000 ».
+    await waitFor(() => expect(champMontant).toHaveValue('3 500 000'));
+
+    await user.click(screen.getByRole('button', { name: 'Enregistrer en brouillon' }));
+
+    await waitFor(() => expect(createPurchaseOrder).toHaveBeenCalledTimes(1));
+    expect(createPurchaseOrder.mock.calls[0][1]).toMatchObject({
+      lines: [
+        {
+          costCategoryId: 'poste-gros-oeuvre',
+          label: 'Ciment CPJ 45',
+          amount: 3_500_000,
+          quantity: 40,
+          unitPrice: 87_500
+        }
+      ]
+    });
+  }, 30000);
+
+  it('laisse le montant saisissable tant que la quantité ou le prix unitaire manque', async () => {
+    mountBon('/tenant/agence-1/finance/bons-de-commande/nouveau');
+
+    await screen.findByText('Nouveau bon de commande', {}, { timeout: 8000 });
+    expect(screen.getByLabelText('Montant de la ligne')).not.toBeDisabled();
+
+    const user = userEvent.setup({ delay: null, pointerEventsCheck: 0 });
+    // Une seule des deux valeurs : le forfait reste saisissable au montant.
+    await user.type(screen.getByLabelText('Quantité'), '40');
+    expect(screen.getByLabelText('Montant de la ligne')).not.toBeDisabled();
+  }, 30000);
+
+  it('affiche la quantité et le prix unitaire des lignes du bon quand elles en portent', async () => {
+    getPurchaseOrder.mockResolvedValue(
+      bon({
+        lines: [
+          {
+            id: 'bon-1-l1',
+            costCategoryId: 'poste-gros-oeuvre',
+            costCategoryLabel: 'Gros œuvre',
+            label: 'Ciment et fer à béton',
+            amount: 3_500_000,
+            quantity: 40,
+            unitPrice: 87_500
+          }
+        ]
+      })
+    );
+    mountBon('/tenant/agence-1/finance/bons-de-commande/bon-1');
+
+    await screen.findByText('Lignes du bon', {}, { timeout: 8000 });
+    expect(screen.getByRole('columnheader', { name: 'Quantité' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Prix unitaire' })).toBeInTheDocument();
+    expect(screen.getByText('40')).toBeInTheDocument();
+    expect(screen.getByText(/87\s500/)).toBeInTheDocument();
+  }, 30000);
 });
 
 describe('Bon de commande — émission et annulation', () => {
@@ -334,9 +414,20 @@ describe('Bon de commande — émission et annulation', () => {
     expect(await screen.findByText(/irréversible/i)).toBeInTheDocument();
     expect(cancelPurchaseOrder).not.toHaveBeenCalled();
 
+    // Le motif est obligatoire : le serveur l'exige, et une annulation
+    // irréversible qui n'est pas tracée est un trou d'audit. Tant qu'il est
+    // vide, la validation ne part pas — c'est ce que ce cas épingle depuis
+    // le 20 septembre 2026, où l'écran n'en demandait aucun et où chaque
+    // annulation repartait en 400 sans que rien ne bouge à l'écran.
+    await user.click(screen.getByRole('button', { name: "Confirmer l'annulation" }));
+    expect(cancelPurchaseOrder).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText("Motif de l'annulation"), 'Commande passée en double');
     await user.click(screen.getByRole('button', { name: "Confirmer l'annulation" }));
 
-    await waitFor(() => expect(cancelPurchaseOrder).toHaveBeenCalledWith('agence-1', 'bon-1'));
+    await waitFor(() =>
+      expect(cancelPurchaseOrder).toHaveBeenCalledWith('agence-1', 'bon-1', 'Commande passée en double')
+    );
   });
 
   it('n’offre aucune action sur un bon annulé', async () => {
