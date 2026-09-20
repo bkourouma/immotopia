@@ -70,6 +70,8 @@ const store = {
   invoices: [] as Row[],
   invoiceLines: [] as Row[],
   paymentAllocations: [] as Row[],
+  payments: [] as Row[],
+  voidDocuments: [] as Row[],
   contractors: [] as Row[],
   contracts: [] as Row[],
   statements: [] as Row[],
@@ -204,6 +206,32 @@ const mockPrisma: Row = {
     }),
     findFirst: jest.fn(
       async ({ where }: Row) => store.paymentAllocations.find(a => a.invoiceId === where.invoiceId) ?? null
+    ),
+    // Ajoute le 20 septembre 2026, avec le correctif d'ANO-17 : le domaine ne
+    // demande plus « un reglement touche-t-il cette facture ? » mais « combien
+    // reste-t-il a payer ? ». La doublure HONORE le filtre sur le reglement —
+    // `payment: { validatedAt: { not: null } }` — plutot que de rendre toutes
+    // les affectations : un brouillon n'a rien paye, et une doublure qui
+    // l'ignorerait ferait passer un test que la production echouerait.
+    findMany: jest.fn(async ({ where }: Row) => {
+      const exigeReglementValide = where?.payment?.validatedAt?.not === null;
+      return store.paymentAllocations.filter(a => {
+        if (a.invoiceId !== where.invoiceId) return false;
+        if (!exigeReglementValide) return true;
+        const reglement = store.payments.find(p => p.id === a.paymentId);
+        return Boolean(reglement?.validatedAt);
+      });
+    })
+  },
+
+  voidDocument: {
+    findMany: jest.fn(async ({ where }: Row) =>
+      store.voidDocuments.filter(
+        v =>
+          v.tenantId === where.tenantId &&
+          v.documentType === where.documentType &&
+          (where.documentId?.in ? where.documentId.in.includes(v.documentId) : true)
+      )
     )
   },
 
@@ -339,6 +367,8 @@ async function runTransaction<T>(callback: (tx: any) => Promise<T>): Promise<T> 
     invoices: store.invoices,
     invoiceLines: store.invoiceLines,
     paymentAllocations: store.paymentAllocations,
+    payments: store.payments,
+    voidDocuments: store.voidDocuments,
     statements: store.statements,
     allocations: store.allocations,
     retentions: store.retentions
@@ -352,6 +382,8 @@ async function runTransaction<T>(callback: (tx: any) => Promise<T>): Promise<T> 
     store.invoices = snapshot.invoices;
     store.invoiceLines = snapshot.invoiceLines;
     store.paymentAllocations = snapshot.paymentAllocations;
+    store.payments = snapshot.payments;
+    store.voidDocuments = snapshot.voidDocuments;
     store.statements = snapshot.statements;
     store.allocations = snapshot.allocations;
     store.retentions = snapshot.retentions;
@@ -525,6 +557,8 @@ beforeEach(() => {
   store.invoices = [];
   store.invoiceLines = [];
   store.paymentAllocations = [];
+  store.payments = [];
+  store.voidDocuments = [];
   store.contractors = [];
   store.contracts = [];
   store.statements = [];
@@ -885,11 +919,52 @@ describe('createRetentionTx — les refus', () => {
     expect(store.retentions).toHaveLength(0);
   });
 
-  it('refuse une facture à laquelle un règlement a déjà été affecté (409)', async () => {
+  /**
+   * ANO-17, recette du 20 septembre 2026 — la regle a CHANGE ici.
+   *
+   * L'ancienne garde refusait la retenue des qu'un reglement TOUCHAIT la
+   * facture, si peu que ce soit. Elle visait juste — on ne retient pas sur un
+   * solde eteint — mais frappait trop large, et la situation de tacheron
+   * acceptait le meme cas : deux natures, deux comportements opposes sur une
+   * situation metier identique. La seule limite qui compte est le RESTE DU.
+   */
+  function seedReglementValide(invoiceId: string, montant: number, options: { validated?: boolean } = {}) {
+    const paymentId = nextId('reg');
+    store.payments.push({
+      id: paymentId,
+      tenantId: TENANT_ID,
+      validatedAt: options.validated === false ? null : new Date()
+    });
+    store.paymentAllocations.push({ id: nextId('aff'), paymentId, invoiceId, amount: montant });
+    return paymentId;
+  }
+
+  it('ACCEPTE une facture deja reglee en partie, tant que le reste du couvre la retenue', async () => {
+    // Le cas exact de la recette : 18 000 000 regles a 16 200 000, il reste
+    // 1 800 000, et une retenue de 10 % vaut exactement 1 800 000.
+    const site = seedSite();
+    const supplier = seedSupplier();
+    const invoice = await seedValidatedInvoice({ supplier, site, amount: 18_000_000 });
+    seedReglementValide(invoice.id, 16_200_000);
+
+    const retention = await runTransaction(tx =>
+      createRetentionTx(tx, TENANT_ID, {
+        sourceType: 'SUPPLIER_INVOICE',
+        sourceId: invoice.id,
+        ratePercent: 10,
+        plannedReleaseDate: DANS_UN_AN,
+        createdByUserId: GESTIONNAIRE_ID
+      })
+    );
+
+    expect(retention.amount).toBe(1_800_000);
+  });
+
+  it('REFUSE quand la retenue depasse ce qui reste a payer (409)', async () => {
     const site = seedSite();
     const supplier = seedSupplier();
     const invoice = await seedValidatedInvoice({ supplier, site, amount: 1_000_000 });
-    store.paymentAllocations.push({ id: 'aff-1', paymentId: 'reg-1', invoiceId: invoice.id, amount: 400_000 });
+    seedReglementValide(invoice.id, 990_000);
 
     await expect(
       runTransaction(tx =>
@@ -902,6 +977,51 @@ describe('createRetentionTx — les refus', () => {
         })
       )
     ).rejects.toMatchObject({ status: 409 });
+    expect(store.retentions).toHaveLength(0);
+  });
+
+  it('IGNORE un reglement reste en BROUILLON : il n’a rien paye', async () => {
+    const site = seedSite();
+    const supplier = seedSupplier();
+    const invoice = await seedValidatedInvoice({ supplier, site, amount: 1_000_000 });
+    seedReglementValide(invoice.id, 990_000, { validated: false });
+
+    const retention = await runTransaction(tx =>
+      createRetentionTx(tx, TENANT_ID, {
+        sourceType: 'SUPPLIER_INVOICE',
+        sourceId: invoice.id,
+        ratePercent: 5,
+        plannedReleaseDate: DANS_UN_AN,
+        createdByUserId: GESTIONNAIRE_ID
+      })
+    );
+
+    expect(retention.amount).toBe(50_000);
+  });
+
+  it('IGNORE un reglement ANNULE : il a rendu ce qu’il avait pris', async () => {
+    const site = seedSite();
+    const supplier = seedSupplier();
+    const invoice = await seedValidatedInvoice({ supplier, site, amount: 1_000_000 });
+    const paymentId = seedReglementValide(invoice.id, 990_000);
+    store.voidDocuments.push({
+      id: 'annul-1',
+      tenantId: TENANT_ID,
+      documentType: 'SUPPLIER_PAYMENT',
+      documentId: paymentId
+    });
+
+    const retention = await runTransaction(tx =>
+      createRetentionTx(tx, TENANT_ID, {
+        sourceType: 'SUPPLIER_INVOICE',
+        sourceId: invoice.id,
+        ratePercent: 5,
+        plannedReleaseDate: DANS_UN_AN,
+        createdByUserId: GESTIONNAIRE_ID
+      })
+    );
+
+    expect(retention.amount).toBe(50_000);
   });
 
   it('accepte en revanche une situation, dont les règlements ne sont affectés à rien', async () => {
