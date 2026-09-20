@@ -1,0 +1,80 @@
+[
+  {
+    "query": "bon j'ai enfin fini ma modif sur le wizard de creation de bien (PropertyFormWizard), montre-moi que ca marche vraiment dans l'app pas juste dans les tests",
+    "should_trigger": true
+  },
+  {
+    "query": "l'app me renvoie 403 sur l'ecran Finance > Retenues de garantie alors que je suis tenant admin sur Ivoire Residences, c'est quoi le delire",
+    "should_trigger": true
+  },
+  { "query": "demarre immotopia", "should_trigger": true },
+  {
+    "query": "je viens de restaurer un dump de la demo sur ma base locale immotopia, par quoi je commence pour verifier que l'app tourne bien dessus ?",
+    "should_trigger": true
+  },
+  {
+    "query": "npm run dev:api me sort une erreur de config et se ferme direct, ca parle de JWT_SECRET, je comprends pas ce qu'il veut",
+    "should_trigger": true
+  },
+  {
+    "query": "comment je me connecte en locataire pour tester le portail ? je connais pas les identifiants de demo",
+    "should_trigger": true
+  },
+  {
+    "query": "l'ecran des echeances locatives reste desesperement vide alors qu'il y a 536 lignes dans rental_installments, tu peux regarder d'ou ca vient",
+    "should_trigger": true
+  },
+  {
+    "query": "fais moi une capture du tableau de bord une fois connecte en collaborateur, je veux la mettre dans ma presentation de demain",
+    "should_trigger": true
+  },
+  {
+    "query": "j'ai change le port du front en 3001 dans apps/web/.env et maintenant plus aucun appel API ne passe, tout est rouge dans la console",
+    "should_trigger": true
+  },
+  {
+    "query": "ca tourne chez toi immotopia ? j'aimerais bien voir a quoi ressemble le module finance en vrai",
+    "should_trigger": true
+  },
+
+  {
+    "query": "lance les tests backend de immotopia et dis moi lesquels cassent, je crois que j'ai pete un truc sur les baux",
+    "should_trigger": false
+  },
+  {
+    "query": "ecris un test vitest pour le composant StepRail dans apps/web/src/components/primitives/",
+    "should_trigger": false
+  },
+  {
+    "query": "explique moi comment marche le calcul des penalites de retard dans le service locatif, je m'y retrouve pas dans rental-penalty-service.ts",
+    "should_trigger": false
+  },
+  {
+    "query": "ajoute un champ 'surface balcon' au formulaire de creation de bien, cote front et cote schema prisma",
+    "should_trigger": false
+  },
+  {
+    "query": "pourquoi il y a presque 100 erreurs typescript cote api ? liste moi les 10 premieres par fichier",
+    "should_trigger": false
+  },
+  {
+    "query": "fais un rebase de feat/finance-lot-0 sur main et resous les conflits sur schema.prisma",
+    "should_trigger": false
+  },
+  {
+    "query": "deploie la derniere version sur app.immotopia.cloud, les scripts sont dans infra/",
+    "should_trigger": false
+  },
+  {
+    "query": "genere une migration prisma pour ajouter une table stock_alerts avec un seuil et une reference vers stock_items",
+    "should_trigger": false
+  },
+  {
+    "query": "relis le commit 22e72be et dis moi si la refonte UI a casse des choses, le message dit qu'il est pas verifie",
+    "should_trigger": false
+  },
+  {
+    "query": "combien de biens il y a dans la base immotopia en local ? et combien sont publies ?",
+    "should_trigger": false
+  }
+]
