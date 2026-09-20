@@ -38,6 +38,7 @@ jest.mock('@prisma/client', () => {
     movements: [] as Row[],
     costCategories: [] as Row[],
     paymentAllocations: [] as Row[],
+    supplierInvoices: [] as Row[],
     thirdPartyAccounts: [] as Row[],
     seq: 0
   };
@@ -207,6 +208,22 @@ jest.mock('@prisma/client', () => {
         return { ...found };
       })
     },
+    // La FACTURE est la seule a stocker son propre etat : `voidDocumentTx` le
+    // pose a `VOIDED` depuis le 20 septembre 2026 (ANO-11), sans quoi une
+    // facture annulee restait « Validee » a l'ecran et dans la balance.
+    // Ajoute ici le 20 septembre 2026 : le mock manquait, et cette suite
+    // tombait sur « Cannot read properties of undefined » depuis ce
+    // correctif — la doublure decidait ce que la production faisait vraiment.
+    supplierInvoice: {
+      update: jest.fn(async (args: Row) => {
+        const found: any = store.supplierInvoices.find(i => i.id === args.where.id);
+        if (found) {
+          Object.assign(found, args.data);
+        }
+        return found ? { ...found } : { id: args.where.id, ...args.data };
+      })
+    },
+
     costAllocation: {
       // `voidDocumentTx` lit les imputations AVANT de les marquer : apres le
       // `updateMany`, elles portent toutes `voidedAt` et on ne saurait plus
@@ -353,6 +370,7 @@ beforeEach(() => {
   store.lines.length = 0;
   store.voidDocuments.length = 0;
   store.costAllocations.length = 0;
+  store.supplierInvoices.length = 0;
   store.seq = 0;
 });
 
@@ -808,6 +826,58 @@ describe('voidDocumentTx', () => {
     expect(JSON.stringify(store.lines.filter((l: any) => l.entryId === entryId))).toBe(lignesAvant);
     // Les deux mouvements coexistent : rien n a ete efface ni corrige sur place.
     expect(store.entries).toHaveLength(2);
+  });
+
+  it('FAIT PASSER LA FACTURE a VOIDED : elle seule stocke son propre etat', async () => {
+    // ANO-11, recette du 20 septembre 2026. L'annulation posait bien sa
+    // contrepartie et marquait les imputations, mais la facture restait
+    // « Validee » : deux ecrans donnaient deux verites sur la meme piece, et
+    // rien ne disait laquelle croire. Rien ne couvrait ce geste — cette suite
+    // n'avait meme pas de doublure pour `supplierInvoice`.
+    store.supplierInvoices.push({ id: 'facture-1', tenantId: TENANT_ID, status: 'VALIDATED' });
+    await posterFacture(150000, 'facture-1');
+
+    await voidDocumentTx(tx, {
+      tenantId: TENANT_ID,
+      documentType: 'SUPPLIER_INVOICE',
+      documentId: 'facture-1',
+      reason: 'Montant errone',
+      voidedByUserId: 'user-1'
+    });
+
+    expect(store.supplierInvoices[0].status).toBe('VOIDED');
+  });
+
+  it('NE TOUCHE PAS au statut pour une piece de caisse : elle n en stocke pas', async () => {
+    // Une piece de caisse n'a pas de colonne de statut a corriger — son
+    // annulation se lit par la piece d'annulation liee. Ecrire ici serait
+    // inventer un etat que le modele ne porte pas.
+    store.supplierInvoices.push({ id: 'bon-1', tenantId: TENANT_ID, status: 'VALIDATED' });
+    const comptes = await ensureOperationalChartOfAccountsTx(tx, TENANT_ID);
+    const journalId = await ensureOperationalJournalTx(tx, TENANT_ID, 2026);
+    await postDocumentEntryTx(tx, {
+      tenantId: TENANT_ID,
+      journalId,
+      entryDate: new Date('2026-03-01T00:00:00.000Z'),
+      reference: 'BC-2026-0001',
+      description: 'Bon de caisse',
+      documentType: 'CASH_VOUCHER',
+      documentId: 'bon-1',
+      lines: [
+        { accountId: comptes.get('605')!, debit: 50000, label: 'Depense de chantier' },
+        { accountId: comptes.get('571')!, credit: 50000, label: 'Sortie de caisse' }
+      ]
+    });
+
+    await voidDocumentTx(tx, {
+      tenantId: TENANT_ID,
+      documentType: 'CASH_VOUCHER',
+      documentId: 'bon-1',
+      reason: 'Erreur de saisie',
+      voidedByUserId: 'user-1'
+    });
+
+    expect(store.supplierInvoices[0].status).toBe('VALIDATED');
   });
 
   it('marque les imputations de chantier comme annulees, sans les supprimer', async () => {
