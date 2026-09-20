@@ -125,3 +125,31 @@ export function roundQuantity(value: number): number {
   const rounded = Math.round(numeric * 10_000) / 10_000;
   return rounded === 0 ? 0 : rounded;
 }
+
+/**
+ * Arrondit une QUANTITÉ DE LIGNE (facture, bon de commande, budget,
+ * avenant), à trois décimales.
+ *
+ * Distincte de `roundQuantity` ci-dessus, et il faut dire pourquoi plutôt
+ * que de laisser deux fonctions se ressembler. `roundQuantity` sert le
+ * stock, dont les colonnes sont en `Decimal(16, 4)` ; les colonnes de
+ * quantité de ligne ajoutées le 20 septembre 2026 sont en `Decimal(14, 3)` —
+ * trois décimales suffisent largement pour commander 2,5 tonnes de ciment.
+ * Arrondir ici plus finement que la base laisserait le calcul et le stockage
+ * dire deux choses différentes, exactement le défaut que la note de
+ * `roundQuantity` signale.
+ *
+ * Et comme elle : **une quantité n'est pas un montant.** Passée par
+ * `roundMoneyXof`, qui arrondit au franc, une demi-journée de main-d'œuvre
+ * vaudrait zéro ou un.
+ */
+export function roundLineQuantity(value: number): number {
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+
+  const rounded = Math.round(numeric * 1_000) / 1_000;
+  return rounded === 0 ? 0 : rounded;
+}

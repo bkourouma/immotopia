@@ -170,6 +170,73 @@ describe('POST /tenants/:tenantId/finance/sites/:siteId/budgets', () => {
     );
   });
 
+  // -------------------------------------------------------------------------
+  // Quantite et prix unitaire sur une ligne — additifs et facultatifs
+  // -------------------------------------------------------------------------
+
+  it('transmet la quantite et le prix unitaire au domaine, et les rend dans la reponse', async () => {
+    createSiteBudgetTx.mockResolvedValue(
+      budgetRecord({
+        lines: [
+          {
+            id: 'line-1',
+            costCategoryId: CATEGORY_A,
+            costCategoryLabel: 'Gros œuvre',
+            label: 'Ciment CPJ 45',
+            amountForecast: 500000,
+            quantity: 100,
+            unitPrice: 5000
+          }
+        ]
+      })
+    );
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/sites/${SITE_A}/budgets`)
+      .send({
+        label: 'Budget initial',
+        lines: [
+          { costCategoryId: CATEGORY_A, label: 'Ciment CPJ 45', amountForecast: 500000, quantity: 100, unitPrice: 5000 }
+        ]
+      });
+
+    expect(response.status).toBe(201);
+    // L'aller-retour conserve les deux champs.
+    expect(response.body.data.lines[0].quantity).toBe(100);
+    expect(response.body.data.lines[0].unitPrice).toBe(5000);
+    const [, , params] = createSiteBudgetTx.mock.calls[0];
+    expect(params.lines[0]).toEqual({
+      costCategoryId: CATEGORY_A,
+      label: 'Ciment CPJ 45',
+      amountForecast: 500000,
+      quantity: 100,
+      unitPrice: 5000
+    });
+  });
+
+  it('accepte une ligne sans quantite ni prix unitaire (enveloppe forfaitaire)', async () => {
+    createSiteBudgetTx.mockResolvedValue(budgetRecord());
+
+    const response = await request(app).post(`/api/tenants/${TENANT_A}/finance/sites/${SITE_A}/budgets`).send(body);
+
+    expect(response.status).toBe(201);
+    const [, , params] = createSiteBudgetTx.mock.calls[0];
+    expect(params.lines[0].quantity).toBeUndefined();
+    expect(params.lines[0].unitPrice).toBeUndefined();
+  });
+
+  it('rejette en 400 une quantite negative sur une ligne de budget', async () => {
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/sites/${SITE_A}/budgets`)
+      .send({
+        label: 'Budget initial',
+        lines: [{ costCategoryId: CATEGORY_A, label: 'Fondations', amountForecast: 500000, quantity: -1 }]
+      });
+
+    expect(response.status).toBe(400);
+    expect(createSiteBudgetTx).not.toHaveBeenCalled();
+  });
+
   it('rejette en 400 un corps sans lignes', async () => {
     const response = await request(app)
       .post(`/api/tenants/${TENANT_A}/finance/sites/${SITE_A}/budgets`)
@@ -340,6 +407,56 @@ describe('POST /tenants/:tenantId/finance/site-budgets/:budgetId/amendments', ()
       TENANT_A,
       expect.objectContaining({ lines: [{ costCategoryId: CATEGORY_A, amountDelta: -20000 }] })
     );
+  });
+
+  // Le cas propre a l'avenant : l'ecart est SIGNE, mais une quantite negative
+  // n'a pas de sens. C'est donc le prix unitaire qui porte le signe.
+  it('accepte un prix unitaire negatif sur une ligne d\u2019avenant, la quantite restant positive', async () => {
+    createBudgetAmendmentTx.mockResolvedValue(
+      amendmentRecord({
+        lines: [
+          {
+            id: 'aline-1',
+            costCategoryId: CATEGORY_A,
+            costCategoryLabel: 'Gros œuvre',
+            amountDelta: -190000,
+            quantity: 2,
+            unitPrice: -95000
+          }
+        ],
+        totalDelta: -190000
+      })
+    );
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/site-budgets/${BUDGET_A}/amendments`)
+      .send({
+        ...body,
+        lines: [{ costCategoryId: CATEGORY_A, amountDelta: -190000, quantity: 2, unitPrice: -95000 }]
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data.lines[0].quantity).toBe(2);
+    expect(response.body.data.lines[0].unitPrice).toBe(-95000);
+    expect(createBudgetAmendmentTx).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_A,
+      expect.objectContaining({
+        lines: [{ costCategoryId: CATEGORY_A, amountDelta: -190000, quantity: 2, unitPrice: -95000 }]
+      })
+    );
+  });
+
+  it('rejette en 400 une quantite negative sur une ligne d\u2019avenant', async () => {
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/site-budgets/${BUDGET_A}/amendments`)
+      .send({
+        ...body,
+        lines: [{ costCategoryId: CATEGORY_A, amountDelta: -190000, quantity: -2, unitPrice: 95000 }]
+      });
+
+    expect(response.status).toBe(400);
+    expect(createBudgetAmendmentTx).not.toHaveBeenCalled();
   });
 
   it('rejette en 400 un corps sans motif', async () => {

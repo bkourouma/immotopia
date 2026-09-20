@@ -68,11 +68,11 @@ vi.mock('../../hooks/useBreakpoint', () => ({
 function fournisseur(overrides: Partial<Supplier> = {}): Supplier {
   return {
     id: 'frs-01',
-    name: 'Matériaux du Fouta SARL',
+    name: 'Matériaux du Bandama SARL',
     kind: 'MATERIALS',
-    contactName: 'Ousmane Diallo',
-    phone: '+224 622 10 20 30',
-    email: 'contact@materiaux-fouta.gn',
+    contactName: 'Ousmane Kouassi',
+    contactPhone: '+225 07 22 10 20 30',
+    contactEmail: 'contact@materiaux-bandama.ci',
     maintenanceVendorId: null,
     thirdPartyAccountId: 'compte-frs-01',
     isActive: true,
@@ -84,7 +84,7 @@ function ligneBalance(overrides: Partial<SuppliersBalanceLine> = {}): SuppliersB
   return {
     accountId: 'compte-frs-01',
     supplierId: 'frs-01',
-    label: 'Matériaux du Fouta SARL',
+    label: 'Matériaux du Bandama SARL',
     totalBilled: 2_400_000,
     totalSettled: 1_900_000,
     balance: 500_000,
@@ -97,7 +97,7 @@ function facture(overrides: Partial<SupplierInvoice> = {}): SupplierInvoice {
   return {
     id: 'fact-01',
     supplierId: 'frs-01',
-    supplierLabel: 'Matériaux du Fouta SARL',
+    supplierLabel: 'Matériaux du Bandama SARL',
     siteId: 'chantier-1',
     siteLabel: 'Chantier Résidence Palmeraie',
     invoiceDate: '2026-07-04',
@@ -114,7 +114,7 @@ function reglement(overrides: Partial<SupplierPayment> = {}): SupplierPayment {
   return {
     id: 'regl-01',
     supplierId: 'frs-01',
-    supplierLabel: 'Matériaux du Fouta SARL',
+    supplierLabel: 'Matériaux du Bandama SARL',
     paymentDate: '2026-07-10',
     amount: 300_000,
     currency: 'XOF',
@@ -128,7 +128,7 @@ function chantier(overrides: Partial<ConstructionSite> = {}): ConstructionSite {
   return {
     id: 'chantier-1',
     name: 'Chantier Résidence Palmeraie',
-    zone: 'Ratoma',
+    zone: 'Cocody',
     propertyId: null,
     propertyLabel: null,
     managerLabel: null,
@@ -228,7 +228,7 @@ describe('Fournisseurs — liste et création', () => {
     ]);
     mountFournisseurs();
 
-    expect(await screen.findByText('Matériaux du Fouta SARL', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(await screen.findByText('Matériaux du Bandama SARL', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getByText('Électricité Générale Bamako')).toBeInTheDocument();
     expect(screen.getByText('Matériaux')).toBeInTheDocument();
     expect(screen.getByText('Prestation')).toBeInTheDocument();
@@ -240,7 +240,7 @@ describe('Fournisseurs — liste et création', () => {
     const user = userEvent.setup({ delay: null });
     mountFournisseurs();
 
-    await screen.findByText('Matériaux du Fouta SARL', {}, { timeout: 8000 });
+    await screen.findByText('Matériaux du Bandama SARL', {}, { timeout: 8000 });
     // Nom accessible : « plus Nouveau fournisseur » — l'icône décorative du
     // bouton (`PlusOutlined`) porte elle-même un `aria-label`, concaténé au
     // texte visible dans le calcul du nom accessible.
@@ -309,7 +309,7 @@ describe('Balance fournisseurs', () => {
     });
     mountBalance();
 
-    expect(await screen.findByText('Matériaux du Fouta SARL', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(await screen.findByText('Matériaux du Bandama SARL', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getByText('BTP Sahel Construction')).toBeInTheDocument();
     expect(screen.getByText('Facturé')).toBeInTheDocument();
     expect(screen.getByText('Réglé')).toBeInTheDocument();
@@ -376,6 +376,61 @@ describe('Facture fournisseur — rattachement au chantier', () => {
     expect(screen.queryByText('Rattachement à un chantier obligatoire')).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Enregistrer en brouillon' })).not.toBeDisabled());
   });
+});
+
+describe('Facture fournisseur — quantité et prix unitaire', () => {
+  beforeEach(() => {
+    listSuppliers.mockResolvedValue([fournisseur({ id: 'frs-01', kind: 'SERVICES' })]);
+  });
+
+  it('calcule le montant de la ligne à partir de la quantité et du prix unitaire', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountFacture('/tenant/agence-1/finance/factures-fournisseurs?fournisseur=frs-01');
+
+    await user.type(await screen.findByLabelText('Référence', {}, { timeout: 8000 }), 'FRS-2026-0010');
+    await user.type(screen.getByLabelText('Libellé de la ligne'), 'Ciment CPJ 45');
+    await user.type(screen.getByLabelText('Quantité'), '2.5');
+    await user.type(screen.getByLabelText('Prix unitaire'), '95000');
+
+    // 2,5 × 95 000 = 237 500, et le champ montant ne se saisit plus.
+    const champMontant = screen.getByLabelText('Montant de la ligne');
+    await waitFor(() => expect(champMontant).toBeDisabled());
+    // Le champ regroupe les milliers pendant la frappe (espace insécable
+    // étroite, comme `<MoneyValue>`) : 237500 s'affiche « 237 500 ».
+    await waitFor(() => expect(champMontant).toHaveValue('237 500'));
+  }, 30000);
+
+  it('laisse le montant saisissable quand ni quantité ni prix unitaire ne sont renseignés', async () => {
+    const user = userEvent.setup({ delay: null });
+    mountFacture('/tenant/agence-1/finance/factures-fournisseurs?fournisseur=frs-01');
+
+    await user.type(await screen.findByLabelText('Référence', {}, { timeout: 8000 }), 'FRS-2026-0011');
+    await user.type(screen.getByLabelText('Libellé de la ligne'), 'Forfait de dépannage');
+    await user.type(screen.getByLabelText('Montant de la ligne'), '850000');
+
+    // Le cas d'une prestation : aucune quantité, un montant saisi à la main.
+    expect(screen.getByLabelText('Montant de la ligne')).not.toBeDisabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Enregistrer en brouillon' })).not.toBeDisabled());
+  }, 30000);
+
+  it('transmet la quantité et le prix unitaire au service, à côté du montant', async () => {
+    createSupplierInvoice.mockResolvedValue(facture());
+    const user = userEvent.setup({ delay: null });
+    mountFacture('/tenant/agence-1/finance/factures-fournisseurs?fournisseur=frs-01');
+
+    await user.type(await screen.findByLabelText('Référence', {}, { timeout: 8000 }), 'FRS-2026-0012');
+    await user.type(screen.getByLabelText('Libellé de la ligne'), 'Ciment CPJ 45');
+    await user.type(screen.getByLabelText('Quantité'), '2.5');
+    await user.type(screen.getByLabelText('Prix unitaire'), '95000');
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Enregistrer en brouillon' })).not.toBeDisabled());
+    await user.click(screen.getByRole('button', { name: 'Enregistrer en brouillon' }));
+
+    await waitFor(() => expect(createSupplierInvoice).toHaveBeenCalledTimes(1));
+    expect(createSupplierInvoice.mock.calls[0][1]).toMatchObject({
+      lines: [{ label: 'Ciment CPJ 45', amount: 237_500, quantity: 2.5, unitPrice: 95_000 }]
+    });
+  }, 30000);
 });
 
 describe('Facture fournisseur — écart d’imputation', () => {
@@ -509,7 +564,7 @@ describe('Vocabulaire — principe P-1 du PRD, étendu par FR-028', () => {
       fournisseur({ id: 'frs-04', name: 'Plomberie Moderne Abidjan', kind: 'SERVICES' })
     ]);
     const { container: c1 } = mountFournisseurs();
-    await screen.findByText('Matériaux du Fouta SARL', {}, { timeout: 8000 });
+    await screen.findByText('Matériaux du Bandama SARL', {}, { timeout: 8000 });
     expect(c1.textContent).not.toMatch(motsInterdits);
 
     getSuppliersBalance.mockResolvedValue({

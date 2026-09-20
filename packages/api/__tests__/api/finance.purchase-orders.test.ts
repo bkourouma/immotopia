@@ -224,6 +224,84 @@ describe('POST /tenants/:tenantId/finance/purchase-orders', () => {
     expect(guardCalls).not.toContain('documentsValidate');
   });
 
+  // -------------------------------------------------------------------------
+  // Quantite et prix unitaire sur une ligne — additifs et facultatifs
+  // -------------------------------------------------------------------------
+
+  it('transmet la quantite et le prix unitaire au domaine, et les rend dans la reponse', async () => {
+    createPurchaseOrderTx.mockResolvedValue(
+      samplePurchaseOrder({
+        lines: [
+          {
+            id: 'line-1',
+            costCategoryId: CATEGORY_A,
+            costCategoryLabel: 'Matériaux',
+            label: 'Ciment',
+            amount: 1_000_000,
+            quantity: 40,
+            unitPrice: 25_000
+          }
+        ]
+      })
+    );
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/purchase-orders`)
+      .send({
+        ...body,
+        lines: [{ costCategoryId: CATEGORY_A, label: 'Ciment', amount: 1_000_000, quantity: 40, unitPrice: 25_000 }]
+      });
+
+    expect(response.status).toBe(201);
+    // L'aller-retour conserve les deux champs.
+    expect(response.body.data.lines[0].quantity).toBe(40);
+    expect(response.body.data.lines[0].unitPrice).toBe(25_000);
+    const [, , params] = createPurchaseOrderTx.mock.calls[0];
+    expect(params.lines[0]).toEqual({
+      costCategoryId: CATEGORY_A,
+      label: 'Ciment',
+      amount: 1_000_000,
+      quantity: 40,
+      unitPrice: 25_000
+    });
+  });
+
+  it('accepte une ligne sans quantite ni prix unitaire, et rend `null` pour les deux', async () => {
+    createPurchaseOrderTx.mockResolvedValue(
+      samplePurchaseOrder({
+        lines: [
+          {
+            id: 'line-1',
+            costCategoryId: CATEGORY_A,
+            costCategoryLabel: 'Matériaux',
+            label: 'Forfait de pose',
+            amount: 1_000_000,
+            quantity: null,
+            unitPrice: null
+          }
+        ]
+      })
+    );
+
+    const response = await request(app).post(`/api/tenants/${TENANT_A}/finance/purchase-orders`).send(body);
+
+    expect(response.status).toBe(201);
+    expect(response.body.data.lines[0].quantity).toBeNull();
+    expect(response.body.data.lines[0].unitPrice).toBeNull();
+  });
+
+  it('rejette en 400 une quantite negative', async () => {
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/purchase-orders`)
+      .send({
+        ...body,
+        lines: [{ costCategoryId: CATEGORY_A, label: 'Ciment', amount: 1_000_000, quantity: -1, unitPrice: 25_000 }]
+      });
+
+    expect(response.status).toBe(400);
+    expect(createPurchaseOrderTx).not.toHaveBeenCalled();
+  });
+
   it('rejette en 400 un corps sans ligne', async () => {
     const response = await request(app)
       .post(`/api/tenants/${TENANT_A}/finance/purchase-orders`)

@@ -68,6 +68,13 @@ export interface SiteBudgetLineRecord {
   costCategoryLabel: string;
   label: string;
   amountForecast: number;
+  /**
+   * Quantité et prix unitaire, **facultatifs** (20 septembre 2026). Nuls
+   * pour une ligne saisie en montant direct — un forfait, une prestation.
+   * Conservés tels que saisis : jamais une source de recalcul.
+   */
+  quantity: number | null;
+  unitPrice: number | null;
 }
 
 export interface SiteBudgetRecord {
@@ -121,7 +128,13 @@ export type CreateSiteBudgetTx = (
   params: {
     siteId: string;
     label: string;
-    lines: Array<{ costCategoryId: string; label: string; amountForecast: number }>;
+    lines: Array<{
+      costCategoryId: string;
+      label: string;
+      amountForecast: number;
+      quantity?: number | null;
+      unitPrice?: number | null;
+    }>;
   }
 ) => Promise<SiteBudgetRecord>;
 
@@ -156,6 +169,14 @@ export interface BudgetAmendmentLineRecord {
   costCategoryLabel: string;
   /** **Signé.** Un avenant réduit parfois une enveloppe. */
   amountDelta: number;
+  /**
+   * Quantité et prix unitaire, **facultatifs**. Particularité de l'avenant :
+   * `amountDelta` est signé et une quantité négative n'aurait pas de sens,
+   * donc c'est `unitPrice` qui porte le signe. Une réduction d'enveloppe se
+   * saisit aussi, plus simplement, en écart direct — les deux restent nuls.
+   */
+  quantity: number | null;
+  unitPrice: number | null;
 }
 
 export interface BudgetAmendmentRecord {
@@ -189,7 +210,12 @@ export type CreateBudgetAmendmentTx = (
     budgetId: string;
     amendmentDate: Date;
     reason: string;
-    lines: Array<{ costCategoryId: string; amountDelta: number }>;
+    lines: Array<{
+      costCategoryId: string;
+      amountDelta: number;
+      quantity?: number | null;
+      unitPrice?: number | null;
+    }>;
     createdByUserId: string;
   }
 ) => Promise<BudgetAmendmentRecord>;
@@ -230,6 +256,13 @@ export interface PurchaseOrderLineRecord {
   costCategoryLabel: string;
   label: string;
   amount: number;
+  /**
+   * Quantité et prix unitaire, **facultatifs** (20 septembre 2026). Nuls
+   * pour une ligne saisie en montant direct — un forfait, une prestation.
+   * Conservés tels que saisis : jamais une source de recalcul.
+   */
+  quantity: number | null;
+  unitPrice: number | null;
 }
 
 export interface PurchaseOrderRecord {
@@ -261,7 +294,13 @@ export type CreatePurchaseOrderTx = (
     supplierId: string;
     reference: string;
     orderDate: Date;
-    lines: Array<{ costCategoryId: string; label: string; amount: number }>;
+    lines: Array<{
+      costCategoryId: string;
+      label: string;
+      amount: number;
+      quantity?: number | null;
+      unitPrice?: number | null;
+    }>;
     createdByUserId: string;
   }
 ) => Promise<PurchaseOrderRecord>;

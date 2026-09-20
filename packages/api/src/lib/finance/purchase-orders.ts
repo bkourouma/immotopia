@@ -64,8 +64,8 @@
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { badRequest, conflict, notFound } from '../errors';
-import { roundMoneyXof } from './money';
-import { toAmountOrZero } from './types';
+import { roundLineQuantity, roundMoneyXof } from './money';
+import { toAmount, toAmountOrZero } from './types';
 import { sumSiteActualCost } from './site-cost';
 import { raiseBudgetAlertIfNeededTx } from './budget-alerts';
 import type {
@@ -116,6 +116,8 @@ type OrderRow = {
     costCategoryId: string;
     label: string;
     amount: unknown;
+    quantity: unknown;
+    unitPrice: unknown;
     costCategory: { label: string } | null;
   }>;
 };
@@ -143,7 +145,12 @@ function toPurchaseOrderRecord(row: OrderRow, invoicedAmount: number): PurchaseO
     costCategoryId: line.costCategoryId,
     costCategoryLabel: line.costCategory?.label ?? 'Poste inconnu',
     label: line.label,
-    amount: toAmountOrZero(line.amount as any)
+    amount: toAmountOrZero(line.amount as any),
+    // Relus tels qu'ils ont ete saisis, `null` compris : le total du bon
+    // reste la somme des MONTANTS, jamais un produit quantite x prix
+    // unitaire recompose ici.
+    quantity: toAmount(line.quantity as any),
+    unitPrice: toAmount(line.unitPrice as any)
   }));
 
   const totalAmount = roundMoneyXof(lines.reduce((sum, line) => sum + line.amount, 0));
@@ -263,10 +270,16 @@ export const createPurchaseOrderTx: CreatePurchaseOrderTx = async (tx, tenantId,
   // Discipline du défaut n°1 du lot 2 : chaque montant est arrondi avant
   // d'entrer dans une somme, jamais après — la somme brute puis arrondie peut
   // différer de la somme des valeurs déjà arrondies qui seront stockées.
+  //
+  // Quantite et prix unitaire (20 septembre 2026) : conserves, jamais
+  // remultiplies. Le montant reste la donnee de reference ; une ligne sans
+  // quantite ni prix unitaire — un forfait de pose — les laisse nuls.
   const roundedLines = params.lines.map(line => ({
     costCategoryId: line.costCategoryId,
     label: line.label,
-    amount: roundMoneyXof(line.amount)
+    amount: roundMoneyXof(line.amount),
+    quantity: line.quantity === null || line.quantity === undefined ? null : roundLineQuantity(line.quantity),
+    unitPrice: line.unitPrice === null || line.unitPrice === undefined ? null : roundMoneyXof(line.unitPrice)
   }));
 
   let order: { id: string };
@@ -295,7 +308,14 @@ export const createPurchaseOrderTx: CreatePurchaseOrderTx = async (tx, tenantId,
 
   for (const line of roundedLines) {
     await tx.purchaseOrderLine.create({
-      data: { orderId: order.id, costCategoryId: line.costCategoryId, label: line.label, amount: line.amount }
+      data: {
+        orderId: order.id,
+        costCategoryId: line.costCategoryId,
+        label: line.label,
+        amount: line.amount,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice
+      }
     });
   }
 

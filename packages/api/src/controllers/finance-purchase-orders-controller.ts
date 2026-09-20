@@ -73,7 +73,16 @@ interface PurchaseOrderResponseInput {
   orderDate: Date;
   status: string;
   currency: string;
-  lines: Array<{ id: string; costCategoryId: string; costCategoryLabel: string; label: string; amount: number }>;
+  lines: Array<{
+    id: string;
+    costCategoryId: string;
+    costCategoryLabel: string;
+    label: string;
+    amount: number;
+    /** Facultatifs (20 septembre 2026), `null` pour une ligne en montant direct. */
+    quantity: number | null;
+    unitPrice: number | null;
+  }>;
   totalAmount: number;
   invoicedAmount: number;
   remainingAmount: number;
@@ -101,7 +110,9 @@ function toPurchaseOrderResponse(order: PurchaseOrderRecord) {
       costCategoryId: line.costCategoryId,
       costCategoryLabel: line.costCategoryLabel,
       label: line.label,
-      amount: line.amount
+      amount: line.amount,
+      quantity: line.quantity,
+      unitPrice: line.unitPrice
     })),
     totalAmount: order.totalAmount,
     invoicedAmount: order.invoicedAmount,

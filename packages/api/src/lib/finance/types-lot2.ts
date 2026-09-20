@@ -257,7 +257,13 @@ export type CreateSupplierInvoiceTx = (
     supplierId: string;
     invoiceDate: Date;
     reference: string;
-    lines: Array<{ label: string; amount: number }>;
+    /**
+     * `quantity` et `unitPrice` sont **facultatifs** (20 septembre 2026) :
+     * beaucoup de dépenses n'ont pas de quantité. Quand ils sont fournis,
+     * `amount` est déjà leur produit — le domaine les conserve sans jamais
+     * refaire ce calcul. Le montant reste la donnée de référence comptable.
+     */
+    lines: Array<{ label: string; amount: number; quantity?: number | null; unitPrice?: number | null }>;
     allocations: CostAllocationInput[];
     createdByUserId: string;
   }

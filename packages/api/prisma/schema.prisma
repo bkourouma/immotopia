@@ -4335,6 +4335,20 @@ model SupplierInvoiceLine {
   invoiceId String   @map("invoice_id") @db.Uuid
   label     String
   amount    Decimal  @db.Decimal(14, 2)
+  /// Quantite et prix unitaire, FACULTATIFS (ajoutes le 20 septembre 2026).
+  ///
+  /// Le montant reste la donnee de reference comptable : ces deux colonnes
+  /// sont une aide a la saisie ET une information conservee, jamais une
+  /// source de recalcul au moment de la validation. Une prestation ou un
+  /// forfait n'a pas de quantite : les deux colonnes restent alors nulles et
+  /// le montant est saisi directement, comme avant.
+  ///
+  /// `quantity` porte trois decimales : on commande 2,5 tonnes de ciment.
+  /// Une quantite n'est pas un montant — arrondie au franc, elle vaudrait
+  /// zero ; elle passe donc par `roundLineQuantity` (`lib/finance/money.ts`),
+  /// jamais par `roundMoneyXof`.
+  quantity  Decimal? @db.Decimal(14, 3)
+  unitPrice Decimal? @map("unit_price") @db.Decimal(14, 2)
   createdAt DateTime @default(now()) @map("created_at")
 
   invoice SupplierInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
@@ -4664,6 +4678,20 @@ model SiteBudgetLine {
   costCategoryId String   @map("cost_category_id") @db.Uuid
   label          String
   amountForecast Decimal  @map("amount_forecast") @db.Decimal(14, 2)
+  /// Quantite et prix unitaire, FACULTATIFS (ajoutes le 20 septembre 2026).
+  ///
+  /// Le montant reste la donnee de reference comptable : ces deux colonnes
+  /// sont une aide a la saisie ET une information conservee, jamais une
+  /// source de recalcul au moment de la validation. Une prestation ou un
+  /// forfait n'a pas de quantite : les deux colonnes restent alors nulles et
+  /// le montant est saisi directement, comme avant.
+  ///
+  /// `quantity` porte trois decimales : on commande 2,5 tonnes de ciment.
+  /// Une quantite n'est pas un montant — arrondie au franc, elle vaudrait
+  /// zero ; elle passe donc par `roundLineQuantity` (`lib/finance/money.ts`),
+  /// jamais par `roundMoneyXof`.
+  quantity       Decimal? @db.Decimal(14, 3)
+  unitPrice      Decimal? @map("unit_price") @db.Decimal(14, 2)
   createdAt      DateTime @default(now()) @map("created_at")
 
   budget       SiteBudget   @relation(fields: [budgetId], references: [id], onDelete: Cascade)
@@ -4716,6 +4744,16 @@ model BudgetAmendmentLine {
   amendmentId    String   @map("amendment_id") @db.Uuid
   costCategoryId String   @map("cost_category_id") @db.Uuid
   amountDelta    Decimal  @map("amount_delta") @db.Decimal(14, 2)
+  /// Quantite et prix unitaire, FACULTATIFS (ajoutes le 20 septembre 2026).
+  ///
+  /// Meme parti pris que sur les trois autres lignes : aide a la saisie et
+  /// information conservee, jamais un recalcul serveur. Particularite de
+  /// l'avenant : `amountDelta` est SIGNE, et une quantite negative n'a aucun
+  /// sens. C'est donc `unitPrice` qui porte le signe — une reduction
+  /// d'enveloppe se saisit avec un prix unitaire negatif, ou, plus
+  /// simplement, en ecart direct sans quantite ni prix unitaire.
+  quantity       Decimal? @db.Decimal(14, 3)
+  unitPrice      Decimal? @map("unit_price") @db.Decimal(14, 2)
   createdAt      DateTime @default(now()) @map("created_at")
 
   amendment    BudgetAmendment @relation(fields: [amendmentId], references: [id], onDelete: Cascade)
@@ -4778,6 +4816,20 @@ model PurchaseOrderLine {
   costCategoryId String   @map("cost_category_id") @db.Uuid
   label          String
   amount         Decimal  @db.Decimal(14, 2)
+  /// Quantite et prix unitaire, FACULTATIFS (ajoutes le 20 septembre 2026).
+  ///
+  /// Le montant reste la donnee de reference comptable : ces deux colonnes
+  /// sont une aide a la saisie ET une information conservee, jamais une
+  /// source de recalcul au moment de la validation. Une prestation ou un
+  /// forfait n'a pas de quantite : les deux colonnes restent alors nulles et
+  /// le montant est saisi directement, comme avant.
+  ///
+  /// `quantity` porte trois decimales : on commande 2,5 tonnes de ciment.
+  /// Une quantite n'est pas un montant — arrondie au franc, elle vaudrait
+  /// zero ; elle passe donc par `roundLineQuantity` (`lib/finance/money.ts`),
+  /// jamais par `roundMoneyXof`.
+  quantity       Decimal? @db.Decimal(14, 3)
+  unitPrice      Decimal? @map("unit_price") @db.Decimal(14, 2)
   createdAt      DateTime @default(now()) @map("created_at")
 
   order        PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)

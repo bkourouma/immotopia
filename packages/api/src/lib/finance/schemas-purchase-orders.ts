@@ -38,10 +38,25 @@ export type ListPurchaseOrdersQuery = z.infer<typeof listPurchaseOrdersQuerySche
 // POST purchase-orders
 // ---------------------------------------------------------------------------
 
+/**
+ * Quantité et prix unitaire : **facultatifs, additifs, jamais recalculés
+ * ici** (20 septembre 2026). Même parti pris que pour la ligne de facture
+ * (`schemas-suppliers.ts`) : le montant reste la donnée de référence, ces
+ * deux champs sont une aide à la saisie et une information conservée. Une
+ * ligne peut donc encore se saisir en montant seul — un forfait de pose n'a
+ * pas de quantité.
+ *
+ * `.nullish()` plutôt que `.optional()` : un écran envoie volontiers `null`
+ * pour un champ laissé vide au lieu d'omettre la clé, et `.optional()` seul
+ * rejetterait ce `null` en 400 — silencieusement pour l'utilisateur, qui
+ * verrait sa saisie refusée sans comprendre pourquoi.
+ */
 const purchaseOrderLineSchema = z.object({
   costCategoryId: z.string().uuid('Identifiant de poste de dépense invalide.'),
   label: z.string().min(1, 'Le libellé de la ligne est obligatoire.'),
-  amount: z.number().positive('Le montant de la ligne doit être positif.')
+  amount: z.number().positive('Le montant de la ligne doit être positif.'),
+  quantity: z.number().positive('La quantité doit être positive.').nullish(),
+  unitPrice: z.number().nonnegative('Le prix unitaire ne peut pas être négatif.').nullish()
 });
 
 export const createPurchaseOrderSchema = z.object({

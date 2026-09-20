@@ -67,6 +67,14 @@ export interface SiteBudgetLine {
   costCategoryLabel: string;
   label: string;
   amountForecast: number;
+  /**
+   * Quantité et prix unitaire, **facultatifs**. Nuls — ou absents, le
+   * contrat ne les met pas dans `required` — pour une ligne saisie en
+   * montant direct. Affichés par l'écran quand ils existent, jamais
+   * remultipliés : le montant est la donnée de référence.
+   */
+  quantity?: number | null;
+  unitPrice?: number | null;
 }
 
 export interface SiteBudget {
@@ -106,7 +114,13 @@ export interface SiteBudget {
 export interface CreateSiteBudgetInput {
   siteId: string;
   label: string;
-  lines: Array<{ costCategoryId: string; label: string; amountForecast: number }>;
+  lines: Array<{
+    costCategoryId: string;
+    label: string;
+    amountForecast: number;
+    quantity?: number | null;
+    unitPrice?: number | null;
+  }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,6 +133,13 @@ export interface BudgetAmendmentLine {
   costCategoryLabel: string;
   /** **Signé** : un avenant réduit parfois une enveloppe. */
   amountDelta: number;
+  /**
+   * Quantité et prix unitaire, **facultatifs**. La quantité reste positive ;
+   * c'est le prix unitaire qui porte le signe d'une réduction d'enveloppe,
+   * une quantité négative n'ayant aucun sens.
+   */
+  quantity?: number | null;
+  unitPrice?: number | null;
 }
 
 export interface BudgetAmendment {
@@ -139,7 +160,12 @@ export interface CreateBudgetAmendmentInput {
   amendmentDate: string;
   /** Obligatoire. L'écran le vérifie avant l'envoi, le serveur aussi. */
   reason: string;
-  lines: Array<{ costCategoryId: string; amountDelta: number }>;
+  lines: Array<{
+    costCategoryId: string;
+    amountDelta: number;
+    quantity?: number | null;
+    unitPrice?: number | null;
+  }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -152,6 +178,14 @@ export interface PurchaseOrderLine {
   costCategoryLabel: string;
   label: string;
   amount: number;
+  /**
+   * Quantité et prix unitaire, **facultatifs**. Nuls — ou absents, le
+   * contrat ne les met pas dans `required` — pour une ligne saisie en
+   * montant direct. Affichés par l'écran quand ils existent, jamais
+   * remultipliés : le montant est la donnée de référence.
+   */
+  quantity?: number | null;
+  unitPrice?: number | null;
 }
 
 export interface PurchaseOrder {
@@ -178,7 +212,13 @@ export interface CreatePurchaseOrderInput {
   supplierId: string;
   reference: string;
   orderDate: string;
-  lines: Array<{ costCategoryId: string; label: string; amount: number }>;
+  lines: Array<{
+    costCategoryId: string;
+    label: string;
+    amount: number;
+    quantity?: number | null;
+    unitPrice?: number | null;
+  }>;
 }
 
 /** Filtres de la liste des bons, reflétés dans l'URL de l'écran. */

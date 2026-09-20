@@ -48,8 +48,8 @@
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { badRequest, conflict, notFound } from '../errors';
-import { roundMoneyXof } from './money';
-import { toAmountOrZero } from './types';
+import { roundLineQuantity, roundMoneyXof } from './money';
+import { toAmount, toAmountOrZero } from './types';
 import type {
   BudgetAmendmentLineRecord,
   BudgetAmendmentRecord,
@@ -117,7 +117,11 @@ function toBudgetRecord(row: BudgetRow): SiteBudgetRecord {
     costCategoryId: line.costCategoryId,
     costCategoryLabel: line.costCategory?.label ?? 'Poste inconnu',
     label: line.label,
-    amountForecast: round(toAmountOrZero(line.amountForecast))
+    amountForecast: round(toAmountOrZero(line.amountForecast)),
+    // Relus tels qu'ils ont ete saisis, `null` compris. Le total du budget
+    // reste la somme des MONTANTS PREVUS, jamais un produit recompose ici.
+    quantity: toAmount(line.quantity),
+    unitPrice: toAmount(line.unitPrice)
   }));
 
   // Somme des lignes déjà arrondies, puis ré-arrondie : la colonne n'existe
@@ -195,7 +199,11 @@ function toAmendmentRecord(row: AmendmentRow): BudgetAmendmentRecord {
     costCategoryId: line.costCategoryId,
     costCategoryLabel: line.costCategory?.label ?? 'Poste inconnu',
     // Signé : un avenant réduit parfois une enveloppe (voir le contrat).
-    amountDelta: round(toAmountOrZero(line.amountDelta))
+    amountDelta: round(toAmountOrZero(line.amountDelta)),
+    // Facultatifs. C'est `unitPrice` qui peut être négatif, jamais
+    // `quantity` : voir `BudgetAmendmentLineRecord` dans `types-lot3.ts`.
+    quantity: toAmount(line.quantity),
+    unitPrice: toAmount(line.unitPrice)
   }));
 
   const totalDelta = round(lines.reduce((sum, line) => sum + line.amountDelta, 0));
@@ -353,7 +361,13 @@ export const createSiteBudgetTx: CreateSiteBudgetTx = async (tx, tenantId, param
         budgetId: budget.id,
         costCategoryId: line.costCategoryId,
         label: line.label,
-        amountForecast: round(line.amountForecast)
+        amountForecast: round(line.amountForecast),
+        // Conservés, JAMAIS remultipliés : le montant prévu est la donnée de
+        // référence, et le recalculer ici donnerait deux chiffres qui
+        // finiraient par différer d'un franc d'arrondi. Nuls quand la ligne
+        // est saisie en montant direct.
+        quantity: line.quantity === null || line.quantity === undefined ? null : roundLineQuantity(line.quantity),
+        unitPrice: line.unitPrice === null || line.unitPrice === undefined ? null : round(line.unitPrice)
       }
     });
   }
@@ -498,7 +512,12 @@ export const createBudgetAmendmentTx: CreateBudgetAmendmentTx = async (tx, tenan
       data: {
         amendmentId: amendment.id,
         costCategoryId: line.costCategoryId,
-        amountDelta: round(line.amountDelta)
+        amountDelta: round(line.amountDelta),
+        // Mêmes règles qu'au budget, au signe près : `quantity` reste
+        // positive et c'est `unitPrice` qui porte le signe d'une réduction
+        // d'enveloppe — une quantité négative n'aurait aucun sens.
+        quantity: line.quantity === null || line.quantity === undefined ? null : roundLineQuantity(line.quantity),
+        unitPrice: line.unitPrice === null || line.unitPrice === undefined ? null : round(line.unitPrice)
       }
     });
   }

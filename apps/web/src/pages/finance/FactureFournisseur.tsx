@@ -46,6 +46,8 @@ import {
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { montantCalcule, montantVerrouille } from '../../utils/ligne-quantite-prix';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 
 import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
@@ -102,6 +104,14 @@ interface LigneSaisie {
   id: string;
   label: string;
   amount: number | null;
+  /**
+   * Quantité et prix unitaire, facultatifs. Règle complète dans
+   * `utils/ligne-quantite-prix.ts` : renseignés tous les deux, le montant
+   * devient leur produit et son champ passe en lecture seule ; sinon il se
+   * saisit comme avant — une prestation ou un forfait n'a pas de quantité.
+   */
+  quantity: number | null;
+  unitPrice: number | null;
 }
 
 interface ImputationSaisie {
@@ -112,7 +122,17 @@ interface ImputationSaisie {
 }
 
 function nouvelleLigne(): LigneSaisie {
-  return { id: crypto.randomUUID(), label: '', amount: null };
+  return { id: crypto.randomUUID(), label: '', amount: null, quantity: null, unitPrice: null };
+}
+
+/**
+ * Le montant retenu pour une ligne : le produit quand quantité ET prix
+ * unitaire sont là, la saisie directe sinon. Une seule fonction pour le
+ * total de la facture, pour la validation et pour la charge utile — trois
+ * lectures du même montant finiraient par diverger.
+ */
+function montantDeLaLigne(ligne: LigneSaisie): number | null {
+  return montantCalcule(ligne.quantity, ligne.unitPrice) ?? ligne.amount;
 }
 
 function nouvelleImputation(): ImputationSaisie {
@@ -224,7 +244,7 @@ export const FactureFournisseur: React.FC = () => {
     setImputations([]);
   }, [supplierId]);
 
-  const montantFacture = lignes.reduce((somme, l) => somme + (l.amount ?? 0), 0);
+  const montantFacture = lignes.reduce((somme, l) => somme + (montantDeLaLigne(l) ?? 0), 0);
   const montantImpute = imputations.reduce((somme, a) => somme + (a.amount ?? 0), 0);
   const ecart = montantFacture - montantImpute;
 
@@ -234,7 +254,12 @@ export const FactureFournisseur: React.FC = () => {
   const ecartNonNul = imputations.length > 0 && !imputationsIncompletes && ecart !== 0;
   const afficherEcart = imputations.length > 0 || rattachementObligatoire;
 
-  const lignesInvalides = lignes.length === 0 || lignes.some(l => !l.label.trim() || !(l.amount && l.amount > 0));
+  const lignesInvalides =
+    lignes.length === 0 ||
+    lignes.some(l => {
+      const montant = montantDeLaLigne(l);
+      return !l.label.trim() || !(montant && montant > 0);
+    });
   const referenceManquante = !reference.trim();
 
   const peutEnregistrerFacture =
@@ -264,7 +289,14 @@ export const FactureFournisseur: React.FC = () => {
         supplierId: fournisseur.id,
         invoiceDate: date.format('YYYY-MM-DD'),
         reference: reference.trim(),
-        lines: lignes.map(l => ({ label: l.label.trim(), amount: l.amount as number })),
+        lines: lignes.map(l => ({
+          label: l.label.trim(),
+          amount: montantDeLaLigne(l) as number,
+          // Conservés tels quels : le serveur les range à côté du montant,
+          // il ne refait pas la multiplication.
+          quantity: l.quantity,
+          unitPrice: l.unitPrice
+        })),
         allocations: imputations.map(a => ({
           siteId: a.siteId as string,
           costCategoryId: a.costCategoryId as string,
@@ -551,12 +583,34 @@ export const FactureFournisseur: React.FC = () => {
                     onChange={event => modifierLigne(ligne.id, { label: event.target.value })}
                   />
                   <InputNumber
+                    aria-label={t('Quantité')}
+                    placeholder={t('Quantité')}
+                    min={0}
+                    style={{ width: 120 }}
+                    value={ligne.quantity ?? undefined}
+                    onChange={value => modifierLigne(ligne.id, { quantity: (value as number | null) ?? null })}
+                  />
+                  <InputNumber
+                    aria-label={t('Prix unitaire')}
+                    placeholder={t('Prix unitaire')}
+                    min={0}
+                    style={{ width: 160 }}
+                    value={ligne.unitPrice ?? undefined}
+                    onChange={value => modifierLigne(ligne.id, { unitPrice: (value as number | null) ?? null })}
+                    {...montantSaisiProps}
+                  />
+                  <InputNumber
                     aria-label={t('Montant de la ligne')}
                     placeholder={t('Montant')}
                     min={0}
                     style={{ width: 180 }}
-                    value={ligne.amount ?? undefined}
+                    // Lecture seule dès que le produit prend le relais : deux
+                    // chiffres contradictoires à l'écran valent moins qu'un
+                    // seul champ inerte qui dit d'où vient le montant.
+                    disabled={montantVerrouille(ligne.quantity, ligne.unitPrice)}
+                    value={montantDeLaLigne(ligne) ?? undefined}
                     onChange={value => modifierLigne(ligne.id, { amount: (value as number | null) ?? null })}
+                    {...montantSaisiProps}
                   />
                   <Button
                     aria-label={t('Retirer la ligne')}
@@ -610,6 +664,8 @@ export const FactureFournisseur: React.FC = () => {
                     style={{ width: 200 }}
                     value={imputation.costCategoryId}
                     onChange={value => modifierImputation(imputation.id, { costCategoryId: value })}
+                    showSearch
+                    optionFilterProp="label"
                     options={optionsPostes}
                   />
                   <InputNumber
@@ -619,6 +675,7 @@ export const FactureFournisseur: React.FC = () => {
                     style={{ width: 180 }}
                     value={imputation.amount ?? undefined}
                     onChange={value => modifierImputation(imputation.id, { amount: (value as number | null) ?? null })}
+                    {...montantSaisiProps}
                   />
                   <Button
                     aria-label={t("Retirer l'imputation")}
@@ -733,6 +790,7 @@ export const FactureFournisseur: React.FC = () => {
                   style={{ width: '100%' }}
                   value={montantReglement ?? undefined}
                   onChange={value => setMontantReglement((value as number | null) ?? null)}
+                  {...montantSaisiProps}
                 />
               </div>
             </Space>
@@ -759,6 +817,7 @@ export const FactureFournisseur: React.FC = () => {
                           style={{ width: 160 }}
                           value={selection[f.id]}
                           onChange={value => modifierAffectation(f.id, value as number | null)}
+                          {...montantSaisiProps}
                         />
                       )}
                     </Space>
