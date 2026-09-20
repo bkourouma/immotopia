@@ -4,7 +4,8 @@ import { Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery } from '@tanstack/react-query';
 import { getSiteDetail } from '../../services/finance-lot2-service';
-import { DOCUMENT_TYPE_LABELS, SITE_STATUS_LABELS } from '../../types/finance-lot2-types';
+import { SITE_STATUS_LABELS } from '../../types/finance-lot2-types';
+import { libelleNatureImputation } from '../../types/finance-natures-imputation';
 import type { SiteAllocationLine, SiteDetail } from '../../types/finance-lot2-types';
 import { detailKey, STALE_TIME } from '../../lib/query-keys';
 import {
@@ -57,8 +58,18 @@ function dateCourteOuTiret(iso: string | null): string {
   return iso ? dateCourte(iso) : '—';
 }
 
+/**
+ * La nature d'une imputation, en clair.
+ *
+ * Passe par `libelleNatureImputation` et non par `DOCUMENT_TYPE_LABELS` : la
+ * seconde ne nomme que les pièces **annulables**, trois valeurs, alors qu'une
+ * imputation vient de sept sources. Les quatre absentes — note de salaire,
+ * situation de tâcheron, sortie de stock, loyer de terrain — s'affichaient
+ * donc sous leur code technique, `SALARY_NOTE` à côté de « Facture
+ * fournisseur ».
+ */
 function libelleNature(type: SiteAllocationLine['sourceType']): string {
-  return DOCUMENT_TYPE_LABELS[type] ?? type;
+  return libelleNatureImputation(type);
 }
 
 type LignePoste = SiteDetail['byCostCategory'][number];

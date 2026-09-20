@@ -374,6 +374,26 @@ export const listConstructionSites: ListConstructionSites = async (tenantId, fil
 // ---------------------------------------------------------------------------
 
 /** Ce que la résolution en lot doit produire pour une imputation, avant tri. */
+const MOIS = [
+  'janvier',
+  'février',
+  'mars',
+  'avril',
+  'mai',
+  'juin',
+  'juillet',
+  'août',
+  'septembre',
+  'octobre',
+  'novembre',
+  'décembre'
+];
+
+/** « mars 2026 », pour les pieces qui portent une periode et non une date. */
+function moisEtAnnee(annee: number, mois: number): string {
+  return `${MOIS[mois - 1] ?? mois} ${annee}`;
+}
+
 interface ResolvedSource {
   date: Date;
   label: string;
@@ -391,10 +411,16 @@ async function resolveAllocationSources(
   tenantId: string,
   allocations: Array<{ sourceType: string; sourceId: string; createdAt: Date }>
 ): Promise<Map<string, ResolvedSource>> {
-  const invoiceIds = allocations.filter(a => a.sourceType === 'SUPPLIER_INVOICE').map(a => a.sourceId);
-  const voucherIds = allocations.filter(a => a.sourceType === 'CASH_VOUCHER').map(a => a.sourceId);
+  const idsDe = (type: string) => allocations.filter(a => a.sourceType === type).map(a => a.sourceId);
 
-  const [invoices, vouchers] = await Promise.all([
+  const invoiceIds = idsDe('SUPPLIER_INVOICE');
+  const voucherIds = idsDe('CASH_VOUCHER');
+  const salaryIds = idsDe('SALARY_NOTE');
+  const statementIds = idsDe('PROGRESS_STATEMENT');
+  const stockIds = idsDe('STOCK_ISSUE');
+  const accrualIds = idsDe('LAND_LEASE_ACCRUAL');
+
+  const [invoices, vouchers, salaryNotes, statements, stockMovements, accruals] = await Promise.all([
     invoiceIds.length
       ? prisma.supplierInvoice.findMany({
           where: { id: { in: invoiceIds }, tenantId },
@@ -403,6 +429,30 @@ async function resolveAllocationSources(
       : Promise.resolve([] as Array<Record<string, any>>),
     voucherIds.length
       ? prisma.cashVoucher.findMany({ where: { id: { in: voucherIds }, tenantId } })
+      : Promise.resolve([] as Array<Record<string, any>>),
+    salaryIds.length
+      ? prisma.salaryNote.findMany({
+          where: { id: { in: salaryIds }, tenantId },
+          include: { employee: { select: { fullName: true } } }
+        })
+      : Promise.resolve([] as Array<Record<string, any>>),
+    statementIds.length
+      ? prisma.progressStatement.findMany({
+          where: { id: { in: statementIds }, tenantId },
+          include: { contract: { select: { reference: true, contractor: { select: { fullName: true } } } } }
+        })
+      : Promise.resolve([] as Array<Record<string, any>>),
+    stockIds.length
+      ? prisma.stockMovement.findMany({
+          where: { id: { in: stockIds }, tenantId },
+          include: { item: { select: { reference: true, label: true } } }
+        })
+      : Promise.resolve([] as Array<Record<string, any>>),
+    accrualIds.length
+      ? prisma.landLeaseAccrual.findMany({
+          where: { id: { in: accrualIds }, tenantId },
+          include: { landLease: { select: { landLabel: true } } }
+        })
       : Promise.resolve([] as Array<Record<string, any>>)
   ]);
 
@@ -422,6 +472,57 @@ async function resolveAllocationSources(
       // donc toujours un numero ici. Le repli reste ecrit au cas ou une
       // donnee anterieure a la regle du 19 septembre 2026 traine en base.
       label: `Bon de caisse ${formatCashVoucherNumber(voucher.voucherYear, voucher.voucherNumber) ?? 'sans numéro'} — ${voucher.beneficiaryName}`
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Les quatre natures que ce resolveur ignorait — corrige le 20 septembre 2026
+  // ---------------------------------------------------------------------
+  //
+  // Elles retombaient toutes sur le repli, et le tableau des imputations
+  // affichait « Piece 19b529d1 » datee du jour de la VALIDATION. Deux torts
+  // pour le prix d'un : un identifiant tronque ne dit rien a une
+  // gestionnaire, et une imputation datee de sa saisie rend l'ordre
+  // chronologique du cout d'un chantier trompeur — une note de mars y
+  // apparaissait apres une facture de juin.
+  //
+  // Chaque nature porte donc desormais sa DATE METIER et un libelle lisible,
+  // sur le modele de la facture et du bon de caisse.
+
+  for (const note of salaryNotes as Array<Record<string, any>>) {
+    resolved.set(note.id, {
+      // Le premier jour du mois concerne, jamais la date de validation : une
+      // note de salaire porte un mois, pas un jour.
+      date: new Date(Date.UTC(note.periodYear, note.periodMonth - 1, 1)),
+      label: `Note de salaire ${moisEtAnnee(note.periodYear, note.periodMonth)} — ${note.employee?.fullName ?? 'salarié'}`
+    });
+  }
+
+  for (const statement of statements as Array<Record<string, any>>) {
+    resolved.set(statement.id, {
+      date: statement.statementDate,
+      label: `Situation ${statement.contract?.reference ?? 'sans référence'} — ${statement.contract?.contractor?.fullName ?? 'tâcheron'}`
+    });
+  }
+
+  for (const mouvement of stockMovements as Array<Record<string, any>>) {
+    resolved.set(mouvement.id, {
+      date: mouvement.movementDate,
+      // Le demandeur est facultatif en base : on ne l'annonce que s'il existe,
+      // plutot que d'ecrire un tiret au milieu d'une phrase.
+      label: [
+        `Sortie de stock ${mouvement.item?.reference ?? ''} ${mouvement.item?.label ?? ''}`.trim(),
+        mouvement.requestedBy
+      ]
+        .filter(Boolean)
+        .join(' — ')
+    });
+  }
+
+  for (const accrual of accruals as Array<Record<string, any>>) {
+    resolved.set(accrual.id, {
+      date: new Date(Date.UTC(accrual.periodYear, accrual.periodMonth - 1, 1)),
+      label: `Loyer de terrain ${moisEtAnnee(accrual.periodYear, accrual.periodMonth)} — ${accrual.landLease?.landLabel ?? 'terrain'}`
     });
   }
 
