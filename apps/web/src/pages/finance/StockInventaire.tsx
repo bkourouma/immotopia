@@ -233,6 +233,21 @@ export const StockInventaire: React.FC = () => {
   const [dernierTransfert, setDernierTransfert] = useState<StockTransfer | null>(null);
 
   /**
+   * Le lieu déjà choisi d'un côté n'a plus rien à faire dans la liste de
+   * l'autre : un transfert vers soi-même ne veut rien dire, alors autant ne
+   * pas le proposer plutôt que de le laisser sélectionnable puis rejeté par
+   * `memeLieu`.
+   */
+  const optionsLieuxOrigine = useMemo(
+    () => optionsLieux.filter(option => option.value !== arrivee),
+    [optionsLieux, arrivee]
+  );
+  const optionsLieuxArrivee = useMemo(
+    () => optionsLieux.filter(option => option.value !== origine),
+    [optionsLieux, origine]
+  );
+
+  /**
    * Ce qu'il reste au lieu d'ORIGINE. Prévenance, pas autorité : la liste peut
    * être en retard d'un mouvement, et c'est le serveur qui refuse.
    */
@@ -483,7 +498,7 @@ export const StockInventaire: React.FC = () => {
             placeholder={t('Choisir le lieu d’origine')}
             value={origine}
             onChange={valeur => setOrigine(valeur)}
-            options={optionsLieux}
+            options={optionsLieuxOrigine}
             notFoundContent={t('Aucun lieu de stockage disponible')}
           />
         </div>
@@ -497,7 +512,7 @@ export const StockInventaire: React.FC = () => {
             placeholder={t('Choisir le lieu d’arrivée')}
             value={arrivee}
             onChange={valeur => setArrivee(valeur)}
-            options={optionsLieux}
+            options={optionsLieuxArrivee}
             notFoundContent={t('Aucun lieu de stockage disponible')}
           />
         </div>
@@ -601,7 +616,7 @@ export const StockInventaire: React.FC = () => {
           </Paragraph>
           <StatCard
             label={t('Valeur déplacée')}
-            value={<MoneyValue value={dernierTransfert.value} currency={dernierTransfert.currency} />}
+            value={<MoneyValue value={dernierTransfert.value} />}
             hint={t('Au coût moyen du lieu d’origine. Ce n’est pas une dépense, et aucun chantier n’a été imputé.')}
           />
           <Paragraph type="secondary" style={{ marginTop: 'var(--space-3)' }}>
@@ -643,7 +658,7 @@ export const StockInventaire: React.FC = () => {
       title: t('Valeur de l’écart'),
       key: 'valeur',
       align: 'end',
-      render: (_, c) => <MoneyValue value={c.varianceValue} currency={c.currency} signed />
+      render: (_, c) => <MoneyValue value={c.varianceValue} signed />
     },
     { title: t('Ouvert par'), key: 'auteur', render: (_, c) => c.createdByLabel },
     {
@@ -789,7 +804,7 @@ export const StockInventaire: React.FC = () => {
           />
           <StatCard
             label={t('Valeur de l’écart')}
-            value={<MoneyValue value={comptage.varianceValue} currency={comptage.currency} signed />}
+            value={<MoneyValue value={comptage.varianceValue} signed />}
             hint={
               brouillon
                 ? t('Estimée : le coût moyen peut encore bouger d’ici la validation.')
@@ -1094,7 +1109,7 @@ export const StockInventaire: React.FC = () => {
             aria-label={c.locationLabel}
             subtitle={t('Compté le {{value}}', { value: dateCourte(c.countedAt) })}
             status={<StatusTag status={c.status} />}
-            highlight={<MoneyValue value={c.varianceValue} currency={c.currency} signed />}
+            highlight={<MoneyValue value={c.varianceValue} signed />}
             fields={[
               { label: 'Lignes', value: String(c.lines.length) },
               { label: t('Lignes en écart'), value: String(c.varianceCount) },

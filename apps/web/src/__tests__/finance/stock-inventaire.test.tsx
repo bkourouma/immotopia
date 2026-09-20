@@ -425,18 +425,38 @@ describe('Le transfert', () => {
     expect(screen.getByText(/c’est le serveur qui refuse une quantité supérieure au stock/)).toBeInTheDocument();
   }, 40000);
 
-  it('refuse les deux mêmes lieux avant l’envoi, en disant pourquoi', async () => {
+  it('retire le lieu d’origine choisi de la liste des destinations, et inversement', async () => {
     monter();
 
     await choisir(/Lieu d’origine/, /Magasin central d'Angré \(Magasin\)/);
-    await choisir(/Lieu d’arrivée/, /Magasin central d'Angré \(Magasin\)/);
-    await choisir(/Article transféré/, /CIM-42/);
-    fireEvent.change(screen.getByLabelText('Quantité'), { target: { value: '5' } });
 
-    expect(
-      await screen.findByText(/Le lieu d’origine et le lieu d’arrivée sont les mêmes/, {}, { timeout: 8000 })
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Enregistrer le transfert' })).toBeDisabled();
+    // Le lieu d'origine ne doit plus figurer dans la liste des destinations :
+    // un transfert vers soi-même ne veut rien dire, autant ne pas le proposer
+    // plutôt que de le laisser sélectionner puis le rejeter après coup.
+    const arrivee = await screen.findByLabelText(/Lieu d’arrivée/, {}, { timeout: 8000 });
+    fireEvent.mouseDown(arrivee);
+    await waitFor(() => {
+      const liste = document.getElementById(`${arrivee.id}_list`);
+      const panneau = liste?.closest('.ant-select-dropdown');
+      const items = Array.from(panneau?.querySelectorAll('.ant-select-item-option') ?? []);
+      expect(items.some(item => /Magasin central d'Angré/.test(item.textContent ?? ''))).toBe(false);
+      expect(items.some(item => /Dépôt de la Villa Riviera/.test(item.textContent ?? ''))).toBe(true);
+    });
+    fireEvent.keyDown(arrivee, { key: 'Escape' });
+
+    await choisir(/Lieu d’arrivée/, /Dépôt de la Villa Riviera \(Lieu de chantier\)/);
+
+    // Et symétriquement : la destination choisie disparaît de la liste des origines.
+    const origine = await screen.findByLabelText(/Lieu d’origine/, {}, { timeout: 8000 });
+    fireEvent.mouseDown(origine);
+    await waitFor(() => {
+      const liste = document.getElementById(`${origine.id}_list`);
+      const panneau = liste?.closest('.ant-select-dropdown');
+      const items = Array.from(panneau?.querySelectorAll('.ant-select-item-option') ?? []);
+      expect(items.some(item => /Dépôt de la Villa Riviera/.test(item.textContent ?? ''))).toBe(false);
+    });
+    fireEvent.keyDown(origine, { key: 'Escape' });
+
     expect(post).not.toHaveBeenCalled();
   }, 40000);
 

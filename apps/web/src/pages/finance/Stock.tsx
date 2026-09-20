@@ -197,6 +197,16 @@ function quantite(valeur: number, unite?: string): string {
   return unite ? `${texte} ${unite}` : texte;
 }
 
+/**
+ * Ramène une quantité saisie à quatre décimales au plus, sans lui imposer
+ * d'en afficher : c'est ce que ferait un `precision` fixe sur `<InputNumber>`,
+ * qui écrirait « 800,0000 » pour un entier. Ici, `800` reste `800` et
+ * `12.3456789` devient `12.3457`.
+ */
+function arrondirQuantite(valeur: number): number {
+  return Math.round(valeur * 10000) / 10000;
+}
+
 /** Une date ISO se lit à la française. « — » plutôt que « Invalid Date ». */
 function date(valeur: string | null): string {
   if (!valeur) return '—';
@@ -1203,16 +1213,23 @@ export const Stock: React.FC = () => {
                 </div>
                 <div>
                   <label htmlFor={`reception-quantite-${index}`}>{t('Quantité')}</label>
-                  {/* Quatre décimales : on reçoit des tonnes et des mètres
-                      cubes, pas seulement des sacs entiers. */}
+                  {/* Quatre décimales au plus : on reçoit des tonnes et des
+                      mètres cubes, pas seulement des sacs entiers. Un
+                      `precision` fixe forcerait l'affichage à quatre
+                      décimales même pour un entier (« 800,0000 ») ; on
+                      arrondit donc la valeur nous-mêmes plutôt que de
+                      laisser le champ imposer son format. */}
                   <InputNumber
                     id={`reception-quantite-${index}`}
                     style={{ width: '100%' }}
                     min={0.0001}
                     step={1}
-                    precision={4}
                     value={ligne.quantity ?? undefined}
-                    onChange={valeur => modifierLigne(ligne.cle, { quantity: (valeur as number | null) ?? null })}
+                    onChange={valeur =>
+                      modifierLigne(ligne.cle, {
+                        quantity: valeur === null || valeur === undefined ? null : arrondirQuantite(valeur as number)
+                      })
+                    }
                   />
                 </div>
                 <div>
@@ -1310,14 +1327,17 @@ export const Stock: React.FC = () => {
 
           <div>
             <label htmlFor="sortie-quantite">{t('Quantité')}</label>
+            {/* Quatre décimales au plus, sans forcer leur affichage : voir le
+                commentaire sur le même champ du formulaire de réception. */}
             <InputNumber
               id="sortie-quantite"
               style={{ width: '100%' }}
               min={0.0001}
               step={1}
-              precision={4}
               value={sortieQuantite ?? undefined}
-              onChange={valeur => setSortieQuantite((valeur as number | null) ?? null)}
+              onChange={valeur =>
+                setSortieQuantite(valeur === null || valeur === undefined ? null : arrondirQuantite(valeur as number))
+              }
             />
             {/* Le stock disponible, MONTRÉ AVANT l'envoi : une sortie
                 supérieure au stock est refusée, et il vaut mieux le voir ici
