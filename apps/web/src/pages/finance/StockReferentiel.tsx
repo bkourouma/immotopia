@@ -1021,6 +1021,8 @@ export const StockReferentiel: React.FC = () => {
               placeholder={t('Aucun poste proposé')}
               value={saisieCreation.defaultCostCategoryId}
               onChange={valeur => setSaisieCreation({ ...saisieCreation, defaultCostCategoryId: valeur ?? undefined })}
+              showSearch
+              optionFilterProp="label"
               options={optionsPostes}
               notFoundContent={t('Aucun poste disponible')}
             />
@@ -1119,6 +1121,8 @@ export const StockReferentiel: React.FC = () => {
               onChange={valeur =>
                 setSaisieCorrection({ ...saisieCorrection, defaultCostCategoryId: valeur ?? undefined })
               }
+              showSearch
+              optionFilterProp="label"
               options={optionsPostes}
               notFoundContent={t('Aucun poste disponible')}
             />
@@ -1178,7 +1182,7 @@ export const StockReferentiel: React.FC = () => {
               id="lieu-libelle"
               value={libelleLieu}
               onChange={event => setLibelleLieu(event.target.value)}
-              placeholder={t('Ex. Magasin central de Kipé')}
+              placeholder={t("Ex. Magasin central d'Angré")}
             />
           </div>
 
@@ -1194,6 +1198,8 @@ export const StockReferentiel: React.FC = () => {
                 placeholder={t('Choisir un chantier')}
                 value={chantierLieu}
                 onChange={setChantierLieu}
+                showSearch
+                optionFilterProp="label"
                 options={optionsChantiers}
                 notFoundContent={t('Aucun chantier disponible')}
               />

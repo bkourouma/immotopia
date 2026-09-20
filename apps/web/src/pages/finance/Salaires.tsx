@@ -241,7 +241,7 @@ export const Salaires: React.FC = () => {
               id="salarie-nom"
               value={nomComplet}
               onChange={event => setNomComplet(event.target.value)}
-              placeholder={t('Ex. Ibrahima Sylla')}
+              placeholder={t('Ex. Ibrahima Koffi')}
             />
           </div>
           <div>

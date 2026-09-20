@@ -75,6 +75,8 @@ export const MeetingAgenda: React.FC<MeetingAgendaProps> = ({ resolutions, lots,
                   size="small"
                   style={{ minWidth: 220 }}
                   value={getSelectedLotId(resolution.id)}
+                  showSearch
+                  optionFilterProp="label"
                   options={lotOptions}
                   onChange={value => handleSelectLot(resolution.id, value)}
                   disabled={voting}

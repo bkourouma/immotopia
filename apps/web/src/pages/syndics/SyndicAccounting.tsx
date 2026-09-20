@@ -472,6 +472,8 @@ export const SyndicAccounting: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Type')} name="accountType" rules={[{ required: true, message: t('Type obligatoire') }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: 'ASSET', label: 'ACTIF' },
                 { value: 'LIABILITY', label: 'PASSIF' },
@@ -519,6 +521,8 @@ export const SyndicAccounting: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Type journal')} name="journalType" rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: 'GENERAL', label: 'GENERAL' },
                 { value: 'BANK', label: 'BANQUE' },
@@ -558,7 +562,7 @@ export const SyndicAccounting: React.FC = () => {
                 name="journalId"
                 rules={[{ required: true, message: t('Journal obligatoire') }]}
               >
-                <Select options={journalOptions} />
+                <Select showSearch optionFilterProp="label" options={journalOptions} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -587,7 +591,7 @@ export const SyndicAccounting: React.FC = () => {
                 name="sourceType"
                 rules={[{ required: true, message: t('Source obligatoire') }]}
               >
-                <Select options={sourceTypeOptions} />
+                <Select showSearch optionFilterProp="label" options={sourceTypeOptions} />
               </Form.Item>
             </Col>
           </Row>
@@ -611,7 +615,7 @@ export const SyndicAccounting: React.FC = () => {
                         name={[field.name, 'accountId']}
                         rules={[{ required: true, message: t('Compte obligatoire') }]}
                       >
-                        <Select options={accountOptions} />
+                        <Select showSearch optionFilterProp="label" options={accountOptions} />
                       </Form.Item>
                     </Col>
                     <Col xs={12} md={4}>

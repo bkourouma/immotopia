@@ -534,7 +534,7 @@ export const SyndicRecovery: React.FC = () => {
             </Col>
             <Col xs={24} md={12}>
               <Form.Item label={t('Canal')} name="channel" rules={[{ required: true }]}>
-                <Select options={reminderChannelOptions} />
+                <Select showSearch optionFilterProp="label" options={reminderChannelOptions} />
               </Form.Item>
             </Col>
           </Row>

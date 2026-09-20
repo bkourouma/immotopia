@@ -196,6 +196,8 @@ export function PropertyNewsletterCampaignModal({
         >
           <Select
             placeholder={translate('Choisir une liste')}
+            showSearch
+            optionFilterProp="label"
             options={lists.map(l => ({ value: l.id, label: `${l.name} (${l.activeCount ?? 0} destinataires)` }))}
             loading={loading}
           />
@@ -204,6 +206,8 @@ export function PropertyNewsletterCampaignModal({
           <Select
             placeholder={translate('Aucun template')}
             allowClear
+            showSearch
+            optionFilterProp="label"
             options={templates.map(t => ({ value: t.id, label: t.name }))}
             loading={loading}
           />

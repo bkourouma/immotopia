@@ -9,6 +9,7 @@ import { createLandLease, listLandLeases } from '../../services/finance-lot4-ser
 import { listCostCategories } from '../../services/finance-lot2-service';
 import type { LandLease } from '../../types/finance-lot4-types';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatusTag } from '../../components/primitives';
 import { t } from '../../i18n/t';
 
@@ -269,7 +270,7 @@ export const BauxDeTerrain: React.FC = () => {
               id="bail-bailleur"
               value={bailleur}
               onChange={event => setBailleur(event.target.value)}
-              placeholder={t('Ex. Mamadou Camara')}
+              placeholder={t('Ex. Mamadou Kouadio')}
             />
           </div>
           <div>
@@ -278,7 +279,7 @@ export const BauxDeTerrain: React.FC = () => {
               id="bail-terrain"
               value={libelleTerrain}
               onChange={event => setLibelleTerrain(event.target.value)}
-              placeholder={t('Ex. Terrain de Nongo, 800 m²')}
+              placeholder={t('Ex. Terrain de la Riviera, 800 m²')}
             />
           </div>
           <div>
@@ -289,6 +290,7 @@ export const BauxDeTerrain: React.FC = () => {
               min={0}
               value={loyerAnnuel ?? undefined}
               onChange={value => setLoyerAnnuel((value as number | null) ?? null)}
+              {...montantSaisiProps}
             />
           </div>
           <div>
@@ -302,6 +304,8 @@ export const BauxDeTerrain: React.FC = () => {
               placeholder={t('Choisir un poste')}
               value={posteId}
               onChange={setPosteId}
+              showSearch
+              optionFilterProp="label"
               options={optionsPostes}
             />
           </div>

@@ -206,7 +206,7 @@ export const SyndicMeetings: React.FC = () => {
       >
         <Form form={form} layout="vertical" initialValues={{ type: 'ORDINARY' }}>
           <Form.Item label={t('Type')} name="type" rules={[{ required: true, message: t('Le type est obligatoire') }]}>
-            <Select options={meetingTypeOptions} />
+            <Select showSearch optionFilterProp="label" options={meetingTypeOptions} />
           </Form.Item>
           <Form.Item
             label={t('Date et heure')}

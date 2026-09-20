@@ -599,7 +599,7 @@ function Card_AjoutAssocie(props: {
             id="associe-nom"
             value={props.nomAssocie}
             onChange={event => props.setNomAssocie(event.target.value)}
-            placeholder={t('Ex. Fatoumata Diallo')}
+            placeholder={t('Ex. Fatoumata Kouassi')}
           />
         </div>
         <div>
@@ -652,6 +652,8 @@ function Card_RattacherBien(props: {
             placeholder={t('Choisir un bien')}
             value={props.valeur}
             onChange={props.onChange}
+            showSearch
+            optionFilterProp="label"
             options={props.options}
             notFoundContent={t('Aucun bien disponible')}
           />

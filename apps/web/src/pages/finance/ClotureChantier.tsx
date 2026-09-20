@@ -1092,7 +1092,7 @@ export const ClotureChantier: React.FC = () => {
               id="bien-titre"
               value={formulaireBien.title}
               onChange={event => setFormulaireBien({ ...formulaireBien, title: event.target.value })}
-              placeholder={t('Ex. Villa A3 — Nongo')}
+              placeholder={t('Ex. Villa A3 — Riviera')}
             />
           </div>
 
@@ -1139,7 +1139,7 @@ export const ClotureChantier: React.FC = () => {
               id="bien-adresse"
               value={formulaireBien.address}
               onChange={event => setFormulaireBien({ ...formulaireBien, address: event.target.value })}
-              placeholder={t('Ex. Quartier Nongo, Ratoma, Conakry')}
+              placeholder={t('Ex. Quartier Riviera, Cocody, Abidjan')}
             />
           </div>
 

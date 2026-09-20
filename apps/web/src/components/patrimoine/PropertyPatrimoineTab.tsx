@@ -845,6 +845,8 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           </Form.Item>
           <Form.Item name="method" label={t('Méthode')} rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: 'MANUAL', label: valuationMethodLabel('MANUAL') },
                 { value: 'MARKET_ESTIMATE', label: valuationMethodLabel('MARKET_ESTIMATE') },
@@ -869,6 +871,8 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         <Form layout="vertical" form={expenseForm}>
           <Form.Item name="category" label={t('Catégorie')} rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: 'PROPERTY_TAX', label: expenseCategoryLabel('PROPERTY_TAX') },
                 { value: 'CONDO_FEES', label: expenseCategoryLabel('CONDO_FEES') },
@@ -940,6 +944,8 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           </Form.Item>
           <Form.Item name="status" label={t('Statut')} rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: 'ACTIVE', label: loanStatusLabel('ACTIVE') },
                 { value: 'CLOSED', label: loanStatusLabel('CLOSED') },
@@ -982,6 +988,8 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           </Form.Item>
           <Form.Item name="status" label={t('Statut')} rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: 'PLANNED', label: t('Planifié') },
                 { value: 'IN_PROGRESS', label: t('En cours') },
@@ -1013,6 +1021,8 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           </Form.Item>
           <Form.Item name="type" label={t('Type')} rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: 'TITLE_DEED', label: documentTypeLabel('TITLE_DEED') },
                 { value: 'NOTARIAL_DEED', label: documentTypeLabel('NOTARIAL_DEED') },

@@ -156,10 +156,10 @@ export const SyndicProviders: React.FC = () => {
             rules={[{ required: true, message: t('Le prestataire est obligatoire') }]}
           >
             <Select
-              options={payload.providers.map(provider => ({ value: provider.id, label: provider.name }))}
-              placeholder={t('Selectionner un prestataire')}
               showSearch
               optionFilterProp="label"
+              options={payload.providers.map(provider => ({ value: provider.id, label: provider.name }))}
+              placeholder={t('Selectionner un prestataire')}
             />
           </Form.Item>
           <Form.Item

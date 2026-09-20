@@ -208,7 +208,7 @@ export const Associations: React.FC = () => {
               id="association-label"
               value={libelle}
               onChange={event => setLibelle(event.target.value)}
-              placeholder={t('Ex. Villa Nongo — indivision Camara')}
+              placeholder={t('Ex. Villa Riviera — indivision Kouadio')}
             />
           </div>
         </Space>

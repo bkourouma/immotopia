@@ -482,6 +482,8 @@ export const SyndicBudgets: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Clé de distribution')} name="distributionKey" rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: 'GENERAL_SHARES', label: t('Tantièmes généraux') },
                 { value: 'SPECIAL_SHARES', label: t('Tantièmes spéciaux') },
@@ -520,6 +522,8 @@ export const SyndicBudgets: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Type batch')} name="batchType" rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: 'REGULAR', label: t('Régulier') },
                 { value: 'EXCEPTIONAL', label: 'Exceptionnel' }
@@ -556,6 +560,8 @@ export const SyndicBudgets: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Type batch')} name="batchType" rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: 'REGULAR', label: t('Régulier') },
                 { value: 'EXCEPTIONAL', label: 'Exceptionnel' }

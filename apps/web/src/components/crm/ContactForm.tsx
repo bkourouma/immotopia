@@ -425,7 +425,12 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                           placeholder={t('Numéro principal')}
                           addonBefore={
                             <Form.Item name="phonePrimaryCountryCode" noStyle>
-                              <Select style={{ width: 130 }} options={COUNTRY_DIAL_CODES} />
+                              <Select
+                                showSearch
+                                optionFilterProp="label"
+                                style={{ width: 130 }}
+                                options={COUNTRY_DIAL_CODES}
+                              />
                             </Form.Item>
                           }
                         />
@@ -445,7 +450,12 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                           placeholder={t('Numéro secondaire')}
                           addonBefore={
                             <Form.Item name="phoneSecondaryCountryCode" noStyle>
-                              <Select style={{ width: 130 }} options={COUNTRY_DIAL_CODES} />
+                              <Select
+                                showSearch
+                                optionFilterProp="label"
+                                style={{ width: 130 }}
+                                options={COUNTRY_DIAL_CODES}
+                              />
                             </Form.Item>
                           }
                         />

@@ -293,6 +293,8 @@ export function NewsletterListsPage() {
           </Form.Item>
           <Form.Item name="type" label={t('Type')} initialValue="MANUAL" rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: 'MANUAL', label: t('Manuelle (import, ajout manuel)') },
                 { value: 'FROM_OWNERS', label: t('Propriétaires (avec accord newsletter)') },

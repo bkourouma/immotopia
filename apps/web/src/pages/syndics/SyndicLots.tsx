@@ -603,7 +603,7 @@ export const SyndicLots: React.FC = () => {
                 name="lotType"
                 rules={[{ required: true, message: t('Le type est obligatoire') }]}
               >
-                <Select options={lotTypeOptions} />
+                <Select showSearch optionFilterProp="label" options={lotTypeOptions} />
               </Form.Item>
             </Col>
           </Row>

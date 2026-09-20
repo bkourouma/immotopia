@@ -244,7 +244,7 @@ export const Tacherons: React.FC = () => {
               id="tacheron-nom"
               value={nomComplet}
               onChange={event => setNomComplet(event.target.value)}
-              placeholder={translate('Ex. Sékou Camara')}
+              placeholder={translate('Ex. Sékou Kouadio')}
             />
           </div>
           <div>

@@ -322,7 +322,14 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
               <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${tenantId}/crm/deals`)}>
                 {t('Retour')}
               </Button>
-              <Select value={deal.stage} options={STAGE_OPTIONS} onChange={handleStageChange} loading={updatingStage} />
+              <Select
+                showSearch
+                optionFilterProp="label"
+                value={deal.stage}
+                options={STAGE_OPTIONS}
+                onChange={handleStageChange}
+                loading={updatingStage}
+              />
               <Button
                 type="primary"
                 icon={<EditOutlined />}

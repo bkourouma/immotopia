@@ -165,6 +165,8 @@ export const SyndicDocuments: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Type')} name="type" rules={[{ required: true, message: t('Le type est obligatoire') }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { label: 'Reglement', value: 'REGULATION' },
                 { label: t('Proces-verbal AG'), value: 'GENERAL_MEETING_MINUTES' },

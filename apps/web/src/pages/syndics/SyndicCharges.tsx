@@ -302,7 +302,7 @@ export const SyndicCharges: React.FC = () => {
             name="targetMode"
             rules={[{ required: true, message: t('La cible est obligatoire') }]}
           >
-            <Select options={targetModeOptions} />
+            <Select showSearch optionFilterProp="label" options={targetModeOptions} />
           </Form.Item>
 
           <Form.Item noStyle dependencies={['targetMode']}>
@@ -389,6 +389,8 @@ export const SyndicCharges: React.FC = () => {
 
           <Form.Item label={t('Charge récurrente')} name="isRecurring">
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { label: 'Non', value: false },
                 { label: 'Oui', value: true }
@@ -406,7 +408,7 @@ export const SyndicCharges: React.FC = () => {
                       name="recurrenceFrequency"
                       rules={[{ required: true, message: t('La fréquence est obligatoire') }]}
                     >
-                      <Select options={recurrenceFrequencyOptions} />
+                      <Select showSearch optionFilterProp="label" options={recurrenceFrequencyOptions} />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={12}>

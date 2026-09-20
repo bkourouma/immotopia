@@ -240,6 +240,8 @@ export const SyndicOwnerAccount: React.FC = () => {
         <Form form={form} layout="vertical" initialValues={{ direction: 'DEBIT' }}>
           <Form.Item label={t('Direction')} name="direction" rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { label: t('Débit'), value: 'DEBIT' },
                 { label: t('Crédit'), value: 'CREDIT' }

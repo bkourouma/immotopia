@@ -562,6 +562,8 @@ export const SyndicProfilesIncidents: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Activer accès portail')} name="portalAccessEnabled">
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: true, label: 'Oui' },
                 { value: false, label: 'Non' }
@@ -609,6 +611,8 @@ export const SyndicProfilesIncidents: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Charges facturees au locataire')} name="chargesBilledToTenant">
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: true, label: 'Oui' },
                 { value: false, label: 'Non' }
@@ -654,6 +658,8 @@ export const SyndicProfilesIncidents: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Type incident')} name="incidentType" rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: 'BREAKDOWN', label: 'Panne' },
                 { value: 'LEAK', label: 'Fuite' },
@@ -665,6 +671,8 @@ export const SyndicProfilesIncidents: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Urgence')} name="urgency" rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: 'LOW', label: 'Basse' },
                 { value: 'MEDIUM', label: 'Moyenne' },
@@ -693,6 +701,8 @@ export const SyndicProfilesIncidents: React.FC = () => {
         >
           <Form.Item label={t('Type imputation')} name="imputationType" rules={[{ required: true }]}>
             <Select
+              showSearch
+              optionFilterProp="label"
               options={[
                 { value: 'SYNDICATE_BUDGET', label: t('Budget syndic') },
                 { value: 'INSURANCE', label: 'Assurance' },
