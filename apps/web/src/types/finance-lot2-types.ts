@@ -337,10 +337,28 @@ export interface CreateSupplierInvoiceInput {
   allocations: CostAllocationInput[];
 }
 
+/** Les modes de règlement, les mêmes que ceux des encaissements locatifs. */
+export const SUPPLIER_PAYMENT_METHODS = [
+  { value: 'CASH', label: t('Espèces') },
+  { value: 'BANK_TRANSFER', label: t('Virement bancaire') },
+  { value: 'CHECK', label: t('Chèque') },
+  { value: 'MOBILE_MONEY', label: t('Mobile Money') },
+  { value: 'CARD', label: t('Carte bancaire') },
+  { value: 'OTHER', label: t('Autre') }
+];
+
 export interface CreateSupplierPaymentInput {
   supplierId: string;
   paymentDate: string;
   amount: number;
+  /**
+   * Comment on a payé. **Obligatoire** : le serveur le refuse sans.
+   *
+   * Il l'exigeait déjà sans que l'écran le demande — aucun règlement
+   * fournisseur n'était donc enregistrable, et l'échec ne disait rien avant
+   * que l'intercepteur ne remonte le détail des erreurs.
+   */
+  method: string;
   /** Vide pour un acompte : le compte du fournisseur devient alors débiteur. */
   allocations: Array<{ invoiceId: string; amount: number }>;
 }

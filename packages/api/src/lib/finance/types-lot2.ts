@@ -310,6 +310,15 @@ export type CreateSupplierPaymentTx = (
     supplierId: string;
     paymentDate: Date;
     amount: number;
+    /**
+     * Comment on a paye : especes, virement, cheque, mobile money, carte.
+     *
+     * Ajoute le 20 septembre 2026. La colonne existait en base et le schema
+     * HTTP exigeait le champ, mais le domaine ecrivait « OTHER » a sa place :
+     * la reponse de l'utilisateur etait donc collectee puis jetee. Facultatif
+     * pour ne rien casser — a defaut, « OTHER » comme avant.
+     */
+    method?: string;
     allocations: Array<{ invoiceId: string; amount: number }>;
     createdByUserId: string;
   }

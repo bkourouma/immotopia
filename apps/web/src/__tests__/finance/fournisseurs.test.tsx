@@ -542,6 +542,16 @@ describe('Règlement — acompte sans facture', () => {
 
     expect(await screen.findByText('Ce règlement sera enregistré comme acompte')).toBeInTheDocument();
     expect(screen.queryByText(/dépasse le montant/i)).not.toBeInTheDocument();
+
+    // Le mode de règlement est obligatoire depuis le 20 septembre 2026 : le
+    // serveur l'exige, et l'écran ne le demandait pas — aucun règlement
+    // fournisseur n'était enregistrable. Tant qu'il est vide, le bouton
+    // reste inerte, et c'est ce que ce cas épingle avant de le choisir.
+    expect(screen.getByRole('button', { name: 'Enregistrer le règlement' })).toBeDisabled();
+
+    await user.click(screen.getByLabelText('Mode de règlement'));
+    await user.click(await screen.findByText('Virement bancaire'));
+
     expect(screen.getByRole('button', { name: 'Enregistrer le règlement' })).not.toBeDisabled();
 
     await user.click(screen.getByRole('button', { name: 'Enregistrer le règlement' }));
@@ -550,6 +560,7 @@ describe('Règlement — acompte sans facture', () => {
     expect(createSupplierPayment.mock.calls[0][1]).toMatchObject({
       supplierId: 'frs-04',
       amount: 300_000,
+      method: 'BANK_TRANSFER',
       allocations: []
     });
   });

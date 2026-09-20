@@ -32,7 +32,7 @@ import {
   listConstructionSites,
   listCostCategories
 } from '../../services/finance-lot2-service';
-import { DOCUMENT_STATUS_LABELS } from '../../types/finance-lot2-types';
+import { DOCUMENT_STATUS_LABELS, SUPPLIER_PAYMENT_METHODS } from '../../types/finance-lot2-types';
 import type { Supplier, SupplierInvoice, SupplierPayment, DocumentStatus } from '../../types/finance-lot2-types';
 import { detailKey, queryKey, STALE_TIME } from '../../lib/query-keys';
 import {
@@ -445,6 +445,11 @@ export const FactureFournisseur: React.FC = () => {
 
   const [dateReglement, setDateReglement] = useState(() => dayjs());
   const [montantReglement, setMontantReglement] = useState<number | null>(null);
+  // Le mode de reglement. Aucun defaut : deviner « especes » pour tout le
+  // monde ferait entrer une information fausse sans que personne ne la
+  // corrige. Le serveur l'exige, et l'ecran ne le demandait pas — aucun
+  // reglement fournisseur n'etait donc enregistrable (20 septembre 2026).
+  const [modeReglement, setModeReglement] = useState<string | undefined>(undefined);
   const [selection, setSelection] = useState<Record<string, number>>({});
   const [enregistrementReglement, setEnregistrementReglement] = useState(false);
   // Aucun `listSupplierPayments` dans le contrat gelé (voir l'en-tête) : les
@@ -480,7 +485,7 @@ export const FactureFournisseur: React.FC = () => {
   const depassement = sommeAffectee > montant;
   const acompteSansFacture = montant > 0 && sommeAffectee === 0;
 
-  const peutEnregistrerReglement = Boolean(fournisseur) && montant > 0 && !depassement;
+  const peutEnregistrerReglement = Boolean(fournisseur) && montant > 0 && !depassement && Boolean(modeReglement);
 
   const enregistrerReglement = async () => {
     if (!tenantId || !fournisseur || !peutEnregistrerReglement) return;
@@ -493,11 +498,13 @@ export const FactureFournisseur: React.FC = () => {
         supplierId: fournisseur.id,
         paymentDate: dateReglement.format('YYYY-MM-DD'),
         amount: montant,
+        method: modeReglement as string,
         allocations
       });
       setReglements(prev => [reglement, ...prev]);
       message.success(t('Règlement enregistré en brouillon.'));
       setMontantReglement(null);
+      setModeReglement(undefined);
       setSelection({});
     } catch (err: any) {
       message.error(err?.response?.data?.message || t("L'enregistrement du règlement a échoué."));
@@ -880,6 +887,22 @@ export const FactureFournisseur: React.FC = () => {
                   value={montantReglement ?? undefined}
                   onChange={value => setMontantReglement((value as number | null) ?? null)}
                   {...montantSaisiProps}
+                />
+              </div>
+              <div style={{ minWidth: 200 }}>
+                <div>
+                  <label htmlFor="reglement-mode">{t('Mode de règlement')}</label>
+                </div>
+                <Select
+                  id="reglement-mode"
+                  aria-label={t('Mode de règlement')}
+                  style={{ width: '100%' }}
+                  placeholder={t('Choisir le mode')}
+                  value={modeReglement}
+                  onChange={valeur => setModeReglement(valeur as string)}
+                  showSearch
+                  optionFilterProp="label"
+                  options={SUPPLIER_PAYMENT_METHODS}
                 />
               </div>
             </Space>

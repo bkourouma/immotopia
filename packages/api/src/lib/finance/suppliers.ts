@@ -658,7 +658,8 @@ export const createSupplierPaymentTx: CreateSupplierPaymentTx = async (tx, tenan
       paymentDate: params.paymentDate,
       amount,
       currency: DEFAULT_CURRENCY,
-      method: DEFAULT_PAYMENT_METHOD,
+      // Le mode reellement choisi, et « OTHER » seulement a defaut.
+      method: params.method ?? DEFAULT_PAYMENT_METHOD,
       createdByUserId: params.createdByUserId
     }
   });

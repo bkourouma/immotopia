@@ -649,6 +649,7 @@ export const createSupplierPaymentHandler = asyncHandler(async (req: Request, re
       supplierId,
       paymentDate: body.paymentDate,
       amount: body.amount,
+      method: body.method,
       allocations: body.allocations,
       createdByUserId: actorUserId
     })
