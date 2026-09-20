@@ -303,6 +303,16 @@ interface ResolvedSource {
   entryDate: Date;
   /** Pour les libellés d'écriture et de mouvement. */
   sourceLabel: string;
+  /**
+   * Ce qui reste à payer sur la pièce, quand on sait le calculer.
+   *
+   * Seule la facture fournisseur le sait : ses règlements lui sont affectés
+   * pièce par pièce. Les règlements d'un tâcheron ne visent aucune situation
+   * en particulier — on règle un tâcheron, pas une situation — et le reste dû
+   * d'une situation n'a donc pas de sens. `undefined` veut dire « incalculable
+   * ici », et le contrôle est alors omis plutôt que deviné.
+   */
+  remainingPayable?: number;
 }
 
 async function resolveSupplierInvoiceSource(
@@ -332,22 +342,44 @@ async function resolveSupplierInvoiceSource(
     throw notFound('Fournisseur introuvable pour cette facture');
   }
 
-  // LA FENÊTRE QU'ON SAIT FERMER, et seulement ici. Les règlements
-  // fournisseurs sont affectés pièce par pièce (`SupplierPaymentAllocation`),
-  // donc lisibles : si un règlement pointe déjà cette facture, la retenue
-  // arrive trop tard et se poserait sur un solde déjà éteint. Le contrat
-  // explique pourquoi la même garde est IMPOSSIBLE côté situations, dont les
-  // règlements ne sont affectés à rien — on règle un tâcheron, pas une
-  // situation.
-  const allocation = await tx.supplierPaymentAllocation.findFirst({
-    where: { invoiceId },
-    select: { id: true }
+  // CE QUI RESTE À PAYER SUR LA FACTURE, et c'est la seule limite qui compte.
+  //
+  // La garde d'origine refusait la retenue dès qu'un règlement TOUCHAIT la
+  // facture, si peu que ce soit. Elle visait juste — on ne retient pas sur un
+  // solde éteint — mais frappait trop large : une facture de 18 000 000 réglée
+  // à 16 200 000 laisse 1 800 000 à payer, et une retenue de 1 800 000 s'y
+  // pose parfaitement. Le refus était d'autant plus difficile à justifier que
+  // la situation de tâcheron, elle, l'acceptait dans le même cas.
+  //
+  // Seuls les règlements VALIDÉS et non annulés éteignent une dette : un
+  // brouillon n'a rien payé, et une annulation a rendu ce qu'elle avait pris.
+  const affectations = await tx.supplierPaymentAllocation.findMany({
+    where: { invoiceId, payment: { validatedAt: { not: null } } },
+    select: { amount: true, paymentId: true }
   });
-  if (allocation) {
-    throw conflict('Un règlement a déjà été affecté à cette facture — la retenue ne peut plus être posée');
-  }
+
+  const annulations = affectations.length
+    ? await tx.voidDocument.findMany({
+        where: {
+          tenantId,
+          documentType: 'SUPPLIER_PAYMENT' as any,
+          documentId: { in: [...new Set(affectations.map(a => a.paymentId))] }
+        },
+        select: { documentId: true }
+      })
+    : [];
+  const reglementsAnnules = new Set(annulations.map(a => a.documentId));
+
+  const dejaRegle = roundMoneyXof(
+    affectations
+      .filter(a => !reglementsAnnules.has(a.paymentId))
+      .reduce((somme, a) => somme + toAmountOrZero(a.amount), 0)
+  );
+
+  const montantFacture = roundMoneyXof(toAmountOrZero(invoice.amount));
 
   return {
+    remainingPayable: roundMoneyXof(montantFacture - dejaRegle),
     thirdPartyLabel: invoice.supplier.name,
     thirdPartyAccountId: invoice.supplier.thirdPartyAccountId,
     siteId: invoice.siteId ?? null,
@@ -486,6 +518,15 @@ export const createRetentionTx: CreateRetentionTx = async (tx, tenantId, params)
     // créerait une écriture vide que `postDocumentEntryTx` accepterait sans
     // rien dire.
     throw badRequest('Le montant retenu est nul après arrondi — la retenue ne serait pas une retenue');
+  }
+
+  // On ne retient jamais plus qu'il ne reste à payer : au-delà, la retenue ne
+  // garantit plus rien, elle réclame. Le contrôle ne s'applique qu'aux pièces
+  // dont le reste dû est calculable — voir `ResolvedSource.remainingPayable`.
+  if (source.remainingPayable !== undefined && amount > source.remainingPayable) {
+    throw conflict(
+      `La retenue de ${amount} dépasse ce qui reste à payer sur cette pièce (${source.remainingPayable}) — elle ne garantirait plus rien`
+    );
   }
 
   const accounts = await resolveRetentionAccounts(tx, tenantId, source.entryDate, source.payableAccountNumber);

@@ -610,9 +610,16 @@ describe('Les refus du serveur restent lisibles', () => {
 
     // Le serveur seul sait lequel des cinq refus s'est produit : une phrase
     // générique perdrait cette information.
-    expect(
-      await screen.findByText('Une retenue de garantie a déjà été posée sur cette pièce', {}, { timeout: 8000 })
-    ).toBeInTheDocument();
+    //
+    // Le motif paraît DEUX fois depuis le 20 septembre 2026 : dans la
+    // notification, et dans la fenêtre elle-même. Un refus de formulaire se
+    // lit là où l'on vient de saisir — la fenêtre reste ouverte après un
+    // échec, et rien n'y disait pourquoi.
+    await waitFor(
+      () => expect(screen.getAllByText('Une retenue de garantie a déjà été posée sur cette pièce').length).toBe(2),
+      { timeout: 8000 }
+    );
+    expect(await screen.findByText('La retenue a été refusée', {}, { timeout: 8000 })).toBeInTheDocument();
   }, 30000);
 
   it('relaie le message du serveur quand la libération est refusée', async () => {

@@ -185,6 +185,16 @@ export const RetenuesDeGarantie: React.FC = () => {
   const [taux, setTaux] = useState<number | null>(null);
   const [dateLiberation, setDateLiberation] = useState<Dayjs | null>(null);
 
+  /**
+   * Le motif du refus, affiché DANS la fenêtre.
+   *
+   * Un refus de formulaire se lit là où l'on vient de saisir, pas dans une
+   * notification qui passe : la fenêtre reste ouverte après un échec, et rien
+   * n'y disait pourquoi. Le message reste aussi en notification, pour qui
+   * regarde ailleurs.
+   */
+  const [refusPose, setRefusPose] = useState<string | null>(null);
+
   const filtresApi = {
     status: statut,
     siteId: chantierId,
@@ -351,7 +361,11 @@ export const RetenuesDeGarantie: React.FC = () => {
   };
 
   const fermerPose = () => {
-    if (!poseEnCours) setModalOuvert(false);
+    if (poseEnCours) return;
+    setModalOuvert(false);
+    // Le refus appartient à la tentative, pas à la fenêtre : rouvrir doit
+    // repartir d'une ardoise propre.
+    setRefusPose(null);
   };
 
   // APERÇU SEULEMENT, et l'écran le dit. Le montant retenu est décidé par le
@@ -368,6 +382,7 @@ export const RetenuesDeGarantie: React.FC = () => {
       return;
     }
     setPoseEnCours(true);
+    setRefusPose(null);
     try {
       // Le corps ne porte QUE ces quatre champs — et surtout aucun montant.
       const retenue = await createRetention(tenantId, {
@@ -383,7 +398,9 @@ export const RetenuesDeGarantie: React.FC = () => {
     } catch (err: any) {
       // Le message du serveur dit précisément lequel des cinq refus s'est
       // produit. Une phrase générique perdrait cette information.
-      message.error(err?.response?.data?.message || t("La retenue n'a pas pu être posée."));
+      const motif = err?.response?.data?.message || t("La retenue n'a pas pu être posée.");
+      setRefusPose(motif);
+      message.error(motif);
     } finally {
       setPoseEnCours(false);
     }
@@ -648,6 +665,7 @@ export const RetenuesDeGarantie: React.FC = () => {
         width={620}
       >
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+          {refusPose && <Alert type="error" showIcon message={t('La retenue a été refusée')} description={refusPose} />}
           <div>
             <span id="retenue-nature-label">{t('Nature de la pièce')}</span>
             <div>
