@@ -286,6 +286,8 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
         <div style={{ minWidth: 220 }}>
           <label htmlFor="filtre-statut-paiement">{t('Statut')}</label>
           <Select
+            showSearch
+            optionFilterProp="label"
             id="filtre-statut-paiement"
             style={{ width: '100%' }}
             placeholder={t('Tous les statuts')}

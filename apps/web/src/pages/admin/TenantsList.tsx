@@ -203,6 +203,8 @@ export const TenantsList: React.FC = () => {
                 allowClear
               />
               <Select
+                showSearch
+                optionFilterProp="label"
                 placeholder={t('Statut')}
                 value={filters.status || undefined}
                 onChange={v => handleStatusFilter(v)}

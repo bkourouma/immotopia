@@ -213,6 +213,8 @@ export const LeaseDetailPage: React.FC = () => {
           <Col>
             <Space>
               <Select
+                showSearch
+                optionFilterProp="children"
                 value={lease.status}
                 onChange={value => handleStatusChange(value as RentalLeaseStatus)}
                 style={{ width: 180 }}

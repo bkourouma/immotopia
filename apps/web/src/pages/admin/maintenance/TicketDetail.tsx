@@ -200,7 +200,7 @@ export const TicketDetail: React.FC = () => {
                   </div>
 
                   <Form.Item name="status" label={t('Statut')}>
-                    <Select>
+                    <Select showSearch optionFilterProp="children">
                       <Option value={MaintenanceTicketStatus.DECLARED}>{t('Déclaré')}</Option>
                       <Option value={MaintenanceTicketStatus.IN_PROGRESS}>{t('En cours')}</Option>
                       <Option value={MaintenanceTicketStatus.ASSIGNED}>{t('Assigné')}</Option>
@@ -210,7 +210,7 @@ export const TicketDetail: React.FC = () => {
                   </Form.Item>
 
                   <Form.Item name="priority" label={t('Priorité')}>
-                    <Select>
+                    <Select showSearch optionFilterProp="children">
                       <Option value={MaintenanceTicketPriority.LOW}>{t('Faible')}</Option>
                       <Option value={MaintenanceTicketPriority.MEDIUM}>{t('Moyenne')}</Option>
                       <Option value={MaintenanceTicketPriority.HIGH}>{t('Élevée')}</Option>

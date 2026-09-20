@@ -312,6 +312,8 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
                 <Input placeholder="Chargement..." disabled />
               ) : (
                 <Select
+                  showSearch
+                  optionFilterProp="children"
                   value={formData.dealId}
                   onChange={value => handleChange('dealId', value)}
                   disabled={!formData.contactId && !contactId}
@@ -383,6 +385,8 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
         <Col xs={24} md={12}>
           <Form.Item label={t('Type')} required>
             <Select
+              showSearch
+              optionFilterProp="children"
               value={formData.activityType}
               onChange={value => handleChange('activityType', value)}
               placeholder={t('Sélectionner un type')}

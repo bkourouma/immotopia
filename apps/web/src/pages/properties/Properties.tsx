@@ -488,6 +488,8 @@ export const Properties: React.FC = () => {
           <Col xs={24} md={8} lg={6}>
             <label htmlFor="filtre-type">{t('Type de bien')}</label>
             <Select
+              showSearch
+              optionFilterProp="label"
               id="filtre-type"
               style={{ width: '100%' }}
               placeholder={t('Tous les types')}
@@ -502,6 +504,8 @@ export const Properties: React.FC = () => {
           <Col xs={24} md={8} lg={6}>
             <label htmlFor="filtre-transaction">{t('Transaction')}</label>
             <Select
+              showSearch
+              optionFilterProp="label"
               id="filtre-transaction"
               style={{ width: '100%' }}
               placeholder={t('Tous les modes')}
@@ -514,6 +518,8 @@ export const Properties: React.FC = () => {
           <Col xs={24} md={8} lg={6}>
             <label htmlFor="filtre-statut">{t('Statut')}</label>
             <Select
+              showSearch
+              optionFilterProp="label"
               id="filtre-statut"
               style={{ width: '100%' }}
               placeholder={t('Tous les statuts')}

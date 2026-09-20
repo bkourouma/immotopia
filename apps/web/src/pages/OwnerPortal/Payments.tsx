@@ -291,6 +291,8 @@ export default function Payments() {
           <div className="it-filters__field">
             <Text strong>{t('Propriété')}</Text>
             <Select
+              showSearch
+              optionFilterProp="children"
               style={{ width: 200 }}
               placeholder={t('Toutes les propriétés')}
               allowClear
@@ -307,6 +309,8 @@ export default function Payments() {
           <div className="it-filters__field">
             <Text strong>{t('Méthode')}</Text>
             <Select
+              showSearch
+              optionFilterProp="children"
               style={{ width: 150 }}
               placeholder={t('Toutes les méthodes')}
               allowClear

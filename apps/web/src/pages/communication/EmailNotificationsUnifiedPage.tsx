@@ -278,6 +278,8 @@ export function EmailNotificationsUnifiedPage() {
             {t('Choisir un événement déclencheur')}
           </Text>
           <Select
+            showSearch
+            optionFilterProp="label"
             placeholder={t('Sélectionner un événement déclencheur')}
             value={selectedEventGroup ?? undefined}
             onChange={value => handleSelectEvent(value ?? null)}

@@ -328,6 +328,8 @@ export default function TenantMaintenance() {
             <Text strong>{t('Filtres :')}</Text>
           </Space>
           <Select
+            showSearch
+            optionFilterProp="children"
             placeholder={t('Statut')}
             allowClear
             style={{ width: 200 }}

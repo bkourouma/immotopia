@@ -131,6 +131,8 @@ export const TicketList: React.FC = () => {
         <Card style={{ marginBottom: 24 }}>
           <Space>
             <Select
+              showSearch
+              optionFilterProp="children"
               placeholder={t('Filtrer par statut')}
               allowClear
               style={{ width: 200 }}

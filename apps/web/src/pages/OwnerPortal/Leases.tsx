@@ -160,6 +160,8 @@ export default function Leases() {
       <Card title={t('Filtres')}>
         <Space wrap>
           <Select
+            showSearch
+            optionFilterProp="children"
             style={{ width: 200 }}
             placeholder={t('Statut')}
             value={filters.status || undefined}

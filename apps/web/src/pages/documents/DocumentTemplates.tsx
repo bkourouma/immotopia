@@ -432,6 +432,8 @@ export function DocumentTemplates() {
             <div className="it-filters__field">
               <Text strong>{translate('Filtrer par type')}</Text>
               <Select
+                showSearch
+                optionFilterProp="children"
                 value={filterDocType || undefined}
                 onChange={value => setFilterDocType(value || '')}
                 placeholder={translate('Tous les types')}
@@ -536,7 +538,7 @@ export function DocumentTemplates() {
               name="docType"
               rules={[{ required: true, message: translate('Veuillez sélectionner un type de document') }]}
             >
-              <Select>
+              <Select showSearch optionFilterProp="children">
                 {DOC_TYPES.map(type => (
                   <Option key={type.value} value={type.value}>
                     {type.label}

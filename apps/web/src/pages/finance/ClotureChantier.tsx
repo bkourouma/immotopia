@@ -1102,6 +1102,8 @@ export const ClotureChantier: React.FC = () => {
               <label htmlFor="bien-type">{t('Type de bien')}</label>
             </div>
             <Select
+              showSearch
+              optionFilterProp="label"
               id="bien-type"
               style={{ width: '100%' }}
               placeholder={t('Choisir un type de bien')}
@@ -1119,6 +1121,8 @@ export const ClotureChantier: React.FC = () => {
               <label htmlFor="bien-detention">{t('Mode de détention')}</label>
             </div>
             <Select
+              showSearch
+              optionFilterProp="label"
               id="bien-detention"
               style={{ width: '100%' }}
               placeholder={t('Choisir un mode de détention')}

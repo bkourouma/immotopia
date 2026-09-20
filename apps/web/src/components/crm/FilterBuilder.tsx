@@ -197,6 +197,8 @@ export function FilterBuilder({ initialFilters, onApply, onCancel }: FilterBuild
         <Collapse.Panel header={translate('Tags et assignation')} key="tags">
           <Space direction="vertical" style={{ width: '100%' }} size="small">
             <Select
+              showSearch
+              optionFilterProp="label"
               mode="multiple"
               placeholder={translate('Tags')}
               style={{ width: '100%' }}
@@ -211,6 +213,8 @@ export function FilterBuilder({ initialFilters, onApply, onCancel }: FilterBuild
               {translate('Doit avoir TOUS les tags (sinon au moins un)')}
             </Checkbox>
             <Select
+              showSearch
+              optionFilterProp="label"
               mode="multiple"
               placeholder={translate('Assigné à')}
               style={{ width: '100%' }}

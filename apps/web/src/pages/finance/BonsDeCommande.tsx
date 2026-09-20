@@ -244,6 +244,8 @@ export const BonsDeCommande: React.FC = () => {
         <div style={{ minWidth: 180 }}>
           <label htmlFor="filtre-bon-statut">{t('Statut')}</label>
           <Select
+            showSearch
+            optionFilterProp="label"
             id="filtre-bon-statut"
             style={{ width: '100%' }}
             placeholder={t('Tous les statuts')}

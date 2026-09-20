@@ -172,6 +172,8 @@ export default function Properties() {
       <Card title={t('Filtres')}>
         <Space wrap>
           <Select
+            showSearch
+            optionFilterProp="children"
             style={{ width: 200 }}
             placeholder={t('Statut')}
             value={filters.status || undefined}
@@ -186,6 +188,8 @@ export default function Properties() {
           </Select>
 
           <Select
+            showSearch
+            optionFilterProp="children"
             style={{ width: 200 }}
             placeholder={t('Type de propriété')}
             value={filters.propertyType || undefined}
@@ -200,6 +204,8 @@ export default function Properties() {
           </Select>
 
           <Select
+            showSearch
+            optionFilterProp="children"
             style={{ width: 200 }}
             placeholder={t('Mode de transaction')}
             value={filters.transactionMode || undefined}

@@ -131,6 +131,8 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
             rules={[{ required: true, message: t('Le type de mouvement est requis') }]}
           >
             <Select
+              showSearch
+              optionFilterProp="children"
               onChange={value => {
                 setMovementType(value);
                 // Reset paymentId when type changes

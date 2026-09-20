@@ -561,6 +561,8 @@ export default function TenantPayments() {
             <Text strong>{t('Filtres :')}</Text>
           </Space>
           <Select
+            showSearch
+            optionFilterProp="children"
             placeholder={t('Statut')}
             allowClear
             style={{ width: 150 }}
@@ -645,6 +647,8 @@ export default function TenantPayments() {
                       <Text strong>{t('Filtres :')}</Text>
                     </Space>
                     <Select
+                      showSearch
+                      optionFilterProp="children"
                       placeholder={t('Méthode de paiement')}
                       allowClear
                       style={{ width: 200 }}

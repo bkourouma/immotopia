@@ -108,7 +108,7 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess }: Ma
           name="category"
           rules={[{ required: true, message: t('La catégorie est requise') }]}
         >
-          <Select placeholder={t('Sélectionner la catégorie')}>
+          <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner la catégorie')}>
             <Select.Option value="PLUMBING">{t('Plomberie')}</Select.Option>
             <Select.Option value="ELECTRICITY">{t('Électricité')}</Select.Option>
             <Select.Option value="AC">{t('Climatisation')}</Select.Option>
@@ -121,7 +121,7 @@ export default function MaintenanceTicketModal({ open, onCancel, onSuccess }: Ma
           name="priority"
           rules={[{ required: true, message: t('La priorité est requise') }]}
         >
-          <Select placeholder={t('Sélectionner la priorité')}>
+          <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner la priorité')}>
             <Select.Option value="LOW">{t('Basse')}</Select.Option>
             <Select.Option value="MEDIUM">{t('Moyenne')}</Select.Option>
             <Select.Option value="HIGH">{t('Haute')}</Select.Option>

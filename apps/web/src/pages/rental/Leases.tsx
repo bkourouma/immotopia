@@ -287,6 +287,8 @@ export const Leases: React.FC = () => {
         <div style={{ minWidth: 220 }}>
           <label htmlFor="filtre-statut-bail">{t('Statut')}</label>
           <Select
+            showSearch
+            optionFilterProp="label"
             id="filtre-statut-bail"
             style={{ width: '100%' }}
             placeholder={t('Tous les statuts')}

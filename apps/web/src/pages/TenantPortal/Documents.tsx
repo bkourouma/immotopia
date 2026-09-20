@@ -161,6 +161,8 @@ export default function TenantDocuments() {
             <Text strong>{t('Filtre :')}</Text>
           </Space>
           <Select
+            showSearch
+            optionFilterProp="children"
             placeholder={t('Type de document')}
             allowClear
             style={{ width: 250 }}

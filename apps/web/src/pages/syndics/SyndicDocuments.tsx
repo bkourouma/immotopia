@@ -116,6 +116,8 @@ export const SyndicDocuments: React.FC = () => {
 
         <Card>
           <Select
+            showSearch
+            optionFilterProp="label"
             allowClear
             placeholder={t('Filtrer par type')}
             style={{ minWidth: 260 }}

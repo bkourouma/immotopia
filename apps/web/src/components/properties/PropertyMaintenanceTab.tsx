@@ -124,6 +124,8 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
           </Title>
           <div className="it-toolbar__actions">
             <Select
+              showSearch
+              optionFilterProp="children"
               placeholder={t('Filtrer par statut')}
               allowClear
               style={{ width: 200 }}
@@ -138,6 +140,8 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
             </Select>
 
             <Select
+              showSearch
+              optionFilterProp="children"
               placeholder={t('Filtrer par catégorie')}
               allowClear
               style={{ width: 200 }}

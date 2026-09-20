@@ -704,6 +704,8 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
           help={currentStepErrors.primaryRenterClientId}
         >
           <Select
+            showSearch
+            optionFilterProp="children"
             value={formData.primaryRenterClientId}
             onChange={value => handleChange('primaryRenterClientId', value)}
             disabled={!!lease || loadingData}
@@ -721,6 +723,8 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       <Col xs={24} md={12}>
         <Form.Item label={t('Propriétaire')}>
           <Select
+            showSearch
+            optionFilterProp="children"
             value={formData.ownerClientId || undefined}
             onChange={value => handleChange('ownerClientId', value || '')}
             disabled={!!lease || loadingData}
@@ -753,7 +757,12 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
 
       <Col xs={24} md={12}>
         <Form.Item label={t('Fréquence de facturation')} required>
-          <Select value={formData.billingFrequency} onChange={value => handleChange('billingFrequency', value)}>
+          <Select
+            showSearch
+            optionFilterProp="children"
+            value={formData.billingFrequency}
+            onChange={value => handleChange('billingFrequency', value)}
+          >
             <Select.Option value={RentalBillingFrequency.MONTHLY}>{t('Mensuel')}</Select.Option>
             <Select.Option value={RentalBillingFrequency.QUARTERLY}>{t('Trimestriel')}</Select.Option>
             <Select.Option value={RentalBillingFrequency.SEMIANNUAL}>{t('Semestriel')}</Select.Option>

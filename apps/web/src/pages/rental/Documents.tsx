@@ -254,6 +254,8 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
         <div style={{ minWidth: 200 }}>
           <label htmlFor="filtre-type-document">{t('Type')}</label>
           <Select
+            showSearch
+            optionFilterProp="label"
             id="filtre-type-document"
             style={{ width: '100%' }}
             placeholder={t('Tous les types')}

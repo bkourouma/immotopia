@@ -390,6 +390,8 @@ export default function Maintenance() {
           <div className="it-filters__field">
             <Text strong>{t('Statut')}</Text>
             <Select
+              showSearch
+              optionFilterProp="children"
               style={{ width: 150 }}
               placeholder={t('Tous les statuts')}
               allowClear
@@ -406,6 +408,8 @@ export default function Maintenance() {
           <div className="it-filters__field">
             <Text strong>{t('Propriété')}</Text>
             <Select
+              showSearch
+              optionFilterProp="children"
               style={{ width: 200 }}
               placeholder={t('Toutes les propriétés')}
               allowClear
@@ -422,6 +426,8 @@ export default function Maintenance() {
           <div className="it-filters__field">
             <Text strong>{t('Catégorie')}</Text>
             <Select
+              showSearch
+              optionFilterProp="children"
               style={{ width: 150 }}
               placeholder={t('Toutes les catégories')}
               allowClear
@@ -437,6 +443,8 @@ export default function Maintenance() {
           <div className="it-filters__field">
             <Text strong>{t('Priorité')}</Text>
             <Select
+              showSearch
+              optionFilterProp="children"
               style={{ width: 150 }}
               placeholder={t('Toutes les priorités')}
               allowClear

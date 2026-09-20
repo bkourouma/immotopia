@@ -253,6 +253,8 @@ export const SyndicCharges: React.FC = () => {
             <Card>
               <Space wrap size={12}>
                 <Select
+                  showSearch
+                  optionFilterProp="label"
                   allowClear
                   style={{ minWidth: 210 }}
                   placeholder={t('Filtrer par statut')}

@@ -235,6 +235,8 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                 {config.statusLabel || t('Statut')}
               </Text>
               <Select
+                showSearch
+                optionFilterProp="children"
                 value={filters.status}
                 onChange={value => updateFilter('status', value)}
                 placeholder={t('Tous')}
@@ -259,6 +261,8 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                 {config.typeLabel || t('Type')}
               </Text>
               <Select
+                showSearch
+                optionFilterProp="children"
                 value={filters.type}
                 onChange={value => updateFilter('type', value)}
                 placeholder={t('Tous')}

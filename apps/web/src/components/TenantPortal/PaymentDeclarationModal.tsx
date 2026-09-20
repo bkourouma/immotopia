@@ -168,7 +168,7 @@ export default function PaymentDeclarationModal({
           name="paymentMethod"
           rules={[{ required: true, message: t('La méthode de paiement est requise') }]}
         >
-          <Select placeholder={t('Sélectionner la méthode')}>
+          <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner la méthode')}>
             <Select.Option value="CASH">{t('Espèces')}</Select.Option>
             <Select.Option value="BANK_TRANSFER">{t('Virement bancaire')}</Select.Option>
             <Select.Option value="MOBILE_MONEY">{t('Mobile Money')}</Select.Option>
@@ -200,7 +200,7 @@ export default function PaymentDeclarationModal({
                   name="mobileOperator"
                   rules={[{ required: true, message: t("L'opérateur mobile est requis") }]}
                 >
-                  <Select placeholder={t("Sélectionner l'opérateur")}>
+                  <Select showSearch optionFilterProp="children" placeholder={t("Sélectionner l'opérateur")}>
                     <Select.Option value="ORANGE">{'Orange Money'}</Select.Option>
                     <Select.Option value="MTN">{'MTN Mobile Money'}</Select.Option>
                     <Select.Option value="MOOV">{'Moov Money'}</Select.Option>

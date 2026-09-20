@@ -200,7 +200,13 @@ export default function Revenues() {
           </div>
           <div className="it-filters__field">
             <Text strong>{t('Année (revenus mensuels)')}</Text>
-            <Select style={{ width: 150 }} value={selectedYear} onChange={value => setSelectedYear(value)}>
+            <Select
+              showSearch
+              optionFilterProp="children"
+              style={{ width: 150 }}
+              value={selectedYear}
+              onChange={value => setSelectedYear(value)}
+            >
               {yearOptions.map(year => (
                 <Option key={year} value={year}>
                   {year}

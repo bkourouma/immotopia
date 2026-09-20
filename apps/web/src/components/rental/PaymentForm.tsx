@@ -113,7 +113,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
             required
             rules={[{ required: true, message: t('La méthode de paiement est requise') }]}
           >
-            <Select>
+            <Select showSearch optionFilterProp="children">
               <Select.Option value={RentalPaymentMethod.CASH}>{t('Espèces')}</Select.Option>
               <Select.Option value={RentalPaymentMethod.BANK_TRANSFER}>{t('Virement bancaire')}</Select.Option>
               <Select.Option value={RentalPaymentMethod.CHECK}>{t('Chèque')}</Select.Option>
@@ -175,7 +175,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                 help={errors.mmOperator}
                 rules={[{ required: true, message: t("L'opérateur mobile money est requis") }]}
               >
-                <Select placeholder={t('Sélectionner un opérateur')}>
+                <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner un opérateur')}>
                   <Select.Option value="ORANGE">{'Orange Money'}</Select.Option>
                   <Select.Option value="MTN">{'MTN Mobile Money'}</Select.Option>
                   <Select.Option value="MOOV">{'Moov Money'}</Select.Option>

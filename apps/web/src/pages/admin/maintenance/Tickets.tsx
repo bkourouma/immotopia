@@ -278,6 +278,8 @@ export const Tickets: React.FC = () => {
           <Row gutter={[16, 16]}>
             <Col xs={24} sm={12} md={6} lg={5}>
               <Select
+                showSearch
+                optionFilterProp="children"
                 placeholder={t('Filtrer par statut')}
                 allowClear
                 style={{ width: '100%' }}
@@ -294,6 +296,8 @@ export const Tickets: React.FC = () => {
 
             <Col xs={24} sm={12} md={6} lg={5}>
               <Select
+                showSearch
+                optionFilterProp="children"
                 placeholder={t('Filtrer par priorité')}
                 allowClear
                 style={{ width: '100%' }}

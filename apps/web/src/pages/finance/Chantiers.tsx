@@ -208,6 +208,8 @@ export const Chantiers: React.FC = () => {
         <div style={{ minWidth: 220 }}>
           <label htmlFor="filtre-statut-chantier">{t('Statut')}</label>
           <Select
+            showSearch
+            optionFilterProp="label"
             id="filtre-statut-chantier"
             style={{ width: '100%' }}
             placeholder={t('Tous les statuts')}

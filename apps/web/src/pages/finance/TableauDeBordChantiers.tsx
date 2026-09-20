@@ -212,6 +212,8 @@ export const TableauDeBordChantiers: React.FC = () => {
         <div style={{ minWidth: 200 }}>
           <label htmlFor="filtre-tdb-statut">{t('Statut')}</label>
           <Select
+            showSearch
+            optionFilterProp="label"
             id="filtre-tdb-statut"
             style={{ width: '100%' }}
             placeholder={t('Tous les statuts')}

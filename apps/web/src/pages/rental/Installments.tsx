@@ -459,6 +459,8 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
         <div style={{ minWidth: 200 }}>
           <label htmlFor="filtre-statut-echeance">{t('Statut')}</label>
           <Select
+            showSearch
+            optionFilterProp="label"
             id="filtre-statut-echeance"
             style={{ width: '100%' }}
             placeholder={t('Tous les statuts')}

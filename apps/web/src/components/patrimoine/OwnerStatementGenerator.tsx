@@ -53,7 +53,13 @@ export const OwnerStatementGenerator: React.FC<Props> = ({ ownerOptions, propert
           label={t('Biens concernés')}
           rules={[{ required: true, message: t('Sélectionnez au moins un bien') }]}
         >
-          <Select mode="multiple" options={propertyOptions} placeholder={t('Sélectionnez les biens')} />
+          <Select
+            showSearch
+            optionFilterProp="label"
+            mode="multiple"
+            options={propertyOptions}
+            placeholder={t('Sélectionnez les biens')}
+          />
         </Form.Item>
         <Button htmlType="submit" type="primary" loading={loading}>
           {t('Générer le relevé')}

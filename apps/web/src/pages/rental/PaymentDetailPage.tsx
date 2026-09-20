@@ -215,6 +215,8 @@ export const PaymentDetailPage: React.FC = () => {
             </div>
           </Space>
           <Select
+            showSearch
+            optionFilterProp="children"
             value={payment.status}
             onChange={value => handleStatusChange(value as RentalPaymentStatus)}
             style={{ width: 180 }}

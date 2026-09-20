@@ -171,7 +171,7 @@ export default function Reports() {
             </Col>
             <Col xs={24} sm={12}>
               <Form.Item name="propertyId" label={t('Propriété (optionnel)')}>
-                <Select placeholder={t('Toutes les propriétés')} allowClear>
+                <Select showSearch optionFilterProp="children" placeholder={t('Toutes les propriétés')} allowClear>
                   {properties.map(prop => (
                     <Option key={prop.id} value={prop.id}>
                       {prop.address}
@@ -331,7 +331,7 @@ export default function Reports() {
             </Col>
             <Col xs={24} sm={12}>
               <Form.Item name="propertyId" label={t('Propriété (optionnel)')}>
-                <Select placeholder={t('Toutes les propriétés')} allowClear>
+                <Select showSearch optionFilterProp="children" placeholder={t('Toutes les propriétés')} allowClear>
                   {properties.map(prop => (
                     <Option key={prop.id} value={prop.id}>
                       {prop.address}

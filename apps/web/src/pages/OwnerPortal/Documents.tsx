@@ -204,6 +204,8 @@ export default function Documents() {
           <div className="it-filters__field">
             <Text strong>{t('Type')}</Text>
             <Select
+              showSearch
+              optionFilterProp="children"
               style={{ width: 200 }}
               placeholder={t('Tous les types')}
               allowClear
@@ -220,6 +222,8 @@ export default function Documents() {
           <div className="it-filters__field">
             <Text strong>{t('Propriété')}</Text>
             <Select
+              showSearch
+              optionFilterProp="children"
               style={{ width: 200 }}
               placeholder={t('Toutes les propriétés')}
               allowClear

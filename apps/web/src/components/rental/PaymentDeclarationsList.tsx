@@ -292,6 +292,8 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
 
         <Space>
           <Select
+            showSearch
+            optionFilterProp="children"
             value={filters.status || 'all'}
             onChange={value =>
               setFilters({

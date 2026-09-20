@@ -495,7 +495,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
                     </Form.Item>
 
                     <Form.Item {...restField} name={[name, 'status']} label={t('Statut')}>
-                      <Select defaultValue="AVAILABLE">
+                      <Select showSearch optionFilterProp="children" defaultValue="AVAILABLE">
                         <Select.Option value="AVAILABLE">{t('Disponible')}</Select.Option>
                         <Select.Option value="RESERVED">{t('Réservé')}</Select.Option>
                         <Select.Option value="UNDER_OFFER">{t('Sous offre')}</Select.Option>

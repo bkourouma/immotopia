@@ -250,7 +250,7 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
             name="goal"
             rules={[{ required: true, message: t("L'objectif est requis.") }]}
           >
-            <Select placeholder={t('Sélectionner un objectif')} allowClear>
+            <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner un objectif')} allowClear>
               {goalOptions.map(option => (
                 <Select.Option key={option.value} value={option.value}>
                   {option.label}
@@ -276,7 +276,13 @@ export const PropertyVisitScheduler: React.FC<PropertyVisitSchedulerProps> = ({
                 }
                 name="dealId"
               >
-                <Select placeholder={t('Aucune affaire')} loading={loadingDeals} allowClear>
+                <Select
+                  showSearch
+                  optionFilterProp="children"
+                  placeholder={t('Aucune affaire')}
+                  loading={loadingDeals}
+                  allowClear
+                >
                   {deals.map(deal => (
                     <Select.Option key={deal.id} value={deal.id}>
                       {getDealTypeLabel(deal.type)} - {deal.stage}

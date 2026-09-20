@@ -324,6 +324,8 @@ export const DealForm: React.FC<DealFormProps> = ({
                 help={errors.type}
               >
                 <Select
+                  showSearch
+                  optionFilterProp="children"
                   value={formData.type}
                   onChange={value => handleChange('type', value)}
                   placeholder={t('Sélectionner un type')}
@@ -442,6 +444,8 @@ export const DealForm: React.FC<DealFormProps> = ({
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
               <Form.Item label={t('Type de bien')}>
                 <Select
+                  showSearch
+                  optionFilterProp="children"
                   value={formData.propertyType}
                   onChange={value => handleChange('propertyType', value)}
                   placeholder={t('Sélectionner un type')}
@@ -699,6 +703,8 @@ export const DealForm: React.FC<DealFormProps> = ({
                       <Col xs={24} md={12}>
                         <Form.Item label={t('Type de terrain')}>
                           <Select
+                            showSearch
+                            optionFilterProp="children"
                             value={formData.landType}
                             onChange={value => handleChange('landType', value)}
                             placeholder={t('Sélectionner')}
@@ -797,6 +803,8 @@ export const DealForm: React.FC<DealFormProps> = ({
                       <Col xs={24} md={12}>
                         <Form.Item label={t('Type de commerce')}>
                           <Select
+                            showSearch
+                            optionFilterProp="children"
                             value={formData.commercialType}
                             onChange={value => handleChange('commercialType', value)}
                             placeholder={t('Sélectionner')}
@@ -920,6 +928,8 @@ export const DealForm: React.FC<DealFormProps> = ({
                     </Row>
                     <Form.Item label={t('Standing')}>
                       <Select
+                        showSearch
+                        optionFilterProp="children"
                         value={formData.standing}
                         onChange={value => handleChange('standing', value)}
                         placeholder={t('Sélectionner un standing')}

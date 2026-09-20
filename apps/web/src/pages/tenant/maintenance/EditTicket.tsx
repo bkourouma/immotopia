@@ -219,7 +219,7 @@ export const EditTicket: React.FC = () => {
                 label={t('Catégorie')}
                 rules={[{ required: true, message: t('Veuillez sélectionner une catégorie') }]}
               >
-                <Select placeholder={t('Sélectionner une catégorie')}>
+                <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner une catégorie')}>
                   <Option value={MaintenanceTicketCategory.PLUMBING}>{t('Plomberie')}</Option>
                   <Option value={MaintenanceTicketCategory.ELECTRICITY}>{t('Électricité')}</Option>
                   <Option value={MaintenanceTicketCategory.AC}>{t('Climatisation')}</Option>
@@ -232,7 +232,7 @@ export const EditTicket: React.FC = () => {
                 label={t('Priorité')}
                 rules={[{ required: true, message: t('Veuillez sélectionner une priorité') }]}
               >
-                <Select placeholder={t('Sélectionner une priorité')}>
+                <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner une priorité')}>
                   <Option value={MaintenanceTicketPriority.LOW}>{t('Faible')}</Option>
                   <Option value={MaintenanceTicketPriority.MEDIUM}>{t('Moyenne')}</Option>
                   <Option value={MaintenanceTicketPriority.HIGH}>{t('Élevée')}</Option>

@@ -144,7 +144,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
             required
             rules={[{ required: true, message: translate('Le type de document est requis') }]}
           >
-            <Select>
+            <Select showSearch optionFilterProp="children">
               <Select.Option value={RentalDocumentType.LEASE_CONTRACT}>{translate('Contrat de bail')}</Select.Option>
               <Select.Option value={RentalDocumentType.LEASE_ADDENDUM}>{translate('Avenant')}</Select.Option>
               <Select.Option value={RentalDocumentType.RENT_RECEIPT}>{translate('Reçu de loyer')}</Select.Option>
@@ -173,6 +173,8 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
             }
           >
             <Select
+              showSearch
+              optionFilterProp="children"
               placeholder={
                 loadingTemplates
                   ? 'Chargement...'
