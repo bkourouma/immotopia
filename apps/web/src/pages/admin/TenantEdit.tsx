@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Card, Form, Input, Button, Space, Typography, Alert, Row, Col, Skeleton, App } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { getTenant, updateTenant, Tenant, UpdateTenantRequest } from '../../services/tenant-service';
+import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
@@ -125,7 +126,7 @@ export const TenantEdit: React.FC = () => {
         {loading ? (
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
-          <Form form={form} layout="vertical" onFinish={handleSubmit}>
+          <Form form={form} layout="vertical" onFinish={handleSubmit} onFinishFailed={onAntFormValidationFailed(form)}>
             {error && (
               <Alert
                 message={t('Erreur')}

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { App, Form, Input, Card, Button, Space, Alert, Spin, Typography, Row, Col } from 'antd';
 import { SaveOutlined, SettingOutlined, CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { getTenant, updateTenantSelf, Tenant, UpdateTenantRequest } from '../../services/tenant-service';
+import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
@@ -165,6 +166,7 @@ export const TenantSettings: React.FC = () => {
           form={form}
           layout="vertical"
           onFinish={handleSubmit}
+          onFinishFailed={onAntFormValidationFailed(form)}
           initialValues={{
             name: '',
             legalName: '',

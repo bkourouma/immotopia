@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, Form, Input, Radio, Button, Space, Typography, Alert, Row, Col } from 'antd';
 import { ArrowLeftOutlined, BankOutlined, TeamOutlined } from '@ant-design/icons';
 import { createTenant, CreateTenantRequest } from '../../services/tenant-service';
+import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
@@ -67,6 +68,7 @@ export const TenantCreate: React.FC = () => {
               customDomain: ''
             }}
             onFinish={handleSubmit}
+            onFinishFailed={onAntFormValidationFailed(form)}
           >
             {error && (
               <Alert

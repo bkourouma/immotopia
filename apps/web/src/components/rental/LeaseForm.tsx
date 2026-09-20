@@ -11,6 +11,7 @@ import { listProperties, Property } from '../../services/property-service';
 import { PropertyType } from '../../types/property-types';
 import { listContacts, CrmContact } from '../../services/crm-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 
 const { TextArea } = Input;
@@ -404,6 +405,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
       form={form}
       layout="vertical"
       onFinish={handleSubmit}
+      onFinishFailed={onAntFormValidationFailed(form)}
       initialValues={{
         propertyId: formData.propertyId,
         primaryRenterClientId: formData.primaryRenterClientId,
@@ -477,6 +479,8 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
             rules={[{ required: true, message: t('Le locataire principal est requis') }]}
           >
             <Select
+              showSearch
+              optionFilterProp="children"
               placeholder={t('Sélectionner un locataire')}
               disabled={!!lease}
               onChange={value => handleChange('primaryRenterClientId', value)}
@@ -494,6 +498,8 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
         <Col xs={24} md={12}>
           <Form.Item label={t('Propriétaire')} name="ownerClientId">
             <Select
+              showSearch
+              optionFilterProp="children"
               placeholder={t('Sélectionner un propriétaire (optionnel)')}
               disabled={!!lease}
               allowClear
@@ -565,7 +571,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
             required
             rules={[{ required: true, message: t('La fréquence de facturation est requise') }]}
           >
-            <Select onChange={value => handleChange('billingFrequency', value)}>
+            <Select showSearch optionFilterProp="children" onChange={value => handleChange('billingFrequency', value)}>
               <Select.Option value={RentalBillingFrequency.MONTHLY}>{t('Mensuel')}</Select.Option>
               <Select.Option value={RentalBillingFrequency.QUARTERLY}>{t('Trimestriel')}</Select.Option>
               <Select.Option value={RentalBillingFrequency.SEMIANNUAL}>{t('Semestriel')}</Select.Option>

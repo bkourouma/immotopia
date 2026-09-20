@@ -12,6 +12,7 @@ import {
 import { listProperties, Property } from '../../../services/property-service';
 import { listLeases, RentalLease, RentalLeaseStatus } from '../../../services/rental-service';
 import { useAuth } from '../../../hooks/useAuth';
+import { onAntFormValidationFailed } from '../../../lib/antFormFailure';
 import { t } from '../../../i18n/t';
 
 const { Title } = Typography;
@@ -196,7 +197,13 @@ export const CreateTicket: React.FC = () => {
           <Card>
             <Title level={2}>{t('Créer un ticket de maintenance')}</Title>
 
-            <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ maxWidth: 800 }}>
+            <Form
+              form={form}
+              layout="vertical"
+              onFinish={handleSubmit}
+              onFinishFailed={onAntFormValidationFailed(form)}
+              style={{ maxWidth: 800 }}
+            >
               <Form.Item
                 name="propertyId"
                 label={t('Propriété')}
@@ -237,6 +244,8 @@ export const CreateTicket: React.FC = () => {
                   }
                 >
                   <Select
+                    showSearch
+                    optionFilterProp="children"
                     placeholder={
                       leases.length === 1 ? t('Bail sélectionné automatiquement') : t('Sélectionner un bail')
                     }
@@ -287,7 +296,7 @@ export const CreateTicket: React.FC = () => {
                 label={t('Catégorie')}
                 rules={[{ required: true, message: t('Veuillez sélectionner une catégorie') }]}
               >
-                <Select placeholder={t('Sélectionner une catégorie')}>
+                <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner une catégorie')}>
                   <Option value={MaintenanceTicketCategory.PLUMBING}>{t('Plomberie')}</Option>
                   <Option value={MaintenanceTicketCategory.ELECTRICITY}>{t('Électricité')}</Option>
                   <Option value={MaintenanceTicketCategory.AC}>{t('Climatisation')}</Option>
@@ -300,7 +309,7 @@ export const CreateTicket: React.FC = () => {
                 label={t('Priorité')}
                 rules={[{ required: true, message: t('Veuillez sélectionner une priorité') }]}
               >
-                <Select placeholder={t('Sélectionner une priorité')}>
+                <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner une priorité')}>
                   <Option value={MaintenanceTicketPriority.LOW}>{t('Faible')}</Option>
                   <Option value={MaintenanceTicketPriority.MEDIUM}>{t('Moyenne')}</Option>
                   <Option value={MaintenanceTicketPriority.HIGH}>{t('Élevée')}</Option>

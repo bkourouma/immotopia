@@ -26,6 +26,7 @@ import { LocationSelector } from '../ui/location-selector';
 import { GeographicLocation, getLocationByCommuneId } from '../../services/geographic-service';
 import { CreateCrmContactRequest, UpdateCrmContactRequest, CrmContact } from '../../types/crm-types';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 
 const { TextArea } = Input;
@@ -343,6 +344,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
       form={form}
       layout="vertical"
       onFinish={handleFinish}
+      onFinishFailed={onAntFormValidationFailed(form)}
       initialValues={{
         contactType: contact?.contactType || 'PERSON',
         phonePrimaryCountryCode: DEFAULT_COUNTRY_DIAL_CODE,
@@ -479,7 +481,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                       <Row gutter={16}>
                         <Col xs={24} sm={12}>
                           <Form.Item label={t('Civilité')} name="civility">
-                            <Select placeholder={t('Sélectionner')}>
+                            <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
                               <Select.Option value="MR">{t('Monsieur')}</Select.Option>
                               <Select.Option value="MRS">{t('Madame')}</Select.Option>
                               <Select.Option value="MS">{t('Mademoiselle')}</Select.Option>
@@ -502,7 +504,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                       <Row gutter={16}>
                         <Col xs={24} sm={8}>
                           <Form.Item label={t('Type de pièce')} name="identityDocumentType">
-                            <Select placeholder={t('Sélectionner')}>
+                            <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
                               <Select.Option value="CNI">CNI</Select.Option>
                               <Select.Option value="PASSPORT">{t('Passeport')}</Select.Option>
                               <Select.Option value="DRIVING_LICENSE">{t('Permis de conduire')}</Select.Option>
@@ -554,7 +556,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                       <Row gutter={16}>
                         <Col xs={24} sm={12}>
                           <Form.Item label={t('Forme juridique')} name="legalForm">
-                            <Select placeholder={t('Sélectionner')}>
+                            <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
                               <Select.Option value="SARL">SARL</Select.Option>
                               <Select.Option value="SA">SA</Select.Option>
                               <Select.Option value="EI">EI</Select.Option>
@@ -632,7 +634,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                 </Col>
                 <Col xs={24} sm={12}>
                   <Form.Item label={t('Canal de contact préféré')} name="preferredContactChannel">
-                    <Select placeholder={t('Sélectionner')}>
+                    <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
                       <Select.Option value="CALL">{t('Appel')}</Select.Option>
                       <Select.Option value="WHATSAPP">{'WhatsApp'}</Select.Option>
                       <Select.Option value="EMAIL">{t('Email')}</Select.Option>
@@ -654,7 +656,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                 </Col>
                 <Col xs={24} sm={12}>
                   <Form.Item label={t("Secteur d'activité")} name="sectorOfActivity">
-                    <Select placeholder={t('Sélectionner un secteur')}>
+                    <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner un secteur')}>
                       <Select.Option value="AGRICULTURE">{t('Agriculture')}</Select.Option>
                       <Select.Option value="BANQUE_FINANCE">{t('Banque & Finance')}</Select.Option>
                       <Select.Option value="COMMERCE">{t('Commerce')}</Select.Option>
@@ -708,7 +710,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                 </Col>
                 <Col xs={24} sm={12}>
                   <Form.Item label={t('Stabilité professionnelle')} name="jobStability">
-                    <Select placeholder={t('Sélectionner')}>
+                    <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
                       <Select.Option value="CDI">CDI</Select.Option>
                       <Select.Option value="CDD">CDD</Select.Option>
                       <Select.Option value="FREELANCE">{t('Freelance')}</Select.Option>
@@ -742,7 +744,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                 </Col>
                 <Col xs={24} sm={12}>
                   <Form.Item label={t('Source du lead')} name="leadSource">
-                    <Select placeholder={t('Sélectionner')}>
+                    <Select showSearch optionFilterProp="children" placeholder={t('Sélectionner')}>
                       <Select.Option value="WEBSITE">{t('Site web')}</Select.Option>
                       <Select.Option value="SOCIAL_MEDIA">{t('Réseaux sociaux')}</Select.Option>
                       <Select.Option value="REFERRAL">{t('Parrainage')}</Select.Option>
