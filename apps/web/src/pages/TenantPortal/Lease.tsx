@@ -24,7 +24,9 @@ import {
   DollarOutlined
 } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 interface LeaseDetailsData {
@@ -121,10 +123,10 @@ export default function TenantLease() {
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
-        setError('Erreur lors du chargement des détails du bail');
+        setError(t('Erreur lors du chargement des détails du bail'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des détails du bail');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des détails du bail'));
     } finally {
       setLoading(false);
     }
@@ -139,7 +141,7 @@ export default function TenantLease() {
    * insécables pour que le montant reste d'un seul tenant.
    */
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', {
+    return new Intl.NumberFormat(activeLocale(), {
       style: 'currency',
       currency: 'XOF',
       minimumFractionDigits: 0
@@ -150,7 +152,7 @@ export default function TenantLease() {
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('fr-FR', {
+    return new Date(dateString).toLocaleDateString(activeLocale(), {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -159,11 +161,11 @@ export default function TenantLease() {
 
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
-      ACTIVE: { label: 'Actif', color: 'success' },
-      DRAFT: { label: 'Brouillon', color: 'default' },
-      SUSPENDED: { label: 'Suspendu', color: 'warning' },
-      ENDED: { label: 'Terminé', color: 'default' },
-      CANCELED: { label: 'Annulé', color: 'error' }
+      ACTIVE: { label: t('Actif'), color: 'success' },
+      DRAFT: { label: t('Brouillon'), color: 'default' },
+      SUSPENDED: { label: t('Suspendu'), color: 'warning' },
+      ENDED: { label: t('Terminé'), color: 'default' },
+      CANCELED: { label: t('Annulé'), color: 'error' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -181,18 +183,22 @@ export default function TenantLease() {
 
   const getDocumentTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
-      LEASE_CONTRACT: 'Contrat de bail',
+      LEASE_CONTRACT: t('Contrat de bail'),
       LEASE_ADDENDUM: 'Avenant',
-      RENT_RECEIPT: 'Quittance de loyer',
+      RENT_RECEIPT: t('Quittance de loyer'),
       RENT_QUITTANCE: 'Quittance',
-      DEPOSIT_RECEIPT: 'Reçu de dépôt',
-      STATEMENT: 'Relevé',
+      DEPOSIT_RECEIPT: t('Reçu de dépôt'),
+      STATEMENT: t('Relevé'),
       OTHER: 'Autre'
     };
     return labels[type] || type;
   };
 
-  const getDisplayName = (fullName: string | null | undefined, email?: string | null, fallback = 'Non renseigné') => {
+  const getDisplayName = (
+    fullName: string | null | undefined,
+    email?: string | null,
+    fallback = t('Non renseigné')
+  ) => {
     const cleanName = fullName?.trim();
     if (cleanName) return cleanName;
 
@@ -226,39 +232,39 @@ export default function TenantLease() {
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
       console.error('Error downloading document:', err);
-      message.error('Erreur lors du téléchargement du document');
+      message.error(t('Erreur lors du téléchargement du document'));
     }
   };
 
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement des détails du bail..." />
+        <Spin size="large" tip={t('Chargement des détails du bail...')} />
       </div>
     );
   }
 
   if (error) {
-    return <Alert message="Erreur" description={error} type="error" showIcon />;
+    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   if (!data) {
-    return <Empty description="Aucune donnée disponible" />;
+    return <Empty description={t('Aucune donnée disponible')} />;
   }
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
       <div>
-        <Title level={2}>Mon bail</Title>
-        <Text type="secondary">Détails complets de votre contrat de location</Text>
+        <Title level={2}>{t('Mon bail')}</Title>
+        <Text type="secondary">{t('Détails complets de votre contrat de location')}</Text>
       </div>
 
       {/* Lease Information Display (T041) */}
       <Card
         title={
           <>
-            <FileTextOutlined /> Informations du bail
+            <FileTextOutlined /> {t('Informations du bail')}
           </>
         }
       >
@@ -283,46 +289,48 @@ export default function TenantLease() {
           labelStyle={{ whiteSpace: 'nowrap', width: 180, verticalAlign: 'top' }}
           contentStyle={{ verticalAlign: 'top' }}
         >
-          <Descriptions.Item label="Numéro de bail">
+          <Descriptions.Item label={t('Numéro de bail')}>
             <Text strong>{data.lease.lease_number}</Text>
           </Descriptions.Item>
           {data.lease.lease_label && (
-            <Descriptions.Item label="Nom du bail">
+            <Descriptions.Item label={t('Nom du bail')}>
               <Space>
                 <HomeOutlined />
                 <Text>{data.lease.lease_label}</Text>
               </Space>
             </Descriptions.Item>
           )}
-          <Descriptions.Item label="Adresse">
+          <Descriptions.Item label={t('Adresse')}>
             <Text>{data.lease.property?.address || data.lease.property?.title || '-'}</Text>
           </Descriptions.Item>
-          <Descriptions.Item label="Statut">{getStatusTag(data.lease.status)}</Descriptions.Item>
-          <Descriptions.Item label="Date de début">
-            <CalendarOutlined style={{ marginRight: 8 }} />
+          <Descriptions.Item label={t('Statut')}>{getStatusTag(data.lease.status)}</Descriptions.Item>
+          <Descriptions.Item label={t('Date de début')}>
+            <CalendarOutlined style={{ marginInlineEnd: 8 }} />
             {formatDate(data.lease.start_date)}
           </Descriptions.Item>
-          <Descriptions.Item label="Date de fin">
-            <CalendarOutlined style={{ marginRight: 8 }} />
-            {data.lease.end_date ? formatDate(data.lease.end_date) : 'Non définie'}
+          <Descriptions.Item label={t('Date de fin')}>
+            <CalendarOutlined style={{ marginInlineEnd: 8 }} />
+            {data.lease.end_date ? formatDate(data.lease.end_date) : t('Non définie')}
           </Descriptions.Item>
-          <Descriptions.Item label="Date d'emménagement">
+          <Descriptions.Item label={t("Date d'emménagement")}>
             {data.lease.move_in_date ? formatDate(data.lease.move_in_date) : '-'}
           </Descriptions.Item>
-          <Descriptions.Item label="Loyer mensuel">
-            <DollarOutlined style={{ marginRight: 8 }} />
+          <Descriptions.Item label={t('Loyer mensuel')}>
+            <DollarOutlined style={{ marginInlineEnd: 8 }} />
             <Text strong>{formatCurrency(data.lease.rent_amount)}</Text>
           </Descriptions.Item>
-          <Descriptions.Item label="Charges">{formatCurrency(data.lease.service_charge_amount)}</Descriptions.Item>
-          <Descriptions.Item label="Dépôt de garantie">
+          <Descriptions.Item label={t('Charges')}>{formatCurrency(data.lease.service_charge_amount)}</Descriptions.Item>
+          <Descriptions.Item label={t('Dépôt de garantie')}>
             {formatCurrency(data.lease.security_deposit_amount)}
           </Descriptions.Item>
-          <Descriptions.Item label="Fréquence de facturation">
+          <Descriptions.Item label={t('Fréquence de facturation')}>
             {getBillingFrequencyLabel(data.lease.billing_frequency)}
           </Descriptions.Item>
-          <Descriptions.Item label="Jour d'échéance">Le {data.lease.due_day_of_month} de chaque mois</Descriptions.Item>
+          <Descriptions.Item label={t("Jour d'échéance")}>
+            {t('Le')} {data.lease.due_day_of_month} de chaque mois
+          </Descriptions.Item>
           {data.lease.notes && (
-            <Descriptions.Item label="Notes" span={{ xs: 1, md: 2 }}>
+            <Descriptions.Item label={t('Notes')} span={{ xs: 1, md: 2 }}>
               <Text>{data.lease.notes}</Text>
             </Descriptions.Item>
           )}
@@ -335,12 +343,12 @@ export default function TenantLease() {
           <Card
             title={
               <>
-                <UserOutlined /> Locataire principal
+                <UserOutlined /> {t('Locataire principal')}
               </>
             }
           >
             <Space direction="vertical">
-              <Text strong>{data.lease.primaryRenter.user.fullName || 'Non renseigné'}</Text>
+              <Text strong>{data.lease.primaryRenter.user.fullName || t('Non renseigné')}</Text>
               <Text type="secondary">{data.lease.primaryRenter.user.email}</Text>
             </Space>
           </Card>
@@ -350,7 +358,7 @@ export default function TenantLease() {
             <Card
               title={
                 <>
-                  <UserOutlined /> Propriétaire
+                  <UserOutlined /> {t('Propriétaire')}
                 </>
               }
             >
@@ -373,7 +381,7 @@ export default function TenantLease() {
         <Card
           title={
             <>
-              <UserOutlined /> Co-locataires
+              <UserOutlined /> {t('Co-locataires')}
             </>
           }
         >
@@ -383,7 +391,7 @@ export default function TenantLease() {
               <List.Item>
                 <List.Item.Meta
                   avatar={<UserOutlined />}
-                  title={coRenter.user.fullName || 'Non renseigné'}
+                  title={coRenter.user.fullName || t('Non renseigné')}
                   description={coRenter.user.email}
                 />
               </List.Item>
@@ -396,7 +404,7 @@ export default function TenantLease() {
       <Card
         title={
           <>
-            <FileTextOutlined /> Documents
+            <FileTextOutlined /> {t('Documents')}
           </>
         }
       >
@@ -406,7 +414,7 @@ export default function TenantLease() {
               <div key={type}>
                 <Title level={4} style={{ marginBottom: 16 }}>
                   {getDocumentTypeLabel(type)}
-                  <Tag style={{ marginLeft: 8 }}>{docs.length}</Tag>
+                  <Tag style={{ marginInlineStart: 8 }}>{docs.length}</Tag>
                 </Title>
                 <List
                   dataSource={docs}
@@ -420,13 +428,19 @@ export default function TenantLease() {
                           onClick={() => handleDownloadDocument(doc.id)}
                           disabled={!doc.file_url && !doc.file_path}
                         >
-                          Télécharger
+                          {t('Télécharger')}
                         </Button>
                       ]}
                     >
                       <List.Item.Meta
-                        title={doc.title || doc.document_number || `Document ${doc.id.substring(0, 8)}`}
-                        description={doc.issued_at ? `Émis le ${formatDate(doc.issued_at)}` : 'Date non disponible'}
+                        title={
+                          doc.title || doc.document_number || t('Document {{value}}', { value: doc.id.substring(0, 8) })
+                        }
+                        description={
+                          doc.issued_at
+                            ? t('Émis le {{value}}', { value: formatDate(doc.issued_at) })
+                            : t('Date non disponible')
+                        }
                       />
                     </List.Item>
                   )}
@@ -436,7 +450,7 @@ export default function TenantLease() {
             ))}
           </Space>
         ) : (
-          <Empty description="Aucun document disponible" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <Empty description={t('Aucun document disponible')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
         )}
       </Card>
     </Space>

@@ -4,7 +4,9 @@ import { FileTextOutlined, EyeOutlined, SyncOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 const { Option } = Select;
 
@@ -26,15 +28,15 @@ interface LeasesData {
 }
 
 const statusOptions = [
-  { value: '', label: 'Tous les statuts' },
-  { value: 'ACTIVE', label: 'Actif' },
-  { value: 'ENDED', label: 'Terminé' },
-  { value: 'SUSPENDED', label: 'Suspendu' },
-  { value: 'CANCELED', label: 'Annulé' }
+  { value: '', label: t('Tous les statuts') },
+  { value: 'ACTIVE', label: t('Actif') },
+  { value: 'ENDED', label: t('Terminé') },
+  { value: 'SUSPENDED', label: t('Suspendu') },
+  { value: 'CANCELED', label: t('Annulé') }
 ];
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('fr-FR', {
+  return new Intl.NumberFormat(activeLocale(), {
     style: 'currency',
     currency: 'XOF',
     minimumFractionDigits: 0
@@ -43,7 +45,7 @@ const formatCurrency = (amount: number) => {
 
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
-  return date.toLocaleDateString('fr-FR', {
+  return date.toLocaleDateString(activeLocale(), {
     year: 'numeric',
     month: 'long',
     day: 'numeric'
@@ -52,11 +54,11 @@ const formatDate = (dateString: string) => {
 
 const getStatusTag = (status: string) => {
   const statusMap: Record<string, { label: string; color: string }> = {
-    ACTIVE: { label: 'Actif', color: 'success' },
-    ENDED: { label: 'Terminé', color: 'default' },
-    SUSPENDED: { label: 'Suspendu', color: 'warning' },
-    CANCELED: { label: 'Annulé', color: 'error' },
-    DRAFT: { label: 'Brouillon', color: 'default' }
+    ACTIVE: { label: t('Actif'), color: 'success' },
+    ENDED: { label: t('Terminé'), color: 'default' },
+    SUSPENDED: { label: t('Suspendu'), color: 'warning' },
+    CANCELED: { label: t('Annulé'), color: 'error' },
+    DRAFT: { label: t('Brouillon'), color: 'default' }
   };
   const config = statusMap[status] || { label: status, color: 'default' };
   return <Tag color={config.color}>{config.label}</Tag>;
@@ -88,10 +90,10 @@ export default function Leases() {
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
-        setError('Erreur lors du chargement des baux');
+        setError(t('Erreur lors du chargement des baux'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des baux');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des baux'));
     } finally {
       setLoading(false);
     }
@@ -100,17 +102,17 @@ export default function Leases() {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement des baux..." />
+        <Spin size="large" tip={t('Chargement des baux...')} />
       </div>
     );
   }
 
   if (error) {
-    return <Alert message="Erreur" description={error} type="error" showIcon />;
+    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   if (!data) {
-    return <Empty description="Aucun bail disponible" />;
+    return <Empty description={t('Aucun bail disponible')} />;
   }
 
   return (
@@ -118,11 +120,11 @@ export default function Leases() {
       {/* Page Header */}
       <div className="it-toolbar">
         <div>
-          <Title level={2}>Mes baux</Title>
-          <Text type="secondary">Gérez vos contrats de location</Text>
+          <Title level={2}>{t('Mes baux')}</Title>
+          <Text type="secondary">{t('Gérez vos contrats de location')}</Text>
         </div>
-        <Button icon={<SyncOutlined />} onClick={loadLeases} loading={loading} aria-label="Rafraîchir les baux">
-          Actualiser
+        <Button icon={<SyncOutlined />} onClick={loadLeases} loading={loading} aria-label={t('Rafraîchir les baux')}>
+          {t('Actualiser')}
         </Button>
       </div>
 
@@ -130,7 +132,7 @@ export default function Leases() {
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={8}>
           <StatCard
-            title="Baux actifs"
+            title={t('Baux actifs')}
             value={data.summary.active}
             icon={<FileTextOutlined style={{ color: '#52c41a' }} />}
             valueStyle={{ fontSize: 24, color: '#52c41a' }}
@@ -138,7 +140,7 @@ export default function Leases() {
         </Col>
         <Col xs={24} sm={12} lg={8}>
           <StatCard
-            title="Baux terminés"
+            title={t('Baux terminés')}
             value={data.summary.ended}
             icon={<FileTextOutlined style={{ color: '#1890ff' }} />}
             valueStyle={{ fontSize: 24, color: '#1890ff' }}
@@ -146,7 +148,7 @@ export default function Leases() {
         </Col>
         <Col xs={24} sm={12} lg={8}>
           <StatCard
-            title="Baux suspendus"
+            title={t('Baux suspendus')}
             value={data.summary.suspended}
             icon={<FileTextOutlined style={{ color: '#faad14' }} />}
             valueStyle={{ fontSize: 24, color: '#faad14' }}
@@ -155,11 +157,11 @@ export default function Leases() {
       </Row>
 
       {/* Filters (T065) */}
-      <Card title="Filtres">
+      <Card title={t('Filtres')}>
         <Space wrap>
           <Select
             style={{ width: 200 }}
-            placeholder="Statut"
+            placeholder={t('Statut')}
             value={filters.status || undefined}
             onChange={value => setFilters({ ...filters, status: value || '' })}
             allowClear
@@ -174,7 +176,7 @@ export default function Leases() {
       </Card>
 
       {/* Lease List */}
-      <Card title="Liste des baux">
+      <Card title={t('Liste des baux')}>
         {data.leases.length > 0 ? (
           <List
             dataSource={data.leases}
@@ -182,7 +184,7 @@ export default function Leases() {
               <List.Item
                 actions={[
                   <Button type="link" icon={<EyeOutlined />} onClick={() => navigate(`/owner/leases/${lease.id}`)}>
-                    Voir les détails
+                    {t('Voir les détails')}
                   </Button>
                 ]}
               >
@@ -197,7 +199,8 @@ export default function Leases() {
                     <Space direction="vertical" size={0}>
                       <Text type="secondary">Locataire: {lease.tenantName}</Text>
                       <Text type="secondary">
-                        Du {formatDate(lease.startDate)} au {lease.endDate ? formatDate(lease.endDate) : 'Non définie'}
+                        {t('Du')} {formatDate(lease.startDate)} au{' '}
+                        {lease.endDate ? formatDate(lease.endDate) : t('Non définie')}
                       </Text>
                       <Text type="secondary">Loyer: {formatCurrency(lease.monthlyRent)} / mois</Text>
                     </Space>
@@ -207,7 +210,7 @@ export default function Leases() {
             )}
           />
         ) : (
-          <Empty description="Aucun bail trouvé avec ces filtres" />
+          <Empty description={t('Aucun bail trouvé avec ces filtres')} />
         )}
       </Card>
     </Space>

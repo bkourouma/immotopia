@@ -10,6 +10,7 @@ import {
   CreateCrmContactRequest,
   UpdateCrmContactRequest
 } from '../../services/crm-service';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -68,7 +69,7 @@ export const ContactFormPage: React.FC = () => {
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <Spin size="large" />
           <div style={{ marginTop: 16 }}>
-            <Text type="secondary">Chargement du contact...</Text>
+            <Text type="secondary">{t('Chargement du contact...')}</Text>
           </div>
         </div>
       </>
@@ -82,10 +83,10 @@ export const ContactFormPage: React.FC = () => {
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             <div>
               <Title level={2} style={{ margin: 0 }}>
-                {contactId ? 'Modifier le contact' : 'Nouveau contact'}
+                {contactId ? t('Modifier le contact') : t('Nouveau contact')}
               </Title>
               <Text type="secondary">
-                {contactId ? 'Modifiez les informations du contact' : 'Créez un nouveau contact'}
+                {contactId ? t('Modifiez les informations du contact') : t('Créez un nouveau contact')}
               </Text>
             </div>
             <ContactForm contact={contact || undefined} onSubmit={handleSubmit} onCancel={handleCancel} />

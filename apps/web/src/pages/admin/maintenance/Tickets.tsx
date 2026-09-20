@@ -23,6 +23,7 @@ import { Ticket, MaintenanceTicketStatus, MaintenanceTicketPriority } from '../.
 import { useAuth } from '../../../hooks/useAuth';
 import { safeFormatDate } from '../../../utils/date-utils';
 import dayjs from 'dayjs';
+import { t } from '../../../i18n/t';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -30,7 +31,7 @@ const { RangePicker } = DatePicker;
 
 const categoryLabels: Record<string, string> = {
   PLUMBING: 'Plomberie',
-  ELECTRICITY: 'Électricité',
+  ELECTRICITY: t('Électricité'),
   AC: 'Climatisation',
   OTHER: 'Autre'
 };
@@ -38,7 +39,7 @@ const categoryLabels: Record<string, string> = {
 const priorityLabels: Record<string, string> = {
   LOW: 'Faible',
   MEDIUM: 'Moyenne',
-  HIGH: 'Élevée',
+  HIGH: t('Élevée'),
   URGENT: 'Urgente'
 };
 
@@ -149,7 +150,7 @@ export const Tickets: React.FC = () => {
 
   const columns = [
     {
-      title: 'Titre',
+      title: t('Titre'),
       dataIndex: 'title',
       key: 'title',
       width: 200,
@@ -160,7 +161,7 @@ export const Tickets: React.FC = () => {
           onClick={() => navigate(`/tenant/${effectiveTenantId}/admin/maintenance/tickets/${record.id}`)}
           style={{
             padding: 0,
-            textAlign: 'left',
+            textAlign: 'start',
             maxWidth: '100%',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -174,7 +175,7 @@ export const Tickets: React.FC = () => {
       )
     },
     {
-      title: 'Propriété',
+      title: t('Propriété'),
       dataIndex: ['property', 'address'],
       key: 'property',
       width: 200,
@@ -182,28 +183,28 @@ export const Tickets: React.FC = () => {
       render: (address: string) => address || 'N/A'
     },
     {
-      title: 'Catégorie',
+      title: t('Catégorie'),
       dataIndex: 'category',
       key: 'category',
       width: 120,
       render: (category: string) => categoryLabels[category] || category
     },
     {
-      title: 'Priorité',
+      title: t('Priorité'),
       dataIndex: 'priority',
       key: 'priority',
       width: 120,
       render: (priority: string) => <Tag color={priorityColors[priority]}>{priorityLabels[priority] || priority}</Tag>
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
       width: 130,
       render: (status: MaintenanceTicketStatus) => <TicketStatusBadge status={status} />
     },
     {
-      title: 'Prestataire',
+      title: t('Prestataire'),
       dataIndex: ['assignedVendor', 'name'],
       key: 'assignedVendor',
       width: 150,
@@ -214,7 +215,7 @@ export const Tickets: React.FC = () => {
       }
     },
     {
-      title: 'Date de création',
+      title: t('Date de création'),
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 140,
@@ -244,7 +245,7 @@ export const Tickets: React.FC = () => {
       }
     },
     {
-      title: 'Action',
+      title: t('Action'),
       key: 'action',
       width: 80,
       render: (_: any, record: Ticket) => (
@@ -252,7 +253,7 @@ export const Tickets: React.FC = () => {
           type="link"
           icon={<EyeOutlined />}
           onClick={() => navigate(`/tenant/${effectiveTenantId}/admin/maintenance/tickets/${record.id}`)}
-          title="Voir les détails"
+          title={t('Voir les détails')}
         />
       )
     }
@@ -270,45 +271,45 @@ export const Tickets: React.FC = () => {
     <>
       <div style={{ padding: '24px' }}>
         <div className="it-toolbar" style={{ marginBottom: 24 }}>
-          <Title level={2}>Gestion des tickets de maintenance</Title>
+          <Title level={2}>{t('Gestion des tickets de maintenance')}</Title>
         </div>
 
         <Card style={{ marginBottom: 24 }}>
           <Row gutter={[16, 16]}>
             <Col xs={24} sm={12} md={6} lg={5}>
               <Select
-                placeholder="Filtrer par statut"
+                placeholder={t('Filtrer par statut')}
                 allowClear
                 style={{ width: '100%' }}
                 value={filters.status}
                 onChange={value => handleFilterChange('status', value)}
               >
-                <Option value="DECLARED">Déclaré</Option>
-                <Option value="IN_PROGRESS">En cours</Option>
-                <Option value="ASSIGNED">Assigné</Option>
-                <Option value="RESOLVED">Résolu</Option>
-                <Option value="CANCELED">Annulé</Option>
+                <Option value="DECLARED">{t('Déclaré')}</Option>
+                <Option value="IN_PROGRESS">{t('En cours')}</Option>
+                <Option value="ASSIGNED">{t('Assigné')}</Option>
+                <Option value="RESOLVED">{t('Résolu')}</Option>
+                <Option value="CANCELED">{t('Annulé')}</Option>
               </Select>
             </Col>
 
             <Col xs={24} sm={12} md={6} lg={5}>
               <Select
-                placeholder="Filtrer par priorité"
+                placeholder={t('Filtrer par priorité')}
                 allowClear
                 style={{ width: '100%' }}
                 value={filters.priority}
                 onChange={value => handleFilterChange('priority', value)}
               >
-                <Option value="LOW">Faible</Option>
-                <Option value="MEDIUM">Moyenne</Option>
-                <Option value="HIGH">Élevée</Option>
-                <Option value="URGENT">Urgente</Option>
+                <Option value="LOW">{t('Faible')}</Option>
+                <Option value="MEDIUM">{t('Moyenne')}</Option>
+                <Option value="HIGH">{t('Élevée')}</Option>
+                <Option value="URGENT">{t('Urgente')}</Option>
               </Select>
             </Col>
 
             <Col xs={24} sm={24} md={8} lg={8}>
               <RangePicker
-                placeholder={['Date début', 'Date fin']}
+                placeholder={[t('Date début'), t('Date fin')]}
                 onChange={handleDateRangeChange}
                 format="DD/MM/YYYY"
                 style={{ width: '100%' }}
@@ -317,7 +318,7 @@ export const Tickets: React.FC = () => {
 
             <Col xs={24} sm={24} md={4} lg={6}>
               <Button icon={<FilterOutlined />} onClick={appliquerLesFiltres} block type="primary">
-                Appliquer les filtres
+                {t('Appliquer les filtres')}
               </Button>
             </Col>
           </Row>
@@ -325,7 +326,7 @@ export const Tickets: React.FC = () => {
 
         <Card>
           {tickets.length === 0 ? (
-            <Empty description="Aucun ticket de maintenance" />
+            <Empty description={t('Aucun ticket de maintenance')} />
           ) : (
             <>
               <Table
@@ -344,7 +345,7 @@ export const Tickets: React.FC = () => {
                     total={pagination.total}
                     pageSize={pagination.limit}
                     onChange={handlePageChange}
-                    showTotal={total => `Total: ${total} tickets`}
+                    showTotal={total => t('Total: {{total}} tickets', { total: total })}
                   />
                 </div>
               )}

@@ -23,12 +23,13 @@ import { meetingStatusLabels, meetingTypeLabels } from '../../components/syndics
 import { createMeeting, listMeetings } from '../../services/syndic-service';
 import { GeneralMeeting, MeetingType } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
 
 const meetingTypeOptions: Array<{ label: string; value: MeetingType }> = [
-  { label: 'Ordinaire', value: 'ORDINARY' },
-  { label: 'Extraordinaire', value: 'EXTRAORDINARY' }
+  { label: t('Ordinaire'), value: 'ORDINARY' },
+  { label: t('Extraordinaire'), value: 'EXTRAORDINARY' }
 ];
 
 export const SyndicMeetings: React.FC = () => {
@@ -47,7 +48,7 @@ export const SyndicMeetings: React.FC = () => {
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
       setLoading(false);
-      setError('Paramètres assemblées manquants');
+      setError(t('Paramètres assemblées manquants'));
       return;
     }
     void loadMeetings();
@@ -61,7 +62,7 @@ export const SyndicMeetings: React.FC = () => {
       const data = await listMeetings(effectiveTenantId, syndicId);
       setMeetings(data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Impossible de charger les assemblées');
+      setError(err.response?.data?.error || t('Impossible de charger les assemblées'));
     } finally {
       setLoading(false);
     }
@@ -93,12 +94,12 @@ export const SyndicMeetings: React.FC = () => {
           : undefined,
         location: values.location
       });
-      message.success('Assemblée créée');
+      message.success(t('Assemblée créée'));
       setOpen(false);
       form.resetFields();
       await loadMeetings();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Création impossible');
+      message.error(err.response?.data?.error || t('Création impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -113,17 +114,17 @@ export const SyndicMeetings: React.FC = () => {
               icon={<ArrowLeftOutlined />}
               onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
             >
-              Retour à la fiche syndic
+              {t('Retour à la fiche syndic')}
             </Button>
             <Title level={2} style={{ margin: 0 }}>
-              Assemblées générales
+              {t('Assemblées générales')}
             </Title>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Planifiez, suivez les résolutions et centralisez les votes.
+              {t('Planifiez, suivez les résolutions et centralisez les votes.')}
             </Paragraph>
           </Space>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-            Nouvelle assemblée
+            {t('Nouvelle assemblée')}
           </Button>
         </div>
 
@@ -134,7 +135,7 @@ export const SyndicMeetings: React.FC = () => {
             <Spin size="large" />
           </div>
         ) : (
-          <Card title="Liste des assemblées">
+          <Card title={t('Liste des assemblées')}>
             <Table
               scroll={{ x: 'max-content' }}
               rowKey="id"
@@ -153,7 +154,7 @@ export const SyndicMeetings: React.FC = () => {
                   render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm')
                 },
                 {
-                  title: 'Début',
+                  title: t('Début'),
                   dataIndex: 'startTime',
                   key: 'startTime',
                   render: (value?: string | null) => (value ? dayjs(value).format('HH:mm') : '-')
@@ -168,7 +169,7 @@ export const SyndicMeetings: React.FC = () => {
                   title: 'Lieu',
                   dataIndex: 'location',
                   key: 'location',
-                  render: (value?: string | null) => value || 'Non renseigné'
+                  render: (value?: string | null) => value || t('Non renseigné')
                 },
                 {
                   title: 'Statut',
@@ -184,7 +185,7 @@ export const SyndicMeetings: React.FC = () => {
                       size="small"
                       onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/assemblees/${item.id}`)}
                     >
-                      Voir détails
+                      {t('Voir détails')}
                     </Button>
                   )
                 }
@@ -195,32 +196,32 @@ export const SyndicMeetings: React.FC = () => {
       </Space>
 
       <Modal
-        title="Créer une assemblée générale"
+        title={t('Créer une assemblée générale')}
         open={open}
         onCancel={() => setOpen(false)}
         onOk={() => void handleCreate()}
-        okText="Créer"
-        cancelText="Annuler"
+        okText={t('Créer')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
         <Form form={form} layout="vertical" initialValues={{ type: 'ORDINARY' }}>
-          <Form.Item label="Type" name="type" rules={[{ required: true, message: 'Le type est obligatoire' }]}>
+          <Form.Item label={t('Type')} name="type" rules={[{ required: true, message: t('Le type est obligatoire') }]}>
             <Select options={meetingTypeOptions} />
           </Form.Item>
           <Form.Item
-            label="Date et heure"
+            label={t('Date et heure')}
             name="scheduledAt"
-            rules={[{ required: true, message: 'La date est obligatoire' }]}
+            rules={[{ required: true, message: t('La date est obligatoire') }]}
           >
             <DatePicker showTime style={{ width: '100%' }} format="DD/MM/YYYY HH:mm" />
           </Form.Item>
-          <Form.Item label="Heure de début" name="startTime">
+          <Form.Item label={t('Heure de début')} name="startTime">
             <TimePicker style={{ width: '100%' }} format="HH:mm" />
           </Form.Item>
-          <Form.Item label="Heure de fin" name="endTime">
+          <Form.Item label={t('Heure de fin')} name="endTime">
             <TimePicker style={{ width: '100%' }} format="HH:mm" />
           </Form.Item>
-          <Form.Item label="Lieu" name="location">
+          <Form.Item label={t('Lieu')} name="location">
             <Input />
           </Form.Item>
         </Form>

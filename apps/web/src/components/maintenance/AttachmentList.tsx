@@ -4,6 +4,7 @@ import { DownloadOutlined, FileOutlined } from '@ant-design/icons';
 import { Attachment } from '../../types/maintenance-types';
 import apiClient from '../../utils/api-client';
 import { API_ORIGIN } from '../../config/api';
+import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
@@ -14,7 +15,7 @@ interface AttachmentListProps {
 
 const formatFileSize = (bytes: number | undefined | null): string => {
   if (!bytes || isNaN(bytes) || bytes < 0) {
-    return 'Taille inconnue';
+    return t('Taille inconnue');
   }
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
@@ -27,17 +28,14 @@ const isImage = (mimeType: string | undefined): boolean => {
 
 export const AttachmentList: React.FC<AttachmentListProps> = ({ attachments, tenantId }) => {
   if (attachments.length === 0) {
-    return <Text type="secondary">Aucune pièce jointe</Text>;
+    return <Text type="secondary">{t('Aucune pièce jointe')}</Text>;
   }
 
   const handleDownload = async (attachment: Attachment) => {
     try {
-      const response = await apiClient.get(
-        `/tenants/${tenantId}/maintenance/files/${attachment.id}`,
-        {
-          responseType: 'blob'
-        }
-      );
+      const response = await apiClient.get(`/tenants/${tenantId}/maintenance/files/${attachment.id}`, {
+        responseType: 'blob'
+      });
 
       // Create blob and download
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -61,15 +59,11 @@ export const AttachmentList: React.FC<AttachmentListProps> = ({ attachments, ten
   return (
     <List
       dataSource={attachments}
-      renderItem={(attachment) => (
+      renderItem={attachment => (
         <List.Item
           actions={[
-            <Button
-              type="link"
-              icon={<DownloadOutlined />}
-              onClick={() => handleDownload(attachment)}
-            >
-              Télécharger
+            <Button type="link" icon={<DownloadOutlined />} onClick={() => handleDownload(attachment)}>
+              {t('Télécharger')}
             </Button>
           ]}
         >

@@ -1,5 +1,7 @@
 import { statusLabel, statusTone } from '../primitives/StatusTag';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 /**
  * Libellés, couleurs et formats des graphiques du tableau de bord.
  *
@@ -62,24 +64,24 @@ export function categoricalColor(index: number): string {
 const EXTRA_LABELS: Record<string, string> = {
   // Types de bien
   APPARTEMENT: 'Appartement',
-  MAISON_VILLA: 'Maison / Villa',
+  MAISON_VILLA: t('Maison / Villa'),
   STUDIO: 'Studio',
-  DUPLEX_TRIPLEX: 'Duplex / Triplex',
+  DUPLEX_TRIPLEX: t('Duplex / Triplex'),
   CHAMBRE_COLOCATION: 'Chambre',
   BUREAU: 'Bureau',
   BOUTIQUE_COMMERCIAL: 'Commerce',
-  ENTREPOT_INDUSTRIEL: 'Entrepôt',
+  ENTREPOT_INDUSTRIEL: t('Entrepôt'),
   TERRAIN: 'Terrain',
   IMMEUBLE: 'Immeuble',
   PARKING_BOX: 'Parking',
-  LOT_PROGRAMME_NEUF: 'Lot neuf',
+  LOT_PROGRAMME_NEUF: t('Lot neuf'),
 
   // Moyens de paiement
-  CASH: 'Espèces',
+  CASH: t('Espèces'),
   BANK_TRANSFER: 'Virement',
-  CHECK: 'Chèque',
-  MOBILE_MONEY: 'Mobile Money',
-  CARD: 'Carte bancaire',
+  CHECK: t('Chèque'),
+  MOBILE_MONEY: t('Mobile Money'),
+  CARD: t('Carte bancaire'),
   OTHER: 'Autre',
 
   // Priorités de ticket
@@ -89,9 +91,9 @@ const EXTRA_LABELS: Record<string, string> = {
   LOW: 'Basse',
 
   // Étapes commerciales et statuts de contact
-  QUALIFIED: 'Qualifiée',
+  QUALIFIED: t('Qualifiée'),
   VISIT: 'Visite',
-  NEGOTIATION: 'Négociation',
+  NEGOTIATION: t('Négociation'),
   ACTIVE_CLIENT: 'Client',
   AUTRES: 'Autres',
   LEAD: 'Prospect'
@@ -117,9 +119,10 @@ export function bucketLabel(key: string): string {
  */
 export function compactAmount(value: number): string {
   const absolu = Math.abs(value);
-  if (absolu >= 1_000_000) return `${(value / 1_000_000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} M`;
-  if (absolu >= 10_000) return `${(value / 1_000).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} k`;
-  return value.toLocaleString('fr-FR', { maximumFractionDigits: 0 });
+  if (absolu >= 1_000_000)
+    return `${(value / 1_000_000).toLocaleString(activeLocale(), { maximumFractionDigits: 1 })} M`;
+  if (absolu >= 10_000) return `${(value / 1_000).toLocaleString(activeLocale(), { maximumFractionDigits: 0 })} k`;
+  return value.toLocaleString(activeLocale(), { maximumFractionDigits: 0 });
 }
 
 /**
@@ -128,21 +131,21 @@ export function compactAmount(value: number): string {
  * est de l'anglais posé au milieu d'une phrase française.
  */
 export function formatPercent(value: number): string {
-  return `${value.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}\u00a0%`;
+  return `${value.toLocaleString(activeLocale(), { maximumFractionDigits: 1 })}\u00a0%`;
 }
 
 /** Libellé d'axe d'un mois : `sept. 26`. */
 export function monthLabel(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
+  return date.toLocaleDateString(activeLocale(), { month: 'short', year: '2-digit' });
 }
 
 /** Libellé long d'un mois, pour l'infobulle : `septembre 2026`. */
 export function monthLabelLong(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  return date.toLocaleDateString(activeLocale(), { month: 'long', year: 'numeric' });
 }
 
 /**

@@ -33,7 +33,9 @@ import {
   FilterSheet,
   useConfirmAction
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 /**
  * Échéances — l'écran « Encaisser », deuxième des six écrans hybrides (§9.7).
  *
@@ -70,10 +72,10 @@ type Filters = { status: string; overdue: string; renterClientId: string };
 const FILTER_KEYS = ['status', 'overdue', 'renterClientId'] as const;
 
 const STATUS_OPTIONS = [
-  { value: 'DUE', label: 'À échoir' },
-  { value: 'PARTIAL', label: 'Partiel' },
-  { value: 'PAID', label: 'Payé' },
-  { value: 'OVERDUE', label: 'En retard' }
+  { value: 'DUE', label: t('À échoir') },
+  { value: 'PARTIAL', label: t('Partiel') },
+  { value: 'PAID', label: t('Payé') },
+  { value: 'OVERDUE', label: t('En retard') }
 ];
 
 /** Montant dû : loyer, charges, autres frais et pénalités. */
@@ -95,7 +97,7 @@ function periode(echeance: RentalInstallment): string {
 }
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId }) => {
@@ -187,9 +189,9 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
     try {
       await generateInstallments(tenantId, leaseId);
       await rafraichir();
-      message.success('Échéances générées.');
+      message.success(t('Échéances générées.'));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'La génération a échoué.');
+      message.error(err?.response?.data?.message || t('La génération a échoué.'));
     } finally {
       setAction(null);
     }
@@ -210,9 +212,9 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
       await recalculateInstallmentStatuses(tenantId, leaseId);
       await calculatePenalties(tenantId);
       await rafraichir();
-      message.success('Statuts et pénalités recalculés.');
+      message.success(t('Statuts et pénalités recalculés.'));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'Le recalcul a échoué.');
+      message.error(err?.response?.data?.message || t('Le recalcul a échoué.'));
     } finally {
       setAction(null);
     }
@@ -221,18 +223,18 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
   const handleDeleteAll = () => {
     if (!tenantId || !leaseId) return;
     confirmAction({
-      title: 'Supprimer toutes les échéances de ce bail ?',
-      description: 'Cette action est irréversible.',
-      okText: 'Supprimer',
+      title: t('Supprimer toutes les échéances de ce bail ?'),
+      description: t('Cette action est irréversible.'),
+      okText: t('Supprimer'),
       danger: true,
       onConfirm: async () => {
         setAction('supprimer');
         try {
           await deleteAllInstallments(tenantId, leaseId);
           await rafraichir();
-          message.success('Échéances supprimées.');
+          message.success(t('Échéances supprimées.'));
         } catch (err: any) {
-          message.error(err?.response?.data?.message || 'La suppression a échoué.');
+          message.error(err?.response?.data?.message || t('La suppression a échoué.'));
         } finally {
           setAction(null);
         }
@@ -245,7 +247,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
     if (!tenantId) return;
     const reste = resteAPayer(echeance);
     if (reste <= 0) {
-      message.info('Cette échéance est déjà soldée.');
+      message.info(t('Cette échéance est déjà soldée.'));
       return;
     }
 
@@ -265,10 +267,10 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
         // un encaissement ultérieur du même bien serait rejeté comme doublon.
         clesIdempotence.current.delete(echeance.id);
         await rafraichir();
-        message.success('Encaissement enregistré.');
+        message.success(t('Encaissement enregistré.'));
       }
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'encaissement a échoué.");
+      message.error(err?.response?.data?.message || t("L'encaissement a échoué."));
     } finally {
       setEnCours(null);
     }
@@ -289,16 +291,16 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
         clesIdempotence.current.delete(echeance.id);
         setFormulairePour(null);
         await rafraichir();
-        message.success('Paiement enregistré.');
+        message.success(t('Paiement enregistré.'));
       }
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'enregistrement du paiement a échoué.");
+      message.error(err?.response?.data?.message || t("L'enregistrement du paiement a échoué."));
       throw err;
     }
   };
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   /**
@@ -315,7 +317,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
       ? []
       : [
           {
-            title: 'Bail',
+            title: t('Bail'),
             key: 'bail',
             width: 260,
             render: (_: unknown, e: RentalInstallment) => (
@@ -331,36 +333,36 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
             )
           },
           {
-            title: 'Locataire',
+            title: t('Locataire'),
             key: 'locataire',
             width: 170,
             render: (_: unknown, e: RentalInstallment) => nomDeLaPersonne(e.lease?.primaryRenter?.user)
           }
         ]),
-    { title: 'Période', key: 'periode', render: (_, e) => periode(e) },
-    { title: 'Échéance', key: 'due', render: (_, e) => dateCourte(e.due_date) },
+    { title: t('Période'), key: 'periode', render: (_, e) => periode(e) },
+    { title: t('Échéance'), key: 'due', render: (_, e) => dateCourte(e.due_date) },
     {
-      title: 'Montant dû',
+      title: t('Montant dû'),
       key: 'du',
-      align: 'right',
+      align: 'end',
       render: (_, e) => <MoneyValue value={totalDu(e)} currency={e.currency} />
     },
     {
-      title: 'Reste à payer',
+      title: t('Reste à payer'),
       key: 'reste',
-      align: 'right',
+      align: 'end',
       render: (_, e) => <MoneyValue value={resteAPayer(e)} currency={e.currency} />
     },
-    { title: 'Statut', key: 'statut', render: (_, e) => <StatusTag status={e.status} /> },
+    { title: t('Statut'), key: 'statut', render: (_, e) => <StatusTag status={e.status} /> },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, e) => {
         if (resteAPayer(e) <= 0) {
           return (
             <Button type="link" onClick={() => navigate(`/tenant/${tenantId}/rental/installments/${e.id}`)}>
-              Voir
+              {t('Voir')}
             </Button>
           );
         }
@@ -372,9 +374,9 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
               onClick={() => handleQuickPayment(e)}
               // Le libellé dit ce qui va se passer : espèces, montant restant,
               // aujourd'hui. « Paiement rapide » ne le disait pas.
-              title="Encaisser le reste dû en espèces, à la date du jour"
+              title={t('Encaisser le reste dû en espèces, à la date du jour')}
             >
-              Encaisser
+              {t('Encaisser')}
             </Button>
             <Button type="primary" icon={<CreditCardOutlined />} onClick={() => setFormulairePour(e)}>
               Paiement…
@@ -387,12 +389,12 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
 
   const enTete = (
     <PageHeader
-      title="Échéances"
-      subtitle={total > 0 ? `${total} échéance${total > 1 ? 's' : ''}` : undefined}
+      title={t('Échéances')}
+      subtitle={total > 0 ? t('{{total}} échéance{{value}}', { total: total, value: total > 1 ? 's' : '' }) : undefined}
       primaryAction={
         leaseId
           ? {
-              label: 'Générer les échéances',
+              label: t('Générer les échéances'),
               icon: <PlusOutlined />,
               onClick: handleGenerate,
               loading: action === 'generer'
@@ -402,9 +404,9 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
       secondaryActions={
         leaseId
           ? [
-              { key: 'recalc', label: 'Recalculer les statuts et pénalités', onClick: handleRecalculate },
+              { key: 'recalc', label: t('Recalculer les statuts et pénalités'), onClick: handleRecalculate },
               { type: 'divider' },
-              { key: 'del', label: 'Supprimer toutes les échéances', danger: true, onClick: handleDeleteAll }
+              { key: 'del', label: t('Supprimer toutes les échéances'), danger: true, onClick: handleDeleteAll }
             ]
           : undefined
       }
@@ -423,7 +425,10 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
   );
 
   const titreFormulaire = formulairePour
-    ? `Paiement · échéance ${periode(formulairePour)} du ${dateCourte(formulairePour.due_date)}`
+    ? t('Paiement · échéance {{value}} du {{value2}}', {
+        value: periode(formulairePour),
+        value2: dateCourte(formulairePour.due_date)
+      })
     : '';
 
   return (
@@ -433,15 +438,15 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
       <FilterSheet
         activeCount={Object.keys(list.filters).length}
         onClear={list.clearFilters}
-        title="Filtrer les échéances"
+        title={t('Filtrer les échéances')}
       >
         {!leaseId && (
           <div style={{ minWidth: 240 }}>
-            <label htmlFor="filtre-locataire-echeance">Locataire</label>
+            <label htmlFor="filtre-locataire-echeance">{t('Locataire')}</label>
             <Select
               id="filtre-locataire-echeance"
               style={{ width: '100%' }}
-              placeholder="Tous les locataires"
+              placeholder={t('Tous les locataires')}
               allowClear
               showSearch
               optionFilterProp="label"
@@ -452,11 +457,11 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
           </div>
         )}
         <div style={{ minWidth: 200 }}>
-          <label htmlFor="filtre-statut-echeance">Statut</label>
+          <label htmlFor="filtre-statut-echeance">{t('Statut')}</label>
           <Select
             id="filtre-statut-echeance"
             style={{ width: '100%' }}
-            placeholder="Tous les statuts"
+            placeholder={t('Tous les statuts')}
             allowClear
             value={list.filters.status || undefined}
             onChange={value => list.setFilters({ status: value })}
@@ -464,15 +469,15 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
           />
         </div>
         <div style={{ minWidth: 200 }}>
-          <label htmlFor="filtre-retard">Retard</label>
+          <label htmlFor="filtre-retard">{t('Retard')}</label>
           <Select
             id="filtre-retard"
             style={{ width: '100%' }}
-            placeholder="Toutes"
+            placeholder={t('Toutes')}
             allowClear
             value={list.filters.overdue || undefined}
             onChange={value => list.setFilters({ overdue: value })}
-            options={[{ value: 'true', label: 'En retard uniquement' }]}
+            options={[{ value: 'true', label: t('En retard uniquement') }]}
           />
         </div>
       </FilterSheet>
@@ -491,29 +496,33 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
         onPageChange={(page, size) => (size !== list.pageSize ? list.setPageSize(size) : list.setPage(page))}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger les échéances.' : null}
+        error={erreurRequete ? t('Impossible de charger les échéances.') : null}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}
         emptyDescription={
           leaseId
-            ? 'Aucune échéance pour ce bail. Générez-les depuis l’action ci-dessus.'
-            : 'Aucune échéance enregistrée.'
+            ? t('Aucune échéance pour ce bail. Générez-les depuis l’action ci-dessus.')
+            : t('Aucune échéance enregistrée.')
         }
         columns={colonnes}
         rowKey={e => e.id}
-        aria-label="Échéances"
+        aria-label={t('Échéances')}
         renderCard={e => {
           const reste = resteAPayer(e);
           const solde = reste <= 0;
           return (
             <DataCard
-              title={`Échéance ${periode(e)}`}
-              aria-label={`Échéance ${periode(e)}`}
+              title={t('Échéance {{value}}', { value: periode(e) })}
+              aria-label={t('Échéance {{value}}', { value: periode(e) })}
               subtitle={
                 leaseId
-                  ? `À payer le ${dateCourte(e.due_date)}`
-                  : `${nomDuBien(e.lease?.property)} · ${nomDeLaPersonne(e.lease?.primaryRenter?.user)} — à payer le ${dateCourte(e.due_date)}`
+                  ? t('À payer le {{value}}', { value: dateCourte(e.due_date) })
+                  : t('{{value}} · {{value2}} — à payer le {{value3}}', {
+                      value: nomDuBien(e.lease?.property),
+                      value2: nomDeLaPersonne(e.lease?.primaryRenter?.user),
+                      value3: dateCourte(e.due_date)
+                    })
               }
               status={<StatusTag status={e.status} />}
               // Le reste à payer est LA donnée de cet écran : elle passe en
@@ -523,10 +532,10 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
               // carte pour ne rien dire, quand l'étiquette « Payé » le dit déjà.
               highlight={solde ? undefined : <MoneyValue value={reste} currency={e.currency} />}
               fields={[
-                { label: 'Montant dû', value: <MoneyValue value={totalDu(e)} currency={e.currency} /> },
-                { label: 'Déjà payé', value: <MoneyValue value={e.amount_paid} currency={e.currency} /> },
+                { label: t('Montant dû'), value: <MoneyValue value={totalDu(e)} currency={e.currency} /> },
+                { label: t('Déjà payé'), value: <MoneyValue value={e.amount_paid} currency={e.currency} /> },
                 ...(Number(e.penalty_amount) > 0
-                  ? [{ label: 'Pénalités', value: <MoneyValue value={e.penalty_amount} currency={e.currency} /> }]
+                  ? [{ label: t('Pénalités'), value: <MoneyValue value={e.penalty_amount} currency={e.currency} /> }]
                   : [])
               ]}
               onOpen={() => navigate(`/tenant/${tenantId}/rental/installments/${e.id}`)}
@@ -541,7 +550,9 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
                     }
               }
               secondaryActions={
-                solde ? undefined : [{ key: 'form', label: 'Paiement détaillé…', onClick: () => setFormulairePour(e) }]
+                solde
+                  ? undefined
+                  : [{ key: 'form', label: t('Paiement détaillé…'), onClick: () => setFormulairePour(e) }]
               }
             />
           );

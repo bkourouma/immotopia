@@ -1,6 +1,7 @@
 import type { Event as RBCEvent } from 'react-big-calendar';
 import type { CalendarEvent, CalendarEventType } from '../../services/crm-service';
 
+import { activeLocale } from '../../i18n/format';
 /**
  * Modèle d'événement partagé entre la liste agenda et la grille.
  *
@@ -129,7 +130,7 @@ export function grouperParJour(evenements: EvenementAgenda[]): { jour: Date; eve
 /** Lignes d'export, identiques pour le CSV et le tableur. */
 export function lignesExport(evenements: EvenementAgenda[]): Record<string, string>[] {
   const dateHeure = (valeur: Date | undefined) =>
-    valeur && !Number.isNaN(valeur.getTime()) ? valeur.toLocaleString('fr-FR') : '';
+    valeur && !Number.isNaN(valeur.getTime()) ? valeur.toLocaleString(activeLocale()) : '';
 
   return evenements.map(e => ({
     Type: e.eventType === 'FOLLOWUP' ? 'Relance' : 'Visite',

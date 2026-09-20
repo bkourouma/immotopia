@@ -7,6 +7,7 @@ import { tenantMaintenanceService } from '../../../services/maintenance-service'
 import { Ticket, MaintenanceTicketStatus } from '../../../types/maintenance-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { useConfirmAction } from '../../../components/primitives';
+import { t } from '../../../i18n/t';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -82,22 +83,23 @@ export const TicketList: React.FC = () => {
     if (!effectiveTenantId) return;
 
     confirmAction({
-      title: 'Supprimer définitivement le ticket',
-      description:
-        'Êtes-vous sûr de vouloir supprimer définitivement ce ticket ? Cette action est irréversible et supprimera toutes les données associées (pièces jointes, commentaires, historique).',
-      okText: 'Oui, supprimer',
-      cancelText: 'Non',
+      title: t('Supprimer définitivement le ticket'),
+      description: t(
+        'Êtes-vous sûr de vouloir supprimer définitivement ce ticket ? Cette action est irréversible et supprimera toutes les données associées (pièces jointes, commentaires, historique).'
+      ),
+      okText: t('Oui, supprimer'),
+      cancelText: t('Non'),
       danger: true,
       onConfirm: async () => {
         try {
           const response = await tenantMaintenanceService.deleteTicket(effectiveTenantId, ticketId);
           if (response.success) {
-            message.success('Ticket supprimé définitivement');
+            message.success(t('Ticket supprimé définitivement'));
             loadTickets(); // Reload tickets list
           }
         } catch (error: any) {
           console.error('Error deleting ticket:', error);
-          const errorMessage = error.response?.data?.message || 'Erreur lors de la suppression du ticket';
+          const errorMessage = error.response?.data?.message || t('Erreur lors de la suppression du ticket');
           message.error(errorMessage);
         }
       }
@@ -116,34 +118,34 @@ export const TicketList: React.FC = () => {
     <>
       <div style={{ padding: '24px' }}>
         <div className="it-toolbar" style={{ marginBottom: 24 }}>
-          <Title level={2}>Mes tickets de maintenance</Title>
+          <Title level={2}>{t('Mes tickets de maintenance')}</Title>
           <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance/new`)}
           >
-            Nouveau ticket
+            {t('Nouveau ticket')}
           </Button>
         </div>
 
         <Card style={{ marginBottom: 24 }}>
           <Space>
             <Select
-              placeholder="Filtrer par statut"
+              placeholder={t('Filtrer par statut')}
               allowClear
               style={{ width: 200 }}
               value={statusFilter}
               onChange={handleStatusFilterChange}
             >
-              <Option value="DECLARED">Déclaré</Option>
-              <Option value="IN_PROGRESS">En cours</Option>
-              <Option value="ASSIGNED">Assigné</Option>
-              <Option value="RESOLVED">Résolu</Option>
-              <Option value="CANCELED">Annulé</Option>
+              <Option value="DECLARED">{t('Déclaré')}</Option>
+              <Option value="IN_PROGRESS">{t('En cours')}</Option>
+              <Option value="ASSIGNED">{t('Assigné')}</Option>
+              <Option value="RESOLVED">{t('Résolu')}</Option>
+              <Option value="CANCELED">{t('Annulé')}</Option>
             </Select>
 
             <Select
-              placeholder="Filtrer par propriété"
+              placeholder={t('Filtrer par propriété')}
               allowClear
               style={{ width: 200 }}
               value={propertyFilter}
@@ -155,13 +157,13 @@ export const TicketList: React.FC = () => {
         </Card>
 
         {tickets.length === 0 ? (
-          <Empty description="Aucun ticket de maintenance" image={Empty.PRESENTED_IMAGE_SIMPLE}>
+          <Empty description={t('Aucun ticket de maintenance')} image={Empty.PRESENTED_IMAGE_SIMPLE}>
             <Button
               type="primary"
               icon={<PlusOutlined />}
               onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance/new`)}
             >
-              Créer un ticket
+              {t('Créer un ticket')}
             </Button>
           </Empty>
         ) : (
@@ -183,7 +185,7 @@ export const TicketList: React.FC = () => {
                   total={pagination.total}
                   pageSize={pagination.limit}
                   onChange={handlePageChange}
-                  showTotal={total => `Total: ${total} tickets`}
+                  showTotal={total => t('Total: {{total}} tickets', { total: total })}
                 />
               </div>
             )}

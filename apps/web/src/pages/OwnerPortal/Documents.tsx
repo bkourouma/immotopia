@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import dayjs from 'dayjs';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -84,7 +85,7 @@ export default function Documents() {
         setData(response.data.data);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des documents');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des documents'));
     } finally {
       setLoading(false);
     }
@@ -116,9 +117,9 @@ export default function Documents() {
       link.remove();
       window.URL.revokeObjectURL(url);
 
-      message.success('Document téléchargé avec succès');
+      message.success(t('Document téléchargé avec succès'));
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors du téléchargement');
+      message.error(err.response?.data?.message || t('Erreur lors du téléchargement'));
     } finally {
       setDownloading(null);
     }
@@ -131,12 +132,12 @@ export default function Documents() {
 
   const getDocumentTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
-      LEASE_CONTRACT: 'Contrat de bail',
+      LEASE_CONTRACT: t('Contrat de bail'),
       LEASE_ADDENDUM: 'Avenant',
-      RENT_RECEIPT: 'Quittance de loyer',
+      RENT_RECEIPT: t('Quittance de loyer'),
       RENT_QUITTANCE: 'Quittance',
-      DEPOSIT_RECEIPT: 'Reçu de dépôt',
-      STATEMENT: 'Relevé',
+      DEPOSIT_RECEIPT: t('Reçu de dépôt'),
+      STATEMENT: t('Relevé'),
       OTHER: 'Autre'
     };
     return labels[type] || type;
@@ -144,9 +145,9 @@ export default function Documents() {
 
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
-      DRAFT: { label: 'Brouillon', color: 'default' },
-      FINAL: { label: 'Final', color: 'success' },
-      VOID: { label: 'Annulé', color: 'error' }
+      DRAFT: { label: t('Brouillon'), color: 'default' },
+      FINAL: { label: t('Final'), color: 'success' },
+      VOID: { label: t('Annulé'), color: 'error' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -163,13 +164,13 @@ export default function Documents() {
   if (loading && !data) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement des documents..." />
+        <Spin size="large" tip={t('Chargement des documents...')} />
       </div>
     );
   }
 
   if (error) {
-    return <Alert message="Erreur" description={error} type="error" showIcon />;
+    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   return (
@@ -177,11 +178,16 @@ export default function Documents() {
       {/* Page Header */}
       <div className="it-toolbar">
         <div>
-          <Title level={2}>Documents</Title>
-          <Text type="secondary">Accès aux documents de location</Text>
+          <Title level={2}>{t('Documents')}</Title>
+          <Text type="secondary">{t('Accès aux documents de location')}</Text>
         </div>
-        <Button icon={<SyncOutlined />} onClick={loadDocuments} loading={loading} aria-label="Rafraîchir les documents">
-          Actualiser
+        <Button
+          icon={<SyncOutlined />}
+          onClick={loadDocuments}
+          loading={loading}
+          aria-label={t('Rafraîchir les documents')}
+        >
+          {t('Actualiser')}
         </Button>
       </div>
 
@@ -190,16 +196,16 @@ export default function Documents() {
         title={
           <Space>
             <FilterOutlined />
-            <span>Filtres</span>
+            <span>{t('Filtres')}</span>
           </Space>
         }
       >
         <div className="it-filters">
           <div className="it-filters__field">
-            <Text strong>Type</Text>
+            <Text strong>{t('Type')}</Text>
             <Select
               style={{ width: 200 }}
-              placeholder="Tous les types"
+              placeholder={t('Tous les types')}
               allowClear
               value={typeFilter}
               onChange={value => setTypeFilter(value)}
@@ -212,10 +218,10 @@ export default function Documents() {
             </Select>
           </div>
           <div className="it-filters__field">
-            <Text strong>Propriété</Text>
+            <Text strong>{t('Propriété')}</Text>
             <Select
               style={{ width: 200 }}
-              placeholder="Toutes les propriétés"
+              placeholder={t('Toutes les propriétés')}
               allowClear
               value={propertyFilter}
               onChange={value => setPropertyFilter(value)}
@@ -255,7 +261,7 @@ export default function Documents() {
                       onClick={() => handleDownload(doc.id)}
                       loading={downloading === doc.id}
                     >
-                      Télécharger
+                      {t('Télécharger')}
                     </Button>
                   ]}
                 >
@@ -263,17 +269,27 @@ export default function Documents() {
                     avatar={<FileTextOutlined style={{ fontSize: 24, color: '#1890ff' }} />}
                     title={
                       <Space>
-                        <Text strong>{doc.title || doc.document_number || `Document ${doc.id.substring(0, 8)}`}</Text>
+                        <Text strong>
+                          {doc.title ||
+                            doc.document_number ||
+                            t('Document {{value}}', { value: doc.id.substring(0, 8) })}
+                        </Text>
                         {getStatusTag(doc.status)}
                       </Space>
                     }
                     description={
                       <Space direction="vertical" size="small">
-                        {doc.lease?.property && <Text type="secondary">Propriété: {doc.lease.property.address}</Text>}
+                        {doc.lease?.property && (
+                          <Text type="secondary">
+                            {t('Propriété:')} {doc.lease.property.address}
+                          </Text>
+                        )}
                         {doc.issued_at && (
                           <Space>
                             <CalendarOutlined />
-                            <Text type="secondary">Émis le {formatDate(doc.issued_at)}</Text>
+                            <Text type="secondary">
+                              {t('Émis le')} {formatDate(doc.issued_at)}
+                            </Text>
                           </Space>
                         )}
                       </Space>
@@ -286,7 +302,7 @@ export default function Documents() {
         ))
       ) : (
         <Card>
-          <Empty description="Aucun document trouvé" />
+          <Empty description={t('Aucun document trouvé')} />
         </Card>
       )}
     </Space>

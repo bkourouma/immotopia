@@ -4,7 +4,9 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { MaintenanceContract } from '../../types/syndic-types';
 import { contractStatusLabels } from './labels';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text } = Typography;
 
 const statusColor: Record<MaintenanceContract['status'], string> = {
@@ -22,32 +24,34 @@ export const ContractList: React.FC<ContractListProps> = ({ contracts, loading =
   const renewalWindowDays = 45;
 
   const columns: ColumnsType<MaintenanceContract> = [
-    { title: 'Prestataire', key: 'provider', render: (_: unknown, item) => item.provider?.name || item.providerId },
-    { title: 'Nature', dataIndex: 'nature', key: 'nature', render: (value: string) => <Text strong>{value}</Text> },
+    { title: t('Prestataire'), key: 'provider', render: (_: unknown, item) => item.provider?.name || item.providerId },
+    { title: t('Nature'), dataIndex: 'nature', key: 'nature', render: (value: string) => <Text strong>{value}</Text> },
     {
-      title: 'Début',
+      title: t('Début'),
       dataIndex: 'startDate',
       key: 'startDate',
       render: (value: string) => dayjs(value).format('DD/MM/YYYY')
     },
     {
-      title: 'Fin',
+      title: t('Fin'),
       dataIndex: 'endDate',
       key: 'endDate',
       render: (value?: string | null) => {
-        if (!value) return 'Sans fin';
+        if (!value) return t('Sans fin');
         const expiringSoon = dayjs(value).isBefore(dayjs().add(renewalWindowDays, 'day'));
         return <Text type={expiringSoon ? 'warning' : undefined}>{dayjs(value).format('DD/MM/YYYY')}</Text>;
       }
     },
     {
-      title: 'Montant annuel',
+      title: t('Montant annuel'),
       key: 'annualAmount',
       render: (_: unknown, item) =>
-        item.annualAmount ? `${Number(item.annualAmount).toLocaleString('fr-FR')} ${item.currency}` : 'Non renseigné'
+        item.annualAmount
+          ? `${Number(item.annualAmount).toLocaleString(activeLocale())} ${item.currency}`
+          : t('Non renseigné')
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
       render: (value: MaintenanceContract['status']) => (

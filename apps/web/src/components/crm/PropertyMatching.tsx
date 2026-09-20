@@ -11,6 +11,7 @@ import {
 } from '../../services/crm-service';
 import { Search } from 'lucide-react';
 import { App } from 'antd';
+import { t } from '../../i18n/t';
 
 interface PropertyMatchingProps {
   tenantId: string;
@@ -48,10 +49,10 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
       if (response.success) {
         setMatches(response.matches);
       } else {
-        setError('Error matching properties');
+        setError(t('Error matching properties'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Error matching properties');
+      setError(err.response?.data?.message || t('Error matching properties'));
     } finally {
       setLoading(false);
     }
@@ -72,7 +73,7 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
         setMatches(matches.filter(m => m.propertyId !== match.propertyId));
       }
     } catch (err: any) {
-      message.error(err.response?.data?.message || "Erreur lors de l'ajout à la sélection");
+      message.error(err.response?.data?.message || t("Erreur lors de l'ajout à la sélection"));
     }
   };
 
@@ -81,7 +82,7 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
       await updatePropertyStatus(tenantId, dealId, propertyId, status);
       await loadShortlist();
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors de la mise à jour du statut');
+      message.error(err.response?.data?.message || t('Erreur lors de la mise à jour du statut'));
     }
   };
 
@@ -90,7 +91,7 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-xl font-semibold">Property Matching</h2>
+        <h2 className="text-xl font-semibold">{t('Property Matching')}</h2>
         <div className="flex gap-2">
           <input
             type="number"
@@ -101,8 +102,8 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
             max="100"
           />
           <Button onClick={handleMatch} disabled={loading}>
-            <Search className="h-4 w-4 mr-2" />
-            {loading ? 'Matching...' : 'Find Matches'}
+            <Search className="h-4 w-4 me-2" />
+            {loading ? 'Matching...' : t('Find Matches')}
           </Button>
         </div>
       </div>
@@ -112,7 +113,10 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
       {/* Shortlist */}
       {shortlist.length > 0 && (
         <div>
-          <h3 className="text-lg font-medium mb-3">Shortlist ({shortlist.length})</h3>
+          <h3 className="text-lg font-medium mb-3">
+            {t('Shortlist (')}
+            {shortlist.length})
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {shortlist.map(item => (
               <PropertyMatchCard
@@ -134,7 +138,10 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
       {/* New Matches */}
       {matches.length > 0 && (
         <div>
-          <h3 className="text-lg font-medium mb-3">Suggested Matches ({matches.length})</h3>
+          <h3 className="text-lg font-medium mb-3">
+            {t('Suggested Matches (')}
+            {matches.length})
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {matches
               .filter(match => !shortlistPropertyIds.has(match.propertyId))
@@ -152,11 +159,11 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ tenantId, de
       {matches.length === 0 && shortlist.length === 0 && !loading && (
         <div className="bg-white rounded-lg shadow p-12 text-center">
           <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No matches yet</h3>
-          <p className="text-gray-600 mb-4">Click "Find Matches" to search for properties matching this deal.</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{t('No matches yet')}</h3>
+          <p className="text-gray-600 mb-4">{t('Click "Find Matches" to search for properties matching this deal.')}</p>
           <Button onClick={handleMatch}>
-            <Search className="h-4 w-4 mr-2" />
-            Find Matches
+            <Search className="h-4 w-4 me-2" />
+            {t('Find Matches')}
           </Button>
         </div>
       )}

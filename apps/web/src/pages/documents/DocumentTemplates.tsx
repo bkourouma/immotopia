@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import apiClient from '../../utils/api-client';
 import { ConfirmAction, DataCard, DataView, StatusTag, useConfirmAction } from '../../components/primitives';
+import { t as translate } from '../../i18n/t';
 
 const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
@@ -32,10 +33,10 @@ interface DocumentTemplate {
 }
 
 const DOC_TYPES = [
-  { value: 'LEASE_HABITATION', label: 'Bail Habitation' },
-  { value: 'LEASE_COMMERCIAL', label: 'Bail Commercial' },
-  { value: 'RENT_RECEIPT', label: 'Reçu de Loyer' },
-  { value: 'RENT_STATEMENT', label: 'Relevé de Compte' }
+  { value: 'LEASE_HABITATION', label: translate('Bail Habitation') },
+  { value: 'LEASE_COMMERCIAL', label: translate('Bail Commercial') },
+  { value: 'RENT_RECEIPT', label: translate('Reçu de Loyer') },
+  { value: 'RENT_STATEMENT', label: translate('Relevé de Compte') }
 ];
 
 // Constants for displaying placeholder syntax in JSX
@@ -98,10 +99,10 @@ export function DocumentTemplates() {
         // non par un toast : le toast disparaît et laisse « Aucun modèle », qui
         // fait croire à une liste vide alors que l'appel a échoué. Le bloc
         // reste, et porte le bouton « Réessayer ».
-        setError(data.message || 'Impossible de charger les modèles de documents.');
+        setError(data.message || translate('Impossible de charger les modèles de documents.'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Impossible de charger les modèles de documents.');
+      setError(err.response?.data?.message || translate('Impossible de charger les modèles de documents.'));
       console.error(err);
     } finally {
       setLoading(false);
@@ -122,13 +123,13 @@ export function DocumentTemplates() {
 
   const handleUpload = async (values: any) => {
     if (!values.file || !Array.isArray(values.file) || values.file.length === 0) {
-      message.error('Veuillez sélectionner un fichier');
+      message.error(translate('Veuillez sélectionner un fichier'));
       return;
     }
 
     const file = values.file[0];
     if (!file.originFileObj) {
-      message.error('Erreur lors de la sélection du fichier');
+      message.error(translate('Erreur lors de la sélection du fichier'));
       return;
     }
 
@@ -149,15 +150,15 @@ export function DocumentTemplates() {
       const data = response.data;
 
       if (data.success) {
-        message.success('Template ajouté avec succès');
+        message.success(translate('Template ajouté avec succès'));
         setShowUploadModal(false);
         form.resetFields();
         loadTemplates();
       } else {
-        message.error(data.message || 'Erreur lors du téléchargement');
+        message.error(data.message || translate('Erreur lors du téléchargement'));
       }
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors du téléchargement');
+      message.error(err.response?.data?.message || translate('Erreur lors du téléchargement'));
       console.error(err);
     } finally {
       setUploading(false);
@@ -170,13 +171,13 @@ export function DocumentTemplates() {
 
       const data = response.data;
       if (data.success) {
-        message.success('Template défini par défaut');
+        message.success(translate('Template défini par défaut'));
         loadTemplates();
       } else {
-        message.error(data.message || 'Erreur lors de la définition du template par défaut');
+        message.error(data.message || translate('Erreur lors de la définition du template par défaut'));
       }
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors de la définition du template par défaut');
+      message.error(err.response?.data?.message || translate('Erreur lors de la définition du template par défaut'));
       console.error(err);
     }
   };
@@ -190,13 +191,13 @@ export function DocumentTemplates() {
 
       const data = response.data;
       if (data.success) {
-        message.success(`Template ${newStatus === 'ACTIVE' ? 'activé' : 'désactivé'}`);
+        message.success(translate('Template {{value}}', { value: newStatus === 'ACTIVE' ? 'activé' : 'désactivé' }));
         loadTemplates();
       } else {
-        message.error(data.message || 'Erreur lors de la mise à jour');
+        message.error(data.message || translate('Erreur lors de la mise à jour'));
       }
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors de la mise à jour');
+      message.error(err.response?.data?.message || translate('Erreur lors de la mise à jour'));
       console.error(err);
     }
   };
@@ -207,13 +208,13 @@ export function DocumentTemplates() {
 
       const data = response.data;
       if (data.success) {
-        message.success('Template supprimé avec succès');
+        message.success(translate('Template supprimé avec succès'));
         loadTemplates();
       } else {
-        message.error(data.message || 'Erreur lors de la suppression');
+        message.error(data.message || translate('Erreur lors de la suppression'));
       }
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors de la suppression');
+      message.error(err.response?.data?.message || translate('Erreur lors de la suppression'));
       console.error(err);
     }
   };
@@ -230,7 +231,7 @@ export function DocumentTemplates() {
    */
   const columns: ColumnsType<DocumentTemplate> = [
     {
-      title: 'Nom',
+      title: translate('Nom'),
       dataIndex: 'name',
       key: 'name',
       width: 340,
@@ -243,7 +244,7 @@ export function DocumentTemplates() {
             <Text strong>{text}</Text>
             {record.is_default && (
               <Tag icon={<StarFilled />} color="gold">
-                Par défaut
+                {translate('Par défaut')}
               </Tag>
             )}
           </Space>
@@ -254,21 +255,21 @@ export function DocumentTemplates() {
       )
     },
     {
-      title: 'Type',
+      title: translate('Type'),
       dataIndex: 'doc_type',
       key: 'doc_type',
       width: 170,
       render: (docType: string) => <Text style={{ whiteSpace: 'nowrap' }}>{libelleType(docType)}</Text>
     },
     {
-      title: 'Statut',
+      title: translate('Statut'),
       dataIndex: 'status',
       key: 'status',
       width: 110,
       render: (status: string) => <StatusTag status={status} />
     },
     {
-      title: 'Placeholders',
+      title: translate('Placeholders'),
       dataIndex: 'placeholders',
       key: 'placeholders',
       width: 220,
@@ -282,28 +283,28 @@ export function DocumentTemplates() {
       )
     },
     {
-      title: 'Actions',
+      title: translate('Actions'),
       key: 'actions',
       width: 280,
       render: (_: any, record: DocumentTemplate) => (
         <Space wrap={false}>
           {!record.is_default && (
             <Button type="link" icon={<StarOutlined />} onClick={() => handleSetDefault(record.id)}>
-              Définir par défaut
+              {translate('Définir par défaut')}
             </Button>
           )}
           <Button type="link" onClick={() => handleToggleStatus(record.id, record.status)}>
-            {record.status === 'ACTIVE' ? 'Désactiver' : 'Activer'}
+            {record.status === 'ACTIVE' ? translate('Désactiver') : translate('Activer')}
           </Button>
           <ConfirmAction
-            title={`Supprimer « ${record.name} » ?`}
-            description="Le modèle ne sera plus proposé à la génération. Cette action est définitive."
-            okText="Supprimer"
+            title={translate('Supprimer « {{name}} » ?', { name: record.name })}
+            description={translate('Le modèle ne sera plus proposé à la génération. Cette action est définitive.')}
+            okText={translate('Supprimer')}
             danger
             onConfirm={() => handleDelete(record.id)}
           >
             <Button type="link" danger icon={<DeleteOutlined />}>
-              Supprimer
+              {translate('Supprimer')}
             </Button>
           </ConfirmAction>
         </Space>
@@ -320,22 +321,22 @@ export function DocumentTemplates() {
   const actionsSecondaires = (template: DocumentTemplate): MenuProps['items'] => [
     {
       key: 'statut',
-      label: template.status === 'ACTIVE' ? 'Désactiver' : 'Activer',
+      label: template.status === 'ACTIVE' ? translate('Désactiver') : 'Activer',
       icon: template.status === 'ACTIVE' ? <CloseCircleOutlined /> : <CheckCircleOutlined />,
       onClick: () => handleToggleStatus(template.id, template.status)
     },
     {
       key: 'supprimer',
-      label: 'Supprimer',
+      label: translate('Supprimer'),
       icon: <DeleteOutlined />,
       danger: true,
       // Version impérative de `<ConfirmAction>` : une entrée de menu n'est pas
       // un élément déclencheur qu'on peut envelopper.
       onClick: () =>
         confirmAction({
-          title: `Supprimer « ${template.name} » ?`,
-          description: 'Le modèle ne sera plus proposé à la génération. Cette action est définitive.',
-          okText: 'Supprimer',
+          title: translate('Supprimer « {{name}} » ?', { name: template.name }),
+          description: translate('Le modèle ne sera plus proposé à la génération. Cette action est définitive.'),
+          okText: translate('Supprimer'),
           danger: true,
           onConfirm: () => handleDelete(template.id)
         })
@@ -353,9 +354,9 @@ export function DocumentTemplates() {
         <Row justify="space-between" align="middle" gutter={[16, 16]}>
           <Col xs={24} sm="auto">
             <Title level={2} style={{ marginBottom: 'var(--space-1)' }}>
-              Templates de Documents
+              {translate('Templates de Documents')}
             </Title>
-            <Text type="secondary">Gérez vos templates de documents</Text>
+            <Text type="secondary">{translate('Gérez vos templates de documents')}</Text>
           </Col>
           <Col xs={24} sm="auto">
             <Space wrap>
@@ -363,10 +364,10 @@ export function DocumentTemplates() {
                 icon={<QuestionCircleOutlined />}
                 onClick={() => window.open('/docs/GUIDE_TENANT_MODELES_DOCUMENTS.md', '_blank', 'noopener,noreferrer')}
               >
-                Guide d'utilisation
+                {translate("Guide d'utilisation")}
               </Button>
               <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowUploadModal(true)}>
-                Ajouter un template
+                {translate('Ajouter un template')}
               </Button>
             </Space>
           </Col>
@@ -378,15 +379,16 @@ export function DocumentTemplates() {
             message={
               <Space direction="vertical" size="small" style={{ width: '100%' }}>
                 <Title level={5} style={{ margin: 0 }}>
-                  Comment créer vos modèles de documents ?
+                  {translate('Comment créer vos modèles de documents ?')}
                 </Title>
                 <Paragraph style={{ marginBottom: 8 }}>
-                  Créez vos propres modèles de contrats de bail, reçus et relevés en utilisant des variables dans un
-                  document Word (.docx).
+                  {translate(
+                    'Créez vos propres modèles de contrats de bail, reçus et relevés en utilisant des variables dans un document Word (.docx).'
+                  )}
                 </Paragraph>
                 <Space direction="vertical" size="small">
                   <Text>
-                    • Utilisez des variables comme{' '}
+                    {translate('• Utilisez des variables comme')}{' '}
                     <Tag>
                       {OPEN_BRACE}
                       {OPEN_BRACE}AGENCE_NOM{CLOSE_BRACE}
@@ -399,8 +401,10 @@ export function DocumentTemplates() {
                       {CLOSE_BRACE}
                     </Tag>
                   </Text>
-                  <Text>• Téléchargez votre fichier DOCX avec votre mise en page personnalisée</Text>
-                  <Text>• Le système remplacera automatiquement les variables lors de la génération</Text>
+                  <Text>{translate('• Téléchargez votre fichier DOCX avec votre mise en page personnalisée')}</Text>
+                  <Text>
+                    {translate('• Le système remplacera automatiquement les variables lors de la génération')}
+                  </Text>
                 </Space>
                 <Button
                   type="link"
@@ -410,9 +414,9 @@ export function DocumentTemplates() {
                   // Un `Button` AntD garde son libellé sur une seule ligne :
                   // celui-ci mesure 504 px et débordait de l'écran. On l'autorise
                   // à se couper, et la hauteur suit.
-                  style={{ padding: 0, height: 'auto', whiteSpace: 'normal', textAlign: 'left' }}
+                  style={{ padding: 0, height: 'auto', whiteSpace: 'normal', textAlign: 'start' }}
                 >
-                  Consulter le guide complet avec toutes les variables disponibles →
+                  {translate('Consulter le guide complet avec toutes les variables disponibles →')}
                 </Button>
               </Space>
             }
@@ -426,11 +430,11 @@ export function DocumentTemplates() {
         <Card>
           <div className="it-filters">
             <div className="it-filters__field">
-              <Text strong>Filtrer par type</Text>
+              <Text strong>{translate('Filtrer par type')}</Text>
               <Select
                 value={filterDocType || undefined}
                 onChange={value => setFilterDocType(value || '')}
-                placeholder="Tous les types"
+                placeholder={translate('Tous les types')}
                 allowClear
                 style={{ width: 200 }}
               >
@@ -459,25 +463,25 @@ export function DocumentTemplates() {
           onRetry={loadTemplates}
           isFiltered={Boolean(filterDocType)}
           onClearFilters={() => setFilterDocType('')}
-          emptyDescription="Aucun modèle de document n'est encore enregistré pour cette agence."
-          emptyAction={{ label: 'Ajouter un template', onClick: () => setShowUploadModal(true) }}
+          emptyDescription={translate("Aucun modèle de document n'est encore enregistré pour cette agence.")}
+          emptyAction={{ label: translate('Ajouter un template'), onClick: () => setShowUploadModal(true) }}
           columns={columns}
           // 340 + 170 + 110 + 220 + 280. Au plancher du desktop (992 px moins
           // la sidebar), la zone de contenu fait environ 690 px : le tableau
           // défile plutôt que d'écraser « Type » sur deux lignes.
           scrollX={1120}
           rowKey={template => template.id}
-          aria-label="Modèles de documents"
+          aria-label={translate('Modèles de documents')}
           renderCard={template => (
             <DataCard
               title={template.name}
-              aria-label={`Modèle ${template.name}`}
+              aria-label={translate('Modèle {{name}}', { name: template.name })}
               subtitle={template.original_filename}
               status={<StatusTag status={template.status} />}
               highlight={
                 template.is_default ? (
                   <Tag icon={<StarFilled />} color="gold">
-                    Par défaut
+                    {translate('Par défaut')}
                   </Tag>
                 ) : undefined
               }
@@ -498,7 +502,7 @@ export function DocumentTemplates() {
                 template.is_default
                   ? undefined
                   : {
-                      label: 'Définir par défaut',
+                      label: translate('Définir par défaut'),
                       icon: <StarOutlined />,
                       onClick: () => handleSetDefault(template.id)
                     }
@@ -510,7 +514,7 @@ export function DocumentTemplates() {
 
         {/* Upload Modal */}
         <Modal
-          title="Ajouter un template"
+          title={translate('Ajouter un template')}
           open={showUploadModal}
           onCancel={() => {
             setShowUploadModal(false);
@@ -528,9 +532,9 @@ export function DocumentTemplates() {
             }}
           >
             <Form.Item
-              label="Type de document"
+              label={translate('Type de document')}
               name="docType"
-              rules={[{ required: true, message: 'Veuillez sélectionner un type de document' }]}
+              rules={[{ required: true, message: translate('Veuillez sélectionner un type de document') }]}
             >
               <Select>
                 {DOC_TYPES.map(type => (
@@ -542,28 +546,28 @@ export function DocumentTemplates() {
             </Form.Item>
 
             <Form.Item
-              label="Nom du template"
+              label={translate('Nom du template')}
               name="name"
-              rules={[{ required: true, message: 'Veuillez saisir un nom pour le template' }]}
+              rules={[{ required: true, message: translate('Veuillez saisir un nom pour le template') }]}
             >
-              <Input placeholder="Ex: Bail Habitation Standard" />
+              <Input placeholder={translate('Ex: Bail Habitation Standard')} />
             </Form.Item>
 
             <Form.Item
-              label="Fichier DOCX"
+              label={translate('Fichier DOCX')}
               name="file"
               rules={[
-                { required: true, message: 'Veuillez sélectionner un fichier DOCX' },
+                { required: true, message: translate('Veuillez sélectionner un fichier DOCX') },
                 {
                   validator: (_: any, fileList: any[]) => {
                     if (!fileList || fileList.length === 0) {
-                      return Promise.reject(new Error('Veuillez sélectionner un fichier DOCX'));
+                      return Promise.reject(new Error(translate('Veuillez sélectionner un fichier DOCX')));
                     }
                     const file = fileList[0];
                     if (file.originFileObj) {
                       const fileName = file.originFileObj.name.toLowerCase();
                       if (!fileName.endsWith('.docx')) {
-                        return Promise.reject(new Error('Seuls les fichiers DOCX sont acceptés'));
+                        return Promise.reject(new Error(translate('Seuls les fichiers DOCX sont acceptés')));
                       }
                     }
                     return Promise.resolve();
@@ -579,7 +583,7 @@ export function DocumentTemplates() {
               }}
             >
               <Upload accept=".docx" maxCount={1} beforeUpload={() => false}>
-                <Button icon={<UploadOutlined />}>Sélectionner un fichier DOCX</Button>
+                <Button icon={<UploadOutlined />}>{translate('Sélectionner un fichier DOCX')}</Button>
               </Upload>
             </Form.Item>
 
@@ -591,10 +595,10 @@ export function DocumentTemplates() {
                     form.resetFields();
                   }}
                 >
-                  Annuler
+                  {translate('Annuler')}
                 </Button>
                 <Button type="primary" htmlType="submit" loading={uploading}>
-                  {uploading ? 'Téléchargement...' : 'Télécharger'}
+                  {uploading ? translate('Téléchargement...') : translate('Télécharger')}
                 </Button>
               </Space>
             </Form.Item>

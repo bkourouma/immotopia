@@ -160,6 +160,7 @@ function auth(over: Partial<AuthContextType> = {}): AuthContextType {
       avatarUrl: null,
       globalRole: 'USER',
       emailVerified: true,
+      preferredLanguage: null,
       isActive: true,
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString()

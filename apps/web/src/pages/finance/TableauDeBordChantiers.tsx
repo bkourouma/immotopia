@@ -18,6 +18,7 @@ import {
   StatusTag
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
 /**
  * Tableau de bord des chantiers — écran de pilotage du lot 3
@@ -72,8 +73,8 @@ function toneEcart(variance: number | null): StatusTone {
 }
 
 function labelEcart(variance: number | null): string {
-  if (variance === null) return 'Sans budget';
-  return variance < 0 ? 'Dépassement' : 'Dans le budget';
+  if (variance === null) return t('Sans budget');
+  return variance < 0 ? t('Dépassement') : t('Dans le budget');
 }
 
 export const TableauDeBordChantiers: React.FC = () => {
@@ -118,65 +119,68 @@ export const TableauDeBordChantiers: React.FC = () => {
   };
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const ouvrirBudget = (ligne: SiteDashboardRow) =>
     navigate(`/tenant/${tenantId}/finance/chantiers/${ligne.siteId}/budget`);
 
   const colonnes: ColumnsType<SiteDashboardRow> = [
-    { title: 'Chantier', key: 'chantier', render: (_, r) => r.siteLabel },
-    { title: 'Zone', key: 'zone', render: (_, r) => r.zone || '—' },
-    { title: 'Statut', key: 'statut', render: (_, r) => <StatusTag status={r.status} /> },
-    { title: 'Avancement', key: 'avancement', align: 'right', render: (_, r) => `${r.progressPercent} %` },
+    { title: t('Chantier'), key: 'chantier', render: (_, r) => r.siteLabel },
+    { title: t('Zone'), key: 'zone', render: (_, r) => r.zone || '—' },
+    { title: t('Statut'), key: 'statut', render: (_, r) => <StatusTag status={r.status} /> },
+    { title: t('Avancement'), key: 'avancement', align: 'end', render: (_, r) => `${r.progressPercent} %` },
     {
-      title: 'Budget initial',
+      title: t('Budget initial'),
       key: 'budget-initial',
-      align: 'right',
+      align: 'end',
       render: (_, r) => <MoneyValue value={r.initialBudget} />
     },
     {
-      title: 'Budget révisé',
+      title: t('Budget révisé'),
       key: 'budget-revise',
-      align: 'right',
+      align: 'end',
       render: (_, r) => <MoneyValue value={r.revisedBudget} />
     },
-    { title: 'Engagé', key: 'engage', align: 'right', render: (_, r) => <MoneyValue value={r.engagedAmount} /> },
-    { title: 'Réalisé', key: 'realise', align: 'right', render: (_, r) => <MoneyValue value={r.actualCost} /> },
+    { title: t('Engagé'), key: 'engage', align: 'end', render: (_, r) => <MoneyValue value={r.engagedAmount} /> },
+    { title: t('Réalisé'), key: 'realise', align: 'end', render: (_, r) => <MoneyValue value={r.actualCost} /> },
     {
-      title: 'Écart',
+      title: t('Écart'),
       key: 'ecart',
-      align: 'right',
+      align: 'end',
       render: (_, r) => (
         <StatusTag status={labelEcart(r.variance)} tone={toneEcart(r.variance)} label={labelEcart(r.variance)} />
       )
     },
     {
-      title: 'Alerte',
+      title: t('Alerte'),
       key: 'alerte',
       render: (_, r) =>
         r.openAlert ? (
           <Tooltip
-            title={`Seuil de ${r.openAlert.thresholdPercent} % franchi — ${r.openAlert.consumedPercent} % du budget consommé`}
+            title={t('Seuil de {{thresholdPercent}} % franchi — {{consumedPercent}} % du budget consommé', {
+              thresholdPercent: r.openAlert.thresholdPercent,
+              consumedPercent: r.openAlert.consumedPercent
+            })}
           >
-            <StatusTag status="alerte" tone="danger" label="Alerte" />
+            <StatusTag status="alerte" tone="danger" label={t('Alerte')} />
           </Tooltip>
         ) : (
           '—'
         )
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, r) => (
         <Space size="small">
           <Button type="link" onClick={() => ouvrirBudget(r)}>
-            Voir le budget
+            {t('Voir le budget')}
           </Button>
           {r.openAlert && (
             <Button type="link" onClick={() => acquitter(r)}>
-              Acquitter l'alerte
+              {t("Acquitter l'alerte")}
             </Button>
           )}
         </Space>
@@ -187,21 +191,21 @@ export const TableauDeBordChantiers: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Tableau de bord des chantiers"
+        title={t('Tableau de bord des chantiers')}
         subtitle={lignes.length > 0 ? `${lignes.length} chantier${lignes.length > 1 ? 's' : ''}` : undefined}
       />
 
       <FilterSheet
         activeCount={nombreFiltres}
         onClear={() => list.setFilters({ status: undefined, onlyOverBudget: undefined })}
-        title="Filtrer le tableau de bord"
+        title={t('Filtrer le tableau de bord')}
       >
         <div style={{ minWidth: 200 }}>
-          <label htmlFor="filtre-tdb-statut">Statut</label>
+          <label htmlFor="filtre-tdb-statut">{t('Statut')}</label>
           <Select
             id="filtre-tdb-statut"
             style={{ width: '100%' }}
-            placeholder="Tous les statuts"
+            placeholder={t('Tous les statuts')}
             allowClear
             value={list.filters.status || undefined}
             onChange={valeur => list.setFilters({ status: valeur })}
@@ -213,7 +217,7 @@ export const TableauDeBordChantiers: React.FC = () => {
             checked={list.filters.onlyOverBudget === 'true'}
             onChange={event => list.setFilters({ onlyOverBudget: event.target.checked ? 'true' : undefined })}
           >
-            Chantiers en dépassement uniquement
+            {t('Chantiers en dépassement uniquement')}
           </Checkbox>
         </div>
       </FilterSheet>
@@ -230,14 +234,14 @@ export const TableauDeBordChantiers: React.FC = () => {
         onPageChange={() => {}}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger le tableau de bord des chantiers.' : null}
+        error={erreurRequete ? t('Impossible de charger le tableau de bord des chantiers.') : null}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={() => list.setFilters({ status: undefined, onlyOverBudget: undefined })}
-        emptyDescription="Aucun chantier ne correspond à ces critères."
+        emptyDescription={t('Aucun chantier ne correspond à ces critères.')}
         columns={colonnes}
         rowKey={r => r.siteId}
-        aria-label="Tableau de bord des chantiers"
+        aria-label={t('Tableau de bord des chantiers')}
         renderCard={r => (
           <DataCard
             title={r.siteLabel}
@@ -246,11 +250,11 @@ export const TableauDeBordChantiers: React.FC = () => {
             status={<StatusTag status={r.status} />}
             highlight={<MoneyValue value={r.engagedAmount} />}
             fields={[
-              { label: 'Budget initial', value: <MoneyValue value={r.initialBudget} /> },
-              { label: 'Budget révisé', value: <MoneyValue value={r.revisedBudget} /> },
-              { label: 'Réalisé', value: <MoneyValue value={r.actualCost} /> },
+              { label: t('Budget initial'), value: <MoneyValue value={r.initialBudget} /> },
+              { label: t('Budget révisé'), value: <MoneyValue value={r.revisedBudget} /> },
+              { label: t('Réalisé'), value: <MoneyValue value={r.actualCost} /> },
               {
-                label: 'Écart',
+                label: t('Écart'),
                 value: (
                   <StatusTag
                     status={labelEcart(r.variance)}
@@ -263,14 +267,19 @@ export const TableauDeBordChantiers: React.FC = () => {
                 ? [
                     {
                       label: 'Alerte',
-                      value: `Seuil de ${r.openAlert.thresholdPercent} % franchi (${r.openAlert.consumedPercent} %)`
+                      value: t('Seuil de {{thresholdPercent}} % franchi ({{consumedPercent}} %)', {
+                        thresholdPercent: r.openAlert.thresholdPercent,
+                        consumedPercent: r.openAlert.consumedPercent
+                      })
                     }
                   ]
                 : [])
             ]}
-            primaryAction={{ label: 'Voir le budget', onClick: () => ouvrirBudget(r) }}
+            primaryAction={{ label: t('Voir le budget'), onClick: () => ouvrirBudget(r) }}
             secondaryActions={
-              r.openAlert ? [{ key: 'acquitter', label: "Acquitter l'alerte", onClick: () => acquitter(r) }] : undefined
+              r.openAlert
+                ? [{ key: 'acquitter', label: t("Acquitter l'alerte"), onClick: () => acquitter(r) }]
+                : undefined
             }
           />
         )}

@@ -3,6 +3,7 @@ import { Select, Spin } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../../utils/api-client';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
+import { t } from '../../i18n/t';
 
 interface Vendor {
   id: string;
@@ -45,10 +46,10 @@ export const VendorSelect: React.FC<VendorSelectProps> = ({ tenantId, value, onC
     <Select
       value={value}
       onChange={onChange}
-      placeholder="Sélectionner un prestataire"
+      placeholder={t('Sélectionner un prestataire')}
       allowClear
       loading={isPending}
-      notFoundContent={isPending ? <Spin size="small" /> : 'Aucun prestataire disponible'}
+      notFoundContent={isPending ? <Spin size="small" /> : t('Aucun prestataire disponible')}
       showSearch
       optionFilterProp="label"
       // Les spécialités accompagnent le nom dans le libellé plutôt que dans un

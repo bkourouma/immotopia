@@ -10,6 +10,7 @@ import { SubscriptionForm } from '../../components/newsletter/SubscriptionForm';
 import { AdvancedContactSearch } from '../../components/crm/AdvancedContactSearch';
 import { newsletterService, type NewsletterList, type NewsletterSubscriber } from '../../services/newsletter.service';
 import type { ContactSearchResultItem } from '../../services/contact-search.service';
+import { t } from '../../i18n/t';
 
 export function NewsletterListsPage() {
   const { message } = App.useApp();
@@ -39,7 +40,7 @@ export function NewsletterListsPage() {
       const data = await newsletterService.listLists(tenantId);
       setLists(data);
     } catch (e) {
-      message.error((e as Error).message || 'Erreur lors du chargement');
+      message.error((e as Error).message || t('Erreur lors du chargement'));
     } finally {
       setLoading(false);
     }
@@ -54,7 +55,7 @@ export function NewsletterListsPage() {
         setSubscribers(data.subscribers);
         setPagination(data.pagination);
       } catch (e) {
-        message.error((e as Error).message || 'Erreur lors du chargement');
+        message.error((e as Error).message || t('Erreur lors du chargement'));
       } finally {
         setSubLoading(false);
       }
@@ -79,7 +80,7 @@ export function NewsletterListsPage() {
     setSaving(true);
     try {
       await newsletterService.createList(tenantId, { ...values, doubleOptIn: values.doubleOptIn ?? true });
-      message.success('Liste créée');
+      message.success(t('Liste créée'));
       setCreateModalOpen(false);
       form.resetFields();
       loadLists();
@@ -95,7 +96,7 @@ export function NewsletterListsPage() {
     setSaving(true);
     try {
       await newsletterService.updateList(tenantId, editList.id, values);
-      message.success('Liste modifiée');
+      message.success(t('Liste modifiée'));
       setEditModalOpen(false);
       setEditList(null);
       editForm.resetFields();
@@ -115,7 +116,7 @@ export function NewsletterListsPage() {
     setSaving(true);
     try {
       await newsletterService.deleteList(tenantId, listToDelete.id);
-      message.success('Liste supprimée');
+      message.success(t('Liste supprimée'));
       setDeleteModalOpen(false);
       setListToDelete(null);
       if (selectedList?.id === listToDelete.id) setSelectedList(null);
@@ -131,7 +132,7 @@ export function NewsletterListsPage() {
     if (!tenantId) return;
     try {
       await newsletterService.removeSubscriber(tenantId, sub.id);
-      message.success('Abonné retiré');
+      message.success(t('Abonné retiré'));
       loadSubscribers(pagination.page, pagination.limit);
       loadLists();
     } catch (e) {
@@ -140,7 +141,7 @@ export function NewsletterListsPage() {
   };
 
   const handleImport = async (file: File) => {
-    if (!tenantId || !selectedList) throw new Error('Liste non sélectionnée');
+    if (!tenantId || !selectedList) throw new Error(t('Liste non sélectionnée'));
     return newsletterService.importCsv(tenantId, selectedList.id, file);
   };
 
@@ -154,7 +155,7 @@ export function NewsletterListsPage() {
       a.download = `newsletter-${selectedList.name}-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-      message.success('Export terminé');
+      message.success(t('Export terminé'));
     } catch (e) {
       message.error((e as Error).message || 'Erreur');
     }
@@ -170,12 +171,15 @@ export function NewsletterListsPage() {
       );
       setAdvancedSearchModalOpen(false);
       message.success(
-        `${result.added} contact(s) ajouté(s)${result.skipped ? `, ${result.skipped} ignoré(s) ou déjà présents` : ''}`
+        t('{{added}} contact(s) ajouté(s){{value}}', {
+          added: result.added,
+          value: result.skipped ? `, ${result.skipped} ignoré(s) ou déjà présents` : ''
+        })
       );
       loadSubscribers(1, pagination.limit);
       loadLists();
     } catch (e) {
-      message.error((e as Error).message || "Erreur lors de l'ajout");
+      message.error((e as Error).message || t("Erreur lors de l'ajout"));
     }
   };
 
@@ -192,7 +196,7 @@ export function NewsletterListsPage() {
               onClick={() => setSelectedList(null)}
               style={{ marginBottom: 16 }}
             >
-              Retour aux listes
+              {t('Retour aux listes')}
             </Button>
             <Card title={selectedList.name}>
               {canEditList && selectedList.publicSubscribeToken != null && selectedList.publicSubscribeToken && (
@@ -200,11 +204,11 @@ export function NewsletterListsPage() {
                   items={[
                     {
                       key: 'public-form',
-                      label: "Formulaire d'inscription publique",
+                      label: t("Formulaire d'inscription publique"),
                       children: (
                         <div>
                           <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-                            Lien public :{' '}
+                            {t('Lien public :')}{' '}
                             <a
                               href={`${window.location.origin}/newsletter/subscribe?token=${selectedList.publicSubscribeToken}`}
                               target="_blank"
@@ -215,7 +219,7 @@ export function NewsletterListsPage() {
                           </Typography.Paragraph>
                           <SubscriptionForm
                             listToken={selectedList.publicSubscribeToken}
-                            submitLabel="S'inscrire à la newsletter"
+                            submitLabel={t("S'inscrire à la newsletter")}
                             showName={true}
                           />
                         </div>
@@ -229,7 +233,7 @@ export function NewsletterListsPage() {
                 <>
                   <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <Button type="primary" icon={<UserAddOutlined />} onClick={() => setAdvancedSearchModalOpen(true)}>
-                      Ajouter des contacts (recherche CRM)
+                      {t('Ajouter des contacts (recherche CRM)')}
                     </Button>
                   </div>
                   <SubscriberList
@@ -246,12 +250,12 @@ export function NewsletterListsPage() {
               ) : (
                 <div style={{ padding: 24, background: '#fafafa', borderRadius: 8 }}>
                   <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-                    Liste dérivée : {selectedList.activeCount ?? 0} destinataire(s) potentiel(s) (propriétaires /
+                    {t('Liste dérivée :')} {selectedList.activeCount ?? 0} destinataire(s) potentiel(s) (propriétaires /
                     locataires / contacts avec consentement). Les abonnés sont résolus à l&apos;envoi de chaque
                     campagne.
                   </Typography.Paragraph>
                   <Button type="default" icon={<DownloadOutlined />} onClick={handleExport}>
-                    Exporter CSV (destinataires actuels)
+                    {t('Exporter CSV (destinataires actuels)')}
                   </Button>
                 </div>
               )}
@@ -277,42 +281,42 @@ export function NewsletterListsPage() {
       </div>
 
       <Modal
-        title="Nouvelle liste"
+        title={t('Nouvelle liste')}
         open={createModalOpen}
         onCancel={() => setCreateModalOpen(false)}
         footer={null}
         destroyOnClose
       >
         <Form form={form} layout="vertical" onFinish={handleCreateList}>
-          <Form.Item name="name" label="Nom" rules={[{ required: true }]}>
-            <Input placeholder="Ex: Newsletter clients" />
+          <Form.Item name="name" label={t('Nom')} rules={[{ required: true }]}>
+            <Input placeholder={t('Ex: Newsletter clients')} />
           </Form.Item>
-          <Form.Item name="type" label="Type" initialValue="MANUAL" rules={[{ required: true }]}>
+          <Form.Item name="type" label={t('Type')} initialValue="MANUAL" rules={[{ required: true }]}>
             <Select
               options={[
-                { value: 'MANUAL', label: 'Manuelle (import, ajout manuel)' },
-                { value: 'FROM_OWNERS', label: 'Propriétaires (avec accord newsletter)' },
-                { value: 'FROM_RENTERS', label: 'Locataires (avec accord newsletter)' },
-                { value: 'FROM_CRM_CONTACTS', label: 'Contacts CRM (consentement email)' }
+                { value: 'MANUAL', label: t('Manuelle (import, ajout manuel)') },
+                { value: 'FROM_OWNERS', label: t('Propriétaires (avec accord newsletter)') },
+                { value: 'FROM_RENTERS', label: t('Locataires (avec accord newsletter)') },
+                { value: 'FROM_CRM_CONTACTS', label: t('Contacts CRM (consentement email)') }
               ]}
             />
           </Form.Item>
-          <Form.Item name="doubleOptIn" label="Double opt-in" valuePropName="checked" initialValue={true}>
-            <Switch checkedChildren="Oui" unCheckedChildren="Non" />
+          <Form.Item name="doubleOptIn" label={t('Double opt-in')} valuePropName="checked" initialValue={true}>
+            <Switch checkedChildren={t('Oui')} unCheckedChildren={t('Non')} />
           </Form.Item>
           <Form.Item>
             <Space>
               <Button type="primary" htmlType="submit" loading={saving}>
-                Créer
+                {t('Créer')}
               </Button>
-              <Button onClick={() => setCreateModalOpen(false)}>Annuler</Button>
+              <Button onClick={() => setCreateModalOpen(false)}>{t('Annuler')}</Button>
             </Space>
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="Modifier la liste"
+        title={t('Modifier la liste')}
         open={editModalOpen}
         onCancel={() => {
           setEditModalOpen(false);
@@ -322,18 +326,18 @@ export function NewsletterListsPage() {
         destroyOnClose
       >
         <Form form={editForm} layout="vertical" onFinish={handleEditList}>
-          <Form.Item name="name" label="Nom" rules={[{ required: true }]}>
-            <Input placeholder="Ex: Newsletter clients" />
+          <Form.Item name="name" label={t('Nom')} rules={[{ required: true }]}>
+            <Input placeholder={t('Ex: Newsletter clients')} />
           </Form.Item>
           {editList?.type === 'MANUAL' && (
-            <Form.Item name="doubleOptIn" label="Double opt-in" valuePropName="checked">
-              <Switch checkedChildren="Oui" unCheckedChildren="Non" />
+            <Form.Item name="doubleOptIn" label={t('Double opt-in')} valuePropName="checked">
+              <Switch checkedChildren={t('Oui')} unCheckedChildren={t('Non')} />
             </Form.Item>
           )}
           <Form.Item>
             <Space>
               <Button type="primary" htmlType="submit" loading={saving}>
-                Enregistrer
+                {t('Enregistrer')}
               </Button>
               <Button
                 onClick={() => {
@@ -341,7 +345,7 @@ export function NewsletterListsPage() {
                   setEditList(null);
                 }}
               >
-                Annuler
+                {t('Annuler')}
               </Button>
             </Space>
           </Form.Item>
@@ -349,7 +353,7 @@ export function NewsletterListsPage() {
       </Modal>
 
       <Modal
-        title="Supprimer la liste"
+        title={t('Supprimer la liste')}
         open={deleteModalOpen}
         onOk={handleDeleteList}
         onCancel={() => {
@@ -357,13 +361,13 @@ export function NewsletterListsPage() {
           setListToDelete(null);
         }}
         confirmLoading={saving}
-        okText="Supprimer"
+        okText={t('Supprimer')}
         okButtonProps={{ danger: true }}
       >
         {listToDelete && (
           <p>
-            Êtes-vous sûr de vouloir supprimer la liste <strong>{listToDelete.name}</strong> ? Tous les abonnés seront
-            supprimés.
+            {t('Êtes-vous sûr de vouloir supprimer la liste')} <strong>{listToDelete.name}</strong>{' '}
+            {t('? Tous les abonnés seront supprimés.')}
           </p>
         )}
       </Modal>
@@ -371,7 +375,7 @@ export function NewsletterListsPage() {
       <ImportCsvModal open={importModalOpen} onClose={() => setImportModalOpen(false)} onImport={handleImport} />
 
       <Modal
-        title="Recherche avancée de contacts CRM"
+        title={t('Recherche avancée de contacts CRM')}
         open={advancedSearchModalOpen}
         onCancel={() => setAdvancedSearchModalOpen(false)}
         footer={null}

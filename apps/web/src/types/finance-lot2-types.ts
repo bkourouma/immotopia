@@ -1,3 +1,4 @@
+import { t } from '../i18n/t';
 /**
  * Contrat gelé de la frontière réseau — module financier, lot 2.
  *
@@ -23,9 +24,9 @@
 export type SupplierKind = 'MATERIALS' | 'SERVICES' | 'MIXED';
 
 export const SUPPLIER_KIND_LABELS: Record<SupplierKind, string> = {
-  MATERIALS: 'Matériaux',
+  MATERIALS: t('Matériaux'),
   SERVICES: 'Prestation',
-  MIXED: 'Matériaux et prestation'
+  MIXED: t('Matériaux et prestation')
 };
 
 /** Cycle de vie d'une pièce : brouillon, validée, annulée. */
@@ -33,25 +34,25 @@ export type DocumentStatus = 'DRAFT' | 'VALIDATED' | 'VOIDED';
 
 export const DOCUMENT_STATUS_LABELS: Record<DocumentStatus, string> = {
   DRAFT: 'Brouillon',
-  VALIDATED: 'Validée',
-  VOIDED: 'Annulée'
+  VALIDATED: t('Validée'),
+  VOIDED: t('Annulée')
 };
 
 export type VoidableDocumentType = 'SUPPLIER_INVOICE' | 'SUPPLIER_PAYMENT' | 'CASH_VOUCHER';
 
 export const DOCUMENT_TYPE_LABELS: Record<VoidableDocumentType, string> = {
-  SUPPLIER_INVOICE: 'Facture fournisseur',
-  SUPPLIER_PAYMENT: 'Règlement fournisseur',
-  CASH_VOUCHER: 'Pièce de caisse'
+  SUPPLIER_INVOICE: t('Facture fournisseur'),
+  SUPPLIER_PAYMENT: t('Règlement fournisseur'),
+  CASH_VOUCHER: t('Pièce de caisse')
 };
 
 export type ConstructionSiteStatus = 'PLANNED' | 'IN_PROGRESS' | 'SUSPENDED' | 'CLOSED';
 
 export const SITE_STATUS_LABELS: Record<ConstructionSiteStatus, string> = {
-  PLANNED: 'Prévu',
-  IN_PROGRESS: 'En cours',
+  PLANNED: t('Prévu'),
+  IN_PROGRESS: t('En cours'),
   SUSPENDED: 'Suspendu',
-  CLOSED: 'Clôturé'
+  CLOSED: t('Clôturé')
 };
 
 // ---------------------------------------------------------------------------

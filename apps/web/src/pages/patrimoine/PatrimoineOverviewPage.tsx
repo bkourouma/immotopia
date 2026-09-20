@@ -7,6 +7,7 @@ import { getPatrimoineOverview, listTenantWorkPrograms } from '../../services/pa
 import { useAuth } from '../../hooks/useAuth';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, SkeletonStats } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
 /**
  * Aperçu du patrimoine — le pire N+1 de l'application (REFONTE_UI_UX.md §8.4).
@@ -51,8 +52,8 @@ export const PatrimoineOverviewPage: React.FC = () => {
     return (
       <StateBlock
         variant="empty"
-        title="Aucune agence sélectionnée"
-        description="Votre compte doit être rattaché à une agence pour consulter son patrimoine."
+        title={t('Aucune agence sélectionnée')}
+        description={t('Votre compte doit être rattaché à une agence pour consulter son patrimoine.')}
       />
     );
   }
@@ -62,35 +63,37 @@ export const PatrimoineOverviewPage: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Patrimoine"
-        subtitle="Vue consolidée du portefeuille immobilier"
+        title={t('Patrimoine')}
+        subtitle={t('Vue consolidée du portefeuille immobilier')}
         // « Voir les biens », et non « Voir les biens (/properties) » :
         // l'adresse technique n'apprend rien à qui lit le bouton.
-        primaryAction={{ label: 'Voir les biens', onClick: () => navigate(`/tenant/${agence}/properties`) }}
+        primaryAction={{ label: t('Voir les biens'), onClick: () => navigate(`/tenant/${agence}/properties`) }}
       />
 
       {apercu.error ? (
         <StateBlock
           variant="error"
-          description="Impossible de charger la vue consolidée."
-          actions={[{ label: 'Réessayer', onClick: () => apercu.refetch(), primary: true }]}
+          description={t('Impossible de charger la vue consolidée.')}
+          actions={[{ label: t('Réessayer'), onClick: () => apercu.refetch(), primary: true }]}
         />
       ) : enChargement ? (
-        <SkeletonStats rows={4} aria-label="Patrimoine en cours de chargement" />
+        <SkeletonStats rows={4} aria-label={t('Patrimoine en cours de chargement')} />
       ) : apercu.data ? (
         <PatrimoineOverview data={apercu.data} />
       ) : (
-        <StateBlock variant="empty" title="Aucune donnée de patrimoine" />
+        <StateBlock variant="empty" title={t('Aucune donnée de patrimoine')} />
       )}
 
       {!enChargement && !apercu.error && (
         <div style={{ marginTop: 'var(--space-6)' }}>
-          <h2 style={{ fontSize: 'var(--font-size-h3)', marginBottom: 'var(--space-4)' }}>Programmes de travaux</h2>
+          <h2 style={{ fontSize: 'var(--font-size-h3)', marginBottom: 'var(--space-4)' }}>
+            {t('Programmes de travaux')}
+          </h2>
           {travaux.error ? (
             <StateBlock
               variant="error"
-              description="Impossible de charger les programmes de travaux."
-              actions={[{ label: 'Réessayer', onClick: () => travaux.refetch(), primary: true }]}
+              description={t('Impossible de charger les programmes de travaux.')}
+              actions={[{ label: t('Réessayer'), onClick: () => travaux.refetch(), primary: true }]}
             />
           ) : (
             <WorkProgramTimeline

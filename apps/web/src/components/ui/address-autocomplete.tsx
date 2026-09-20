@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Select, Spin, Empty, Typography } from 'antd';
 import { MapPin } from 'lucide-react';
 import { searchAddresses, PhotonResult } from '../../services/photon-service';
+import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
@@ -30,9 +31,9 @@ interface AddressAutocompleteProps {
 
 export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
   onSelect,
-  placeholder = 'Rechercher une adresse (rue, quartier, lieu)...',
+  placeholder = t('Rechercher une adresse (rue, quartier, lieu)...'),
   className = '',
-  disabled = false,
+  disabled = false
 }) => {
   const [options, setOptions] = useState<PhotonResult[]>([]);
   const [fetching, setFetching] = useState(false);
@@ -61,7 +62,7 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
   );
 
   const handleSelect = (id: string) => {
-    const item = options.find((o) => o.id === id);
+    const item = options.find(o => o.id === id);
     if (item && onSelect) {
       setSelectedId(id);
       setSelectedDisplay(item.displayName);
@@ -70,7 +71,7 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
         locationZone: item.locationZone,
         latitude: item.latitude,
         longitude: item.longitude,
-        displayName: item.displayName,
+        displayName: item.displayName
       });
     }
   };
@@ -82,8 +83,17 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
   };
 
   const displayOptions =
-    selectedId && selectedDisplay && !options.find((o) => o.id === selectedId)
-      ? [{ id: selectedId, displayName: selectedDisplay, address: selectedDisplay, latitude: 0, longitude: 0, type: 'place' } as PhotonResult]
+    selectedId && selectedDisplay && !options.find(o => o.id === selectedId)
+      ? [
+          {
+            id: selectedId,
+            displayName: selectedDisplay,
+            address: selectedDisplay,
+            latitude: 0,
+            longitude: 0,
+            type: 'place'
+          } as PhotonResult
+        ]
       : options;
 
   const typeLabel = (type: string) => {
@@ -92,8 +102,8 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
       house: 'Adresse',
       city: 'Ville',
       district: 'Quartier',
-      state: 'Région',
-      country: 'Pays',
+      state: t('Région'),
+      country: 'Pays'
     };
     return labels[type] || type;
   };
@@ -110,19 +120,17 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
         onSearch={debouncedSearch}
         onSelect={handleSelect}
         onClear={handleClear}
-        notFoundContent={
-          fetching ? <Spin size="small" /> : <Empty description="Aucun résultat" />
-        }
+        notFoundContent={fetching ? <Spin size="small" /> : <Empty description={t('Aucun résultat')} />}
         style={{ width: '100%' }}
         allowClear
         disabled={disabled}
         popupClassName="address-autocomplete-popup"
       >
-        {displayOptions.map((item) => (
+        {displayOptions.map(item => (
           <Select.Option key={item.id} value={item.id}>
             <div className="flex items-center py-2 px-1">
               <div
-                className="bg-blue-50 p-2 rounded-full mr-3 flex-shrink-0 flex items-center justify-center"
+                className="bg-blue-50 p-2 rounded-full me-3 flex-shrink-0 flex items-center justify-center"
                 style={{ width: '36px', height: '36px' }}
               >
                 <MapPin className="h-4 w-4 text-blue-500" />

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { StateBlock } from './StateBlock';
+import { t } from '../../i18n/t';
 
 /**
  * `<NotFound>` — rendu par la route `path="*"` (REFONTE_UI_UX.md §4.3).
@@ -26,12 +27,14 @@ export const NotFound: React.FC = () => {
     <div ref={anchor} tabIndex={-1} style={{ outline: 'none' }}>
       <StateBlock
         variant="error"
-        title="Cette page n’existe pas"
-        description="L'adresse demandée ne correspond à aucun écran. Elle a peut-être changé, ou comporte une faute de frappe."
-        detail={`Réf. HTTP-404 · ${location.pathname}`}
+        title={t('Cette page n’existe pas')}
+        description={t(
+          "L'adresse demandée ne correspond à aucun écran. Elle a peut-être changé, ou comporte une faute de frappe."
+        )}
+        detail={t('Réf. HTTP-404 · {{pathname}}', { pathname: location.pathname })}
         actions={[
-          { label: "Retour à l'écran précédent", onClick: () => navigate(-1), primary: true },
-          { label: 'Aller au tableau de bord', onClick: () => navigate('/dashboard') }
+          { label: t("Retour à l'écran précédent"), onClick: () => navigate(-1), primary: true },
+          { label: t('Aller au tableau de bord'), onClick: () => navigate('/dashboard') }
         ]}
       />
     </div>

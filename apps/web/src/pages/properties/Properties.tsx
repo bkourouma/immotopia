@@ -22,7 +22,9 @@ import {
   MoneyValue,
   useConfirmAction
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 /**
  * Liste des biens — premier des six écrans hybrides du §9.7.
  *
@@ -49,17 +51,17 @@ import {
 
 const PROPERTY_TYPE_LABELS: Record<string, string> = {
   APPARTEMENT: 'Appartement',
-  MAISON_VILLA: 'Maison / Villa',
+  MAISON_VILLA: t('Maison / Villa'),
   STUDIO: 'Studio',
-  DUPLEX_TRIPLEX: 'Duplex / Triplex',
-  CHAMBRE_COLOCATION: 'Chambre / Colocation',
+  DUPLEX_TRIPLEX: t('Duplex / Triplex'),
+  CHAMBRE_COLOCATION: t('Chambre / Colocation'),
   BUREAU: 'Bureau',
-  BOUTIQUE_COMMERCIAL: 'Boutique / Commercial',
-  ENTREPOT_INDUSTRIEL: 'Entrepôt / Industriel',
+  BOUTIQUE_COMMERCIAL: t('Boutique / Commercial'),
+  ENTREPOT_INDUSTRIEL: t('Entrepôt / Industriel'),
   TERRAIN: 'Terrain',
   IMMEUBLE: 'Immeuble',
-  PARKING_BOX: 'Parking / Box',
-  LOT_PROGRAMME_NEUF: 'Lot programme neuf'
+  PARKING_BOX: t('Parking / Box'),
+  LOT_PROGRAMME_NEUF: t('Lot programme neuf')
 };
 
 /**
@@ -74,7 +76,7 @@ const TYPES_RETIRES: string[] = ['CHAMBRE_COLOCATION', 'BOUTIQUE_COMMERCIAL', 'L
 const TRANSACTION_MODE_LABELS: Record<string, string> = {
   SALE: 'Vente',
   RENTAL: 'Location',
-  SHORT_TERM: 'Location courte durée'
+  SHORT_TERM: t('Location courte durée')
 };
 
 /**
@@ -87,7 +89,7 @@ const TRANSACTION_MODE_LABELS: Record<string, string> = {
  */
 const STATUS_LABELS: Record<string, string> = {
   AVAILABLE: 'Disponible',
-  RENTED: 'Loué'
+  RENTED: t('Loué')
 };
 
 type Filters = {
@@ -170,16 +172,17 @@ function indexPrix(montant: number): number {
 /** Un montant en clair et court : « 150 000 », « 2,5 M », « 1 Md ». */
 function montantCompact(montant: number): string {
   if (montant >= 1_000_000_000)
-    return `${(montant / 1_000_000_000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} Md`;
-  if (montant >= 1_000_000) return `${(montant / 1_000_000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} M`;
-  return montant.toLocaleString('fr-FR');
+    return `${(montant / 1_000_000_000).toLocaleString(activeLocale(), { maximumFractionDigits: 1 })} Md`;
+  if (montant >= 1_000_000)
+    return `${(montant / 1_000_000).toLocaleString(activeLocale(), { maximumFractionDigits: 1 })} M`;
+  return montant.toLocaleString(activeLocale());
 }
 
 /** Ce que dit le curseur de prix, en toutes lettres à côté de lui. */
 function libellePrix([min, max]: [number, number], sansBorneHaute: boolean): string {
-  if (min === 0 && sansBorneHaute) return 'Tous les prix';
-  if (sansBorneHaute) return `à partir de ${montantCompact(min)}`;
-  if (min === 0) return `jusqu'à ${montantCompact(max)}`;
+  if (min === 0 && sansBorneHaute) return t('Tous les prix');
+  if (sansBorneHaute) return t('à partir de {{value}}', { value: montantCompact(min) });
+  if (min === 0) return t("jusqu'à {{value}}", { value: montantCompact(max) });
   return `${montantCompact(min)} à ${montantCompact(max)}`;
 }
 
@@ -188,7 +191,7 @@ function libelleChambres([min, max]: [number, number]): string {
   if (min === 0 && max >= CHAMBRES_MAX) return 'Toutes';
   if (min === max) return `${min} chambre${min > 1 ? 's' : ''}`;
   const borneHaute = max >= CHAMBRES_MAX ? `${CHAMBRES_MAX}+` : String(max);
-  return `${min} à ${borneHaute} chambres`;
+  return t('{{min}} à {{borneHaute}} chambres', { min: min, borneHaute: borneHaute });
 }
 
 /** Ratio réservé : l'image ne doit pas décaler le texte en arrivant. */
@@ -391,19 +394,19 @@ export const Properties: React.FC = () => {
 
   const handleDelete = (property: Property) => {
     confirm({
-      title: `Supprimer « ${property.title} » ?`,
-      description: 'Cette action est irréversible.',
-      okText: 'Supprimer',
+      title: t('Supprimer « {{title}} » ?', { title: property.title }),
+      description: t('Cette action est irréversible.'),
+      okText: t('Supprimer'),
       danger: true,
       onConfirm: async () => {
         try {
           await deleteProperty(effectiveTenantId as string, property.id);
-          message.success('Bien supprimé.');
+          message.success(t('Bien supprimé.'));
           // Invalidation par préfixe : toutes les pages et tous les jeux de
           // filtres de cette agence, sans avoir à les énumérer.
           await queryClient.invalidateQueries({ queryKey: ['properties', effectiveTenantId] });
         } catch (err: any) {
-          message.error(err?.response?.data?.error || 'La suppression a échoué.');
+          message.error(err?.response?.data?.error || t('La suppression a échoué.'));
         }
       }
     });
@@ -413,8 +416,8 @@ export const Properties: React.FC = () => {
     return (
       <StateBlock
         variant="empty"
-        title="Aucune agence sélectionnée"
-        description="Votre compte doit être rattaché à une agence pour consulter son portefeuille."
+        title={t('Aucune agence sélectionnée')}
+        description={t('Votre compte doit être rattaché à une agence pour consulter son portefeuille.')}
       />
     );
   }
@@ -424,10 +427,10 @@ export const Properties: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Biens"
+        title={t('Biens')}
         subtitle={total > 0 ? `${total} bien${total > 1 ? 's' : ''} au portefeuille` : undefined}
         primaryAction={{
-          label: 'Ajouter un bien',
+          label: t('Ajouter un bien'),
           icon: <PlusOutlined />,
           onClick: () => navigate(`/tenant/${effectiveTenantId}/properties/new`)
         }}
@@ -437,14 +440,18 @@ export const Properties: React.FC = () => {
         <Input
           allowClear
           prefix={<SearchOutlined aria-hidden="true" />}
-          placeholder="Rechercher par titre, adresse ou référence"
-          aria-label="Rechercher un bien"
+          placeholder={t('Rechercher par titre, adresse ou référence')}
+          aria-label={t('Rechercher un bien')}
           value={draftQuery}
           onChange={event => setDraftQuery(event.target.value)}
         />
       </div>
 
-      <FilterSheet activeCount={Object.keys(list.filters).length} onClear={list.clearFilters} title="Filtrer les biens">
+      <FilterSheet
+        activeCount={Object.keys(list.filters).length}
+        onClear={list.clearFilters}
+        title={t('Filtrer les biens')}
+      >
         <Row gutter={[12, 12]} style={{ width: '100%' }}>
           {/* Filtres avancés — tout sauf la recherche plein texte.
               La rangée déroulait huit contrôles en permanence, dont six champs
@@ -466,7 +473,9 @@ export const Properties: React.FC = () => {
               icon={avancesOuverts ? <UpOutlined /> : <DownOutlined />}
               onClick={() => setAvancesOuverts(ouvert => !ouvert)}
             >
-              {nbFiltresAvances > 0 ? `Filtres avancés (${nbFiltresAvances})` : 'Filtres avancés'}
+              {nbFiltresAvances > 0
+                ? t('Filtres avancés ({{nbFiltresAvances}})', { nbFiltresAvances: nbFiltresAvances })
+                : t('Filtres avancés')}
             </Button>
           </Col>
         </Row>
@@ -477,11 +486,11 @@ export const Properties: React.FC = () => {
           style={{ width: '100%', display: avancesOuverts ? undefined : 'none' }}
         >
           <Col xs={24} md={8} lg={6}>
-            <label htmlFor="filtre-type">Type de bien</label>
+            <label htmlFor="filtre-type">{t('Type de bien')}</label>
             <Select
               id="filtre-type"
               style={{ width: '100%' }}
-              placeholder="Tous les types"
+              placeholder={t('Tous les types')}
               allowClear
               value={list.filters.propertyType || undefined}
               onChange={value => list.setFilters({ propertyType: value })}
@@ -491,11 +500,11 @@ export const Properties: React.FC = () => {
             />
           </Col>
           <Col xs={24} md={8} lg={6}>
-            <label htmlFor="filtre-transaction">Transaction</label>
+            <label htmlFor="filtre-transaction">{t('Transaction')}</label>
             <Select
               id="filtre-transaction"
               style={{ width: '100%' }}
-              placeholder="Tous les modes"
+              placeholder={t('Tous les modes')}
               allowClear
               value={list.filters.transactionMode || undefined}
               onChange={value => list.setFilters({ transactionMode: value })}
@@ -503,11 +512,11 @@ export const Properties: React.FC = () => {
             />
           </Col>
           <Col xs={24} md={8} lg={6}>
-            <label htmlFor="filtre-statut">Statut</label>
+            <label htmlFor="filtre-statut">{t('Statut')}</label>
             <Select
               id="filtre-statut"
               style={{ width: '100%' }}
-              placeholder="Tous les statuts"
+              placeholder={t('Tous les statuts')}
               allowClear
               value={list.filters.status || undefined}
               onChange={value => list.setFilters({ status: value })}
@@ -515,11 +524,11 @@ export const Properties: React.FC = () => {
             />
           </Col>
           <Col xs={24} md={8} lg={6}>
-            <label htmlFor="filtre-commune">Commune</label>
+            <label htmlFor="filtre-commune">{t('Commune')}</label>
             <Select
               id="filtre-commune"
               style={{ width: '100%' }}
-              placeholder="Toutes les communes"
+              placeholder={t('Toutes les communes')}
               allowClear
               showSearch
               optionFilterProp="label"
@@ -531,7 +540,7 @@ export const Properties: React.FC = () => {
 
           <Col xs={24} md={12} lg={8}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
-              <span>Prix (F CFA)</span>
+              <span>{t('Prix (F CFA)')}</span>
               <span style={{ color: 'var(--text-secondary)' }}>{libellePrix(prixLus, prixLuSansBorneHaute)}</span>
             </div>
             <Slider
@@ -548,13 +557,13 @@ export const Properties: React.FC = () => {
               }}
               tooltip={{
                 formatter: indice =>
-                  indice === PRIX_INDEX_MAX ? 'Sans limite' : montantCompact(PALIERS_PRIX[indice ?? 0])
+                  indice === PRIX_INDEX_MAX ? t('Sans limite') : montantCompact(PALIERS_PRIX[indice ?? 0])
               }}
-              ariaLabelForHandle={['Prix minimum', 'Prix maximum']}
+              ariaLabelForHandle={[t('Prix minimum'), t('Prix maximum')]}
               // Les poignées portent un indice de palier ; un lecteur d'écran
               // annoncerait « 8 sur 19 » sans ce formateur.
               ariaValueTextFormatterForHandle={indice =>
-                indice === PRIX_INDEX_MAX ? 'Sans limite' : `${montantCompact(PALIERS_PRIX[indice])} francs CFA`
+                indice === PRIX_INDEX_MAX ? t('Sans limite') : `${montantCompact(PALIERS_PRIX[indice])} francs CFA`
               }
               onChange={valeur => {
                 setPrixEnCoursDeGlissement(true);
@@ -576,7 +585,7 @@ export const Properties: React.FC = () => {
 
           <Col xs={24} md={12} lg={8}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
-              <span>Chambres</span>
+              <span>{t('Chambres')}</span>
               <span style={{ color: 'var(--text-secondary)' }}>{libelleChambres(chambresGlissees)}</span>
             </div>
             <Slider
@@ -590,7 +599,7 @@ export const Properties: React.FC = () => {
               // Les deux poignées portent leur propre nom : « curseur » seul ne
               // dit pas à un lecteur d'écran laquelle des deux bornes il
               // déplace.
-              ariaLabelForHandle={['Nombre de chambres minimum', 'Nombre de chambres maximum']}
+              ariaLabelForHandle={[t('Nombre de chambres minimum'), t('Nombre de chambres maximum')]}
               onChange={valeur => setChambresGlissees(valeur as [number, number])}
               onChangeComplete={valeur => {
                 const [min, max] = valeur as [number, number];
@@ -619,17 +628,17 @@ export const Properties: React.FC = () => {
         }}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={queryError ? 'Impossible de charger le portefeuille.' : null}
+        error={queryError ? t('Impossible de charger le portefeuille.') : null}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}
-        emptyDescription="Aucun bien n'est encore enregistré pour cette agence."
+        emptyDescription={t("Aucun bien n'est encore enregistré pour cette agence.")}
         emptyAction={{
-          label: 'Ajouter un bien',
+          label: t('Ajouter un bien'),
           onClick: () => navigate(`/tenant/${effectiveTenantId}/properties/new`)
         }}
         rowKey={property => property.id}
-        aria-label="Biens de l'agence"
+        aria-label={t("Biens de l'agence")}
         renderCard={property => (
           <DataCard
             cover={<Cover property={property} />}
@@ -652,7 +661,7 @@ export const Properties: React.FC = () => {
                 label: 'Surface',
                 value:
                   [
-                    property.rooms ? `${property.rooms} pièces` : null,
+                    property.rooms ? t('{{rooms}} pièces', { rooms: property.rooms }) : null,
                     property.bedrooms ? `${property.bedrooms} ch.` : null,
                     property.surfaceArea ? `${property.surfaceArea} m²` : null
                   ]
@@ -666,8 +675,8 @@ export const Properties: React.FC = () => {
               onClick: () => navigate(`${detailPath(property.id)}/edit`)
             }}
             secondaryActions={[
-              { key: 'view', label: 'Voir la fiche', onClick: () => navigate(detailPath(property.id)) },
-              { key: 'newsletter', label: 'Diffuser en newsletter', onClick: () => setNewsletterProperty(property) },
+              { key: 'view', label: t('Voir la fiche'), onClick: () => navigate(detailPath(property.id)) },
+              { key: 'newsletter', label: t('Diffuser en newsletter'), onClick: () => setNewsletterProperty(property) },
               { type: 'divider' },
               { key: 'delete', label: 'Supprimer', danger: true, onClick: () => handleDelete(property) }
             ]}

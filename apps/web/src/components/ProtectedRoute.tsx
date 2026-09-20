@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { t } from '../i18n/t';
 // `AccessDenied` est `lazy` : c'est un ecran rare, et il tire `Result` et
 // `Empty` d'Ant Design. ProtectedRoute etant sur le chemin critique de TOUTES
 // les routes, l'importer statiquement mettait 53 Ko d'AntD dans le chunk
@@ -39,7 +40,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
       <div
         role="status"
         aria-live="polite"
-        aria-label="Verification de votre acces"
+        aria-label={t('Verification de votre acces')}
         aria-busy="true"
         style={{ padding: 'var(--page-padding)', display: 'grid', gap: 'var(--space-4)' }}
       >

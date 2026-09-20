@@ -4,6 +4,7 @@ import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { Ticket, MaintenanceTicketStatus } from '../../types/maintenance-types';
 import { TicketStatusBadge } from './TicketStatusBadge';
 import { safeFormatDate } from '../../utils/date-utils';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -16,7 +17,7 @@ interface TicketCardProps {
 
 const categoryLabels: Record<string, string> = {
   PLUMBING: 'Plomberie',
-  ELECTRICITY: 'Électricité',
+  ELECTRICITY: t('Électricité'),
   AC: 'Climatisation',
   OTHER: 'Autre'
 };
@@ -24,7 +25,7 @@ const categoryLabels: Record<string, string> = {
 const priorityLabels: Record<string, string> = {
   LOW: 'Faible',
   MEDIUM: 'Moyenne',
-  HIGH: 'Élevée',
+  HIGH: t('Élevée'),
   URGENT: 'Urgente'
 };
 
@@ -36,7 +37,7 @@ const priorityColors: Record<string, string> = {
 };
 
 export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, onEdit, onDelete }) => {
-  const formattedDate = safeFormatDate(ticket.createdAt, 'DD MMM YYYY', 'Date invalide');
+  const formattedDate = safeFormatDate(ticket.createdAt, 'DD MMM YYYY', t('Date invalide'));
   const canEdit = ticket.status === MaintenanceTicketStatus.DECLARED;
   // Can delete permanently only if DECLARED or CANCELED
   const canDelete =
@@ -68,18 +69,20 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, onEdit,
           ? [
               canEdit && onEdit ? (
                 <Button key="edit" type="text" icon={<EditOutlined />} onClick={handleEdit} style={{ width: '100%' }}>
-                  Modifier
+                  {t('Modifier')}
                 </Button>
               ) : null,
               canDelete && onDelete ? (
                 <Popconfirm
                   key="delete"
-                  title="Supprimer définitivement le ticket"
-                  description="Êtes-vous sûr de vouloir supprimer définitivement ce ticket ? Cette action est irréversible."
+                  title={t('Supprimer définitivement le ticket')}
+                  description={t(
+                    'Êtes-vous sûr de vouloir supprimer définitivement ce ticket ? Cette action est irréversible.'
+                  )}
                   onConfirm={handleDelete}
                   onCancel={e => e?.stopPropagation()}
-                  okText="Oui, supprimer"
-                  cancelText="Non"
+                  okText={t('Oui, supprimer')}
+                  cancelText={t('Non')}
                   okButtonProps={{ danger: true }}
                 >
                   <Button
@@ -89,7 +92,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, onEdit,
                     onClick={e => e.stopPropagation()}
                     style={{ width: '100%' }}
                   >
-                    Supprimer
+                    {t('Supprimer')}
                   </Button>
                 </Popconfirm>
               ) : null
@@ -116,12 +119,12 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, onEdit,
 
         {ticket.property && (
           <Text type="secondary" style={{ fontSize: 12 }}>
-            Propriété: {ticket.property.address}
+            {t('Propriété:')} {ticket.property.address}
           </Text>
         )}
 
         <Text type="secondary" style={{ fontSize: 12 }}>
-          Créé le {formattedDate}
+          {t('Créé le')} {formattedDate}
         </Text>
       </Space>
     </Card>

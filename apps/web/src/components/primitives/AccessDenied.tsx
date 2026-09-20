@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { StateBlock } from './StateBlock';
+import { t } from '../../i18n/t';
 
 /**
  * `<AccessDenied>` — refus d'accès avec une issue (REFONTE_UI_UX.md §5.6).
@@ -31,18 +32,20 @@ export interface AccessDeniedProps {
 
 const MESSAGES: Record<AccessDeniedReason, { title: string; body: string; ref: string }> = {
   role: {
-    title: 'Accès non autorisé',
-    body: 'Votre rôle ne donne pas accès à cette section.',
+    title: t('Accès non autorisé'),
+    body: t('Votre rôle ne donne pas accès à cette section.'),
     ref: 'AUTH-403'
   },
   'wrong-tenant': {
-    title: 'Cette agence n’est pas la vôtre',
-    body: "L'adresse demandée appartient à une autre agence que celle de votre compte.",
+    title: t('Cette agence n’est pas la vôtre'),
+    body: t("L'adresse demandée appartient à une autre agence que celle de votre compte."),
     ref: 'AUTH-403-TENANT'
   },
   'no-tenant': {
-    title: 'Aucune agence rattachée',
-    body: "Votre compte n'est rattaché à aucune agence. Un administrateur doit vous inviter avant que vous puissiez accéder à cette section.",
+    title: t('Aucune agence rattachée'),
+    body: t(
+      "Votre compte n'est rattaché à aucune agence. Un administrateur doit vous inviter avant que vous puissiez accéder à cette section."
+    ),
     ref: 'AUTH-403-NO-TENANT'
   }
 };
@@ -62,10 +65,14 @@ export const AccessDenied: React.FC<AccessDeniedProps> = ({ reason, currentRole,
   // donne pas accès… » est actionnable, « accès refusé » ne l'est pas.
   const body =
     reason === 'role' && currentRole
-      ? `Votre rôle « ${currentRole} » ne donne pas accès à cette section.`
+      ? t('Votre rôle « {{currentRole}} » ne donne pas accès à cette section.', { currentRole: currentRole })
       : message.body;
 
-  const detail = [`Réf. ${message.ref}`, requiredRole ? `rôle requis ${requiredRole}` : null, location.pathname]
+  const detail = [
+    t('Réf. {{ref}}', { ref: message.ref }),
+    requiredRole ? t('rôle requis {{requiredRole}}', { requiredRole: requiredRole }) : null,
+    location.pathname
+  ]
     .filter(Boolean)
     .join(' · ');
 
@@ -79,8 +86,8 @@ export const AccessDenied: React.FC<AccessDeniedProps> = ({ reason, currentRole,
         actions={[
           // Le retour arrière est primaire : c'est la sortie la moins coûteuse
           // pour quelqu'un qui a simplement suivi un lien qu'il ne devait pas.
-          { label: "Retour à l'écran précédent", onClick: () => navigate(-1), primary: true },
-          { label: 'Aller au tableau de bord', onClick: () => navigate('/dashboard') }
+          { label: t("Retour à l'écran précédent"), onClick: () => navigate(-1), primary: true },
+          { label: t('Aller au tableau de bord'), onClick: () => navigate('/dashboard') }
         ]}
       />
     </div>

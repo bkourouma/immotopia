@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { App, Form, Input, Card, Button, Space, Alert, Spin, Typography, Row, Col } from 'antd';
 import { SaveOutlined, SettingOutlined, CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { getTenant, updateTenantSelf, Tenant, UpdateTenantRequest } from '../../services/tenant-service';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -43,10 +44,10 @@ export const TenantSettings: React.FC = () => {
           website: tenantData.website || ''
         });
       } else {
-        setError('Erreur lors du chargement des informations');
+        setError(t('Erreur lors du chargement des informations'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des informations');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des informations'));
     } finally {
       setLoading(false);
     }
@@ -75,15 +76,15 @@ export const TenantSettings: React.FC = () => {
       if (response.success) {
         setSuccess(true);
         setTenant(response.data);
-        message.success('Informations mises à jour avec succès !');
+        message.success(t('Informations mises à jour avec succès !'));
         // Clear success message after 3 seconds
         setTimeout(() => setSuccess(false), 3000);
       } else {
-        setError('Erreur lors de la sauvegarde');
+        setError(t('Erreur lors de la sauvegarde'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de la sauvegarde');
-      message.error('Erreur lors de la sauvegarde');
+      setError(err.response?.data?.message || t('Erreur lors de la sauvegarde'));
+      message.error(t('Erreur lors de la sauvegarde'));
     } finally {
       setSaving(false);
     }
@@ -104,14 +105,14 @@ export const TenantSettings: React.FC = () => {
       <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <Alert
-            message="Erreur"
+            message={t('Erreur')}
             description={error}
             type="error"
             showIcon
             icon={<ExclamationCircleOutlined />}
             action={
               <Button size="small" onClick={loadTenant}>
-                Réessayer
+                {t('Réessayer')}
               </Button>
             }
           />
@@ -126,18 +127,18 @@ export const TenantSettings: React.FC = () => {
         {/* Header */}
         <div>
           <Title level={2} style={{ margin: 0 }}>
-            Paramètres de l'Agence
+            {t("Paramètres de l'Agence")}
           </Title>
           <Text type="secondary">
-            Gérez les informations de votre agence. Ces informations seront utilisées dans les documents générés.
+            {t('Gérez les informations de votre agence. Ces informations seront utilisées dans les documents générés.')}
           </Text>
         </div>
 
         {/* Success Message */}
         {success && (
           <Alert
-            message="Succès"
-            description="Informations mises à jour avec succès !"
+            message={t('Succès')}
+            description={t('Informations mises à jour avec succès !')}
             type="success"
             showIcon
             icon={<CheckCircleOutlined />}
@@ -149,7 +150,7 @@ export const TenantSettings: React.FC = () => {
         {/* Error Message */}
         {error && (
           <Alert
-            message="Erreur"
+            message={t('Erreur')}
             description={error}
             type="error"
             showIcon
@@ -176,33 +177,33 @@ export const TenantSettings: React.FC = () => {
           }}
         >
           {/* Informations Générales */}
-          <Card title="Informations Générales" style={{ marginBottom: 16 }}>
+          <Card title={t('Informations Générales')} style={{ marginBottom: 16 }}>
             <Row gutter={16}>
               <Col xs={24} md={12}>
                 <Form.Item
-                  label="Nom de l'agence"
+                  label={t("Nom de l'agence")}
                   name="name"
-                  rules={[{ required: true, message: 'Le nom est requis' }]}
+                  rules={[{ required: true, message: t('Le nom est requis') }]}
                 >
-                  <Input placeholder="Nom de l'agence" />
+                  <Input placeholder={t("Nom de l'agence")} />
                 </Form.Item>
               </Col>
               <Col xs={24} md={12}>
-                <Form.Item label="Dénomination légale" name="legalName">
-                  <Input placeholder="Dénomination légale (optionnel)" />
+                <Form.Item label={t('Dénomination légale')} name="legalName">
+                  <Input placeholder={t('Dénomination légale (optionnel)')} />
                 </Form.Item>
               </Col>
             </Row>
           </Card>
 
           {/* Informations de Contact */}
-          <Card title="Informations de Contact" style={{ marginBottom: 16 }}>
+          <Card title={t('Informations de Contact')} style={{ marginBottom: 16 }}>
             <Row gutter={16}>
               <Col xs={24} md={12}>
                 <Form.Item
-                  label="Email de contact"
+                  label={t('Email de contact')}
                   name="contactEmail"
-                  rules={[{ type: 'email', message: 'Email invalide' }]}
+                  rules={[{ type: 'email', message: t('Email invalide') }]}
                 >
                   <Input type="email" placeholder="contact@agence.com" />
                 </Form.Item>
@@ -210,59 +211,59 @@ export const TenantSettings: React.FC = () => {
                   type="secondary"
                   style={{ fontSize: '12px', marginTop: '-12px', display: 'block', marginBottom: '16px' }}
                 >
-                  Utilisé dans les documents générés (AGENCE_EMAIL)
+                  {t('Utilisé dans les documents générés (AGENCE_EMAIL)')}
                 </Text>
               </Col>
               <Col xs={24} md={12}>
-                <Form.Item label="Téléphone de contact" name="contactPhone">
-                  <Input type="tel" placeholder="+225 XX XX XX XX XX" />
+                <Form.Item label={t('Téléphone de contact')} name="contactPhone">
+                  <Input type="tel" placeholder={t('+225 XX XX XX XX XX')} />
                 </Form.Item>
                 <Text
                   type="secondary"
                   style={{ fontSize: '12px', marginTop: '-12px', display: 'block', marginBottom: '16px' }}
                 >
-                  Utilisé dans les documents générés (AGENCE_TELEPHONE)
+                  {t('Utilisé dans les documents générés (AGENCE_TELEPHONE)')}
                 </Text>
               </Col>
             </Row>
           </Card>
 
           {/* Adresse */}
-          <Card title="Adresse" style={{ marginBottom: 16 }}>
+          <Card title={t('Adresse')} style={{ marginBottom: 16 }}>
             <Row gutter={16}>
               <Col xs={24}>
-                <Form.Item label="Adresse complète" name="address">
-                  <Input placeholder="Adresse complète de l'agence" />
+                <Form.Item label={t('Adresse complète')} name="address">
+                  <Input placeholder={t("Adresse complète de l'agence")} />
                 </Form.Item>
                 <Text
                   type="secondary"
                   style={{ fontSize: '12px', marginTop: '-12px', display: 'block', marginBottom: '16px' }}
                 >
-                  Utilisé dans les documents générés (AGENCE_ADRESSE)
+                  {t('Utilisé dans les documents générés (AGENCE_ADRESSE)')}
                 </Text>
               </Col>
               <Col xs={24} md={12}>
-                <Form.Item label="Ville" name="city">
-                  <Input placeholder="Ville" />
+                <Form.Item label={t('Ville')} name="city">
+                  <Input placeholder={t('Ville')} />
                 </Form.Item>
               </Col>
               <Col xs={24} md={12}>
-                <Form.Item label="Pays" name="country">
-                  <Input placeholder="Pays" />
+                <Form.Item label={t('Pays')} name="country">
+                  <Input placeholder={t('Pays')} />
                 </Form.Item>
               </Col>
             </Row>
           </Card>
 
           {/* Informations Supplémentaires */}
-          <Card title="Informations Supplémentaires" style={{ marginBottom: 16 }}>
+          <Card title={t('Informations Supplémentaires')} style={{ marginBottom: 16 }}>
             <Form.Item
-              label="Site web"
+              label={t('Site web')}
               name="website"
               rules={[
                 {
                   pattern: /^https?:\/\/.+/,
-                  message: 'URL invalide (doit commencer par http:// ou https://)'
+                  message: t('URL invalide (doit commencer par http:// ou https://)')
                 }
               ]}
             >
@@ -274,7 +275,7 @@ export const TenantSettings: React.FC = () => {
           <Card>
             <Form.Item>
               <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving} size="large">
-                {saving ? 'Enregistrement...' : 'Enregistrer'}
+                {saving ? 'Enregistrement...' : t('Enregistrer')}
               </Button>
             </Form.Item>
           </Card>
@@ -282,8 +283,10 @@ export const TenantSettings: React.FC = () => {
 
         {/* Info Box */}
         <Alert
-          message="Information importante"
-          description="Les informations renseignées ici seront utilisées automatiquement dans tous les documents générés (contrats de bail, reçus, etc.). Assurez-vous que les informations sont complètes et à jour."
+          message={t('Information importante')}
+          description={t(
+            'Les informations renseignées ici seront utilisées automatiquement dans tous les documents générés (contrats de bail, reçus, etc.). Assurez-vous que les informations sont complètes et à jour.'
+          )}
           type="info"
           showIcon
           icon={<SettingOutlined />}

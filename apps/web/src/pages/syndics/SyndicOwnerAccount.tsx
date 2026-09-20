@@ -28,16 +28,18 @@ import {
 } from '../../services/syndic-service';
 import { OwnerAccount, OwnerAccountTransaction } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Paragraph, Title } = Typography;
 
 const transactionTypeLabels: Record<OwnerAccountTransaction['type'], string> = {
-  CHARGE_CALL: 'Appel de charges',
+  CHARGE_CALL: t('Appel de charges'),
   PAYMENT: 'Paiement',
-  PENALTY: 'Pénalité',
+  PENALTY: t('Pénalité'),
   WAIVER: 'Remise',
   ADJUSTMENT: 'Ajustement',
-  FUND_TRANSFER: 'Transfert de fonds'
+  FUND_TRANSFER: t('Transfert de fonds')
 };
 
 export const SyndicOwnerAccount: React.FC = () => {
@@ -56,7 +58,7 @@ export const SyndicOwnerAccount: React.FC = () => {
   useEffect(() => {
     if (!effectiveTenantId || !syndicId || !lotId) {
       setLoading(false);
-      setError('Paramètres compte lot manquants');
+      setError(t('Paramètres compte lot manquants'));
       return;
     }
     void loadData();
@@ -74,18 +76,18 @@ export const SyndicOwnerAccount: React.FC = () => {
       setAccount(accountData);
       setTransactions(txData);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Impossible de charger le compte lot');
+      setError(err.response?.data?.error || t('Impossible de charger le compte lot'));
     } finally {
       setLoading(false);
     }
   };
 
   const ownerName = useMemo(() => {
-    if (!account?.contact) return 'Propriétaire';
+    if (!account?.contact) return t('Propriétaire');
     return (
       [account.contact.firstName, account.contact.lastName].filter(Boolean).join(' ').trim() ||
       account.contact.legalName ||
-      'Propriétaire'
+      t('Propriétaire')
     );
   }, [account]);
 
@@ -100,12 +102,12 @@ export const SyndicOwnerAccount: React.FC = () => {
         label: values.label,
         reference: values.reference || undefined
       });
-      message.success('Ajustement enregistré');
+      message.success(t('Ajustement enregistré'));
       setOpen(false);
       form.resetFields();
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Ajustement impossible');
+      message.error(err.response?.data?.error || t('Ajustement impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -122,7 +124,7 @@ export const SyndicOwnerAccount: React.FC = () => {
       link.click();
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Téléchargement du relevé impossible');
+      message.error(err.response?.data?.error || t('Téléchargement du relevé impossible'));
     }
   };
 
@@ -135,21 +137,21 @@ export const SyndicOwnerAccount: React.FC = () => {
               icon={<ArrowLeftOutlined />}
               onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/lots`)}
             >
-              Retour aux lots
+              {t('Retour aux lots')}
             </Button>
             <Title level={2} style={{ margin: 0 }}>
-              Compte du lot {account?.lot?.lotNumber || lotId}
+              {t('Compte du lot')} {account?.lot?.lotNumber || lotId}
             </Title>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Suivi du compte individuel et des mouvements.
+              {t('Suivi du compte individuel et des mouvements.')}
             </Paragraph>
           </Space>
           <Space>
             <Button icon={<DownloadOutlined />} onClick={() => void handleDownloadStatement()}>
-              Télécharger le relevé
+              {t('Télécharger le relevé')}
             </Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-              Ajouter ajustement
+              {t('Ajouter ajustement')}
             </Button>
           </Space>
         </div>
@@ -166,7 +168,7 @@ export const SyndicOwnerAccount: React.FC = () => {
               <Col xs={24} md={8}>
                 <Card>
                   <Statistic
-                    title="Solde courant"
+                    title={t('Solde courant')}
                     value={Number(account?.balance ?? 0)}
                     suffix={account?.currency || 'XOF'}
                   />
@@ -174,17 +176,17 @@ export const SyndicOwnerAccount: React.FC = () => {
               </Col>
               <Col xs={24} md={8}>
                 <Card>
-                  <Statistic title="Transactions" value={transactions.length} />
+                  <Statistic title={t('Transactions')} value={transactions.length} />
                 </Card>
               </Col>
               <Col xs={24} md={8}>
                 <Card>
-                  <Statistic title="Propriétaire" value={ownerName} />
+                  <Statistic title={t('Propriétaire')} value={ownerName} />
                 </Card>
               </Col>
             </Row>
 
-            <Card title="Historique des transactions">
+            <Card title={t('Historique des transactions')}>
               <Table
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
@@ -201,21 +203,23 @@ export const SyndicOwnerAccount: React.FC = () => {
                     dataIndex: 'type',
                     render: (value: OwnerAccountTransaction['type']) => transactionTypeLabels[value] || value
                   },
-                  { title: 'Libellé', dataIndex: 'label' },
+                  { title: t('Libellé'), dataIndex: 'label' },
                   {
-                    title: 'Débit',
+                    title: t('Débit'),
                     dataIndex: 'debit',
-                    render: (value: number | string | null) => (value ? Number(value).toLocaleString('fr-FR') : '-')
+                    render: (value: number | string | null) =>
+                      value ? Number(value).toLocaleString(activeLocale()) : '-'
                   },
                   {
-                    title: 'Crédit',
+                    title: t('Crédit'),
                     dataIndex: 'credit',
-                    render: (value: number | string | null) => (value ? Number(value).toLocaleString('fr-FR') : '-')
+                    render: (value: number | string | null) =>
+                      value ? Number(value).toLocaleString(activeLocale()) : '-'
                   },
                   {
                     title: 'Solde',
                     dataIndex: 'balanceAfter',
-                    render: (value: number | string) => Number(value).toLocaleString('fr-FR')
+                    render: (value: number | string) => Number(value).toLocaleString(activeLocale())
                   }
                 ]}
               />
@@ -225,30 +229,38 @@ export const SyndicOwnerAccount: React.FC = () => {
       </Space>
 
       <Modal
-        title="Ajouter un ajustement"
+        title={t('Ajouter un ajustement')}
         open={open}
         onCancel={() => setOpen(false)}
         onOk={() => void handleAdjustment()}
-        okText="Enregistrer"
-        cancelText="Annuler"
+        okText={t('Enregistrer')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
         <Form form={form} layout="vertical" initialValues={{ direction: 'DEBIT' }}>
-          <Form.Item label="Direction" name="direction" rules={[{ required: true }]}>
+          <Form.Item label={t('Direction')} name="direction" rules={[{ required: true }]}>
             <Select
               options={[
-                { label: 'Débit', value: 'DEBIT' },
-                { label: 'Crédit', value: 'CREDIT' }
+                { label: t('Débit'), value: 'DEBIT' },
+                { label: t('Crédit'), value: 'CREDIT' }
               ]}
             />
           </Form.Item>
-          <Form.Item label="Montant" name="amount" rules={[{ required: true, message: 'Le montant est obligatoire' }]}>
+          <Form.Item
+            label={t('Montant')}
+            name="amount"
+            rules={[{ required: true, message: t('Le montant est obligatoire') }]}
+          >
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item label="Libellé" name="label" rules={[{ required: true, message: 'Le libellé est obligatoire' }]}>
+          <Form.Item
+            label={t('Libellé')}
+            name="label"
+            rules={[{ required: true, message: t('Le libellé est obligatoire') }]}
+          >
             <Input />
           </Form.Item>
-          <Form.Item label="Référence (optionnel)" name="reference">
+          <Form.Item label={t('Référence (optionnel)')} name="reference">
             <Input />
           </Form.Item>
         </Form>

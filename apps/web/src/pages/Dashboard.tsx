@@ -30,7 +30,9 @@ import {
   variation
 } from '../components/home/dashboard-viz';
 import { safeFormatDate } from '../utils/date-utils';
+import { t } from '../i18n/t';
 
+import { activeLocale } from '../i18n/format';
 const { Text } = Typography;
 
 /**
@@ -67,7 +69,7 @@ const NON_AUTORISE = '—';
 
 /** Rend une valeur, ou un tiret quand le module échappe au collaborateur. */
 function valeurOuTiret(value: number | null | undefined): React.ReactNode {
-  return value === null || value === undefined ? NON_AUTORISE : value.toLocaleString('fr-FR');
+  return value === null || value === undefined ? NON_AUTORISE : value.toLocaleString(activeLocale());
 }
 
 /** Somme des volumes d'une répartition. */
@@ -161,19 +163,19 @@ export const Dashboard: React.FC = () => {
         span: 16,
         noeud: (
           <ChartCard
-            title="Trésorerie sur 12 mois"
-            subtitle="Ce qui est entré, face à ce qui était attendu"
-            link={{ label: 'Voir les paiements', to: `${base}/rental/payments` }}
+            title={t('Trésorerie sur 12 mois')}
+            subtitle={t('Ce qui est entré, face à ce qui était attendu')}
+            link={{ label: t('Voir les paiements'), to: `${base}/rental/payments` }}
             empty={encaisse === 0 && attendu === 0}
             legend={[
               {
-                label: 'Encaissé',
+                label: t('Encaissé'),
                 value: formatMoney(encaisse, { currency: devise }),
                 color: 'var(--color-primary)',
                 href: `${base}/rental/payments`
               },
               {
-                label: 'Attendu',
+                label: t('Attendu'),
                 value: formatMoney(attendu, { currency: devise }),
                 color: '#eb6834',
                 href: `${base}/rental/installments`
@@ -194,8 +196,8 @@ export const Dashboard: React.FC = () => {
         span: 12,
         noeud: (
           <ChartCard
-            title="Échéances par statut"
-            subtitle="Longueur de barre : le reste à encaisser"
+            title={t('Échéances par statut')}
+            subtitle={t('Longueur de barre : le reste à encaisser')}
             link={{ label: 'Encaisser', to: `${base}/rental/installments` }}
             empty={echeances.every(bucket => bucket.count === 0)}
           >
@@ -221,9 +223,9 @@ export const Dashboard: React.FC = () => {
         span: 12,
         noeud: (
           <ChartCard
-            title="Moyens de paiement"
-            subtitle="Sur les 12 derniers mois"
-            link={{ label: 'Voir les paiements', to: `${base}/rental/payments` }}
+            title={t('Moyens de paiement')}
+            subtitle={t('Sur les 12 derniers mois')}
+            link={{ label: t('Voir les paiements'), to: `${base}/rental/payments` }}
             empty={encaisseParMoyen === 0}
             legend={moyens.map((bucket, index) => ({
               label: bucketLabel(bucket.key),
@@ -237,7 +239,7 @@ export const Dashboard: React.FC = () => {
               colorOf={(_, index) => categoricalColor(index)}
               currency={devise}
               total={compactAmount(encaisseParMoyen)}
-              totalLabel="encaissés"
+              totalLabel={t('encaissés')}
             />
           </ChartCard>
         )
@@ -252,13 +254,13 @@ export const Dashboard: React.FC = () => {
         span: 12,
         noeud: (
           <ChartCard
-            title="Parc par statut"
+            title={t('Parc par statut')}
             subtitle={
               tableau.properties.occupancyRate !== null
-                ? `${formatPercent(tableau.properties.occupancyRate)} du parc occupé ou vendu`
+                ? t('{{value}} du parc occupé ou vendu', { value: formatPercent(tableau.properties.occupancyRate) })
                 : undefined
             }
-            link={{ label: 'Voir les biens', to: `${base}/properties` }}
+            link={{ label: t('Voir les biens'), to: `${base}/properties` }}
             empty={tableau.properties.total === 0}
             legend={parts.map((part, index) => ({
               label: bucketLabel(part.key),
@@ -289,9 +291,9 @@ export const Dashboard: React.FC = () => {
         span: 12,
         noeud: (
           <ChartCard
-            title="Types de biens"
-            subtitle="Les six premiers types du portefeuille"
-            link={{ label: 'Voir les biens', to: `${base}/properties` }}
+            title={t('Types de biens')}
+            subtitle={t('Les six premiers types du portefeuille')}
+            link={{ label: t('Voir les biens'), to: `${base}/properties` }}
             empty={tableau.properties.byType.length === 0}
           >
             {/* Une seule couleur : les types de bien n'ont pas d'ordre naturel,
@@ -318,13 +320,16 @@ export const Dashboard: React.FC = () => {
         span: 12,
         noeud: (
           <ChartCard
-            title="Entonnoir commercial"
+            title={t('Entonnoir commercial')}
             subtitle={
               perdues && perdues.count > 0
-                ? `Affaires par étape · ${perdues.count} perdue${perdues.count > 1 ? 's' : ''}`
-                : 'Affaires par étape, et valeur espérée'
+                ? t('Affaires par étape · {{count}} perdue{{value}}', {
+                    count: perdues.count,
+                    value: perdues.count > 1 ? 's' : ''
+                  })
+                : t('Affaires par étape, et valeur espérée')
             }
-            link={{ label: 'Voir les affaires', to: `${base}/crm/deals` }}
+            link={{ label: t('Voir les affaires'), to: `${base}/crm/deals` }}
             empty={affaires === 0}
           >
             {/* Les étapes de progression partagent le bleu de marque ; seule
@@ -351,9 +356,9 @@ export const Dashboard: React.FC = () => {
         span: 12,
         noeud: (
           <ChartCard
-            title="Contacts"
-            subtitle="Prospects, clients et archives"
-            link={{ label: 'Voir les contacts', to: `${base}/crm/contacts` }}
+            title={t('Contacts')}
+            subtitle={t('Prospects, clients et archives')}
+            link={{ label: t('Voir les contacts'), to: `${base}/crm/contacts` }}
             legend={parts.map((part, index) => ({
               label: bucketLabel(part.key),
               value: part.count,
@@ -380,11 +385,11 @@ export const Dashboard: React.FC = () => {
         span: 8,
         noeud: (
           <ChartCard
-            title="Tickets ouverts par priorité"
+            title={t('Tickets ouverts par priorité')}
             subtitle={`${ouverts} ticket${ouverts > 1 ? 's' : ''} en cours de traitement`}
-            link={{ label: 'Voir les tickets', to: `${base}/admin/maintenance/tickets` }}
+            link={{ label: t('Voir les tickets'), to: `${base}/admin/maintenance/tickets` }}
             empty={ouverts === 0}
-            emptyText="Aucun ticket ouvert."
+            emptyText={t('Aucun ticket ouvert.')}
           >
             <BarBreakdown
               items={tableau.maintenance.byPriority}
@@ -411,15 +416,22 @@ export const Dashboard: React.FC = () => {
         span: 8,
         noeud: (
           <ChartCard
-            title="Appels de charges"
+            title={t('Appels de charges')}
             subtitle={
               tableau.syndic.recoveryRate !== null
-                ? `${formatPercent(tableau.syndic.recoveryRate)} recouvré · ${tableau.syndic.lots} lots`
-                : `${tableau.syndic.syndicates} copropriété${tableau.syndic.syndicates > 1 ? 's' : ''} · ${tableau.syndic.lots} lots`
+                ? t('{{value}} recouvré · {{lots}} lots', {
+                    value: formatPercent(tableau.syndic.recoveryRate),
+                    lots: tableau.syndic.lots
+                  })
+                : t('{{syndicates}} copropriété{{value}} · {{lots}} lots', {
+                    syndicates: tableau.syndic.syndicates,
+                    value: tableau.syndic.syndicates > 1 ? 's' : '',
+                    lots: tableau.syndic.lots
+                  })
             }
-            link={{ label: 'Voir les copropriétés', to: `${base}/syndics` }}
+            link={{ label: t('Voir les copropriétés'), to: `${base}/syndics` }}
             empty={tableau.syndic.chargeCallsByStatus.length === 0}
-            emptyText="Aucun appel de charges émis."
+            emptyText={t('Aucun appel de charges émis.')}
           >
             <BarBreakdown
               items={tableau.syndic.chargeCallsByStatus}
@@ -441,9 +453,12 @@ export const Dashboard: React.FC = () => {
         span: 8,
         noeud: (
           <ChartCard
-            title="Programmes de travaux"
-            subtitle={`${compactAmount(tableau.patrimoine.plannedCost)} ${devise} encore engagés`}
-            link={{ label: 'Voir les travaux', to: `${base}/patrimoine/work-programs` }}
+            title={t('Programmes de travaux')}
+            subtitle={t('{{value}} {{devise}} encore engagés', {
+              value: compactAmount(tableau.patrimoine.plannedCost),
+              devise: devise
+            })}
+            link={{ label: t('Voir les travaux'), to: `${base}/patrimoine/work-programs` }}
           >
             <BarBreakdown
               items={tableau.patrimoine.workProgramsByStatus}
@@ -464,7 +479,7 @@ export const Dashboard: React.FC = () => {
   if (isLoading || isLoadingMembership) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-8)' }}>
-        <Spin size="large" aria-label="Chargement" />
+        <Spin size="large" aria-label={t('Chargement')} />
       </div>
     );
   }
@@ -474,7 +489,7 @@ export const Dashboard: React.FC = () => {
   if (portail) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-8)' }}>
-        <Spin size="large" aria-label="Redirection vers votre portail" />
+        <Spin size="large" aria-label={t('Redirection vers votre portail')} />
       </div>
     );
   }
@@ -501,75 +516,88 @@ export const Dashboard: React.FC = () => {
   const tuiles = [
     {
       cle: 'impayes',
-      label: 'Impayés',
+      label: t('Impayés'),
       value: impayes ? compactAmount(impayes.amount) : NON_AUTORISE,
-      hint: impayes ? `${impayes.count} échéance${impayes.count > 1 ? 's' : ''} en retard` : 'Module non accessible',
+      hint: impayes
+        ? t('{{count}} échéance{{value}} en retard', { count: impayes.count, value: impayes.count > 1 ? 's' : '' })
+        : t('Module non accessible'),
       icon: <AlertOutlined />,
       tone: 'danger' as const,
       to: impayes ? `${base}/rental/installments?status=OVERDUE` : undefined
     },
     {
       cle: 'semaine',
-      label: 'À encaisser sous 7 jours',
+      label: t('À encaisser sous 7 jours'),
       value: semaine ? compactAmount(semaine.amount) : NON_AUTORISE,
-      hint: semaine ? `${semaine.count} échéance${semaine.count > 1 ? 's' : ''}` : 'Module non accessible',
+      hint: semaine
+        ? t('{{count}} échéance{{value}}', { count: semaine.count, value: semaine.count > 1 ? 's' : '' })
+        : t('Module non accessible'),
       icon: <ClockCircleOutlined />,
       tone: 'warning' as const,
       to: semaine ? `${base}/rental/installments?status=DUE` : undefined
     },
     {
       cle: 'encaisse',
-      label: `Encaissé (${mois})`,
+      label: t('Encaissé ({{mois}})', { mois: mois }),
       value: revenus ? compactAmount(revenus.amount) : NON_AUTORISE,
       hint: revenus
         ? evolution === null
           ? // Le mois précédent était vide : une variation en pourcentage n'y
             // aurait aucun sens, l'attendu du mois dit davantage.
             `objectif du mois : ${compactAmount(revenus.expected)}`
-          : `${evolution >= 0 ? '+' : ''}${evolution} % vs mois précédent`
-        : 'Module non accessible',
+          : t('{{value}}{{evolution}} % vs mois précédent', { value: evolution >= 0 ? '+' : '', evolution: evolution })
+        : t('Module non accessible'),
       icon: <RiseOutlined />,
       tone: 'positive' as const,
       to: revenus ? `${base}/rental/payments` : undefined
     },
     {
       cle: 'biens',
-      label: 'Biens',
+      label: t('Biens'),
       value: valeurOuTiret(tableau?.properties?.total),
       hint: tableau?.properties
         ? // Le taux manque quand le portefeuille est vide : une agence qui
           // démarre voit « 0 publié », pas « module non accessible ».
           tableau.properties.occupancyRate !== null
-          ? `${formatPercent(tableau.properties.occupancyRate)} occupés · ${tableau.properties.published} publiés`
-          : `${tableau.properties.published} publié${tableau.properties.published > 1 ? 's' : ''}`
-        : 'Module non accessible',
+          ? t('{{value}} occupés · {{published}} publiés', {
+              value: formatPercent(tableau.properties.occupancyRate),
+              published: tableau.properties.published
+            })
+          : t('{{published}} publié{{value}}', {
+              published: tableau.properties.published,
+              value: tableau.properties.published > 1 ? 's' : ''
+            })
+        : t('Module non accessible'),
       icon: <HomeOutlined />,
       tone: 'neutral' as const,
       to: tableau?.properties ? `${base}/properties` : undefined
     },
     {
       cle: 'contacts',
-      label: 'Contacts',
+      label: t('Contacts'),
       value: valeurOuTiret(tableau?.clients?.total),
       hint: tableau?.transactions
         ? `${tableau.transactions.total} transaction${tableau.transactions.total > 1 ? 's' : ''} suivie${
             tableau.transactions.total > 1 ? 's' : ''
           }`
-        : 'Module non accessible',
+        : t('Module non accessible'),
       icon: <TeamOutlined />,
       tone: 'neutral' as const,
       to: tableau?.clients ? `${base}/crm/contacts` : undefined
     },
     {
       cle: 'tickets',
-      label: 'Tickets ouverts',
+      label: t('Tickets ouverts'),
       value: valeurOuTiret(tableau?.maintenance?.open),
       hint:
         declarations !== null && declarations > 0
-          ? `${declarations} déclaration${declarations > 1 ? 's' : ''} à valider`
+          ? t('{{declarations}} déclaration{{value}} à valider', {
+              declarations: declarations,
+              value: declarations > 1 ? 's' : ''
+            })
           : tableau?.maintenance
-            ? 'Aucune urgence en attente'
-            : 'Module non accessible',
+            ? t('Aucune urgence en attente')
+            : t('Module non accessible'),
       icon: <ToolOutlined />,
       tone: 'neutral' as const,
       to: tableau?.maintenance ? `${base}/admin/maintenance/tickets` : undefined
@@ -587,7 +615,7 @@ export const Dashboard: React.FC = () => {
       tasks={tableau?.workQueue ?? []}
       loading={chargement}
       link={
-        tableau?.rental?.installmentsByStatus ? { label: 'Tout voir', to: `${base}/rental/installments` } : undefined
+        tableau?.rental?.installmentsByStatus ? { label: t('Tout voir'), to: `${base}/rental/installments` } : undefined
       }
     />
   );
@@ -595,10 +623,10 @@ export const Dashboard: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Tableau de bord"
+        title={t('Tableau de bord')}
         subtitle={
           <>
-            Bonjour {prenom || user.email} · <Text type="secondary">{mois}</Text>
+            {t('Bonjour')} {prenom || user.email} · <Text type="secondary">{mois}</Text>
           </>
         }
       />
@@ -606,15 +634,15 @@ export const Dashboard: React.FC = () => {
       {!tenantId ? (
         <StateBlock
           variant="empty"
-          title="Aucune agence sélectionnée"
-          description="Votre compte n'est rattaché à aucune agence pour le moment."
+          title={t('Aucune agence sélectionnée')}
+          description={t("Votre compte n'est rattaché à aucune agence pour le moment.")}
         />
       ) : error ? (
         <StateBlock
           variant="error"
-          title="Impossible de charger les indicateurs"
-          description="Les chiffres du tableau de bord n'ont pas pu être récupérés."
-          actions={[{ label: 'Réessayer', onClick: () => void refetch(), primary: true }]}
+          title={t('Impossible de charger les indicateurs')}
+          description={t("Les chiffres du tableau de bord n'ont pas pu être récupérés.")}
+          actions={[{ label: t('Réessayer'), onClick: () => void refetch(), primary: true }]}
         />
       ) : (
         <>

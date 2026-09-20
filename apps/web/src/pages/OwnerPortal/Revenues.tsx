@@ -5,7 +5,9 @@ import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { RevenueChart } from '../../components/OwnerPortal/RevenueChart';
 import dayjs from 'dayjs';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 const { Option } = Select;
 const { RangePicker } = DatePicker;
@@ -34,7 +36,7 @@ interface RevenueByMonthData {
 }
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('fr-FR', {
+  return new Intl.NumberFormat(activeLocale(), {
     style: 'currency',
     currency: 'XOF',
     minimumFractionDigits: 0
@@ -83,7 +85,7 @@ export default function Revenues() {
         setRevenuesByMonth(byMonthResponse.data.data);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des revenus');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des revenus'));
     } finally {
       setLoading(false);
     }
@@ -98,19 +100,19 @@ export default function Revenues() {
 
   const propertyTableColumns = [
     {
-      title: 'Propriété',
+      title: t('Propriété'),
       dataIndex: 'propertyAddress',
       key: 'propertyAddress'
     },
     {
-      title: 'Revenus',
+      title: t('Revenus'),
       dataIndex: 'revenue',
       key: 'revenue',
       render: (amount: number) => formatCurrency(amount),
       sorter: (a: RevenueByPropertyData, b: RevenueByPropertyData) => a.revenue - b.revenue
     },
     {
-      title: 'Nombre de paiements',
+      title: t('Nombre de paiements'),
       dataIndex: 'paymentCount',
       key: 'paymentCount',
       sorter: (a: RevenueByPropertyData, b: RevenueByPropertyData) => a.paymentCount - b.paymentCount
@@ -120,13 +122,13 @@ export default function Revenues() {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement des revenus..." />
+        <Spin size="large" tip={t('Chargement des revenus...')} />
       </div>
     );
   }
 
   if (error) {
-    return <Alert message="Erreur" description={error} type="error" showIcon />;
+    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   return (
@@ -134,11 +136,16 @@ export default function Revenues() {
       {/* Page Header */}
       <div className="it-toolbar">
         <div>
-          <Title level={2}>Revenus</Title>
-          <Text type="secondary">Analyse de vos revenus locatifs</Text>
+          <Title level={2}>{t('Revenus')}</Title>
+          <Text type="secondary">{t('Analyse de vos revenus locatifs')}</Text>
         </div>
-        <Button icon={<SyncOutlined />} onClick={loadRevenueData} loading={loading} aria-label="Rafraîchir les revenus">
-          Actualiser
+        <Button
+          icon={<SyncOutlined />}
+          onClick={loadRevenueData}
+          loading={loading}
+          aria-label={t('Rafraîchir les revenus')}
+        >
+          {t('Actualiser')}
         </Button>
       </div>
 
@@ -147,7 +154,7 @@ export default function Revenues() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
-              title="Ce mois"
+              title={t('Ce mois')}
               value={formatCurrency(summary.currentMonth)}
               icon={<DollarOutlined style={{ color: '#52c41a' }} />}
               valueStyle={{ fontSize: 18, color: '#52c41a' }}
@@ -155,7 +162,7 @@ export default function Revenues() {
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
-              title="Cette année"
+              title={t('Cette année')}
               value={formatCurrency(summary.currentYear)}
               icon={<DollarOutlined style={{ color: '#1890ff' }} />}
               valueStyle={{ fontSize: 18, color: '#1890ff' }}
@@ -163,7 +170,7 @@ export default function Revenues() {
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
-              title="Tous les temps"
+              title={t('Tous les temps')}
               value={formatCurrency(summary.allTime)}
               icon={<DollarOutlined style={{ color: '#722ed1' }} />}
               valueStyle={{ fontSize: 18 }}
@@ -171,7 +178,7 @@ export default function Revenues() {
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
-              title="Moyenne mensuelle"
+              title={t('Moyenne mensuelle')}
               value={formatCurrency(summary.averageMonthly)}
               icon={<DollarOutlined style={{ color: '#faad14' }} />}
               valueStyle={{ fontSize: 18 }}
@@ -181,10 +188,10 @@ export default function Revenues() {
       )}
 
       {/* Filters (T088) */}
-      <Card title="Filtres">
+      <Card title={t('Filtres')}>
         <div className="it-filters">
           <div className="it-filters__field">
-            <Text strong>Période</Text>
+            <Text strong>{t('Période')}</Text>
             <RangePicker
               value={dateRange}
               onChange={dates => setDateRange(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
@@ -192,7 +199,7 @@ export default function Revenues() {
             />
           </div>
           <div className="it-filters__field">
-            <Text strong>Année (revenus mensuels)</Text>
+            <Text strong>{t('Année (revenus mensuels)')}</Text>
             <Select style={{ width: 150 }} value={selectedYear} onChange={value => setSelectedYear(value)}>
               {yearOptions.map(year => (
                 <Option key={year} value={year}>
@@ -209,19 +216,22 @@ export default function Revenues() {
         title={
           <Space>
             <CalendarOutlined />
-            <span>Revenus par mois ({selectedYear})</span>
+            <span>
+              {t('Revenus par mois (')}
+              {selectedYear})
+            </span>
           </Space>
         }
       >
         {revenuesByMonth.length > 0 ? (
           <RevenueChart data={revenuesByMonth} type="line" dataKey="revenue" xAxisKey="monthName" />
         ) : (
-          <Empty description="Aucune donnée disponible pour cette année" />
+          <Empty description={t('Aucune donnée disponible pour cette année')} />
         )}
       </Card>
 
       {/* Revenue by Property Chart (T086) */}
-      <Card title="Revenus par propriété">
+      <Card title={t('Revenus par propriété')}>
         {revenuesByProperty.length > 0 ? (
           <>
             <RevenueChart data={revenuesByProperty} type="bar" dataKey="revenue" xAxisKey="propertyAddress" />
@@ -237,7 +247,7 @@ export default function Revenues() {
             </div>
           </>
         ) : (
-          <Empty description="Aucune donnée disponible" />
+          <Empty description={t('Aucune donnée disponible')} />
         )}
       </Card>
     </Space>

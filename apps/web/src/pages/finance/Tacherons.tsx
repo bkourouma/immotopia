@@ -8,6 +8,7 @@ import { createContractor, listContractors } from '../../services/finance-contra
 import type { Contractor } from '../../types/finance-contractors-types';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, DataView, DataCard, MoneyValue, StatusTag } from '../../components/primitives';
+import { t as translate } from '../../i18n/t';
 
 const { Text } = Typography;
 
@@ -63,7 +64,7 @@ function CeQuOnLuiDoit({ contractor }: { contractor: Contractor }): React.ReactE
       <MoneyValue value={contractor.accountBalance} signed />
       {contractor.accountBalance < 0 && (
         <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-          Avance déjà versée : ses prochaines situations la résorberont.
+          {translate('Avance déjà versée : ses prochaines situations la résorberont.')}
         </Text>
       )}
     </Space>
@@ -103,7 +104,7 @@ export const Tacherons: React.FC = () => {
   const tacherons = data ?? [];
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={translate('Aucune agence sélectionnée')} />;
   }
 
   const ouvrirCreation = () => {
@@ -120,7 +121,7 @@ export const Tacherons: React.FC = () => {
 
   const validerCreation = async () => {
     if (!peutCreer) {
-      message.error('Le nom du tâcheron est obligatoire.');
+      message.error(translate('Le nom du tâcheron est obligatoire.'));
       return;
     }
     setCreationEnCours(true);
@@ -129,11 +130,11 @@ export const Tacherons: React.FC = () => {
       // (le schéma serveur le refuserait en 400).
       const tacheron = await createContractor(tenantId, { fullName: nomComplet.trim(), trade: metier.trim() });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('contractors', tenantId) });
-      message.success(`Tâcheron « ${tacheron.fullName} » enregistré.`);
+      message.success(translate('Tâcheron « {{fullName}} » enregistré.', { fullName: tacheron.fullName }));
       setModalOuvert(false);
       navigate(`/tenant/${tenantId}/finance/tacherons/${tacheron.id}`);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'enregistrement du tâcheron a échoué.");
+      message.error(err?.response?.data?.message || translate("L'enregistrement du tâcheron a échoué."));
     } finally {
       setCreationEnCours(false);
     }
@@ -142,31 +143,31 @@ export const Tacherons: React.FC = () => {
   const ouvrirFiche = (tacheron: Contractor) => navigate(`/tenant/${tenantId}/finance/tacherons/${tacheron.id}`);
 
   const colonnes: ColumnsType<Contractor> = [
-    { title: 'Tâcheron', key: 'nom', render: (_, t) => t.fullName },
+    { title: translate('Tâcheron'), key: 'nom', render: (_, t) => t.fullName },
     {
-      title: 'Corps de métier',
+      title: translate('Corps de métier'),
       key: 'metier',
-      render: (_, t) => t.trade ?? <Text type="secondary">Non renseigné</Text>
+      render: (_, t) => t.trade ?? <Text type="secondary">{translate('Non renseigné')}</Text>
     },
     {
       // Jamais « solde » : voir l'en-tête. Ce n'est pas le marché restant.
-      title: "Ce qu'on lui doit",
+      title: translate("Ce qu'on lui doit"),
       key: 'du',
-      align: 'right',
+      align: 'end',
       render: (_, t) => <CeQuOnLuiDoit contractor={t} />
     },
     {
-      title: 'Statut',
+      title: translate('Statut'),
       key: 'statut',
       render: (_, t) => <StatusTag status={t.isActive ? 'ACTIVE' : 'INACTIVE'} />
     },
     {
-      title: 'Actions',
+      title: translate('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, t) => (
         <Button type="link" onClick={() => ouvrirFiche(t)}>
-          Voir la fiche
+          {translate('Voir la fiche')}
         </Button>
       )
     }
@@ -175,14 +176,21 @@ export const Tacherons: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Tâcherons"
-        subtitle={tacherons.length > 0 ? `${tacherons.length} tâcheron${tacherons.length > 1 ? 's' : ''}` : undefined}
-        primaryAction={{ label: 'Nouveau tâcheron', icon: <PlusOutlined />, onClick: ouvrirCreation }}
+        title={translate('Tâcherons')}
+        subtitle={
+          tacherons.length > 0
+            ? translate('{{length}} tâcheron{{value}}', {
+                length: tacherons.length,
+                value: tacherons.length > 1 ? 's' : ''
+              })
+            : undefined
+        }
+        primaryAction={{ label: translate('Nouveau tâcheron'), icon: <PlusOutlined />, onClick: ouvrirCreation }}
       />
 
       <div style={{ marginBottom: 'var(--space-3)' }}>
         <Checkbox checked={actifsSeulement} onChange={event => setActifsSeulement(event.target.checked)}>
-          Tâcherons actifs uniquement
+          {translate('Tâcherons actifs uniquement')}
         </Checkbox>
       </div>
 
@@ -197,61 +205,63 @@ export const Tacherons: React.FC = () => {
         onPageChange={() => {}}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger les tâcherons.' : null}
+        error={erreurRequete ? translate('Impossible de charger les tâcherons.') : null}
         onRetry={() => refetch()}
         isFiltered={actifsSeulement}
         onClearFilters={() => setActifsSeulement(false)}
-        emptyDescription="Aucun tâcheron n'est encore enregistré."
-        emptyAction={{ label: 'Nouveau tâcheron', onClick: ouvrirCreation }}
+        emptyDescription={translate("Aucun tâcheron n'est encore enregistré.")}
+        emptyAction={{ label: translate('Nouveau tâcheron'), onClick: ouvrirCreation }}
         columns={colonnes}
         rowKey={t => t.id}
-        aria-label="Tâcherons"
+        aria-label={translate('Tâcherons')}
         renderCard={t => (
           <DataCard
             title={t.fullName}
             aria-label={t.fullName}
-            subtitle={t.trade ?? 'Corps de métier non renseigné'}
+            subtitle={t.trade ?? translate('Corps de métier non renseigné')}
             status={<StatusTag status={t.isActive ? 'ACTIVE' : 'INACTIVE'} />}
             highlight={<MoneyValue value={t.accountBalance} signed />}
-            fields={[{ label: "Ce qu'on lui doit", value: <CeQuOnLuiDoit contractor={t} /> }]}
+            fields={[{ label: translate("Ce qu'on lui doit"), value: <CeQuOnLuiDoit contractor={t} /> }]}
             onOpen={() => ouvrirFiche(t)}
           />
         )}
       />
 
       <Modal
-        title="Nouveau tâcheron"
+        title={translate('Nouveau tâcheron')}
         open={modalOuvert}
         onCancel={fermerCreation}
         confirmLoading={creationEnCours}
         onOk={validerCreation}
-        okText="Enregistrer le tâcheron"
-        cancelText="Annuler"
+        okText={translate('Enregistrer le tâcheron')}
+        cancelText={translate('Annuler')}
         destroyOnHidden
       >
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <label htmlFor="tacheron-nom">Nom du tâcheron</label>
+            <label htmlFor="tacheron-nom">{translate('Nom du tâcheron')}</label>
             <Input
               id="tacheron-nom"
               value={nomComplet}
               onChange={event => setNomComplet(event.target.value)}
-              placeholder="Ex. Sékou Camara"
+              placeholder={translate('Ex. Sékou Camara')}
             />
           </div>
           <div>
-            <label htmlFor="tacheron-metier">Corps de métier (facultatif)</label>
+            <label htmlFor="tacheron-metier">{translate('Corps de métier (facultatif)')}</label>
             {/* Facultatif, mais jamais envoyé en chaîne vide : le service
                 retire la clé quand le champ est laissé vide. */}
             <Input
               id="tacheron-metier"
               value={metier}
               onChange={event => setMetier(event.target.value)}
-              placeholder="Ex. Maçonnerie"
+              placeholder={translate('Ex. Maçonnerie')}
             />
           </div>
           <Text type="secondary">
-            L'enregistrement ouvre son compte de tiers. Les marchés se conviennent ensuite, depuis sa fiche.
+            {translate(
+              "L'enregistrement ouvre son compte de tiers. Les marchés se conviennent ensuite, depuis sa fiche."
+            )}
           </Text>
         </Space>
       </Modal>

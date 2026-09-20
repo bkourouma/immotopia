@@ -5,6 +5,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { HtmlCodeEditor } from '../../components/HtmlCodeEditor';
 import { newsletterService, type NewsletterTemplate } from '../../services/newsletter.service';
 import { useConfirmAction } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
 const HELP_TEXT = 'Variables disponibles : {{contenu}}, {{prenom}}, {{nom}}, {{email}}, {{lien_desinscription}}';
 
@@ -27,7 +28,7 @@ export function NewsletterTemplatesPage() {
       const data = await newsletterService.listTemplates(tenantId);
       setTemplates(data);
     } catch (e) {
-      message.error((e as Error).message || 'Erreur lors du chargement');
+      message.error((e as Error).message || t('Erreur lors du chargement'));
     } finally {
       setLoading(false);
     }
@@ -59,10 +60,10 @@ export function NewsletterTemplatesPage() {
     try {
       if (editingTemplate) {
         await newsletterService.updateTemplate(tenantId, editingTemplate.id, values);
-        message.success('Template modifié');
+        message.success(t('Template modifié'));
       } else {
         await newsletterService.createTemplate(tenantId, values);
-        message.success('Template créé');
+        message.success(t('Template créé'));
       }
       setModalOpen(false);
       loadTemplates();
@@ -76,14 +77,14 @@ export function NewsletterTemplatesPage() {
   const handleDelete = (tpl: NewsletterTemplate) => {
     if (!tenantId) return;
     confirmAction({
-      title: 'Supprimer le template',
-      description: `Supprimer « ${tpl.name} » ?`,
-      okText: 'Supprimer',
+      title: t('Supprimer le template'),
+      description: t('Supprimer « {{name}} » ?', { name: tpl.name }),
+      okText: t('Supprimer'),
       danger: true,
       onConfirm: async () => {
         try {
           await newsletterService.deleteTemplate(tenantId, tpl.id);
-          message.success('Template supprimé');
+          message.success(t('Template supprimé'));
           loadTemplates();
         } catch (e) {
           message.error((e as Error).message || 'Erreur');
@@ -94,9 +95,9 @@ export function NewsletterTemplatesPage() {
   };
 
   const columns = [
-    { title: 'Nom', dataIndex: 'name', key: 'name' },
+    { title: t('Nom'), dataIndex: 'name', key: 'name' },
     {
-      title: 'Aperçu',
+      title: t('Aperçu'),
       key: 'preview',
       render: (_: unknown, r: NewsletterTemplate) => (
         <Typography.Text type="secondary" ellipsis style={{ maxWidth: 200 }}>
@@ -110,10 +111,10 @@ export function NewsletterTemplatesPage() {
       render: (_: unknown, record: NewsletterTemplate) => (
         <Space>
           <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleOpenEdit(record)}>
-            Modifier
+            {t('Modifier')}
           </Button>
           <Button type="link" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(record)}>
-            Supprimer
+            {t('Supprimer')}
           </Button>
         </Space>
       )
@@ -125,10 +126,10 @@ export function NewsletterTemplatesPage() {
       <div style={{ padding: 24 }}>
         <div className="it-toolbar" style={{ marginBottom: 16 }}>
           <Typography.Title level={4} style={{ margin: 0 }}>
-            Templates newsletter
+            {t('Templates newsletter')}
           </Typography.Title>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleOpenCreate}>
-            Nouveau template
+            {t('Nouveau template')}
           </Button>
         </div>
 
@@ -145,7 +146,7 @@ export function NewsletterTemplatesPage() {
       </div>
 
       <Modal
-        title={editingTemplate ? 'Modifier le template' : 'Nouveau template'}
+        title={editingTemplate ? t('Modifier le template') : t('Nouveau template')}
         open={modalOpen}
         onOk={handleSubmit}
         onCancel={() => setModalOpen(false)}
@@ -154,10 +155,15 @@ export function NewsletterTemplatesPage() {
         destroyOnClose
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="name" label="Nom" rules={[{ required: true, message: 'Nom requis' }]}>
-            <Input placeholder="Ex: Modèle standard" />
+          <Form.Item name="name" label={t('Nom')} rules={[{ required: true, message: t('Nom requis') }]}>
+            <Input placeholder={t('Ex: Modèle standard')} />
           </Form.Item>
-          <Form.Item name="html" label="HTML" extra={HELP_TEXT} rules={[{ required: true, message: 'Contenu requis' }]}>
+          <Form.Item
+            name="html"
+            label="HTML"
+            extra={HELP_TEXT}
+            rules={[{ required: true, message: t('Contenu requis') }]}
+          >
             <HtmlCodeEditor minHeight={200} />
           </Form.Item>
         </Form>

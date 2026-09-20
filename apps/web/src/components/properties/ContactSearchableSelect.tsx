@@ -3,6 +3,7 @@ import { Input } from '../ui/input';
 import { User, X, Loader2 } from 'lucide-react';
 import { Contact } from '../../types/crm-types';
 import { listContacts } from '../../services/crm-service';
+import { t } from '../../i18n/t';
 
 interface ContactSearchableSelectProps {
   tenantId: string;
@@ -16,8 +17,8 @@ export const ContactSearchableSelect: React.FC<ContactSearchableSelectProps> = (
   tenantId,
   value,
   onChange,
-  placeholder = 'Rechercher un contact...',
-  disabled = false,
+  placeholder = t('Rechercher un contact...'),
+  disabled = false
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -38,7 +39,7 @@ export const ContactSearchableSelect: React.FC<ContactSearchableSelectProps> = (
   // Load selected contact if value is provided
   useEffect(() => {
     if (value && contacts.length > 0) {
-      const contact = contacts.find((c) => c.id === value);
+      const contact = contacts.find(c => c.id === value);
       if (contact) {
         setSelectedContact(contact);
         setSearchQuery(`${contact.firstName} ${contact.lastName}${contact.email ? ` (${contact.email})` : ''}`);
@@ -78,7 +79,7 @@ export const ContactSearchableSelect: React.FC<ContactSearchableSelectProps> = (
     searchTimeoutRef.current = setTimeout(() => {
       const query = searchQuery.toLowerCase();
       const filtered = contacts.filter(
-        (contact) =>
+        contact =>
           contact.firstName?.toLowerCase().includes(query) ||
           contact.lastName?.toLowerCase().includes(query) ||
           contact.email?.toLowerCase().includes(query) ||
@@ -149,7 +150,7 @@ export const ContactSearchableSelect: React.FC<ContactSearchableSelectProps> = (
           onFocus={handleInputFocus}
           placeholder={placeholder}
           disabled={disabled || loading}
-          className="pl-10 pr-10"
+          className="ps-10 pe-10"
         />
         {loading && (
           <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 animate-spin text-gray-400" />
@@ -167,12 +168,12 @@ export const ContactSearchableSelect: React.FC<ContactSearchableSelectProps> = (
 
       {isOpen && filteredContacts.length > 0 && (
         <div className="absolute z-[9999] w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-auto">
-          {filteredContacts.map((contact) => (
+          {filteredContacts.map(contact => (
             <button
               key={contact.id}
               type="button"
               onClick={() => handleSelect(contact)}
-              className="w-full text-left px-4 py-2 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
+              className="w-full text-start px-4 py-2 hover:bg-gray-50 focus:bg-gray-50 focus:outline-none"
             >
               <div className="flex items-center gap-2">
                 <User className="h-4 w-4 text-gray-400" />
@@ -180,12 +181,8 @@ export const ContactSearchableSelect: React.FC<ContactSearchableSelectProps> = (
                   <div className="font-medium text-gray-900">
                     {contact.firstName} {contact.lastName}
                   </div>
-                  {contact.email && (
-                    <div className="text-sm text-gray-500">{contact.email}</div>
-                  )}
-                  {contact.phone && (
-                    <div className="text-xs text-gray-400">{contact.phone}</div>
-                  )}
+                  {contact.email && <div className="text-sm text-gray-500">{contact.email}</div>}
+                  {contact.phone && <div className="text-xs text-gray-400">{contact.phone}</div>}
                 </div>
               </div>
             </button>
@@ -195,14 +192,9 @@ export const ContactSearchableSelect: React.FC<ContactSearchableSelectProps> = (
 
       {isOpen && searchQuery.trim().length > 0 && filteredContacts.length === 0 && !loading && (
         <div className="absolute z-[9999] w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg p-4 text-center text-gray-500">
-          Aucun contact trouvé
+          {t('Aucun contact trouvé')}
         </div>
       )}
     </div>
   );
 };
-
-
-
-
-

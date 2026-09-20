@@ -8,10 +8,12 @@ import {
   MessageOutlined,
   PhoneOutlined,
   TeamOutlined,
-  UserOutlined,
+  UserOutlined
 } from '@ant-design/icons';
 import { CrmActivity } from '../../types/crm-types';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text, Paragraph } = Typography;
 
 interface ActivityTimelineProps {
@@ -30,7 +32,7 @@ const TYPE_LABELS: Record<string, string> = {
   MEETING: 'Reunion',
   NOTE: 'Note',
   TASK: 'Tache',
-  CORRECTION: 'Correction',
+  CORRECTION: 'Correction'
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -42,7 +44,7 @@ const TYPE_COLORS: Record<string, string> = {
   MEETING: 'purple',
   NOTE: 'default',
   TASK: 'gold',
-  CORRECTION: 'magenta',
+  CORRECTION: 'magenta'
 };
 
 function getTypeLabel(type: string): string {
@@ -75,7 +77,7 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
   activities,
   loading = false,
   tenantId,
-  contactId,
+  contactId
 }) => {
   const navigate = useNavigate();
 
@@ -84,14 +86,14 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
       <div style={{ textAlign: 'center', padding: '24px 0' }}>
         <Spin />
         <div style={{ marginTop: 8 }}>
-          <Text type="secondary">Chargement des activites...</Text>
+          <Text type="secondary">{t('Chargement des activites...')}</Text>
         </div>
       </div>
     );
   }
 
   if (activities.length === 0) {
-    return <Empty description="Aucune activite" />;
+    return <Empty description={t('Aucune activite')} />;
   }
 
   const handleOpenActivities = (dealRelatedId?: string) => {
@@ -104,7 +106,7 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
 
   return (
     <Space direction="vertical" size="middle" style={{ width: '100%' }}>
-      {activities.map((activity) => (
+      {activities.map(activity => (
         <Card
           key={activity.id}
           size="small"
@@ -118,9 +120,9 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
                 {getTypeLabel(activity.activityType)}
               </Tag>
               {activity.direction ? <Tag>({activity.direction})</Tag> : null}
-              {activity.correctionOfId ? <Tag color="gold">Correction</Tag> : null}
+              {activity.correctionOfId ? <Tag color="gold">{t('Correction')}</Tag> : null}
               <Text type="secondary">
-                <CalendarOutlined /> {new Date(activity.occurredAt).toLocaleString('fr-FR')}
+                <CalendarOutlined /> {new Date(activity.occurredAt).toLocaleString(activeLocale())}
               </Text>
             </Space>
 
@@ -139,7 +141,7 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
                   type="link"
                   size="small"
                   icon={<UserOutlined />}
-                  onClick={(event) => {
+                  onClick={event => {
                     event.stopPropagation();
                     if (tenantId && activity.contact?.id) {
                       navigate(`/tenant/${tenantId}/crm/contacts/${activity.contact.id}`);
@@ -156,7 +158,7 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
                   type="link"
                   size="small"
                   icon={<CalendarOutlined />}
-                  onClick={(event) => {
+                  onClick={event => {
                     event.stopPropagation();
                     if (tenantId && activity.deal?.id) {
                       navigate(`/tenant/${tenantId}/crm/deals/${activity.deal.id}`);
@@ -177,8 +179,8 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
 
             {activity.nextActionAt ? (
               <Tag color="processing">
-                Action suivante: {activity.nextActionType || 'Follow-up'} le{' '}
-                {new Date(activity.nextActionAt).toLocaleDateString('fr-FR')}
+                {t('Action suivante:')} {activity.nextActionType || t('Follow-up')} le{' '}
+                {new Date(activity.nextActionAt).toLocaleDateString(activeLocale())}
               </Tag>
             ) : null}
           </Space>

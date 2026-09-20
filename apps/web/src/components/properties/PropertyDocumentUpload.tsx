@@ -4,6 +4,7 @@ import { Upload, X, FileText, Loader2 } from 'lucide-react';
 import { PropertyDocumentType } from '../../types/property-types';
 import apiClient from '../../utils/api-client';
 import { App } from 'antd';
+import { t } from '../../i18n/t';
 
 interface PropertyDocumentUploadProps {
   propertyId: string;
@@ -36,7 +37,7 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
     e.preventDefault();
 
     if (!selectedFile) {
-      message.warning('Veuillez sélectionner un fichier');
+      message.warning(t('Veuillez sélectionner un fichier'));
       return;
     }
 
@@ -72,17 +73,17 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
       }
     } catch (error: any) {
       console.error('Error uploading document:', error);
-      message.error(error.response?.data?.error || 'Erreur lors du téléchargement');
+      message.error(error.response?.data?.error || t('Erreur lors du téléchargement'));
     } finally {
       setUploading(false);
     }
   };
 
   const documentTypeLabels: Record<PropertyDocumentType, string> = {
-    [PropertyDocumentType.TITLE_DEED]: 'Titre de propriété',
+    [PropertyDocumentType.TITLE_DEED]: t('Titre de propriété'),
     [PropertyDocumentType.MANDATE]: 'Mandat',
     [PropertyDocumentType.PLAN]: 'Plan',
-    [PropertyDocumentType.TAX_DOCUMENT]: 'Document fiscal',
+    [PropertyDocumentType.TAX_DOCUMENT]: t('Document fiscal'),
     [PropertyDocumentType.OTHER]: 'Autre'
   };
 
@@ -120,12 +121,12 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
         ) : (
           <div className="text-center">
             <FileText className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-            <p className="text-sm text-gray-600 mb-2">Aucun fichier sélectionné</p>
+            <p className="text-sm text-gray-600 mb-2">{t('Aucun fichier sélectionné')}</p>
             <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-              <Upload className="h-4 w-4 mr-2" />
-              Sélectionner un fichier
+              <Upload className="h-4 w-4 me-2" />
+              {t('Sélectionner un fichier')}
             </Button>
-            <p className="text-xs text-gray-500 mt-2">PDF, DOC, DOCX, JPEG, PNG, TIFF (max 10MB)</p>
+            <p className="text-xs text-gray-500 mt-2">{t('PDF, DOC, DOCX, JPEG, PNG, TIFF (max 10MB)')}</p>
           </div>
         )}
       </div>
@@ -133,7 +134,7 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Type de document <span className="text-red-500">*</span>
+            {t('Type de document')} <span className="text-red-500">*</span>
           </label>
           <select
             value={formData.documentType}
@@ -155,7 +156,7 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Date d'expiration (optionnel)</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">{t("Date d'expiration (optionnel)")}</label>
           <input
             type="date"
             value={formData.expirationDate}
@@ -174,20 +175,20 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
           className="h-4 w-4 rounded border-gray-300 text-blue-600"
         />
         <label htmlFor="isRequired" className="text-sm text-gray-700">
-          Document requis
+          {t('Document requis')}
         </label>
       </div>
 
       <Button type="submit" disabled={uploading || !selectedFile} className="w-full">
         {uploading ? (
           <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Téléchargement...
+            <Loader2 className="h-4 w-4 me-2 animate-spin" />
+            {t('Téléchargement...')}
           </>
         ) : (
           <>
-            <Upload className="h-4 w-4 mr-2" />
-            Télécharger le document
+            <Upload className="h-4 w-4 me-2" />
+            {t('Télécharger le document')}
           </>
         )}
       </Button>

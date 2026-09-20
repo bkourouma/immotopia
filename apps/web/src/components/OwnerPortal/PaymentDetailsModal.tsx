@@ -2,7 +2,9 @@ import React from 'react';
 import { Modal, Descriptions, Table, Tag, Typography, Space } from 'antd';
 import { DollarOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
 
 interface PaymentDetailsModalProps {
@@ -13,7 +15,7 @@ interface PaymentDetailsModalProps {
 }
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('fr-FR', {
+  return new Intl.NumberFormat(activeLocale(), {
     style: 'currency',
     currency: 'XOF',
     minimumFractionDigits: 0
@@ -22,10 +24,10 @@ const formatCurrency = (amount: number) => {
 
 const getStatusTag = (status: string) => {
   const statusConfig: Record<string, { color: string; text: string }> = {
-    PENDING: { color: 'default', text: 'En attente' },
-    SUCCESS: { color: 'green', text: 'Réussi' },
-    FAILED: { color: 'red', text: 'Échoué' },
-    CANCELED: { color: 'orange', text: 'Annulé' }
+    PENDING: { color: 'default', text: t('En attente') },
+    SUCCESS: { color: 'green', text: t('Réussi') },
+    FAILED: { color: 'red', text: t('Échoué') },
+    CANCELED: { color: 'orange', text: t('Annulé') }
   };
 
   const config = statusConfig[status] || { color: 'default', text: status };
@@ -34,11 +36,11 @@ const getStatusTag = (status: string) => {
 
 const getMethodLabel = (method: string) => {
   const methodLabels: Record<string, string> = {
-    MOBILE_MONEY: 'Mobile Money',
-    BANK_TRANSFER: 'Virement bancaire',
-    CASH: 'Espèces',
-    CHECK: 'Chèque',
-    CARD: 'Carte bancaire'
+    MOBILE_MONEY: t('Mobile Money'),
+    BANK_TRANSFER: t('Virement bancaire'),
+    CASH: t('Espèces'),
+    CHECK: t('Chèque'),
+    CARD: t('Carte bancaire')
   };
   return methodLabels[method] || method;
 };
@@ -55,24 +57,24 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
 
   const allocationColumns = [
     {
-      title: 'Échéance',
+      title: t('Échéance'),
       key: 'installment',
       render: (record: any) => {
         const inst = record.installment;
         if (!inst) return '-';
         const period = `${inst.period_month.toString().padStart(2, '0')}/${inst.period_year}`;
-        return `Échéance ${period}`;
+        return t('Échéance {{period}}', { period: period });
       }
     },
     {
-      title: 'Propriété',
+      title: t('Propriété'),
       key: 'property',
       render: (record: any) => {
         return record.installment?.lease?.property?.address || '-';
       }
     },
     {
-      title: 'Montant alloué',
+      title: t('Montant alloué'),
       dataIndex: 'amount',
       key: 'amount',
       render: (amount: number) => formatCurrency(Number(amount))
@@ -84,7 +86,7 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
       title={
         <Space>
           <DollarOutlined />
-          <span>Détails du paiement</span>
+          <span>{t('Détails du paiement')}</span>
         </Space>
       }
       open={visible}
@@ -95,14 +97,14 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {/* Payment Information */}
         <div>
-          <Title level={4}>Informations du paiement</Title>
+          <Title level={4}>{t('Informations du paiement')}</Title>
           <Descriptions bordered column={{ xs: 1, sm: 2 }}>
-            <Descriptions.Item label="Montant">
+            <Descriptions.Item label={t('Montant')}>
               <Text strong>{formatCurrency(Number(payment.amount))}</Text>
             </Descriptions.Item>
-            <Descriptions.Item label="Statut">{getStatusTag(payment.status)}</Descriptions.Item>
-            <Descriptions.Item label="Méthode">{getMethodLabel(payment.method)}</Descriptions.Item>
-            <Descriptions.Item label="Date">
+            <Descriptions.Item label={t('Statut')}>{getStatusTag(payment.status)}</Descriptions.Item>
+            <Descriptions.Item label={t('Méthode')}>{getMethodLabel(payment.method)}</Descriptions.Item>
+            <Descriptions.Item label={t('Date')}>
               {payment.succeeded_at
                 ? dayjs(payment.succeeded_at).format('DD/MM/YYYY HH:mm')
                 : payment.initiated_at
@@ -110,24 +112,24 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
                   : '-'}
             </Descriptions.Item>
             {payment.lease?.property && (
-              <Descriptions.Item label="Propriété">{payment.lease.property.address}</Descriptions.Item>
+              <Descriptions.Item label={t('Propriété')}>{payment.lease.property.address}</Descriptions.Item>
             )}
             {payment.lease?.primary_renter?.user && (
-              <Descriptions.Item label="Locataire">
+              <Descriptions.Item label={t('Locataire')}>
                 {`${payment.lease.primary_renter.user.firstName} ${payment.lease.primary_renter.user.lastName}`}
               </Descriptions.Item>
             )}
             {payment.psp_transaction_id && (
-              <Descriptions.Item label="ID Transaction PSP">{payment.psp_transaction_id}</Descriptions.Item>
+              <Descriptions.Item label={t('ID Transaction PSP')}>{payment.psp_transaction_id}</Descriptions.Item>
             )}
             {payment.psp_reference && (
-              <Descriptions.Item label="Référence PSP">{payment.psp_reference}</Descriptions.Item>
+              <Descriptions.Item label={t('Référence PSP')}>{payment.psp_reference}</Descriptions.Item>
             )}
             {payment.mm_operator && (
-              <Descriptions.Item label="Opérateur Mobile Money">{payment.mm_operator}</Descriptions.Item>
+              <Descriptions.Item label={t('Opérateur Mobile Money')}>{payment.mm_operator}</Descriptions.Item>
             )}
             {payment.mm_phone && (
-              <Descriptions.Item label="Téléphone Mobile Money">{payment.mm_phone}</Descriptions.Item>
+              <Descriptions.Item label={t('Téléphone Mobile Money')}>{payment.mm_phone}</Descriptions.Item>
             )}
           </Descriptions>
         </div>
@@ -135,7 +137,7 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
         {/* Allocations */}
         {payment.allocations && payment.allocations.length > 0 && (
           <div>
-            <Title level={4}>Allocations aux échéances</Title>
+            <Title level={4}>{t('Allocations aux échéances')}</Title>
             <Table
               scroll={{ x: 'max-content' }}
               columns={allocationColumns}
@@ -148,7 +150,7 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
         )}
 
         {(!payment.allocations || payment.allocations.length === 0) && (
-          <Text type="secondary">Aucune allocation trouvée pour ce paiement.</Text>
+          <Text type="secondary">{t('Aucune allocation trouvée pour ce paiement.')}</Text>
         )}
       </Space>
     </Modal>

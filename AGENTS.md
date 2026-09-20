@@ -50,6 +50,15 @@ du message. Modèle : `src/controllers/property-media-controller.ts`.
 **Frontend.** Réseau via `utils/api-client`, URL via `config/api`, pages en
 `React.lazy`, jamais de `dangerouslySetInnerHTML` sur du contenu utilisateur.
 
+**Textes affichés.** L'application est trilingue (fr/en/ar) et **le texte
+français est la clé de traduction** : `t('Ajouter un bien')`, jamais
+`t('properties.add')`. Tout libellé visible passe par `t()` — `i18n/t.ts` côté
+web, `i18n/index.ts` côté API. `npm run i18n:extract` dans le paquet concerné
+enveloppe les nouveaux textes et met les catalogues à jour. Écrire une marge en
+propriété logique (`ms-4`, `margin-inline-start`, `align: 'end'`), jamais
+`ml-4` : l'arabe retourne toute la mise en page. Détails :
+[docs/architecture/i18n.md](docs/architecture/i18n.md).
+
 **Ports.** API 8001, web 3000. Des documents archivés mentionnent 8000 ou 5000 :
 c'est faux.
 
@@ -67,3 +76,10 @@ c'est faux.
   export utilisé par le composant testé.
 - Le backend compte encore ~160 erreurs TypeScript préexistantes ; ne pas en
   ajouter dans les fichiers déjà propres.
+- Modifier un texte français **casse ses traductions** : la clé, c'est le texte.
+  Après une retouche, `npm run i18n:extract` déplace la traduction devenue
+  orpheline dans un `*.orphans.json` au lieu de la perdre — la reporter à la
+  main sur la nouvelle clé.
+- Les tests frontend tournent en français parce que `setupTests.ts` l'impose.
+  Sans cela jsdom se déclare `en-US` et la suite cherche « Enregistrer » dans une
+  interface qui affiche « Save ».

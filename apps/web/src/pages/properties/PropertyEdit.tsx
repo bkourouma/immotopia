@@ -9,6 +9,7 @@ import { PropertyMediaGallery } from '../../components/properties/PropertyMediaG
 import { getProperty, updateProperty } from '../../services/property-service';
 import { Property, UpdatePropertyRequest, PropertyMediaType } from '../../types/property-types';
 import { useAuth } from '../../hooks/useAuth';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -25,7 +26,7 @@ export const PropertyEdit: React.FC = () => {
 
   useEffect(() => {
     if (!effectiveTenantId || !id) {
-      setError('Paramètres manquants');
+      setError(t('Paramètres manquants'));
       setLoading(false);
       return;
     }
@@ -41,7 +42,7 @@ export const PropertyEdit: React.FC = () => {
       const data = await getProperty(effectiveTenantId, id);
       setProperty(data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur lors du chargement de la propriété');
+      setError(err.response?.data?.error || t('Erreur lors du chargement de la propriété'));
     } finally {
       setLoading(false);
     }
@@ -68,7 +69,7 @@ export const PropertyEdit: React.FC = () => {
     return (
       <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <Text type="secondary">Aucune agence sélectionnée</Text>
+          <Text type="secondary">{t('Aucune agence sélectionnée')}</Text>
         </div>
       </>
     );
@@ -89,12 +90,14 @@ export const PropertyEdit: React.FC = () => {
       <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
           <Alert
-            message="Erreur"
-            description={error || 'Propriété non trouvée'}
+            message={t('Erreur')}
+            description={error || t('Propriété non trouvée')}
             type="error"
             showIcon
             action={
-              <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>Retour à la liste</Button>
+              <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>
+                {t('Retour à la liste')}
+              </Button>
             }
           />
         </div>
@@ -111,11 +114,11 @@ export const PropertyEdit: React.FC = () => {
             icon={<ArrowLeftOutlined />}
             onClick={() => navigate(`/tenant/${effectiveTenantId}/properties/${id}`)}
           >
-            Retour
+            {t('Retour')}
           </Button>
           <div>
             <Title level={2} style={{ margin: 0 }}>
-              Modifier la propriété
+              {t('Modifier la propriété')}
             </Title>
             <Text type="secondary">{property.title}</Text>
           </div>
@@ -141,7 +144,7 @@ export const PropertyEdit: React.FC = () => {
           title={
             <Space>
               <PictureOutlined />
-              Photos et Vidéos
+              {t('Photos et Vidéos')}
             </Space>
           }
         >
@@ -150,7 +153,7 @@ export const PropertyEdit: React.FC = () => {
             <div>
               <Space style={{ marginBottom: 16 }}>
                 <PictureOutlined />
-                <Text strong>Photos</Text>
+                <Text strong>{t('Photos')}</Text>
               </Space>
               <PropertyMediaUpload
                 propertyId={id!}
@@ -172,7 +175,7 @@ export const PropertyEdit: React.FC = () => {
             <div>
               <Space style={{ marginBottom: 16 }}>
                 <PlayCircleOutlined />
-                <Text strong>Vidéos</Text>
+                <Text strong>{t('Vidéos')}</Text>
               </Space>
               <PropertyMediaUpload
                 propertyId={id!}

@@ -2,7 +2,9 @@ import React from 'react';
 import { Col, Row } from 'antd';
 import { PatrimoineOverviewData } from '../../types/patrimoine-types';
 import { StatCard, MoneyValue } from '../primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 interface Props {
   data: PatrimoineOverviewData;
 }
@@ -26,7 +28,7 @@ interface Props {
  * ce qu'annonce un lecteur d'écran.
  */
 export const PatrimoineOverview: React.FC<Props> = ({ data }) => {
-  const tauxOccupation = new Intl.NumberFormat('fr-FR', {
+  const tauxOccupation = new Intl.NumberFormat(activeLocale(), {
     style: 'percent',
     minimumFractionDigits: 1,
     maximumFractionDigits: 1
@@ -34,22 +36,25 @@ export const PatrimoineOverview: React.FC<Props> = ({ data }) => {
 
   const indicateurs = [
     {
-      label: 'Biens au portefeuille',
+      label: t('Biens au portefeuille'),
       value: String(data.totalProperties),
-      hint: `dont ${data.occupiedProperties} occupé${data.occupiedProperties > 1 ? 's' : ''}`
+      hint: t('dont {{occupiedProperties}} occupé{{value}}', {
+        occupiedProperties: data.occupiedProperties,
+        value: data.occupiedProperties > 1 ? 's' : ''
+      })
     },
     {
-      label: "Taux d'occupation",
+      label: t("Taux d'occupation"),
       value: tauxOccupation,
       // Sous 80 %, l'agence a du vide à combler : l'indicateur le dit sans
       // qu'on ait à comparer deux chiffres.
       tone:
         data.occupancyRate >= 0.9 ? ('positive' as const) : data.occupancyRate >= 0.8 ? undefined : ('warning' as const)
     },
-    { label: 'Valeur estimée totale', value: <MoneyValue value={data.totalEstimatedValue} /> },
-    { label: 'Encours de crédits', value: <MoneyValue value={data.totalLoanBalance} /> },
-    { label: 'Charges de l’année', value: <MoneyValue value={data.totalExpensesThisYear} /> },
-    { label: 'Loyers annuels', value: <MoneyValue value={data.totalAnnualRent} />, tone: 'positive' as const }
+    { label: t('Valeur estimée totale'), value: <MoneyValue value={data.totalEstimatedValue} /> },
+    { label: t('Encours de crédits'), value: <MoneyValue value={data.totalLoanBalance} /> },
+    { label: t('Charges de l’année'), value: <MoneyValue value={data.totalExpensesThisYear} /> },
+    { label: t('Loyers annuels'), value: <MoneyValue value={data.totalAnnualRent} />, tone: 'positive' as const }
   ];
 
   return (

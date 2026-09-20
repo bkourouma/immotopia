@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Form, Input, Select, Button, Card, Typography, Alert } from 'antd';
 import { HtmlCodeEditor } from '../HtmlCodeEditor';
 import type { NewsletterList, NewsletterTemplate, NewsletterCampaign } from '../../services/newsletter.service';
+import { t as translate } from '../../i18n/t';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -12,12 +13,7 @@ interface CampaignFormProps {
   campaign?: NewsletterCampaign | null;
   loading?: boolean;
   saving?: boolean;
-  onSubmit: (values: {
-    listId: string;
-    templateId?: string;
-    subject: string;
-    bodyHtml: string;
-  }) => Promise<void>;
+  onSubmit: (values: { listId: string; templateId?: string; subject: string; bodyHtml: string }) => Promise<void>;
   onPreview?: (campaignId: string) => void;
 }
 
@@ -25,15 +21,7 @@ const UNSUBSCRIBE_PLACEHOLDER = '{{lien_desinscription}}';
 const HELP_VARS =
   'Variables disponibles : {{prenom}}, {{nom}}, {{email}}, {{lien_desinscription}} (obligatoire). Le contenu sera aussi relaye sur WhatsApp (version texte) quand un numero avec consentement existe.';
 
-export function CampaignForm({
-  lists,
-  templates,
-  campaign,
-  loading,
-  saving,
-  onSubmit,
-  onPreview
-}: CampaignFormProps) {
+export function CampaignForm({ lists, templates, campaign, loading, saving, onSubmit, onPreview }: CampaignFormProps) {
   const [form] = Form.useForm();
   const [missingUnsubscribe, setMissingUnsubscribe] = useState(false);
 
@@ -71,47 +59,49 @@ export function CampaignForm({
         <Alert
           type="warning"
           showIcon
-          message="Le lien de désinscription est obligatoire"
+          message={translate('Le lien de désinscription est obligatoire')}
           description="Ajoutez la variable {{lien_desinscription}} dans le corps du message (par ex. dans un lien « Se désabonner »)."
           style={{ marginBottom: 16 }}
         />
       )}
       <Form.Item
         name="listId"
-        label="Liste de diffusion"
-        rules={[{ required: true, message: 'Sélectionnez une liste' }]}
+        label={translate('Liste de diffusion')}
+        rules={[{ required: true, message: translate('Sélectionnez une liste') }]}
       >
         <Select
-          placeholder="Choisir une liste"
-          options={campaignLists.map((l) => ({ value: l.id, label: `${l.name} (${l.activeCount ?? 0} destinataires)` }))}
+          placeholder={translate('Choisir une liste')}
+          options={campaignLists.map(l => ({ value: l.id, label: `${l.name} (${l.activeCount ?? 0} destinataires)` }))}
           loading={loading}
           disabled={!!campaign}
         />
       </Form.Item>
-      <Form.Item name="templateId" label="Template (optionnel)">
+      <Form.Item name="templateId" label={translate('Template (optionnel)')}>
         <Select
-          placeholder="Aucun template"
+          placeholder={translate('Aucun template')}
           allowClear
-          options={templates.map((t) => ({ value: t.id, label: t.name }))}
+          options={templates.map(t => ({ value: t.id, label: t.name }))}
           loading={loading}
         />
       </Form.Item>
       <Form.Item
         name="subject"
-        label="Sujet"
-        rules={[{ required: true, message: 'Saisissez le sujet' }]}
+        label={translate('Sujet')}
+        rules={[{ required: true, message: translate('Saisissez le sujet') }]}
       >
-        <Input placeholder="Sujet du message" />
+        <Input placeholder={translate('Sujet du message')} />
       </Form.Item>
       <Form.Item
         name="bodyHtml"
-        label="Corps du message (HTML)"
+        label={translate('Corps du message (HTML)')}
         extra={HELP_VARS}
         rules={[
-          { required: true, message: 'Saisissez le contenu' },
+          { required: true, message: translate('Saisissez le contenu') },
           {
             pattern: new RegExp(UNSUBSCRIBE_PLACEHOLDER.replace(/[{}]/g, '\\$&'), 'i'),
-            message: `Vous devez inclure ${UNSUBSCRIBE_PLACEHOLDER} pour le lien de désinscription`
+            message: translate('Vous devez inclure {{UNSUBSCRIBE_PLACEHOLDER}} pour le lien de désinscription', {
+              UNSUBSCRIBE_PLACEHOLDER: UNSUBSCRIBE_PLACEHOLDER
+            })
           }
         ]}
       >
@@ -119,11 +109,11 @@ export function CampaignForm({
       </Form.Item>
       <Form.Item>
         <Button type="primary" htmlType="submit" loading={saving} disabled={missingUnsubscribe}>
-          {campaign ? 'Enregistrer' : 'Créer la campagne'}
+          {campaign ? translate('Enregistrer') : translate('Créer la campagne')}
         </Button>
         {campaign && onPreview && campaign.status === 'DRAFT' && (
-          <Button type="default" style={{ marginLeft: 8 }} onClick={() => onPreview(campaign.id)}>
-            Aperçu
+          <Button type="default" style={{ marginInlineStart: 8 }} onClick={() => onPreview(campaign.id)}>
+            {translate('Aperçu')}
           </Button>
         )}
       </Form.Item>

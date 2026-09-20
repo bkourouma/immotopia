@@ -1,6 +1,7 @@
 import React from 'react';
 import { CheckOutlined } from '@ant-design/icons';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { t } from '../../i18n/t';
 
 /**
  * `<StepRail>` — progression d'un formulaire en plusieurs etapes.
@@ -156,7 +157,7 @@ export const StepRail: React.FC<StepRailProps> = ({ items, current, furthest, on
     return 'upcoming';
   };
 
-  const position = `Étape ${current + 1} sur ${items.length}`;
+  const position = t('Étape {{value}} sur {{length}}', { value: current + 1, length: items.length });
 
   if (!isDesktop) {
     // Repli : un compteur, une barre, et le nom de l'etape suivante. Aucune
@@ -167,7 +168,7 @@ export const StepRail: React.FC<StepRailProps> = ({ items, current, furthest, on
     const next = items[current + 1];
 
     return (
-      <nav aria-label="Progression du formulaire">
+      <nav aria-label={t('Progression du formulaire')}>
         <div
           style={{
             display: 'flex',
@@ -200,7 +201,7 @@ export const StepRail: React.FC<StepRailProps> = ({ items, current, furthest, on
                 whiteSpace: 'nowrap'
               }}
             >
-              {`Puis : ${next.shortTitle || next.title}`}
+              {t('Puis : {{value}}', { value: next.shortTitle || next.title })}
             </span>
           )}
         </div>
@@ -232,7 +233,7 @@ export const StepRail: React.FC<StepRailProps> = ({ items, current, furthest, on
   }
 
   return (
-    <nav aria-label="Progression du formulaire">
+    <nav aria-label={t('Progression du formulaire')}>
       <ol
         style={{
           display: 'flex',
@@ -294,12 +295,14 @@ export const StepRail: React.FC<StepRailProps> = ({ items, current, furthest, on
                     color: 'inherit'
                   }}
                 >
-                  <span className="sr-only">{`Revenir à l'étape ${index + 1} : `}</span>
+                  <span className="sr-only">{t("Revenir à l'étape {{value}} :", { value: index + 1 })}</span>
                   {inner}
                 </button>
               ) : (
                 <div style={{ padding: 'var(--space-1) 0' }}>
-                  {index > reached && <span className="sr-only">{`Étape ${index + 1}, non atteinte : `}</span>}
+                  {index > reached && (
+                    <span className="sr-only">{t('Étape {{value}}, non atteinte :', { value: index + 1 })}</span>
+                  )}
                   {inner}
                 </div>
               )}

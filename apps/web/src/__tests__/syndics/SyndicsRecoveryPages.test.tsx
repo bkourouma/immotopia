@@ -103,6 +103,7 @@ const authValue: AuthContextType = {
     avatarUrl: null,
     globalRole: 'USER',
     emailVerified: true,
+    preferredLanguage: null,
     isActive: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()

@@ -5,6 +5,7 @@ import { ArrowLeftOutlined, SendOutlined } from '@ant-design/icons';
 import { InviteCollaboratorRequest, inviteCollaborator } from '../../services/invitation-service';
 import apiClient from '../../utils/api-client';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -54,7 +55,7 @@ export const InviteCollaborator: React.FC = () => {
     } catch (err: any) {
       console.error('Error loading roles:', err);
       setRoles([]);
-      setRolesError(err.response?.data?.message || 'Impossible de charger les roles. Veuillez reessayer.');
+      setRolesError(err.response?.data?.message || t('Impossible de charger les roles. Veuillez reessayer.'));
     } finally {
       setRolesLoading(false);
     }
@@ -66,7 +67,7 @@ export const InviteCollaborator: React.FC = () => {
     setHasTriedSubmit(true);
 
     if (selectedRoles.length === 0) {
-      setError('Veuillez selectionner au moins un role');
+      setError(t('Veuillez selectionner au moins un role'));
       return;
     }
 
@@ -81,16 +82,18 @@ export const InviteCollaborator: React.FC = () => {
 
       const response = await inviteCollaborator(tenantId, formData);
       if (response.success) {
-        message.success('Invitation envoyee avec succes');
+        message.success(t('Invitation envoyee avec succes'));
         navigate(`/tenant/${tenantId}/invitations`);
       } else {
-        setError(response.message || "Erreur lors de l'invitation");
+        setError(response.message || t("Erreur lors de l'invitation"));
       }
     } catch (err: any) {
-      const apiMessage = err.response?.data?.message || "Erreur lors de l'invitation";
+      const apiMessage = err.response?.data?.message || t("Erreur lors de l'invitation");
       setError(
         apiMessage.includes('plus actif')
-          ? `${apiMessage} Veuillez activer le tenant (parametres ou administration) puis reessayer.`
+          ? t('{{apiMessage}} Veuillez activer le tenant (parametres ou administration) puis reessayer.', {
+              apiMessage: apiMessage
+            })
           : apiMessage
       );
       message.error(apiMessage);
@@ -128,9 +131,9 @@ export const InviteCollaborator: React.FC = () => {
           />
           <div>
             <Title level={2} style={{ margin: 0 }}>
-              Inviter un collaborateur
+              {t('Inviter un collaborateur')}
             </Title>
-            <Text type="secondary">Envoyer une invitation a un nouvel utilisateur</Text>
+            <Text type="secondary">{t('Envoyer une invitation a un nouvel utilisateur')}</Text>
           </div>
         </div>
 
@@ -145,7 +148,7 @@ export const InviteCollaborator: React.FC = () => {
           >
             {error && (
               <Alert
-                message="Erreur"
+                message={t('Erreur')}
                 description={error}
                 type="error"
                 showIcon
@@ -156,39 +159,39 @@ export const InviteCollaborator: React.FC = () => {
             )}
 
             <Form.Item
-              label="Email"
+              label={t('Email')}
               name="email"
               rules={[
-                { required: true, message: "L'email est requis" },
-                { type: 'email', message: 'Email invalide' }
+                { required: true, message: t("L'email est requis") },
+                { type: 'email', message: t('Email invalide') }
               ]}
             >
               <Input type="email" placeholder="email@example.com" size="large" />
             </Form.Item>
 
             <Form.Item
-              label="Roles"
+              label={t('Roles')}
               required
               validateStatus={
                 hasTriedSubmit && !rolesLoading && roles.length > 0 && selectedRoles.length === 0 ? 'error' : ''
               }
               help={
                 hasTriedSubmit && !rolesLoading && roles.length > 0 && selectedRoles.length === 0
-                  ? 'Veuillez selectionner au moins un role'
+                  ? t('Veuillez selectionner au moins un role')
                   : ''
               }
             >
               {rolesLoading ? (
-                <Text type="secondary">Chargement des roles...</Text>
+                <Text type="secondary">{t('Chargement des roles...')}</Text>
               ) : rolesError ? (
                 <Space orientation="vertical">
                   <Text type="danger">{rolesError}</Text>
-                  <Button onClick={loadRoles}>Reessayer</Button>
+                  <Button onClick={loadRoles}>{t('Reessayer')}</Button>
                 </Space>
               ) : roles.length === 0 ? (
                 <Space orientation="vertical">
-                  <Text type="secondary">Aucun rôle disponible pour cette agence.</Text>
-                  <Button onClick={loadRoles}>Recharger</Button>
+                  <Text type="secondary">{t('Aucun rôle disponible pour cette agence.')}</Text>
+                  <Button onClick={loadRoles}>{t('Recharger')}</Button>
                 </Space>
               ) : (
                 <Space orientation="vertical" style={{ width: '100%' }} size="middle">
@@ -216,7 +219,7 @@ export const InviteCollaborator: React.FC = () => {
                           onChange={e => handleRoleChange(role.id, e.target.checked)}
                           onClick={e => e.stopPropagation()}
                         >
-                          <div style={{ marginLeft: 8 }}>
+                          <div style={{ marginInlineStart: 8 }}>
                             <div style={{ fontWeight: 500 }}>{labelFr}</div>
                             {descFr && (
                               <Text type="secondary" style={{ fontSize: '12px' }}>
@@ -234,7 +237,7 @@ export const InviteCollaborator: React.FC = () => {
 
             <Form.Item>
               <Space>
-                <Button onClick={() => navigate(`/tenant/${tenantId}/collaborators`)}>Annuler</Button>
+                <Button onClick={() => navigate(`/tenant/${tenantId}/collaborators`)}>{t('Annuler')}</Button>
                 <Button
                   type="primary"
                   htmlType="submit"
@@ -242,7 +245,7 @@ export const InviteCollaborator: React.FC = () => {
                   loading={loading}
                   disabled={selectedRoles.length === 0 || rolesLoading || roles.length === 0}
                 >
-                  {loading ? 'Envoi...' : "Envoyer l'invitation"}
+                  {loading ? 'Envoi...' : t("Envoyer l'invitation")}
                 </Button>
               </Space>
             </Form.Item>

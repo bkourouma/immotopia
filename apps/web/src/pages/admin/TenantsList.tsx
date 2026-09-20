@@ -11,21 +11,23 @@ import {
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { listTenants, Tenant, TenantFilters } from '../../services/tenant-service';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 const statusOptions = [
-  { value: '', label: 'Tous les statuts' },
-  { value: 'ACTIVE', label: 'Actif' },
-  { value: 'SUSPENDED', label: 'Suspendu' },
-  { value: 'INACTIVE', label: 'Inactif' }
+  { value: '', label: t('Tous les statuts') },
+  { value: 'ACTIVE', label: t('Actif') },
+  { value: 'SUSPENDED', label: t('Suspendu') },
+  { value: 'INACTIVE', label: t('Inactif') }
 ];
 
 const getStatusTag = (status: string) => {
   const config: Record<string, { color: string; text: string }> = {
-    ACTIVE: { color: 'success', text: 'Actif' },
-    SUSPENDED: { color: 'error', text: 'Suspendu' },
-    INACTIVE: { color: 'default', text: 'Inactif' }
+    ACTIVE: { color: 'success', text: t('Actif') },
+    SUSPENDED: { color: 'error', text: t('Suspendu') },
+    INACTIVE: { color: 'default', text: t('Inactif') }
   };
   const { color, text } = config[status] || config.INACTIVE;
   return <Tag color={color}>{text}</Tag>;
@@ -71,11 +73,11 @@ export const TenantsList: React.FC = () => {
           }
         );
       } else {
-        setError('Erreur lors du chargement des tenants');
+        setError(t('Erreur lors du chargement des tenants'));
         setTenants([]);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des tenants');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des tenants'));
       setTenants([]);
     } finally {
       setLoading(false);
@@ -95,7 +97,7 @@ export const TenantsList: React.FC = () => {
 
   const columns: ColumnsType<Tenant> = [
     {
-      title: 'Nom',
+      title: t('Nom'),
       dataIndex: 'name',
       key: 'name',
       render: (_, record) => (
@@ -124,40 +126,40 @@ export const TenantsList: React.FC = () => {
       )
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => getStatusTag(status)
     },
     {
-      title: 'Email',
+      title: t('Email'),
       dataIndex: 'contactEmail',
       key: 'contactEmail',
       render: (email: string) => email || '-'
     },
     {
-      title: 'Dernière activité',
+      title: t('Dernière activité'),
       dataIndex: 'lastActivityAt',
       key: 'lastActivityAt',
-      render: (date: string) => (date ? new Date(date).toLocaleDateString('fr-FR') : '-')
+      render: (date: string) => (date ? new Date(date).toLocaleDateString(activeLocale()) : '-')
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, record) => (
         <Space>
           <Button
             type="link"
             icon={<EyeOutlined />}
             onClick={() => navigate(`/admin/tenants/${record.id}`)}
-            title="Voir les détails"
+            title={t('Voir les détails')}
           />
           <Button
             type="link"
             icon={<EditOutlined />}
             onClick={() => navigate(`/admin/tenants/${record.id}/edit`)}
-            title="Modifier"
+            title={t('Modifier')}
           />
         </Space>
       )
@@ -179,12 +181,12 @@ export const TenantsList: React.FC = () => {
         >
           <div>
             <Title level={3} style={{ margin: 0 }}>
-              Tenants
+              {t('Tenants')}
             </Title>
-            <Text type="secondary">Gérez toutes les agences de la plateforme</Text>
+            <Text type="secondary">{t('Gérez toutes les agences de la plateforme')}</Text>
           </div>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/admin/tenants/new')}>
-            Nouveau Tenant
+            {t('Nouveau Tenant')}
           </Button>
         </div>
 
@@ -193,7 +195,7 @@ export const TenantsList: React.FC = () => {
           <form onSubmit={handleSearch}>
             <Space wrap size="middle" style={{ width: '100%' }}>
               <Input
-                placeholder="Rechercher une agence…"
+                placeholder={t('Rechercher une agence…')}
                 prefix={<SearchOutlined />}
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
@@ -201,7 +203,7 @@ export const TenantsList: React.FC = () => {
                 allowClear
               />
               <Select
-                placeholder="Statut"
+                placeholder={t('Statut')}
                 value={filters.status || undefined}
                 onChange={v => handleStatusFilter(v)}
                 style={{ minWidth: 140 }}
@@ -209,7 +211,7 @@ export const TenantsList: React.FC = () => {
                 allowClear
               />
               <Button type="primary" htmlType="submit" icon={<FilterOutlined />}>
-                Filtrer
+                {t('Filtrer')}
               </Button>
             </Space>
           </form>
@@ -217,14 +219,21 @@ export const TenantsList: React.FC = () => {
 
         {/* Error */}
         {error && (
-          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
+          <Alert
+            message={t('Erreur')}
+            description={error}
+            type="error"
+            showIcon
+            closable
+            onClose={() => setError(null)}
+          />
         )}
 
         {/* Table */}
         <Card>
           <Spin spinning={loading}>
             {!loading && (!tenants || tenants.length === 0) ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Aucune agence trouvée" />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('Aucune agence trouvée')} />
             ) : (
               <Table
                 rowKey="id"
@@ -236,7 +245,7 @@ export const TenantsList: React.FC = () => {
                   pageSize: pagination.limit,
                   total: pagination.total,
                   showSizeChanger: true,
-                  showTotal: total => `Total ${total} résultat(s)`,
+                  showTotal: total => t('Total {{total}} résultat(s)', { total: total }),
                   pageSizeOptions: ['10', '20', '50'],
                   onChange: (page, pageSize) => {
                     setFilters({

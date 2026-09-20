@@ -1,5 +1,6 @@
 import React from 'react';
 import { Tag } from 'antd';
+import { t } from '../../i18n/t';
 
 /**
  * `<StatusTag>` — table unique statut -> token (REFONTE_UI_UX.md §3.6).
@@ -32,16 +33,16 @@ const TONE_STYLE: Record<StatusTone, { bg: string; fg: string; border: string }>
  */
 const STATUS_MAP: Record<string, { tone: StatusTone; label: string }> = {
   // Cycle de vie generique
-  DRAFT: { tone: 'neutral', label: 'Brouillon' },
-  ACTIVE: { tone: 'success', label: 'Actif' },
-  INACTIVE: { tone: 'neutral', label: 'Inactif' },
-  SUSPENDED: { tone: 'warning', label: 'Suspendu' },
-  TERMINATED: { tone: 'neutral', label: 'Terminé' },
-  CANCELLED: { tone: 'neutral', label: 'Annulé' },
-  CANCELED: { tone: 'neutral', label: 'Annulé' },
-  ARCHIVED: { tone: 'neutral', label: 'Archivé' },
-  EXPIRED: { tone: 'danger', label: 'Expiré' },
-  REVOKED: { tone: 'danger', label: 'Révoqué' },
+  DRAFT: { tone: 'neutral', label: t('Brouillon') },
+  ACTIVE: { tone: 'success', label: t('Actif') },
+  INACTIVE: { tone: 'neutral', label: t('Inactif') },
+  SUSPENDED: { tone: 'warning', label: t('Suspendu') },
+  TERMINATED: { tone: 'neutral', label: t('Terminé') },
+  CANCELLED: { tone: 'neutral', label: t('Annulé') },
+  CANCELED: { tone: 'neutral', label: t('Annulé') },
+  ARCHIVED: { tone: 'neutral', label: t('Archivé') },
+  EXPIRED: { tone: 'danger', label: t('Expiré') },
+  REVOKED: { tone: 'danger', label: t('Révoqué') },
 
   // Cycle de vie d'un bien.
   //
@@ -50,36 +51,36 @@ const STATUS_MAP: Record<string, { tone: StatusTone; label: string }> = {
   // et « RENTED » en clair a l'utilisateur. Defaut trouve a l'ecran, dans
   // l'atelier — aucun test ne le voyait, puisque `<StatusTag>` rend fidelement
   // le code qu'on lui donne quand il ne le connait pas.
-  AVAILABLE: { tone: 'success', label: 'Disponible' },
-  UNDER_REVIEW: { tone: 'warning', label: 'En révision' },
-  RESERVED: { tone: 'warning', label: 'Réservé' },
-  UNDER_OFFER: { tone: 'warning', label: 'Sous offre' },
-  RENTED: { tone: 'info', label: 'Loué' },
+  AVAILABLE: { tone: 'success', label: t('Disponible') },
+  UNDER_REVIEW: { tone: 'warning', label: t('En révision') },
+  RESERVED: { tone: 'warning', label: t('Réservé') },
+  UNDER_OFFER: { tone: 'warning', label: t('Sous offre') },
+  RENTED: { tone: 'info', label: t('Loué') },
   // Neutre et non « succes » : le bien sort du portefeuille, ce n'est pas un
   // etat a mettre en avant dans une liste de gestion.
-  SOLD: { tone: 'neutral', label: 'Vendu' },
+  SOLD: { tone: 'neutral', label: t('Vendu') },
 
   // Encaissement
-  PENDING: { tone: 'warning', label: 'En attente' },
-  DUE: { tone: 'info', label: 'À échoir' },
-  PARTIAL: { tone: 'warning', label: 'Partiel' },
-  PAID: { tone: 'success', label: 'Payé' },
-  OVERDUE: { tone: 'danger', label: 'En retard' },
-  LATE: { tone: 'danger', label: 'En retard' },
-  SUCCESS: { tone: 'success', label: 'Réussi' },
-  FAILED: { tone: 'danger', label: 'Échoué' },
-  REFUNDED: { tone: 'neutral', label: 'Remboursé' },
-  PARTIALLY_REFUNDED: { tone: 'warning', label: 'Partiellement remboursé' },
+  PENDING: { tone: 'warning', label: t('En attente') },
+  DUE: { tone: 'info', label: t('À échoir') },
+  PARTIAL: { tone: 'warning', label: t('Partiel') },
+  PAID: { tone: 'success', label: t('Payé') },
+  OVERDUE: { tone: 'danger', label: t('En retard') },
+  LATE: { tone: 'danger', label: t('En retard') },
+  SUCCESS: { tone: 'success', label: t('Réussi') },
+  FAILED: { tone: 'danger', label: t('Échoué') },
+  REFUNDED: { tone: 'neutral', label: t('Remboursé') },
+  PARTIALLY_REFUNDED: { tone: 'warning', label: t('Partiellement remboursé') },
 
   // Tickets et travaux
-  NEW: { tone: 'info', label: 'Nouveau' },
-  OPEN: { tone: 'info', label: 'Ouvert' },
-  PLANNED: { tone: 'info', label: 'Planifié' },
-  SCHEDULED: { tone: 'info', label: 'Planifié' },
-  IN_PROGRESS: { tone: 'warning', label: 'En cours' },
-  RESOLVED: { tone: 'success', label: 'Résolu' },
-  COMPLETED: { tone: 'success', label: 'Terminé' },
-  CLOSED: { tone: 'neutral', label: 'Clôturé' },
+  NEW: { tone: 'info', label: t('Nouveau') },
+  OPEN: { tone: 'info', label: t('Ouvert') },
+  PLANNED: { tone: 'info', label: t('Planifié') },
+  SCHEDULED: { tone: 'info', label: t('Planifié') },
+  IN_PROGRESS: { tone: 'warning', label: t('En cours') },
+  RESOLVED: { tone: 'success', label: t('Résolu') },
+  COMPLETED: { tone: 'success', label: t('Terminé') },
+  CLOSED: { tone: 'neutral', label: t('Clôturé') },
 
   // Documents, baux, visites.
   //
@@ -88,28 +89,28 @@ const STATUS_MAP: Record<string, { tone: StatusTone; label: string }> = {
   // celui des biens. Plutôt qu'un troisième rattrapage, tous les codes de
   // statut déclarés dans les énumérations du dépôt ont été comparés à cette
   // table, et un test vérifie désormais qu'aucun n'y manque.
-  VOID: { tone: 'danger', label: 'Annulé' },
-  ENDED: { tone: 'neutral', label: 'Terminé' },
-  CONFIRMED: { tone: 'success', label: 'Confirmé' },
-  DONE: { tone: 'success', label: 'Effectué' },
-  NO_SHOW: { tone: 'danger', label: 'Absent' },
+  VOID: { tone: 'danger', label: t('Annulé') },
+  ENDED: { tone: 'neutral', label: t('Terminé') },
+  CONFIRMED: { tone: 'success', label: t('Confirmé') },
+  DONE: { tone: 'success', label: t('Effectué') },
+  NO_SHOW: { tone: 'danger', label: t('Absent') },
 
   // Ameublement — ce n'est pas un cycle de vie, mais une qualité du bien.
   // Rendue par le même composant lorsqu'un écran l'affiche comme étiquette.
-  FURNISHED: { tone: 'info', label: 'Meublé' },
-  UNFURNISHED: { tone: 'neutral', label: 'Non meublé' },
-  PARTIALLY_FURNISHED: { tone: 'info', label: 'Partiellement meublé' },
+  FURNISHED: { tone: 'info', label: t('Meublé') },
+  UNFURNISHED: { tone: 'neutral', label: t('Non meublé') },
+  PARTIALLY_FURNISHED: { tone: 'info', label: t('Partiellement meublé') },
 
   // Invitations, validations, affaires
-  SENT: { tone: 'info', label: 'Envoyé' },
-  ACCEPTED: { tone: 'success', label: 'Accepté' },
-  APPROVED: { tone: 'success', label: 'Approuvé' },
-  REJECTED: { tone: 'danger', label: 'Refusé' },
-  VALIDATED: { tone: 'success', label: 'Validé' },
-  FINAL: { tone: 'success', label: 'Final' },
-  PUBLISHED: { tone: 'success', label: 'Publié' },
-  WON: { tone: 'success', label: 'Gagnée' },
-  LOST: { tone: 'danger', label: 'Perdue' },
+  SENT: { tone: 'info', label: t('Envoyé') },
+  ACCEPTED: { tone: 'success', label: t('Accepté') },
+  APPROVED: { tone: 'success', label: t('Approuvé') },
+  REJECTED: { tone: 'danger', label: t('Refusé') },
+  VALIDATED: { tone: 'success', label: t('Validé') },
+  FINAL: { tone: 'success', label: t('Final') },
+  PUBLISHED: { tone: 'success', label: t('Publié') },
+  WON: { tone: 'success', label: t('Gagnée') },
+  LOST: { tone: 'danger', label: t('Perdue') },
 
   // Pieces et engagements du module financier operationnel (lots 2 a 4).
   //
@@ -119,10 +120,10 @@ const STATUS_MAP: Record<string, { tone: StatusTone; label: string }> = {
   // vu parce que sa liste d'enumerations est recopiee a la main et que les
   // statuts financiers sont des unions TypeScript, sans forme executable. La
   // note de ce test dit desormais ce qu'il couvre reellement.
-  VOIDED: { tone: 'danger', label: 'Annulée' },
-  ISSUED: { tone: 'info', label: 'Émis' },
-  HELD: { tone: 'warning', label: 'Détenue' },
-  RELEASED: { tone: 'success', label: 'Libérée' }
+  VOIDED: { tone: 'danger', label: t('Annulée') },
+  ISSUED: { tone: 'info', label: t('Émis') },
+  HELD: { tone: 'warning', label: t('Détenue') },
+  RELEASED: { tone: 'success', label: t('Libérée') }
 };
 
 export interface StatusTagProps {

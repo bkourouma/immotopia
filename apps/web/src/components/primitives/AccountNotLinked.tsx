@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { StateBlock } from './StateBlock';
 import { useAuth } from '../../hooks/useAuth';
+import { t } from '../../i18n/t';
 
 /**
  * `<AccountNotLinked>` — compte authentifié mais rattaché à rien.
@@ -49,19 +50,22 @@ export const AccountNotLinked: React.FC = () => {
       <div ref={anchor} tabIndex={-1} style={{ outline: 'none', maxWidth: 520, width: '100%' }}>
         <StateBlock
           variant="empty"
-          title="Votre compte n’est rattaché à aucune agence"
+          title={t('Votre compte n’est rattaché à aucune agence')}
           description={
             <>
-              Le compte <strong>{user?.email}</strong> est bien créé, mais il n’est encore relié ni à une agence, ni à
-              un bail, ni à un bien. Il n’y a donc rien à consulter pour l’instant.
+              {t('Le compte')} <strong>{user?.email}</strong>{' '}
+              {t(
+                'est bien créé, mais il n’est encore relié ni à une agence, ni à un bail, ni à un bien. Il n’y a donc rien à consulter pour l’instant.'
+              )}
               <br />
               <br />
-              Si vous attendez une invitation, elle vous parviendra par courriel. Sinon, rapprochez-vous de l’agence qui
-              gère votre dossier : c’est elle qui déclenche le rattachement.
+              {t(
+                'Si vous attendez une invitation, elle vous parviendra par courriel. Sinon, rapprochez-vous de l’agence qui gère votre dossier : c’est elle qui déclenche le rattachement.'
+              )}
             </>
           }
-          actions={[{ label: 'Se déconnecter', onClick: handleLogout }]}
-          detail="Réf. ACCOUNT-UNLINKED"
+          actions={[{ label: t('Se déconnecter'), onClick: handleLogout }]}
+          detail={t('Réf. ACCOUNT-UNLINKED')}
         />
       </div>
     </div>

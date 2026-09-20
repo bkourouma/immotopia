@@ -1,3 +1,4 @@
+import { t } from '../i18n/t';
 /**
  * Table segment de route → libellé français (REFONTE_UI_UX.md §4.3).
  *
@@ -10,12 +11,12 @@
  */
 export const ROUTE_LABELS: Record<string, string> = {
   // Racines
-  dashboard: 'Tableau de bord',
-  settings: 'Paramètres',
+  dashboard: t('Tableau de bord'),
+  settings: t('Paramètres'),
   profile: 'Profil',
 
   // Propriétés
-  properties: 'Propriétés',
+  properties: t('Propriétés'),
   new: 'Nouveau',
   edit: 'Modifier',
   visits: 'Visites',
@@ -24,39 +25,39 @@ export const ROUTE_LABELS: Record<string, string> = {
   // Patrimoine
   patrimoine: 'Patrimoine',
   performance: 'Performance',
-  'work-programs': 'Programmes de travaux',
-  statements: 'Relevés',
+  'work-programs': t('Programmes de travaux'),
+  statements: t('Relevés'),
 
   // Gestion locative
-  rental: 'Gestion locative',
+  rental: t('Gestion locative'),
   leases: 'Baux',
   // « Encaisser » et non « Échéances » : le §4.3 renomme cette destination,
   // et le fil d'Ariane doit dire la même chose que l'onglet actif.
   installments: 'Encaisser',
   payments: 'Paiements',
-  penalties: 'Pénalités',
-  deposits: 'Dépôts de garantie',
+  penalties: t('Pénalités'),
+  deposits: t('Dépôts de garantie'),
   documents: 'Documents',
-  templates: 'Modèles',
+  templates: t('Modèles'),
 
   // Syndic
-  syndics: 'Copropriétés',
+  syndics: t('Copropriétés'),
   lots: 'Lots',
   charges: 'Charges',
-  assemblees: 'Assemblées générales',
+  assemblees: t('Assemblées générales'),
   prestataires: 'Prestataires',
   finances: 'Finances',
   recouvrement: 'Recouvrement',
-  comptabilite: 'Comptabilité',
+  comptabilite: t('Comptabilité'),
   budgets: 'Budgets',
-  'profils-incidents': 'Profils et incidents',
-  compte: 'Compte propriétaire',
+  'profils-incidents': t('Profils et incidents'),
+  compte: t('Compte propriétaire'),
 
   // CRM
   crm: 'CRM',
   contacts: 'Contacts',
   deals: 'Affaires',
-  activities: 'Activités',
+  activities: t('Activités'),
 
   // Maintenance
   maintenance: 'Maintenance',
@@ -65,22 +66,22 @@ export const ROUTE_LABELS: Record<string, string> = {
 
   // Communication et newsletter
   communication: 'Communication',
-  'email-notifications': 'Notifications e-mail',
-  'whatsapp-notifications': 'Notifications WhatsApp',
-  'whatsapp-group-message': 'Message groupé WhatsApp',
+  'email-notifications': t('Notifications e-mail'),
+  'whatsapp-notifications': t('Notifications WhatsApp'),
+  'whatsapp-group-message': t('Message groupé WhatsApp'),
   newsletter: 'Newsletter',
   lists: 'Listes',
   campaigns: 'Campagnes',
   subscribe: 'Inscription',
   confirm: 'Confirmation',
-  unsubscribe: 'Désinscription',
+  unsubscribe: t('Désinscription'),
 
   // Administration de plateforme
   admin: 'Administration',
   tenants: 'Agences',
   statistics: 'Statistiques',
-  audit: "Journaux d'audit",
-  'roles-permissions': 'Rôles et permissions',
+  audit: t("Journaux d'audit"),
+  'roles-permissions': t('Rôles et permissions'),
 
   // Administration d'agence
   tenant: 'Agence',
@@ -89,12 +90,12 @@ export const ROUTE_LABELS: Record<string, string> = {
   invitations: 'Invitations',
 
   // Portails
-  owner: 'Portail propriétaire',
+  owner: t('Portail propriétaire'),
   revenues: 'Revenus',
-  lease: 'Mon bail',
-  deposit: 'Dépôt de garantie',
+  lease: t('Mon bail'),
+  deposit: t('Dépôt de garantie'),
   reports: 'Rapports',
-  preferences: 'Préférences',
+  preferences: t('Préférences'),
 
   // Divers
   clients: 'Clients',

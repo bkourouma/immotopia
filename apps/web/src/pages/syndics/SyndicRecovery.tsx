@@ -43,20 +43,22 @@ import {
   ReminderStatus
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Paragraph, Title, Text } = Typography;
 
 const reminderChannelOptions: Array<{ label: string; value: ReminderChannel }> = [
-  { label: 'Email', value: 'EMAIL' },
+  { label: t('Email'), value: 'EMAIL' },
   { label: 'SMS', value: 'SMS' },
   { label: 'WhatsApp', value: 'WHATSAPP' },
-  { label: 'Push', value: 'PUSH' }
+  { label: t('Push'), value: 'PUSH' }
 ];
 
 const reminderStatusLabels: Record<ReminderStatus, string> = {
-  SENT: 'Envoyé',
-  DELIVERED: 'Distribué',
-  FAILED: 'Échec'
+  SENT: t('Envoyé'),
+  DELIVERED: t('Distribué'),
+  FAILED: t('Échec')
 };
 
 type LotWithPropertyLabel =
@@ -72,9 +74,9 @@ type LotWithPropertyLabel =
   | undefined;
 
 function ownerLabel(owner?: { firstName?: string | null; lastName?: string | null; email?: string | null } | null) {
-  if (!owner) return 'Sans propriétaire';
+  if (!owner) return t('Sans propriétaire');
   const name = [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim();
-  return name || owner.email || 'Propriétaire';
+  return name || owner.email || t('Propriétaire');
 }
 
 function lotPropertyLabel(lot: LotWithPropertyLabel): string {
@@ -158,7 +160,7 @@ export const SyndicRecovery: React.FC = () => {
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
       setLoading(false);
-      setError('Paramètres recouvrement manquants');
+      setError(t('Paramètres recouvrement manquants'));
       return;
     }
     void loadData();
@@ -168,7 +170,11 @@ export const SyndicRecovery: React.FC = () => {
     () =>
       dashboard.items.map(item => ({
         value: item.chargeCallId,
-        label: `${propertyLabel(item)} - ${ownerLabel(item.owner)} - reste ${item.outstanding.toLocaleString('fr-FR')} XOF`
+        label: t('{{value}} - {{value2}} - reste {{value3}} XOF', {
+          value: propertyLabel(item),
+          value2: ownerLabel(item.owner),
+          value3: item.outstanding.toLocaleString(activeLocale())
+        })
       })),
     [dashboard.items]
   );
@@ -189,7 +195,7 @@ export const SyndicRecovery: React.FC = () => {
       setPenalties(penaltiesData);
       setSchedules(schedulesData);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Impossible de charger le recouvrement');
+      setError(err.response?.data?.error || t('Impossible de charger le recouvrement'));
     } finally {
       setLoading(false);
     }
@@ -200,10 +206,12 @@ export const SyndicRecovery: React.FC = () => {
     setSubmitting(true);
     try {
       const result = await runReminderBatch(effectiveTenantId, syndicId);
-      message.success(`Batch terminé: ${result.remindersCreated} relance(s) créée(s)`);
+      message.success(
+        t('Batch terminé: {{remindersCreated}} relance(s) créée(s)', { remindersCreated: result.remindersCreated })
+      );
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Batch de relances impossible');
+      message.error(err.response?.data?.error || t('Batch de relances impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -219,12 +227,12 @@ export const SyndicRecovery: React.FC = () => {
         channel: values.channel,
         status: 'SENT'
       });
-      message.success('Relance créée');
+      message.success(t('Relance créée'));
       setManualOpen(false);
       manualForm.resetFields();
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Création de relance impossible');
+      message.error(err.response?.data?.error || t('Création de relance impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -239,12 +247,12 @@ export const SyndicRecovery: React.FC = () => {
         penaltyRate: values.penaltyRate,
         daysLate: values.daysLate
       });
-      message.success('Pénalité appliquée');
+      message.success(t('Pénalité appliquée'));
       setPenaltyOpen(false);
       penaltyForm.resetFields();
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Application de pénalité impossible');
+      message.error(err.response?.data?.error || t('Application de pénalité impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -258,13 +266,13 @@ export const SyndicRecovery: React.FC = () => {
       await waiveLatePaymentPenalty(effectiveTenantId, syndicId, selectedPenalty.id, {
         waivedReason: values.waivedReason
       });
-      message.success('Remise appliquée');
+      message.success(t('Remise appliquée'));
       setWaiveOpen(false);
       setSelectedPenalty(null);
       waiveForm.resetFields();
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Remise impossible');
+      message.error(err.response?.data?.error || t('Remise impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -283,12 +291,12 @@ export const SyndicRecovery: React.FC = () => {
           amount: item.amount
         }))
       });
-      message.success('Échéancier créé');
+      message.success(t('Échéancier créé'));
       setScheduleOpen(false);
       scheduleForm.resetFields();
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || "Création d'échéancier impossible");
+      message.error(err.response?.data?.error || t("Création d'échéancier impossible"));
     } finally {
       setSubmitting(false);
     }
@@ -303,35 +311,35 @@ export const SyndicRecovery: React.FC = () => {
               icon={<ArrowLeftOutlined />}
               onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
             >
-              Retour à la fiche syndic
+              {t('Retour à la fiche syndic')}
             </Button>
             <Title level={2} style={{ margin: 0 }}>
-              Recouvrement des impayés
+              {t('Recouvrement des impayés')}
             </Title>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Suivi des retards, relances, pénalités et échéanciers.
+              {t('Suivi des retards, relances, pénalités et échéanciers.')}
             </Paragraph>
           </Space>
           <Space wrap>
             <Button onClick={() => setManualOpen(true)} icon={<PlusOutlined />} disabled={dashboard.items.length === 0}>
-              Relance manuelle
+              {t('Relance manuelle')}
             </Button>
             <Button
               onClick={() => setPenaltyOpen(true)}
               icon={<ExclamationCircleOutlined />}
               disabled={dashboard.items.length === 0}
             >
-              Appliquer pénalité
+              {t('Appliquer pénalité')}
             </Button>
             <Button
               onClick={() => setScheduleOpen(true)}
               icon={<ClockCircleOutlined />}
               disabled={dashboard.items.length === 0}
             >
-              Créer échéancier
+              {t('Créer échéancier')}
             </Button>
             <Button type="primary" onClick={() => void handleRunBatch()} loading={submitting}>
-              Lancer batch relances
+              {t('Lancer batch relances')}
             </Button>
           </Space>
         </div>
@@ -347,17 +355,17 @@ export const SyndicRecovery: React.FC = () => {
             <Row gutter={[16, 16]}>
               <Col xs={24} md={12}>
                 <Card>
-                  <Statistic title="Lots en retard" value={dashboard.totals.overdueCount} />
+                  <Statistic title={t('Lots en retard')} value={dashboard.totals.overdueCount} />
                 </Card>
               </Col>
               <Col xs={24} md={12}>
                 <Card>
-                  <Statistic title="Montant restant du" value={dashboard.totals.overdueAmount} suffix="XOF" />
+                  <Statistic title={t('Montant restant du')} value={dashboard.totals.overdueAmount} suffix="XOF" />
                 </Card>
               </Col>
             </Row>
 
-            <Card title="Dashboard retards">
+            <Card title={t('Dashboard retards')}>
               <Table
                 scroll={{ x: 'max-content' }}
                 rowKey="chargeCallId"
@@ -365,39 +373,39 @@ export const SyndicRecovery: React.FC = () => {
                 pagination={{ pageSize: 10 }}
                 columns={[
                   {
-                    title: 'Propriété',
+                    title: t('Propriété'),
                     render: (_, item) => propertyLabel(item)
                   },
                   {
-                    title: 'Propriétaire',
+                    title: t('Propriétaire'),
                     render: (_, item) => ownerLabel(item.owner)
                   },
                   {
-                    title: 'Échéance',
+                    title: t('Échéance'),
                     dataIndex: 'dueDate',
                     render: (value: string) => dayjs(value).format('DD/MM/YYYY')
                   },
-                  { title: 'Jours retard', dataIndex: 'daysLate' },
+                  { title: t('Jours retard'), dataIndex: 'daysLate' },
                   {
                     title: 'Montant',
                     dataIndex: 'amount',
-                    render: (value: number) => `${value.toLocaleString('fr-FR')} XOF`
+                    render: (value: number) => `${value.toLocaleString(activeLocale())} XOF`
                   },
                   {
-                    title: 'Payé',
+                    title: t('Payé'),
                     dataIndex: 'paid',
-                    render: (value: number) => `${value.toLocaleString('fr-FR')} XOF`
+                    render: (value: number) => `${value.toLocaleString(activeLocale())} XOF`
                   },
                   {
                     title: 'Reste',
                     dataIndex: 'outstanding',
-                    render: (value: number) => `${value.toLocaleString('fr-FR')} XOF`
+                    render: (value: number) => `${value.toLocaleString(activeLocale())} XOF`
                   }
                 ]}
               />
             </Card>
 
-            <Card title="Historique relances">
+            <Card title={t('Historique relances')}>
               <Table
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
@@ -412,9 +420,9 @@ export const SyndicRecovery: React.FC = () => {
                     render: (value: ReminderStatus) => <Tag>{reminderStatusLabels[value] ?? value}</Tag>
                   },
                   { title: 'Lot', render: (_, item) => item.lot?.lotNumber || '-' },
-                  { title: 'Propriétaire', render: (_, item) => ownerLabel(item.lot?.owner) },
+                  { title: t('Propriétaire'), render: (_, item) => ownerLabel(item.lot?.owner) },
                   {
-                    title: 'Envoyé le',
+                    title: t('Envoyé le'),
                     dataIndex: 'sentAt',
                     render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm')
                   }
@@ -422,7 +430,7 @@ export const SyndicRecovery: React.FC = () => {
               />
             </Card>
 
-            <Card title="Pénalités de retard">
+            <Card title={t('Pénalités de retard')}>
               <Table
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
@@ -430,13 +438,13 @@ export const SyndicRecovery: React.FC = () => {
                 pagination={{ pageSize: 10 }}
                 columns={[
                   { title: 'Lot', render: (_, item) => lotPropertyLabel(item.lot) },
-                  { title: 'Propriétaire', render: (_, item) => ownerLabel(item.lot?.owner) },
-                  { title: 'Jours retard', dataIndex: 'daysLate' },
+                  { title: t('Propriétaire'), render: (_, item) => ownerLabel(item.lot?.owner) },
+                  { title: t('Jours retard'), dataIndex: 'daysLate' },
                   { title: 'Taux', dataIndex: 'penaltyRate', render: (value: number) => `${value}%` },
                   {
                     title: 'Montant',
                     dataIndex: 'penaltyAmount',
-                    render: (value: number) => `${Number(value).toLocaleString('fr-FR')} XOF`
+                    render: (value: number) => `${Number(value).toLocaleString(activeLocale())} XOF`
                   },
                   {
                     title: 'Statut',
@@ -455,7 +463,7 @@ export const SyndicRecovery: React.FC = () => {
                             setWaiveOpen(true);
                           }}
                         >
-                          Remise
+                          {t('Remise')}
                         </Button>
                       )
                   }
@@ -463,7 +471,7 @@ export const SyndicRecovery: React.FC = () => {
               />
             </Card>
 
-            <Card title="Échéanciers">
+            <Card title={t('Échéanciers')}>
               <Table
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
@@ -471,12 +479,12 @@ export const SyndicRecovery: React.FC = () => {
                 pagination={{ pageSize: 10 }}
                 columns={[
                   { title: 'Lot', render: (_, item) => lotPropertyLabel(item.lot) },
-                  { title: 'Propriétaire', render: (_, item) => ownerLabel(item.lot?.owner) },
+                  { title: t('Propriétaire'), render: (_, item) => ownerLabel(item.lot?.owner) },
                   { title: 'Appel', render: (_, item) => item.chargeCall?.period || '-' },
                   {
-                    title: 'Montant total',
+                    title: t('Montant total'),
                     dataIndex: 'totalAmount',
-                    render: (value: number | string) => `${Number(value).toLocaleString('fr-FR')} XOF`
+                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} XOF`
                   },
                   {
                     title: 'Accord',
@@ -484,12 +492,12 @@ export const SyndicRecovery: React.FC = () => {
                     render: (value: string) => dayjs(value).format('DD/MM/YYYY')
                   },
                   {
-                    title: 'Échéances',
+                    title: t('Échéances'),
                     render: (_, item) =>
                       (item.instalments || [])
                         .map(
                           inst =>
-                            `${dayjs(inst.dueDate).format('DD/MM/YYYY')} (${Number(inst.amount).toLocaleString('fr-FR')} XOF)`
+                            `${dayjs(inst.dueDate).format('DD/MM/YYYY')} (${Number(inst.amount).toLocaleString(activeLocale())} XOF)`
                         )
                         .join(' | ') || '-'
                   },
@@ -502,30 +510,30 @@ export const SyndicRecovery: React.FC = () => {
       </Space>
 
       <Modal
-        title="Créer une relance manuelle"
+        title={t('Créer une relance manuelle')}
         open={manualOpen}
         onCancel={() => setManualOpen(false)}
         onOk={() => void handleCreateManualReminder()}
-        okText="Créer"
-        cancelText="Annuler"
+        okText={t('Créer')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
         <Form form={manualForm} layout="vertical" initialValues={{ reminderLevel: 1, channel: 'EMAIL' }}>
           <Form.Item
-            label="Appel de charges"
+            label={t('Appel de charges')}
             name="chargeCallId"
-            rules={[{ required: true, message: 'Sélectionnez un appel' }]}
+            rules={[{ required: true, message: t('Sélectionnez un appel') }]}
           >
             <Select showSearch optionFilterProp="label" options={chargeOptions} />
           </Form.Item>
           <Row gutter={12}>
             <Col xs={24} md={12}>
-              <Form.Item label="Niveau" name="reminderLevel" rules={[{ required: true }]}>
+              <Form.Item label={t('Niveau')} name="reminderLevel" rules={[{ required: true }]}>
                 <InputNumber min={1} max={4} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="Canal" name="channel" rules={[{ required: true }]}>
+              <Form.Item label={t('Canal')} name="channel" rules={[{ required: true }]}>
                 <Select options={reminderChannelOptions} />
               </Form.Item>
             </Col>
@@ -534,34 +542,34 @@ export const SyndicRecovery: React.FC = () => {
       </Modal>
 
       <Modal
-        title="Appliquer une pénalité"
+        title={t('Appliquer une pénalité')}
         open={penaltyOpen}
         onCancel={() => setPenaltyOpen(false)}
         onOk={() => void handleCreatePenalty()}
-        okText="Appliquer"
-        cancelText="Annuler"
+        okText={t('Appliquer')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
         <Form form={penaltyForm} layout="vertical" initialValues={{ penaltyRate: 5 }}>
           <Form.Item
-            label="Appel de charges"
+            label={t('Appel de charges')}
             name="chargeCallId"
-            rules={[{ required: true, message: 'Sélectionnez un appel' }]}
+            rules={[{ required: true, message: t('Sélectionnez un appel') }]}
           >
             <Select showSearch optionFilterProp="label" options={chargeOptions} />
           </Form.Item>
           <Row gutter={12}>
             <Col xs={24} md={12}>
               <Form.Item
-                label="Taux (%)"
+                label={t('Taux (%)')}
                 name="penaltyRate"
-                rules={[{ required: true, message: 'Le taux est obligatoire' }]}
+                rules={[{ required: true, message: t('Le taux est obligatoire') }]}
               >
                 <InputNumber min={0.01} max={100} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="Jours de retard (optionnel)" name="daysLate">
+              <Form.Item label={t('Jours de retard (optionnel)')} name="daysLate">
                 <InputNumber min={1} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
@@ -570,12 +578,12 @@ export const SyndicRecovery: React.FC = () => {
       </Modal>
 
       <Modal
-        title="Créer un échéancier"
+        title={t('Créer un échéancier')}
         open={scheduleOpen}
         onCancel={() => setScheduleOpen(false)}
         onOk={() => void handleCreateSchedule()}
-        okText="Créer"
-        cancelText="Annuler"
+        okText={t('Créer')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
         width={760}
       >
@@ -587,24 +595,24 @@ export const SyndicRecovery: React.FC = () => {
           }}
         >
           <Form.Item
-            label="Appel de charges"
+            label={t('Appel de charges')}
             name="chargeCallId"
-            rules={[{ required: true, message: 'Sélectionnez un appel' }]}
+            rules={[{ required: true, message: t('Sélectionnez un appel') }]}
           >
             <Select showSearch optionFilterProp="label" options={chargeOptions} />
           </Form.Item>
           <Row gutter={12}>
             <Col xs={24} md={12}>
               <Form.Item
-                label="Montant total"
+                label={t('Montant total')}
                 name="totalAmount"
-                rules={[{ required: true, message: 'Le total est obligatoire' }]}
+                rules={[{ required: true, message: t('Le total est obligatoire') }]}
               >
                 <InputNumber min={1} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="Date accord (optionnel)" name="agreedAt">
+              <Form.Item label={t('Date accord (optionnel)')} name="agreedAt">
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
@@ -618,9 +626,9 @@ export const SyndicRecovery: React.FC = () => {
                     <Col xs={24} md={10}>
                       <Form.Item
                         {...field}
-                        label={`Échéance #${index + 1}`}
+                        label={t('Échéance #{{value}}', { value: index + 1 })}
                         name={[field.name, 'dueDate']}
-                        rules={[{ required: true, message: 'Date requise' }]}
+                        rules={[{ required: true, message: t('Date requise') }]}
                       >
                         <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
                       </Form.Item>
@@ -628,22 +636,22 @@ export const SyndicRecovery: React.FC = () => {
                     <Col xs={24} md={10}>
                       <Form.Item
                         {...field}
-                        label="Montant"
+                        label={t('Montant')}
                         name={[field.name, 'amount']}
-                        rules={[{ required: true, message: 'Montant requis' }]}
+                        rules={[{ required: true, message: t('Montant requis') }]}
                       >
                         <InputNumber min={1} style={{ width: '100%' }} />
                       </Form.Item>
                     </Col>
                     <Col xs={24} md={4} style={{ display: 'flex', alignItems: 'center' }}>
                       <Button danger onClick={() => remove(field.name)} disabled={fields.length <= 1}>
-                        Supprimer
+                        {t('Supprimer')}
                       </Button>
                     </Col>
                   </Row>
                 ))}
                 <Button onClick={() => add()} icon={<PlusOutlined />}>
-                  Ajouter une échéance
+                  {t('Ajouter une échéance')}
                 </Button>
               </Space>
             )}
@@ -652,7 +660,7 @@ export const SyndicRecovery: React.FC = () => {
       </Modal>
 
       <Modal
-        title="Remise de pénalité"
+        title={t('Remise de pénalité')}
         open={waiveOpen}
         onCancel={() => {
           setWaiveOpen(false);
@@ -660,17 +668,17 @@ export const SyndicRecovery: React.FC = () => {
           waiveForm.resetFields();
         }}
         onOk={() => void handleWaivePenalty()}
-        okText="Appliquer remise"
-        cancelText="Annuler"
+        okText={t('Appliquer remise')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
         <Form form={waiveForm} layout="vertical">
           <Form.Item
-            label="Motif de remise"
+            label={t('Motif de remise')}
             name="waivedReason"
-            rules={[{ required: true, message: 'Le motif est obligatoire' }]}
+            rules={[{ required: true, message: t('Le motif est obligatoire') }]}
           >
-            <Input.TextArea rows={4} placeholder="Ex: accord exceptionnel suite à contestation validée." />
+            <Input.TextArea rows={4} placeholder={t('Ex: accord exceptionnel suite à contestation validée.')} />
           </Form.Item>
         </Form>
       </Modal>

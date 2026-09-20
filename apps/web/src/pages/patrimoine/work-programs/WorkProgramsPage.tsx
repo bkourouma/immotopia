@@ -8,7 +8,9 @@ import { useAuth } from '../../../hooks/useAuth';
 import { useListParams } from '../../../hooks/useListParams';
 import { queryKey, STALE_TIME } from '../../../lib/query-keys';
 import { PageHeader, StateBlock, StatusTag, DataView, DataCard, FilterSheet } from '../../../components/primitives';
+import { t } from '../../../i18n/t';
 
+import { activeLocale } from '../../../i18n/format';
 /**
  * Programmes de travaux — le même N+1, doublé d'un filtrage en mémoire (§8.4).
  *
@@ -25,16 +27,16 @@ type Filtres = { status: string };
 const FILTER_KEYS = ['status'] as const;
 
 const STATUTS = [
-  { value: 'PLANNED', label: 'Planifié' },
-  { value: 'IN_PROGRESS', label: 'En cours' },
-  { value: 'COMPLETED', label: 'Terminé' },
-  { value: 'CANCELLED', label: 'Annulé' }
+  { value: 'PLANNED', label: t('Planifié') },
+  { value: 'IN_PROGRESS', label: t('En cours') },
+  { value: 'COMPLETED', label: t('Terminé') },
+  { value: 'CANCELLED', label: t('Annulé') }
 ];
 
 function dateCourte(iso?: string | null): string {
   if (!iso) return '—';
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('fr-FR');
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString(activeLocale());
 }
 
 export const WorkProgramsPage: React.FC = () => {
@@ -63,7 +65,7 @@ export const WorkProgramsPage: React.FC = () => {
   });
 
   if (!agence) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const programmes = data?.items ?? [];
@@ -71,7 +73,7 @@ export const WorkProgramsPage: React.FC = () => {
 
   const colonnes: ColumnsType<WorkProgramAvecBien> = [
     {
-      title: 'Bien',
+      title: t('Bien'),
       key: 'bien',
       render: (_, programme) => (
         <>
@@ -84,29 +86,33 @@ export const WorkProgramsPage: React.FC = () => {
         </>
       )
     },
-    { title: 'Programme', dataIndex: 'title', key: 'titre' },
+    { title: t('Programme'), dataIndex: 'title', key: 'titre' },
     {
-      title: 'Prévu le',
+      title: t('Prévu le'),
       key: 'date',
       render: (_, programme) => dateCourte((programme as { plannedDate?: string }).plannedDate)
     },
-    { title: 'Statut', key: 'statut', render: (_, programme) => <StatusTag status={programme.status} /> }
+    { title: t('Statut'), key: 'statut', render: (_, programme) => <StatusTag status={programme.status} /> }
   ];
 
   return (
     <>
       <PageHeader
-        title="Programmes de travaux"
-        subtitle={total > 0 ? `${total} programme${total > 1 ? 's' : ''}` : 'Planification et suivi des travaux'}
+        title={t('Programmes de travaux')}
+        subtitle={total > 0 ? `${total} programme${total > 1 ? 's' : ''}` : t('Planification et suivi des travaux')}
       />
 
-      <FilterSheet activeCount={list.filters.status ? 1 : 0} onClear={list.clearFilters} title="Filtrer les programmes">
+      <FilterSheet
+        activeCount={list.filters.status ? 1 : 0}
+        onClear={list.clearFilters}
+        title={t('Filtrer les programmes')}
+      >
         <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-statut-travaux">Statut</label>
+          <label htmlFor="filtre-statut-travaux">{t('Statut')}</label>
           <Select
             id="filtre-statut-travaux"
             style={{ width: '100%' }}
-            placeholder="Tous les statuts"
+            placeholder={t('Tous les statuts')}
             allowClear
             value={list.filters.status || undefined}
             onChange={valeur => list.setFilters({ status: valeur })}
@@ -123,24 +129,24 @@ export const WorkProgramsPage: React.FC = () => {
         onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreur ? 'Impossible de charger les programmes de travaux.' : null}
+        error={erreur ? t('Impossible de charger les programmes de travaux.') : null}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}
-        emptyDescription="Aucun programme de travaux n'est enregistré pour cette agence."
+        emptyDescription={t("Aucun programme de travaux n'est enregistré pour cette agence.")}
         columns={colonnes}
         rowKey={programme => programme.id}
-        aria-label="Programmes de travaux"
+        aria-label={t('Programmes de travaux')}
         renderCard={programme => (
           <DataCard
             title={programme.title}
             aria-label={`${programme.title}, ${programme.property?.title ?? 'bien inconnu'}`}
-            subtitle={programme.property?.title || 'Bien inconnu'}
+            subtitle={programme.property?.title || t('Bien inconnu')}
             status={<StatusTag status={programme.status} />}
             fields={[
-              { label: 'Prévu le', value: dateCourte((programme as { plannedDate?: string }).plannedDate) },
+              { label: t('Prévu le'), value: dateCourte((programme as { plannedDate?: string }).plannedDate) },
               ...(programme.property?.internalReference
-                ? [{ label: 'Référence', value: programme.property.internalReference }]
+                ? [{ label: t('Référence'), value: programme.property.internalReference }]
                 : [])
             ]}
           />

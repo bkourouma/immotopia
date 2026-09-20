@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import dayjs from 'dayjs';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -53,10 +54,10 @@ export default function TenantDocuments() {
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
-        setError('Erreur lors du chargement des documents');
+        setError(t('Erreur lors du chargement des documents'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des documents');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des documents'));
     } finally {
       setLoading(false);
     }
@@ -88,9 +89,9 @@ export default function TenantDocuments() {
       link.remove();
       window.URL.revokeObjectURL(url);
 
-      message.success('Document téléchargé avec succès');
+      message.success(t('Document téléchargé avec succès'));
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors du téléchargement');
+      message.error(err.response?.data?.message || t('Erreur lors du téléchargement'));
     } finally {
       setDownloading(null);
     }
@@ -103,12 +104,12 @@ export default function TenantDocuments() {
 
   const getDocumentTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
-      LEASE_CONTRACT: 'Contrat de bail',
+      LEASE_CONTRACT: t('Contrat de bail'),
       LEASE_ADDENDUM: 'Avenant',
-      RENT_RECEIPT: 'Quittance de loyer',
+      RENT_RECEIPT: t('Quittance de loyer'),
       RENT_QUITTANCE: 'Quittance',
-      DEPOSIT_RECEIPT: 'Reçu de dépôt',
-      STATEMENT: 'Relevé',
+      DEPOSIT_RECEIPT: t('Reçu de dépôt'),
+      STATEMENT: t('Relevé'),
       OTHER: 'Autre'
     };
     return labels[type] || type;
@@ -116,9 +117,9 @@ export default function TenantDocuments() {
 
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
-      DRAFT: { label: 'Brouillon', color: 'default' },
-      FINAL: { label: 'Final', color: 'success' },
-      VOID: { label: 'Annulé', color: 'error' }
+      DRAFT: { label: t('Brouillon'), color: 'default' },
+      FINAL: { label: t('Final'), color: 'success' },
+      VOID: { label: t('Annulé'), color: 'error' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -135,21 +136,21 @@ export default function TenantDocuments() {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement des documents..." />
+        <Spin size="large" tip={t('Chargement des documents...')} />
       </div>
     );
   }
 
   if (error) {
-    return <Alert message="Erreur" description={error} type="error" showIcon />;
+    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
       <div>
-        <Title level={2}>Documents</Title>
-        <Text type="secondary">Accédez et téléchargez vos documents de location</Text>
+        <Title level={2}>{t('Documents')}</Title>
+        <Text type="secondary">{t('Accédez et téléchargez vos documents de location')}</Text>
       </div>
 
       {/* Filter (T111) */}
@@ -157,10 +158,10 @@ export default function TenantDocuments() {
         <div className="it-toolbar__actions">
           <Space>
             <FilterOutlined />
-            <Text strong>Filtre :</Text>
+            <Text strong>{t('Filtre :')}</Text>
           </Space>
           <Select
-            placeholder="Type de document"
+            placeholder={t('Type de document')}
             allowClear
             style={{ width: 250 }}
             value={typeFilter}
@@ -172,7 +173,7 @@ export default function TenantDocuments() {
               </Select.Option>
             ))}
           </Select>
-          {typeFilter && <Button onClick={() => setTypeFilter(undefined)}>Réinitialiser</Button>}
+          {typeFilter && <Button onClick={() => setTypeFilter(undefined)}>{t('Réinitialiser')}</Button>}
         </div>
       </Card>
 
@@ -203,7 +204,7 @@ export default function TenantDocuments() {
                         loading={downloading === doc.id}
                         disabled={!doc.file_path && !doc.file_url}
                       >
-                        Télécharger
+                        {t('Télécharger')}
                       </Button>
                     ]}
                   >
@@ -211,7 +212,11 @@ export default function TenantDocuments() {
                       avatar={<FileTextOutlined style={{ fontSize: 24 }} />}
                       title={
                         <Space>
-                          <Text strong>{doc.title || doc.document_number || `Document ${doc.id.substring(0, 8)}`}</Text>
+                          <Text strong>
+                            {doc.title ||
+                              doc.document_number ||
+                              t('Document {{value}}', { value: doc.id.substring(0, 8) })}
+                          </Text>
                           {getStatusTag(doc.status)}
                         </Space>
                       }
@@ -220,7 +225,9 @@ export default function TenantDocuments() {
                           {doc.issued_at && (
                             <>
                               <CalendarOutlined />
-                              <Text type="secondary">Émis le {formatDate(doc.issued_at)}</Text>
+                              <Text type="secondary">
+                                {t('Émis le')} {formatDate(doc.issued_at)}
+                              </Text>
                             </>
                           )}
                         </Space>
@@ -234,7 +241,7 @@ export default function TenantDocuments() {
         </Space>
       ) : (
         <Card>
-          <Empty description="Aucun document trouvé" />
+          <Empty description={t('Aucun document trouvé')} />
         </Card>
       )}
     </Space>

@@ -19,7 +19,9 @@ import {
   FilterSheet,
   useConfirmAction
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 /**
  * Baux — l'entrée du module de gestion locative (REFONTE_UI_UX.md §5.1).
  *
@@ -48,17 +50,17 @@ type Filtres = { q: string; status: string; primaryRenterClientId: string };
 const FILTER_KEYS = ['q', 'status', 'primaryRenterClientId'] as const;
 
 const STATUTS = [
-  { value: 'DRAFT', label: 'Brouillon' },
-  { value: 'ACTIVE', label: 'Actif' },
-  { value: 'SUSPENDED', label: 'Suspendu' },
-  { value: 'ENDED', label: 'Terminé' },
-  { value: 'CANCELED', label: 'Annulé' }
+  { value: 'DRAFT', label: t('Brouillon') },
+  { value: 'ACTIVE', label: t('Actif') },
+  { value: 'SUSPENDED', label: t('Suspendu') },
+  { value: 'ENDED', label: t('Terminé') },
+  { value: 'CANCELED', label: t('Annulé') }
 ];
 
 function dateCourte(iso?: string | null): string {
   if (!iso) return '—';
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('fr-FR');
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString(activeLocale());
 }
 
 /**
@@ -150,37 +152,40 @@ export const Leases: React.FC = () => {
   const handleDelete = (bail: RentalLease) => {
     if (!tenantId) return;
     confirmAction({
-      title: `Supprimer le bail ${bail.lease_number} ?`,
-      description: `${nomDuBien(bail.property)} · ${nomDeLaPersonne(bail.primaryRenter?.user)}. Cette action est irréversible.`,
-      okText: 'Supprimer',
+      title: t('Supprimer le bail {{lease_number}} ?', { lease_number: bail.lease_number }),
+      description: t('{{value}} · {{value2}}. Cette action est irréversible.', {
+        value: nomDuBien(bail.property),
+        value2: nomDeLaPersonne(bail.primaryRenter?.user)
+      }),
+      okText: t('Supprimer'),
       danger: true,
       onConfirm: async () => {
         try {
           await deleteLease(tenantId, bail.id);
           await queryClient.invalidateQueries({ queryKey: ['leases', tenantId] });
-          message.success('Bail supprimé.');
+          message.success(t('Bail supprimé.'));
         } catch (err: any) {
-          message.error(err?.response?.data?.message || 'La suppression a échoué.');
+          message.error(err?.response?.data?.message || t('La suppression a échoué.'));
         }
       }
     });
   };
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const cheminDetail = (id: string) => `/tenant/${tenantId}/rental/leases/${id}`;
 
   const actionsSecondaires = (bail: RentalLease) => [
-    { key: 'edit', label: 'Modifier le bail', onClick: () => navigate(`${cheminDetail(bail.id)}/edit`) },
+    { key: 'edit', label: t('Modifier le bail'), onClick: () => navigate(`${cheminDetail(bail.id)}/edit`) },
     { type: 'divider' as const },
-    { key: 'del', label: 'Supprimer', danger: true, onClick: () => handleDelete(bail) }
+    { key: 'del', label: t('Supprimer'), danger: true, onClick: () => handleDelete(bail) }
   ];
 
   const colonnes: ColumnsType<RentalLease> = [
     {
-      title: 'Bail',
+      title: t('Bail'),
       key: 'bail',
       width: 260,
       render: (_, bail) => (
@@ -195,39 +200,42 @@ export const Leases: React.FC = () => {
       )
     },
     {
-      title: 'Locataire',
+      title: t('Locataire'),
       key: 'locataire',
       width: 170,
       render: (_, bail) => nomDeLaPersonne(bail.primaryRenter?.user)
     },
     {
-      title: 'Période',
+      title: t('Période'),
       key: 'periode',
       render: (_, bail) => `${dateCourte(bail.start_date)} → ${dateCourte(bail.end_date)}`
     },
     {
-      title: 'Montant',
+      title: t('Montant'),
       key: 'montant',
-      align: 'right',
+      align: 'end',
       render: (_, bail) => {
         const { montant, devise } = montantDeReference(bail);
         return <MoneyValue value={montant} currency={devise} />;
       }
     },
-    { title: 'Statut', key: 'statut', render: (_, bail) => <StatusTag status={bail.status} /> },
+    { title: t('Statut'), key: 'statut', render: (_, bail) => <StatusTag status={bail.status} /> },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, bail) => (
         <Space>
           <Button type="link" onClick={() => navigate(cheminDetail(bail.id))}>
-            Voir
+            {t('Voir')}
           </Button>
           {/* Le même menu qu'en carte. Sans lui, modifier et supprimer
               n'existeraient plus du tout au-dessus de 992 px. */}
           <Dropdown menu={{ items: actionsSecondaires(bail) }} trigger={['click']} placement="bottomRight">
-            <Button icon={<MoreOutlined />} aria-label={`Autres actions pour le bail ${bail.lease_number}`} />
+            <Button
+              icon={<MoreOutlined />}
+              aria-label={t('Autres actions pour le bail {{lease_number}}', { lease_number: bail.lease_number })}
+            />
           </Dropdown>
         </Space>
       )
@@ -237,10 +245,10 @@ export const Leases: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Baux"
-        subtitle={total > 0 ? `${total} ${total > 1 ? 'baux' : 'bail'} en gestion` : 'Gestion locative'}
+        title={t('Baux')}
+        subtitle={total > 0 ? `${total} ${total > 1 ? 'baux' : 'bail'} en gestion` : t('Gestion locative')}
         primaryAction={{
-          label: 'Nouveau bail',
+          label: t('Nouveau bail'),
           icon: <PlusOutlined />,
           onClick: () => navigate(`/tenant/${tenantId}/rental/leases/new`)
         }}
@@ -250,8 +258,8 @@ export const Leases: React.FC = () => {
         <Input
           allowClear
           prefix={<SearchOutlined aria-hidden="true" />}
-          placeholder="Rechercher par numéro de bail"
-          aria-label="Rechercher un bail"
+          placeholder={t('Rechercher par numéro de bail')}
+          aria-label={t('Rechercher un bail')}
           value={saisie}
           onChange={evenement => setSaisie(evenement.target.value)}
         />
@@ -260,14 +268,14 @@ export const Leases: React.FC = () => {
       <FilterSheet
         activeCount={[list.filters.status, list.filters.primaryRenterClientId].filter(Boolean).length}
         onClear={() => list.setFilters({ status: undefined, primaryRenterClientId: undefined })}
-        title="Filtrer les baux"
+        title={t('Filtrer les baux')}
       >
         <div style={{ minWidth: 240 }}>
-          <label htmlFor="filtre-locataire-bail">Locataire</label>
+          <label htmlFor="filtre-locataire-bail">{t('Locataire')}</label>
           <Select
             id="filtre-locataire-bail"
             style={{ width: '100%' }}
-            placeholder="Tous les locataires"
+            placeholder={t('Tous les locataires')}
             allowClear
             showSearch
             optionFilterProp="label"
@@ -277,11 +285,11 @@ export const Leases: React.FC = () => {
           />
         </div>
         <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-statut-bail">Statut</label>
+          <label htmlFor="filtre-statut-bail">{t('Statut')}</label>
           <Select
             id="filtre-statut-bail"
             style={{ width: '100%' }}
-            placeholder="Tous les statuts"
+            placeholder={t('Tous les statuts')}
             allowClear
             value={list.filters.status || undefined}
             onChange={valeur => list.setFilters({ status: valeur })}
@@ -301,28 +309,31 @@ export const Leases: React.FC = () => {
         onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreur ? 'Impossible de charger les baux.' : null}
+        error={erreur ? t('Impossible de charger les baux.') : null}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}
-        emptyDescription="Aucun bail n'est encore enregistré pour cette agence."
+        emptyDescription={t("Aucun bail n'est encore enregistré pour cette agence.")}
         emptyAction={{
-          label: 'Créer un bail',
+          label: t('Créer un bail'),
           onClick: () => navigate(`/tenant/${tenantId}/rental/leases/new`)
         }}
         columns={colonnes}
         rowKey={bail => bail.id}
-        aria-label="Baux de l'agence"
+        aria-label={t("Baux de l'agence")}
         renderCard={bail => {
           const { montant, devise } = montantDeReference(bail);
           return (
             <DataCard
               title={bail.lease_number}
-              aria-label={`Bail ${bail.lease_number}, ${nomDuBien(bail.property)}`}
+              aria-label={t('Bail {{lease_number}}, {{value}}', {
+                lease_number: bail.lease_number,
+                value: nomDuBien(bail.property)
+              })}
               subtitle={`${nomDuBien(bail.property)} · ${nomDeLaPersonne(bail.primaryRenter?.user)}`}
               status={<StatusTag status={bail.status} />}
               highlight={<MoneyValue value={montant} currency={devise} />}
-              fields={[{ label: 'Période', value: `${dateCourte(bail.start_date)} → ${dateCourte(bail.end_date)}` }]}
+              fields={[{ label: t('Période'), value: `${dateCourte(bail.start_date)} → ${dateCourte(bail.end_date)}` }]}
               onOpen={() => navigate(cheminDetail(bail.id))}
               secondaryActions={actionsSecondaires(bail)}
             />

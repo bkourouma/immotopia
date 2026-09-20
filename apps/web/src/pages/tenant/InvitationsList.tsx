@@ -5,7 +5,9 @@ import { MailOutlined, PlusOutlined, ReloadOutlined, CloseOutlined } from '@ant-
 import { resendInvitation, revokeInvitation } from '../../services/invitation-service';
 import apiClient from '../../utils/api-client';
 import type { ColumnsType } from 'antd/es/table';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 interface Invitation {
@@ -41,10 +43,10 @@ export const InvitationsList: React.FC = () => {
       if (response.data.success) {
         setInvitations(response.data.data || []);
       } else {
-        setError('Erreur lors du chargement des invitations');
+        setError(t('Erreur lors du chargement des invitations'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des invitations');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des invitations'));
     } finally {
       setLoading(false);
     }
@@ -55,9 +57,9 @@ export const InvitationsList: React.FC = () => {
     try {
       await resendInvitation(tenantId, invitationId);
       await loadInvitations();
-      message.success('Invitation renvoyée avec succès');
+      message.success(t('Invitation renvoyée avec succès'));
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors du renvoi');
+      message.error(err.response?.data?.message || t('Erreur lors du renvoi'));
     }
   };
 
@@ -66,19 +68,19 @@ export const InvitationsList: React.FC = () => {
     try {
       await revokeInvitation(tenantId, invitationId);
       await loadInvitations();
-      message.success('Invitation révoquée avec succès');
+      message.success(t('Invitation révoquée avec succès'));
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors de la révocation');
+      message.error(err.response?.data?.message || t('Erreur lors de la révocation'));
     }
   };
 
   const getStatusTag = (status: string, expiresAt: string) => {
     const isExpired = new Date(expiresAt) < new Date();
     const statusConfig = {
-      PENDING: { color: isExpired ? 'default' : 'warning', text: isExpired ? 'Expirée' : 'En attente' },
-      ACCEPTED: { color: 'success', text: 'Acceptée' },
-      REVOKED: { color: 'error', text: 'Révoquée' },
-      EXPIRED: { color: 'default', text: 'Expirée' }
+      PENDING: { color: isExpired ? 'default' : 'warning', text: isExpired ? t('Expirée') : t('En attente') },
+      ACCEPTED: { color: 'success', text: t('Acceptée') },
+      REVOKED: { color: 'error', text: t('Révoquée') },
+      EXPIRED: { color: 'default', text: t('Expirée') }
     };
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.PENDING;
     return <Tag color={config.color}>{config.text}</Tag>;
@@ -90,36 +92,36 @@ export const InvitationsList: React.FC = () => {
 
   const columns: ColumnsType<Invitation> = [
     {
-      title: 'Email',
+      title: t('Email'),
       dataIndex: 'email',
       key: 'email',
       width: 250,
       render: (email: string) => <Text strong>{email}</Text>
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       key: 'status',
       width: 150,
       render: (_, record) => getStatusTag(record.status, record.expiresAt)
     },
     {
-      title: "Date d'invitation",
+      title: t("Date d'invitation"),
       dataIndex: 'invitedAt',
       key: 'invitedAt',
       width: 150,
-      render: (date: string) => new Date(date).toLocaleDateString('fr-FR')
+      render: (date: string) => new Date(date).toLocaleDateString(activeLocale())
     },
     {
-      title: 'Expiration',
+      title: t('Expiration'),
       dataIndex: 'expiresAt',
       key: 'expiresAt',
       width: 150,
-      render: (date: string) => new Date(date).toLocaleDateString('fr-FR')
+      render: (date: string) => new Date(date).toLocaleDateString(activeLocale())
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       width: 150,
       render: (_, record) => {
         const canAct = record.status === 'PENDING' && !isExpired(record.expiresAt);
@@ -128,22 +130,22 @@ export const InvitationsList: React.FC = () => {
             {canAct && (
               <>
                 <Popconfirm
-                  title="Renvoyer l'invitation"
-                  description="Êtes-vous sûr de vouloir renvoyer cette invitation ?"
+                  title={t("Renvoyer l'invitation")}
+                  description={t('Êtes-vous sûr de vouloir renvoyer cette invitation ?')}
                   onConfirm={() => handleResend(record.id)}
-                  okText="Oui"
-                  cancelText="Non"
+                  okText={t('Oui')}
+                  cancelText={t('Non')}
                 >
-                  <Button type="text" icon={<ReloadOutlined />} title="Renvoyer" />
+                  <Button type="text" icon={<ReloadOutlined />} title={t('Renvoyer')} />
                 </Popconfirm>
                 <Popconfirm
-                  title="Révoquer l'invitation"
-                  description="Êtes-vous sûr de vouloir révoquer cette invitation ?"
+                  title={t("Révoquer l'invitation")}
+                  description={t('Êtes-vous sûr de vouloir révoquer cette invitation ?')}
                   onConfirm={() => handleRevoke(record.id)}
-                  okText="Oui"
-                  cancelText="Non"
+                  okText={t('Oui')}
+                  cancelText={t('Non')}
                 >
-                  <Button type="text" danger icon={<CloseOutlined />} title="Révoquer" />
+                  <Button type="text" danger icon={<CloseOutlined />} title={t('Révoquer')} />
                 </Popconfirm>
               </>
             )}
@@ -160,18 +162,25 @@ export const InvitationsList: React.FC = () => {
         <div className="it-toolbar it-toolbar--start">
           <div>
             <Title level={2} style={{ margin: 0 }}>
-              Invitations
+              {t('Invitations')}
             </Title>
-            <Text type="secondary">Gérez les invitations envoyées aux collaborateurs</Text>
+            <Text type="secondary">{t('Gérez les invitations envoyées aux collaborateurs')}</Text>
           </div>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate(`/tenant/${tenantId}/invite`)}>
-            Nouvelle invitation
+            {t('Nouvelle invitation')}
           </Button>
         </div>
 
         {/* Error Message */}
         {error && (
-          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
+          <Alert
+            message={t('Erreur')}
+            description={error}
+            type="error"
+            showIcon
+            closable
+            onClose={() => setError(null)}
+          />
         )}
 
         {/* Invitations Table */}
@@ -184,7 +193,7 @@ export const InvitationsList: React.FC = () => {
               loading={loading}
               scroll={{ x: 'max-content' }}
               locale={{
-                emptyText: <Empty description="Aucune invitation trouvée" />
+                emptyText: <Empty description={t('Aucune invitation trouvée')} />
               }}
             />
           </div>

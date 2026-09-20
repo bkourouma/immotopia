@@ -2,6 +2,7 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/fr';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import { t } from '../i18n/t';
 
 dayjs.extend(customParseFormat);
 dayjs.extend(relativeTime);
@@ -21,8 +22,8 @@ dayjs.locale('fr');
  */
 export function safeFormatDate(
   date: string | Date | null | undefined,
-  formatString: string = 'DD MMM YYYY [à] HH:mm',
-  fallback: string = 'Date invalide'
+  formatString: string = t('DD MMM YYYY [à] HH:mm'),
+  fallback: string = t('Date invalide')
 ): string {
   if (!date) {
     return fallback;
@@ -46,21 +47,21 @@ export function safeFormatDate(
  * Format date for display in ticket detail (full format with time)
  */
 export function formatTicketDate(date: string | Date | null | undefined): string {
-  return safeFormatDate(date, 'DD MMMM YYYY [à] HH:mm', 'Date invalide');
+  return safeFormatDate(date, t('DD MMMM YYYY [à] HH:mm'), t('Date invalide'));
 }
 
 /**
  * Format date for display in lists (compact format)
  */
 export function formatCompactDate(date: string | Date | null | undefined): string {
-  return safeFormatDate(date, 'DD MMM YYYY [à] HH:mm', 'Date invalide');
+  return safeFormatDate(date, t('DD MMM YYYY [à] HH:mm'), t('Date invalide'));
 }
 
 /**
  * Format date for display in timeline (compact format without time)
  */
 export function formatTimelineDate(date: string | Date | null | undefined): string {
-  return safeFormatDate(date, 'DD MMM YYYY [à] HH:mm', 'Date invalide');
+  return safeFormatDate(date, t('DD MMM YYYY [à] HH:mm'), t('Date invalide'));
 }
 
 /**

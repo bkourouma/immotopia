@@ -14,6 +14,7 @@ import { SkeletonDetail } from '../primitives/Skeleton';
 import { AppHeader } from './AppHeader';
 import { AppNavigation } from './AppNavigation';
 import { BottomTabBar } from './BottomTabBar';
+import { t } from '../../i18n/t';
 
 /**
  * `<AppShell>` — coquille unique, montée AU NIVEAU ROUTE (REFONTE_UI_UX.md §4.1).
@@ -189,7 +190,7 @@ export const AppShell: React.FC = () => {
         >
           {/* Le squelette remplace le `Spin` plein écran : la coquille est
               déjà peinte, seul le contenu manque (§5.6). */}
-          <Suspense fallback={<SkeletonDetail aria-label="Chargement de l'écran" />}>
+          <Suspense fallback={<SkeletonDetail aria-label={t("Chargement de l'écran")} />}>
             <Outlet />
           </Suspense>
         </Layout.Content>
@@ -237,7 +238,7 @@ export const AppShell: React.FC = () => {
           // Bouton de fermeture VISIBLE : `closable={false}` obligeait à taper
           // le masque, geste ni découvrable ni accessible au clavier (§4.2).
           closable
-          title="Navigation"
+          title={t('Navigation')}
           width={288}
           styles={{
             body: { padding: 0, background: 'var(--surface-nav)' },

@@ -12,6 +12,7 @@ import {
 import { StateBlock } from '../primitives';
 import { formatRelativeDate, safeFormatDate } from '../../utils/date-utils';
 import type { DashboardActivity, DashboardTask, DashboardTaskKind } from '../../services/dashboard-service';
+import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
@@ -25,9 +26,9 @@ const { Text } = Typography;
  */
 
 const SEVERITE: Record<DashboardTask['severity'], { color: string; label: string }> = {
-  danger: { color: 'var(--color-error)', label: 'Urgent' },
-  warning: { color: 'var(--color-warning)', label: 'À surveiller' },
-  info: { color: 'var(--color-primary)', label: 'Information' }
+  danger: { color: 'var(--color-error)', label: t('Urgent') },
+  warning: { color: 'var(--color-warning)', label: t('À surveiller') },
+  info: { color: 'var(--color-primary)', label: t('Information') }
 };
 
 const ICONE_TACHE: Record<DashboardTaskKind, React.ReactNode> = {
@@ -49,7 +50,7 @@ export const WorkQueue: React.FC<WorkQueueProps> = ({ tasks, loading, link }) =>
     loading={loading}
     title={
       <span>
-        À traiter aujourd'hui{' '}
+        {t("À traiter aujourd'hui")}{' '}
         <Text type="secondary" style={{ fontWeight: 400 }}>
           ({tasks.length})
         </Text>
@@ -62,8 +63,8 @@ export const WorkQueue: React.FC<WorkQueueProps> = ({ tasks, loading, link }) =>
     {tasks.length === 0 ? (
       <StateBlock
         variant="empty"
-        title="Rien à traiter aujourd'hui"
-        description="Aucun impayé, aucune déclaration en attente, aucun ticket urgent."
+        title={t("Rien à traiter aujourd'hui")}
+        description={t('Aucun impayé, aucune déclaration en attente, aucun ticket urgent.')}
       />
     ) : (
       <List
@@ -88,7 +89,7 @@ export const WorkQueue: React.FC<WorkQueueProps> = ({ tasks, loading, link }) =>
                   color: 'inherit',
                   // Le liseré de gravité, doublé par le libellé de la ligne :
                   // la couleur ne porte jamais le sens à elle seule.
-                  borderLeft: `3px solid ${severite.color}`
+                  borderInlineStart: `3px solid ${severite.color}`
                 }}
               >
                 <span aria-hidden="true" style={{ color: severite.color, fontSize: 18, lineHeight: '22px' }}>
@@ -135,12 +136,16 @@ export interface ActivityFeedProps {
 export const ActivityFeed: React.FC<ActivityFeedProps> = ({ activities, loading }) => (
   <Card
     loading={loading}
-    title="Activité récente"
+    title={t('Activité récente')}
     style={{ height: '100%', borderColor: 'var(--border-default)' }}
     styles={{ body: { padding: activities.length ? 0 : 'var(--space-4)' } }}
   >
     {activities.length === 0 ? (
-      <StateBlock variant="empty" title="Aucune activité récente" description="Rien de neuf ces derniers jours." />
+      <StateBlock
+        variant="empty"
+        title={t('Aucune activité récente')}
+        description={t('Rien de neuf ces derniers jours.')}
+      />
     ) : (
       <List
         dataSource={activities}

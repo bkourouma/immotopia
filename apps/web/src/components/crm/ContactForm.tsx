@@ -26,25 +26,26 @@ import { LocationSelector } from '../ui/location-selector';
 import { GeographicLocation, getLocationByCommuneId } from '../../services/geographic-service';
 import { CreateCrmContactRequest, UpdateCrmContactRequest, CrmContact } from '../../types/crm-types';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { t } from '../../i18n/t';
 
 const { TextArea } = Input;
 const { TabPane } = Tabs;
 const { Text } = Typography;
 
 const COUNTRY_DIAL_CODES = [
-  { value: '+225', label: 'CI (+225)' },
-  { value: '+33', label: 'FR (+33)' },
-  { value: '+32', label: 'BE (+32)' },
-  { value: '+41', label: 'CH (+41)' },
-  { value: '+1', label: 'US/CA (+1)' },
-  { value: '+212', label: 'MA (+212)' },
-  { value: '+221', label: 'SN (+221)' },
-  { value: '+223', label: 'ML (+223)' },
-  { value: '+226', label: 'BF (+226)' },
-  { value: '+228', label: 'TG (+228)' },
-  { value: '+229', label: 'BJ (+229)' },
-  { value: '+234', label: 'NG (+234)' },
-  { value: '+44', label: 'UK (+44)' }
+  { value: '+225', label: t('CI (+225)') },
+  { value: '+33', label: t('FR (+33)') },
+  { value: '+32', label: t('BE (+32)') },
+  { value: '+41', label: t('CH (+41)') },
+  { value: '+1', label: t('US/CA (+1)') },
+  { value: '+212', label: t('MA (+212)') },
+  { value: '+221', label: t('SN (+221)') },
+  { value: '+223', label: t('ML (+223)') },
+  { value: '+226', label: t('BF (+226)') },
+  { value: '+228', label: t('TG (+228)') },
+  { value: '+229', label: t('BJ (+229)') },
+  { value: '+234', label: t('NG (+234)') },
+  { value: '+44', label: t('UK (+44)') }
 ];
 
 const DEFAULT_COUNTRY_DIAL_CODE = '+225';
@@ -270,15 +271,21 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
           form.setFields([{ name: err.field, errors: [err.message] }]);
         });
         const invalidFields = fieldErrors.map(err => err.field).join(', ');
-        message.error(`Champs invalides : ${invalidFields}. Verifiez les onglets du formulaire.`);
+        message.error(
+          t('Champs invalides : {{invalidFields}}. Verifiez les onglets du formulaire.', {
+            invalidFields: invalidFields
+          })
+        );
       } else if (error.response?.data?.message) {
         message.error(error.response.data.message);
       } else if (error.response) {
-        message.error(`Enregistrement refuse par le serveur (HTTP ${error.response.status}).`);
+        message.error(t('Enregistrement refuse par le serveur (HTTP {{status}}).', { status: error.response.status }));
       } else {
         // Aucune reponse HTTP : reseau coupe, session expiree pendant l'envoi,
         // ou erreur survenue avant la requete. On affiche la cause reelle.
-        message.error(`Enregistrement impossible : ${error.message || 'aucune reponse du serveur'}`);
+        message.error(
+          t('Enregistrement impossible : {{value}}', { value: error.message || 'aucune reponse du serveur' })
+        );
         console.error('Echec de creation du contact', error);
       }
       return;
@@ -312,11 +319,11 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
   const beforeUpload = (file: File) => {
     const isImage = file.type.startsWith('image/');
     if (!isImage) {
-      message.error('Vous ne pouvez télécharger que des images!');
+      message.error(t('Vous ne pouvez télécharger que des images!'));
     }
     const isLt2M = file.size / 1024 / 1024 < 2;
     if (!isLt2M) {
-      message.error("L'image doit être inférieure à 2MB!");
+      message.error(t("L'image doit être inférieure à 2MB!"));
     }
     return isImage && isLt2M;
   };
@@ -354,29 +361,33 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
           <TabPane tab="Basique" key="basic">
             <Card>
               <Form.Item
-                label="Type de contact"
+                label={t('Type de contact')}
                 name="contactType"
-                rules={[{ required: true, message: 'Le type de contact est requis' }]}
+                rules={[{ required: true, message: t('Le type de contact est requis') }]}
               >
                 <Radio.Group>
-                  <Radio value="PERSON">Personne</Radio>
-                  <Radio value="COMPANY">Entreprise</Radio>
+                  <Radio value="PERSON">{t('Personne')}</Radio>
+                  <Radio value="COMPANY">{t('Entreprise')}</Radio>
                 </Radio.Group>
               </Form.Item>
 
               <Row gutter={16}>
                 <Col xs={24} sm={12}>
                   <Form.Item
-                    label="Prénom"
+                    label={t('Prénom')}
                     name="firstName"
-                    rules={[{ required: true, message: 'Le prénom est requis' }]}
+                    rules={[{ required: true, message: t('Le prénom est requis') }]}
                   >
-                    <Input placeholder="Prénom" />
+                    <Input placeholder={t('Prénom')} />
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Nom" name="lastName" rules={[{ required: true, message: 'Le nom est requis' }]}>
-                    <Input placeholder="Nom" />
+                  <Form.Item
+                    label={t('Nom')}
+                    name="lastName"
+                    rules={[{ required: true, message: t('Le nom est requis') }]}
+                  >
+                    <Input placeholder={t('Nom')} />
                   </Form.Item>
                 </Col>
               </Row>
@@ -384,18 +395,18 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
               <Row gutter={16}>
                 <Col xs={24} sm={12}>
                   <Form.Item
-                    label="Email personnel"
+                    label={t('Email personnel')}
                     name="email"
                     rules={[
-                      { required: true, message: "L'email est requis" },
-                      { type: 'email', message: 'Adresse email invalide' }
+                      { required: true, message: t("L'email est requis") },
+                      { type: 'email', message: t('Adresse email invalide') }
                     ]}
                   >
                     <Input type="email" placeholder="email@example.com" />
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Email professionnel" name="emailSecondary">
+                  <Form.Item label={t('Email professionnel')} name="emailSecondary">
                     <Input type="email" placeholder="email@example.com" />
                   </Form.Item>
                 </Col>
@@ -403,15 +414,15 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
 
               <Row gutter={16}>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Téléphone principal">
+                  <Form.Item label={t('Téléphone principal')}>
                     <Space direction="vertical" style={{ width: '100%' }}>
                       <Form.Item name="phonePrimaryIsWhatsApp" valuePropName="checked" noStyle>
-                        <Checkbox>WhatsApp</Checkbox>
+                        <Checkbox>{'WhatsApp'}</Checkbox>
                       </Form.Item>
                       <Form.Item name="phonePrimary" noStyle>
                         <Input
                           type="tel"
-                          placeholder="Numéro principal"
+                          placeholder={t('Numéro principal')}
                           addonBefore={
                             <Form.Item name="phonePrimaryCountryCode" noStyle>
                               <Select style={{ width: 130 }} options={COUNTRY_DIAL_CODES} />
@@ -423,15 +434,15 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Téléphone secondaire">
+                  <Form.Item label={t('Téléphone secondaire')}>
                     <Space direction="vertical" style={{ width: '100%' }}>
                       <Form.Item name="phoneSecondaryIsWhatsApp" valuePropName="checked" noStyle>
-                        <Checkbox>WhatsApp</Checkbox>
+                        <Checkbox>{'WhatsApp'}</Checkbox>
                       </Form.Item>
                       <Form.Item name="phoneSecondary" noStyle>
                         <Input
                           type="tel"
-                          placeholder="Numéro secondaire"
+                          placeholder={t('Numéro secondaire')}
                           addonBefore={
                             <Form.Item name="phoneSecondaryCountryCode" noStyle>
                               <Select style={{ width: 130 }} options={COUNTRY_DIAL_CODES} />
@@ -446,7 +457,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
             </Card>
           </TabPane>
 
-          <TabPane tab="Identité" key="identification">
+          <TabPane tab={t('Identité')} key="identification">
             <Card>
               <Form.Item
                 noStyle
@@ -457,51 +468,51 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                     <>
                       <Row gutter={16}>
                         <Col xs={24} sm={12}>
-                          <Form.Item label="Civilité" name="civility">
-                            <Select placeholder="Sélectionner">
-                              <Select.Option value="MR">Monsieur</Select.Option>
-                              <Select.Option value="MRS">Madame</Select.Option>
-                              <Select.Option value="MS">Mademoiselle</Select.Option>
-                              <Select.Option value="DR">Docteur</Select.Option>
-                              <Select.Option value="PROF">Professeur</Select.Option>
+                          <Form.Item label={t('Civilité')} name="civility">
+                            <Select placeholder={t('Sélectionner')}>
+                              <Select.Option value="MR">{t('Monsieur')}</Select.Option>
+                              <Select.Option value="MRS">{t('Madame')}</Select.Option>
+                              <Select.Option value="MS">{t('Mademoiselle')}</Select.Option>
+                              <Select.Option value="DR">{t('Docteur')}</Select.Option>
+                              <Select.Option value="PROF">{t('Professeur')}</Select.Option>
                             </Select>
                           </Form.Item>
                         </Col>
                         <Col xs={24} sm={12}>
-                          <Form.Item label="Date de naissance" name="dateOfBirth">
+                          <Form.Item label={t('Date de naissance')} name="dateOfBirth">
                             <DatePicker style={{ width: '100%' }} />
                           </Form.Item>
                         </Col>
                       </Row>
 
-                      <Form.Item label="Nationalité" name="nationality">
-                        <Input placeholder="ex: Ivoirienne, Française" />
+                      <Form.Item label={t('Nationalité')} name="nationality">
+                        <Input placeholder={t('ex: Ivoirienne, Française')} />
                       </Form.Item>
 
                       <Row gutter={16}>
                         <Col xs={24} sm={8}>
-                          <Form.Item label="Type de pièce" name="identityDocumentType">
-                            <Select placeholder="Sélectionner">
+                          <Form.Item label={t('Type de pièce')} name="identityDocumentType">
+                            <Select placeholder={t('Sélectionner')}>
                               <Select.Option value="CNI">CNI</Select.Option>
-                              <Select.Option value="PASSPORT">Passeport</Select.Option>
-                              <Select.Option value="DRIVING_LICENSE">Permis de conduire</Select.Option>
-                              <Select.Option value="OTHER">Autre</Select.Option>
+                              <Select.Option value="PASSPORT">{t('Passeport')}</Select.Option>
+                              <Select.Option value="DRIVING_LICENSE">{t('Permis de conduire')}</Select.Option>
+                              <Select.Option value="OTHER">{t('Autre')}</Select.Option>
                             </Select>
                           </Form.Item>
                         </Col>
                         <Col xs={24} sm={8}>
-                          <Form.Item label="Numéro de pièce" name="identityDocumentNumber">
-                            <Input placeholder="Numéro CNI, Passeport, etc." />
+                          <Form.Item label={t('Numéro de pièce')} name="identityDocumentNumber">
+                            <Input placeholder={t('Numéro CNI, Passeport, etc.')} />
                           </Form.Item>
                         </Col>
                         <Col xs={24} sm={8}>
-                          <Form.Item label="Date d'expiration" name="identityDocumentExpiry">
+                          <Form.Item label={t("Date d'expiration")} name="identityDocumentExpiry">
                             <DatePicker style={{ width: '100%' }} />
                           </Form.Item>
                         </Col>
                       </Row>
 
-                      <Form.Item label="Photo de profil" name="profilePhotoUrl">
+                      <Form.Item label={t('Photo de profil')} name="profilePhotoUrl">
                         <Upload
                           listType="picture-circle"
                           fileList={fileList}
@@ -513,7 +524,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                             <div>
                               <div style={{ marginTop: 8 }}>
                                 <UploadOutlined />
-                                <div style={{ marginTop: 8 }}>Télécharger</div>
+                                <div style={{ marginTop: 8 }}>{t('Télécharger')}</div>
                               </div>
                             </div>
                           )}
@@ -523,24 +534,24 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                   ) : (
                     <>
                       <Form.Item
-                        label="Raison sociale"
+                        label={t('Raison sociale')}
                         name="legalName"
-                        rules={[{ required: true, message: 'La raison sociale est requise' }]}
+                        rules={[{ required: true, message: t('La raison sociale est requise') }]}
                       >
-                        <Input placeholder="Raison sociale" />
+                        <Input placeholder={t('Raison sociale')} />
                       </Form.Item>
 
                       <Row gutter={16}>
                         <Col xs={24} sm={12}>
-                          <Form.Item label="Forme juridique" name="legalForm">
-                            <Select placeholder="Sélectionner">
+                          <Form.Item label={t('Forme juridique')} name="legalForm">
+                            <Select placeholder={t('Sélectionner')}>
                               <Select.Option value="SARL">SARL</Select.Option>
                               <Select.Option value="SA">SA</Select.Option>
                               <Select.Option value="EI">EI</Select.Option>
                               <Select.Option value="EURL">EURL</Select.Option>
                               <Select.Option value="SAS">SAS</Select.Option>
-                              <Select.Option value="ASSOCIATION">Association</Select.Option>
-                              <Select.Option value="OTHER">Autre</Select.Option>
+                              <Select.Option value="ASSOCIATION">{t('Association')}</Select.Option>
+                              <Select.Option value="OTHER">{t('Autre')}</Select.Option>
                             </Select>
                           </Form.Item>
                         </Col>
@@ -551,19 +562,19 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                         </Col>
                       </Row>
 
-                      <Form.Item label="Numéro fiscal" name="taxId">
-                        <Input placeholder="Numéro fiscal" />
+                      <Form.Item label={t('Numéro fiscal')} name="taxId">
+                        <Input placeholder={t('Numéro fiscal')} />
                       </Form.Item>
 
                       <Row gutter={16}>
                         <Col xs={24} sm={12}>
-                          <Form.Item label="Nom du représentant" name="representativeName">
-                            <Input placeholder="Nom du représentant" />
+                          <Form.Item label={t('Nom du représentant')} name="representativeName">
+                            <Input placeholder={t('Nom du représentant')} />
                           </Form.Item>
                         </Col>
                         <Col xs={24} sm={12}>
-                          <Form.Item label="Fonction du représentant" name="representativeRole">
-                            <Input placeholder="Fonction du représentant" />
+                          <Form.Item label={t('Fonction du représentant')} name="representativeRole">
+                            <Input placeholder={t('Fonction du représentant')} />
                           </Form.Item>
                         </Col>
                       </Row>
@@ -576,14 +587,14 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
 
           <TabPane tab="Contact" key="contact">
             <Card>
-              <Form.Item label="Adresse complète" name="address">
-                <Input placeholder="Adresse complète" />
+              <Form.Item label={t('Adresse complète')} name="address">
+                <Input placeholder={t('Adresse complète')} />
               </Form.Item>
 
               <Form.Item
-                label="Commune"
+                label={t('Commune')}
                 name="communeId"
-                rules={[{ required: true, message: 'La commune est requise' }]}
+                rules={[{ required: true, message: t('La commune est requise') }]}
               >
                 <LocationSelector
                   value={form.getFieldValue('communeId')}
@@ -591,7 +602,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                     setLocation(loc);
                     form.setFieldsValue({ communeId: loc?.communeId || undefined });
                   }}
-                  placeholder="Rechercher une commune (ex: Cocody)..."
+                  placeholder={t('Rechercher une commune (ex: Cocody)...')}
                 />
               </Form.Item>
 
@@ -601,20 +612,20 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
 
               <Row gutter={16}>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Langue préférée" name="preferredLanguage">
+                  <Form.Item label={t('Langue préférée')} name="preferredLanguage">
                     <Radio.Group>
-                      <Radio value="Français">Français</Radio>
-                      <Radio value="Anglais">Anglais</Radio>
-                      <Radio value="Autre">Autre</Radio>
+                      <Radio value={t('Français')}>{t('Français')}</Radio>
+                      <Radio value="Anglais">{t('Anglais')}</Radio>
+                      <Radio value="Autre">{t('Autre')}</Radio>
                     </Radio.Group>
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Canal de contact préféré" name="preferredContactChannel">
-                    <Select placeholder="Sélectionner">
-                      <Select.Option value="CALL">Appel</Select.Option>
-                      <Select.Option value="WHATSAPP">WhatsApp</Select.Option>
-                      <Select.Option value="EMAIL">Email</Select.Option>
+                  <Form.Item label={t('Canal de contact préféré')} name="preferredContactChannel">
+                    <Select placeholder={t('Sélectionner')}>
+                      <Select.Option value="CALL">{t('Appel')}</Select.Option>
+                      <Select.Option value="WHATSAPP">{'WhatsApp'}</Select.Option>
+                      <Select.Option value="EMAIL">{t('Email')}</Select.Option>
                       <Select.Option value="SMS">SMS</Select.Option>
                     </Select>
                   </Form.Item>
@@ -627,53 +638,53 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
             <Card>
               <Row gutter={16}>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Profession / Fonction" name="profession">
-                    <Input placeholder="Poste ou fonction" />
+                  <Form.Item label={t('Profession / Fonction')} name="profession">
+                    <Input placeholder={t('Poste ou fonction')} />
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Secteur d'activité" name="sectorOfActivity">
-                    <Select placeholder="Sélectionner un secteur">
-                      <Select.Option value="AGRICULTURE">Agriculture</Select.Option>
-                      <Select.Option value="BANQUE_FINANCE">Banque & Finance</Select.Option>
-                      <Select.Option value="COMMERCE">Commerce</Select.Option>
-                      <Select.Option value="CONSTRUCTION">Construction</Select.Option>
-                      <Select.Option value="EDUCATION">Éducation</Select.Option>
-                      <Select.Option value="ENERGIE">Énergie</Select.Option>
-                      <Select.Option value="INFORMATIQUE_TECHNOLOGIE">Informatique & Technologie</Select.Option>
-                      <Select.Option value="IMMOBILIER">Immobilier</Select.Option>
-                      <Select.Option value="INDUSTRIE">Industrie</Select.Option>
-                      <Select.Option value="SANTE">Santé</Select.Option>
-                      <Select.Option value="SERVICES">Services</Select.Option>
-                      <Select.Option value="TELECOMMUNICATIONS">Télécommunications</Select.Option>
-                      <Select.Option value="TOURISME_HOTELLERIE">Tourisme & Hôtellerie</Select.Option>
-                      <Select.Option value="TRANSPORT_LOGISTIQUE">Transport & Logistique</Select.Option>
-                      <Select.Option value="AUTRE">Autre</Select.Option>
+                  <Form.Item label={t("Secteur d'activité")} name="sectorOfActivity">
+                    <Select placeholder={t('Sélectionner un secteur')}>
+                      <Select.Option value="AGRICULTURE">{t('Agriculture')}</Select.Option>
+                      <Select.Option value="BANQUE_FINANCE">{t('Banque & Finance')}</Select.Option>
+                      <Select.Option value="COMMERCE">{t('Commerce')}</Select.Option>
+                      <Select.Option value="CONSTRUCTION">{t('Construction')}</Select.Option>
+                      <Select.Option value="EDUCATION">{t('Éducation')}</Select.Option>
+                      <Select.Option value="ENERGIE">{t('Énergie')}</Select.Option>
+                      <Select.Option value="INFORMATIQUE_TECHNOLOGIE">{t('Informatique & Technologie')}</Select.Option>
+                      <Select.Option value="IMMOBILIER">{t('Immobilier')}</Select.Option>
+                      <Select.Option value="INDUSTRIE">{t('Industrie')}</Select.Option>
+                      <Select.Option value="SANTE">{t('Santé')}</Select.Option>
+                      <Select.Option value="SERVICES">{t('Services')}</Select.Option>
+                      <Select.Option value="TELECOMMUNICATIONS">{t('Télécommunications')}</Select.Option>
+                      <Select.Option value="TOURISME_HOTELLERIE">{t('Tourisme & Hôtellerie')}</Select.Option>
+                      <Select.Option value="TRANSPORT_LOGISTIQUE">{t('Transport & Logistique')}</Select.Option>
+                      <Select.Option value="AUTRE">{t('Autre')}</Select.Option>
                     </Select>
                   </Form.Item>
                 </Col>
               </Row>
 
-              <Form.Item label="Employeur" name="employer">
-                <Input placeholder="Employeur" />
+              <Form.Item label={t('Employeur')} name="employer">
+                <Input placeholder={t('Employeur')} />
               </Form.Item>
 
               <Row gutter={16}>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Revenus minimum (FCFA)" name="incomeMin">
+                  <Form.Item label={t('Revenus minimum (FCFA)')} name="incomeMin">
                     <Input
                       value={formatNumber(form.getFieldValue('incomeMin'))}
                       onChange={e => handleNumberChange('incomeMin', e.target.value)}
-                      placeholder="Ex: 500 000"
+                      placeholder={t('Ex: 500 000')}
                     />
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Revenus maximum (FCFA)" name="incomeMax">
+                  <Form.Item label={t('Revenus maximum (FCFA)')} name="incomeMax">
                     <Input
                       value={formatNumber(form.getFieldValue('incomeMax'))}
                       onChange={e => handleNumberChange('incomeMax', e.target.value)}
-                      placeholder="Ex: 1 000 000"
+                      placeholder={t('Ex: 1 000 000')}
                     />
                   </Form.Item>
                 </Col>
@@ -681,31 +692,31 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
 
               <Row gutter={16}>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Salaire" name="salaire">
-                    <InputNumber style={{ width: '100%' }} placeholder="Montant du salaire" min={0} step={0.01} />
+                  <Form.Item label={t('Salaire')} name="salaire">
+                    <InputNumber style={{ width: '100%' }} placeholder={t('Montant du salaire')} min={0} step={0.01} />
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Stabilité professionnelle" name="jobStability">
-                    <Select placeholder="Sélectionner">
+                  <Form.Item label={t('Stabilité professionnelle')} name="jobStability">
+                    <Select placeholder={t('Sélectionner')}>
                       <Select.Option value="CDI">CDI</Select.Option>
                       <Select.Option value="CDD">CDD</Select.Option>
-                      <Select.Option value="FREELANCE">Freelance</Select.Option>
-                      <Select.Option value="INFORMAL">Informel</Select.Option>
-                      <Select.Option value="RETIRED">Retraité</Select.Option>
-                      <Select.Option value="STUDENT">Étudiant</Select.Option>
-                      <Select.Option value="UNEMPLOYED">Sans emploi</Select.Option>
-                      <Select.Option value="OTHER">Autre</Select.Option>
+                      <Select.Option value="FREELANCE">{t('Freelance')}</Select.Option>
+                      <Select.Option value="INFORMAL">{t('Informel')}</Select.Option>
+                      <Select.Option value="RETIRED">{t('Retraité')}</Select.Option>
+                      <Select.Option value="STUDENT">{t('Étudiant')}</Select.Option>
+                      <Select.Option value="UNEMPLOYED">{t('Sans emploi')}</Select.Option>
+                      <Select.Option value="OTHER">{t('Autre')}</Select.Option>
                     </Select>
                   </Form.Item>
                 </Col>
               </Row>
 
-              <Form.Item label="Capacité d'emprunt" name="borrowingCapacity">
-                <Select placeholder="Sélectionner">
-                  <Select.Option value="YES">Oui</Select.Option>
-                  <Select.Option value="NO">Non</Select.Option>
-                  <Select.Option value="UNKNOWN">Inconnu</Select.Option>
+              <Form.Item label={t("Capacité d'emprunt")} name="borrowingCapacity">
+                <Select placeholder={t('Sélectionner')}>
+                  <Select.Option value="YES">{t('Oui')}</Select.Option>
+                  <Select.Option value="NO">{t('Non')}</Select.Option>
+                  <Select.Option value="UNKNOWN">{t('Inconnu')}</Select.Option>
                 </Select>
               </Form.Item>
             </Card>
@@ -715,21 +726,21 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
             <Card>
               <Row gutter={16}>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Source (legacy)" name="source">
-                    <Input placeholder="ex. : Site web, Recommandation, Visite" />
+                  <Form.Item label={t('Source (legacy)')} name="source">
+                    <Input placeholder={t('ex. : Site web, Recommandation, Visite')} />
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Source du lead" name="leadSource">
-                    <Select placeholder="Sélectionner">
-                      <Select.Option value="WEBSITE">Site web</Select.Option>
-                      <Select.Option value="SOCIAL_MEDIA">Réseaux sociaux</Select.Option>
-                      <Select.Option value="REFERRAL">Parrainage</Select.Option>
-                      <Select.Option value="CAMPAIGN">Campagne</Select.Option>
-                      <Select.Option value="AGENCY">Agence</Select.Option>
-                      <Select.Option value="WALK_IN">Visite spontanée</Select.Option>
-                      <Select.Option value="PHONE_CALL">Appel téléphonique</Select.Option>
-                      <Select.Option value="OTHER">Autre</Select.Option>
+                  <Form.Item label={t('Source du lead')} name="leadSource">
+                    <Select placeholder={t('Sélectionner')}>
+                      <Select.Option value="WEBSITE">{t('Site web')}</Select.Option>
+                      <Select.Option value="SOCIAL_MEDIA">{t('Réseaux sociaux')}</Select.Option>
+                      <Select.Option value="REFERRAL">{t('Parrainage')}</Select.Option>
+                      <Select.Option value="CAMPAIGN">{t('Campagne')}</Select.Option>
+                      <Select.Option value="AGENCY">{t('Agence')}</Select.Option>
+                      <Select.Option value="WALK_IN">{t('Visite spontanée')}</Select.Option>
+                      <Select.Option value="PHONE_CALL">{t('Appel téléphonique')}</Select.Option>
+                      <Select.Option value="OTHER">{t('Autre')}</Select.Option>
                     </Select>
                   </Form.Item>
                 </Col>
@@ -737,25 +748,25 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
 
               <Row gutter={16}>
                 <Col xs={24} sm={8}>
-                  <Form.Item label="Niveau de maturité" name="maturityLevel">
+                  <Form.Item label={t('Niveau de maturité')} name="maturityLevel">
                     <Select>
-                      <Select.Option value="COLD">Froid</Select.Option>
-                      <Select.Option value="WARM">Tiède</Select.Option>
-                      <Select.Option value="HOT">Chaud</Select.Option>
+                      <Select.Option value="COLD">{t('Froid')}</Select.Option>
+                      <Select.Option value="WARM">{t('Tiède')}</Select.Option>
+                      <Select.Option value="HOT">{t('Chaud')}</Select.Option>
                     </Select>
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={8}>
-                  <Form.Item label="Score (0-100)" name="score">
+                  <Form.Item label={t('Score (0-100)')} name="score">
                     <InputNumber style={{ width: '100%' }} min={0} max={100} />
                   </Form.Item>
                 </Col>
                 <Col xs={24} sm={8}>
-                  <Form.Item label="Priorité" name="priorityLevel">
+                  <Form.Item label={t('Priorité')} name="priorityLevel">
                     <Select>
-                      <Select.Option value="LOW">Basse</Select.Option>
-                      <Select.Option value="NORMAL">Normale</Select.Option>
-                      <Select.Option value="HIGH">Haute</Select.Option>
+                      <Select.Option value="LOW">{t('Basse')}</Select.Option>
+                      <Select.Option value="NORMAL">{t('Normale')}</Select.Option>
+                      <Select.Option value="HIGH">{t('Haute')}</Select.Option>
                     </Select>
                   </Form.Item>
                 </Col>
@@ -765,26 +776,26 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
 
           <TabPane tab="Consentements" key="consents">
             <Card>
-              <Form.Item label="Consentements">
+              <Form.Item label={t('Consentements')}>
                 <Space direction="vertical">
                   <Form.Item name="consentMarketing" valuePropName="checked" noStyle>
-                    <Checkbox>Consentement marketing</Checkbox>
+                    <Checkbox>{t('Consentement marketing')}</Checkbox>
                   </Form.Item>
                   <Form.Item name="consentWhatsapp" valuePropName="checked" noStyle>
-                    <Checkbox>Consentement WhatsApp</Checkbox>
+                    <Checkbox>{t('Consentement WhatsApp')}</Checkbox>
                   </Form.Item>
                   <Form.Item name="consentEmail" valuePropName="checked" noStyle>
-                    <Checkbox>Consentement Email</Checkbox>
+                    <Checkbox>{t('Consentement Email')}</Checkbox>
                   </Form.Item>
                 </Space>
               </Form.Item>
 
-              <Form.Item label="Source du consentement" name="consentSource">
-                <Input placeholder="Comment le consentement a été obtenu" />
+              <Form.Item label={t('Source du consentement')} name="consentSource">
+                <Input placeholder={t('Comment le consentement a été obtenu')} />
               </Form.Item>
 
-              <Form.Item label="Notes internes" name="internalNotes">
-                <TextArea rows={6} placeholder="Notes internes sur le contact..." />
+              <Form.Item label={t('Notes internes')} name="internalNotes">
+                <TextArea rows={6} placeholder={t('Notes internes sur le contact...')} />
               </Form.Item>
             </Card>
           </TabPane>
@@ -801,11 +812,11 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
         >
           {onCancel && (
             <Button onClick={onCancel} disabled={loading}>
-              Annuler
+              {t('Annuler')}
             </Button>
           )}
           <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={loading} size="large">
-            {loading ? 'Enregistrement...' : contact ? 'Mettre à jour le contact' : 'Créer le contact'}
+            {loading ? 'Enregistrement...' : contact ? t('Mettre à jour le contact') : t('Créer le contact')}
           </Button>
         </div>
       </Space>

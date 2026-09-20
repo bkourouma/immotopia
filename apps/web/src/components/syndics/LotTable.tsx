@@ -2,6 +2,7 @@
 import { Button, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { SyndicateLot } from '../../types/syndic-types';
+import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
@@ -11,12 +12,12 @@ const lotTypeLabels: Record<SyndicateLot['lotType'], string> = {
   CELLAR: 'Cave',
   OFFICE: 'Bureau',
   COMMERCIAL: 'Commerce',
-  OTHER: 'Autre',
+  OTHER: 'Autre'
 };
 
 function buildPropertyNomenclatureLabel(property: NonNullable<SyndicateLot['property']>): string {
   const ownerLabel = property.owner?.fullName?.trim() || '';
-  const title = property.title?.trim() || property.internalReference || property.id || 'Sans libellé';
+  const title = property.title?.trim() || property.internalReference || property.id || t('Sans libellé');
   return ownerLabel ? `${ownerLabel} - ${title}` : title;
 }
 
@@ -41,41 +42,41 @@ export const LotTable: React.FC<LotTableProps> = ({
   ownerLabelByEmail,
   onEdit,
   onViewAccount,
-  onAssignTenant,
+  onAssignTenant
 }) => {
   const columns: ColumnsType<SyndicateLot> = [
     {
-      title: 'Lot',
+      title: t('Lot'),
       dataIndex: 'lotNumber',
       key: 'lotNumber',
       width: 160,
-      render: (value: string) => <Text strong>{value}</Text>,
+      render: (value: string) => <Text strong>{value}</Text>
     },
     {
-      title: 'Type',
+      title: t('Type'),
       dataIndex: 'lotType',
       key: 'lotType',
       width: 140,
-      render: (value: SyndicateLot['lotType']) => <Tag>{lotTypeLabels[value]}</Tag>,
+      render: (value: SyndicateLot['lotType']) => <Tag>{lotTypeLabels[value]}</Tag>
     },
     {
-      title: 'Tantièmes généraux',
+      title: t('Tantièmes généraux'),
       dataIndex: 'generalShares',
       key: 'generalShares',
       width: 170,
-      align: 'right',
+      align: 'end'
     },
     {
-      title: 'Tantièmes spéciaux',
+      title: t('Tantièmes spéciaux'),
       dataIndex: 'specialShares',
       key: 'specialShares',
       width: 170,
-      align: 'right',
+      align: 'end',
       responsive: ['md'],
-      render: (value?: number | null) => value ?? '-',
+      render: (value?: number | null) => value ?? '-'
     },
     {
-      title: 'Propriétaire',
+      title: t('Propriétaire'),
       dataIndex: 'ownerContactId',
       key: 'ownerContactId',
       width: 250,
@@ -108,23 +109,23 @@ export const LotTable: React.FC<LotTableProps> = ({
           return ownerLabelByEmail[ownerEmail];
         }
 
-        return 'Non renseigné';
-      },
+        return t('Non renseigné');
+      }
     },
     {
-      title: 'Locataire',
+      title: t('Locataire'),
       key: 'tenant',
       width: 250,
       ellipsis: true,
       responsive: ['md'],
       render: (_value: string | null | undefined, lot: SyndicateLot) => {
-        const activeAssignments = (lot.tenantAssignments || []).filter((assignment) => assignment.isActive);
+        const activeAssignments = (lot.tenantAssignments || []).filter(assignment => assignment.isActive);
         if (activeAssignments.length === 0) {
-          return 'Non renseigné';
+          return t('Non renseigné');
         }
 
         return activeAssignments
-          .map((assignment) => {
+          .map(assignment => {
             const contact = assignment.contact;
             if (!contact) {
               return assignment.tenantId;
@@ -133,10 +134,10 @@ export const LotTable: React.FC<LotTableProps> = ({
             return fullName || contact.legalName || contact.email || assignment.tenantId;
           })
           .join(', ');
-      },
+      }
     },
     {
-      title: 'Bien lié',
+      title: t('Bien lié'),
       dataIndex: 'propertyId',
       key: 'propertyId',
       width: 320,
@@ -144,7 +145,7 @@ export const LotTable: React.FC<LotTableProps> = ({
       responsive: ['lg'],
       render: (_value: string | null | undefined, lot: SyndicateLot) => {
         if (!lot.propertyId) {
-          return 'Non lié';
+          return t('Non lié');
         }
 
         if (propertyLabelById?.[lot.propertyId]) {
@@ -156,36 +157,36 @@ export const LotTable: React.FC<LotTableProps> = ({
         }
 
         return lot.propertyId;
-      },
+      }
     },
     ...(onEdit || onViewAccount || onAssignTenant
       ? [
           {
-            title: 'Actions',
+            title: t('Actions'),
             key: 'actions',
             width: 240,
             render: (_: unknown, lot: SyndicateLot) => (
               <Space>
                 {onEdit ? (
                   <Button size="small" onClick={() => onEdit(lot)}>
-                    Modifier
+                    {t('Modifier')}
                   </Button>
                 ) : null}
                 {onViewAccount ? (
                   <Button size="small" onClick={() => onViewAccount(lot)}>
-                    Compte
+                    {t('Compte')}
                   </Button>
                 ) : null}
                 {onAssignTenant ? (
                   <Button size="small" onClick={() => onAssignTenant(lot)}>
-                    Locataire
+                    {t('Locataire')}
                   </Button>
                 ) : null}
               </Space>
-            ),
-          },
+            )
+          }
         ]
-      : []),
+      : [])
   ];
 
   return (
@@ -204,7 +205,7 @@ export const LotTable: React.FC<LotTableProps> = ({
       />
       {showMobileHint ? (
         <Text type="secondary" style={{ fontSize: 12 }}>
-          Faites défiler horizontalement en bas du tableau pour voir toutes les colonnes.
+          {t('Faites défiler horizontalement en bas du tableau pour voir toutes les colonnes.')}
         </Text>
       ) : null}
     </div>

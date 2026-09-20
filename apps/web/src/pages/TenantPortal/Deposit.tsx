@@ -9,7 +9,9 @@ import {
 } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import dayjs from 'dayjs';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 interface DepositMovement {
@@ -72,17 +74,17 @@ export default function TenantDeposit() {
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
-        setError('Erreur lors du chargement des informations du dépôt');
+        setError(t('Erreur lors du chargement des informations du dépôt'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des informations du dépôt');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des informations du dépôt'));
     } finally {
       setLoading(false);
     }
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', {
+    return new Intl.NumberFormat(activeLocale(), {
       style: 'currency',
       currency: 'XOF',
       minimumFractionDigits: 0
@@ -95,12 +97,12 @@ export default function TenantDeposit() {
 
   const getMovementTypeLabel = (type: string) => {
     const labels: Record<string, { label: string; color: string }> = {
-      COLLECT: { label: 'Collecte', color: 'success' },
-      HOLD: { label: 'Mise en retenue', color: 'warning' },
-      RELEASE: { label: 'Libération', color: 'processing' },
-      REFUND: { label: 'Remboursement', color: 'success' },
-      FORFEIT: { label: 'Confiscation', color: 'error' },
-      ADJUSTMENT: { label: 'Ajustement', color: 'default' }
+      COLLECT: { label: t('Collecte'), color: 'success' },
+      HOLD: { label: t('Mise en retenue'), color: 'warning' },
+      RELEASE: { label: t('Libération'), color: 'processing' },
+      REFUND: { label: t('Remboursement'), color: 'success' },
+      FORFEIT: { label: t('Confiscation'), color: 'error' },
+      ADJUSTMENT: { label: t('Ajustement'), color: 'default' }
     };
     const config = labels[type] || { label: type, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -108,11 +110,11 @@ export default function TenantDeposit() {
 
   const getPaymentMethodLabel = (method: string) => {
     const labels: Record<string, string> = {
-      CASH: 'Espèces',
-      BANK_TRANSFER: 'Virement bancaire',
-      MOBILE_MONEY: 'Mobile Money',
-      CHECK: 'Chèque',
-      CARD: 'Carte bancaire',
+      CASH: t('Espèces'),
+      BANK_TRANSFER: t('Virement bancaire'),
+      MOBILE_MONEY: t('Mobile Money'),
+      CHECK: t('Chèque'),
+      CARD: t('Carte bancaire'),
       OTHER: 'Autre'
     };
     return labels[method] || method;
@@ -121,23 +123,23 @@ export default function TenantDeposit() {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement des informations du dépôt..." />
+        <Spin size="large" tip={t('Chargement des informations du dépôt...')} />
       </div>
     );
   }
 
   if (error) {
-    return <Alert message="Erreur" description={error} type="error" showIcon />;
+    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   if (!data || !data.deposit) {
     return (
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
-          <Title level={2}>Dépôt de garantie</Title>
-          <Text type="secondary">Informations sur votre dépôt de garantie</Text>
+          <Title level={2}>{t('Dépôt de garantie')}</Title>
+          <Text type="secondary">{t('Informations sur votre dépôt de garantie')}</Text>
         </div>
-        <Empty description="Aucun dépôt de garantie trouvé" />
+        <Empty description={t('Aucun dépôt de garantie trouvé')} />
       </Space>
     );
   }
@@ -149,8 +151,8 @@ export default function TenantDeposit() {
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
       <div>
-        <Title level={2}>Dépôt de garantie</Title>
-        <Text type="secondary">Informations détaillées sur votre dépôt de garantie</Text>
+        <Title level={2}>{t('Dépôt de garantie')}</Title>
+        <Text type="secondary">{t('Informations détaillées sur votre dépôt de garantie')}</Text>
       </div>
 
       {/* Deposit Summary Cards (T081) */}
@@ -158,7 +160,7 @@ export default function TenantDeposit() {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Montant cible"
+              title={t('Montant cible')}
               value={deposit.targetAmount}
               prefix={<DollarOutlined />}
               formatter={value => formatCurrency(Number(value))}
@@ -168,7 +170,7 @@ export default function TenantDeposit() {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Montant collecté"
+              title={t('Montant collecté')}
               value={deposit.collectedAmount}
               valueStyle={{ color: '#3f8600' }}
               prefix={<DollarOutlined />}
@@ -179,7 +181,7 @@ export default function TenantDeposit() {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Montant retenu"
+              title={t('Montant retenu')}
               value={currentHeldAmount}
               valueStyle={{ color: '#faad14' }}
               prefix={<DollarOutlined />}
@@ -190,7 +192,7 @@ export default function TenantDeposit() {
         <Col xs={24} sm={12} lg={6}>
           <Card>
             <Statistic
-              title="Montant disponible"
+              title={t('Montant disponible')}
               value={availableAmount}
               valueStyle={{ color: availableAmount > 0 ? '#3f8600' : '#cf1322' }}
               prefix={<DollarOutlined />}
@@ -204,30 +206,30 @@ export default function TenantDeposit() {
       <Card
         title={
           <>
-            <WalletOutlined /> Détails du dépôt
+            <WalletOutlined /> {t('Détails du dépôt')}
           </>
         }
       >
         <Descriptions bordered column={{ xs: 1, sm: 2 }}>
-          <Descriptions.Item label="Numéro de bail">{deposit.lease.lease_number}</Descriptions.Item>
+          <Descriptions.Item label={t('Numéro de bail')}>{deposit.lease.lease_number}</Descriptions.Item>
           {deposit.lease.lease_label && (
-            <Descriptions.Item label="Nom du bail">{deposit.lease.lease_label}</Descriptions.Item>
+            <Descriptions.Item label={t('Nom du bail')}>{deposit.lease.lease_label}</Descriptions.Item>
           )}
-          <Descriptions.Item label="Devise">{deposit.currency}</Descriptions.Item>
-          <Descriptions.Item label="Montant cible">
+          <Descriptions.Item label={t('Devise')}>{deposit.currency}</Descriptions.Item>
+          <Descriptions.Item label={t('Montant cible')}>
             <Text strong>{formatCurrency(deposit.targetAmount)}</Text>
           </Descriptions.Item>
-          <Descriptions.Item label="Montant collecté">
+          <Descriptions.Item label={t('Montant collecté')}>
             <Text type="success">{formatCurrency(deposit.collectedAmount)}</Text>
           </Descriptions.Item>
-          <Descriptions.Item label="Montant retenu">
+          <Descriptions.Item label={t('Montant retenu')}>
             <Text type="warning">{formatCurrency(deposit.heldAmount)}</Text>
           </Descriptions.Item>
-          <Descriptions.Item label="Montant remboursé">{formatCurrency(deposit.refundedAmount)}</Descriptions.Item>
-          <Descriptions.Item label="Montant confisqué">
+          <Descriptions.Item label={t('Montant remboursé')}>{formatCurrency(deposit.refundedAmount)}</Descriptions.Item>
+          <Descriptions.Item label={t('Montant confisqué')}>
             <Text type="danger">{formatCurrency(deposit.forfeitedAmount)}</Text>
           </Descriptions.Item>
-          <Descriptions.Item label="Montant disponible">
+          <Descriptions.Item label={t('Montant disponible')}>
             <Text strong style={{ fontSize: '16px', color: availableAmount > 0 ? '#3f8600' : '#cf1322' }}>
               {formatCurrency(availableAmount)}
             </Text>
@@ -239,7 +241,7 @@ export default function TenantDeposit() {
       <Card
         title={
           <>
-            <CalendarOutlined /> Historique des mouvements
+            <CalendarOutlined /> {t('Historique des mouvements')}
           </>
         }
       >
@@ -280,11 +282,11 @@ export default function TenantDeposit() {
                     </Text>
                   );
                 },
-                align: 'right' as const,
+                align: 'end' as const,
                 sorter: (a: DepositMovement, b: DepositMovement) => a.amount - b.amount
               },
               {
-                title: 'Paiement associé',
+                title: t('Paiement associé'),
                 dataIndex: ['payment', 'method'],
                 key: 'payment',
                 render: (method: string | null, record: DepositMovement) => {
@@ -300,7 +302,7 @@ export default function TenantDeposit() {
                 }
               },
               {
-                title: 'Échéance associée',
+                title: t('Échéance associée'),
                 dataIndex: ['installment', 'period'],
                 key: 'installment',
                 render: (period: string | null, record: DepositMovement) => record?.installment?.period ?? period ?? '-'
@@ -312,7 +314,7 @@ export default function TenantDeposit() {
                 render: (note: string | null) => note || '-'
               },
               {
-                title: 'Créé par',
+                title: t('Créé par'),
                 dataIndex: ['createdBy', 'fullName'],
                 key: 'createdBy',
                 render: (fullName: string | null, record: DepositMovement) => {
@@ -326,11 +328,11 @@ export default function TenantDeposit() {
             pagination={{
               pageSize: 20,
               showSizeChanger: true,
-              showTotal: total => `Total: ${total} mouvements`
+              showTotal: total => t('Total: {{total}} mouvements', { total: total })
             }}
           />
         ) : (
-          <Empty description="Aucun mouvement enregistré" />
+          <Empty description={t('Aucun mouvement enregistré')} />
         )}
       </Card>
     </Space>

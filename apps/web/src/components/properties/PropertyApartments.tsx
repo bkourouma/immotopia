@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { uploadMedia } from '../../services/property-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import { DataCard, DataView, MoneyValue, StatusTag } from '../primitives';
+import { t } from '../../i18n/t';
 
 interface PropertyApartmentsProps {
   propertyId: string;
@@ -63,7 +64,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
         console.error('Erreur lors du chargement des appartements:', error);
         // Ne pas afficher d'erreur si ce n'est pas un IMMEUBLE
         if (property.propertyType === 'IMMEUBLE') {
-          message.error('Erreur lors du chargement des appartements');
+          message.error(t('Erreur lors du chargement des appartements'));
         }
       }
     } finally {
@@ -186,7 +187,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
             } else {
               errorCount++;
               const apt = batch[j];
-              let errorMsg = 'Erreur inconnue';
+              let errorMsg = t('Erreur inconnue');
               if (result.status === 'rejected') {
                 const err = result.reason as { response?: { data?: { error?: string } }; message?: string };
                 errorMsg = err?.response?.data?.error || err?.message || errorMsg;
@@ -206,17 +207,36 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
         const totalMedia = apartmentGroups.reduce((sum: number, group: any) => {
           return sum + (group.mediaFiles?.length || 0);
         }, 0);
-        let successMsg = `${successCount} appartement${successCount > 1 ? 's' : ''} créé${successCount > 1 ? 's' : ''} avec succès`;
+        let successMsg = t('{{successCount}} appartement{{value}} créé{{value2}} avec succès', {
+          successCount: successCount,
+          value: successCount > 1 ? 's' : '',
+          value2: successCount > 1 ? 's' : ''
+        });
         if (totalMedia > 0) {
-          successMsg += ` (${totalMedia} média${totalMedia > 1 ? 'x' : ''} partagé${totalMedia > 1 ? 's' : ''})`;
+          successMsg += t('({{totalMedia}} média{{value}} partagé{{value2}})', {
+            totalMedia: totalMedia,
+            value: totalMedia > 1 ? 'x' : '',
+            value2: totalMedia > 1 ? 's' : ''
+          });
         }
         message.success(successMsg);
       }
       if (errorCount > 0) {
         const errorDetails =
-          errors.length > 0 ? `\nDétails: ${errors.slice(0, 3).join(', ')}${errors.length > 3 ? '...' : ''}` : '';
+          errors.length > 0
+            ? t('Détails: {{value}}{{value2}}', {
+                value: errors.slice(0, 3).join(', '),
+                value2: errors.length > 3 ? '...' : ''
+              })
+            : '';
         message.warning(
-          `${errorCount} appartement${errorCount > 1 ? 's' : ''} n'a${errorCount > 1 ? 'ont' : ''} pas pu être créé${errorCount > 1 ? 's' : ''}${errorDetails}`
+          t("{{errorCount}} appartement{{value}} n'a{{value2}} pas pu être créé{{value3}}{{errorDetails}}", {
+            errorCount: errorCount,
+            value: errorCount > 1 ? 's' : '',
+            value2: errorCount > 1 ? 'ont' : '',
+            value3: errorCount > 1 ? 's' : '',
+            errorDetails: errorDetails
+          })
         );
       }
 
@@ -225,7 +245,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
       loadApartments();
     } catch (error: any) {
       console.error('Erreur globale lors de la création:', error);
-      message.error(error.response?.data?.error || 'Erreur lors de la création');
+      message.error(error.response?.data?.error || t('Erreur lors de la création'));
     } finally {
       setCreating(false);
     }
@@ -242,50 +262,50 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
    * 1200 px plutot que d'ecraser le reste.
    */
   const colonnes: ColumnsType<Property> = [
-    { title: 'Appartement', dataIndex: 'title', key: 'title', ellipsis: true },
+    { title: t('Appartement'), dataIndex: 'title', key: 'title', ellipsis: true },
     {
-      title: 'Surface',
+      title: t('Surface'),
       dataIndex: 'surfaceArea',
       key: 'surfaceArea',
       width: 110,
-      align: 'right',
+      align: 'end',
       responsive: ['xl'],
       render: (valeur: number) => (valeur ? `${valeur} m²` : '—')
     },
     {
-      title: 'Pièces',
+      title: t('Pièces'),
       dataIndex: 'rooms',
       key: 'rooms',
       width: 90,
-      align: 'right',
+      align: 'end',
       responsive: ['xl'],
       render: (valeur: number) => valeur || '—'
     },
     {
-      title: 'Prix',
+      title: t('Prix'),
       dataIndex: 'price',
       key: 'price',
       width: 170,
-      align: 'right',
+      align: 'end',
       render: (valeur: number, appartement: Property) => (
         <MoneyValue value={valeur} currency={appartement.currency || 'FCFA'} />
       )
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
       width: 130,
       render: (statut: string) => <StatusTag status={statut} />
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
       width: 100,
-      align: 'right',
+      align: 'end',
       render: (_: unknown, appartement: Property) => (
         <Button type="link" onClick={() => navigate(`/tenant/${tenantId}/properties/${appartement.id}`)}>
-          Voir
+          {t('Voir')}
         </Button>
       )
     }
@@ -313,17 +333,18 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
         }}
       >
         <strong style={{ fontSize: 'var(--font-size-h3)' }}>
-          Appartements{apartments.length > 0 && ` (${apartments.length})`}
+          {t('Appartements')}
+          {apartments.length > 0 && ` (${apartments.length})`}
         </strong>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
-          Ajouter un appartement
+          {t('Ajouter un appartement')}
         </Button>
       </header>
 
       {/* Tableau au-dessus de 992 px, cartes en dessous (§5.1). Le tableau ne
           defile plus horizontalement : sous ce palier, ce sont des cartes. */}
       <DataView
-        aria-label="Appartements de l'immeuble"
+        aria-label={t("Appartements de l'immeuble")}
         items={pageCourante}
         total={apartments.length}
         page={page}
@@ -335,14 +356,16 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
         loading={loading}
         rowKey={appartement => appartement.id}
         columns={colonnes}
-        emptyDescription="Cet immeuble ne contient encore aucun appartement."
-        emptyAction={{ label: 'Ajouter un appartement', onClick: () => setModalVisible(true) }}
+        emptyDescription={t('Cet immeuble ne contient encore aucun appartement.')}
+        emptyAction={{ label: t('Ajouter un appartement'), onClick: () => setModalVisible(true) }}
         renderCard={appartement => (
           <DataCard
             title={appartement.title}
             subtitle={[
               appartement.surfaceArea ? `${appartement.surfaceArea} m²` : null,
-              appartement.rooms ? `${appartement.rooms} pièce${appartement.rooms > 1 ? 's' : ''}` : null
+              appartement.rooms
+                ? t('{{rooms}} pièce{{value}}', { rooms: appartement.rooms, value: appartement.rooms > 1 ? 's' : '' })
+                : null
             ]
               .filter(Boolean)
               .join(' · ')}
@@ -358,7 +381,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
       />
 
       <Modal
-        title="Créer des appartements"
+        title={t('Créer des appartements')}
         open={modalVisible}
         onCancel={() => {
           setModalVisible(false);
@@ -389,11 +412,11 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
                   <Card
                     key={key}
                     size="small"
-                    title={`Groupe d'appartements ${name + 1}`}
+                    title={t("Groupe d'appartements {{value}}", { value: name + 1 })}
                     extra={
                       fields.length > 1 && (
                         <Button type="text" danger icon={<DeleteOutlined />} onClick={() => remove(name)}>
-                          Supprimer
+                          {t('Supprimer')}
                         </Button>
                       )
                     }
@@ -402,10 +425,10 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
                     <Form.Item
                       {...restField}
                       name={[name, 'count']}
-                      label="Nombre d'appartements"
+                      label={t("Nombre d'appartements")}
                       rules={[
-                        { required: true, message: 'Le nombre est requis' },
-                        { type: 'number', min: 1, max: 100, message: 'Entre 1 et 100' }
+                        { required: true, message: t('Le nombre est requis') },
+                        { type: 'number', min: 1, max: 100, message: t('Entre 1 et 100') }
                       ]}
                     >
                       <InputNumber min={1} max={100} style={{ width: '100%' }} />
@@ -414,38 +437,40 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
                     <Form.Item
                       {...restField}
                       name={[name, 'title']}
-                      label="Titre de base"
-                      rules={[{ required: true, message: 'Le titre est requis' }]}
-                      tooltip="Si plusieurs appartements, un numéro sera ajouté automatiquement (ex: Appartement 1, Appartement 2...)"
+                      label={t('Titre de base')}
+                      rules={[{ required: true, message: t('Le titre est requis') }]}
+                      tooltip={t(
+                        'Si plusieurs appartements, un numéro sera ajouté automatiquement (ex: Appartement 1, Appartement 2...)'
+                      )}
                     >
-                      <Input placeholder="Ex: Appartement" />
+                      <Input placeholder={t('Ex: Appartement')} />
                     </Form.Item>
 
-                    <Form.Item {...restField} name={[name, 'description']} label="Description">
+                    <Form.Item {...restField} name={[name, 'description']} label={t('Description')}>
                       <Input.TextArea rows={2} />
                     </Form.Item>
 
-                    <Form.Item {...restField} name={[name, 'surfaceArea']} label="Surface (m²)">
+                    <Form.Item {...restField} name={[name, 'surfaceArea']} label={t('Surface (m²)')}>
                       <InputNumber min={0} style={{ width: '100%' }} />
                     </Form.Item>
 
                     <Form.Item
                       {...restField}
                       name={[name, 'rooms']}
-                      label="Nombre de pièces"
-                      rules={[{ required: true, message: 'Le nombre de pièces est requis' }]}
-                      tooltip="Le nombre de chambres sera calculé automatiquement (pièces - 1 pour le salon)"
+                      label={t('Nombre de pièces')}
+                      rules={[{ required: true, message: t('Le nombre de pièces est requis') }]}
+                      tooltip={t('Le nombre de chambres sera calculé automatiquement (pièces - 1 pour le salon)')}
                     >
                       <InputNumber min={1} style={{ width: '100%' }} />
                     </Form.Item>
 
-                    <Form.Item {...restField} name={[name, 'bathrooms']} label="Salles de bain">
+                    <Form.Item {...restField} name={[name, 'bathrooms']} label={t('Salles de bain')}>
                       <InputNumber min={0} style={{ width: '100%' }} />
                     </Form.Item>
 
-                    <Form.Item {...restField} name={[name, 'price']} label="Prix">
+                    <Form.Item {...restField} name={[name, 'price']} label={t('Prix')}>
                       <InputNumber
-                        placeholder="Ex: 50 000 000"
+                        placeholder={t('Ex: 50 000 000')}
                         min={0}
                         step={1000}
                         style={{ width: '100%' }}
@@ -461,30 +486,30 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
                       />
                     </Form.Item>
 
-                    <Form.Item {...restField} name={[name, 'furnishingStatus']} label="Meublé">
+                    <Form.Item {...restField} name={[name, 'furnishingStatus']} label={t('Meublé')}>
                       <Select>
-                        <Select.Option value="FURNISHED">Meublé</Select.Option>
-                        <Select.Option value="UNFURNISHED">Non meublé</Select.Option>
-                        <Select.Option value="PARTIALLY_FURNISHED">Partiellement meublé</Select.Option>
+                        <Select.Option value="FURNISHED">{t('Meublé')}</Select.Option>
+                        <Select.Option value="UNFURNISHED">{t('Non meublé')}</Select.Option>
+                        <Select.Option value="PARTIALLY_FURNISHED">{t('Partiellement meublé')}</Select.Option>
                       </Select>
                     </Form.Item>
 
-                    <Form.Item {...restField} name={[name, 'status']} label="Statut">
+                    <Form.Item {...restField} name={[name, 'status']} label={t('Statut')}>
                       <Select defaultValue="AVAILABLE">
-                        <Select.Option value="AVAILABLE">Disponible</Select.Option>
-                        <Select.Option value="RESERVED">Réservé</Select.Option>
-                        <Select.Option value="UNDER_OFFER">Sous offre</Select.Option>
-                        <Select.Option value="RENTED">Loué</Select.Option>
-                        <Select.Option value="SOLD">Vendu</Select.Option>
-                        <Select.Option value="ARCHIVED">Archivé</Select.Option>
+                        <Select.Option value="AVAILABLE">{t('Disponible')}</Select.Option>
+                        <Select.Option value="RESERVED">{t('Réservé')}</Select.Option>
+                        <Select.Option value="UNDER_OFFER">{t('Sous offre')}</Select.Option>
+                        <Select.Option value="RENTED">{t('Loué')}</Select.Option>
+                        <Select.Option value="SOLD">{t('Vendu')}</Select.Option>
+                        <Select.Option value="ARCHIVED">{t('Archivé')}</Select.Option>
                       </Select>
                     </Form.Item>
 
                     <Form.Item
                       {...restField}
                       name={[name, 'mediaFiles']}
-                      label="Photos et Vidéos"
-                      tooltip="Les médias ajoutés seront partagés par tous les appartements de ce groupe"
+                      label={t('Photos et Vidéos')}
+                      tooltip={t('Les médias ajoutés seront partagés par tous les appartements de ce groupe')}
                     >
                       <Upload
                         multiple
@@ -505,19 +530,19 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
                         {(form.getFieldValue(['apartmentGroups', name, 'mediaFiles']) || []).length < 20 && (
                           <div>
                             <PlusOutlined />
-                            <div style={{ marginTop: 8 }}>Ajouter</div>
+                            <div style={{ marginTop: 8 }}>{t('Ajouter')}</div>
                           </div>
                         )}
                       </Upload>
                       <div style={{ marginTop: 8, fontSize: 12, color: '#999' }}>
-                        Format accepté: Images (JPG, PNG, etc.) et Vidéos (MP4, etc.)
+                        {t('Format accepté: Images (JPG, PNG, etc.) et Vidéos (MP4, etc.)')}
                       </div>
                     </Form.Item>
                   </Card>
                 ))}
                 <Form.Item>
                   <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
-                    Ajouter un groupe d'appartements
+                    {t("Ajouter un groupe d'appartements")}
                   </Button>
                 </Form.Item>
               </>

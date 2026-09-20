@@ -10,6 +10,7 @@ import { listCostCategories } from '../../services/finance-lot2-service';
 import type { LandLease } from '../../types/finance-lot4-types';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatusTag } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
 /**
  * Baux de terrain — liste et création. Lot 4, sous-lot 1
@@ -102,7 +103,7 @@ export const BauxDeTerrain: React.FC = () => {
   const baux = data ?? [];
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const reinitialiserFormulaire = () => {
@@ -133,7 +134,7 @@ export const BauxDeTerrain: React.FC = () => {
   const validerCreation = async () => {
     if (!peutCreer || !dateDebut || !posteId) {
       message.error(
-        'Le bailleur, le terrain, le loyer annuel, le poste de dépense et la date de début sont obligatoires.'
+        t('Le bailleur, le terrain, le loyer annuel, le poste de dépense et la date de début sont obligatoires.')
       );
       return;
     }
@@ -148,11 +149,11 @@ export const BauxDeTerrain: React.FC = () => {
         endDate: dateFin ? dateFin.format('YYYY-MM-DD') : null
       });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('land-leases', tenantId) });
-      message.success(`Bail « ${bail.landLabel} » enregistré.`);
+      message.success(t('Bail « {{landLabel}} » enregistré.', { landLabel: bail.landLabel }));
       setModalOuvert(false);
       navigate(`/tenant/${tenantId}/finance/baux-terrain/${bail.id}`);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'enregistrement du bail a échoué.");
+      message.error(err?.response?.data?.message || t("L'enregistrement du bail a échoué."));
     } finally {
       setCreationEnCours(false);
     }
@@ -161,47 +162,47 @@ export const BauxDeTerrain: React.FC = () => {
   const ouvrirFiche = (bail: LandLease) => navigate(`/tenant/${tenantId}/finance/baux-terrain/${bail.id}`);
 
   const libelleChantiers = (bail: LandLease) =>
-    bail.sites.length > 0 ? bail.sites.map(s => s.siteLabel).join(', ') : 'Aucun chantier rattaché';
+    bail.sites.length > 0 ? bail.sites.map(s => s.siteLabel).join(', ') : t('Aucun chantier rattaché');
 
   const colonnes: ColumnsType<LandLease> = [
-    { title: 'Bailleur', key: 'bailleur', render: (_, b) => b.landlordName },
-    { title: 'Terrain', key: 'terrain', render: (_, b) => b.landLabel },
+    { title: t('Bailleur'), key: 'bailleur', render: (_, b) => b.landlordName },
+    { title: t('Terrain'), key: 'terrain', render: (_, b) => b.landLabel },
     // Le nom du poste, jamais son identifiant (`costCategoryId`, présent dans
     // la donnée pour la traçabilité serveur mais jamais affiché).
-    { title: 'Poste', key: 'poste', render: (_, b) => b.costCategoryLabel },
+    { title: t('Poste'), key: 'poste', render: (_, b) => b.costCategoryLabel },
     {
-      title: 'Loyer annuel',
+      title: t('Loyer annuel'),
       key: 'annuel',
-      align: 'right',
+      align: 'end',
       render: (_, b) => <MoneyValue value={b.annualAmount} />
     },
     {
-      title: 'Mensualité',
+      title: t('Mensualité'),
       key: 'mensuel',
-      align: 'right',
+      align: 'end',
       // Calculée côté serveur : cette colonne se contente de l'afficher,
       // jamais de diviser `annualAmount` par douze elle-même (voir l'en-tête).
       render: (_, b) => <MoneyValue value={b.monthlyAmount} />
     },
     {
-      title: 'Reste à consommer',
+      title: t('Reste à consommer'),
       key: 'reste',
-      align: 'right',
+      align: 'end',
       render: (_, b) => <MoneyValue value={resteAConsommer(b.accountBalance)} />
     },
-    { title: 'Chantiers rattachés', key: 'chantiers', render: (_, b) => libelleChantiers(b) },
+    { title: t('Chantiers rattachés'), key: 'chantiers', render: (_, b) => libelleChantiers(b) },
     {
-      title: 'Statut',
+      title: t('Statut'),
       key: 'statut',
       render: (_, b) => <StatusTag status={b.isActive ? 'ACTIVE' : 'INACTIVE'} />
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, b) => (
         <Button type="link" onClick={() => ouvrirFiche(b)}>
-          Voir le bail
+          {t('Voir le bail')}
         </Button>
       )
     }
@@ -210,9 +211,9 @@ export const BauxDeTerrain: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Baux de terrain"
+        title={t('Baux de terrain')}
         subtitle={baux.length > 0 ? `${baux.length} bail${baux.length > 1 ? 'aux' : ''}` : undefined}
-        primaryAction={{ label: 'Nouveau bail', icon: <PlusOutlined />, onClick: ouvrirCreation }}
+        primaryAction={{ label: t('Nouveau bail'), icon: <PlusOutlined />, onClick: ouvrirCreation }}
       />
 
       <DataView<LandLease>
@@ -226,13 +227,13 @@ export const BauxDeTerrain: React.FC = () => {
         onPageChange={() => {}}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger les baux de terrain.' : null}
+        error={erreurRequete ? t('Impossible de charger les baux de terrain.') : null}
         onRetry={() => refetch()}
-        emptyDescription="Aucun bail de terrain n'est encore enregistré."
-        emptyAction={{ label: 'Nouveau bail', onClick: ouvrirCreation }}
+        emptyDescription={t("Aucun bail de terrain n'est encore enregistré.")}
+        emptyAction={{ label: t('Nouveau bail'), onClick: ouvrirCreation }}
         columns={colonnes}
         rowKey={b => b.id}
-        aria-label="Baux de terrain"
+        aria-label={t('Baux de terrain')}
         renderCard={b => (
           <DataCard
             title={b.landLabel}
@@ -242,8 +243,8 @@ export const BauxDeTerrain: React.FC = () => {
             highlight={<MoneyValue value={resteAConsommer(b.accountBalance)} />}
             fields={[
               { label: 'Poste', value: b.costCategoryLabel },
-              { label: 'Loyer annuel', value: <MoneyValue value={b.annualAmount} /> },
-              { label: 'Mensualité', value: <MoneyValue value={b.monthlyAmount} /> },
+              { label: t('Loyer annuel'), value: <MoneyValue value={b.annualAmount} /> },
+              { label: t('Mensualité'), value: <MoneyValue value={b.monthlyAmount} /> },
               { label: 'Chantiers', value: libelleChantiers(b) }
             ]}
             onOpen={() => ouvrirFiche(b)}
@@ -252,36 +253,36 @@ export const BauxDeTerrain: React.FC = () => {
       />
 
       <Modal
-        title="Nouveau bail de terrain"
+        title={t('Nouveau bail de terrain')}
         open={modalOuvert}
         onCancel={fermerCreation}
         confirmLoading={creationEnCours}
         onOk={validerCreation}
-        okText="Enregistrer le bail"
-        cancelText="Annuler"
+        okText={t('Enregistrer le bail')}
+        cancelText={t('Annuler')}
         destroyOnHidden
       >
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <label htmlFor="bail-bailleur">Bailleur</label>
+            <label htmlFor="bail-bailleur">{t('Bailleur')}</label>
             <Input
               id="bail-bailleur"
               value={bailleur}
               onChange={event => setBailleur(event.target.value)}
-              placeholder="Ex. Mamadou Camara"
+              placeholder={t('Ex. Mamadou Camara')}
             />
           </div>
           <div>
-            <label htmlFor="bail-terrain">Terrain loué</label>
+            <label htmlFor="bail-terrain">{t('Terrain loué')}</label>
             <Input
               id="bail-terrain"
               value={libelleTerrain}
               onChange={event => setLibelleTerrain(event.target.value)}
-              placeholder="Ex. Terrain de Nongo, 800 m²"
+              placeholder={t('Ex. Terrain de Nongo, 800 m²')}
             />
           </div>
           <div>
-            <label htmlFor="bail-loyer">Loyer annuel (FCFA)</label>
+            <label htmlFor="bail-loyer">{t('Loyer annuel (FCFA)')}</label>
             <InputNumber
               id="bail-loyer"
               style={{ width: '100%' }}
@@ -291,14 +292,14 @@ export const BauxDeTerrain: React.FC = () => {
             />
           </div>
           <div>
-            <label htmlFor="bail-poste">Poste de dépense</label>
+            <label htmlFor="bail-poste">{t('Poste de dépense')}</label>
             {/* C'est ce poste qui reçoit le loyer dans le coût des chantiers
                 rattachés (voir l'en-tête) : sans lui, aucune constatation
                 mensuelle ne pourrait produire d'imputation. */}
             <Select
               id="bail-poste"
               style={{ width: '100%' }}
-              placeholder="Choisir un poste"
+              placeholder={t('Choisir un poste')}
               value={posteId}
               onChange={setPosteId}
               options={optionsPostes}
@@ -306,7 +307,7 @@ export const BauxDeTerrain: React.FC = () => {
           </div>
           <Space style={{ width: '100%' }} size="middle">
             <div style={{ flex: 1 }}>
-              <label htmlFor="bail-debut">Début</label>
+              <label htmlFor="bail-debut">{t('Début')}</label>
               <DatePicker
                 id="bail-debut"
                 style={{ width: '100%' }}
@@ -316,7 +317,7 @@ export const BauxDeTerrain: React.FC = () => {
               />
             </div>
             <div style={{ flex: 1 }}>
-              <label htmlFor="bail-fin">Fin (facultative — tacite reconduction sinon)</label>
+              <label htmlFor="bail-fin">{t('Fin (facultative — tacite reconduction sinon)')}</label>
               <DatePicker
                 id="bail-fin"
                 style={{ width: '100%' }}

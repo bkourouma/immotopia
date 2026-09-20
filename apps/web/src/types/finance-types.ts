@@ -1,3 +1,4 @@
+import { t } from '../i18n/t';
 /**
  * Contrat gelé de la frontière réseau — module financier, lot 1.
  *
@@ -110,12 +111,12 @@ export type BillingExclusionReason =
  * s'afficher brut à l'écran : TypeScript exige une entrée par valeur.
  */
 export const BILLING_EXCLUSION_LABELS: Record<BillingExclusionReason, string> = {
-  PERIOD_BEFORE_LEASE_START: 'La période précède le début du bail',
-  PERIOD_AFTER_LEASE_END: 'La période suit la fin du bail',
-  PERIOD_OFF_BILLING_CYCLE: 'Le bail ne se facture pas sur ce mois',
-  LEASE_NOT_ACTIVE: "Le bail n'est pas actif",
-  INSTALLMENT_ALREADY_EXISTS: 'Une échéance existe déjà pour cette période',
-  LEASE_WITHOUT_AMOUNT: 'Le bail ne porte aucun montant'
+  PERIOD_BEFORE_LEASE_START: t('La période précède le début du bail'),
+  PERIOD_AFTER_LEASE_END: t('La période suit la fin du bail'),
+  PERIOD_OFF_BILLING_CYCLE: t('Le bail ne se facture pas sur ce mois'),
+  LEASE_NOT_ACTIVE: t("Le bail n'est pas actif"),
+  INSTALLMENT_ALREADY_EXISTS: t('Une échéance existe déjà pour cette période'),
+  LEASE_WITHOUT_AMOUNT: t('Le bail ne porte aucun montant')
 };
 
 /**

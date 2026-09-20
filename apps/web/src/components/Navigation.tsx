@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import { t } from '../i18n/t';
 
 export const Navigation: React.FC = () => {
   const { user, logout } = useAuth();
@@ -22,44 +23,39 @@ export const Navigation: React.FC = () => {
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
               <Link to="/dashboard" className="text-xl font-bold text-blue-600">
-                Standard App
+                {t('Standard App')}
               </Link>
             </div>
-            <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
+            <div className="hidden sm:ms-6 sm:flex sm:space-x-8">
               <Link
                 to="/dashboard"
                 className="border-blue-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
               >
-                Tableau de bord
+                {t('Tableau de bord')}
               </Link>
               <Link
                 to="/profile"
                 className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
               >
-                Mon profil
+                {t('Mon profil')}
               </Link>
               <Link
                 to="/courses"
                 className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
               >
-                Mes cours
+                {t('Mes cours')}
               </Link>
             </div>
           </div>
-          <div className="hidden sm:ml-6 sm:flex sm:items-center">
-            <div className="ml-3 relative">
+          <div className="hidden sm:ms-6 sm:flex sm:items-center">
+            <div className="ms-3 relative">
               <div className="flex items-center space-x-4">
-                <span className="text-sm text-gray-700">
-                  {user?.fullName || user?.email}
-                </span>
+                <span className="text-sm text-gray-700">{user?.fullName || user?.email}</span>
                 <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
-                  {user?.globalRole === 'SUPER_ADMIN' ? 'Super Admin' : 'Utilisateur'}
+                  {user?.globalRole === 'SUPER_ADMIN' ? t('Super Admin') : t('Utilisateur')}
                 </span>
-                <button
-                  onClick={handleLogout}
-                  className="text-sm text-gray-500 hover:text-gray-700"
-                >
-                  Déconnexion
+                <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-gray-700">
+                  {t('Déconnexion')}
                 </button>
               </div>
             </div>
@@ -69,4 +65,3 @@ export const Navigation: React.FC = () => {
     </nav>
   );
 };
-

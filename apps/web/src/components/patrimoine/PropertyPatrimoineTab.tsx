@@ -61,7 +61,9 @@ import { YieldProjectionChart } from './YieldProjectionChart';
 import { WorkProgramTimeline } from './WorkProgramTimeline';
 import { uploadDocument as uploadPropertyDocument } from '../../services/property-service';
 import { listContacts } from '../../services/crm-service';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text } = Typography;
 
 function toDateTimeLocal(date?: string | null): string | undefined {
@@ -83,47 +85,47 @@ function toIso(value?: string): string | undefined {
 }
 
 function workProgramStatusLabel(status: WorkProgram['status']): string {
-  if (status === 'PLANNED') return 'Planifié';
-  if (status === 'IN_PROGRESS') return 'En cours';
-  if (status === 'COMPLETED') return 'Terminé';
-  if (status === 'CANCELLED') return 'Annulé';
+  if (status === 'PLANNED') return t('Planifié');
+  if (status === 'IN_PROGRESS') return t('En cours');
+  if (status === 'COMPLETED') return t('Terminé');
+  if (status === 'CANCELLED') return t('Annulé');
   return status;
 }
 
 function loanStatusLabel(status: PropertyLoan['status']): string {
   if (status === 'ACTIVE') return 'Actif';
-  if (status === 'CLOSED') return 'Clôturé';
-  if (status === 'DEFAULTED') return 'Défaillant';
+  if (status === 'CLOSED') return t('Clôturé');
+  if (status === 'DEFAULTED') return t('Défaillant');
   return status;
 }
 
 function valuationMethodLabel(method: AssetValuation['method']): string {
   if (method === 'MANUAL') return 'Manuelle';
-  if (method === 'MARKET_ESTIMATE') return 'Estimation de marché';
+  if (method === 'MARKET_ESTIMATE') return t('Estimation de marché');
   if (method === 'EXPERT_APPRAISAL') return 'Expertise';
   return method;
 }
 
 function expenseCategoryLabel(category: PropertyExpense['category']): string {
-  if (category === 'PROPERTY_TAX') return 'Taxe foncière';
-  if (category === 'CONDO_FEES') return 'Charges de copropriété';
+  if (category === 'PROPERTY_TAX') return t('Taxe foncière');
+  if (category === 'CONDO_FEES') return t('Charges de copropriété');
   if (category === 'INSURANCE') return 'Assurance';
-  if (category === 'ROUTINE_MAINTENANCE') return 'Entretien courant';
-  if (category === 'RENOVATION') return 'Rénovation';
-  if (category === 'MANAGEMENT_FEES') return 'Honoraires de gestion';
-  if (category === 'UTILITIES') return 'Charges communes';
+  if (category === 'ROUTINE_MAINTENANCE') return t('Entretien courant');
+  if (category === 'RENOVATION') return t('Rénovation');
+  if (category === 'MANAGEMENT_FEES') return t('Honoraires de gestion');
+  if (category === 'UTILITIES') return t('Charges communes');
   if (category === 'OTHER') return 'Autre';
   return category;
 }
 
 function documentTypeLabel(type: PatrimonyDocument['type']): string {
-  if (type === 'TITLE_DEED') return 'Titre de propriété';
-  if (type === 'NOTARIAL_DEED') return 'Acte notarié';
-  if (type === 'TAX_DOCUMENT') return 'Document fiscal';
+  if (type === 'TITLE_DEED') return t('Titre de propriété');
+  if (type === 'NOTARIAL_DEED') return t('Acte notarié');
+  if (type === 'TAX_DOCUMENT') return t('Document fiscal');
   if (type === 'INSURANCE') return 'Assurance';
-  if (type === 'TECHNICAL_DIAGNOSIS') return 'Diagnostic technique';
+  if (type === 'TECHNICAL_DIAGNOSIS') return t('Diagnostic technique');
   if (type === 'FLOOR_PLAN') return 'Plan';
-  if (type === 'BUILDING_PERMIT') return 'Permis de construire';
+  if (type === 'BUILDING_PERMIT') return t('Permis de construire');
   if (type === 'OTHER') return 'Autre';
   return type;
 }
@@ -208,7 +210,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         }))
       );
     } catch (e: any) {
-      setError(e?.response?.data?.error || 'Erreur chargement patrimoine');
+      setError(e?.response?.data?.error || t('Erreur chargement patrimoine'));
     } finally {
       setLoading(false);
     }
@@ -232,7 +234,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       const data = await getPropertyYield(tenantId, propertyId, assumptions);
       setYieldData(data);
     } catch (e: any) {
-      message.error(e?.response?.data?.error || 'Échec du recalcul du rendement');
+      message.error(e?.response?.data?.error || t('Échec du recalcul du rendement'));
     } finally {
       setYieldLoading(false);
     }
@@ -274,16 +276,16 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       setSubmitting(true);
       if (editingValuationId) {
         await updateValuation(tenantId, propertyId, editingValuationId, payload);
-        message.success('Valorisation mise a jour');
+        message.success(t('Valorisation mise a jour'));
       } else {
         await createValuation(tenantId, propertyId, payload);
-        message.success('Valorisation ajoutee');
+        message.success(t('Valorisation ajoutee'));
       }
       setValuationModalOpen(false);
       await loadAll();
     } catch (e: any) {
       if (e?.errorFields) return;
-      message.error(e?.response?.data?.error || 'Erreur sauvegarde valorisation');
+      message.error(e?.response?.data?.error || t('Erreur sauvegarde valorisation'));
     } finally {
       setSubmitting(false);
     }
@@ -293,10 +295,10 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     setBusyActionId(`valuation-${valuationId}`);
     try {
       await deleteValuation(tenantId, propertyId, valuationId);
-      message.success('Valorisation supprimee');
+      message.success(t('Valorisation supprimee'));
       await loadAll();
     } catch (e: any) {
-      message.error(e?.response?.data?.error || 'Erreur suppression valorisation');
+      message.error(e?.response?.data?.error || t('Erreur suppression valorisation'));
     } finally {
       setBusyActionId(null);
     }
@@ -340,16 +342,16 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       setSubmitting(true);
       if (editingExpenseId) {
         await updateExpense(tenantId, propertyId, editingExpenseId, payload);
-        message.success('Dépense mise à jour');
+        message.success(t('Dépense mise à jour'));
       } else {
         await createExpense(tenantId, propertyId, payload);
-        message.success('Dépense ajoutée');
+        message.success(t('Dépense ajoutée'));
       }
       setExpenseModalOpen(false);
       await loadAll();
     } catch (e: any) {
       if (e?.errorFields) return;
-      message.error(e?.response?.data?.error || 'Erreur de sauvegarde de la dépense');
+      message.error(e?.response?.data?.error || t('Erreur de sauvegarde de la dépense'));
     } finally {
       setSubmitting(false);
     }
@@ -359,10 +361,10 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     setBusyActionId(`expense-${expenseId}`);
     try {
       await deleteExpense(tenantId, propertyId, expenseId);
-      message.success('Dépense supprimée');
+      message.success(t('Dépense supprimée'));
       await loadAll();
     } catch (e: any) {
-      message.error(e?.response?.data?.error || 'Erreur de suppression de la dépense');
+      message.error(e?.response?.data?.error || t('Erreur de suppression de la dépense'));
     } finally {
       setBusyActionId(null);
     }
@@ -408,16 +410,16 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       setSubmitting(true);
       if (editingLoanId) {
         await updateLoan(tenantId, propertyId, editingLoanId, payload);
-        message.success('Crédit mis à jour');
+        message.success(t('Crédit mis à jour'));
       } else {
         await createLoan(tenantId, propertyId, payload);
-        message.success('Crédit ajouté');
+        message.success(t('Crédit ajouté'));
       }
       setLoanModalOpen(false);
       await loadAll();
     } catch (e: any) {
       if (e?.errorFields) return;
-      message.error(e?.response?.data?.error || 'Erreur de sauvegarde du crédit');
+      message.error(e?.response?.data?.error || t('Erreur de sauvegarde du crédit'));
     } finally {
       setSubmitting(false);
     }
@@ -427,10 +429,10 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     setBusyActionId(`loan-${loanId}`);
     try {
       await deleteLoan(tenantId, propertyId, loanId);
-      message.success('Crédit supprimé');
+      message.success(t('Crédit supprimé'));
       await loadAll();
     } catch (e: any) {
-      message.error(e?.response?.data?.error || 'Erreur de suppression du crédit');
+      message.error(e?.response?.data?.error || t('Erreur de suppression du crédit'));
     } finally {
       setBusyActionId(null);
     }
@@ -476,16 +478,16 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       setSubmitting(true);
       if (editingWorkId) {
         await updateWorkProgram(tenantId, propertyId, editingWorkId, payload);
-        message.success('Programme travaux mis a jour');
+        message.success(t('Programme travaux mis a jour'));
       } else {
         await createWorkProgram(tenantId, propertyId, payload);
-        message.success('Programme travaux ajoute');
+        message.success(t('Programme travaux ajoute'));
       }
       setWorkModalOpen(false);
       await loadAll();
     } catch (e: any) {
       if (e?.errorFields) return;
-      message.error(e?.response?.data?.error || 'Erreur sauvegarde travaux');
+      message.error(e?.response?.data?.error || t('Erreur sauvegarde travaux'));
     } finally {
       setSubmitting(false);
     }
@@ -495,10 +497,10 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     setBusyActionId(`work-${programId}`);
     try {
       await deleteWorkProgram(tenantId, propertyId, programId);
-      message.success('Programme travaux supprime');
+      message.success(t('Programme travaux supprime'));
       await loadAll();
     } catch (e: any) {
-      message.error(e?.response?.data?.error || 'Erreur suppression travaux');
+      message.error(e?.response?.data?.error || t('Erreur suppression travaux'));
     } finally {
       setBusyActionId(null);
     }
@@ -515,7 +517,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     try {
       const values = await documentForm.validateFields();
       if (!documentFile) {
-        message.error('Veuillez sélectionner un fichier');
+        message.error(t('Veuillez sélectionner un fichier'));
         return;
       }
       setSubmitting(true);
@@ -540,13 +542,13 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         // Fallback: if dedicated patrimoine endpoint is not available, keep uploaded document only.
       }
 
-      message.success('Document ajouté');
+      message.success(t('Document ajouté'));
       setDocumentModalOpen(false);
       setDocumentFile(null);
       await loadAll();
     } catch (e: any) {
       if (e?.errorFields) return;
-      message.error(e?.response?.data?.error || 'Erreur de création du document');
+      message.error(e?.response?.data?.error || t('Erreur de création du document'));
     } finally {
       setSubmitting(false);
     }
@@ -557,9 +559,9 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
     try {
       await deleteDocument(tenantId, propertyId, documentId);
       setDocuments(prev => prev.filter(doc => doc.id !== documentId));
-      message.success('Document supprime');
+      message.success(t('Document supprime'));
     } catch (e: any) {
-      message.error(e?.response?.data?.error || 'Échec de la suppression du document');
+      message.error(e?.response?.data?.error || t('Échec de la suppression du document'));
     } finally {
       setDeletingDocumentId(null);
     }
@@ -592,10 +594,10 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         </Col>
       </Row>
       <Card
-        title="Gérer les valorisations"
+        title={t('Gérer les valorisations')}
         extra={
           <Button type="primary" onClick={openCreateValuation}>
-            Ajouter
+            {t('Ajouter')}
           </Button>
         }
       >
@@ -608,16 +610,16 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
             {
               title: 'Date',
               dataIndex: 'valuatedAt',
-              render: (value: string) => new Date(value).toLocaleString('fr-FR')
+              render: (value: string) => new Date(value).toLocaleString(activeLocale())
             },
             {
               title: 'Valeur',
               dataIndex: 'estimatedValue',
               render: (value: number, record: AssetValuation) =>
-                `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
+                `${Number(value).toLocaleString(activeLocale())} ${record.currency}`
             },
             {
-              title: 'Méthode',
+              title: t('Méthode'),
               dataIndex: 'method',
               render: (value: AssetValuation['method']) => <Tag>{valuationMethodLabel(value)}</Tag>
             },
@@ -627,11 +629,11 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
               render: (_: unknown, record: AssetValuation) => (
                 <Space>
                   <Button size="small" onClick={() => openEditValuation(record)}>
-                    Modifier
+                    {t('Modifier')}
                   </Button>
-                  <Popconfirm title="Supprimer cette valorisation ?" onConfirm={() => removeValuation(record.id)}>
+                  <Popconfirm title={t('Supprimer cette valorisation ?')} onConfirm={() => removeValuation(record.id)}>
                     <Button size="small" danger loading={busyActionId === `valuation-${record.id}`}>
-                      Supprimer
+                      {t('Supprimer')}
                     </Button>
                   </Popconfirm>
                 </Space>
@@ -641,10 +643,10 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         />
       </Card>
       <Card
-        title="Gérer les dépenses"
+        title={t('Gérer les dépenses')}
         extra={
           <Button type="primary" onClick={openCreateExpense}>
-            Ajouter
+            {t('Ajouter')}
           </Button>
         }
       >
@@ -657,11 +659,11 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
             {
               title: 'Date',
               dataIndex: 'paidAt',
-              render: (value: string) => new Date(value).toLocaleDateString('fr-FR')
+              render: (value: string) => new Date(value).toLocaleDateString(activeLocale())
             },
-            { title: 'Libellé', dataIndex: 'label' },
+            { title: t('Libellé'), dataIndex: 'label' },
             {
-              title: 'Catégorie',
+              title: t('Catégorie'),
               dataIndex: 'category',
               render: (value: PropertyExpense['category']) => <Tag>{expenseCategoryLabel(value)}</Tag>
             },
@@ -669,7 +671,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
               title: 'Montant',
               dataIndex: 'amount',
               render: (value: number, record: PropertyExpense) =>
-                `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
+                `${Number(value).toLocaleString(activeLocale())} ${record.currency}`
             },
             {
               title: 'Actions',
@@ -677,11 +679,11 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
               render: (_: unknown, record: PropertyExpense) => (
                 <Space>
                   <Button size="small" onClick={() => openEditExpense(record)}>
-                    Modifier
+                    {t('Modifier')}
                   </Button>
-                  <Popconfirm title="Supprimer cette dépense ?" onConfirm={() => removeExpense(record.id)}>
+                  <Popconfirm title={t('Supprimer cette dépense ?')} onConfirm={() => removeExpense(record.id)}>
                     <Button size="small" danger loading={busyActionId === `expense-${record.id}`}>
-                      Supprimer
+                      {t('Supprimer')}
                     </Button>
                   </Popconfirm>
                 </Space>
@@ -691,10 +693,10 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         />
       </Card>
       <Card
-        title="Gérer les crédits"
+        title={t('Gérer les crédits')}
         extra={
           <Button type="primary" onClick={openCreateLoan}>
-            Ajouter
+            {t('Ajouter')}
           </Button>
         }
       >
@@ -704,12 +706,12 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           dataSource={loans}
           pagination={{ pageSize: 5 }}
           columns={[
-            { title: 'Prêteur', dataIndex: 'lender' },
+            { title: t('Prêteur'), dataIndex: 'lender' },
             {
-              title: 'Capital restant',
+              title: t('Capital restant'),
               dataIndex: 'remainingCapital',
               render: (value: number, record: PropertyLoan) =>
-                `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
+                `${Number(value).toLocaleString(activeLocale())} ${record.currency}`
             },
             {
               title: 'Statut',
@@ -722,11 +724,11 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
               render: (_: unknown, record: PropertyLoan) => (
                 <Space>
                   <Button size="small" onClick={() => openEditLoan(record)}>
-                    Modifier
+                    {t('Modifier')}
                   </Button>
-                  <Popconfirm title="Supprimer ce crédit ?" onConfirm={() => removeLoan(record.id)}>
+                  <Popconfirm title={t('Supprimer ce crédit ?')} onConfirm={() => removeLoan(record.id)}>
                     <Button size="small" danger loading={busyActionId === `loan-${record.id}`}>
-                      Supprimer
+                      {t('Supprimer')}
                     </Button>
                   </Popconfirm>
                 </Space>
@@ -736,10 +738,10 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         />
       </Card>
       <Card
-        title="Gérer les programmes de travaux"
+        title={t('Gérer les programmes de travaux')}
         extra={
           <Button type="primary" onClick={openCreateWorkProgram}>
-            Ajouter
+            {t('Ajouter')}
           </Button>
         }
       >
@@ -751,15 +753,15 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           columns={[
             { title: 'Titre', dataIndex: 'title' },
             {
-              title: 'Date prévue',
+              title: t('Date prévue'),
               dataIndex: 'plannedDate',
-              render: (value: string) => new Date(value).toLocaleDateString('fr-FR')
+              render: (value: string) => new Date(value).toLocaleDateString(activeLocale())
             },
             {
-              title: 'Coût estimé',
+              title: t('Coût estimé'),
               dataIndex: 'estimatedCost',
               render: (value: number, record: WorkProgram) =>
-                `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
+                `${Number(value).toLocaleString(activeLocale())} ${record.currency}`
             },
             {
               title: 'Statut',
@@ -772,11 +774,11 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
               render: (_: unknown, record: WorkProgram) => (
                 <Space>
                   <Button size="small" onClick={() => openEditWorkProgram(record)}>
-                    Modifier
+                    {t('Modifier')}
                   </Button>
-                  <Popconfirm title="Supprimer ce programme ?" onConfirm={() => removeWorkProgram(record.id)}>
+                  <Popconfirm title={t('Supprimer ce programme ?')} onConfirm={() => removeWorkProgram(record.id)}>
                     <Button size="small" danger loading={busyActionId === `work-${record.id}`}>
-                      Supprimer
+                      {t('Supprimer')}
                     </Button>
                   </Popconfirm>
                 </Space>
@@ -795,14 +797,14 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       </Row>
       <WorkProgramTimeline items={workPrograms} />
       <Card
-        title="Ajouter un document"
+        title={t('Ajouter un document')}
         extra={
           <Button type="primary" onClick={openCreateDocument}>
-            Ajouter
+            {t('Ajouter')}
           </Button>
         }
       >
-        <Text type="secondary">Les documents existants sont consultables dans le coffre-fort ci-dessous.</Text>
+        <Text type="secondary">{t('Les documents existants sont consultables dans le coffre-fort ci-dessous.')}</Text>
       </Card>
       <Row gutter={[16, 16]}>
         <Col xs={24}>
@@ -812,11 +814,13 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       <Alert
         type="info"
         showIcon
-        message={`Total des charges de l'année en cours : ${annualExpenses.toLocaleString('fr-FR')} XOF`}
+        message={t("Total des charges de l'année en cours : {{value}} XOF", {
+          value: annualExpenses.toLocaleString(activeLocale())
+        })}
       />
 
       <Modal
-        title={editingValuationId ? 'Modifier valorisation' : 'Ajouter valorisation'}
+        title={editingValuationId ? t('Modifier valorisation') : t('Ajouter valorisation')}
         open={valuationModalOpen}
         onCancel={() => setValuationModalOpen(false)}
         onOk={submitValuation}
@@ -824,22 +828,22 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         destroyOnClose
       >
         <Form layout="vertical" form={valuationForm}>
-          <Form.Item name="valuatedAt" label="Date valorisation" rules={[{ required: true }]}>
+          <Form.Item name="valuatedAt" label={t('Date valorisation')} rules={[{ required: true }]}>
             <Input type="datetime-local" />
           </Form.Item>
-          <Form.Item name="estimatedValue" label="Valeur estimée" rules={[{ required: true }]}>
+          <Form.Item name="estimatedValue" label={t('Valeur estimée')} rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="currency" label="Devise" rules={[{ required: true }]}>
+          <Form.Item name="currency" label={t('Devise')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="acquisitionCost" label="Coût d'acquisition">
+          <Form.Item name="acquisitionCost" label={t("Coût d'acquisition")}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="acquisitionDate" label="Date d'acquisition">
+          <Form.Item name="acquisitionDate" label={t("Date d'acquisition")}>
             <Input type="datetime-local" />
           </Form.Item>
-          <Form.Item name="method" label="Méthode" rules={[{ required: true }]}>
+          <Form.Item name="method" label={t('Méthode')} rules={[{ required: true }]}>
             <Select
               options={[
                 { value: 'MANUAL', label: valuationMethodLabel('MANUAL') },
@@ -848,14 +852,14 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
               ]}
             />
           </Form.Item>
-          <Form.Item name="notes" label="Notes">
+          <Form.Item name="notes" label={t('Notes')}>
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title={editingExpenseId ? 'Modifier dépense' : 'Ajouter dépense'}
+        title={editingExpenseId ? t('Modifier dépense') : t('Ajouter dépense')}
         open={expenseModalOpen}
         onCancel={() => setExpenseModalOpen(false)}
         onOk={submitExpense}
@@ -863,7 +867,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         destroyOnClose
       >
         <Form layout="vertical" form={expenseForm}>
-          <Form.Item name="category" label="Catégorie" rules={[{ required: true }]}>
+          <Form.Item name="category" label={t('Catégorie')} rules={[{ required: true }]}>
             <Select
               options={[
                 { value: 'PROPERTY_TAX', label: expenseCategoryLabel('PROPERTY_TAX') },
@@ -877,32 +881,32 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
               ]}
             />
           </Form.Item>
-          <Form.Item name="label" label="Libellé" rules={[{ required: true }]}>
+          <Form.Item name="label" label={t('Libellé')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="amount" label="Montant" rules={[{ required: true }]}>
+          <Form.Item name="amount" label={t('Montant')} rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="currency" label="Devise" rules={[{ required: true }]}>
+          <Form.Item name="currency" label={t('Devise')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="paidAt" label="Date de paiement" rules={[{ required: true }]}>
+          <Form.Item name="paidAt" label={t('Date de paiement')} rules={[{ required: true }]}>
             <Input type="datetime-local" />
           </Form.Item>
-          <Form.Item name="isCapitalized" label="Capitalisée" valuePropName="checked">
+          <Form.Item name="isCapitalized" label={t('Capitalisée')} valuePropName="checked">
             <Switch />
           </Form.Item>
-          <Form.Item name="receiptUrl" label="URL justificatif">
+          <Form.Item name="receiptUrl" label={t('URL justificatif')}>
             <Input />
           </Form.Item>
-          <Form.Item name="notes" label="Notes">
+          <Form.Item name="notes" label={t('Notes')}>
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title={editingLoanId ? 'Modifier crédit' : 'Ajouter crédit'}
+        title={editingLoanId ? t('Modifier crédit') : t('Ajouter crédit')}
         open={loanModalOpen}
         onCancel={() => setLoanModalOpen(false)}
         onOk={submitLoan}
@@ -910,31 +914,31 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         destroyOnClose
       >
         <Form layout="vertical" form={loanForm}>
-          <Form.Item name="lender" label="Prêteur" rules={[{ required: true }]}>
+          <Form.Item name="lender" label={t('Prêteur')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="capitalAmount" label="Capital initial" rules={[{ required: true }]}>
+          <Form.Item name="capitalAmount" label={t('Capital initial')} rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="remainingCapital" label="Capital restant" rules={[{ required: true }]}>
+          <Form.Item name="remainingCapital" label={t('Capital restant')} rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="interestRate" label="Taux d'intérêt" rules={[{ required: true }]}>
+          <Form.Item name="interestRate" label={t("Taux d'intérêt")} rules={[{ required: true }]}>
             <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="monthlyPayment" label="Mensualité" rules={[{ required: true }]}>
+          <Form.Item name="monthlyPayment" label={t('Mensualité')} rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="currency" label="Devise" rules={[{ required: true }]}>
+          <Form.Item name="currency" label={t('Devise')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="startDate" label="Date de début" rules={[{ required: true }]}>
+          <Form.Item name="startDate" label={t('Date de début')} rules={[{ required: true }]}>
             <Input type="datetime-local" />
           </Form.Item>
-          <Form.Item name="endDate" label="Date de fin" rules={[{ required: true }]}>
+          <Form.Item name="endDate" label={t('Date de fin')} rules={[{ required: true }]}>
             <Input type="datetime-local" />
           </Form.Item>
-          <Form.Item name="status" label="Statut" rules={[{ required: true }]}>
+          <Form.Item name="status" label={t('Statut')} rules={[{ required: true }]}>
             <Select
               options={[
                 { value: 'ACTIVE', label: loanStatusLabel('ACTIVE') },
@@ -947,7 +951,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       </Modal>
 
       <Modal
-        title={editingWorkId ? 'Modifier programme travaux' : 'Ajouter programme travaux'}
+        title={editingWorkId ? t('Modifier programme travaux') : t('Ajouter programme travaux')}
         open={workModalOpen}
         onCancel={() => setWorkModalOpen(false)}
         onOk={submitWorkProgram}
@@ -955,45 +959,45 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         destroyOnClose
       >
         <Form layout="vertical" form={workForm}>
-          <Form.Item name="title" label="Titre" rules={[{ required: true }]}>
+          <Form.Item name="title" label={t('Titre')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="description" label="Description">
+          <Form.Item name="description" label={t('Description')}>
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="estimatedCost" label="Coût estimé" rules={[{ required: true }]}>
+          <Form.Item name="estimatedCost" label={t('Coût estimé')} rules={[{ required: true }]}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="actualCost" label="Coût réel">
+          <Form.Item name="actualCost" label={t('Coût réel')}>
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="currency" label="Devise" rules={[{ required: true }]}>
+          <Form.Item name="currency" label={t('Devise')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="plannedDate" label="Date prévue" rules={[{ required: true }]}>
+          <Form.Item name="plannedDate" label={t('Date prévue')} rules={[{ required: true }]}>
             <Input type="datetime-local" />
           </Form.Item>
-          <Form.Item name="completedDate" label="Date de complétion">
+          <Form.Item name="completedDate" label={t('Date de complétion')}>
             <Input type="datetime-local" />
           </Form.Item>
-          <Form.Item name="status" label="Statut" rules={[{ required: true }]}>
+          <Form.Item name="status" label={t('Statut')} rules={[{ required: true }]}>
             <Select
               options={[
-                { value: 'PLANNED', label: 'Planifié' },
-                { value: 'IN_PROGRESS', label: 'En cours' },
-                { value: 'COMPLETED', label: 'Terminé' },
-                { value: 'CANCELLED', label: 'Annulé' }
+                { value: 'PLANNED', label: t('Planifié') },
+                { value: 'IN_PROGRESS', label: t('En cours') },
+                { value: 'COMPLETED', label: t('Terminé') },
+                { value: 'CANCELLED', label: t('Annulé') }
               ]}
             />
           </Form.Item>
-          <Form.Item name="isCapitalized" label="Capitalisé" valuePropName="checked">
+          <Form.Item name="isCapitalized" label={t('Capitalisé')} valuePropName="checked">
             <Switch />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="Ajouter document patrimoine"
+        title={t('Ajouter document patrimoine')}
         open={documentModalOpen}
         onCancel={() => {
           setDocumentModalOpen(false);
@@ -1004,10 +1008,10 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         destroyOnClose
       >
         <Form layout="vertical" form={documentForm}>
-          <Form.Item name="title" label="Titre" rules={[{ required: true }]}>
+          <Form.Item name="title" label={t('Titre')} rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="type" label="Type" rules={[{ required: true }]}>
+          <Form.Item name="type" label={t('Type')} rules={[{ required: true }]}>
             <Select
               options={[
                 { value: 'TITLE_DEED', label: documentTypeLabel('TITLE_DEED') },
@@ -1021,7 +1025,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
               ]}
             />
           </Form.Item>
-          <Form.Item label="Fichier" required>
+          <Form.Item label={t('Fichier')} required>
             <Upload
               beforeUpload={file => {
                 setDocumentFile(file as RcFile);
@@ -1033,19 +1037,19 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
                 return true;
               }}
             >
-              <Button icon={<UploadOutlined />}>Sélectionner un fichier</Button>
+              <Button icon={<UploadOutlined />}>{t('Sélectionner un fichier')}</Button>
             </Upload>
           </Form.Item>
-          <Form.Item name="expiresAt" label="Date expiration">
+          <Form.Item name="expiresAt" label={t('Date expiration')}>
             <Input type="datetime-local" />
           </Form.Item>
-          <Form.Item name="ownerContactId" label="Propriétaire (optionnel)">
+          <Form.Item name="ownerContactId" label={t('Propriétaire (optionnel)')}>
             <Select
               showSearch
               allowClear
               optionFilterProp="label"
               options={ownerOptions}
-              placeholder="Sélectionnez un propriétaire"
+              placeholder={t('Sélectionnez un propriétaire')}
             />
           </Form.Item>
         </Form>

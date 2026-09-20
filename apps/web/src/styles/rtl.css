@@ -1,0 +1,112 @@
+/**
+ * Arabe : police et sens d'écriture.
+ *
+ * Deux choses seulement sont traitées ici. Le miroir de la mise en page est
+ * fait ailleurs — `<ConfigProvider direction>` s'occupe d'Ant Design, et les
+ * écrans utilisent des propriétés logiques (`margin-inline-start` plutôt que
+ * `margin-left`, `ms-4` plutôt que `ml-4`), que le navigateur retourne seul
+ * sous `dir="rtl"`. Ce fichier ne rattrape donc que ce qui échappe aux deux.
+ */
+
+/**
+ * Inter ne contient aucun glyphe arabe : sans cette pile, le texte arabe
+ * tombait sur la police de secours du système, dont la hauteur d'x et la
+ * graisse ne correspondaient pas au reste de l'interface.
+ *
+ * Aucune police n'est téléchargée : les trois familles citées sont présentes
+ * d'origine sur Windows (Segoe UI), macOS/iOS (Geeza Pro) et Android (Noto
+ * Sans Arabic). Inter reste en tête pour les chiffres et les mots latins —
+ * « FCFA », « CRM », un nom propre — qui restent nombreux dans les écrans.
+ */
+html[data-lang='ar'] {
+  --font-sans: 'Inter Variable', 'Inter', 'Segoe UI', 'Noto Sans Arabic', 'Geeza Pro', 'Arabic Typesetting',
+    Tahoma, sans-serif;
+  /* L'arabe n'a ni majuscules ni ascendantes latines : à taille égale il paraît
+     plus petit et plus serré. +0,5 px et une interligne un peu plus aérée
+     rétablissent la densité perçue du français. */
+  font-size-adjust: 0.52;
+}
+
+html[data-lang='ar'] body {
+  line-height: 1.7;
+}
+
+/**
+ * Les montants, les numéros de téléphone et les références gardent leur sens
+ * gauche-à-droite à l'intérieur d'une phrase arabe. Sans cela, « 350 000 FCFA »
+ * s'affichait « FCFA 350 000 » — l'algorithme bidirectionnel d'Unicode place
+ * le texte latin selon le contexte, et le contexte est ici de droite à gauche.
+ */
+[dir='rtl'] .it-numeric,
+[dir='rtl'] .ant-statistic-content,
+[dir='rtl'] .ant-table-cell-numeric,
+[dir='rtl'] code,
+[dir='rtl'] kbd,
+[dir='rtl'] samp {
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: start;
+}
+
+/**
+ * Recharts dessine ses axes et ses info-bulles en coordonnées absolues, sans
+ * tenir compte de `dir` : un graphe retourné avait ses étiquettes d'axe
+ * inversées par rapport à ses barres. Les graphes restent donc en LTR, lus de
+ * gauche à droite comme partout ailleurs dans le monde, seuls leurs textes
+ * étant en arabe.
+ */
+[dir='rtl'] .recharts-wrapper,
+[dir='rtl'] .recharts-surface {
+  direction: ltr;
+}
+
+[dir='rtl'] .recharts-wrapper text {
+  /* Le texte reste lu de droite à gauche à l'intérieur de son étiquette. */
+  direction: rtl;
+  unicode-bidi: plaintext;
+}
+
+/**
+ * Chevrons, flèches « suivant/précédent » et icônes de repli sont dessinés
+ * pointe à droite. Ant Design retourne les siens sous `direction="rtl"` ; ceux
+ * de lucide-react, posés directement dans les écrans, ne le sont pas.
+ */
+[dir='rtl'] .it-icon-directional,
+[dir='rtl'] .anticon-arrow-right,
+[dir='rtl'] .anticon-arrow-left,
+[dir='rtl'] .anticon-double-right,
+[dir='rtl'] .anticon-double-left {
+  transform: scaleX(-1);
+}
+
+/**
+ * `react-big-calendar` (agenda CRM et calendrier de visites) est écrit en
+ * `left`/`right` absolus. Le retourner en bloc est le seul rattrapage possible
+ * sans forker la bibliothèque : la grille est en miroir, son contenu revient à
+ * l'endroit.
+ */
+[dir='rtl'] .rbc-calendar {
+  direction: rtl;
+}
+
+[dir='rtl'] .rbc-time-content,
+[dir='rtl'] .rbc-time-header-content,
+[dir='rtl'] .rbc-month-view {
+  direction: ltr;
+}
+
+[dir='rtl'] .rbc-event,
+[dir='rtl'] .rbc-header,
+[dir='rtl'] .rbc-date-cell,
+[dir='rtl'] .rbc-toolbar {
+  direction: rtl;
+}
+
+/**
+ * Le rail de navigation et le tiroir mobile glissent depuis le bord de départ.
+ * `transform: translateX(-100%)` écrit en dur les envoyait hors écran du
+ * mauvais côté en arabe.
+ */
+[dir='rtl'] .it-slide-from-start {
+  transform: translateX(100%);
+}

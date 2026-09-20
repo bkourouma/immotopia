@@ -26,7 +26,9 @@ import {
   ConfirmAction
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 /**
@@ -88,7 +90,7 @@ const TONE_FACTURATION: Record<PurchaseOrder['invoicingState'], StatusTone> = {
 };
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 export const BonDeCommande: React.FC = () => {
@@ -188,10 +190,10 @@ export const BonDeCommande: React.FC = () => {
           amount: l.amount as number
         }))
       });
-      message.success(`Bon ${nouveauBon.reference} enregistré en brouillon.`);
+      message.success(t('Bon {{reference}} enregistré en brouillon.', { reference: nouveauBon.reference }));
       navigate(`/tenant/${tenantId}/finance/bons-de-commande/${nouveauBon.id}`, { replace: true });
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'enregistrement du bon a échoué.");
+      message.error(err?.response?.data?.message || t("L'enregistrement du bon a échoué."));
     } finally {
       setEnregistrementEnCours(false);
     }
@@ -210,9 +212,9 @@ export const BonDeCommande: React.FC = () => {
     try {
       await issuePurchaseOrder(tenantId, bon.id);
       await queryClient.invalidateQueries({ queryKey: detailKey('purchase-order', tenantId, bon.id) });
-      message.success(`Bon ${bon.reference} émis.`);
+      message.success(t('Bon {{reference}} émis.', { reference: bon.reference }));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'émission a échoué.");
+      message.error(err?.response?.data?.message || t("L'émission a échoué."));
     } finally {
       setEmissionEnCours(false);
     }
@@ -224,9 +226,9 @@ export const BonDeCommande: React.FC = () => {
     try {
       await cancelPurchaseOrder(tenantId, bon.id);
       await queryClient.invalidateQueries({ queryKey: detailKey('purchase-order', tenantId, bon.id) });
-      message.success(`Bon ${bon.reference} annulé.`);
+      message.success(t('Bon {{reference}} annulé.', { reference: bon.reference }));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'annulation a échoué.");
+      message.error(err?.response?.data?.message || t("L'annulation a échoué."));
     } finally {
       setAnnulationEnCours(false);
     }
@@ -235,30 +237,30 @@ export const BonDeCommande: React.FC = () => {
   // ---------------------------------------------------------------------
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const filAriane = [
-    { label: 'Finance', to: `/tenant/${tenantId}/finance/bons-de-commande` },
-    { label: 'Bons de commande', to: `/tenant/${tenantId}/finance/bons-de-commande` }
+    { label: t('Finance'), to: `/tenant/${tenantId}/finance/bons-de-commande` },
+    { label: t('Bons de commande'), to: `/tenant/${tenantId}/finance/bons-de-commande` }
   ];
 
   if (modeCreation) {
     return (
       <>
-        <PageHeader title="Nouveau bon de commande" breadcrumbs={[...filAriane, { label: 'Nouveau' }]} />
+        <PageHeader title={t('Nouveau bon de commande')} breadcrumbs={[...filAriane, { label: 'Nouveau' }]} />
         <Card>
           <Space wrap size="middle" align="end" style={{ marginBottom: 'var(--space-4)', width: '100%' }}>
             <div style={{ minWidth: 220 }}>
               <div>
-                <label htmlFor="bon-chantier">Chantier</label>
+                <label htmlFor="bon-chantier">{t('Chantier')}</label>
               </div>
               <Select
                 id="bon-chantier"
                 style={{ width: '100%' }}
                 showSearch
                 optionFilterProp="label"
-                placeholder="Choisir le chantier"
+                placeholder={t('Choisir le chantier')}
                 value={siteId}
                 onChange={setSiteId}
                 options={optionsChantiers}
@@ -266,14 +268,14 @@ export const BonDeCommande: React.FC = () => {
             </div>
             <div style={{ minWidth: 220 }}>
               <div>
-                <label htmlFor="bon-fournisseur">Fournisseur</label>
+                <label htmlFor="bon-fournisseur">{t('Fournisseur')}</label>
               </div>
               <Select
                 id="bon-fournisseur"
                 style={{ width: '100%' }}
                 showSearch
                 optionFilterProp="label"
-                placeholder="Choisir le fournisseur"
+                placeholder={t('Choisir le fournisseur')}
                 value={supplierId}
                 onChange={setSupplierId}
                 options={optionsFournisseurs}
@@ -284,52 +286,52 @@ export const BonDeCommande: React.FC = () => {
           <Space wrap size="middle" align="end" style={{ marginBottom: 'var(--space-4)', width: '100%' }}>
             <div style={{ minWidth: 220 }}>
               <div>
-                <label htmlFor="bon-reference">Référence</label>
+                <label htmlFor="bon-reference">{t('Référence')}</label>
               </div>
               <Input
                 id="bon-reference"
-                placeholder="Ex. BC-2026-0042"
+                placeholder={t('Ex. BC-2026-0042')}
                 value={reference}
                 onChange={event => setReference(event.target.value)}
               />
             </div>
             <div>
               <div>
-                <label htmlFor="bon-date">Date</label>
+                <label htmlFor="bon-date">{t('Date')}</label>
               </div>
               <DatePicker id="bon-date" format="DD/MM/YYYY" value={date} onChange={v => setDate(v ?? dayjs())} />
             </div>
           </Space>
 
-          <Title level={5}>Lignes</Title>
+          <Title level={5}>{t('Lignes')}</Title>
           <Space orientation="vertical" size="small" style={{ width: '100%', marginBottom: 'var(--space-4)' }}>
             {lignes.map(ligne => (
               <Space key={ligne.id} align="start" wrap>
                 <Select
-                  aria-label="Poste de dépense"
-                  placeholder="Poste"
+                  aria-label={t('Poste de dépense')}
+                  placeholder={t('Poste')}
                   style={{ width: 200 }}
                   value={ligne.costCategoryId}
                   onChange={value => modifierLigne(ligne.id, { costCategoryId: value })}
                   options={optionsPostes}
                 />
                 <Input
-                  aria-label="Libellé de la ligne"
-                  placeholder="Libellé"
+                  aria-label={t('Libellé de la ligne')}
+                  placeholder={t('Libellé')}
                   style={{ width: 280 }}
                   value={ligne.label}
                   onChange={event => modifierLigne(ligne.id, { label: event.target.value })}
                 />
                 <InputNumber
-                  aria-label="Montant de la ligne"
-                  placeholder="Montant"
+                  aria-label={t('Montant de la ligne')}
+                  placeholder={t('Montant')}
                   min={0}
                   style={{ width: 180 }}
                   value={ligne.amount ?? undefined}
                   onChange={value => modifierLigne(ligne.id, { amount: (value as number | null) ?? null })}
                 />
                 <Button
-                  aria-label="Retirer la ligne"
+                  aria-label={t('Retirer la ligne')}
                   icon={<DeleteOutlined />}
                   disabled={lignes.length <= 1}
                   onClick={() => retirerLigne(ligne.id)}
@@ -337,18 +339,18 @@ export const BonDeCommande: React.FC = () => {
               </Space>
             ))}
             <Button icon={<PlusOutlined />} onClick={ajouterLigne}>
-              Ajouter une ligne
+              {t('Ajouter une ligne')}
             </Button>
           </Space>
 
           <div style={{ marginBottom: 'var(--space-4)', maxWidth: 320 }}>
             <Text strong>
-              Montant total : <MoneyValue value={montantTotal} />
+              {t('Montant total :')} <MoneyValue value={montantTotal} />
             </Text>
           </div>
 
           <Button type="primary" loading={enregistrementEnCours} disabled={!peutEnregistrer} onClick={enregistrer}>
-            Enregistrer en brouillon
+            {t('Enregistrer en brouillon')}
           </Button>
         </Card>
       </>
@@ -358,11 +360,11 @@ export const BonDeCommande: React.FC = () => {
   if (erreurBon) {
     return (
       <>
-        <PageHeader title="Bon de commande" breadcrumbs={[...filAriane, { label: 'Détail' }]} />
+        <PageHeader title={t('Bon de commande')} breadcrumbs={[...filAriane, { label: t('Détail') }]} />
         <StateBlock
           variant="error"
-          description="Impossible de charger ce bon de commande."
-          actions={[{ label: 'Réessayer', onClick: () => refetchBon(), primary: true }]}
+          description={t('Impossible de charger ce bon de commande.')}
+          actions={[{ label: t('Réessayer'), onClick: () => refetchBon(), primary: true }]}
         />
       </>
     );
@@ -371,16 +373,16 @@ export const BonDeCommande: React.FC = () => {
   if (bonEnAttente || !bon) {
     return (
       <>
-        <PageHeader title="Bon de commande" breadcrumbs={[...filAriane, { label: 'Détail' }]} />
+        <PageHeader title={t('Bon de commande')} breadcrumbs={[...filAriane, { label: t('Détail') }]} />
         <StateBlock variant="loading" />
       </>
     );
   }
 
   const colonnesLignes: ColumnsType<PurchaseOrder['lines'][number]> = [
-    { title: 'Poste', key: 'poste', render: (_, l) => l.costCategoryLabel },
-    { title: 'Libellé', key: 'libelle', render: (_, l) => l.label },
-    { title: 'Montant', key: 'montant', align: 'right', render: (_, l) => <MoneyValue value={l.amount} /> }
+    { title: t('Poste'), key: 'poste', render: (_, l) => l.costCategoryLabel },
+    { title: t('Libellé'), key: 'libelle', render: (_, l) => l.label },
+    { title: t('Montant'), key: 'montant', align: 'end', render: (_, l) => <MoneyValue value={l.amount} /> }
   ];
 
   return (
@@ -413,41 +415,45 @@ export const BonDeCommande: React.FC = () => {
           marginBottom: 'var(--space-6)'
         }}
       >
-        <StatCard label="Date" value={dateCourte(bon.orderDate)} />
-        <StatCard label="Montant total" value={<MoneyValue value={bon.totalAmount} />} />
-        <StatCard label="Facturé" value={<MoneyValue value={bon.invoicedAmount} />} />
-        <StatCard label="Reste à facturer" value={<MoneyValue value={bon.remainingAmount} />} />
+        <StatCard label={t('Date')} value={dateCourte(bon.orderDate)} />
+        <StatCard label={t('Montant total')} value={<MoneyValue value={bon.totalAmount} />} />
+        <StatCard label={t('Facturé')} value={<MoneyValue value={bon.invoicedAmount} />} />
+        <StatCard label={t('Reste à facturer')} value={<MoneyValue value={bon.remainingAmount} />} />
       </div>
 
       <Space wrap style={{ marginBottom: 'var(--space-6)' }}>
         {bon.status === 'DRAFT' && (
           <ConfirmAction
-            title={`Émettre le bon ${bon.reference} ?`}
-            description="Cette opération est irréversible : un bon émis ne peut plus repasser en brouillon, et son reste à facturer commence dès lors à compter dans l'engagé du chantier."
-            okText="Confirmer l'émission"
+            title={t('Émettre le bon {{reference}} ?', { reference: bon.reference })}
+            description={t(
+              "Cette opération est irréversible : un bon émis ne peut plus repasser en brouillon, et son reste à facturer commence dès lors à compter dans l'engagé du chantier."
+            )}
+            okText={t("Confirmer l'émission")}
             onConfirm={emettre}
           >
             <Button type="primary" icon={<SendOutlined />} loading={emissionEnCours}>
-              Émettre le bon
+              {t('Émettre le bon')}
             </Button>
           </ConfirmAction>
         )}
         {bon.status === 'ISSUED' && (
           <ConfirmAction
-            title={`Annuler le bon ${bon.reference} ?`}
-            description="Cette opération est irréversible : le bon annulé n'engage plus rien au chantier. S'il porte déjà des factures rapprochées, corrigez-les d'abord depuis l'écran des factures fournisseurs."
-            okText="Confirmer l'annulation"
+            title={t('Annuler le bon {{reference}} ?', { reference: bon.reference })}
+            description={t(
+              "Cette opération est irréversible : le bon annulé n'engage plus rien au chantier. S'il porte déjà des factures rapprochées, corrigez-les d'abord depuis l'écran des factures fournisseurs."
+            )}
+            okText={t("Confirmer l'annulation")}
             danger
             onConfirm={annuler}
           >
             <Button danger loading={annulationEnCours}>
-              Annuler le bon
+              {t('Annuler le bon')}
             </Button>
           </ConfirmAction>
         )}
       </Space>
 
-      <Title level={4}>Lignes du bon</Title>
+      <Title level={4}>{t('Lignes du bon')}</Title>
       <DataView<PurchaseOrder['lines'][number]>
         paginated={false}
         items={bon.lines}
@@ -455,10 +461,10 @@ export const BonDeCommande: React.FC = () => {
         page={1}
         pageSize={Math.max(bon.lines.length, 1)}
         onPageChange={() => {}}
-        emptyDescription="Ce bon ne porte encore aucune ligne."
+        emptyDescription={t('Ce bon ne porte encore aucune ligne.')}
         columns={colonnesLignes}
         rowKey={l => l.id}
-        aria-label="Lignes du bon de commande"
+        aria-label={t('Lignes du bon de commande')}
         renderCard={l => (
           <DataCard
             title={l.label}

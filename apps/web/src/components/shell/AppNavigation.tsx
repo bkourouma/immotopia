@@ -8,6 +8,7 @@ import { SECTION_LABELS } from '../../navigation/model';
 import { resolveHref } from '../../navigation/resolve';
 import type { NavContext } from '../../navigation/resolve';
 import logoImmoTopia from '../../assets/logo-immotopia.png';
+import { t } from '../../i18n/t';
 
 const { Sider } = Layout;
 
@@ -206,7 +207,7 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
               clair (voir `--surface-nav` dans tokens.css). */}
           <img
             src={logoImmoTopia}
-            alt="ImmoTopia"
+            alt={'ImmoTopia'}
             width={148}
             height={46}
             style={{ display: 'block', width: 148, maxWidth: '100%', height: 'auto' }}

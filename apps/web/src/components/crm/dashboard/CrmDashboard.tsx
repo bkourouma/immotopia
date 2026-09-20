@@ -1,23 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { 
-  Card, 
-  Button, 
-  Space, 
-  Row, 
-  Col, 
-  Typography, 
-  Alert, 
-  Spin,
-  Statistic
-} from 'antd';
+import { Card, Button, Space, Row, Col, Typography, Alert, Spin, Statistic } from 'antd';
 import {
   UserOutlined,
   RiseOutlined,
   ShoppingOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
-  BarChartOutlined,
+  BarChartOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { getCrmDashboard } from '../../../lib/api/crmDashboard';
@@ -28,6 +18,7 @@ import { FunnelChart } from './charts/FunnelChart';
 import { TimeSeriesChart } from './charts/TimeSeriesChart';
 import { Workbench } from './workbench/Workbench';
 import { TeamPerformanceTable } from './team/TeamPerformanceTable';
+import { t } from '../../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -46,8 +37,8 @@ export const CrmDashboard: React.FC = () => {
     const end = searchParams.get('end') || dayjs().format('YYYY-MM-DD');
     const assignee = searchParams.get('assignee') || undefined;
     const tags = searchParams.get('tags')?.split(',').filter(Boolean) || undefined;
-    const stages = searchParams.get('stages')?.split(',') as any[] || undefined;
-    const statuses = searchParams.get('statuses')?.split(',') as any[] || undefined;
+    const stages = (searchParams.get('stages')?.split(',') as any[]) || undefined;
+    const statuses = (searchParams.get('statuses')?.split(',') as any[]) || undefined;
 
     return {
       start,
@@ -55,7 +46,7 @@ export const CrmDashboard: React.FC = () => {
       assignee,
       tags,
       stages,
-      statuses,
+      statuses
     };
   };
 
@@ -78,11 +69,11 @@ export const CrmDashboard: React.FC = () => {
         if (response.success) {
           setData(response.data);
         } else {
-          setError('Erreur lors du chargement des données');
+          setError(t('Erreur lors du chargement des données'));
         }
       } catch (err: any) {
         console.error('Error fetching dashboard data:', err);
-        setError(err.message || 'Erreur lors du chargement des données');
+        setError(err.message || t('Erreur lors du chargement des données'));
       } finally {
         setLoading(false);
       }
@@ -95,7 +86,7 @@ export const CrmDashboard: React.FC = () => {
   const updateFilters = (newFilters: Partial<CrmDashboardFilters>) => {
     const updated = { ...filters, ...newFilters };
     const params = new URLSearchParams();
-    
+
     if (updated.start) params.set('start', updated.start);
     if (updated.end) params.set('end', updated.end);
     if (updated.assignee) params.set('assignee', updated.assignee);
@@ -110,7 +101,7 @@ export const CrmDashboard: React.FC = () => {
   const handleKpiClick = (type: string) => {
     const baseUrl = `/tenant/${tenantId}/crm`;
     const params = new URLSearchParams();
-    
+
     if (filters.start) params.set('startDate', filters.start);
     if (filters.end) params.set('endDate', filters.end);
     if (filters.assignee) params.set('assignee', filters.assignee);
@@ -161,28 +152,20 @@ export const CrmDashboard: React.FC = () => {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement des données..." />
+        <Spin size="large" tip={t('Chargement des données...')} />
       </div>
     );
   }
 
   if (error) {
-    return (
-      <Alert
-        message="Erreur"
-        description={error}
-        type="error"
-        showIcon
-        style={{ marginBottom: 16 }}
-      />
-    );
+    return <Alert message={t('Erreur')} description={error} type="error" showIcon style={{ marginBottom: 16 }} />;
   }
 
   if (!data) {
     return (
       <Alert
-        message="Aucune donnée"
-        description="Aucune donnée disponible pour cette période"
+        message={t('Aucune donnée')}
+        description={t('Aucune donnée disponible pour cette période')}
         type="info"
         showIcon
       />
@@ -194,31 +177,33 @@ export const CrmDashboard: React.FC = () => {
       {/* Header */}
       <Row justify="space-between" align="middle" gutter={[16, 16]}>
         <Col xs={24} sm={24} md={12}>
-          <Title level={2} style={{ margin: 0 }}>Tableau de bord CRM</Title>
+          <Title level={2} style={{ margin: 0 }}>
+            {t('Tableau de bord CRM')}
+          </Title>
           <Text type="secondary">
             {filters.start && filters.end
               ? `${dayjs(filters.start).format('DD MMM YYYY')} - ${dayjs(filters.end).format('DD MMM YYYY')}`
-              : 'Vue d\'ensemble'}
+              : t("Vue d'ensemble")}
           </Text>
         </Col>
-        <Col xs={24} sm={24} md={12} style={{ textAlign: 'right' }}>
+        <Col xs={24} sm={24} md={12} style={{ textAlign: 'end' }}>
           <Space wrap>
             <Button
               onClick={() => {
                 const today = dayjs();
                 updateFilters({
                   start: today.startOf('month').format('YYYY-MM-DD'),
-                  end: today.endOf('month').format('YYYY-MM-DD'),
+                  end: today.endOf('month').format('YYYY-MM-DD')
                 });
               }}
             >
-              Ce mois
+              {t('Ce mois')}
             </Button>
             <Button
               onClick={() => {
                 updateFilters({
                   start: dayjs().subtract(30, 'day').format('YYYY-MM-DD'),
-                  end: dayjs().format('YYYY-MM-DD'),
+                  end: dayjs().format('YYYY-MM-DD')
                 });
               }}
             >
@@ -232,7 +217,7 @@ export const CrmDashboard: React.FC = () => {
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={8}>
           <KpiCard
-            title="Nouveaux leads"
+            title={t('Nouveaux leads')}
             icon={<UserOutlined />}
             iconColor="#1890ff"
             value={data.kpis.newLeads}
@@ -242,7 +227,7 @@ export const CrmDashboard: React.FC = () => {
         </Col>
         <Col xs={24} sm={12} lg={8}>
           <KpiCard
-            title="Leads convertis"
+            title={t('Leads convertis')}
             icon={<RiseOutlined />}
             iconColor="#52c41a"
             value={data.kpis.convertedLeads}
@@ -252,7 +237,7 @@ export const CrmDashboard: React.FC = () => {
         </Col>
         <Col xs={24} sm={12} lg={8}>
           <KpiCard
-            title="Affaires créées"
+            title={t('Affaires créées')}
             icon={<ShoppingOutlined />}
             iconColor="#722ed1"
             value={data.kpis.dealsCreated}
@@ -262,7 +247,7 @@ export const CrmDashboard: React.FC = () => {
         </Col>
         <Col xs={24} sm={12} lg={8}>
           <KpiCard
-            title="Affaires gagnées"
+            title={t('Affaires gagnées')}
             icon={<CheckCircleOutlined />}
             iconColor="#13c2c2"
             value={data.kpis.dealsWon}
@@ -272,7 +257,7 @@ export const CrmDashboard: React.FC = () => {
         </Col>
         <Col xs={24} sm={12} lg={8}>
           <KpiCard
-            title="Actions en retard"
+            title={t('Actions en retard')}
             icon={<ExclamationCircleOutlined />}
             iconColor="#ff4d4f"
             value={data.kpis.overdueActions}
@@ -289,7 +274,7 @@ export const CrmDashboard: React.FC = () => {
             title={
               <Space>
                 <BarChartOutlined />
-                Pipeline des affaires
+                {t('Pipeline des affaires')}
               </Space>
             }
           >
@@ -302,26 +287,23 @@ export const CrmDashboard: React.FC = () => {
       </Row>
 
       {/* Time Series Chart */}
-      <Card title="Évolution dans le temps">
+      <Card title={t('Évolution dans le temps')}>
         <TimeSeriesChart data={data.timeSeries} />
       </Card>
 
       {/* Workbench and Team Performance */}
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
-          <Card title="Plan de travail">
-            <Workbench
-              data={data.workbench}
-              onItemClick={handleWorkbenchItemClick}
-            />
+          <Card title={t('Plan de travail')}>
+            <Workbench data={data.workbench} onItemClick={handleWorkbenchItemClick} />
           </Card>
         </Col>
         {data.team && (
           <Col xs={24} lg={12}>
-            <Card title="Performance de l'équipe">
+            <Card title={t("Performance de l'équipe")}>
               <TeamPerformanceTable
                 data={data.team}
-                onMemberClick={(userId) => {
+                onMemberClick={userId => {
                   updateFilters({ assignee: userId });
                 }}
               />

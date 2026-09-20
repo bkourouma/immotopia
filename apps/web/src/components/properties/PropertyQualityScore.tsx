@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import { Star, AlertCircle, CheckCircle, RefreshCw, Loader2 } from 'lucide-react';
 import { getQualityScore } from '../../services/property-service';
 import { App } from 'antd';
+import { t } from '../../i18n/t';
 
 interface PropertyQualityScoreProps {
   propertyId: string;
@@ -49,7 +50,7 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
       setQualityScore(score);
     } catch (error) {
       console.error('Error recalculating quality score:', error);
-      message.error('Erreur lors du recalcul du score');
+      message.error(t('Erreur lors du recalcul du score'));
     } finally {
       setRecalculating(false);
     }
@@ -66,7 +67,7 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
     if (score >= 80) return 'Excellent';
     if (score >= 60) return 'Bon';
     if (score >= 40) return 'Moyen';
-    return 'À améliorer';
+    return t('À améliorer');
   };
 
   if (loading) {
@@ -82,7 +83,7 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
   if (!qualityScore) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
-        <p className="text-gray-600">Score de qualité non disponible</p>
+        <p className="text-gray-600">{t('Score de qualité non disponible')}</p>
       </div>
     );
   }
@@ -91,19 +92,19 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
     <div className="bg-white rounded-lg shadow p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900">Score de qualité</h3>
-          <p className="text-sm text-gray-600 mt-1">Évaluation automatique de la complétude de votre annonce</p>
+          <h3 className="text-lg font-semibold text-slate-900">{t('Score de qualité')}</h3>
+          <p className="text-sm text-gray-600 mt-1">{t('Évaluation automatique de la complétude de votre annonce')}</p>
         </div>
         <Button variant="outline" size="sm" onClick={handleRecalculate} disabled={recalculating}>
           {recalculating ? (
             <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <Loader2 className="h-4 w-4 me-2 animate-spin" />
               Calcul...
             </>
           ) : (
             <>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Recalculer
+              <RefreshCw className="h-4 w-4 me-2" />
+              {t('Recalculer')}
             </>
           )}
         </Button>
@@ -113,7 +114,7 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
       <div className={`border-2 rounded-lg p-6 mb-6 ${getScoreColor(qualityScore.score)}`}>
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium mb-1">Score global</div>
+            <div className="text-sm font-medium mb-1">{t('Score global')}</div>
             <div className="text-4xl font-bold">{qualityScore.score}/100</div>
             <div className="text-sm mt-1">{getScoreLabel(qualityScore.score)}</div>
           </div>
@@ -125,11 +126,11 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
 
       {/* Breakdown */}
       <div className="mb-6">
-        <h4 className="text-sm font-semibold text-gray-700 mb-3">Détail du score</h4>
+        <h4 className="text-sm font-semibold text-gray-700 mb-3">{t('Détail du score')}</h4>
         <div className="space-y-3">
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span className="text-gray-600">Champs requis (40%)</span>
+              <span className="text-gray-600">{t('Champs requis (40%)')}</span>
               <span className="font-medium">{qualityScore.breakdown.requiredFields}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
@@ -141,7 +142,7 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
           </div>
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span className="text-gray-600">Médias (30%)</span>
+              <span className="text-gray-600">{t('Médias (30%)')}</span>
               <span className="font-medium">{qualityScore.breakdown.media}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
@@ -150,7 +151,7 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
           </div>
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span className="text-gray-600">Géolocalisation (20%)</span>
+              <span className="text-gray-600">{t('Géolocalisation (20%)')}</span>
               <span className="font-medium">{qualityScore.breakdown.geolocation}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
@@ -162,7 +163,7 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
           </div>
           <div>
             <div className="flex justify-between text-sm mb-1">
-              <span className="text-gray-600">Description (10%)</span>
+              <span className="text-gray-600">{t('Description (10%)')}</span>
               <span className="font-medium">{qualityScore.breakdown.description}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
@@ -179,8 +180,8 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
       {qualityScore.suggestions.length > 0 && (
         <div>
           <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center">
-            <AlertCircle className="h-4 w-4 mr-2" />
-            Suggestions d'amélioration
+            <AlertCircle className="h-4 w-4 me-2" />
+            {t("Suggestions d'amélioration")}
           </h4>
           <div className="space-y-2">
             {qualityScore.suggestions.map((suggestion, index) => (
@@ -197,7 +198,7 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
         <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
           <CheckCircle className="h-5 w-5 text-green-600" />
           <span className="text-sm text-green-800 font-medium">
-            Excellent ! Votre annonce est complète et bien renseignée.
+            {t('Excellent ! Votre annonce est complète et bien renseignée.')}
           </span>
         </div>
       )}

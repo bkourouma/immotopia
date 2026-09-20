@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, Typography } from 'antd';
 import { Link } from 'react-router-dom';
 import { StateBlock } from '../primitives';
+import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
@@ -56,7 +57,7 @@ export const ChartCard: React.FC<ChartCardProps> = ({
   link,
   loading,
   empty,
-  emptyText = 'Aucune donnée sur cette période.',
+  emptyText = t('Aucune donnée sur cette période.'),
   legend,
   children
 }) => (
@@ -91,7 +92,7 @@ export const ChartCard: React.FC<ChartCardProps> = ({
     </header>
 
     {empty ? (
-      <StateBlock variant="empty" title="Rien à tracer" description={emptyText} />
+      <StateBlock variant="empty" title={t('Rien à tracer')} description={emptyText} />
     ) : (
       <>
         <div style={{ width: '100%', height: CHART_HEIGHT }}>{children}</div>

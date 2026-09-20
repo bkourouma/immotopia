@@ -5,7 +5,9 @@ import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import { PaymentDetailsModal } from '../../components/OwnerPortal/PaymentDetailsModal';
 import dayjs from 'dayjs';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 const { Option } = Select;
 const { RangePicker } = DatePicker;
@@ -33,7 +35,7 @@ interface PaymentsData {
 }
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('fr-FR', {
+  return new Intl.NumberFormat(activeLocale(), {
     style: 'currency',
     currency: 'XOF',
     minimumFractionDigits: 0
@@ -42,10 +44,10 @@ const formatCurrency = (amount: number) => {
 
 const getStatusTag = (status: string) => {
   const statusConfig: Record<string, { color: string; text: string }> = {
-    PENDING: { color: 'default', text: 'En attente' },
-    SUCCESS: { color: 'green', text: 'Réussi' },
-    FAILED: { color: 'red', text: 'Échoué' },
-    CANCELED: { color: 'orange', text: 'Annulé' }
+    PENDING: { color: 'default', text: t('En attente') },
+    SUCCESS: { color: 'green', text: t('Réussi') },
+    FAILED: { color: 'red', text: t('Échoué') },
+    CANCELED: { color: 'orange', text: t('Annulé') }
   };
 
   const config = statusConfig[status] || { color: 'default', text: status };
@@ -54,11 +56,11 @@ const getStatusTag = (status: string) => {
 
 const getMethodLabel = (method: string) => {
   const methodLabels: Record<string, string> = {
-    MOBILE_MONEY: 'Mobile Money',
-    BANK_TRANSFER: 'Virement bancaire',
-    CASH: 'Espèces',
-    CHECK: 'Chèque',
-    CARD: 'Carte bancaire'
+    MOBILE_MONEY: t('Mobile Money'),
+    BANK_TRANSFER: t('Virement bancaire'),
+    CASH: t('Espèces'),
+    CHECK: t('Chèque'),
+    CARD: t('Carte bancaire')
   };
   return methodLabels[method] || method;
 };
@@ -118,7 +120,7 @@ export default function Payments() {
         setData(response.data.data);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des paiements');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des paiements'));
     } finally {
       setLoading(false);
     }
@@ -134,7 +136,7 @@ export default function Payments() {
         setDetailsModalVisible(true);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des détails');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des détails'));
     } finally {
       setDetailsLoading(false);
     }
@@ -142,24 +144,24 @@ export default function Payments() {
 
   const columns = [
     {
-      title: 'Propriété',
+      title: t('Propriété'),
       dataIndex: 'propertyAddress',
       key: 'propertyAddress'
     },
     {
-      title: 'Locataire',
+      title: t('Locataire'),
       dataIndex: 'tenantName',
       key: 'tenantName'
     },
     {
-      title: 'Montant',
+      title: t('Montant'),
       dataIndex: 'amount',
       key: 'amount',
       render: (amount: number) => formatCurrency(amount),
       sorter: (a: PaymentListItem, b: PaymentListItem) => a.amount - b.amount
     },
     {
-      title: 'Date',
+      title: t('Date'),
       dataIndex: 'date',
       key: 'date',
       render: (date: Date | string) => {
@@ -173,27 +175,27 @@ export default function Payments() {
       }
     },
     {
-      title: 'Méthode',
+      title: t('Méthode'),
       dataIndex: 'method',
       key: 'method',
       render: (method: string) => getMethodLabel(method),
       filters: [
-        { text: 'Mobile Money', value: 'MOBILE_MONEY' },
-        { text: 'Virement bancaire', value: 'BANK_TRANSFER' },
-        { text: 'Espèces', value: 'CASH' },
-        { text: 'Chèque', value: 'CHECK' },
-        { text: 'Carte bancaire', value: 'CARD' }
+        { text: t('Mobile Money'), value: 'MOBILE_MONEY' },
+        { text: t('Virement bancaire'), value: 'BANK_TRANSFER' },
+        { text: t('Espèces'), value: 'CASH' },
+        { text: t('Chèque'), value: 'CHECK' },
+        { text: t('Carte bancaire'), value: 'CARD' }
       ],
       onFilter: (value: any, record: PaymentListItem) => record.method === value
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => getStatusTag(status)
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
       render: (_: any, record: PaymentListItem) => (
         <Button
@@ -202,7 +204,7 @@ export default function Payments() {
           onClick={() => handleViewDetails(record.id)}
           loading={detailsLoading && selectedPaymentId === record.id}
         >
-          Détails
+          {t('Détails')}
         </Button>
       )
     }
@@ -211,13 +213,13 @@ export default function Payments() {
   if (loading && !data) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement des paiements..." />
+        <Spin size="large" tip={t('Chargement des paiements...')} />
       </div>
     );
   }
 
   if (error) {
-    return <Alert message="Erreur" description={error} type="error" showIcon />;
+    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   return (
@@ -225,11 +227,16 @@ export default function Payments() {
       {/* Page Header */}
       <div className="it-toolbar">
         <div>
-          <Title level={2}>Paiements</Title>
-          <Text type="secondary">Historique des paiements reçus</Text>
+          <Title level={2}>{t('Paiements')}</Title>
+          <Text type="secondary">{t('Historique des paiements reçus')}</Text>
         </div>
-        <Button icon={<SyncOutlined />} onClick={loadPayments} loading={loading} aria-label="Rafraîchir les paiements">
-          Actualiser
+        <Button
+          icon={<SyncOutlined />}
+          onClick={loadPayments}
+          loading={loading}
+          aria-label={t('Rafraîchir les paiements')}
+        >
+          {t('Actualiser')}
         </Button>
       </div>
 
@@ -238,7 +245,7 @@ export default function Payments() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
-              title="Total"
+              title={t('Total')}
               value={data.summary.total.toString()}
               icon={<DollarOutlined style={{ color: '#1890ff' }} />}
               valueStyle={{ fontSize: 18 }}
@@ -246,7 +253,7 @@ export default function Payments() {
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
-              title="Montant total"
+              title={t('Montant total')}
               value={formatCurrency(data.summary.totalAmount)}
               icon={<DollarOutlined style={{ color: '#52c41a' }} />}
               valueStyle={{ fontSize: 18, color: '#52c41a' }}
@@ -254,7 +261,7 @@ export default function Payments() {
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
-              title="Ce mois"
+              title={t('Ce mois')}
               value={data.summary.thisMonth.toString()}
               icon={<DollarOutlined style={{ color: '#722ed1' }} />}
               valueStyle={{ fontSize: 18 }}
@@ -262,7 +269,7 @@ export default function Payments() {
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
-              title="Cette année"
+              title={t('Cette année')}
               value={data.summary.thisYear.toString()}
               icon={<DollarOutlined style={{ color: '#faad14' }} />}
               valueStyle={{ fontSize: 18 }}
@@ -276,16 +283,16 @@ export default function Payments() {
         title={
           <Space>
             <FilterOutlined />
-            <span>Filtres</span>
+            <span>{t('Filtres')}</span>
           </Space>
         }
       >
         <div className="it-filters">
           <div className="it-filters__field">
-            <Text strong>Propriété</Text>
+            <Text strong>{t('Propriété')}</Text>
             <Select
               style={{ width: 200 }}
-              placeholder="Toutes les propriétés"
+              placeholder={t('Toutes les propriétés')}
               allowClear
               value={propertyFilter}
               onChange={value => setPropertyFilter(value)}
@@ -298,23 +305,23 @@ export default function Payments() {
             </Select>
           </div>
           <div className="it-filters__field">
-            <Text strong>Méthode</Text>
+            <Text strong>{t('Méthode')}</Text>
             <Select
               style={{ width: 150 }}
-              placeholder="Toutes les méthodes"
+              placeholder={t('Toutes les méthodes')}
               allowClear
               value={methodFilter}
               onChange={value => setMethodFilter(value)}
             >
-              <Option value="MOBILE_MONEY">Mobile Money</Option>
-              <Option value="BANK_TRANSFER">Virement bancaire</Option>
-              <Option value="CASH">Espèces</Option>
-              <Option value="CHECK">Chèque</Option>
-              <Option value="CARD">Carte bancaire</Option>
+              <Option value="MOBILE_MONEY">{t('Mobile Money')}</Option>
+              <Option value="BANK_TRANSFER">{t('Virement bancaire')}</Option>
+              <Option value="CASH">{t('Espèces')}</Option>
+              <Option value="CHECK">{t('Chèque')}</Option>
+              <Option value="CARD">{t('Carte bancaire')}</Option>
             </Select>
           </div>
           <div className="it-filters__field">
-            <Text strong>Période</Text>
+            <Text strong>{t('Période')}</Text>
             <RangePicker
               value={dateRange}
               onChange={dates => setDateRange(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])}
@@ -325,7 +332,7 @@ export default function Payments() {
       </Card>
 
       {/* Payments Table (T106) */}
-      <Card title="Historique des paiements">
+      <Card title={t('Historique des paiements')}>
         {data && data.payments.length > 0 ? (
           <Table
             scroll={{ x: 'max-content' }}
@@ -336,7 +343,7 @@ export default function Payments() {
             pagination={{ pageSize: 20 }}
           />
         ) : (
-          <Empty description="Aucun paiement trouvé" />
+          <Empty description={t('Aucun paiement trouvé')} />
         )}
       </Card>
 

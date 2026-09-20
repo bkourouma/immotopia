@@ -8,6 +8,10 @@ import 'antd/dist/reset.css';
 import './styles/fonts.css';
 import './styles/tokens.css';
 import './index.css';
+// Repli de police arabe et rattrapages droite-a-gauche. Apres `index.css` :
+// certaines regles y annulent des declarations directionnelles ecrites plus
+// haut, et la specificite est identique.
+import './styles/rtl.css';
 import App from './App';
 
 // Posé une seule fois : dayjs alimente les DatePicker AntD et le localizer de

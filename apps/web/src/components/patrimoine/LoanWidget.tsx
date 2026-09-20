@@ -1,36 +1,40 @@
 import React from 'react';
 import { Card, Progress, Table, Tag } from 'antd';
 import type { PropertyLoan } from '../../types/patrimoine-types';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 interface Props {
   loans: PropertyLoan[];
 }
 
 function loanStatusLabel(status: PropertyLoan['status']): string {
   if (status === 'ACTIVE') return 'Actif';
-  if (status === 'CLOSED') return 'Clôturé';
-  if (status === 'DEFAULTED') return 'Défaillant';
+  if (status === 'CLOSED') return t('Clôturé');
+  if (status === 'DEFAULTED') return t('Défaillant');
   return status;
 }
 
 export const LoanWidget: React.FC<Props> = ({ loans }) => {
   const noWrap = { whiteSpace: 'nowrap' as const };
   const columns = [
-    { title: 'Prêteur', dataIndex: 'lender', onCell: () => ({ style: noWrap }) },
+    { title: t('Prêteur'), dataIndex: 'lender', onCell: () => ({ style: noWrap }) },
     {
-      title: 'Restant dû',
+      title: t('Restant dû'),
       dataIndex: 'remainingCapital',
       onCell: () => ({ style: noWrap }),
-      render: (value: number, record: PropertyLoan) => `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
+      render: (value: number, record: PropertyLoan) =>
+        `${Number(value).toLocaleString(activeLocale())} ${record.currency}`
     },
     {
-      title: 'Mensualité',
+      title: t('Mensualité'),
       dataIndex: 'monthlyPayment',
       onCell: () => ({ style: noWrap }),
-      render: (value: number, record: PropertyLoan) => `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
+      render: (value: number, record: PropertyLoan) =>
+        `${Number(value).toLocaleString(activeLocale())} ${record.currency}`
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: 'status',
       onCell: () => ({ style: noWrap }),
       render: (value: PropertyLoan['status']) => <Tag>{loanStatusLabel(value)}</Tag>
@@ -38,7 +42,7 @@ export const LoanWidget: React.FC<Props> = ({ loans }) => {
   ];
 
   return (
-    <Card title="Crédits immobiliers">
+    <Card title={t('Crédits immobiliers')}>
       {loans.map(loan => {
         const total = Number(loan.capitalAmount) || 1;
         const paidPercent = ((total - Number(loan.remainingCapital)) / total) * 100;

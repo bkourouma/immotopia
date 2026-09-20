@@ -41,6 +41,7 @@ import {
   StateBlock,
   StatusTag
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -274,12 +275,12 @@ export const StockInventaire: React.FC = () => {
       });
       setDernierTransfert(transfert);
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('stock-balances', tenantId) });
-      message.success('Transfert enregistré : la matière a changé de lieu.');
+      message.success(t('Transfert enregistré : la matière a changé de lieu.'));
       setQuantiteTransferee(null);
     } catch (err) {
       // Même lieu, quantité supérieure au stock, lieu désactivé : le serveur
       // est la seule autorité, son message est relayé tel quel.
-      message.error(messageErreur(err, "Le transfert n'a pas pu être enregistré."));
+      message.error(messageErreur(err, t("Le transfert n'a pas pu être enregistré.")));
     } finally {
       setTransfertEnCours(false);
     }
@@ -344,12 +345,12 @@ export const StockInventaire: React.FC = () => {
         countedAt: dateComptage.format('YYYY-MM-DD')
       });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('stock-counts', tenantId) });
-      message.success(`Comptage ouvert sur « ${cree.locationLabel} ».`);
+      message.success(t('Comptage ouvert sur « {{locationLabel}} ».', { locationLabel: cree.locationLabel }));
       setOuvertureVisible(false);
       setComptageOuvert(cree.id);
     } catch (err) {
       // « Un inventaire est déjà en brouillon sur ce lieu » : relayé tel quel.
-      message.error(messageErreur(err, "Le comptage n'a pas pu être ouvert."));
+      message.error(messageErreur(err, t("Le comptage n'a pas pu être ouvert.")));
     } finally {
       setOuvertureEnCours(false);
     }
@@ -388,10 +389,10 @@ export const StockInventaire: React.FC = () => {
         reason: saisieLigne.reason
       });
       await invaliderComptage();
-      message.success('Comptage de l’article enregistré.');
+      message.success(t('Comptage de l’article enregistré.'));
       setSaisieLigne(LIGNE_VIDE);
     } catch (err) {
-      message.error(messageErreur(err, "La ligne de comptage n'a pas pu être enregistrée."));
+      message.error(messageErreur(err, t("La ligne de comptage n'a pas pu être enregistrée.")));
     } finally {
       setLigneEnCours(false);
     }
@@ -411,9 +412,9 @@ export const StockInventaire: React.FC = () => {
     try {
       await removeStockCountLine(tenantId, comptageOuvert, ligne.itemId);
       await invaliderComptage();
-      message.success(`Ligne « ${ligne.itemReference} » retirée du comptage.`);
+      message.success(t('Ligne « {{itemReference}} » retirée du comptage.', { itemReference: ligne.itemReference }));
     } catch (err) {
-      message.error(messageErreur(err, "La ligne n'a pas pu être retirée."));
+      message.error(messageErreur(err, t("La ligne n'a pas pu être retirée.")));
     }
   };
 
@@ -433,11 +434,11 @@ export const StockInventaire: React.FC = () => {
     try {
       await validateStockCount(tenantId, comptageOuvert);
       await invaliderComptage();
-      message.success('Inventaire validé : les écarts sont devenus des ajustements de stock.');
+      message.success(t('Inventaire validé : les écarts sont devenus des ajustements de stock.'));
     } catch (err) {
       // Le serveur reste la seule autorité : écart sans motif, comptage vide,
       // inventaire déjà validé. Son message est relayé tel quel.
-      message.error(messageErreur(err, "L'inventaire n'a pas pu être validé."));
+      message.error(messageErreur(err, t("L'inventaire n'a pas pu être validé.")));
     } finally {
       setValidationEnCours(false);
     }
@@ -446,7 +447,7 @@ export const StockInventaire: React.FC = () => {
   // ---------------------------------------------------------------------
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const listeComptages = comptages ?? [];
@@ -465,58 +466,60 @@ export const StockInventaire: React.FC = () => {
         type="info"
         showIcon
         style={{ marginBottom: 'var(--space-4)' }}
-        message="Un transfert n’impute rien : ce n’est pas une dépense."
-        description="Déplacer de la matière vers le lieu d’un chantier ne la consomme pas. Elle reste à l’actif de l’agence, simplement ailleurs, et le coût du chantier ne bouge pas d’un franc. Seule la sortie de stock impute un chantier. La valeur affichée après le transfert est la valeur déplacée, au coût moyen du lieu d’origine — jamais une charge."
+        message={t('Un transfert n’impute rien : ce n’est pas une dépense.')}
+        description={t(
+          'Déplacer de la matière vers le lieu d’un chantier ne la consomme pas. Elle reste à l’actif de l’agence, simplement ailleurs, et le coût du chantier ne bouge pas d’un franc. Seule la sortie de stock impute un chantier. La valeur affichée après le transfert est la valeur déplacée, au coût moyen du lieu d’origine — jamais une charge.'
+        )}
       />
 
       <Space wrap size="middle" align="start" style={{ marginBottom: 'var(--space-3)' }}>
         <div style={{ minWidth: 260 }}>
           <div>
-            <label htmlFor="transfert-origine">Lieu d’origine</label>
+            <label htmlFor="transfert-origine">{t('Lieu d’origine')}</label>
           </div>
           <Select
             id="transfert-origine"
             style={{ width: 260 }}
-            placeholder="Choisir le lieu d’origine"
+            placeholder={t('Choisir le lieu d’origine')}
             value={origine}
             onChange={valeur => setOrigine(valeur)}
             options={optionsLieux}
-            notFoundContent="Aucun lieu de stockage disponible"
+            notFoundContent={t('Aucun lieu de stockage disponible')}
           />
         </div>
         <div style={{ minWidth: 260 }}>
           <div>
-            <label htmlFor="transfert-arrivee">Lieu d’arrivée</label>
+            <label htmlFor="transfert-arrivee">{t('Lieu d’arrivée')}</label>
           </div>
           <Select
             id="transfert-arrivee"
             style={{ width: 260 }}
-            placeholder="Choisir le lieu d’arrivée"
+            placeholder={t('Choisir le lieu d’arrivée')}
             value={arrivee}
             onChange={valeur => setArrivee(valeur)}
             options={optionsLieux}
-            notFoundContent="Aucun lieu de stockage disponible"
+            notFoundContent={t('Aucun lieu de stockage disponible')}
           />
         </div>
         <div style={{ minWidth: 260 }}>
           <div>
-            <label htmlFor="transfert-article">Article transféré</label>
+            <label htmlFor="transfert-article">{t('Article transféré')}</label>
           </div>
           <Select
             id="transfert-article"
             style={{ width: 260 }}
             showSearch
             optionFilterProp="label"
-            placeholder="Choisir un article"
+            placeholder={t('Choisir un article')}
             value={articleTransfere}
             onChange={valeur => setArticleTransfere(valeur)}
             options={optionsArticles}
-            notFoundContent="Aucun article disponible"
+            notFoundContent={t('Aucun article disponible')}
           />
         </div>
         <div>
           <div>
-            <label htmlFor="transfert-quantite">Quantité</label>
+            <label htmlFor="transfert-quantite">{t('Quantité')}</label>
           </div>
           {/* Quatre décimales : on déplace des mètres cubes et des tonnes. */}
           <InputNumber
@@ -531,7 +534,7 @@ export const StockInventaire: React.FC = () => {
         </div>
         <div>
           <div>
-            <label htmlFor="transfert-date">Date du transfert</label>
+            <label htmlFor="transfert-date">{t('Date du transfert')}</label>
           </div>
           <DatePicker
             id="transfert-date"
@@ -546,7 +549,7 @@ export const StockInventaire: React.FC = () => {
       <div style={{ marginBottom: 'var(--space-3)' }}>
         {articleTransfere && origine ? (
           <Text type="secondary">
-            Au lieu d’origine, il reste{' '}
+            {t('Au lieu d’origine, il reste')}{' '}
             <strong>
               {formatQuantity(
                 soldeArticleOrigine?.quantity ?? 0,
@@ -556,7 +559,7 @@ export const StockInventaire: React.FC = () => {
             . C’est une prévenance de lecture : c’est le serveur qui refuse une quantité supérieure au stock.
           </Text>
         ) : (
-          <Text type="secondary">Choisissez un lieu d’origine et un article pour voir ce qu’il y reste.</Text>
+          <Text type="secondary">{t('Choisissez un lieu d’origine et un article pour voir ce qu’il y reste.')}</Text>
         )}
       </div>
 
@@ -565,8 +568,10 @@ export const StockInventaire: React.FC = () => {
           type="warning"
           showIcon
           style={{ marginBottom: 'var(--space-3)' }}
-          message="Le lieu d’origine et le lieu d’arrivée sont les mêmes."
-          description="Un transfert déplace de la matière d’un lieu vers un autre. Choisissez deux lieux différents."
+          message={t('Le lieu d’origine et le lieu d’arrivée sont les mêmes.')}
+          description={t(
+            'Un transfert déplace de la matière d’un lieu vers un autre. Choisissez deux lieux différents.'
+          )}
         />
       )}
 
@@ -575,37 +580,40 @@ export const StockInventaire: React.FC = () => {
           type="warning"
           showIcon
           style={{ marginBottom: 'var(--space-3)' }}
-          message="La quantité dépasse ce qu’il reste au lieu d’origine."
-          description="Le serveur refusera ce transfert. Vérifiez la quantité, ou enregistrez d’abord la réception qui manque."
+          message={t('La quantité dépasse ce qu’il reste au lieu d’origine.')}
+          description={t(
+            'Le serveur refusera ce transfert. Vérifiez la quantité, ou enregistrez d’abord la réception qui manque.'
+          )}
         />
       )}
 
       <Button type="primary" loading={transfertEnCours} disabled={!transfertPret} onClick={transferer}>
-        Enregistrer le transfert
+        {t('Enregistrer le transfert')}
       </Button>
 
       {dernierTransfert && (
         <div style={{ marginTop: 'var(--space-5)' }}>
-          <Title level={5}>Dernier transfert enregistré</Title>
+          <Title level={5}>{t('Dernier transfert enregistré')}</Title>
           <Paragraph>
-            <strong>{formatQuantity(dernierTransfert.quantity, dernierTransfert.movements[0]?.itemUnit)}</strong> de «{' '}
-            {dernierTransfert.movements[0]?.itemLabel ?? '—'} », de « {dernierTransfert.fromLocationLabel} » vers «{' '}
-            {dernierTransfert.toLocationLabel} ».
+            <strong>{formatQuantity(dernierTransfert.quantity, dernierTransfert.movements[0]?.itemUnit)}</strong>{' '}
+            {t('de «')} {dernierTransfert.movements[0]?.itemLabel ?? '—'} {t('», de «')}{' '}
+            {dernierTransfert.fromLocationLabel} {t('» vers «')} {dernierTransfert.toLocationLabel} ».
           </Paragraph>
           <StatCard
-            label="Valeur déplacée"
+            label={t('Valeur déplacée')}
             value={<MoneyValue value={dernierTransfert.value} currency={dernierTransfert.currency} />}
-            hint="Au coût moyen du lieu d’origine. Ce n’est pas une dépense, et aucun chantier n’a été imputé."
+            hint={t('Au coût moyen du lieu d’origine. Ce n’est pas une dépense, et aucun chantier n’a été imputé.')}
           />
           <Paragraph type="secondary" style={{ marginTop: 'var(--space-3)' }}>
-            Le transfert s’écrit en deux mouvements liés : une sortie du lieu d’origine, une entrée au lieu d’arrivée.
-            La somme des valeurs des deux lieux ne bouge pas.
+            {t(
+              'Le transfert s’écrit en deux mouvements liés : une sortie du lieu d’origine, une entrée au lieu d’arrivée. La somme des valeurs des deux lieux ne bouge pas.'
+            )}
           </Paragraph>
-          <ul style={{ paddingLeft: 'var(--space-5)' }}>
+          <ul style={{ paddingInlineStart: 'var(--space-5)' }}>
             {dernierTransfert.movements.map(mouvement => (
               <li key={mouvement.id}>
-                {mouvement.isDecrease ? 'Sortie de' : 'Entrée à'} « {mouvement.locationLabel} » :{' '}
-                {formatQuantity(mouvement.quantity, mouvement.itemUnit)} — il y reste{' '}
+                {mouvement.isDecrease ? t('Sortie de') : t('Entrée à')} « {mouvement.locationLabel} » :{' '}
+                {formatQuantity(mouvement.quantity, mouvement.itemUnit)} {t('— il y reste')}{' '}
                 {formatQuantity(mouvement.quantityAfter, mouvement.itemUnit)}.
               </li>
             ))}
@@ -620,56 +628,56 @@ export const StockInventaire: React.FC = () => {
   // =====================================================================
 
   const colonnesComptages: ColumnsType<StockCount> = [
-    { title: 'Lieu', key: 'lieu', render: (_, c) => c.locationLabel },
-    { title: 'Compté le', key: 'date', render: (_, c) => dateCourte(c.countedAt) },
-    { title: 'État', key: 'etat', render: (_, c) => <StatusTag status={c.status} /> },
-    { title: 'Lignes', key: 'lignes', align: 'right', render: (_, c) => c.lines.length },
+    { title: t('Lieu'), key: 'lieu', render: (_, c) => c.locationLabel },
+    { title: t('Compté le'), key: 'date', render: (_, c) => dateCourte(c.countedAt) },
+    { title: t('État'), key: 'etat', render: (_, c) => <StatusTag status={c.status} /> },
+    { title: t('Lignes'), key: 'lignes', align: 'end', render: (_, c) => c.lines.length },
     {
-      title: 'Lignes en écart',
+      title: t('Lignes en écart'),
       key: 'ecarts',
-      align: 'right',
+      align: 'end',
       // Calculé par le serveur : jamais recompté ici.
       render: (_, c) => c.varianceCount
     },
     {
-      title: 'Valeur de l’écart',
+      title: t('Valeur de l’écart'),
       key: 'valeur',
-      align: 'right',
+      align: 'end',
       render: (_, c) => <MoneyValue value={c.varianceValue} currency={c.currency} signed />
     },
-    { title: 'Ouvert par', key: 'auteur', render: (_, c) => c.createdByLabel },
+    { title: t('Ouvert par'), key: 'auteur', render: (_, c) => c.createdByLabel },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, c) => (
         <Button type="link" onClick={() => setComptageOuvert(c.id)}>
-          {c.status === 'DRAFT' ? 'Poursuivre le comptage' : 'Consulter'}
+          {c.status === 'DRAFT' ? t('Poursuivre le comptage') : t('Consulter')}
         </Button>
       )
     }
   ];
 
   const colonnesLignes: ColumnsType<StockCountLine> = [
-    { title: 'Article', key: 'article', render: (_, l) => `${l.itemReference} — ${l.itemLabel}` },
+    { title: t('Article'), key: 'article', render: (_, l) => `${l.itemReference} — ${l.itemLabel}` },
     {
       // Figée à la saisie : ce que le système disait au moment où l'on a
       // compté, pas ce qu'il dit aujourd'hui.
-      title: 'Ce que le système disait',
+      title: t('Ce que le système disait'),
       key: 'attendu',
-      align: 'right',
+      align: 'end',
       render: (_, l) => formatQuantity(l.expectedQuantity, l.itemUnit)
     },
     {
-      title: 'Compté',
+      title: t('Compté'),
       key: 'compte',
-      align: 'right',
+      align: 'end',
       render: (_, l) => formatQuantity(l.countedQuantity, l.itemUnit)
     },
     {
-      title: 'Écart',
+      title: t('Écart'),
       key: 'ecart',
-      align: 'right',
+      align: 'end',
       // Affiché tel que le serveur l'a calculé.
       render: (_, l) => (
         <Text type={estEnEcart(l) ? 'warning' : undefined}>
@@ -678,36 +686,38 @@ export const StockInventaire: React.FC = () => {
       )
     },
     {
-      title: 'Motif',
+      title: t('Motif'),
       key: 'motif',
       render: (_, l) =>
         l.reason ? (
           l.reason
         ) : estEnEcart(l) ? (
-          <Text type="danger">Motif à justifier</Text>
+          <Text type="danger">{t('Motif à justifier')}</Text>
         ) : (
-          <Text type="secondary">Aucun écart à justifier</Text>
+          <Text type="secondary">{t('Aucun écart à justifier')}</Text>
         )
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, l) =>
         comptage?.status === 'DRAFT' ? (
           <Space>
             <Button type="link" onClick={() => reprendreLigne(l)}>
-              Reprendre
+              {t('Reprendre')}
             </Button>
             <ConfirmAction
-              title={`Retirer « ${l.itemReference} » du comptage ?`}
-              description="La ligne disparaît du comptage. Le stock n’est pas touché : rien n’a encore été ajusté tant que l’inventaire n’est pas validé."
-              okText="Confirmer le retrait"
+              title={t('Retirer « {{itemReference}} » du comptage ?', { itemReference: l.itemReference })}
+              description={t(
+                'La ligne disparaît du comptage. Le stock n’est pas touché : rien n’a encore été ajusté tant que l’inventaire n’est pas validé.'
+              )}
+              okText={t('Confirmer le retrait')}
               danger
               onConfirm={() => retirerLigne(l)}
             >
               <Button type="link" danger>
-                Retirer
+                {t('Retirer')}
               </Button>
             </ConfirmAction>
           </Space>
@@ -724,8 +734,8 @@ export const StockInventaire: React.FC = () => {
       return (
         <StateBlock
           variant="error"
-          description="Impossible de charger ce comptage."
-          actions={[{ label: 'Réessayer', onClick: () => refetchComptage(), primary: true }]}
+          description={t('Impossible de charger ce comptage.')}
+          actions={[{ label: t('Réessayer'), onClick: () => refetchComptage(), primary: true }]}
         />
       );
     }
@@ -740,11 +750,11 @@ export const StockInventaire: React.FC = () => {
       <div style={{ marginTop: 'var(--space-6)' }}>
         <Space align="center" wrap style={{ marginBottom: 'var(--space-3)' }}>
           <Title level={4} style={{ margin: 0 }}>
-            Comptage de « {comptage.locationLabel} » du {dateCourte(comptage.countedAt)}
+            {t('Comptage de «')} {comptage.locationLabel} {t('» du')} {dateCourte(comptage.countedAt)}
           </Title>
           <StatusTag status={comptage.status} />
           <Button type="link" onClick={() => setComptageOuvert(null)}>
-            Fermer ce comptage
+            {t('Fermer ce comptage')}
           </Button>
         </Space>
 
@@ -753,8 +763,12 @@ export const StockInventaire: React.FC = () => {
             type="success"
             showIcon
             style={{ marginBottom: 'var(--space-4)' }}
-            message={`Inventaire validé le ${dateCourte(comptage.validatedAt)} : les écarts sont devenus des ajustements de stock.`}
-            description="Cet inventaire ne s’annule pas. Ses ajustements sont des mouvements de stock comme les autres, et les défaire demanderait de rejouer tout ce qui a suivi. Un comptage erroné se corrige par un second comptage sur le même lieu."
+            message={t('Inventaire validé le {{value}} : les écarts sont devenus des ajustements de stock.', {
+              value: dateCourte(comptage.validatedAt)
+            })}
+            description={t(
+              'Cet inventaire ne s’annule pas. Ses ajustements sont des mouvements de stock comme les autres, et les défaire demanderait de rejouer tout ce qui a suivi. Un comptage erroné se corrige par un second comptage sur le même lieu.'
+            )}
           />
         )}
 
@@ -766,20 +780,20 @@ export const StockInventaire: React.FC = () => {
             marginBottom: 'var(--space-5)'
           }}
         >
-          <StatCard label="Articles comptés" value={String(comptage.lines.length)} />
+          <StatCard label={t('Articles comptés')} value={String(comptage.lines.length)} />
           {/* Compté par le serveur, jamais recompté ici. */}
           <StatCard
-            label="Lignes en écart"
+            label={t('Lignes en écart')}
             value={String(comptage.varianceCount)}
             tone={comptage.varianceCount > 0 ? 'warning' : 'neutral'}
           />
           <StatCard
-            label="Valeur de l’écart"
+            label={t('Valeur de l’écart')}
             value={<MoneyValue value={comptage.varianceValue} currency={comptage.currency} signed />}
             hint={
               brouillon
-                ? 'Estimée : le coût moyen peut encore bouger d’ici la validation.'
-                : 'Au coût moyen retenu à la validation.'
+                ? t('Estimée : le coût moyen peut encore bouger d’ici la validation.')
+                : t('Au coût moyen retenu à la validation.')
             }
           />
         </div>
@@ -794,28 +808,28 @@ export const StockInventaire: React.FC = () => {
             }}
           >
             <Title level={5} style={{ marginTop: 0 }}>
-              Saisir le comptage d’un article
+              {t('Saisir le comptage d’un article')}
             </Title>
             <Space wrap size="middle" align="start">
               <div>
                 <div>
-                  <label htmlFor="ligne-article">Article compté</label>
+                  <label htmlFor="ligne-article">{t('Article compté')}</label>
                 </div>
                 <Select
                   id="ligne-article"
                   style={{ width: 280 }}
                   showSearch
                   optionFilterProp="label"
-                  placeholder="Choisir un article"
+                  placeholder={t('Choisir un article')}
                   value={saisieLigne.itemId}
                   onChange={valeur => setSaisieLigne({ ...saisieLigne, itemId: valeur })}
                   options={optionsArticles}
-                  notFoundContent="Aucun article disponible"
+                  notFoundContent={t('Aucun article disponible')}
                 />
               </div>
               <div>
                 <div>
-                  <label htmlFor="ligne-quantite">Quantité comptée</label>
+                  <label htmlFor="ligne-quantite">{t('Quantité comptée')}</label>
                 </div>
                 {/* Le zéro est un résultat de comptage : « on a regardé, il n’y
                     a rien ». Seul le négatif est refusé. */}
@@ -833,42 +847,42 @@ export const StockInventaire: React.FC = () => {
               </div>
               <div>
                 <div>
-                  <label htmlFor="ligne-motif">Motif de l’écart (facultatif à la saisie)</label>
+                  <label htmlFor="ligne-motif">{t('Motif de l’écart (facultatif à la saisie)')}</label>
                 </div>
                 <Input
                   id="ligne-motif"
                   style={{ width: 320 }}
-                  placeholder="Ex. casse au déchargement, vol constaté, perte"
+                  placeholder={t('Ex. casse au déchargement, vol constaté, perte')}
                   value={saisieLigne.reason}
                   onChange={event => setSaisieLigne({ ...saisieLigne, reason: event.target.value })}
                 />
               </div>
               <Button type="primary" loading={ligneEnCours} disabled={!lignePrete} onClick={enregistrerLigne}>
-                Enregistrer le comptage
+                {t('Enregistrer le comptage')}
               </Button>
             </Space>
 
             <Paragraph type="secondary" style={{ marginTop: 'var(--space-3)', marginBottom: 0 }}>
               {saisieLigne.itemId ? (
                 <>
-                  Le système dit qu’il y a{' '}
+                  {t('Le système dit qu’il y a')}{' '}
                   <strong>
                     {formatQuantity(
                       soldeArticleCompte?.quantity ?? 0,
                       soldeArticleCompte?.itemUnit ?? uniteDe(saisieLigne.itemId)
                     )}
                   </strong>{' '}
-                  à cet instant.{' '}
+                  {t('à cet instant.')}{' '}
                 </>
               ) : null}
-              <strong>La quantité attendue ne se saisit pas</strong> : le serveur la lit dans le stock au moment où la
-              ligne est enregistrée, et la fige. Comparer le comptage d’hier au stock d’aujourd’hui ferait lire une
-              sortie enregistrée entre-temps comme une perte. Saisir le même article une seconde fois remplace son
-              comptage, il ne s’ajoute pas.
+              <strong>{t('La quantité attendue ne se saisit pas')}</strong>{' '}
+              {t(
+                ': le serveur la lit dans le stock au moment où la ligne est enregistrée, et la fige. Comparer le comptage d’hier au stock d’aujourd’hui ferait lire une sortie enregistrée entre-temps comme une perte. Saisir le même article une seconde fois remplace son comptage, il ne s’ajoute pas.'
+              )}
             </Paragraph>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Le motif peut attendre : on compte une allée d’abord, on explique ensuite. Il deviendra{' '}
-              <strong>obligatoire pour toute ligne en écart</strong> au moment de valider.
+              {t('Le motif peut attendre : on compte une allée d’abord, on explique ensuite. Il deviendra')}{' '}
+              <strong>{t('obligatoire pour toute ligne en écart')}</strong> {t('au moment de valider.')}
             </Paragraph>
           </div>
         )}
@@ -881,10 +895,10 @@ export const StockInventaire: React.FC = () => {
           page={1}
           pageSize={Math.max(comptage.lines.length, 1)}
           onPageChange={() => {}}
-          emptyDescription="Ce comptage ne porte encore aucune ligne. Saisissez le premier article compté."
+          emptyDescription={t('Ce comptage ne porte encore aucune ligne. Saisissez le premier article compté.')}
           columns={colonnesLignes}
           rowKey={l => l.id}
-          aria-label="Lignes du comptage"
+          aria-label={t('Lignes du comptage')}
           renderCard={l => (
             <DataCard
               title={l.itemReference}
@@ -892,12 +906,15 @@ export const StockInventaire: React.FC = () => {
               subtitle={l.itemLabel}
               highlight={formatVariance(l.variance, l.itemUnit)}
               fields={[
-                { label: 'Ce que le système disait', value: formatQuantity(l.expectedQuantity, l.itemUnit) },
-                { label: 'Compté', value: formatQuantity(l.countedQuantity, l.itemUnit) },
-                { label: 'Motif', value: l.reason ?? (estEnEcart(l) ? 'Motif à justifier' : 'Aucun écart à justifier') }
+                { label: t('Ce que le système disait'), value: formatQuantity(l.expectedQuantity, l.itemUnit) },
+                { label: t('Compté'), value: formatQuantity(l.countedQuantity, l.itemUnit) },
+                {
+                  label: 'Motif',
+                  value: l.reason ?? (estEnEcart(l) ? t('Motif à justifier') : t('Aucun écart à justifier'))
+                }
               ]}
               {...(comptage.status === 'DRAFT'
-                ? { primaryAction: { label: 'Reprendre', onClick: () => reprendreLigne(l) } }
+                ? { primaryAction: { label: t('Reprendre'), onClick: () => reprendreLigne(l) } }
                 : {})}
             />
           )}
@@ -905,15 +922,17 @@ export const StockInventaire: React.FC = () => {
 
         {brouillon && (
           <div style={{ marginTop: 'var(--space-5)' }}>
-            <Title level={5}>Valider l’inventaire</Title>
+            <Title level={5}>{t('Valider l’inventaire')}</Title>
 
             {comptageVide && (
               <Alert
                 type="warning"
                 showIcon
                 style={{ marginBottom: 'var(--space-3)' }}
-                message="Ce comptage ne porte aucune ligne."
-                description="Valider un comptage vide ne dirait rien, et pourrait se lire comme « tout est conforme ». Saisissez au moins un article compté."
+                message={t('Ce comptage ne porte aucune ligne.')}
+                description={t(
+                  'Valider un comptage vide ne dirait rien, et pourrait se lire comme « tout est conforme ». Saisissez au moins un article compté.'
+                )}
               />
             )}
 
@@ -926,20 +945,22 @@ export const StockInventaire: React.FC = () => {
                 type="warning"
                 showIcon
                 style={{ marginBottom: 'var(--space-3)' }}
-                message={`${lignesAJustifier.length} ligne${lignesAJustifier.length > 1 ? 's' : ''} en écart ${
-                  lignesAJustifier.length > 1 ? 'restent' : 'reste'
-                } sans motif : la validation est impossible.`}
+                message={t('{{length}} ligne{{value}} en écart {{value2}} sans motif : la validation est impossible.', {
+                  length: lignesAJustifier.length,
+                  value: lignesAJustifier.length > 1 ? 's' : '',
+                  value2: lignesAJustifier.length > 1 ? 'restent' : 'reste'
+                })}
                 description={
                   <>
                     <div>
-                      Un écart est une perte ou un gain réel. Sans motif, il deviendrait une ligne de tableau que
-                      personne ne relira. Reprenez chacune de ces lignes pour dire ce qui s’est passé : casse, perte,
-                      vol, erreur de saisie.
+                      {t(
+                        'Un écart est une perte ou un gain réel. Sans motif, il deviendrait une ligne de tableau que personne ne relira. Reprenez chacune de ces lignes pour dire ce qui s’est passé : casse, perte, vol, erreur de saisie.'
+                      )}
                     </div>
-                    <ul style={{ margin: 0, paddingLeft: 'var(--space-5)' }}>
+                    <ul style={{ margin: 0, paddingInlineStart: 'var(--space-5)' }}>
                       {lignesAJustifier.map(ligne => (
                         <li key={ligne.id}>
-                          {ligne.itemReference} — {ligne.itemLabel} : écart de{' '}
+                          {ligne.itemReference} — {ligne.itemLabel} {t(': écart de')}{' '}
                           {formatVariance(ligne.variance, ligne.itemUnit)}
                         </li>
                       ))}
@@ -951,35 +972,37 @@ export const StockInventaire: React.FC = () => {
 
             {validationPossible ? (
               <ConfirmAction
-                title={`Valider l’inventaire de « ${comptage.locationLabel} » ?`}
+                title={t('Valider l’inventaire de « {{locationLabel}} » ?', { locationLabel: comptage.locationLabel })}
                 description={
                   <span>
-                    <strong>Cette opération est irréversible.</strong> Chaque ligne en écart, et seulement celles-là,
-                    produira un vrai mouvement d’ajustement qui ramènera le stock à la quantité comptée. Aucun geste ne
-                    défait un inventaire validé : un comptage erroné se corrige par un second comptage.{' '}
+                    <strong>{t('Cette opération est irréversible.')}</strong>{' '}
+                    {t(
+                      'Chaque ligne en écart, et seulement celles-là, produira un vrai mouvement d’ajustement qui ramènera le stock à la quantité comptée. Aucun geste ne défait un inventaire validé : un comptage erroné se corrige par un second comptage.'
+                    )}{' '}
                     <strong>
-                      Si de la matière a bougé sur ce lieu depuis le comptage, l’ajustement écrasera ce mouvement
+                      {t('Si de la matière a bougé sur ce lieu depuis le comptage, l’ajustement écrasera ce mouvement')}
                     </strong>{' '}
-                    — le comptage physique fait foi. Aucun chantier ne sera imputé : personne n’a décidé de consommer ce
-                    qui a disparu.
+                    {t(
+                      '— le comptage physique fait foi. Aucun chantier ne sera imputé : personne n’a décidé de consommer ce qui a disparu.'
+                    )}
                   </span>
                 }
-                okText="Confirmer la validation"
+                okText={t('Confirmer la validation')}
                 onConfirm={valider}
               >
                 <Button type="primary" loading={validationEnCours}>
-                  Valider l’inventaire
+                  {t('Valider l’inventaire')}
                 </Button>
               </ConfirmAction>
             ) : (
               <Button type="primary" disabled>
-                Valider l’inventaire
+                {t('Valider l’inventaire')}
               </Button>
             )}
 
             <Paragraph type="secondary" style={{ marginTop: 'var(--space-3)', marginBottom: 0 }}>
-              La validation ramène le stock à ce qui a été <strong>compté</strong>, pas à un écart recalculé. Elle est
-              définitive, et aucun bouton ne l’annule.
+              {t('La validation ramène le stock à ce qui a été')} <strong>{t('compté')}</strong>
+              {t(', pas à un écart recalculé. Elle est définitive, et aucun bouton ne l’annule.')}
             </Paragraph>
           </div>
         )}
@@ -993,20 +1016,22 @@ export const StockInventaire: React.FC = () => {
         type="info"
         showIcon
         style={{ marginBottom: 'var(--space-4)' }}
-        message="Un inventaire se saisit en brouillon, article par article, puis se valide."
-        description="Rien ne bouge dans le stock tant qu’il n’est pas validé. À la validation, chaque ligne en écart produit un ajustement qui ramène le stock à la quantité comptée — et l’inventaire ne s’annule plus."
+        message={t('Un inventaire se saisit en brouillon, article par article, puis se valide.')}
+        description={t(
+          'Rien ne bouge dans le stock tant qu’il n’est pas validé. À la validation, chaque ligne en écart produit un ajustement qui ramène le stock à la quantité comptée — et l’inventaire ne s’annule plus.'
+        )}
       />
 
       <Space wrap size="middle" style={{ marginBottom: 'var(--space-3)' }}>
         <div>
           <div>
-            <label htmlFor="comptages-lieu">Lieu</label>
+            <label htmlFor="comptages-lieu">{t('Lieu')}</label>
           </div>
           <Select
             id="comptages-lieu"
             style={{ width: 260 }}
             allowClear
-            placeholder="Tous les lieux"
+            placeholder={t('Tous les lieux')}
             value={lieuFiltre}
             onChange={valeur => setLieuFiltre(valeur ?? undefined)}
             options={optionsLieux}
@@ -1014,13 +1039,13 @@ export const StockInventaire: React.FC = () => {
         </div>
         <div>
           <div>
-            <label htmlFor="comptages-statut">État</label>
+            <label htmlFor="comptages-statut">{t('État')}</label>
           </div>
           <Select
             id="comptages-statut"
             style={{ width: 200 }}
             allowClear
-            placeholder="Tous les états"
+            placeholder={t('Tous les états')}
             value={statutFiltre}
             onChange={valeur => setStatutFiltre((valeur as StockCountStatus | undefined) ?? undefined)}
             options={[
@@ -1037,7 +1062,7 @@ export const StockInventaire: React.FC = () => {
             setOuvertureVisible(true);
           }}
         >
-          Ouvrir un comptage
+          {t('Ouvrir un comptage')}
         </Button>
       </Space>
 
@@ -1051,32 +1076,32 @@ export const StockInventaire: React.FC = () => {
         onPageChange={() => {}}
         loading={comptagesEnAttente}
         isReloading={comptagesEnRechargement && !comptagesEnAttente}
-        error={erreurComptages ? 'Impossible de charger les inventaires.' : null}
+        error={erreurComptages ? t('Impossible de charger les inventaires.') : null}
         onRetry={() => refetchComptages()}
         isFiltered={Boolean(lieuFiltre || statutFiltre)}
         onClearFilters={() => {
           setLieuFiltre(undefined);
           setStatutFiltre(undefined);
         }}
-        emptyDescription="Aucun inventaire n’a encore été ouvert."
-        emptyAction={{ label: 'Ouvrir un comptage', onClick: () => setOuvertureVisible(true) }}
+        emptyDescription={t('Aucun inventaire n’a encore été ouvert.')}
+        emptyAction={{ label: t('Ouvrir un comptage'), onClick: () => setOuvertureVisible(true) }}
         columns={colonnesComptages}
         rowKey={c => c.id}
-        aria-label="Inventaires"
+        aria-label={t('Inventaires')}
         renderCard={c => (
           <DataCard
             title={c.locationLabel}
             aria-label={c.locationLabel}
-            subtitle={`Compté le ${dateCourte(c.countedAt)}`}
+            subtitle={t('Compté le {{value}}', { value: dateCourte(c.countedAt) })}
             status={<StatusTag status={c.status} />}
             highlight={<MoneyValue value={c.varianceValue} currency={c.currency} signed />}
             fields={[
               { label: 'Lignes', value: String(c.lines.length) },
-              { label: 'Lignes en écart', value: String(c.varianceCount) },
-              { label: 'Ouvert par', value: c.createdByLabel }
+              { label: t('Lignes en écart'), value: String(c.varianceCount) },
+              { label: t('Ouvert par'), value: c.createdByLabel }
             ]}
             primaryAction={{
-              label: c.status === 'DRAFT' ? 'Poursuivre le comptage' : 'Consulter',
+              label: c.status === 'DRAFT' ? t('Poursuivre le comptage') : 'Consulter',
               onClick: () => setComptageOuvert(c.id)
             }}
           />
@@ -1090,15 +1115,15 @@ export const StockInventaire: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Transferts et inventaire du stock"
-        subtitle="Déplacer de la matière d’un lieu à un autre, et compter ce qui s’y trouve"
+        title={t('Transferts et inventaire du stock')}
+        subtitle={t('Déplacer de la matière d’un lieu à un autre, et compter ce qui s’y trouve')}
       />
 
       <Tabs
         defaultActiveKey="transfert"
         items={[
-          { key: 'transfert', label: 'Transfert entre lieux', children: ongletTransfert },
-          { key: 'inventaire', label: 'Inventaire physique', children: ongletInventaire }
+          { key: 'transfert', label: t('Transfert entre lieux'), children: ongletTransfert },
+          { key: 'inventaire', label: t('Inventaire physique'), children: ongletInventaire }
         ]}
       />
 
@@ -1106,37 +1131,38 @@ export const StockInventaire: React.FC = () => {
           Ouvrir un comptage
       ------------------------------------------------------------------ */}
       <Modal
-        title="Ouvrir un comptage"
+        title={t('Ouvrir un comptage')}
         open={ouvertureVisible}
         onCancel={() => {
           if (!ouvertureEnCours) setOuvertureVisible(false);
         }}
         confirmLoading={ouvertureEnCours}
         onOk={ouvrirComptage}
-        okText="Ouvrir le comptage"
+        okText={t('Ouvrir le comptage')}
         okButtonProps={{ disabled: !lieuCompte || !dateComptage }}
-        cancelText="Annuler"
+        cancelText={t('Annuler')}
         destroyOnHidden
       >
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <label htmlFor="comptage-lieu">Lieu à compter</label>
+            <label htmlFor="comptage-lieu">{t('Lieu à compter')}</label>
             <Select
               id="comptage-lieu"
               style={{ width: '100%' }}
-              placeholder="Choisir un lieu de stockage"
+              placeholder={t('Choisir un lieu de stockage')}
               value={lieuCompte}
               onChange={valeur => setLieuCompte(valeur)}
               options={optionsLieux}
-              notFoundContent="Aucun lieu de stockage disponible"
+              notFoundContent={t('Aucun lieu de stockage disponible')}
             />
             <Text type="secondary">
-              Un seul comptage en brouillon par lieu : deux comptages simultanés du même dépôt produiraient deux
-              vérités, et le second validé écraserait le premier sans que personne ne le voie.
+              {t(
+                'Un seul comptage en brouillon par lieu : deux comptages simultanés du même dépôt produiraient deux vérités, et le second validé écraserait le premier sans que personne ne le voie.'
+              )}
             </Text>
           </div>
           <div>
-            <label htmlFor="comptage-date">Date du comptage</label>
+            <label htmlFor="comptage-date">{t('Date du comptage')}</label>
             <DatePicker
               id="comptage-date"
               style={{ width: '100%' }}
@@ -1146,8 +1172,10 @@ export const StockInventaire: React.FC = () => {
             />
           </div>
           <Text type="secondary">
-            Le comptage s’ouvre <strong>sans aucune ligne</strong> : on compte une allée après l’autre, et exiger la
-            liste complète d’un coup obligerait à tout ressaisir pour corriger un chiffre.
+            {t('Le comptage s’ouvre')} <strong>sans aucune ligne</strong>{' '}
+            {t(
+              ': on compte une allée après l’autre, et exiger la liste complète d’un coup obligerait à tout ressaisir pour corriger un chiffre.'
+            )}
           </Text>
         </Space>
       </Modal>

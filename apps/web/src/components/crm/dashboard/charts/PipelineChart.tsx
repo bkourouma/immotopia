@@ -4,7 +4,9 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend
 import { Card, CardContent, CardHeader, CardTitle } from '../../../ui/card';
 import { PipelineSummary, PipelineStageData } from '../../../../types/crmDashboard';
 import { CrmDealStage } from '../../../../types/crm-types';
+import { t } from '../../../../i18n/t';
 
+import { activeLocale } from '../../../../i18n/format';
 interface PipelineChartProps {
   data: PipelineSummary;
   onStageClick?: (stage: CrmDealStage) => void;
@@ -16,22 +18,22 @@ const STAGE_COLORS: Record<CrmDealStage, string> = {
   VISIT: '#f59e0b',
   NEGOTIATION: '#ef4444',
   WON: '#10b981',
-  LOST: '#94a3b8',
+  LOST: '#94a3b8'
 };
 
 const STAGE_LABELS: Record<CrmDealStage, string> = {
   NEW: 'Nouveau',
-  QUALIFIED: 'Qualifié',
+  QUALIFIED: t('Qualifié'),
   VISIT: 'Visite',
-  NEGOTIATION: 'Négociation',
-  WON: 'Gagné',
-  LOST: 'Perdu',
+  NEGOTIATION: t('Négociation'),
+  WON: t('Gagné'),
+  LOST: 'Perdu'
 };
 
 export const PipelineChart: React.FC<PipelineChartProps> = ({ data, onStageClick }) => {
-  const chartData = data.stages.map((stage) => ({
+  const chartData = data.stages.map(stage => ({
     ...stage,
-    label: STAGE_LABELS[stage.stage] || stage.stage,
+    label: STAGE_LABELS[stage.stage] || stage.stage
   }));
 
   const CustomTooltip = ({ active, payload }: any) => {
@@ -41,8 +43,10 @@ export const PipelineChart: React.FC<PipelineChartProps> = ({ data, onStageClick
         <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-lg">
           <p className="font-semibold">{STAGE_LABELS[data.stage] || data.stage}</p>
           <p className="text-sm text-slate-600">Nombre: {data.count}</p>
-          <p className="text-sm text-slate-600">Valeur: {data.value.toLocaleString('fr-FR')} FCFA</p>
-          <p className="text-sm text-slate-600">Âge moyen: {data.avgAgeDays.toFixed(0)} jours</p>
+          <p className="text-sm text-slate-600">Valeur: {data.value.toLocaleString(activeLocale())} FCFA</p>
+          <p className="text-sm text-slate-600">
+            {t('Âge moyen:')} {data.avgAgeDays.toFixed(0)} jours
+          </p>
         </div>
       );
     }
@@ -52,18 +56,12 @@ export const PipelineChart: React.FC<PipelineChartProps> = ({ data, onStageClick
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Pipeline des affaires</CardTitle>
+        <CardTitle>{t('Pipeline des affaires')}</CardTitle>
       </CardHeader>
       <CardContent>
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-            <XAxis
-              dataKey="label"
-              angle={-45}
-              textAnchor="end"
-              height={80}
-              tick={{ fontSize: 12 }}
-            />
+            <XAxis dataKey="label" angle={-45} textAnchor="end" height={80} tick={{ fontSize: 12 }} />
             <YAxis tick={{ fontSize: 12 }} />
             <Tooltip content={<CustomTooltip />} />
             <Legend />
@@ -81,10 +79,7 @@ export const PipelineChart: React.FC<PipelineChartProps> = ({ data, onStageClick
               }}
             >
               {chartData.map((entry, index) => (
-                <Cell
-                  key={`cell-${index}`}
-                  fill={STAGE_COLORS[entry.stage] || '#64748b'}
-                />
+                <Cell key={`cell-${index}`} fill={STAGE_COLORS[entry.stage] || '#64748b'} />
               ))}
             </Bar>
           </BarChart>
@@ -93,4 +88,3 @@ export const PipelineChart: React.FC<PipelineChartProps> = ({ data, onStageClick
     </Card>
   );
 };
-

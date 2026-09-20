@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { App, Form, Input, Select, Button, Row, Col, Alert, Space } from 'antd';
 import { GenerateDocumentRequest, RentalDocumentType } from '../../services/rental-service';
 import apiClient from '../../utils/api-client';
+import { t as translate } from '../../i18n/t';
 
 const { TextArea } = Input;
 
@@ -106,7 +107,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
         setErrors({ submit: errorMsg });
         message.error(errorMsg);
       } else {
-        const errorMsg = 'Une erreur est survenue lors de la génération du document';
+        const errorMsg = translate('Une erreur est survenue lors de la génération du document');
         setErrors({ submit: errorMsg });
         message.error(errorMsg);
       }
@@ -126,7 +127,7 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
     >
       {errors.submit && (
         <Alert
-          message="Erreur"
+          message={translate('Erreur')}
           description={errors.submit}
           type="error"
           showIcon
@@ -138,37 +139,37 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
       <Row gutter={16}>
         <Col xs={24} md={12}>
           <Form.Item
-            label="Type de document"
+            label={translate('Type de document')}
             name="type"
             required
-            rules={[{ required: true, message: 'Le type de document est requis' }]}
+            rules={[{ required: true, message: translate('Le type de document est requis') }]}
           >
             <Select>
-              <Select.Option value={RentalDocumentType.LEASE_CONTRACT}>Contrat de bail</Select.Option>
-              <Select.Option value={RentalDocumentType.LEASE_ADDENDUM}>Avenant</Select.Option>
-              <Select.Option value={RentalDocumentType.RENT_RECEIPT}>Reçu de loyer</Select.Option>
-              <Select.Option value={RentalDocumentType.RENT_QUITTANCE}>Quittance de loyer</Select.Option>
-              <Select.Option value={RentalDocumentType.DEPOSIT_RECEIPT}>Reçu de dépôt</Select.Option>
-              <Select.Option value={RentalDocumentType.STATEMENT}>Relevé</Select.Option>
-              <Select.Option value={RentalDocumentType.OTHER}>Autre</Select.Option>
+              <Select.Option value={RentalDocumentType.LEASE_CONTRACT}>{translate('Contrat de bail')}</Select.Option>
+              <Select.Option value={RentalDocumentType.LEASE_ADDENDUM}>{translate('Avenant')}</Select.Option>
+              <Select.Option value={RentalDocumentType.RENT_RECEIPT}>{translate('Reçu de loyer')}</Select.Option>
+              <Select.Option value={RentalDocumentType.RENT_QUITTANCE}>{translate('Quittance de loyer')}</Select.Option>
+              <Select.Option value={RentalDocumentType.DEPOSIT_RECEIPT}>{translate('Reçu de dépôt')}</Select.Option>
+              <Select.Option value={RentalDocumentType.STATEMENT}>{translate('Relevé')}</Select.Option>
+              <Select.Option value={RentalDocumentType.OTHER}>{translate('Autre')}</Select.Option>
             </Select>
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item label="Titre (optionnel)" name="title">
-            <Input placeholder="Titre du document" />
+          <Form.Item label={translate('Titre (optionnel)')} name="title">
+            <Input placeholder={translate('Titre du document')} />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
           <Form.Item
-            label="Template (optionnel)"
+            label={translate('Template (optionnel)')}
             name="templateId"
             help={
               templates.length === 0 &&
               !loadingTemplates &&
-              'Aucun template actif pour ce type de document. Le template par défaut sera utilisé.'
+              translate('Aucun template actif pour ce type de document. Le template par défaut sera utilisé.')
             }
           >
             <Select
@@ -176,15 +177,15 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
                 loadingTemplates
                   ? 'Chargement...'
                   : templates.length === 0
-                    ? 'Aucun template disponible'
-                    : 'Sélectionner un template'
+                    ? translate('Aucun template disponible')
+                    : translate('Sélectionner un template')
               }
               disabled={loadingTemplates || templates.length === 0}
               loading={loadingTemplates}
             >
               {templates.map(template => (
                 <Select.Option key={template.id} value={template.id}>
-                  {template.name} {template.is_default && '(Par défaut)'}
+                  {template.name} {template.is_default && translate('(Par défaut)')}
                 </Select.Option>
               ))}
             </Select>
@@ -192,8 +193,8 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
         </Col>
 
         <Col xs={24}>
-          <Form.Item label="Description (optionnel)" name="description">
-            <TextArea rows={3} placeholder="Description du document" />
+          <Form.Item label={translate('Description (optionnel)')} name="description">
+            <TextArea rows={3} placeholder={translate('Description du document')} />
           </Form.Item>
         </Col>
       </Row>
@@ -202,11 +203,11 @@ export const DocumentForm: React.FC<DocumentFormProps> = ({
         <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
           {onCancel && (
             <Button onClick={onCancel} disabled={isSubmitting || loading}>
-              Annuler
+              {translate('Annuler')}
             </Button>
           )}
           <Button type="primary" htmlType="submit" loading={isSubmitting || loading}>
-            Générer le document
+            {translate('Générer le document')}
           </Button>
         </Space>
       </Form.Item>

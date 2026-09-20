@@ -20,7 +20,9 @@ import {
   FilterSheet,
   StatusTag
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 /**
  * Chantiers — récit B7 du lot 2 (specs/017-finance-fournisseurs-chantiers/spec.md,
  * User Story 7).
@@ -58,7 +60,7 @@ const FILTER_KEYS = ['status'] as const;
 const OPTIONS_STATUT = Object.entries(SITE_STATUS_LABELS).map(([value, label]) => ({ value, label }));
 
 function dateCourte(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleDateString('fr-FR') : '—';
+  return iso ? new Date(iso).toLocaleDateString(activeLocale()) : '—';
 }
 
 export const Chantiers: React.FC = () => {
@@ -110,7 +112,7 @@ export const Chantiers: React.FC = () => {
   const chantiers = data ?? [];
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const reinitialiserFormulaire = () => {
@@ -132,7 +134,7 @@ export const Chantiers: React.FC = () => {
 
   const validerCreation = async () => {
     if (!nom.trim()) {
-      message.error('Le nom du chantier est obligatoire.');
+      message.error(t('Le nom du chantier est obligatoire.'));
       return;
     }
     setCreationEnCours(true);
@@ -145,11 +147,11 @@ export const Chantiers: React.FC = () => {
         plannedEndDate: dateFinPrevue ? dateFinPrevue.format('YYYY-MM-DD') : undefined
       });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('construction-sites', tenantId) });
-      message.success(`Chantier « ${chantier.name} » créé.`);
+      message.success(t('Chantier « {{name}} » créé.', { name: chantier.name }));
       setModalOuvert(false);
       navigate(`/tenant/${tenantId}/finance/chantiers/${chantier.id}`);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'La création du chantier a échoué.');
+      message.error(err?.response?.data?.message || t('La création du chantier a échoué.'));
     } finally {
       setCreationEnCours(false);
     }
@@ -158,29 +160,29 @@ export const Chantiers: React.FC = () => {
   const ouvrirDetail = (chantier: ConstructionSite) => navigate(`/tenant/${tenantId}/finance/chantiers/${chantier.id}`);
 
   const colonnes: ColumnsType<ConstructionSite> = [
-    { title: 'Chantier', key: 'nom', render: (_, c) => c.name },
-    { title: 'Zone', key: 'zone', render: (_, c) => c.zone || '—' },
-    { title: 'Bien', key: 'bien', render: (_, c) => c.propertyLabel ?? 'Sans bien (terrain loué)' },
-    { title: 'Responsable', key: 'responsable', render: (_, c) => c.managerLabel ?? '—' },
+    { title: t('Chantier'), key: 'nom', render: (_, c) => c.name },
+    { title: t('Zone'), key: 'zone', render: (_, c) => c.zone || '—' },
+    { title: t('Bien'), key: 'bien', render: (_, c) => c.propertyLabel ?? t('Sans bien (terrain loué)') },
+    { title: t('Responsable'), key: 'responsable', render: (_, c) => c.managerLabel ?? '—' },
     {
-      title: 'Statut',
+      title: t('Statut'),
       key: 'statut',
       render: (_, c) => <StatusTag status={c.status} label={SITE_STATUS_LABELS[c.status]} />
     },
     {
-      title: 'Coût réel',
+      title: t('Coût réel'),
       key: 'cout',
-      align: 'right',
+      align: 'end',
       // Calculé côté serveur (P-4) : cette colonne se contente de l'afficher.
       render: (_, c) => <MoneyValue value={c.actualCost} />
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, c) => (
         <Button type="link" onClick={() => ouvrirDetail(c)}>
-          Voir le détail
+          {t('Voir le détail')}
         </Button>
       )
     }
@@ -189,22 +191,22 @@ export const Chantiers: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Chantiers"
+        title={t('Chantiers')}
         subtitle={chantiers.length > 0 ? `${chantiers.length} chantier${chantiers.length > 1 ? 's' : ''}` : undefined}
-        primaryAction={{ label: 'Nouveau chantier', icon: <PlusOutlined />, onClick: ouvrirCreation }}
+        primaryAction={{ label: t('Nouveau chantier'), icon: <PlusOutlined />, onClick: ouvrirCreation }}
       />
 
       <FilterSheet
         activeCount={list.filters.status ? 1 : 0}
         onClear={() => list.setFilters({ status: undefined })}
-        title="Filtrer les chantiers"
+        title={t('Filtrer les chantiers')}
       >
         <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-statut-chantier">Statut</label>
+          <label htmlFor="filtre-statut-chantier">{t('Statut')}</label>
           <Select
             id="filtre-statut-chantier"
             style={{ width: '100%' }}
-            placeholder="Tous les statuts"
+            placeholder={t('Tous les statuts')}
             allowClear
             value={list.filters.status || undefined}
             onChange={valeur => list.setFilters({ status: valeur })}
@@ -225,25 +227,25 @@ export const Chantiers: React.FC = () => {
         onPageChange={() => {}}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger les chantiers.' : null}
+        error={erreurRequete ? t('Impossible de charger les chantiers.') : null}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={() => list.setFilters({ status: undefined })}
-        emptyDescription="Aucun chantier n'est encore enregistré."
-        emptyAction={{ label: 'Nouveau chantier', onClick: ouvrirCreation }}
+        emptyDescription={t("Aucun chantier n'est encore enregistré.")}
+        emptyAction={{ label: t('Nouveau chantier'), onClick: ouvrirCreation }}
         columns={colonnes}
         rowKey={c => c.id}
-        aria-label="Chantiers"
+        aria-label={t('Chantiers')}
         renderCard={c => (
           <DataCard
             title={c.name}
             aria-label={c.name}
-            subtitle={[c.zone, c.propertyLabel ?? 'Sans bien (terrain loué)'].filter(Boolean).join(' · ')}
+            subtitle={[c.zone, c.propertyLabel ?? t('Sans bien (terrain loué)')].filter(Boolean).join(' · ')}
             status={<StatusTag status={c.status} label={SITE_STATUS_LABELS[c.status]} />}
             highlight={<MoneyValue value={c.actualCost} />}
             fields={[
               { label: 'Responsable', value: c.managerLabel ?? '—' },
-              { label: 'Début', value: dateCourte(c.startDate) }
+              { label: t('Début'), value: dateCourte(c.startDate) }
             ]}
             onOpen={() => ouvrirDetail(c)}
           />
@@ -251,43 +253,43 @@ export const Chantiers: React.FC = () => {
       />
 
       <Modal
-        title="Nouveau chantier"
+        title={t('Nouveau chantier')}
         open={modalOuvert}
         onCancel={fermerCreation}
         confirmLoading={creationEnCours}
         onOk={validerCreation}
-        okText="Créer le chantier"
-        cancelText="Annuler"
+        okText={t('Créer le chantier')}
+        cancelText={t('Annuler')}
         destroyOnHidden
       >
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <label htmlFor="chantier-nom">Nom du chantier</label>
+            <label htmlFor="chantier-nom">{t('Nom du chantier')}</label>
             <Input
               id="chantier-nom"
               value={nom}
               onChange={event => setNom(event.target.value)}
-              placeholder="Ex. Villa duplex — Kipé Centre"
+              placeholder={t('Ex. Villa duplex — Kipé Centre')}
             />
           </div>
           <div>
-            <label htmlFor="chantier-zone">Zone</label>
+            <label htmlFor="chantier-zone">{t('Zone')}</label>
             <Input
               id="chantier-zone"
               value={zone}
               onChange={event => setZone(event.target.value)}
-              placeholder="Ex. Kipé, Ratoma"
+              placeholder={t('Ex. Kipé, Ratoma')}
             />
           </div>
           <div>
-            <label htmlFor="chantier-bien">Bien (facultatif)</label>
+            <label htmlFor="chantier-bien">{t('Bien (facultatif)')}</label>
             <Select
               id="chantier-bien"
               style={{ width: '100%' }}
               allowClear
               showSearch
               optionFilterProp="label"
-              placeholder="Aucun bien — pourra en recevoir un à la clôture"
+              placeholder={t('Aucun bien — pourra en recevoir un à la clôture')}
               value={propertyId}
               onChange={setPropertyId}
               options={optionsBiens}
@@ -295,7 +297,7 @@ export const Chantiers: React.FC = () => {
           </div>
           <Space style={{ width: '100%' }} size="middle">
             <div style={{ flex: 1 }}>
-              <label htmlFor="chantier-debut">Début</label>
+              <label htmlFor="chantier-debut">{t('Début')}</label>
               <DatePicker
                 id="chantier-debut"
                 style={{ width: '100%' }}
@@ -305,7 +307,7 @@ export const Chantiers: React.FC = () => {
               />
             </div>
             <div style={{ flex: 1 }}>
-              <label htmlFor="chantier-fin">Fin prévue</label>
+              <label htmlFor="chantier-fin">{t('Fin prévue')}</label>
               <DatePicker
                 id="chantier-fin"
                 style={{ width: '100%' }}

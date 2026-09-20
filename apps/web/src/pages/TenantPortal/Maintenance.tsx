@@ -34,6 +34,7 @@ import {
 import MaintenanceTicketModal from '../../components/TenantPortal/MaintenanceTicketModal';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import dayjs from 'dayjs';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -138,10 +139,10 @@ export default function TenantMaintenance() {
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
-        setError('Erreur lors du chargement des tickets');
+        setError(t('Erreur lors du chargement des tickets'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des tickets');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des tickets'));
     } finally {
       setLoading(false);
     }
@@ -156,7 +157,7 @@ export default function TenantMaintenance() {
         setDetailsModalVisible(true);
       }
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors du chargement des détails');
+      message.error(err.response?.data?.message || t('Erreur lors du chargement des détails'));
     } finally {
       setDetailsLoading(false);
     }
@@ -168,14 +169,14 @@ export default function TenantMaintenance() {
     try {
       setCommentLoading(true);
       await tenantPortalService.addTicketComment(selectedTicket.id, commentText);
-      message.success('Commentaire ajouté avec succès');
+      message.success(t('Commentaire ajouté avec succès'));
       setCommentText('');
       // Reload ticket details
       await loadTicketDetails(selectedTicket.id);
       // Reload tickets list
       await loadTickets();
     } catch (err: any) {
-      message.error(err.response?.data?.message || "Erreur lors de l'ajout du commentaire");
+      message.error(err.response?.data?.message || t("Erreur lors de l'ajout du commentaire"));
     } finally {
       setCommentLoading(false);
     }
@@ -187,11 +188,11 @@ export default function TenantMaintenance() {
 
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
-      DECLARED: { label: 'Déclaré', color: 'default' },
-      IN_PROGRESS: { label: 'En cours', color: 'processing' },
-      ASSIGNED: { label: 'Assigné', color: 'warning' },
-      RESOLVED: { label: 'Résolu', color: 'success' },
-      CANCELED: { label: 'Annulé', color: 'error' }
+      DECLARED: { label: t('Déclaré'), color: 'default' },
+      IN_PROGRESS: { label: t('En cours'), color: 'processing' },
+      ASSIGNED: { label: t('Assigné'), color: 'warning' },
+      RESOLVED: { label: t('Résolu'), color: 'success' },
+      CANCELED: { label: t('Annulé'), color: 'error' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -199,10 +200,10 @@ export default function TenantMaintenance() {
 
   const getPriorityTag = (priority: string) => {
     const priorityMap: Record<string, { label: string; color: string }> = {
-      LOW: { label: 'Basse', color: 'default' },
-      MEDIUM: { label: 'Moyenne', color: 'processing' },
-      HIGH: { label: 'Haute', color: 'warning' },
-      URGENT: { label: 'Urgente', color: 'error' }
+      LOW: { label: t('Basse'), color: 'default' },
+      MEDIUM: { label: t('Moyenne'), color: 'processing' },
+      HIGH: { label: t('Haute'), color: 'warning' },
+      URGENT: { label: t('Urgente'), color: 'error' }
     };
     const config = priorityMap[priority] || { label: priority, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -211,7 +212,7 @@ export default function TenantMaintenance() {
   const getCategoryLabel = (category: string) => {
     const labels: Record<string, string> = {
       PLUMBING: 'Plomberie',
-      ELECTRICITY: 'Électricité',
+      ELECTRICITY: t('Électricité'),
       AC: 'Climatisation',
       OTHER: 'Autre'
     };
@@ -220,31 +221,31 @@ export default function TenantMaintenance() {
 
   const columns = [
     {
-      title: 'Titre',
+      title: t('Titre'),
       dataIndex: 'title',
       key: 'title',
       render: (title: string) => <Text strong>{title}</Text>
     },
     {
-      title: 'Catégorie',
+      title: t('Catégorie'),
       dataIndex: 'category',
       key: 'category',
       render: (category: string) => getCategoryLabel(category)
     },
     {
-      title: 'Priorité',
+      title: t('Priorité'),
       dataIndex: 'priority',
       key: 'priority',
       render: (priority: string) => getPriorityTag(priority)
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => getStatusTag(status)
     },
     {
-      title: 'Date de création',
+      title: t('Date de création'),
       dataIndex: 'created_at',
       key: 'created_at',
       render: (date: string) => (
@@ -255,11 +256,11 @@ export default function TenantMaintenance() {
       )
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
       render: (_: any, record: MaintenanceTicket) => (
         <Button type="link" icon={<EyeOutlined />} onClick={() => loadTicketDetails(record.id)}>
-          Détails
+          {t('Détails')}
         </Button>
       )
     }
@@ -270,11 +271,11 @@ export default function TenantMaintenance() {
       {/* Page Header */}
       <div className="it-toolbar">
         <div>
-          <Title level={2}>Maintenance</Title>
-          <Text type="secondary">Gérez vos demandes de maintenance</Text>
+          <Title level={2}>{t('Maintenance')}</Title>
+          <Text type="secondary">{t('Gérez vos demandes de maintenance')}</Text>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalVisible(true)}>
-          Nouvelle demande
+          {t('Nouvelle demande')}
         </Button>
       </div>
 
@@ -283,13 +284,13 @@ export default function TenantMaintenance() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <Card>
-              <Statistic title="Total tickets" value={data.summary.total} prefix={<ToolOutlined />} />
+              <Statistic title={t('Total tickets')} value={data.summary.total} prefix={<ToolOutlined />} />
             </Card>
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title="Ouverts"
+                title={t('Ouverts')}
                 value={data.summary.open}
                 valueStyle={{ color: '#faad14' }}
                 prefix={<ToolOutlined />}
@@ -299,7 +300,7 @@ export default function TenantMaintenance() {
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title="En cours"
+                title={t('En cours')}
                 value={data.summary.inProgress}
                 valueStyle={{ color: '#1890ff' }}
                 prefix={<ToolOutlined />}
@@ -309,7 +310,7 @@ export default function TenantMaintenance() {
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title="Résolus"
+                title={t('Résolus')}
                 value={data.summary.resolved}
                 valueStyle={{ color: '#3f8600' }}
                 prefix={<ToolOutlined />}
@@ -324,22 +325,22 @@ export default function TenantMaintenance() {
         <div className="it-toolbar__actions">
           <Space>
             <FilterOutlined />
-            <Text strong>Filtres :</Text>
+            <Text strong>{t('Filtres :')}</Text>
           </Space>
           <Select
-            placeholder="Statut"
+            placeholder={t('Statut')}
             allowClear
             style={{ width: 200 }}
             value={statusFilter}
             onChange={value => setStatusFilter(value)}
           >
-            <Select.Option value="DECLARED">Déclaré</Select.Option>
-            <Select.Option value="IN_PROGRESS">En cours</Select.Option>
-            <Select.Option value="ASSIGNED">Assigné</Select.Option>
-            <Select.Option value="RESOLVED">Résolu</Select.Option>
-            <Select.Option value="CANCELED">Annulé</Select.Option>
+            <Select.Option value="DECLARED">{t('Déclaré')}</Select.Option>
+            <Select.Option value="IN_PROGRESS">{t('En cours')}</Select.Option>
+            <Select.Option value="ASSIGNED">{t('Assigné')}</Select.Option>
+            <Select.Option value="RESOLVED">{t('Résolu')}</Select.Option>
+            <Select.Option value="CANCELED">{t('Annulé')}</Select.Option>
           </Select>
-          {statusFilter && <Button onClick={() => setStatusFilter(undefined)}>Réinitialiser</Button>}
+          {statusFilter && <Button onClick={() => setStatusFilter(undefined)}>{t('Réinitialiser')}</Button>}
         </div>
       </Card>
 
@@ -347,16 +348,16 @@ export default function TenantMaintenance() {
       <Card
         title={
           <>
-            <ToolOutlined /> Liste des tickets
+            <ToolOutlined /> {t('Liste des tickets')}
           </>
         }
       >
         {loading ? (
           <div style={{ textAlign: 'center', padding: '40px' }}>
-            <Spin size="large" tip="Chargement des tickets..." />
+            <Spin size="large" tip={t('Chargement des tickets...')} />
           </div>
         ) : error ? (
-          <Alert message="Erreur" description={error} type="error" showIcon />
+          <Alert message={t('Erreur')} description={error} type="error" showIcon />
         ) : data && data.tickets.length > 0 ? (
           <Table
             scroll={{ x: 'max-content' }}
@@ -368,11 +369,11 @@ export default function TenantMaintenance() {
               pageSize: data.pagination.limit,
               total: data.pagination.total,
               showSizeChanger: true,
-              showTotal: total => `Total: ${total} tickets`
+              showTotal: total => t('Total: {{total}} tickets', { total: total })
             }}
           />
         ) : (
-          <Empty description="Aucun ticket trouvé" />
+          <Empty description={t('Aucun ticket trouvé')} />
         )}
       </Card>
 
@@ -394,7 +395,7 @@ export default function TenantMaintenance() {
               <span>{selectedTicket.title}</span>
             </Space>
           ) : (
-            'Détails du ticket'
+            t('Détails du ticket')
           )
         }
         open={detailsModalVisible}
@@ -409,24 +410,26 @@ export default function TenantMaintenance() {
       >
         {detailsLoading ? (
           <div style={{ textAlign: 'center', padding: '40px' }}>
-            <Spin size="large" tip="Chargement des détails..." />
+            <Spin size="large" tip={t('Chargement des détails...')} />
           </div>
         ) : selectedTicket ? (
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             {/* Ticket Details */}
             <Descriptions bordered column={{ xs: 1, sm: 2 }}>
-              <Descriptions.Item label="Statut">{getStatusTag(selectedTicket.status)}</Descriptions.Item>
-              <Descriptions.Item label="Priorité">{getPriorityTag(selectedTicket.priority)}</Descriptions.Item>
-              <Descriptions.Item label="Catégorie">{getCategoryLabel(selectedTicket.category)}</Descriptions.Item>
-              <Descriptions.Item label="Date de création">{formatDate(selectedTicket.created_at)}</Descriptions.Item>
-              <Descriptions.Item label="Propriété" span={2}>
+              <Descriptions.Item label={t('Statut')}>{getStatusTag(selectedTicket.status)}</Descriptions.Item>
+              <Descriptions.Item label={t('Priorité')}>{getPriorityTag(selectedTicket.priority)}</Descriptions.Item>
+              <Descriptions.Item label={t('Catégorie')}>{getCategoryLabel(selectedTicket.category)}</Descriptions.Item>
+              <Descriptions.Item label={t('Date de création')}>
+                {formatDate(selectedTicket.created_at)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('Propriété')} span={2}>
                 {selectedTicket.property.address}
               </Descriptions.Item>
-              <Descriptions.Item label="Description" span={2}>
+              <Descriptions.Item label={t('Description')} span={2}>
                 {selectedTicket.description}
               </Descriptions.Item>
               {selectedTicket.location_details && (
-                <Descriptions.Item label="Détails de localisation" span={2}>
+                <Descriptions.Item label={t('Détails de localisation')} span={2}>
                   {selectedTicket.location_details}
                 </Descriptions.Item>
               )}
@@ -435,7 +438,7 @@ export default function TenantMaintenance() {
             {/* Attachments */}
             {selectedTicket.attachments && selectedTicket.attachments.length > 0 && (
               <div>
-                <Title level={5}>Photos</Title>
+                <Title level={5}>{t('Photos')}</Title>
                 <Image.PreviewGroup>
                   <Space wrap>
                     {selectedTicket.attachments.map(attachment => (
@@ -458,7 +461,8 @@ export default function TenantMaintenance() {
             {/* Comments Section (T100, T101) */}
             <div>
               <Title level={5}>
-                <MessageOutlined /> Commentaires ({selectedTicket.comments?.length || 0})
+                <MessageOutlined /> {t('Commentaires (')}
+                {selectedTicket.comments?.length || 0})
               </Title>
               {selectedTicket.comments && selectedTicket.comments.length > 0 ? (
                 <List
@@ -472,10 +476,10 @@ export default function TenantMaintenance() {
                             ? comment.authorContact
                               ? `${comment.authorContact.firstName || ''} ${comment.authorContact.lastName || ''}`.trim() ||
                                 comment.authorContact.email
-                              : 'Locataire'
+                              : t('Locataire')
                             : comment.authorUser
                               ? comment.authorUser.fullName || comment.authorUser.email
-                              : 'Gestionnaire'
+                              : t('Gestionnaire')
                         }
                         description={
                           <Space direction="vertical" size="small">
@@ -490,14 +494,14 @@ export default function TenantMaintenance() {
                   )}
                 />
               ) : (
-                <Empty description="Aucun commentaire" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                <Empty description={t('Aucun commentaire')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
               )}
 
               {/* Add Comment Form (T101) */}
               <div style={{ marginTop: 16 }}>
                 <TextArea
                   rows={3}
-                  placeholder="Ajouter un commentaire..."
+                  placeholder={t('Ajouter un commentaire...')}
                   value={commentText}
                   onChange={e => setCommentText(e.target.value)}
                 />
@@ -509,7 +513,7 @@ export default function TenantMaintenance() {
                   style={{ marginTop: 8 }}
                   disabled={!commentText.trim()}
                 >
-                  Ajouter un commentaire
+                  {t('Ajouter un commentaire')}
                 </Button>
               </div>
             </div>

@@ -4,7 +4,9 @@ import { App, Button, Card, Col, Descriptions, Empty, Row, Space, Tag, Typograph
 import { CheckCircleOutlined, EyeOutlined, PlusOutlined, SearchOutlined, StarFilled } from '@ant-design/icons';
 import { Property } from '../../types/property-types';
 import { addPropertyToShortlist, matchPropertiesForDeal } from '../../services/property-service';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text, Title, Paragraph } = Typography;
 
 interface PropertyMatchResult {
@@ -29,8 +31,8 @@ interface PropertyMatchingProps {
 }
 
 function formatPrice(price?: number, currency?: string, propertyType?: string): string {
-  if (!price) return propertyType === 'IMMEUBLE' ? '' : 'Prix sur demande';
-  return `${new Intl.NumberFormat('fr-FR').format(price)} ${currency || 'EUR'}`;
+  if (!price) return propertyType === 'IMMEUBLE' ? '' : t('Prix sur demande');
+  return `${new Intl.NumberFormat(activeLocale()).format(price)} ${currency || 'EUR'}`;
 }
 
 function getScoreTagColor(score: number): string {
@@ -58,11 +60,11 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
       const results = await matchPropertiesForDeal(tenantId, dealId);
       setMatches(results as PropertyMatchResult[]);
       if (!results.length) {
-        message.info('Aucune correspondance trouvee');
+        message.info(t('Aucune correspondance trouvee'));
       }
     } catch (error: any) {
       console.error('Error matching properties:', error);
-      message.error(error?.response?.data?.error || 'Erreur lors de la recherche de correspondances');
+      message.error(error?.response?.data?.error || t('Erreur lors de la recherche de correspondances'));
     } finally {
       setLoading(false);
     }
@@ -72,11 +74,11 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
     try {
       await addPropertyToShortlist(tenantId, dealId, propertyId, matchScore, explanation);
       setShortlistedProperties(previous => new Set([...previous, propertyId]));
-      message.success('Propriete ajoutee a la shortlist');
+      message.success(t('Propriete ajoutee a la shortlist'));
       if (onPropertyAdded) onPropertyAdded();
     } catch (error: any) {
       console.error('Error adding to shortlist:', error);
-      message.error(error?.response?.data?.error || "Erreur lors de l'ajout a la shortlist");
+      message.error(error?.response?.data?.error || t("Erreur lors de l'ajout a la shortlist"));
     }
   };
 
@@ -86,15 +88,15 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
         <Row gutter={[16, 16]} justify="space-between" align="middle">
           <Col flex="auto">
             <Title level={5} style={{ margin: 0 }}>
-              Recherche de correspondances
+              {t('Recherche de correspondances')}
             </Title>
             <Text type="secondary">
-              Trouvez automatiquement les proprietes correspondant aux criteres de cette affaire.
+              {t('Trouvez automatiquement les proprietes correspondant aux criteres de cette affaire.')}
             </Text>
           </Col>
           <Col>
             <Button type="primary" icon={<SearchOutlined />} loading={loading} onClick={handleMatch}>
-              Rechercher des correspondances
+              {t('Rechercher des correspondances')}
             </Button>
           </Col>
         </Row>
@@ -114,7 +116,8 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
                     {match.property.title}
                   </Title>
                   <Tag color={getScoreTagColor(match.matchScore)} icon={<StarFilled />}>
-                    {Math.round(match.matchScore)}% de correspondance
+                    {Math.round(match.matchScore)}
+                    {t('% de correspondance')}
                   </Tag>
                 </Space>
 
@@ -157,35 +160,35 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
                   }
                 />
 
-                <Card size="small" type="inner" title="Details de correspondance">
+                <Card size="small" type="inner" title={t('Details de correspondance')}>
                   <Paragraph style={{ marginBottom: 12 }}>{match.explanationText}</Paragraph>
                   <Row gutter={[12, 12]}>
                     <Col xs={12} md={8} lg={4}>
-                      <Text type="secondary">Budget</Text>
+                      <Text type="secondary">{t('Budget')}</Text>
                       <div>
                         <Text strong>{toPercent(match.explanation.budgetScore)}</Text>
                       </div>
                     </Col>
                     <Col xs={12} md={8} lg={4}>
-                      <Text type="secondary">Localisation</Text>
+                      <Text type="secondary">{t('Localisation')}</Text>
                       <div>
                         <Text strong>{toPercent(match.explanation.locationScore)}</Text>
                       </div>
                     </Col>
                     <Col xs={12} md={8} lg={4}>
-                      <Text type="secondary">Taille</Text>
+                      <Text type="secondary">{t('Taille')}</Text>
                       <div>
                         <Text strong>{toPercent(match.explanation.sizeScore)}</Text>
                       </div>
                     </Col>
                     <Col xs={12} md={8} lg={4}>
-                      <Text type="secondary">Caracteristiques</Text>
+                      <Text type="secondary">{t('Caracteristiques')}</Text>
                       <div>
                         <Text strong>{toPercent(match.explanation.featuresScore)}</Text>
                       </div>
                     </Col>
                     <Col xs={12} md={8} lg={4}>
-                      <Text type="secondary">Coherence prix</Text>
+                      <Text type="secondary">{t('Coherence prix')}</Text>
                       <div>
                         <Text strong>{toPercent(match.explanation.priceCoherenceScore)}</Text>
                       </div>
@@ -198,12 +201,12 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
                     icon={<EyeOutlined />}
                     onClick={() => navigate(`/tenant/${tenantId}/properties/${match.propertyId}`)}
                   >
-                    Voir les details
+                    {t('Voir les details')}
                   </Button>
 
                   {shortlistedProperties.has(match.propertyId) ? (
                     <Button icon={<CheckCircleOutlined />} disabled>
-                      Ajoute a la shortlist
+                      {t('Ajoute a la shortlist')}
                     </Button>
                   ) : (
                     <Button
@@ -211,7 +214,7 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
                       icon={<PlusOutlined />}
                       onClick={() => handleAddToShortlist(match.propertyId, match.matchScore, match.explanation)}
                     >
-                      Ajouter a la shortlist
+                      {t('Ajouter a la shortlist')}
                     </Button>
                   )}
                 </Space>
@@ -224,7 +227,7 @@ export const PropertyMatching: React.FC<PropertyMatchingProps> = ({ dealId, tena
       {matches.length === 0 && !loading ? (
         <Card>
           <Empty
-            description="Aucune correspondance. Lancez une recherche pour proposer des proprietes."
+            description={t('Aucune correspondance. Lancez une recherche pour proposer des proprietes.')}
             image={Empty.PRESENTED_IMAGE_SIMPLE}
           />
         </Card>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button, Drawer, Badge, Space } from 'antd';
 import { FilterOutlined } from '@ant-design/icons';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { t } from '../../i18n/t';
 
 /**
  * `<FilterSheet>` — les filtres d'une liste (§5.1, §6.4).
@@ -56,7 +57,7 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({ children, activeCount,
         {children}
         {onClear && activeCount > 0 && (
           <Button type="text" onClick={onClear}>
-            Effacer les filtres
+            {t('Effacer les filtres')}
           </Button>
         )}
       </div>
@@ -69,7 +70,7 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({ children, activeCount,
         <Button icon={<FilterOutlined />} onClick={() => setOpen(true)} block>
           {/* Le libellé dit l'état, pas seulement l'action : « Filtrer » seul
               ne laisse pas deviner qu'un filtre est déjà posé. */}
-          {activeCount > 0 ? `Filtres (${activeCount})` : 'Filtrer'}
+          {activeCount > 0 ? t('Filtres ({{activeCount}})', { activeCount: activeCount }) : t('Filtrer')}
         </Button>
       </Badge>
 
@@ -86,13 +87,13 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({ children, activeCount,
           <Space style={{ width: '100%', justifyContent: 'space-between' }}>
             {onClear ? (
               <Button type="text" onClick={onClear} disabled={activeCount === 0}>
-                Effacer
+                {t('Effacer')}
               </Button>
             ) : (
               <span />
             )}
             <Button type="primary" onClick={() => setOpen(false)}>
-              Voir les résultats
+              {t('Voir les résultats')}
             </Button>
           </Space>
         }

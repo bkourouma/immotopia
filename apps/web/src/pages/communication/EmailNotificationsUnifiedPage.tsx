@@ -27,6 +27,7 @@ import {
 } from '../../services/email-notification-config-service';
 import { VARIABLES_BY_EVENT_KEY, getEventGroupKey } from '../../constants/email-notification-events';
 import { getVariablePlaceholder } from '../../constants/template-variables';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -59,7 +60,7 @@ export function EmailNotificationsUnifiedPage() {
       form.resetFields();
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
-      message.error(err.response?.data?.message || 'Erreur lors du chargement');
+      message.error(err.response?.data?.message || t('Erreur lors du chargement'));
     } finally {
       setLoading(false);
     }
@@ -127,7 +128,7 @@ export function EmailNotificationsUnifiedPage() {
     try {
       await emailNotificationConfigService.update(tenantId, key, { enabled });
       setItems(prev => prev.map(i => (i.key === key ? { ...i, enabled } : i)));
-      message.success(enabled ? 'Notification activée' : 'Notification désactivée');
+      message.success(enabled ? t('Notification activée') : t('Notification désactivée'));
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
       message.error(err.response?.data?.message || 'Erreur');
@@ -140,7 +141,7 @@ export function EmailNotificationsUnifiedPage() {
       subjectOverride: selectedItem.defaultSubject || '',
       bodyHtmlOverride: selectedItem.defaultBodyHtml || ''
     });
-    message.info('Formulaire rempli avec le template par défaut. Vous pouvez modifier puis enregistrer.');
+    message.info(t('Formulaire rempli avec le template par défaut. Vous pouvez modifier puis enregistrer.'));
   };
 
   const handleSaveTemplate = async () => {
@@ -162,8 +163,8 @@ export function EmailNotificationsUnifiedPage() {
       setApplyToOtherKeys([]);
       message.success(
         keysToUpdate.length > 1
-          ? `Template enregistré pour ${keysToUpdate.length} destinataire(s).`
-          : 'Template enregistré'
+          ? t('Template enregistré pour {{length}} destinataire(s).', { length: keysToUpdate.length })
+          : t('Template enregistré')
       );
       load();
     } catch (e: unknown) {
@@ -179,7 +180,7 @@ export function EmailNotificationsUnifiedPage() {
     if (!tenantId || !selectedItem) return;
     try {
       await emailNotificationConfigService.reset(tenantId, selectedItem.key);
-      message.success('Template réinitialisé');
+      message.success(t('Template réinitialisé'));
       form.setFieldsValue({
         subjectOverride: selectedItem.defaultSubject ?? '',
         bodyHtmlOverride: selectedItem.defaultBodyHtml ?? ''
@@ -199,7 +200,7 @@ export function EmailNotificationsUnifiedPage() {
 
   const columns = [
     {
-      title: 'Événement déclencheur',
+      title: t('Événement déclencheur'),
       key: 'label',
       render: (_: unknown, r: EmailNotificationConfigItem) => (
         <div>
@@ -212,14 +213,14 @@ export function EmailNotificationsUnifiedPage() {
       )
     },
     {
-      title: 'Destinataire',
+      title: t('Destinataire'),
       dataIndex: 'recipientLabel',
       key: 'recipientLabel',
       width: 160,
       render: (val: string) => <Tag color="blue">{val}</Tag>
     },
     {
-      title: 'Activer',
+      title: t('Activer'),
       dataIndex: 'enabled',
       key: 'enabled',
       width: 90,
@@ -228,11 +229,11 @@ export function EmailNotificationsUnifiedPage() {
       )
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
       width: 100,
       render: (_: unknown, record: EmailNotificationConfigItem) => (
-        <Tooltip title="Modifier le template">
+        <Tooltip title={t('Modifier le template')}>
           <Button
             type="link"
             size="small"
@@ -249,7 +250,7 @@ export function EmailNotificationsUnifiedPage() {
               el?.scrollIntoView({ behavior: 'smooth' });
             }}
           >
-            Modifier
+            {t('Modifier')}
           </Button>
         </Tooltip>
       )
@@ -262,7 +263,7 @@ export function EmailNotificationsUnifiedPage() {
         <Space align="center" style={{ marginBottom: 8 }}>
           <MailOutlined style={{ fontSize: 20, color: '#1890ff' }} />
           <Title level={4} style={{ margin: 0 }}>
-            Notifications email
+            {t('Notifications email')}
           </Title>
         </Space>
         <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
@@ -274,10 +275,10 @@ export function EmailNotificationsUnifiedPage() {
 
         <div id="email-notif-edit-section">
           <Text strong style={{ display: 'block', marginBottom: 8 }}>
-            Choisir un événement déclencheur
+            {t('Choisir un événement déclencheur')}
           </Text>
           <Select
-            placeholder="Sélectionner un événement déclencheur"
+            placeholder={t('Sélectionner un événement déclencheur')}
             value={selectedEventGroup ?? undefined}
             onChange={value => handleSelectEvent(value ?? null)}
             allowClear
@@ -294,10 +295,10 @@ export function EmailNotificationsUnifiedPage() {
               <div style={{ marginBottom: 16 }}>
                 <Space align="center" style={{ marginBottom: 8 }}>
                   <UserOutlined style={{ color: '#1890ff' }} />
-                  <Text strong>Destinataires pour cet événement</Text>
+                  <Text strong>{t('Destinataires pour cet événement')}</Text>
                 </Space>
                 <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
-                  Cliquez sur un destinataire pour afficher et modifier le template qui lui est envoyé.
+                  {t('Cliquez sur un destinataire pour afficher et modifier le template qui lui est envoyé.')}
                 </Text>
                 <Space size={8} wrap>
                   {recipientsForSelectedEvent.map(item => (
@@ -319,7 +320,7 @@ export function EmailNotificationsUnifiedPage() {
                     <Text type="secondary">{selectedItem.description}</Text>
                     <br />
                     <Tag color="blue" style={{ marginTop: 6 }}>
-                      Template pour : {selectedItem.recipientLabel}
+                      {t('Template pour :')} {selectedItem.recipientLabel}
                     </Tag>
                   </Card>
 
@@ -329,14 +330,14 @@ export function EmailNotificationsUnifiedPage() {
                     items={[
                       {
                         key: 'default',
-                        label: 'Template par défaut (modèle)',
+                        label: t('Template par défaut (modèle)'),
                         children: (
                           <div
                             style={{ background: '#fff', padding: 12, borderRadius: 8, border: '1px solid #f0f0f0' }}
                           >
                             <div style={{ marginBottom: 12 }}>
                               <Text type="secondary" style={{ fontSize: 12 }}>
-                                Sujet par défaut :
+                                {t('Sujet par défaut :')}
                               </Text>
                               <div
                                 style={{ marginTop: 4, fontFamily: 'monospace', fontSize: 13, wordBreak: 'break-word' }}
@@ -346,7 +347,7 @@ export function EmailNotificationsUnifiedPage() {
                             </div>
                             <div>
                               <Text type="secondary" style={{ fontSize: 12 }}>
-                                Corps HTML par défaut :
+                                {t('Corps HTML par défaut :')}
                               </Text>
                               <div style={{ marginTop: 4 }}>
                                 <HtmlCodeEditor readOnly value={selectedItem.defaultBodyHtml || ''} minHeight={180} />
@@ -358,7 +359,7 @@ export function EmailNotificationsUnifiedPage() {
                               onClick={fillWithDefaultTemplate}
                               style={{ marginTop: 8 }}
                             >
-                              Utiliser ce modèle dans les champs ci-dessous
+                              {t('Utiliser ce modèle dans les champs ci-dessous')}
                             </Button>
                           </div>
                         )
@@ -367,12 +368,12 @@ export function EmailNotificationsUnifiedPage() {
                   />
 
                   <Form form={form} layout="vertical">
-                    <Form.Item name="subjectOverride" label="Sujet personnalisé (vide = sujet par défaut)">
+                    <Form.Item name="subjectOverride" label={t('Sujet personnalisé (vide = sujet par défaut)')}>
                       <Input placeholder="Ex: Nouveau ticket - {{ticketTitle}}" />
                     </Form.Item>
                     <Form.Item
                       name="bodyHtmlOverride"
-                      label="Corps personnalisé HTML (vide = contenu par défaut)"
+                      label={t('Corps personnalisé HTML (vide = contenu par défaut)')}
                       extra="Utilisez les variables ci-dessous avec la syntaxe {{nomVariable}}."
                     >
                       <HtmlCodeEditor placeholder="<p>Bonjour {{contactName}}, ...</p>" minHeight={280} />
@@ -382,10 +383,10 @@ export function EmailNotificationsUnifiedPage() {
                       <Space align="center" style={{ marginBottom: 8 }}>
                         <CodeOutlined />
                         <Text type="secondary" strong>
-                          Variables pour cet événement
+                          {t('Variables pour cet événement')}
                         </Text>
                         <Text type="secondary" style={{ fontSize: 12 }}>
-                          Cliquez pour insérer dans le corps du template.
+                          {t('Cliquez pour insérer dans le corps du template.')}
                         </Text>
                       </Space>
                       <Space size={[4, 4]} wrap>
@@ -416,7 +417,9 @@ export function EmailNotificationsUnifiedPage() {
                           <Text strong>Appliquer ce template à d&apos;autres destinataires</Text>
                         </Space>
                         <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
-                          En enregistrant, appliquer le même sujet et le même corps aux destinataires cochés ci-dessous.
+                          {t(
+                            'En enregistrant, appliquer le même sujet et le même corps aux destinataires cochés ci-dessous.'
+                          )}
                         </Text>
                         <Checkbox.Group
                           value={applyToOtherKeys}
@@ -431,9 +434,9 @@ export function EmailNotificationsUnifiedPage() {
 
                     <Space>
                       <Button type="primary" onClick={handleSaveTemplate} loading={saving}>
-                        Enregistrer
+                        {t('Enregistrer')}
                       </Button>
-                      <Button onClick={handleReset}>Réinitialiser au modèle par défaut</Button>
+                      <Button onClick={handleReset}>{t('Réinitialiser au modèle par défaut')}</Button>
                     </Space>
                   </Form>
                 </>
@@ -442,7 +445,7 @@ export function EmailNotificationsUnifiedPage() {
               {selectedEventGroup && !selectedKey && (
                 <Card size="small" style={{ background: '#fafafa', textAlign: 'center', padding: 24 }}>
                   <Text type="secondary">
-                    Cliquez sur un destinataire ci-dessus pour afficher et modifier son template.
+                    {t('Cliquez sur un destinataire ci-dessus pour afficher et modifier son template.')}
                   </Text>
                 </Card>
               )}
@@ -451,7 +454,7 @@ export function EmailNotificationsUnifiedPage() {
         </div>
       </Card>
 
-      <Card title="Liste des notifications email">
+      <Card title={t('Liste des notifications email')}>
         <Spin spinning={loading}>
           <Table
             scroll={{ x: 'max-content' }}

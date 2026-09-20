@@ -3,13 +3,14 @@ import { BankOutlined, EnvironmentOutlined, FolderOpenOutlined } from '@ant-desi
 import { Button, Card, Space, Tag, Typography } from 'antd';
 import { Link } from 'react-router-dom';
 import { Syndicate } from '../../types/syndic-types';
+import { t } from '../../i18n/t';
 
 const { Paragraph, Text, Title } = Typography;
 
 const statusConfig: Record<Syndicate['status'], { color: string; label: string }> = {
-  ACTIVE: { color: 'green', label: 'Active' },
-  IN_LIQUIDATION: { color: 'orange', label: 'En liquidation' },
-  IN_DISPUTE: { color: 'red', label: 'En litige' }
+  ACTIVE: { color: 'green', label: t('Active') },
+  IN_LIQUIDATION: { color: 'orange', label: t('En liquidation') },
+  IN_DISPUTE: { color: 'red', label: t('En litige') }
 };
 
 interface SyndicateCardProps {
@@ -29,13 +30,13 @@ export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantI
       styles={{ body: { padding: 20 } }}
       actions={[
         <Link key="detail" to={`/tenant/${tenantId}/syndics/${syndicate.id}`}>
-          Voir la fiche
+          {t('Voir la fiche')}
         </Link>,
         <Link key="lots" to={`/tenant/${tenantId}/syndics/${syndicate.id}/lots`}>
-          Voir les lots
+          {t('Voir les lots')}
         </Link>,
         <Button key="delete" type="link" danger loading={deleting} onClick={() => onDelete?.(syndicate.id)}>
-          Supprimer
+          {t('Supprimer')}
         </Button>
       ]}
     >
@@ -60,7 +61,7 @@ export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantI
               <Title level={4} style={{ margin: 0 }}>
                 {syndicate.name}
               </Title>
-              <Text type="secondary">Copropriété</Text>
+              <Text type="secondary">{t('Copropriété')}</Text>
             </div>
           </Space>
           <Tag color={status.color}>{status.label}</Tag>
@@ -78,18 +79,21 @@ export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantI
           <Space size="small">
             <BankOutlined />
             <Text>
-              {syndicate.totalBuildings} bâtiment{syndicate.totalBuildings > 1 ? 's' : ''}
+              {syndicate.totalBuildings} {t('bâtiment')}
+              {syndicate.totalBuildings > 1 ? 's' : ''}
             </Text>
           </Space>
         </Space>
 
         {syndicate.cadastralReference ? (
-          <Text type="secondary">Réf. cadastrale: {syndicate.cadastralReference}</Text>
+          <Text type="secondary">
+            {t('Réf. cadastrale:')} {syndicate.cadastralReference}
+          </Text>
         ) : null}
 
         <Link to={`/tenant/${tenantId}/syndics/${syndicate.id}`}>
           <Button type="primary" block>
-            Ouvrir la copropriété
+            {t('Ouvrir la copropriété')}
           </Button>
         </Link>
       </Space>

@@ -2,6 +2,7 @@ import React from 'react';
 import { Button, Empty, Result, Space, Typography } from 'antd';
 import { ExclamationCircleOutlined, FilterOutlined, LockOutlined, DisconnectOutlined } from '@ant-design/icons';
 import { SkeletonList } from './Skeleton';
+import { t } from '../../i18n/t';
 
 const { Paragraph, Text } = Typography;
 
@@ -46,22 +47,22 @@ export interface StateBlockProps {
 
 const DEFAULTS: Record<StateVariant, { title: string; description: string }> = {
   loading: { title: 'Chargement…', description: '' },
-  empty: { title: 'Aucune donnée', description: 'Rien à afficher pour le moment.' },
+  empty: { title: t('Aucune donnée'), description: t('Rien à afficher pour le moment.') },
   'no-results': {
-    title: 'Aucun résultat',
-    description: 'Aucun élément ne correspond aux filtres appliqués.'
+    title: t('Aucun résultat'),
+    description: t('Aucun élément ne correspond aux filtres appliqués.')
   },
   error: {
-    title: 'Impossible de charger ces données',
-    description: 'Une erreur est survenue. Vous pouvez réessayer.'
+    title: t('Impossible de charger ces données'),
+    description: t('Une erreur est survenue. Vous pouvez réessayer.')
   },
   offline: {
-    title: 'Hors connexion',
-    description: 'Les données affichées peuvent être datées.'
+    title: t('Hors connexion'),
+    description: t('Les données affichées peuvent être datées.')
   },
   forbidden: {
-    title: 'Accès non autorisé',
-    description: 'Votre rôle ne donne pas accès à cette section.'
+    title: t('Accès non autorisé'),
+    description: t('Votre rôle ne donne pas accès à cette section.')
   }
 };
 

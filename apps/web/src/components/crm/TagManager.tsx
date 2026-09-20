@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Input, Tag, Button, Space, Typography, Spin, Empty } from 'antd';
 import { PlusOutlined, TagOutlined, SearchOutlined, CloseOutlined } from '@ant-design/icons';
 import { listTags, assignTag, removeTag, getContactTags, CrmTag } from '../../services/crm-service';
+import { t } from '../../i18n/t';
 
 const { Search } = Input;
 const { Title, Text } = Typography;
@@ -21,7 +22,7 @@ export const TagManager: React.FC<TagManagerProps> = ({
   contactName,
   onClose,
   onTagsUpdated,
-  open = true,
+  open = true
 }) => {
   const [allTags, setAllTags] = useState<CrmTag[]>([]);
   const [contactTags, setContactTags] = useState<CrmTag[]>([]);
@@ -40,7 +41,7 @@ export const TagManager: React.FC<TagManagerProps> = ({
     try {
       const [tagsResponse, contactTagsResponse] = await Promise.all([
         listTags(tenantId),
-        getContactTags(tenantId, contactId),
+        getContactTags(tenantId, contactId)
       ]);
 
       if (tagsResponse.success) {
@@ -50,7 +51,7 @@ export const TagManager: React.FC<TagManagerProps> = ({
         setContactTags(contactTagsResponse.data);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des tags');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des tags'));
     } finally {
       setLoading(false);
     }
@@ -70,7 +71,7 @@ export const TagManager: React.FC<TagManagerProps> = ({
         onTagsUpdated?.();
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de l\'assignation du tag');
+      setError(err.response?.data?.message || t("Erreur lors de l'assignation du tag"));
     } finally {
       setProcessing(null);
     }
@@ -90,37 +91,35 @@ export const TagManager: React.FC<TagManagerProps> = ({
         onTagsUpdated?.();
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de la suppression du tag');
+      setError(err.response?.data?.message || t('Erreur lors de la suppression du tag'));
     } finally {
       setProcessing(null);
     }
   };
 
   const isTagAssigned = (tagId: string) => {
-    return contactTags.some((tag) => tag.id === tagId);
+    return contactTags.some(tag => tag.id === tagId);
   };
 
-  const filteredTags = allTags.filter((tag) =>
-    tag.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredTags = allTags.filter(tag => tag.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
-  const availableTags = filteredTags.filter((tag) => !isTagAssigned(tag.id));
-  const assignedTags = filteredTags.filter((tag) => isTagAssigned(tag.id));
+  const availableTags = filteredTags.filter(tag => !isTagAssigned(tag.id));
+  const assignedTags = filteredTags.filter(tag => isTagAssigned(tag.id));
 
   return (
     <Modal
       title={
         <Space>
           <TagOutlined style={{ color: '#1890ff' }} />
-          <span>Gérer les tags</span>
+          <span>{t('Gérer les tags')}</span>
         </Space>
       }
       open={open}
       onCancel={onClose}
       footer={[
         <Button key="close" onClick={onClose}>
-          Fermer
-        </Button>,
+          {t('Fermer')}
+        </Button>
       ]}
       width={800}
     >
@@ -144,9 +143,9 @@ export const TagManager: React.FC<TagManagerProps> = ({
           <>
             {/* Search */}
             <Search
-              placeholder="Rechercher un tag..."
+              placeholder={t('Rechercher un tag...')}
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={e => setSearchTerm(e.target.value)}
               prefix={<SearchOutlined />}
               allowClear
             />
@@ -156,37 +155,32 @@ export const TagManager: React.FC<TagManagerProps> = ({
               <Title level={5}>
                 <Space>
                   <TagOutlined />
-                  <span>Tags assignés ({contactTags.length})</span>
+                  <span>
+                    {t('Tags assignés (')}
+                    {contactTags.length})
+                  </span>
                 </Space>
               </Title>
               {assignedTags.length === 0 ? (
                 <Empty
                   description={
-                    searchTerm
-                      ? 'Aucun tag assigné ne correspond à votre recherche'
-                      : 'Aucun tag assigné'
+                    searchTerm ? t('Aucun tag assigné ne correspond à votre recherche') : t('Aucun tag assigné')
                   }
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                 />
               ) : (
                 <Space wrap>
-                  {assignedTags.map((tag) => (
+                  {assignedTags.map(tag => (
                     <Tag
                       key={tag.id}
                       color={tag.color || '#1890ff'}
                       closable
                       onClose={() => handleRemoveTag(tag.id)}
-                      closeIcon={
-                        processing === tag.id ? (
-                          <Spin size="small" />
-                        ) : (
-                          <CloseOutlined />
-                        )
-                      }
+                      closeIcon={processing === tag.id ? <Spin size="small" /> : <CloseOutlined />}
                       style={{
                         fontSize: '14px',
                         padding: '4px 12px',
-                        marginBottom: '8px',
+                        marginBottom: '8px'
                       }}
                     >
                       {tag.name}
@@ -201,21 +195,24 @@ export const TagManager: React.FC<TagManagerProps> = ({
               <Title level={5}>
                 <Space>
                   <PlusOutlined />
-                  <span>Tags disponibles ({availableTags.length})</span>
+                  <span>
+                    {t('Tags disponibles (')}
+                    {availableTags.length})
+                  </span>
                 </Space>
               </Title>
               {availableTags.length === 0 ? (
                 <Empty
                   description={
                     searchTerm
-                      ? 'Aucun tag disponible ne correspond à votre recherche'
-                      : 'Tous les tags sont déjà assignés'
+                      ? t('Aucun tag disponible ne correspond à votre recherche')
+                      : t('Tous les tags sont déjà assignés')
                   }
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                 />
               ) : (
                 <Space wrap>
-                  {availableTags.map((tag) => (
+                  {availableTags.map(tag => (
                     <Tag
                       key={tag.id}
                       color={tag.color || '#1890ff'}
@@ -225,7 +222,7 @@ export const TagManager: React.FC<TagManagerProps> = ({
                         marginBottom: '8px',
                         cursor: 'pointer',
                         border: `2px solid ${tag.color || '#1890ff'}`,
-                        backgroundColor: 'transparent',
+                        backgroundColor: 'transparent'
                       }}
                       onClick={() => handleAssignTag(tag.id)}
                       icon={processing === tag.id ? <Spin size="small" /> : <PlusOutlined />}

@@ -9,6 +9,7 @@ import {
   CreateCrmDealRequest,
   UpdateCrmDealRequest
 } from '../../services/crm-service';
+import { t } from '../../i18n/t';
 
 export const DealFormPage: React.FC = () => {
   const { tenantId, dealId } = useParams<{ tenantId: string; dealId?: string }>();
@@ -74,7 +75,7 @@ export const DealFormPage: React.FC = () => {
       <>
         <div className="text-center py-12">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-          <p className="mt-2 text-gray-600">Chargement de l'affaire...</p>
+          <p className="mt-2 text-gray-600">{t("Chargement de l'affaire...")}</p>
         </div>
       </>
     );
@@ -84,7 +85,7 @@ export const DealFormPage: React.FC = () => {
     <>
       <div className="space-y-6">
         <h1 className="text-3xl font-bold text-gray-900">
-          {dealId ? "Modifier l'affaire" : 'Créer une nouvelle affaire'}
+          {dealId ? t("Modifier l'affaire") : t('Créer une nouvelle affaire')}
         </h1>
         <DealForm
           tenantId={tenantId!}

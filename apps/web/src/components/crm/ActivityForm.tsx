@@ -1,19 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Form,
-  Input,
-  Select,
-  Button,
-  DatePicker,
-  Row,
-  Col,
-  Space,
-  Alert,
-} from 'antd';
+import { Form, Input, Select, Button, DatePicker, Row, Col, Space, Alert } from 'antd';
 import dayjs from 'dayjs';
 import { CreateCrmActivityRequest, CrmActivityType, CrmActivityDirection } from '../../types/crm-types';
 import { listContacts, listDeals, getContact, getDeal, CrmContact, CrmDeal } from '../../services/crm-service';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
 
 interface ActivityFormProps {
@@ -31,7 +23,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
   dealId,
   onSubmit,
   onCancel,
-  loading = false,
+  loading = false
 }) => {
   const [formData, setFormData] = useState({
     contactId: contactId || '',
@@ -43,7 +35,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
     outcome: '',
     occurredAt: new Date().toISOString().slice(0, 16),
     nextActionAt: '',
-    nextActionType: '',
+    nextActionType: ''
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -145,12 +137,12 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
 
     // Contact is required
     if (!formData.contactId && !contactId) {
-      newErrors.contactId = 'Le contact est requis';
-      newErrors.submit = 'Vous devez sélectionner un contact pour créer une activité';
+      newErrors.contactId = t('Le contact est requis');
+      newErrors.submit = t('Vous devez sélectionner un contact pour créer une activité');
     }
 
     if (!formData.content.trim()) {
-      newErrors.content = 'Le contenu est requis';
+      newErrors.content = t('Le contenu est requis');
     }
 
     setErrors(newErrors);
@@ -167,7 +159,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
       // contactId is required - it should be validated by now
       const finalContactId = formData.contactId || contactId;
       if (!finalContactId) {
-        throw new Error('Contact ID is required');
+        throw new Error(t('Contact ID is required'));
       }
 
       const submitData: CreateCrmActivityRequest = {
@@ -180,7 +172,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
         outcome: formData.outcome.trim() || undefined,
         occurredAt: formData.occurredAt ? new Date(formData.occurredAt) : undefined,
         nextActionAt: formData.nextActionAt ? new Date(formData.nextActionAt) : undefined,
-        nextActionType: formData.nextActionType.trim() || undefined,
+        nextActionType: formData.nextActionType.trim() || undefined
       };
 
       await onSubmit(submitData);
@@ -194,7 +186,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
       } else if (error.response?.data?.message) {
         setErrors({ submit: error.response.data.message });
       } else {
-        setErrors({ submit: 'Une erreur est survenue lors de l\'enregistrement de l\'activité' });
+        setErrors({ submit: t("Une erreur est survenue lors de l'enregistrement de l'activité") });
       }
     } finally {
       setIsSubmitting(false);
@@ -204,22 +196,22 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
   const handleChange = (field: string, value: string) => {
     // If contact changes, clear deal selection and reload deals for that contact
     if (field === 'contactId') {
-      setFormData((prev) => ({ 
-        ...prev, 
+      setFormData(prev => ({
+        ...prev,
         [field]: value,
-        dealId: '', // Clear deal when contact changes
+        dealId: '' // Clear deal when contact changes
       }));
-      
+
       // Reload deals for the selected contact
       if (value && !dealId) {
         setLoadingDeals(true);
         listDeals(tenantId, { contactId: value, page: 1, limit: 500 })
-          .then((dealsResponse) => {
+          .then(dealsResponse => {
             if (dealsResponse.success) {
               setDeals(dealsResponse.deals);
             }
           })
-          .catch((err) => {
+          .catch(err => {
             console.error('Error loading deals:', err);
           })
           .finally(() => {
@@ -229,12 +221,12 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
         // If no contact selected, load all deals
         setLoadingDeals(true);
         listDeals(tenantId, { page: 1, limit: 500 })
-          .then((dealsResponse) => {
+          .then(dealsResponse => {
             if (dealsResponse.success) {
               setDeals(dealsResponse.deals);
             }
           })
-          .catch((err) => {
+          .catch(err => {
             console.error('Error loading deals:', err);
           })
           .finally(() => {
@@ -242,11 +234,11 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
           });
       }
     } else {
-      setFormData((prev) => ({ ...prev, [field]: value }));
+      setFormData(prev => ({ ...prev, [field]: value }));
     }
 
     if (errors[field]) {
-      setErrors((prev) => {
+      setErrors(prev => {
         const newErrors = { ...prev };
         delete newErrors[field];
         return newErrors;
@@ -256,16 +248,14 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
 
   return (
     <Form onFinish={handleSubmit} layout="vertical">
-      {errors.submit && (
-        <Alert message={errors.submit} type="error" showIcon style={{ marginBottom: 16 }} />
-      )}
+      {errors.submit && <Alert message={errors.submit} type="error" showIcon style={{ marginBottom: 16 }} />}
 
       {/* Contact and Deal Selection - Contact Required, Deal Optional */}
       <Row gutter={16}>
         {!contactId ? (
           <Col xs={24} md={12}>
             <Form.Item
-              label="Contact"
+              label={t('Contact')}
               required
               validateStatus={errors.contactId ? 'error' : ''}
               help={errors.contactId}
@@ -275,18 +265,16 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
               ) : (
                 <Select
                   value={formData.contactId}
-                  onChange={(value) => handleChange('contactId', value)}
-                  placeholder="Sélectionner un contact"
+                  onChange={value => handleChange('contactId', value)}
+                  placeholder={t('Sélectionner un contact')}
                   showSearch
                   filterOption={(input, option) => {
-                    const label = typeof option?.label === 'string' 
-                      ? option.label 
-                      : String(option?.children || '');
+                    const label = typeof option?.label === 'string' ? option.label : String(option?.children || '');
                     return label.toLowerCase().includes(input.toLowerCase());
                   }}
                   optionLabelProp="label"
                 >
-                  {contacts.map((contact) => {
+                  {contacts.map(contact => {
                     const label = `${contact.firstName} ${contact.lastName} ${contact.email ? `(${contact.email})` : ''}`;
                     return (
                       <Select.Option key={contact.id} value={contact.id} label={label}>
@@ -300,7 +288,7 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
           </Col>
         ) : (
           <Col xs={24} md={12}>
-            <Form.Item label="Contact" required>
+            <Form.Item label={t('Contact')} required>
               <Input
                 value={
                   selectedContact
@@ -316,41 +304,42 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
         {!dealId ? (
           <Col xs={24} md={12}>
             <Form.Item
-              label="Affaire (optionnel)"
+              label={t('Affaire (optionnel)')}
               validateStatus={errors.dealId ? 'error' : ''}
-              help={errors.dealId || (!formData.contactId && !contactId ? 'Sélectionnez d\'abord un contact' : '')}
+              help={errors.dealId || (!formData.contactId && !contactId ? t("Sélectionnez d'abord un contact") : '')}
             >
               {loadingDeals ? (
                 <Input placeholder="Chargement..." disabled />
               ) : (
                 <Select
                   value={formData.dealId}
-                  onChange={(value) => handleChange('dealId', value)}
+                  onChange={value => handleChange('dealId', value)}
                   disabled={!formData.contactId && !contactId}
-                  placeholder="Aucune affaire (optionnel)"
+                  placeholder={t('Aucune affaire (optionnel)')}
                   allowClear
                 >
                   {deals.length === 0 && (formData.contactId || contactId) ? (
                     <Select.Option value="" disabled>
-                      Aucune affaire pour ce contact
+                      {t('Aucune affaire pour ce contact')}
                     </Select.Option>
                   ) : (
-                    deals.map((deal) => {
-                      const typeLabel = deal.type === 'ACHAT' ? 'Achat' : 'Location';
+                    deals.map(deal => {
+                      const typeLabel = deal.type === 'ACHAT' ? t('Achat') : t('Location');
                       const stageLabels: Record<string, string> = {
-                        'NEW': 'Nouveau',
-                        'QUALIFIED': 'Qualifié',
-                        'VISIT': 'Visite',
-                        'NEGOTIATION': 'Négociation',
-                        'WON': 'Gagné',
-                        'LOST': 'Perdu',
+                        NEW: t('Nouveau'),
+                        QUALIFIED: t('Qualifié'),
+                        VISIT: t('Visite'),
+                        NEGOTIATION: t('Négociation'),
+                        WON: t('Gagné'),
+                        LOST: t('Perdu')
                       };
                       const budget = deal.budgetMax
-                        ? ` - ${new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(deal.budgetMax)}`
+                        ? ` - ${new Intl.NumberFormat(activeLocale(), { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(deal.budgetMax)}`
                         : '';
                       return (
                         <Select.Option key={deal.id} value={deal.id}>
-                          {typeLabel} - {stageLabels[deal.stage] || deal.stage}{budget}
+                          {typeLabel} - {stageLabels[deal.stage] || deal.stage}
+                          {budget}
                         </Select.Option>
                       );
                     })
@@ -361,25 +350,23 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
           </Col>
         ) : (
           <Col xs={24} md={12}>
-            <Form.Item label="Affaire">
+            <Form.Item label={t('Affaire')}>
               <Input
                 value={
                   selectedDeal
-                    ? `${selectedDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${
-                        (() => {
-                          const stageLabels: Record<string, string> = {
-                            'NEW': 'Nouveau',
-                            'QUALIFIED': 'Qualifié',
-                            'VISIT': 'Visite',
-                            'NEGOTIATION': 'Négociation',
-                            'WON': 'Gagné',
-                            'LOST': 'Perdu',
-                          };
-                          return stageLabels[selectedDeal.stage] || selectedDeal.stage;
-                        })()
-                      }${
+                    ? `${selectedDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${(() => {
+                        const stageLabels: Record<string, string> = {
+                          NEW: 'Nouveau',
+                          QUALIFIED: t('Qualifié'),
+                          VISIT: 'Visite',
+                          NEGOTIATION: t('Négociation'),
+                          WON: t('Gagné'),
+                          LOST: 'Perdu'
+                        };
+                        return stageLabels[selectedDeal.stage] || selectedDeal.stage;
+                      })()}${
                         selectedDeal.budgetMax
-                          ? ` - ${new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(selectedDeal.budgetMax)}`
+                          ? ` - ${new Intl.NumberFormat(activeLocale(), { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(selectedDeal.budgetMax)}`
                           : ''
                       }`
                     : 'Chargement...'
@@ -394,58 +381,53 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
       {/* Activity Type and Direction */}
       <Row gutter={16}>
         <Col xs={24} md={12}>
-          <Form.Item label="Type" required>
+          <Form.Item label={t('Type')} required>
             <Select
               value={formData.activityType}
-              onChange={(value) => handleChange('activityType', value)}
-              placeholder="Sélectionner un type"
+              onChange={value => handleChange('activityType', value)}
+              placeholder={t('Sélectionner un type')}
             >
-              <Select.Option value="CALL">Appel</Select.Option>
-              <Select.Option value="EMAIL">Email</Select.Option>
+              <Select.Option value="CALL">{t('Appel')}</Select.Option>
+              <Select.Option value="EMAIL">{t('Email')}</Select.Option>
               <Select.Option value="SMS">SMS</Select.Option>
-              <Select.Option value="WHATSAPP">WhatsApp</Select.Option>
-              <Select.Option value="VISIT">Visite</Select.Option>
-              <Select.Option value="MEETING">Réunion</Select.Option>
-              <Select.Option value="NOTE">Note</Select.Option>
-              <Select.Option value="TASK">Tâche</Select.Option>
+              <Select.Option value="WHATSAPP">{'WhatsApp'}</Select.Option>
+              <Select.Option value="VISIT">{t('Visite')}</Select.Option>
+              <Select.Option value="MEETING">{t('Réunion')}</Select.Option>
+              <Select.Option value="NOTE">{t('Note')}</Select.Option>
+              <Select.Option value="TASK">{t('Tâche')}</Select.Option>
             </Select>
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item label="Direction">
+          <Form.Item label={t('Direction')}>
             <Select
               value={formData.direction}
-              onChange={(value) => handleChange('direction', value)}
-              placeholder="Sélectionner une direction"
+              onChange={value => handleChange('direction', value)}
+              placeholder={t('Sélectionner une direction')}
             >
-              <Select.Option value="OUT">Sortant</Select.Option>
-              <Select.Option value="IN">Entrant</Select.Option>
-              <Select.Option value="INTERNAL">Interne</Select.Option>
+              <Select.Option value="OUT">{t('Sortant')}</Select.Option>
+              <Select.Option value="IN">{t('Entrant')}</Select.Option>
+              <Select.Option value="INTERNAL">{t('Interne')}</Select.Option>
             </Select>
           </Form.Item>
         </Col>
       </Row>
 
       {/* Subject and Content */}
-      <Form.Item label="Sujet">
+      <Form.Item label={t('Sujet')}>
         <Input
           value={formData.subject}
-          onChange={(e) => handleChange('subject', e.target.value)}
-          placeholder="Sujet de l'activité"
+          onChange={e => handleChange('subject', e.target.value)}
+          placeholder={t("Sujet de l'activité")}
         />
       </Form.Item>
 
-      <Form.Item
-        label="Contenu"
-        required
-        validateStatus={errors.content ? 'error' : ''}
-        help={errors.content}
-      >
+      <Form.Item label={t('Contenu')} required validateStatus={errors.content ? 'error' : ''} help={errors.content}>
         <TextArea
           value={formData.content}
-          onChange={(e) => handleChange('content', e.target.value)}
-          placeholder="Détails de l'activité..."
+          onChange={e => handleChange('content', e.target.value)}
+          placeholder={t("Détails de l'activité...")}
           rows={4}
         />
       </Form.Item>
@@ -453,11 +435,11 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
       {/* Dates and Next Action */}
       <Row gutter={16}>
         <Col xs={24} md={12}>
-          <Form.Item label="Date d'occurrence">
+          <Form.Item label={t("Date d'occurrence")}>
             <DatePicker
               showTime
               value={formData.occurredAt ? dayjs(formData.occurredAt) : null}
-              onChange={(date) => handleChange('occurredAt', date ? date.format('YYYY-MM-DDTHH:mm') : '')}
+              onChange={date => handleChange('occurredAt', date ? date.format('YYYY-MM-DDTHH:mm') : '')}
               style={{ width: '100%' }}
               format="DD/MM/YYYY HH:mm"
             />
@@ -465,11 +447,11 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item label="Prochaine action">
+          <Form.Item label={t('Prochaine action')}>
             <DatePicker
               showTime
               value={formData.nextActionAt ? dayjs(formData.nextActionAt) : null}
-              onChange={(date) => handleChange('nextActionAt', date ? date.format('YYYY-MM-DDTHH:mm') : '')}
+              onChange={date => handleChange('nextActionAt', date ? date.format('YYYY-MM-DDTHH:mm') : '')}
               style={{ width: '100%' }}
               format="DD/MM/YYYY HH:mm"
             />
@@ -479,21 +461,21 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
 
       <Row gutter={16}>
         <Col xs={24} md={12}>
-          <Form.Item label="Résultat">
+          <Form.Item label={t('Résultat')}>
             <Input
               value={formData.outcome}
-              onChange={(e) => handleChange('outcome', e.target.value)}
-              placeholder="Résultat de l'activité"
+              onChange={e => handleChange('outcome', e.target.value)}
+              placeholder={t("Résultat de l'activité")}
             />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item label="Type de prochaine action">
+          <Form.Item label={t('Type de prochaine action')}>
             <Input
               value={formData.nextActionType}
-              onChange={(e) => handleChange('nextActionType', e.target.value)}
-              placeholder="ex: Rappel, Envoyer un devis"
+              onChange={e => handleChange('nextActionType', e.target.value)}
+              placeholder={t('ex: Rappel, Envoyer un devis')}
             />
           </Form.Item>
         </Col>
@@ -504,15 +486,14 @@ export const ActivityForm: React.FC<ActivityFormProps> = ({
         <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
           {onCancel && (
             <Button onClick={onCancel} disabled={isSubmitting || loading}>
-              Annuler
+              {t('Annuler')}
             </Button>
           )}
           <Button type="primary" htmlType="submit" loading={isSubmitting || loading}>
-            Créer l'activité
+            {t("Créer l'activité")}
           </Button>
         </Space>
       </Form.Item>
     </Form>
   );
 };
-

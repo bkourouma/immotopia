@@ -29,7 +29,9 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 /**
@@ -95,17 +97,17 @@ const TONE_PAIEMENT: Record<string, StatusTone> = { DRAFT: 'neutral', VALIDATED:
 
 const MOIS_FR = [
   'janvier',
-  'février',
+  t('février'),
   'mars',
   'avril',
   'mai',
   'juin',
   'juillet',
-  'août',
+  t('août'),
   'septembre',
   'octobre',
   'novembre',
-  'décembre'
+  t('décembre')
 ];
 
 const OPTIONS_MOIS = MOIS_FR.map((libelle, index) => ({
@@ -114,7 +116,7 @@ const OPTIONS_MOIS = MOIS_FR.map((libelle, index) => ({
 }));
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 function libellePeriode(year: number, month: number): string {
@@ -218,10 +220,10 @@ export const BailDeTerrain: React.FC = () => {
       await setSiteLandLease(tenantId, siteARattacher, landLeaseId);
       await queryClient.invalidateQueries({ queryKey: detailKey('land-leases', tenantId, landLeaseId) });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('land-leases', tenantId) });
-      message.success('Chantier rattaché au bail.');
+      message.success(t('Chantier rattaché au bail.'));
       setSiteARattacher(undefined);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'Le rattachement a échoué.');
+      message.error(err?.response?.data?.message || t('Le rattachement a échoué.'));
     } finally {
       setRattachementEnCours(false);
     }
@@ -233,9 +235,9 @@ export const BailDeTerrain: React.FC = () => {
       await setSiteLandLease(tenantId, site.siteId, null);
       await queryClient.invalidateQueries({ queryKey: detailKey('land-leases', tenantId, landLeaseId ?? '') });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('land-leases', tenantId) });
-      message.success(`Chantier « ${site.siteLabel} » détaché du bail.`);
+      message.success(t('Chantier « {{siteLabel}} » détaché du bail.', { siteLabel: site.siteLabel }));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'Le détachement a échoué.');
+      message.error(err?.response?.data?.message || t('Le détachement a échoué.'));
     }
   };
 
@@ -264,13 +266,13 @@ export const BailDeTerrain: React.FC = () => {
         coverageEndDate: finCouverture.format('YYYY-MM-DD')
       });
       await queryClient.invalidateQueries({ queryKey: detailKey('land-lease-payments', tenantId, landLeaseId) });
-      message.success('Paiement enregistré en brouillon.');
+      message.success(t('Paiement enregistré en brouillon.'));
       setDatePaiement(dayjs());
       setMontantPaiement(null);
       setDebutCouverture(null);
       setFinCouverture(null);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'enregistrement du paiement a échoué.");
+      message.error(err?.response?.data?.message || t("L'enregistrement du paiement a échoué."));
     } finally {
       setEnregistrementPaiementEnCours(false);
     }
@@ -284,9 +286,9 @@ export const BailDeTerrain: React.FC = () => {
       // La validation fait bouger le compte du bailleur (§2 du modèle) : le
       // bail lui-même, et sa ligne dans la liste, doivent se recharger.
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('land-leases', tenantId) });
-      message.success('Paiement validé.');
+      message.success(t('Paiement validé.'));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'La validation a échoué.');
+      message.error(err?.response?.data?.message || t('La validation a échoué.'));
     }
   };
 
@@ -305,9 +307,11 @@ export const BailDeTerrain: React.FC = () => {
       await recordLandLeaseAccrual(tenantId, landLeaseId, { periodYear: anneeConstat, periodMonth: moisConstat });
       await queryClient.invalidateQueries({ queryKey: detailKey('land-lease-accruals', tenantId, landLeaseId) });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('land-leases', tenantId) });
-      message.success(`Constatation de ${libellePeriode(anneeConstat, moisConstat)} enregistrée.`);
+      message.success(
+        t('Constatation de {{value}} enregistrée.', { value: libellePeriode(anneeConstat, moisConstat) })
+      );
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'La constatation a échoué.');
+      message.error(err?.response?.data?.message || t('La constatation a échoué.'));
     } finally {
       setConstatationEnCours(false);
     }
@@ -316,23 +320,23 @@ export const BailDeTerrain: React.FC = () => {
   // ---------------------------------------------------------------------
 
   if (!tenantId || !landLeaseId) {
-    return <StateBlock variant="empty" title="Aucun bail sélectionné" />;
+    return <StateBlock variant="empty" title={t('Aucun bail sélectionné')} />;
   }
 
   const filAriane = [
-    { label: 'Finance', to: `/tenant/${tenantId}/finance/baux-terrain` },
-    { label: 'Baux de terrain', to: `/tenant/${tenantId}/finance/baux-terrain` },
-    ...(bail ? [{ label: bail.landLabel }] : [{ label: 'Bail' }])
+    { label: t('Finance'), to: `/tenant/${tenantId}/finance/baux-terrain` },
+    { label: t('Baux de terrain'), to: `/tenant/${tenantId}/finance/baux-terrain` },
+    ...(bail ? [{ label: bail.landLabel }] : [{ label: t('Bail') }])
   ];
 
   if (erreurBail) {
     return (
       <>
-        <PageHeader title="Bail de terrain" breadcrumbs={filAriane} />
+        <PageHeader title={t('Bail de terrain')} breadcrumbs={filAriane} />
         <StateBlock
           variant="error"
-          description="Impossible de charger ce bail."
-          actions={[{ label: 'Réessayer', onClick: () => refetchBail(), primary: true }]}
+          description={t('Impossible de charger ce bail.')}
+          actions={[{ label: t('Réessayer'), onClick: () => refetchBail(), primary: true }]}
         />
       </>
     );
@@ -341,56 +345,58 @@ export const BailDeTerrain: React.FC = () => {
   if (bailEnAttente || !bail) {
     return (
       <>
-        <PageHeader title="Bail de terrain" breadcrumbs={filAriane} />
+        <PageHeader title={t('Bail de terrain')} breadcrumbs={filAriane} />
         <StateBlock variant="loading" />
       </>
     );
   }
 
   const colonnesPaiements: ColumnsType<LandLeasePayment> = [
-    { title: 'Date de paiement', key: 'date', width: 140, render: (_, p) => dateCourte(p.paymentDate) },
+    { title: t('Date de paiement'), key: 'date', width: 140, render: (_, p) => dateCourte(p.paymentDate) },
     {
-      title: 'Période couverte',
+      title: t('Période couverte'),
       key: 'periode',
       render: (_, p) => `${dateCourte(p.coverageStartDate)} – ${dateCourte(p.coverageEndDate)}`
     },
-    { title: 'Montant', key: 'montant', align: 'right', render: (_, p) => <MoneyValue value={p.amount} /> },
-    { title: 'Saisi par', key: 'saisi', render: (_, p) => p.createdByLabel },
+    { title: t('Montant'), key: 'montant', align: 'end', render: (_, p) => <MoneyValue value={p.amount} /> },
+    { title: t('Saisi par'), key: 'saisi', render: (_, p) => p.createdByLabel },
     {
-      title: 'Statut',
+      title: t('Statut'),
       key: 'statut',
       render: (_, p) => (
         <StatusTag status={p.status} tone={TONE_PAIEMENT[p.status]} label={LAND_LEASE_STATUS_LABELS[p.status]} />
       )
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, p) =>
         p.status === 'DRAFT' ? (
           <ConfirmAction
-            title={`Valider le paiement du ${dateCourte(p.paymentDate)} ?`}
-            description="Cette opération est irréversible : une fois validé, ce paiement ne peut plus être modifié, et l'avance versée commence à être consommée mois après mois."
-            okText="Confirmer la validation"
+            title={t('Valider le paiement du {{value}} ?', { value: dateCourte(p.paymentDate) })}
+            description={t(
+              "Cette opération est irréversible : une fois validé, ce paiement ne peut plus être modifié, et l'avance versée commence à être consommée mois après mois."
+            )}
+            okText={t('Confirmer la validation')}
             onConfirm={() => validerPaiement(p)}
           >
-            <Button type="link">Valider</Button>
+            <Button type="link">{t('Valider')}</Button>
           </ConfirmAction>
         ) : null
     }
   ];
 
   const colonnesConstatations: ColumnsType<LandLeaseAccrual> = [
-    { title: 'Période', key: 'periode', width: 160, render: (_, c) => libellePeriode(c.periodYear, c.periodMonth) },
+    { title: t('Période'), key: 'periode', width: 160, render: (_, c) => libellePeriode(c.periodYear, c.periodMonth) },
     {
-      title: 'Montant constaté',
+      title: t('Montant constaté'),
       key: 'montant',
-      align: 'right',
+      align: 'end',
       render: (_, c) => <MoneyValue value={c.amount} />
     },
     {
-      title: 'Imputations',
+      title: t('Imputations'),
       key: 'imputations',
       render: (_, c) =>
         c.allocations.length > 0 ? (
@@ -405,27 +411,29 @@ export const BailDeTerrain: React.FC = () => {
           // Le point de vigilance du PRD : ce n'est pas une ligne manquante,
           // c'est qu'aucun chantier n'était actif sur ce bail à cette date.
           <Text type="secondary">
-            Aucun chantier actif sur ce bail à cette date : charge constatée sans imputation.
+            {t('Aucun chantier actif sur ce bail à cette date : charge constatée sans imputation.')}
           </Text>
         )
     }
   ];
 
   const colonnesSites: ColumnsType<LandLeaseSiteRef> = [
-    { title: 'Chantier', key: 'chantier', render: (_, s) => s.siteLabel },
-    { title: 'Statut', key: 'statut', render: (_, s) => <StatusTag status={s.status} /> },
+    { title: t('Chantier'), key: 'chantier', render: (_, s) => s.siteLabel },
+    { title: t('Statut'), key: 'statut', render: (_, s) => <StatusTag status={s.status} /> },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, s) => (
         <ConfirmAction
-          title={`Détacher « ${s.siteLabel} » de ce bail ?`}
-          description="Ce chantier ne recevra plus d'imputation de charge de ce bail à compter de la prochaine constatation mensuelle."
-          okText="Confirmer le détachement"
+          title={t('Détacher « {{siteLabel}} » de ce bail ?', { siteLabel: s.siteLabel })}
+          description={t(
+            "Ce chantier ne recevra plus d'imputation de charge de ce bail à compter de la prochaine constatation mensuelle."
+          )}
+          okText={t('Confirmer le détachement')}
           onConfirm={() => detacherChantier(s)}
         >
-          <Button type="link">Détacher</Button>
+          <Button type="link">{t('Détacher')}</Button>
         </ConfirmAction>
       )
     }
@@ -450,29 +458,31 @@ export const BailDeTerrain: React.FC = () => {
       >
         {/* Les trois chiffres qui rendent le mécanisme lisible : voir
             l'en-tête de ce fichier. Aucun n'affiche `accountBalance` brut. */}
-        <StatCard label="Payé à ce jour" value={<MoneyValue value={paye} />} />
-        <StatCard label="Consommé à ce jour" value={<MoneyValue value={consomme} />} />
+        <StatCard label={t('Payé à ce jour')} value={<MoneyValue value={paye} />} />
+        <StatCard label={t('Consommé à ce jour')} value={<MoneyValue value={consomme} />} />
         <StatCard
-          label="Reste à consommer"
+          label={t('Reste à consommer')}
           value={<MoneyValue value={resteAConsommer(bail.accountBalance)} />}
           tone="positive"
         />
-        <StatCard label="Loyer annuel" value={<MoneyValue value={bail.annualAmount} />} />
-        <StatCard label="Mensualité" value={<MoneyValue value={bail.monthlyAmount} />} />
+        <StatCard label={t('Loyer annuel')} value={<MoneyValue value={bail.annualAmount} />} />
+        <StatCard label={t('Mensualité')} value={<MoneyValue value={bail.monthlyAmount} />} />
       </div>
 
       <Text type="secondary">
-        Début du bail le {dateCourte(bail.startDate)}
-        {bail.endDate ? `, jusqu'au ${dateCourte(bail.endDate)}` : ' — tacite reconduction'}.
+        {t('Début du bail le')} {dateCourte(bail.startDate)}
+        {bail.endDate ? t(", jusqu'au {{value}}", { value: dateCourte(bail.endDate) }) : t('— tacite reconduction')}.
       </Text>
       <br />
       {/* Le nom du poste, jamais son identifiant (`costCategoryId`) : c'est
           lui qui reçoit le loyer dans le coût des chantiers rattachés (ajout
           au contrat du 19 septembre 2026). */}
-      <Text type="secondary">Loyer imputé au poste « {bail.costCategoryLabel} ».</Text>
+      <Text type="secondary">
+        {t('Loyer imputé au poste «')} {bail.costCategoryLabel} ».
+      </Text>
 
       <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        Chantiers rattachés
+        {t('Chantiers rattachés')}
       </Title>
       <DataView<LandLeaseSiteRef>
         paginated={false}
@@ -481,23 +491,26 @@ export const BailDeTerrain: React.FC = () => {
         page={1}
         pageSize={Math.max(bail.sites.length, 1)}
         onPageChange={() => {}}
-        emptyDescription="Aucun chantier n'est rattaché à ce bail : les prochaines constatations mensuelles seront enregistrées sans imputation tant qu'aucun n'est ajouté ci-dessous."
+        emptyDescription={t(
+          "Aucun chantier n'est rattaché à ce bail : les prochaines constatations mensuelles seront enregistrées sans imputation tant qu'aucun n'est ajouté ci-dessous."
+        )}
         columns={colonnesSites}
         rowKey={s => s.siteId}
-        aria-label="Chantiers rattachés au bail"
+        aria-label={t('Chantiers rattachés au bail')}
         renderCard={s => (
           <DataCard
             title={s.siteLabel}
             aria-label={s.siteLabel}
             status={<StatusTag status={s.status} />}
             primaryAction={{
-              label: 'Détacher',
+              label: t('Détacher'),
               onClick: () =>
                 confirmerAction({
-                  title: `Détacher « ${s.siteLabel} » de ce bail ?`,
-                  description:
-                    "Ce chantier ne recevra plus d'imputation de charge de ce bail à compter de la prochaine constatation mensuelle.",
-                  okText: 'Confirmer le détachement',
+                  title: t('Détacher « {{siteLabel}} » de ce bail ?', { siteLabel: s.siteLabel }),
+                  description: t(
+                    "Ce chantier ne recevra plus d'imputation de charge de ce bail à compter de la prochaine constatation mensuelle."
+                  ),
+                  okText: t('Confirmer le détachement'),
                   onConfirm: () => detacherChantier(s)
                 })
             }}
@@ -509,26 +522,26 @@ export const BailDeTerrain: React.FC = () => {
         <Space wrap align="end" size="middle">
           <div style={{ minWidth: 260 }}>
             <div>
-              <label htmlFor="rattacher-chantier">Rattacher un chantier existant</label>
+              <label htmlFor="rattacher-chantier">{t('Rattacher un chantier existant')}</label>
             </div>
             <Select
               id="rattacher-chantier"
               style={{ width: '100%' }}
-              placeholder="Choisir un chantier"
+              placeholder={t('Choisir un chantier')}
               value={siteARattacher}
               onChange={setSiteARattacher}
               options={optionsRattachement}
-              notFoundContent="Aucun chantier disponible"
+              notFoundContent={t('Aucun chantier disponible')}
             />
           </div>
           <Button type="primary" loading={rattachementEnCours} disabled={!siteARattacher} onClick={rattacherChantier}>
-            Rattacher
+            {t('Rattacher')}
           </Button>
         </Space>
       </Card>
 
       <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        Paiements annuels
+        {t('Paiements annuels')}
       </Title>
       <DataView<LandLeasePayment>
         paginated={false}
@@ -539,32 +552,33 @@ export const BailDeTerrain: React.FC = () => {
         pageSize={Math.max((paiements ?? []).length, 1)}
         onPageChange={() => {}}
         loading={paiementsEnAttente}
-        error={erreurPaiements ? 'Impossible de charger les paiements de ce bail.' : null}
+        error={erreurPaiements ? t('Impossible de charger les paiements de ce bail.') : null}
         onRetry={() => refetchPaiements()}
-        emptyDescription="Aucun paiement n'a encore été saisi pour ce bail."
+        emptyDescription={t("Aucun paiement n'a encore été saisi pour ce bail.")}
         columns={colonnesPaiements}
         rowKey={p => p.id}
-        aria-label="Paiements annuels du bail"
+        aria-label={t('Paiements annuels du bail')}
         renderCard={p => (
           <DataCard
             title={dateCourte(p.paymentDate)}
-            aria-label={`Paiement du ${dateCourte(p.paymentDate)}`}
+            aria-label={t('Paiement du {{value}}', { value: dateCourte(p.paymentDate) })}
             subtitle={`${dateCourte(p.coverageStartDate)} – ${dateCourte(p.coverageEndDate)}`}
             status={
               <StatusTag status={p.status} tone={TONE_PAIEMENT[p.status]} label={LAND_LEASE_STATUS_LABELS[p.status]} />
             }
             highlight={<MoneyValue value={p.amount} />}
-            fields={[{ label: 'Saisi par', value: p.createdByLabel }]}
+            fields={[{ label: t('Saisi par'), value: p.createdByLabel }]}
             primaryAction={
               p.status === 'DRAFT'
                 ? {
                     label: 'Valider',
                     onClick: () =>
                       confirmerAction({
-                        title: `Valider le paiement du ${dateCourte(p.paymentDate)} ?`,
-                        description:
-                          "Cette opération est irréversible : une fois validé, ce paiement ne peut plus être modifié, et l'avance versée commence à être consommée mois après mois.",
-                        okText: 'Confirmer la validation',
+                        title: t('Valider le paiement du {{value}} ?', { value: dateCourte(p.paymentDate) }),
+                        description: t(
+                          "Cette opération est irréversible : une fois validé, ce paiement ne peut plus être modifié, et l'avance versée commence à être consommée mois après mois."
+                        ),
+                        okText: t('Confirmer la validation'),
                         onConfirm: () => validerPaiement(p)
                       })
                   }
@@ -576,12 +590,12 @@ export const BailDeTerrain: React.FC = () => {
 
       <Card style={{ marginTop: 'var(--space-4)' }}>
         <Title level={5} style={{ marginTop: 0 }}>
-          Nouveau paiement annuel
+          {t('Nouveau paiement annuel')}
         </Title>
         <Space wrap size="middle" align="end">
           <div>
             <div>
-              <label htmlFor="paiement-date">Date de paiement</label>
+              <label htmlFor="paiement-date">{t('Date de paiement')}</label>
             </div>
             <DatePicker
               id="paiement-date"
@@ -592,7 +606,7 @@ export const BailDeTerrain: React.FC = () => {
           </div>
           <div>
             <div>
-              <label htmlFor="paiement-montant">Montant</label>
+              <label htmlFor="paiement-montant">{t('Montant')}</label>
             </div>
             <InputNumber
               id="paiement-montant"
@@ -604,13 +618,13 @@ export const BailDeTerrain: React.FC = () => {
           </div>
           <div>
             <div>
-              <label htmlFor="paiement-debut">Début de la période couverte</label>
+              <label htmlFor="paiement-debut">{t('Début de la période couverte')}</label>
             </div>
             <DatePicker id="paiement-debut" format="DD/MM/YYYY" value={debutCouverture} onChange={setDebutCouverture} />
           </div>
           <div>
             <div>
-              <label htmlFor="paiement-fin">Fin de la période couverte</label>
+              <label htmlFor="paiement-fin">{t('Fin de la période couverte')}</label>
             </div>
             <DatePicker
               id="paiement-fin"
@@ -626,13 +640,13 @@ export const BailDeTerrain: React.FC = () => {
             disabled={!peutEnregistrerPaiement}
             onClick={enregistrerPaiement}
           >
-            Enregistrer le paiement
+            {t('Enregistrer le paiement')}
           </Button>
         </Space>
       </Card>
 
       <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        Constatations mensuelles
+        {t('Constatations mensuelles')}
       </Title>
       <DataView<LandLeaseAccrual>
         paginated={false}
@@ -643,12 +657,12 @@ export const BailDeTerrain: React.FC = () => {
         pageSize={Math.max((constatations ?? []).length, 1)}
         onPageChange={() => {}}
         loading={constatationsEnAttente}
-        error={erreurConstatations ? 'Impossible de charger les constatations de ce bail.' : null}
+        error={erreurConstatations ? t('Impossible de charger les constatations de ce bail.') : null}
         onRetry={() => refetchConstatations()}
-        emptyDescription="Aucun mois n'a encore été constaté pour ce bail."
+        emptyDescription={t("Aucun mois n'a encore été constaté pour ce bail.")}
         columns={colonnesConstatations}
         rowKey={c => c.id}
-        aria-label="Constatations mensuelles du bail"
+        aria-label={t('Constatations mensuelles du bail')}
         renderCard={c => (
           <DataCard
             title={libellePeriode(c.periodYear, c.periodMonth)}
@@ -660,7 +674,7 @@ export const BailDeTerrain: React.FC = () => {
                     label: a.siteLabel,
                     value: <MoneyValue value={a.amount} />
                   }))
-                : [{ label: 'Imputations', value: 'Aucun chantier actif sur ce bail à cette date' }]
+                : [{ label: 'Imputations', value: t('Aucun chantier actif sur ce bail à cette date') }]
             }
           />
         )}
@@ -668,16 +682,17 @@ export const BailDeTerrain: React.FC = () => {
 
       <Card style={{ marginTop: 'var(--space-4)' }}>
         <Title level={5} style={{ marginTop: 0 }}>
-          Constater un mois à la main
+          {t('Constater un mois à la main')}
         </Title>
         <Text type="secondary">
-          À n'utiliser que si le travail programmé du 1er du mois n'a pas tourné : rejouer un mois déjà constaté ne
-          double rien.
+          {t(
+            "À n'utiliser que si le travail programmé du 1er du mois n'a pas tourné : rejouer un mois déjà constaté ne double rien."
+          )}
         </Text>
         <Space wrap size="middle" align="end" style={{ marginTop: 'var(--space-3)' }}>
           <div>
             <div>
-              <label htmlFor="constat-annee">Année</label>
+              <label htmlFor="constat-annee">{t('Année')}</label>
             </div>
             <InputNumber
               id="constat-annee"
@@ -690,7 +705,7 @@ export const BailDeTerrain: React.FC = () => {
           </div>
           <div>
             <div>
-              <label htmlFor="constat-mois">Mois</label>
+              <label htmlFor="constat-mois">{t('Mois')}</label>
             </div>
             <Select
               id="constat-mois"
@@ -706,7 +721,7 @@ export const BailDeTerrain: React.FC = () => {
             disabled={!anneeConstat || !moisConstat}
             onClick={constaterMois}
           >
-            Constater ce mois
+            {t('Constater ce mois')}
           </Button>
         </Space>
       </Card>

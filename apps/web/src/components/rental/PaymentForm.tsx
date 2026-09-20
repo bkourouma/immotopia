@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { App, Form, Input, Select, Button, Row, Col, Alert, InputNumber, Space } from 'antd';
 import { CreatePaymentRequest, RentalPaymentMethod } from '../../services/rental-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { t } from '../../i18n/t';
 
 interface PaymentFormProps {
   tenantId: string;
@@ -73,7 +74,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
         setErrors({ submit: errorMsg });
         message.error(errorMsg);
       } else {
-        const errorMsg = "Une erreur est survenue lors de l'enregistrement du paiement";
+        const errorMsg = t("Une erreur est survenue lors de l'enregistrement du paiement");
         setErrors({ submit: errorMsg });
         message.error(errorMsg);
       }
@@ -95,7 +96,7 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
     >
       {errors.submit && (
         <Alert
-          message="Erreur"
+          message={t('Erreur')}
           description={errors.submit}
           type="error"
           showIcon
@@ -107,32 +108,32 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
       <Row gutter={16}>
         <Col xs={24} md={12}>
           <Form.Item
-            label="Méthode de paiement"
+            label={t('Méthode de paiement')}
             name="method"
             required
-            rules={[{ required: true, message: 'La méthode de paiement est requise' }]}
+            rules={[{ required: true, message: t('La méthode de paiement est requise') }]}
           >
             <Select>
-              <Select.Option value={RentalPaymentMethod.CASH}>Espèces</Select.Option>
-              <Select.Option value={RentalPaymentMethod.BANK_TRANSFER}>Virement bancaire</Select.Option>
-              <Select.Option value={RentalPaymentMethod.CHECK}>Chèque</Select.Option>
-              <Select.Option value={RentalPaymentMethod.MOBILE_MONEY}>Mobile Money</Select.Option>
-              <Select.Option value={RentalPaymentMethod.CARD}>Carte bancaire</Select.Option>
-              <Select.Option value={RentalPaymentMethod.OTHER}>Autre</Select.Option>
+              <Select.Option value={RentalPaymentMethod.CASH}>{t('Espèces')}</Select.Option>
+              <Select.Option value={RentalPaymentMethod.BANK_TRANSFER}>{t('Virement bancaire')}</Select.Option>
+              <Select.Option value={RentalPaymentMethod.CHECK}>{t('Chèque')}</Select.Option>
+              <Select.Option value={RentalPaymentMethod.MOBILE_MONEY}>{t('Mobile Money')}</Select.Option>
+              <Select.Option value={RentalPaymentMethod.CARD}>{t('Carte bancaire')}</Select.Option>
+              <Select.Option value={RentalPaymentMethod.OTHER}>{t('Autre')}</Select.Option>
             </Select>
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
           <Form.Item
-            label="Montant"
+            label={t('Montant')}
             name="amount"
             required
             validateStatus={errors.amount ? 'error' : ''}
             help={errors.amount}
             rules={[
-              { required: true, message: 'Le montant est requis' },
-              { type: 'number', min: 0.01, message: 'Le montant doit être supérieur à 0' }
+              { required: true, message: t('Le montant est requis') },
+              { type: 'number', min: 0.01, message: t('Le montant doit être supérieur à 0') }
             ]}
           >
             <InputNumber
@@ -148,13 +149,13 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                   return isNaN(num) ? 0 : num;
                 }) as (displayValue: string | undefined) => number
               }
-              placeholder="Ex: 150000"
+              placeholder={t('Ex: 150000')}
             />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item label="Devise" name="currency">
+          <Form.Item label={t('Devise')} name="currency">
             <Select>
               <Select.Option value="FCFA">FCFA</Select.Option>
               <Select.Option value="EUR">EUR</Select.Option>
@@ -167,53 +168,53 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
           <>
             <Col xs={24} md={12}>
               <Form.Item
-                label="Opérateur"
+                label={t('Opérateur')}
                 name="mmOperator"
                 required
                 validateStatus={errors.mmOperator ? 'error' : ''}
                 help={errors.mmOperator}
-                rules={[{ required: true, message: "L'opérateur mobile money est requis" }]}
+                rules={[{ required: true, message: t("L'opérateur mobile money est requis") }]}
               >
-                <Select placeholder="Sélectionner un opérateur">
-                  <Select.Option value="ORANGE">Orange Money</Select.Option>
-                  <Select.Option value="MTN">MTN Mobile Money</Select.Option>
-                  <Select.Option value="MOOV">Moov Money</Select.Option>
-                  <Select.Option value="WAVE">Wave</Select.Option>
-                  <Select.Option value="OTHER">Autre</Select.Option>
+                <Select placeholder={t('Sélectionner un opérateur')}>
+                  <Select.Option value="ORANGE">{'Orange Money'}</Select.Option>
+                  <Select.Option value="MTN">{'MTN Mobile Money'}</Select.Option>
+                  <Select.Option value="MOOV">{'Moov Money'}</Select.Option>
+                  <Select.Option value="WAVE">{'Wave'}</Select.Option>
+                  <Select.Option value="OTHER">{t('Autre')}</Select.Option>
                 </Select>
               </Form.Item>
             </Col>
 
             <Col xs={24} md={12}>
               <Form.Item
-                label="Numéro de téléphone"
+                label={t('Numéro de téléphone')}
                 name="mmPhone"
                 required
                 validateStatus={errors.mmPhone ? 'error' : ''}
                 help={errors.mmPhone}
-                rules={[{ required: true, message: 'Le numéro de téléphone est requis' }]}
+                rules={[{ required: true, message: t('Le numéro de téléphone est requis') }]}
               >
-                <Input type="tel" placeholder="+225 XX XX XX XX XX" />
+                <Input type="tel" placeholder={t('+225 XX XX XX XX XX')} />
               </Form.Item>
             </Col>
           </>
         )}
 
         <Col xs={24} md={12}>
-          <Form.Item label="PSP (optionnel)" name="pspName">
-            <Input placeholder="Nom du prestataire de services de paiement" />
+          <Form.Item label={t('PSP (optionnel)')} name="pspName">
+            <Input placeholder={t('Nom du prestataire de services de paiement')} />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item label="ID Transaction PSP (optionnel)" name="pspTransactionId">
-            <Input placeholder="ID de transaction" />
+          <Form.Item label={t('ID Transaction PSP (optionnel)')} name="pspTransactionId">
+            <Input placeholder={t('ID de transaction')} />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item label="Référence PSP (optionnel)" name="pspReference">
-            <Input placeholder="Référence PSP" />
+          <Form.Item label={t('Référence PSP (optionnel)')} name="pspReference">
+            <Input placeholder={t('Référence PSP')} />
           </Form.Item>
         </Col>
       </Row>
@@ -222,11 +223,11 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
         <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
           {onCancel && (
             <Button onClick={onCancel} disabled={isSubmitting || loading}>
-              Annuler
+              {t('Annuler')}
             </Button>
           )}
           <Button type="primary" htmlType="submit" loading={isSubmitting || loading}>
-            Enregistrer le paiement
+            {t('Enregistrer le paiement')}
           </Button>
         </Space>
       </Form.Item>

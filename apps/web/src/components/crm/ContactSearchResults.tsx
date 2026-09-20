@@ -1,6 +1,7 @@
 import React from 'react';
 import { Table, Tag, Typography } from 'antd';
 import type { ContactSearchResultItem } from '../../services/contact-search.service';
+import { t as translate } from '../../i18n/t';
 
 interface ContactSearchResultsProps {
   contacts: ContactSearchResultItem[];
@@ -45,40 +46,40 @@ export function ContactSearchResults({
 
   const columns = [
     {
-      title: 'Nom',
+      title: translate('Nom'),
       key: 'name',
       render: (_: unknown, r: ContactSearchResultItem) => `${r.firstName} ${r.lastName}`.trim() || '—'
     },
     {
-      title: 'Email',
+      title: translate('Email'),
       dataIndex: 'email',
       key: 'email',
       render: (v: string) => <Typography.Text copyable>{v}</Typography.Text>
     },
     {
-      title: 'Téléphone',
+      title: translate('Téléphone'),
       key: 'phone',
       render: (_: unknown, r: ContactSearchResultItem) => r.phonePrimary || r.whatsappNumber || '—'
     },
     {
-      title: 'Statut',
+      title: translate('Statut'),
       dataIndex: 'status',
       key: 'status',
       render: (s: string) => <Tag>{s}</Tag>
     },
     {
-      title: 'Maturité',
+      title: translate('Maturité'),
       dataIndex: 'maturityLevel',
       key: 'maturityLevel',
       render: (v: string) => (v ? <Tag color="blue">{v}</Tag> : '—')
     },
     {
-      title: 'Commune',
+      title: translate('Commune'),
       key: 'commune',
       render: (_: unknown, r: ContactSearchResultItem) => r.commune?.name ?? '—'
     },
     {
-      title: 'Tags',
+      title: translate('Tags'),
       key: 'tags',
       render: (_: unknown, r: ContactSearchResultItem) =>
         r.tags?.length

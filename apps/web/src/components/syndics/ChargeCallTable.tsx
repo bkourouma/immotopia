@@ -3,14 +3,16 @@ import { Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { ChargeCall, ChargeCallStatus } from '../../types/syndic-types';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text } = Typography;
 
 const statusConfig: Record<ChargeCallStatus, { color: string; label: string }> = {
-  PENDING: { color: 'gold', label: 'En attente' },
-  PARTIAL: { color: 'blue', label: 'Partiel' },
-  PAID: { color: 'green', label: 'Paye' },
-  OVERDUE: { color: 'red', label: 'En retard' },
+  PENDING: { color: 'gold', label: t('En attente') },
+  PARTIAL: { color: 'blue', label: t('Partiel') },
+  PAID: { color: 'green', label: t('Paye') },
+  OVERDUE: { color: 'red', label: t('En retard') }
 };
 
 function buildLotLabel(item: ChargeCall): string {
@@ -30,11 +32,11 @@ function recurrenceLabel(item: ChargeCall): string {
   const frequencyMap: Record<'MONTHLY' | 'QUARTERLY' | 'ANNUAL', string> = {
     MONTHLY: 'Mensuelle',
     QUARTERLY: 'Trimestrielle',
-    ANNUAL: 'Annuelle',
+    ANNUAL: 'Annuelle'
   };
   const frequency = item.recurrenceFrequency ? frequencyMap[item.recurrenceFrequency] : 'Recurrente';
   const occurrences = item.recurrenceCount ? ` (${item.recurrenceCount} occ.)` : '';
-  return `Oui - ${frequency}${occurrences}`;
+  return t('Oui - {{frequency}}{{occurrences}}', { frequency: frequency, occurrences: occurrences });
 }
 
 interface ChargeCallTableProps {
@@ -45,50 +47,45 @@ interface ChargeCallTableProps {
 export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({ items, loading = false }) => {
   const columns: ColumnsType<ChargeCall> = [
     {
-      title: 'Periode',
+      title: t('Periode'),
       dataIndex: 'period',
       key: 'period',
-      render: (value: string) => <Text strong>{value}</Text>,
+      render: (value: string) => <Text strong>{value}</Text>
     },
     {
-      title: 'Lot',
+      title: t('Lot'),
       dataIndex: ['lot', 'lotNumber'],
       key: 'lotNumber',
-      render: (_: unknown, item: ChargeCall) => buildLotLabel(item),
+      render: (_: unknown, item: ChargeCall) => buildLotLabel(item)
     },
     {
-      title: 'Montant',
+      title: t('Montant'),
       key: 'amount',
-      render: (_: unknown, item: ChargeCall) =>
-        `${Number(item.amount).toLocaleString('fr-FR')} ${item.currency}`,
+      render: (_: unknown, item: ChargeCall) => `${Number(item.amount).toLocaleString(activeLocale())} ${item.currency}`
     },
     {
-      title: 'Echeance',
+      title: t('Echeance'),
       dataIndex: 'dueDate',
       key: 'dueDate',
       render: (value: string, item: ChargeCall) => {
         const isLate = dayjs(value).isBefore(dayjs(), 'day') && item.status !== 'PAID';
-        return (
-          <Text type={isLate ? 'danger' : undefined}>
-            {dayjs(value).format('DD/MM/YYYY')}
-          </Text>
-        );
-      },
+        return <Text type={isLate ? 'danger' : undefined}>{dayjs(value).format('DD/MM/YYYY')}</Text>;
+      }
     },
     {
-      title: 'Charge récurrente',
+      title: t('Charge récurrente'),
       key: 'isRecurring',
-      render: (_: unknown, item: ChargeCall) => recurrenceLabel(item),
+      render: (_: unknown, item: ChargeCall) => recurrenceLabel(item)
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
       render: (value: ChargeCallStatus) => {
         const config = statusConfig[value];
         return <Tag color={config.color}>{config.label}</Tag>;
-      },
-    },
+      }
+    }
   ];
 
   return (
@@ -103,4 +100,3 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({ items, loading
     />
   );
 };
-

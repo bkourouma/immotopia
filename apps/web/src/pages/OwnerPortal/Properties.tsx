@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { PropertyCard } from '../../components/OwnerPortal/PropertyCard';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -34,30 +35,30 @@ interface PropertiesData {
 }
 
 const propertyTypeOptions = [
-  { value: '', label: 'Tous les types' },
-  { value: 'APPARTEMENT', label: 'Appartement' },
-  { value: 'MAISON_VILLA', label: 'Maison / Villa' },
-  { value: 'STUDIO', label: 'Studio' },
-  { value: 'DUPLEX_TRIPLEX', label: 'Duplex / Triplex' },
-  { value: 'BUREAU', label: 'Bureau' },
-  { value: 'BOUTIQUE_COMMERCIAL', label: 'Boutique / Commercial' },
-  { value: 'TERRAIN', label: 'Terrain' }
+  { value: '', label: t('Tous les types') },
+  { value: 'APPARTEMENT', label: t('Appartement') },
+  { value: 'MAISON_VILLA', label: t('Maison / Villa') },
+  { value: 'STUDIO', label: t('Studio') },
+  { value: 'DUPLEX_TRIPLEX', label: t('Duplex / Triplex') },
+  { value: 'BUREAU', label: t('Bureau') },
+  { value: 'BOUTIQUE_COMMERCIAL', label: t('Boutique / Commercial') },
+  { value: 'TERRAIN', label: t('Terrain') }
 ];
 
 const statusOptions = [
-  { value: '', label: 'Tous les statuts' },
-  { value: 'AVAILABLE', label: 'Disponible' },
-  { value: 'RENTED', label: 'Loué' },
-  { value: 'UNDER_REVIEW', label: 'En révision' },
-  { value: 'RESERVED', label: 'Réservé' },
-  { value: 'UNDER_OFFER', label: 'Sous offre' }
+  { value: '', label: t('Tous les statuts') },
+  { value: 'AVAILABLE', label: t('Disponible') },
+  { value: 'RENTED', label: t('Loué') },
+  { value: 'UNDER_REVIEW', label: t('En révision') },
+  { value: 'RESERVED', label: t('Réservé') },
+  { value: 'UNDER_OFFER', label: t('Sous offre') }
 ];
 
 const transactionModeOptions = [
-  { value: '', label: 'Tous les modes' },
-  { value: 'RENTAL', label: 'Location' },
-  { value: 'SALE', label: 'Vente' },
-  { value: 'SHORT_TERM', label: 'Location courte durée' }
+  { value: '', label: t('Tous les modes') },
+  { value: 'RENTAL', label: t('Location') },
+  { value: 'SALE', label: t('Vente') },
+  { value: 'SHORT_TERM', label: t('Location courte durée') }
 ];
 
 export default function Properties() {
@@ -88,10 +89,10 @@ export default function Properties() {
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
-        setError('Erreur lors du chargement des propriétés');
+        setError(t('Erreur lors du chargement des propriétés'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des propriétés');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des propriétés'));
     } finally {
       setLoading(false);
     }
@@ -100,17 +101,17 @@ export default function Properties() {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement des propriétés..." />
+        <Spin size="large" tip={t('Chargement des propriétés...')} />
       </div>
     );
   }
 
   if (error) {
-    return <Alert message="Erreur" description={error} type="error" showIcon />;
+    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   if (!data) {
-    return <Empty description="Aucune propriété disponible" />;
+    return <Empty description={t('Aucune propriété disponible')} />;
   }
 
   return (
@@ -118,16 +119,16 @@ export default function Properties() {
       {/* Page Header */}
       <div className="it-toolbar">
         <div>
-          <Title level={2}>Mes propriétés</Title>
-          <Text type="secondary">Gérez votre portefeuille immobilier</Text>
+          <Title level={2}>{t('Mes propriétés')}</Title>
+          <Text type="secondary">{t('Gérez votre portefeuille immobilier')}</Text>
         </div>
         <Button
           icon={<SyncOutlined />}
           onClick={loadProperties}
           loading={loading}
-          aria-label="Rafraîchir les propriétés"
+          aria-label={t('Rafraîchir les propriétés')}
         >
-          Actualiser
+          {t('Actualiser')}
         </Button>
       </div>
 
@@ -135,7 +136,7 @@ export default function Properties() {
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
           <StatCard
-            title="Total"
+            title={t('Total')}
             value={data.summary.total}
             icon={<BankOutlined style={{ color: '#1890ff' }} />}
             valueStyle={{ fontSize: 24 }}
@@ -143,7 +144,7 @@ export default function Properties() {
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <StatCard
-            title="Louées"
+            title={t('Louées')}
             value={data.summary.rented}
             icon={<HomeOutlined style={{ color: '#52c41a' }} />}
             valueStyle={{ fontSize: 24, color: '#52c41a' }}
@@ -151,7 +152,7 @@ export default function Properties() {
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <StatCard
-            title="Disponibles"
+            title={t('Disponibles')}
             value={data.summary.available}
             icon={<HomeOutlined style={{ color: '#1890ff' }} />}
             valueStyle={{ fontSize: 24, color: '#1890ff' }}
@@ -159,7 +160,7 @@ export default function Properties() {
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <StatCard
-            title="En maintenance"
+            title={t('En maintenance')}
             value={data.summary.inMaintenance}
             icon={<ToolOutlined style={{ color: '#faad14' }} />}
             valueStyle={{ fontSize: 24, color: '#faad14' }}
@@ -168,11 +169,11 @@ export default function Properties() {
       </Row>
 
       {/* Filters (T046) */}
-      <Card title="Filtres">
+      <Card title={t('Filtres')}>
         <Space wrap>
           <Select
             style={{ width: 200 }}
-            placeholder="Statut"
+            placeholder={t('Statut')}
             value={filters.status || undefined}
             onChange={value => setFilters({ ...filters, status: value || '' })}
             allowClear
@@ -186,7 +187,7 @@ export default function Properties() {
 
           <Select
             style={{ width: 200 }}
-            placeholder="Type de propriété"
+            placeholder={t('Type de propriété')}
             value={filters.propertyType || undefined}
             onChange={value => setFilters({ ...filters, propertyType: value || '' })}
             allowClear
@@ -200,7 +201,7 @@ export default function Properties() {
 
           <Select
             style={{ width: 200 }}
-            placeholder="Mode de transaction"
+            placeholder={t('Mode de transaction')}
             value={filters.transactionMode || undefined}
             onChange={value => setFilters({ ...filters, transactionMode: value || '' })}
             allowClear
@@ -225,7 +226,7 @@ export default function Properties() {
             ))}
           </Row>
         ) : (
-          <Empty description="Aucune propriété trouvée avec ces filtres" />
+          <Empty description={t('Aucune propriété trouvée avec ces filtres')} />
         )}
       </div>
     </Space>

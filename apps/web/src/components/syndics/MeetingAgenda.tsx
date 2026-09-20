@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Button, Card, Empty, Select, Space, Typography } from 'antd';
 import { MeetingResolution, SyndicateLot, VoteChoice } from '../../types/syndic-types';
+import { t } from '../../i18n/t';
 
 const { Paragraph, Text, Title } = Typography;
 
@@ -18,21 +19,21 @@ export const MeetingAgenda: React.FC<MeetingAgendaProps> = ({ resolutions, lots,
   // below, so the hook order changed as soon as resolutions became non-empty.
   const lotOptions = useMemo(
     () =>
-      lots.map((lot) => ({
+      lots.map(lot => ({
         value: lot.id,
-        label: `${lot.lotNumber} (${lot.lotType})`,
+        label: `${lot.lotNumber} (${lot.lotType})`
       })),
     [lots]
   );
 
   if (resolutions.length === 0) {
-    return <Empty description="Aucune resolution enregistree" />;
+    return <Empty description={t('Aucune resolution enregistree')} />;
   }
 
   const getSelectedLotId = (resolutionId: string) => selectedLotsByResolution[resolutionId] || lots[0]?.id;
 
   const handleSelectLot = (resolutionId: string, lotId: string) => {
-    setSelectedLotsByResolution((prev) => ({ ...prev, [resolutionId]: lotId }));
+    setSelectedLotsByResolution(prev => ({ ...prev, [resolutionId]: lotId }));
   };
 
   const handleVoteClick = async (resolutionId: string, vote: VoteChoice) => {
@@ -47,43 +48,49 @@ export const MeetingAgenda: React.FC<MeetingAgendaProps> = ({ resolutions, lots,
         <Card key={resolution.id}>
           <Space direction="vertical" size={8} style={{ width: '100%' }}>
             <Title level={5} style={{ margin: 0 }}>
-              Resolution {index + 1}: {resolution.title}
+              {t('Resolution')} {index + 1}: {resolution.title}
             </Title>
             {resolution.description ? <Paragraph type="secondary">{resolution.description}</Paragraph> : null}
             <Space>
               <Text type="secondary">Majorite:</Text>
-              <Text>{resolution.majorityRule || 'Simple'}</Text>
+              <Text>{resolution.majorityRule || t('Simple')}</Text>
             </Space>
             <Space>
               <Text type="secondary">Votes:</Text>
-              <Text>Pour {resolution.votesFor}</Text>
-              <Text>Contre {resolution.votesAgainst}</Text>
-              <Text>Abstention {resolution.votesAbstain}</Text>
+              <Text>
+                {t('Pour')} {resolution.votesFor}
+              </Text>
+              <Text>
+                {t('Contre')} {resolution.votesAgainst}
+              </Text>
+              <Text>
+                {t('Abstention')} {resolution.votesAbstain}
+              </Text>
             </Space>
 
             {lots.length > 0 ? (
               <Space wrap>
-                <Text type="secondary">Lot votant :</Text>
+                <Text type="secondary">{t('Lot votant :')}</Text>
                 <Select
                   size="small"
                   style={{ minWidth: 220 }}
                   value={getSelectedLotId(resolution.id)}
                   options={lotOptions}
-                  onChange={(value) => handleSelectLot(resolution.id, value)}
+                  onChange={value => handleSelectLot(resolution.id, value)}
                   disabled={voting}
                 />
                 <Button size="small" onClick={() => void handleVoteClick(resolution.id, 'FOR')} loading={voting}>
-                  Pour
+                  {t('Pour')}
                 </Button>
                 <Button size="small" onClick={() => void handleVoteClick(resolution.id, 'AGAINST')} loading={voting}>
-                  Contre
+                  {t('Contre')}
                 </Button>
                 <Button size="small" onClick={() => void handleVoteClick(resolution.id, 'ABSTAIN')} loading={voting}>
-                  Abstention
+                  {t('Abstention')}
                 </Button>
               </Space>
             ) : (
-              <Text type="secondary">Aucun lot disponible pour voter.</Text>
+              <Text type="secondary">{t('Aucun lot disponible pour voter.')}</Text>
             )}
           </Space>
         </Card>

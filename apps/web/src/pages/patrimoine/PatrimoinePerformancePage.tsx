@@ -7,6 +7,7 @@ import { getPatrimoinePerformance } from '../../services/patrimoine-service';
 import { listProperties } from '../../services/property-service';
 import type { PropertyYieldData } from '../../types/patrimoine-types';
 import { useAuth } from '../../hooks/useAuth';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -102,7 +103,7 @@ export const PatrimoinePerformancePage: React.FC = () => {
           projection: result.projection
         });
       } catch (e: any) {
-        setError(e?.response?.data?.error || 'Erreur chargement performance');
+        setError(e?.response?.data?.error || t('Erreur chargement performance'));
       } finally {
         setLoading(false);
       }
@@ -115,14 +116,14 @@ export const PatrimoinePerformancePage: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
           <Title level={2} style={{ marginBottom: 0 }}>
-            Performance Patrimoine
+            {t('Performance Patrimoine')}
           </Title>
-          <Text type="secondary">Rendement brut, net, net-net et projection</Text>
+          <Text type="secondary">{t('Rendement brut, net, net-net et projection')}</Text>
         </div>
 
         <Select
           allowClear
-          placeholder="Sélectionnez un bien"
+          placeholder={t('Sélectionnez un bien')}
           style={{ width: '100%' }}
           showSearch
           optionFilterProp="label"
@@ -135,7 +136,7 @@ export const PatrimoinePerformancePage: React.FC = () => {
         />
 
         {!propertyId ? (
-          <Alert type="info" showIcon message="Sélectionnez un bien pour afficher la performance." />
+          <Alert type="info" showIcon message={t('Sélectionnez un bien pour afficher la performance.')} />
         ) : null}
         {loading ? (
           <div style={{ textAlign: 'center', padding: '24px 0' }}>

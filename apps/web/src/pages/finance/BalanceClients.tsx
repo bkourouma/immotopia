@@ -20,6 +20,7 @@ import {
   FilterSheet,
   StatCard
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
 /**
  * Balance clients — récit 1 du lot 1 (specs/016-finance-operationnelle/spec.md).
@@ -123,41 +124,41 @@ export const BalanceClients: React.FC = () => {
     navigate(`/tenant/${tenantId}/finance/comptes/${ligne.accountId}`);
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const colonnes: ColumnsType<ClientsBalanceLine> = [
-    { title: 'Locataire', key: 'locataire', render: (_, l) => l.label },
+    { title: t('Locataire'), key: 'locataire', render: (_, l) => l.label },
     {
-      title: 'Biens',
+      title: t('Biens'),
       key: 'biens',
       render: (_, l) => (l.propertyLabels.length > 0 ? l.propertyLabels.join(' · ') : '—')
     },
     {
-      title: 'Facturé',
+      title: t('Facturé'),
       key: 'facture',
-      align: 'right',
+      align: 'end',
       render: (_, l) => <MoneyValue value={l.totalBilled} />
     },
     {
-      title: 'Réglé',
+      title: t('Réglé'),
       key: 'regle',
-      align: 'right',
+      align: 'end',
       render: (_, l) => <MoneyValue value={l.totalSettled} />
     },
     {
-      title: 'Solde',
+      title: t('Solde'),
       key: 'solde',
-      align: 'right',
+      align: 'end',
       render: (_, l) => <MoneyValue value={l.balance} signed />
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, l) => (
         <Button type="link" onClick={() => ouvrirReleve(l)}>
-          Voir le relevé
+          {t('Voir le relevé')}
         </Button>
       )
     }
@@ -166,7 +167,7 @@ export const BalanceClients: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Balance clients"
+        title={t('Balance clients')}
         subtitle={lignes.length > 0 ? `${lignes.length} locataire${lignes.length > 1 ? 's' : ''}` : undefined}
         primaryAction={{ label: 'Exporter', icon: <DownloadOutlined />, onClick: handleExport }}
       />
@@ -174,10 +175,10 @@ export const BalanceClients: React.FC = () => {
       <FilterSheet
         activeCount={Object.keys(list.filters).length}
         onClear={list.clearFilters}
-        title="Filtrer la balance"
+        title={t('Filtrer la balance')}
       >
         <div style={{ minWidth: 260 }}>
-          <label htmlFor="filtre-periode-balance">Période</label>
+          <label htmlFor="filtre-periode-balance">{t('Période')}</label>
           <RangePicker
             id="filtre-periode-balance"
             style={{ width: '100%' }}
@@ -195,11 +196,11 @@ export const BalanceClients: React.FC = () => {
           />
         </div>
         <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-bien-balance">Bien</label>
+          <label htmlFor="filtre-bien-balance">{t('Bien')}</label>
           <Select
             id="filtre-bien-balance"
             style={{ width: '100%' }}
-            placeholder="Tous les biens"
+            placeholder={t('Tous les biens')}
             allowClear
             showSearch
             optionFilterProp="label"
@@ -222,14 +223,14 @@ export const BalanceClients: React.FC = () => {
         onPageChange={() => {}}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger la balance clients.' : null}
+        error={erreurRequete ? t('Impossible de charger la balance clients.') : null}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}
-        emptyDescription="Aucun compte de locataire enregistré."
+        emptyDescription={t('Aucun compte de locataire enregistré.')}
         columns={colonnes}
         rowKey={l => l.accountId}
-        aria-label="Balance clients"
+        aria-label={t('Balance clients')}
         renderCard={l => (
           <DataCard
             title={l.label}
@@ -237,8 +238,8 @@ export const BalanceClients: React.FC = () => {
             subtitle={l.propertyLabels.length > 0 ? l.propertyLabels.join(' · ') : undefined}
             highlight={<MoneyValue value={l.balance} signed />}
             fields={[
-              { label: 'Facturé', value: <MoneyValue value={l.totalBilled} /> },
-              { label: 'Réglé', value: <MoneyValue value={l.totalSettled} /> }
+              { label: t('Facturé'), value: <MoneyValue value={l.totalBilled} /> },
+              { label: t('Réglé'), value: <MoneyValue value={l.totalSettled} /> }
             ]}
             onOpen={() => ouvrirReleve(l)}
           />
@@ -250,7 +251,7 @@ export const BalanceClients: React.FC = () => {
           bord — pas un total réinventé au fil de l'écran. */}
       {data && lignes.length > 0 && (
         <div style={{ marginTop: 'var(--space-4)', maxWidth: 320 }}>
-          <StatCard label="Total de contrôle" value={<MoneyValue value={data.totalBalance} signed />} />
+          <StatCard label={t('Total de contrôle')} value={<MoneyValue value={data.totalBalance} signed />} />
         </div>
       )}
     </>

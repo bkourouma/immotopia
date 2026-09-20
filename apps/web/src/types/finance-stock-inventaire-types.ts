@@ -1,3 +1,5 @@
+import { t } from '../i18n/t';
+import { activeLocale } from '../i18n/format';
 /**
  * Contrat gelé de la frontière réseau — lot 5, troisième sous-lot : les
  * transferts entre lieux et l'inventaire physique (PRD E9, besoins S4 et S6).
@@ -101,7 +103,7 @@ export type StockLocationKind = 'WAREHOUSE' | 'SITE';
 
 export const STOCK_LOCATION_KIND_LABELS: Record<StockLocationKind, string> = {
   WAREHOUSE: 'Magasin',
-  SITE: 'Lieu de chantier'
+  SITE: t('Lieu de chantier')
 };
 
 /** Sous-ensemble LU de `StockLocationRecord` (sous-lot 1). */
@@ -227,7 +229,7 @@ export type StockCountStatus = 'DRAFT' | 'VALIDATED';
  */
 export const STOCK_COUNT_STATUS_LABELS: Record<StockCountStatus, string> = {
   DRAFT: 'Brouillon',
-  VALIDATED: 'Validé'
+  VALIDATED: t('Validé')
 };
 
 /**
@@ -320,7 +322,7 @@ export interface ListStockCountsFilters {
  */
 export function formatQuantity(value: number | null | undefined, unit?: string | null): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';
-  const texte = value.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 4 });
+  const texte = value.toLocaleString(activeLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 4 });
   return unit ? `${texte} ${unit}` : texte;
 }
 

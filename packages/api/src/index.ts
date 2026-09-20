@@ -53,6 +53,7 @@ import { startNewsletterCampaignSchedulerJob } from './jobs/newsletter-campaign-
 import { corsMiddleware } from './middleware/cors-middleware';
 import { requestLogger } from './middleware/logging-middleware';
 import { requestContextMiddleware } from './middleware/request-context-middleware';
+import { resolveLanguage } from './middleware/language-middleware';
 import { errorHandler } from './middleware/error-middleware';
 import { compressionMiddleware } from './middleware/compression-middleware';
 import { uploadsAccessGuard } from './middleware/uploads-access-middleware';
@@ -145,6 +146,11 @@ app.use(globalApiRateLimiter);
 
 // Request context (IP, User-Agent) for audit logs – must run before routes
 app.use(requestContextMiddleware);
+
+// Langue de la requete (Accept-Language) — avant les routes, pour que les
+// messages d'erreur sortent dans la langue de l'appelant. Voir
+// `middleware/language-middleware.ts`.
+app.use(resolveLanguage);
 
 // Request logging
 if (env.NODE_ENV !== 'test') {

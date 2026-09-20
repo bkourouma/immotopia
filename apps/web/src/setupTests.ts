@@ -1,5 +1,14 @@
 // Jest setup file for frontend tests
 import '@testing-library/jest-dom';
+import { LANGUAGE_STORAGE_KEY } from './i18n/config';
+
+// La suite est ecrite en francais : elle cherche « Enregistrer », pas « Save ».
+//
+// Sans ce choix explicite, `detectInitialLanguage()` interroge le navigateur,
+// et jsdom se declare `en-US` : l'application demarrait en anglais et 415 tests
+// echouaient sur des libelles traduits. Pose AVANT que les tests n'importent
+// quoi que ce soit, puisque la detection a lieu au chargement du module i18n.
+window.localStorage.setItem(LANGUAGE_STORAGE_KEY, 'fr');
 
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {

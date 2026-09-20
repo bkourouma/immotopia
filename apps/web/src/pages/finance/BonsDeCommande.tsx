@@ -20,7 +20,9 @@ import {
   StatusTag
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 /**
  * Bons de commande — liste filtrable, lot 3
  * (specs/018-finance-budget-pilotage/data-model.md §5,
@@ -68,7 +70,7 @@ const TONE_FACTURATION: Record<PurchaseOrder['invoicingState'], StatusTone> = {
 };
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 export const BonsDeCommande: React.FC = () => {
@@ -130,26 +132,26 @@ export const BonsDeCommande: React.FC = () => {
   const nombreFiltres = [list.filters.siteId, list.filters.supplierId, list.filters.status].filter(Boolean).length;
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const ouvrirBon = (bon: PurchaseOrder) => navigate(`/tenant/${tenantId}/finance/bons-de-commande/${bon.id}`);
   const ouvrirNouveauBon = () => navigate(`/tenant/${tenantId}/finance/bons-de-commande/nouveau`);
 
   const colonnes: ColumnsType<PurchaseOrder> = [
-    { title: 'Référence', key: 'reference', render: (_, b) => b.reference },
-    { title: 'Chantier', key: 'chantier', render: (_, b) => b.siteLabel },
-    { title: 'Fournisseur', key: 'fournisseur', render: (_, b) => b.supplierLabel },
-    { title: 'Date', key: 'date', render: (_, b) => dateCourte(b.orderDate) },
+    { title: t('Référence'), key: 'reference', render: (_, b) => b.reference },
+    { title: t('Chantier'), key: 'chantier', render: (_, b) => b.siteLabel },
+    { title: t('Fournisseur'), key: 'fournisseur', render: (_, b) => b.supplierLabel },
+    { title: t('Date'), key: 'date', render: (_, b) => dateCourte(b.orderDate) },
     {
-      title: 'Statut',
+      title: t('Statut'),
       key: 'statut',
       render: (_, b) => (
         <StatusTag status={b.status} tone={TONE_STATUT[b.status]} label={PURCHASE_ORDER_STATUS_LABELS[b.status]} />
       )
     },
     {
-      title: 'Facturation',
+      title: t('Facturation'),
       key: 'facturation',
       render: (_, b) => (
         <StatusTag
@@ -159,20 +161,20 @@ export const BonsDeCommande: React.FC = () => {
         />
       )
     },
-    { title: 'Montant total', key: 'montant', align: 'right', render: (_, b) => <MoneyValue value={b.totalAmount} /> },
+    { title: t('Montant total'), key: 'montant', align: 'end', render: (_, b) => <MoneyValue value={b.totalAmount} /> },
     {
-      title: 'Reste à facturer',
+      title: t('Reste à facturer'),
       key: 'reste',
-      align: 'right',
+      align: 'end',
       render: (_, b) => <MoneyValue value={b.remainingAmount} />
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, b) => (
         <Button type="link" onClick={() => ouvrirBon(b)}>
-          Voir le détail
+          {t('Voir le détail')}
         </Button>
       )
     }
@@ -181,22 +183,22 @@ export const BonsDeCommande: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Bons de commande"
+        title={t('Bons de commande')}
         subtitle={bons.length > 0 ? `${bons.length} bon${bons.length > 1 ? 's' : ''}` : undefined}
-        primaryAction={{ label: 'Nouveau bon', icon: <PlusOutlined />, onClick: ouvrirNouveauBon }}
+        primaryAction={{ label: t('Nouveau bon'), icon: <PlusOutlined />, onClick: ouvrirNouveauBon }}
       />
 
       <FilterSheet
         activeCount={nombreFiltres}
         onClear={() => list.setFilters({ siteId: undefined, supplierId: undefined, status: undefined })}
-        title="Filtrer les bons de commande"
+        title={t('Filtrer les bons de commande')}
       >
         <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-bon-chantier">Chantier</label>
+          <label htmlFor="filtre-bon-chantier">{t('Chantier')}</label>
           <Select
             id="filtre-bon-chantier"
             style={{ width: '100%' }}
-            placeholder="Tous les chantiers"
+            placeholder={t('Tous les chantiers')}
             allowClear
             showSearch
             optionFilterProp="label"
@@ -206,11 +208,11 @@ export const BonsDeCommande: React.FC = () => {
           />
         </div>
         <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-bon-fournisseur">Fournisseur</label>
+          <label htmlFor="filtre-bon-fournisseur">{t('Fournisseur')}</label>
           <Select
             id="filtre-bon-fournisseur"
             style={{ width: '100%' }}
-            placeholder="Tous les fournisseurs"
+            placeholder={t('Tous les fournisseurs')}
             allowClear
             showSearch
             optionFilterProp="label"
@@ -220,11 +222,11 @@ export const BonsDeCommande: React.FC = () => {
           />
         </div>
         <div style={{ minWidth: 180 }}>
-          <label htmlFor="filtre-bon-statut">Statut</label>
+          <label htmlFor="filtre-bon-statut">{t('Statut')}</label>
           <Select
             id="filtre-bon-statut"
             style={{ width: '100%' }}
-            placeholder="Tous les statuts"
+            placeholder={t('Tous les statuts')}
             allowClear
             value={list.filters.status || undefined}
             onChange={valeur => list.setFilters({ status: valeur })}
@@ -243,19 +245,19 @@ export const BonsDeCommande: React.FC = () => {
         onPageChange={() => {}}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger les bons de commande.' : null}
+        error={erreurRequete ? t('Impossible de charger les bons de commande.') : null}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={() => list.setFilters({ siteId: undefined, supplierId: undefined, status: undefined })}
-        emptyDescription="Aucun bon de commande n'est encore enregistré."
-        emptyAction={{ label: 'Nouveau bon', onClick: ouvrirNouveauBon }}
+        emptyDescription={t("Aucun bon de commande n'est encore enregistré.")}
+        emptyAction={{ label: t('Nouveau bon'), onClick: ouvrirNouveauBon }}
         columns={colonnes}
         rowKey={b => b.id}
-        aria-label="Bons de commande"
+        aria-label={t('Bons de commande')}
         renderCard={b => (
           <DataCard
             title={b.reference}
-            aria-label={`Bon ${b.reference}`}
+            aria-label={t('Bon {{reference}}', { reference: b.reference })}
             subtitle={`${b.siteLabel} · ${b.supplierLabel}`}
             status={
               <StatusTag
@@ -277,7 +279,7 @@ export const BonsDeCommande: React.FC = () => {
                   />
                 )
               },
-              { label: 'Reste à facturer', value: <MoneyValue value={b.remainingAmount} /> }
+              { label: t('Reste à facturer'), value: <MoneyValue value={b.remainingAmount} /> }
             ]}
             onOpen={() => ouvrirBon(b)}
           />

@@ -1,3 +1,4 @@
+import { t } from '../i18n/t';
 /**
  * Contrat gelé de la frontière réseau — lot 4, troisième sous-lot : les
  * salaires (PRD E8, besoins B11 et P9).
@@ -58,8 +59,8 @@ export type SalaryDocumentStatus = 'DRAFT' | 'VALIDATED' | 'VOIDED';
 
 export const SALARY_STATUS_LABELS: Record<SalaryDocumentStatus, string> = {
   DRAFT: 'Brouillon',
-  VALIDATED: 'Validé',
-  VOIDED: 'Annulé'
+  VALIDATED: t('Validé'),
+  VOIDED: t('Annulé')
 };
 
 // ---------------------------------------------------------------------------

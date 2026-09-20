@@ -29,7 +29,9 @@ import {
   getAuditEntityTypeLabelFr,
   getAuditResourceDisplayLabel
 } from '../../constants/audit-labels';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 const { Paragraph } = Typography;
@@ -68,17 +70,17 @@ export const AuditLogs: React.FC = () => {
         setLogs(response.data.logs);
         setPagination(response.data.pagination);
       } else {
-        setError('Erreur lors du chargement des logs');
+        setError(t('Erreur lors du chargement des logs'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des logs');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des logs'));
     } finally {
       setLoading(false);
     }
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('fr-FR', {
+    return new Date(dateString).toLocaleString(activeLocale(), {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -137,20 +139,20 @@ export const AuditLogs: React.FC = () => {
 
   const columns: ColumnsType<AuditLog> = [
     {
-      title: 'Date',
+      title: t('Date'),
       dataIndex: 'createdAt',
       key: 'createdAt',
       width: 160,
       render: (date: string) => formatDate(date)
     },
     {
-      title: 'Utilisateur',
+      title: t('Utilisateur'),
       key: 'user',
       width: 180,
       render: (_, record) => record.user?.fullName || record.user?.email || '-'
     },
     {
-      title: 'Action',
+      title: t('Action'),
       dataIndex: 'action',
       key: 'action',
       width: 320,
@@ -166,7 +168,7 @@ export const AuditLogs: React.FC = () => {
             <span style={{ fontWeight: 500 }}>{actionLabel}</span>
             {resourceLabel && (
               <Text type="secondary" style={{ fontSize: 12 }}>
-                Concerné : {resourceLabel}
+                {t('Concerné :')} {resourceLabel}
               </Text>
             )}
           </Space>
@@ -174,7 +176,7 @@ export const AuditLogs: React.FC = () => {
       }
     },
     {
-      title: 'Ressource',
+      title: t('Ressource'),
       key: 'resource',
       render: (_, record) => {
         if (record.resourceLabel) {
@@ -192,15 +194,17 @@ export const AuditLogs: React.FC = () => {
       }
     },
     {
-      title: 'Agence',
+      title: t('Agence'),
       key: 'tenant',
       width: 140,
       render: (_, record) => record.tenant?.name || '-'
     },
     {
       title: (
-        <Tooltip title="Adresse IP de l'ordinateur ou de l'appareil ayant effectué l'action (traçabilité et sécurité)">
-          <span style={{ cursor: 'help', borderBottom: '1px dotted rgba(0,0,0,0.3)' }}>IP client</span>
+        <Tooltip
+          title={t("Adresse IP de l'ordinateur ou de l'appareil ayant effectué l'action (traçabilité et sécurité)")}
+        >
+          <span style={{ cursor: 'help', borderBottom: '1px dotted rgba(0,0,0,0.3)' }}>{t('IP client')}</span>
         </Tooltip>
       ),
       dataIndex: 'ipAddress',
@@ -209,13 +213,13 @@ export const AuditLogs: React.FC = () => {
       render: (ip: string) => ip || '-'
     },
     {
-      title: 'Détails',
+      title: t('Détails'),
       key: 'details',
       width: 100,
       fixed: 'right',
       render: (_, record) => (
         <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openDetailModal(record)}>
-          Voir
+          {t('Voir')}
         </Button>
       )
     }
@@ -226,19 +230,19 @@ export const AuditLogs: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
           <Title level={3} style={{ margin: 0 }}>
-            Audit Logs
+            {t('Audit Logs')}
           </Title>
-          <Text type="secondary">Historique des actions administratives</Text>
+          <Text type="secondary">{t('Historique des actions administratives')}</Text>
         </div>
 
         <Card>
           <Row gutter={[16, 16]}>
             <Col xs={24} sm={12} md={6}>
               <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                Action
+                {t('Action')}
               </Text>
               <Input
-                placeholder="Rechercher une action..."
+                placeholder={t('Rechercher une action...')}
                 prefix={<SearchOutlined />}
                 value={actionSearch}
                 onChange={e => setActionSearch(e.target.value)}
@@ -247,10 +251,10 @@ export const AuditLogs: React.FC = () => {
             </Col>
             <Col xs={24} sm={12} md={6}>
               <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                Type de ressource
+                {t('Type de ressource')}
               </Text>
               <Input
-                placeholder="Type de ressource..."
+                placeholder={t('Type de ressource...')}
                 value={resourceTypeSearch}
                 onChange={e => setResourceTypeSearch(e.target.value)}
                 allowClear
@@ -258,7 +262,7 @@ export const AuditLogs: React.FC = () => {
             </Col>
             <Col xs={24} sm={12} md={8}>
               <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                Période
+                {t('Période')}
               </Text>
               <RangePicker
                 style={{ width: '100%' }}
@@ -269,20 +273,27 @@ export const AuditLogs: React.FC = () => {
             </Col>
             <Col xs={24} sm={12} md={4} style={{ display: 'flex', alignItems: 'flex-end' }}>
               <Button type="primary" icon={<FilterOutlined />} onClick={handleApplyFilters} block>
-                Filtrer
+                {t('Filtrer')}
               </Button>
             </Col>
           </Row>
         </Card>
 
         {error && (
-          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
+          <Alert
+            message={t('Erreur')}
+            description={error}
+            type="error"
+            showIcon
+            closable
+            onClose={() => setError(null)}
+          />
         )}
 
         <Card>
           <Spin spinning={loading}>
             {!loading && logs.length === 0 ? (
-              <Empty description="Aucun log trouvé" />
+              <Empty description={t('Aucun log trouvé')} />
             ) : (
               <Table
                 rowKey="id"
@@ -294,7 +305,7 @@ export const AuditLogs: React.FC = () => {
                   pageSize: pagination.limit,
                   total: pagination.total,
                   showSizeChanger: true,
-                  showTotal: total => `Total ${total} résultat(s)`,
+                  showTotal: total => t('Total {{total}} résultat(s)', { total: total }),
                   pageSizeOptions: ['20', '50', '100'],
                   onChange: (page, pageSize) => {
                     setFilters({
@@ -311,12 +322,12 @@ export const AuditLogs: React.FC = () => {
         </Card>
 
         <Modal
-          title="Détails du log d'audit"
+          title={t("Détails du log d'audit")}
           open={detailModalOpen}
           onCancel={closeDetailModal}
           footer={[
             <Button key="close" onClick={closeDetailModal}>
-              Fermer
+              {t('Fermer')}
             </Button>
           ]}
           width={720}
@@ -324,34 +335,34 @@ export const AuditLogs: React.FC = () => {
         >
           {selectedLog && (
             <>
-              <Descriptions title="Informations du log" column={1} bordered size="small">
-                <Descriptions.Item label="Date">{formatDate(selectedLog.createdAt)}</Descriptions.Item>
-                <Descriptions.Item label="Utilisateur">
+              <Descriptions title={t('Informations du log')} column={1} bordered size="small">
+                <Descriptions.Item label={t('Date')}>{formatDate(selectedLog.createdAt)}</Descriptions.Item>
+                <Descriptions.Item label={t('Utilisateur')}>
                   {selectedLog.user?.fullName || selectedLog.user?.email || '-'}
                   {selectedLog.user?.email && (
-                    <Text type="secondary" style={{ marginLeft: 8 }}>
+                    <Text type="secondary" style={{ marginInlineStart: 8 }}>
                       ({selectedLog.user.email})
                     </Text>
                   )}
                 </Descriptions.Item>
-                <Descriptions.Item label="Action">
+                <Descriptions.Item label={t('Action')}>
                   <Tag color="blue">{getAuditActionLabelFr(selectedLog.action)}</Tag>
                 </Descriptions.Item>
-                <Descriptions.Item label="Type de ressource">
+                <Descriptions.Item label={t('Type de ressource')}>
                   {getAuditEntityTypeLabelFr(selectedLog.resourceType)}
                 </Descriptions.Item>
-                <Descriptions.Item label="Identifiant ressource">
+                <Descriptions.Item label={t('Identifiant ressource')}>
                   <Text code>{selectedLog.resourceId || '-'}</Text>
                 </Descriptions.Item>
-                <Descriptions.Item label="Ressource">
+                <Descriptions.Item label={t('Ressource')}>
                   {selectedLog.resourceLabel ||
                     (selectedLog.resourceId
                       ? `${getAuditEntityTypeLabelFr(selectedLog.resourceType)} (${selectedLog.resourceId})`
                       : '-')}
                 </Descriptions.Item>
-                <Descriptions.Item label="Agence">{selectedLog.tenant?.name || '-'}</Descriptions.Item>
-                <Descriptions.Item label="IP client">{selectedLog.ipAddress || '-'}</Descriptions.Item>
-                <Descriptions.Item label="User-Agent">
+                <Descriptions.Item label={t('Agence')}>{selectedLog.tenant?.name || '-'}</Descriptions.Item>
+                <Descriptions.Item label={t('IP client')}>{selectedLog.ipAddress || '-'}</Descriptions.Item>
+                <Descriptions.Item label={'User-Agent'}>
                   {selectedLog.userAgent ? (
                     <Paragraph
                       style={{ marginBottom: 0, wordBreak: 'break-all' }}
@@ -368,7 +379,7 @@ export const AuditLogs: React.FC = () => {
               {selectedLog.details && Object.keys(selectedLog.details).length > 0 && (
                 <>
                   <Divider />
-                  <Title level={5}>Données enregistrées (payload)</Title>
+                  <Title level={5}>{t('Données enregistrées (payload)')}</Title>
                   <Descriptions column={1} bordered size="small">
                     {Object.entries(selectedLog.details).map(([key, value]) => (
                       <Descriptions.Item key={key} label={key}>
@@ -390,36 +401,38 @@ export const AuditLogs: React.FC = () => {
                 selectedLog.resourceId && (
                   <>
                     <Divider />
-                    <Title level={5}>Données de la propriété</Title>
+                    <Title level={5}>{t('Données de la propriété')}</Title>
                     {propertyLoading ? (
                       <Spin />
                     ) : propertyDetails ? (
                       <Descriptions column={1} bordered size="small">
-                        <Descriptions.Item label="Référence">{propertyDetails.internalReference}</Descriptions.Item>
-                        <Descriptions.Item label="Titre">{propertyDetails.title}</Descriptions.Item>
-                        <Descriptions.Item label="Adresse">{propertyDetails.address}</Descriptions.Item>
-                        <Descriptions.Item label="Type de bien">{propertyDetails.propertyType}</Descriptions.Item>
-                        <Descriptions.Item label="Statut">{propertyDetails.status}</Descriptions.Item>
-                        <Descriptions.Item label="Prix">
+                        <Descriptions.Item label={t('Référence')}>
+                          {propertyDetails.internalReference}
+                        </Descriptions.Item>
+                        <Descriptions.Item label={t('Titre')}>{propertyDetails.title}</Descriptions.Item>
+                        <Descriptions.Item label={t('Adresse')}>{propertyDetails.address}</Descriptions.Item>
+                        <Descriptions.Item label={t('Type de bien')}>{propertyDetails.propertyType}</Descriptions.Item>
+                        <Descriptions.Item label={t('Statut')}>{propertyDetails.status}</Descriptions.Item>
+                        <Descriptions.Item label={t('Prix')}>
                           {propertyDetails.price != null
                             ? `${propertyDetails.price} ${propertyDetails.currency || ''}`
                             : '-'}
                         </Descriptions.Item>
-                        <Descriptions.Item label="Surface">
+                        <Descriptions.Item label={t('Surface')}>
                           {propertyDetails.surfaceArea != null ? `${propertyDetails.surfaceArea} m²` : '-'}
                         </Descriptions.Item>
-                        <Descriptions.Item label="Pièces">{propertyDetails.rooms ?? '-'}</Descriptions.Item>
-                        <Descriptions.Item label="Chambres">{propertyDetails.bedrooms ?? '-'}</Descriptions.Item>
-                        <Descriptions.Item label="Modes de transaction">
+                        <Descriptions.Item label={t('Pièces')}>{propertyDetails.rooms ?? '-'}</Descriptions.Item>
+                        <Descriptions.Item label={t('Chambres')}>{propertyDetails.bedrooms ?? '-'}</Descriptions.Item>
+                        <Descriptions.Item label={t('Modes de transaction')}>
                           {propertyDetails.transactionModes?.join(', ') || '-'}
                         </Descriptions.Item>
-                        <Descriptions.Item label="Publié">
-                          {propertyDetails.isPublished ? 'Oui' : 'Non'}
+                        <Descriptions.Item label={t('Publié')}>
+                          {propertyDetails.isPublished ? t('Oui') : t('Non')}
                         </Descriptions.Item>
                       </Descriptions>
                     ) : (
                       <Text type="secondary">
-                        Impossible de charger les détails de la propriété (supprimée ou accès refusé).
+                        {t('Impossible de charger les détails de la propriété (supprimée ou accès refusé).')}
                       </Text>
                     )}
                   </>

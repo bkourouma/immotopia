@@ -32,7 +32,9 @@ import {
   FilterSheet,
   formatMoney
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 /**
  * Paiements — quatrième des six écrans hybrides (§9.7).
  *
@@ -65,19 +67,19 @@ type Filters = { status: string; onglet: string; renterClientId: string };
 const FILTER_KEYS = ['status', 'onglet', 'renterClientId'] as const;
 
 const METHOD_LABELS: Record<string, string> = {
-  CASH: 'Espèces',
-  BANK_TRANSFER: 'Virement bancaire',
-  CHECK: 'Chèque',
-  MOBILE_MONEY: 'Mobile Money',
-  CARD: 'Carte bancaire',
+  CASH: t('Espèces'),
+  BANK_TRANSFER: t('Virement bancaire'),
+  CHECK: t('Chèque'),
+  MOBILE_MONEY: t('Mobile Money'),
+  CARD: t('Carte bancaire'),
   OTHER: 'Autre'
 };
 
 const STATUS_OPTIONS = [
-  { value: 'PENDING', label: 'En attente' },
-  { value: 'SUCCESS', label: 'Réussi' },
-  { value: 'FAILED', label: 'Échoué' },
-  { value: 'CANCELED', label: 'Annulé' }
+  { value: 'PENDING', label: t('En attente') },
+  { value: 'SUCCESS', label: t('Réussi') },
+  { value: 'FAILED', label: t('Échoué') },
+  { value: 'CANCELED', label: t('Annulé') }
 ];
 
 /**
@@ -98,7 +100,7 @@ function resteAAffecter(paiement: RentalPayment): number {
 }
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
@@ -170,7 +172,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
     await createPayment(tenantId, donnees);
     setSaisieOuverte(false);
     await rafraichir();
-    message.success('Paiement enregistré.');
+    message.success(t('Paiement enregistré.'));
   };
 
   const handleAllocate = async (donnees: AllocatePaymentRequest) => {
@@ -182,11 +184,11 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
     // ailleurs sans l'avoir demandé, et il fallait revenir pour affecter le
     // paiement suivant.
     await Promise.all([rafraichir(), queryClient.invalidateQueries({ queryKey: ['installments', tenantId] })]);
-    message.success('Paiement affecté.');
+    message.success(t('Paiement affecté.'));
   };
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const colonnes: ColumnsType<RentalPayment> = [
@@ -196,7 +198,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       ? []
       : [
           {
-            title: 'Bail',
+            title: t('Bail'),
             key: 'bail',
             width: 250,
             render: (_: unknown, p: RentalPayment) => (
@@ -209,23 +211,23 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
             )
           },
           {
-            title: 'Locataire',
+            title: t('Locataire'),
             key: 'locataire',
             width: 170,
             render: (_: unknown, p: RentalPayment) => nomDeLaPersonne(p.renterClient?.user)
           }
         ]),
-    { title: 'Date', key: 'date', render: (_, p) => dateCourte(p.initiated_at) },
+    { title: t('Date'), key: 'date', render: (_, p) => dateCourte(p.initiated_at) },
     {
-      title: 'Montant',
+      title: t('Montant'),
       key: 'montant',
-      align: 'right',
+      align: 'end',
       render: (_, p) => <MoneyValue value={p.amount} currency={p.currency} />
     },
     {
-      title: 'Reste à affecter',
+      title: t('Reste à affecter'),
       key: 'reste',
-      align: 'right',
+      align: 'end',
       render: (_, p) => {
         const reste = resteAAffecter(p);
         return reste > 0 ? (
@@ -233,24 +235,24 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
         ) : (
           // Un paiement entièrement affecté n'a pas besoin d'un « 0 » :
           // le mot dit la même chose et se lit plus vite.
-          <span style={{ color: 'var(--text-secondary)' }}>Affecté</span>
+          <span style={{ color: 'var(--text-secondary)' }}>{t('Affecté')}</span>
         );
       }
     },
-    { title: 'Méthode', key: 'methode', render: (_, p) => METHOD_LABELS[p.method] || p.method },
-    { title: 'Statut', key: 'statut', render: (_, p) => <StatusTag status={p.status} /> },
+    { title: t('Méthode'), key: 'methode', render: (_, p) => METHOD_LABELS[p.method] || p.method },
+    { title: t('Statut'), key: 'statut', render: (_, p) => <StatusTag status={p.status} /> },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, p) => (
         <>
           <Button type="link" onClick={() => navigate(`/tenant/${tenantId}/rental/payments/${p.id}`)}>
-            Voir
+            {t('Voir')}
           </Button>
           {resteAAffecter(p) > 0 && (
             <Button type="primary" onClick={() => setAffectePour(p)}>
-              Affecter
+              {t('Affecter')}
             </Button>
           )}
         </>
@@ -263,15 +265,15 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
       <FilterSheet
         activeCount={[list.filters.status, list.filters.renterClientId].filter(Boolean).length}
         onClear={() => list.setFilters({ status: undefined, renterClientId: undefined })}
-        title="Filtrer les paiements"
+        title={t('Filtrer les paiements')}
       >
         {!leaseId && (
           <div style={{ minWidth: 240 }}>
-            <label htmlFor="filtre-locataire-paiement">Locataire</label>
+            <label htmlFor="filtre-locataire-paiement">{t('Locataire')}</label>
             <Select
               id="filtre-locataire-paiement"
               style={{ width: '100%' }}
-              placeholder="Tous les locataires"
+              placeholder={t('Tous les locataires')}
               allowClear
               showSearch
               optionFilterProp="label"
@@ -282,11 +284,11 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
           </div>
         )}
         <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-statut-paiement">Statut</label>
+          <label htmlFor="filtre-statut-paiement">{t('Statut')}</label>
           <Select
             id="filtre-statut-paiement"
             style={{ width: '100%' }}
-            placeholder="Tous les statuts"
+            placeholder={t('Tous les statuts')}
             allowClear
             value={list.filters.status || undefined}
             onChange={valeur => list.setFilters({ status: valeur })}
@@ -307,30 +309,33 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
         onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger les paiements.' : null}
+        error={erreurRequete ? t('Impossible de charger les paiements.') : null}
         onRetry={() => refetch()}
         isFiltered={Boolean(list.filters.status)}
         onClearFilters={() => list.setFilters({ status: undefined })}
-        emptyDescription="Aucun paiement enregistré."
-        emptyAction={{ label: 'Enregistrer un paiement', onClick: () => setSaisieOuverte(true) }}
+        emptyDescription={t('Aucun paiement enregistré.')}
+        emptyAction={{ label: t('Enregistrer un paiement'), onClick: () => setSaisieOuverte(true) }}
         columns={colonnes}
         rowKey={p => p.id}
-        aria-label="Paiements"
+        aria-label={t('Paiements')}
         renderCard={p => {
           const reste = resteAAffecter(p);
           return (
             <DataCard
               title={<MoneyValue value={p.amount} currency={p.currency} />}
-              aria-label={`Paiement du ${dateCourte(p.initiated_at)}`}
+              aria-label={t('Paiement du {{value}}', { value: dateCourte(p.initiated_at) })}
               subtitle={`${dateCourte(p.initiated_at)} · ${METHOD_LABELS[p.method as RentalPaymentMethod] || p.method}`}
               status={<StatusTag status={p.status} />}
               fields={
                 reste > 0
                   ? [
-                      { label: 'Déjà affecté', value: <MoneyValue value={montantAffecte(p)} currency={p.currency} /> },
-                      { label: 'Reste à affecter', value: <MoneyValue value={reste} currency={p.currency} /> }
+                      {
+                        label: t('Déjà affecté'),
+                        value: <MoneyValue value={montantAffecte(p)} currency={p.currency} />
+                      },
+                      { label: t('Reste à affecter'), value: <MoneyValue value={reste} currency={p.currency} /> }
                     ]
-                  : [{ label: 'Affectation', value: 'Intégralement affecté' }]
+                  : [{ label: 'Affectation', value: t('Intégralement affecté') }]
               }
               onOpen={() => navigate(`/tenant/${tenantId}/rental/payments/${p.id}`)}
               primaryAction={reste > 0 ? { label: 'Affecter', onClick: () => setAffectePour(p) } : undefined}
@@ -356,10 +361,10 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
   return (
     <>
       <PageHeader
-        title="Paiements"
+        title={t('Paiements')}
         subtitle={total > 0 ? `${total} paiement${total > 1 ? 's' : ''}` : undefined}
         primaryAction={{
-          label: 'Nouveau paiement',
+          label: t('Nouveau paiement'),
           icon: <PlusOutlined />,
           onClick: () => setSaisieOuverte(true)
         }}
@@ -375,7 +380,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
           { key: 'paiements', label: 'Paiements', children: listeDesPaiements },
           {
             key: 'declarations',
-            label: 'Déclarations en attente',
+            label: t('Déclarations en attente'),
             children: (
               <PaymentDeclarationsList
                 tenantId={tenantId}
@@ -389,7 +394,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
 
       {boite(
         saisieOuverte,
-        'Nouveau paiement',
+        t('Nouveau paiement'),
         () => setSaisieOuverte(false),
         <PaymentForm
           tenantId={tenantId}
@@ -401,7 +406,9 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
 
       {boite(
         Boolean(affectePour),
-        affectePour ? `Affecter ${formatMoney(affectePour.amount, { currency: affectePour.currency })}` : '',
+        affectePour
+          ? t('Affecter {{value}}', { value: formatMoney(affectePour.amount, { currency: affectePour.currency }) })
+          : '',
         () => setAffectePour(null),
         affectePour ? (
           <AllocatePaymentForm

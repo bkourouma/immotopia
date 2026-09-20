@@ -30,7 +30,9 @@ import {
   ConfirmAction,
   useConfirmAction
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
@@ -70,22 +72,22 @@ const { RangePicker } = DatePicker;
  */
 
 function pourcentage(valeur: number): string {
-  return `${valeur.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %`;
+  return `${valeur.toLocaleString(activeLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %`;
 }
 
 const MOIS_FR = [
   'janvier',
-  'février',
+  t('février'),
   'mars',
   'avril',
   'mai',
   'juin',
   'juillet',
-  'août',
+  t('août'),
   'septembre',
   'octobre',
   'novembre',
-  'décembre'
+  t('décembre')
 ];
 
 function libellePeriode(year: number, month: number): string {
@@ -151,11 +153,11 @@ export const Association: React.FC = () => {
         sharePercent: quotePart as number
       });
       await queryClient.invalidateQueries({ queryKey: detailKey('partnerships', tenantId, partnershipId) });
-      message.success(`Associé « ${nomAssocie.trim()} » ajouté.`);
+      message.success(t('Associé « {{value}} » ajouté.', { value: nomAssocie.trim() }));
       setNomAssocie('');
       setQuotePart(null);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'ajout de l'associé a échoué.");
+      message.error(err?.response?.data?.message || t("L'ajout de l'associé a échoué."));
     } finally {
       setAjoutEnCours(false);
     }
@@ -166,12 +168,12 @@ export const Association: React.FC = () => {
     try {
       await removePartnershipShare(tenantId, share.id);
       await queryClient.invalidateQueries({ queryKey: detailKey('partnerships', tenantId, partnershipId) });
-      message.success(`Associé « ${share.partnerName} » retiré.`);
+      message.success(t('Associé « {{partnerName}} » retiré.', { partnerName: share.partnerName }));
     } catch (err: any) {
       // Le serveur refuse ce geste dès qu'une ventilation a déjà été
       // constatée sur la part de l'associé (contrat gelé) : son message est
       // relayé tel quel, jamais deviné ici.
-      message.error(err?.response?.data?.message || "Le retrait de l'associé a échoué.");
+      message.error(err?.response?.data?.message || t("Le retrait de l'associé a échoué."));
     }
   };
 
@@ -189,10 +191,10 @@ export const Association: React.FC = () => {
       await setPropertyPartnership(tenantId, bienARattacher, partnershipId);
       await queryClient.invalidateQueries({ queryKey: detailKey('partnerships', tenantId, partnershipId) });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('partnerships', tenantId) });
-      message.success('Bien rattaché à l’association.');
+      message.success(t('Bien rattaché à l’association.'));
       setBienARattacher(undefined);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'Le rattachement a échoué.');
+      message.error(err?.response?.data?.message || t('Le rattachement a échoué.'));
     } finally {
       setRattachementEnCours(false);
     }
@@ -204,9 +206,9 @@ export const Association: React.FC = () => {
       await setPropertyPartnership(tenantId, bien.propertyId, null);
       await queryClient.invalidateQueries({ queryKey: detailKey('partnerships', tenantId, partnershipId ?? '') });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('partnerships', tenantId) });
-      message.success(`Bien « ${bien.propertyLabel} » détaché de l'association.`);
+      message.success(t("Bien « {{propertyLabel}} » détaché de l'association.", { propertyLabel: bien.propertyLabel }));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'Le détachement a échoué.');
+      message.error(err?.response?.data?.message || t('Le détachement a échoué.'));
     }
   };
 
@@ -238,23 +240,23 @@ export const Association: React.FC = () => {
   // ---------------------------------------------------------------------
 
   if (!tenantId || !partnershipId) {
-    return <StateBlock variant="empty" title="Aucune association sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune association sélectionnée')} />;
   }
 
   const filAriane = [
-    { label: 'Finance', to: `/tenant/${tenantId}/finance/associations` },
-    { label: 'Associations', to: `/tenant/${tenantId}/finance/associations` },
-    ...(association ? [{ label: association.label }] : [{ label: 'Association' }])
+    { label: t('Finance'), to: `/tenant/${tenantId}/finance/associations` },
+    { label: t('Associations'), to: `/tenant/${tenantId}/finance/associations` },
+    ...(association ? [{ label: association.label }] : [{ label: t('Association') }])
   ];
 
   if (erreurAssociation) {
     return (
       <>
-        <PageHeader title="Association" breadcrumbs={filAriane} />
+        <PageHeader title={t('Association')} breadcrumbs={filAriane} />
         <StateBlock
           variant="error"
-          description="Impossible de charger cette association."
-          actions={[{ label: 'Réessayer', onClick: () => refetchAssociation(), primary: true }]}
+          description={t('Impossible de charger cette association.')}
+          actions={[{ label: t('Réessayer'), onClick: () => refetchAssociation(), primary: true }]}
         />
       </>
     );
@@ -263,19 +265,19 @@ export const Association: React.FC = () => {
   if (associationEnAttente || !association) {
     return (
       <>
-        <PageHeader title="Association" breadcrumbs={filAriane} />
+        <PageHeader title={t('Association')} breadcrumbs={filAriane} />
         <StateBlock variant="loading" />
       </>
     );
   }
 
   const colonnesAssocies: ColumnsType<PartnershipShare> = [
-    { title: 'Associé', key: 'associe', render: (_, s) => s.partnerName },
-    { title: 'Quote-part', key: 'part', align: 'right', render: (_, s) => pourcentage(s.sharePercent) },
+    { title: t('Associé'), key: 'associe', render: (_, s) => s.partnerName },
+    { title: t('Quote-part'), key: 'part', align: 'end', render: (_, s) => pourcentage(s.sharePercent) },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, s) => (
         <Space>
           <Button
@@ -285,17 +287,19 @@ export const Association: React.FC = () => {
               setPlageReleve(null);
             }}
           >
-            Voir l'état
+            {t("Voir l'état")}
           </Button>
           <ConfirmAction
-            title={`Retirer « ${s.partnerName} » de cette association ?`}
-            description="Cette opération est irréversible : l'historique de ce qui lui revient serait perdu. Le serveur refuse déjà ce geste si une ventilation a été constatée sur sa part — il faut d'abord solder son compte."
-            okText="Confirmer le retrait"
+            title={t('Retirer « {{partnerName}} » de cette association ?', { partnerName: s.partnerName })}
+            description={t(
+              "Cette opération est irréversible : l'historique de ce qui lui revient serait perdu. Le serveur refuse déjà ce geste si une ventilation a été constatée sur sa part — il faut d'abord solder son compte."
+            )}
+            okText={t('Confirmer le retrait')}
             danger
             onConfirm={() => retirerAssocie(s)}
           >
             <Button type="link" danger>
-              Retirer
+              {t('Retirer')}
             </Button>
           </ConfirmAction>
         </Space>
@@ -304,33 +308,35 @@ export const Association: React.FC = () => {
   ];
 
   const colonnesBiens: ColumnsType<PartnershipPropertyRef> = [
-    { title: 'Bien', key: 'bien', render: (_, p) => p.propertyLabel },
+    { title: t('Bien'), key: 'bien', render: (_, p) => p.propertyLabel },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, p) => (
         <ConfirmAction
-          title={`Détacher « ${p.propertyLabel} » de cette association ?`}
-          description="Les loyers de ce bien ne seront plus répartis entre les associés à compter de la prochaine facturation. Les ventilations déjà constatées restent inchangées."
-          okText="Confirmer le détachement"
+          title={t('Détacher « {{propertyLabel}} » de cette association ?', { propertyLabel: p.propertyLabel })}
+          description={t(
+            'Les loyers de ce bien ne seront plus répartis entre les associés à compter de la prochaine facturation. Les ventilations déjà constatées restent inchangées.'
+          )}
+          okText={t('Confirmer le détachement')}
           onConfirm={() => detacherBien(p)}
         >
-          <Button type="link">Détacher</Button>
+          <Button type="link">{t('Détacher')}</Button>
         </ConfirmAction>
       )
     }
   ];
 
   const colonnesReleve: ColumnsType<PartnerStatementLine> = [
-    { title: 'Bien', key: 'bien', render: (_, l) => l.propertyLabel },
-    { title: 'Période', key: 'periode', render: (_, l) => libellePeriode(l.periodYear, l.periodMonth) },
-    { title: 'Facturé', key: 'facture', align: 'right', render: (_, l) => <MoneyValue value={l.rentBilled} /> },
-    { title: 'Encaissé', key: 'encaisse', align: 'right', render: (_, l) => <MoneyValue value={l.rentCollected} /> },
+    { title: t('Bien'), key: 'bien', render: (_, l) => l.propertyLabel },
+    { title: t('Période'), key: 'periode', render: (_, l) => libellePeriode(l.periodYear, l.periodMonth) },
+    { title: t('Facturé'), key: 'facture', align: 'end', render: (_, l) => <MoneyValue value={l.rentBilled} /> },
+    { title: t('Encaissé'), key: 'encaisse', align: 'end', render: (_, l) => <MoneyValue value={l.rentCollected} /> },
     {
-      title: 'Sa part',
+      title: t('Sa part'),
       key: 'part',
-      align: 'right',
+      align: 'end',
       render: (_, l) => (
         <strong>
           <MoneyValue value={l.partnerShare} />
@@ -359,19 +365,21 @@ export const Association: React.FC = () => {
           marginBottom: 'var(--space-3)'
         }}
       >
-        <StatCard label="Total des quotes-parts" value={pourcentage(association.totalSharePercent)} />
+        <StatCard label={t('Total des quotes-parts')} value={pourcentage(association.totalSharePercent)} />
         <StatCard
-          label="Part de l'agence"
+          label={t("Part de l'agence")}
           value={pourcentage(association.companySharePercent)}
           tone={rienPourLAgence ? 'warning' : 'neutral'}
           hint={
-            rienPourLAgence ? "Les associés se partagent la totalité du loyer : rien ne reste à l'agence." : undefined
+            rienPourLAgence
+              ? t("Les associés se partagent la totalité du loyer : rien ne reste à l'agence.")
+              : undefined
           }
         />
       </div>
 
       <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        Associés
+        {t('Associés')}
       </Title>
       <DataView<PartnershipShare>
         paginated={false}
@@ -380,17 +388,17 @@ export const Association: React.FC = () => {
         page={1}
         pageSize={Math.max(association.shares.length, 1)}
         onPageChange={() => {}}
-        emptyDescription="Aucun associé n'est encore rattaché à cette association."
+        emptyDescription={t("Aucun associé n'est encore rattaché à cette association.")}
         columns={colonnesAssocies}
         rowKey={s => s.id}
-        aria-label="Associés de l'association"
+        aria-label={t("Associés de l'association")}
         renderCard={s => (
           <DataCard
             title={s.partnerName}
             aria-label={s.partnerName}
             highlight={pourcentage(s.sharePercent)}
             primaryAction={{
-              label: "Voir l'état",
+              label: t("Voir l'état"),
               onClick: () => {
                 setAssocieConsulte(s);
                 setPlageReleve(null);
@@ -403,10 +411,11 @@ export const Association: React.FC = () => {
                 label: 'Retirer',
                 onClick: () =>
                   confirmerAction({
-                    title: `Retirer « ${s.partnerName} » de cette association ?`,
-                    description:
-                      "Cette opération est irréversible : l'historique de ce qui lui revient serait perdu. Le serveur refuse déjà ce geste si une ventilation a été constatée sur sa part — il faut d'abord solder son compte.",
-                    okText: 'Confirmer le retrait',
+                    title: t('Retirer « {{partnerName}} » de cette association ?', { partnerName: s.partnerName }),
+                    description: t(
+                      "Cette opération est irréversible : l'historique de ce qui lui revient serait perdu. Le serveur refuse déjà ce geste si une ventilation a été constatée sur sa part — il faut d'abord solder son compte."
+                    ),
+                    okText: t('Confirmer le retrait'),
                     danger: true,
                     onConfirm: () => retirerAssocie(s)
                   })
@@ -427,7 +436,7 @@ export const Association: React.FC = () => {
       />
 
       <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        Biens rattachés
+        {t('Biens rattachés')}
       </Title>
       <DataView<PartnershipPropertyRef>
         paginated={false}
@@ -436,22 +445,23 @@ export const Association: React.FC = () => {
         page={1}
         pageSize={Math.max(association.properties.length, 1)}
         onPageChange={() => {}}
-        emptyDescription="Aucun bien n'est encore rattaché à cette association."
+        emptyDescription={t("Aucun bien n'est encore rattaché à cette association.")}
         columns={colonnesBiens}
         rowKey={p => p.propertyId}
-        aria-label="Biens rattachés à l'association"
+        aria-label={t("Biens rattachés à l'association")}
         renderCard={p => (
           <DataCard
             title={p.propertyLabel}
             aria-label={p.propertyLabel}
             primaryAction={{
-              label: 'Détacher',
+              label: t('Détacher'),
               onClick: () =>
                 confirmerAction({
-                  title: `Détacher « ${p.propertyLabel} » de cette association ?`,
-                  description:
-                    'Les loyers de ce bien ne seront plus répartis entre les associés à compter de la prochaine facturation. Les ventilations déjà constatées restent inchangées.',
-                  okText: 'Confirmer le détachement',
+                  title: t('Détacher « {{propertyLabel}} » de cette association ?', { propertyLabel: p.propertyLabel }),
+                  description: t(
+                    'Les loyers de ce bien ne seront plus répartis entre les associés à compter de la prochaine facturation. Les ventilations déjà constatées restent inchangées.'
+                  ),
+                  okText: t('Confirmer le détachement'),
                   onConfirm: () => detacherBien(p)
                 })
             }}
@@ -468,12 +478,16 @@ export const Association: React.FC = () => {
       />
 
       <Modal
-        title={associeConsulte ? `État de quote-part — ${associeConsulte.partnerName}` : 'État de quote-part'}
+        title={
+          associeConsulte
+            ? t('État de quote-part — {{partnerName}}', { partnerName: associeConsulte.partnerName })
+            : t('État de quote-part')
+        }
         open={Boolean(associeConsulte)}
         onCancel={() => setAssocieConsulte(null)}
         footer={
           <Button type="primary" onClick={() => setAssocieConsulte(null)}>
-            Fermer
+            {t('Fermer')}
           </Button>
         }
         width={720}
@@ -484,7 +498,7 @@ export const Association: React.FC = () => {
             arrivent tout faits du contrat gelé. */}
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <label htmlFor="releve-periode">Période (facultative)</label>
+            <label htmlFor="releve-periode">{t('Période (facultative)')}</label>
             <RangePicker
               id="releve-periode"
               style={{ width: '100%' }}
@@ -495,7 +509,7 @@ export const Association: React.FC = () => {
           </div>
 
           {erreurReleve ? (
-            <StateBlock variant="error" description="Impossible de charger l'état de quote-part de cet associé." />
+            <StateBlock variant="error" description={t("Impossible de charger l'état de quote-part de cet associé.")} />
           ) : (
             <DataView<PartnerStatementLine>
               paginated={false}
@@ -505,10 +519,10 @@ export const Association: React.FC = () => {
               pageSize={Math.max((releve?.lines ?? []).length, 1)}
               onPageChange={() => {}}
               loading={releveEnAttente}
-              emptyDescription="Aucun loyer réparti sur cette période."
+              emptyDescription={t('Aucun loyer réparti sur cette période.')}
               columns={colonnesReleve}
               rowKey={l => `${l.propertyLabel}-${l.periodYear}-${l.periodMonth}`}
-              aria-label="Lignes de l'état de quote-part"
+              aria-label={t("Lignes de l'état de quote-part")}
               renderCard={l => (
                 <DataCard
                   title={libellePeriode(l.periodYear, l.periodMonth)}
@@ -516,8 +530,8 @@ export const Association: React.FC = () => {
                   subtitle={l.propertyLabel}
                   highlight={<MoneyValue value={l.partnerShare} />}
                   fields={[
-                    { label: 'Facturé', value: <MoneyValue value={l.rentBilled} /> },
-                    { label: 'Encaissé', value: <MoneyValue value={l.rentCollected} /> }
+                    { label: t('Facturé'), value: <MoneyValue value={l.rentBilled} /> },
+                    { label: t('Encaissé'), value: <MoneyValue value={l.rentCollected} /> }
                   ]}
                 />
               )}
@@ -532,8 +546,8 @@ export const Association: React.FC = () => {
                 gap: 'var(--space-3)'
               }}
             >
-              <StatCard label="Total de sa part sur la période" value={<MoneyValue value={releve.totalShare} />} />
-              <StatCard label="Déjà reversé" value={<MoneyValue value={releve.totalPaidOut} />} />
+              <StatCard label={t('Total de sa part sur la période')} value={<MoneyValue value={releve.totalShare} />} />
+              <StatCard label={t('Déjà reversé')} value={<MoneyValue value={releve.totalPaidOut} />} />
               {/*
                 Le chiffre qu'un associé regarde en premier, et il ne se déduit
                 PAS des deux précédents : ceux-là sont bornés à la période du
@@ -541,7 +555,7 @@ export const Association: React.FC = () => {
                 mention de la période est là pour que personne ne fasse la
                 soustraction de tête et s'étonne de tomber sur autre chose.
               */}
-              <StatCard label="Reste dû, toutes périodes" value={<MoneyValue value={releve.accountBalance} />} />
+              <StatCard label={t('Reste dû, toutes périodes')} value={<MoneyValue value={releve.accountBalance} />} />
             </div>
           )}
         </Space>
@@ -574,23 +588,23 @@ function Card_AjoutAssocie(props: {
       }}
     >
       <Title level={5} style={{ marginTop: 0 }}>
-        Ajouter un associé
+        {t('Ajouter un associé')}
       </Title>
       <Space wrap size="middle" align="end">
         <div>
           <div>
-            <label htmlFor="associe-nom">Nom de l'associé</label>
+            <label htmlFor="associe-nom">{t("Nom de l'associé")}</label>
           </div>
           <Input
             id="associe-nom"
             value={props.nomAssocie}
             onChange={event => props.setNomAssocie(event.target.value)}
-            placeholder="Ex. Fatoumata Diallo"
+            placeholder={t('Ex. Fatoumata Diallo')}
           />
         </div>
         <div>
           <div>
-            <label htmlFor="associe-part">Quote-part (%)</label>
+            <label htmlFor="associe-part">{t('Quote-part (%)')}</label>
           </div>
           <InputNumber
             id="associe-part"
@@ -603,7 +617,7 @@ function Card_AjoutAssocie(props: {
           />
         </div>
         <Button type="primary" loading={props.ajoutEnCours} disabled={!props.peutAjouter} onClick={props.onAjouter}>
-          Ajouter l'associé
+          {t("Ajouter l'associé")}
         </Button>
       </Space>
     </div>
@@ -630,20 +644,20 @@ function Card_RattacherBien(props: {
       <Space wrap align="end" size="middle">
         <div style={{ minWidth: 260 }}>
           <div>
-            <label htmlFor="rattacher-bien">Rattacher un bien existant</label>
+            <label htmlFor="rattacher-bien">{t('Rattacher un bien existant')}</label>
           </div>
           <Select
             id="rattacher-bien"
             style={{ width: '100%' }}
-            placeholder="Choisir un bien"
+            placeholder={t('Choisir un bien')}
             value={props.valeur}
             onChange={props.onChange}
             options={props.options}
-            notFoundContent="Aucun bien disponible"
+            notFoundContent={t('Aucun bien disponible')}
           />
         </div>
         <Button type="primary" loading={props.enCours} disabled={!props.valeur} onClick={props.onRattacher}>
-          Rattacher
+          {t('Rattacher')}
         </Button>
       </Space>
     </div>

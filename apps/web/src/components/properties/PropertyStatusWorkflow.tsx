@@ -4,6 +4,7 @@ import { PropertyStatus } from '../../types/property-types';
 import { ArrowRight, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
 import apiClient from '../../utils/api-client';
 import { App } from 'antd';
+import { t } from '../../i18n/t';
 
 interface PropertyStatusWorkflowProps {
   propertyId: string;
@@ -14,42 +15,42 @@ interface PropertyStatusWorkflowProps {
 
 const statusConfig: Record<PropertyStatus, { label: string; color: string; icon: React.ReactNode }> = {
   [PropertyStatus.DRAFT]: {
-    label: 'Brouillon',
+    label: t('Brouillon'),
     color: 'bg-gray-100 text-gray-800',
     icon: <Clock className="h-4 w-4" />
   },
   [PropertyStatus.UNDER_REVIEW]: {
-    label: 'En révision',
+    label: t('En révision'),
     color: 'bg-yellow-100 text-yellow-800',
     icon: <Clock className="h-4 w-4" />
   },
   [PropertyStatus.AVAILABLE]: {
-    label: 'Disponible',
+    label: t('Disponible'),
     color: 'bg-green-100 text-green-800',
     icon: <CheckCircle className="h-4 w-4" />
   },
   [PropertyStatus.RESERVED]: {
-    label: 'Réservé',
+    label: t('Réservé'),
     color: 'bg-orange-100 text-orange-800',
     icon: <Clock className="h-4 w-4" />
   },
   [PropertyStatus.UNDER_OFFER]: {
-    label: 'Sous offre',
+    label: t('Sous offre'),
     color: 'bg-blue-100 text-blue-800',
     icon: <Clock className="h-4 w-4" />
   },
   [PropertyStatus.RENTED]: {
-    label: 'Loué',
+    label: t('Loué'),
     color: 'bg-purple-100 text-purple-800',
     icon: <CheckCircle className="h-4 w-4" />
   },
   [PropertyStatus.SOLD]: {
-    label: 'Vendu',
+    label: t('Vendu'),
     color: 'bg-red-100 text-red-800',
     icon: <XCircle className="h-4 w-4" />
   },
   [PropertyStatus.ARCHIVED]: {
-    label: 'Archivé',
+    label: t('Archivé'),
     color: 'bg-gray-100 text-gray-800',
     icon: <XCircle className="h-4 w-4" />
   }
@@ -101,7 +102,7 @@ export const PropertyStatusWorkflow: React.FC<PropertyStatusWorkflowProps> = ({
         onStatusChange();
       }
     } catch (error: any) {
-      message.error(error.response?.data?.error || 'Erreur lors du changement de statut');
+      message.error(error.response?.data?.error || t('Erreur lors du changement de statut'));
     } finally {
       setUpdating(false);
     }
@@ -123,7 +124,7 @@ export const PropertyStatusWorkflow: React.FC<PropertyStatusWorkflowProps> = ({
       {/* Available Transitions */}
       {allowedNextStatuses.length > 0 && (
         <div className="space-y-3">
-          <h4 className="text-sm font-medium text-gray-700">Changer le statut vers:</h4>
+          <h4 className="text-sm font-medium text-gray-700">{t('Changer le statut vers:')}</h4>
           <div className="flex flex-wrap gap-2">
             {allowedNextStatuses.map(status => {
               const config = statusConfig[status];
@@ -147,24 +148,26 @@ export const PropertyStatusWorkflow: React.FC<PropertyStatusWorkflowProps> = ({
           {selectedStatus && (
             <div className="space-y-3 pt-4 border-t">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes (optionnel)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('Notes (optionnel)')}</label>
                 <textarea
                   value={notes}
                   onChange={e => setNotes(e.target.value)}
                   rows={3}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                  placeholder="Ajouter des notes sur ce changement de statut..."
+                  placeholder={t('Ajouter des notes sur ce changement de statut...')}
                 />
               </div>
               <div className="flex gap-2">
                 <Button onClick={handleStatusChange} disabled={updating} className="flex-1">
                   {updating ? (
                     <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Mise à jour...
+                      <Loader2 className="h-4 w-4 me-2 animate-spin" />
+                      {t('Mise à jour...')}
                     </>
                   ) : (
-                    <>Changer vers {statusConfig[selectedStatus].label}</>
+                    <>
+                      {t('Changer vers')} {statusConfig[selectedStatus].label}
+                    </>
                   )}
                 </Button>
                 <Button
@@ -176,7 +179,7 @@ export const PropertyStatusWorkflow: React.FC<PropertyStatusWorkflowProps> = ({
                   }}
                   disabled={updating}
                 >
-                  Annuler
+                  {t('Annuler')}
                 </Button>
               </div>
             </div>
@@ -185,7 +188,7 @@ export const PropertyStatusWorkflow: React.FC<PropertyStatusWorkflowProps> = ({
       )}
 
       {allowedNextStatuses.length === 0 && (
-        <p className="text-sm text-gray-500">Aucune transition disponible depuis ce statut</p>
+        <p className="text-sm text-gray-500">{t('Aucune transition disponible depuis ce statut')}</p>
       )}
     </div>
   );

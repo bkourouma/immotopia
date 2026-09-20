@@ -12,7 +12,9 @@ import { PropertyType, PropertyTransactionMode, PropertyStatus } from '../../typ
 import { listContacts, CrmContact } from '../../services/crm-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import { StepRail } from '../primitives/StepRail';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
 
 interface LeaseFormWizardProps {
@@ -323,7 +325,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
     if (numStr === '') return '';
     const num = parseFloat(numStr);
     if (isNaN(num)) return '';
-    return num.toLocaleString('fr-FR', { useGrouping: true, maximumFractionDigits: 0 });
+    return num.toLocaleString(activeLocale(), { useGrouping: true, maximumFractionDigits: 0 });
   };
 
   const parseNumber = (value: string): string => {
@@ -383,29 +385,29 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
     switch (step) {
       case 0: // Informations générales
         if (!formData.propertyId) {
-          newErrors.propertyId = 'La propriété est requise';
+          newErrors.propertyId = t('La propriété est requise');
         }
         if (!formData.startDate) {
-          newErrors.startDate = 'La date de début est requise';
+          newErrors.startDate = t('La date de début est requise');
         }
         if (formData.endDate && formData.endDate <= formData.startDate) {
-          newErrors.endDate = 'La date de fin doit être après la date de début';
+          newErrors.endDate = t('La date de fin doit être après la date de début');
         }
         break;
 
       case 1: // Parties impliquées
         if (!formData.primaryRenterClientId) {
-          newErrors.primaryRenterClientId = 'Le locataire principal est requis';
+          newErrors.primaryRenterClientId = t('Le locataire principal est requis');
         }
         break;
 
       case 2: // Informations financières
         if (formData.dueDayOfMonth < 1 || formData.dueDayOfMonth > 31) {
-          newErrors.dueDayOfMonth = "Le jour d'échéance doit être entre 1 et 31";
+          newErrors.dueDayOfMonth = t("Le jour d'échéance doit être entre 1 et 31");
         }
         const rentAmountNum = parseFloat(parseNumber(formData.rentAmount));
         if (!formData.rentAmount || isNaN(rentAmountNum) || rentAmountNum <= 0) {
-          newErrors.rentAmount = 'Le montant du loyer doit être supérieur à 0';
+          newErrors.rentAmount = t('Le montant du loyer doit être supérieur à 0');
         }
         break;
 
@@ -438,7 +440,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
     }
     const date = new Date(dateString);
     if (isNaN(date.getTime())) {
-      throw new Error(`Date invalide: ${dateString}`);
+      throw new Error(t('Date invalide: {{dateString}}', { dateString: dateString }));
     }
     return date.toISOString();
   };
@@ -467,7 +469,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
     try {
       const startDateIso = convertDateToISO(formData.startDate);
       if (!startDateIso) {
-        setErrors({ submit: 'La date de début est requise' });
+        setErrors({ submit: t('La date de début est requise') });
         return;
       }
       const submitData: CreateLeaseRequest | UpdateLeaseRequest = {
@@ -535,7 +537,8 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
           apiErrors[field] = err.message;
         });
       }
-      const message = errData?.message || error.message || "Une erreur est survenue lors de l'enregistrement du bail";
+      const message =
+        errData?.message || error.message || t("Une erreur est survenue lors de l'enregistrement du bail");
       if (!apiErrors.submit) {
         apiErrors.submit = message;
       }
@@ -583,7 +586,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
 
   const getPropertyOptionLabel = (property: Property): string => {
     const ownerLabel = property.owner?.fullName?.trim() || '';
-    const title = property.title?.trim() || property.internalReference || 'Sans libellé';
+    const title = property.title?.trim() || property.internalReference || t('Sans libellé');
     const buildingPart = property.containerParent?.title ? ` ( ${property.containerParent.title} )` : '';
     const titleWithBuilding = title + buildingPart;
     if (ownerLabel) return `${ownerLabel} - ${titleWithBuilding}`;
@@ -595,7 +598,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {errors.submit && (
         <Alert
-          message="Erreur"
+          message={t('Erreur')}
           description={errors.submit}
           type="error"
           showIcon
@@ -606,7 +609,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       <Row gutter={16}>
         <Col xs={24}>
           <Form.Item
-            label="Propriété"
+            label={t('Propriété')}
             required
             validateStatus={currentStepErrors.propertyId ? 'error' : ''}
             help={currentStepErrors.propertyId}
@@ -615,7 +618,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
               value={formData.propertyId}
               onChange={value => handleChange('propertyId', value)}
               disabled={!!lease || loadingData}
-              placeholder="Sélectionner une propriété"
+              placeholder={t('Sélectionner une propriété')}
               showSearch
               filterOption={(input, option) => {
                 const label = option?.children?.toString().toLowerCase() || '';
@@ -636,7 +639,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       <Row gutter={16}>
         <Col xs={24} md={12}>
           <Form.Item
-            label="Date de début"
+            label={t('Date de début')}
             required
             validateStatus={currentStepErrors.startDate ? 'error' : ''}
             help={currentStepErrors.startDate}
@@ -652,7 +655,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
 
         <Col xs={24} md={12}>
           <Form.Item
-            label="Date de fin"
+            label={t('Date de fin')}
             validateStatus={currentStepErrors.endDate ? 'error' : ''}
             help={currentStepErrors.endDate}
           >
@@ -668,7 +671,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
 
       <Row gutter={16}>
         <Col xs={24} md={12}>
-          <Form.Item label="Date d'emménagement">
+          <Form.Item label={t("Date d'emménagement")}>
             <DatePicker
               value={formData.moveInDate ? dayjs(formData.moveInDate) : null}
               onChange={date => handleChange('moveInDate', date ? date.format('YYYY-MM-DD') : '')}
@@ -678,7 +681,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item label="Date de déménagement">
+          <Form.Item label={t('Date de déménagement')}>
             <DatePicker
               value={formData.moveOutDate ? dayjs(formData.moveOutDate) : null}
               onChange={date => handleChange('moveOutDate', date ? date.format('YYYY-MM-DD') : '')}
@@ -695,7 +698,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
     <Row gutter={16}>
       <Col xs={24} md={12}>
         <Form.Item
-          label="Locataire principal"
+          label={t('Locataire principal')}
           required
           validateStatus={currentStepErrors.primaryRenterClientId ? 'error' : ''}
           help={currentStepErrors.primaryRenterClientId}
@@ -704,7 +707,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
             value={formData.primaryRenterClientId}
             onChange={value => handleChange('primaryRenterClientId', value)}
             disabled={!!lease || loadingData}
-            placeholder="Sélectionner un locataire"
+            placeholder={t('Sélectionner un locataire')}
           >
             {clients.map(client => (
               <Select.Option key={client.id} value={client.id}>
@@ -716,12 +719,12 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       </Col>
 
       <Col xs={24} md={12}>
-        <Form.Item label="Propriétaire">
+        <Form.Item label={t('Propriétaire')}>
           <Select
             value={formData.ownerClientId || undefined}
             onChange={value => handleChange('ownerClientId', value || '')}
             disabled={!!lease || loadingData}
-            placeholder="Sélectionner un propriétaire (optionnel)"
+            placeholder={t('Sélectionner un propriétaire (optionnel)')}
             allowClear
           >
             {clients.map(client => (
@@ -739,7 +742,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
   const step3Component = (
     <Row gutter={16}>
       <Col xs={24} md={12}>
-        <Form.Item label="Devise">
+        <Form.Item label={t('Devise')}>
           <Select value={formData.currency} onChange={value => handleChange('currency', value)}>
             <Select.Option value="FCFA">FCFA</Select.Option>
             <Select.Option value="EUR">EUR</Select.Option>
@@ -749,19 +752,19 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       </Col>
 
       <Col xs={24} md={12}>
-        <Form.Item label="Fréquence de facturation" required>
+        <Form.Item label={t('Fréquence de facturation')} required>
           <Select value={formData.billingFrequency} onChange={value => handleChange('billingFrequency', value)}>
-            <Select.Option value={RentalBillingFrequency.MONTHLY}>Mensuel</Select.Option>
-            <Select.Option value={RentalBillingFrequency.QUARTERLY}>Trimestriel</Select.Option>
-            <Select.Option value={RentalBillingFrequency.SEMIANNUAL}>Semestriel</Select.Option>
-            <Select.Option value={RentalBillingFrequency.ANNUAL}>Annuel</Select.Option>
+            <Select.Option value={RentalBillingFrequency.MONTHLY}>{t('Mensuel')}</Select.Option>
+            <Select.Option value={RentalBillingFrequency.QUARTERLY}>{t('Trimestriel')}</Select.Option>
+            <Select.Option value={RentalBillingFrequency.SEMIANNUAL}>{t('Semestriel')}</Select.Option>
+            <Select.Option value={RentalBillingFrequency.ANNUAL}>{t('Annuel')}</Select.Option>
           </Select>
         </Form.Item>
       </Col>
 
       <Col xs={24} md={12}>
         <Form.Item
-          label="Jour d'échéance (1-31)"
+          label={t("Jour d'échéance (1-31)")}
           required
           validateStatus={currentStepErrors.dueDayOfMonth ? 'error' : ''}
           help={currentStepErrors.dueDayOfMonth}
@@ -778,7 +781,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
 
       <Col xs={24} md={12}>
         <Form.Item
-          label="Montant du loyer"
+          label={t('Montant du loyer')}
           required
           validateStatus={currentStepErrors.rentAmount ? 'error' : ''}
           help={currentStepErrors.rentAmount}
@@ -788,7 +791,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
             onChange={value => handleChange('rentAmount', value?.toString() || '')}
             formatter={value => formatNumberWithSpaces(value?.toString() || '')}
             parser={value => parseFloat(parseFormattedNumber(value || '')) || 0}
-            placeholder="Ex: 150 000"
+            placeholder={t('Ex: 150 000')}
             style={{ width: '100%' }}
             step={1000}
           />
@@ -796,13 +799,13 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       </Col>
 
       <Col xs={24} md={12}>
-        <Form.Item label="Charges de service">
+        <Form.Item label={t('Charges de service')}>
           <InputNumber
             value={formData.serviceChargeAmount ? parseFloat(parseNumber(formData.serviceChargeAmount)) : undefined}
             onChange={value => handleChange('serviceChargeAmount', value?.toString() || '0')}
             formatter={value => formatNumberWithSpaces(value?.toString() || '')}
             parser={value => parseFloat(parseFormattedNumber(value || '')) || 0}
-            placeholder="Ex: 10 000"
+            placeholder={t('Ex: 10 000')}
             style={{ width: '100%' }}
             step={1000}
           />
@@ -810,13 +813,13 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       </Col>
 
       <Col xs={24} md={12}>
-        <Form.Item label="Dépôt de garantie">
+        <Form.Item label={t('Dépôt de garantie')}>
           <InputNumber
             value={formData.securityDepositAmount ? parseFloat(parseNumber(formData.securityDepositAmount)) : undefined}
             onChange={value => handleChange('securityDepositAmount', value?.toString() || '0')}
             formatter={value => formatNumberWithSpaces(value?.toString() || '')}
             parser={value => parseFloat(parseFormattedNumber(value || '')) || 0}
-            placeholder="Ex: 500 000"
+            placeholder={t('Ex: 500 000')}
             style={{ width: '100%' }}
             step={1000}
           />
@@ -829,7 +832,10 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
   const step4Component = (
     <Row gutter={16}>
       <Col xs={24} md={12}>
-        <Form.Item label="Jours de grâce pour pénalités" help="Nombre de jours avant l'application des pénalités">
+        <Form.Item
+          label={t('Jours de grâce pour pénalités')}
+          help={t("Nombre de jours avant l'application des pénalités")}
+        >
           <InputNumber
             min={0}
             value={parseInt(formData.penaltyGraceDays) || 0}
@@ -840,10 +846,10 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       </Col>
 
       <Col xs={24} md={12}>
-        <Form.Item label="Mode de pénalité">
+        <Form.Item label={t('Mode de pénalité')}>
           <Select value={formData.penaltyMode} onChange={value => handleChange('penaltyMode', value)}>
-            <Select.Option value="PERCENT_OF_BALANCE">Pourcentage du solde</Select.Option>
-            <Select.Option value="FIXED_AMOUNT">Montant fixe</Select.Option>
+            <Select.Option value="PERCENT_OF_BALANCE">{t('Pourcentage du solde')}</Select.Option>
+            <Select.Option value="FIXED_AMOUNT">{t('Montant fixe')}</Select.Option>
           </Select>
         </Form.Item>
       </Col>
@@ -851,7 +857,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       {formData.penaltyMode === 'PERCENT_OF_BALANCE' && (
         <>
           <Col xs={24} md={12}>
-            <Form.Item label="Taux de pénalité (%)">
+            <Form.Item label={t('Taux de pénalité (%)')}>
               <InputNumber
                 min={0}
                 step={0.01}
@@ -863,13 +869,13 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
           </Col>
 
           <Col xs={24} md={12}>
-            <Form.Item label="Montant maximum de pénalité (optionnel)">
+            <Form.Item label={t('Montant maximum de pénalité (optionnel)')}>
               <InputNumber
                 value={formData.penaltyCapAmount ? parseFloat(parseNumber(formData.penaltyCapAmount)) : undefined}
                 onChange={value => handleChange('penaltyCapAmount', value?.toString() || '')}
                 formatter={value => formatNumberWithSpaces(value?.toString() || '')}
                 parser={value => parseFloat(parseFormattedNumber(value || '')) || 0}
-                placeholder="Ex: 50 000"
+                placeholder={t('Ex: 50 000')}
                 style={{ width: '100%' }}
                 step={1000}
               />
@@ -880,13 +886,13 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
 
       {formData.penaltyMode === 'FIXED_AMOUNT' && (
         <Col xs={24} md={12}>
-          <Form.Item label="Montant fixe de pénalité">
+          <Form.Item label={t('Montant fixe de pénalité')}>
             <InputNumber
               value={formData.penaltyFixedAmount ? parseFloat(parseNumber(formData.penaltyFixedAmount)) : undefined}
               onChange={value => handleChange('penaltyFixedAmount', value?.toString() || '0')}
               formatter={value => formatNumberWithSpaces(value?.toString() || '')}
               parser={value => parseFloat(parseFormattedNumber(value || '')) || 0}
-              placeholder="Ex: 5 000"
+              placeholder={t('Ex: 5 000')}
               style={{ width: '100%' }}
               step={1000}
             />
@@ -898,12 +904,12 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
 
   // Step 5: Notes
   const step5Component = (
-    <Form.Item label="Notes">
+    <Form.Item label={t('Notes')}>
       <TextArea
         value={formData.notes}
         onChange={e => handleChange('notes', e.target.value)}
         rows={6}
-        placeholder="Ajoutez des notes ou commentaires concernant ce bail..."
+        placeholder={t('Ajoutez des notes ou commentaires concernant ce bail...')}
       />
     </Form.Item>
   );
@@ -956,12 +962,12 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
    */
   const stepItems: { title: string; shortTitle: string; invalid?: boolean }[] = [
     {
-      title: 'Informations générales',
-      shortTitle: 'Général',
+      title: t('Informations générales'),
+      shortTitle: t('Général'),
       invalid: !getStepValidity(stepIndices[0])
     },
     {
-      title: 'Parties impliquées',
+      title: t('Parties impliquées'),
       shortTitle: 'Parties',
       invalid: !getStepValidity(stepIndices[1])
     },
@@ -969,13 +975,13 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
       ? []
       : [
           {
-            title: 'Informations financières',
+            title: t('Informations financières'),
             shortTitle: 'Finances',
             invalid: !getStepValidity(stepIndices[2])
           }
         ]),
-    ...(isSaleOnly ? [] : [{ title: 'Pénalités', shortTitle: 'Pénalités' }]),
-    { title: 'Notes', shortTitle: 'Notes' }
+    ...(isSaleOnly ? [] : [{ title: t('Pénalités'), shortTitle: t('Pénalités') }]),
+    { title: t('Notes'), shortTitle: 'Notes' }
   ];
 
   const stepComponents = [step1Component, step2Component, step3Component, step4Component, step5Component];
@@ -987,9 +993,9 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
   return (
     <Form form={form} layout="vertical">
       {onCancel && (
-        <div style={{ marginBottom: 16, textAlign: 'right' }}>
+        <div style={{ marginBottom: 16, textAlign: 'end' }}>
           <Button onClick={onCancel} disabled={isSubmitting || loading}>
-            Annuler
+            {t('Annuler')}
           </Button>
         </div>
       )}
@@ -1016,11 +1022,11 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
 
       <div className="it-toolbar">
         <Button disabled={isFirstStep || isSubmitting || loading} onClick={() => handleStepChange(currentStep - 1)}>
-          Précédent
+          {t('Précédent')}
         </Button>
         {isLastStep ? (
           <Button type="primary" loading={isSubmitting || loading} onClick={handleFinish}>
-            Créer le bail
+            {t('Créer le bail')}
           </Button>
         ) : (
           <Button
@@ -1028,7 +1034,7 @@ export const LeaseFormWizard: React.FC<LeaseFormWizardProps> = ({
             disabled={!getStepValidity(currentStep) || isSubmitting || loading}
             onClick={() => handleStepChange(currentStep + 1)}
           >
-            Suivant
+            {t('Suivant')}
           </Button>
         )}
       </div>

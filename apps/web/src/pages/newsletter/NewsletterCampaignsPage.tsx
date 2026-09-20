@@ -18,6 +18,7 @@ import {
   type NewsletterCampaign
 } from '../../services/newsletter.service';
 import { useConfirmAction } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
 const statusColors: Record<string, string> = {
   DRAFT: 'default',
@@ -30,11 +31,11 @@ const statusColors: Record<string, string> = {
 
 const statusLabels: Record<string, string> = {
   DRAFT: 'Brouillon',
-  SCHEDULED: 'Planifiée',
-  SENDING: 'En cours',
-  SENT: 'Envoyée',
-  CANCELLED: 'Annulée',
-  FAILED: 'Échec'
+  SCHEDULED: t('Planifiée'),
+  SENDING: t('En cours'),
+  SENT: t('Envoyée'),
+  CANCELLED: t('Annulée'),
+  FAILED: t('Échec')
 };
 
 export function NewsletterCampaignsPage() {
@@ -65,7 +66,7 @@ export function NewsletterCampaignsPage() {
         setCampaigns(data.campaigns);
         setPagination(data.pagination);
       } catch (e) {
-        message.error((e as Error).message || 'Erreur lors du chargement');
+        message.error((e as Error).message || t('Erreur lors du chargement'));
       } finally {
         setLoading(false);
       }
@@ -102,7 +103,7 @@ export function NewsletterCampaignsPage() {
     setSaving(true);
     try {
       await newsletterService.createCampaign(tenantId, values);
-      message.success('Campagne créée');
+      message.success(t('Campagne créée'));
       setCreateModalOpen(false);
       loadCampaigns();
     } catch (e) {
@@ -126,7 +127,7 @@ export function NewsletterCampaignsPage() {
         bodyHtml: values.bodyHtml,
         templateId: values.templateId
       });
-      message.success('Campagne mise à jour');
+      message.success(t('Campagne mise à jour'));
       setEditModalOpen(false);
       setSelectedCampaign(null);
       loadCampaigns();
@@ -140,13 +141,15 @@ export function NewsletterCampaignsPage() {
   const handleSendCampaign = async (campaign: NewsletterCampaign) => {
     if (!tenantId) return;
     confirmAction({
-      title: 'Envoyer la campagne',
-      description: `Êtes-vous sûr de vouloir envoyer « ${campaign.subject} » à tous les abonnés actifs ?`,
-      okText: 'Envoyer',
+      title: t('Envoyer la campagne'),
+      description: t('Êtes-vous sûr de vouloir envoyer « {{subject}} » à tous les abonnés actifs ?', {
+        subject: campaign.subject
+      }),
+      okText: t('Envoyer'),
       onConfirm: async () => {
         try {
           await newsletterService.sendCampaign(tenantId, campaign.id);
-          message.success('Campagne envoyée');
+          message.success(t('Campagne envoyée'));
           loadCampaigns();
         } catch (e) {
           message.error((e as Error).message || 'Erreur');
@@ -161,7 +164,7 @@ export function NewsletterCampaignsPage() {
     setSaving(true);
     try {
       await newsletterService.scheduleCampaign(tenantId, selectedCampaign.id, scheduleDate.toISOString());
-      message.success('Campagne planifiée');
+      message.success(t('Campagne planifiée'));
       setScheduleModalOpen(false);
       setSelectedCampaign(null);
       setScheduleDate(null);
@@ -176,14 +179,14 @@ export function NewsletterCampaignsPage() {
   const handleCancelCampaign = async (campaign: NewsletterCampaign) => {
     if (!tenantId) return;
     confirmAction({
-      title: 'Annuler la campagne',
-      description: `Annuler l'envoi planifié de « ${campaign.subject} » ?`,
-      okText: 'Annuler la campagne',
+      title: t('Annuler la campagne'),
+      description: t("Annuler l'envoi planifié de « {{subject}} » ?", { subject: campaign.subject }),
+      okText: t('Annuler la campagne'),
       danger: true,
       onConfirm: async () => {
         try {
           await newsletterService.cancelCampaign(tenantId, campaign.id);
-          message.success('Campagne annulée');
+          message.success(t('Campagne annulée'));
           loadCampaigns();
         } catch (e) {
           message.error((e as Error).message || 'Erreur');
@@ -206,7 +209,7 @@ export function NewsletterCampaignsPage() {
 
   const columns = [
     {
-      title: 'Sujet',
+      title: t('Sujet'),
       dataIndex: 'subject',
       key: 'subject',
       render: (v: string, r: NewsletterCampaign) => (
@@ -217,21 +220,23 @@ export function NewsletterCampaignsPage() {
       )
     },
     {
-      title: 'Liste',
+      title: t('Liste'),
       dataIndex: 'listName',
       key: 'listName'
     },
     {
-      title: 'Statistiques',
+      title: t('Statistiques'),
       key: 'stats',
       render: (_: unknown, r: NewsletterCampaign) =>
         r.status === 'SENT' || r.status === 'SENDING' ? (
           <Space wrap size="middle">
-            <span title="Mails envoyés">Envoyés: {r.sentCount ?? 0}</span>
-            <span title="Mails ouverts">Ouverts: {r.openCount ?? 0}</span>
+            <span title={t('Mails envoyés')}>
+              {t('Envoyés:')} {r.sentCount ?? 0}
+            </span>
+            <span title={t('Mails ouverts')}>Ouverts: {r.openCount ?? 0}</span>
             {(r.failedCount ?? 0) > 0 && (
-              <span style={{ color: '#ff4d4f' }} title="Retournés / email invalide">
-                Retournés: {r.failedCount}
+              <span style={{ color: '#ff4d4f' }} title={t('Retournés / email invalide')}>
+                {t('Retournés:')} {r.failedCount}
               </span>
             )}
           </Space>
@@ -240,12 +245,17 @@ export function NewsletterCampaignsPage() {
         )
     },
     {
-      title: 'Date',
+      title: t('Date'),
       dataIndex: 'sentAt',
       key: 'sentAt',
       render: (_: unknown, r: NewsletterCampaign) => {
         if (r.sentAt) return dayjs(r.sentAt).format('DD/MM/YYYY HH:mm');
-        if (r.scheduledAt) return <>Planifié: {dayjs(r.scheduledAt).format('DD/MM/YYYY HH:mm')}</>;
+        if (r.scheduledAt)
+          return (
+            <>
+              {t('Planifié:')} {dayjs(r.scheduledAt).format('DD/MM/YYYY HH:mm')}
+            </>
+          );
         return dayjs(r.createdAt).format('DD/MM/YYYY');
       }
     },
@@ -265,10 +275,10 @@ export function NewsletterCampaignsPage() {
                   setEditModalOpen(true);
                 }}
               >
-                Modifier
+                {t('Modifier')}
               </Button>
               <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handlePreview(record.id)}>
-                Aperçu
+                {t('Aperçu')}
               </Button>
               <Button
                 type="link"
@@ -280,10 +290,10 @@ export function NewsletterCampaignsPage() {
                   setScheduleModalOpen(true);
                 }}
               >
-                Planifier
+                {t('Planifier')}
               </Button>
               <Button type="primary" size="small" icon={<SendOutlined />} onClick={() => handleSendCampaign(record)}>
-                Envoyer
+                {t('Envoyer')}
               </Button>
             </>
           )}
@@ -295,7 +305,7 @@ export function NewsletterCampaignsPage() {
               icon={<StopOutlined />}
               onClick={() => handleCancelCampaign(record)}
             >
-              Annuler
+              {t('Annuler')}
             </Button>
           )}
         </Space>
@@ -308,22 +318,22 @@ export function NewsletterCampaignsPage() {
       <div style={{ padding: 24 }}>
         <div className="it-toolbar" style={{ marginBottom: 16 }}>
           <Typography.Title level={4} style={{ margin: 0 }}>
-            Campagnes newsletter
+            {t('Campagnes newsletter')}
           </Typography.Title>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateModalOpen(true)}>
-            Nouvelle campagne
+            {t('Nouvelle campagne')}
           </Button>
         </div>
 
         <Select
-          placeholder="Filtrer par statut"
+          placeholder={t('Filtrer par statut')}
           allowClear
           style={{ width: 200, marginBottom: 16 }}
           onChange={v => loadCampaigns(1, pagination.limit, v ?? undefined)}
           options={[
             { value: 'DRAFT', label: 'Brouillons' },
-            { value: 'SCHEDULED', label: 'Planifiées' },
-            { value: 'SENT', label: 'Envoyées' }
+            { value: 'SCHEDULED', label: t('Planifiées') },
+            { value: 'SENT', label: t('Envoyées') }
           ]}
         />
 
@@ -346,7 +356,7 @@ export function NewsletterCampaignsPage() {
       </div>
 
       <Modal
-        title="Nouvelle campagne"
+        title={t('Nouvelle campagne')}
         open={createModalOpen}
         onCancel={() => setCreateModalOpen(false)}
         footer={null}
@@ -363,7 +373,7 @@ export function NewsletterCampaignsPage() {
       </Modal>
 
       <Modal
-        title="Modifier la campagne"
+        title={t('Modifier la campagne')}
         open={editModalOpen}
         onCancel={() => {
           setEditModalOpen(false);
@@ -387,7 +397,7 @@ export function NewsletterCampaignsPage() {
       </Modal>
 
       <Modal
-        title="Aperçu"
+        title={t('Aperçu')}
         open={previewModalOpen}
         onCancel={() => {
           setPreviewModalOpen(false);
@@ -408,7 +418,7 @@ export function NewsletterCampaignsPage() {
               allow-scripts and no allow-same-origin renders it inert instead.
             */}
             <iframe
-              title="Aperçu de la campagne"
+              title={t('Aperçu de la campagne')}
               sandbox=""
               srcDoc={preview.html}
               style={{ border: '1px solid #d9d9d9', width: '100%', height: 400, background: '#fff' }}
@@ -418,7 +428,7 @@ export function NewsletterCampaignsPage() {
       </Modal>
 
       <Modal
-        title="Planifier l'envoi"
+        title={t("Planifier l'envoi")}
         open={scheduleModalOpen}
         onOk={handleScheduleCampaign}
         onCancel={() => {
@@ -427,10 +437,10 @@ export function NewsletterCampaignsPage() {
           setScheduleDate(null);
         }}
         confirmLoading={saving}
-        okText="Planifier"
+        okText={t('Planifier')}
         okButtonProps={{ disabled: !scheduleDate || (scheduleDate && scheduleDate.isBefore(dayjs())) }}
       >
-        <p>Sélectionnez la date et l'heure d'envoi :</p>
+        <p>{t("Sélectionnez la date et l'heure d'envoi :")}</p>
         <DatePicker
           showTime
           format="DD/MM/YYYY HH:mm"

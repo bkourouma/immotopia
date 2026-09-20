@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import './Calendar.css';
 import type { EvenementAgenda } from './calendar-model';
+import { t } from '../../i18n/t';
 
 /**
  * Grille mensuelle, hebdomadaire ou journalière — le module lourd.
@@ -69,7 +70,7 @@ function couleurEvenement(event: EvenementAgenda): React.CSSProperties {
 
 const MESSAGES = {
   next: 'Suivant',
-  previous: 'Précédent',
+  previous: t('Précédent'),
   today: "Aujourd'hui",
   month: 'Mois',
   week: 'Semaine',
@@ -77,8 +78,8 @@ const MESSAGES = {
   agenda: 'Agenda',
   date: 'Date',
   time: 'Heure',
-  event: 'Événement',
-  noEventsInRange: 'Aucun événement sur cette période'
+  event: t('Événement'),
+  noEventsInRange: t('Aucun événement sur cette période')
 };
 
 export const CalendarGrid: React.FC<CalendarGridProps> = ({

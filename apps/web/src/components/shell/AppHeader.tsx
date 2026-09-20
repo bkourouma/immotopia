@@ -6,6 +6,8 @@ import { LogoutOutlined, MenuOutlined, SettingOutlined, UserOutlined } from '@an
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { Breadcrumbs } from './Breadcrumbs';
+import { LanguageSwitcher } from './LanguageSwitcher';
+import { t } from '../../i18n/t';
 
 const { Header: AntHeader } = Layout;
 const { Text } = Typography;
@@ -13,15 +15,17 @@ const { Text } = Typography;
 /**
  * `<AppHeader>` — en-tête unique de l'application (REFONTE_UI_UX.md §3.6, §4.4).
  *
- * Deux éléments de l'ancien header ont **disparu**, et c'est volontaire :
+ * Un élément de l'ancien header a **disparu**, et un autre est revenu :
  *
  *   - le **champ de recherche** n'avait ni `onChange` ni `onSearch`
  *     (`header.tsx:107-112`) : purement décoratif depuis toujours. Le §4.4
  *     tranche — afficher un champ inerte treize semaines de plus contredit le
  *     principe P6 (« rien d'inerte à l'écran »). La recherche globale est
  *     spécifiée au §4.4 et livrée au Lot 3, avec son endpoint.
- *   - le **bouton « FR »** n'ouvrait aucun sélecteur : une seule langue est
- *     supportée, et l'i18n n'est pas au périmètre (Q7).
+ *   - le **bouton « FR »** n'ouvrait aucun sélecteur. Il en ouvre un
+ *     désormais : `<LanguageSwitcher>` bascule entre français, anglais et
+ *     arabe, ce dernier faisant passer toute la coquille en écriture
+ *     droite-à-gauche.
  *
  * La place libérée revient au fil d'Ariane, absent du dépôt jusqu'ici.
  */
@@ -51,20 +55,20 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ onOpenNavigation }) => {
   const userMenuItems: MenuProps['items'] = [
     {
       key: 'profile',
-      label: 'Profil',
+      label: t('Profil'),
       icon: <UserOutlined />,
       onClick: () => navigate('/settings/profile')
     },
     {
       key: 'settings',
-      label: 'Paramètres',
+      label: t('Paramètres'),
       icon: <SettingOutlined />,
       onClick: () => navigate('/settings')
     },
     { type: 'divider' },
     {
       key: 'logout',
-      label: 'Déconnexion',
+      label: t('Déconnexion'),
       icon: <LogoutOutlined />,
       danger: true,
       onClick: handleLogout
@@ -90,7 +94,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ onOpenNavigation }) => {
       {!isDesktop && onOpenNavigation && (
         <Button
           type="text"
-          aria-label="Ouvrir la navigation"
+          aria-label={t('Ouvrir la navigation')}
           icon={<MenuOutlined style={{ fontSize: 20 }} />}
           onClick={onOpenNavigation}
           // 44 px : plancher tactile du §3.2.
@@ -104,10 +108,11 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ onOpenNavigation }) => {
       </div>
 
       <Space size="middle" style={{ flexShrink: 0 }}>
+        <LanguageSwitcher />
         <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" trigger={['click']}>
           <Button
             type="text"
-            aria-label="Menu du compte"
+            aria-label={t('Menu du compte')}
             style={{ height: 'auto', padding: 'var(--space-1) var(--space-3)', display: 'flex', alignItems: 'center' }}
           >
             <Space>
@@ -118,10 +123,10 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ onOpenNavigation }) => {
               {isDesktop && (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
                   <Text strong style={{ fontSize: 'var(--font-size-small)', lineHeight: 1.2 }}>
-                    {user?.fullName || 'Utilisateur'}
+                    {user?.fullName || t('Utilisateur')}
                   </Text>
                   <Text type="secondary" style={{ fontSize: 'var(--font-size-caption)', lineHeight: 1.2 }}>
-                    {user?.globalRole === 'SUPER_ADMIN' ? 'Administrateur' : 'Utilisateur'}
+                    {user?.globalRole === 'SUPER_ADMIN' ? t('Administrateur') : t('Utilisateur')}
                   </Text>
                 </div>
               )}

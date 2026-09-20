@@ -5,6 +5,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { isIdSegment, labelForSegment } from '../../navigation/route-labels';
 import { TENANT_PORTAL_SEGMENTS } from '../../navigation/resolve';
+import { t } from '../../i18n/t';
 
 /**
  * `<Breadcrumbs>` — dérivé du routeur (REFONTE_UI_UX.md §4.3).
@@ -51,7 +52,7 @@ export function buildCrumbs(pathname: string): Crumb[] {
       // voir TENANT_PORTAL_SEGMENTS.
       const isPortal = next === undefined || (TENANT_PORTAL_SEGMENTS as readonly string[]).includes(next);
       if (!isPortal) return;
-      crumbs.push({ label: 'Accueil', to: isLast ? undefined : '/tenant' });
+      crumbs.push({ label: t('Accueil'), to: isLast ? undefined : '/tenant' });
       return;
     }
 
@@ -89,13 +90,13 @@ export const Breadcrumbs: React.FC = () => {
         onClick={() => (parent.to ? navigate(parent.to) : navigate(-1))}
         style={{ paddingInline: 0, color: 'var(--text-secondary)' }}
       >
-        {`Retour à ${parent.label}`}
+        {t('Retour à {{label}}', { label: parent.label })}
       </Button>
     );
   }
 
   return (
-    <nav aria-label="Fil d'Ariane">
+    <nav aria-label={t("Fil d'Ariane")}>
       <Breadcrumb
         items={crumbs.map(c => ({
           title: c.to ? <Link to={c.to}>{c.label}</Link> : c.label

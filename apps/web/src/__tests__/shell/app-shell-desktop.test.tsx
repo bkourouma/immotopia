@@ -3,6 +3,9 @@ import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import AuthContext from '../../context/AuthContext';
 import type { AuthContextType } from '../../types/auth-types';
+// La coquille porte desormais le selecteur de langue : sans ce provider,
+// `useLanguage` leve, et c'est voulu — un provider oublie doit se voir.
+import { LanguageProvider } from '../../i18n/LanguageProvider';
 
 /**
  * Palier desktop (≥ 992 px).
@@ -33,6 +36,7 @@ const collaborateur = {
     avatarUrl: null,
     globalRole: 'USER',
     emailVerified: true,
+    preferredLanguage: null,
     isActive: true,
     createdAt: new Date(0).toISOString(),
     updatedAt: new Date(0).toISOString()
@@ -57,15 +61,17 @@ const collaborateur = {
 
 function renderShell(path: string) {
   return render(
-    <AuthContext.Provider value={collaborateur}>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route element={<AppShell />}>
-            <Route path="*" element={<div data-testid="contenu">contenu</div>} />
-          </Route>
-        </Routes>
-      </MemoryRouter>
-    </AuthContext.Provider>
+    <LanguageProvider>
+      <AuthContext.Provider value={collaborateur}>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route path="*" element={<div data-testid="contenu">contenu</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>
+    </LanguageProvider>
   );
 }
 

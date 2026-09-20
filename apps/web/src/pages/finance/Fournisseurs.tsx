@@ -10,6 +10,7 @@ import type { Supplier, SupplierKind } from '../../types/finance-lot2-types';
 import { useListParams } from '../../hooks/useListParams';
 import { queryKey, entityKeyPrefix, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, StatusTag, DataView, DataCard, FilterSheet } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
 /**
  * Fournisseurs — liste et création, récit 2 du lot 2
@@ -101,11 +102,11 @@ export const Fournisseurs: React.FC = () => {
         email: valeurs.email || undefined
       });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('suppliers', tenantId) });
-      message.success(`Fournisseur « ${valeurs.name} » créé.`);
+      message.success(t('Fournisseur « {{name}} » créé.', { name: valeurs.name }));
       fermer();
     } catch (err: any) {
       if (err?.errorFields) return; // Échec de validation du formulaire : déjà signalé par les champs.
-      message.error(err?.response?.data?.message || 'La création du fournisseur a échoué.');
+      message.error(err?.response?.data?.message || t('La création du fournisseur a échoué.'));
     } finally {
       setEnregistrement(false);
     }
@@ -115,39 +116,39 @@ export const Fournisseurs: React.FC = () => {
     navigate(`/tenant/${tenantId}/finance/factures-fournisseurs?fournisseur=${fournisseur.id}`);
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const colonnes: ColumnsType<Supplier> = [
-    { title: 'Raison sociale', key: 'nom', render: (_, f) => f.name },
+    { title: t('Raison sociale'), key: 'nom', render: (_, f) => f.name },
     {
-      title: 'Nature',
+      title: t('Nature'),
       key: 'nature',
       render: (_, f) => SUPPLIER_KIND_LABELS[f.kind]
     },
     {
-      title: 'Contact',
+      title: t('Contact'),
       key: 'contact',
       render: (_, f) => [f.contactName, f.phone, f.email].filter(Boolean).join(' · ') || '—'
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       key: 'statut',
       render: (_, f) => (
         <StatusTag
           status={f.isActive ? 'ACTIVE' : 'INACTIVE'}
           tone={f.isActive ? 'success' : 'neutral'}
-          label={f.isActive ? 'Actif' : 'Inactif'}
+          label={f.isActive ? t('Actif') : t('Inactif')}
         />
       )
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, f) => (
         <Button type="link" onClick={() => ouvrirFactures(f)}>
-          Voir ses factures
+          {t('Voir ses factures')}
         </Button>
       )
     }
@@ -156,18 +157,18 @@ export const Fournisseurs: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Fournisseurs"
+        title={t('Fournisseurs')}
         subtitle={toutes.length > 0 ? `${toutes.length} fournisseur${toutes.length > 1 ? 's' : ''}` : undefined}
-        primaryAction={{ label: 'Nouveau fournisseur', icon: <PlusOutlined />, onClick: () => setOuvert(true) }}
+        primaryAction={{ label: t('Nouveau fournisseur'), icon: <PlusOutlined />, onClick: () => setOuvert(true) }}
       />
 
-      <FilterSheet activeCount={terme ? 1 : 0} onClear={list.clearFilters} title="Filtrer les fournisseurs">
+      <FilterSheet activeCount={terme ? 1 : 0} onClear={list.clearFilters} title={t('Filtrer les fournisseurs')}>
         <div style={{ minWidth: 260 }}>
-          <label htmlFor="filtre-fournisseurs-q">Rechercher</label>
+          <label htmlFor="filtre-fournisseurs-q">{t('Rechercher')}</label>
           <Input
             id="filtre-fournisseurs-q"
             allowClear
-            placeholder="Raison sociale, contact, téléphone…"
+            placeholder={t('Raison sociale, contact, téléphone…')}
             value={terme}
             onChange={event => list.setFilters({ q: event.target.value || undefined })}
           />
@@ -183,15 +184,15 @@ export const Fournisseurs: React.FC = () => {
         onPageChange={() => {}}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger les fournisseurs.' : null}
+        error={erreurRequete ? t('Impossible de charger les fournisseurs.') : null}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}
-        emptyDescription="Aucun fournisseur enregistré."
-        emptyAction={{ label: 'Nouveau fournisseur', onClick: () => setOuvert(true) }}
+        emptyDescription={t('Aucun fournisseur enregistré.')}
+        emptyAction={{ label: t('Nouveau fournisseur'), onClick: () => setOuvert(true) }}
         columns={colonnes}
         rowKey={f => f.id}
-        aria-label="Fournisseurs"
+        aria-label={t('Fournisseurs')}
         renderCard={f => (
           <DataCard
             title={f.name}
@@ -201,7 +202,7 @@ export const Fournisseurs: React.FC = () => {
               <StatusTag
                 status={f.isActive ? 'ACTIVE' : 'INACTIVE'}
                 tone={f.isActive ? 'success' : 'neutral'}
-                label={f.isActive ? 'Actif' : 'Inactif'}
+                label={f.isActive ? t('Actif') : t('Inactif')}
               />
             }
             fields={[{ label: 'Contact', value: [f.contactName, f.phone, f.email].filter(Boolean).join(' · ') || '—' }]}
@@ -211,40 +212,40 @@ export const Fournisseurs: React.FC = () => {
       />
 
       <Modal
-        title="Nouveau fournisseur"
+        title={t('Nouveau fournisseur')}
         open={ouvert}
         onCancel={fermer}
         onOk={soumettre}
-        okText="Créer"
-        cancelText="Annuler"
+        okText={t('Créer')}
+        cancelText={t('Annuler')}
         confirmLoading={enregistrement}
         destroyOnHidden
       >
         <Form form={formulaire} layout="vertical" requiredMark={false}>
           <Form.Item
             name="name"
-            label="Raison sociale"
-            rules={[{ required: true, message: 'La raison sociale est obligatoire.' }]}
+            label={t('Raison sociale')}
+            rules={[{ required: true, message: t('La raison sociale est obligatoire.') }]}
           >
-            <Input placeholder="Ex. Matériaux du Fouta SARL" />
+            <Input placeholder={t('Ex. Matériaux du Fouta SARL')} />
           </Form.Item>
           <Form.Item
             name="kind"
-            label="Nature"
-            rules={[{ required: true, message: 'La nature est obligatoire.' }]}
+            label={t('Nature')}
+            rules={[{ required: true, message: t('La nature est obligatoire.') }]}
             // La nature décide, plus loin, si le rattachement à un chantier
             // sera obligatoire pour les factures de ce fournisseur.
-            extra="Décide si le rattachement à un chantier sera obligatoire pour ses factures."
+            extra={t('Décide si le rattachement à un chantier sera obligatoire pour ses factures.')}
           >
             <Select options={OPTIONS_NATURE} placeholder="Choisir…" />
           </Form.Item>
-          <Form.Item name="contactName" label="Contact">
-            <Input placeholder="Nom du contact" />
+          <Form.Item name="contactName" label={t('Contact')}>
+            <Input placeholder={t('Nom du contact')} />
           </Form.Item>
-          <Form.Item name="phone" label="Téléphone">
+          <Form.Item name="phone" label={t('Téléphone')}>
             <Input placeholder="+224 …" />
           </Form.Item>
-          <Form.Item name="email" label="E-mail">
+          <Form.Item name="email" label={t('E-mail')}>
             <Input type="email" placeholder="contact@fournisseur.tld" />
           </Form.Item>
         </Form>

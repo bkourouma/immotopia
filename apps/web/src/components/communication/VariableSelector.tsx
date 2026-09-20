@@ -5,8 +5,9 @@ import {
   TEMPLATE_VARIABLES,
   VARIABLE_CATEGORY_LABELS,
   getVariablePlaceholder,
-  type TemplateVariable,
+  type TemplateVariable
 } from '../../constants/template-variables';
+import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
@@ -20,11 +21,7 @@ export interface VariableSelectorProps {
 }
 
 /** Composant pour afficher les variables disponibles et permettre de les insérer dans un template (corps/sujet). */
-export function VariableSelector({
-  onInsert,
-  groupByCategory = true,
-  maxVisible = 0,
-}: VariableSelectorProps) {
+export function VariableSelector({ onInsert, groupByCategory = true, maxVisible = 0 }: VariableSelectorProps) {
   const [expanded, setExpanded] = useState(!maxVisible);
 
   const handleClick = (v: TemplateVariable) => {
@@ -56,30 +53,33 @@ export function VariableSelector({
       },
       {} as Record<TemplateVariable['category'], TemplateVariable[]>
     );
-    const categories = (Object.keys(VARIABLE_CATEGORY_LABELS) as TemplateVariable['category'][])
-      .filter((c) => byCategory[c]?.length);
+    const categories = (Object.keys(VARIABLE_CATEGORY_LABELS) as TemplateVariable['category'][]).filter(
+      c => byCategory[c]?.length
+    );
 
     return (
       <div style={{ marginTop: 8, marginBottom: 8 }}>
         <Space align="center" style={{ marginBottom: 8 }}>
           <CodeOutlined />
           <Text type="secondary" strong>
-            Variables disponibles
+            {t('Variables disponibles')}
           </Text>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            {onInsert ? 'Cliquez pour insérer à la position du curseur dans le corps ou le sujet.' : 'Cliquez pour copier.'}
+            {onInsert
+              ? t('Cliquez pour insérer à la position du curseur dans le corps ou le sujet.')
+              : t('Cliquez pour copier.')}
           </Text>
         </Space>
         <Collapse
           defaultActiveKey={categories}
-          items={categories.map((cat) => ({
+          items={categories.map(cat => ({
             key: cat,
             label: `${VARIABLE_CATEGORY_LABELS[cat]} (${byCategory[cat].length})`,
             children: (
               <Space size={[4, 4]} wrap>
                 {byCategory[cat].map(renderVariableTag)}
               </Space>
-            ),
+            )
           }))}
         />
       </div>
@@ -94,7 +94,7 @@ export function VariableSelector({
       <Space align="center" style={{ marginBottom: 8 }}>
         <CodeOutlined />
         <Text type="secondary" strong>
-          Variables disponibles
+          {t('Variables disponibles')}
         </Text>
       </Space>
       <Space size={[4, 4]} wrap>
@@ -103,7 +103,7 @@ export function VariableSelector({
       {hasMore && (
         <div style={{ marginTop: 8 }}>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            + {TEMPLATE_VARIABLES.length - maxVisible} autres variables. Utilisez la syntaxe {'{{nomVariable}}'}.
+            + {TEMPLATE_VARIABLES.length - maxVisible} {t('autres variables. Utilisez la syntaxe')} {'{{nomVariable}}'}.
           </Text>
         </div>
       )}

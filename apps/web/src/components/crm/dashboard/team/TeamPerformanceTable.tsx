@@ -3,6 +3,7 @@ import { TeamPerformance } from '../../../../types/crmDashboard';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../ui/table';
 import { Badge } from '../../../ui/badge';
 import { TrendingUp, TrendingDown, Award } from 'lucide-react';
+import { t } from '../../../../i18n/t';
 
 interface TeamPerformanceTableProps {
   data: TeamPerformance;
@@ -25,18 +26,24 @@ export const TeamPerformanceTable: React.FC<TeamPerformanceTableProps> = ({ data
   };
 
   if (sortedMembers.length === 0) {
-    return <div className="text-center py-8 text-slate-500">Aucune donnée de performance disponible</div>;
+    return <div className="text-center py-8 text-slate-500">{t('Aucune donnée de performance disponible')}</div>;
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm text-slate-600">Total activités: {data.totalActivities}</p>
-          <p className="text-sm text-slate-600">Total affaires gagnées: {data.totalWonDeals}</p>
+          <p className="text-sm text-slate-600">
+            {t('Total activités:')} {data.totalActivities}
+          </p>
+          <p className="text-sm text-slate-600">
+            {t('Total affaires gagnées:')} {data.totalWonDeals}
+          </p>
         </div>
         {data.avgResponseTimeHours && (
-          <Badge variant="outline">Temps de réponse moyen: {formatTime(data.avgResponseTimeHours)}</Badge>
+          <Badge variant="outline">
+            {t('Temps de réponse moyen:')} {formatTime(data.avgResponseTimeHours)}
+          </Badge>
         )}
       </div>
 
@@ -47,11 +54,11 @@ export const TeamPerformanceTable: React.FC<TeamPerformanceTableProps> = ({ data
           <TableHeader>
             <TableRow>
               <TableHead className="w-12">#</TableHead>
-              <TableHead>Membre</TableHead>
-              <TableHead className="text-right">Activités</TableHead>
-              <TableHead className="text-right">Affaires gagnées</TableHead>
-              <TableHead className="text-right">Taux de conversion</TableHead>
-              <TableHead className="text-right">Temps réponse</TableHead>
+              <TableHead>{t('Membre')}</TableHead>
+              <TableHead className="text-end">{t('Activités')}</TableHead>
+              <TableHead className="text-end">{t('Affaires gagnées')}</TableHead>
+              <TableHead className="text-end">{t('Taux de conversion')}</TableHead>
+              <TableHead className="text-end">{t('Temps réponse')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -74,13 +81,13 @@ export const TeamPerformanceTable: React.FC<TeamPerformanceTableProps> = ({ data
                     {member.userEmail && <p className="text-xs text-slate-500">{member.userEmail}</p>}
                   </div>
                 </TableCell>
-                <TableCell className="text-right">{member.activitiesCount}</TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-end">{member.activitiesCount}</TableCell>
+                <TableCell className="text-end">
                   <Badge variant="outline" className="font-semibold">
                     {member.wonDealsCount}
                   </Badge>
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-end">
                   {member.conversionRate !== undefined ? (
                     <div className="flex items-center justify-end gap-1">
                       {member.conversionRate > 20 ? (
@@ -94,7 +101,7 @@ export const TeamPerformanceTable: React.FC<TeamPerformanceTableProps> = ({ data
                     'N/A'
                   )}
                 </TableCell>
-                <TableCell className="text-right text-sm text-slate-600">
+                <TableCell className="text-end text-sm text-slate-600">
                   {formatTime(member.avgResponseTimeHours)}
                 </TableCell>
               </TableRow>

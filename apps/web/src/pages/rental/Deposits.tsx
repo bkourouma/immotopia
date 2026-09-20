@@ -14,7 +14,9 @@ import {
   RentalDepositMovementType
 } from '../../services/rental-service';
 import { DepositMovementForm } from '../../components/rental/DepositMovementForm';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
 
 interface DepositsProps {
@@ -66,7 +68,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
         // Deposit doesn't exist yet, that's okay
         setDeposit(null);
       } else {
-        setError(err.response?.data?.message || 'Erreur lors du chargement du dépôt');
+        setError(err.response?.data?.message || t('Erreur lors du chargement du dépôt'));
       }
     } finally {
       setLoading(false);
@@ -92,20 +94,20 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
       setShowMovementForm(false);
       await loadDeposit();
       await loadMovements();
-      message.success('Mouvement enregistré avec succès.');
+      message.success(t('Mouvement enregistré avec succès.'));
     } catch (err: any) {
-      const msg = err?.response?.data?.message || "Erreur lors de l'enregistrement du mouvement.";
+      const msg = err?.response?.data?.message || t("Erreur lors de l'enregistrement du mouvement.");
       message.error(msg);
       throw err;
     }
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('fr-FR');
+    return new Date(dateString).toLocaleDateString(activeLocale());
   };
 
   const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat('fr-FR', {
+    return new Intl.NumberFormat(activeLocale(), {
       style: 'currency',
       currency: currency === 'FCFA' ? 'XOF' : currency
     }).format(amount);
@@ -115,7 +117,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
     const typeMap: Record<string, string> = {
       COLLECT: 'Collecte',
       HOLD: 'Blocage',
-      RELEASE: 'Libération',
+      RELEASE: t('Libération'),
       REFUND: 'Remboursement',
       FORFEIT: 'Confiscation',
       ADJUSTMENT: 'Ajustement'
@@ -154,15 +156,15 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
         <Row gutter={[16, 16]} justify="space-between" align="middle">
           <Col xs={24} sm={24} md={12} lg={14}>
             <Title level={2} style={{ margin: 0 }}>
-              Dépôt de garantie
+              {t('Dépôt de garantie')}
             </Title>
-            <Text type="secondary">Gérez le dépôt de garantie du bail</Text>
+            <Text type="secondary">{t('Gérez le dépôt de garantie du bail')}</Text>
           </Col>
           <Col xs={24} sm={24} md={12} lg={10}>
             <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end' }}>
               {deposit && (
                 <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowMovementForm(true)}>
-                  Nouveau mouvement
+                  {t('Nouveau mouvement')}
                 </Button>
               )}
             </div>
@@ -170,7 +172,14 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
         </Row>
 
         {error && (
-          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
+          <Alert
+            message={t('Erreur')}
+            description={error}
+            type="error"
+            showIcon
+            closable
+            onClose={() => setError(null)}
+          />
         )}
 
         {deposit ? (
@@ -179,7 +188,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
               <Row gutter={16}>
                 <Col xs={24} md={8}>
                   <div>
-                    <Text type="secondary">Montant cible</Text>
+                    <Text type="secondary">{t('Montant cible')}</Text>
                     <Title level={3} style={{ margin: '8px 0 0 0' }}>
                       {formatCurrency(deposit.target_amount, deposit.currency)}
                     </Title>
@@ -187,7 +196,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
                 </Col>
                 <Col xs={24} md={8}>
                   <div>
-                    <Text type="secondary">Solde actuel</Text>
+                    <Text type="secondary">{t('Solde actuel')}</Text>
                     <Title level={3} style={{ margin: '8px 0 0 0' }}>
                       {formatCurrency(deposit.current_balance, deposit.currency)}
                     </Title>
@@ -195,10 +204,10 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
                 </Col>
                 <Col xs={24} md={8}>
                   <div>
-                    <Text type="secondary">Statut</Text>
+                    <Text type="secondary">{t('Statut')}</Text>
                     <div style={{ marginTop: 8 }}>
                       <Tag color={deposit.current_balance >= deposit.target_amount ? 'success' : 'default'}>
-                        {deposit.current_balance >= deposit.target_amount ? 'Complet' : 'En attente'}
+                        {deposit.current_balance >= deposit.target_amount ? t('Complet') : t('En attente')}
                       </Tag>
                     </div>
                   </div>
@@ -218,7 +227,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
               </Card>
             )}
 
-            <Card title="Historique des mouvements">
+            <Card title={t('Historique des mouvements')}>
               <Table
                 dataSource={movements}
                 loading={loading}
@@ -266,7 +275,7 @@ export const Deposits: React.FC<DepositsProps> = ({ leaseId: propLeaseId }) => {
             </Card>
           </>
         ) : (
-          <Empty description="Aucun dépôt de garantie configuré pour ce bail" />
+          <Empty description={t('Aucun dépôt de garantie configuré pour ce bail')} />
         )}
       </Space>
     </>

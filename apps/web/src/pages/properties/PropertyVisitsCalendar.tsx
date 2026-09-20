@@ -4,6 +4,7 @@ import { Card, Typography, Space } from 'antd';
 import { CalendarOutlined } from '@ant-design/icons';
 import { PropertyVisitCalendar } from '../../components/properties/PropertyVisitCalendar';
 import { useAuth } from '../../hooks/useAuth';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -16,7 +17,7 @@ export const PropertyVisitsCalendar: React.FC = () => {
     return (
       <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <Text type="secondary">Aucune agence sélectionnée</Text>
+          <Text type="secondary">{t('Aucune agence sélectionnée')}</Text>
         </div>
       </>
     );
@@ -28,9 +29,9 @@ export const PropertyVisitsCalendar: React.FC = () => {
         {/* Page Header */}
         <div>
           <Title level={2} style={{ margin: 0 }}>
-            <CalendarOutlined /> Calendrier des visites
+            <CalendarOutlined /> {t('Calendrier des visites')}
           </Title>
-          <Text type="secondary">Consultez toutes les visites de propriétés planifiées</Text>
+          <Text type="secondary">{t('Consultez toutes les visites de propriétés planifiées')}</Text>
         </div>
 
         {/* Calendar */}

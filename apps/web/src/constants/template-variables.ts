@@ -1,3 +1,4 @@
+import { t } from '../i18n/t';
 /**
  * Variables disponibles pour les templates de communication (email / WhatsApp).
  * Utiliser la syntaxe {{nomVariable}} dans le corps ou le sujet du template.
@@ -14,60 +15,165 @@ export interface TemplateVariable {
 
 export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   // Contexte commun
-  { name: 'contactName', label: 'Nom du destinataire', description: 'Nom du contact (locataire, propriétaire, etc.)', category: 'common' },
-  { name: 'contactEmail', label: 'Email du destinataire', description: 'Adresse email du destinataire', category: 'common' },
-  { name: 'contactPhone', label: 'Téléphone du destinataire', description: 'Numéro de téléphone du destinataire', category: 'common' },
-  { name: 'agencyName', label: 'Nom de l\'agence', description: 'Nom du tenant (agence)', category: 'common' },
-  { name: 'agencyPhone', label: 'Téléphone de l\'agence', description: 'Numéro de l\'agence', category: 'common' },
-  { name: 'agencyEmail', label: 'Email de l\'agence', description: 'Email de contact de l\'agence', category: 'common' },
-  { name: 'currentDate', label: 'Date du jour', description: 'Date actuelle au format local', category: 'common' },
-  { name: 'currentTime', label: 'Heure actuelle', description: 'Heure actuelle', category: 'common' },
-  { name: 'event', label: 'Type d\'événement', description: 'Événement déclencheur (ex: PAYMENT_RECEIVED)', category: 'common' },
+  {
+    name: 'contactName',
+    label: t('Nom du destinataire'),
+    description: t('Nom du contact (locataire, propriétaire, etc.)'),
+    category: 'common'
+  },
+  {
+    name: 'contactEmail',
+    label: t('Email du destinataire'),
+    description: t('Adresse email du destinataire'),
+    category: 'common'
+  },
+  {
+    name: 'contactPhone',
+    label: t('Téléphone du destinataire'),
+    description: t('Numéro de téléphone du destinataire'),
+    category: 'common'
+  },
+  { name: 'agencyName', label: t("Nom de l'agence"), description: t('Nom du tenant (agence)'), category: 'common' },
+  { name: 'agencyPhone', label: t("Téléphone de l'agence"), description: t("Numéro de l'agence"), category: 'common' },
+  {
+    name: 'agencyEmail',
+    label: t("Email de l'agence"),
+    description: t("Email de contact de l'agence"),
+    category: 'common'
+  },
+  {
+    name: 'currentDate',
+    label: t('Date du jour'),
+    description: t('Date actuelle au format local'),
+    category: 'common'
+  },
+  { name: 'currentTime', label: t('Heure actuelle'), description: t('Heure actuelle'), category: 'common' },
+  {
+    name: 'event',
+    label: t("Type d'événement"),
+    description: t('Événement déclencheur (ex: PAYMENT_RECEIVED)'),
+    category: 'common'
+  },
   // Paiements
-  { name: 'amount', label: 'Montant', description: 'Montant du paiement ou de l\'échéance', category: 'payment' },
-  { name: 'paymentDate', label: 'Date du paiement', description: 'Date à laquelle le paiement a été reçu', category: 'payment' },
-  { name: 'paymentMethod', label: 'Moyen de paiement', description: 'Virement, chèque, etc.', category: 'payment' },
-  { name: 'paymentReference', label: 'Référence du paiement', description: 'Référence ou identifiant du paiement', category: 'payment' },
-  { name: 'leaseId', label: 'ID du bail', description: 'Identifiant du bail', category: 'lease' },
-  { name: 'dueDate', label: 'Date d\'échéance', description: 'Date d\'échéance du loyer ou de l\'échéance', category: 'payment' },
-  { name: 'dueAmount', label: 'Montant dû', description: 'Montant à payer pour l\'échéance', category: 'payment' },
-  { name: 'installmentNumber', label: 'Numéro d\'échéance', description: 'Numéro de l\'échéance', category: 'payment' },
-  { name: 'remainingBalance', label: 'Solde restant', description: 'Solde restant à payer', category: 'payment' },
+  { name: 'amount', label: t('Montant'), description: t("Montant du paiement ou de l'échéance"), category: 'payment' },
+  {
+    name: 'paymentDate',
+    label: t('Date du paiement'),
+    description: t('Date à laquelle le paiement a été reçu'),
+    category: 'payment'
+  },
+  {
+    name: 'paymentMethod',
+    label: t('Moyen de paiement'),
+    description: t('Virement, chèque, etc.'),
+    category: 'payment'
+  },
+  {
+    name: 'paymentReference',
+    label: t('Référence du paiement'),
+    description: t('Référence ou identifiant du paiement'),
+    category: 'payment'
+  },
+  { name: 'leaseId', label: t('ID du bail'), description: t('Identifiant du bail'), category: 'lease' },
+  {
+    name: 'dueDate',
+    label: t("Date d'échéance"),
+    description: t("Date d'échéance du loyer ou de l'échéance"),
+    category: 'payment'
+  },
+  { name: 'dueAmount', label: t('Montant dû'), description: t("Montant à payer pour l'échéance"), category: 'payment' },
+  {
+    name: 'installmentNumber',
+    label: t("Numéro d'échéance"),
+    description: t("Numéro de l'échéance"),
+    category: 'payment'
+  },
+  { name: 'remainingBalance', label: t('Solde restant'), description: t('Solde restant à payer'), category: 'payment' },
   // Baux
-  { name: 'leaseStartDate', label: 'Début du bail', description: 'Date de début du bail', category: 'lease' },
-  { name: 'leaseEndDate', label: 'Fin du bail', description: 'Date de fin du bail', category: 'lease' },
-  { name: 'rentAmount', label: 'Montant du loyer', description: 'Loyer mensuel ou périodique', category: 'lease' },
-  { name: 'depositAmount', label: 'Montant de la caution', description: 'Dépôt de garantie', category: 'lease' },
+  { name: 'leaseStartDate', label: t('Début du bail'), description: t('Date de début du bail'), category: 'lease' },
+  { name: 'leaseEndDate', label: t('Fin du bail'), description: t('Date de fin du bail'), category: 'lease' },
+  {
+    name: 'rentAmount',
+    label: t('Montant du loyer'),
+    description: t('Loyer mensuel ou périodique'),
+    category: 'lease'
+  },
+  { name: 'depositAmount', label: t('Montant de la caution'), description: t('Dépôt de garantie'), category: 'lease' },
   // Propriétés
-  { name: 'propertyAddress', label: 'Adresse du bien', description: 'Adresse complète du bien immobilier', category: 'property' },
-  { name: 'propertyCity', label: 'Ville du bien', description: 'Ville du bien', category: 'property' },
-  { name: 'propertyZipCode', label: 'Code postal', description: 'Code postal du bien', category: 'property' },
-  { name: 'propertyType', label: 'Type de bien', description: 'Appartement, Maison, etc.', category: 'property' },
+  {
+    name: 'propertyAddress',
+    label: t('Adresse du bien'),
+    description: t('Adresse complète du bien immobilier'),
+    category: 'property'
+  },
+  { name: 'propertyCity', label: t('Ville du bien'), description: t('Ville du bien'), category: 'property' },
+  { name: 'propertyZipCode', label: t('Code postal'), description: t('Code postal du bien'), category: 'property' },
+  { name: 'propertyType', label: t('Type de bien'), description: t('Appartement, Maison, etc.'), category: 'property' },
   // Maintenance / Tickets
-  { name: 'ticketId', label: 'Numéro du ticket', description: 'Identifiant du ticket de maintenance', category: 'ticket' },
-  { name: 'ticketSubject', label: 'Sujet du ticket', description: 'Sujet ou titre du ticket', category: 'ticket' },
-  { name: 'ticketDescription', label: 'Description du ticket', description: 'Description du problème', category: 'ticket' },
-  { name: 'ticketPriority', label: 'Priorité du ticket', description: 'Haute, Moyenne, Basse', category: 'ticket' },
-  { name: 'ticketStatus', label: 'Statut du ticket', description: 'Nouveau, En cours, Résolu', category: 'ticket' },
-  { name: 'createdAt', label: 'Date de création', description: 'Date de création du ticket ou de l\'élément', category: 'ticket' },
-  { name: 'ticketCreatedAt', label: 'Date de création du ticket', description: 'Date et heure de création du ticket (formatée)', category: 'ticket' },
-  { name: 'ticketUpdatedAt', label: 'Date de mise à jour du ticket', description: 'Date et heure de dernière mise à jour du ticket (formatée)', category: 'ticket' },
+  {
+    name: 'ticketId',
+    label: t('Numéro du ticket'),
+    description: t('Identifiant du ticket de maintenance'),
+    category: 'ticket'
+  },
+  {
+    name: 'ticketSubject',
+    label: t('Sujet du ticket'),
+    description: t('Sujet ou titre du ticket'),
+    category: 'ticket'
+  },
+  {
+    name: 'ticketDescription',
+    label: t('Description du ticket'),
+    description: t('Description du problème'),
+    category: 'ticket'
+  },
+  {
+    name: 'ticketPriority',
+    label: t('Priorité du ticket'),
+    description: t('Haute, Moyenne, Basse'),
+    category: 'ticket'
+  },
+  {
+    name: 'ticketStatus',
+    label: t('Statut du ticket'),
+    description: t('Nouveau, En cours, Résolu'),
+    category: 'ticket'
+  },
+  {
+    name: 'createdAt',
+    label: t('Date de création'),
+    description: t("Date de création du ticket ou de l'élément"),
+    category: 'ticket'
+  },
+  {
+    name: 'ticketCreatedAt',
+    label: t('Date de création du ticket'),
+    description: t('Date et heure de création du ticket (formatée)'),
+    category: 'ticket'
+  },
+  {
+    name: 'ticketUpdatedAt',
+    label: t('Date de mise à jour du ticket'),
+    description: t('Date et heure de dernière mise à jour du ticket (formatée)'),
+    category: 'ticket'
+  },
   // CRM
-  { name: 'dealId', label: 'ID du deal', description: 'Identifiant du deal CRM', category: 'crm' },
-  { name: 'dealStage', label: 'Étape du deal', description: 'Stade actuel du deal', category: 'crm' },
-  { name: 'dealValue', label: 'Valeur du deal', description: 'Montant ou valeur du deal', category: 'crm' },
-  { name: 'appointmentDate', label: 'Date du rendez-vous', description: 'Date du RDV', category: 'crm' },
-  { name: 'appointmentTime', label: 'Heure du rendez-vous', description: 'Heure du RDV', category: 'crm' },
+  { name: 'dealId', label: t('ID du deal'), description: t('Identifiant du deal CRM'), category: 'crm' },
+  { name: 'dealStage', label: t('Étape du deal'), description: t('Stade actuel du deal'), category: 'crm' },
+  { name: 'dealValue', label: t('Valeur du deal'), description: t('Montant ou valeur du deal'), category: 'crm' },
+  { name: 'appointmentDate', label: t('Date du rendez-vous'), description: t('Date du RDV'), category: 'crm' },
+  { name: 'appointmentTime', label: t('Heure du rendez-vous'), description: t('Heure du RDV'), category: 'crm' }
 ];
 
 /** Libellé court des catégories pour l'affichage */
 export const VARIABLE_CATEGORY_LABELS: Record<TemplateVariable['category'], string> = {
   common: 'Commun',
-  payment: 'Paiements & échéances',
+  payment: t('Paiements & échéances'),
   lease: 'Baux',
-  property: 'Propriétés',
+  property: t('Propriétés'),
   ticket: 'Maintenance',
-  crm: 'CRM & rendez-vous',
+  crm: t('CRM & rendez-vous')
 };
 
 /** Retourne la syntaxe à insérer dans le template : {{nomVariable}} */

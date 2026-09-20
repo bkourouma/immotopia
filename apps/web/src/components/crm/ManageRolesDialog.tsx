@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Checkbox, Button, Space, Alert, Typography } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
 import { CrmContactRoleType } from '../../types/crm-types';
+import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
@@ -15,10 +16,10 @@ interface ManageRolesDialogProps {
 }
 
 const roleOptions: { value: CrmContactRoleType; label: string }[] = [
-  { value: 'PROPRIETAIRE', label: 'Propriétaire (Owner)' },
-  { value: 'LOCATAIRE', label: 'Locataire (Renter)' },
-  { value: 'COPROPRIETAIRE', label: 'Copropriétaire (Co-owner)' },
-  { value: 'ACQUEREUR', label: 'Acquéreur (Buyer)' },
+  { value: 'PROPRIETAIRE', label: t('Propriétaire (Owner)') },
+  { value: 'LOCATAIRE', label: t('Locataire (Renter)') },
+  { value: 'COPROPRIETAIRE', label: t('Copropriétaire (Co-owner)') },
+  { value: 'ACQUEREUR', label: t('Acquéreur (Buyer)') }
 ];
 
 export const ManageRolesDialog: React.FC<ManageRolesDialogProps> = ({
@@ -27,7 +28,7 @@ export const ManageRolesDialog: React.FC<ManageRolesDialogProps> = ({
   onSubmit,
   onCancel,
   loading = false,
-  open = true,
+  open = true
 }) => {
   const [selectedRoles, setSelectedRoles] = useState<CrmContactRoleType[]>(currentRoles);
   const [error, setError] = useState<string | null>(null);
@@ -39,9 +40,7 @@ export const ManageRolesDialog: React.FC<ManageRolesDialogProps> = ({
   }, [currentRoles]);
 
   const handleRoleToggle = (role: CrmContactRoleType) => {
-    setSelectedRoles((prev) =>
-      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
-    );
+    setSelectedRoles(prev => (prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]));
   };
 
   const handleSubmit = async () => {
@@ -50,7 +49,7 @@ export const ManageRolesDialog: React.FC<ManageRolesDialogProps> = ({
     try {
       await onSubmit(selectedRoles);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de la mise à jour des rôles');
+      setError(err.response?.data?.message || t('Erreur lors de la mise à jour des rôles'));
     } finally {
       setIsSubmitting(false);
     }
@@ -61,33 +60,31 @@ export const ManageRolesDialog: React.FC<ManageRolesDialogProps> = ({
       title={
         <Space>
           <UserOutlined style={{ color: '#1890ff' }} />
-          <span>Gérer les rôles</span>
+          <span>{t('Gérer les rôles')}</span>
         </Space>
       }
       open={open}
       onCancel={onCancel}
       onOk={handleSubmit}
       confirmLoading={isSubmitting || loading}
-      okText="Enregistrer"
-      cancelText="Annuler"
+      okText={t('Enregistrer')}
+      cancelText={t('Annuler')}
       width={500}
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Text>
-          Sélectionnez les rôles pour <strong>{contactName}</strong>.
+          {t('Sélectionnez les rôles pour')} <strong>{contactName}</strong>.
         </Text>
 
-        {error && (
-          <Alert message={error} type="error" showIcon />
-        )}
+        {error && <Alert message={error} type="error" showIcon />}
 
         <Checkbox.Group
           value={selectedRoles}
-          onChange={(values) => setSelectedRoles(values as CrmContactRoleType[])}
+          onChange={values => setSelectedRoles(values as CrmContactRoleType[])}
           style={{ width: '100%' }}
         >
           <Space direction="vertical" style={{ width: '100%' }}>
-            {roleOptions.map((role) => (
+            {roleOptions.map(role => (
               <Checkbox
                 key={role.value}
                 value={role.value}
@@ -96,7 +93,7 @@ export const ManageRolesDialog: React.FC<ManageRolesDialogProps> = ({
                   border: '1px solid #d9d9d9',
                   borderRadius: '6px',
                   width: '100%',
-                  marginBottom: '8px',
+                  marginBottom: '8px'
                 }}
               >
                 {role.label}
@@ -108,4 +105,3 @@ export const ManageRolesDialog: React.FC<ManageRolesDialogProps> = ({
     </Modal>
   );
 };
-

@@ -32,7 +32,9 @@ import {
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import dayjs from 'dayjs';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 const { Option } = Select;
 
@@ -122,7 +124,7 @@ interface TicketDetails {
 }
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('fr-FR', {
+  return new Intl.NumberFormat(activeLocale(), {
     style: 'currency',
     currency: 'XOF',
     minimumFractionDigits: 0
@@ -131,11 +133,11 @@ const formatCurrency = (amount: number) => {
 
 const getStatusTag = (status: string) => {
   const statusMap: Record<string, { label: string; color: string }> = {
-    DECLARED: { label: 'Déclaré', color: 'default' },
-    IN_PROGRESS: { label: 'En cours', color: 'processing' },
-    ASSIGNED: { label: 'Assigné', color: 'warning' },
-    RESOLVED: { label: 'Résolu', color: 'success' },
-    CANCELED: { label: 'Annulé', color: 'error' }
+    DECLARED: { label: t('Déclaré'), color: 'default' },
+    IN_PROGRESS: { label: t('En cours'), color: 'processing' },
+    ASSIGNED: { label: t('Assigné'), color: 'warning' },
+    RESOLVED: { label: t('Résolu'), color: 'success' },
+    CANCELED: { label: t('Annulé'), color: 'error' }
   };
   const config = statusMap[status] || { label: status, color: 'default' };
   return <Tag color={config.color}>{config.label}</Tag>;
@@ -143,10 +145,10 @@ const getStatusTag = (status: string) => {
 
 const getPriorityTag = (priority: string) => {
   const priorityMap: Record<string, { label: string; color: string }> = {
-    LOW: { label: 'Basse', color: 'default' },
-    MEDIUM: { label: 'Moyenne', color: 'warning' },
-    HIGH: { label: 'Haute', color: 'error' },
-    URGENT: { label: 'Urgente', color: 'red' }
+    LOW: { label: t('Basse'), color: 'default' },
+    MEDIUM: { label: t('Moyenne'), color: 'warning' },
+    HIGH: { label: t('Haute'), color: 'error' },
+    URGENT: { label: t('Urgente'), color: 'red' }
   };
   const config = priorityMap[priority] || { label: priority, color: 'default' };
   return <Tag color={config.color}>{config.label}</Tag>;
@@ -155,7 +157,7 @@ const getPriorityTag = (priority: string) => {
 const getCategoryLabel = (category: string) => {
   const categoryMap: Record<string, string> = {
     PLUMBING: 'Plomberie',
-    ELECTRICITY: 'Électricité',
+    ELECTRICITY: t('Électricité'),
     AC: 'Climatisation',
     OTHER: 'Autre'
   };
@@ -219,7 +221,7 @@ export default function Maintenance() {
         setData(response.data.data);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des tickets');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des tickets'));
     } finally {
       setLoading(false);
     }
@@ -235,7 +237,7 @@ export default function Maintenance() {
         setDetailsModalVisible(true);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des détails');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des détails'));
     } finally {
       setDetailsLoading(false);
     }
@@ -243,17 +245,17 @@ export default function Maintenance() {
 
   const columns = [
     {
-      title: 'Propriété',
+      title: t('Propriété'),
       dataIndex: 'propertyAddress',
       key: 'propertyAddress'
     },
     {
-      title: 'Titre',
+      title: t('Titre'),
       dataIndex: 'title',
       key: 'title'
     },
     {
-      title: 'Catégorie',
+      title: t('Catégorie'),
       dataIndex: 'category',
       key: 'category',
       render: (category: string) => getCategoryLabel(category)
@@ -266,19 +268,19 @@ export default function Maintenance() {
       // au-dessus du tableau, eux, partent au serveur.
     },
     {
-      title: 'Priorité',
+      title: t('Priorité'),
       dataIndex: 'priority',
       key: 'priority',
       render: (priority: string) => getPriorityTag(priority)
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => getStatusTag(status)
     },
     {
-      title: 'Date',
+      title: t('Date'),
       dataIndex: 'createdAt',
       key: 'createdAt',
       render: (date: Date | string) => {
@@ -292,7 +294,7 @@ export default function Maintenance() {
       }
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
       render: (_: any, record: MaintenanceTicketListItem) => (
         <Button
@@ -301,7 +303,7 @@ export default function Maintenance() {
           onClick={() => handleViewDetails(record.id)}
           loading={detailsLoading && selectedTicketId === record.id}
         >
-          Détails
+          {t('Détails')}
         </Button>
       )
     }
@@ -310,13 +312,13 @@ export default function Maintenance() {
   if (loading && !data) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement des tickets de maintenance..." />
+        <Spin size="large" tip={t('Chargement des tickets de maintenance...')} />
       </div>
     );
   }
 
   if (error) {
-    return <Alert message="Erreur" description={error} type="error" showIcon />;
+    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   return (
@@ -324,11 +326,16 @@ export default function Maintenance() {
       {/* Page Header */}
       <div className="it-toolbar">
         <div>
-          <Title level={2}>Maintenance</Title>
-          <Text type="secondary">Suivi des tickets de maintenance</Text>
+          <Title level={2}>{t('Maintenance')}</Title>
+          <Text type="secondary">{t('Suivi des tickets de maintenance')}</Text>
         </div>
-        <Button icon={<SyncOutlined />} onClick={loadTickets} loading={loading} aria-label="Rafraîchir les tickets">
-          Actualiser
+        <Button
+          icon={<SyncOutlined />}
+          onClick={loadTickets}
+          loading={loading}
+          aria-label={t('Rafraîchir les tickets')}
+        >
+          {t('Actualiser')}
         </Button>
       </div>
 
@@ -337,7 +344,7 @@ export default function Maintenance() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
-              title="Total"
+              title={t('Total')}
               value={data.summary.total.toString()}
               icon={<ToolOutlined style={{ color: '#1890ff' }} />}
               valueStyle={{ fontSize: 18 }}
@@ -345,7 +352,7 @@ export default function Maintenance() {
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
-              title="Ouverts"
+              title={t('Ouverts')}
               value={data.summary.open.toString()}
               icon={<ToolOutlined style={{ color: '#faad14' }} />}
               valueStyle={{ fontSize: 18, color: '#faad14' }}
@@ -353,7 +360,7 @@ export default function Maintenance() {
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
-              title="En cours"
+              title={t('En cours')}
               value={data.summary.inProgress.toString()}
               icon={<ToolOutlined style={{ color: '#1890ff' }} />}
               valueStyle={{ fontSize: 18, color: '#1890ff' }}
@@ -361,7 +368,7 @@ export default function Maintenance() {
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <StatCard
-              title="Résolus"
+              title={t('Résolus')}
               value={data.summary.resolved.toString()}
               icon={<ToolOutlined style={{ color: '#52c41a' }} />}
               valueStyle={{ fontSize: 18, color: '#52c41a' }}
@@ -375,32 +382,32 @@ export default function Maintenance() {
         title={
           <Space>
             <FilterOutlined />
-            <span>Filtres</span>
+            <span>{t('Filtres')}</span>
           </Space>
         }
       >
         <div className="it-filters">
           <div className="it-filters__field">
-            <Text strong>Statut</Text>
+            <Text strong>{t('Statut')}</Text>
             <Select
               style={{ width: 150 }}
-              placeholder="Tous les statuts"
+              placeholder={t('Tous les statuts')}
               allowClear
               value={statusFilter}
               onChange={value => setStatusFilter(value)}
             >
-              <Option value="DECLARED">Déclaré</Option>
-              <Option value="IN_PROGRESS">En cours</Option>
-              <Option value="ASSIGNED">Assigné</Option>
-              <Option value="RESOLVED">Résolu</Option>
-              <Option value="CANCELED">Annulé</Option>
+              <Option value="DECLARED">{t('Déclaré')}</Option>
+              <Option value="IN_PROGRESS">{t('En cours')}</Option>
+              <Option value="ASSIGNED">{t('Assigné')}</Option>
+              <Option value="RESOLVED">{t('Résolu')}</Option>
+              <Option value="CANCELED">{t('Annulé')}</Option>
             </Select>
           </div>
           <div className="it-filters__field">
-            <Text strong>Propriété</Text>
+            <Text strong>{t('Propriété')}</Text>
             <Select
               style={{ width: 200 }}
-              placeholder="Toutes les propriétés"
+              placeholder={t('Toutes les propriétés')}
               allowClear
               value={propertyFilter}
               onChange={value => setPropertyFilter(value)}
@@ -413,40 +420,40 @@ export default function Maintenance() {
             </Select>
           </div>
           <div className="it-filters__field">
-            <Text strong>Catégorie</Text>
+            <Text strong>{t('Catégorie')}</Text>
             <Select
               style={{ width: 150 }}
-              placeholder="Toutes les catégories"
+              placeholder={t('Toutes les catégories')}
               allowClear
               value={categoryFilter}
               onChange={value => setCategoryFilter(value)}
             >
-              <Option value="PLUMBING">Plomberie</Option>
-              <Option value="ELECTRICITY">Électricité</Option>
-              <Option value="AC">Climatisation</Option>
-              <Option value="OTHER">Autre</Option>
+              <Option value="PLUMBING">{t('Plomberie')}</Option>
+              <Option value="ELECTRICITY">{t('Électricité')}</Option>
+              <Option value="AC">{t('Climatisation')}</Option>
+              <Option value="OTHER">{t('Autre')}</Option>
             </Select>
           </div>
           <div className="it-filters__field">
-            <Text strong>Priorité</Text>
+            <Text strong>{t('Priorité')}</Text>
             <Select
               style={{ width: 150 }}
-              placeholder="Toutes les priorités"
+              placeholder={t('Toutes les priorités')}
               allowClear
               value={priorityFilter}
               onChange={value => setPriorityFilter(value)}
             >
-              <Option value="LOW">Basse</Option>
-              <Option value="MEDIUM">Moyenne</Option>
-              <Option value="HIGH">Haute</Option>
-              <Option value="URGENT">Urgente</Option>
+              <Option value="LOW">{t('Basse')}</Option>
+              <Option value="MEDIUM">{t('Moyenne')}</Option>
+              <Option value="HIGH">{t('Haute')}</Option>
+              <Option value="URGENT">{t('Urgente')}</Option>
             </Select>
           </div>
         </div>
       </Card>
 
       {/* Tickets Table (T126) */}
-      <Card title="Liste des tickets">
+      <Card title={t('Liste des tickets')}>
         {data && data.tickets.length > 0 ? (
           <Table
             scroll={{ x: 'max-content' }}
@@ -457,7 +464,7 @@ export default function Maintenance() {
             pagination={{ pageSize: 20 }}
           />
         ) : (
-          <Empty description="Aucun ticket trouvé" />
+          <Empty description={t('Aucun ticket trouvé')} />
         )}
       </Card>
 
@@ -466,7 +473,7 @@ export default function Maintenance() {
         title={
           <Space>
             <ToolOutlined />
-            <span>Détails du ticket</span>
+            <span>{t('Détails du ticket')}</span>
           </Space>
         }
         open={detailsModalVisible}
@@ -486,30 +493,34 @@ export default function Maintenance() {
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
             {/* Ticket Information */}
             <Descriptions bordered column={{ xs: 1, sm: 2 }}>
-              <Descriptions.Item label="Titre">{ticketDetails.ticket.title}</Descriptions.Item>
-              <Descriptions.Item label="Statut">{getStatusTag(ticketDetails.ticket.status)}</Descriptions.Item>
-              <Descriptions.Item label="Catégorie">{getCategoryLabel(ticketDetails.ticket.category)}</Descriptions.Item>
-              <Descriptions.Item label="Priorité">{getPriorityTag(ticketDetails.ticket.priority)}</Descriptions.Item>
-              <Descriptions.Item label="Propriété">{ticketDetails.ticket.property.address}</Descriptions.Item>
-              <Descriptions.Item label="Date de création">
+              <Descriptions.Item label={t('Titre')}>{ticketDetails.ticket.title}</Descriptions.Item>
+              <Descriptions.Item label={t('Statut')}>{getStatusTag(ticketDetails.ticket.status)}</Descriptions.Item>
+              <Descriptions.Item label={t('Catégorie')}>
+                {getCategoryLabel(ticketDetails.ticket.category)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('Priorité')}>
+                {getPriorityTag(ticketDetails.ticket.priority)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('Propriété')}>{ticketDetails.ticket.property.address}</Descriptions.Item>
+              <Descriptions.Item label={t('Date de création')}>
                 {dayjs(ticketDetails.ticket.created_at).format('DD/MM/YYYY HH:mm')}
               </Descriptions.Item>
               {ticketDetails.ticket.location_details && (
-                <Descriptions.Item label="Localisation" span={2}>
+                <Descriptions.Item label={t('Localisation')} span={2}>
                   {ticketDetails.ticket.location_details}
                 </Descriptions.Item>
               )}
-              <Descriptions.Item label="Description" span={2}>
+              <Descriptions.Item label={t('Description')} span={2}>
                 {ticketDetails.ticket.description}
               </Descriptions.Item>
               {ticketDetails.ticket.assignedVendor && (
-                <Descriptions.Item label="Vendeur assigné">
+                <Descriptions.Item label={t('Vendeur assigné')}>
                   {ticketDetails.ticket.assignedVendor.name}
                   {ticketDetails.ticket.assignedVendor.phone && ` - ${ticketDetails.ticket.assignedVendor.phone}`}
                 </Descriptions.Item>
               )}
               {ticketDetails.ticket.assignedToUser && (
-                <Descriptions.Item label="Utilisateur assigné">
+                <Descriptions.Item label={t('Utilisateur assigné')}>
                   {`${ticketDetails.ticket.assignedToUser.firstName} ${ticketDetails.ticket.assignedToUser.lastName}`}
                 </Descriptions.Item>
               )}
@@ -518,7 +529,7 @@ export default function Maintenance() {
             {/* Attachments */}
             {ticketDetails.ticket.attachments && ticketDetails.ticket.attachments.length > 0 && (
               <div>
-                <Title level={5}>Pièces jointes</Title>
+                <Title level={5}>{t('Pièces jointes')}</Title>
                 <Image.PreviewGroup>
                   <Space wrap>
                     {ticketDetails.ticket.attachments.map(att => {
@@ -563,7 +574,7 @@ export default function Maintenance() {
                           alt={att.file_name}
                           style={{ objectFit: 'cover', borderRadius: 4 }}
                           preview={{
-                            mask: 'Aperçu'
+                            mask: t('Aperçu')
                           }}
                           onError={e => {
                             console.error('Image load error:', {
@@ -585,7 +596,7 @@ export default function Maintenance() {
             {ticketDetails.ticket.comments && ticketDetails.ticket.comments.length > 0 && (
               <div>
                 <Title level={5}>
-                  <MessageOutlined /> Commentaires
+                  <MessageOutlined /> {t('Commentaires')}
                 </Title>
                 <List
                   dataSource={ticketDetails.ticket.comments}
@@ -594,7 +605,7 @@ export default function Maintenance() {
                       ? `${comment.authorUser.firstName} ${comment.authorUser.lastName}`
                       : comment.authorContact
                         ? `${comment.authorContact.firstName} ${comment.authorContact.lastName}`
-                        : 'Système';
+                        : t('Système');
                     return (
                       <List.Item>
                         <List.Item.Meta
@@ -620,14 +631,14 @@ export default function Maintenance() {
             {ticketDetails.ticket.statusHistory && ticketDetails.ticket.statusHistory.length > 0 && (
               <div>
                 <Title level={5}>
-                  <CalendarOutlined /> Historique des statuts
+                  <CalendarOutlined /> {t('Historique des statuts')}
                 </Title>
                 <List
                   dataSource={ticketDetails.ticket.statusHistory}
                   renderItem={history => {
                     const changedBy = history.changedByUser
                       ? `${history.changedByUser.firstName} ${history.changedByUser.lastName}`
-                      : 'Système';
+                      : t('Système');
                     return (
                       <List.Item>
                         <List.Item.Meta
@@ -647,7 +658,7 @@ export default function Maintenance() {
                             <Space direction="vertical" size="small">
                               {history.note && <Text>{history.note}</Text>}
                               <Text type="secondary" style={{ fontSize: 12 }}>
-                                Par {changedBy}
+                                {t('Par')} {changedBy}
                               </Text>
                             </Space>
                           }
@@ -660,7 +671,7 @@ export default function Maintenance() {
             )}
           </Space>
         ) : (
-          <Empty description="Aucune information disponible" />
+          <Empty description={t('Aucune information disponible')} />
         )}
       </Modal>
     </Space>

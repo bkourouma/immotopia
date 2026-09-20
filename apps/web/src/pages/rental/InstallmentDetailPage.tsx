@@ -3,7 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Button, Card, Row, Col, Tag, Typography, Spin, Alert, Descriptions, Space } from 'antd';
 import { ArrowLeftOutlined, DollarOutlined, CalendarOutlined } from '@ant-design/icons';
 import { getInstallment, RentalInstallment, RentalInstallmentStatus } from '../../services/rental-service';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 export const InstallmentDetailPage: React.FC = () => {
@@ -28,10 +30,10 @@ export const InstallmentDetailPage: React.FC = () => {
       if (response.success) {
         setInstallment(response.data);
       } else {
-        setError("Erreur lors du chargement de l'échéance");
+        setError(t("Erreur lors du chargement de l'échéance"));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || "Erreur lors du chargement de l'échéance");
+      setError(err.response?.data?.message || t("Erreur lors du chargement de l'échéance"));
     } finally {
       setLoading(false);
     }
@@ -39,11 +41,11 @@ export const InstallmentDetailPage: React.FC = () => {
 
   const getStatusTag = (status: RentalInstallmentStatus) => {
     const statusMap: Partial<Record<RentalInstallmentStatus, { label: string; color: string }>> = {
-      DRAFT: { label: 'Brouillon', color: 'default' },
-      DUE: { label: 'Échéance', color: 'blue' },
-      PARTIAL: { label: 'Partiel', color: 'orange' },
-      PAID: { label: 'Payé', color: 'green' },
-      OVERDUE: { label: 'En retard', color: 'red' }
+      DRAFT: { label: t('Brouillon'), color: 'default' },
+      DUE: { label: t('Échéance'), color: 'blue' },
+      PARTIAL: { label: t('Partiel'), color: 'orange' },
+      PAID: { label: t('Payé'), color: 'green' },
+      OVERDUE: { label: t('En retard'), color: 'red' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -51,11 +53,11 @@ export const InstallmentDetailPage: React.FC = () => {
 
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('fr-FR');
+    return new Date(dateString).toLocaleDateString(activeLocale());
   };
 
   const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat('fr-FR', {
+    return new Intl.NumberFormat(activeLocale(), {
       style: 'currency',
       currency: currency === 'FCFA' ? 'XOF' : currency
     }).format(amount);
@@ -83,7 +85,7 @@ export const InstallmentDetailPage: React.FC = () => {
   if (error || !installment) {
     return (
       <>
-        <Alert message={error || 'Échéance non trouvée'} type="error" showIcon />
+        <Alert message={error || t('Échéance non trouvée')} type="error" showIcon />
       </>
     );
   }
@@ -103,13 +105,13 @@ export const InstallmentDetailPage: React.FC = () => {
               icon={<ArrowLeftOutlined />}
               onClick={() => navigate(`/tenant/${tenantId}/rental/leases/${installment.lease_id}`)}
             >
-              Retour
+              {t('Retour')}
             </Button>
             <div>
               <Title level={3} style={{ margin: 0 }}>
-                Échéance {installment.period_month}/{installment.period_year}
+                {t('Échéance')} {installment.period_month}/{installment.period_year}
               </Title>
-              <Text type="secondary">Détails de l'échéance</Text>
+              <Text type="secondary">{t("Détails de l'échéance")}</Text>
             </div>
           </Space>
           {getStatusTag(installment.status)}
@@ -121,30 +123,30 @@ export const InstallmentDetailPage: React.FC = () => {
               title={
                 <Space>
                   <DollarOutlined />
-                  Informations financières
+                  {t('Informations financières')}
                 </Space>
               }
             >
               <Descriptions column={1} bordered size="small">
-                <Descriptions.Item label="Loyer">
+                <Descriptions.Item label={t('Loyer')}>
                   {formatCurrency(installment.amount_rent, installment.currency)}
                 </Descriptions.Item>
-                <Descriptions.Item label="Charges de service">
+                <Descriptions.Item label={t('Charges de service')}>
                   {formatCurrency(installment.amount_service, installment.currency)}
                 </Descriptions.Item>
-                <Descriptions.Item label="Autres frais">
+                <Descriptions.Item label={t('Autres frais')}>
                   {formatCurrency(installment.amount_other_fees, installment.currency)}
                 </Descriptions.Item>
-                <Descriptions.Item label="Pénalités">
+                <Descriptions.Item label={t('Pénalités')}>
                   {formatCurrency(installment.penalty_amount, installment.currency)}
                 </Descriptions.Item>
-                <Descriptions.Item label="Total dû">
+                <Descriptions.Item label={t('Total dû')}>
                   <Text strong>{formatCurrency(totalDue, installment.currency)}</Text>
                 </Descriptions.Item>
-                <Descriptions.Item label="Montant Payé">
+                <Descriptions.Item label={t('Montant Payé')}>
                   {formatCurrency(installment.amount_paid, installment.currency)}
                 </Descriptions.Item>
-                <Descriptions.Item label="Reste à payer">
+                <Descriptions.Item label={t('Reste à payer')}>
                   <Text strong type={remaining > 0 ? 'danger' : 'success'}>
                     {formatCurrency(remaining, installment.currency)}
                   </Text>
@@ -158,22 +160,26 @@ export const InstallmentDetailPage: React.FC = () => {
               title={
                 <Space>
                   <CalendarOutlined />
-                  Informations
+                  {t('Informations')}
                 </Space>
               }
             >
               <Descriptions column={1} bordered size="small">
-                <Descriptions.Item label="Période">
+                <Descriptions.Item label={t('Période')}>
                   {installment.period_month}/{installment.period_year}
                 </Descriptions.Item>
-                <Descriptions.Item label="Date d'échéance">{formatDate(installment.due_date)}</Descriptions.Item>
-                <Descriptions.Item label="Statut">{getStatusTag(installment.status)}</Descriptions.Item>
+                <Descriptions.Item label={t("Date d'échéance")}>{formatDate(installment.due_date)}</Descriptions.Item>
+                <Descriptions.Item label={t('Statut')}>{getStatusTag(installment.status)}</Descriptions.Item>
                 {installment.paid_at && (
-                  <Descriptions.Item label="Date de paiement">{formatDate(installment.paid_at)}</Descriptions.Item>
+                  <Descriptions.Item label={t('Date de paiement')}>{formatDate(installment.paid_at)}</Descriptions.Item>
                 )}
-                <Descriptions.Item label="Devise">{installment.currency}</Descriptions.Item>
-                <Descriptions.Item label="Date de création">{formatDate(installment.created_at)}</Descriptions.Item>
-                <Descriptions.Item label="Dernière mise à jour">{formatDate(installment.updated_at)}</Descriptions.Item>
+                <Descriptions.Item label={t('Devise')}>{installment.currency}</Descriptions.Item>
+                <Descriptions.Item label={t('Date de création')}>
+                  {formatDate(installment.created_at)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('Dernière mise à jour')}>
+                  {formatDate(installment.updated_at)}
+                </Descriptions.Item>
               </Descriptions>
             </Card>
           </Col>

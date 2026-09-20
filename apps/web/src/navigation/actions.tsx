@@ -1,5 +1,6 @@
 import React from 'react';
 import { PlusOutlined } from '@ant-design/icons';
+import { t } from '../i18n/t';
 
 /**
  * Actions primaires par écran (REFONTE_UI_UX.md §4.3).
@@ -30,25 +31,25 @@ export interface ScreenAction {
 export const SCREEN_ACTIONS: ScreenAction[] = [
   {
     on: '/tenant/:tenantId/properties',
-    label: 'Ajouter une propriété',
+    label: t('Ajouter une propriété'),
     href: '/tenant/:tenantId/properties/new',
     icon: <PlusOutlined />
   },
   {
     on: '/tenant/:tenantId/crm/contacts',
-    label: 'Nouveau contact',
+    label: t('Nouveau contact'),
     href: '/tenant/:tenantId/crm/contacts/new',
     icon: <PlusOutlined />
   },
   {
     on: '/tenant/:tenantId/rental/leases',
-    label: 'Nouveau bail',
+    label: t('Nouveau bail'),
     href: '/tenant/:tenantId/rental/leases/new',
     icon: <PlusOutlined />
   },
   {
     on: '/tenant/:tenantId/maintenance',
-    label: 'Signaler un problème',
+    label: t('Signaler un problème'),
     href: '/tenant/:tenantId/maintenance/new',
     icon: <PlusOutlined />
   }

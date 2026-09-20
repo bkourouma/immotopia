@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import { Upload, X, Image, Video, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { PropertyMediaType } from '../../types/property-types';
 import apiClient from '../../utils/api-client';
+import { t } from '../../i18n/t';
 
 interface PropertyMediaUploadProps {
   propertyId: string;
@@ -15,12 +16,14 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
   propertyId,
   tenantId,
   onUploadComplete,
-  mediaType = PropertyMediaType.PHOTO,
+  mediaType = PropertyMediaType.PHOTO
 }) => {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{current: number; total: number; fileName: string} | null>(null);
-  const [uploadStatus, setUploadStatus] = useState<{success: boolean; message: string} | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; fileName: string } | null>(
+    null
+  );
+  const [uploadStatus, setUploadStatus] = useState<{ success: boolean; message: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Clear status message after 3 seconds
@@ -51,15 +54,11 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
           formData.append('file', file);
           formData.append('mediaType', mediaType);
 
-          await apiClient.post(
-            `/tenants/${tenantId}/properties/${propertyId}/media`,
-            formData,
-            {
-              headers: {
-                'Content-Type': 'multipart/form-data',
-              },
+          await apiClient.post(`/tenants/${tenantId}/properties/${propertyId}/media`, formData, {
+            headers: {
+              'Content-Type': 'multipart/form-data'
             }
-          );
+          });
           successCount++;
         } catch (error: any) {
           console.error(`Error uploading ${file.name}:`, error);
@@ -75,17 +74,26 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
       if (errorCount === 0) {
         setUploadStatus({
           success: true,
-          message: `${successCount} fichier${successCount > 1 ? 's' : ''} téléchargé${successCount > 1 ? 's' : ''} avec succès !`
+          message: t('{{successCount}} fichier{{value}} téléchargé{{value2}} avec succès !', {
+            successCount: successCount,
+            value: successCount > 1 ? 's' : '',
+            value2: successCount > 1 ? 's' : ''
+          })
         });
       } else if (successCount > 0) {
         setUploadStatus({
           success: false,
-          message: `${successCount} réussi${successCount > 1 ? 's' : ''}, ${errorCount} échoué${errorCount > 1 ? 's' : ''}`
+          message: t('{{successCount}} réussi{{value}}, {{errorCount}} échoué{{value2}}', {
+            successCount: successCount,
+            value: successCount > 1 ? 's' : '',
+            errorCount: errorCount,
+            value2: errorCount > 1 ? 's' : ''
+          })
         });
       } else {
         setUploadStatus({
           success: false,
-          message: 'Échec du téléchargement. Veuillez réessayer.'
+          message: t('Échec du téléchargement. Veuillez réessayer.')
         });
       }
     } finally {
@@ -118,11 +126,13 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
     <div className="space-y-2">
       {/* Status message */}
       {uploadStatus && (
-        <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
-          uploadStatus.success 
-            ? 'bg-green-50 text-green-700 border border-green-200' 
-            : 'bg-red-50 text-red-700 border border-red-200'
-        }`}>
+        <div
+          className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
+            uploadStatus.success
+              ? 'bg-green-50 text-green-700 border border-green-200'
+              : 'bg-red-50 text-red-700 border border-red-200'
+          }`}
+        >
           {uploadStatus.success ? (
             <CheckCircle className="h-4 w-4 flex-shrink-0" />
           ) : (
@@ -134,9 +144,7 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
 
       <div
         className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-          dragActive
-            ? 'border-blue-500 bg-blue-50'
-            : 'border-gray-300 hover:border-gray-400'
+          dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
         } ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
@@ -151,11 +159,11 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
             mediaType === PropertyMediaType.PHOTO
               ? 'image/jpeg,image/jpg,image/png,image/webp'
               : mediaType === PropertyMediaType.VIDEO
-              ? 'video/mp4,video/webm,video/quicktime'
-              : '*'
+                ? 'video/mp4,video/webm,video/quicktime'
+                : '*'
           }
           className="hidden"
-          onChange={(e) => handleFileSelect(e.target.files)}
+          onChange={e => handleFileSelect(e.target.files)}
         />
 
         {uploading ? (
@@ -165,17 +173,19 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
               <div className="w-full max-w-xs">
                 <div className="flex justify-between text-sm text-gray-600 mb-2">
                   <span className="truncate max-w-[200px]">{uploadProgress.fileName}</span>
-                  <span>{uploadProgress.current}/{uploadProgress.total}</span>
+                  <span>
+                    {uploadProgress.current}/{uploadProgress.total}
+                  </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div 
+                  <div
                     className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                     style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
                   />
                 </div>
               </div>
             )}
-            <p className="text-sm text-gray-600">Téléchargement en cours...</p>
+            <p className="text-sm text-gray-600">{t('Téléchargement en cours...')}</p>
           </div>
         ) : (
           <>
@@ -188,23 +198,17 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
                 <Upload className="h-12 w-12 text-gray-400" />
               )}
             </div>
-            <p className="text-sm text-gray-600 mb-2">
-              Glissez-déposez vos fichiers ici ou
-            </p>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload className="h-4 w-4 mr-2" />
-              Sélectionner des fichiers
+            <p className="text-sm text-gray-600 mb-2">{t('Glissez-déposez vos fichiers ici ou')}</p>
+            <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+              <Upload className="h-4 w-4 me-2" />
+              {t('Sélectionner des fichiers')}
             </Button>
             <p className="text-xs text-gray-500 mt-2">
               {mediaType === PropertyMediaType.PHOTO
-                ? 'JPEG, PNG, WebP (max 50MB)'
+                ? t('JPEG, PNG, WebP (max 50MB)')
                 : mediaType === PropertyMediaType.VIDEO
-                ? 'MP4, WebM, QuickTime (max 50MB)'
-                : 'Fichiers multimédias (max 50MB)'}
+                  ? t('MP4, WebM, QuickTime (max 50MB)')
+                  : t('Fichiers multimédias (max 50MB)')}
             </p>
           </>
         )}
@@ -212,7 +216,3 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
     </div>
   );
 };
-
-
-
-

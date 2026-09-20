@@ -20,6 +20,7 @@ import { ContractList } from '../../components/syndics/ContractList';
 import { createContract, listProvidersContracts } from '../../services/syndic-service';
 import { SyndicProvidersPayload } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
 
@@ -43,7 +44,7 @@ export const SyndicProviders: React.FC = () => {
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
       setLoading(false);
-      setError('Paramètres prestataires manquants');
+      setError(t('Paramètres prestataires manquants'));
       return;
     }
     void loadData();
@@ -57,7 +58,7 @@ export const SyndicProviders: React.FC = () => {
       const data = await listProvidersContracts(effectiveTenantId, syndicId);
       setPayload(data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Impossible de charger les prestataires');
+      setError(err.response?.data?.error || t('Impossible de charger les prestataires'));
     } finally {
       setLoading(false);
     }
@@ -77,12 +78,12 @@ export const SyndicProviders: React.FC = () => {
         currency: values.currency || 'XOF',
         renewalAlertDays: values.renewalAlertDays ?? 30
       });
-      message.success('Contrat créé avec succès');
+      message.success(t('Contrat créé avec succès'));
       setOpenCreateContract(false);
       contractForm.resetFields();
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Création du contrat impossible');
+      message.error(err.response?.data?.error || t('Création du contrat impossible'));
     } finally {
       setSubmittingContract(false);
     }
@@ -96,18 +97,18 @@ export const SyndicProviders: React.FC = () => {
             icon={<ArrowLeftOutlined />}
             onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
           >
-            Retour à la fiche syndic
+            {t('Retour à la fiche syndic')}
           </Button>
           <div className="it-toolbar">
             <Title level={2} className="it-toolbar__title" style={{ margin: 0 }}>
-              Prestataires et contrats
+              {t('Prestataires et contrats')}
             </Title>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenCreateContract(true)}>
-              Nouveau contrat
+              {t('Nouveau contrat')}
             </Button>
           </div>
           <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            Contrats actifs, prestataires relies et actifs des parties communes.
+            {t('Contrats actifs, prestataires relies et actifs des parties communes.')}
           </Paragraph>
         </Space>
 
@@ -119,26 +120,26 @@ export const SyndicProviders: React.FC = () => {
           </div>
         ) : (
           <>
-            <Card title={`Prestataires (${payload.providers.length})`}>
-              <div>{payload.providers.map(provider => provider.name).join(' | ') || 'Aucun prestataire'}</div>
+            <Card title={t('Prestataires ({{length}})', { length: payload.providers.length })}>
+              <div>{payload.providers.map(provider => provider.name).join(' | ') || t('Aucun prestataire')}</div>
             </Card>
-            <Card title="Contrats de maintenance">
+            <Card title={t('Contrats de maintenance')}>
               <ContractList contracts={payload.contracts} />
             </Card>
-            <Card title={`Actifs communs (${payload.commonAssets.length})`}>
-              <div>{payload.commonAssets.map(asset => asset.name).join(' | ') || 'Aucun actif commun'}</div>
+            <Card title={t('Actifs communs ({{length}})', { length: payload.commonAssets.length })}>
+              <div>{payload.commonAssets.map(asset => asset.name).join(' | ') || t('Aucun actif commun')}</div>
             </Card>
           </>
         )}
       </Space>
 
       <Modal
-        title="Nouveau contrat de maintenance"
+        title={t('Nouveau contrat de maintenance')}
         open={openCreateContract}
         onCancel={() => setOpenCreateContract(false)}
         onOk={() => void handleCreateContract()}
-        okText="Créer"
-        cancelText="Annuler"
+        okText={t('Créer')}
+        cancelText={t('Annuler')}
         confirmLoading={submittingContract}
       >
         <Form
@@ -150,41 +151,41 @@ export const SyndicProviders: React.FC = () => {
           }}
         >
           <Form.Item
-            label="Prestataire"
+            label={t('Prestataire')}
             name="providerId"
-            rules={[{ required: true, message: 'Le prestataire est obligatoire' }]}
+            rules={[{ required: true, message: t('Le prestataire est obligatoire') }]}
           >
             <Select
               options={payload.providers.map(provider => ({ value: provider.id, label: provider.name }))}
-              placeholder="Selectionner un prestataire"
+              placeholder={t('Selectionner un prestataire')}
               showSearch
               optionFilterProp="label"
             />
           </Form.Item>
           <Form.Item
-            label="Nature du contrat"
+            label={t('Nature du contrat')}
             name="nature"
-            rules={[{ required: true, message: 'La nature est obligatoire' }]}
+            rules={[{ required: true, message: t('La nature est obligatoire') }]}
           >
-            <Input placeholder="Ex: Nettoyage parties communes" />
+            <Input placeholder={t('Ex: Nettoyage parties communes')} />
           </Form.Item>
           <Form.Item
-            label="Date de debut"
+            label={t('Date de debut')}
             name="startDate"
-            rules={[{ required: true, message: 'La date de debut est obligatoire' }]}
+            rules={[{ required: true, message: t('La date de debut est obligatoire') }]}
           >
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
-          <Form.Item label="Date de fin" name="endDate">
+          <Form.Item label={t('Date de fin')} name="endDate">
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
-          <Form.Item label="Montant annuel" name="annualAmount">
+          <Form.Item label={t('Montant annuel')} name="annualAmount">
             <InputNumber style={{ width: '100%' }} min={0} precision={2} />
           </Form.Item>
-          <Form.Item label="Devise" name="currency">
+          <Form.Item label={t('Devise')} name="currency">
             <Input />
           </Form.Item>
-          <Form.Item label="Alerte renouvellement (jours)" name="renewalAlertDays">
+          <Form.Item label={t('Alerte renouvellement (jours)')} name="renewalAlertDays">
             <InputNumber style={{ width: '100%' }} min={0} precision={0} />
           </Form.Item>
         </Form>

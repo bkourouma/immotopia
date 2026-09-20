@@ -1,5 +1,6 @@
 import React from 'react';
 import { Card, Skeleton as AntSkeleton, Space } from 'antd';
+import { t } from '../../i18n/t';
 
 /**
  * Squelettes par famille d'ecran (REFONTE_UI_UX.md §5.6).
@@ -32,7 +33,7 @@ function Region({ label, children }: { label: string; children: React.ReactNode 
 
 /** Liste de cartes — hauteur d'element calee sur les 72 px du §5.6. */
 export const SkeletonList: React.FC<SkeletonProps> = ({ rows = 5, ...rest }) => (
-  <Region label={rest['aria-label'] ?? 'Chargement de la liste'}>
+  <Region label={rest['aria-label'] ?? t('Chargement de la liste')}>
     <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
       {Array.from({ length: rows }, (_, i) => (
         <Card key={i} styles={{ body: { padding: 'var(--space-4)' } }} style={BLOCK}>
@@ -45,7 +46,7 @@ export const SkeletonList: React.FC<SkeletonProps> = ({ rows = 5, ...rest }) => 
 
 /** Tableau — en-tete plus n lignes, largeur pleine. */
 export const SkeletonTable: React.FC<SkeletonProps & { columns?: number }> = ({ rows = 8, columns = 5, ...rest }) => (
-  <Region label={rest['aria-label'] ?? 'Chargement du tableau'}>
+  <Region label={rest['aria-label'] ?? t('Chargement du tableau')}>
     <Card styles={{ body: { padding: 0 } }} style={BLOCK}>
       <div
         style={{
@@ -82,7 +83,7 @@ export const SkeletonTable: React.FC<SkeletonProps & { columns?: number }> = ({ 
 
 /** Ecran de detail — bloc de titre puis deux colonnes. */
 export const SkeletonDetail: React.FC<SkeletonProps> = ({ rows = 6, ...rest }) => (
-  <Region label={rest['aria-label'] ?? 'Chargement de la fiche'}>
+  <Region label={rest['aria-label'] ?? t('Chargement de la fiche')}>
     <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
       <Card style={BLOCK}>
         <AntSkeleton active title={{ width: '30%' }} paragraph={{ rows: 1, width: ['50%'] }} />
@@ -107,7 +108,7 @@ export const SkeletonDetail: React.FC<SkeletonProps> = ({ rows = 6, ...rest }) =
 
 /** Bandeau de KPI — n tuiles de meme hauteur. */
 export const SkeletonStats: React.FC<SkeletonProps> = ({ rows = 4, ...rest }) => (
-  <Region label={rest['aria-label'] ?? 'Chargement des indicateurs'}>
+  <Region label={rest['aria-label'] ?? t('Chargement des indicateurs')}>
     <div
       style={{
         display: 'grid',

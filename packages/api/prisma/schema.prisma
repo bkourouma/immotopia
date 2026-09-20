@@ -377,6 +377,13 @@ model User {
   globalRole    GlobalRole @default(USER) @map("global_role")
   emailVerified Boolean    @default(false) @map("email_verified")
   isActive      Boolean    @default(true) @map("is_active")
+
+  /// Langue de l'interface ET des e-mails envoyes a ce compte : 'fr', 'en' ou
+  /// 'ar'. Nullable a dessein — une valeur absente veut dire « jamais choisie »,
+  /// et laisse le navigateur trancher au premier rendu. Une colonne
+  /// `DEFAULT 'fr'` aurait rendu ce cas indistinguable d'un choix explicite du
+  /// francais, et impose le francais a un utilisateur arabophone.
+  preferredLanguage String?  @map("preferred_language")
   createdAt     DateTime   @default(now()) @map("created_at")
   updatedAt     DateTime   @updatedAt @map("updated_at")
 

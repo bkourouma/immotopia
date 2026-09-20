@@ -8,7 +8,9 @@ import {
 } from '@ant-design/icons';
 import { Property } from '../../types/property-types';
 import { publishProperty, unpublishProperty } from '../../services/property-service';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text } = Typography;
 
 interface PropertyPublicationControlsProps {
@@ -32,19 +34,19 @@ export const PropertyPublicationControls: React.FC<PropertyPublicationControlsPr
     setValidationErrors([]);
     try {
       await publishProperty(tenantId, property.id);
-      message.success('Propriété publiée avec succès');
+      message.success(t('Propriété publiée avec succès'));
       if (onUpdate) {
         onUpdate();
       }
     } catch (error: any) {
-      const errorMessage = error.response?.data?.error || 'Erreur lors de la publication';
+      const errorMessage = error.response?.data?.error || t('Erreur lors de la publication');
       if (errorMessage.includes('requirements not met')) {
         const errors = errorMessage.split(':')[1]?.split(',') || [errorMessage];
         setValidationErrors(errors.map((e: string) => e.trim()));
       } else {
         setValidationErrors([errorMessage]);
       }
-      message.error('Erreur lors de la publication');
+      message.error(t('Erreur lors de la publication'));
     } finally {
       setPublishing(false);
     }
@@ -54,12 +56,12 @@ export const PropertyPublicationControls: React.FC<PropertyPublicationControlsPr
     setPublishing(true);
     try {
       await unpublishProperty(tenantId, property.id);
-      message.success('Propriété retirée du portail public');
+      message.success(t('Propriété retirée du portail public'));
       if (onUpdate) {
         onUpdate();
       }
     } catch (error: any) {
-      message.error(error.response?.data?.error || 'Erreur lors de la dépublication');
+      message.error(error.response?.data?.error || t('Erreur lors de la dépublication'));
     } finally {
       setPublishing(false);
     }
@@ -72,29 +74,29 @@ export const PropertyPublicationControls: React.FC<PropertyPublicationControlsPr
         <div className="it-toolbar it-toolbar--start">
           <div>
             <Typography.Title level={5} style={{ margin: 0, marginBottom: 4 }}>
-              Publication
+              {t('Publication')}
             </Typography.Title>
             <Text type="secondary">
               {property.isPublished
-                ? 'Cette propriété est visible sur le portail public'
-                : "Cette propriété n'est pas publiée"}
+                ? t('Cette propriété est visible sur le portail public')
+                : t("Cette propriété n'est pas publiée")}
             </Text>
           </div>
           {property.isPublished ? (
             <Tag color="success" icon={<CheckCircleOutlined />}>
-              Publié
+              {t('Publié')}
             </Tag>
           ) : (
-            <Tag icon={<EyeInvisibleOutlined />}>Non publié</Tag>
+            <Tag icon={<EyeInvisibleOutlined />}>{t('Non publié')}</Tag>
           )}
         </div>
 
         {/* Validation Errors */}
         {validationErrors.length > 0 && (
           <Alert
-            message="Conditions de publication non remplies"
+            message={t('Conditions de publication non remplies')}
             description={
-              <ul style={{ margin: 0, paddingLeft: 20 }}>
+              <ul style={{ margin: 0, paddingInlineStart: 20 }}>
                 {validationErrors.map((error, index) => (
                   <li key={index}>{error}</li>
                 ))}
@@ -110,19 +112,19 @@ export const PropertyPublicationControls: React.FC<PropertyPublicationControlsPr
         <div>
           {property.isPublished ? (
             <Popconfirm
-              title="Retirer du portail public"
-              description="Êtes-vous sûr de vouloir retirer cette propriété du portail public ?"
+              title={t('Retirer du portail public')}
+              description={t('Êtes-vous sûr de vouloir retirer cette propriété du portail public ?')}
               onConfirm={handleUnpublish}
-              okText="Oui"
-              cancelText="Non"
+              okText={t('Oui')}
+              cancelText={t('Non')}
             >
               <Button icon={<EyeInvisibleOutlined />} loading={publishing} block>
-                Retirer du portail public
+                {t('Retirer du portail public')}
               </Button>
             </Popconfirm>
           ) : (
             <Button type="primary" icon={<GlobalOutlined />} onClick={handlePublish} loading={publishing} block>
-              Publier sur le portail public
+              {t('Publier sur le portail public')}
             </Button>
           )}
         </div>
@@ -130,8 +132,8 @@ export const PropertyPublicationControls: React.FC<PropertyPublicationControlsPr
         {/* Publication Info */}
         {property.isPublished && property.publishedAt && (
           <Text type="secondary" style={{ fontSize: 12 }}>
-            Publié le{' '}
-            {new Date(property.publishedAt).toLocaleDateString('fr-FR', {
+            {t('Publié le')}{' '}
+            {new Date(property.publishedAt).toLocaleDateString(activeLocale(), {
               dateStyle: 'long'
             })}
           </Text>

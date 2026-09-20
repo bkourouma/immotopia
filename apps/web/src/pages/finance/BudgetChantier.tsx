@@ -30,7 +30,9 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 /**
@@ -94,7 +96,7 @@ function nouvelleLigneAvenant(): LigneAvenantSaisie {
 const TONE_BUDGET: Record<string, StatusTone> = { DRAFT: 'neutral', VALIDATED: 'success' };
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 export const BudgetChantier: React.FC = () => {
@@ -195,9 +197,9 @@ export const BudgetChantier: React.FC = () => {
         }))
       });
       await queryClient.invalidateQueries({ queryKey: detailKey('site-budget', tenantId, siteId) });
-      message.success('Budget créé en brouillon.');
+      message.success(t('Budget créé en brouillon.'));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'La création du budget a échoué.');
+      message.error(err?.response?.data?.message || t('La création du budget a échoué.'));
     } finally {
       setCreationEnCours(false);
     }
@@ -215,9 +217,9 @@ export const BudgetChantier: React.FC = () => {
     try {
       await validateSiteBudget(tenantId, budget.id);
       await queryClient.invalidateQueries({ queryKey: detailKey('site-budget', tenantId, siteId) });
-      message.success('Budget validé.');
+      message.success(t('Budget validé.'));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'La validation a échoué.');
+      message.error(err?.response?.data?.message || t('La validation a échoué.'));
     } finally {
       setValidationBudgetEnCours(false);
     }
@@ -266,10 +268,10 @@ export const BudgetChantier: React.FC = () => {
         }))
       });
       await queryClient.invalidateQueries({ queryKey: detailKey('budget-amendments', tenantId, budget.id) });
-      message.success('Avenant enregistré en brouillon.');
+      message.success(t('Avenant enregistré en brouillon.'));
       reinitialiserAvenant();
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'enregistrement de l'avenant a échoué.");
+      message.error(err?.response?.data?.message || t("L'enregistrement de l'avenant a échoué."));
     } finally {
       setEnregistrementAvenant(false);
     }
@@ -280,33 +282,33 @@ export const BudgetChantier: React.FC = () => {
     try {
       await validateBudgetAmendment(tenantId, avenant.id);
       await queryClient.invalidateQueries({ queryKey: detailKey('budget-amendments', tenantId, budget.id) });
-      message.success('Avenant validé.');
+      message.success(t('Avenant validé.'));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'La validation a échoué.');
+      message.error(err?.response?.data?.message || t('La validation a échoué.'));
     }
   };
 
   // ---------------------------------------------------------------------
 
   if (!tenantId || !siteId) {
-    return <StateBlock variant="empty" title="Aucun chantier sélectionné" />;
+    return <StateBlock variant="empty" title={t('Aucun chantier sélectionné')} />;
   }
 
   const filAriane = [
-    { label: 'Finance', to: `/tenant/${tenantId}/finance/chantiers` },
-    { label: 'Chantiers', to: `/tenant/${tenantId}/finance/chantiers` },
+    { label: t('Finance'), to: `/tenant/${tenantId}/finance/chantiers` },
+    { label: t('Chantiers'), to: `/tenant/${tenantId}/finance/chantiers` },
     ...(chantier ? [{ label: chantier.name, to: `/tenant/${tenantId}/finance/chantiers/${siteId}` }] : []),
-    { label: 'Budget' }
+    { label: t('Budget') }
   ];
 
   if (erreurBudget) {
     return (
       <>
-        <PageHeader title="Budget du chantier" breadcrumbs={filAriane} />
+        <PageHeader title={t('Budget du chantier')} breadcrumbs={filAriane} />
         <StateBlock
           variant="error"
-          description="Impossible de charger le budget de ce chantier."
-          actions={[{ label: 'Réessayer', onClick: () => refetchBudget(), primary: true }]}
+          description={t('Impossible de charger le budget de ce chantier.')}
+          actions={[{ label: t('Réessayer'), onClick: () => refetchBudget(), primary: true }]}
         />
       </>
     );
@@ -315,48 +317,50 @@ export const BudgetChantier: React.FC = () => {
   if (budgetEnAttente) {
     return (
       <>
-        <PageHeader title="Budget du chantier" breadcrumbs={filAriane} />
+        <PageHeader title={t('Budget du chantier')} breadcrumbs={filAriane} />
         <StateBlock variant="loading" />
       </>
     );
   }
 
   const colonnesLignes: ColumnsType<SiteBudget['lines'][number]> = [
-    { title: 'Poste', key: 'poste', render: (_, l) => l.costCategoryLabel },
-    { title: 'Libellé', key: 'libelle', render: (_, l) => l.label },
+    { title: t('Poste'), key: 'poste', render: (_, l) => l.costCategoryLabel },
+    { title: t('Libellé'), key: 'libelle', render: (_, l) => l.label },
     {
-      title: 'Montant prévu',
+      title: t('Montant prévu'),
       key: 'montant',
-      align: 'right',
+      align: 'end',
       render: (_, l) => <MoneyValue value={l.amountForecast} />
     }
   ];
 
   const colonnesAvenants: ColumnsType<BudgetAmendment> = [
-    { title: 'Date', key: 'date', width: 120, render: (_, a) => dateCourte(a.amendmentDate) },
-    { title: 'Motif', key: 'motif', render: (_, a) => a.reason },
-    { title: 'Saisi par', key: 'saisi', render: (_, a) => a.createdByLabel },
-    { title: 'Écart', key: 'ecart', align: 'right', render: (_, a) => <MoneyValue value={a.totalDelta} signed /> },
+    { title: t('Date'), key: 'date', width: 120, render: (_, a) => dateCourte(a.amendmentDate) },
+    { title: t('Motif'), key: 'motif', render: (_, a) => a.reason },
+    { title: t('Saisi par'), key: 'saisi', render: (_, a) => a.createdByLabel },
+    { title: t('Écart'), key: 'ecart', align: 'end', render: (_, a) => <MoneyValue value={a.totalDelta} signed /> },
     {
-      title: 'Statut',
+      title: t('Statut'),
       key: 'statut',
       render: (_, a) => (
         <StatusTag status={a.status} tone={TONE_BUDGET[a.status]} label={SITE_BUDGET_STATUS_LABELS[a.status]} />
       )
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, a) =>
         a.status === 'DRAFT' ? (
           <ConfirmAction
-            title={`Valider l'avenant du ${dateCourte(a.amendmentDate)} ?`}
-            description="Cette opération est irréversible : un avenant validé ne peut plus être modifié, et son écart s'ajoute alors au budget révisé du chantier."
-            okText="Confirmer la validation"
+            title={t("Valider l'avenant du {{value}} ?", { value: dateCourte(a.amendmentDate) })}
+            description={t(
+              "Cette opération est irréversible : un avenant validé ne peut plus être modifié, et son écart s'ajoute alors au budget révisé du chantier."
+            )}
+            okText={t('Confirmer la validation')}
             onConfirm={() => validerAvenant(a)}
           >
-            <Button type="link">Valider</Button>
+            <Button type="link">{t('Valider')}</Button>
           </ConfirmAction>
         ) : null
     }
@@ -365,7 +369,7 @@ export const BudgetChantier: React.FC = () => {
   return (
     <>
       <PageHeader
-        title={budget ? budget.label : 'Budget du chantier'}
+        title={budget ? budget.label : t('Budget du chantier')}
         subtitle={chantier?.name}
         breadcrumbs={filAriane}
         extra={
@@ -382,20 +386,21 @@ export const BudgetChantier: React.FC = () => {
       {!budget ? (
         <Card>
           <Title level={4} style={{ marginTop: 0 }}>
-            Aucun budget n'est encore posé pour ce chantier
+            {t("Aucun budget n'est encore posé pour ce chantier")}
           </Title>
           <Text type="secondary">
-            Composez les lignes ci-dessous : une fois le budget créé, aucun poste ne pourra plus y être ajouté — seul un
-            avenant pourra ensuite le faire évoluer.
+            {t(
+              'Composez les lignes ci-dessous : une fois le budget créé, aucun poste ne pourra plus y être ajouté — seul un avenant pourra ensuite le faire évoluer.'
+            )}
           </Text>
 
           <div style={{ margin: 'var(--space-4) 0', maxWidth: 420 }}>
-            <label htmlFor="budget-nom">Nom du budget</label>
+            <label htmlFor="budget-nom">{t('Nom du budget')}</label>
             <Input
               id="budget-nom"
               value={nomBudget}
               onChange={event => setNomBudget(event.target.value)}
-              placeholder="Ex. Budget initial 2026"
+              placeholder={t('Ex. Budget initial 2026')}
             />
           </div>
 
@@ -403,23 +408,23 @@ export const BudgetChantier: React.FC = () => {
             {lignesBudget.map(ligne => (
               <Space key={ligne.id} align="start" wrap>
                 <Select
-                  aria-label="Poste de dépense"
-                  placeholder="Poste"
+                  aria-label={t('Poste de dépense')}
+                  placeholder={t('Poste')}
                   style={{ width: 200 }}
                   value={ligne.costCategoryId}
                   onChange={value => modifierLigneBudget(ligne.id, { costCategoryId: value })}
                   options={optionsPostes}
                 />
                 <Input
-                  aria-label="Libellé de la ligne"
-                  placeholder="Libellé"
+                  aria-label={t('Libellé de la ligne')}
+                  placeholder={t('Libellé')}
                   style={{ width: 260 }}
                   value={ligne.label}
                   onChange={event => modifierLigneBudget(ligne.id, { label: event.target.value })}
                 />
                 <InputNumber
-                  aria-label="Montant prévu"
-                  placeholder="Montant prévu"
+                  aria-label={t('Montant prévu')}
+                  placeholder={t('Montant prévu')}
                   min={0}
                   style={{ width: 180 }}
                   value={ligne.amountForecast ?? undefined}
@@ -428,7 +433,7 @@ export const BudgetChantier: React.FC = () => {
                   }
                 />
                 <Button
-                  aria-label="Retirer la ligne"
+                  aria-label={t('Retirer la ligne')}
                   icon={<DeleteOutlined />}
                   disabled={lignesBudget.length <= 1}
                   onClick={() => retirerLigneBudget(ligne.id)}
@@ -436,12 +441,12 @@ export const BudgetChantier: React.FC = () => {
               </Space>
             ))}
             <Button icon={<PlusOutlined />} onClick={ajouterLigneBudget}>
-              Ajouter une ligne
+              {t('Ajouter une ligne')}
             </Button>
           </Space>
 
           <Button type="primary" loading={creationEnCours} disabled={!peutCreerBudget} onClick={creerBudget}>
-            Créer le budget
+            {t('Créer le budget')}
           </Button>
         </Card>
       ) : (
@@ -457,18 +462,19 @@ export const BudgetChantier: React.FC = () => {
             {/* `totalForecast` est le seul total que porte `SiteBudget` (voir
                 l'en-tête) : c'est le budget INITIAL, jamais un « révisé »
                 recomposé ici. */}
-            <StatCard label="Budget initial" value={<MoneyValue value={budget.totalForecast} />} />
+            <StatCard label={t('Budget initial')} value={<MoneyValue value={budget.totalForecast} />} />
             {engagement && (
               <>
-                <StatCard label="Réalisé" value={<MoneyValue value={engagement.actualCost} />} />
-                <StatCard label="Engagé" value={<MoneyValue value={engagement.engagedAmount} />} />
+                <StatCard label={t('Réalisé')} value={<MoneyValue value={engagement.actualCost} />} />
+                <StatCard label={t('Engagé')} value={<MoneyValue value={engagement.engagedAmount} />} />
               </>
             )}
           </div>
 
           {budget.status === 'VALIDATED' && (
             <Text type="secondary">
-              Validé{budget.validatedByLabel ? ` par ${budget.validatedByLabel}` : ''}
+              {t('Validé')}
+              {budget.validatedByLabel ? ` par ${budget.validatedByLabel}` : ''}
               {budget.validatedAt ? ` le ${dateCourte(budget.validatedAt)}` : ''}.
             </Text>
           )}
@@ -476,20 +482,22 @@ export const BudgetChantier: React.FC = () => {
           {budget.status === 'DRAFT' && (
             <div style={{ margin: 'var(--space-4) 0' }}>
               <ConfirmAction
-                title={`Valider le budget « ${budget.label} » ?`}
-                description="Cette opération est irréversible : un budget validé ne peut plus recevoir de nouvelle ligne. Toute évolution ultérieure passera par un avenant."
-                okText="Confirmer la validation"
+                title={t('Valider le budget « {{label}} » ?', { label: budget.label })}
+                description={t(
+                  'Cette opération est irréversible : un budget validé ne peut plus recevoir de nouvelle ligne. Toute évolution ultérieure passera par un avenant.'
+                )}
+                okText={t('Confirmer la validation')}
                 onConfirm={validerBudget}
               >
                 <Button type="primary" loading={validationBudgetEnCours}>
-                  Valider le budget
+                  {t('Valider le budget')}
                 </Button>
               </ConfirmAction>
             </div>
           )}
 
           <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-            Lignes du budget
+            {t('Lignes du budget')}
           </Title>
           <DataView<SiteBudget['lines'][number]>
             paginated={false}
@@ -498,10 +506,10 @@ export const BudgetChantier: React.FC = () => {
             page={1}
             pageSize={Math.max(budget.lines.length, 1)}
             onPageChange={() => {}}
-            emptyDescription="Ce budget ne porte encore aucune ligne."
+            emptyDescription={t('Ce budget ne porte encore aucune ligne.')}
             columns={colonnesLignes}
             rowKey={l => l.id}
-            aria-label="Lignes du budget"
+            aria-label={t('Lignes du budget')}
             renderCard={l => (
               <DataCard
                 title={l.label}
@@ -513,7 +521,7 @@ export const BudgetChantier: React.FC = () => {
           />
 
           <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-            Avenants
+            {t('Avenants')}
           </Title>
           <DataView<BudgetAmendment>
             paginated={false}
@@ -523,16 +531,16 @@ export const BudgetChantier: React.FC = () => {
             pageSize={Math.max((avenants ?? []).length, 1)}
             onPageChange={() => {}}
             loading={avenantsEnAttente}
-            error={erreurAvenants ? 'Impossible de charger les avenants de ce budget.' : null}
+            error={erreurAvenants ? t('Impossible de charger les avenants de ce budget.') : null}
             onRetry={() => refetchAvenants()}
-            emptyDescription="Aucun avenant n'a encore été saisi sur ce budget."
+            emptyDescription={t("Aucun avenant n'a encore été saisi sur ce budget.")}
             columns={colonnesAvenants}
             rowKey={a => a.id}
-            aria-label="Avenants du budget"
+            aria-label={t('Avenants du budget')}
             renderCard={a => (
               <DataCard
                 title={dateCourte(a.amendmentDate)}
-                aria-label={`Avenant du ${dateCourte(a.amendmentDate)}`}
+                aria-label={t('Avenant du {{value}}', { value: dateCourte(a.amendmentDate) })}
                 subtitle={a.reason}
                 status={
                   <StatusTag
@@ -542,17 +550,18 @@ export const BudgetChantier: React.FC = () => {
                   />
                 }
                 highlight={<MoneyValue value={a.totalDelta} signed />}
-                fields={[{ label: 'Saisi par', value: a.createdByLabel }]}
+                fields={[{ label: t('Saisi par'), value: a.createdByLabel }]}
                 primaryAction={
                   a.status === 'DRAFT'
                     ? {
                         label: 'Valider',
                         onClick: () =>
                           confirmerAction({
-                            title: `Valider l'avenant du ${dateCourte(a.amendmentDate)} ?`,
-                            description:
-                              "Cette opération est irréversible : un avenant validé ne peut plus être modifié, et son écart s'ajoute alors au budget révisé du chantier.",
-                            okText: 'Confirmer la validation',
+                            title: t("Valider l'avenant du {{value}} ?", { value: dateCourte(a.amendmentDate) }),
+                            description: t(
+                              "Cette opération est irréversible : un avenant validé ne peut plus être modifié, et son écart s'ajoute alors au budget révisé du chantier."
+                            ),
+                            okText: t('Confirmer la validation'),
                             onConfirm: () => validerAvenant(a)
                           })
                       }
@@ -564,13 +573,13 @@ export const BudgetChantier: React.FC = () => {
 
           <Card style={{ marginTop: 'var(--space-6)' }}>
             <Title level={4} style={{ marginTop: 0 }}>
-              Nouvel avenant
+              {t('Nouvel avenant')}
             </Title>
 
             <Space wrap size="middle" align="end" style={{ marginBottom: 'var(--space-4)', width: '100%' }}>
               <div>
                 <div>
-                  <label htmlFor="avenant-date">Date</label>
+                  <label htmlFor="avenant-date">{t('Date')}</label>
                 </div>
                 <DatePicker
                   id="avenant-date"
@@ -581,13 +590,13 @@ export const BudgetChantier: React.FC = () => {
               </div>
               <div style={{ minWidth: 320, flex: 1 }}>
                 <div>
-                  <label htmlFor="avenant-motif">Motif</label>
+                  <label htmlFor="avenant-motif">{t('Motif')}</label>
                 </div>
                 <Input
                   id="avenant-motif"
                   value={motifAvenant}
                   onChange={event => setMotifAvenant(event.target.value)}
-                  placeholder="Ex. Renchérissement du ciment"
+                  placeholder={t('Ex. Renchérissement du ciment')}
                 />
               </div>
             </Space>
@@ -596,16 +605,16 @@ export const BudgetChantier: React.FC = () => {
               {lignesAvenant.map(ligne => (
                 <Space key={ligne.id} align="start" wrap>
                   <Select
-                    aria-label="Poste de dépense"
-                    placeholder="Poste"
+                    aria-label={t('Poste de dépense')}
+                    placeholder={t('Poste')}
                     style={{ width: 200 }}
                     value={ligne.costCategoryId}
                     onChange={value => modifierLigneAvenant(ligne.id, { costCategoryId: value })}
                     options={optionsPostes}
                   />
                   <InputNumber
-                    aria-label="Écart"
-                    placeholder="Écart (+/-)"
+                    aria-label={t('Écart')}
+                    placeholder={t('Écart (+/-)')}
                     style={{ width: 180 }}
                     value={ligne.amountDelta ?? undefined}
                     onChange={value =>
@@ -613,7 +622,7 @@ export const BudgetChantier: React.FC = () => {
                     }
                   />
                   <Button
-                    aria-label="Retirer la ligne"
+                    aria-label={t('Retirer la ligne')}
                     icon={<DeleteOutlined />}
                     disabled={lignesAvenant.length <= 1}
                     onClick={() => retirerLigneAvenant(ligne.id)}
@@ -621,7 +630,7 @@ export const BudgetChantier: React.FC = () => {
                 </Space>
               ))}
               <Button icon={<PlusOutlined />} onClick={ajouterLigneAvenant}>
-                Ajouter une ligne
+                {t('Ajouter une ligne')}
               </Button>
             </Space>
 
@@ -631,7 +640,7 @@ export const BudgetChantier: React.FC = () => {
               disabled={!peutEnregistrerAvenant}
               onClick={enregistrerAvenant}
             >
-              Enregistrer l'avenant
+              {t("Enregistrer l'avenant")}
             </Button>
           </Card>
         </>

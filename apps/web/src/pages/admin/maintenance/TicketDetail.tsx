@@ -15,6 +15,7 @@ import {
 } from '../../../types/maintenance-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { formatTicketDate } from '../../../utils/date-utils';
+import { t } from '../../../i18n/t';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
@@ -22,7 +23,7 @@ const { Option } = Select;
 
 const categoryLabels: Record<string, string> = {
   PLUMBING: 'Plomberie',
-  ELECTRICITY: 'Électricité',
+  ELECTRICITY: t('Électricité'),
   AC: 'Climatisation',
   OTHER: 'Autre'
 };
@@ -30,7 +31,7 @@ const categoryLabels: Record<string, string> = {
 const priorityLabels: Record<string, string> = {
   LOW: 'Faible',
   MEDIUM: 'Moyenne',
-  HIGH: 'Élevée',
+  HIGH: t('Élevée'),
   URGENT: 'Urgente'
 };
 
@@ -72,7 +73,7 @@ export const TicketDetail: React.FC = () => {
       }
     } catch (error) {
       console.error('Error loading ticket:', error);
-      message.error('Erreur lors du chargement du ticket');
+      message.error(t('Erreur lors du chargement du ticket'));
     } finally {
       setLoading(false);
     }
@@ -89,10 +90,10 @@ export const TicketDetail: React.FC = () => {
         assignedVendorId: values.assignedVendorId,
         resolutionNotes: values.resolutionNotes
       });
-      message.success('Ticket mis à jour avec succès');
+      message.success(t('Ticket mis à jour avec succès'));
       await loadTicket();
     } catch (error: any) {
-      message.error(error.response?.data?.message || 'Erreur lors de la mise à jour du ticket');
+      message.error(error.response?.data?.message || t('Erreur lors de la mise à jour du ticket'));
     } finally {
       setSaving(false);
     }
@@ -105,10 +106,10 @@ export const TicketDetail: React.FC = () => {
     try {
       await managerMaintenanceService.addComment(effectiveTenantId, ticketId, commentContent);
       setCommentContent('');
-      message.success('Commentaire ajouté');
+      message.success(t('Commentaire ajouté'));
       await loadTicket();
     } catch (error: any) {
-      message.error(error.response?.data?.message || "Erreur lors de l'ajout du commentaire");
+      message.error(error.response?.data?.message || t("Erreur lors de l'ajout du commentaire"));
     } finally {
       setSubmittingComment(false);
     }
@@ -126,7 +127,7 @@ export const TicketDetail: React.FC = () => {
     return (
       <>
         <Card>
-          <Text>Ticket introuvable</Text>
+          <Text>{t('Ticket introuvable')}</Text>
         </Card>
       </>
     );
@@ -142,7 +143,7 @@ export const TicketDetail: React.FC = () => {
             icon={<ArrowLeftOutlined />}
             onClick={() => navigate(`/tenant/${effectiveTenantId}/admin/maintenance/tickets`)}
           >
-            Retour à la liste
+            {t('Retour à la liste')}
           </Button>
 
           <Card>
@@ -153,7 +154,7 @@ export const TicketDetail: React.FC = () => {
                     {ticket.title}
                   </Title>
                   <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                    Créé le {formattedCreatedDate}
+                    {t('Créé le')} {formattedCreatedDate}
                   </Text>
                 </div>
                 <TicketStatusBadge status={ticket.status} />
@@ -164,15 +165,15 @@ export const TicketDetail: React.FC = () => {
               <Form form={form} layout="vertical" onFinish={handleSave}>
                 <Space direction="vertical" size="large" style={{ width: '100%' }}>
                   <div>
-                    <Title level={5}>Informations</Title>
+                    <Title level={5}>{t('Informations')}</Title>
                     <Space direction="vertical" size="small">
                       <div>
-                        <Text strong>Catégorie: </Text>
+                        <Text strong>{t('Catégorie:')} </Text>
                         <Text>{categoryLabels[ticket.category] || ticket.category}</Text>
                       </div>
                       {ticket.property && (
                         <div>
-                          <Text strong>Propriété: </Text>
+                          <Text strong>{t('Propriété:')} </Text>
                           <Text>{ticket.property.address}</Text>
                         </div>
                       )}
@@ -186,10 +187,10 @@ export const TicketDetail: React.FC = () => {
                       )}
                       {ticket.assignedVendor && (
                         <div>
-                          <Text strong>Prestataire assigné: </Text>
+                          <Text strong>{t('Prestataire assigné:')} </Text>
                           <Text>{ticket.assignedVendor.name}</Text>
                           {ticket.assignedVendor.phone && (
-                            <Text type="secondary" style={{ marginLeft: 8 }}>
+                            <Text type="secondary" style={{ marginInlineStart: 8 }}>
                               ({ticket.assignedVendor.phone})
                             </Text>
                           )}
@@ -198,36 +199,36 @@ export const TicketDetail: React.FC = () => {
                     </Space>
                   </div>
 
-                  <Form.Item name="status" label="Statut">
+                  <Form.Item name="status" label={t('Statut')}>
                     <Select>
-                      <Option value={MaintenanceTicketStatus.DECLARED}>Déclaré</Option>
-                      <Option value={MaintenanceTicketStatus.IN_PROGRESS}>En cours</Option>
-                      <Option value={MaintenanceTicketStatus.ASSIGNED}>Assigné</Option>
-                      <Option value={MaintenanceTicketStatus.RESOLVED}>Résolu</Option>
-                      <Option value={MaintenanceTicketStatus.CANCELED}>Annulé</Option>
+                      <Option value={MaintenanceTicketStatus.DECLARED}>{t('Déclaré')}</Option>
+                      <Option value={MaintenanceTicketStatus.IN_PROGRESS}>{t('En cours')}</Option>
+                      <Option value={MaintenanceTicketStatus.ASSIGNED}>{t('Assigné')}</Option>
+                      <Option value={MaintenanceTicketStatus.RESOLVED}>{t('Résolu')}</Option>
+                      <Option value={MaintenanceTicketStatus.CANCELED}>{t('Annulé')}</Option>
                     </Select>
                   </Form.Item>
 
-                  <Form.Item name="priority" label="Priorité">
+                  <Form.Item name="priority" label={t('Priorité')}>
                     <Select>
-                      <Option value={MaintenanceTicketPriority.LOW}>Faible</Option>
-                      <Option value={MaintenanceTicketPriority.MEDIUM}>Moyenne</Option>
-                      <Option value={MaintenanceTicketPriority.HIGH}>Élevée</Option>
-                      <Option value={MaintenanceTicketPriority.URGENT}>Urgente</Option>
+                      <Option value={MaintenanceTicketPriority.LOW}>{t('Faible')}</Option>
+                      <Option value={MaintenanceTicketPriority.MEDIUM}>{t('Moyenne')}</Option>
+                      <Option value={MaintenanceTicketPriority.HIGH}>{t('Élevée')}</Option>
+                      <Option value={MaintenanceTicketPriority.URGENT}>{t('Urgente')}</Option>
                     </Select>
                   </Form.Item>
 
-                  <Form.Item name="assignedVendorId" label="Prestataire assigné">
+                  <Form.Item name="assignedVendorId" label={t('Prestataire assigné')}>
                     <VendorSelect tenantId={effectiveTenantId || ''} />
                   </Form.Item>
 
-                  <Form.Item name="resolutionNotes" label="Notes de résolution">
-                    <TextArea rows={4} placeholder="Ajouter des notes de résolution..." />
+                  <Form.Item name="resolutionNotes" label={t('Notes de résolution')}>
+                    <TextArea rows={4} placeholder={t('Ajouter des notes de résolution...')} />
                   </Form.Item>
 
                   <Form.Item>
                     <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saving}>
-                      Enregistrer les modifications
+                      {t('Enregistrer les modifications')}
                     </Button>
                   </Form.Item>
                 </Space>
@@ -236,13 +237,13 @@ export const TicketDetail: React.FC = () => {
               <Divider />
 
               <div>
-                <Title level={5}>Description</Title>
+                <Title level={5}>{t('Description')}</Title>
                 <Paragraph>{ticket.description}</Paragraph>
               </div>
 
               {ticket.locationDetails && (
                 <div>
-                  <Title level={5}>Détails de localisation</Title>
+                  <Title level={5}>{t('Détails de localisation')}</Title>
                   <Paragraph>{ticket.locationDetails}</Paragraph>
                 </div>
               )}
@@ -250,14 +251,14 @@ export const TicketDetail: React.FC = () => {
               <Divider />
 
               <div>
-                <Title level={5}>Historique des statuts</Title>
+                <Title level={5}>{t('Historique des statuts')}</Title>
                 <TicketTimeline statusHistory={ticket.statusHistory || []} />
               </div>
 
               <Divider />
 
               <div>
-                <Title level={5}>Pièces jointes</Title>
+                <Title level={5}>{t('Pièces jointes')}</Title>
                 {effectiveTenantId && (
                   <AttachmentList attachments={ticket.attachments || []} tenantId={effectiveTenantId} />
                 )}
@@ -266,13 +267,13 @@ export const TicketDetail: React.FC = () => {
               <Divider />
 
               <div>
-                <Title level={5}>Commentaires</Title>
+                <Title level={5}>{t('Commentaires')}</Title>
                 <CommentThread comments={ticket.comments || []} />
 
                 <div style={{ marginTop: 16 }}>
                   <TextArea
                     rows={4}
-                    placeholder="Ajouter un commentaire..."
+                    placeholder={t('Ajouter un commentaire...')}
                     value={commentContent}
                     onChange={e => setCommentContent(e.target.value)}
                   />
@@ -284,7 +285,7 @@ export const TicketDetail: React.FC = () => {
                     loading={submittingComment}
                     disabled={!commentContent.trim()}
                   >
-                    Envoyer
+                    {t('Envoyer')}
                   </Button>
                 </div>
               </div>

@@ -1,3 +1,4 @@
+import { t } from '../i18n/t';
 /**
  * Contrat gelé de la frontière réseau — lot 5, premier sous-lot : le
  * référentiel du stock (PRD E9, besoins S1, S4, S5).
@@ -68,7 +69,7 @@ export type StockLocationKind = 'WAREHOUSE' | 'SITE';
 
 export const STOCK_LOCATION_KIND_LABELS: Record<StockLocationKind, string> = {
   WAREHOUSE: 'Magasin',
-  SITE: 'Lieu de chantier'
+  SITE: t('Lieu de chantier')
 };
 
 /**
@@ -81,7 +82,7 @@ export const STOCK_LOCATION_KIND_LABELS: Record<StockLocationKind, string> = {
 export type StockValuationMethod = 'WEIGHTED_AVERAGE';
 
 export const STOCK_VALUATION_METHOD_LABELS: Record<StockValuationMethod, string> = {
-  WEIGHTED_AVERAGE: 'Coût moyen pondéré'
+  WEIGHTED_AVERAGE: t('Coût moyen pondéré')
 };
 
 // ---------------------------------------------------------------------------

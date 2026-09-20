@@ -36,7 +36,9 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 
@@ -109,7 +111,7 @@ const { TextArea } = Input;
 const TONE_PIECE: Record<string, StatusTone> = { DRAFT: 'neutral', VALIDATED: 'success', VOIDED: 'danger' };
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 export const Tacheron: React.FC = () => {
@@ -230,7 +232,7 @@ export const Tacheron: React.FC = () => {
   const convenirMarche = async () => {
     if (!tenantId || !contractorId || !chantierMarche || !posteMarche) return;
     if (!referenceMarche.trim()) {
-      message.error('La référence du marché est obligatoire.');
+      message.error(t('La référence du marché est obligatoire.'));
       return;
     }
     setMarcheEnCours(true);
@@ -245,14 +247,14 @@ export const Tacheron: React.FC = () => {
       await queryClient.invalidateQueries({
         queryKey: queryKey('contractor-contracts', tenantId, { contractorId })
       });
-      message.success('Marché convenu.');
+      message.success(t('Marché convenu.'));
       setChantierMarche(undefined);
       setPosteMarche(undefined);
       setReferenceMarche('');
       setMontantMarche(null);
       setDateSignature(dayjs());
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'La convention du marché a échoué.');
+      message.error(err?.response?.data?.message || t('La convention du marché a échoué.'));
     } finally {
       setMarcheEnCours(false);
     }
@@ -285,11 +287,11 @@ export const Tacheron: React.FC = () => {
       // Dit avant l'envoi : le serveur refuserait une description vide, et
       // une situation sans description est un chiffre que personne ne saura
       // justifier six mois plus tard.
-      message.error('La description de la situation est obligatoire.');
+      message.error(t('La description de la situation est obligatoire.'));
       return;
     }
     if ((montantSituation ?? 0) <= 0) {
-      message.error('Le montant de la situation doit être strictement positif.');
+      message.error(t('Le montant de la situation doit être strictement positif.'));
       return;
     }
     setSituationEnCours(true);
@@ -300,12 +302,12 @@ export const Tacheron: React.FC = () => {
         description: descriptionSituation.trim()
       });
       await queryClient.invalidateQueries({ queryKey: detailKey('progress-statements', tenantId, marcheConsulte.id) });
-      message.success('Situation saisie en brouillon.');
+      message.success(t('Situation saisie en brouillon.'));
       setDateSituation(dayjs());
       setMontantSituation(null);
       setDescriptionSituation('');
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'La saisie de la situation a échoué.');
+      message.error(err?.response?.data?.message || t('La saisie de la situation a échoué.'));
     } finally {
       setSituationEnCours(false);
     }
@@ -323,9 +325,9 @@ export const Tacheron: React.FC = () => {
         queryKey: queryKey('contractor-contracts', tenantId, { contractorId })
       });
       await queryClient.invalidateQueries({ queryKey: detailKey('contractors', tenantId, contractorId) });
-      message.success('Situation validée.');
+      message.success(t('Situation validée.'));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'La validation de la situation a échoué.');
+      message.error(err?.response?.data?.message || t('La validation de la situation a échoué.'));
     }
   };
 
@@ -353,11 +355,11 @@ export const Tacheron: React.FC = () => {
         amount: montantReglement as number
       });
       await queryClient.invalidateQueries({ queryKey: detailKey('contractor-payments', tenantId, contractorId) });
-      message.success('Règlement enregistré en brouillon.');
+      message.success(t('Règlement enregistré en brouillon.'));
       setDateReglement(dayjs());
       setMontantReglement(null);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'enregistrement du règlement a échoué.");
+      message.error(err?.response?.data?.message || t("L'enregistrement du règlement a échoué."));
     } finally {
       setReglementEnCours(false);
     }
@@ -369,32 +371,32 @@ export const Tacheron: React.FC = () => {
       await validateContractorPayment(tenantId, reglement.id);
       await queryClient.invalidateQueries({ queryKey: detailKey('contractor-payments', tenantId, contractorId) });
       await queryClient.invalidateQueries({ queryKey: detailKey('contractors', tenantId, contractorId) });
-      message.success('Règlement validé.');
+      message.success(t('Règlement validé.'));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'La validation du règlement a échoué.');
+      message.error(err?.response?.data?.message || t('La validation du règlement a échoué.'));
     }
   };
 
   // ---------------------------------------------------------------------
 
   if (!tenantId || !contractorId) {
-    return <StateBlock variant="empty" title="Aucun tâcheron sélectionné" />;
+    return <StateBlock variant="empty" title={t('Aucun tâcheron sélectionné')} />;
   }
 
   const filAriane = [
-    { label: 'Finance', to: `/tenant/${tenantId}/finance/tacherons` },
-    { label: 'Tâcherons', to: `/tenant/${tenantId}/finance/tacherons` },
-    ...(tacheron ? [{ label: tacheron.fullName }] : [{ label: 'Tâcheron' }])
+    { label: t('Finance'), to: `/tenant/${tenantId}/finance/tacherons` },
+    { label: t('Tâcherons'), to: `/tenant/${tenantId}/finance/tacherons` },
+    ...(tacheron ? [{ label: tacheron.fullName }] : [{ label: t('Tâcheron') }])
   ];
 
   if (erreurTacheron) {
     return (
       <>
-        <PageHeader title="Tâcheron" breadcrumbs={filAriane} />
+        <PageHeader title={t('Tâcheron')} breadcrumbs={filAriane} />
         <StateBlock
           variant="error"
-          description="Impossible de charger ce tâcheron."
-          actions={[{ label: 'Réessayer', onClick: () => refetchTacheron(), primary: true }]}
+          description={t('Impossible de charger ce tâcheron.')}
+          actions={[{ label: t('Réessayer'), onClick: () => refetchTacheron(), primary: true }]}
         />
       </>
     );
@@ -403,7 +405,7 @@ export const Tacheron: React.FC = () => {
   if (tacheronEnAttente) {
     return (
       <>
-        <PageHeader title="Tâcheron" breadcrumbs={filAriane} />
+        <PageHeader title={t('Tâcheron')} breadcrumbs={filAriane} />
         <StateBlock variant="loading" />
       </>
     );
@@ -414,110 +416,114 @@ export const Tacheron: React.FC = () => {
     // tâcheron de l'agence : introuvable, ce qui n'est pas « en chargement ».
     return (
       <>
-        <PageHeader title="Tâcheron" breadcrumbs={filAriane} />
-        <StateBlock variant="empty" title="Ce tâcheron est introuvable dans cette agence." />
+        <PageHeader title={t('Tâcheron')} breadcrumbs={filAriane} />
+        <StateBlock variant="empty" title={t('Ce tâcheron est introuvable dans cette agence.')} />
       </>
     );
   }
 
   const colonnesMarches: ColumnsType<ContractorContract> = [
-    { title: 'Référence', key: 'reference', render: (_, m) => m.reference },
-    { title: 'Chantier', key: 'chantier', render: (_, m) => m.siteLabel },
+    { title: t('Référence'), key: 'reference', render: (_, m) => m.reference },
+    { title: t('Chantier'), key: 'chantier', render: (_, m) => m.siteLabel },
     // Le nom du poste, jamais son identifiant : c'est lui qui reçoit les
     // situations dans le coût du chantier.
-    { title: 'Poste de dépense', key: 'poste', render: (_, m) => m.costCategoryLabel },
-    { title: 'Signé le', key: 'signe', width: 120, render: (_, m) => dateCourte(m.signedDate) },
+    { title: t('Poste de dépense'), key: 'poste', render: (_, m) => m.costCategoryLabel },
+    { title: t('Signé le'), key: 'signe', width: 120, render: (_, m) => dateCourte(m.signedDate) },
     {
-      title: 'Montant convenu',
+      title: t('Montant convenu'),
       key: 'convenu',
-      align: 'right',
+      align: 'end',
       render: (_, m) => <MoneyValue value={m.agreedAmount} />
     },
     {
-      title: 'Situations validées',
+      title: t('Situations validées'),
       key: 'situe',
-      align: 'right',
+      align: 'end',
       render: (_, m) => <MoneyValue value={m.statementedAmount} />
     },
     {
       // « Marché restant », jamais « solde » : ce qui reste à EXÉCUTER, à ne
       // pas confondre avec ce qu'on doit au tâcheron (voir l'en-tête).
-      title: 'Marché restant',
+      title: t('Marché restant'),
       key: 'restant',
-      align: 'right',
+      align: 'end',
       render: (_, m) => (
         <Space orientation="vertical" size={0} style={{ alignItems: 'flex-end' }}>
           <MoneyValue value={m.remainingAmount} signed />
-          {m.isOverrun && <StatusTag status="OVERRUN" tone="warning" label="Dépassement" />}
+          {m.isOverrun && <StatusTag status="OVERRUN" tone="warning" label={t('Dépassement')} />}
         </Space>
       )
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, m) => (
         <Button type="link" onClick={() => setMarcheChoisi(m.id)} disabled={marcheConsulte?.id === m.id}>
-          {marcheConsulte?.id === m.id ? 'Situations affichées' : 'Voir les situations'}
+          {marcheConsulte?.id === m.id ? t('Situations affichées') : t('Voir les situations')}
         </Button>
       )
     }
   ];
 
   const colonnesSituations: ColumnsType<ProgressStatement> = [
-    { title: 'Date', key: 'date', width: 120, render: (_, s) => dateCourte(s.statementDate) },
-    { title: 'Description', key: 'description', render: (_, s) => s.description },
-    { title: 'Montant', key: 'montant', align: 'right', render: (_, s) => <MoneyValue value={s.amount} /> },
-    { title: 'Saisie par', key: 'saisie', render: (_, s) => s.createdByLabel },
+    { title: t('Date'), key: 'date', width: 120, render: (_, s) => dateCourte(s.statementDate) },
+    { title: t('Description'), key: 'description', render: (_, s) => s.description },
+    { title: t('Montant'), key: 'montant', align: 'end', render: (_, s) => <MoneyValue value={s.amount} /> },
+    { title: t('Saisie par'), key: 'saisie', render: (_, s) => s.createdByLabel },
     {
-      title: 'Statut',
+      title: t('Statut'),
       key: 'statut',
       render: (_, s) => (
         <StatusTag status={s.status} tone={TONE_PIECE[s.status]} label={CONTRACTOR_DOCUMENT_STATUS_LABELS[s.status]} />
       )
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, s) =>
         s.status === 'DRAFT' ? (
           <ConfirmAction
-            title={`Valider la situation du ${dateCourte(s.statementDate)} ?`}
-            description="Cette opération est irréversible : la situation est constatée, le coût du chantier monte du même montant, et le tâcheron devient créancier de cette somme."
-            okText="Confirmer la validation"
+            title={t('Valider la situation du {{value}} ?', { value: dateCourte(s.statementDate) })}
+            description={t(
+              'Cette opération est irréversible : la situation est constatée, le coût du chantier monte du même montant, et le tâcheron devient créancier de cette somme.'
+            )}
+            okText={t('Confirmer la validation')}
             onConfirm={() => validerSituation(s)}
           >
-            <Button type="link">Valider</Button>
+            <Button type="link">{t('Valider')}</Button>
           </ConfirmAction>
         ) : null
     }
   ];
 
   const colonnesReglements: ColumnsType<ContractorPayment> = [
-    { title: 'Date', key: 'date', width: 120, render: (_, r) => dateCourte(r.paymentDate) },
-    { title: 'Montant', key: 'montant', align: 'right', render: (_, r) => <MoneyValue value={r.amount} /> },
-    { title: 'Saisi par', key: 'saisi', render: (_, r) => r.createdByLabel },
+    { title: t('Date'), key: 'date', width: 120, render: (_, r) => dateCourte(r.paymentDate) },
+    { title: t('Montant'), key: 'montant', align: 'end', render: (_, r) => <MoneyValue value={r.amount} /> },
+    { title: t('Saisi par'), key: 'saisi', render: (_, r) => r.createdByLabel },
     {
-      title: 'Statut',
+      title: t('Statut'),
       key: 'statut',
       render: (_, r) => (
         <StatusTag status={r.status} tone={TONE_PIECE[r.status]} label={CONTRACTOR_DOCUMENT_STATUS_LABELS[r.status]} />
       )
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, r) =>
         r.status === 'DRAFT' ? (
           <ConfirmAction
-            title={`Valider le règlement du ${dateCourte(r.paymentDate)} ?`}
-            description="Cette opération est irréversible : la somme sort de la caisse et vient en diminution de ce qu'on doit au tâcheron."
-            okText="Confirmer la validation"
+            title={t('Valider le règlement du {{value}} ?', { value: dateCourte(r.paymentDate) })}
+            description={t(
+              "Cette opération est irréversible : la somme sort de la caisse et vient en diminution de ce qu'on doit au tâcheron."
+            )}
+            okText={t('Confirmer la validation')}
             onConfirm={() => validerReglement(r)}
           >
-            <Button type="link">Valider</Button>
+            <Button type="link">{t('Valider')}</Button>
           </ConfirmAction>
         ) : null
     }
@@ -527,7 +533,7 @@ export const Tacheron: React.FC = () => {
     <>
       <PageHeader
         title={tacheron.fullName}
-        subtitle={tacheron.trade ?? 'Corps de métier non renseigné'}
+        subtitle={tacheron.trade ?? t('Corps de métier non renseigné')}
         breadcrumbs={filAriane}
         extra={<StatusTag status={tacheron.isActive ? 'ACTIVE' : 'INACTIVE'} />}
       />
@@ -541,13 +547,16 @@ export const Tacheron: React.FC = () => {
       */}
       <Card style={{ marginBottom: 'var(--space-4)' }}>
         <Title level={5} style={{ marginTop: 0 }}>
-          Deux chiffres à ne pas confondre
+          {t('Deux chiffres à ne pas confondre')}
         </Title>
         <Text type="secondary">
-          <strong>Marché restant</strong> = montant convenu − situations validées : ce qui reste à{' '}
-          <strong>exécuter</strong>, marché par marché. <strong>Ce qu'on lui doit</strong> = situations validées −
-          règlements : ce qui reste à <strong>payer</strong>, tous marchés confondus. Un tâcheron peut avoir fini son
-          marché et rester créancier, ou n'avoir rien exécuté et avoir déjà reçu une avance.
+          <strong>{t('Marché restant')}</strong> {t('= montant convenu − situations validées : ce qui reste à')}{' '}
+          <strong>{t('exécuter')}</strong>
+          {t(', marché par marché.')} <strong>{t("Ce qu'on lui doit")}</strong>{' '}
+          {t('= situations validées − règlements : ce qui reste à')} <strong>payer</strong>
+          {t(
+            ", tous marchés confondus. Un tâcheron peut avoir fini son marché et rester créancier, ou n'avoir rien exécuté et avoir déjà reçu une avance."
+          )}
         </Text>
       </Card>
 
@@ -562,23 +571,23 @@ export const Tacheron: React.FC = () => {
         {/* Le seul solde qui vive sur le TÂCHERON. Affiché tel que le serveur
             l'émet, jamais recalculé, et jamais nommé « solde » tout court. */}
         <StatCard
-          label="Ce qu'on lui doit"
+          label={t("Ce qu'on lui doit")}
           value={<MoneyValue value={tacheron.accountBalance} signed />}
           tone={tacheron.accountBalance > 0 ? 'warning' : 'neutral'}
           hint={
             tacheron.accountBalance < 0
-              ? 'Avance déjà versée : ses prochaines situations validées la résorberont.'
-              : 'Situations validées − règlements : ce qui reste à payer, tous marchés confondus.'
+              ? t('Avance déjà versée : ses prochaines situations validées la résorberont.')
+              : t('Situations validées − règlements : ce qui reste à payer, tous marchés confondus.')
           }
         />
         <StatCard
-          label="Marchés en cours"
+          label={t('Marchés en cours')}
           value={(marches ?? []).filter(m => m.isActive).length}
-          hint="Le marché restant de chacun se lit dans le tableau ci-dessous."
+          hint={t('Le marché restant de chacun se lit dans le tableau ci-dessous.')}
         />
       </div>
 
-      <Title level={4}>Marchés</Title>
+      <Title level={4}>{t('Marchés')}</Title>
       <DataView<ContractorContract>
         // Le contrat de `listContractorContracts` ne pagine pas.
         paginated={false}
@@ -589,79 +598,79 @@ export const Tacheron: React.FC = () => {
         pageSize={Math.max((marches ?? []).length, 1)}
         onPageChange={() => {}}
         loading={marchesEnAttente}
-        error={erreurMarches ? 'Impossible de charger les marchés de ce tâcheron.' : null}
+        error={erreurMarches ? t('Impossible de charger les marchés de ce tâcheron.') : null}
         onRetry={() => refetchMarches()}
-        emptyDescription="Aucun marché n'a encore été convenu avec ce tâcheron."
+        emptyDescription={t("Aucun marché n'a encore été convenu avec ce tâcheron.")}
         columns={colonnesMarches}
         rowKey={m => m.id}
-        aria-label="Marchés du tâcheron"
+        aria-label={t('Marchés du tâcheron')}
         renderCard={m => (
           <DataCard
             title={m.reference}
             aria-label={m.reference}
             subtitle={`${m.siteLabel} — poste « ${m.costCategoryLabel} »`}
-            status={m.isOverrun ? <StatusTag status="OVERRUN" tone="warning" label="Dépassement" /> : undefined}
+            status={m.isOverrun ? <StatusTag status="OVERRUN" tone="warning" label={t('Dépassement')} /> : undefined}
             highlight={<MoneyValue value={m.agreedAmount} />}
             fields={[
-              { label: 'Situations validées', value: <MoneyValue value={m.statementedAmount} /> },
-              { label: 'Marché restant', value: <MoneyValue value={m.remainingAmount} signed /> },
-              { label: 'Signé le', value: dateCourte(m.signedDate) }
+              { label: t('Situations validées'), value: <MoneyValue value={m.statementedAmount} /> },
+              { label: t('Marché restant'), value: <MoneyValue value={m.remainingAmount} signed /> },
+              { label: t('Signé le'), value: dateCourte(m.signedDate) }
             ]}
-            primaryAction={{ label: 'Voir les situations', onClick: () => setMarcheChoisi(m.id) }}
+            primaryAction={{ label: t('Voir les situations'), onClick: () => setMarcheChoisi(m.id) }}
           />
         )}
       />
 
       <Card style={{ marginTop: 'var(--space-4)' }}>
         <Title level={5} style={{ marginTop: 0 }}>
-          Convenir d'un marché
+          {t("Convenir d'un marché")}
         </Title>
         <Space wrap size="middle" align="end">
           <div style={{ minWidth: 220 }}>
             <div>
-              <label htmlFor="marche-chantier">Chantier</label>
+              <label htmlFor="marche-chantier">{t('Chantier')}</label>
             </div>
             <Select
               id="marche-chantier"
               style={{ width: 220 }}
-              placeholder="Choisir un chantier"
+              placeholder={t('Choisir un chantier')}
               value={chantierMarche}
               onChange={setChantierMarche}
               options={optionsChantiers}
-              notFoundContent="Aucun chantier disponible"
+              notFoundContent={t('Aucun chantier disponible')}
             />
           </div>
           <div style={{ minWidth: 220 }}>
             <div>
-              <label htmlFor="marche-poste">Poste de dépense</label>
+              <label htmlFor="marche-poste">{t('Poste de dépense')}</label>
             </div>
             {/* Exigé, jamais deviné : c'est ce poste qui recevra les
                 situations dans le coût du chantier (contrat gelé). */}
             <Select
               id="marche-poste"
               style={{ width: 220 }}
-              placeholder="Choisir un poste"
+              placeholder={t('Choisir un poste')}
               value={posteMarche}
               onChange={setPosteMarche}
               options={optionsPostes}
-              notFoundContent="Aucun poste de dépense disponible"
+              notFoundContent={t('Aucun poste de dépense disponible')}
             />
           </div>
           <div>
             <div>
-              <label htmlFor="marche-reference">Référence du marché</label>
+              <label htmlFor="marche-reference">{t('Référence du marché')}</label>
             </div>
             <Input
               id="marche-reference"
               style={{ width: 220 }}
               value={referenceMarche}
               onChange={event => setReferenceMarche(event.target.value)}
-              placeholder="Ex. MAR-2026-014"
+              placeholder={t('Ex. MAR-2026-014')}
             />
           </div>
           <div>
             <div>
-              <label htmlFor="marche-montant">Montant convenu</label>
+              <label htmlFor="marche-montant">{t('Montant convenu')}</label>
             </div>
             <InputNumber
               id="marche-montant"
@@ -673,7 +682,7 @@ export const Tacheron: React.FC = () => {
           </div>
           <div>
             <div>
-              <label htmlFor="marche-date">Date de signature</label>
+              <label htmlFor="marche-date">{t('Date de signature')}</label>
             </div>
             <DatePicker
               id="marche-date"
@@ -683,25 +692,25 @@ export const Tacheron: React.FC = () => {
             />
           </div>
           <Button type="primary" loading={marcheEnCours} disabled={!peutConvenirMarche} onClick={convenirMarche}>
-            Convenir le marché
+            {t('Convenir le marché')}
           </Button>
         </Space>
       </Card>
 
       <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
         {marcheConsulte
-          ? `Situations d'avancement — marché « ${marcheConsulte.reference} »`
-          : "Situations d'avancement"}
+          ? t("Situations d'avancement — marché « {{reference}} »", { reference: marcheConsulte.reference })
+          : t("Situations d'avancement")}
       </Title>
 
       {marcheConsulte ? (
         <>
           <Text type="secondary">
-            Marché restant sur « {marcheConsulte.reference} » :{' '}
+            {t('Marché restant sur «')} {marcheConsulte.reference} » :{' '}
             <MoneyValue value={marcheConsulte.remainingAmount} signed />
             {marcheConsulte.isOverrun
-              ? ' — les situations validées dépassent le montant convenu. Le dépassement est enregistré, pas refusé.'
-              : ' — ce qui reste à exécuter, et non ce qu’on lui doit.'}
+              ? t('— les situations validées dépassent le montant convenu. Le dépassement est enregistré, pas refusé.')
+              : t('— ce qui reste à exécuter, et non ce qu’on lui doit.')}
           </Text>
 
           <div style={{ marginTop: 'var(--space-3)' }}>
@@ -714,16 +723,16 @@ export const Tacheron: React.FC = () => {
               pageSize={Math.max((situations ?? []).length, 1)}
               onPageChange={() => {}}
               loading={situationsEnAttente}
-              error={erreurSituations ? 'Impossible de charger les situations de ce marché.' : null}
+              error={erreurSituations ? t('Impossible de charger les situations de ce marché.') : null}
               onRetry={() => refetchSituations()}
-              emptyDescription="Aucune situation n'a encore été saisie sur ce marché."
+              emptyDescription={t("Aucune situation n'a encore été saisie sur ce marché.")}
               columns={colonnesSituations}
               rowKey={s => s.id}
-              aria-label="Situations d'avancement du marché"
+              aria-label={t("Situations d'avancement du marché")}
               renderCard={s => (
                 <DataCard
                   title={dateCourte(s.statementDate)}
-                  aria-label={`Situation du ${dateCourte(s.statementDate)}`}
+                  aria-label={t('Situation du {{value}}', { value: dateCourte(s.statementDate) })}
                   subtitle={s.description}
                   status={
                     <StatusTag
@@ -733,17 +742,18 @@ export const Tacheron: React.FC = () => {
                     />
                   }
                   highlight={<MoneyValue value={s.amount} />}
-                  fields={[{ label: 'Saisie par', value: s.createdByLabel }]}
+                  fields={[{ label: t('Saisie par'), value: s.createdByLabel }]}
                   primaryAction={
                     s.status === 'DRAFT'
                       ? {
                           label: 'Valider',
                           onClick: () =>
                             confirmerAction({
-                              title: `Valider la situation du ${dateCourte(s.statementDate)} ?`,
-                              description:
-                                'Cette opération est irréversible : la situation est constatée, le coût du chantier monte du même montant, et le tâcheron devient créancier de cette somme.',
-                              okText: 'Confirmer la validation',
+                              title: t('Valider la situation du {{value}} ?', { value: dateCourte(s.statementDate) }),
+                              description: t(
+                                'Cette opération est irréversible : la situation est constatée, le coût du chantier monte du même montant, et le tâcheron devient créancier de cette somme.'
+                              ),
+                              okText: t('Confirmer la validation'),
                               onConfirm: () => validerSituation(s)
                             })
                         }
@@ -756,12 +766,12 @@ export const Tacheron: React.FC = () => {
 
           <Card style={{ marginTop: 'var(--space-4)' }}>
             <Title level={5} style={{ marginTop: 0 }}>
-              Saisir une situation
+              {t('Saisir une situation')}
             </Title>
             <Space wrap size="middle" align="end">
               <div>
                 <div>
-                  <label htmlFor="situation-date">Date de la situation</label>
+                  <label htmlFor="situation-date">{t('Date de la situation')}</label>
                 </div>
                 <DatePicker
                   id="situation-date"
@@ -772,7 +782,7 @@ export const Tacheron: React.FC = () => {
               </div>
               <div>
                 <div>
-                  <label htmlFor="situation-montant">Montant de la situation</label>
+                  <label htmlFor="situation-montant">{t('Montant de la situation')}</label>
                 </div>
                 {/* Aucune borne haute : un dépassement de marché est accepté
                     par le serveur, et le refuser ici empêcherait d'enregistrer
@@ -787,7 +797,7 @@ export const Tacheron: React.FC = () => {
               </div>
               <div style={{ minWidth: 320 }}>
                 <div>
-                  <label htmlFor="situation-description">Description des travaux</label>
+                  <label htmlFor="situation-description">{t('Description des travaux')}</label>
                 </div>
                 <TextArea
                   id="situation-description"
@@ -795,7 +805,7 @@ export const Tacheron: React.FC = () => {
                   style={{ width: 320 }}
                   value={descriptionSituation}
                   onChange={event => setDescriptionSituation(event.target.value)}
-                  placeholder="Ex. Élévation des murs du rez-de-chaussée, 60 %"
+                  placeholder={t('Ex. Élévation des murs du rez-de-chaussée, 60 %')}
                 />
               </div>
               <Button
@@ -804,7 +814,7 @@ export const Tacheron: React.FC = () => {
                 disabled={!peutSaisirSituation}
                 onClick={saisirSituation}
               >
-                Saisir la situation
+                {t('Saisir la situation')}
               </Button>
             </Space>
 
@@ -813,7 +823,7 @@ export const Tacheron: React.FC = () => {
                 chiffre que personne ne saura justifier six mois plus tard. */}
             <div style={{ marginTop: 'var(--space-2)' }}>
               <Text type={descriptionManquante ? 'danger' : 'secondary'}>
-                La description est obligatoire : sans elle, personne ne saura justifier ce montant dans six mois.
+                {t('La description est obligatoire : sans elle, personne ne saura justifier ce montant dans six mois.')}
               </Text>
             </div>
 
@@ -821,8 +831,9 @@ export const Tacheron: React.FC = () => {
               <div style={{ marginTop: 'var(--space-2)' }}>
                 {/* Un avertissement, jamais un blocage. */}
                 <Text type="warning">
-                  Ce montant dépasse le marché restant. La situation sera tout de même enregistrée : le marché
-                  apparaîtra en dépassement, ce qui est une information, pas une erreur.
+                  {t(
+                    'Ce montant dépasse le marché restant. La situation sera tout de même enregistrée : le marché apparaîtra en dépassement, ce qui est une information, pas une erreur.'
+                  )}
                 </Text>
               </div>
             )}
@@ -831,12 +842,14 @@ export const Tacheron: React.FC = () => {
       ) : (
         <StateBlock
           variant="empty"
-          description="Convenez d'abord un marché : les situations d'avancement se rattachent à un marché, jamais au tâcheron seul."
+          description={t(
+            "Convenez d'abord un marché : les situations d'avancement se rattachent à un marché, jamais au tâcheron seul."
+          )}
         />
       )}
 
       <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        Règlements
+        {t('Règlements')}
       </Title>
       <DataView<ContractorPayment>
         paginated={false}
@@ -847,16 +860,16 @@ export const Tacheron: React.FC = () => {
         pageSize={Math.max((reglements ?? []).length, 1)}
         onPageChange={() => {}}
         loading={reglementsEnAttente}
-        error={erreurReglements ? 'Impossible de charger les règlements de ce tâcheron.' : null}
+        error={erreurReglements ? t('Impossible de charger les règlements de ce tâcheron.') : null}
         onRetry={() => refetchReglements()}
-        emptyDescription="Aucun règlement n'a encore été enregistré pour ce tâcheron."
+        emptyDescription={t("Aucun règlement n'a encore été enregistré pour ce tâcheron.")}
         columns={colonnesReglements}
         rowKey={r => r.id}
-        aria-label="Règlements du tâcheron"
+        aria-label={t('Règlements du tâcheron')}
         renderCard={r => (
           <DataCard
             title={dateCourte(r.paymentDate)}
-            aria-label={`Règlement du ${dateCourte(r.paymentDate)}`}
+            aria-label={t('Règlement du {{value}}', { value: dateCourte(r.paymentDate) })}
             status={
               <StatusTag
                 status={r.status}
@@ -865,17 +878,18 @@ export const Tacheron: React.FC = () => {
               />
             }
             highlight={<MoneyValue value={r.amount} />}
-            fields={[{ label: 'Saisi par', value: r.createdByLabel }]}
+            fields={[{ label: t('Saisi par'), value: r.createdByLabel }]}
             primaryAction={
               r.status === 'DRAFT'
                 ? {
                     label: 'Valider',
                     onClick: () =>
                       confirmerAction({
-                        title: `Valider le règlement du ${dateCourte(r.paymentDate)} ?`,
-                        description:
-                          "Cette opération est irréversible : la somme sort de la caisse et vient en diminution de ce qu'on doit au tâcheron.",
-                        okText: 'Confirmer la validation',
+                        title: t('Valider le règlement du {{value}} ?', { value: dateCourte(r.paymentDate) }),
+                        description: t(
+                          "Cette opération est irréversible : la somme sort de la caisse et vient en diminution de ce qu'on doit au tâcheron."
+                        ),
+                        okText: t('Confirmer la validation'),
                         onConfirm: () => validerReglement(r)
                       })
                   }
@@ -887,12 +901,12 @@ export const Tacheron: React.FC = () => {
 
       <Card style={{ marginTop: 'var(--space-4)' }}>
         <Title level={5} style={{ marginTop: 0 }}>
-          Enregistrer un règlement
+          {t('Enregistrer un règlement')}
         </Title>
         <Space wrap size="middle" align="end">
           <div>
             <div>
-              <label htmlFor="reglement-date">Date du règlement</label>
+              <label htmlFor="reglement-date">{t('Date du règlement')}</label>
             </div>
             <DatePicker
               id="reglement-date"
@@ -903,7 +917,7 @@ export const Tacheron: React.FC = () => {
           </div>
           <div>
             <div>
-              <label htmlFor="reglement-montant">Montant du règlement</label>
+              <label htmlFor="reglement-montant">{t('Montant du règlement')}</label>
             </div>
             {/* Aucune borne haute non plus : un règlement supérieur à ce qu'on
                 doit est un acompte, que le contrat prévoit explicitement. */}
@@ -921,7 +935,7 @@ export const Tacheron: React.FC = () => {
             disabled={!peutEnregistrerReglement}
             onClick={enregistrerReglement}
           >
-            Enregistrer le règlement
+            {t('Enregistrer le règlement')}
           </Button>
         </Space>
 
@@ -930,8 +944,9 @@ export const Tacheron: React.FC = () => {
             {/* Averti, jamais bloqué : c'est un acompte, et le contrat le
                 prévoit. */}
             <Text type="warning">
-              Ce règlement dépasse ce qu'on lui doit aujourd'hui. Il sera enregistré comme une avance, que ses
-              prochaines situations validées résorberont.
+              {t(
+                "Ce règlement dépasse ce qu'on lui doit aujourd'hui. Il sera enregistré comme une avance, que ses prochaines situations validées résorberont."
+              )}
             </Text>
           </div>
         )}

@@ -1,13 +1,10 @@
 import React from 'react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import { Card, Statistic, Typography } from 'antd';
-import { 
-  RiseOutlined, 
-  FallOutlined, 
-  MinusOutlined 
-} from '@ant-design/icons';
+import { RiseOutlined, FallOutlined, MinusOutlined } from '@ant-design/icons';
 import { KpiValue } from '../../../../types/crmDashboard';
 
+import { activeLocale } from '../../../../i18n/format';
 const { Text } = Typography;
 
 interface KpiCardProps {
@@ -19,14 +16,7 @@ interface KpiCardProps {
   delay?: number;
 }
 
-export const KpiCard: React.FC<KpiCardProps> = ({
-  title,
-  icon,
-  iconColor = '#1890ff',
-  value,
-  onClick,
-  delay = 0,
-}) => {
+export const KpiCard: React.FC<KpiCardProps> = ({ title, icon, iconColor = '#1890ff', value, onClick, delay = 0 }) => {
   const hasDelta = value.delta !== undefined && value.delta !== null;
   const isPositive = hasDelta && value.delta! > 0;
   const isNegative = hasDelta && value.delta! < 0;
@@ -39,13 +29,11 @@ export const KpiCard: React.FC<KpiCardProps> = ({
     if (val >= 1000) {
       return `${(val / 1000).toFixed(1)}k`;
     }
-    return val.toLocaleString('fr-FR');
+    return val.toLocaleString(activeLocale());
   };
 
   // Prepare sparkline data
-  const sparklineData = value.trend
-    ? value.trend.map((v, i) => ({ value: v, index: i }))
-    : [{ value: 0, index: 0 }];
+  const sparklineData = value.trend ? value.trend.map((v, i) => ({ value: v, index: i })) : [{ value: 0, index: 0 }];
 
   const DeltaIcon = isPositive ? RiseOutlined : isNegative ? FallOutlined : MinusOutlined;
   const deltaColor = isPositive ? '#52c41a' : isNegative ? '#ff4d4f' : '#8c8c8c';
@@ -56,25 +44,13 @@ export const KpiCard: React.FC<KpiCardProps> = ({
     : '';
 
   return (
-    <Card
-      hoverable={!!onClick}
-      onClick={onClick}
-      style={{ cursor: onClick ? 'pointer' : 'default' }}
-    >
-      <Statistic
-        title={title}
-        value={formatValue(value.value)}
-        prefix={icon}
-        valueStyle={{ color: iconColor }}
-      />
-      
+    <Card hoverable={!!onClick} onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
+      <Statistic title={title} value={formatValue(value.value)} prefix={icon} valueStyle={{ color: iconColor }} />
+
       {hasDelta && (
         <div style={{ marginTop: 8 }}>
-          <Text 
-            type={isPositive ? 'success' : isNegative ? 'danger' : 'secondary'}
-            style={{ fontSize: 12 }}
-          >
-            <DeltaIcon style={{ marginRight: 4 }} />
+          <Text type={isPositive ? 'success' : isNegative ? 'danger' : 'secondary'} style={{ fontSize: 12 }}>
+            <DeltaIcon style={{ marginInlineEnd: 4 }} />
             {deltaText}
           </Text>
         </div>
@@ -102,8 +78,3 @@ export const KpiCard: React.FC<KpiCardProps> = ({
     </Card>
   );
 };
-
-
-
-
-

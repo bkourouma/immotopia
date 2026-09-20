@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { App, Upload, Button, List, Typography } from 'antd';
 import { UploadOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { UploadFile, UploadProps, RcFile } from 'antd/es/upload/interface';
+import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
@@ -29,25 +30,25 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     );
 
     if (isDuplicate) {
-      message.warning(`Le fichier "${file.name}" est déjà sélectionné`);
+      message.warning(t('Le fichier "{{name}}" est déjà sélectionné', { name: file.name }));
       return Upload.LIST_IGNORE;
     }
 
     // Validate file type
     if (!acceptedTypes.includes(file.type)) {
-      message.error(`Type de fichier non autorisé: ${file.type}`);
+      message.error(t('Type de fichier non autorisé: {{type}}', { type: file.type }));
       return Upload.LIST_IGNORE;
     }
 
     // Validate file size
     if (file.size > maxSize * 1024 * 1024) {
-      message.error(`Fichier trop volumineux. Taille maximale: ${maxSize}MB`);
+      message.error(t('Fichier trop volumineux. Taille maximale: {{maxSize}}MB', { maxSize: maxSize }));
       return Upload.LIST_IGNORE;
     }
 
     // Validate file count
     if (fileList.length >= maxFiles) {
-      message.error(`Nombre maximum de fichiers atteint (${maxFiles})`);
+      message.error(t('Nombre maximum de fichiers atteint ({{maxFiles}})', { maxFiles: maxFiles }));
       return Upload.LIST_IGNORE;
     }
 
@@ -55,7 +56,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     const newFiles = [...fileList, file as File];
     setFileList(newFiles);
     onFilesChange?.(newFiles);
-    message.success(`Fichier "${file.name}" ajouté`);
+    message.success(t('Fichier "{{name}}" ajouté', { name: file.name }));
 
     // Return false to prevent auto upload
     return false;
@@ -82,7 +83,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         multiple
         fileList={[]}
       >
-        <Button icon={<UploadOutlined />}>Sélectionner des fichiers</Button>
+        <Button icon={<UploadOutlined />}>{t('Sélectionner des fichiers')}</Button>
       </Upload>
 
       {fileList.length > 0 && (
@@ -93,7 +94,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
             <List.Item
               actions={[
                 <Button key="remove" type="text" danger icon={<DeleteOutlined />} onClick={() => handleRemove(file)}>
-                  Supprimer
+                  {t('Supprimer')}
                 </Button>
               ]}
             >
@@ -108,12 +109,14 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
 
       {fileList.length > 0 && (
         <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 8 }}>
-          {fileList.length} fichier{fileList.length > 1 ? 's' : ''} sélectionné{fileList.length > 1 ? 's' : ''}
+          {fileList.length} fichier{fileList.length > 1 ? 's' : ''} {t('sélectionné')}
+          {fileList.length > 1 ? 's' : ''}
         </Text>
       )}
 
       <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: fileList.length > 0 ? 4 : 8 }}>
-        Types autorisés: JPEG, PNG, WebP, PDF. Taille maximale: {maxSize}MB. Maximum: {maxFiles} fichiers.
+        {t('Types autorisés: JPEG, PNG, WebP, PDF. Taille maximale:')} {maxSize}
+        {t('MB. Maximum:')} {maxFiles} fichiers.
       </Text>
     </div>
   );

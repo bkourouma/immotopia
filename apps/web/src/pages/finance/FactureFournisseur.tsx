@@ -45,7 +45,9 @@ import {
   useConfirmAction
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
 
 /**
@@ -124,7 +126,7 @@ const STATUT_TONE: Record<DocumentStatus, StatusTone> = {
 };
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 export const FactureFournisseur: React.FC = () => {
@@ -270,13 +272,13 @@ export const FactureFournisseur: React.FC = () => {
         }))
       });
       await queryClient.invalidateQueries({ queryKey: detailKey('supplier-invoices', tenantId, fournisseur.id) });
-      message.success(`Facture ${reference.trim()} enregistrée en brouillon.`);
+      message.success(t('Facture {{value}} enregistrée en brouillon.', { value: reference.trim() }));
       setDate(dayjs());
       setReference('');
       setLignes([nouvelleLigne()]);
       setImputations([]);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'enregistrement de la facture a échoué.");
+      message.error(err?.response?.data?.message || t("L'enregistrement de la facture a échoué."));
     } finally {
       setEnregistrementFacture(false);
     }
@@ -291,9 +293,9 @@ export const FactureFournisseur: React.FC = () => {
     try {
       await validateSupplierInvoice(tenantId, facture.id);
       await queryClient.invalidateQueries({ queryKey: detailKey('supplier-invoices', tenantId, facture.supplierId) });
-      message.success(`Facture ${facture.reference} validée.`);
+      message.success(t('Facture {{reference}} validée.', { reference: facture.reference }));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'La validation a échoué.');
+      message.error(err?.response?.data?.message || t('La validation a échoué.'));
     }
   };
 
@@ -314,10 +316,10 @@ export const FactureFournisseur: React.FC = () => {
       await queryClient.invalidateQueries({
         queryKey: detailKey('supplier-invoices', tenantId, cibleAnnulation.supplierId)
       });
-      message.success(`Facture ${cibleAnnulation.reference} annulée.`);
+      message.success(t('Facture {{reference}} annulée.', { reference: cibleAnnulation.reference }));
       setCibleAnnulation(null);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'annulation a échoué.");
+      message.error(err?.response?.data?.message || t("L'annulation a échoué."));
     } finally {
       setAnnulationEnCours(false);
     }
@@ -382,11 +384,11 @@ export const FactureFournisseur: React.FC = () => {
         allocations
       });
       setReglements(prev => [reglement, ...prev]);
-      message.success('Règlement enregistré en brouillon.');
+      message.success(t('Règlement enregistré en brouillon.'));
       setMontantReglement(null);
       setSelection({});
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'enregistrement du règlement a échoué.");
+      message.error(err?.response?.data?.message || t("L'enregistrement du règlement a échoué."));
     } finally {
       setEnregistrementReglement(false);
     }
@@ -397,9 +399,9 @@ export const FactureFournisseur: React.FC = () => {
     try {
       const valide = await validateSupplierPayment(tenantId, reglement.id);
       setReglements(prev => prev.map(r => (r.id === reglement.id ? valide : r)));
-      message.success('Règlement validé.');
+      message.success(t('Règlement validé.'));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'La validation a échoué.');
+      message.error(err?.response?.data?.message || t('La validation a échoué.'));
     }
   };
 
@@ -418,11 +420,11 @@ export const FactureFournisseur: React.FC = () => {
       setReglements(prev =>
         prev.map(r => (r.id === cibleAnnulationReglement.id ? { ...r, status: 'VOIDED' as DocumentStatus } : r))
       );
-      message.success('Règlement annulé.');
+      message.success(t('Règlement annulé.'));
       setCibleAnnulationReglement(null);
       setMotifAnnulationReglement('');
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'annulation a échoué.");
+      message.error(err?.response?.data?.message || t("L'annulation a échoué."));
     } finally {
       setAnnulationReglementEnCours(false);
     }
@@ -431,7 +433,7 @@ export const FactureFournisseur: React.FC = () => {
   // ---------------------------------------------------------------------
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const optionsFournisseurs = (fournisseurs ?? [])
@@ -440,38 +442,40 @@ export const FactureFournisseur: React.FC = () => {
     .sort((a, b) => a.label.localeCompare(b.label));
 
   const colonnesFactures: ColumnsType<SupplierInvoice> = [
-    { title: 'Référence', dataIndex: 'reference', key: 'reference' },
-    { title: 'Date', key: 'date', render: (_, f) => dateCourte(f.invoiceDate) },
-    { title: 'Chantier', key: 'chantier', render: (_, f) => f.siteLabel ?? '—' },
-    { title: 'Montant', key: 'montant', align: 'right', render: (_, f) => <MoneyValue value={f.amount} /> },
+    { title: t('Référence'), dataIndex: 'reference', key: 'reference' },
+    { title: t('Date'), key: 'date', render: (_, f) => dateCourte(f.invoiceDate) },
+    { title: t('Chantier'), key: 'chantier', render: (_, f) => f.siteLabel ?? '—' },
+    { title: t('Montant'), key: 'montant', align: 'end', render: (_, f) => <MoneyValue value={f.amount} /> },
     {
-      title: 'Statut',
+      title: t('Statut'),
       key: 'statut',
       render: (_, f) => (
         <StatusTag status={f.status} tone={STATUT_TONE[f.status]} label={DOCUMENT_STATUS_LABELS[f.status]} />
       )
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, f) => {
         if (f.status === 'DRAFT') {
           return (
             <ConfirmAction
-              title={`Valider la facture ${f.reference} ?`}
-              description="Cette opération est irréversible : une facture validée ne peut plus être modifiée. Toute correction devra passer par une annulation dédiée, avec un motif."
-              okText="Confirmer la validation"
+              title={t('Valider la facture {{reference}} ?', { reference: f.reference })}
+              description={t(
+                'Cette opération est irréversible : une facture validée ne peut plus être modifiée. Toute correction devra passer par une annulation dédiée, avec un motif.'
+              )}
+              okText={t('Confirmer la validation')}
               onConfirm={() => validerFacture(f)}
             >
-              <Button type="link">Valider</Button>
+              <Button type="link">{t('Valider')}</Button>
             </ConfirmAction>
           );
         }
         if (f.status === 'VALIDATED') {
           return (
             <Button type="link" onClick={() => ouvrirAnnulation(f)}>
-              Annuler
+              {t('Annuler')}
             </Button>
           );
         }
@@ -482,15 +486,15 @@ export const FactureFournisseur: React.FC = () => {
 
   return (
     <>
-      <PageHeader title="Factures fournisseurs" subtitle={fournisseur ? fournisseur.name : undefined} />
+      <PageHeader title={t('Factures fournisseurs')} subtitle={fournisseur ? fournisseur.name : undefined} />
 
       <Card style={{ marginBottom: 'var(--space-6)' }}>
         <div style={{ maxWidth: 420 }}>
-          <label htmlFor="facture-fournisseur">Fournisseur</label>
+          <label htmlFor="facture-fournisseur">{t('Fournisseur')}</label>
           <Select
             id="facture-fournisseur"
             style={{ width: '100%' }}
-            placeholder="Choisir un fournisseur…"
+            placeholder={t('Choisir un fournisseur…')}
             showSearch
             optionFilterProp="label"
             value={supplierId || undefined}
@@ -503,57 +507,59 @@ export const FactureFournisseur: React.FC = () => {
       {!fournisseur ? (
         <StateBlock
           variant="empty"
-          title="Choisissez un fournisseur"
-          description="Sélectionnez un fournisseur ci-dessus pour saisir une facture, la valider ou enregistrer un règlement."
+          title={t('Choisissez un fournisseur')}
+          description={t(
+            'Sélectionnez un fournisseur ci-dessus pour saisir une facture, la valider ou enregistrer un règlement.'
+          )}
         />
       ) : (
         <>
           <Card style={{ marginBottom: 'var(--space-6)' }}>
             <Title level={4} style={{ marginTop: 0 }}>
-              Nouvelle facture
+              {t('Nouvelle facture')}
             </Title>
 
             <Space wrap size="middle" align="end" style={{ marginBottom: 'var(--space-4)', width: '100%' }}>
               <div>
                 <div>
-                  <label htmlFor="facture-date">Date</label>
+                  <label htmlFor="facture-date">{t('Date')}</label>
                 </div>
                 <DatePicker id="facture-date" format="DD/MM/YYYY" value={date} onChange={v => setDate(v ?? dayjs())} />
               </div>
               <div style={{ minWidth: 220 }}>
                 <div>
-                  <label htmlFor="facture-reference">Référence</label>
+                  <label htmlFor="facture-reference">{t('Référence')}</label>
                 </div>
                 <Input
                   id="facture-reference"
-                  placeholder="Ex. FRS-2026-0142"
+                  placeholder={t('Ex. FRS-2026-0142')}
                   value={reference}
                   onChange={event => setReference(event.target.value)}
                 />
               </div>
             </Space>
 
-            <Title level={5}>Lignes</Title>
+            <Title level={5}>{t('Lignes')}</Title>
             <Space orientation="vertical" size="small" style={{ width: '100%', marginBottom: 'var(--space-4)' }}>
               {lignes.map(ligne => (
                 <Space key={ligne.id} align="start" wrap>
                   <Input
-                    aria-label="Libellé de la ligne"
-                    placeholder="Libellé"
+                    aria-label={t('Libellé de la ligne')}
+                    placeholder={t('Libellé')}
                     style={{ width: 280 }}
                     value={ligne.label}
                     onChange={event => modifierLigne(ligne.id, { label: event.target.value })}
                   />
                   <InputNumber
-                    aria-label="Montant de la ligne"
-                    placeholder="Montant"
+                    aria-label={t('Montant de la ligne')}
+                    placeholder={t('Montant')}
                     min={0}
                     style={{ width: 180 }}
                     value={ligne.amount ?? undefined}
                     onChange={value => modifierLigne(ligne.id, { amount: (value as number | null) ?? null })}
                   />
                   <Button
-                    aria-label="Retirer la ligne"
+                    aria-label={t('Retirer la ligne')}
                     icon={<DeleteOutlined />}
                     disabled={lignes.length <= 1}
                     onClick={() => retirerLigne(ligne.id)}
@@ -561,25 +567,29 @@ export const FactureFournisseur: React.FC = () => {
                 </Space>
               ))}
               <Button icon={<PlusOutlined />} onClick={ajouterLigne}>
-                Ajouter une ligne
+                {t('Ajouter une ligne')}
               </Button>
             </Space>
 
             <div style={{ marginBottom: 'var(--space-4)' }}>
-              <StatCard label="Montant de la facture" value={<MoneyValue value={montantFacture} />} />
+              <StatCard label={t('Montant de la facture')} value={<MoneyValue value={montantFacture} />} />
             </div>
 
-            <Title level={5}>Imputations au chantier</Title>
+            <Title level={5}>{t('Imputations au chantier')}</Title>
 
             {rattachementManquant && (
               <Alert
                 type="warning"
                 showIcon
                 style={{ marginBottom: 'var(--space-3)' }}
-                message="Rattachement à un chantier obligatoire"
-                description={`${fournisseur.name} est un fournisseur de ${
-                  fournisseur.kind === 'MATERIALS' ? 'matériaux' : 'matériaux et prestation'
-                } : ajoutez au moins une imputation avant d'enregistrer la facture.`}
+                message={t('Rattachement à un chantier obligatoire')}
+                description={t(
+                  "{{name}} est un fournisseur de {{value}} : ajoutez au moins une imputation avant d'enregistrer la facture.",
+                  {
+                    name: fournisseur.name,
+                    value: fournisseur.kind === 'MATERIALS' ? 'matériaux' : 'matériaux et prestation'
+                  }
+                )}
               />
             )}
 
@@ -587,51 +597,51 @@ export const FactureFournisseur: React.FC = () => {
               {imputations.map(imputation => (
                 <Space key={imputation.id} align="start" wrap>
                   <Select
-                    aria-label="Chantier"
-                    placeholder="Chantier"
+                    aria-label={t('Chantier')}
+                    placeholder={t('Chantier')}
                     style={{ width: 220 }}
                     value={imputation.siteId}
                     onChange={value => modifierImputation(imputation.id, { siteId: value })}
                     options={optionsChantiers}
                   />
                   <Select
-                    aria-label="Poste de dépense"
-                    placeholder="Poste"
+                    aria-label={t('Poste de dépense')}
+                    placeholder={t('Poste')}
                     style={{ width: 200 }}
                     value={imputation.costCategoryId}
                     onChange={value => modifierImputation(imputation.id, { costCategoryId: value })}
                     options={optionsPostes}
                   />
                   <InputNumber
-                    aria-label="Montant imputé"
-                    placeholder="Montant"
+                    aria-label={t('Montant imputé')}
+                    placeholder={t('Montant')}
                     min={0}
                     style={{ width: 180 }}
                     value={imputation.amount ?? undefined}
                     onChange={value => modifierImputation(imputation.id, { amount: (value as number | null) ?? null })}
                   />
                   <Button
-                    aria-label="Retirer l'imputation"
+                    aria-label={t("Retirer l'imputation")}
                     icon={<DeleteOutlined />}
                     onClick={() => retirerImputation(imputation.id)}
                   />
                 </Space>
               ))}
               <Button icon={<PlusOutlined />} onClick={ajouterImputation}>
-                Ajouter une imputation
+                {t('Ajouter une imputation')}
               </Button>
             </Space>
 
             {afficherEcart && (
               <div style={{ marginBottom: 'var(--space-4)', maxWidth: 320 }}>
                 <StatCard
-                  label="Écart de saisie"
+                  label={t('Écart de saisie')}
                   value={<MoneyValue value={ecart} signed />}
                   tone={ecart === 0 ? 'positive' : 'danger'}
                   hint={
                     ecart === 0
-                      ? 'Les imputations correspondent exactement au montant de la facture.'
-                      : 'La somme des imputations doit égaler le montant de la facture.'
+                      ? t('Les imputations correspondent exactement au montant de la facture.')
+                      : t('La somme des imputations doit égaler le montant de la facture.')
                   }
                 />
               </div>
@@ -643,11 +653,13 @@ export const FactureFournisseur: React.FC = () => {
               disabled={!peutEnregistrerFacture}
               onClick={enregistrerFacture}
             >
-              Enregistrer en brouillon
+              {t('Enregistrer en brouillon')}
             </Button>
           </Card>
 
-          <Title level={4}>Factures de {fournisseur.name}</Title>
+          <Title level={4}>
+            {t('Factures de')} {fournisseur.name}
+          </Title>
           <DataView<SupplierInvoice>
             paginated={false}
             items={listeFactures}
@@ -657,16 +669,16 @@ export const FactureFournisseur: React.FC = () => {
             onPageChange={() => {}}
             loading={facturesEnAttente}
             isReloading={facturesEnCours && !facturesEnAttente}
-            error={erreurFactures ? 'Impossible de charger les factures de ce fournisseur.' : null}
+            error={erreurFactures ? t('Impossible de charger les factures de ce fournisseur.') : null}
             onRetry={() => refetchFactures()}
-            emptyDescription="Aucune facture enregistrée pour ce fournisseur."
+            emptyDescription={t('Aucune facture enregistrée pour ce fournisseur.')}
             columns={colonnesFactures}
             rowKey={f => f.id}
-            aria-label={`Factures de ${fournisseur.name}`}
+            aria-label={t('Factures de {{name}}', { name: fournisseur.name })}
             renderCard={f => (
               <DataCard
                 title={f.reference}
-                aria-label={`Facture ${f.reference}`}
+                aria-label={t('Facture {{reference}}', { reference: f.reference })}
                 subtitle={`${dateCourte(f.invoiceDate)}${f.siteLabel ? ' · ' + f.siteLabel : ''}`}
                 status={
                   <StatusTag status={f.status} tone={STATUT_TONE[f.status]} label={DOCUMENT_STATUS_LABELS[f.status]} />
@@ -678,10 +690,11 @@ export const FactureFournisseur: React.FC = () => {
                         label: 'Valider',
                         onClick: () =>
                           confirmerAction({
-                            title: `Valider la facture ${f.reference} ?`,
-                            description:
-                              'Cette opération est irréversible : une facture validée ne peut plus être modifiée. Toute correction devra passer par une annulation dédiée, avec un motif.',
-                            okText: 'Confirmer la validation',
+                            title: t('Valider la facture {{reference}} ?', { reference: f.reference }),
+                            description: t(
+                              'Cette opération est irréversible : une facture validée ne peut plus être modifiée. Toute correction devra passer par une annulation dédiée, avec un motif.'
+                            ),
+                            okText: t('Confirmer la validation'),
                             onConfirm: () => validerFacture(f)
                           })
                       }
@@ -695,13 +708,13 @@ export const FactureFournisseur: React.FC = () => {
 
           <Card style={{ marginTop: 'var(--space-6)' }}>
             <Title level={4} style={{ marginTop: 0 }}>
-              Règlement
+              {t('Règlement')}
             </Title>
 
             <Space wrap size="middle" align="end" style={{ marginBottom: 'var(--space-4)', width: '100%' }}>
               <div>
                 <div>
-                  <label htmlFor="reglement-date">Date</label>
+                  <label htmlFor="reglement-date">{t('Date')}</label>
                 </div>
                 <DatePicker
                   id="reglement-date"
@@ -712,7 +725,7 @@ export const FactureFournisseur: React.FC = () => {
               </div>
               <div style={{ minWidth: 200 }}>
                 <div>
-                  <label htmlFor="reglement-montant">Montant du règlement</label>
+                  <label htmlFor="reglement-montant">{t('Montant du règlement')}</label>
                 </div>
                 <InputNumber
                   id="reglement-montant"
@@ -724,10 +737,10 @@ export const FactureFournisseur: React.FC = () => {
               </div>
             </Space>
 
-            <Title level={5}>Factures à régler</Title>
+            <Title level={5}>{t('Factures à régler')}</Title>
             {facturesReglabes.length === 0 ? (
               <Text type="secondary">
-                Aucune facture validée pour ce fournisseur : un règlement ici sera un acompte.
+                {t('Aucune facture validée pour ce fournisseur : un règlement ici sera un acompte.')}
               </Text>
             ) : (
               <Space orientation="vertical" size="small" style={{ width: '100%', marginBottom: 'var(--space-4)' }}>
@@ -740,7 +753,7 @@ export const FactureFournisseur: React.FC = () => {
                       </Checkbox>
                       {cochee && (
                         <InputNumber
-                          aria-label={`Montant affecté à ${f.reference}`}
+                          aria-label={t('Montant affecté à {{reference}}', { reference: f.reference })}
                           min={0}
                           max={f.amount}
                           style={{ width: 160 }}
@@ -759,7 +772,7 @@ export const FactureFournisseur: React.FC = () => {
                 type="error"
                 showIcon
                 style={{ marginBottom: 'var(--space-4)' }}
-                message="La somme des factures sélectionnées dépasse le montant du règlement."
+                message={t('La somme des factures sélectionnées dépasse le montant du règlement.')}
               />
             )}
 
@@ -768,15 +781,17 @@ export const FactureFournisseur: React.FC = () => {
                 type="info"
                 showIcon
                 style={{ marginBottom: 'var(--space-4)' }}
-                message="Ce règlement sera enregistré comme acompte"
-                description="Aucune facture n'est sélectionnée : le compte de ce fournisseur deviendra débiteur du montant versé. Ce n'est pas une erreur."
+                message={t('Ce règlement sera enregistré comme acompte')}
+                description={t(
+                  "Aucune facture n'est sélectionnée : le compte de ce fournisseur deviendra débiteur du montant versé. Ce n'est pas une erreur."
+                )}
               />
             )}
 
             {!depassement && !acompteSansFacture && montant > 0 && partNonAffectee > 0 && (
               <div style={{ marginBottom: 'var(--space-4)' }}>
                 <Text type="secondary">
-                  Part non affectée à une facture (acompte) : <MoneyValue value={partNonAffectee} />
+                  {t('Part non affectée à une facture (acompte) :')} <MoneyValue value={partNonAffectee} />
                 </Text>
               </div>
             )}
@@ -787,12 +802,12 @@ export const FactureFournisseur: React.FC = () => {
               disabled={!peutEnregistrerReglement}
               onClick={enregistrerReglement}
             >
-              Enregistrer le règlement
+              {t('Enregistrer le règlement')}
             </Button>
 
             {reglements.length > 0 && (
               <div style={{ marginTop: 'var(--space-6)' }}>
-                <Title level={5}>Règlements de cette session</Title>
+                <Title level={5}>{t('Règlements de cette session')}</Title>
                 <DataView<SupplierPayment>
                   paginated={false}
                   items={reglements}
@@ -800,13 +815,13 @@ export const FactureFournisseur: React.FC = () => {
                   page={1}
                   pageSize={Math.max(reglements.length, 1)}
                   onPageChange={() => {}}
-                  emptyDescription="Aucun règlement enregistré."
+                  emptyDescription={t('Aucun règlement enregistré.')}
                   columns={[
                     { title: 'Date', key: 'date', render: (_, r) => dateCourte(r.paymentDate) },
                     {
-                      title: 'Montant réglé',
+                      title: t('Montant réglé'),
                       key: 'montant',
-                      align: 'right',
+                      align: 'end',
                       render: (_, r) => <MoneyValue value={r.amount} />
                     },
                     {
@@ -815,7 +830,7 @@ export const FactureFournisseur: React.FC = () => {
                       render: (_, r) =>
                         r.allocations.length > 0
                           ? r.allocations.map(a => a.invoiceReference).join(' · ')
-                          : 'Acompte, sans facture'
+                          : t('Acompte, sans facture')
                     },
                     {
                       title: 'Statut',
@@ -831,30 +846,32 @@ export const FactureFournisseur: React.FC = () => {
                     {
                       title: 'Actions',
                       key: 'actions',
-                      align: 'right',
+                      align: 'end',
                       render: (_, r) =>
                         r.status === 'DRAFT' ? (
                           <ConfirmAction
-                            title="Valider ce règlement ?"
-                            description="Cette opération est irréversible : un règlement validé ne peut plus être modifié."
-                            okText="Confirmer la validation"
+                            title={t('Valider ce règlement ?')}
+                            description={t(
+                              'Cette opération est irréversible : un règlement validé ne peut plus être modifié.'
+                            )}
+                            okText={t('Confirmer la validation')}
                             onConfirm={() => validerReglement(r)}
                           >
-                            <Button type="link">Valider</Button>
+                            <Button type="link">{t('Valider')}</Button>
                           </ConfirmAction>
                         ) : r.status === 'VALIDATED' ? (
                           <Button type="link" danger onClick={() => setCibleAnnulationReglement(r)}>
-                            Annuler
+                            {t('Annuler')}
                           </Button>
                         ) : null
                     }
                   ]}
                   rowKey={r => r.id}
-                  aria-label="Règlements de cette session"
+                  aria-label={t('Règlements de cette session')}
                   renderCard={r => (
                     <DataCard
                       title={dateCourte(r.paymentDate)}
-                      aria-label={`Règlement du ${dateCourte(r.paymentDate)}`}
+                      aria-label={t('Règlement du {{value}}', { value: dateCourte(r.paymentDate) })}
                       status={
                         <StatusTag
                           status={r.status}
@@ -878,10 +895,11 @@ export const FactureFournisseur: React.FC = () => {
                               label: 'Valider',
                               onClick: () =>
                                 confirmerAction({
-                                  title: 'Valider ce règlement ?',
-                                  description:
-                                    'Cette opération est irréversible : un règlement validé ne peut plus être modifié.',
-                                  okText: 'Confirmer la validation',
+                                  title: t('Valider ce règlement ?'),
+                                  description: t(
+                                    'Cette opération est irréversible : un règlement validé ne peut plus être modifié.'
+                                  ),
+                                  okText: t('Confirmer la validation'),
                                   onConfirm: () => validerReglement(r)
                                 })
                             }
@@ -899,57 +917,63 @@ export const FactureFournisseur: React.FC = () => {
       )}
 
       <Modal
-        title={cibleAnnulation ? `Annuler la facture ${cibleAnnulation.reference} ?` : 'Annuler la facture ?'}
+        title={
+          cibleAnnulation
+            ? t('Annuler la facture {{reference}} ?', { reference: cibleAnnulation.reference })
+            : t('Annuler la facture ?')
+        }
         open={Boolean(cibleAnnulation)}
         onCancel={() => setCibleAnnulation(null)}
         onOk={confirmerAnnulation}
-        okText="Confirmer l'annulation"
+        okText={t("Confirmer l'annulation")}
         okButtonProps={{ danger: true, disabled: !motifAnnulation.trim(), loading: annulationEnCours }}
-        cancelText="Renoncer"
+        cancelText={t('Renoncer')}
         destroyOnHidden
       >
         <Text type="secondary">
-          Cette opération est irréversible. Une pièce d'annulation liée sera créée ; la facture d'origine reste
-          conservée, mais son montant ne compte plus dans le solde du fournisseur ni dans le coût du chantier.
+          {t(
+            "Cette opération est irréversible. Une pièce d'annulation liée sera créée ; la facture d'origine reste conservée, mais son montant ne compte plus dans le solde du fournisseur ni dans le coût du chantier."
+          )}
         </Text>
         <div style={{ marginTop: 'var(--space-4)' }}>
-          <label htmlFor="motif-annulation-facture">Motif de l'annulation</label>
+          <label htmlFor="motif-annulation-facture">{t("Motif de l'annulation")}</label>
           <Input.TextArea
             id="motif-annulation-facture"
             rows={3}
             value={motifAnnulation}
             onChange={event => setMotifAnnulation(event.target.value)}
-            placeholder="Ex. Erreur de saisie sur le montant"
+            placeholder={t('Ex. Erreur de saisie sur le montant')}
           />
         </div>
       </Modal>
 
       <Modal
-        title="Annuler ce règlement ?"
+        title={t('Annuler ce règlement ?')}
         open={Boolean(cibleAnnulationReglement)}
         onCancel={() => setCibleAnnulationReglement(null)}
         onOk={confirmerAnnulationReglement}
-        okText="Confirmer l'annulation"
+        okText={t("Confirmer l'annulation")}
         okButtonProps={{
           danger: true,
           disabled: !motifAnnulationReglement.trim(),
           loading: annulationReglementEnCours
         }}
-        cancelText="Renoncer"
+        cancelText={t('Renoncer')}
         destroyOnHidden
       >
         <Text type="secondary">
-          Une pièce d'annulation liée sera créée. Le règlement d'origine reste conservé, mais son montant ne compte plus
-          dans le solde du fournisseur : ce que nous lui devons remonte d'autant.
+          {t(
+            "Une pièce d'annulation liée sera créée. Le règlement d'origine reste conservé, mais son montant ne compte plus dans le solde du fournisseur : ce que nous lui devons remonte d'autant."
+          )}
         </Text>
         <div style={{ marginTop: 'var(--space-4)' }}>
-          <label htmlFor="motif-annulation-reglement">Motif de l'annulation</label>
+          <label htmlFor="motif-annulation-reglement">{t("Motif de l'annulation")}</label>
           <Input.TextArea
             id="motif-annulation-reglement"
             rows={3}
             value={motifAnnulationReglement}
             onChange={event => setMotifAnnulationReglement(event.target.value)}
-            placeholder="Ex. Virement rejeté par la banque"
+            placeholder={t('Ex. Virement rejeté par la banque')}
           />
         </div>
       </Modal>

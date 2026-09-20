@@ -16,7 +16,9 @@ import { API_URL } from '../../config/api';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, useConfirmAction } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text } = Typography;
 
 /**
@@ -88,7 +90,7 @@ function montantRetenu(penalite: RentalPenalty): number {
 }
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) => {
@@ -128,9 +130,9 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
     try {
       await calculatePenalties(tenantId);
       await rafraichir();
-      message.success('Pénalités calculées.');
+      message.success(t('Pénalités calculées.'));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'Le calcul a échoué.');
+      message.error(err?.response?.data?.message || t('Le calcul a échoué.'));
     } finally {
       setCalculEnCours(false);
     }
@@ -152,26 +154,29 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       setAjustePour(null);
       form.resetFields();
       await rafraichir();
-      message.success('Pénalité ajustée.');
+      message.success(t('Pénalité ajustée.'));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'ajustement a échoué.");
+      message.error(err?.response?.data?.message || t("L'ajustement a échoué."));
     }
   };
 
   const handleDelete = (penalite: RentalPenalty) => {
     if (!tenantId) return;
     confirmAction({
-      title: 'Supprimer cette pénalité ?',
-      description: `Pénalité de ${penalite.days_late} jour${penalite.days_late > 1 ? 's' : ''} de retard. Cette action est irréversible.`,
-      okText: 'Supprimer',
+      title: t('Supprimer cette pénalité ?'),
+      description: t('Pénalité de {{days_late}} jour{{value}} de retard. Cette action est irréversible.', {
+        days_late: penalite.days_late,
+        value: penalite.days_late > 1 ? 's' : ''
+      }),
+      okText: t('Supprimer'),
       danger: true,
       onConfirm: async () => {
         try {
           await deletePenalty(tenantId, penalite.id);
           await rafraichir();
-          message.success('Pénalité supprimée.');
+          message.success(t('Pénalité supprimée.'));
         } catch (err: any) {
-          message.error(err?.response?.data?.message || 'La suppression a échoué.');
+          message.error(err?.response?.data?.message || t('La suppression a échoué.'));
         }
       }
     });
@@ -184,9 +189,9 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       await uploadPenaltyJustification(tenantId, justifiePour.id, fichier);
       setJustifiePour(null);
       await rafraichir();
-      message.success('Justificatif enregistré.');
+      message.success(t('Justificatif enregistré.'));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'envoi du justificatif a échoué.");
+      message.error(err?.response?.data?.message || t("L'envoi du justificatif a échoué."));
     } finally {
       setEnvoiEnCours(false);
     }
@@ -198,36 +203,36 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
   };
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const actionsSecondaires = (p: RentalPenalty) => [
     {
       key: 'just',
-      label: justificatif(p) ? 'Remplacer le justificatif' : 'Ajouter un justificatif',
+      label: justificatif(p) ? t('Remplacer le justificatif') : t('Ajouter un justificatif'),
       onClick: () => setJustifiePour(p)
     },
     { type: 'divider' as const },
-    { key: 'del', label: 'Supprimer', danger: true, onClick: () => handleDelete(p) }
+    { key: 'del', label: t('Supprimer'), danger: true, onClick: () => handleDelete(p) }
   ];
 
   const colonnes: ColumnsType<RentalPenalty> = [
-    { title: 'Calculée le', key: 'date', render: (_, p) => dateCourte(p.calculated_at) },
+    { title: t('Calculée le'), key: 'date', render: (_, p) => dateCourte(p.calculated_at) },
     {
-      title: 'Retard',
+      title: t('Retard'),
       key: 'retard',
       render: (_, p) => `${p.days_late} jour${p.days_late > 1 ? 's' : ''}`
     },
     {
-      title: 'Montant calculé',
+      title: t('Montant calculé'),
       key: 'montant',
-      align: 'right',
+      align: 'end',
       render: (_, p) => <MoneyValue value={p.amount} currency={p.currency} />
     },
     {
-      title: 'Montant retenu',
+      title: t('Montant retenu'),
       key: 'retenu',
-      align: 'right',
+      align: 'end',
       render: (_, p) => (
         <>
           <MoneyValue value={montantRetenu(p)} currency={p.currency} />
@@ -240,26 +245,26 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
       )
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, p) => {
         const fichier = justificatif(p);
         return (
           <Space>
             {fichier && (
               <Button type="link" icon={<DownloadOutlined />} onClick={() => ouvrirJustificatif(fichier)}>
-                Justificatif
+                {t('Justificatif')}
               </Button>
             )}
-            <Button onClick={() => ouvrirAjustement(p)}>Ajuster</Button>
+            <Button onClick={() => ouvrirAjustement(p)}>{t('Ajuster')}</Button>
             {/* Le même menu qu'en carte : ajouter ou remplacer un justificatif,
                 supprimer. Sans lui, ces deux actions n'existaient plus du tout
                 au-dessus de 992 px. */}
             <Dropdown menu={{ items: actionsSecondaires(p) }} trigger={['click']} placement="bottomRight">
               <Button
                 icon={<MoreOutlined />}
-                aria-label={`Autres actions pour la pénalité du ${dateCourte(p.calculated_at)}`}
+                aria-label={t('Autres actions pour la pénalité du {{value}}', { value: dateCourte(p.calculated_at) })}
               />
             </Dropdown>
           </Space>
@@ -272,14 +277,14 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
     <Form form={form} layout="vertical" onFinish={handleAdjust}>
       {ajustePour && (
         <Text type="secondary">
-          Montant calculé : <MoneyValue value={ajustePour.amount} currency={ajustePour.currency} /> ·{' '}
+          {t('Montant calculé :')} <MoneyValue value={ajustePour.amount} currency={ajustePour.currency} /> ·{' '}
           {ajustePour.days_late} jour{ajustePour.days_late > 1 ? 's' : ''} de retard
         </Text>
       )}
       <Form.Item
-        label="Montant retenu"
+        label={t('Montant retenu')}
         name="montant"
-        rules={[{ required: true, message: 'Indiquez le montant retenu.' }]}
+        rules={[{ required: true, message: t('Indiquez le montant retenu.') }]}
         style={{ marginTop: 'var(--space-4)' }}
       >
         <InputNumber<number>
@@ -291,20 +296,20 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
         />
       </Form.Item>
       <Form.Item
-        label="Raison de l'ajustement"
+        label={t("Raison de l'ajustement")}
         name="raison"
         // La raison est exigée : un montant modifié sans justification écrite
         // est indéfendable devant le locataire comme devant le propriétaire.
-        rules={[{ required: true, message: 'Indiquez pourquoi le montant est ajusté.' }]}
+        rules={[{ required: true, message: t('Indiquez pourquoi le montant est ajusté.') }]}
       >
-        <Input.TextArea rows={4} placeholder="Geste commercial, erreur de date, accord amiable…" />
+        <Input.TextArea rows={4} placeholder={t('Geste commercial, erreur de date, accord amiable…')} />
       </Form.Item>
-      <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
-        <Button onClick={() => setAjustePour(null)} style={{ marginRight: 'var(--space-2)' }}>
-          Annuler
+      <Form.Item style={{ marginBottom: 0, textAlign: 'end' }}>
+        <Button onClick={() => setAjustePour(null)} style={{ marginInlineEnd: 'var(--space-2)' }}>
+          {t('Annuler')}
         </Button>
         <Button type="primary" htmlType="submit">
-          Enregistrer l'ajustement
+          {t("Enregistrer l'ajustement")}
         </Button>
       </Form.Item>
     </Form>
@@ -323,17 +328,17 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
           }}
         >
           <div style={{ marginBottom: 'var(--space-2)' }}>
-            Justificatif actuel : {justificatif(justifiePour)?.fileName || 'fichier'}
+            {t('Justificatif actuel :')} {justificatif(justifiePour)?.fileName || 'fichier'}
           </div>
           <Button
             size="small"
             icon={<DownloadOutlined />}
             onClick={() => ouvrirJustificatif(justificatif(justifiePour))}
           >
-            Ouvrir
+            {t('Ouvrir')}
           </Button>
           <div style={{ marginTop: 'var(--space-2)', color: 'var(--text-secondary)' }}>
-            Le nouveau fichier remplacera celui-ci.
+            {t('Le nouveau fichier remplacera celui-ci.')}
           </div>
         </div>
       )}
@@ -352,8 +357,8 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
         <p style={{ fontSize: 32, margin: 0 }}>
           <UploadOutlined aria-hidden="true" />
         </p>
-        <p>Déposez le fichier ici, ou touchez pour le choisir</p>
-        <p style={{ color: 'var(--text-secondary)' }}>PDF, Word ou image (JPEG, PNG)</p>
+        <p>{t('Déposez le fichier ici, ou touchez pour le choisir')}</p>
+        <p style={{ color: 'var(--text-secondary)' }}>{t('PDF, Word ou image (JPEG, PNG)')}</p>
       </Upload.Dragger>
     </>
   );
@@ -377,10 +382,14 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
   return (
     <>
       <PageHeader
-        title="Pénalités"
-        subtitle={penalites.length > 0 ? `${penalites.length} pénalité${penalites.length > 1 ? 's' : ''}` : undefined}
+        title={t('Pénalités')}
+        subtitle={
+          penalites.length > 0
+            ? t('{{length}} pénalité{{value}}', { length: penalites.length, value: penalites.length > 1 ? 's' : '' })
+            : undefined
+        }
         primaryAction={{
-          label: 'Calculer les pénalités',
+          label: t('Calculer les pénalités'),
           icon: <ReloadOutlined />,
           onClick: handleCalculate,
           loading: calculEnCours
@@ -401,28 +410,28 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
         onPageChange={() => {}}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger les pénalités.' : null}
+        error={erreurRequete ? t('Impossible de charger les pénalités.') : null}
         onRetry={() => refetch()}
         emptyDescription={
           leaseId
-            ? 'Aucune pénalité pour ce bail. Lancez le calcul si des échéances sont en retard.'
-            : 'Aucune pénalité enregistrée.'
+            ? t('Aucune pénalité pour ce bail. Lancez le calcul si des échéances sont en retard.')
+            : t('Aucune pénalité enregistrée.')
         }
         columns={colonnes}
         rowKey={p => p.id}
-        aria-label="Pénalités de retard"
+        aria-label={t('Pénalités de retard')}
         renderCard={p => {
           const fichier = justificatif(p);
           return (
             <DataCard
               title={`${p.days_late} jour${p.days_late > 1 ? 's' : ''} de retard`}
-              aria-label={`Pénalité du ${dateCourte(p.calculated_at)}`}
-              subtitle={`Calculée le ${dateCourte(p.calculated_at)}`}
+              aria-label={t('Pénalité du {{value}}', { value: dateCourte(p.calculated_at) })}
+              subtitle={t('Calculée le {{value}}', { value: dateCourte(p.calculated_at) })}
               highlight={<MoneyValue value={montantRetenu(p)} currency={p.currency} />}
               fields={[
                 ...(p.adjusted_amount != null
                   ? [
-                      { label: 'Montant calculé', value: <MoneyValue value={p.amount} currency={p.currency} /> },
+                      { label: t('Montant calculé'), value: <MoneyValue value={p.amount} currency={p.currency} /> },
                       { label: 'Raison', value: raisonAjustement(p) || '—' }
                     ]
                   : []),
@@ -431,7 +440,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
               primaryAction={{ label: 'Ajuster', onClick: () => ouvrirAjustement(p) }}
               secondaryActions={[
                 ...(fichier
-                  ? [{ key: 'open', label: 'Ouvrir le justificatif', onClick: () => ouvrirJustificatif(fichier) }]
+                  ? [{ key: 'open', label: t('Ouvrir le justificatif'), onClick: () => ouvrirJustificatif(fichier) }]
                   : []),
                 ...actionsSecondaires(p)
               ]}
@@ -440,8 +449,8 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
         }}
       />
 
-      {boite(Boolean(ajustePour), 'Ajuster la pénalité', () => setAjustePour(null), formulaireAjustement, '80%')}
-      {boite(Boolean(justifiePour), 'Justificatif', () => setJustifiePour(null), formulaireJustificatif, '70%')}
+      {boite(Boolean(ajustePour), t('Ajuster la pénalité'), () => setAjustePour(null), formulaireAjustement, '80%')}
+      {boite(Boolean(justifiePour), t('Justificatif'), () => setJustifiePour(null), formulaireJustificatif, '70%')}
     </>
   );
 };

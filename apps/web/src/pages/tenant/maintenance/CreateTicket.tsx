@@ -12,6 +12,7 @@ import {
 import { listProperties, Property } from '../../../services/property-service';
 import { listLeases, RentalLease, RentalLeaseStatus } from '../../../services/rental-service';
 import { useAuth } from '../../../hooks/useAuth';
+import { t } from '../../../i18n/t';
 
 const { Title } = Typography;
 const { TextArea } = Input;
@@ -86,14 +87,14 @@ export const CreateTicket: React.FC = () => {
 
     // Validate that property has active lease before submitting
     if (!values.propertyId) {
-      message.error('Veuillez sélectionner une propriété');
+      message.error(t('Veuillez sélectionner une propriété'));
       return;
     }
 
     // Check if there are active leases for the selected property
     if (leases.length === 0 && selectedPropertyId === values.propertyId) {
       message.error(
-        "Cette propriété n'a pas de bail actif. Vous devez avoir un bail actif pour créer un ticket de maintenance."
+        t("Cette propriété n'a pas de bail actif. Vous devez avoir un bail actif pour créer un ticket de maintenance.")
       );
       return;
     }
@@ -144,9 +145,15 @@ export const CreateTicket: React.FC = () => {
 
           if (echoues.length > 0) {
             message.warning({
-              content: `Ticket créé. ${echoues.length} pièce${echoues.length > 1 ? 's' : ''} jointe${
-                echoues.length > 1 ? 's' : ''
-              } n'a pas pu être envoyée : ${echoues.map(f => f.name).join(', ')}. Vous pouvez la rajouter depuis le ticket.`,
+              content: t(
+                "Ticket créé. {{length}} pièce{{value}} jointe{{value2}} n'a pas pu être envoyée : {{value3}}. Vous pouvez la rajouter depuis le ticket.",
+                {
+                  length: echoues.length,
+                  value: echoues.length > 1 ? 's' : '',
+                  value2: echoues.length > 1 ? 's' : '',
+                  value3: echoues.map(f => f.name).join(', ')
+                }
+              ),
               // Le message nomme des fichiers : il doit rester lisible le temps
               // de les retrouver.
               duration: 10
@@ -156,17 +163,19 @@ export const CreateTicket: React.FC = () => {
           }
         }
 
-        message.success('Ticket créé avec succès');
+        message.success(t('Ticket créé avec succès'));
         navigate(`/tenant/${effectiveTenantId}/maintenance/${createdTicketId}`);
       }
     } catch (error: any) {
       console.error('Error creating ticket:', error);
-      const errorMessage = error.response?.data?.message || 'Erreur lors de la création du ticket';
+      const errorMessage = error.response?.data?.message || t('Erreur lors de la création du ticket');
 
       // Provide more helpful error message for lease validation
       if (errorMessage.includes('Bail actif introuvable')) {
         message.error(
-          "Cette propriété n'a pas de bail actif. Veuillez contacter votre gestionnaire pour activer un bail avant de créer un ticket de maintenance."
+          t(
+            "Cette propriété n'a pas de bail actif. Veuillez contacter votre gestionnaire pour activer un bail avant de créer un ticket de maintenance."
+          )
         );
       } else {
         message.error(errorMessage);
@@ -181,20 +190,20 @@ export const CreateTicket: React.FC = () => {
       <div style={{ padding: '24px' }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>
-            Retour à la liste
+            {t('Retour à la liste')}
           </Button>
 
           <Card>
-            <Title level={2}>Créer un ticket de maintenance</Title>
+            <Title level={2}>{t('Créer un ticket de maintenance')}</Title>
 
             <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ maxWidth: 800 }}>
               <Form.Item
                 name="propertyId"
-                label="Propriété"
-                rules={[{ required: true, message: 'Veuillez sélectionner une propriété' }]}
+                label={t('Propriété')}
+                rules={[{ required: true, message: t('Veuillez sélectionner une propriété') }]}
               >
                 <Select
-                  placeholder="Sélectionner une propriété"
+                  placeholder={t('Sélectionner une propriété')}
                   onChange={value => setSelectedPropertyId(value)}
                   showSearch
                   filterOption={(input, option) => {
@@ -220,15 +229,17 @@ export const CreateTicket: React.FC = () => {
               {leases.length > 0 && (
                 <Form.Item
                   name="leaseId"
-                  label={leases.length === 1 ? 'Bail' : 'Bail'}
+                  label={leases.length === 1 ? t('Bail') : t('Bail')}
                   tooltip={
                     leases.length === 1
-                      ? 'Le bail actif a été sélectionné automatiquement'
-                      : 'Sélectionnez le bail associé si vous en avez plusieurs pour cette propriété'
+                      ? t('Le bail actif a été sélectionné automatiquement')
+                      : t('Sélectionnez le bail associé si vous en avez plusieurs pour cette propriété')
                   }
                 >
                   <Select
-                    placeholder={leases.length === 1 ? 'Bail sélectionné automatiquement' : 'Sélectionner un bail'}
+                    placeholder={
+                      leases.length === 1 ? t('Bail sélectionné automatiquement') : t('Sélectionner un bail')
+                    }
                     allowClear={leases.length > 1}
                     disabled={leases.length === 1}
                   >
@@ -252,80 +263,81 @@ export const CreateTicket: React.FC = () => {
                       color: '#d46b08'
                     }}
                   >
-                    ⚠️ Cette propriété n'a pas de bail actif. Vous devez avoir un bail actif pour créer un ticket de
-                    maintenance.
+                    {t(
+                      "⚠️ Cette propriété n'a pas de bail actif. Vous devez avoir un bail actif pour créer un ticket de maintenance."
+                    )}
                   </div>
                 </Form.Item>
               )}
 
               <Form.Item
                 name="title"
-                label="Titre"
+                label={t('Titre')}
                 rules={[
-                  { required: true, message: 'Veuillez saisir un titre' },
-                  { min: 3, message: 'Le titre doit contenir au moins 3 caractères' },
-                  { max: 200, message: 'Le titre ne peut pas dépasser 200 caractères' }
+                  { required: true, message: t('Veuillez saisir un titre') },
+                  { min: 3, message: t('Le titre doit contenir au moins 3 caractères') },
+                  { max: 200, message: t('Le titre ne peut pas dépasser 200 caractères') }
                 ]}
               >
-                <Input placeholder="Ex: Fuite d'eau dans la salle de bain" />
+                <Input placeholder={t("Ex: Fuite d'eau dans la salle de bain")} />
               </Form.Item>
 
               <Form.Item
                 name="category"
-                label="Catégorie"
-                rules={[{ required: true, message: 'Veuillez sélectionner une catégorie' }]}
+                label={t('Catégorie')}
+                rules={[{ required: true, message: t('Veuillez sélectionner une catégorie') }]}
               >
-                <Select placeholder="Sélectionner une catégorie">
-                  <Option value={MaintenanceTicketCategory.PLUMBING}>Plomberie</Option>
-                  <Option value={MaintenanceTicketCategory.ELECTRICITY}>Électricité</Option>
-                  <Option value={MaintenanceTicketCategory.AC}>Climatisation</Option>
-                  <Option value={MaintenanceTicketCategory.OTHER}>Autre</Option>
+                <Select placeholder={t('Sélectionner une catégorie')}>
+                  <Option value={MaintenanceTicketCategory.PLUMBING}>{t('Plomberie')}</Option>
+                  <Option value={MaintenanceTicketCategory.ELECTRICITY}>{t('Électricité')}</Option>
+                  <Option value={MaintenanceTicketCategory.AC}>{t('Climatisation')}</Option>
+                  <Option value={MaintenanceTicketCategory.OTHER}>{t('Autre')}</Option>
                 </Select>
               </Form.Item>
 
               <Form.Item
                 name="priority"
-                label="Priorité"
-                rules={[{ required: true, message: 'Veuillez sélectionner une priorité' }]}
+                label={t('Priorité')}
+                rules={[{ required: true, message: t('Veuillez sélectionner une priorité') }]}
               >
-                <Select placeholder="Sélectionner une priorité">
-                  <Option value={MaintenanceTicketPriority.LOW}>Faible</Option>
-                  <Option value={MaintenanceTicketPriority.MEDIUM}>Moyenne</Option>
-                  <Option value={MaintenanceTicketPriority.HIGH}>Élevée</Option>
-                  <Option value={MaintenanceTicketPriority.URGENT}>Urgente</Option>
+                <Select placeholder={t('Sélectionner une priorité')}>
+                  <Option value={MaintenanceTicketPriority.LOW}>{t('Faible')}</Option>
+                  <Option value={MaintenanceTicketPriority.MEDIUM}>{t('Moyenne')}</Option>
+                  <Option value={MaintenanceTicketPriority.HIGH}>{t('Élevée')}</Option>
+                  <Option value={MaintenanceTicketPriority.URGENT}>{t('Urgente')}</Option>
                 </Select>
               </Form.Item>
 
               <Form.Item
                 name="description"
-                label="Description"
+                label={t('Description')}
                 rules={[
-                  { required: true, message: 'Veuillez saisir une description' },
-                  { min: 10, message: 'La description doit contenir au moins 10 caractères' },
-                  { max: 5000, message: 'La description ne peut pas dépasser 5000 caractères' }
+                  { required: true, message: t('Veuillez saisir une description') },
+                  { min: 10, message: t('La description doit contenir au moins 10 caractères') },
+                  { max: 5000, message: t('La description ne peut pas dépasser 5000 caractères') }
                 ]}
               >
-                <TextArea rows={6} placeholder="Décrivez le problème en détail..." />
+                <TextArea rows={6} placeholder={t('Décrivez le problème en détail...')} />
               </Form.Item>
 
               <Form.Item
                 name="locationDetails"
-                label="Détails de localisation (optionnel)"
-                rules={[{ max: 500, message: 'Les détails ne peuvent pas dépasser 500 caractères' }]}
+                label={t('Détails de localisation (optionnel)')}
+                rules={[{ max: 500, message: t('Les détails ne peuvent pas dépasser 500 caractères') }]}
               >
-                <TextArea rows={3} placeholder="Ex: Salle de bain principale, sous l'évier" />
+                <TextArea rows={3} placeholder={t("Ex: Salle de bain principale, sous l'évier")} />
               </Form.Item>
 
-              <Form.Item label="Pièces jointes (optionnel)">
+              <Form.Item label={t('Pièces jointes (optionnel)')}>
                 <FileUploader onFilesChange={setUploadedFiles} maxFiles={10} maxSize={5} />
               </Form.Item>
 
               <Form.Item>
                 <Space>
                   <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={loading}>
-                    Créer le ticket
+                    {t('Créer le ticket')}
                   </Button>
-                  <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>Annuler</Button>
+                  <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>{t('Annuler')}</Button>
                 </Space>
               </Form.Item>
             </Form>

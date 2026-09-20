@@ -2,7 +2,9 @@ import React from 'react';
 import { Card, Tag, Space, Typography, Button } from 'antd';
 import { HomeOutlined, EyeOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text } = Typography;
 
 interface PropertyCardProps {
@@ -25,38 +27,38 @@ interface PropertyCardProps {
 
 const propertyTypeLabels: Record<string, string> = {
   APPARTEMENT: 'Appartement',
-  MAISON_VILLA: 'Maison / Villa',
+  MAISON_VILLA: t('Maison / Villa'),
   STUDIO: 'Studio',
-  DUPLEX_TRIPLEX: 'Duplex / Triplex',
-  CHAMBRE_COLOCATION: 'Chambre / Colocation',
+  DUPLEX_TRIPLEX: t('Duplex / Triplex'),
+  CHAMBRE_COLOCATION: t('Chambre / Colocation'),
   BUREAU: 'Bureau',
-  BOUTIQUE_COMMERCIAL: 'Boutique / Commercial',
-  ENTREPOT_INDUSTRIEL: 'Entrepôt / Industriel',
+  BOUTIQUE_COMMERCIAL: t('Boutique / Commercial'),
+  ENTREPOT_INDUSTRIEL: t('Entrepôt / Industriel'),
   TERRAIN: 'Terrain',
   IMMEUBLE: 'Immeuble',
-  PARKING_BOX: 'Parking / Box',
-  LOT_PROGRAMME_NEUF: 'Lot programme neuf'
+  PARKING_BOX: t('Parking / Box'),
+  LOT_PROGRAMME_NEUF: t('Lot programme neuf')
 };
 
 const statusLabels: Record<string, { label: string; color: string }> = {
-  DRAFT: { label: 'Brouillon', color: 'default' },
-  UNDER_REVIEW: { label: 'En révision', color: 'processing' },
-  AVAILABLE: { label: 'Disponible', color: 'success' },
-  RESERVED: { label: 'Réservé', color: 'warning' },
-  UNDER_OFFER: { label: 'Sous offre', color: 'warning' },
-  RENTED: { label: 'Loué', color: 'success' },
-  SOLD: { label: 'Vendu', color: 'default' },
-  ARCHIVED: { label: 'Archivé', color: 'default' }
+  DRAFT: { label: t('Brouillon'), color: 'default' },
+  UNDER_REVIEW: { label: t('En révision'), color: 'processing' },
+  AVAILABLE: { label: t('Disponible'), color: 'success' },
+  RESERVED: { label: t('Réservé'), color: 'warning' },
+  UNDER_OFFER: { label: t('Sous offre'), color: 'warning' },
+  RENTED: { label: t('Loué'), color: 'success' },
+  SOLD: { label: t('Vendu'), color: 'default' },
+  ARCHIVED: { label: t('Archivé'), color: 'default' }
 };
 
 const transactionModeLabels: Record<string, string> = {
   SALE: 'Vente',
   RENTAL: 'Location',
-  SHORT_TERM: 'Location courte durée'
+  SHORT_TERM: t('Location courte durée')
 };
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('fr-FR', {
+  return new Intl.NumberFormat(activeLocale(), {
     style: 'currency',
     currency: 'XOF',
     minimumFractionDigits: 0
@@ -83,7 +85,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property }) => {
       style={{ marginBottom: 16 }}
       actions={[
         <Button type="link" icon={<EyeOutlined />} onClick={() => navigate(`/owner/properties/${property.id}`)}>
-          Voir les détails
+          {t('Voir les détails')}
         </Button>
       ]}
     >
@@ -105,7 +107,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property }) => {
           <div style={{ padding: '12px', background: '#f5f5f5', borderRadius: 4 }}>
             <Space direction="vertical" size={4}>
               <Text type="secondary" style={{ fontSize: 12 }}>
-                <HomeOutlined /> Bail actif
+                <HomeOutlined /> {t('Bail actif')}
               </Text>
               <Text strong>Locataire: {property.currentLease.tenantName}</Text>
               <Text type="secondary">Loyer: {formatCurrency(property.currentLease.monthlyRent)} / mois</Text>
@@ -115,7 +117,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property }) => {
 
         {!property.currentLease && effectiveStatus === 'AVAILABLE' && (
           <div style={{ padding: '12px', background: '#e6f7ff', borderRadius: 4 }}>
-            <Text type="secondary">Propriété disponible</Text>
+            <Text type="secondary">{t('Propriété disponible')}</Text>
           </div>
         )}
       </Space>

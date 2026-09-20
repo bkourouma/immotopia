@@ -1,3 +1,4 @@
+import { t } from '../i18n/t';
 /**
  * Contrat gelé de la frontière réseau — lot 4, cinquième sous-lot : la retenue
  * de garantie (PRD E6, besoin P15).
@@ -45,8 +46,8 @@
 export type RetentionSourceType = 'SUPPLIER_INVOICE' | 'PROGRESS_STATEMENT';
 
 export const RETENTION_SOURCE_TYPE_LABELS: Record<RetentionSourceType, string> = {
-  SUPPLIER_INVOICE: 'Facture fournisseur',
-  PROGRESS_STATEMENT: 'Situation de tâcheron'
+  SUPPLIER_INVOICE: t('Facture fournisseur'),
+  PROGRESS_STATEMENT: t('Situation de tâcheron')
 };
 
 export type RetentionStatus = 'HELD' | 'RELEASED';
@@ -64,8 +65,8 @@ export type RetentionStatus = 'HELD' | 'RELEASED';
  * sorti.
  */
 export const RETENTION_STATUS_LABELS: Record<RetentionStatus, string> = {
-  HELD: 'Détenue',
-  RELEASED: 'Libérée'
+  HELD: t('Détenue'),
+  RELEASED: t('Libérée')
 };
 
 // ---------------------------------------------------------------------------

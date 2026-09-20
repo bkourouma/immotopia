@@ -6,13 +6,14 @@ import { LotTable } from '../../components/syndics/LotTable';
 import { getSyndicate } from '../../services/syndic-service';
 import { Syndicate } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
 
 const statusConfig: Record<Syndicate['status'], { color: string; label: string }> = {
-  ACTIVE: { color: 'green', label: 'Active' },
-  IN_LIQUIDATION: { color: 'orange', label: 'En liquidation' },
-  IN_DISPUTE: { color: 'red', label: 'En litige' }
+  ACTIVE: { color: 'green', label: t('Active') },
+  IN_LIQUIDATION: { color: 'orange', label: t('En liquidation') },
+  IN_DISPUTE: { color: 'red', label: t('En litige') }
 };
 
 export const SyndicDetail: React.FC = () => {
@@ -26,7 +27,7 @@ export const SyndicDetail: React.FC = () => {
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
       setLoading(false);
-      setError('Paramètres syndic manquants');
+      setError(t('Paramètres syndic manquants'));
       return;
     }
     void loadSyndicate();
@@ -43,7 +44,7 @@ export const SyndicDetail: React.FC = () => {
       const data = await getSyndicate(effectiveTenantId, syndicId);
       setSyndicate(data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Impossible de charger la copropriété');
+      setError(err.response?.data?.error || t('Impossible de charger la copropriété'));
     } finally {
       setLoading(false);
     }
@@ -62,7 +63,12 @@ export const SyndicDetail: React.FC = () => {
   if (error || !syndicate) {
     return (
       <>
-        <Alert type="error" message="Erreur de chargement" description={error || 'Copropriété introuvable'} showIcon />
+        <Alert
+          type="error"
+          message={t('Erreur de chargement')}
+          description={error || t('Copropriété introuvable')}
+          showIcon
+        />
       </>
     );
   }
@@ -75,7 +81,7 @@ export const SyndicDetail: React.FC = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
             <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics`)}>
-              Retour à la liste
+              {t('Retour à la liste')}
             </Button>
             <Space>
               <Title level={2} style={{ margin: 0 }}>
@@ -90,34 +96,34 @@ export const SyndicDetail: React.FC = () => {
 
           <Space>
             <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicate.id}/prestataires`)}>
-              Prestataires
+              {t('Prestataires')}
             </Button>
             <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicate.id}/documents`)}>
-              Documents
+              {t('Documents')}
             </Button>
             <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicate.id}/finances`)}>
-              Finances
+              {t('Finances')}
             </Button>
             <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicate.id}/recouvrement`)}>
-              Recouvrement
+              {t('Recouvrement')}
             </Button>
             <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicate.id}/comptabilite`)}>
-              Comptabilité
+              {t('Comptabilité')}
             </Button>
             <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicate.id}/budgets`)}>
-              Budgets
+              {t('Budgets')}
             </Button>
             <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicate.id}/profils-incidents`)}>
               Profils/Incidents
             </Button>
             <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicate.id}/assemblees`)}>
-              Gérer les AG
+              {t('Gérer les AG')}
             </Button>
             <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicate.id}/charges`)}>
-              Gérer les charges
+              {t('Gérer les charges')}
             </Button>
             <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicate.id}/lots`)}>
-              Gérer les lots
+              {t('Gérer les lots')}
             </Button>
           </Space>
         </div>
@@ -126,7 +132,7 @@ export const SyndicDetail: React.FC = () => {
           <Col xs={24} md={8}>
             <Card>
               <Statistic
-                title="Lots"
+                title={t('Lots')}
                 value={syndicate.lots?.length ?? syndicate._count?.lots ?? syndicate.totalLots}
                 prefix={<FolderOpenOutlined />}
               />
@@ -134,13 +140,13 @@ export const SyndicDetail: React.FC = () => {
           </Col>
           <Col xs={24} md={8}>
             <Card>
-              <Statistic title="Bâtiments" value={syndicate.totalBuildings} prefix={<ApartmentOutlined />} />
+              <Statistic title={t('Bâtiments')} value={syndicate.totalBuildings} prefix={<ApartmentOutlined />} />
             </Card>
           </Col>
           <Col xs={24} md={8}>
             <Card>
               <Statistic
-                title="Appels de charges"
+                title={t('Appels de charges')}
                 value={syndicate.chargeCalls?.length ?? syndicate._count?.chargeCalls ?? 0}
                 prefix={<BankOutlined />}
               />
@@ -148,24 +154,24 @@ export const SyndicDetail: React.FC = () => {
           </Col>
         </Row>
 
-        <Card title="Informations générales">
+        <Card title={t('Informations générales')}>
           <Descriptions column={{ xs: 1, md: 2 }} bordered>
-            <Descriptions.Item label="Nom">{syndicate.name}</Descriptions.Item>
-            <Descriptions.Item label="Statut">
+            <Descriptions.Item label={t('Nom')}>{syndicate.name}</Descriptions.Item>
+            <Descriptions.Item label={t('Statut')}>
               <Tag color={status.color}>{status.label}</Tag>
             </Descriptions.Item>
-            <Descriptions.Item label="Adresse">{syndicate.address}</Descriptions.Item>
-            <Descriptions.Item label="Référence cadastrale">
-              {syndicate.cadastralReference || 'Non renseignée'}
+            <Descriptions.Item label={t('Adresse')}>{syndicate.address}</Descriptions.Item>
+            <Descriptions.Item label={t('Référence cadastrale')}>
+              {syndicate.cadastralReference || t('Non renseignée')}
             </Descriptions.Item>
-            <Descriptions.Item label="Nombre de lots déclaré">
+            <Descriptions.Item label={t('Nombre de lots déclaré')}>
               {syndicate.lots?.length ?? syndicate._count?.lots ?? syndicate.totalLots}
             </Descriptions.Item>
-            <Descriptions.Item label="Nombre de bâtiments">{syndicate.totalBuildings}</Descriptions.Item>
+            <Descriptions.Item label={t('Nombre de bâtiments')}>{syndicate.totalBuildings}</Descriptions.Item>
           </Descriptions>
         </Card>
 
-        <Card title="Résumé des lots">
+        <Card title={t('Résumé des lots')}>
           <LotTable lots={syndicate.lots || []} />
         </Card>
       </Space>

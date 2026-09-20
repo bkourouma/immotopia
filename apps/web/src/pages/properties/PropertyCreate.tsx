@@ -4,6 +4,7 @@ import { Button, Space, Typography } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { PropertyFormWizard } from '../../components/properties/PropertyFormWizard';
 import { useAuth } from '../../hooks/useAuth';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -17,7 +18,7 @@ export const PropertyCreate: React.FC = () => {
     return (
       <>
         <div style={{ textAlign: 'center', padding: '48px 0' }}>
-          <Text type="secondary">Aucune agence sélectionnée</Text>
+          <Text type="secondary">{t('Aucune agence sélectionnée')}</Text>
         </div>
       </>
     );
@@ -37,13 +38,13 @@ export const PropertyCreate: React.FC = () => {
         {/* Page Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>
-            Retour
+            {t('Retour')}
           </Button>
           <div>
             <Title level={2} style={{ margin: 0 }}>
-              Nouvelle propriété
+              {t('Nouvelle propriété')}
             </Title>
-            <Text type="secondary">Créez une nouvelle propriété immobilière</Text>
+            <Text type="secondary">{t('Créez une nouvelle propriété immobilière')}</Text>
           </div>
         </div>
 

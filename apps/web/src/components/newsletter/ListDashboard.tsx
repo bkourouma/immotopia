@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, Row, Col, Statistic, Tag, Button, Typography, Space } from 'antd';
 import { TeamOutlined, UserOutlined, MailOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { NewsletterList } from '../../services/newsletter.service';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -16,9 +17,9 @@ interface ListDashboardProps {
 
 const typeLabels: Record<string, string> = {
   MANUAL: 'Manuelle',
-  FROM_OWNERS: 'Propriétaires',
+  FROM_OWNERS: t('Propriétaires'),
   FROM_RENTERS: 'Locataires',
-  FROM_CRM_CONTACTS: 'Contacts CRM'
+  FROM_CRM_CONTACTS: t('Contacts CRM')
 };
 
 export function ListDashboard({
@@ -33,10 +34,10 @@ export function ListDashboard({
     <div>
       <div className="it-toolbar" style={{ marginBottom: 16 }}>
         <Title level={4} style={{ margin: 0 }}>
-          Listes de diffusion
+          {t('Listes de diffusion')}
         </Title>
         <Button type="primary" onClick={onCreateList} icon={<TeamOutlined />}>
-          Nouvelle liste
+          {t('Nouvelle liste')}
         </Button>
       </div>
 
@@ -59,7 +60,7 @@ export function ListDashboard({
                   }}
                   key="edit"
                 >
-                  Modifier
+                  {t('Modifier')}
                 </Button>,
                 <Button
                   type="link"
@@ -72,7 +73,7 @@ export function ListDashboard({
                   }}
                   key="delete"
                 >
-                  Supprimer
+                  {t('Supprimer')}
                 </Button>
               ]}
             >
@@ -86,24 +87,28 @@ export function ListDashboard({
                 description={
                   <>
                     <Tag>{typeLabels[list.type] ?? list.type}</Tag>
-                    {list.doubleOptIn && <Tag color="blue">Double opt-in</Tag>}
+                    {list.doubleOptIn && <Tag color="blue">{t('Double opt-in')}</Tag>}
                   </>
                 }
               />
               <Row gutter={16} style={{ marginTop: 12 }}>
                 <Col span={8}>
-                  <Statistic title="Total" value={list.totalCount ?? 0} prefix={<TeamOutlined />} />
+                  <Statistic title={t('Total')} value={list.totalCount ?? 0} prefix={<TeamOutlined />} />
                 </Col>
                 <Col span={8}>
                   <Statistic
-                    title="Actifs"
+                    title={t('Actifs')}
                     value={list.activeCount ?? 0}
                     valueStyle={{ color: '#52c41a' }}
                     prefix={<UserOutlined />}
                   />
                 </Col>
                 <Col span={8}>
-                  <Statistic title="Désabonnés" value={list.unsubscribedCount ?? 0} valueStyle={{ color: '#999' }} />
+                  <Statistic
+                    title={t('Désabonnés')}
+                    value={list.unsubscribedCount ?? 0}
+                    valueStyle={{ color: '#999' }}
+                  />
                 </Col>
               </Row>
             </Card>

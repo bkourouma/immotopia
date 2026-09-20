@@ -23,6 +23,7 @@ import {
   type UpdateWhatsappNotificationPayload
 } from '../../services/whatsapp-notification-config-service';
 import { WHATSAPP_VARIABLES_BY_KEY, getVariablePlaceholder } from '../../constants/whatsapp-notification-variables';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -46,7 +47,7 @@ export function WhatsAppNotificationsPage() {
       if (!selectedKey) form.resetFields();
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
-      message.error(err.response?.data?.message || 'Erreur lors du chargement');
+      message.error(err.response?.data?.message || t('Erreur lors du chargement'));
     } finally {
       setLoading(false);
     }
@@ -73,7 +74,7 @@ export function WhatsAppNotificationsPage() {
     try {
       await whatsappNotificationConfigService.update(tenantId, key, { enabled });
       setItems(prev => prev.map(i => (i.key === key ? { ...i, enabled } : i)));
-      message.success(enabled ? 'Notification activée' : 'Notification désactivée');
+      message.success(enabled ? t('Notification activée') : t('Notification désactivée'));
     } catch (e: unknown) {
       const err = e as { response?: { data?: { message?: string } } };
       message.error(err.response?.data?.message || 'Erreur');
@@ -91,7 +92,7 @@ export function WhatsAppNotificationsPage() {
       };
       setSaving(true);
       await whatsappNotificationConfigService.update(tenantId, selectedItem.key, payload);
-      message.success('Configuration enregistrée');
+      message.success(t('Configuration enregistrée'));
       load();
     } catch (e: unknown) {
       if ((e as { errorFields?: unknown[] })?.errorFields) return;
@@ -106,7 +107,7 @@ export function WhatsAppNotificationsPage() {
     if (!tenantId || !selectedItem) return;
     try {
       await whatsappNotificationConfigService.reset(tenantId, selectedItem.key);
-      message.success('Message réinitialisé');
+      message.success(t('Message réinitialisé'));
       form.setFieldsValue({ bodyOverride: selectedItem.defaultBody ?? '' });
       load();
     } catch (e: unknown) {
@@ -123,7 +124,7 @@ export function WhatsAppNotificationsPage() {
 
   const columns = [
     {
-      title: 'Événement déclencheur',
+      title: t('Événement déclencheur'),
       key: 'label',
       render: (_: unknown, r: WhatsappNotificationConfigItem) => (
         <div>
@@ -136,14 +137,14 @@ export function WhatsAppNotificationsPage() {
       )
     },
     {
-      title: 'Destinataire',
+      title: t('Destinataire'),
       dataIndex: 'recipientLabel',
       key: 'recipientLabel',
       width: 140,
       render: (val: string) => <Tag color="green">{val}</Tag>
     },
     {
-      title: 'Activer',
+      title: t('Activer'),
       dataIndex: 'enabled',
       key: 'enabled',
       width: 90,
@@ -152,11 +153,11 @@ export function WhatsAppNotificationsPage() {
       )
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
       width: 100,
       render: (_: unknown, record: WhatsappNotificationConfigItem) => (
-        <Tooltip title="Modifier le message">
+        <Tooltip title={t('Modifier le message')}>
           <Button
             type="link"
             size="small"
@@ -172,7 +173,7 @@ export function WhatsAppNotificationsPage() {
               el?.scrollIntoView({ behavior: 'smooth' });
             }}
           >
-            Modifier
+            {t('Modifier')}
           </Button>
         </Tooltip>
       )
@@ -185,7 +186,7 @@ export function WhatsAppNotificationsPage() {
         <Space align="center" style={{ marginBottom: 8 }}>
           <MessageOutlined style={{ fontSize: 20, color: '#25D366' }} />
           <Title level={4} style={{ margin: 0 }}>
-            Notifications WhatsApp
+            {t('Notifications WhatsApp')}
           </Title>
         </Space>
         <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
@@ -196,10 +197,10 @@ export function WhatsAppNotificationsPage() {
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          title="Message initié par l'entreprise (Sandbox / production)"
-          description={
+          title={t("Message initié par l'entreprise (Sandbox / production)")}
+          description={t(
             'Pour envoyer sans que le client ait répondu, Twilio exige un modèle pré-approuvé. Renseignez un Content SID (ex. HXxxx) et le mapping des variables (ex. {"1":"appointmentDate","2":"appointmentTime"}) dans la section « Template Twilio » ci-dessous. Ex. Sandbox « Rappels de rendez-vous » : Content SID = HXb5b62575e6e4ff6129ad7c8efe1f983e.'
-          }
+          )}
         />
 
         <div id="whatsapp-notif-edit-section">
@@ -232,14 +233,14 @@ export function WhatsAppNotificationsPage() {
                 <Text type="secondary">{selectedItem.description}</Text>
                 <br />
                 <Tag color="green" style={{ marginTop: 6 }}>
-                  Destinataire : {selectedItem.recipientLabel}
+                  {t('Destinataire :')} {selectedItem.recipientLabel}
                 </Tag>
               </Card>
 
               <Form form={form} layout="vertical">
                 <Form.Item
                   name="bodyOverride"
-                  label="Message personnalisé (vide = message par défaut)"
+                  label={t('Message personnalisé (vide = message par défaut)')}
                   extra="Utilisez les variables avec la syntaxe {{nomVariable}}. Texte uniquement (pas de HTML)."
                 >
                   <TextArea
@@ -250,7 +251,7 @@ export function WhatsAppNotificationsPage() {
 
                 <div style={{ marginBottom: 16 }}>
                   <Text type="secondary" strong style={{ display: 'block', marginBottom: 8 }}>
-                    Variables pour cet événement (cliquez pour insérer)
+                    {t('Variables pour cet événement (cliquez pour insérer)')}
                   </Text>
                   <Space size={[4, 4]} wrap>
                     {variablesForEvent.map(name => (
@@ -270,20 +271,22 @@ export function WhatsAppNotificationsPage() {
                   items={[
                     {
                       key: 'twilio-template',
-                      label: "Template Twilio (message initié par l'entreprise)",
+                      label: t("Template Twilio (message initié par l'entreprise)"),
                       children: (
                         <>
                           <Form.Item
                             name="contentSid"
-                            label="Content SID (Twilio)"
-                            extra="Ex. Sandbox Rappels de rendez-vous : HXb5b62575e6e4ff6129ad7c8efe1f983e"
+                            label={t('Content SID (Twilio)')}
+                            extra={t('Ex. Sandbox Rappels de rendez-vous : HXb5b62575e6e4ff6129ad7c8efe1f983e')}
                           >
-                            <Input placeholder="HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
+                            <Input placeholder={'HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'} />
                           </Form.Item>
                           <Form.Item
                             name="contentVariablesJson"
-                            label="Mapping des variables (JSON)"
-                            extra='Placeholders Twilio (1, 2, ...) vers nos clés. Ex: {"1":"appointmentDate","2":"appointmentTime"}'
+                            label={t('Mapping des variables (JSON)')}
+                            extra={t(
+                              'Placeholders Twilio (1, 2, ...) vers nos clés. Ex: {"1":"appointmentDate","2":"appointmentTime"}'
+                            )}
                           >
                             <TextArea rows={2} placeholder='{"1":"appointmentDate","2":"appointmentTime"}' />
                           </Form.Item>
@@ -295,9 +298,9 @@ export function WhatsAppNotificationsPage() {
 
                 <Space>
                   <Button type="primary" onClick={handleSaveTemplate} loading={saving}>
-                    Enregistrer
+                    {t('Enregistrer')}
                   </Button>
-                  <Button onClick={handleReset}>Réinitialiser au message par défaut</Button>
+                  <Button onClick={handleReset}>{t('Réinitialiser au message par défaut')}</Button>
                 </Space>
               </Form>
             </>
@@ -305,7 +308,7 @@ export function WhatsAppNotificationsPage() {
         </div>
       </Card>
 
-      <Card title="Liste des notifications WhatsApp">
+      <Card title={t('Liste des notifications WhatsApp')}>
         <Spin spinning={loading}>
           <Table
             scroll={{ x: 'max-content' }}

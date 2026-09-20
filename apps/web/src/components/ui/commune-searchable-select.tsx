@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Select, Spin, Empty, Typography } from 'antd';
 import { MapPin } from 'lucide-react';
 import { GeographicLocation, getAllCommunes } from '../../services/geographic-service';
+import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
@@ -29,9 +30,9 @@ interface CommuneSearchableSelectProps {
 export const CommuneSearchableSelect: React.FC<CommuneSearchableSelectProps> = ({
   value,
   onChange,
-  placeholder = 'Rechercher une ville...',
+  placeholder = t('Rechercher une ville...'),
   disabled = false,
-  className = '',
+  className = ''
 }) => {
   const [communes, setCommunes] = useState<GeographicLocation[]>([]);
   const [options, setOptions] = useState<GeographicLocation[]>([]);
@@ -64,7 +65,7 @@ export const CommuneSearchableSelect: React.FC<CommuneSearchableSelectProps> = (
         setFetching(true);
         const query = search.toLowerCase();
         const filtered = communes.filter(
-          (c) =>
+          c =>
             c.commune?.toLowerCase().includes(query) ||
             c.region?.toLowerCase().includes(query) ||
             c.country?.toLowerCase().includes(query) ||
@@ -88,18 +89,20 @@ export const CommuneSearchableSelect: React.FC<CommuneSearchableSelectProps> = (
         filterOption={false}
         onSearch={handleSearch}
         onChange={onChange}
-        notFoundContent={fetching ? <Spin size="small" /> : <Empty description="Aucun résultat" />}
+        notFoundContent={fetching ? <Spin size="small" /> : <Empty description={t('Aucun résultat')} />}
         style={{ width: '100%' }}
         allowClear
       >
-        {options.map((commune) => (
+        {options.map(commune => (
           <Select.Option key={commune.communeId} value={commune.communeId}>
             <div className="flex items-center py-1">
-              <div className="bg-slate-50 p-2 rounded-full mr-3 flex-shrink-0">
+              <div className="bg-slate-50 p-2 rounded-full me-3 flex-shrink-0">
                 <MapPin className="h-4 w-4 text-slate-500" />
               </div>
               <div className="flex flex-col overflow-hidden">
-                <Text strong style={{ fontSize: '14px' }} ellipsis>{commune.commune}</Text>
+                <Text strong style={{ fontSize: '14px' }} ellipsis>
+                  {commune.commune}
+                </Text>
                 <Text type="secondary" style={{ fontSize: '12px' }} ellipsis>
                   {commune.region}, {commune.country}
                 </Text>
@@ -111,6 +114,3 @@ export const CommuneSearchableSelect: React.FC<CommuneSearchableSelectProps> = (
     </div>
   );
 };
-
-
-

@@ -27,7 +27,9 @@ import {
   FilterSheet,
   useConfirmAction
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 /**
  * Documents de location — cinquième des six écrans hybrides (§9.7).
  *
@@ -62,23 +64,23 @@ type Filters = { type: string; status: string };
 const FILTER_KEYS = ['type', 'status'] as const;
 
 const TYPE_LABELS: Record<string, string> = {
-  LEASE_CONTRACT: 'Contrat de bail',
+  LEASE_CONTRACT: t('Contrat de bail'),
   LEASE_ADDENDUM: 'Avenant',
-  RENT_RECEIPT: 'Reçu de loyer',
-  RENT_QUITTANCE: 'Quittance de loyer',
-  DEPOSIT_RECEIPT: 'Reçu de dépôt',
-  STATEMENT: 'Relevé',
+  RENT_RECEIPT: t('Reçu de loyer'),
+  RENT_QUITTANCE: t('Quittance de loyer'),
+  DEPOSIT_RECEIPT: t('Reçu de dépôt'),
+  STATEMENT: t('Relevé'),
   OTHER: 'Autre'
 };
 
 const STATUS_OPTIONS = [
-  { value: 'DRAFT', label: 'Brouillon' },
-  { value: 'FINAL', label: 'Final' },
-  { value: 'VOID', label: 'Annulé' }
+  { value: 'DRAFT', label: t('Brouillon') },
+  { value: 'FINAL', label: t('Final') },
+  { value: 'VOID', label: t('Annulé') }
 ];
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) => {
@@ -124,22 +126,25 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
     await generateDocument(tenantId, donnees);
     setFormulaireOuvert(false);
     await rafraichir();
-    message.success('Document généré.');
+    message.success(t('Document généré.'));
   };
 
   const handleRegenerate = (doc: RentalDocument) => {
     if (!tenantId) return;
     confirmAction({
-      title: 'Régénérer ce document ?',
-      description: `Le document ${doc.document_number} sera reconstruit à partir des données actuelles du bail. La version précédente est remplacée.`,
-      okText: 'Régénérer',
+      title: t('Régénérer ce document ?'),
+      description: t(
+        'Le document {{document_number}} sera reconstruit à partir des données actuelles du bail. La version précédente est remplacée.',
+        { document_number: doc.document_number }
+      ),
+      okText: t('Régénérer'),
       onConfirm: async () => {
         try {
           await regenerateDocument(tenantId, doc.id);
           await rafraichir();
-          message.success('Document régénéré.');
+          message.success(t('Document régénéré.'));
         } catch (err: any) {
-          message.error(err?.response?.data?.message || 'La régénération a échoué.');
+          message.error(err?.response?.data?.message || t('La régénération a échoué.'));
         }
       }
     });
@@ -161,23 +166,23 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
       window.document.body.removeChild(lien);
       window.URL.revokeObjectURL(url);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'Le téléchargement a échoué.');
+      message.error(err?.response?.data?.message || t('Le téléchargement a échoué.'));
     } finally {
       setTelechargementEnCours(null);
     }
   };
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const actionsSecondaires = (doc: RentalDocument) => [
-    { key: 'regen', label: 'Régénérer à partir des données actuelles', onClick: () => handleRegenerate(doc) }
+    { key: 'regen', label: t('Régénérer à partir des données actuelles'), onClick: () => handleRegenerate(doc) }
   ];
 
   const colonnes: ColumnsType<RentalDocument> = [
     {
-      title: 'Document',
+      title: t('Document'),
       key: 'document',
       render: (_, doc) => (
         <>
@@ -191,13 +196,13 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
         </>
       )
     },
-    { title: 'Type', key: 'type', render: (_, doc) => TYPE_LABELS[doc.type] || doc.type },
-    { title: 'Émis le', key: 'emis', render: (_, doc) => dateCourte(doc.issued_at) },
-    { title: 'Statut', key: 'statut', render: (_, doc) => <StatusTag status={doc.status} /> },
+    { title: t('Type'), key: 'type', render: (_, doc) => TYPE_LABELS[doc.type] || doc.type },
+    { title: t('Émis le'), key: 'emis', render: (_, doc) => dateCourte(doc.issued_at) },
+    { title: t('Statut'), key: 'statut', render: (_, doc) => <StatusTag status={doc.status} /> },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, doc) => (
         <Space>
           <Button
@@ -205,12 +210,15 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
             loading={telechargementEnCours === doc.id}
             onClick={() => handleDownload(doc)}
           >
-            Télécharger
+            {t('Télécharger')}
           </Button>
           <Dropdown menu={{ items: actionsSecondaires(doc) }} trigger={['click']} placement="bottomRight">
             {/* Nom accessible explicite : le numéro du document distingue ce
                 menu des autres de la liste. */}
-            <Button icon={<MoreOutlined />} aria-label={`Autres actions pour ${doc.document_number}`} />
+            <Button
+              icon={<MoreOutlined />}
+              aria-label={t('Autres actions pour {{document_number}}', { document_number: doc.document_number })}
+            />
           </Dropdown>
         </Space>
       )
@@ -229,10 +237,10 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
   return (
     <>
       <PageHeader
-        title="Documents"
+        title={t('Documents')}
         subtitle={total > 0 ? `${total} document${total > 1 ? 's' : ''}` : undefined}
         primaryAction={{
-          label: 'Générer un document',
+          label: t('Générer un document'),
           icon: <PlusOutlined />,
           onClick: () => setFormulaireOuvert(true)
         }}
@@ -241,14 +249,14 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
       <FilterSheet
         activeCount={Object.keys(list.filters).length}
         onClear={list.clearFilters}
-        title="Filtrer les documents"
+        title={t('Filtrer les documents')}
       >
         <div style={{ minWidth: 200 }}>
-          <label htmlFor="filtre-type-document">Type</label>
+          <label htmlFor="filtre-type-document">{t('Type')}</label>
           <Select
             id="filtre-type-document"
             style={{ width: '100%' }}
-            placeholder="Tous les types"
+            placeholder={t('Tous les types')}
             allowClear
             value={list.filters.type || undefined}
             onChange={valeur => list.setFilters({ type: valeur })}
@@ -256,11 +264,11 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
           />
         </div>
         <div style={{ minWidth: 200 }}>
-          <label htmlFor="filtre-statut-document">Statut</label>
+          <label htmlFor="filtre-statut-document">{t('Statut')}</label>
           <Select
             id="filtre-statut-document"
             style={{ width: '100%' }}
-            placeholder="Tous les statuts"
+            placeholder={t('Tous les statuts')}
             allowClear
             value={list.filters.status || undefined}
             onChange={valeur => list.setFilters({ status: valeur })}
@@ -277,31 +285,31 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
         onPageChange={(page, taille) => (taille !== list.pageSize ? list.setPageSize(taille) : list.setPage(page))}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger les documents.' : null}
+        error={erreurRequete ? t('Impossible de charger les documents.') : null}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}
         emptyDescription={
           leaseId
-            ? 'Aucun document pour ce bail. Générez-en un depuis l’action ci-dessus.'
-            : 'Aucun document enregistré.'
+            ? t('Aucun document pour ce bail. Générez-en un depuis l’action ci-dessus.')
+            : t('Aucun document enregistré.')
         }
-        emptyAction={{ label: 'Générer un document', onClick: () => setFormulaireOuvert(true) }}
+        emptyAction={{ label: t('Générer un document'), onClick: () => setFormulaireOuvert(true) }}
         columns={colonnes}
         rowKey={doc => doc.id}
-        aria-label="Documents de location"
+        aria-label={t('Documents de location')}
         renderCard={doc => (
           <DataCard
             title={doc.document_number}
-            aria-label={`Document ${doc.document_number}`}
+            aria-label={t('Document {{document_number}}', { document_number: doc.document_number })}
             subtitle={doc.title || TYPE_LABELS[doc.type] || doc.type}
             status={<StatusTag status={doc.status} />}
             fields={[
               { label: 'Type', value: TYPE_LABELS[doc.type] || doc.type },
-              { label: 'Émis le', value: dateCourte(doc.issued_at) }
+              { label: t('Émis le'), value: dateCourte(doc.issued_at) }
             ]}
             primaryAction={{
-              label: 'Télécharger',
+              label: t('Télécharger'),
               icon: <DownloadOutlined />,
               loading: telechargementEnCours === doc.id,
               onClick: () => handleDownload(doc)
@@ -316,7 +324,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
       {isDesktop ? (
         <Modal
           open={formulaireOuvert}
-          title="Générer un document"
+          title={t('Générer un document')}
           onCancel={() => setFormulaireOuvert(false)}
           footer={null}
           width={720}
@@ -327,7 +335,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
       ) : (
         <Drawer
           open={formulaireOuvert}
-          title="Générer un document"
+          title={t('Générer un document')}
           onClose={() => setFormulaireOuvert(false)}
           placement="bottom"
           height="92%"

@@ -10,7 +10,9 @@ import {
   WarningOutlined
 } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 interface DashboardData {
@@ -69,17 +71,17 @@ export default function TenantDashboard() {
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
-        setError('Erreur lors du chargement du tableau de bord');
+        setError(t('Erreur lors du chargement du tableau de bord'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement du tableau de bord');
+      setError(err.response?.data?.message || t('Erreur lors du chargement du tableau de bord'));
     } finally {
       setLoading(false);
     }
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', {
+    return new Intl.NumberFormat(activeLocale(), {
       style: 'currency',
       currency: 'XOF',
       minimumFractionDigits: 0
@@ -88,7 +90,7 @@ export default function TenantDashboard() {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('fr-FR', {
+    return date.toLocaleDateString(activeLocale(), {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -97,10 +99,10 @@ export default function TenantDashboard() {
 
   const getPaymentMethodLabel = (method: string) => {
     const methods: Record<string, string> = {
-      CASH: 'Espèces',
-      BANK_TRANSFER: 'Virement bancaire',
-      CHECK: 'Chèque',
-      MOBILE_MONEY: 'Mobile Money',
+      CASH: t('Espèces'),
+      BANK_TRANSFER: t('Virement bancaire'),
+      CHECK: t('Chèque'),
+      MOBILE_MONEY: t('Mobile Money'),
       CARD: 'Carte',
       OTHER: 'Autre'
     };
@@ -109,11 +111,11 @@ export default function TenantDashboard() {
 
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
-      ACTIVE: { label: 'Actif', color: 'success' },
-      DRAFT: { label: 'Brouillon', color: 'default' },
-      SUSPENDED: { label: 'Suspendu', color: 'warning' },
-      ENDED: { label: 'Terminé', color: 'default' },
-      CANCELED: { label: 'Annulé', color: 'error' }
+      ACTIVE: { label: t('Actif'), color: 'success' },
+      DRAFT: { label: t('Brouillon'), color: 'default' },
+      SUSPENDED: { label: t('Suspendu'), color: 'warning' },
+      ENDED: { label: t('Terminé'), color: 'default' },
+      CANCELED: { label: t('Annulé'), color: 'error' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -122,68 +124,68 @@ export default function TenantDashboard() {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement du tableau de bord..." />
+        <Spin size="large" tip={t('Chargement du tableau de bord...')} />
       </div>
     );
   }
 
   if (error) {
-    return <Alert message="Erreur" description={error} type="error" showIcon />;
+    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   if (!data) {
-    return <Empty description="Aucune donnée disponible" />;
+    return <Empty description={t('Aucune donnée disponible')} />;
   }
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
       <div>
-        <Title level={2}>Tableau de bord</Title>
-        <Text type="secondary">Vue d'ensemble de votre situation locative</Text>
+        <Title level={2}>{t('Tableau de bord')}</Title>
+        <Text type="secondary">{t("Vue d'ensemble de votre situation locative")}</Text>
       </div>
 
       {/* Lease Overview Card (T028) */}
       <Card
         title={
           <>
-            <HomeOutlined /> Informations du bail
+            <HomeOutlined /> {t('Informations du bail')}
           </>
         }
       >
         <Row gutter={16}>
           <Col xs={24} sm={12} md={8}>
-            <Text type="secondary">Adresse</Text>
+            <Text type="secondary">{t('Adresse')}</Text>
             <div style={{ marginTop: 4 }}>
               <Text strong>{data.lease.propertyAddress}</Text>
             </div>
           </Col>
           <Col xs={24} sm={12} md={8}>
-            <Text type="secondary">Loyer mensuel</Text>
+            <Text type="secondary">{t('Loyer mensuel')}</Text>
             <div style={{ marginTop: 4 }}>
               <Text strong>{formatCurrency(data.lease.monthlyRent)}</Text>
             </div>
           </Col>
           <Col xs={24} sm={12} md={8}>
-            <Text type="secondary">Charges</Text>
+            <Text type="secondary">{t('Charges')}</Text>
             <div style={{ marginTop: 4 }}>
               <Text strong>{formatCurrency(data.lease.serviceCharges)}</Text>
             </div>
           </Col>
           <Col xs={24} sm={12} md={8} style={{ marginTop: 16 }}>
-            <Text type="secondary">Date de début</Text>
+            <Text type="secondary">{t('Date de début')}</Text>
             <div style={{ marginTop: 4 }}>
               <Text>{formatDate(data.lease.startDate)}</Text>
             </div>
           </Col>
           <Col xs={24} sm={12} md={8} style={{ marginTop: 16 }}>
-            <Text type="secondary">Date de fin</Text>
+            <Text type="secondary">{t('Date de fin')}</Text>
             <div style={{ marginTop: 4 }}>
-              <Text>{data.lease.endDate ? formatDate(data.lease.endDate) : 'Non définie'}</Text>
+              <Text>{data.lease.endDate ? formatDate(data.lease.endDate) : t('Non définie')}</Text>
             </div>
           </Col>
           <Col xs={24} sm={12} md={8} style={{ marginTop: 16 }}>
-            <Text type="secondary">Statut</Text>
+            <Text type="secondary">{t('Statut')}</Text>
             <div style={{ marginTop: 4 }}>{getStatusTag(data.lease.status)}</div>
           </Col>
         </Row>
@@ -195,17 +197,19 @@ export default function TenantDashboard() {
         <Col xs={24} sm={12} lg={8}>
           <Card>
             <Statistic
-              title="Retard des échéances"
+              title={t('Retard des échéances')}
               value={data.overdueInstallmentsCount ?? 0}
               prefix={<WarningOutlined style={{ color: data.overdueInstallmentsCount > 0 ? '#ff4d4f' : '#d9d9d9' }} />}
               valueStyle={{ color: data.overdueInstallmentsCount > 0 ? '#ff4d4f' : '#000000' }}
             />
             <Text type="secondary" style={{ fontSize: 12 }}>
               {data.overdueInstallmentsCount === 0
-                ? 'Aucune échéance en retard'
+                ? t('Aucune échéance en retard')
                 : data.overdueInstallmentsCount === 1
-                  ? '1 échéance en retard'
-                  : `${data.overdueInstallmentsCount} échéances en retard`}
+                  ? t('1 échéance en retard')
+                  : t('{{overdueInstallmentsCount}} échéances en retard', {
+                      overdueInstallmentsCount: data.overdueInstallmentsCount
+                    })}
             </Text>
           </Card>
         </Col>
@@ -216,7 +220,7 @@ export default function TenantDashboard() {
             {data.nextInstallment ? (
               <>
                 <Statistic
-                  title="Prochaine échéance"
+                  title={t('Prochaine échéance')}
                   value={formatCurrency(data.nextInstallment.amount)}
                   prefix={<CalendarOutlined style={{ color: '#1890ff' }} />}
                   valueStyle={{ color: '#1890ff' }}
@@ -230,13 +234,13 @@ export default function TenantDashboard() {
             ) : (
               <>
                 <Statistic
-                  title="Prochaine échéance"
+                  title={t('Prochaine échéance')}
                   value={0}
                   prefix={<CalendarOutlined style={{ color: '#d9d9d9' }} />}
                   valueStyle={{ color: '#d9d9d9' }}
                 />
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  Aucune échéance à venir
+                  {t('Aucune échéance à venir')}
                 </Text>
               </>
             )}
@@ -247,7 +251,7 @@ export default function TenantDashboard() {
         <Col xs={24} sm={12} lg={8}>
           <Card>
             <Statistic
-              title="Dépôt de garantie"
+              title={t('Dépôt de garantie')}
               value={formatCurrency(data.depositInfo.collectedAmount)}
               prefix={
                 <SafetyOutlined style={{ color: data.depositInfo.status === 'COLLECTED' ? '#52c41a' : '#722ed1' }} />
@@ -257,12 +261,12 @@ export default function TenantDashboard() {
             />
             <Text type="secondary" style={{ fontSize: 12 }}>
               {data.depositInfo.status === 'COLLECTED'
-                ? 'Dépôt effectué'
+                ? t('Dépôt effectué')
                 : data.depositInfo.status === 'PARTIAL'
-                  ? 'Montant versé / Montant total'
+                  ? t('Montant versé / Montant total')
                   : data.depositInfo.amount > 0
-                    ? 'Montant versé / Montant total'
-                    : 'Aucun dépôt configuré'}
+                    ? t('Montant versé / Montant total')
+                    : t('Aucun dépôt configuré')}
             </Text>
           </Card>
         </Col>
@@ -275,7 +279,7 @@ export default function TenantDashboard() {
           <Card
             title={
               <>
-                <WalletOutlined /> Paiements récents
+                <WalletOutlined /> {t('Paiements récents')}
               </>
             }
             extra={
@@ -302,7 +306,7 @@ export default function TenantDashboard() {
                 )}
               />
             ) : (
-              <Empty description="Aucun paiement récent" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              <Empty description={t('Aucun paiement récent')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
             )}
           </Card>
         </Col>
@@ -312,31 +316,31 @@ export default function TenantDashboard() {
           <Card
             title={
               <>
-                <ToolOutlined /> Résumé maintenance
+                <ToolOutlined /> {t('Résumé maintenance')}
               </>
             }
           >
             <Row gutter={16}>
               <Col xs={24} sm={12}>
-                <Statistic title="Total" value={data.maintenanceTickets.total} valueStyle={{ fontSize: 24 }} />
+                <Statistic title={t('Total')} value={data.maintenanceTickets.total} valueStyle={{ fontSize: 24 }} />
               </Col>
               <Col xs={24} sm={12}>
                 <Statistic
-                  title="Ouverts"
+                  title={t('Ouverts')}
                   value={data.maintenanceTickets.open}
                   valueStyle={{ color: '#faad14', fontSize: 24 }}
                 />
               </Col>
               <Col xs={24} sm={12} style={{ marginTop: 16 }}>
                 <Statistic
-                  title="En cours"
+                  title={t('En cours')}
                   value={data.maintenanceTickets.inProgress}
                   valueStyle={{ color: '#1890ff', fontSize: 24 }}
                 />
               </Col>
               <Col xs={24} sm={12} style={{ marginTop: 16 }}>
                 <Statistic
-                  title="Résolus"
+                  title={t('Résolus')}
                   value={data.maintenanceTickets.resolved}
                   valueStyle={{ color: '#52c41a', fontSize: 24 }}
                 />

@@ -1,5 +1,6 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { API_URL } from '../config/api';
+import i18next from '../i18n';
 
 /**
  * Délai maximal d'une requête (REFONTE_UI_UX.md §8.4).
@@ -35,6 +36,17 @@ apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // Cookies are automatically sent with withCredentials: true
     // No need to manually add tokens here
+
+    // Langue de l'interface, a chaque appel.
+    //
+    // C'est ce qui permet au serveur de renvoyer ses messages d'erreur dans la
+    // bonne langue sans relire la preference en base a chaque requete : le
+    // navigateur connait deja le choix de l'utilisateur, il le dit.
+    //
+    // Pose ici plutot que dans `headers` a la creation de l'instance : cette
+    // valeur-la serait figee a la langue du premier rendu, et ne suivrait pas
+    // un changement de langue en cours de session.
+    config.headers.set('Accept-Language', i18next.resolvedLanguage ?? i18next.language);
     return config;
   },
   (error: AxiosError) => {

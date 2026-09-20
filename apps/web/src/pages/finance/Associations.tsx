@@ -8,7 +8,9 @@ import { createPartnership, listPartnerships } from '../../services/finance-part
 import type { Partnership } from '../../types/finance-partnerships-types';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, DataView, DataCard, StatusTag } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 /**
  * Associations — liste et création. Lot 4, deuxième sous-lot (PRD E7, besoin
  * B9 ; contrat gelé `packages/api/src/lib/finance/types-lot4-partnerships.ts`).
@@ -31,7 +33,7 @@ import { PageHeader, StateBlock, DataView, DataCard, StatusTag } from '../../com
 
 /** Un pourcentage se lit comme tel, jamais comme un montant : pas de `<MoneyValue>` ici. */
 function pourcentage(valeur: number): string {
-  return `${valeur.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %`;
+  return `${valeur.toLocaleString(activeLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %`;
 }
 
 export const Associations: React.FC = () => {
@@ -60,7 +62,7 @@ export const Associations: React.FC = () => {
   const associations = data ?? [];
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const ouvrirCreation = () => {
@@ -76,18 +78,18 @@ export const Associations: React.FC = () => {
 
   const validerCreation = async () => {
     if (!peutCreer) {
-      message.error('Le nom de l’association est obligatoire.');
+      message.error(t('Le nom de l’association est obligatoire.'));
       return;
     }
     setCreationEnCours(true);
     try {
       const association = await createPartnership(tenantId, { label: libelle.trim() });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('partnerships', tenantId) });
-      message.success(`Association « ${association.label} » enregistrée.`);
+      message.success(t('Association « {{label}} » enregistrée.', { label: association.label }));
       setModalOuvert(false);
       navigate(`/tenant/${tenantId}/finance/associations/${association.id}`);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'enregistrement de l'association a échoué.");
+      message.error(err?.response?.data?.message || t("L'enregistrement de l'association a échoué."));
     } finally {
       setCreationEnCours(false);
     }
@@ -97,42 +99,42 @@ export const Associations: React.FC = () => {
     navigate(`/tenant/${tenantId}/finance/associations/${association.id}`);
 
   const libelleAssocies = (association: Partnership) =>
-    association.shares.length > 0 ? association.shares.map(s => s.partnerName).join(', ') : 'Aucun associé';
+    association.shares.length > 0 ? association.shares.map(s => s.partnerName).join(', ') : t('Aucun associé');
 
   const libelleBiens = (association: Partnership) =>
     association.properties.length > 0
       ? association.properties.map(p => p.propertyLabel).join(', ')
-      : 'Aucun bien rattaché';
+      : t('Aucun bien rattaché');
 
   const colonnes: ColumnsType<Partnership> = [
-    { title: 'Association', key: 'label', render: (_, a) => a.label },
-    { title: 'Associés', key: 'associes', render: (_, a) => libelleAssocies(a) },
+    { title: t('Association'), key: 'label', render: (_, a) => a.label },
+    { title: t('Associés'), key: 'associes', render: (_, a) => libelleAssocies(a) },
     // Les deux nombres qui doivent toujours se lire ensemble : voir l'en-tête.
     {
-      title: 'Total des quotes-parts',
+      title: t('Total des quotes-parts'),
       key: 'total-parts',
-      align: 'right',
+      align: 'end',
       render: (_, a) => pourcentage(a.totalSharePercent)
     },
     {
-      title: "Part de l'agence",
+      title: t("Part de l'agence"),
       key: 'part-agence',
-      align: 'right',
+      align: 'end',
       render: (_, a) => pourcentage(a.companySharePercent)
     },
-    { title: 'Biens rattachés', key: 'biens', render: (_, a) => libelleBiens(a) },
+    { title: t('Biens rattachés'), key: 'biens', render: (_, a) => libelleBiens(a) },
     {
-      title: 'Statut',
+      title: t('Statut'),
       key: 'statut',
       render: (_, a) => <StatusTag status={a.isActive ? 'ACTIVE' : 'INACTIVE'} />
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, a) => (
         <Button type="link" onClick={() => ouvrirFiche(a)}>
-          Voir la fiche
+          {t('Voir la fiche')}
         </Button>
       )
     }
@@ -141,13 +143,13 @@ export const Associations: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Associations"
+        title={t('Associations')}
         subtitle={
           associations.length > 0
             ? `${associations.length} association${associations.length > 1 ? 's' : ''}`
             : undefined
         }
-        primaryAction={{ label: 'Nouvelle association', icon: <PlusOutlined />, onClick: ouvrirCreation }}
+        primaryAction={{ label: t('Nouvelle association'), icon: <PlusOutlined />, onClick: ouvrirCreation }}
       />
 
       <DataView<Partnership>
@@ -161,13 +163,13 @@ export const Associations: React.FC = () => {
         onPageChange={() => {}}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger les associations.' : null}
+        error={erreurRequete ? t('Impossible de charger les associations.') : null}
         onRetry={() => refetch()}
-        emptyDescription="Aucune association n'est encore enregistrée."
-        emptyAction={{ label: 'Nouvelle association', onClick: ouvrirCreation }}
+        emptyDescription={t("Aucune association n'est encore enregistrée.")}
+        emptyAction={{ label: t('Nouvelle association'), onClick: ouvrirCreation }}
         columns={colonnes}
         rowKey={a => a.id}
-        aria-label="Associations"
+        aria-label={t('Associations')}
         renderCard={a => (
           <DataCard
             title={a.label}
@@ -176,8 +178,8 @@ export const Associations: React.FC = () => {
             status={<StatusTag status={a.isActive ? 'ACTIVE' : 'INACTIVE'} />}
             highlight={pourcentage(a.companySharePercent)}
             fields={[
-              { label: 'Total des quotes-parts', value: pourcentage(a.totalSharePercent) },
-              { label: "Part de l'agence", value: pourcentage(a.companySharePercent) },
+              { label: t('Total des quotes-parts'), value: pourcentage(a.totalSharePercent) },
+              { label: t("Part de l'agence"), value: pourcentage(a.companySharePercent) },
               { label: 'Biens', value: libelleBiens(a) }
             ]}
             onOpen={() => ouvrirFiche(a)}
@@ -186,18 +188,18 @@ export const Associations: React.FC = () => {
       />
 
       <Modal
-        title="Nouvelle association"
+        title={t('Nouvelle association')}
         open={modalOuvert}
         onCancel={fermerCreation}
         confirmLoading={creationEnCours}
         onOk={validerCreation}
-        okText="Enregistrer l'association"
-        cancelText="Annuler"
+        okText={t("Enregistrer l'association")}
+        cancelText={t('Annuler')}
         destroyOnHidden
       >
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <label htmlFor="association-label">Nom de l'association</label>
+            <label htmlFor="association-label">{t("Nom de l'association")}</label>
             {/* La création n'ouvre aucun associé (contrat gelé,
                 `CreatePartnershipTx`) : ils s'ajoutent ensuite, un par un,
                 depuis la fiche — une association se constitue rarement d'un
@@ -206,7 +208,7 @@ export const Associations: React.FC = () => {
               id="association-label"
               value={libelle}
               onChange={event => setLibelle(event.target.value)}
-              placeholder="Ex. Villa Nongo — indivision Camara"
+              placeholder={t('Ex. Villa Nongo — indivision Camara')}
             />
           </div>
         </Space>

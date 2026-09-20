@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import { login as loginApi, logout as logoutApi, getMe, refreshToken } from '../services/auth-service';
 import { User, LoginCredentials, AuthContextType, TenantMembership, TenantClient } from '../types/auth-types';
 import apiClient from '../utils/api-client';
+import { t } from '../i18n/t';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -43,7 +44,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setTenantClient({
             id: prioritizedClient.id,
             tenantId: prioritizedClient.tenant.id,
-            clientType: prioritizedClient.clientType as 'OWNER' | 'RENTER' | 'BUYER' | 'CO_OWNER',
+            clientType: prioritizedClient.clientType as 'OWNER' | 'RENTER' | 'BUYER' | 'CO_OWNER'
           });
         } else {
           setTenantClient(null);
@@ -60,9 +61,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             tenant: {
               id: prioritizedMembership.tenant.id,
               name: prioritizedMembership.tenant.name,
-              slug: prioritizedMembership.tenant.slug || prioritizedMembership.tenant.id,
+              slug: prioritizedMembership.tenant.slug || prioritizedMembership.tenant.id
             },
-            status: prioritizedMembership.status,
+            status: prioritizedMembership.status
           });
         } else {
           setTenantMembership(null);
@@ -125,17 +126,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const interval = setInterval(async () => {
-      try {
-        await refreshToken();
-      } catch (error: any) {
-        // Only logout if refresh fails and we're still authenticated
-        // Don't logout if it's just a 401 (already logged out)
-        if (isAuthenticated && error.response?.status !== 401) {
-          await logout();
+    const interval = setInterval(
+      async () => {
+        try {
+          await refreshToken();
+        } catch (error: any) {
+          // Only logout if refresh fails and we're still authenticated
+          // Don't logout if it's just a 401 (already logged out)
+          if (isAuthenticated && error.response?.status !== 401) {
+            await logout();
+          }
         }
-      }
-    }, 14 * 60 * 1000); // Refresh every 14 minutes (before 15 min expiry)
+      },
+      14 * 60 * 1000
+    ); // Refresh every 14 minutes (before 15 min expiry)
 
     return () => clearInterval(interval);
   }, [isAuthenticated]);
@@ -150,10 +154,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser(response.user);
         setIsAuthenticated(true);
       } else {
-        throw new Error(response.message || 'Erreur de connexion');
+        throw new Error(response.message || t('Erreur de connexion'));
       }
     } catch (error: any) {
-      const errorMessage = error.response?.data?.message || error.message || 'Erreur de connexion';
+      const errorMessage = error.response?.data?.message || error.message || t('Erreur de connexion');
       setError(errorMessage);
       setUser(null);
       setIsAuthenticated(false);
@@ -207,11 +211,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     login,
     logout,
     register: async () => {
-      throw new Error('Register should be handled separately');
+      throw new Error(t('Register should be handled separately'));
     },
     refreshToken: refresh,
     clearError,
-    refreshMembership,
+    refreshMembership
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -20,6 +20,7 @@ import {
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { vendorMaintenanceService } from '../../../services/maintenance-service';
 import { useAuth } from '../../../hooks/useAuth';
+import { t } from '../../../i18n/t';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -82,7 +83,7 @@ export const Vendors: React.FC = () => {
       }
     } catch (error) {
       console.error('Error loading vendors:', error);
-      message.error('Erreur lors du chargement des prestataires');
+      message.error(t('Erreur lors du chargement des prestataires'));
     } finally {
       setLoading(false);
     }
@@ -124,16 +125,16 @@ export const Vendors: React.FC = () => {
     try {
       if (editingVendor) {
         await vendorMaintenanceService.updateVendor(effectiveTenantId, editingVendor.id, values);
-        message.success('Prestataire mis à jour avec succès');
+        message.success(t('Prestataire mis à jour avec succès'));
       } else {
         await vendorMaintenanceService.createVendor(effectiveTenantId, values);
-        message.success('Prestataire créé avec succès');
+        message.success(t('Prestataire créé avec succès'));
       }
       setShowForm(false);
       form.resetFields();
       await loadVendors();
     } catch (error: any) {
-      message.error(error.response?.data?.message || "Erreur lors de l'enregistrement");
+      message.error(error.response?.data?.message || t("Erreur lors de l'enregistrement"));
     } finally {
       setSubmitting(false);
     }
@@ -144,10 +145,10 @@ export const Vendors: React.FC = () => {
 
     try {
       await vendorMaintenanceService.deleteVendor(effectiveTenantId, vendorId);
-      message.success('Prestataire supprimé définitivement');
+      message.success(t('Prestataire supprimé définitivement'));
       await loadVendors();
     } catch (error: any) {
-      message.error(error.response?.data?.message || 'Erreur lors de la suppression');
+      message.error(error.response?.data?.message || t('Erreur lors de la suppression'));
     }
   };
 
@@ -157,24 +158,24 @@ export const Vendors: React.FC = () => {
 
   const columns = [
     {
-      title: 'Nom',
+      title: t('Nom'),
       dataIndex: 'name',
       key: 'name'
     },
     {
-      title: 'Téléphone',
+      title: t('Téléphone'),
       dataIndex: 'phone',
       key: 'phone',
       render: (phone: string) => phone || '-'
     },
     {
-      title: 'Email',
+      title: t('Email'),
       dataIndex: 'email',
       key: 'email',
       render: (email: string) => email || '-'
     },
     {
-      title: 'Spécialités',
+      title: t('Spécialités'),
       dataIndex: 'specialties',
       key: 'specialties',
       render: (specialties: string[]) =>
@@ -189,28 +190,28 @@ export const Vendors: React.FC = () => {
         )
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: 'isActive',
       key: 'isActive',
       render: (isActive: boolean) => (
-        <Tag color={isActive ? 'success' : 'default'}>{isActive ? 'Actif' : 'Inactif'}</Tag>
+        <Tag color={isActive ? 'success' : 'default'}>{isActive ? t('Actif') : t('Inactif')}</Tag>
       )
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
       render: (_: any, record: Vendor) => (
         <Space>
-          <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} title="Modifier" />
+          <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} title={t('Modifier')} />
           <Popconfirm
-            title="Êtes-vous sûr de vouloir supprimer définitivement ce prestataire ?"
-            description="Cette action est irréversible. Le prestataire sera supprimé de manière permanente."
+            title={t('Êtes-vous sûr de vouloir supprimer définitivement ce prestataire ?')}
+            description={t('Cette action est irréversible. Le prestataire sera supprimé de manière permanente.')}
             onConfirm={() => handleDelete(record.id)}
-            okText="Oui, supprimer"
-            cancelText="Annuler"
+            okText={t('Oui, supprimer')}
+            cancelText={t('Annuler')}
             okButtonProps={{ danger: true }}
           >
-            <Button type="link" danger icon={<DeleteOutlined />} title="Supprimer définitivement" />
+            <Button type="link" danger icon={<DeleteOutlined />} title={t('Supprimer définitivement')} />
           </Popconfirm>
         </Space>
       )
@@ -229,37 +230,37 @@ export const Vendors: React.FC = () => {
     <>
       <div style={{ padding: '24px' }}>
         <div className="it-toolbar" style={{ marginBottom: 24 }}>
-          <Title level={2}>Gestion des prestataires</Title>
+          <Title level={2}>{t('Gestion des prestataires')}</Title>
           <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
-            Nouveau prestataire
+            {t('Nouveau prestataire')}
           </Button>
         </div>
 
         <Card style={{ marginBottom: 24 }}>
           <Space>
             <Search
-              placeholder="Rechercher par nom ou spécialité..."
+              placeholder={t('Rechercher par nom ou spécialité...')}
               allowClear
               style={{ width: 300 }}
               onSearch={handleSearch}
               enterButton={<SearchOutlined />}
             />
             <Select
-              placeholder="Filtrer par statut"
+              placeholder={t('Filtrer par statut')}
               allowClear
               style={{ width: 200 }}
               value={isActiveFilter}
               onChange={handleFilterChange}
             >
-              <Option value={true}>Actifs</Option>
-              <Option value={false}>Inactifs</Option>
+              <Option value={true}>{t('Actifs')}</Option>
+              <Option value={false}>{t('Inactifs')}</Option>
             </Select>
           </Space>
         </Card>
 
         <Card>
           {vendors.length === 0 ? (
-            <Empty description="Aucun prestataire" />
+            <Empty description={t('Aucun prestataire')} />
           ) : (
             <>
               <Table
@@ -278,7 +279,7 @@ export const Vendors: React.FC = () => {
                     total={pagination.total}
                     pageSize={pagination.limit}
                     onChange={handlePageChange}
-                    showTotal={total => `Total: ${total} prestataires`}
+                    showTotal={total => t('Total: {{total}} prestataires', { total: total })}
                   />
                 </div>
               )}
@@ -287,7 +288,7 @@ export const Vendors: React.FC = () => {
         </Card>
 
         <Modal
-          title={editingVendor ? 'Modifier le prestataire' : 'Nouveau prestataire'}
+          title={editingVendor ? t('Modifier le prestataire') : t('Nouveau prestataire')}
           open={showForm}
           onCancel={() => {
             setShowForm(false);
@@ -299,40 +300,40 @@ export const Vendors: React.FC = () => {
           <Form form={form} layout="vertical" onFinish={handleSubmit}>
             <Form.Item
               name="name"
-              label="Nom"
+              label={t('Nom')}
               rules={[
-                { required: true, message: 'Le nom est requis' },
-                { min: 2, message: 'Le nom doit contenir au moins 2 caractères' }
+                { required: true, message: t('Le nom est requis') },
+                { min: 2, message: t('Le nom doit contenir au moins 2 caractères') }
               ]}
             >
-              <Input placeholder="Nom du prestataire" />
+              <Input placeholder={t('Nom du prestataire')} />
             </Form.Item>
 
-            <Form.Item name="phone" label="Téléphone">
-              <Input placeholder="Numéro de téléphone" />
+            <Form.Item name="phone" label={t('Téléphone')}>
+              <Input placeholder={t('Numéro de téléphone')} />
             </Form.Item>
 
-            <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Email invalide' }]}>
-              <Input placeholder="Adresse email" />
+            <Form.Item name="email" label={t('Email')} rules={[{ type: 'email', message: t('Email invalide') }]}>
+              <Input placeholder={t('Adresse email')} />
             </Form.Item>
 
-            <Form.Item name="address" label="Adresse">
-              <Input.TextArea rows={3} placeholder="Adresse complète" />
+            <Form.Item name="address" label={t('Adresse')}>
+              <Input.TextArea rows={3} placeholder={t('Adresse complète')} />
             </Form.Item>
 
-            <Form.Item name="specialties" label="Spécialités">
+            <Form.Item name="specialties" label={t('Spécialités')}>
               <Select
                 mode="tags"
-                placeholder="Ajouter des spécialités (ex: Plomberie, Électricité)"
+                placeholder={t('Ajouter des spécialités (ex: Plomberie, Électricité)')}
                 tokenSeparators={[',']}
               />
             </Form.Item>
 
             {editingVendor && (
-              <Form.Item name="isActive" label="Statut" initialValue={true}>
+              <Form.Item name="isActive" label={t('Statut')} initialValue={true}>
                 <Select>
-                  <Option value={true}>Actif</Option>
-                  <Option value={false}>Inactif</Option>
+                  <Option value={true}>{t('Actif')}</Option>
+                  <Option value={false}>{t('Inactif')}</Option>
                 </Select>
               </Form.Item>
             )}
@@ -340,7 +341,7 @@ export const Vendors: React.FC = () => {
             <Form.Item>
               <Space>
                 <Button type="primary" htmlType="submit" loading={submitting}>
-                  {editingVendor ? 'Enregistrer' : 'Créer'}
+                  {editingVendor ? t('Enregistrer') : t('Créer')}
                 </Button>
                 <Button
                   onClick={() => {
@@ -348,7 +349,7 @@ export const Vendors: React.FC = () => {
                     form.resetFields();
                   }}
                 >
-                  Annuler
+                  {t('Annuler')}
                 </Button>
               </Space>
             </Form.Item>

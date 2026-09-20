@@ -4,7 +4,9 @@ import { DollarOutlined, WalletOutlined, EyeOutlined, SyncOutlined } from '@ant-
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
 import dayjs from 'dayjs';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 interface DepositListItem {
@@ -40,7 +42,7 @@ interface DepositMovement {
 }
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('fr-FR', {
+  return new Intl.NumberFormat(activeLocale(), {
     style: 'currency',
     currency: 'XOF',
     minimumFractionDigits: 0
@@ -49,11 +51,11 @@ const formatCurrency = (amount: number) => {
 
 const getStatusTag = (status: string) => {
   const statusConfig: Record<string, { color: string; text: string }> = {
-    PENDING: { color: 'default', text: 'En attente' },
-    COLLECTED: { color: 'blue', text: 'Collecté' },
-    HELD: { color: 'orange', text: 'En retenue' },
-    REFUNDED: { color: 'green', text: 'Remboursé' },
-    FORFEITED: { color: 'red', text: 'Confisqué' }
+    PENDING: { color: 'default', text: t('En attente') },
+    COLLECTED: { color: 'blue', text: t('Collecté') },
+    HELD: { color: 'orange', text: t('En retenue') },
+    REFUNDED: { color: 'green', text: t('Remboursé') },
+    FORFEITED: { color: 'red', text: t('Confisqué') }
   };
 
   const config = statusConfig[status] || { color: 'default', text: status };
@@ -62,12 +64,12 @@ const getStatusTag = (status: string) => {
 
 const getMovementTypeLabel = (type: string) => {
   const labels: Record<string, { label: string; color: string }> = {
-    COLLECT: { label: 'Collecte', color: 'success' },
-    HOLD: { label: 'Mise en retenue', color: 'warning' },
-    RELEASE: { label: 'Libération', color: 'processing' },
-    REFUND: { label: 'Remboursement', color: 'success' },
-    FORFEIT: { label: 'Confiscation', color: 'error' },
-    ADJUSTMENT: { label: 'Ajustement', color: 'default' }
+    COLLECT: { label: t('Collecte'), color: 'success' },
+    HOLD: { label: t('Mise en retenue'), color: 'warning' },
+    RELEASE: { label: t('Libération'), color: 'processing' },
+    REFUND: { label: t('Remboursement'), color: 'success' },
+    FORFEIT: { label: t('Confiscation'), color: 'error' },
+    ADJUSTMENT: { label: t('Ajustement'), color: 'default' }
   };
   const config = labels[type] || { label: type, color: 'default' };
   return <Tag color={config.color}>{config.label}</Tag>;
@@ -96,7 +98,7 @@ export default function Deposits() {
         setData(response.data.data);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des dépôts de garantie');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des dépôts de garantie'));
     } finally {
       setLoading(false);
     }
@@ -112,7 +114,7 @@ export default function Deposits() {
         setMovementsModalVisible(true);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des mouvements');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des mouvements'));
     } finally {
       setMovementsLoading(false);
     }
@@ -120,19 +122,19 @@ export default function Deposits() {
 
   const movementColumns = [
     {
-      title: 'Type',
+      title: t('Type'),
       dataIndex: 'type',
       key: 'type',
       render: (type: string) => getMovementTypeLabel(type)
     },
     {
-      title: 'Montant',
+      title: t('Montant'),
       dataIndex: 'amount',
       key: 'amount',
       render: (amount: number) => formatCurrency(amount)
     },
     {
-      title: 'Date',
+      title: t('Date'),
       dataIndex: 'createdAt',
       key: 'createdAt',
       render: (date: Date | string) => {
@@ -141,13 +143,13 @@ export default function Deposits() {
       }
     },
     {
-      title: 'Note',
+      title: t('Note'),
       dataIndex: 'note',
       key: 'note',
       render: (note: string | null) => note || '-'
     },
     {
-      title: 'Créé par',
+      title: t('Créé par'),
       dataIndex: 'createdBy',
       key: 'createdBy',
       render: (createdBy: string | null) => createdBy || '-'
@@ -156,37 +158,37 @@ export default function Deposits() {
 
   const columns = [
     {
-      title: 'Propriété',
+      title: t('Propriété'),
       dataIndex: 'propertyAddress',
       key: 'propertyAddress'
     },
     {
-      title: 'Locataire',
+      title: t('Locataire'),
       dataIndex: 'tenantName',
       key: 'tenantName'
     },
     {
-      title: 'Montant du dépôt',
+      title: t('Montant du dépôt'),
       dataIndex: 'depositAmount',
       key: 'depositAmount',
       render: (amount: number) => formatCurrency(amount),
       sorter: (a: DepositListItem, b: DepositListItem) => a.depositAmount - b.depositAmount
     },
     {
-      title: 'Montant retenu',
+      title: t('Montant retenu'),
       dataIndex: 'currentHeldAmount',
       key: 'currentHeldAmount',
       render: (amount: number) => formatCurrency(amount),
       sorter: (a: DepositListItem, b: DepositListItem) => a.currentHeldAmount - b.currentHeldAmount
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => getStatusTag(status)
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
       render: (_: any, record: DepositListItem) => (
         <Button
@@ -195,7 +197,7 @@ export default function Deposits() {
           onClick={() => handleViewMovements(record.id)}
           loading={movementsLoading && selectedDepositId === record.id}
         >
-          Mouvements
+          {t('Mouvements')}
         </Button>
       )
     }
@@ -204,13 +206,13 @@ export default function Deposits() {
   if (loading && !data) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement des dépôts de garantie..." />
+        <Spin size="large" tip={t('Chargement des dépôts de garantie...')} />
       </div>
     );
   }
 
   if (error) {
-    return <Alert message="Erreur" description={error} type="error" showIcon />;
+    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   return (
@@ -218,11 +220,16 @@ export default function Deposits() {
       {/* Page Header */}
       <div className="it-toolbar">
         <div>
-          <Title level={2}>Dépôts de garantie</Title>
-          <Text type="secondary">Suivi des dépôts de garantie de vos propriétés</Text>
+          <Title level={2}>{t('Dépôts de garantie')}</Title>
+          <Text type="secondary">{t('Suivi des dépôts de garantie de vos propriétés')}</Text>
         </div>
-        <Button icon={<SyncOutlined />} onClick={loadDeposits} loading={loading} aria-label="Rafraîchir les dépôts">
-          Actualiser
+        <Button
+          icon={<SyncOutlined />}
+          onClick={loadDeposits}
+          loading={loading}
+          aria-label={t('Rafraîchir les dépôts')}
+        >
+          {t('Actualiser')}
         </Button>
       </div>
 
@@ -231,7 +238,7 @@ export default function Deposits() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={8}>
             <StatCard
-              title="Total"
+              title={t('Total')}
               value={data.summary.total.toString()}
               icon={<WalletOutlined style={{ color: '#1890ff' }} />}
               valueStyle={{ fontSize: 18 }}
@@ -239,7 +246,7 @@ export default function Deposits() {
           </Col>
           <Col xs={24} sm={12} lg={8}>
             <StatCard
-              title="Total retenu"
+              title={t('Total retenu')}
               value={formatCurrency(data.summary.totalHeld)}
               icon={<WalletOutlined style={{ color: '#faad14' }} />}
               valueStyle={{ fontSize: 18, color: '#faad14' }}
@@ -247,7 +254,7 @@ export default function Deposits() {
           </Col>
           <Col xs={24} sm={12} lg={8}>
             <StatCard
-              title="Total libéré"
+              title={t('Total libéré')}
               value={formatCurrency(data.summary.totalReleased)}
               icon={<DollarOutlined style={{ color: '#52c41a' }} />}
               valueStyle={{ fontSize: 18, color: '#52c41a' }}
@@ -257,7 +264,7 @@ export default function Deposits() {
       )}
 
       {/* Deposits Table (T116) */}
-      <Card title="Liste des dépôts de garantie">
+      <Card title={t('Liste des dépôts de garantie')}>
         {data && data.deposits.length > 0 ? (
           <Table
             scroll={{ x: 'max-content' }}
@@ -268,7 +275,7 @@ export default function Deposits() {
             pagination={{ pageSize: 20 }}
           />
         ) : (
-          <Empty description="Aucun dépôt de garantie trouvé" />
+          <Empty description={t('Aucun dépôt de garantie trouvé')} />
         )}
       </Card>
 
@@ -277,7 +284,7 @@ export default function Deposits() {
         title={
           <Space>
             <WalletOutlined />
-            <span>Historique des mouvements</span>
+            <span>{t('Historique des mouvements')}</span>
           </Space>
         }
         open={movementsModalVisible}
@@ -303,7 +310,7 @@ export default function Deposits() {
             size="small"
           />
         ) : (
-          <Empty description="Aucun mouvement trouvé" />
+          <Empty description={t('Aucun mouvement trouvé')} />
         )}
       </Modal>
     </Space>

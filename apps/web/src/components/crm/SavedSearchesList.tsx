@@ -3,7 +3,9 @@ import { App, List, Button, Spin, Empty, Typography } from 'antd';
 import { PlayCircleOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useParams } from 'react-router-dom';
 import contactSearchService, { type SavedSearchItem } from '../../services/contact-search.service';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 interface SavedSearchesListProps {
   onSelectSearch: (searchId: string) => void;
   onClose?: () => void;
@@ -21,7 +23,7 @@ export function SavedSearchesList({ onSelectSearch, onClose }: SavedSearchesList
     contactSearchService
       .getSavedSearches(tenantId)
       .then(setList)
-      .catch(() => message.error('Impossible de charger les recherches'))
+      .catch(() => message.error(t('Impossible de charger les recherches')))
       .finally(() => setLoading(false));
   }, [tenantId, message]);
 
@@ -30,14 +32,14 @@ export function SavedSearchesList({ onSelectSearch, onClose }: SavedSearchesList
     try {
       await contactSearchService.deleteSavedSearch(tenantId, id);
       setList(prev => prev.filter(s => s.id !== id));
-      message.success('Recherche supprimée');
+      message.success(t('Recherche supprimée'));
     } catch {
-      message.error('Suppression impossible');
+      message.error(t('Suppression impossible'));
     }
   };
 
   if (loading) return <Spin />;
-  if (list.length === 0) return <Empty description="Aucune recherche sauvegardée" />;
+  if (list.length === 0) return <Empty description={t('Aucune recherche sauvegardée')} />;
 
   return (
     <List
@@ -47,10 +49,10 @@ export function SavedSearchesList({ onSelectSearch, onClose }: SavedSearchesList
         <List.Item
           actions={[
             <Button type="link" key="use" icon={<PlayCircleOutlined />} onClick={() => onSelectSearch(item.id)}>
-              Utiliser
+              {t('Utiliser')}
             </Button>,
             <Button type="link" danger key="del" icon={<DeleteOutlined />} onClick={() => handleDelete(item.id)}>
-              Supprimer
+              {t('Supprimer')}
             </Button>
           ]}
         >
@@ -59,9 +61,11 @@ export function SavedSearchesList({ onSelectSearch, onClose }: SavedSearchesList
             description={
               item.description || (
                 <Typography.Text type="secondary">
-                  Utilisée {item.useCount} fois
+                  {t('Utilisée')} {item.useCount} fois
                   {item.lastUsedAt &&
-                    ` · Dernière utilisation ${new Date(item.lastUsedAt).toLocaleDateString('fr-FR')}`}
+                    t('· Dernière utilisation {{value}}', {
+                      value: new Date(item.lastUsedAt).toLocaleDateString(activeLocale())
+                    })}
                 </Typography.Text>
               )
             }

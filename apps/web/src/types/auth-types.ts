@@ -7,6 +7,12 @@ export interface User {
   globalRole: 'SUPER_ADMIN' | 'USER';
   emailVerified: boolean;
   isActive: boolean;
+  /**
+   * Langue choisie pour l'interface et les e-mails : 'fr', 'en' ou 'ar'.
+   * `null` veut dire « jamais choisie » — c'est alors le navigateur qui
+   * tranche, et rien n'est imposé a un utilisateur arabophone.
+   */
+  preferredLanguage: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -76,4 +82,3 @@ export interface AuthContextType extends AuthState {
   clearError: () => void;
   refreshMembership: () => Promise<void>;
 }
-

@@ -26,7 +26,9 @@ import {
 } from '@ant-design/icons';
 import { listMembers, Member, MembershipFilters, disableMember, enableMember } from '../../services/membership-service';
 import type { ColumnsType } from 'antd/es/table';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 export const CollaboratorsList: React.FC = () => {
@@ -75,10 +77,10 @@ export const CollaboratorsList: React.FC = () => {
           }
         );
       } else {
-        setError('Erreur lors du chargement des collaborateurs');
+        setError(t('Erreur lors du chargement des collaborateurs'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des collaborateurs');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des collaborateurs'));
     } finally {
       setLoading(false);
     }
@@ -97,22 +99,22 @@ export const CollaboratorsList: React.FC = () => {
     try {
       if (currentStatus === 'ACTIVE') {
         await disableMember(tenantId, userId);
-        message.success('Collaborateur désactivé avec succès');
+        message.success(t('Collaborateur désactivé avec succès'));
       } else {
         await enableMember(tenantId, userId);
-        message.success('Collaborateur activé avec succès');
+        message.success(t('Collaborateur activé avec succès'));
       }
       await loadMembers();
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors de la modification');
+      message.error(err.response?.data?.message || t('Erreur lors de la modification'));
     }
   };
 
   const getStatusTag = (status: string) => {
     const statusConfig = {
-      ACTIVE: { color: 'success', text: 'Actif' },
-      PENDING_INVITE: { color: 'warning', text: 'Invitation en attente' },
-      DISABLED: { color: 'error', text: 'Désactivé' }
+      ACTIVE: { color: 'success', text: t('Actif') },
+      PENDING_INVITE: { color: 'warning', text: t('Invitation en attente') },
+      DISABLED: { color: 'error', text: t('Désactivé') }
     };
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.DISABLED;
     return <Tag color={config.color}>{config.text}</Tag>;
@@ -120,7 +122,7 @@ export const CollaboratorsList: React.FC = () => {
 
   const columns: ColumnsType<Member> = [
     {
-      title: 'Utilisateur',
+      title: t('Utilisateur'),
       key: 'user',
       width: 250,
       render: (_, record) => (
@@ -136,7 +138,7 @@ export const CollaboratorsList: React.FC = () => {
       )
     },
     {
-      title: 'Rôles',
+      title: t('Rôles'),
       key: 'roles',
       width: 200,
       render: (_, record) => (
@@ -150,23 +152,23 @@ export const CollaboratorsList: React.FC = () => {
       )
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
       width: 150,
       render: (status: string) => getStatusTag(status)
     },
     {
-      title: 'Dernière connexion',
+      title: t('Dernière connexion'),
       key: 'lastLogin',
       width: 150,
       render: (_, record) =>
-        record.user.lastLoginAt ? new Date(record.user.lastLoginAt).toLocaleDateString('fr-FR') : 'Jamais'
+        record.user.lastLoginAt ? new Date(record.user.lastLoginAt).toLocaleDateString(activeLocale()) : 'Jamais'
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       width: 120,
       render: (_, record) => (
         <Space>
@@ -174,27 +176,27 @@ export const CollaboratorsList: React.FC = () => {
             type="text"
             icon={<EyeOutlined />}
             onClick={() => navigate(`/tenant/${tenantId}/collaborators/${record.userId}`)}
-            title="Voir les détails"
+            title={t('Voir les détails')}
           />
           {record.status === 'ACTIVE' ? (
             <Popconfirm
-              title="Désactiver le collaborateur"
-              description="Êtes-vous sûr de vouloir désactiver ce collaborateur ?"
+              title={t('Désactiver le collaborateur')}
+              description={t('Êtes-vous sûr de vouloir désactiver ce collaborateur ?')}
               onConfirm={() => handleToggleStatus(record.userId, record.status)}
-              okText="Oui"
-              cancelText="Non"
+              okText={t('Oui')}
+              cancelText={t('Non')}
             >
-              <Button type="text" danger icon={<UserDeleteOutlined />} title="Désactiver" />
+              <Button type="text" danger icon={<UserDeleteOutlined />} title={t('Désactiver')} />
             </Popconfirm>
           ) : (
             <Popconfirm
-              title="Activer le collaborateur"
-              description="Êtes-vous sûr de vouloir activer ce collaborateur ?"
+              title={t('Activer le collaborateur')}
+              description={t('Êtes-vous sûr de vouloir activer ce collaborateur ?')}
               onConfirm={() => handleToggleStatus(record.userId, record.status)}
-              okText="Oui"
-              cancelText="Non"
+              okText={t('Oui')}
+              cancelText={t('Non')}
             >
-              <Button type="text" icon={<CheckCircleOutlined />} title="Activer" />
+              <Button type="text" icon={<CheckCircleOutlined />} title={t('Activer')} />
             </Popconfirm>
           )}
         </Space>
@@ -209,12 +211,12 @@ export const CollaboratorsList: React.FC = () => {
         <div className="it-toolbar it-toolbar--start">
           <div>
             <Title level={2} style={{ margin: 0 }}>
-              Collaborateurs
+              {t('Collaborateurs')}
             </Title>
-            <Text type="secondary">Gérez les collaborateurs de votre agence</Text>
+            <Text type="secondary">{t('Gérez les collaborateurs de votre agence')}</Text>
           </div>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate(`/tenant/${tenantId}/invite`)}>
-            Inviter un collaborateur
+            {t('Inviter un collaborateur')}
           </Button>
         </div>
 
@@ -222,7 +224,7 @@ export const CollaboratorsList: React.FC = () => {
         <Card>
           <Space.Compact style={{ width: '100%' }}>
             <Input
-              placeholder="Rechercher un collaborateur..."
+              placeholder={t('Rechercher un collaborateur...')}
               prefix={<SearchOutlined />}
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
@@ -231,24 +233,31 @@ export const CollaboratorsList: React.FC = () => {
             />
             <Select
               style={{ width: 200 }}
-              placeholder="Tous les statuts"
+              placeholder={t('Tous les statuts')}
               value={filters.status}
               onChange={handleStatusFilter}
               allowClear
             >
-              <Select.Option value="ACTIVE">Actif</Select.Option>
-              <Select.Option value="PENDING_INVITE">Invitation en attente</Select.Option>
-              <Select.Option value="DISABLED">Désactivé</Select.Option>
+              <Select.Option value="ACTIVE">{t('Actif')}</Select.Option>
+              <Select.Option value="PENDING_INVITE">{t('Invitation en attente')}</Select.Option>
+              <Select.Option value="DISABLED">{t('Désactivé')}</Select.Option>
             </Select>
             <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch}>
-              Rechercher
+              {t('Rechercher')}
             </Button>
           </Space.Compact>
         </Card>
 
         {/* Error Message */}
         {error && (
-          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
+          <Alert
+            message={t('Erreur')}
+            description={error}
+            type="error"
+            showIcon
+            closable
+            onClose={() => setError(null)}
+          />
         )}
 
         {/* Members Table */}
@@ -265,13 +274,13 @@ export const CollaboratorsList: React.FC = () => {
                 pageSize: pagination.limit,
                 total: pagination.total,
                 showSizeChanger: true,
-                showTotal: total => `Total: ${total} collaborateurs`,
+                showTotal: total => t('Total: {{total}} collaborateurs', { total: total }),
                 onChange: (page, pageSize) => {
                   setFilters({ ...filters, page, limit: pageSize });
                 }
               }}
               locale={{
-                emptyText: <Empty description="Aucun collaborateur trouvé" />
+                emptyText: <Empty description={t('Aucun collaborateur trouvé')} />
               }}
             />
           </div>

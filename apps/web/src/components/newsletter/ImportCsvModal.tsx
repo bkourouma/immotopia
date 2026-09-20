@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { App, Modal, Upload } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
 import type { ImportResult } from '../../services/newsletter.service';
+import { t } from '../../i18n/t';
 
 const { Dragger } = Upload;
 
@@ -20,7 +21,7 @@ export function ImportCsvModal({ open, onClose, onImport }: ImportCsvModalProps)
 
   const handleOk = async () => {
     if (!file) {
-      message.warning('Sélectionnez un fichier CSV.');
+      message.warning(t('Sélectionnez un fichier CSV.'));
       return;
     }
     setLoading(true);
@@ -29,17 +30,22 @@ export function ImportCsvModal({ open, onClose, onImport }: ImportCsvModalProps)
       const r = await onImport(file);
       setResult(r);
       if (r.accepted > 0) {
-        message.success(`${r.accepted} adresse(s) importée(s).`);
+        message.success(t('{{accepted}} adresse(s) importée(s).', { accepted: r.accepted }));
       }
       if (r.rejected > 0) {
-        message.warning(`${r.rejected} rejetée(s). ${r.errors.length ? r.errors.slice(0, 3).join(' ') : ''}`);
+        message.warning(
+          t('{{rejected}} rejetée(s). {{value}}', {
+            rejected: r.rejected,
+            value: r.errors.length ? r.errors.slice(0, 3).join(' ') : ''
+          })
+        );
       }
       if (r.duplicateCount > 0) {
-        message.info(`${r.duplicateCount} doublon(s) ignoré(s).`);
+        message.info(t('{{duplicateCount}} doublon(s) ignoré(s).', { duplicateCount: r.duplicateCount }));
       }
       setFile(null);
     } catch (e) {
-      message.error((e as Error).message || "Erreur lors de l'import.");
+      message.error((e as Error).message || t("Erreur lors de l'import."));
     } finally {
       setLoading(false);
     }
@@ -53,16 +59,16 @@ export function ImportCsvModal({ open, onClose, onImport }: ImportCsvModalProps)
 
   return (
     <Modal
-      title="Importer des abonnés (CSV)"
+      title={t('Importer des abonnés (CSV)')}
       open={open}
       onOk={handleOk}
       onCancel={handleClose}
       confirmLoading={loading}
-      okText="Importer"
+      okText={t('Importer')}
       destroyOnClose
     >
       <p style={{ marginBottom: 16 }}>
-        Le fichier doit contenir une colonne <strong>email</strong> et optionnellement <strong>name</strong>.
+        {t('Le fichier doit contenir une colonne')} <strong>email</strong> et optionnellement <strong>name</strong>.
       </p>
       <Dragger
         accept=".csv"
@@ -77,12 +83,12 @@ export function ImportCsvModal({ open, onClose, onImport }: ImportCsvModalProps)
         <p className="ant-upload-drag-icon">
           <InboxOutlined style={{ fontSize: 48, color: '#1890ff' }} />
         </p>
-        <p className="ant-upload-text">Cliquez ou glissez un fichier CSV ici</p>
+        <p className="ant-upload-text">{t('Cliquez ou glissez un fichier CSV ici')}</p>
       </Dragger>
       {result && (
         <div style={{ marginTop: 16, padding: 12, background: '#f5f5f5', borderRadius: 8 }}>
-          <strong>Résultat :</strong> {result.accepted} accepté(s), {result.rejected} rejeté(s), {result.duplicateCount}{' '}
-          doublon(s)
+          <strong>{t('Résultat :')}</strong> {result.accepted} {t('accepté(s),')} {result.rejected} {t('rejeté(s),')}{' '}
+          {result.duplicateCount} doublon(s)
           {result.errors.length > 0 && (
             <ul style={{ marginTop: 8, marginBottom: 0 }}>
               {result.errors.slice(0, 5).map((e, i) => (

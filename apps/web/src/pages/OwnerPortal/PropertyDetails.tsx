@@ -25,7 +25,9 @@ import {
   CalendarOutlined
 } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
 
@@ -101,7 +103,7 @@ interface PropertyDetailsData {
 }
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('fr-FR', {
+  return new Intl.NumberFormat(activeLocale(), {
     style: 'currency',
     currency: 'XOF',
     minimumFractionDigits: 0
@@ -110,7 +112,7 @@ const formatCurrency = (amount: number) => {
 
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
-  return date.toLocaleDateString('fr-FR', {
+  return date.toLocaleDateString(activeLocale(), {
     year: 'numeric',
     month: 'long',
     day: 'numeric'
@@ -122,25 +124,25 @@ const propertyTypeLabels: Record<string, string> = {
   MAISON_VILLA: 'Maison/Villa',
   STUDIO: 'Studio',
   DUPLEX_TRIPLEX: 'Duplex/Triplex',
-  CHAMBRE_COLOCATION: 'Chambre en colocation',
+  CHAMBRE_COLOCATION: t('Chambre en colocation'),
   BUREAU: 'Bureau',
   BOUTIQUE_COMMERCIAL: 'Boutique/Commercial',
-  ENTREPOT_INDUSTRIEL: 'Entrepôt/Industriel',
+  ENTREPOT_INDUSTRIEL: t('Entrepôt/Industriel'),
   TERRAIN: 'Terrain',
   IMMEUBLE: 'Immeuble',
   PARKING_BOX: 'Parking/Box',
-  LOT_PROGRAMME_NEUF: 'Lot programme neuf'
+  LOT_PROGRAMME_NEUF: t('Lot programme neuf')
 };
 
 const propertyStatusLabels: Record<string, string> = {
   DRAFT: 'Brouillon',
-  UNDER_REVIEW: "En cours d'examen",
+  UNDER_REVIEW: t("En cours d'examen"),
   AVAILABLE: 'Disponible',
-  RESERVED: 'Réservé',
-  UNDER_OFFER: 'Sous offre',
-  RENTED: 'Loué',
+  RESERVED: t('Réservé'),
+  UNDER_OFFER: t('Sous offre'),
+  RENTED: t('Loué'),
   SOLD: 'Vendu',
-  ARCHIVED: 'Archivé'
+  ARCHIVED: t('Archivé')
 };
 
 const translatePropertyType = (value: string) => propertyTypeLabels[value] || value;
@@ -150,7 +152,7 @@ const translatePropertyStatus = (value: string) => propertyStatusLabels[value] |
 const transactionModeLabels: Record<string, string> = {
   SALE: 'Vente',
   RENTAL: 'Location',
-  SHORT_TERM: 'Location courte durée'
+  SHORT_TERM: t('Location courte durée')
 };
 
 const translateTransactionMode = (value: string) => transactionModeLabels[value] || value;
@@ -178,10 +180,10 @@ export default function PropertyDetails() {
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
-        setError('Erreur lors du chargement des détails');
+        setError(t('Erreur lors du chargement des détails'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des détails');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des détails'));
     } finally {
       setLoading(false);
     }
@@ -190,7 +192,7 @@ export default function PropertyDetails() {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement des détails..." />
+        <Spin size="large" tip={t('Chargement des détails...')} />
       </div>
     );
   }
@@ -198,17 +200,17 @@ export default function PropertyDetails() {
   if (error) {
     return (
       <Alert
-        message="Erreur"
+        message={t('Erreur')}
         description={error}
         type="error"
         showIcon
-        action={<Button onClick={() => navigate('/owner/properties')}>Retour à la liste</Button>}
+        action={<Button onClick={() => navigate('/owner/properties')}>{t('Retour à la liste')}</Button>}
       />
     );
   }
 
   if (!data) {
-    return <Empty description="Aucune donnée disponible" />;
+    return <Empty description={t('Aucune donnée disponible')} />;
   }
 
   return (
@@ -216,7 +218,7 @@ export default function PropertyDetails() {
       {/* Header */}
       <div>
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/owner/properties')} style={{ marginBottom: 16 }}>
-          Retour
+          {t('Retour')}
         </Button>
         <Title level={2}>{data.property.title}</Title>
         <Text type="secondary">{data.property.address}</Text>
@@ -227,26 +229,28 @@ export default function PropertyDetails() {
         <TabPane
           tab={
             <>
-              <HomeOutlined /> Informations
+              <HomeOutlined /> {t('Informations')}
             </>
           }
           key="info"
         >
-          <Card title="Informations de la propriété">
+          <Card title={t('Informations de la propriété')}>
             <Descriptions column={{ xs: 1, sm: 2 }} bordered>
-              <Descriptions.Item label="Adresse">{data.property.address}</Descriptions.Item>
-              <Descriptions.Item label="Type">{translatePropertyType(data.property.propertyType)}</Descriptions.Item>
-              <Descriptions.Item label="Statut">
+              <Descriptions.Item label={t('Adresse')}>{data.property.address}</Descriptions.Item>
+              <Descriptions.Item label={t('Type')}>
+                {translatePropertyType(data.property.propertyType)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('Statut')}>
                 <Tag color={data.property.status === 'RENTED' ? 'success' : 'default'}>
                   {translatePropertyStatus(data.property.status)}
                 </Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="Modes de transaction">
+              <Descriptions.Item label={t('Modes de transaction')}>
                 {data.property.transactionModes.map(mode => (
                   <Tag key={mode}>{translateTransactionMode(mode)}</Tag>
                 ))}
               </Descriptions.Item>
-              <Descriptions.Item label="Description" span={2}>
+              <Descriptions.Item label={t('Description')} span={2}>
                 {data.property.description}
               </Descriptions.Item>
             </Descriptions>
@@ -257,29 +261,31 @@ export default function PropertyDetails() {
         <TabPane
           tab={
             <>
-              <FileTextOutlined /> Bail actif
+              <FileTextOutlined /> {t('Bail actif')}
             </>
           }
           key="lease"
         >
           {data.currentLease ? (
-            <Card title="Bail actif">
+            <Card title={t('Bail actif')}>
               <Descriptions column={{ xs: 1, sm: 2 }} bordered>
-                <Descriptions.Item label="Locataire principal">
+                <Descriptions.Item label={t('Locataire principal')}>
                   {data.currentLease.primaryRenter.user.fullName}
                 </Descriptions.Item>
-                <Descriptions.Item label="Email">{data.currentLease.primaryRenter.user.email}</Descriptions.Item>
-                <Descriptions.Item label="Date de début">{formatDate(data.currentLease.start_date)}</Descriptions.Item>
-                <Descriptions.Item label="Date de fin">
-                  {data.currentLease.end_date ? formatDate(data.currentLease.end_date) : 'Non définie'}
+                <Descriptions.Item label={t('Email')}>{data.currentLease.primaryRenter.user.email}</Descriptions.Item>
+                <Descriptions.Item label={t('Date de début')}>
+                  {formatDate(data.currentLease.start_date)}
                 </Descriptions.Item>
-                <Descriptions.Item label="Loyer mensuel">
+                <Descriptions.Item label={t('Date de fin')}>
+                  {data.currentLease.end_date ? formatDate(data.currentLease.end_date) : t('Non définie')}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('Loyer mensuel')}>
                   {formatCurrency(Number(data.currentLease.rent_amount))}
                 </Descriptions.Item>
-                <Descriptions.Item label="Charges">
+                <Descriptions.Item label={t('Charges')}>
                   {formatCurrency(Number(data.currentLease.service_charge_amount))}
                 </Descriptions.Item>
-                <Descriptions.Item label="Statut">
+                <Descriptions.Item label={t('Statut')}>
                   <Tag color={data.currentLease.status === 'ACTIVE' ? 'success' : 'default'}>
                     {data.currentLease.status}
                   </Tag>
@@ -288,7 +294,7 @@ export default function PropertyDetails() {
 
               {data.currentLease.coRenters.length > 0 && (
                 <div style={{ marginTop: 24 }}>
-                  <Title level={4}>Co-locataires</Title>
+                  <Title level={4}>{t('Co-locataires')}</Title>
                   <List
                     dataSource={data.currentLease.coRenters}
                     renderItem={coRenter => (
@@ -301,7 +307,7 @@ export default function PropertyDetails() {
               )}
             </Card>
           ) : (
-            <Empty description="Aucun bail actif" />
+            <Empty description={t('Aucun bail actif')} />
           )}
         </TabPane>
 
@@ -309,13 +315,13 @@ export default function PropertyDetails() {
         <TabPane
           tab={
             <>
-              <CalendarOutlined /> Historique des baux
+              <CalendarOutlined /> {t('Historique des baux')}
             </>
           }
           key="history"
         >
           {data.leaseHistory.length > 0 ? (
-            <Card title="Historique des baux">
+            <Card title={t('Historique des baux')}>
               <List
                 dataSource={data.leaseHistory}
                 renderItem={lease => (
@@ -324,13 +330,14 @@ export default function PropertyDetails() {
                       title={
                         <Space>
                           <Text strong>{lease.primaryRenter.user.fullName}</Text>
-                          <Tag color="default">Terminé</Tag>
+                          <Tag color="default">{t('Terminé')}</Tag>
                         </Space>
                       }
                       description={
                         <Space direction="vertical" size={0}>
                           <Text type="secondary">
-                            Du {formatDate(lease.start_date)} au {lease.end_date ? formatDate(lease.end_date) : 'N/A'}
+                            {t('Du')} {formatDate(lease.start_date)} au{' '}
+                            {lease.end_date ? formatDate(lease.end_date) : 'N/A'}
                           </Text>
                           <Text type="secondary">Loyer: {formatCurrency(Number(lease.rent_amount))} / mois</Text>
                         </Space>
@@ -341,7 +348,7 @@ export default function PropertyDetails() {
               />
             </Card>
           ) : (
-            <Empty description="Aucun historique de bail" />
+            <Empty description={t('Aucun historique de bail')} />
           )}
         </TabPane>
 
@@ -349,30 +356,30 @@ export default function PropertyDetails() {
         <TabPane
           tab={
             <>
-              <DollarOutlined /> Statistiques de revenus
+              <DollarOutlined /> {t('Statistiques de revenus')}
             </>
           }
           key="revenue"
         >
-          <Card title="Statistiques de revenus">
+          <Card title={t('Statistiques de revenus')}>
             <Row gutter={[16, 16]}>
               <Col xs={24} sm={12} lg={8}>
                 <Statistic
-                  title="Total reçu"
+                  title={t('Total reçu')}
                   value={formatCurrency(data.revenueStats.totalReceived)}
                   prefix={<DollarOutlined />}
                 />
               </Col>
               <Col xs={24} sm={12} lg={8}>
                 <Statistic
-                  title="Ce mois"
+                  title={t('Ce mois')}
                   value={formatCurrency(data.revenueStats.currentMonth)}
                   prefix={<DollarOutlined />}
                 />
               </Col>
               <Col xs={24} sm={12} lg={8}>
                 <Statistic
-                  title="Moyenne mensuelle"
+                  title={t('Moyenne mensuelle')}
                   value={formatCurrency(data.revenueStats.averageMonthly)}
                   prefix={<DollarOutlined />}
                 />
@@ -385,13 +392,13 @@ export default function PropertyDetails() {
         <TabPane
           tab={
             <>
-              <ToolOutlined /> Historique maintenance
+              <ToolOutlined /> {t('Historique maintenance')}
             </>
           }
           key="maintenance"
         >
           {data.maintenanceHistory.length > 0 ? (
-            <Card title="Historique de maintenance">
+            <Card title={t('Historique de maintenance')}>
               <List
                 dataSource={data.maintenanceHistory}
                 renderItem={ticket => (
@@ -405,9 +412,15 @@ export default function PropertyDetails() {
                       }
                       description={
                         <Space direction="vertical" size={0}>
-                          <Text type="secondary">Catégorie: {ticket.category}</Text>
-                          <Text type="secondary">Priorité: {ticket.priority}</Text>
-                          <Text type="secondary">Créé le: {formatDate(ticket.created_at)}</Text>
+                          <Text type="secondary">
+                            {t('Catégorie:')} {ticket.category}
+                          </Text>
+                          <Text type="secondary">
+                            {t('Priorité:')} {ticket.priority}
+                          </Text>
+                          <Text type="secondary">
+                            {t('Créé le:')} {formatDate(ticket.created_at)}
+                          </Text>
                         </Space>
                       }
                     />
@@ -416,7 +429,7 @@ export default function PropertyDetails() {
               />
             </Card>
           ) : (
-            <Empty description="Aucun ticket de maintenance" />
+            <Empty description={t('Aucun ticket de maintenance')} />
           )}
         </TabPane>
       </Tabs>

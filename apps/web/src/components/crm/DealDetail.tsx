@@ -33,7 +33,9 @@ import type { CrmDealStage } from '../../types/crm-types';
 import { getDeal, updateDeal, CrmDealDetail, UpdateCrmDealRequest } from '../../services/crm-service';
 import { ActivityTimeline } from './ActivityTimeline';
 import { PropertyMatching } from '../properties/PropertyMatching';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 interface DealDetailProps {
@@ -42,18 +44,18 @@ interface DealDetailProps {
 }
 
 const STAGE_OPTIONS: Array<{ value: CrmDealStage; label: string }> = [
-  { value: 'NEW', label: 'Nouveau' },
-  { value: 'QUALIFIED', label: 'Qualifie' },
-  { value: 'VISIT', label: 'Visite' },
-  { value: 'NEGOTIATION', label: 'Negociation' },
-  { value: 'WON', label: 'Gagne' },
-  { value: 'LOST', label: 'Perdu' }
+  { value: 'NEW', label: t('Nouveau') },
+  { value: 'QUALIFIED', label: t('Qualifie') },
+  { value: 'VISIT', label: t('Visite') },
+  { value: 'NEGOTIATION', label: t('Negociation') },
+  { value: 'WON', label: t('Gagne') },
+  { value: 'LOST', label: t('Perdu') }
 ];
 
 const FURNISHING_LABELS: Record<string, string> = {
   MEUBLE: 'Meuble',
   SEMI_MEUBLE: 'Semi-meuble',
-  NON_MEUBLE: 'Non meuble'
+  NON_MEUBLE: t('Non meuble')
 };
 
 function getStageLabel(stage: string): string {
@@ -90,7 +92,7 @@ function getPropertyTypeLabel(type: string): string {
     MAISON: 'Maison',
     TERRAIN: 'Terrain',
     BUREAU: 'Bureau',
-    COMMERCE: 'Local commercial',
+    COMMERCE: t('Local commercial'),
     STUDIO: 'Studio',
     DUPLEX: 'Duplex',
     PENTHOUSE: 'Penthouse',
@@ -101,7 +103,7 @@ function getPropertyTypeLabel(type: string): string {
 
 function formatNumber(value?: number): string {
   if (value === undefined || value === null) return '';
-  return value.toLocaleString('fr-FR').replace(/,/g, ' ');
+  return value.toLocaleString(activeLocale()).replace(/,/g, ' ');
 }
 
 function hasValue(value: unknown): boolean {
@@ -129,10 +131,10 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
       if (response.success) {
         setDeal(response.data);
       } else {
-        setError("Erreur lors du chargement de l'affaire");
+        setError(t("Erreur lors du chargement de l'affaire"));
       }
     } catch (err: any) {
-      setError(err?.response?.data?.message || "Erreur lors du chargement de l'affaire");
+      setError(err?.response?.data?.message || t("Erreur lors du chargement de l'affaire"));
     } finally {
       setLoading(false);
     }
@@ -149,10 +151,10 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
       const response = await updateDeal(tenantId, dealId, updateData);
       if (response.success) {
         setDeal(response.data as CrmDealDetail);
-        message.success('Stade de l affaire mis a jour');
+        message.success(t('Stade de l affaire mis a jour'));
       }
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "Erreur lors de la mise a jour du stade de l'affaire");
+      message.error(err?.response?.data?.message || t("Erreur lors de la mise a jour du stade de l'affaire"));
     } finally {
       setUpdatingStage(false);
     }
@@ -162,19 +164,20 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
 
   const specificCriteria = useMemo(() => {
     const rows: Array<{ label: string; value: string }> = [];
-    if (hasValue(criteria.rooms)) rows.push({ label: 'Nombre de pieces', value: String(criteria.rooms) });
-    if (hasValue(criteria.surface)) rows.push({ label: 'Surface', value: `${criteria.surface} m²` });
-    if (hasValue(criteria.landArea)) rows.push({ label: 'Surface du terrain', value: `${criteria.landArea} m²` });
+    if (hasValue(criteria.rooms)) rows.push({ label: t('Nombre de pieces'), value: String(criteria.rooms) });
+    if (hasValue(criteria.surface)) rows.push({ label: t('Surface'), value: `${criteria.surface} m²` });
+    if (hasValue(criteria.landArea)) rows.push({ label: t('Surface du terrain'), value: `${criteria.landArea} m²` });
     if (hasValue(criteria.furnishingStatus)) {
       rows.push({
-        label: 'Etat du meuble',
+        label: t('Etat du meuble'),
         value: FURNISHING_LABELS[String(criteria.furnishingStatus)] || String(criteria.furnishingStatus)
       });
     }
-    if (hasValue(criteria.floor)) rows.push({ label: 'Etage', value: String(criteria.floor) });
-    if (hasValue(criteria.officeCount)) rows.push({ label: 'Nombre de bureaux', value: String(criteria.officeCount) });
+    if (hasValue(criteria.floor)) rows.push({ label: t('Etage'), value: String(criteria.floor) });
+    if (hasValue(criteria.officeCount))
+      rows.push({ label: t('Nombre de bureaux'), value: String(criteria.officeCount) });
     if (hasValue(criteria.commercialType))
-      rows.push({ label: 'Type de commerce', value: String(criteria.commercialType) });
+      rows.push({ label: t('Type de commerce'), value: String(criteria.commercialType) });
     return rows;
   }, [criteria]);
 
@@ -197,7 +200,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
       <div style={{ textAlign: 'center', padding: '48px 0' }}>
         <Spin size="large" />
         <div style={{ marginTop: 12 }}>
-          <Text type="secondary">Chargement de l affaire...</Text>
+          <Text type="secondary">{t('Chargement de l affaire...')}</Text>
         </div>
       </div>
     );
@@ -208,7 +211,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
   }
 
   if (!deal) {
-    return <Empty description="Affaire non trouvee" />;
+    return <Empty description={t('Affaire non trouvee')} />;
   }
 
   return (
@@ -235,7 +238,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
                         label: (
                           <Space>
                             <UserOutlined />
-                            Contact
+                            {t('Contact')}
                           </Space>
                         ),
                         children: `${deal.contact.firstName || ''} ${deal.contact.lastName || ''}`.trim() || '—'
@@ -247,7 +250,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
                         label: (
                           <Space>
                             <MailOutlined />
-                            Email
+                            {t('Email')}
                           </Space>
                         ),
                         children: deal.contact.email
@@ -259,7 +262,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
                         label: (
                           <Space>
                             <PhoneOutlined />
-                            Telephone
+                            {t('Telephone')}
                           </Space>
                         ),
                         children: deal.contact?.phonePrimary || deal.contact?.phone
@@ -271,7 +274,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
                         label: (
                           <Space>
                             <EnvironmentOutlined />
-                            Zone
+                            {t('Zone')}
                           </Space>
                         ),
                         children: deal.locationZone
@@ -283,15 +286,15 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
                         label: (
                           <Space>
                             <DollarOutlined />
-                            Budget
+                            {t('Budget')}
                           </Space>
                         ),
                         children:
                           deal.budgetMin && deal.budgetMax
                             ? `${formatNumber(deal.budgetMin)} - ${formatNumber(deal.budgetMax)} FCFA`
                             : deal.budgetMax
-                              ? `Jusqu a ${formatNumber(deal.budgetMax)} FCFA`
-                              : `A partir de ${formatNumber(deal.budgetMin)} FCFA`
+                              ? t('Jusqu a {{value}} FCFA', { value: formatNumber(deal.budgetMax) })
+                              : t('A partir de {{value}} FCFA', { value: formatNumber(deal.budgetMin) })
                       }
                     : null,
                   {
@@ -299,15 +302,15 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
                     label: (
                       <Space>
                         <CalendarOutlined />
-                        Cree le
+                        {t('Cree le')}
                       </Space>
                     ),
-                    children: new Date(deal.createdAt).toLocaleDateString('fr-FR')
+                    children: new Date(deal.createdAt).toLocaleDateString(activeLocale())
                   },
                   {
                     key: 'updatedAt',
-                    label: 'Modifie le',
-                    children: new Date(deal.updatedAt).toLocaleDateString('fr-FR')
+                    label: t('Modifie le'),
+                    children: new Date(deal.updatedAt).toLocaleDateString(activeLocale())
                   }
                 ].filter(Boolean) as any
               }
@@ -317,7 +320,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
           <Col>
             <Space direction="vertical" size="small" style={{ minWidth: 220 }}>
               <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${tenantId}/crm/deals`)}>
-                Retour
+                {t('Retour')}
               </Button>
               <Select value={deal.stage} options={STAGE_OPTIONS} onChange={handleStageChange} loading={updatingStage} />
               <Button
@@ -325,7 +328,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
                 icon={<EditOutlined />}
                 onClick={() => navigate(`/tenant/${tenantId}/crm/deals/${dealId}/edit`)}
               >
-                Modifier
+                {t('Modifier')}
               </Button>
             </Space>
           </Col>
@@ -340,14 +343,14 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
           title={
             <Space>
               <HomeOutlined />
-              Type de bien et criteres
+              {t('Type de bien et criteres')}
             </Space>
           }
         >
           <Row gutter={[16, 16]}>
             {hasValue(criteria.propertyType) ? (
               <Col xs={24} md={12}>
-                <Text type="secondary">Type de bien recherche</Text>
+                <Text type="secondary">{t('Type de bien recherche')}</Text>
                 <div>
                   <Text strong>{getPropertyTypeLabel(String(criteria.propertyType))}</Text>
                 </div>
@@ -356,7 +359,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
 
             {hasValue(deal.expectedValue) ? (
               <Col xs={24} md={12}>
-                <Text type="secondary">Valeur estimee de la transaction</Text>
+                <Text type="secondary">{t('Valeur estimee de la transaction')}</Text>
                 <div>
                   <Text strong>{formatNumber(deal.expectedValue)} FCFA</Text>
                 </div>
@@ -383,7 +386,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
 
           {equipmentTags.length > 0 ? (
             <div style={{ marginTop: 12 }}>
-              <Text type="secondary">Equipements</Text>
+              <Text type="secondary">{t('Equipements')}</Text>
               <div style={{ marginTop: 8 }}>
                 <Space wrap>
                   {equipmentTags.map(item => (
@@ -401,7 +404,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
           title={
             <Space>
               <FileTextOutlined />
-              Description / Besoins specifiques
+              {t('Description / Besoins specifiques')}
             </Space>
           }
         >
@@ -413,18 +416,18 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
         title={
           <Space>
             <ThunderboltOutlined />
-            Chronologie des activites {deal.activities ? `(${deal.activities.length})` : ''}
+            {t('Chronologie des activites')} {deal.activities ? `(${deal.activities.length})` : ''}
           </Space>
         }
       >
         {deal.activities && deal.activities.length > 0 ? (
           <ActivityTimeline activities={deal.activities} tenantId={tenantId} />
         ) : (
-          <Empty description="Aucune activite" />
+          <Empty description={t('Aucune activite')} />
         )}
       </Card>
 
-      <Card title="Correspondance de proprietes">
+      <Card title={t('Correspondance de proprietes')}>
         <PropertyMatching tenantId={tenantId} dealId={dealId} />
       </Card>
     </Space>

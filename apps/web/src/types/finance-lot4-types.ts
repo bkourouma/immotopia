@@ -1,3 +1,4 @@
+import { t } from '../i18n/t';
 /**
  * Contrat gelé de la frontière réseau — lot 4, premier sous-lot : les baux de
  * terrain.
@@ -29,7 +30,7 @@ export type LandLeaseDocumentStatus = 'DRAFT' | 'VALIDATED';
 
 export const LAND_LEASE_STATUS_LABELS: Record<LandLeaseDocumentStatus, string> = {
   DRAFT: 'Brouillon',
-  VALIDATED: 'Validé'
+  VALIDATED: t('Validé')
 };
 
 // ---------------------------------------------------------------------------

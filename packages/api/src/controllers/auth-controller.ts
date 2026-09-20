@@ -8,10 +8,13 @@ import {
   getCurrentUser,
   logoutUser,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  setPreferredLanguage
 } from '../services/auth-service';
 import { RegisterRequest, LoginRequest } from '../types/auth-types';
 import { setAuthCookies, clearAuthCookies } from '../utils/auth-cookies';
+import { isLanguage } from '../i18n';
+import { BadRequestError, UnauthorizedError } from '../middleware/error-middleware';
 
 /**
  * Register a new user
@@ -154,6 +157,29 @@ export async function getMe(req: Request, res: Response): Promise<void> {
     const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
     res.status(400).json({ success: false, message: errorMessage });
   }
+}
+
+/**
+ * Enregistre la langue preferee du compte.
+ * PATCH /api/auth/me/language
+ *
+ * Cette preference ne sert PAS a traduire les reponses de l'API : le navigateur
+ * dit deja sa langue a chaque appel (`Accept-Language`). Elle sert a ce que le
+ * navigateur ne peut pas faire — ecrire un e-mail dans la bonne langue quand
+ * personne n'est connecte — et a retrouver son choix depuis un autre appareil.
+ */
+export async function updateMyLanguage(req: Request, res: Response): Promise<void> {
+  if (!req.user?.userId) {
+    throw new UnauthorizedError();
+  }
+
+  const { language } = req.body ?? {};
+  if (!isLanguage(language)) {
+    throw new BadRequestError('Langue non prise en charge.');
+  }
+
+  const user = await setPreferredLanguage(req.user.userId, language);
+  res.status(200).json({ success: true, user });
 }
 
 /**

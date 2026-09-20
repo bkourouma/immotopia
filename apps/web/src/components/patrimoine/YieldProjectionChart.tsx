@@ -1,17 +1,10 @@
 ﻿import React, { useMemo } from 'react';
 import { Card } from 'antd';
-import {
-  CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis
-} from 'recharts';
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { YieldProjectionPoint } from '../../types/patrimoine-types';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 interface Props {
   data: YieldProjectionPoint[];
 }
@@ -21,7 +14,7 @@ export const YieldProjectionChart: React.FC<Props> = ({ data }) => {
   // of values; accept that shape and reduce it to a single number.
   const formatNumber = (value: unknown): string => {
     const raw = Array.isArray(value) ? value[0] : value;
-    return Number(raw ?? 0).toLocaleString('fr-FR');
+    return Number(raw ?? 0).toLocaleString(activeLocale());
   };
 
   const yAxisWidth = useMemo(() => {
@@ -53,7 +46,7 @@ export const YieldProjectionChart: React.FC<Props> = ({ data }) => {
   }, [data]);
 
   return (
-    <Card title="Projection de rendement">
+    <Card title={t('Projection de rendement')}>
       <div style={{ width: '100%', height: 360 }}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 8, right: 20, left: 12, bottom: 8 }}>

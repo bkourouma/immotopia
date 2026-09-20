@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Row, Col, Typography, Alert, Spin, Statistic, Space } from 'antd';
 import { BankOutlined, TeamOutlined, CreditCardOutlined, BarChartOutlined } from '@ant-design/icons';
 import { getGlobalStatistics, GlobalStatistics } from '../../services/statistics-service';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -22,10 +23,10 @@ export const Statistics: React.FC = () => {
       if (response.success) {
         setStats(response.data);
       } else {
-        setError('Erreur lors du chargement des statistiques');
+        setError(t('Erreur lors du chargement des statistiques'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des statistiques');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des statistiques'));
     } finally {
       setLoading(false);
     }
@@ -44,14 +45,14 @@ export const Statistics: React.FC = () => {
   if (error || !stats) {
     return (
       <>
-        <Alert message="Erreur" description={error || 'Erreur lors du chargement'} type="error" showIcon />
+        <Alert message={t('Erreur')} description={error || t('Erreur lors du chargement')} type="error" showIcon />
       </>
     );
   }
 
   const statCards = [
     {
-      title: 'Total agences',
+      title: t('Total agences'),
       value: stats.totalTenants,
       icon: <BankOutlined style={{ fontSize: 24, color: '#1677ff' }} />,
       footer: (
@@ -59,7 +60,7 @@ export const Statistics: React.FC = () => {
           <Text type="success">{stats.activeTenants} actifs</Text>
           {stats.suspendedTenants > 0 && (
             <>
-              <Text type="danger" style={{ marginLeft: 8 }}>
+              <Text type="danger" style={{ marginInlineStart: 8 }}>
                 {stats.suspendedTenants} suspendus
               </Text>
             </>
@@ -68,13 +69,13 @@ export const Statistics: React.FC = () => {
       )
     },
     {
-      title: 'Collaborateurs',
+      title: t('Collaborateurs'),
       value: stats.totalCollaborators,
       icon: <TeamOutlined style={{ fontSize: 24, color: '#52c41a' }} />,
       footer: <Text type="success">{stats.activeCollaborators} actifs</Text>
     },
     {
-      title: 'Abonnements',
+      title: t('Abonnements'),
       value: stats.totalSubscriptions,
       icon: <CreditCardOutlined style={{ fontSize: 24, color: '#722ed1' }} />,
       footer: (
@@ -82,8 +83,8 @@ export const Statistics: React.FC = () => {
           <Text type="success">{stats.activeSubscriptions} actifs</Text>
           {stats.cancelledSubscriptions > 0 && (
             <>
-              <Text type="danger" style={{ marginLeft: 8 }}>
-                {stats.cancelledSubscriptions} annulés
+              <Text type="danger" style={{ marginInlineStart: 8 }}>
+                {stats.cancelledSubscriptions} {t('annulés')}
               </Text>
             </>
           )}
@@ -91,7 +92,7 @@ export const Statistics: React.FC = () => {
       )
     },
     {
-      title: 'Modules Activés',
+      title: t('Modules Activés'),
       value: Object.keys(stats.moduleActivations).length,
       icon: <BarChartOutlined style={{ fontSize: 24, color: '#faad14' }} />,
       footer: (
@@ -110,7 +111,7 @@ export const Statistics: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
           <Title level={3} style={{ margin: 0 }}>
-            Statistiques Globales
+            {t('Statistiques Globales')}
           </Title>
           <Text type="secondary">Vue d&apos;ensemble de la plateforme</Text>
         </div>
@@ -132,7 +133,7 @@ export const Statistics: React.FC = () => {
         </Row>
 
         {Object.keys(stats.moduleActivations).length > 0 && (
-          <Card title="Activations par Module">
+          <Card title={t('Activations par Module')}>
             <Row gutter={[16, 16]}>
               {Object.entries(stats.moduleActivations).map(([moduleKey, count]) => (
                 <Col xs={24} sm={12} key={moduleKey}>

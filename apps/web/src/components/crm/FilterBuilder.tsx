@@ -6,6 +6,7 @@ import { listMembers } from '../../services/membership-service';
 import { getAllCommunes } from '../../services/geographic-service';
 import type { ContactSearchFilters } from '../../services/contact-search.service';
 import type { CrmTag } from '../../types/crm-types';
+import { t as translate } from '../../i18n/t';
 
 interface FilterBuilderProps {
   initialFilters: Partial<ContactSearchFilters>;
@@ -14,34 +15,34 @@ interface FilterBuilderProps {
 }
 
 const STATUS_OPTIONS = [
-  { value: 'LEAD', label: 'Lead' },
-  { value: 'ACTIVE_CLIENT', label: 'Client actif' },
-  { value: 'ARCHIVED', label: 'Archivé' }
+  { value: 'LEAD', label: translate('Lead') },
+  { value: 'ACTIVE_CLIENT', label: translate('Client actif') },
+  { value: 'ARCHIVED', label: translate('Archivé') }
 ];
 
 const TYPE_OPTIONS = [
-  { value: 'PERSON', label: 'Personne' },
-  { value: 'COMPANY', label: 'Société' }
+  { value: 'PERSON', label: translate('Personne') },
+  { value: 'COMPANY', label: translate('Société') }
 ];
 
 const MATURITY_OPTIONS = [
-  { value: 'COLD', label: 'Froid' },
-  { value: 'WARM', label: 'Tiède' },
-  { value: 'HOT', label: 'Chaud' }
+  { value: 'COLD', label: translate('Froid') },
+  { value: 'WARM', label: translate('Tiède') },
+  { value: 'HOT', label: translate('Chaud') }
 ];
 
 const DEAL_TYPE_OPTIONS = [
-  { value: 'ACHAT', label: 'Achat' },
-  { value: 'LOCATION', label: 'Location' },
-  { value: 'VENTE', label: 'Vente' },
-  { value: 'GESTION', label: 'Gestion' },
-  { value: 'MANDAT', label: 'Mandat' }
+  { value: 'ACHAT', label: translate('Achat') },
+  { value: 'LOCATION', label: translate('Location') },
+  { value: 'VENTE', label: translate('Vente') },
+  { value: 'GESTION', label: translate('Gestion') },
+  { value: 'MANDAT', label: translate('Mandat') }
 ];
 
 const BORROWING_OPTIONS = [
-  { value: 'YES', label: 'Oui' },
-  { value: 'NO', label: 'Non' },
-  { value: 'UNKNOWN', label: 'Inconnu' }
+  { value: 'YES', label: translate('Oui') },
+  { value: 'NO', label: translate('Non') },
+  { value: 'UNKNOWN', label: translate('Inconnu') }
 ];
 
 export function FilterBuilder({ initialFilters, onApply, onCancel }: FilterBuilderProps) {
@@ -54,18 +55,22 @@ export function FilterBuilder({ initialFilters, onApply, onCancel }: FilterBuild
   useEffect(() => {
     if (!tenantId) return;
     listTags(tenantId)
-      .then((r) => setTags(r.data || []))
+      .then(r => setTags(r.data || []))
       .catch(() => {});
     listMembers(tenantId)
-      .then((r) => setUsers((r.data?.members || []).map((m) => ({ id: m.userId, fullName: m.user?.fullName ?? m.user?.email ?? null }))))
+      .then(r =>
+        setUsers(
+          (r.data?.members || []).map(m => ({ id: m.userId, fullName: m.user?.fullName ?? m.user?.email ?? null }))
+        )
+      )
       .catch(() => {});
     getAllCommunes()
-      .then((list) => setCommunes(list.map((c) => ({ id: c.communeId, name: c.displayName || c.commune }))))
+      .then(list => setCommunes(list.map(c => ({ id: c.communeId, name: c.displayName || c.commune }))))
       .catch(() => {});
   }, [tenantId]);
 
   const update = (key: keyof ContactSearchFilters, value: unknown) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
+    setFilters(prev => ({ ...prev, [key]: value }));
   };
 
   const handleApply = () => {
@@ -75,210 +80,206 @@ export function FilterBuilder({ initialFilters, onApply, onCancel }: FilterBuild
   return (
     <div>
       <Collapse defaultActiveKey={['identity', 'status', 'location']}>
-        <Collapse.Panel header="Identité et contact" key="identity">
+        <Collapse.Panel header={translate('Identité et contact')} key="identity">
           <Space direction="vertical" style={{ width: '100%' }} size="small">
             <Input
-              placeholder="Prénom"
+              placeholder={translate('Prénom')}
               value={filters.firstName ?? ''}
-              onChange={(e) => update('firstName', e.target.value || undefined)}
+              onChange={e => update('firstName', e.target.value || undefined)}
             />
             <Input
-              placeholder="Nom"
+              placeholder={translate('Nom')}
               value={filters.lastName ?? ''}
-              onChange={(e) => update('lastName', e.target.value || undefined)}
+              onChange={e => update('lastName', e.target.value || undefined)}
             />
             <Input
-              placeholder="Email"
+              placeholder={translate('Email')}
               value={filters.email ?? ''}
-              onChange={(e) => update('email', e.target.value || undefined)}
+              onChange={e => update('email', e.target.value || undefined)}
             />
             <Input
-              placeholder="Téléphone"
+              placeholder={translate('Téléphone')}
               value={filters.phone ?? ''}
-              onChange={(e) => update('phone', e.target.value || undefined)}
+              onChange={e => update('phone', e.target.value || undefined)}
             />
           </Space>
         </Collapse.Panel>
 
-        <Collapse.Panel header="Localisation" key="location">
+        <Collapse.Panel header={translate('Localisation')} key="location">
           <Space direction="vertical" style={{ width: '100%' }} size="small">
             <Select
               mode="multiple"
-              placeholder="Communes"
+              placeholder={translate('Communes')}
               style={{ width: '100%' }}
               value={filters.communeIds ?? []}
-              onChange={(v) => update('communeIds', v)}
-              options={communes.map((c) => ({ value: c.id, label: c.name }))}
-              filterOption={(input, opt) =>
-                (opt?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())
-              }
+              onChange={v => update('communeIds', v)}
+              options={communes.map(c => ({ value: c.id, label: c.name }))}
+              filterOption={(input, opt) => (opt?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())}
               showSearch
             />
             <Input
-              placeholder="Ville"
+              placeholder={translate('Ville')}
               value={filters.city ?? ''}
-              onChange={(e) => update('city', e.target.value || undefined)}
+              onChange={e => update('city', e.target.value || undefined)}
             />
             <Input
-              placeholder="Quartier"
+              placeholder={translate('Quartier')}
               value={filters.district ?? ''}
-              onChange={(e) => update('district', e.target.value || undefined)}
+              onChange={e => update('district', e.target.value || undefined)}
             />
           </Space>
         </Collapse.Panel>
 
-        <Collapse.Panel header="Statut et type" key="status">
+        <Collapse.Panel header={translate('Statut et type')} key="status">
           <Space direction="vertical" style={{ width: '100%' }} size="small">
             <div>
-              <div style={{ marginBottom: 4 }}>Statuts</div>
+              <div style={{ marginBottom: 4 }}>{translate('Statuts')}</div>
               <Checkbox.Group
                 value={filters.statuses ?? []}
-                onChange={(v) => update('statuses', v as string[])}
+                onChange={v => update('statuses', v as string[])}
                 options={STATUS_OPTIONS}
               />
             </div>
             <div>
-              <div style={{ marginBottom: 4 }}>Types</div>
+              <div style={{ marginBottom: 4 }}>{translate('Types')}</div>
               <Checkbox.Group
                 value={filters.contactTypes ?? []}
-                onChange={(v) => update('contactTypes', v as string[])}
+                onChange={v => update('contactTypes', v as string[])}
                 options={TYPE_OPTIONS}
               />
             </div>
             <div>
-              <div style={{ marginBottom: 4 }}>Maturité</div>
+              <div style={{ marginBottom: 4 }}>{translate('Maturité')}</div>
               <Checkbox.Group
                 value={filters.maturityLevels ?? []}
-                onChange={(v) => update('maturityLevels', v as string[])}
+                onChange={v => update('maturityLevels', v as string[])}
                 options={MATURITY_OPTIONS}
               />
             </div>
           </Space>
         </Collapse.Panel>
 
-        <Collapse.Panel header="Projet immobilier" key="project">
+        <Collapse.Panel header={translate('Projet immobilier')} key="project">
           <Space direction="vertical" style={{ width: '100%' }} size="small">
             <div>
-              <div style={{ marginBottom: 4 }}>Types de deals</div>
+              <div style={{ marginBottom: 4 }}>{translate('Types de deals')}</div>
               <Checkbox.Group
                 value={filters.dealTypes ?? []}
-                onChange={(v) => update('dealTypes', v as string[])}
+                onChange={v => update('dealTypes', v as string[])}
                 options={DEAL_TYPE_OPTIONS}
               />
             </div>
             <Input
               type="number"
-              placeholder="Budget min (FCFA)"
+              placeholder={translate('Budget min (FCFA)')}
               value={filters.budgetMin ?? ''}
-              onChange={(e) => update('budgetMin', e.target.value ? Number(e.target.value) : undefined)}
+              onChange={e => update('budgetMin', e.target.value ? Number(e.target.value) : undefined)}
             />
             <Input
               type="number"
-              placeholder="Budget max (FCFA)"
+              placeholder={translate('Budget max (FCFA)')}
               value={filters.budgetMax ?? ''}
-              onChange={(e) => update('budgetMax', e.target.value ? Number(e.target.value) : undefined)}
+              onChange={e => update('budgetMax', e.target.value ? Number(e.target.value) : undefined)}
             />
             <Select
               mode="multiple"
-              placeholder="Zones cibles (communes recherchées)"
+              placeholder={translate('Zones cibles (communes recherchées)')}
               style={{ width: '100%' }}
               value={filters.targetCommuneIds ?? []}
-              onChange={(v) => update('targetCommuneIds', v)}
-              options={communes.map((c) => ({ value: c.id, label: c.name }))}
-              filterOption={(input, opt) =>
-                (opt?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())
-              }
+              onChange={v => update('targetCommuneIds', v)}
+              options={communes.map(c => ({ value: c.id, label: c.name }))}
+              filterOption={(input, opt) => (opt?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())}
               showSearch
             />
           </Space>
         </Collapse.Panel>
 
-        <Collapse.Panel header="Tags et assignation" key="tags">
+        <Collapse.Panel header={translate('Tags et assignation')} key="tags">
           <Space direction="vertical" style={{ width: '100%' }} size="small">
             <Select
               mode="multiple"
-              placeholder="Tags"
+              placeholder={translate('Tags')}
               style={{ width: '100%' }}
               value={filters.tagIds ?? []}
-              onChange={(v) => update('tagIds', v)}
-              options={tags.map((t) => ({ value: t.id, label: t.name }))}
+              onChange={v => update('tagIds', v)}
+              options={tags.map(t => ({ value: t.id, label: t.name }))}
             />
             <Checkbox
               checked={filters.hasAllTags === true}
-              onChange={(e) => update('hasAllTags', e.target.checked || undefined)}
+              onChange={e => update('hasAllTags', e.target.checked || undefined)}
             >
-              Doit avoir TOUS les tags (sinon au moins un)
+              {translate('Doit avoir TOUS les tags (sinon au moins un)')}
             </Checkbox>
             <Select
               mode="multiple"
-              placeholder="Assigné à"
+              placeholder={translate('Assigné à')}
               style={{ width: '100%' }}
               value={filters.assignedToUserIds ?? []}
-              onChange={(v) => update('assignedToUserIds', v)}
-              options={users.map((u) => ({ value: u.id, label: u.fullName || u.id }))}
+              onChange={v => update('assignedToUserIds', v)}
+              options={users.map(u => ({ value: u.id, label: u.fullName || u.id }))}
             />
             <Checkbox
               checked={filters.unassigned === true}
-              onChange={(e) => update('unassigned', e.target.checked || undefined)}
+              onChange={e => update('unassigned', e.target.checked || undefined)}
             >
-              Inclure les contacts non assignés
+              {translate('Inclure les contacts non assignés')}
             </Checkbox>
           </Space>
         </Collapse.Panel>
 
-        <Collapse.Panel header="Informations financières" key="financial">
+        <Collapse.Panel header={translate('Informations financières')} key="financial">
           <Space direction="vertical" style={{ width: '100%' }} size="small">
             <Input
               type="number"
-              placeholder="Revenu min (FCFA)"
+              placeholder={translate('Revenu min (FCFA)')}
               value={filters.incomeMin ?? ''}
-              onChange={(e) => update('incomeMin', e.target.value ? Number(e.target.value) : undefined)}
+              onChange={e => update('incomeMin', e.target.value ? Number(e.target.value) : undefined)}
             />
             <Input
               type="number"
-              placeholder="Revenu max (FCFA)"
+              placeholder={translate('Revenu max (FCFA)')}
               value={filters.incomeMax ?? ''}
-              onChange={(e) => update('incomeMax', e.target.value ? Number(e.target.value) : undefined)}
+              onChange={e => update('incomeMax', e.target.value ? Number(e.target.value) : undefined)}
             />
             <div>
               <div style={{ marginBottom: 4 }}>Capacité d&apos;emprunt</div>
               <Checkbox.Group
                 value={filters.borrowingCapacities ?? []}
-                onChange={(v) => update('borrowingCapacities', v as string[])}
+                onChange={v => update('borrowingCapacities', v as string[])}
                 options={BORROWING_OPTIONS}
               />
             </div>
           </Space>
         </Collapse.Panel>
 
-        <Collapse.Panel header="Consentements" key="consents">
+        <Collapse.Panel header={translate('Consentements')} key="consents">
           <Space direction="vertical">
             <Checkbox
               checked={filters.consentEmail === true}
-              onChange={(e) => update('consentEmail', e.target.checked || undefined)}
+              onChange={e => update('consentEmail', e.target.checked || undefined)}
             >
-              Consentement Email
+              {translate('Consentement Email')}
             </Checkbox>
             <Checkbox
               checked={filters.consentWhatsapp === true}
-              onChange={(e) => update('consentWhatsapp', e.target.checked || undefined)}
+              onChange={e => update('consentWhatsapp', e.target.checked || undefined)}
             >
-              Consentement WhatsApp
+              {translate('Consentement WhatsApp')}
             </Checkbox>
             <Checkbox
               checked={filters.consentMarketing === true}
-              onChange={(e) => update('consentMarketing', e.target.checked || undefined)}
+              onChange={e => update('consentMarketing', e.target.checked || undefined)}
             >
-              Consentement Marketing
+              {translate('Consentement Marketing')}
             </Checkbox>
           </Space>
         </Collapse.Panel>
       </Collapse>
 
       <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-        <Button onClick={onCancel}>Annuler</Button>
+        <Button onClick={onCancel}>{translate('Annuler')}</Button>
         <Button type="primary" onClick={handleApply}>
-          Appliquer les filtres
+          {translate('Appliquer les filtres')}
         </Button>
       </div>
     </div>

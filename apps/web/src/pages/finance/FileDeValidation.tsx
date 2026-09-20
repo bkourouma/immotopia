@@ -23,7 +23,9 @@ import {
   FilterSheet,
   useConfirmAction
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
 
 /**
@@ -90,7 +92,7 @@ function libelleNature(type: VoidableDocumentType): string {
 }
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 function accord(n: number, singulier: string, pluriel: string): string {
@@ -111,7 +113,7 @@ function validerPiece(tenantId: string, doc: PendingDocument) {
     case 'CASH_VOUCHER':
       return validateCashVoucher(tenantId, doc.documentId);
     default:
-      return Promise.reject(new Error('Nature de pièce inconnue.'));
+      return Promise.reject(new Error(t('Nature de pièce inconnue.')));
   }
 }
 
@@ -218,9 +220,9 @@ export const FileDeValidation: React.FC = () => {
         next.delete(cle(doc));
         return next;
       });
-      message.success(`« ${doc.label} » a été validée.`);
+      message.success(t('« {{label}} » a été validée.', { label: doc.label }));
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'La validation a échoué.');
+      message.error(err?.response?.data?.message || t('La validation a échoué.'));
     } finally {
       setEnCours(null);
     }
@@ -228,10 +230,11 @@ export const FileDeValidation: React.FC = () => {
 
   const demanderValidation = (doc: PendingDocument) => {
     confirmAction({
-      title: `Valider « ${doc.label} » ?`,
-      description:
-        "Cette validation est irréversible : la pièce ne sera plus modifiable ensuite. Pour la corriger, il faudra l'annuler par une pièce liée.",
-      okText: 'Valider',
+      title: t('Valider « {{label}} » ?', { label: doc.label }),
+      description: t(
+        "Cette validation est irréversible : la pièce ne sera plus modifiable ensuite. Pour la corriger, il faudra l'annuler par une pièce liée."
+      ),
+      okText: t('Valider'),
       onConfirm: () => validerUnePiece(doc)
     });
   };
@@ -248,7 +251,7 @@ export const FileDeValidation: React.FC = () => {
       if (resultat.status === 'fulfilled') {
         succes.push(doc.label);
       } else {
-        const raison = (resultat.reason as any)?.response?.data?.message || 'Échec de la validation.';
+        const raison = (resultat.reason as any)?.response?.data?.message || t('Échec de la validation.');
         echecs.push({ label: doc.label, raison });
       }
     });
@@ -258,10 +261,10 @@ export const FileDeValidation: React.FC = () => {
     await invaliderLaFile();
 
     if (echecs.length === 0) {
-      message.success(`${accord(succes.length, 'pièce validée', 'pièces validées')}.`);
+      message.success(`${accord(succes.length, t('pièce validée'), t('pièces validées'))}.`);
     } else {
       message.warning(
-        `${accord(succes.length, 'pièce validée', 'pièces validées')}, ${accord(echecs.length, 'échec', 'échecs')}.`
+        `${accord(succes.length, t('pièce validée'), t('pièces validées'))}, ${accord(echecs.length, t('échec'), t('échecs'))}.`
       );
     }
   };
@@ -271,24 +274,25 @@ export const FileDeValidation: React.FC = () => {
     confirmAction({
       title:
         piecesSelectionnees.length > 1
-          ? `Valider les ${piecesSelectionnees.length} pièces sélectionnées ?`
-          : 'Valider la pièce sélectionnée ?',
-      description:
-        'Cette validation est irréversible : les pièces validées ne seront plus modifiables ensuite. Pour les corriger, il faudra les annuler une à une.',
-      okText: 'Valider',
+          ? t('Valider les {{length}} pièces sélectionnées ?', { length: piecesSelectionnees.length })
+          : t('Valider la pièce sélectionnée ?'),
+      description: t(
+        'Cette validation est irréversible : les pièces validées ne seront plus modifiables ensuite. Pour les corriger, il faudra les annuler une à une.'
+      ),
+      okText: t('Valider'),
       onConfirm: validerLot
     });
   };
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const colonnes: ColumnsType<PendingDocument> = [
     {
       title: (
         <Checkbox
-          aria-label="Tout sélectionner"
+          aria-label={t('Tout sélectionner')}
           checked={toutSelectionne}
           indeterminate={selectionPartielle}
           onChange={basculerTout}
@@ -298,29 +302,29 @@ export const FileDeValidation: React.FC = () => {
       width: 48,
       render: (_, doc) => (
         <Checkbox
-          aria-label={`Sélectionner ${doc.label}`}
+          aria-label={t('Sélectionner {{label}}', { label: doc.label })}
           checked={selection.has(cle(doc))}
           onChange={() => basculerUn(doc)}
         />
       )
     },
-    { title: 'Nature', key: 'nature', render: (_, doc) => libelleNature(doc.documentType) },
-    { title: 'Pièce', key: 'piece', render: (_, doc) => doc.label },
+    { title: t('Nature'), key: 'nature', render: (_, doc) => libelleNature(doc.documentType) },
+    { title: t('Pièce'), key: 'piece', render: (_, doc) => doc.label },
     {
-      title: 'Montant',
+      title: t('Montant'),
       key: 'montant',
-      align: 'right',
+      align: 'end',
       render: (_, doc) => <MoneyValue value={doc.amount} />
     },
-    { title: 'Saisie le', key: 'date', render: (_, doc) => dateCourte(doc.createdAt) },
-    { title: 'Saisi par', key: 'saisisseur', render: (_, doc) => doc.createdByLabel },
+    { title: t('Saisie le'), key: 'date', render: (_, doc) => dateCourte(doc.createdAt) },
+    { title: t('Saisi par'), key: 'saisisseur', render: (_, doc) => doc.createdByLabel },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, doc) => (
         <Button type="link" loading={enCours === cle(doc)} onClick={() => demanderValidation(doc)}>
-          Valider
+          {t('Valider')}
         </Button>
       )
     }
@@ -329,19 +333,23 @@ export const FileDeValidation: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="File de validation"
+        title={t('File de validation')}
         subtitle={
-          donneesBrutes.length > 0 ? `${accord(donneesBrutes.length, 'pièce', 'pièces')} en attente` : undefined
+          donneesBrutes.length > 0 ? `${accord(donneesBrutes.length, t('pièce'), t('pièces'))} en attente` : undefined
         }
       />
 
-      <FilterSheet activeCount={Object.keys(list.filters).length} onClear={list.clearFilters} title="Filtrer la file">
+      <FilterSheet
+        activeCount={Object.keys(list.filters).length}
+        onClear={list.clearFilters}
+        title={t('Filtrer la file')}
+      >
         <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-validation-saisisseur">Saisi par</label>
+          <label htmlFor="filtre-validation-saisisseur">{t('Saisi par')}</label>
           <Select
             id="filtre-validation-saisisseur"
             style={{ width: '100%' }}
-            placeholder="Tous les saisisseurs"
+            placeholder={t('Tous les saisisseurs')}
             allowClear
             showSearch
             optionFilterProp="label"
@@ -351,11 +359,11 @@ export const FileDeValidation: React.FC = () => {
           />
         </div>
         <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-validation-nature">Nature</label>
+          <label htmlFor="filtre-validation-nature">{t('Nature')}</label>
           <Select
             id="filtre-validation-nature"
             style={{ width: '100%' }}
-            placeholder="Toutes les natures"
+            placeholder={t('Toutes les natures')}
             allowClear
             value={list.filters.nature || undefined}
             onChange={value => list.setFilters({ nature: value })}
@@ -392,16 +400,17 @@ export const FileDeValidation: React.FC = () => {
           phrase, pas répétée en rempart sur chaque ligne — la confirmation
           par pièce la redit au moment décisif. */}
       <Text type="secondary" style={{ display: 'block', marginBottom: 'var(--space-4)' }}>
-        Valider une pièce est définitif : une fois validée, elle ne se modifie plus. Pour la corriger, il faut l'annuler
-        par une pièce liée.
+        {t(
+          "Valider une pièce est définitif : une fois validée, elle ne se modifie plus. Pour la corriger, il faut l'annuler par une pièce liée."
+        )}
       </Text>
 
       {selection.size > 0 && (
         <Card style={{ marginBottom: 'var(--space-4)' }}>
           <Space wrap align="center" style={{ justifyContent: 'space-between', width: '100%' }}>
-            <Text>{accord(piecesSelectionnees.length, 'pièce sélectionnée', 'pièces sélectionnées')}</Text>
+            <Text>{accord(piecesSelectionnees.length, t('pièce sélectionnée'), t('pièces sélectionnées'))}</Text>
             <Button type="primary" onClick={demanderValidationLot}>
-              Valider la sélection
+              {t('Valider la sélection')}
             </Button>
           </Space>
         </Card>
@@ -419,26 +428,32 @@ export const FileDeValidation: React.FC = () => {
             }}
           >
             <Title level={5} style={{ margin: 0 }}>
-              Compte rendu de la validation en lot
+              {t('Compte rendu de la validation en lot')}
             </Title>
-            <Button type="text" onClick={() => setRapportLot(null)} aria-label="Fermer le compte rendu">
-              Fermer
+            <Button type="text" onClick={() => setRapportLot(null)} aria-label={t('Fermer le compte rendu')}>
+              {t('Fermer')}
             </Button>
           </div>
           <Text type="secondary" style={{ display: 'block', marginBottom: 'var(--space-3)' }}>
-            {accord(rapportLot.succes.length, 'pièce validée', 'pièces validées')}
-            {rapportLot.echecs.length > 0 ? `, ${accord(rapportLot.echecs.length, 'échec', 'échecs')}.` : '.'}
+            {accord(rapportLot.succes.length, t('pièce validée'), t('pièces validées'))}
+            {rapportLot.echecs.length > 0 ? `, ${accord(rapportLot.echecs.length, t('échec'), t('échecs'))}.` : '.'}
           </Text>
           {rapportLot.succes.length > 0 && (
-            <ul style={{ margin: 0, paddingLeft: 'var(--space-5)' }}>
+            <ul style={{ margin: 0, paddingInlineStart: 'var(--space-5)' }}>
               {rapportLot.succes.map(label => (
-                <li key={label}>{label} — validée</li>
+                <li key={label}>
+                  {label} {t('— validée')}
+                </li>
               ))}
             </ul>
           )}
           {rapportLot.echecs.length > 0 && (
             <ul
-              style={{ margin: 'var(--space-2) 0 0', paddingLeft: 'var(--space-5)', color: 'var(--color-error-text)' }}
+              style={{
+                margin: 'var(--space-2) 0 0',
+                paddingInlineStart: 'var(--space-5)',
+                color: 'var(--color-error-text)'
+              }}
             >
               {rapportLot.echecs.map(echec => (
                 <li key={echec.label}>
@@ -461,22 +476,22 @@ export const FileDeValidation: React.FC = () => {
         onPageChange={() => {}}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger la file de validation.' : null}
+        error={erreurRequete ? t('Impossible de charger la file de validation.') : null}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}
         // Une file vide est une bonne nouvelle : elle se présente comme
         // telle, jamais comme une panne ou une absence à corriger.
-        emptyDescription="Bonne nouvelle : aucune pièce n'attend de validation, tout est à jour."
+        emptyDescription={t("Bonne nouvelle : aucune pièce n'attend de validation, tout est à jour.")}
         columns={colonnes}
         rowKey={cle}
-        aria-label="File de validation"
+        aria-label={t('File de validation')}
         renderCard={doc => (
           <DataCard
             title={
               <Space size="small" align="start">
                 <Checkbox
-                  aria-label={`Sélectionner ${doc.label}`}
+                  aria-label={t('Sélectionner {{label}}', { label: doc.label })}
                   checked={selection.has(cle(doc))}
                   onChange={() => basculerUn(doc)}
                 />

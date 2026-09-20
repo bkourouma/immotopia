@@ -7,30 +7,32 @@ import { listContacts } from '../../../services/crm-service';
 import { listProperties } from '../../../services/property-service';
 import type { OwnerStatement } from '../../../types/patrimoine-types';
 import { useAuth } from '../../../hooks/useAuth';
+import { t } from '../../../i18n/t';
 
+import { activeLocale } from '../../../i18n/format';
 const { Title, Text } = Typography;
 
 function statementStatusLabel(status: OwnerStatement['status']): string {
   if (status === 'DRAFT') return 'Brouillon';
-  if (status === 'SENT') return 'Envoyé';
-  if (status === 'PAID') return 'Payé';
+  if (status === 'SENT') return t('Envoyé');
+  if (status === 'PAID') return t('Payé');
   return status;
 }
 
 function sendReasonLabel(reason?: string): string {
   if (reason === 'NO_EMAIL') {
-    return "Le propriétaire n'a pas d'email valide.";
+    return t("Le propriétaire n'a pas d'email valide.");
   }
   if (reason === 'NO_EMAIL_OR_CONSENT') {
-    return "Le propriétaire n'a pas d'email valide ou son consentement email est désactivé.";
+    return t("Le propriétaire n'a pas d'email valide ou son consentement email est désactivé.");
   }
   if (reason === 'EVENT_DISABLED') {
-    return "L'envoi est désactivé pour ce type de notification.";
+    return t("L'envoi est désactivé pour ce type de notification.");
   }
   if (reason === 'STATEMENT_NOT_FOUND') {
-    return 'Le relevé est introuvable.';
+    return t('Le relevé est introuvable.');
   }
-  return 'Relevé non envoyé.';
+  return t('Relevé non envoyé.');
 }
 
 export const OwnerStatementsPage: React.FC = () => {
@@ -71,7 +73,7 @@ export const OwnerStatementsPage: React.FC = () => {
         }))
       );
     } catch (e: any) {
-      setError(e?.response?.data?.error || 'Erreur de chargement des relevés');
+      setError(e?.response?.data?.error || t('Erreur de chargement des relevés'));
     } finally {
       setLoading(false);
     }
@@ -86,10 +88,10 @@ export const OwnerStatementsPage: React.FC = () => {
     setCreateLoading(true);
     try {
       await createOwnerStatement(effectiveTenantId, payload);
-      message.success('Relevé généré');
+      message.success(t('Relevé généré'));
       await loadData();
     } catch (e: any) {
-      message.error(e?.response?.data?.error || 'Échec de génération du relevé');
+      message.error(e?.response?.data?.error || t('Échec de génération du relevé'));
     } finally {
       setCreateLoading(false);
     }
@@ -101,13 +103,13 @@ export const OwnerStatementsPage: React.FC = () => {
     try {
       const result = await sendOwnerStatement(effectiveTenantId, statementId);
       if (result.sent) {
-        message.success(result.whatsappSent ? 'Relevé envoyé (email + WhatsApp)' : 'Relevé envoyé (email)');
+        message.success(result.whatsappSent ? t('Relevé envoyé (email + WhatsApp)') : t('Relevé envoyé (email)'));
       } else {
         message.warning(sendReasonLabel(result.reason));
       }
       await loadData();
     } catch (e: any) {
-      message.error(e?.response?.data?.error || "Échec de l'envoi du relevé");
+      message.error(e?.response?.data?.error || t("Échec de l'envoi du relevé"));
     } finally {
       setSendLoadingId(null);
     }
@@ -118,9 +120,9 @@ export const OwnerStatementsPage: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
           <Title level={2} style={{ marginBottom: 0 }}>
-            Relevés de gérance
+            {t('Relevés de gérance')}
           </Title>
-          <Text type="secondary">Génération, suivi et envoi des relevés propriétaires</Text>
+          <Text type="secondary">{t('Génération, suivi et envoi des relevés propriétaires')}</Text>
         </div>
 
         {error ? <Alert type="error" showIcon message={error} /> : null}
@@ -131,29 +133,29 @@ export const OwnerStatementsPage: React.FC = () => {
           onGenerate={handleGenerate}
         />
 
-        <Card title="Historique des relevés">
+        <Card title={t('Historique des relevés')}>
           <Table
             scroll={{ x: 'max-content' }}
             loading={loading}
             rowKey="id"
             dataSource={statements}
             columns={[
-              { title: 'Période', dataIndex: 'period' },
+              { title: t('Période'), dataIndex: 'period' },
               {
-                title: 'Total revenus',
+                title: t('Total revenus'),
                 dataIndex: 'totalRevenue',
-                render: (value: number) => Number(value).toLocaleString('fr-FR')
+                render: (value: number) => Number(value).toLocaleString(activeLocale())
               },
               {
-                title: 'Total charges',
+                title: t('Total charges'),
                 dataIndex: 'totalExpenses',
-                render: (value: number) => Number(value).toLocaleString('fr-FR')
+                render: (value: number) => Number(value).toLocaleString(activeLocale())
               },
               {
                 title: 'Net',
                 dataIndex: 'netAmount',
                 render: (value: number, record: OwnerStatement) =>
-                  `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
+                  `${Number(value).toLocaleString(activeLocale())} ${record.currency}`
               },
               {
                 title: 'Statut',
@@ -166,10 +168,10 @@ export const OwnerStatementsPage: React.FC = () => {
                 render: (_: unknown, record: OwnerStatement) => (
                   <Space>
                     <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/patrimoine/statements/${record.id}`)}>
-                      Détails
+                      {t('Détails')}
                     </Button>
                     <Button loading={sendLoadingId === record.id} onClick={() => handleSend(record.id)}>
-                      Envoyer
+                      {t('Envoyer')}
                     </Button>
                   </Space>
                 )

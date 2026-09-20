@@ -44,7 +44,9 @@ import { GeographicLocation } from '../../services/geographic-service';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { listContacts, CrmContact } from '../../services/crm-service';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
 const { Title, Text } = Typography;
 
@@ -144,7 +146,7 @@ function aDesCaracteristiquesGenerales(type: PropertyType): boolean {
  */
 function nomProprietaire(owner: CrmContact): string {
   const nom = `${owner.firstName || ''} ${owner.lastName || ''}`.trim();
-  return owner.legalName?.trim() || nom || owner.email || 'Contact sans nom';
+  return owner.legalName?.trim() || nom || owner.email || t('Contact sans nom');
 }
 
 interface PropertyFormWizardProps {
@@ -260,7 +262,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     if (numStr === '') return '';
     const num = parseFloat(numStr);
     if (isNaN(num)) return '';
-    return num.toLocaleString('fr-FR', { useGrouping: true, maximumFractionDigits: 0 });
+    return num.toLocaleString(activeLocale(), { useGrouping: true, maximumFractionDigits: 0 });
   };
 
   const parseNumber = (value: string): string => {
@@ -364,7 +366,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
       }
     } catch (error: any) {
       console.error('Error finishing wizard:', error);
-      message.error(error.response?.data?.error || "Erreur lors de l'enregistrement");
+      message.error(error.response?.data?.error || t("Erreur lors de l'enregistrement"));
     } finally {
       setIsLoading(false);
     }
@@ -376,23 +378,23 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     switch (cleEtape(step)) {
       case 'identification':
         if (!formData.propertyType) {
-          newErrors.propertyType = 'Le type de propriété est requis';
+          newErrors.propertyType = t('Le type de propriété est requis');
         }
         if (!formData.title.trim()) {
-          newErrors.title = 'Le titre est requis';
+          newErrors.title = t('Le titre est requis');
         }
         if (!formData.ownerUserId || !String(formData.ownerUserId).trim()) {
-          newErrors.ownerUserId = 'Le propriétaire est requis';
+          newErrors.ownerUserId = t('Le propriétaire est requis');
         }
         break;
       case 'localisation':
         if (!formData.location) {
-          newErrors.location = 'La localisation est requise';
+          newErrors.location = t('La localisation est requise');
         }
         break;
       case 'prix':
         if (formData.transactionModes.length === 0) {
-          newErrors.transactionModes = 'Un mode de transaction est requis';
+          newErrors.transactionModes = t('Un mode de transaction est requis');
         }
         break;
       case 'specificites':
@@ -433,22 +435,22 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
       SOUTH: 'Sud',
       EAST: 'Est',
       WEST: 'Ouest',
-      GARAGE_1: 'Garage : 1 véhicule',
-      GARAGE_2: 'Garage : 2 véhicules',
+      GARAGE_1: t('Garage : 1 véhicule'),
+      GARAGE_2: t('Garage : 2 véhicules'),
       SHOWER: 'Douche',
       BATHTUB: 'Baignoire',
-      PRIVATE: 'Privée',
-      SHARED: 'Partagée',
+      PRIVATE: t('Privée'),
+      SHARED: t('Partagée'),
       NONE: 'Aucune',
       INTERNET: 'Internet',
       WATER: 'Eau',
-      POWER: 'Électricité',
-      CLEANING: 'Ménage',
+      POWER: t('Électricité'),
+      CLEANING: t('Ménage'),
       ACD: 'ACD',
       CPF: 'CPF',
-      TF: 'Titre foncier',
+      TF: t('Titre foncier'),
       ATTESTATION: 'Attestation',
-      RESIDENTIAL: 'Résidentiel',
+      RESIDENTIAL: t('Résidentiel'),
       COMMERCIAL: 'Commercial',
       MIXED: 'Mixte',
       AGRICULTURAL: 'Agricole'
@@ -483,7 +485,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                 }));
               }}
               status={error ? 'error' : ''}
-              placeholder={`Saisir ${field.label.toLowerCase()}`}
+              placeholder={t('Saisir {{value}}', { value: field.label.toLowerCase() })}
             />
             {error && (
               <Text type="danger" style={{ fontSize: 12 }}>
@@ -574,7 +576,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                 }));
               }}
               status={error ? 'error' : ''}
-              placeholder="Sélectionner..."
+              placeholder={t('Sélectionner...')}
             >
               {field.validation?.options?.map((option: string) => (
                 <Select.Option key={option} value={option}>
@@ -728,10 +730,13 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
 
     if (crees < charge.length) {
       message.warning(
-        `${crees} appartement(s) créé(s) sur ${charge.length}. Les autres sont à reprendre sur la fiche.`
+        t('{{crees}} appartement(s) créé(s) sur {{length}}. Les autres sont à reprendre sur la fiche.', {
+          crees: crees,
+          length: charge.length
+        })
       );
     } else {
-      message.success(`${crees} appartement(s) créé(s).`);
+      message.success(t('{{crees}} appartement(s) créé(s).', { crees: crees }));
     }
   };
 
@@ -766,13 +771,13 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
   }> = [
     {
       cle: 'identification',
-      title: 'Type et identification',
-      description: 'Sélectionnez le type de bien et les informations de base',
+      title: t('Type et identification'),
+      description: t('Sélectionnez le type de bien et les informations de base'),
       content: (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <div>
             <Text strong>
-              Type de propriété <Text type="danger">*</Text>
+              {t('Type de propriété')} <Text type="danger">*</Text>
             </Text>
             <PropertyTypeSelector
               selectedType={formData.propertyType}
@@ -787,12 +792,12 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
 
           <div>
             <Text strong>
-              Titre <Text type="danger">*</Text>
+              {t('Titre')} <Text type="danger">*</Text>
             </Text>
             <Input
               value={formData.title}
               onChange={e => handleChange('title', e.target.value)}
-              placeholder="Ex: Appartement 3 pièces à Cocody"
+              placeholder={t('Ex: Appartement 3 pièces à Cocody')}
               status={errors.title ? 'error' : ''}
             />
             {errors.title && (
@@ -804,13 +809,13 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
 
           <div>
             <Text strong>
-              Propriétaire <Text type="danger">*</Text>
+              {t('Propriétaire')} <Text type="danger">*</Text>
             </Text>
             <Select
               style={{ width: '100%' }}
               value={formData.ownerUserId || undefined}
               onChange={value => handleChange('ownerUserId', value || '')}
-              placeholder={loadingOwners ? 'Chargement...' : 'Sélectionner un propriétaire'}
+              placeholder={loadingOwners ? 'Chargement...' : t('Sélectionner un propriétaire')}
               allowClear
               loading={loadingOwners}
               status={errors.ownerUserId ? 'error' : ''}
@@ -834,12 +839,12 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               et une liste déroulante requise passait sous la ligne de
               flottaison. L'ordre visuel est aussi l'ordre de tabulation. */}
           <div>
-            <Text strong>Description</Text>
+            <Text strong>{t('Description')}</Text>
             <TextArea
               value={formData.description}
               onChange={e => handleChange('description', e.target.value)}
               rows={6}
-              placeholder="Décrivez la propriété (facultatif)..."
+              placeholder={t('Décrivez la propriété (facultatif)...')}
             />
           </div>
         </Space>
@@ -847,8 +852,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     },
     {
       cle: 'localisation',
-      title: 'Localisation',
-      description: "Indiquez l'emplacement de la propriété",
+      title: t('Localisation'),
+      description: t("Indiquez l'emplacement de la propriété"),
       content: (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <div>
@@ -858,7 +863,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
             <LocationSelector
               value={formData.location?.communeId}
               onChange={location => handleChange('location', location)}
-              placeholder="Rechercher une localisation..."
+              placeholder={t('Rechercher une localisation...')}
               error={errors.location}
             />
             {errors.location && (
@@ -870,19 +875,19 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
 
           <Row gutter={16}>
             <Col xs={24} sm={12}>
-              <Text strong>Quartier/Zone (optionnel)</Text>
+              <Text strong>{t('Quartier/Zone (optionnel)')}</Text>
               <Input
                 value={formData.locationZone}
                 onChange={e => handleChange('locationZone', e.target.value)}
-                placeholder="Ex: Angré, Riviera, etc."
+                placeholder={t('Ex: Angré, Riviera, etc.')}
               />
             </Col>
             <Col xs={24} sm={12}>
-              <Text strong>Adresse</Text>
+              <Text strong>{t('Adresse')}</Text>
               <Input
                 value={formData.address}
                 onChange={e => handleChange('address', e.target.value)}
-                placeholder="Adresse complète (optionnel)"
+                placeholder={t('Adresse complète (optionnel)')}
               />
             </Col>
           </Row>
@@ -891,9 +896,9 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     },
     {
       cle: 'caracteristiques',
-      title: 'Caractéristiques générales',
-      shortTitle: 'Caractéristiques',
-      description: 'Informations générales sur la propriété',
+      title: t('Caractéristiques générales'),
+      shortTitle: t('Caractéristiques'),
+      description: t('Informations générales sur la propriété'),
       content: (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           {/* Chaque champ est ici parce que `caracteristiquesGenerales` le
@@ -905,57 +910,57 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
             <Row gutter={16}>
               {carac.surface && (
                 <Col xs={24} sm={12}>
-                  <Text strong>Surface principale (m²)</Text>
+                  <Text strong>{t('Surface principale (m²)')}</Text>
                   <InputNumber
                     style={{ width: '100%' }}
                     value={formData.surfaceArea ? Number(formData.surfaceArea) : undefined}
                     onChange={val => handleChange('surfaceArea', val ? String(val) : '')}
-                    placeholder="Ex: 75"
+                    placeholder={t('Ex: 75')}
                   />
                 </Col>
               )}
               {carac.anneeEtEtat && (
                 <Col xs={24} sm={12}>
-                  <Text strong>Année de construction</Text>
+                  <Text strong>{t('Année de construction')}</Text>
                   <InputNumber
                     style={{ width: '100%' }}
                     value={formData.constructionYear ? Number(formData.constructionYear) : undefined}
                     onChange={val => handleChange('constructionYear', val ? String(val) : '')}
                     min={1800}
                     max={new Date().getFullYear()}
-                    placeholder="Ex: 2020"
+                    placeholder={t('Ex: 2020')}
                   />
                 </Col>
               )}
               {carac.anneeEtEtat && (
                 <Col xs={24} sm={12}>
-                  <Text strong>État général</Text>
+                  <Text strong>{t('État général')}</Text>
                   <Select
                     style={{ width: '100%' }}
                     value={formData.generalCondition || undefined}
                     onChange={val => handleChange('generalCondition', val)}
-                    placeholder="Sélectionner..."
+                    placeholder={t('Sélectionner...')}
                   >
-                    <Select.Option value="NEUF">Neuf</Select.Option>
-                    <Select.Option value="BON">Bon</Select.Option>
-                    <Select.Option value="A_RENOVER">À rénover</Select.Option>
-                    <Select.Option value="EN_CHANTIER">En chantier</Select.Option>
+                    <Select.Option value="NEUF">{t('Neuf')}</Select.Option>
+                    <Select.Option value="BON">{t('Bon')}</Select.Option>
+                    <Select.Option value="A_RENOVER">{t('À rénover')}</Select.Option>
+                    <Select.Option value="EN_CHANTIER">{t('En chantier')}</Select.Option>
                   </Select>
                 </Col>
               )}
               {carac.standing && (
                 <Col xs={24} sm={12}>
-                  <Text strong>Standing</Text>
+                  <Text strong>{t('Standing')}</Text>
                   <Select
                     style={{ width: '100%' }}
                     value={formData.standing || undefined}
                     onChange={val => handleChange('standing', val)}
-                    placeholder="Sélectionner..."
+                    placeholder={t('Sélectionner...')}
                   >
-                    <Select.Option value="ECONOMIQUE">Économique</Select.Option>
-                    <Select.Option value="STANDARD">Standard</Select.Option>
-                    <Select.Option value="HAUT_STANDING">Haut standing</Select.Option>
-                    <Select.Option value="LUXE">Luxe</Select.Option>
+                    <Select.Option value="ECONOMIQUE">{t('Économique')}</Select.Option>
+                    <Select.Option value="STANDARD">{t('Standard')}</Select.Option>
+                    <Select.Option value="HAUT_STANDING">{t('Haut standing')}</Select.Option>
+                    <Select.Option value="LUXE">{t('Luxe')}</Select.Option>
                   </Select>
                 </Col>
               )}
@@ -967,62 +972,62 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               {carac.pieces && (
                 <>
                   <Col xs={24} sm={12}>
-                    <Text strong>Nombre de pièces</Text>
+                    <Text strong>{t('Nombre de pièces')}</Text>
                     <InputNumber
                       style={{ width: '100%' }}
                       min={0}
                       value={formData.rooms ? Number(formData.rooms) : undefined}
                       onChange={val => handleChange('rooms', val !== null && val !== undefined ? String(val) : '')}
-                      placeholder="Ex: 3"
+                      placeholder={t('Ex: 3')}
                     />
                   </Col>
                   <Col xs={24} sm={12}>
-                    <Text strong>Nombre de chambres</Text>
+                    <Text strong>{t('Nombre de chambres')}</Text>
                     <InputNumber
                       style={{ width: '100%' }}
                       min={0}
                       value={formData.bedrooms ? Number(formData.bedrooms) : undefined}
                       onChange={val => handleChange('bedrooms', val !== null && val !== undefined ? String(val) : '')}
-                      placeholder="Ex: 2"
+                      placeholder={t('Ex: 2')}
                     />
                   </Col>
                   <Col xs={24} sm={12}>
-                    <Text strong>Nombre de salles de bain</Text>
+                    <Text strong>{t('Nombre de salles de bain')}</Text>
                     <InputNumber
                       style={{ width: '100%' }}
                       min={0}
                       value={formData.bathrooms ? Number(formData.bathrooms) : undefined}
                       onChange={val => handleChange('bathrooms', val !== null && val !== undefined ? String(val) : '')}
-                      placeholder="Ex: 2"
+                      placeholder={t('Ex: 2')}
                     />
                   </Col>
                 </>
               )}
               {carac.surfaceTerrain && (
                 <Col xs={24} sm={12}>
-                  <Text strong>Surface terrain (m²)</Text>
+                  <Text strong>{t('Surface terrain (m²)')}</Text>
                   <InputNumber
                     style={{ width: '100%' }}
                     value={formData.surfaceTerrain ? Number(formData.surfaceTerrain) : undefined}
                     onChange={val =>
                       handleChange('surfaceTerrain', val !== null && val !== undefined ? String(val) : '')
                     }
-                    placeholder="Ex: 500"
+                    placeholder={t('Ex: 500')}
                   />
                 </Col>
               )}
               {carac.meuble && (
                 <Col xs={24} sm={12}>
-                  <Text strong>Statut d'ameublement</Text>
+                  <Text strong>{t("Statut d'ameublement")}</Text>
                   <Select
                     style={{ width: '100%' }}
                     value={formData.furnishingStatus}
                     onChange={value => handleChange('furnishingStatus', value)}
                   >
-                    <Select.Option value={PropertyFurnishingStatus.UNFURNISHED}>Non meublé</Select.Option>
-                    <Select.Option value={PropertyFurnishingStatus.FURNISHED}>Meublé</Select.Option>
+                    <Select.Option value={PropertyFurnishingStatus.UNFURNISHED}>{t('Non meublé')}</Select.Option>
+                    <Select.Option value={PropertyFurnishingStatus.FURNISHED}>{t('Meublé')}</Select.Option>
                     <Select.Option value={PropertyFurnishingStatus.PARTIALLY_FURNISHED}>
-                      Partiellement meublé
+                      {t('Partiellement meublé')}
                     </Select.Option>
                   </Select>
                 </Col>
@@ -1034,14 +1039,14 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     },
     {
       cle: 'prix',
-      title: 'Prix & Conditions',
-      shortTitle: 'Prix et conditions',
-      description: 'Définissez le prix et les conditions de transaction',
+      title: t('Prix & Conditions'),
+      shortTitle: t('Prix et conditions'),
+      description: t('Définissez le prix et les conditions de transaction'),
       content: (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <div>
             <Text strong>
-              Type d'opération <Text type="danger">*</Text>
+              {t("Type d'opération")} <Text type="danger">*</Text>
             </Text>
             {/* Un bien est mis en vente **ou** en location, pas les deux.
                 C'étaient des cases à cocher : on pouvait donc cocher les deux,
@@ -1059,8 +1064,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               onChange={event => handleChange('transactionModes', [event.target.value as PropertyTransactionMode])}
             >
               <Space>
-                <Radio value={PropertyTransactionMode.SALE}>Vente</Radio>
-                <Radio value={PropertyTransactionMode.RENTAL}>Location</Radio>
+                <Radio value={PropertyTransactionMode.SALE}>{t('Vente')}</Radio>
+                <Radio value={PropertyTransactionMode.RENTAL}>{t('Location')}</Radio>
               </Space>
             </Radio.Group>
             {errors.transactionModes && (
@@ -1089,8 +1094,12 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               showIcon
               message={
                 location
-                  ? "La location se gère appartement par appartement : le loyer se saisit sur chaque lot, à l'étape « Appartements ». Aucun loyer n'est demandé pour l'immeuble lui-même."
-                  : "Ce prix est celui de l'immeuble entier. Un appartement peut aussi se vendre seul : son prix se saisit alors sur le lot, à l'étape « Appartements »."
+                  ? t(
+                      "La location se gère appartement par appartement : le loyer se saisit sur chaque lot, à l'étape « Appartements ». Aucun loyer n'est demandé pour l'immeuble lui-même."
+                    )
+                  : t(
+                      "Ce prix est celui de l'immeuble entier. Un appartement peut aussi se vendre seul : son prix se saisit alors sur le lot, à l'étape « Appartements »."
+                    )
               }
             />
           )}
@@ -1099,30 +1108,30 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
             {!masquerPrixEtCharges && (
               <>
                 <Col xs={24} sm={8}>
-                  <Text strong>{vente ? 'Prix de vente' : 'Loyer mensuel'}</Text>
+                  <Text strong>{vente ? t('Prix de vente') : t('Loyer mensuel')}</Text>
                   <Input
                     value={formatNumber(formData.price)}
                     onChange={e => handleNumberChange('price', e.target.value)}
-                    placeholder={vente ? 'Ex: 50 000 000' : 'Ex: 150 000'}
+                    placeholder={vente ? t('Ex: 50 000 000') : t('Ex: 150 000')}
                   />
                 </Col>
                 <Col xs={24} sm={8}>
-                  <Text strong>{vente ? 'Charges de copropriété' : 'Charges (provision mensuelle)'}</Text>
+                  <Text strong>{vente ? t('Charges de copropriété') : t('Charges (provision mensuelle)')}</Text>
                   <Input
                     value={formatNumber(formData.fees)}
                     onChange={e => handleNumberChange('fees', e.target.value)}
-                    placeholder="Ex: 50 000"
+                    placeholder={t('Ex: 50 000')}
                   />
                 </Col>
               </>
             )}
             {location && (
               <Col xs={24} sm={8}>
-                <Text strong>Dépôt de garantie</Text>
+                <Text strong>{t('Dépôt de garantie')}</Text>
                 <Input
                   value={formatNumber(formData.deposit)}
                   onChange={e => handleNumberChange('deposit', e.target.value)}
-                  placeholder="Ex: 300 000"
+                  placeholder={t('Ex: 300 000')}
                 />
               </Col>
             )}
@@ -1137,16 +1146,16 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     },
     {
       cle: 'specificites',
-      title: 'Caractéristiques spécifiques',
-      shortTitle: 'Spécificités',
-      description: 'Détails spécifiques au type de bien sélectionné',
+      title: t('Caractéristiques spécifiques'),
+      shortTitle: t('Spécificités'),
+      description: t('Détails spécifiques au type de bien sélectionné'),
       content: (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           {loadingTemplate ? (
             <div style={{ textAlign: 'center', padding: '48px 0' }}>
               <Spin size="large" />
               <div style={{ marginTop: 16 }}>
-                <Text type="secondary">Chargement des caractéristiques...</Text>
+                <Text type="secondary">{t('Chargement des caractéristiques...')}</Text>
               </div>
             </div>
           ) : template && template.sections && template.sections.length > 0 ? (
@@ -1162,7 +1171,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                     }
                     const displayField =
                       (formData.propertyType as PropertyType) === PropertyType.IMMEUBLE && field.key === 'units_count'
-                        ? { ...field, label: "Nombre total d'appartements" }
+                        ? { ...field, label: t("Nombre total d'appartements") }
                         : field;
                     return (
                       <Col key={field.key} xs={24} sm={12}>
@@ -1177,8 +1186,8 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
             <Empty
               description={
                 formData.propertyType
-                  ? 'Aucune caractéristique spécifique pour ce type de bien.'
-                  : "Veuillez d'abord sélectionner un type de bien."
+                  ? t('Aucune caractéristique spécifique pour ce type de bien.')
+                  : t("Veuillez d'abord sélectionner un type de bien.")
               }
             />
           )}
@@ -1190,11 +1199,13 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               de lignes, pré-titrées, modifiables, dans la page. Rien ne part en
               base avant le bouton final. */}
           {(formData.propertyType as PropertyType) === PropertyType.IMMEUBLE && (
-            <Card type="inner" title={`Appartements (${appartements.length})`}>
+            <Card type="inner" title={t('Appartements ({{length}})', { length: appartements.length })}>
               {appartements.length === 0 ? (
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="Indiquez le nombre total d'appartements ci-dessus : autant de lignes apparaîtront ici."
+                  description={t(
+                    "Indiquez le nombre total d'appartements ci-dessus : autant de lignes apparaîtront ici."
+                  )}
                 />
               ) : (
                 <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -1202,7 +1213,10 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                     <Alert
                       type="warning"
                       showIcon
-                      message={`Seuls les ${MAX_APPARTEMENTS} premiers appartements sont saisissables ici. Les suivants se créeront depuis la fiche de l'immeuble.`}
+                      message={t(
+                        "Seuls les {{MAX_APPARTEMENTS}} premiers appartements sont saisissables ici. Les suivants se créeront depuis la fiche de l'immeuble.",
+                        { MAX_APPARTEMENTS: MAX_APPARTEMENTS }
+                      )}
                     />
                   )}
 
@@ -1211,12 +1225,12 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                       propre nom accessible. */}
                   {isDesktop && (
                     <Row gutter={8} style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-small)' }}>
-                      <Col sm={7}>Titre</Col>
-                      <Col sm={4}>Surface (m²)</Col>
-                      <Col sm={3}>Pièces</Col>
-                      <Col sm={3}>Chambres</Col>
-                      <Col sm={3}>SdB</Col>
-                      <Col sm={4}>{vente ? 'Prix' : 'Loyer'}</Col>
+                      <Col sm={7}>{t('Titre')}</Col>
+                      <Col sm={4}>{t('Surface (m²)')}</Col>
+                      <Col sm={3}>{t('Pièces')}</Col>
+                      <Col sm={3}>{t('Chambres')}</Col>
+                      <Col sm={3}>{t('SdB')}</Col>
+                      <Col sm={4}>{vente ? t('Prix') : t('Loyer')}</Col>
                     </Row>
                   )}
 
@@ -1224,15 +1238,15 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                     <Row gutter={[8, 8]} key={rang} align="middle">
                       <Col xs={24} sm={7}>
                         <Input
-                          aria-label={`Titre de l'appartement ${rang + 1}`}
+                          aria-label={t("Titre de l'appartement {{value}}", { value: rang + 1 })}
                           value={appartement.titre}
                           onChange={e => modifierAppartement(rang, 'titre', e.target.value)}
-                          placeholder={`Appartement ${rang + 1}`}
+                          placeholder={t('Appartement {{value}}', { value: rang + 1 })}
                         />
                       </Col>
                       <Col xs={12} sm={4}>
                         <InputNumber
-                          aria-label={`Surface de l'appartement ${rang + 1}`}
+                          aria-label={t("Surface de l'appartement {{value}}", { value: rang + 1 })}
                           style={{ width: '100%' }}
                           min={0}
                           value={appartement.surface ? Number(appartement.surface) : undefined}
@@ -1242,7 +1256,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                       </Col>
                       <Col xs={12} sm={3}>
                         <InputNumber
-                          aria-label={`Pièces de l'appartement ${rang + 1}`}
+                          aria-label={t("Pièces de l'appartement {{value}}", { value: rang + 1 })}
                           style={{ width: '100%' }}
                           min={0}
                           value={appartement.pieces ? Number(appartement.pieces) : undefined}
@@ -1251,7 +1265,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                       </Col>
                       <Col xs={12} sm={3}>
                         <InputNumber
-                          aria-label={`Chambres de l'appartement ${rang + 1}`}
+                          aria-label={t("Chambres de l'appartement {{value}}", { value: rang + 1 })}
                           style={{ width: '100%' }}
                           min={0}
                           value={appartement.chambres ? Number(appartement.chambres) : undefined}
@@ -1260,7 +1274,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                       </Col>
                       <Col xs={12} sm={3}>
                         <InputNumber
-                          aria-label={`Salles de bain de l'appartement ${rang + 1}`}
+                          aria-label={t("Salles de bain de l'appartement {{value}}", { value: rang + 1 })}
                           style={{ width: '100%' }}
                           min={0}
                           value={appartement.sallesDeBain ? Number(appartement.sallesDeBain) : undefined}
@@ -1269,10 +1283,13 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                       </Col>
                       <Col xs={24} sm={4}>
                         <Input
-                          aria-label={`${vente ? 'Prix' : 'Loyer'} de l'appartement ${rang + 1}`}
+                          aria-label={t("{{value}} de l'appartement {{value2}}", {
+                            value: vente ? 'Prix' : 'Loyer',
+                            value2: rang + 1
+                          })}
                           value={formatNumber(appartement.prix)}
                           onChange={e => modifierAppartement(rang, 'prix', parseNumber(e.target.value))}
-                          placeholder={vente ? 'Ex: 25 000 000' : 'Ex: 150 000'}
+                          placeholder={vente ? t('Ex: 25 000 000') : t('Ex: 150 000')}
                         />
                       </Col>
                     </Row>
@@ -1286,14 +1303,14 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     },
     {
       cle: 'medias',
-      title: 'Médias',
-      description: 'Ajoutez des photos et vidéos de la propriété',
+      title: t('Médias'),
+      description: t('Ajoutez des photos et vidéos de la propriété'),
       content: (
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           {savedPropertyId ? (
             <>
               <div>
-                <Title level={4}>Photos</Title>
+                <Title level={4}>{t('Photos')}</Title>
                 <PropertyMediaUpload
                   propertyId={savedPropertyId}
                   tenantId={tenantId}
@@ -1311,7 +1328,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               </div>
               <Divider />
               <div>
-                <Title level={4}>Vidéos</Title>
+                <Title level={4}>{t('Vidéos')}</Title>
                 <PropertyMediaUpload
                   propertyId={savedPropertyId}
                   tenantId={tenantId}
@@ -1332,7 +1349,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
             <div style={{ textAlign: 'center', padding: '48px 0' }}>
               <Spin size="large" />
               <div style={{ marginTop: 16 }}>
-                <Text type="secondary">Préparation de l'espace médias...</Text>
+                <Text type="secondary">{t("Préparation de l'espace médias...")}</Text>
               </div>
             </div>
           )}
@@ -1527,7 +1544,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                   fontVariantNumeric: 'tabular-nums'
                 }}
               >
-                Étape {currentStep + 1} sur {steps.length}
+                {t('Étape')} {currentStep + 1} sur {steps.length}
               </Text>
             )}
           </div>
@@ -1551,7 +1568,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
         <Space size="small" wrap style={{ justifyContent: isDesktop ? 'flex-start' : 'center' }}>
           {onCancel && (
             <Button onClick={onCancel} disabled={isLoading}>
-              Annuler
+              {t('Annuler')}
             </Button>
           )}
         </Space>
@@ -1570,7 +1587,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               disabled={isLoading}
               block={!isDesktop}
             >
-              Précédent
+              {t('Précédent')}
             </Button>
           )}
           {isLastStep ? (
@@ -1582,7 +1599,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               disabled={!isStepValid(currentStep)}
               block={!isDesktop}
             >
-              Terminer
+              {t('Terminer')}
             </Button>
           ) : (
             <Button
@@ -1593,7 +1610,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               disabled={!isStepValid(currentStep) || isLoading}
               block={!isDesktop}
             >
-              Suivant
+              {t('Suivant')}
             </Button>
           )}
         </div>

@@ -32,7 +32,9 @@ import {
   ConfirmAction,
   useConfirmAction
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
@@ -142,7 +144,7 @@ const SAISIE_VIDE: SaisieArticle = {
 };
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 /**
@@ -152,11 +154,13 @@ function dateCourte(iso: string): string {
  * la même question : la formuler deux fois laisserait les deux versions
  * diverger, et l'une des deux finirait par laisser croire qu'on supprime.
  */
-const AVERTISSEMENT_DESACTIVATION_ARTICLE =
-  "Désactiver n'est pas supprimer : l'article garde son stock et son historique, il cesse simplement d'être proposé à la saisie.";
+const AVERTISSEMENT_DESACTIVATION_ARTICLE = t(
+  "Désactiver n'est pas supprimer : l'article garde son stock et son historique, il cesse simplement d'être proposé à la saisie."
+);
 
-const AVERTISSEMENT_DESACTIVATION_LIEU =
-  "Désactiver n'est pas supprimer : le lieu garde son stock et son historique, il cesse simplement d'être proposé à la saisie.";
+const AVERTISSEMENT_DESACTIVATION_LIEU = t(
+  "Désactiver n'est pas supprimer : le lieu garde son stock et son historique, il cesse simplement d'être proposé à la saisie."
+);
 
 export const StockReferentiel: React.FC = () => {
   const { message } = App.useApp();
@@ -272,7 +276,7 @@ export const StockReferentiel: React.FC = () => {
   const enregistrerArticle = async () => {
     if (!tenantId) return;
     if (!peutCreerArticle) {
-      message.error("La référence, la désignation et l'unité de l'article sont obligatoires.");
+      message.error(t("La référence, la désignation et l'unité de l'article sont obligatoires."));
       return;
     }
     setCreationArticleEnCours(true);
@@ -287,13 +291,13 @@ export const StockReferentiel: React.FC = () => {
         defaultCostCategoryId: saisieCreation.defaultCostCategoryId ?? null
       });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('stock-items', tenantId) });
-      message.success(`Article « ${article.label} » enregistré.`);
+      message.success(t('Article « {{label}} » enregistré.', { label: article.label }));
       setCreationArticleOuverte(false);
       setSaisieCreation(SAISIE_VIDE);
     } catch (err: any) {
       // Référence déjà prise, poste désactivé : le serveur est la seule
       // autorité, et son message est relayé tel quel.
-      message.error(err?.response?.data?.message || "L'enregistrement de l'article a échoué.");
+      message.error(err?.response?.data?.message || t("L'enregistrement de l'article a échoué."));
     } finally {
       setCreationArticleEnCours(false);
     }
@@ -368,21 +372,21 @@ export const StockReferentiel: React.FC = () => {
     if (uniteChangee && !uniteAcquittee) {
       // Dit AVANT l'envoi, jamais après coup : le domaine, lui, laisserait
       // passer sans rien dire.
-      message.error("Confirmez d'abord avoir compris ce que change une unité différente.");
+      message.error(t("Confirmez d'abord avoir compris ce que change une unité différente."));
       return;
     }
     if (riensAChanger) {
-      message.error("Aucune correction n'a été saisie.");
+      message.error(t("Aucune correction n'a été saisie."));
       return;
     }
     setCorrectionArticleEnCours(true);
     try {
       await updateStockItem(tenantId, articleCorrige.id, correctionArticle);
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('stock-items', tenantId) });
-      message.success(`Article « ${articleCorrige.reference} » corrigé.`);
+      message.success(t('Article « {{reference}} » corrigé.', { reference: articleCorrige.reference }));
       setArticleCorrige(null);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "La correction de l'article a échoué.");
+      message.error(err?.response?.data?.message || t("La correction de l'article a échoué."));
     } finally {
       setCorrectionArticleEnCours(false);
     }
@@ -395,10 +399,12 @@ export const StockReferentiel: React.FC = () => {
       await updateStockItem(tenantId, article.id, { isActive: actif });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('stock-items', tenantId) });
       message.success(
-        actif ? `Article « ${article.reference} » réactivé.` : `Article « ${article.reference} » désactivé.`
+        actif
+          ? t('Article « {{reference}} » réactivé.', { reference: article.reference })
+          : t('Article « {{reference}} » désactivé.', { reference: article.reference })
       );
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "Le changement d'état de l'article a échoué.");
+      message.error(err?.response?.data?.message || t("Le changement d'état de l'article a échoué."));
     }
   };
 
@@ -439,8 +445,8 @@ export const StockReferentiel: React.FC = () => {
       // mais un message faux se lirait comme un défaut de l'écran.
       message.error(
         !libelleLieu.trim()
-          ? 'Le libellé du lieu de stockage est obligatoire.'
-          : 'Le chantier est obligatoire pour un lieu de stockage de chantier.'
+          ? t('Le libellé du lieu de stockage est obligatoire.')
+          : t('Le chantier est obligatoire pour un lieu de stockage de chantier.')
       );
       return;
     }
@@ -457,13 +463,13 @@ export const StockReferentiel: React.FC = () => {
             })
           : await createStockLocation(tenantId, { kind: 'WAREHOUSE', label: libelleLieu.trim() });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('stock-locations', tenantId) });
-      message.success(`Lieu « ${lieu.label} » créé.`);
+      message.success(t('Lieu « {{label}} » créé.', { label: lieu.label }));
       setCreationLieuOuverte(false);
     } catch (err: any) {
       // « Ce chantier dispose déjà d’un lieu de stockage », « Un lieu de
       // stockage porte déjà ce libellé » : le message du serveur est relayé
       // tel quel, parce qu'il dit exactement ce qui s'est passé.
-      message.error(err?.response?.data?.message || 'La création du lieu de stockage a échoué.');
+      message.error(err?.response?.data?.message || t('La création du lieu de stockage a échoué.'));
     } finally {
       setCreationLieuEnCours(false);
     }
@@ -490,10 +496,10 @@ export const StockReferentiel: React.FC = () => {
     try {
       await updateStockLocation(tenantId, lieuCorrige.id, { label: libelleCorrige.trim() });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('stock-locations', tenantId) });
-      message.success('Libellé du lieu corrigé.');
+      message.success(t('Libellé du lieu corrigé.'));
       setLieuCorrige(null);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'La correction du lieu a échoué.');
+      message.error(err?.response?.data?.message || t('La correction du lieu a échoué.'));
     } finally {
       setCorrectionLieuEnCours(false);
     }
@@ -504,9 +510,13 @@ export const StockReferentiel: React.FC = () => {
     try {
       await updateStockLocation(tenantId, lieu.id, { isActive: actif });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('stock-locations', tenantId) });
-      message.success(actif ? `Lieu « ${lieu.label} » réactivé.` : `Lieu « ${lieu.label} » désactivé.`);
+      message.success(
+        actif
+          ? t('Lieu « {{label}} » réactivé.', { label: lieu.label })
+          : t('Lieu « {{label}} » désactivé.', { label: lieu.label })
+      );
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "Le changement d'état du lieu a échoué.");
+      message.error(err?.response?.data?.message || t("Le changement d'état du lieu a échoué."));
     }
   };
 
@@ -522,7 +532,7 @@ export const StockReferentiel: React.FC = () => {
   const arreterMethode = async () => {
     if (!tenantId) return;
     if (motifManquant) {
-      message.error('Le motif de la décision est obligatoire.');
+      message.error(t('Le motif de la décision est obligatoire.'));
       return;
     }
     setDecisionEnCours(true);
@@ -534,10 +544,10 @@ export const StockReferentiel: React.FC = () => {
         decisionNote: motifDecision
       });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('stock-settings', tenantId) });
-      message.success('Décision enregistrée.');
+      message.success(t('Décision enregistrée.'));
       setMotifDecision('');
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'enregistrement de la décision a échoué.");
+      message.error(err?.response?.data?.message || t("L'enregistrement de la décision a échoué."));
     } finally {
       setDecisionEnCours(false);
     }
@@ -546,51 +556,51 @@ export const StockReferentiel: React.FC = () => {
   // ---------------------------------------------------------------------
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const listeArticles = articles ?? [];
   const listeLieux = lieux ?? [];
 
   const colonnesArticles: ColumnsType<StockItem> = [
-    { title: 'Référence', key: 'reference', render: (_, a) => a.reference },
-    { title: 'Désignation', key: 'designation', render: (_, a) => a.label },
-    { title: 'Unité', key: 'unite', render: (_, a) => a.unit },
+    { title: t('Référence'), key: 'reference', render: (_, a) => a.reference },
+    { title: t('Désignation'), key: 'designation', render: (_, a) => a.label },
+    { title: t('Unité'), key: 'unite', render: (_, a) => a.unit },
     {
-      title: 'Famille',
+      title: t('Famille'),
       key: 'famille',
-      render: (_, a) => a.category ?? <Text type="secondary">Non renseignée</Text>
+      render: (_, a) => a.category ?? <Text type="secondary">{t('Non renseignée')}</Text>
     },
     {
       // Jamais « poste de dépense » tout court : ce poste n'a aucune autorité,
       // et la sortie exigera le sien (contrat gelé).
-      title: 'Poste proposé à la sortie',
+      title: t('Poste proposé à la sortie'),
       key: 'poste',
-      render: (_, a) => a.defaultCostCategoryLabel ?? <Text type="secondary">Aucun poste proposé</Text>
+      render: (_, a) => a.defaultCostCategoryLabel ?? <Text type="secondary">{t('Aucun poste proposé')}</Text>
     },
-    { title: 'Statut', key: 'statut', render: (_, a) => <StatusTag status={a.isActive ? 'ACTIVE' : 'INACTIVE'} /> },
+    { title: t('Statut'), key: 'statut', render: (_, a) => <StatusTag status={a.isActive ? 'ACTIVE' : 'INACTIVE'} /> },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, a) => (
         <Space>
           <Button type="link" onClick={() => ouvrirCorrectionArticle(a)}>
-            Corriger
+            {t('Corriger')}
           </Button>
           {/* Aucun bouton de suppression : aucune route ne supprime. */}
           {a.isActive ? (
             <ConfirmAction
-              title={`Désactiver l'article « ${a.reference} » ?`}
+              title={t("Désactiver l'article « {{reference}} » ?", { reference: a.reference })}
               description={AVERTISSEMENT_DESACTIVATION_ARTICLE}
-              okText="Confirmer la désactivation"
+              okText={t('Confirmer la désactivation')}
               onConfirm={() => basculerArticle(a, false)}
             >
-              <Button type="link">Désactiver</Button>
+              <Button type="link">{t('Désactiver')}</Button>
             </ConfirmAction>
           ) : (
             <Button type="link" onClick={() => basculerArticle(a, true)}>
-              Réactiver
+              {t('Réactiver')}
             </Button>
           )}
         </Space>
@@ -599,35 +609,35 @@ export const StockReferentiel: React.FC = () => {
   ];
 
   const colonnesLieux: ColumnsType<StockLocation> = [
-    { title: 'Libellé', key: 'libelle', render: (_, l) => l.label },
-    { title: 'Nature', key: 'nature', render: (_, l) => STOCK_LOCATION_KIND_LABELS[l.kind] },
+    { title: t('Libellé'), key: 'libelle', render: (_, l) => l.label },
+    { title: t('Nature'), key: 'nature', render: (_, l) => STOCK_LOCATION_KIND_LABELS[l.kind] },
     {
-      title: 'Chantier',
+      title: t('Chantier'),
       key: 'chantier',
       render: (_, l) => l.siteLabel ?? <Text type="secondary">—</Text>
     },
-    { title: 'Statut', key: 'statut', render: (_, l) => <StatusTag status={l.isActive ? 'ACTIVE' : 'INACTIVE'} /> },
+    { title: t('Statut'), key: 'statut', render: (_, l) => <StatusTag status={l.isActive ? 'ACTIVE' : 'INACTIVE'} /> },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, l) => (
         <Space>
           <Button type="link" onClick={() => ouvrirCorrectionLieu(l)}>
-            Corriger le libellé
+            {t('Corriger le libellé')}
           </Button>
           {l.isActive ? (
             <ConfirmAction
-              title={`Désactiver le lieu « ${l.label} » ?`}
+              title={t('Désactiver le lieu « {{label}} » ?', { label: l.label })}
               description={AVERTISSEMENT_DESACTIVATION_LIEU}
-              okText="Confirmer la désactivation"
+              okText={t('Confirmer la désactivation')}
               onConfirm={() => basculerLieu(l, false)}
             >
-              <Button type="link">Désactiver</Button>
+              <Button type="link">{t('Désactiver')}</Button>
             </ConfirmAction>
           ) : (
             <Button type="link" onClick={() => basculerLieu(l, true)}>
-              Réactiver
+              {t('Réactiver')}
             </Button>
           )}
         </Space>
@@ -639,19 +649,20 @@ export const StockReferentiel: React.FC = () => {
     <>
       <Card style={{ marginBottom: 'var(--space-4)' }}>
         <Text type="secondary">
-          Le <strong>poste proposé à la sortie</strong> n'est qu'une proposition : il sera présenté pré-sélectionné au
-          moment de sortir la marchandise, et <strong>restera modifiable à cet instant</strong>. C'est la sortie qui
-          décide du poste, jamais l'article. <strong>L'unité est du texte libre</strong> — sac, tonne, barre, m³ — parce
-          que les unités d'une agence ne sont pas celles d'une autre.
+          {t('Le')} <strong>{t('poste proposé à la sortie')}</strong>{' '}
+          {t("n'est qu'une proposition : il sera présenté pré-sélectionné au moment de sortir la marchandise, et")}{' '}
+          <strong>{t('restera modifiable à cet instant')}</strong>. C'est la sortie qui décide du poste, jamais
+          l'article. <strong>{t("L'unité est du texte libre")}</strong>{' '}
+          {t("— sac, tonne, barre, m³ — parce que les unités d'une agence ne sont pas celles d'une autre.")}
         </Text>
       </Card>
 
       <Space wrap size="middle" style={{ marginBottom: 'var(--space-3)' }}>
         <div>
-          <label htmlFor="articles-recherche">Rechercher un article</label>
+          <label htmlFor="articles-recherche">{t('Rechercher un article')}</label>
           <Input
             id="articles-recherche"
-            placeholder="Référence ou désignation"
+            placeholder={t('Référence ou désignation')}
             allowClear
             style={{ width: 280 }}
             value={recherche}
@@ -662,10 +673,10 @@ export const StockReferentiel: React.FC = () => {
           checked={articlesActifsSeulement}
           onChange={event => setArticlesActifsSeulement(event.target.checked)}
         >
-          Articles actifs uniquement
+          {t('Articles actifs uniquement')}
         </Checkbox>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreationArticleOuverte(true)}>
-          Nouvel article
+          {t('Nouvel article')}
         </Button>
       </Space>
 
@@ -680,18 +691,18 @@ export const StockReferentiel: React.FC = () => {
         onPageChange={() => {}}
         loading={articlesEnAttente}
         isReloading={articlesEnRechargement && !articlesEnAttente}
-        error={erreurArticles ? 'Impossible de charger les articles.' : null}
+        error={erreurArticles ? t('Impossible de charger les articles.') : null}
         onRetry={() => refetchArticles()}
         isFiltered={articlesActifsSeulement || Boolean(recherche.trim())}
         onClearFilters={() => {
           setArticlesActifsSeulement(false);
           setRecherche('');
         }}
-        emptyDescription="Aucun article n'est encore enregistré."
-        emptyAction={{ label: 'Nouvel article', onClick: () => setCreationArticleOuverte(true) }}
+        emptyDescription={t("Aucun article n'est encore enregistré.")}
+        emptyAction={{ label: t('Nouvel article'), onClick: () => setCreationArticleOuverte(true) }}
         columns={colonnesArticles}
         rowKey={a => a.id}
-        aria-label="Articles du stock"
+        aria-label={t('Articles du stock')}
         renderCard={a => (
           <DataCard
             title={a.reference}
@@ -699,9 +710,9 @@ export const StockReferentiel: React.FC = () => {
             subtitle={a.label}
             status={<StatusTag status={a.isActive ? 'ACTIVE' : 'INACTIVE'} />}
             fields={[
-              { label: 'Unité', value: a.unit },
-              { label: 'Famille', value: a.category ?? 'Non renseignée' },
-              { label: 'Poste proposé à la sortie', value: a.defaultCostCategoryLabel ?? 'Aucun poste proposé' }
+              { label: t('Unité'), value: a.unit },
+              { label: 'Famille', value: a.category ?? t('Non renseignée') },
+              { label: t('Poste proposé à la sortie'), value: a.defaultCostCategoryLabel ?? t('Aucun poste proposé') }
             ]}
             primaryAction={{ label: 'Corriger', onClick: () => ouvrirCorrectionArticle(a) }}
             // Aucune suppression ici non plus : la seule action secondaire est
@@ -710,24 +721,24 @@ export const StockReferentiel: React.FC = () => {
               a.isActive
                 ? {
                     key: 'desactiver',
-                    label: 'Désactiver',
+                    label: t('Désactiver'),
                     onClick: () =>
                       confirmerAction({
-                        title: `Désactiver l'article « ${a.reference} » ?`,
+                        title: t("Désactiver l'article « {{reference}} » ?", { reference: a.reference }),
                         description: AVERTISSEMENT_DESACTIVATION_ARTICLE,
-                        okText: 'Confirmer la désactivation',
+                        okText: t('Confirmer la désactivation'),
                         onConfirm: () => basculerArticle(a, false)
                       })
                   }
-                : { key: 'reactiver', label: 'Réactiver', onClick: () => basculerArticle(a, true) }
+                : { key: 'reactiver', label: t('Réactiver'), onClick: () => basculerArticle(a, true) }
             ]}
           />
         )}
       />
 
       <Paragraph type="secondary" style={{ marginTop: 'var(--space-3)' }}>
-        Un article ne se supprime pas. <strong>Désactiver n'est pas supprimer</strong> : un article désactivé garde son
-        stock et son historique, et cesse seulement d'être proposé à la saisie.
+        {t('Un article ne se supprime pas.')} <strong>{t("Désactiver n'est pas supprimer")}</strong>{' '}
+        {t(": un article désactivé garde son stock et son historique, et cesse seulement d'être proposé à la saisie.")}
       </Paragraph>
     </>
   );
@@ -736,20 +747,20 @@ export const StockReferentiel: React.FC = () => {
     <>
       <Card style={{ marginBottom: 'var(--space-4)' }}>
         <Text type="secondary">
-          Un <strong>magasin</strong> est un lieu de l'agence. Un <strong>lieu de chantier</strong> est rattaché à un
-          chantier, et <strong>un chantier n'en a qu'un seul</strong> : deux lieux partageraient son stock en deux
-          soldes dont aucun ne dirait la vérité.
+          {t('Un')} <strong>magasin</strong> {t("est un lieu de l'agence. Un")} <strong>lieu de chantier</strong>{' '}
+          {t('est rattaché à un chantier, et')} <strong>{t("un chantier n'en a qu'un seul")}</strong>{' '}
+          {t(': deux lieux partageraient son stock en deux soldes dont aucun ne dirait la vérité.')}
         </Text>
       </Card>
 
       <Space wrap size="middle" style={{ marginBottom: 'var(--space-3)' }}>
         <div>
-          <label htmlFor="lieux-nature">Nature</label>{' '}
+          <label htmlFor="lieux-nature">{t('Nature')}</label>{' '}
           <Select
             id="lieux-nature"
             style={{ width: 200 }}
             allowClear
-            placeholder="Toutes les natures"
+            placeholder={t('Toutes les natures')}
             value={natureFiltre}
             onChange={valeur => setNatureFiltre(valeur as StockLocationKind | undefined)}
             options={[
@@ -759,10 +770,10 @@ export const StockReferentiel: React.FC = () => {
           />
         </div>
         <Checkbox checked={lieuxActifsSeulement} onChange={event => setLieuxActifsSeulement(event.target.checked)}>
-          Lieux actifs uniquement
+          {t('Lieux actifs uniquement')}
         </Checkbox>
         <Button type="primary" icon={<PlusOutlined />} onClick={ouvrirCreationLieu}>
-          Nouveau lieu de stockage
+          {t('Nouveau lieu de stockage')}
         </Button>
       </Space>
 
@@ -775,18 +786,18 @@ export const StockReferentiel: React.FC = () => {
         pageSize={Math.max(listeLieux.length, 1)}
         onPageChange={() => {}}
         loading={lieuxEnAttente}
-        error={erreurLieux ? 'Impossible de charger les lieux de stockage.' : null}
+        error={erreurLieux ? t('Impossible de charger les lieux de stockage.') : null}
         onRetry={() => refetchLieux()}
         isFiltered={lieuxActifsSeulement || Boolean(natureFiltre)}
         onClearFilters={() => {
           setLieuxActifsSeulement(false);
           setNatureFiltre(undefined);
         }}
-        emptyDescription="Aucun lieu de stockage n'est encore créé."
-        emptyAction={{ label: 'Nouveau lieu de stockage', onClick: ouvrirCreationLieu }}
+        emptyDescription={t("Aucun lieu de stockage n'est encore créé.")}
+        emptyAction={{ label: t('Nouveau lieu de stockage'), onClick: ouvrirCreationLieu }}
         columns={colonnesLieux}
         rowKey={l => l.id}
-        aria-label="Lieux de stockage"
+        aria-label={t('Lieux de stockage')}
         renderCard={l => (
           <DataCard
             title={l.label}
@@ -794,29 +805,29 @@ export const StockReferentiel: React.FC = () => {
             subtitle={STOCK_LOCATION_KIND_LABELS[l.kind]}
             status={<StatusTag status={l.isActive ? 'ACTIVE' : 'INACTIVE'} />}
             fields={[{ label: 'Chantier', value: l.siteLabel ?? '—' }]}
-            primaryAction={{ label: 'Corriger le libellé', onClick: () => ouvrirCorrectionLieu(l) }}
+            primaryAction={{ label: t('Corriger le libellé'), onClick: () => ouvrirCorrectionLieu(l) }}
             secondaryActions={[
               l.isActive
                 ? {
                     key: 'desactiver',
-                    label: 'Désactiver',
+                    label: t('Désactiver'),
                     onClick: () =>
                       confirmerAction({
-                        title: `Désactiver le lieu « ${l.label} » ?`,
+                        title: t('Désactiver le lieu « {{label}} » ?', { label: l.label }),
                         description: AVERTISSEMENT_DESACTIVATION_LIEU,
-                        okText: 'Confirmer la désactivation',
+                        okText: t('Confirmer la désactivation'),
                         onConfirm: () => basculerLieu(l, false)
                       })
                   }
-                : { key: 'reactiver', label: 'Réactiver', onClick: () => basculerLieu(l, true) }
+                : { key: 'reactiver', label: t('Réactiver'), onClick: () => basculerLieu(l, true) }
             ]}
           />
         )}
       />
 
       <Paragraph type="secondary" style={{ marginTop: 'var(--space-3)' }}>
-        Un lieu ne se supprime pas. <strong>Désactiver n'est pas supprimer</strong> : un lieu désactivé garde son stock
-        et son historique, et cesse seulement d'être proposé à la saisie.
+        {t('Un lieu ne se supprime pas.')} <strong>{t("Désactiver n'est pas supprimer")}</strong>{' '}
+        {t(": un lieu désactivé garde son stock et son historique, et cesse seulement d'être proposé à la saisie.")}
       </Paragraph>
     </>
   );
@@ -826,8 +837,8 @@ export const StockReferentiel: React.FC = () => {
       {erreurReglages ? (
         <StateBlock
           variant="error"
-          description="Impossible de charger la méthode de valorisation."
-          actions={[{ label: 'Réessayer', onClick: () => refetchReglages(), primary: true }]}
+          description={t('Impossible de charger la méthode de valorisation.')}
+          actions={[{ label: t('Réessayer'), onClick: () => refetchReglages(), primary: true }]}
         />
       ) : reglagesEnAttente ? (
         <StateBlock variant="loading" />
@@ -835,25 +846,33 @@ export const StockReferentiel: React.FC = () => {
         <>
           <Card style={{ marginBottom: 'var(--space-4)' }}>
             <Title level={5} style={{ marginTop: 0 }}>
-              La décision en vigueur
+              {t('La décision en vigueur')}
             </Title>
             <Paragraph style={{ marginBottom: 'var(--space-2)' }}>
               <strong>{STOCK_VALUATION_METHOD_LABELS[reglages?.valuationMethod ?? 'WEIGHTED_AVERAGE']}</strong>
-              {reglages?.decidedAt ? <> — arrêtée le {dateCourte(reglages.decidedAt)}</> : null}
+              {reglages?.decidedAt ? (
+                <>
+                  {' '}
+                  {t('— arrêtée le')} {dateCourte(reglages.decidedAt)}
+                </>
+              ) : null}
             </Paragraph>
             {reglages?.decisionNote ? (
-              <Paragraph style={{ marginBottom: 0 }}>Motif : {reglages.decisionNote}</Paragraph>
+              <Paragraph style={{ marginBottom: 0 }}>
+                {t('Motif :')} {reglages.decisionNote}
+              </Paragraph>
             ) : (
               <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                Aucune décision n'a encore été arrêtée : le coût moyen pondéré s'applique par défaut, comme le PRD le
-                prévoit. Enregistrer la décision ci-dessous la datera et la motivera.
+                {t(
+                  "Aucune décision n'a encore été arrêtée : le coût moyen pondéré s'applique par défaut, comme le PRD le prévoit. Enregistrer la décision ci-dessous la datera et la motivera."
+                )}
               </Paragraph>
             )}
           </Card>
 
           <Card>
             <Title level={5} style={{ marginTop: 0 }}>
-              Arrêter la décision
+              {t('Arrêter la décision')}
             </Title>
             {/*
               Une seule méthode existe aujourd'hui. Présenter une liste
@@ -861,26 +880,32 @@ export const StockReferentiel: React.FC = () => {
               enregistré ici, c'est la DÉCISION, sa date et son motif.
             */}
             <Paragraph type="secondary">
-              <strong>Une seule méthode existe aujourd'hui</strong> : le coût moyen pondéré. Ce geste n'en change donc
-              pas — il enregistre la <strong>décision</strong>, sa date et son motif, comme le besoin S5 l'exige. En
-              ajouter une autre est un travail à part entière, pas une ligne de paramétrage.
+              <strong>{t("Une seule méthode existe aujourd'hui")}</strong>{' '}
+              {t(": le coût moyen pondéré. Ce geste n'en change donc pas — il enregistre la")}{' '}
+              <strong>{t('décision')}</strong>
+              {t(
+                ", sa date et son motif, comme le besoin S5 l'exige. En ajouter une autre est un travail à part entière, pas une ligne de paramétrage."
+              )}
             </Paragraph>
             <Paragraph>
-              Méthode retenue : <strong>{STOCK_VALUATION_METHOD_LABELS.WEIGHTED_AVERAGE}</strong>
+              {t('Méthode retenue :')} <strong>{STOCK_VALUATION_METHOD_LABELS.WEIGHTED_AVERAGE}</strong>
             </Paragraph>
             <div style={{ maxWidth: 520 }}>
-              <label htmlFor="methode-motif">Motif de la décision</label>
+              <label htmlFor="methode-motif">{t('Motif de la décision')}</label>
               <TextArea
                 id="methode-motif"
                 rows={3}
                 value={motifDecision}
                 onChange={event => setMotifDecision(event.target.value)}
-                placeholder="Ex. Décision du comité de gestion du 12 mars : coût moyen pondéré retenu pour tous les chantiers."
+                placeholder={t(
+                  'Ex. Décision du comité de gestion du 12 mars : coût moyen pondéré retenu pour tous les chantiers.'
+                )}
               />
               <div style={{ marginTop: 'var(--space-2)' }}>
                 <Text type={motifManquant ? 'danger' : 'secondary'}>
-                  Le motif est obligatoire : sans lui, personne ne saura dans six mois pourquoi les chiffres ont changé
-                  de sens.
+                  {t(
+                    'Le motif est obligatoire : sans lui, personne ne saura dans six mois pourquoi les chiffres ont changé de sens.'
+                  )}
                 </Text>
               </div>
               <Button
@@ -890,7 +915,7 @@ export const StockReferentiel: React.FC = () => {
                 disabled={motifManquant}
                 onClick={arreterMethode}
               >
-                Enregistrer la décision
+                {t('Enregistrer la décision')}
               </Button>
             </div>
           </Card>
@@ -907,14 +932,17 @@ export const StockReferentiel: React.FC = () => {
         action globale changerait de sens selon l'onglet affiché, ce que
         `<PageHeader>` ne peut pas dire.
       */}
-      <PageHeader title="Paramétrage du stock" subtitle="Articles, lieux de stockage et méthode de valorisation" />
+      <PageHeader
+        title={t('Paramétrage du stock')}
+        subtitle={t('Articles, lieux de stockage et méthode de valorisation')}
+      />
 
       <Tabs
         defaultActiveKey="articles"
         items={[
           { key: 'articles', label: 'Articles', children: ongletArticles },
-          { key: 'lieux', label: 'Lieux de stockage', children: ongletLieux },
-          { key: 'methode', label: 'Méthode de valorisation', children: ongletMethode }
+          { key: 'lieux', label: t('Lieux de stockage'), children: ongletLieux },
+          { key: 'methode', label: t('Méthode de valorisation'), children: ongletMethode }
         ]}
       />
 
@@ -922,42 +950,42 @@ export const StockReferentiel: React.FC = () => {
           Enregistrer un article
       ------------------------------------------------------------------ */}
       <Modal
-        title="Nouvel article"
+        title={t('Nouvel article')}
         open={creationArticleOuverte}
         onCancel={() => {
           if (!creationArticleEnCours) setCreationArticleOuverte(false);
         }}
         confirmLoading={creationArticleEnCours}
         onOk={enregistrerArticle}
-        okText="Enregistrer l'article"
-        cancelText="Annuler"
+        okText={t("Enregistrer l'article")}
+        cancelText={t('Annuler')}
         destroyOnHidden
       >
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <label htmlFor="article-reference">Référence</label>
+            <label htmlFor="article-reference">{t('Référence')}</label>
             <Input
               id="article-reference"
               value={saisieCreation.reference}
               onChange={event => setSaisieCreation({ ...saisieCreation, reference: event.target.value })}
-              placeholder="Ex. CIM-42"
+              placeholder={t('Ex. CIM-42')}
             />
             <Text type="secondary">
-              C'est elle qu'on lira sur les bons. <strong>Elle ne se corrigera plus</strong> une fois l'article
-              enregistré.
+              {t("C'est elle qu'on lira sur les bons.")} <strong>{t('Elle ne se corrigera plus')}</strong>{' '}
+              {t("une fois l'article enregistré.")}
             </Text>
           </div>
           <div>
-            <label htmlFor="article-designation">Désignation</label>
+            <label htmlFor="article-designation">{t('Désignation')}</label>
             <Input
               id="article-designation"
               value={saisieCreation.label}
               onChange={event => setSaisieCreation({ ...saisieCreation, label: event.target.value })}
-              placeholder="Ex. Ciment CPJ 42,5"
+              placeholder={t('Ex. Ciment CPJ 42,5')}
             />
           </div>
           <div>
-            <label htmlFor="article-unite">Unité</label>
+            <label htmlFor="article-unite">{t('Unité')}</label>
             {/* Texte libre, et c'est un choix du contrat : une énumération
                 obligerait à livrer une version du logiciel pour ajouter
                 « fût ». */}
@@ -965,39 +993,42 @@ export const StockReferentiel: React.FC = () => {
               id="article-unite"
               value={saisieCreation.unit}
               onChange={event => setSaisieCreation({ ...saisieCreation, unit: event.target.value })}
-              placeholder="Ex. sac, tonne, barre, m³"
+              placeholder={t('Ex. sac, tonne, barre, m³')}
             />
             <Text type="secondary">
-              Toutes les quantités de cet article seront comptées dans cette unité. Choisissez-la bien : la changer plus
-              tard ne reconvertira rien.
+              {t(
+                'Toutes les quantités de cet article seront comptées dans cette unité. Choisissez-la bien : la changer plus tard ne reconvertira rien.'
+              )}
             </Text>
           </div>
           <div>
-            <label htmlFor="article-famille">Famille (facultatif)</label>
+            <label htmlFor="article-famille">{t('Famille (facultatif)')}</label>
             <Input
               id="article-famille"
               value={saisieCreation.category}
               onChange={event => setSaisieCreation({ ...saisieCreation, category: event.target.value })}
-              placeholder="Ex. Gros œuvre"
+              placeholder={t('Ex. Gros œuvre')}
             />
           </div>
           <div>
-            <label htmlFor="article-poste">Poste proposé à la sortie (facultatif)</label>
+            <label htmlFor="article-poste">{t('Poste proposé à la sortie (facultatif)')}</label>
             {/* PROPOSITION, et l'écran le dit. Le contrat est formel : ce
                 poste n'a aucune autorité, la sortie exige le sien. */}
             <Select
               id="article-poste"
               style={{ width: '100%' }}
               allowClear
-              placeholder="Aucun poste proposé"
+              placeholder={t('Aucun poste proposé')}
               value={saisieCreation.defaultCostCategoryId}
               onChange={valeur => setSaisieCreation({ ...saisieCreation, defaultCostCategoryId: valeur ?? undefined })}
               options={optionsPostes}
-              notFoundContent="Aucun poste disponible"
+              notFoundContent={t('Aucun poste disponible')}
             />
             <Text type="secondary">
-              Simple <strong>proposition</strong> : ce poste sera pré-sélectionné à la sortie de la marchandise, et
-              restera modifiable à ce moment-là. Laisser vide est un cas normal.
+              {t('Simple')} <strong>proposition</strong>{' '}
+              {t(
+                ': ce poste sera pré-sélectionné à la sortie de la marchandise, et restera modifiable à ce moment-là. Laisser vide est un cas normal.'
+              )}
             </Text>
           </div>
         </Space>
@@ -1007,14 +1038,18 @@ export const StockReferentiel: React.FC = () => {
           Corriger un article — avec l'avertissement sur l'unité
       ------------------------------------------------------------------ */}
       <Modal
-        title={articleCorrige ? `Corriger l'article « ${articleCorrige.reference} »` : "Corriger l'article"}
+        title={
+          articleCorrige
+            ? t("Corriger l'article « {{reference}} »", { reference: articleCorrige.reference })
+            : t("Corriger l'article")
+        }
         open={Boolean(articleCorrige)}
         onCancel={fermerCorrectionArticle}
         confirmLoading={correctionArticleEnCours}
         onOk={corrigerArticle}
-        okText="Enregistrer la correction"
+        okText={t('Enregistrer la correction')}
         okButtonProps={{ disabled: !peutCorrigerArticle }}
-        cancelText="Annuler"
+        cancelText={t('Annuler')}
         destroyOnHidden
       >
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
@@ -1022,12 +1057,12 @@ export const StockReferentiel: React.FC = () => {
             {/* Montrée, jamais modifiable : c'est ce qu'on lit sur les bons
                 déjà imprimés, et le serveur la refuserait en 400. */}
             <Text type="secondary">
-              Référence : <strong>{articleCorrige?.reference}</strong> — elle ne se corrige pas, c'est elle qu'on lit
-              sur les bons déjà imprimés.
+              {t('Référence :')} <strong>{articleCorrige?.reference}</strong>{' '}
+              {t("— elle ne se corrige pas, c'est elle qu'on lit sur les bons déjà imprimés.")}
             </Text>
           </div>
           <div>
-            <label htmlFor="correction-designation">Désignation</label>
+            <label htmlFor="correction-designation">{t('Désignation')}</label>
             <Input
               id="correction-designation"
               value={saisieCorrection.label}
@@ -1035,7 +1070,7 @@ export const StockReferentiel: React.FC = () => {
             />
           </div>
           <div>
-            <label htmlFor="correction-unite">Unité</label>
+            <label htmlFor="correction-unite">{t('Unité')}</label>
             <Input
               id="correction-unite"
               value={saisieCorrection.unit}
@@ -1051,45 +1086,45 @@ export const StockReferentiel: React.FC = () => {
                 déjà enregistrées changeront de sens sans changer de nombre.
               */}
               <Text type="warning">
-                Changer l'unité de « {articleCorrige?.unit} » en « {saisieCorrection.unit.trim()} »{' '}
-                <strong>ne reconvertit aucune quantité déjà enregistrée</strong>. Les mouvements passés garderont leur
-                nombre, qui voudra désormais dire autre chose. À ne faire que pour réparer une erreur de saisie, jamais
-                pour changer de conditionnement.
+                {t("Changer l'unité de «")} {articleCorrige?.unit} {t('» en «')} {saisieCorrection.unit.trim()} »{' '}
+                <strong>{t('ne reconvertit aucune quantité déjà enregistrée')}</strong>. Les mouvements passés garderont
+                leur nombre, qui voudra désormais dire autre chose. À ne faire que pour réparer une erreur de saisie,
+                jamais pour changer de conditionnement.
               </Text>
               <div style={{ marginTop: 'var(--space-2)' }}>
                 <Checkbox checked={uniteAcquittee} onChange={event => setUniteAcquittee(event.target.checked)}>
-                  J'ai compris : les quantités déjà enregistrées ne seront pas reconverties.
+                  {t("J'ai compris : les quantités déjà enregistrées ne seront pas reconverties.")}
                 </Checkbox>
               </div>
             </div>
           )}
 
           <div>
-            <label htmlFor="correction-famille">Famille (facultatif)</label>
+            <label htmlFor="correction-famille">{t('Famille (facultatif)')}</label>
             <Input
               id="correction-famille"
               value={saisieCorrection.category}
               onChange={event => setSaisieCorrection({ ...saisieCorrection, category: event.target.value })}
-              placeholder="Vider le champ efface la famille"
+              placeholder={t('Vider le champ efface la famille')}
             />
           </div>
           <div>
-            <label htmlFor="correction-poste">Poste proposé à la sortie (facultatif)</label>
+            <label htmlFor="correction-poste">{t('Poste proposé à la sortie (facultatif)')}</label>
             <Select
               id="correction-poste"
               style={{ width: '100%' }}
               allowClear
-              placeholder="Aucun poste proposé"
+              placeholder={t('Aucun poste proposé')}
               value={saisieCorrection.defaultCostCategoryId}
               onChange={valeur =>
                 setSaisieCorrection({ ...saisieCorrection, defaultCostCategoryId: valeur ?? undefined })
               }
               options={optionsPostes}
-              notFoundContent="Aucun poste disponible"
+              notFoundContent={t('Aucun poste disponible')}
             />
             <Text type="secondary">
-              Toujours une <strong>proposition</strong> : la sortie exigera son poste, et celui-ci n'y sera que
-              pré-sélectionné.
+              {t('Toujours une')} <strong>proposition</strong>{' '}
+              {t(": la sortie exigera son poste, et celui-ci n'y sera que pré-sélectionné.")}
             </Text>
           </div>
         </Space>
@@ -1099,21 +1134,21 @@ export const StockReferentiel: React.FC = () => {
           Créer un lieu de stockage
       ------------------------------------------------------------------ */}
       <Modal
-        title="Nouveau lieu de stockage"
+        title={t('Nouveau lieu de stockage')}
         open={creationLieuOuverte}
         onCancel={() => {
           if (!creationLieuEnCours) setCreationLieuOuverte(false);
         }}
         confirmLoading={creationLieuEnCours}
         onOk={creerLieu}
-        okText="Enregistrer le lieu"
+        okText={t('Enregistrer le lieu')}
         okButtonProps={{ disabled: !peutCreerLieu }}
-        cancelText="Annuler"
+        cancelText={t('Annuler')}
         destroyOnHidden
       >
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <div id="lieu-nature-label">Nature du lieu</div>
+            <div id="lieu-nature-label">{t('Nature du lieu')}</div>
             {/* La nature est arrêtée à la création : elle ne se corrigera
                 plus (contrat gelé). */}
             <Radio.Group
@@ -1132,18 +1167,18 @@ export const StockReferentiel: React.FC = () => {
             </Radio.Group>
             <div>
               <Text type="secondary">
-                La nature est arrêtée maintenant : <strong>elle ne se corrigera plus</strong>. Un magasin qui
+                {t('La nature est arrêtée maintenant :')} <strong>elle ne se corrigera plus</strong>. Un magasin qui
                 deviendrait le lieu d'un chantier emporterait avec lui un stock qui n'y a jamais été.
               </Text>
             </div>
           </div>
           <div>
-            <label htmlFor="lieu-libelle">Libellé</label>
+            <label htmlFor="lieu-libelle">{t('Libellé')}</label>
             <Input
               id="lieu-libelle"
               value={libelleLieu}
               onChange={event => setLibelleLieu(event.target.value)}
-              placeholder="Ex. Magasin central de Kipé"
+              placeholder={t('Ex. Magasin central de Kipé')}
             />
           </div>
 
@@ -1152,24 +1187,25 @@ export const StockReferentiel: React.FC = () => {
               toute autre. */}
           {natureLieu === 'SITE' && (
             <div>
-              <label htmlFor="lieu-chantier">Chantier</label>
+              <label htmlFor="lieu-chantier">{t('Chantier')}</label>
               <Select
                 id="lieu-chantier"
                 style={{ width: '100%' }}
-                placeholder="Choisir un chantier"
+                placeholder={t('Choisir un chantier')}
                 value={chantierLieu}
                 onChange={setChantierLieu}
                 options={optionsChantiers}
-                notFoundContent="Aucun chantier disponible"
+                notFoundContent={t('Aucun chantier disponible')}
               />
               <Text type="secondary">
-                Obligatoire pour un lieu de chantier, et le chantier ne se corrigera plus ensuite.
+                {t('Obligatoire pour un lieu de chantier, et le chantier ne se corrigera plus ensuite.')}
               </Text>
               {chantierDejaPourvu && (
                 <div style={{ marginTop: 'var(--space-2)' }}>
                   <Text type="warning">
-                    Ce chantier dispose déjà d'un lieu de stockage. Un chantier n'en a qu'un : l'enregistrement sera
-                    refusé.
+                    {t(
+                      "Ce chantier dispose déjà d'un lieu de stockage. Un chantier n'en a qu'un : l'enregistrement sera refusé."
+                    )}
                   </Text>
                 </div>
               )}
@@ -1182,21 +1218,21 @@ export const StockReferentiel: React.FC = () => {
           Corriger un lieu — son libellé, et rien d'autre
       ------------------------------------------------------------------ */}
       <Modal
-        title={lieuCorrige ? `Corriger le lieu « ${lieuCorrige.label} »` : 'Corriger le lieu'}
+        title={lieuCorrige ? t('Corriger le lieu « {{label}} »', { label: lieuCorrige.label }) : t('Corriger le lieu')}
         open={Boolean(lieuCorrige)}
         onCancel={() => {
           if (!correctionLieuEnCours) setLieuCorrige(null);
         }}
         confirmLoading={correctionLieuEnCours}
         onOk={corrigerLieu}
-        okText="Enregistrer le libellé"
+        okText={t('Enregistrer le libellé')}
         okButtonProps={{ disabled: !peutCorrigerLieu }}
-        cancelText="Annuler"
+        cancelText={t('Annuler')}
         destroyOnHidden
       >
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <label htmlFor="correction-libelle">Libellé</label>
+            <label htmlFor="correction-libelle">{t('Libellé')}</label>
             <Input
               id="correction-libelle"
               value={libelleCorrige}
@@ -1207,13 +1243,21 @@ export const StockReferentiel: React.FC = () => {
               oubli : le contrat gelé l'interdit, et le schéma `.strict()` du
               serveur refuserait ces champs en 400. */}
           <Text type="secondary">
-            Seul le libellé se corrige. <strong>Ni la nature ni le chantier</strong> d'un lieu ne changent : un magasin
-            qui deviendrait le lieu d'un chantier emporterait avec lui un stock qui n'y a jamais été.
+            {t('Seul le libellé se corrige.')} <strong>{t('Ni la nature ni le chantier')}</strong>{' '}
+            {t(
+              "d'un lieu ne changent : un magasin qui deviendrait le lieu d'un chantier emporterait avec lui un stock qui n'y a jamais été."
+            )}
             {lieuCorrige ? (
               <>
                 {' '}
-                Ce lieu reste un <strong>{STOCK_LOCATION_KIND_LABELS[lieuCorrige.kind].toLowerCase()}</strong>
-                {lieuCorrige.siteLabel ? <> du chantier « {lieuCorrige.siteLabel} »</> : null}.
+                {t('Ce lieu reste un')} <strong>{STOCK_LOCATION_KIND_LABELS[lieuCorrige.kind].toLowerCase()}</strong>
+                {lieuCorrige.siteLabel ? (
+                  <>
+                    {' '}
+                    {t('du chantier «')} {lieuCorrige.siteLabel} »
+                  </>
+                ) : null}
+                .
               </>
             ) : null}
           </Text>

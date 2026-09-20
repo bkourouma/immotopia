@@ -1,4 +1,5 @@
 import apiClient from '../utils/api-client';
+import { t } from '../i18n/t';
 
 export interface WhatsappNotificationConfigItem {
   key: string;
@@ -54,7 +55,7 @@ export const whatsappNotificationConfigService = {
     const { data } = await apiClient.get<{ success: boolean; data: WhatsappNotificationConfigItem[] }>(
       `/tenants/${tenantId}/whatsapp-notifications`
     );
-    if (!data.success || !data.data) throw new Error('Invalid response');
+    if (!data.success || !data.data) throw new Error(t('Invalid response'));
     return data.data;
   },
 
@@ -67,7 +68,7 @@ export const whatsappNotificationConfigService = {
       `/tenants/${tenantId}/whatsapp-notifications/${encodeURIComponent(key)}`,
       payload
     );
-    if (!data.success || !data.data) throw new Error('Invalid response');
+    if (!data.success || !data.data) throw new Error(t('Invalid response'));
     return data.data;
   },
 
@@ -75,7 +76,7 @@ export const whatsappNotificationConfigService = {
     const { data } = await apiClient.post<{ success: boolean }>(
       `/tenants/${tenantId}/whatsapp-notifications/${encodeURIComponent(key)}/reset`
     );
-    if (!data.success) throw new Error('Invalid response');
+    if (!data.success) throw new Error(t('Invalid response'));
   },
 
   async sendTest(tenantId: string, payload: SendWhatsappTestPayload): Promise<{ messageId?: string | null }> {
@@ -84,7 +85,7 @@ export const whatsappNotificationConfigService = {
       data?: { messageId?: string | null };
       message?: string;
     }>(`/tenants/${tenantId}/whatsapp-notifications/test-send`, payload);
-    if (!data.success) throw new Error(data.message || 'Invalid response');
+    if (!data.success) throw new Error(data.message || t('Invalid response'));
     return data.data || {};
   },
 
@@ -100,7 +101,7 @@ export const whatsappNotificationConfigService = {
       limit: options?.limit,
       force: options?.force
     });
-    if (!data.success || !data.data) throw new Error(data.message || 'Invalid response');
+    if (!data.success || !data.data) throw new Error(data.message || t('Invalid response'));
     return data.data;
   },
 
@@ -124,7 +125,7 @@ export const whatsappNotificationConfigService = {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
 
-    if (!data.success || !data.data) throw new Error(data.message || 'Invalid response');
+    if (!data.success || !data.data) throw new Error(data.message || t('Invalid response'));
     return data.data;
   }
 };

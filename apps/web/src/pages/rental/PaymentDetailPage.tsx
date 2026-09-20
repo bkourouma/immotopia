@@ -34,7 +34,9 @@ import {
   updatePaymentStatus
 } from '../../services/rental-service';
 import { AllocatePaymentForm } from '../../components/rental/AllocatePaymentForm';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 export const PaymentDetailPage: React.FC = () => {
@@ -63,10 +65,10 @@ export const PaymentDetailPage: React.FC = () => {
       if (response.success) {
         setPayment(response.data);
       } else {
-        setError('Erreur lors du chargement du paiement');
+        setError(t('Erreur lors du chargement du paiement'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement du paiement');
+      setError(err.response?.data?.message || t('Erreur lors du chargement du paiement'));
     } finally {
       setLoading(false);
     }
@@ -77,9 +79,9 @@ export const PaymentDetailPage: React.FC = () => {
     try {
       await updatePaymentStatus(tenantId, paymentId, newStatus);
       await loadPayment();
-      message.success('Statut mis à jour avec succès');
+      message.success(t('Statut mis à jour avec succès'));
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || 'Erreur lors de la mise à jour du statut';
+      const errorMessage = err.response?.data?.message || t('Erreur lors de la mise à jour du statut');
       setError(errorMessage);
       message.error(errorMessage);
     }
@@ -87,12 +89,12 @@ export const PaymentDetailPage: React.FC = () => {
 
   const getStatusTag = (status: RentalPaymentStatus) => {
     const statusMap: Record<RentalPaymentStatus, { label: string; color: string }> = {
-      PENDING: { label: 'En attente', color: 'default' },
-      SUCCESS: { label: 'Réussi', color: 'success' },
-      FAILED: { label: 'Échoué', color: 'error' },
-      CANCELED: { label: 'Annulé', color: 'default' },
-      REFUNDED: { label: 'Remboursé', color: 'warning' },
-      PARTIALLY_REFUNDED: { label: 'Partiellement remboursé', color: 'warning' }
+      PENDING: { label: t('En attente'), color: 'default' },
+      SUCCESS: { label: t('Réussi'), color: 'success' },
+      FAILED: { label: t('Échoué'), color: 'error' },
+      CANCELED: { label: t('Annulé'), color: 'default' },
+      REFUNDED: { label: t('Remboursé'), color: 'warning' },
+      PARTIALLY_REFUNDED: { label: t('Partiellement remboursé'), color: 'warning' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -100,11 +102,11 @@ export const PaymentDetailPage: React.FC = () => {
 
   const getMethodLabel = (method: string) => {
     const methodMap: Record<string, string> = {
-      CASH: 'Espèces',
-      BANK_TRANSFER: 'Virement bancaire',
-      CHECK: 'Chèque',
-      MOBILE_MONEY: 'Mobile Money',
-      CARD: 'Carte bancaire',
+      CASH: t('Espèces'),
+      BANK_TRANSFER: t('Virement bancaire'),
+      CHECK: t('Chèque'),
+      MOBILE_MONEY: t('Mobile Money'),
+      CARD: t('Carte bancaire'),
       OTHER: 'Autre'
     };
     return methodMap[method] || method;
@@ -112,11 +114,11 @@ export const PaymentDetailPage: React.FC = () => {
 
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('fr-FR');
+    return new Date(dateString).toLocaleDateString(activeLocale());
   };
 
   const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat('fr-FR', {
+    return new Intl.NumberFormat(activeLocale(), {
       style: 'currency',
       currency: currency === 'FCFA' ? 'XOF' : currency
     }).format(amount);
@@ -124,9 +126,9 @@ export const PaymentDetailPage: React.FC = () => {
 
   const getDepositMovementTypeLabel = (type: RentalDepositMovementType | string) => {
     const labels: Record<string, string> = {
-      [RentalDepositMovementType.COLLECT]: 'Collecte (dépôt de garantie)',
-      [RentalDepositMovementType.HOLD]: 'Mise en retenue',
-      [RentalDepositMovementType.RELEASE]: 'Libération',
+      [RentalDepositMovementType.COLLECT]: t('Collecte (dépôt de garantie)'),
+      [RentalDepositMovementType.HOLD]: t('Mise en retenue'),
+      [RentalDepositMovementType.RELEASE]: t('Libération'),
       [RentalDepositMovementType.REFUND]: 'Remboursement',
       [RentalDepositMovementType.FORFEIT]: 'Confiscation',
       [RentalDepositMovementType.ADJUSTMENT]: 'Ajustement'
@@ -142,9 +144,9 @@ export const PaymentDetailPage: React.FC = () => {
       await allocatePayment(tenantId, paymentId, data);
       setShowAllocateForm(false);
       await loadPayment();
-      message.success('Paiement alloué avec succès');
+      message.success(t('Paiement alloué avec succès'));
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || "Erreur lors de l'allocation du paiement";
+      const errorMessage = err.response?.data?.message || t("Erreur lors de l'allocation du paiement");
       setError(errorMessage);
       message.error(errorMessage);
       throw err;
@@ -172,7 +174,7 @@ export const PaymentDetailPage: React.FC = () => {
   if (error || !payment) {
     return (
       <>
-        <Alert message="Erreur" description={error || 'Paiement non trouvé'} type="error" showIcon />
+        <Alert message={t('Erreur')} description={error || t('Paiement non trouvé')} type="error" showIcon />
       </>
     );
   }
@@ -181,7 +183,14 @@ export const PaymentDetailPage: React.FC = () => {
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {error && (
-          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
+          <Alert
+            message={t('Erreur')}
+            description={error}
+            type="error"
+            showIcon
+            closable
+            onClose={() => setError(null)}
+          />
         )}
         <div className="it-toolbar">
           <Space>
@@ -195,13 +204,14 @@ export const PaymentDetailPage: React.FC = () => {
                 }
               }}
             >
-              Retour
+              {t('Retour')}
             </Button>
             <div>
               <Title level={2} style={{ margin: 0 }}>
-                Paiement #{payment.id.slice(0, 8)}
+                {t('Paiement #')}
+                {payment.id.slice(0, 8)}
               </Title>
-              <Text type="secondary">Détails du paiement</Text>
+              <Text type="secondary">{t('Détails du paiement')}</Text>
             </div>
           </Space>
           <Select
@@ -209,10 +219,10 @@ export const PaymentDetailPage: React.FC = () => {
             onChange={value => handleStatusChange(value as RentalPaymentStatus)}
             style={{ width: 180 }}
           >
-            <Select.Option value="PENDING">En attente</Select.Option>
-            <Select.Option value="SUCCESS">Réussi</Select.Option>
-            <Select.Option value="FAILED">Échoué</Select.Option>
-            <Select.Option value="CANCELED">Annulé</Select.Option>
+            <Select.Option value="PENDING">{t('En attente')}</Select.Option>
+            <Select.Option value="SUCCESS">{t('Réussi')}</Select.Option>
+            <Select.Option value="FAILED">{t('Échoué')}</Select.Option>
+            <Select.Option value="CANCELED">{t('Annulé')}</Select.Option>
           </Select>
         </div>
 
@@ -222,27 +232,27 @@ export const PaymentDetailPage: React.FC = () => {
               title={
                 <Space>
                   <DollarOutlined />
-                  <span>Informations financières</span>
+                  <span>{t('Informations financières')}</span>
                 </Space>
               }
             >
               <Descriptions column={1} bordered>
-                <Descriptions.Item label="Montant">
+                <Descriptions.Item label={t('Montant')}>
                   <Text strong>{formatCurrency(payment.amount, payment.currency)}</Text>
                 </Descriptions.Item>
-                <Descriptions.Item label="Montant alloué">
+                <Descriptions.Item label={t('Montant alloué')}>
                   {formatCurrency(allocatedAmount, payment.currency)}
                 </Descriptions.Item>
-                <Descriptions.Item label="Montant disponible">
+                <Descriptions.Item label={t('Montant disponible')}>
                   <Text strong>{formatCurrency(availableAmount, payment.currency)}</Text>
                 </Descriptions.Item>
-                <Descriptions.Item label="Méthode de paiement">{getMethodLabel(payment.method)}</Descriptions.Item>
-                <Descriptions.Item label="Statut">{getStatusTag(payment.status)}</Descriptions.Item>
+                <Descriptions.Item label={t('Méthode de paiement')}>{getMethodLabel(payment.method)}</Descriptions.Item>
+                <Descriptions.Item label={t('Statut')}>{getStatusTag(payment.status)}</Descriptions.Item>
                 {payment.mm_operator && (
-                  <Descriptions.Item label="Opérateur Mobile Money">{payment.mm_operator}</Descriptions.Item>
+                  <Descriptions.Item label={t('Opérateur Mobile Money')}>{payment.mm_operator}</Descriptions.Item>
                 )}
                 {payment.mm_phone && (
-                  <Descriptions.Item label="Numéro de téléphone">{payment.mm_phone}</Descriptions.Item>
+                  <Descriptions.Item label={t('Numéro de téléphone')}>{payment.mm_phone}</Descriptions.Item>
                 )}
               </Descriptions>
             </Card>
@@ -253,20 +263,22 @@ export const PaymentDetailPage: React.FC = () => {
               title={
                 <Space>
                   <CalendarOutlined />
-                  <span>Dates</span>
+                  <span>{t('Dates')}</span>
                 </Space>
               }
             >
               <Descriptions column={1} bordered>
-                <Descriptions.Item label="Date d'initiation">{formatDate(payment.initiated_at)}</Descriptions.Item>
+                <Descriptions.Item label={t("Date d'initiation")}>{formatDate(payment.initiated_at)}</Descriptions.Item>
                 {payment.succeeded_at && (
-                  <Descriptions.Item label="Date de succès">{formatDate(payment.succeeded_at)}</Descriptions.Item>
+                  <Descriptions.Item label={t('Date de succès')}>{formatDate(payment.succeeded_at)}</Descriptions.Item>
                 )}
                 {payment.failed_at && (
-                  <Descriptions.Item label="Date d'échec">{formatDate(payment.failed_at)}</Descriptions.Item>
+                  <Descriptions.Item label={t("Date d'échec")}>{formatDate(payment.failed_at)}</Descriptions.Item>
                 )}
                 {payment.canceled_at && (
-                  <Descriptions.Item label="Date d'annulation">{formatDate(payment.canceled_at)}</Descriptions.Item>
+                  <Descriptions.Item label={t("Date d'annulation")}>
+                    {formatDate(payment.canceled_at)}
+                  </Descriptions.Item>
                 )}
               </Descriptions>
             </Card>
@@ -277,13 +289,13 @@ export const PaymentDetailPage: React.FC = () => {
           title={
             <Space>
               <FileTextOutlined />
-              <span>Utilisation du paiement</span>
+              <span>{t('Utilisation du paiement')}</span>
             </Space>
           }
           extra={
             payment.lease_id && availableAmount > 0 && payment.status === 'SUCCESS' ? (
               <Button type="primary" onClick={() => setShowAllocateForm(true)}>
-                Allouer aux échéances
+                {t('Allouer aux échéances')}
               </Button>
             ) : null
           }
@@ -292,7 +304,7 @@ export const PaymentDetailPage: React.FC = () => {
             {/* Allocations aux échéances */}
             <div>
               <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                Allocations aux échéances
+                {t('Allocations aux échéances')}
               </Text>
               {payment.allocations && payment.allocations.length > 0 ? (
                 <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -303,20 +315,22 @@ export const PaymentDetailPage: React.FC = () => {
                           {allocation.installment ? (
                             <>
                               <Text strong>
-                                Échéance {allocation.installment.period_month}/{allocation.installment.period_year} –{' '}
-                                {formatDate(allocation.installment.due_date)}
+                                {t('Échéance')} {allocation.installment.period_month}/
+                                {allocation.installment.period_year} – {formatDate(allocation.installment.due_date)}
                               </Text>
                               <br />
                               <Text type="secondary">
-                                Montant alloué : {formatCurrency(allocation.amount, allocation.currency)}
+                                {t('Montant alloué :')} {formatCurrency(allocation.amount, allocation.currency)}
                               </Text>
                             </>
                           ) : (
                             <>
-                              <Text strong>Échéance ID: {allocation.installment_id.slice(0, 8)}</Text>
+                              <Text strong>
+                                {t('Échéance ID:')} {allocation.installment_id.slice(0, 8)}
+                              </Text>
                               <br />
                               <Text type="secondary">
-                                Montant alloué : {formatCurrency(allocation.amount, allocation.currency)}
+                                {t('Montant alloué :')} {formatCurrency(allocation.amount, allocation.currency)}
                               </Text>
                             </>
                           )}
@@ -329,14 +343,14 @@ export const PaymentDetailPage: React.FC = () => {
                   ))}
                 </Space>
               ) : (
-                <Text type="secondary">Aucune allocation aux échéances.</Text>
+                <Text type="secondary">{t('Aucune allocation aux échéances.')}</Text>
               )}
             </div>
 
             {/* Allocations au dépôt de garantie */}
             <div>
               <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                Allocation au dépôt de garantie
+                {t('Allocation au dépôt de garantie')}
               </Text>
               {payment.depositMovements && payment.depositMovements.length > 0 ? (
                 <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -347,7 +361,7 @@ export const PaymentDetailPage: React.FC = () => {
                           <Text strong>{getDepositMovementTypeLabel(movement.type || 'COLLECT')}</Text>
                           <br />
                           <Text type="secondary">
-                            Montant : {formatCurrency(Number(movement.amount), payment.currency)}
+                            {t('Montant :')} {formatCurrency(Number(movement.amount), payment.currency)}
                           </Text>
                         </Col>
                         <Col>
@@ -358,7 +372,7 @@ export const PaymentDetailPage: React.FC = () => {
                   ))}
                 </Space>
               ) : (
-                <Text type="secondary">Aucune allocation au dépôt de garantie.</Text>
+                <Text type="secondary">{t('Aucune allocation au dépôt de garantie.')}</Text>
               )}
             </div>
 
@@ -366,7 +380,7 @@ export const PaymentDetailPage: React.FC = () => {
               <Empty
                 description={
                   <>
-                    <p>Aucune utilisation enregistrée pour ce paiement.</p>
+                    <p>{t('Aucune utilisation enregistrée pour ce paiement.')}</p>
                     {payment.lease_id && availableAmount > 0 && payment.status === 'SUCCESS' && (
                       <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginTop: 8 }}>
                         Cliquez sur &quot;Allouer aux échéances&quot; pour allouer ce paiement à une ou plusieurs
@@ -384,7 +398,7 @@ export const PaymentDetailPage: React.FC = () => {
           title={
             <Space>
               <FileTextOutlined />
-              <span>Allouer le paiement aux échéances</span>
+              <span>{t('Allouer le paiement aux échéances')}</span>
             </Space>
           }
           open={showAllocateForm}
@@ -395,7 +409,7 @@ export const PaymentDetailPage: React.FC = () => {
         >
           <div style={{ marginBottom: 16 }}>
             <Text type="secondary">
-              Montant disponible: <Text strong>{formatCurrency(availableAmount, payment.currency)}</Text>
+              {t('Montant disponible:')} <Text strong>{formatCurrency(availableAmount, payment.currency)}</Text>
             </Text>
           </div>
           <AllocatePaymentForm

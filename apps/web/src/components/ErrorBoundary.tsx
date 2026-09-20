@@ -1,4 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { t } from '../i18n/t';
 
 interface Props {
   children: ReactNode;
@@ -43,26 +44,22 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50">
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">
-              Une erreur est survenue
-            </h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">{t('Une erreur est survenue')}</h2>
             <p className="text-gray-600 mb-4">
-              Désolé, quelque chose s'est mal passé. Veuillez rafraîchir la page.
+              {t("Désolé, quelque chose s'est mal passé. Veuillez rafraîchir la page.")}
             </p>
             <button
               onClick={() => window.location.reload()}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
-              Rafraîchir la page
+              {t('Rafraîchir la page')}
             </button>
             {import.meta.env.DEV && this.state.error && (
-              <details className="mt-4 text-left">
+              <details className="mt-4 text-start">
                 <summary className="cursor-pointer text-sm text-gray-500">
-                  Détails de l'erreur (développement)
+                  {t("Détails de l'erreur (développement)")}
                 </summary>
-                <pre className="mt-2 text-xs bg-gray-100 p-4 rounded overflow-auto">
-                  {this.state.error.toString()}
-                </pre>
+                <pre className="mt-2 text-xs bg-gray-100 p-4 rounded overflow-auto">{this.state.error.toString()}</pre>
               </details>
             )}
           </div>
@@ -73,5 +70,3 @@ export class ErrorBoundary extends Component<Props, State> {
     return this.props.children;
   }
 }
-
-

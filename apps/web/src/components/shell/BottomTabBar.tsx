@@ -4,6 +4,7 @@ import { MORE_TAB_HREF } from '../../navigation/model';
 import type { BottomTab } from '../../navigation/model';
 import { resolveHref } from '../../navigation/resolve';
 import type { NavContext } from '../../navigation/resolve';
+import { t } from '../../i18n/t';
 
 /**
  * `<BottomTabBar>` — navigation principale sous 992 px (REFONTE_UI_UX.md §4.2).
@@ -45,7 +46,7 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({ tabs, context, onOpe
 
   return (
     <nav
-      aria-label="Navigation principale"
+      aria-label={t('Navigation principale')}
       style={{
         position: 'fixed',
         insetInline: 0,

@@ -1,3 +1,4 @@
+import { t } from '../i18n/t';
 /**
  * Contrat gelé de la frontière réseau — module financier, lot 3.
  *
@@ -28,7 +29,7 @@ export type SiteBudgetStatus = 'DRAFT' | 'VALIDATED';
 
 export const SITE_BUDGET_STATUS_LABELS: Record<SiteBudgetStatus, string> = {
   DRAFT: 'Brouillon',
-  VALIDATED: 'Validé'
+  VALIDATED: t('Validé')
 };
 
 /** Cycle **décidé** d'un bon de commande. Voir `PurchaseOrderInvoicingState`. */
@@ -36,8 +37,8 @@ export type PurchaseOrderStatus = 'DRAFT' | 'ISSUED' | 'CANCELLED';
 
 export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
   DRAFT: 'Brouillon',
-  ISSUED: 'Émis',
-  CANCELLED: 'Annulé'
+  ISSUED: t('Émis'),
+  CANCELLED: t('Annulé')
 };
 
 /**
@@ -50,9 +51,9 @@ export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> =
 export type PurchaseOrderInvoicingState = 'NOT_INVOICED' | 'PARTIALLY_INVOICED' | 'SETTLED';
 
 export const INVOICING_STATE_LABELS: Record<PurchaseOrderInvoicingState, string> = {
-  NOT_INVOICED: 'Non facturé',
-  PARTIALLY_INVOICED: 'Partiellement facturé',
-  SETTLED: 'Soldé'
+  NOT_INVOICED: t('Non facturé'),
+  PARTIALLY_INVOICED: t('Partiellement facturé'),
+  SETTLED: t('Soldé')
 };
 
 // ---------------------------------------------------------------------------

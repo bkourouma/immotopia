@@ -42,7 +42,9 @@ import {
   FilterSheet,
   formatMoney
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text } = Typography;
 
 /**
@@ -148,7 +150,7 @@ const { Text } = Typography;
 
 /** Un taux se lit comme un pourcentage, jamais par `<MoneyValue>`. */
 function pourcentage(valeur: number): string {
-  return `${valeur.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %`;
+  return `${valeur.toLocaleString(activeLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %`;
 }
 
 /** Une date ISO se lit à la française. Vide plutôt que « Invalid Date ». */
@@ -320,7 +322,7 @@ export const RetenuesDeGarantie: React.FC = () => {
   }, [natureSource, facturesValidees, factureId, situationsValidees, situationId]);
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const nbFiltres = (statut ? 1 : 0) + (chantierId ? 1 : 0) + (echeanceDepassee ? 1 : 0);
@@ -362,7 +364,7 @@ export const RetenuesDeGarantie: React.FC = () => {
 
   const validerPose = async () => {
     if (!peutPoser) {
-      message.error('La pièce, le taux et la date de libération prévue sont tous les trois obligatoires.');
+      message.error(t('La pièce, le taux et la date de libération prévue sont tous les trois obligatoires.'));
       return;
     }
     setPoseEnCours(true);
@@ -376,12 +378,12 @@ export const RetenuesDeGarantie: React.FC = () => {
       });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('retentions', tenantId) });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('retentions-summary', tenantId) });
-      message.success(`Retenue posée sur « ${retenue.sourceLabel} ».`);
+      message.success(t('Retenue posée sur « {{sourceLabel}} ».', { sourceLabel: retenue.sourceLabel }));
       setModalOuvert(false);
     } catch (err: any) {
       // Le message du serveur dit précisément lequel des cinq refus s'est
       // produit. Une phrase générique perdrait cette information.
-      message.error(err?.response?.data?.message || "La retenue n'a pas pu être posée.");
+      message.error(err?.response?.data?.message || t("La retenue n'a pas pu être posée."));
     } finally {
       setPoseEnCours(false);
     }
@@ -396,9 +398,13 @@ export const RetenuesDeGarantie: React.FC = () => {
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('retentions-summary', tenantId) });
       // « Redevenu exigible », et non « versé » : rien n'est sorti de la
       // caisse. Voir le point 1 de l'en-tête.
-      message.success(`Retenue sur « ${retenue.sourceLabel} » libérée : le montant est redevenu exigible.`);
+      message.success(
+        t('Retenue sur « {{sourceLabel}} » libérée : le montant est redevenu exigible.', {
+          sourceLabel: retenue.sourceLabel
+        })
+      );
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "La retenue n'a pas pu être libérée.");
+      message.error(err?.response?.data?.message || t("La retenue n'a pas pu être libérée."));
     }
   };
 
@@ -410,17 +416,17 @@ export const RetenuesDeGarantie: React.FC = () => {
    */
   const BoutonLiberer = ({ retenue }: { retenue: RetentionGuarantee }) => (
     <ConfirmAction
-      title={`Libérer la retenue sur « ${retenue.sourceLabel} » ?`}
+      title={t('Libérer la retenue sur « {{sourceLabel}} » ?', { sourceLabel: retenue.sourceLabel })}
       description={
         <>
-          Libérer ne verse rien. Le montant détenu redevient exigible et {retenue.thirdPartyLabel} redevient créancier ;
-          le versement se fait ensuite depuis sa fiche, par le chemin habituel.
+          {t('Libérer ne verse rien. Le montant détenu redevient exigible et')} {retenue.thirdPartyLabel}{' '}
+          {t('redevient créancier ; le versement se fait ensuite depuis sa fiche, par le chemin habituel.')}
         </>
       }
-      okText="Confirmer la libération"
+      okText={t('Confirmer la libération')}
       onConfirm={() => libererRetenue(retenue)}
     >
-      <Button type="link">Libérer</Button>
+      <Button type="link">{t('Libérer')}</Button>
     </ConfirmAction>
   );
 
@@ -434,13 +440,13 @@ export const RetenuesDeGarantie: React.FC = () => {
         label={RETENTION_STATUS_LABELS[retenue.status]}
         tone={retenue.status === 'HELD' ? 'info' : 'success'}
       />
-      {estEnRetard(retenue) && <StatusTag status="OVERDUE" label="En retard" tone="danger" />}
+      {estEnRetard(retenue) && <StatusTag status="OVERDUE" label={t('En retard')} tone="danger" />}
     </Space>
   );
 
   const colonnes: ColumnsType<RetentionGuarantee> = [
     {
-      title: 'Pièce retenue',
+      title: t('Pièce retenue'),
       key: 'piece',
       render: (_, r) => (
         <Space orientation="vertical" size={0}>
@@ -451,37 +457,39 @@ export const RetenuesDeGarantie: React.FC = () => {
         </Space>
       )
     },
-    { title: 'Tiers', key: 'tiers', render: (_, r) => r.thirdPartyLabel },
+    { title: t('Tiers'), key: 'tiers', render: (_, r) => r.thirdPartyLabel },
     {
-      title: 'Chantier',
+      title: t('Chantier'),
       key: 'chantier',
-      render: (_, r) => r.siteLabel ?? <Text type="secondary">Hors chantier</Text>
+      render: (_, r) => r.siteLabel ?? <Text type="secondary">{t('Hors chantier')}</Text>
     },
     {
       // L'ASSIETTE du taux, pas un coût de chantier. La retenue ne l'entame
       // pas : voir le bandeau de tête et le point 4 de l'en-tête.
-      title: 'Montant de la pièce',
+      title: t('Montant de la pièce'),
       key: 'assiette',
-      align: 'right',
+      align: 'end',
       render: (_, r) => <MoneyValue value={r.baseAmount} />
     },
-    { title: 'Taux', key: 'taux', align: 'right', render: (_, r) => pourcentage(r.ratePercent) },
-    { title: 'Retenu', key: 'retenu', align: 'right', render: (_, r) => <MoneyValue value={r.amount} /> },
+    { title: t('Taux'), key: 'taux', align: 'end', render: (_, r) => pourcentage(r.ratePercent) },
+    { title: t('Retenu'), key: 'retenu', align: 'end', render: (_, r) => <MoneyValue value={r.amount} /> },
     {
-      title: 'Libération prévue',
+      title: t('Libération prévue'),
       key: 'prevue',
       render: (_, r) => date(r.plannedReleaseDate)
     },
-    { title: 'Statut', key: 'statut', render: (_, r) => <EtiquetteStatut retenue={r} /> },
+    { title: t('Statut'), key: 'statut', render: (_, r) => <EtiquetteStatut retenue={r} /> },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, r) =>
         r.status === 'HELD' ? (
           <BoutonLiberer retenue={r} />
         ) : (
-          <Text type="secondary">Libérée le {date(r.releasedAt)}</Text>
+          <Text type="secondary">
+            {t('Libérée le')} {date(r.releasedAt)}
+          </Text>
         )
     }
   ];
@@ -489,9 +497,9 @@ export const RetenuesDeGarantie: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Retenues de garantie"
+        title={t('Retenues de garantie')}
         subtitle={retenues.length > 0 ? `${retenues.length} retenue${retenues.length > 1 ? 's' : ''}` : undefined}
-        primaryAction={{ label: 'Poser une retenue', icon: <PlusOutlined />, onClick: ouvrirPose }}
+        primaryAction={{ label: t('Poser une retenue'), icon: <PlusOutlined />, onClick: ouvrirPose }}
       />
 
       {/* Le piège central de ce sous-lot, dit une fois, en haut, et jamais
@@ -500,24 +508,26 @@ export const RetenuesDeGarantie: React.FC = () => {
         type="info"
         showIcon
         style={{ marginBottom: 'var(--space-4)' }}
-        message="Une retenue ne diminue pas le coût du chantier"
-        description="L'ouvrage a coûté son prix entier, et la pièce reste imputée pour son montant entier. Ce qu'une retenue change, c'est seulement ce qu'on doit maintenant : une part du dû est mise de côté jusqu'à la libération."
+        message={t('Une retenue ne diminue pas le coût du chantier')}
+        description={t(
+          "L'ouvrage a coûté son prix entier, et la pièce reste imputée pour son montant entier. Ce qu'une retenue change, c'est seulement ce qu'on doit maintenant : une part du dû est mise de côté jusqu'à la libération."
+        )}
       />
 
       {resume && (
         <Row gutter={[16, 16]} style={{ marginBottom: 'var(--space-5)' }}>
           <Col xs={24} md={8}>
             <StatCard
-              label="Détenu aujourd'hui"
+              label={t("Détenu aujourd'hui")}
               value={<MoneyValue value={resume.totalHeld} />}
-              hint="Ce qui est mis de côté, en attente de libération."
+              hint={t('Ce qui est mis de côté, en attente de libération.')}
             />
           </Col>
           <Col xs={24} md={8}>
             <StatCard
-              label="Déjà libéré"
+              label={t('Déjà libéré')}
               value={<MoneyValue value={resume.totalReleased} />}
-              hint="Redevenu exigible. Le versement se fait ailleurs, depuis la fiche du tiers."
+              hint={t('Redevenu exigible. Le versement se fait ailleurs, depuis la fiche du tiers.')}
             />
           </Col>
           <Col xs={24} md={8}>
@@ -525,13 +535,16 @@ export const RetenuesDeGarantie: React.FC = () => {
                 est cliquable et pose les DEUX filtres correspondants, visibles
                 dans la barre : « détenue » et « échéance dépassée ». */}
             <StatCard
-              label="En retard"
+              label={t('En retard')}
               tone={resume.overdueCount > 0 ? 'danger' : 'neutral'}
               value={<MoneyValue value={resume.overdueHeld} />}
               hint={
                 resume.overdueCount > 0
-                  ? `${resume.overdueCount} retenue${resume.overdueCount > 1 ? 's' : ''} au-delà de la date convenue. Voir lesquelles.`
-                  : 'Aucune retenue au-delà de la date convenue.'
+                  ? t('{{overdueCount}} retenue{{value}} au-delà de la date convenue. Voir lesquelles.', {
+                      overdueCount: resume.overdueCount,
+                      value: resume.overdueCount > 1 ? 's' : ''
+                    })
+                  : t('Aucune retenue au-delà de la date convenue.')
               }
               onClick={
                 resume.overdueCount > 0
@@ -546,13 +559,13 @@ export const RetenuesDeGarantie: React.FC = () => {
         </Row>
       )}
 
-      <FilterSheet activeCount={nbFiltres} onClear={effacerFiltres} title="Filtrer les retenues">
+      <FilterSheet activeCount={nbFiltres} onClear={effacerFiltres} title={t('Filtrer les retenues')}>
         <div style={{ minWidth: 200 }}>
-          <label htmlFor="filtre-statut-retenues">Statut</label>
+          <label htmlFor="filtre-statut-retenues">{t('Statut')}</label>
           <Select
             id="filtre-statut-retenues"
             style={{ width: '100%' }}
-            placeholder="Tous les statuts"
+            placeholder={t('Tous les statuts')}
             allowClear
             value={statut}
             onChange={valeur => setStatut(valeur as RetentionStatus | undefined)}
@@ -563,11 +576,11 @@ export const RetenuesDeGarantie: React.FC = () => {
           />
         </div>
         <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-chantier-retenues">Chantier</label>
+          <label htmlFor="filtre-chantier-retenues">{t('Chantier')}</label>
           <Select
             id="filtre-chantier-retenues"
             style={{ width: '100%' }}
-            placeholder="Tous les chantiers"
+            placeholder={t('Tous les chantiers')}
             allowClear
             showSearch
             optionFilterProp="label"
@@ -581,7 +594,7 @@ export const RetenuesDeGarantie: React.FC = () => {
               « libérée », il montre des retenues rendues en retard, ce qui est
               une information et non une incohérence. */}
           <Checkbox checked={echeanceDepassee} onChange={event => setEcheanceDepassee(event.target.checked)}>
-            Échéance de libération dépassée
+            {t('Échéance de libération dépassée')}
           </Checkbox>
         </div>
       </FilterSheet>
@@ -597,15 +610,15 @@ export const RetenuesDeGarantie: React.FC = () => {
         onPageChange={() => {}}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger les retenues de garantie.' : null}
+        error={erreurRequete ? t('Impossible de charger les retenues de garantie.') : null}
         onRetry={() => refetch()}
         isFiltered={nbFiltres > 0}
         onClearFilters={effacerFiltres}
-        emptyDescription="Aucune retenue de garantie n'a encore été posée."
-        emptyAction={{ label: 'Poser une retenue', onClick: ouvrirPose }}
+        emptyDescription={t("Aucune retenue de garantie n'a encore été posée.")}
+        emptyAction={{ label: t('Poser une retenue'), onClick: ouvrirPose }}
         columns={colonnes}
         rowKey={r => r.id}
-        aria-label="Retenues de garantie"
+        aria-label={t('Retenues de garantie')}
         renderCard={r => (
           <DataCard
             title={r.sourceLabel}
@@ -614,29 +627,29 @@ export const RetenuesDeGarantie: React.FC = () => {
             status={<EtiquetteStatut retenue={r} />}
             highlight={<MoneyValue value={r.amount} />}
             fields={[
-              { label: 'Montant de la pièce', value: <MoneyValue value={r.baseAmount} /> },
+              { label: t('Montant de la pièce'), value: <MoneyValue value={r.baseAmount} /> },
               { label: 'Taux', value: pourcentage(r.ratePercent) },
-              { label: 'Chantier', value: r.siteLabel ?? 'Hors chantier' },
-              { label: 'Libération prévue', value: date(r.plannedReleaseDate) }
+              { label: 'Chantier', value: r.siteLabel ?? t('Hors chantier') },
+              { label: t('Libération prévue'), value: date(r.plannedReleaseDate) }
             ]}
           />
         )}
       />
 
       <Modal
-        title="Poser une retenue de garantie"
+        title={t('Poser une retenue de garantie')}
         open={modalOuvert}
         onCancel={fermerPose}
         confirmLoading={poseEnCours}
         onOk={validerPose}
-        okText="Poser la retenue"
-        cancelText="Annuler"
+        okText={t('Poser la retenue')}
+        cancelText={t('Annuler')}
         destroyOnHidden
         width={620}
       >
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <span id="retenue-nature-label">Nature de la pièce</span>
+            <span id="retenue-nature-label">{t('Nature de la pièce')}</span>
             <div>
               <Radio.Group
                 aria-labelledby="retenue-nature-label"
@@ -659,11 +672,11 @@ export const RetenuesDeGarantie: React.FC = () => {
           {natureSource === 'SUPPLIER_INVOICE' ? (
             <>
               <div>
-                <label htmlFor="retenue-fournisseur">Fournisseur</label>
+                <label htmlFor="retenue-fournisseur">{t('Fournisseur')}</label>
                 <Select
                   id="retenue-fournisseur"
                   style={{ width: '100%' }}
-                  placeholder="Choisir un fournisseur"
+                  placeholder={t('Choisir un fournisseur')}
                   showSearch
                   optionFilterProp="label"
                   value={fournisseurId}
@@ -675,13 +688,13 @@ export const RetenuesDeGarantie: React.FC = () => {
                 />
               </div>
               <div>
-                <label htmlFor="retenue-facture">Facture validée</label>
+                <label htmlFor="retenue-facture">{t('Facture validée')}</label>
                 {/* Seules les factures validées sont proposées : le serveur
                     refuse les autres. */}
                 <Select
                   id="retenue-facture"
                   style={{ width: '100%' }}
-                  placeholder={fournisseurId ? 'Choisir une facture' : "Choisir d'abord un fournisseur"}
+                  placeholder={fournisseurId ? t('Choisir une facture') : t("Choisir d'abord un fournisseur")}
                   disabled={!fournisseurId}
                   showSearch
                   optionFilterProp="label"
@@ -694,11 +707,11 @@ export const RetenuesDeGarantie: React.FC = () => {
           ) : (
             <>
               <div>
-                <label htmlFor="retenue-marche">Marché</label>
+                <label htmlFor="retenue-marche">{t('Marché')}</label>
                 <Select
                   id="retenue-marche"
                   style={{ width: '100%' }}
-                  placeholder="Choisir un marché"
+                  placeholder={t('Choisir un marché')}
                   showSearch
                   optionFilterProp="label"
                   value={marcheId}
@@ -710,11 +723,11 @@ export const RetenuesDeGarantie: React.FC = () => {
                 />
               </div>
               <div>
-                <label htmlFor="retenue-situation">Situation validée</label>
+                <label htmlFor="retenue-situation">{t('Situation validée')}</label>
                 <Select
                   id="retenue-situation"
                   style={{ width: '100%' }}
-                  placeholder={marcheId ? 'Choisir une situation' : "Choisir d'abord un marché"}
+                  placeholder={marcheId ? t('Choisir une situation') : t("Choisir d'abord un marché")}
                   disabled={!marcheId}
                   showSearch
                   optionFilterProp="label"
@@ -727,7 +740,7 @@ export const RetenuesDeGarantie: React.FC = () => {
           )}
 
           <div>
-            <label htmlFor="retenue-taux">Taux de retenue (%)</label>
+            <label htmlFor="retenue-taux">{t('Taux de retenue (%)')}</label>
             {/* LE SEUL CHAMP CHIFFRÉ DU FORMULAIRE. Il n'y a pas de champ de
                 montant, et ce n'est pas un oubli : le montant retenu se dérive
                 du taux côté serveur (principe P-4). */}
@@ -742,20 +755,25 @@ export const RetenuesDeGarantie: React.FC = () => {
               onChange={valeur => setTaux((valeur as number | null) ?? null)}
             />
             <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-              Strictement entre 0 et 100. Cent pour cent ne serait pas une garantie.
+              {t('Strictement entre 0 et 100. Cent pour cent ne serait pas une garantie.')}
             </Text>
           </div>
 
           {apercuMontant !== null && assietteApercu !== null && (
             <Alert
               type="info"
-              message={`Aperçu : environ ${formatMoney(apercuMontant)} seraient retenus sur ${formatMoney(assietteApercu)}.`}
-              description="Aperçu indicatif seulement. L'écran n'envoie que le taux ; le montant retenu est calculé et arrondi par le serveur, puis figé."
+              message={t('Aperçu : environ {{value}} seraient retenus sur {{value2}}.', {
+                value: formatMoney(apercuMontant),
+                value2: formatMoney(assietteApercu)
+              })}
+              description={t(
+                "Aperçu indicatif seulement. L'écran n'envoie que le taux ; le montant retenu est calculé et arrondi par le serveur, puis figé."
+              )}
             />
           )}
 
           <div>
-            <label htmlFor="retenue-date-liberation">Date de libération prévue</label>
+            <label htmlFor="retenue-date-liberation">{t('Date de libération prévue')}</label>
             <DatePicker
               id="retenue-date-liberation"
               style={{ width: '100%' }}
@@ -764,14 +782,16 @@ export const RetenuesDeGarantie: React.FC = () => {
               onChange={setDateLiberation}
             />
             <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-              C'est une prévision, pas une échéance automatique : rien ne se libère tout seul à cette date. La
-              libération restera un geste à poser depuis cette liste.
+              {t(
+                "C'est une prévision, pas une échéance automatique : rien ne se libère tout seul à cette date. La libération restera un geste à poser depuis cette liste."
+              )}
             </Text>
           </div>
 
           <Text type="secondary">
-            La pièce doit être validée, et elle ne peut porter qu'une seule retenue. Le coût du chantier ne bouge pas :
-            la pièce reste imputée pour son montant entier.
+            {t(
+              "La pièce doit être validée, et elle ne peut porter qu'une seule retenue. Le coût du chantier ne bouge pas : la pièce reste imputée pour son montant entier."
+            )}
           </Text>
         </Space>
       </Modal>

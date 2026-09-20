@@ -6,6 +6,7 @@ import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { StateBlock } from './StateBlock';
 import { SkeletonList, SkeletonTable } from './Skeleton';
 import type { Sort } from '../../hooks/useListParams';
+import { t } from '../../i18n/t';
 
 /**
  * `<DataView>` — une liste, dans les deux représentations (§5.1, §6, §10.1).
@@ -145,7 +146,7 @@ export function DataView<T>(props: DataViewProps<T>) {
       <StateBlock
         variant="error"
         description={error}
-        actions={onRetry ? [{ label: 'Réessayer', onClick: onRetry, primary: true }] : undefined}
+        actions={onRetry ? [{ label: t('Réessayer'), onClick: onRetry, primary: true }] : undefined}
       />
     );
   }
@@ -169,7 +170,7 @@ export function DataView<T>(props: DataViewProps<T>) {
       <StateBlock
         variant="no-results"
         actions={
-          onClearFilters ? [{ label: 'Effacer les filtres', onClick: onClearFilters, primary: true }] : undefined
+          onClearFilters ? [{ label: t('Effacer les filtres'), onClick: onClearFilters, primary: true }] : undefined
         }
       />
     ) : (

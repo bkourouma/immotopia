@@ -8,6 +8,7 @@ import { logger } from '../utils/logger';
 import { prisma } from '../utils/database';
 import { logAuditEvent } from './audit-service';
 import { AuditActionKey } from '../types/audit-types';
+import type { Language } from '../i18n';
 
 /** Entity type used for every authentication event. */
 const AUTH_ENTITY = 'User';
@@ -396,6 +397,23 @@ export async function getCurrentUser(userId: string) {
   if (!user) {
     throw new Error('Utilisateur introuvable.');
   }
+
+  const { passwordHash: removedPasswordHash, ...userPublic } = user;
+  void removedPasswordHash;
+  return userPublic;
+}
+
+/**
+ * Enregistre la langue preferee d'un compte.
+ *
+ * Renvoie l'utilisateur public a jour, pour que l'appelant n'ait pas a rejouer
+ * un `/me` derriere.
+ */
+export async function setPreferredLanguage(userId: string, language: Language) {
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: { preferredLanguage: language }
+  });
 
   const { passwordHash: removedPasswordHash, ...userPublic } = user;
   void removedPasswordHash;

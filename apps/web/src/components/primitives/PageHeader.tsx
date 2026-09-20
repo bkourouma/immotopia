@@ -4,6 +4,7 @@ import type { MenuProps } from 'antd';
 import { MoreOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -60,7 +61,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
       }}
     >
       {breadcrumbs && breadcrumbs.length > 0 && (
-        <nav aria-label="Fil d'Ariane">
+        <nav aria-label={t("Fil d'Ariane")}>
           <Breadcrumb
             items={breadcrumbs.map(c => ({
               title: c.to ? <Link to={c.to}>{c.label}</Link> : c.label
@@ -112,7 +113,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           )}
           {secondaryActions && secondaryActions.length > 0 && (
             <Dropdown menu={{ items: secondaryActions }} trigger={['click']}>
-              <Button icon={<MoreOutlined />} aria-label="Autres actions" />
+              <Button icon={<MoreOutlined />} aria-label={t('Autres actions')} />
             </Dropdown>
           )}
         </Space>

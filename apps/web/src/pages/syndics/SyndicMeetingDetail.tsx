@@ -18,6 +18,7 @@ import {
 } from '../../services/syndic-service';
 import { GeneralMeeting, MeetingAgendaItem, VoteChoice } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { t } from '../../i18n/t';
 
 const { Paragraph, Title, Text } = Typography;
 
@@ -46,7 +47,7 @@ export const SyndicMeetingDetail: React.FC = () => {
   useEffect(() => {
     if (!effectiveTenantId || !syndicId || !meetingId) {
       setLoading(false);
-      setError('Paramètres assemblée manquants');
+      setError(t('Paramètres assemblée manquants'));
       return;
     }
     void loadMeeting();
@@ -60,7 +61,7 @@ export const SyndicMeetingDetail: React.FC = () => {
       const data = await getMeeting(effectiveTenantId, syndicId, meetingId);
       setMeeting(data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Impossible de charger le détail AG');
+      setError(err.response?.data?.error || t('Impossible de charger le détail AG'));
     } finally {
       setLoading(false);
     }
@@ -80,10 +81,10 @@ export const SyndicMeetingDetail: React.FC = () => {
     setVoting(true);
     try {
       await castResolutionVote(effectiveTenantId, syndicId, meetingId, resolutionId, { lotId, vote });
-      message.success('Vote enregistré');
+      message.success(t('Vote enregistré'));
       await loadMeeting();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Vote impossible');
+      message.error(err.response?.data?.error || t('Vote impossible'));
     } finally {
       setVoting(false);
     }
@@ -95,12 +96,12 @@ export const SyndicMeetingDetail: React.FC = () => {
     setSubmittingResolution(true);
     try {
       await addMeetingResolution(effectiveTenantId, syndicId, meetingId, values);
-      message.success('Résolution ajoutée');
+      message.success(t('Résolution ajoutée'));
       setOpenResolution(false);
       resolutionForm.resetFields();
       await loadMeeting();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Ajout impossible');
+      message.error(err.response?.data?.error || t('Ajout impossible'));
     } finally {
       setSubmittingResolution(false);
     }
@@ -149,12 +150,12 @@ export const SyndicMeetingDetail: React.FC = () => {
           discussions
         });
       }
-      message.success("Point d'ordre du jour enregistré");
+      message.success(t("Point d'ordre du jour enregistré"));
       setOpenAgenda(false);
       agendaForm.resetFields();
       await loadMeeting();
     } catch (err: any) {
-      message.error(err.response?.data?.error || "Echec de l'enregistrement du point");
+      message.error(err.response?.data?.error || t("Echec de l'enregistrement du point"));
     } finally {
       setSavingAgenda(false);
     }
@@ -165,10 +166,10 @@ export const SyndicMeetingDetail: React.FC = () => {
     setDeletingAgendaId(agendaItemId);
     try {
       await deleteMeetingAgendaItem(effectiveTenantId, syndicId, meetingId, agendaItemId);
-      message.success("Point d'ordre du jour supprimé");
+      message.success(t("Point d'ordre du jour supprimé"));
       await loadMeeting();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Suppression impossible');
+      message.error(err.response?.data?.error || t('Suppression impossible'));
     } finally {
       setDeletingAgendaId(null);
     }
@@ -187,9 +188,9 @@ export const SyndicMeetingDetail: React.FC = () => {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      message.success('Compte rendu généré');
+      message.success(t('Compte rendu généré'));
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Génération du compte rendu impossible');
+      message.error(err.response?.data?.error || t('Génération du compte rendu impossible'));
     } finally {
       setGeneratingMinutes(false);
     }
@@ -218,10 +219,10 @@ export const SyndicMeetingDetail: React.FC = () => {
         endTime,
         location: values.location?.trim() ? values.location.trim() : null
       });
-      message.success('Informations de réunion mises à jour');
+      message.success(t('Informations de réunion mises à jour'));
       await loadMeeting();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Mise à jour impossible');
+      message.error(err.response?.data?.error || t('Mise à jour impossible'));
     } finally {
       setSavingMeetingMeta(false);
     }
@@ -240,7 +241,7 @@ export const SyndicMeetingDetail: React.FC = () => {
   if (error || !meeting) {
     return (
       <>
-        <Alert type="error" message={error || 'Assemblée introuvable'} showIcon />
+        <Alert type="error" message={error || t('Assemblée introuvable')} showIcon />
       </>
     );
   }
@@ -254,27 +255,28 @@ export const SyndicMeetingDetail: React.FC = () => {
               icon={<ArrowLeftOutlined />}
               onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/assemblees`)}
             >
-              Retour aux assemblées
+              {t('Retour aux assemblées')}
             </Button>
             <Title level={2} style={{ margin: 0 }}>
-              Détail assemblée générale
+              {t('Détail assemblée générale')}
             </Title>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Date: {dayjs(meeting.scheduledAt).format('DD/MM/YYYY HH:mm')} | Type: {meetingTypeLabels[meeting.type]}
+              Date: {dayjs(meeting.scheduledAt).format('DD/MM/YYYY HH:mm')} {t('| Type:')}{' '}
+              {meetingTypeLabels[meeting.type]}
             </Paragraph>
             <Form form={meetingMetaForm} layout="inline">
-              <Form.Item label="Heure début" name="startTime">
+              <Form.Item label={t('Heure début')} name="startTime">
                 <TimePicker format="HH:mm" minuteStep={5} allowClear />
               </Form.Item>
-              <Form.Item label="Heure fin" name="endTime">
+              <Form.Item label={t('Heure fin')} name="endTime">
                 <TimePicker format="HH:mm" minuteStep={5} allowClear />
               </Form.Item>
-              <Form.Item label="Lieu" name="location">
-                <Input placeholder="Lieu de l'assemblée" style={{ minWidth: 240 }} />
+              <Form.Item label={t('Lieu')} name="location">
+                <Input placeholder={t("Lieu de l'assemblée")} style={{ minWidth: 240 }} />
               </Form.Item>
               <Form.Item>
                 <Button onClick={() => void handleSaveMeetingMeta()} loading={savingMeetingMeta}>
-                  Enregistrer
+                  {t('Enregistrer')}
                 </Button>
               </Form.Item>
             </Form>
@@ -285,10 +287,10 @@ export const SyndicMeetingDetail: React.FC = () => {
               onClick={() => void handleGenerateMinutes()}
               loading={generatingMinutes}
             >
-              Générer compte rendu Word
+              {t('Générer compte rendu Word')}
             </Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenResolution(true)}>
-              Ajouter une résolution
+              {t('Ajouter une résolution')}
             </Button>
           </Space>
         </div>
@@ -296,16 +298,16 @@ export const SyndicMeetingDetail: React.FC = () => {
         <VoteBoard quorum={meeting.quorum || 0} resolutions={meeting.resolutions || []} />
 
         <Card
-          title="Ordre du jour"
+          title={t('Ordre du jour')}
           extra={
             <Button size="small" type="primary" icon={<PlusOutlined />} onClick={openCreateAgendaModal}>
-              Ajouter un point
+              {t('Ajouter un point')}
             </Button>
           }
         >
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
             {(meeting.agendaItems || []).length === 0 ? (
-              <Text type="secondary">Aucun point d'ordre du jour enregistré.</Text>
+              <Text type="secondary">{t("Aucun point d'ordre du jour enregistré.")}</Text>
             ) : (
               (meeting.agendaItems || [])
                 .slice()
@@ -318,7 +320,7 @@ export const SyndicMeetingDetail: React.FC = () => {
                     extra={
                       <Space>
                         <Button size="small" icon={<EditOutlined />} onClick={() => openEditAgendaModal(item)}>
-                          Modifier
+                          {t('Modifier')}
                         </Button>
                         <Button
                           size="small"
@@ -327,14 +329,14 @@ export const SyndicMeetingDetail: React.FC = () => {
                           loading={deletingAgendaId === item.id}
                           onClick={() => void handleDeleteAgenda(item.id)}
                         >
-                          Supprimer
+                          {t('Supprimer')}
                         </Button>
                       </Space>
                     }
                   >
                     <Space direction="vertical" size={4}>
                       {(item.discussions || []).length === 0 ? (
-                        <Text type="secondary">Aucune discussion renseignee.</Text>
+                        <Text type="secondary">{t('Aucune discussion renseignee.')}</Text>
                       ) : (
                         (item.discussions || []).map((discussion, index) => (
                           <Text key={`${item.id}-${index}`}>- {discussion}</Text>
@@ -347,7 +349,7 @@ export const SyndicMeetingDetail: React.FC = () => {
           </Space>
         </Card>
 
-        <Card title="Ordre du jour et votes">
+        <Card title={t('Ordre du jour et votes')}>
           <MeetingAgenda
             resolutions={meeting.resolutions || []}
             lots={meeting.syndicate?.lots || []}
@@ -358,48 +360,56 @@ export const SyndicMeetingDetail: React.FC = () => {
       </Space>
 
       <Modal
-        title="Ajouter une resolution"
+        title={t('Ajouter une resolution')}
         open={openResolution}
         onCancel={() => setOpenResolution(false)}
         onOk={() => void handleAddResolution()}
-        okText="Ajouter"
-        cancelText="Annuler"
+        okText={t('Ajouter')}
+        cancelText={t('Annuler')}
         confirmLoading={submittingResolution}
       >
         <Form form={resolutionForm} layout="vertical">
-          <Form.Item label="Titre" name="title" rules={[{ required: true, message: 'Le titre est obligatoire' }]}>
+          <Form.Item
+            label={t('Titre')}
+            name="title"
+            rules={[{ required: true, message: t('Le titre est obligatoire') }]}
+          >
             <Input />
           </Form.Item>
-          <Form.Item label="Description" name="description">
+          <Form.Item label={t('Description')} name="description">
             <Input.TextArea rows={4} />
           </Form.Item>
-          <Form.Item label="Regle de majorite" name="majorityRule">
-            <Input placeholder="Ex: article 24" />
+          <Form.Item label={t('Regle de majorite')} name="majorityRule">
+            <Input placeholder={t('Ex: article 24')} />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title={editingAgendaId ? "Modifier le point d'ordre du jour" : "Ajouter un point d'ordre du jour"}
+        title={editingAgendaId ? t("Modifier le point d'ordre du jour") : t("Ajouter un point d'ordre du jour")}
         open={openAgenda}
         onCancel={() => setOpenAgenda(false)}
         onOk={() => void handleSaveAgenda()}
-        okText="Enregistrer"
-        cancelText="Annuler"
+        okText={t('Enregistrer')}
+        cancelText={t('Annuler')}
         confirmLoading={savingAgenda}
       >
         <Form form={agendaForm} layout="vertical">
           <Form.Item
-            label="Titre du point"
+            label={t('Titre du point')}
             name="title"
-            rules={[{ required: true, message: 'Le titre est obligatoire' }]}
+            rules={[{ required: true, message: t('Le titre est obligatoire') }]}
           >
             <Input />
           </Form.Item>
-          <Form.Item label="Ordre" name="orderIndex" rules={[{ required: true, message: "L'ordre est obligatoire" }]}>
+          <Form.Item
+            label={t('Ordre')}
+            name="orderIndex"
+            rules={[{ required: true, message: t("L'ordre est obligatoire") }]}
+          >
             <Input type="number" min={1} />
           </Form.Item>
-          <Form.Item label="Discussions (une ligne par discussion)" name="discussionsText">
+          <Form.Item label={t('Discussions (une ligne par discussion)')} name="discussionsText">
             <Input.TextArea rows={6} />
           </Form.Item>
         </Form>

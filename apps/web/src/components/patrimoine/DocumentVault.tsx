@@ -2,7 +2,9 @@ import React from 'react';
 import { Button, Card, Popconfirm, Space, Table, Tag } from 'antd';
 import type { PatrimonyDocument } from '../../types/patrimoine-types';
 import { API_URL } from '../../config/api';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 interface Props {
   documents: PatrimonyDocument[];
   onDelete?: (documentId: string) => void;
@@ -21,30 +23,30 @@ function getDocumentUrl(fileUrl?: string | null): string {
 }
 
 function documentTypeLabel(type: PatrimonyDocument['type']): string {
-  if (type === 'TITLE_DEED') return 'Titre de propriété';
-  if (type === 'NOTARIAL_DEED') return 'Acte notarié';
-  if (type === 'TAX_DOCUMENT') return 'Document fiscal';
+  if (type === 'TITLE_DEED') return t('Titre de propriété');
+  if (type === 'NOTARIAL_DEED') return t('Acte notarié');
+  if (type === 'TAX_DOCUMENT') return t('Document fiscal');
   if (type === 'INSURANCE') return 'Assurance';
-  if (type === 'TECHNICAL_DIAGNOSIS') return 'Diagnostic technique';
+  if (type === 'TECHNICAL_DIAGNOSIS') return t('Diagnostic technique');
   if (type === 'FLOOR_PLAN') return 'Plan';
-  if (type === 'BUILDING_PERMIT') return 'Permis de construire';
+  if (type === 'BUILDING_PERMIT') return t('Permis de construire');
   if (type === 'OTHER') return 'Autre';
   return type;
 }
 
 function expiryInfo(expiresAt?: string | null): { label: string; color: string } {
-  if (!expiresAt) return { label: 'Sans expiration', color: 'default' };
+  if (!expiresAt) return { label: t('Sans expiration'), color: 'default' };
   const now = new Date();
   const expiryDate = new Date(expiresAt);
   const diffDays = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  if (diffDays < 0) return { label: 'Expire', color: 'red' };
-  if (diffDays <= 30) return { label: `Expire dans ${diffDays}j`, color: 'orange' };
-  return { label: 'Valide', color: 'green' };
+  if (diffDays < 0) return { label: t('Expire'), color: 'red' };
+  if (diffDays <= 30) return { label: t('Expire dans {{diffDays}}j', { diffDays: diffDays }), color: 'orange' };
+  return { label: t('Valide'), color: 'green' };
 }
 
 export const DocumentVault: React.FC<Props> = ({ documents, onDelete, deletingId }) => {
   return (
-    <Card title="Coffre-fort documentaire">
+    <Card title={t('Coffre-fort documentaire')}>
       <Table
         scroll={{ x: 'max-content' }}
         rowKey="id"
@@ -64,7 +66,7 @@ export const DocumentVault: React.FC<Props> = ({ documents, onDelete, deletingId
               const info = expiryInfo(value);
               return (
                 <Space>
-                  {value ? new Date(value).toLocaleDateString('fr-FR') : '-'}
+                  {value ? new Date(value).toLocaleDateString(activeLocale()) : '-'}
                   <Tag color={info.color}>{info.label}</Tag>
                 </Space>
               );
@@ -75,7 +77,7 @@ export const DocumentVault: React.FC<Props> = ({ documents, onDelete, deletingId
             dataIndex: 'fileUrl',
             render: (value: string) => (
               <a href={getDocumentUrl(value)} target="_blank" rel="noreferrer">
-                Ouvrir
+                {t('Ouvrir')}
               </a>
             )
           },
@@ -84,9 +86,9 @@ export const DocumentVault: React.FC<Props> = ({ documents, onDelete, deletingId
             key: 'actions',
             render: (_: unknown, record: PatrimonyDocument) =>
               onDelete ? (
-                <Popconfirm title="Supprimer ce document ?" onConfirm={() => onDelete(record.id)}>
+                <Popconfirm title={t('Supprimer ce document ?')} onConfirm={() => onDelete(record.id)}>
                   <Button danger size="small" loading={deletingId === record.id}>
-                    Supprimer
+                    {t('Supprimer')}
                   </Button>
                 </Popconfirm>
               ) : null

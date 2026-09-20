@@ -8,6 +8,7 @@ import { createEmployee, listEmployees } from '../../services/finance-salaries-s
 import type { Employee } from '../../types/finance-salaries-types';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, StatusTag } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
@@ -53,11 +54,11 @@ function libelleSolde(employe: Employee): React.ReactNode {
     return <MoneyValue value={employe.accountBalance} />;
   }
   if (employe.accountBalance === 0) {
-    return <Text type="secondary">Rien à lui verser</Text>;
+    return <Text type="secondary">{t('Rien à lui verser')}</Text>;
   }
   return (
     <Text type="warning">
-      Avance de <MoneyValue value={-employe.accountBalance} /> à retenir
+      {t('Avance de')} <MoneyValue value={-employe.accountBalance} /> {t('à retenir')}
     </Text>
   );
 }
@@ -95,7 +96,7 @@ export const Salaires: React.FC = () => {
   const salaries = data ?? [];
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const ouvrirCreation = () => {
@@ -112,7 +113,7 @@ export const Salaires: React.FC = () => {
 
   const validerCreation = async () => {
     if (!peutCreer) {
-      message.error('Le nom du salarié est obligatoire.');
+      message.error(t('Le nom du salarié est obligatoire.'));
       return;
     }
     setCreationEnCours(true);
@@ -124,11 +125,11 @@ export const Salaires: React.FC = () => {
         role: role.trim() || undefined
       });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('employees', tenantId) });
-      message.success(`Salarié « ${salarie.fullName} » enregistré.`);
+      message.success(t('Salarié « {{fullName}} » enregistré.', { fullName: salarie.fullName }));
       setModalOuvert(false);
       navigate(`/tenant/${tenantId}/finance/salaires/${salarie.id}`);
     } catch (err: any) {
-      message.error(err?.response?.data?.message || "L'enregistrement du salarié a échoué.");
+      message.error(err?.response?.data?.message || t("L'enregistrement du salarié a échoué."));
     } finally {
       setCreationEnCours(false);
     }
@@ -137,28 +138,28 @@ export const Salaires: React.FC = () => {
   const ouvrirFiche = (salarie: Employee) => navigate(`/tenant/${tenantId}/finance/salaires/${salarie.id}`);
 
   const colonnes: ColumnsType<Employee> = [
-    { title: 'Salarié', key: 'nom', render: (_, e) => e.fullName },
-    { title: 'Rôle', key: 'role', render: (_, e) => e.role ?? '—' },
+    { title: t('Salarié'), key: 'nom', render: (_, e) => e.fullName },
+    { title: t('Rôle'), key: 'role', render: (_, e) => e.role ?? '—' },
     {
       // La colonne que la gestionnaire regarde en premier. Le libellé dit le
       // sens du nombre : « ce qu'on lui doit », jamais un solde nu.
-      title: 'Ce qu’on lui doit',
+      title: t('Ce qu’on lui doit'),
       key: 'solde',
-      align: 'right',
+      align: 'end',
       render: (_, e) => libelleSolde(e)
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       key: 'statut',
       render: (_, e) => <StatusTag status={e.isActive ? 'ACTIVE' : 'INACTIVE'} />
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, e) => (
         <Button type="link" onClick={() => ouvrirFiche(e)}>
-          Voir la fiche
+          {t('Voir la fiche')}
         </Button>
       )
     }
@@ -167,18 +168,22 @@ export const Salaires: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Salaires"
-        subtitle={salaries.length > 0 ? `${salaries.length} salarié${salaries.length > 1 ? 's' : ''}` : undefined}
-        primaryAction={{ label: 'Nouveau salarié', icon: <PlusOutlined />, onClick: ouvrirCreation }}
+        title={t('Salaires')}
+        subtitle={
+          salaries.length > 0
+            ? t('{{length}} salarié{{value}}', { length: salaries.length, value: salaries.length > 1 ? 's' : '' })
+            : undefined
+        }
+        primaryAction={{ label: t('Nouveau salarié'), icon: <PlusOutlined />, onClick: ouvrirCreation }}
         extra={
           <Space size="small">
             <Switch
               id="salaries-actifs-seulement"
               checked={actifsSeulement}
               onChange={setActifsSeulement}
-              aria-label="Actifs seulement"
+              aria-label={t('Actifs seulement')}
             />
-            <label htmlFor="salaries-actifs-seulement">Actifs seulement</label>
+            <label htmlFor="salaries-actifs-seulement">{t('Actifs seulement')}</label>
           </Space>
         }
       />
@@ -194,15 +199,15 @@ export const Salaires: React.FC = () => {
         onPageChange={() => {}}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger les salariés.' : null}
+        error={erreurRequete ? t('Impossible de charger les salariés.') : null}
         onRetry={() => refetch()}
         isFiltered={actifsSeulement}
         onClearFilters={() => setActifsSeulement(false)}
-        emptyDescription="Aucun salarié n'est encore enregistré."
-        emptyAction={{ label: 'Nouveau salarié', onClick: ouvrirCreation }}
+        emptyDescription={t("Aucun salarié n'est encore enregistré.")}
+        emptyAction={{ label: t('Nouveau salarié'), onClick: ouvrirCreation }}
         columns={colonnes}
         rowKey={e => e.id}
-        aria-label="Salariés"
+        aria-label={t('Salariés')}
         renderCard={e => (
           <DataCard
             title={e.fullName}
@@ -210,25 +215,25 @@ export const Salaires: React.FC = () => {
             subtitle={e.role ?? undefined}
             status={<StatusTag status={e.isActive ? 'ACTIVE' : 'INACTIVE'} />}
             highlight={libelleSolde(e)}
-            fields={[{ label: 'Ce qu’on lui doit', value: libelleSolde(e) }]}
+            fields={[{ label: t('Ce qu’on lui doit'), value: libelleSolde(e) }]}
             onOpen={() => ouvrirFiche(e)}
           />
         )}
       />
 
       <Modal
-        title="Nouveau salarié"
+        title={t('Nouveau salarié')}
         open={modalOuvert}
         onCancel={fermerCreation}
         confirmLoading={creationEnCours}
         onOk={validerCreation}
-        okText="Enregistrer le salarié"
-        cancelText="Annuler"
+        okText={t('Enregistrer le salarié')}
+        cancelText={t('Annuler')}
         destroyOnHidden
       >
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div>
-            <label htmlFor="salarie-nom">Nom du salarié</label>
+            <label htmlFor="salarie-nom">{t('Nom du salarié')}</label>
             {/* Un salarié n'est pas un `User` : un maçon n'ouvre pas
                 l'application, et son compte de tiers naît avec lui (contrat
                 gelé, `CreateEmployeeTx`). Rien d'autre à ouvrir ici. */}
@@ -236,20 +241,20 @@ export const Salaires: React.FC = () => {
               id="salarie-nom"
               value={nomComplet}
               onChange={event => setNomComplet(event.target.value)}
-              placeholder="Ex. Ibrahima Sylla"
+              placeholder={t('Ex. Ibrahima Sylla')}
             />
           </div>
           <div>
-            <label htmlFor="salarie-role">Rôle (facultatif)</label>
+            <label htmlFor="salarie-role">{t('Rôle (facultatif)')}</label>
             <Input
               id="salarie-role"
               value={role}
               onChange={event => setRole(event.target.value)}
-              placeholder="Ex. Maçon"
+              placeholder={t('Ex. Maçon')}
             />
           </div>
           <Text type="secondary">
-            Aucune cotisation n'est calculée : le montant saisi sur une note de salaire est celui qui sera versé.
+            {t("Aucune cotisation n'est calculée : le montant saisi sur une note de salaire est celui qui sera versé.")}
           </Text>
         </Space>
       </Modal>

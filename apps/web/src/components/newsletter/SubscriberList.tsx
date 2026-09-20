@@ -2,7 +2,9 @@ import React from 'react';
 import { Table, Tag, Button, Space, Typography } from 'antd';
 import { DeleteOutlined, DownloadOutlined, UploadOutlined } from '@ant-design/icons';
 import type { NewsletterSubscriber } from '../../services/newsletter.service';
+import { t as translate } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 interface SubscriberListProps {
   subscribers: NewsletterSubscriber[];
   loading?: boolean;
@@ -21,9 +23,9 @@ const statusColors: Record<string, string> = {
 };
 
 const statusLabels: Record<string, string> = {
-  PENDING_CONFIRMATION: 'En attente',
+  PENDING_CONFIRMATION: translate('En attente'),
   ACTIVE: 'Actif',
-  UNSUBSCRIBED: 'Désabonné'
+  UNSUBSCRIBED: translate('Désabonné')
 };
 
 export function SubscriberList({
@@ -38,28 +40,28 @@ export function SubscriberList({
 }: SubscriberListProps) {
   const columns = [
     {
-      title: 'Email',
+      title: translate('Email'),
       dataIndex: 'email',
       key: 'email',
       render: (v: string) => <Typography.Text copyable>{v}</Typography.Text>
     },
     {
-      title: 'Nom',
+      title: translate('Nom'),
       dataIndex: 'name',
       key: 'name',
       render: (v: string | null) => v || '—'
     },
     {
-      title: 'Statut',
+      title: translate('Statut'),
       dataIndex: 'status',
       key: 'status',
       render: (s: string) => <Tag color={statusColors[s] ?? 'default'}>{statusLabels[s] ?? s}</Tag>
     },
     {
-      title: 'Inscrit le',
+      title: translate('Inscrit le'),
       dataIndex: 'subscribedAt',
       key: 'subscribedAt',
-      render: (v: string) => (v ? new Date(v).toLocaleDateString('fr-FR') : '—')
+      render: (v: string) => (v ? new Date(v).toLocaleDateString(activeLocale()) : '—')
     },
     ...(canEdit
       ? [
@@ -68,7 +70,7 @@ export function SubscriberList({
             key: 'actions',
             render: (_: unknown, record: NewsletterSubscriber) => (
               <Button type="link" danger size="small" icon={<DeleteOutlined />} onClick={() => onRemove(record)}>
-                Retirer
+                {translate('Retirer')}
               </Button>
             )
           }
@@ -81,11 +83,11 @@ export function SubscriberList({
       <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
         {canEdit && (
           <Button icon={<UploadOutlined />} onClick={onImport}>
-            Importer CSV
+            {translate('Importer CSV')}
           </Button>
         )}
         <Button icon={<DownloadOutlined />} onClick={onExport}>
-          Exporter CSV
+          {translate('Exporter CSV')}
         </Button>
       </div>
       <Table
@@ -99,7 +101,7 @@ export function SubscriberList({
           pageSize: pagination.limit,
           total: pagination.total,
           showSizeChanger: true,
-          showTotal: t => `Total: ${t} abonnés`,
+          showTotal: t => translate('Total: {{t}} abonnés', { t: t }),
           onChange: onPageChange
         }}
       />

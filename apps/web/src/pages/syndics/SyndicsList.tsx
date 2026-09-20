@@ -7,6 +7,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { createSyndicate, deleteSyndicate, listSyndicates } from '../../services/syndic-service';
 import { CreateSyndicateRequest, Syndicate } from '../../types/syndic-types';
 import { useConfirmAction } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
 
@@ -32,7 +33,7 @@ export const SyndicsList: React.FC = () => {
   useEffect(() => {
     if (!effectiveTenantId) {
       setLoading(false);
-      setError('Tenant introuvable');
+      setError(t('Tenant introuvable'));
       return;
     }
     void loadSyndicates();
@@ -77,7 +78,7 @@ export const SyndicsList: React.FC = () => {
       const data = await listSyndicates(effectiveTenantId);
       setItems(data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur lors du chargement des copropriétés');
+      setError(err.response?.data?.error || t('Erreur lors du chargement des copropriétés'));
     } finally {
       setLoading(false);
     }
@@ -105,12 +106,12 @@ export const SyndicsList: React.FC = () => {
     setSubmitting(true);
     try {
       const created = await createSyndicate(effectiveTenantId, values);
-      message.success('Copropriété créée');
+      message.success(t('Copropriété créée'));
       setOpen(false);
       form.resetFields();
       navigate(`/tenant/${effectiveTenantId}/syndics/${created.id}/lots?openImport=true`);
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Création impossible');
+      message.error(err.response?.data?.error || t('Création impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -122,19 +123,19 @@ export const SyndicsList: React.FC = () => {
     }
 
     confirmAction({
-      title: 'Supprimer cette copropriété ?',
-      description: 'Cette action supprime définitivement la copropriété et ses données liées.',
-      okText: 'Supprimer',
+      title: t('Supprimer cette copropriété ?'),
+      description: t('Cette action supprime définitivement la copropriété et ses données liées.'),
+      okText: t('Supprimer'),
       danger: true,
-      cancelText: 'Annuler',
+      cancelText: t('Annuler'),
       onConfirm: async () => {
         setDeletingSyndicId(syndicId);
         try {
           await deleteSyndicate(effectiveTenantId, syndicId);
-          message.success('Copropriété supprimée');
+          message.success(t('Copropriété supprimée'));
           await loadSyndicates();
         } catch (err: any) {
-          message.error(err.response?.data?.error || 'Suppression impossible');
+          message.error(err.response?.data?.error || t('Suppression impossible'));
         } finally {
           setDeletingSyndicId(null);
         }
@@ -148,14 +149,14 @@ export const SyndicsList: React.FC = () => {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <div>
             <Title level={2} style={{ marginBottom: 8 }}>
-              Copropriétés
+              {t('Copropriétés')}
             </Title>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Gérez vos syndics, leurs adresses, leur statut et l'accès aux lots.
+              {t("Gérez vos syndics, leurs adresses, leur statut et l'accès aux lots.")}
             </Paragraph>
           </div>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
-            Nouvelle copropriété
+            {t('Nouvelle copropriété')}
           </Button>
         </div>
 
@@ -163,7 +164,7 @@ export const SyndicsList: React.FC = () => {
           allowClear
           size="large"
           prefix={<SearchOutlined />}
-          placeholder="Rechercher par nom, adresse ou référence cadastrale"
+          placeholder={t('Rechercher par nom, adresse ou référence cadastrale')}
           value={search}
           onChange={event => setSearch(event.target.value)}
         />
@@ -175,7 +176,7 @@ export const SyndicsList: React.FC = () => {
             <Spin size="large" />
           </div>
         ) : filteredItems.length === 0 ? (
-          <Empty description="Aucune copropriété trouvée" />
+          <Empty description={t('Aucune copropriété trouvée')} />
         ) : (
           <Row gutter={[16, 16]}>
             {filteredItems.map(item => (
@@ -193,25 +194,29 @@ export const SyndicsList: React.FC = () => {
       </Space>
 
       <Modal
-        title="Créer une copropriété"
+        title={t('Créer une copropriété')}
         open={open}
         onCancel={() => {
           setOpen(false);
           form.resetFields();
         }}
         onOk={() => void handleCreate()}
-        okText="Créer"
-        cancelText="Annuler"
+        okText={t('Créer')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
         <Form form={form} layout="vertical" initialValues={{ propertyId: undefined }}>
-          <Form.Item label="Nom" name="name" rules={[{ required: true, message: 'Le nom est obligatoire' }]}>
+          <Form.Item label={t('Nom')} name="name" rules={[{ required: true, message: t('Le nom est obligatoire') }]}>
             <Input />
           </Form.Item>
-          <Form.Item label="Adresse" name="address" rules={[{ required: true, message: "L'adresse est obligatoire" }]}>
+          <Form.Item
+            label={t('Adresse')}
+            name="address"
+            rules={[{ required: true, message: t("L'adresse est obligatoire") }]}
+          >
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item label="Référence cadastrale" name="cadastralReference">
+          <Form.Item label={t('Référence cadastrale')} name="cadastralReference">
             <Input />
           </Form.Item>
         </Form>

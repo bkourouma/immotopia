@@ -19,6 +19,7 @@ import {
 import { formatMoney } from '../primitives';
 import type { DashboardBucket, DashboardSeriesPoint } from '../../services/dashboard-service';
 import { SERIES, bucketLabel, compactAmount, monthLabel, monthLabelLong } from './dashboard-viz';
+import { t } from '../../i18n/t';
 
 /**
  * Les trois formes de graphique du tableau de bord.
@@ -66,7 +67,7 @@ const InfoBulle: React.FC<{
           style={{ width: 8, height: 8, borderRadius: 2, background: ligne.color, flexShrink: 0 }}
         />
         <span style={{ color: 'var(--text-secondary)' }}>{ligne.label}</span>
-        <span style={{ marginLeft: 'auto', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ marginInlineStart: 'auto', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
           {ligne.value}
         </span>
       </div>
@@ -121,7 +122,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({ data, currency, href }) 
                 titre={monthLabelLong(String(label))}
                 lignes={[
                   {
-                    label: 'Encaissé',
+                    label: t('Encaissé'),
                     value: formatMoney(payload[0]?.payload?.encaisse, { currency }),
                     color: SERIES.encaisse
                   },

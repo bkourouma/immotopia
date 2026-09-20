@@ -6,6 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import { LoginCredentials } from '../types/auth-types';
 import { API_ORIGIN } from '../config/api';
 import logoImmoTopia from '../assets/logo-immotopia.png';
+import { t } from '../i18n/t';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -38,10 +39,10 @@ function getRedirectTarget(searchParams: URLSearchParams): string {
 function googleOAuthErrorMessage(reason: string | null): string | null {
   if (!reason) return null;
   if (reason === 'google_unavailable') {
-    return "La connexion Google n'est pas encore configurée sur ce serveur.";
+    return t("La connexion Google n'est pas encore configurée sur ce serveur.");
   }
   if (reason === 'invalid_state' || reason === 'auth_failed') {
-    return 'La connexion Google a échoué. Réessayez.';
+    return t('La connexion Google a échoué. Réessayez.');
   }
   return null;
 }
@@ -109,14 +110,14 @@ export const Login: React.FC = () => {
             <Title level={1} style={{ marginBottom: 'var(--space-4)' }}>
               <img
                 src={logoImmoTopia}
-                alt="ImmoTopia, l'ERP immobilier le plus complet"
+                alt={t("ImmoTopia, l'ERP immobilier le plus complet")}
                 width={176}
                 height={54}
                 style={{ display: 'block', margin: '0 auto', width: '100%', maxWidth: 176, height: 'auto' }}
               />
             </Title>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Connectez-vous à votre compte ou <Link to="/register">créez un nouveau compte</Link>
+              {t('Connectez-vous à votre compte ou')} <Link to="/register">{t('créez un nouveau compte')}</Link>
             </Paragraph>
           </div>
 
@@ -136,22 +137,22 @@ export const Login: React.FC = () => {
                   )}
 
                   <Form.Item
-                    label="Adresse email"
+                    label={t('Adresse email')}
                     name="email"
                     rules={[
-                      { required: true, message: "L'adresse email est requise." },
-                      { type: 'email', message: 'Veuillez entrer une adresse email valide.' }
+                      { required: true, message: t("L'adresse email est requise.") },
+                      { type: 'email', message: t('Veuillez entrer une adresse email valide.') }
                     ]}
                   >
                     {/* Pas de `size` explicite : `componentSize` du ConfigProvider
                     donne 44 px et 16 px sous 992 px, 36 px et 14 px au-dessus. */}
-                    <Input placeholder="vous@example.com" autoComplete="email" />
+                    <Input placeholder={t('vous@example.com')} autoComplete="email" />
                   </Form.Item>
 
                   <Form.Item
-                    label="Mot de passe"
+                    label={t('Mot de passe')}
                     name="password"
-                    rules={[{ required: true, message: 'Le mot de passe est requis.' }]}
+                    rules={[{ required: true, message: t('Le mot de passe est requis.') }]}
                   >
                     <Input.Password placeholder="••••••••" autoComplete="current-password" />
                   </Form.Item>
@@ -167,19 +168,19 @@ export const Login: React.FC = () => {
                       }}
                     >
                       <Form.Item name="remember" valuePropName="checked" noStyle>
-                        <Checkbox>Se souvenir de moi</Checkbox>
+                        <Checkbox>{t('Se souvenir de moi')}</Checkbox>
                       </Form.Item>
-                      <Link to="/forgot-password">Mot de passe oublié ?</Link>
+                      <Link to="/forgot-password">{t('Mot de passe oublié ?')}</Link>
                     </div>
                   </Form.Item>
 
                   <Form.Item style={{ marginBottom: 0 }}>
                     <Button type="primary" htmlType="submit" block loading={isLoading} icon={<LoginOutlined />}>
-                      Se connecter
+                      {t('Se connecter')}
                     </Button>
                   </Form.Item>
 
-                  <Divider>Ou continuer avec</Divider>
+                  <Divider>{t('Ou continuer avec')}</Divider>
 
                   <Form.Item style={{ marginBottom: 0 }}>
                     {/* Google en secondaire : bouton `default`, pas `primary`. */}
@@ -218,7 +219,7 @@ export const Login: React.FC = () => {
                           d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                         />
                       </svg>
-                      <Text>Se connecter avec Google</Text>
+                      <Text>{t('Se connecter avec Google')}</Text>
                     </Button>
                   </Form.Item>
                 </Form>

@@ -16,7 +16,9 @@ import {
   StatCard,
   StatusTag
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title } = Typography;
 
 /**
@@ -48,7 +50,7 @@ const { Title } = Typography;
  */
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 function dateCourteOuTiret(iso: string | null): string {
@@ -79,22 +81,22 @@ export const ChantierDetail: React.FC = () => {
   });
 
   if (!tenantId || !siteId) {
-    return <StateBlock variant="empty" title="Aucun chantier sélectionné" />;
+    return <StateBlock variant="empty" title={t('Aucun chantier sélectionné')} />;
   }
 
   const filAriane = [
-    { label: 'Finance', to: `/tenant/${tenantId}/finance/chantiers` },
-    { label: 'Chantiers', to: `/tenant/${tenantId}/finance/chantiers` }
+    { label: t('Finance'), to: `/tenant/${tenantId}/finance/chantiers` },
+    { label: t('Chantiers'), to: `/tenant/${tenantId}/finance/chantiers` }
   ];
 
   if (erreurRequete) {
     return (
       <>
-        <PageHeader title="Détail du chantier" breadcrumbs={[...filAriane, { label: 'Détail' }]} />
+        <PageHeader title={t('Détail du chantier')} breadcrumbs={[...filAriane, { label: t('Détail') }]} />
         <StateBlock
           variant="error"
-          description="Impossible de charger ce chantier."
-          actions={[{ label: 'Réessayer', onClick: () => refetch(), primary: true }]}
+          description={t('Impossible de charger ce chantier.')}
+          actions={[{ label: t('Réessayer'), onClick: () => refetch(), primary: true }]}
         />
       </>
     );
@@ -107,25 +109,25 @@ export const ChantierDetail: React.FC = () => {
   const { site, allocations, byCostCategory } = data;
 
   const colonnesPostes: ColumnsType<LignePoste> = [
-    { title: 'Poste', key: 'poste', render: (_, p) => p.label },
+    { title: t('Poste'), key: 'poste', render: (_, p) => p.label },
     {
-      title: 'Sous-total',
+      title: t('Sous-total'),
       key: 'montant',
-      align: 'right',
+      align: 'end',
       render: (_, p) => <MoneyValue value={p.amount} />
     }
   ];
 
   const colonnesImputations: ColumnsType<SiteAllocationLine> = [
-    { title: 'Date', key: 'date', width: 120, render: (_, l) => dateCourte(l.allocationDate) },
-    { title: 'Poste', key: 'poste', render: (_, l) => l.costCategoryLabel },
-    { title: 'Nature', key: 'nature', render: (_, l) => libelleNature(l.sourceType) },
+    { title: t('Date'), key: 'date', width: 120, render: (_, l) => dateCourte(l.allocationDate) },
+    { title: t('Poste'), key: 'poste', render: (_, l) => l.costCategoryLabel },
+    { title: t('Nature'), key: 'nature', render: (_, l) => libelleNature(l.sourceType) },
     // Libellé lisible, jamais l'identifiant de la pièce (l.sourceId).
-    { title: 'Pièce d’origine', key: 'piece', render: (_, l) => l.sourceLabel },
+    { title: t('Pièce d’origine'), key: 'piece', render: (_, l) => l.sourceLabel },
     {
-      title: 'Montant',
+      title: t('Montant'),
       key: 'montant',
-      align: 'right',
+      align: 'end',
       render: (_, l) => <MoneyValue value={l.amount} />
     }
   ];
@@ -135,11 +137,11 @@ export const ChantierDetail: React.FC = () => {
       <PageHeader
         title={site.name}
         breadcrumbs={[...filAriane, { label: site.name }]}
-        subtitle={[site.zone, site.propertyLabel ?? 'Sans bien (terrain loué)', site.managerLabel]
+        subtitle={[site.zone, site.propertyLabel ?? t('Sans bien (terrain loué)'), site.managerLabel]
           .filter(Boolean)
           .join(' · ')}
         primaryAction={{
-          label: 'Nouvelle pièce de caisse',
+          label: t('Nouvelle pièce de caisse'),
           onClick: () => navigate(`/tenant/${tenantId}/finance/caisse?chantierId=${siteId}`)
         }}
         // Les lots et la clôture vivent sur leur propre écran (lot 4,
@@ -149,12 +151,12 @@ export const ChantierDetail: React.FC = () => {
         secondaryActions={[
           {
             key: 'cloture',
-            label: 'Lots et clôture',
+            label: t('Lots et clôture'),
             onClick: () => navigate(`/tenant/${tenantId}/finance/chantiers/${siteId}/cloture`)
           },
           {
             key: 'stock',
-            label: 'Stock du chantier',
+            label: t('Stock du chantier'),
             onClick: () => navigate(`/tenant/${tenantId}/finance/chantiers/${siteId}/stock`)
           }
         ]}
@@ -171,16 +173,16 @@ export const ChantierDetail: React.FC = () => {
       >
         {/* Calculé côté serveur : aucun de ces indicateurs n'est un champ de
             saisie, en particulier pas le coût réel (P-4). */}
-        <StatCard label="Coût réel" value={<MoneyValue value={site.actualCost} />} tone="positive" />
-        <StatCard label="Avancement" value={`${site.progressPercent} %`} />
-        <StatCard label="Début" value={dateCourteOuTiret(site.startDate)} />
+        <StatCard label={t('Coût réel')} value={<MoneyValue value={site.actualCost} />} tone="positive" />
+        <StatCard label={t('Avancement')} value={`${site.progressPercent} %`} />
+        <StatCard label={t('Début')} value={dateCourteOuTiret(site.startDate)} />
         <StatCard
-          label={site.status === 'CLOSED' ? 'Clôturé le' : 'Fin prévue'}
+          label={site.status === 'CLOSED' ? t('Clôturé le') : t('Fin prévue')}
           value={dateCourteOuTiret(site.status === 'CLOSED' ? site.closedAt : site.plannedEndDate)}
         />
       </div>
 
-      <Title level={4}>Sous-totaux par poste</Title>
+      <Title level={4}>{t('Sous-totaux par poste')}</Title>
       <DataView<LignePoste>
         paginated={false}
         items={byCostCategory}
@@ -188,15 +190,15 @@ export const ChantierDetail: React.FC = () => {
         page={1}
         pageSize={Math.max(byCostCategory.length, 1)}
         onPageChange={() => {}}
-        emptyDescription="Aucune imputation n’a encore été enregistrée sur ce chantier."
+        emptyDescription={t('Aucune imputation n’a encore été enregistrée sur ce chantier.')}
         columns={colonnesPostes}
         rowKey={p => p.costCategoryId}
-        aria-label="Sous-totaux par poste"
+        aria-label={t('Sous-totaux par poste')}
         renderCard={p => <DataCard title={p.label} aria-label={p.label} highlight={<MoneyValue value={p.amount} />} />}
       />
 
       <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        Imputations
+        {t('Imputations')}
       </Title>
       <DataView<SiteAllocationLine>
         paginated={false}
@@ -206,17 +208,17 @@ export const ChantierDetail: React.FC = () => {
         page={1}
         pageSize={Math.max(allocations.length, 1)}
         onPageChange={() => {}}
-        emptyDescription="Aucune imputation n’a encore été enregistrée sur ce chantier."
+        emptyDescription={t('Aucune imputation n’a encore été enregistrée sur ce chantier.')}
         columns={colonnesImputations}
         rowKey={l => l.id}
-        aria-label="Imputations du chantier"
+        aria-label={t('Imputations du chantier')}
         renderCard={l => (
           <DataCard
             title={l.costCategoryLabel}
             aria-label={`${l.costCategoryLabel}, ${dateCourte(l.allocationDate)}`}
             subtitle={`${dateCourte(l.allocationDate)} · ${libelleNature(l.sourceType)}`}
             highlight={<MoneyValue value={l.amount} />}
-            fields={[{ label: 'Pièce d’origine', value: l.sourceLabel }]}
+            fields={[{ label: t('Pièce d’origine'), value: l.sourceLabel }]}
           />
         )}
       />

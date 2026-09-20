@@ -1,4 +1,5 @@
 import { AxiosError } from 'axios';
+import { t } from '../i18n/t';
 
 /**
  * Error handler utility
@@ -9,12 +10,7 @@ export class ApiError extends Error {
   errors?: Array<{ field: string; message: string }>;
   code?: string;
 
-  constructor(
-    message: string,
-    statusCode?: number,
-    errors?: Array<{ field: string; message: string }>,
-    code?: string
-  ) {
+  constructor(message: string, statusCode?: number, errors?: Array<{ field: string; message: string }>, code?: string) {
     super(message);
     this.name = 'ApiError';
     this.statusCode = statusCode;
@@ -39,28 +35,28 @@ export function handleApiError(error: unknown): string {
       return response.data.message;
     }
     if (response?.status === 401) {
-      return 'Votre session a expiré. Veuillez vous reconnecter.';
+      return t('Votre session a expiré. Veuillez vous reconnecter.');
     }
     if (response?.status === 403) {
-      return 'Accès refusé. Permissions insuffisantes.';
+      return t('Accès refusé. Permissions insuffisantes.');
     }
     if (response?.status === 404) {
-      return 'Ressource non trouvée.';
+      return t('Ressource non trouvée.');
     }
     if (response?.status === 429) {
-      return 'Trop de tentatives. Veuillez réessayer dans quelques instants.';
+      return t('Trop de tentatives. Veuillez réessayer dans quelques instants.');
     }
     if (response?.status === 500) {
-      return 'Une erreur est survenue côté serveur. Veuillez réessayer plus tard.';
+      return t('Une erreur est survenue côté serveur. Veuillez réessayer plus tard.');
     }
-    return 'Une erreur est survenue lors de la communication avec le serveur.';
+    return t('Une erreur est survenue lors de la communication avec le serveur.');
   }
 
   if (error instanceof Error) {
     return error.message;
   }
 
-  return 'Une erreur inattendue est survenue.';
+  return t('Une erreur inattendue est survenue.');
 }
 
 /**
@@ -81,5 +77,3 @@ export function extractFieldErrors(error: unknown): Record<string, string> {
   }
   return {};
 }
-
-

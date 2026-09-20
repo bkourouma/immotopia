@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Select, Typography } from 'antd';
 import { MapPin } from 'lucide-react';
 import { GeographicLocation, getAllCommunes, getLocationByCommuneId } from '../../services/geographic-service';
+import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
@@ -17,10 +18,10 @@ interface LocationSelectorProps {
 export const LocationSelector: React.FC<LocationSelectorProps> = ({
   value,
   onChange,
-  placeholder = 'Rechercher une commune...',
+  placeholder = t('Rechercher une commune...'),
   className = '',
   required = false,
-  error,
+  error
 }) => {
   const [communes, setCommunes] = useState<GeographicLocation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -44,7 +45,7 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
 
   useEffect(() => {
     const ensureSelectedCommune = async () => {
-      if (!value || communes.some((c) => c.communeId === value)) {
+      if (!value || communes.some(c => c.communeId === value)) {
         return;
       }
 
@@ -52,8 +53,8 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
         const loc = await getLocationByCommuneId(value);
         if (!loc) return;
 
-        setCommunes((prev) => {
-          if (prev.some((item) => item.communeId === loc.communeId)) {
+        setCommunes(prev => {
+          if (prev.some(item => item.communeId === loc.communeId)) {
             return prev;
           }
           return [loc, ...prev];
@@ -68,9 +69,9 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
 
   const selectOptions = useMemo(
     () =>
-      communes.map((loc) => ({
+      communes.map(loc => ({
         value: loc.communeId,
-        label: loc.commune,
+        label: loc.commune
       })),
     [communes]
   );
@@ -81,7 +82,7 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
       return;
     }
 
-    const selected = communes.find((item) => item.communeId === communeId) || null;
+    const selected = communes.find(item => item.communeId === communeId) || null;
     onChange(selected);
   };
 
@@ -95,13 +96,13 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
         options={selectOptions}
         loading={loading}
         allowClear
-        onChange={(selectedValue) => handleSelect(selectedValue)}
+        onChange={selectedValue => handleSelect(selectedValue)}
         filterOption={(input, option) => {
           const label = String(option?.label || '').toLowerCase();
           return label.includes(input.toLowerCase());
         }}
         optionFilterProp="label"
-        notFoundContent={loading ? 'Chargement des communes...' : 'Aucune commune trouvee'}
+        notFoundContent={loading ? t('Chargement des communes...') : t('Aucune commune trouvee')}
         style={{ width: '100%' }}
         status={error ? 'error' : undefined}
       />

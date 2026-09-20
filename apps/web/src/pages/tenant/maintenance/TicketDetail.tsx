@@ -10,13 +10,14 @@ import { tenantMaintenanceService } from '../../../services/maintenance-service'
 import { TicketDetail as TicketDetailType, MaintenanceTicketStatus } from '../../../types/maintenance-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { formatTicketDate } from '../../../utils/date-utils';
+import { t } from '../../../i18n/t';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
 const categoryLabels: Record<string, string> = {
   PLUMBING: 'Plomberie',
-  ELECTRICITY: 'Électricité',
+  ELECTRICITY: t('Électricité'),
   AC: 'Climatisation',
   OTHER: 'Autre'
 };
@@ -24,7 +25,7 @@ const categoryLabels: Record<string, string> = {
 const priorityLabels: Record<string, string> = {
   LOW: 'Faible',
   MEDIUM: 'Moyenne',
-  HIGH: 'Élevée',
+  HIGH: t('Élevée'),
   URGENT: 'Urgente'
 };
 
@@ -59,7 +60,7 @@ export const TicketDetail: React.FC = () => {
       }
     } catch (error) {
       console.error('Error loading ticket:', error);
-      message.error('Erreur lors du chargement du ticket');
+      message.error(t('Erreur lors du chargement du ticket'));
     } finally {
       setLoading(false);
     }
@@ -74,10 +75,10 @@ export const TicketDetail: React.FC = () => {
       // The backend will try to get it from user context if not provided
       await tenantMaintenanceService.addComment(effectiveTenantId, ticketId, commentContent, ticket?.tenantContactId);
       setCommentContent('');
-      message.success('Commentaire ajouté');
+      message.success(t('Commentaire ajouté'));
       await loadTicket(); // Reload to get updated comments
     } catch (error: any) {
-      message.error(error.response?.data?.message || "Erreur lors de l'ajout du commentaire");
+      message.error(error.response?.data?.message || t("Erreur lors de l'ajout du commentaire"));
     } finally {
       setSubmittingComment(false);
     }
@@ -89,10 +90,10 @@ export const TicketDetail: React.FC = () => {
     setCanceling(true);
     try {
       await tenantMaintenanceService.cancelTicket(effectiveTenantId, ticketId);
-      message.success('Ticket annulé');
+      message.success(t('Ticket annulé'));
       await loadTicket(); // Reload to get updated status
     } catch (error: any) {
-      message.error(error.response?.data?.message || "Erreur lors de l'annulation du ticket");
+      message.error(error.response?.data?.message || t("Erreur lors de l'annulation du ticket"));
     } finally {
       setCanceling(false);
     }
@@ -110,7 +111,7 @@ export const TicketDetail: React.FC = () => {
     return (
       <>
         <Card>
-          <Text>Ticket introuvable</Text>
+          <Text>{t('Ticket introuvable')}</Text>
         </Card>
       </>
     );
@@ -123,7 +124,7 @@ export const TicketDetail: React.FC = () => {
       <div style={{ padding: '24px' }}>
         <Space direction="vertical" size="large" style={{ width: '100%' }}>
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>
-            Retour à la liste
+            {t('Retour à la liste')}
           </Button>
 
           <Card>
@@ -134,24 +135,24 @@ export const TicketDetail: React.FC = () => {
                     {ticket.title}
                   </Title>
                   <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
-                    Créé le {formattedCreatedDate}
+                    {t('Créé le')} {formattedCreatedDate}
                   </Text>
                 </div>
                 <TicketStatusBadge status={ticket.status} />
               </div>
 
               <div>
-                <Text strong>Catégorie: </Text>
+                <Text strong>{t('Catégorie:')} </Text>
                 <Text>{categoryLabels[ticket.category] || ticket.category}</Text>
-                <Text strong style={{ marginLeft: 16 }}>
-                  Priorité:{' '}
+                <Text strong style={{ marginInlineStart: 16 }}>
+                  {t('Priorité:')}{' '}
                 </Text>
                 <Text>{priorityLabels[ticket.priority] || ticket.priority}</Text>
               </div>
 
               {ticket.property && (
                 <div>
-                  <Text strong>Propriété: </Text>
+                  <Text strong>{t('Propriété:')} </Text>
                   <Text>{ticket.property.address}</Text>
                 </div>
               )}
@@ -159,26 +160,26 @@ export const TicketDetail: React.FC = () => {
               <Divider />
 
               <div>
-                <Title level={5}>Description</Title>
+                <Title level={5}>{t('Description')}</Title>
                 <Paragraph>{ticket.description}</Paragraph>
               </div>
 
               {ticket.locationDetails && (
                 <div>
-                  <Title level={5}>Détails de localisation</Title>
+                  <Title level={5}>{t('Détails de localisation')}</Title>
                   <Paragraph>{ticket.locationDetails}</Paragraph>
                 </div>
               )}
 
               {ticket.status === MaintenanceTicketStatus.DECLARED && (
                 <Popconfirm
-                  title="Êtes-vous sûr de vouloir annuler ce ticket ?"
+                  title={t('Êtes-vous sûr de vouloir annuler ce ticket ?')}
                   onConfirm={handleCancelTicket}
-                  okText="Oui"
-                  cancelText="Non"
+                  okText={t('Oui')}
+                  cancelText={t('Non')}
                 >
                   <Button danger loading={canceling}>
-                    Annuler le ticket
+                    {t('Annuler le ticket')}
                   </Button>
                 </Popconfirm>
               )}
@@ -186,14 +187,14 @@ export const TicketDetail: React.FC = () => {
               <Divider />
 
               <div>
-                <Title level={5}>Historique des statuts</Title>
+                <Title level={5}>{t('Historique des statuts')}</Title>
                 <TicketTimeline statusHistory={ticket.statusHistory || []} />
               </div>
 
               <Divider />
 
               <div>
-                <Title level={5}>Pièces jointes</Title>
+                <Title level={5}>{t('Pièces jointes')}</Title>
                 {effectiveTenantId && (
                   <AttachmentList attachments={ticket.attachments || []} tenantId={effectiveTenantId} />
                 )}
@@ -202,13 +203,13 @@ export const TicketDetail: React.FC = () => {
               <Divider />
 
               <div>
-                <Title level={5}>Commentaires</Title>
+                <Title level={5}>{t('Commentaires')}</Title>
                 <CommentThread comments={ticket.comments || []} />
 
                 <div style={{ marginTop: 16 }}>
                   <TextArea
                     rows={4}
-                    placeholder="Ajouter un commentaire..."
+                    placeholder={t('Ajouter un commentaire...')}
                     value={commentContent}
                     onChange={e => setCommentContent(e.target.value)}
                   />
@@ -220,7 +221,7 @@ export const TicketDetail: React.FC = () => {
                     loading={submittingComment}
                     disabled={!commentContent.trim()}
                   >
-                    Envoyer
+                    {t('Envoyer')}
                   </Button>
                 </div>
               </div>

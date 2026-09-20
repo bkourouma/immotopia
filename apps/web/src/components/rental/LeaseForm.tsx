@@ -11,6 +11,7 @@ import { listProperties, Property } from '../../services/property-service';
 import { PropertyType } from '../../types/property-types';
 import { listContacts, CrmContact } from '../../services/crm-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { t } from '../../i18n/t';
 
 const { TextArea } = Input;
 
@@ -249,28 +250,28 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
     const newErrors: Record<string, string> = {};
 
     if (!formData.propertyId) {
-      newErrors.propertyId = 'La propriété est requise';
+      newErrors.propertyId = t('La propriété est requise');
     }
 
     if (!formData.primaryRenterClientId) {
-      newErrors.primaryRenterClientId = 'Le locataire principal est requis';
+      newErrors.primaryRenterClientId = t('Le locataire principal est requis');
     }
 
     if (!formData.startDate) {
-      newErrors.startDate = 'La date de début est requise';
+      newErrors.startDate = t('La date de début est requise');
     }
 
     if (formData.endDate && formData.endDate <= formData.startDate) {
-      newErrors.endDate = 'La date de fin doit être après la date de début';
+      newErrors.endDate = t('La date de fin doit être après la date de début');
     }
 
     if (formData.dueDayOfMonth < 1 || formData.dueDayOfMonth > 31) {
-      newErrors.dueDayOfMonth = "Le jour d'échéance doit être entre 1 et 31";
+      newErrors.dueDayOfMonth = t("Le jour d'échéance doit être entre 1 et 31");
     }
 
     const rentAmount = parseFloat(parseFormattedNumber(formData.rentAmount));
     if (!formData.rentAmount || isNaN(rentAmount) || rentAmount <= 0) {
-      newErrors.rentAmount = 'Le montant du loyer doit être supérieur à 0';
+      newErrors.rentAmount = t('Le montant du loyer doit être supérieur à 0');
     }
 
     setErrors(newErrors);
@@ -338,7 +339,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
         setErrors({ submit: error.response.data.message });
         message.error(error.response.data.message);
       } else {
-        const errorMsg = "Une erreur est survenue lors de l'enregistrement du bail";
+        const errorMsg = t("Une erreur est survenue lors de l'enregistrement du bail");
         setErrors({ submit: errorMsg });
         message.error(errorMsg);
       }
@@ -383,7 +384,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
 
   const getPropertyOptionLabel = (property: Property): string => {
     const ownerLabel = property.owner?.fullName?.trim() || '';
-    const title = property.title?.trim() || property.internalReference || 'Sans libellé';
+    const title = property.title?.trim() || property.internalReference || t('Sans libellé');
     const buildingPart = property.containerParent?.title ? ` ( ${property.containerParent.title} )` : '';
     const titleWithBuilding = title + buildingPart;
     if (ownerLabel) return `${ownerLabel} - ${titleWithBuilding}`;
@@ -426,7 +427,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
     >
       {errors.submit && (
         <Alert
-          message="Erreur"
+          message={t('Erreur')}
           description={errors.submit}
           type="error"
           showIcon
@@ -438,15 +439,15 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
       <Row gutter={16}>
         <Col xs={24} md={12}>
           <Form.Item
-            label="Propriété"
+            label={t('Propriété')}
             name="propertyId"
             required
             validateStatus={errors.propertyId ? 'error' : ''}
             help={errors.propertyId}
-            rules={[{ required: true, message: 'La propriété est requise' }]}
+            rules={[{ required: true, message: t('La propriété est requise') }]}
           >
             <Select
-              placeholder="Sélectionner une propriété"
+              placeholder={t('Sélectionner une propriété')}
               disabled={!!lease}
               onChange={value => handleChange('propertyId', value)}
               loading={loadingData}
@@ -468,15 +469,15 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
 
         <Col xs={24} md={12}>
           <Form.Item
-            label="Locataire principal"
+            label={t('Locataire principal')}
             name="primaryRenterClientId"
             required
             validateStatus={errors.primaryRenterClientId ? 'error' : ''}
             help={errors.primaryRenterClientId}
-            rules={[{ required: true, message: 'Le locataire principal est requis' }]}
+            rules={[{ required: true, message: t('Le locataire principal est requis') }]}
           >
             <Select
-              placeholder="Sélectionner un locataire"
+              placeholder={t('Sélectionner un locataire')}
               disabled={!!lease}
               onChange={value => handleChange('primaryRenterClientId', value)}
               loading={loadingData}
@@ -491,9 +492,9 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item label="Propriétaire" name="ownerClientId">
+          <Form.Item label={t('Propriétaire')} name="ownerClientId">
             <Select
-              placeholder="Sélectionner un propriétaire (optionnel)"
+              placeholder={t('Sélectionner un propriétaire (optionnel)')}
               disabled={!!lease}
               allowClear
               onChange={value => handleChange('ownerClientId', value || '')}
@@ -510,12 +511,12 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
 
         <Col xs={24} md={12}>
           <Form.Item
-            label="Date de début"
+            label={t('Date de début')}
             name="startDate"
             required
             validateStatus={errors.startDate ? 'error' : ''}
             help={errors.startDate}
-            rules={[{ required: true, message: 'La date de début est requise' }]}
+            rules={[{ required: true, message: t('La date de début est requise') }]}
           >
             <DatePicker
               style={{ width: '100%' }}
@@ -527,7 +528,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
 
         <Col xs={24} md={12}>
           <Form.Item
-            label="Date de fin"
+            label={t('Date de fin')}
             name="endDate"
             validateStatus={errors.endDate ? 'error' : ''}
             help={errors.endDate}
@@ -540,7 +541,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item label="Date d'emménagement" name="moveInDate">
+          <Form.Item label={t("Date d'emménagement")} name="moveInDate">
             <DatePicker
               style={{ width: '100%' }}
               onChange={date => handleChange('moveInDate', date ? date.format('YYYY-MM-DD') : '')}
@@ -549,7 +550,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item label="Date de déménagement" name="moveOutDate">
+          <Form.Item label={t('Date de déménagement')} name="moveOutDate">
             <DatePicker
               style={{ width: '100%' }}
               onChange={date => handleChange('moveOutDate', date ? date.format('YYYY-MM-DD') : '')}
@@ -559,30 +560,30 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
 
         <Col xs={24} md={12}>
           <Form.Item
-            label="Fréquence de facturation"
+            label={t('Fréquence de facturation')}
             name="billingFrequency"
             required
-            rules={[{ required: true, message: 'La fréquence de facturation est requise' }]}
+            rules={[{ required: true, message: t('La fréquence de facturation est requise') }]}
           >
             <Select onChange={value => handleChange('billingFrequency', value)}>
-              <Select.Option value={RentalBillingFrequency.MONTHLY}>Mensuel</Select.Option>
-              <Select.Option value={RentalBillingFrequency.QUARTERLY}>Trimestriel</Select.Option>
-              <Select.Option value={RentalBillingFrequency.SEMIANNUAL}>Semestriel</Select.Option>
-              <Select.Option value={RentalBillingFrequency.ANNUAL}>Annuel</Select.Option>
+              <Select.Option value={RentalBillingFrequency.MONTHLY}>{t('Mensuel')}</Select.Option>
+              <Select.Option value={RentalBillingFrequency.QUARTERLY}>{t('Trimestriel')}</Select.Option>
+              <Select.Option value={RentalBillingFrequency.SEMIANNUAL}>{t('Semestriel')}</Select.Option>
+              <Select.Option value={RentalBillingFrequency.ANNUAL}>{t('Annuel')}</Select.Option>
             </Select>
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
           <Form.Item
-            label="Jour d'échéance (1-31)"
+            label={t("Jour d'échéance (1-31)")}
             name="dueDayOfMonth"
             required
             validateStatus={errors.dueDayOfMonth ? 'error' : ''}
             help={errors.dueDayOfMonth}
             rules={[
-              { required: true, message: "Le jour d'échéance est requis" },
-              { type: 'number', min: 1, max: 31, message: "Le jour d'échéance doit être entre 1 et 31" }
+              { required: true, message: t("Le jour d'échéance est requis") },
+              { type: 'number', min: 1, max: 31, message: t("Le jour d'échéance doit être entre 1 et 31") }
             ]}
           >
             <InputNumber
@@ -595,7 +596,7 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item label="Devise" name="currency">
+          <Form.Item label={t('Devise')} name="currency">
             <Select onChange={value => handleChange('currency', value)}>
               <Select.Option value="FCFA">FCFA</Select.Option>
               <Select.Option value="EUR">EUR</Select.Option>
@@ -606,14 +607,14 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
 
         <Col xs={24} md={12}>
           <Form.Item
-            label="Montant du loyer"
+            label={t('Montant du loyer')}
             name="rentAmount"
             required
             validateStatus={errors.rentAmount ? 'error' : ''}
             help={errors.rentAmount}
             rules={[
-              { required: true, message: 'Le montant du loyer est requis' },
-              { type: 'number', min: 0.01, message: 'Le montant du loyer doit être supérieur à 0' }
+              { required: true, message: t('Le montant du loyer est requis') },
+              { type: 'number', min: 0.01, message: t('Le montant du loyer doit être supérieur à 0') }
             ]}
           >
             <InputNumber
@@ -630,13 +631,13 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
                 }) as (displayValue: string | undefined) => number
               }
               onChange={value => handleChange('rentAmount', value?.toString() || '')}
-              placeholder="Ex: 150000"
+              placeholder={t('Ex: 150000')}
             />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item label="Charges de service" name="serviceChargeAmount">
+          <Form.Item label={t('Charges de service')} name="serviceChargeAmount">
             <InputNumber
               style={{ width: '100%' }}
               min={0}
@@ -651,13 +652,13 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
                 }) as (displayValue: string | undefined) => number
               }
               onChange={value => handleChange('serviceChargeAmount', value?.toString() || '0')}
-              placeholder="Ex: 10000"
+              placeholder={t('Ex: 10000')}
             />
           </Form.Item>
         </Col>
 
         <Col xs={24} md={12}>
-          <Form.Item label="Dépôt de garantie" name="securityDepositAmount">
+          <Form.Item label={t('Dépôt de garantie')} name="securityDepositAmount">
             <InputNumber
               style={{ width: '100%' }}
               min={0}
@@ -672,17 +673,17 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
                 }) as (displayValue: string | undefined) => number
               }
               onChange={value => handleChange('securityDepositAmount', value?.toString() || '0')}
-              placeholder="Ex: 500000"
+              placeholder={t('Ex: 500000')}
             />
           </Form.Item>
         </Col>
       </Row>
 
-      <Form.Item label="Notes" name="notes">
+      <Form.Item label={t('Notes')} name="notes">
         <TextArea
           rows={4}
           onChange={e => handleChange('notes', e.target.value)}
-          placeholder="Notes additionnelles sur le bail..."
+          placeholder={t('Notes additionnelles sur le bail...')}
         />
       </Form.Item>
 
@@ -690,11 +691,11 @@ export const LeaseForm: React.FC<LeaseFormProps> = ({ lease, tenantId, onSubmit,
         <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
           {onCancel && (
             <Button onClick={onCancel} disabled={isSubmitting || loading}>
-              Annuler
+              {t('Annuler')}
             </Button>
           )}
           <Button type="primary" htmlType="submit" loading={isSubmitting || loading}>
-            {lease ? 'Mettre à jour' : 'Créer'}
+            {lease ? t('Mettre à jour') : t('Créer')}
           </Button>
         </Space>
       </Form.Item>

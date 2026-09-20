@@ -1,26 +1,28 @@
 import React from 'react';
 import { Card, Table, Tag } from 'antd';
 import type { PropertyExpense } from '../../types/patrimoine-types';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 interface Props {
   expenses: PropertyExpense[];
 }
 
 function expenseCategoryLabel(category: PropertyExpense['category']): string {
-  if (category === 'PROPERTY_TAX') return 'Taxe foncière';
-  if (category === 'CONDO_FEES') return 'Charges de copropriété';
+  if (category === 'PROPERTY_TAX') return t('Taxe foncière');
+  if (category === 'CONDO_FEES') return t('Charges de copropriété');
   if (category === 'INSURANCE') return 'Assurance';
-  if (category === 'ROUTINE_MAINTENANCE') return 'Entretien courant';
-  if (category === 'RENOVATION') return 'Rénovation';
-  if (category === 'MANAGEMENT_FEES') return 'Honoraires de gestion';
-  if (category === 'UTILITIES') return 'Charges communes';
+  if (category === 'ROUTINE_MAINTENANCE') return t('Entretien courant');
+  if (category === 'RENOVATION') return t('Rénovation');
+  if (category === 'MANAGEMENT_FEES') return t('Honoraires de gestion');
+  if (category === 'UTILITIES') return t('Charges communes');
   if (category === 'OTHER') return 'Autre';
   return category;
 }
 
 export const ExpenseTracker: React.FC<Props> = ({ expenses }) => {
   return (
-    <Card title="Charges et dépenses">
+    <Card title={t('Charges et dépenses')}>
       <Table
         scroll={{ x: 'max-content' }}
         rowKey="id"
@@ -30,11 +32,11 @@ export const ExpenseTracker: React.FC<Props> = ({ expenses }) => {
           {
             title: 'Date',
             dataIndex: 'paidAt',
-            render: (value: string) => new Date(value).toLocaleDateString('fr-FR')
+            render: (value: string) => new Date(value).toLocaleDateString(activeLocale())
           },
-          { title: 'Libellé', dataIndex: 'label' },
+          { title: t('Libellé'), dataIndex: 'label' },
           {
-            title: 'Catégorie',
+            title: t('Catégorie'),
             dataIndex: 'category',
             render: (value: PropertyExpense['category']) => <Tag>{expenseCategoryLabel(value)}</Tag>
           },
@@ -42,7 +44,7 @@ export const ExpenseTracker: React.FC<Props> = ({ expenses }) => {
             title: 'Montant',
             dataIndex: 'amount',
             render: (value: number, record: PropertyExpense) =>
-              `${Number(value).toLocaleString('fr-FR')} ${record.currency}`
+              `${Number(value).toLocaleString(activeLocale())} ${record.currency}`
           }
         ]}
       />

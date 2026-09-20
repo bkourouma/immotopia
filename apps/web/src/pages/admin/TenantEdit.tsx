@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Card, Form, Input, Button, Space, Typography, Alert, Row, Col, Skeleton, App } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { getTenant, updateTenant, Tenant, UpdateTenantRequest } from '../../services/tenant-service';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -71,10 +72,10 @@ export const TenantEdit: React.FC = () => {
           website: response.data.website ?? ''
         });
       } else {
-        setError("Erreur lors du chargement de l'agence");
+        setError(t("Erreur lors du chargement de l'agence"));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || "Erreur lors du chargement de l'agence");
+      setError(err.response?.data?.message || t("Erreur lors du chargement de l'agence"));
     } finally {
       setLoading(false);
     }
@@ -91,13 +92,13 @@ export const TenantEdit: React.FC = () => {
     try {
       const response = await updateTenant(tenantId, toPayload(values));
       if (response.success) {
-        message.success('Agence mise à jour');
+        message.success(t('Agence mise à jour'));
         navigate(`/admin/tenants/${tenantId}`);
       } else {
-        setError("Erreur lors de la mise à jour de l'agence");
+        setError(t("Erreur lors de la mise à jour de l'agence"));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || "Erreur lors de la mise à jour de l'agence");
+      setError(err.response?.data?.message || t("Erreur lors de la mise à jour de l'agence"));
     } finally {
       setSaving(false);
     }
@@ -114,7 +115,7 @@ export const TenantEdit: React.FC = () => {
         />
         <div>
           <Title level={3} style={{ margin: 0 }}>
-            Modifier l'agence
+            {t("Modifier l'agence")}
           </Title>
           <Text type="secondary">{tenant?.name ?? 'Chargement…'}</Text>
         </div>
@@ -127,7 +128,7 @@ export const TenantEdit: React.FC = () => {
           <Form form={form} layout="vertical" onFinish={handleSubmit}>
             {error && (
               <Alert
-                message="Erreur"
+                message={t('Erreur')}
                 description={error}
                 type="error"
                 showIcon
@@ -139,59 +140,59 @@ export const TenantEdit: React.FC = () => {
 
             <Row gutter={24}>
               <Col xs={24} sm={12}>
-                <Form.Item label="Nom" name="name" rules={[{ required: true, message: 'Le nom est requis' }]}>
-                  <Input placeholder="Nom de l'agence" />
+                <Form.Item label={t('Nom')} name="name" rules={[{ required: true, message: t('Le nom est requis') }]}>
+                  <Input placeholder={t("Nom de l'agence")} />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
-                <Form.Item label="Nom légal" name="legalName">
-                  <Input placeholder="Raison sociale" />
+                <Form.Item label={t('Nom légal')} name="legalName">
+                  <Input placeholder={t('Raison sociale')} />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
                 <Form.Item
-                  label="Email de contact"
+                  label={t('Email de contact')}
                   name="contactEmail"
-                  rules={[{ type: 'email', message: 'Adresse email invalide' }]}
+                  rules={[{ type: 'email', message: t('Adresse email invalide') }]}
                 >
                   <Input placeholder="contact@exemple.ci" />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
-                <Form.Item label="Téléphone" name="contactPhone">
+                <Form.Item label={t('Téléphone')} name="contactPhone">
                   <Input placeholder="+225 07 00 00 00 00" />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
-                <Form.Item label="Ville" name="city">
-                  <Input placeholder="Ville" />
+                <Form.Item label={t('Ville')} name="city">
+                  <Input placeholder={t('Ville')} />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
-                <Form.Item label="Pays" name="country">
-                  <Input placeholder="Côte d'Ivoire" />
+                <Form.Item label={t('Pays')} name="country">
+                  <Input placeholder={t("Côte d'Ivoire")} />
                 </Form.Item>
               </Col>
               <Col span={24}>
-                <Form.Item label="Adresse" name="address">
-                  <TextArea rows={3} placeholder="Adresse complète" />
+                <Form.Item label={t('Adresse')} name="address">
+                  <TextArea rows={3} placeholder={t('Adresse complète')} />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
-                <Form.Item label="Sous-domaine" name="subdomain">
+                <Form.Item label={t('Sous-domaine')} name="subdomain">
                   <Input placeholder="mon-agence" />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
-                <Form.Item label="Domaine personnalisé" name="customDomain">
+                <Form.Item label={t('Domaine personnalisé')} name="customDomain">
                   <Input placeholder="www.mon-domaine.ci" />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
                 <Form.Item
-                  label="Site web"
+                  label={t('Site web')}
                   name="website"
-                  rules={[{ type: 'url', message: 'URL invalide (https://…)' }]}
+                  rules={[{ type: 'url', message: t('URL invalide (https://…)') }]}
                 >
                   <Input placeholder="https://www.mon-domaine.ci" />
                 </Form.Item>
@@ -200,9 +201,9 @@ export const TenantEdit: React.FC = () => {
 
             <Form.Item style={{ marginTop: 24, marginBottom: 0 }}>
               <Space>
-                <Button onClick={() => navigate(`/admin/tenants/${tenantId}`)}>Annuler</Button>
+                <Button onClick={() => navigate(`/admin/tenants/${tenantId}`)}>{t('Annuler')}</Button>
                 <Button type="primary" htmlType="submit" loading={saving}>
-                  Enregistrer
+                  {t('Enregistrer')}
                 </Button>
               </Space>
             </Form.Item>

@@ -10,7 +10,8 @@ import {
   getMe,
   logout,
   forgotPasswordHandler,
-  resetPasswordHandler
+  resetPasswordHandler,
+  updateMyLanguage
 } from '../controllers/auth-controller';
 import { acceptInvitationHandler } from '../controllers/invitation-controller';
 import {
@@ -31,6 +32,7 @@ import {
   invitationAcceptRateLimiter
 } from '../middleware/rate-limit-middleware';
 import { authenticate } from '../middleware/auth-middleware';
+import { asyncHandler } from '../middleware/error-middleware';
 import { generateAccessToken, generateRefreshToken } from '../utils/jwt-utils';
 import { prisma } from '../utils/database';
 import { setAuthCookies } from '../utils/auth-cookies';
@@ -66,6 +68,10 @@ router.post('/invitations/accept', invitationAcceptRateLimiter, acceptInvitation
 
 // User Info
 router.get('/me', authenticate, getMe);
+
+// Langue preferee du compte : elle suit l'utilisateur d'un appareil a l'autre,
+// et decide de la langue des e-mails envoyes hors requete.
+router.patch('/me/language', authenticate, asyncHandler(updateMyLanguage));
 
 /**
  * Google OAuth

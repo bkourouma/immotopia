@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { activeLocale } from '../../i18n/format';
 /**
  * `<MoneyValue>` — rendu unique des montants (REFONTE_UI_UX.md §3.6).
  *
@@ -40,7 +41,7 @@ export function formatMoney(
   if (!Number.isFinite(numeric)) return placeholder;
 
   // fr-FR pose une espace insecable etroite (U+202F) comme separateur.
-  const formatted = numeric.toLocaleString('fr-FR', {
+  const formatted = numeric.toLocaleString(activeLocale(), {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits
   });

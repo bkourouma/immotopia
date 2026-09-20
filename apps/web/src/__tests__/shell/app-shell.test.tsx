@@ -6,6 +6,9 @@ import type { AuthContextType } from '../../types/auth-types';
 import { AppShell } from '../../components/shell/AppShell';
 import { AppNavigation } from '../../components/shell/AppNavigation';
 import { NAVIGATION } from '../../navigation/model';
+// La coquille porte desormais le selecteur de langue : sans ce provider,
+// `useLanguage` leve, et c'est voulu — un provider oublie doit se voir.
+import { LanguageProvider } from '../../i18n/LanguageProvider';
 
 /**
  * La coquille est le changement le plus étendu du Lot 1 : elle sert les 100
@@ -29,6 +32,7 @@ function makeAuth(over: Partial<AuthContextType>): AuthContextType {
       avatarUrl: null,
       globalRole: 'USER',
       emailVerified: true,
+      preferredLanguage: null,
       isActive: true,
       createdAt: new Date(0).toISOString(),
       updatedAt: new Date(0).toISOString()
@@ -71,15 +75,17 @@ const superAdmin = makeAuth({
 
 function renderShell(auth: AuthContextType, path: string) {
   return render(
-    <AuthContext.Provider value={auth}>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route element={<AppShell />}>
-            <Route path="*" element={<div data-testid="contenu">contenu de l’écran</div>} />
-          </Route>
-        </Routes>
-      </MemoryRouter>
-    </AuthContext.Provider>
+    <LanguageProvider>
+      <AuthContext.Provider value={auth}>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route path="*" element={<div data-testid="contenu">contenu de l’écran</div>} />
+            </Route>
+          </Routes>
+        </MemoryRouter>
+      </AuthContext.Provider>
+    </LanguageProvider>
   );
 }
 

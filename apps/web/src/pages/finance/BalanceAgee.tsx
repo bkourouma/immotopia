@@ -21,6 +21,7 @@ import {
   FilterSheet,
   StatCard
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
 /**
  * Balance âgée — récit 5 du lot 1 (specs/016-finance-operationnelle/spec.md).
@@ -124,7 +125,7 @@ export const BalanceAgee: React.FC = () => {
     navigate(`/tenant/${tenantId}/finance/comptes/${ligne.accountId}`);
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   /** Icône de tri courant pour une colonne de tranche donnée. */
@@ -139,37 +140,37 @@ export const BalanceAgee: React.FC = () => {
     // contrat serveur (`hooks/useListParams.ts`, `Sort`), même si `render`
     // reprend la ligne entière plutôt que la valeur extraite.
     dataIndex: champ,
-    align: 'right',
+    align: 'end',
     sorter: true,
     sortOrder: sortOrderPour(champ),
     render: (_: unknown, l: ClientsAgingBalanceLine) => <MoneyValue value={l[champ]} />
   });
 
   const colonnes: ColumnsType<ClientsAgingBalanceLine> = [
-    { title: 'Locataire', key: 'locataire', render: (_, l) => l.label },
+    { title: t('Locataire'), key: 'locataire', render: (_, l) => l.label },
     {
-      title: 'Biens',
+      title: t('Biens'),
       key: 'biens',
       render: (_, l) => (l.propertyLabels.length > 0 ? l.propertyLabels.join(' · ') : '—')
     },
     {
-      title: 'Solde',
+      title: t('Solde'),
       key: 'solde',
-      align: 'right',
+      align: 'end',
       render: (_, l) => <MoneyValue value={l.balance} signed />
     },
-    colonneTranche('À échoir', 'notYetDue'),
+    colonneTranche(t('À échoir'), 'notYetDue'),
     colonneTranche('< 30 jours', 'days0To30'),
-    colonneTranche('30 à 60 jours', 'days30To60'),
-    colonneTranche('60 à 90 jours', 'days60To90'),
+    colonneTranche(t('30 à 60 jours'), 'days30To60'),
+    colonneTranche(t('60 à 90 jours'), 'days60To90'),
     colonneTranche('> 90 jours', 'daysOver90'),
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, l) => (
         <Button type="link" onClick={() => ouvrirReleve(l)}>
-          Voir le relevé
+          {t('Voir le relevé')}
         </Button>
       )
     }
@@ -178,7 +179,7 @@ export const BalanceAgee: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Balance âgée"
+        title={t('Balance âgée')}
         subtitle={lignes.length > 0 ? `${lignes.length} locataire${lignes.length > 1 ? 's' : ''}` : undefined}
         primaryAction={{ label: 'Exporter', icon: <DownloadOutlined />, onClick: handleExport }}
       />
@@ -186,10 +187,10 @@ export const BalanceAgee: React.FC = () => {
       <FilterSheet
         activeCount={Object.keys(list.filters).length}
         onClear={list.clearFilters}
-        title="Filtrer la balance"
+        title={t('Filtrer la balance')}
       >
         <div style={{ minWidth: 260 }}>
-          <label htmlFor="filtre-periode-balance-agee">Période</label>
+          <label htmlFor="filtre-periode-balance-agee">{t('Période')}</label>
           <RangePicker
             id="filtre-periode-balance-agee"
             style={{ width: '100%' }}
@@ -207,11 +208,11 @@ export const BalanceAgee: React.FC = () => {
           />
         </div>
         <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-bien-balance-agee">Bien</label>
+          <label htmlFor="filtre-bien-balance-agee">{t('Bien')}</label>
           <Select
             id="filtre-bien-balance-agee"
             style={{ width: '100%' }}
-            placeholder="Tous les biens"
+            placeholder={t('Tous les biens')}
             allowClear
             showSearch
             optionFilterProp="label"
@@ -231,14 +232,14 @@ export const BalanceAgee: React.FC = () => {
         onPageChange={() => {}}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger la balance âgée.' : null}
+        error={erreurRequete ? t('Impossible de charger la balance âgée.') : null}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={list.clearFilters}
-        emptyDescription="Aucun compte de locataire enregistré."
+        emptyDescription={t('Aucun compte de locataire enregistré.')}
         columns={colonnes}
         rowKey={l => l.accountId}
-        aria-label="Balance âgée"
+        aria-label={t('Balance âgée')}
         sort={list.sort}
         onSortChange={list.setSort}
         // Neuf colonnes hors « Actions » : elles ne tiennent pas dans les
@@ -252,10 +253,10 @@ export const BalanceAgee: React.FC = () => {
             subtitle={l.propertyLabels.length > 0 ? l.propertyLabels.join(' · ') : undefined}
             highlight={<MoneyValue value={l.balance} signed />}
             fields={[
-              { label: 'À échoir', value: <MoneyValue value={l.notYetDue} /> },
+              { label: t('À échoir'), value: <MoneyValue value={l.notYetDue} /> },
               { label: '< 30 jours', value: <MoneyValue value={l.days0To30} /> },
-              { label: '30 à 60 jours', value: <MoneyValue value={l.days30To60} /> },
-              { label: '60 à 90 jours', value: <MoneyValue value={l.days60To90} /> },
+              { label: t('30 à 60 jours'), value: <MoneyValue value={l.days30To60} /> },
+              { label: t('60 à 90 jours'), value: <MoneyValue value={l.days60To90} /> },
               { label: '> 90 jours', value: <MoneyValue value={l.daysOver90} /> }
             ]}
             onOpen={() => ouvrirReleve(l)}
@@ -265,7 +266,7 @@ export const BalanceAgee: React.FC = () => {
 
       {data && lignes.length > 0 && (
         <div style={{ marginTop: 'var(--space-4)', maxWidth: 320 }}>
-          <StatCard label="Total de contrôle" value={<MoneyValue value={data.totalBalance} signed />} />
+          <StatCard label={t('Total de contrôle')} value={<MoneyValue value={data.totalBalance} signed />} />
         </div>
       )}
     </>

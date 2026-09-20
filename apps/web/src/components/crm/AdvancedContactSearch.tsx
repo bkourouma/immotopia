@@ -9,6 +9,7 @@ import contactSearchService, {
 import { ContactSearchResults } from './ContactSearchResults';
 import { FilterBuilder } from './FilterBuilder';
 import { SavedSearchesList } from './SavedSearchesList';
+import { t } from '../../i18n/t';
 
 interface AdvancedContactSearchProps {
   onSelectContacts?: (contacts: ContactSearchResultItem[]) => void;
@@ -65,7 +66,7 @@ export function AdvancedContactSearch({
       const pagination = data?.pagination ?? { total: 0, page: 1, limit: 50, totalPages: 0 };
       setResults({ contacts, pagination });
     } catch {
-      message.error('Recherche impossible');
+      message.error(t('Recherche impossible'));
     } finally {
       setLoading(false);
     }
@@ -90,7 +91,7 @@ export function AdvancedContactSearch({
       setFilters(data?.appliedFilters || {});
       setSavedModalOpen(false);
     } catch {
-      message.error('Impossible de charger la recherche');
+      message.error(t('Impossible de charger la recherche'));
     } finally {
       setLoading(false);
     }
@@ -98,7 +99,7 @@ export function AdvancedContactSearch({
 
   const handleSaveSearch = async () => {
     if (!tenantId) return;
-    const name = window.prompt('Nom de la recherche :');
+    const name = window.prompt(t('Nom de la recherche :'));
     if (!name?.trim()) return;
     try {
       await contactSearchService.saveSearch(tenantId, {
@@ -106,9 +107,9 @@ export function AdvancedContactSearch({
         filters: filters as ContactSearchFilters,
         scope: 'PERSONAL'
       });
-      message.success('Recherche sauvegardée');
+      message.success(t('Recherche sauvegardée'));
     } catch {
-      message.error('Sauvegarde impossible');
+      message.error(t('Sauvegarde impossible'));
     }
   };
 
@@ -122,9 +123,9 @@ export function AdvancedContactSearch({
       a.download = `contacts-${Date.now()}.csv`;
       a.click();
       URL.revokeObjectURL(url);
-      message.success('Export terminé');
+      message.success(t('Export terminé'));
     } catch {
-      message.error('Export impossible');
+      message.error(t('Export impossible'));
     }
   };
 
@@ -146,7 +147,7 @@ export function AdvancedContactSearch({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <Input
-          placeholder="Recherche rapide (nom, email, téléphone...)"
+          placeholder={t('Recherche rapide (nom, email, téléphone...)')}
           value={filters.searchQuery ?? ''}
           onChange={e => setFilters(prev => ({ ...prev, searchQuery: e.target.value }))}
           onPressEnter={handleSearch}
@@ -154,14 +155,14 @@ export function AdvancedContactSearch({
           allowClear
         />
         <Button icon={<FilterOutlined />} onClick={() => setFilterModalOpen(true)}>
-          Filtres avancés
-          {activeCount > 0 && <Tag style={{ marginLeft: 4 }}>{activeCount}</Tag>}
+          {t('Filtres avancés')}
+          {activeCount > 0 && <Tag style={{ marginInlineStart: 4 }}>{activeCount}</Tag>}
         </Button>
         <Button icon={<FolderOpenOutlined />} onClick={() => setSavedModalOpen(true)}>
-          Recherches sauvegardées
+          {t('Recherches sauvegardées')}
         </Button>
         <Button type="primary" icon={<SearchOutlined />} onClick={handleSearch} loading={loading}>
-          Rechercher
+          {t('Rechercher')}
         </Button>
       </div>
 
@@ -178,7 +179,7 @@ export function AdvancedContactSearch({
             return <Tag key={key} closable onClose={() => removeFilter(key)}>{`${key}: ${short}`}</Tag>;
           })}
           <Button type="link" size="small" onClick={() => setFilters({})}>
-            Tout effacer
+            {t('Tout effacer')}
           </Button>
         </div>
       )}
@@ -189,17 +190,19 @@ export function AdvancedContactSearch({
             style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}
           >
             <span style={{ color: '#666' }}>
-              {results.pagination.total} contact(s) trouvé(s)
-              {mode === 'select' && selectedContacts.length > 0 && ` · ${selectedContacts.length} sélectionné(s)`}
+              {results.pagination.total} {t('contact(s) trouvé(s)')}
+              {mode === 'select' &&
+                selectedContacts.length > 0 &&
+                t('· {{length}} sélectionné(s)', { length: selectedContacts.length })}
             </span>
             <div style={{ display: 'flex', gap: 8 }}>
               {activeCount > 0 && (
                 <Button size="small" icon={<SaveOutlined />} onClick={handleSaveSearch}>
-                  Sauvegarder
+                  {t('Sauvegarder')}
                 </Button>
               )}
               <Button size="small" icon={<DownloadOutlined />} onClick={handleExport}>
-                Exporter CSV
+                {t('Exporter CSV')}
               </Button>
             </div>
           </div>
@@ -235,11 +238,13 @@ export function AdvancedContactSearch({
                 alignItems: 'center'
               }}
             >
-              <span style={{ fontWeight: 500 }}>{selectedContacts.length} contact(s) sélectionné(s)</span>
+              <span style={{ fontWeight: 500 }}>
+                {selectedContacts.length} {t('contact(s) sélectionné(s)')}
+              </span>
               <div style={{ display: 'flex', gap: 8 }}>
-                <Button onClick={() => setSelectedContacts([])}>Annuler</Button>
+                <Button onClick={() => setSelectedContacts([])}>{t('Annuler')}</Button>
                 <Button type="primary" onClick={handleConfirmSelection}>
-                  Confirmer la sélection
+                  {t('Confirmer la sélection')}
                 </Button>
               </div>
             </div>
@@ -248,7 +253,7 @@ export function AdvancedContactSearch({
       )}
 
       <Modal
-        title="Filtres avancés"
+        title={t('Filtres avancés')}
         open={filterModalOpen}
         onCancel={() => setFilterModalOpen(false)}
         footer={null}
@@ -263,7 +268,7 @@ export function AdvancedContactSearch({
       </Modal>
 
       <Modal
-        title="Recherches sauvegardées"
+        title={t('Recherches sauvegardées')}
         open={savedModalOpen}
         onCancel={() => setSavedModalOpen(false)}
         footer={null}

@@ -3,6 +3,7 @@ import { App, Card, Typography, Form, DatePicker, Select, Button, Space, Divider
 import { FilePdfOutlined, FileExcelOutlined, FileTextOutlined, DownloadOutlined } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import dayjs from 'dayjs';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -61,9 +62,9 @@ export default function Reports() {
       link.remove();
       window.URL.revokeObjectURL(url);
 
-      message.success('Rapport de revenus généré avec succès');
+      message.success(t('Rapport de revenus généré avec succès'));
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors de la génération du rapport');
+      message.error(err.response?.data?.message || t('Erreur lors de la génération du rapport'));
     } finally {
       setLoading(false);
     }
@@ -91,9 +92,9 @@ export default function Reports() {
       link.remove();
       window.URL.revokeObjectURL(url);
 
-      message.success("Rapport d'occupation généré avec succès");
+      message.success(t("Rapport d'occupation généré avec succès"));
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors de la génération du rapport');
+      message.error(err.response?.data?.message || t('Erreur lors de la génération du rapport'));
     } finally {
       setLoading(false);
     }
@@ -132,9 +133,9 @@ export default function Reports() {
       link.remove();
       window.URL.revokeObjectURL(url);
 
-      message.success('Export des données réussi');
+      message.success(t('Export des données réussi'));
     } catch (err: any) {
-      message.error(err.response?.data?.message || "Erreur lors de l'export des données");
+      message.error(err.response?.data?.message || t("Erreur lors de l'export des données"));
     } finally {
       setLoading(false);
     }
@@ -144,8 +145,8 @@ export default function Reports() {
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
       <div>
-        <Title level={2}>Rapports</Title>
-        <Text type="secondary">Génération de rapports et export de données</Text>
+        <Title level={2}>{t('Rapports')}</Title>
+        <Text type="secondary">{t('Génération de rapports et export de données')}</Text>
       </div>
 
       {/* Revenue Report (T152) */}
@@ -153,7 +154,7 @@ export default function Reports() {
         title={
           <Space>
             <FilePdfOutlined />
-            <span>Rapport de revenus</span>
+            <span>{t('Rapport de revenus')}</span>
           </Space>
         }
       >
@@ -162,15 +163,15 @@ export default function Reports() {
             <Col xs={24} sm={12}>
               <Form.Item
                 name="dateRange"
-                label="Période"
-                rules={[{ required: true, message: 'Veuillez sélectionner une période' }]}
+                label={t('Période')}
+                rules={[{ required: true, message: t('Veuillez sélectionner une période') }]}
               >
                 <RangePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item name="propertyId" label="Propriété (optionnel)">
-                <Select placeholder="Toutes les propriétés" allowClear>
+              <Form.Item name="propertyId" label={t('Propriété (optionnel)')}>
+                <Select placeholder={t('Toutes les propriétés')} allowClear>
                   {properties.map(prop => (
                     <Option key={prop.id} value={prop.id}>
                       {prop.address}
@@ -182,8 +183,8 @@ export default function Reports() {
             <Col xs={24} sm={12}>
               <Form.Item
                 name="format"
-                label="Format"
-                rules={[{ required: true, message: 'Veuillez sélectionner un format' }]}
+                label={t('Format')}
+                rules={[{ required: true, message: t('Veuillez sélectionner un format') }]}
                 initialValue="pdf"
               >
                 <Select>
@@ -202,7 +203,7 @@ export default function Reports() {
                   <Option value="excel">
                     <Space>
                       <FileExcelOutlined />
-                      <span>Excel</span>
+                      <span>{'Excel'}</span>
                     </Space>
                   </Option>
                 </Select>
@@ -211,7 +212,7 @@ export default function Reports() {
           </Row>
           <Form.Item>
             <Button type="primary" htmlType="submit" icon={<DownloadOutlined />} loading={loading}>
-              Générer le rapport
+              {t('Générer le rapport')}
             </Button>
           </Form.Item>
         </Form>
@@ -222,7 +223,7 @@ export default function Reports() {
         title={
           <Space>
             <FilePdfOutlined />
-            <span>Rapport d'occupation</span>
+            <span>{t("Rapport d'occupation")}</span>
           </Space>
         }
       >
@@ -231,8 +232,8 @@ export default function Reports() {
             <Col xs={24} sm={12}>
               <Form.Item
                 name="asOfDate"
-                label="Date"
-                rules={[{ required: true, message: 'Veuillez sélectionner une date' }]}
+                label={t('Date')}
+                rules={[{ required: true, message: t('Veuillez sélectionner une date') }]}
                 initialValue={dayjs()}
               >
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
@@ -241,8 +242,8 @@ export default function Reports() {
             <Col xs={24} sm={12}>
               <Form.Item
                 name="format"
-                label="Format"
-                rules={[{ required: true, message: 'Veuillez sélectionner un format' }]}
+                label={t('Format')}
+                rules={[{ required: true, message: t('Veuillez sélectionner un format') }]}
                 initialValue="pdf"
               >
                 <Select>
@@ -261,7 +262,7 @@ export default function Reports() {
                   <Option value="excel">
                     <Space>
                       <FileExcelOutlined />
-                      <span>Excel</span>
+                      <span>{'Excel'}</span>
                     </Space>
                   </Option>
                 </Select>
@@ -270,7 +271,7 @@ export default function Reports() {
           </Row>
           <Form.Item>
             <Button type="primary" htmlType="submit" icon={<DownloadOutlined />} loading={loading}>
-              Générer le rapport
+              {t('Générer le rapport')}
             </Button>
           </Form.Item>
         </Form>
@@ -281,7 +282,7 @@ export default function Reports() {
         title={
           <Space>
             <FileExcelOutlined />
-            <span>Export de données</span>
+            <span>{t('Export de données')}</span>
           </Space>
         }
       >
@@ -290,21 +291,21 @@ export default function Reports() {
             <Col xs={24} sm={12}>
               <Form.Item
                 name="entityType"
-                label="Type de données"
-                rules={[{ required: true, message: 'Veuillez sélectionner un type' }]}
+                label={t('Type de données')}
+                rules={[{ required: true, message: t('Veuillez sélectionner un type') }]}
               >
                 <Select>
-                  <Option value="payments">Paiements</Option>
-                  <Option value="installments">Échéances</Option>
-                  <Option value="leases">Baux</Option>
+                  <Option value="payments">{t('Paiements')}</Option>
+                  <Option value="installments">{t('Échéances')}</Option>
+                  <Option value="leases">{t('Baux')}</Option>
                 </Select>
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
               <Form.Item
                 name="format"
-                label="Format"
-                rules={[{ required: true, message: 'Veuillez sélectionner un format' }]}
+                label={t('Format')}
+                rules={[{ required: true, message: t('Veuillez sélectionner un format') }]}
                 initialValue="excel"
               >
                 <Select>
@@ -317,20 +318,20 @@ export default function Reports() {
                   <Option value="excel">
                     <Space>
                       <FileExcelOutlined />
-                      <span>Excel</span>
+                      <span>{'Excel'}</span>
                     </Space>
                   </Option>
                 </Select>
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item name="dateRange" label="Période (optionnel)">
+              <Form.Item name="dateRange" label={t('Période (optionnel)')}>
                 <RangePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item name="propertyId" label="Propriété (optionnel)">
-                <Select placeholder="Toutes les propriétés" allowClear>
+              <Form.Item name="propertyId" label={t('Propriété (optionnel)')}>
+                <Select placeholder={t('Toutes les propriétés')} allowClear>
                   {properties.map(prop => (
                     <Option key={prop.id} value={prop.id}>
                       {prop.address}
@@ -342,7 +343,7 @@ export default function Reports() {
           </Row>
           <Form.Item>
             <Button type="primary" htmlType="submit" icon={<DownloadOutlined />} loading={loading}>
-              Exporter les données
+              {t('Exporter les données')}
             </Button>
           </Form.Item>
         </Form>

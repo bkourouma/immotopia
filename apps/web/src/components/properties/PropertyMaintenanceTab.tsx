@@ -6,13 +6,14 @@ import { TicketStatusBadge } from '../maintenance/TicketStatusBadge';
 import { propertyMaintenanceService } from '../../services/maintenance-service';
 import { Ticket, MaintenanceTicketStatus, MaintenanceTicketCategory } from '../../types/maintenance-types';
 import { safeFormatDate } from '../../utils/date-utils';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
 const categoryLabels: Record<string, string> = {
   PLUMBING: 'Plomberie',
-  ELECTRICITY: 'Électricité',
+  ELECTRICITY: t('Électricité'),
   AC: 'Climatisation',
   OTHER: 'Autre'
 };
@@ -20,7 +21,7 @@ const categoryLabels: Record<string, string> = {
 const priorityLabels: Record<string, string> = {
   LOW: 'Faible',
   MEDIUM: 'Moyenne',
-  HIGH: 'Élevée',
+  HIGH: t('Élevée'),
   URGENT: 'Urgente'
 };
 
@@ -73,7 +74,7 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
 
   const columns = [
     {
-      title: 'Titre',
+      title: t('Titre'),
       dataIndex: 'title',
       key: 'title',
       render: (text: string, record: Ticket) => (
@@ -83,31 +84,31 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
       )
     },
     {
-      title: 'Catégorie',
+      title: t('Catégorie'),
       dataIndex: 'category',
       key: 'category',
       render: (category: string) => categoryLabels[category] || category
     },
     {
-      title: 'Priorité',
+      title: t('Priorité'),
       dataIndex: 'priority',
       key: 'priority',
       render: (priority: string) => <Tag color={priorityColors[priority]}>{priorityLabels[priority] || priority}</Tag>
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
       render: (status: MaintenanceTicketStatus) => <TicketStatusBadge status={status} />
     },
     {
-      title: 'Prestataire',
+      title: t('Prestataire'),
       dataIndex: ['assignedVendor', 'name'],
       key: 'assignedVendor',
       render: (name: string) => name || '-'
     },
     {
-      title: 'Date de création',
+      title: t('Date de création'),
       dataIndex: 'createdAt',
       key: 'createdAt',
       render: (date: string | null | undefined) => safeFormatDate(date, 'DD MMM YYYY', '-')
@@ -119,40 +120,43 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <div className="it-toolbar">
           <Title level={5} className="it-toolbar__title" style={{ margin: 0 }}>
-            Historique de maintenance
+            {t('Historique de maintenance')}
           </Title>
           <div className="it-toolbar__actions">
             <Select
-              placeholder="Filtrer par statut"
+              placeholder={t('Filtrer par statut')}
               allowClear
               style={{ width: 200 }}
               value={filters.status}
               onChange={value => handleFilterChange('status', value)}
             >
-              <Option value="DECLARED">Déclaré</Option>
-              <Option value="IN_PROGRESS">En cours</Option>
-              <Option value="ASSIGNED">Assigné</Option>
-              <Option value="RESOLVED">Résolu</Option>
-              <Option value="CANCELED">Annulé</Option>
+              <Option value="DECLARED">{t('Déclaré')}</Option>
+              <Option value="IN_PROGRESS">{t('En cours')}</Option>
+              <Option value="ASSIGNED">{t('Assigné')}</Option>
+              <Option value="RESOLVED">{t('Résolu')}</Option>
+              <Option value="CANCELED">{t('Annulé')}</Option>
             </Select>
 
             <Select
-              placeholder="Filtrer par catégorie"
+              placeholder={t('Filtrer par catégorie')}
               allowClear
               style={{ width: 200 }}
               value={filters.category}
               onChange={value => handleFilterChange('category', value)}
             >
-              <Option value="PLUMBING">Plomberie</Option>
-              <Option value="ELECTRICITY">Électricité</Option>
-              <Option value="AC">Climatisation</Option>
-              <Option value="OTHER">Autre</Option>
+              <Option value="PLUMBING">{t('Plomberie')}</Option>
+              <Option value="ELECTRICITY">{t('Électricité')}</Option>
+              <Option value="AC">{t('Climatisation')}</Option>
+              <Option value="OTHER">{t('Autre')}</Option>
             </Select>
           </div>
         </div>
 
         {tickets.length === 0 && !loading ? (
-          <Empty description="Aucun ticket de maintenance pour cette propriété" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <Empty
+            description={t('Aucun ticket de maintenance pour cette propriété')}
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+          />
         ) : (
           <Table
             columns={columns}

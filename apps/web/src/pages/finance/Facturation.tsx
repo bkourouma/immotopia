@@ -19,7 +19,9 @@ import {
   ConfirmAction
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
 
 /**
@@ -65,17 +67,17 @@ const { Text, Title } = Typography;
 
 const MOIS_FR = [
   'janvier',
-  'février',
+  t('février'),
   'mars',
   'avril',
   'mai',
   'juin',
   'juillet',
-  'août',
+  t('août'),
   'septembre',
   'octobre',
   'novembre',
-  'décembre'
+  t('décembre')
 ];
 
 function capitaliser(mot: string): string {
@@ -110,7 +112,7 @@ function libelleParDefaut(mois: number, annee: number): string {
 }
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 function accord(n: number, singulier: string, pluriel: string): string {
@@ -127,15 +129,15 @@ function accord(n: number, singulier: string, pluriel: string): string {
  * motif lisible est un défaut.
  */
 function libelleMotif(reason: BillingExclusionReason): string {
-  return BILLING_EXCLUSION_LABELS[reason] ?? 'Motif non précisé';
+  return BILLING_EXCLUSION_LABELS[reason] ?? t('Motif non précisé');
 }
 
 const OPTIONS_MOIS = MOIS_FR.map((nom, index) => ({ value: index + 1, label: capitaliser(nom) }));
 
 const STATUT_CAMPAGNE: Record<BillingRun['status'], { tone: StatusTone; label: string }> = {
-  RUNNING: { tone: 'info', label: 'En cours' },
-  DONE: { tone: 'success', label: 'Exécutée' },
-  FAILED: { tone: 'danger', label: 'Échouée' }
+  RUNNING: { tone: 'info', label: t('En cours') },
+  DONE: { tone: 'success', label: t('Exécutée') },
+  FAILED: { tone: 'danger', label: t('Échouée') }
 };
 
 type LigneFacturee = BillingRunSummary['billed'][number];
@@ -143,26 +145,26 @@ type LigneExclue = BillingRunSummary['excluded'][number];
 type LigneAvance = BillingRunSummary['advancesApplied'][number];
 
 const COLONNES_FACTUREES: ColumnsType<LigneFacturee> = [
-  { title: 'Bail', dataIndex: 'leaseLabel', key: 'bail' },
+  { title: t('Bail'), dataIndex: 'leaseLabel', key: 'bail' },
   {
-    title: 'Montant facturé',
+    title: t('Montant facturé'),
     key: 'montant',
-    align: 'right',
+    align: 'end',
     render: (_, ligne) => <MoneyValue value={ligne.amount} />
   }
 ];
 
 const COLONNES_EXCLUES: ColumnsType<LigneExclue> = [
-  { title: 'Bail', dataIndex: 'leaseLabel', key: 'bail' },
-  { title: 'Motif', key: 'motif', render: (_, ligne) => libelleMotif(ligne.reason) }
+  { title: t('Bail'), dataIndex: 'leaseLabel', key: 'bail' },
+  { title: t('Motif'), key: 'motif', render: (_, ligne) => libelleMotif(ligne.reason) }
 ];
 
 const COLONNES_AVANCES: ColumnsType<LigneAvance> = [
-  { title: 'Client', dataIndex: 'tenantLabel', key: 'client' },
+  { title: t('Client'), dataIndex: 'tenantLabel', key: 'client' },
   {
-    title: 'Montant imputé',
+    title: t('Montant imputé'),
     key: 'montant',
-    align: 'right',
+    align: 'end',
     render: (_, ligne) => <MoneyValue value={ligne.amount} />
   }
 ];
@@ -184,7 +186,7 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
       <StateBlock
         variant="error"
         description={error}
-        actions={[{ label: 'Réessayer', onClick: onRetry, primary: true }]}
+        actions={[{ label: t('Réessayer'), onClick: onRetry, primary: true }]}
       />
     );
   }
@@ -207,10 +209,10 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
       >
         <div>
           <Title level={4} style={{ margin: 0 }}>
-            Compte rendu — {run.label}
+            {t('Compte rendu —')} {run.label}
           </Title>
           <Text type="secondary">
-            {capitaliser(libellePeriode(run.periodMonth, run.periodYear))} · Exécutée le{' '}
+            {capitaliser(libellePeriode(run.periodMonth, run.periodYear))} {t('· Exécutée le')}{' '}
             {dateCourte(run.finishedAt || run.startedAt)}
           </Text>
         </div>
@@ -220,12 +222,12 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
       {run.status === 'FAILED' && (
         <StateBlock
           variant="error"
-          title="Cette campagne a échoué"
-          description="Aucun compte rendu n'a pu être produit pour cette exécution."
+          title={t('Cette campagne a échoué')}
+          description={t("Aucun compte rendu n'a pu être produit pour cette exécution.")}
         />
       )}
 
-      {run.status === 'RUNNING' && <StateBlock variant="loading" title="Campagne en cours d'exécution…" />}
+      {run.status === 'RUNNING' && <StateBlock variant="loading" title={t("Campagne en cours d'exécution…")} />}
 
       {resume && (
         <>
@@ -237,12 +239,12 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
               marginBottom: 'var(--space-6)'
             }}
           >
-            <StatCard label="Baux facturés" value={String(resume.billed.length)} tone="positive" />
-            <StatCard label="Baux exclus" value={String(resume.excluded.length)} />
-            <StatCard label="Avances imputées" value={String(resume.advancesApplied.length)} tone="positive" />
+            <StatCard label={t('Baux facturés')} value={String(resume.billed.length)} tone="positive" />
+            <StatCard label={t('Baux exclus')} value={String(resume.excluded.length)} />
+            <StatCard label={t('Avances imputées')} value={String(resume.advancesApplied.length)} tone="positive" />
           </div>
 
-          <Title level={5}>Détail des baux facturés</Title>
+          <Title level={5}>{t('Détail des baux facturés')}</Title>
           <DataView<LigneFacturee>
             paginated={false}
             items={resume.billed}
@@ -250,21 +252,21 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
             page={1}
             pageSize={Math.max(resume.billed.length, 1)}
             onPageChange={() => {}}
-            emptyDescription="Aucun bail facturé pour cette période."
+            emptyDescription={t('Aucun bail facturé pour cette période.')}
             columns={COLONNES_FACTUREES}
             rowKey={ligne => ligne.installmentId}
-            aria-label="Baux facturés"
+            aria-label={t('Baux facturés')}
             renderCard={ligne => (
               <DataCard
                 title={ligne.leaseLabel}
-                aria-label={`Bail ${ligne.leaseLabel} facturé`}
+                aria-label={t('Bail {{leaseLabel}} facturé', { leaseLabel: ligne.leaseLabel })}
                 highlight={<MoneyValue value={ligne.amount} />}
               />
             )}
           />
 
           <Title level={5} style={{ marginTop: 'var(--space-6)' }}>
-            Détail des baux exclus
+            {t('Détail des baux exclus')}
           </Title>
           {/* Une campagne sans exclusion est une bonne campagne : la phrase
               d'état vide le dit, elle ne constate pas une absence. */}
@@ -275,21 +277,21 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
             page={1}
             pageSize={Math.max(resume.excluded.length, 1)}
             onPageChange={() => {}}
-            emptyDescription="Aucun bail exclu : la campagne a facturé l'ensemble des baux éligibles."
+            emptyDescription={t("Aucun bail exclu : la campagne a facturé l'ensemble des baux éligibles.")}
             columns={COLONNES_EXCLUES}
             rowKey={ligne => ligne.leaseId}
-            aria-label="Baux exclus"
+            aria-label={t('Baux exclus')}
             renderCard={ligne => (
               <DataCard
                 title={ligne.leaseLabel}
-                aria-label={`Bail ${ligne.leaseLabel} exclu`}
+                aria-label={t('Bail {{leaseLabel}} exclu', { leaseLabel: ligne.leaseLabel })}
                 fields={[{ label: 'Motif', value: libelleMotif(ligne.reason) }]}
               />
             )}
           />
 
           <Title level={5} style={{ marginTop: 'var(--space-6)' }}>
-            Détail des avances imputées
+            {t('Détail des avances imputées')}
           </Title>
           <DataView<LigneAvance>
             paginated={false}
@@ -298,14 +300,14 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
             page={1}
             pageSize={Math.max(resume.advancesApplied.length, 1)}
             onPageChange={() => {}}
-            emptyDescription="Aucune avance à imputer sur cette période."
+            emptyDescription={t('Aucune avance à imputer sur cette période.')}
             columns={COLONNES_AVANCES}
             rowKey={ligne => `${ligne.installmentId}-${ligne.sourcePaymentId}`}
-            aria-label="Avances imputées"
+            aria-label={t('Avances imputées')}
             renderCard={ligne => (
               <DataCard
                 title={ligne.tenantLabel}
-                aria-label={`Avance imputée pour ${ligne.tenantLabel}`}
+                aria-label={t('Avance imputée pour {{tenantLabel}}', { tenantLabel: ligne.tenantLabel })}
                 highlight={<MoneyValue value={ligne.amount} />}
               />
             )}
@@ -395,53 +397,57 @@ export const Facturation: React.FC = () => {
       const nbFactures = run.summary?.billed.length ?? 0;
       const nbExclus = run.summary?.excluded.length ?? 0;
       message.success(
-        `Campagne exécutée : ${accord(nbFactures, 'bail facturé', 'baux facturés')}, ${accord(nbExclus, 'bail exclu', 'baux exclus')}.`
+        t('Campagne exécutée : {{value}}, {{value2}}.', {
+          value: accord(nbFactures, t('bail facturé'), t('baux facturés')),
+          value2: accord(nbExclus, 'bail exclu', 'baux exclus')
+        })
       );
     } catch (err: any) {
-      message.error(err?.response?.data?.message || 'Le lancement de la campagne a échoué.');
+      message.error(err?.response?.data?.message || t('Le lancement de la campagne a échoué.'));
     }
   };
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const titreConfirmation = campagneExistante
-    ? `Relancer la campagne « ${libelle} » ?`
-    : `Lancer la campagne « ${libelle} » ?`;
+    ? t('Relancer la campagne « {{libelle}} » ?', { libelle: libelle })
+    : t('Lancer la campagne « {{libelle}} » ?', { libelle: libelle });
 
   const descriptionConfirmation = campagneExistante ? (
     <>
-      Une campagne a déjà été exécutée pour cette période, le{' '}
+      {t('Une campagne a déjà été exécutée pour cette période, le')}{' '}
       {dateCourte(campagneExistante.finishedAt || campagneExistante.startedAt)}. Relancer ne crée aucun doublon : les
       baux déjà facturés ressortiront simplement en exclusion, et seuls les baux nouvellement éligibles seront facturés.
     </>
   ) : (
     <>
-      Une échéance sera créée pour chaque bail actif éligible sur cette période. Les baux suspendus, hors durée de bail,
-      déjà facturés ou sans loyer renseigné seront exclus, chacun avec son motif.
+      {t(
+        'Une échéance sera créée pour chaque bail actif éligible sur cette période. Les baux suspendus, hors durée de bail, déjà facturés ou sans loyer renseigné seront exclus, chacun avec son motif.'
+      )}
     </>
   );
 
   const colonnesHistorique: ColumnsType<BillingRun> = [
-    { title: 'Période', key: 'periode', render: (_, c) => periodeSeule(c.periodMonth, c.periodYear) },
-    { title: 'Libellé', dataIndex: 'label', key: 'libelle' },
+    { title: t('Période'), key: 'periode', render: (_, c) => periodeSeule(c.periodMonth, c.periodYear) },
+    { title: t('Libellé'), dataIndex: 'label', key: 'libelle' },
     {
-      title: 'Statut',
+      title: t('Statut'),
       key: 'statut',
       render: (_, c) => {
         const s = STATUT_CAMPAGNE[c.status];
         return <StatusTag status={c.status} tone={s.tone} label={s.label} />;
       }
     },
-    { title: 'Exécutée le', key: 'date', render: (_, c) => (c.finishedAt ? dateCourte(c.finishedAt) : '—') },
+    { title: t('Exécutée le'), key: 'date', render: (_, c) => (c.finishedAt ? dateCourte(c.finishedAt) : '—') },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, c) => (
         <Button type="link" onClick={() => ouvrirCampagne(c.id)}>
-          Voir le compte rendu
+          {t('Voir le compte rendu')}
         </Button>
       )
     }
@@ -450,19 +456,19 @@ export const Facturation: React.FC = () => {
   return (
     <>
       <PageHeader
-        title="Facturation"
+        title={t('Facturation')}
         subtitle={campagnes.length > 0 ? `${campagnes.length} campagne${campagnes.length > 1 ? 's' : ''}` : undefined}
       />
 
       <Card style={{ marginBottom: 'var(--space-6)' }}>
         <Title level={4} style={{ marginTop: 0 }}>
-          Lancer la facturation du mois
+          {t('Lancer la facturation du mois')}
         </Title>
 
         <Space wrap size="middle" align="end" style={{ marginBottom: 'var(--space-3)', width: '100%' }}>
           <div>
             <div>
-              <label htmlFor="facturation-mois">Mois</label>
+              <label htmlFor="facturation-mois">{t('Mois')}</label>
             </div>
             <Select
               id="facturation-mois"
@@ -474,7 +480,7 @@ export const Facturation: React.FC = () => {
           </div>
           <div>
             <div>
-              <label htmlFor="facturation-annee">Année</label>
+              <label htmlFor="facturation-annee">{t('Année')}</label>
             </div>
             <Select
               id="facturation-annee"
@@ -486,7 +492,7 @@ export const Facturation: React.FC = () => {
           </div>
           <div style={{ minWidth: 260, flex: 1 }}>
             <div>
-              <label htmlFor="facturation-libelle">Libellé</label>
+              <label htmlFor="facturation-libelle">{t('Libellé')}</label>
             </div>
             <Input
               id="facturation-libelle"
@@ -504,18 +510,19 @@ export const Facturation: React.FC = () => {
             un avertissement anxiogène sur une opération sans risque
             apprendrait à l'ignorer. */}
         <Text type="secondary" style={{ display: 'block', marginBottom: 'var(--space-4)' }}>
-          Cette opération est sans risque : relancer une période déjà facturée ne crée aucun doublon d'échéance. Les
-          baux déjà à jour ressortent simplement dans les exclusions, avec ce motif.
+          {t(
+            "Cette opération est sans risque : relancer une période déjà facturée ne crée aucun doublon d'échéance. Les baux déjà à jour ressortent simplement dans les exclusions, avec ce motif."
+          )}
         </Text>
 
         <ConfirmAction
           title={titreConfirmation}
           description={descriptionConfirmation}
-          okText={campagneExistante ? 'Relancer' : 'Lancer'}
+          okText={campagneExistante ? t('Relancer') : t('Lancer')}
           onConfirm={handleLaunch}
         >
           <Button type="primary" icon={<ThunderboltOutlined />}>
-            {campagneExistante ? 'Relancer la campagne' : 'Lancer la campagne'}
+            {campagneExistante ? t('Relancer la campagne') : t('Lancer la campagne')}
           </Button>
         </ConfirmAction>
       </Card>
@@ -524,18 +531,18 @@ export const Facturation: React.FC = () => {
         <CompteRendu
           run={rapport ?? null}
           loading={rapportEnAttente}
-          error={erreurRapport ? 'Impossible de charger ce compte rendu.' : null}
+          error={erreurRapport ? t('Impossible de charger ce compte rendu.') : null}
           onRetry={() => refetchRapport()}
         />
       ) : (
         <Card style={{ marginBottom: 'var(--space-6)' }}>
           <Text type="secondary">
-            Lancez une campagne ci-dessus, ou choisissez-en une dans l'historique pour afficher son compte rendu.
+            {t("Lancez une campagne ci-dessus, ou choisissez-en une dans l'historique pour afficher son compte rendu.")}
           </Text>
         </Card>
       )}
 
-      <Title level={4}>Historique des campagnes</Title>
+      <Title level={4}>{t('Historique des campagnes')}</Title>
       <DataView<BillingRun>
         paginated={false}
         items={campagnes}
@@ -545,21 +552,21 @@ export const Facturation: React.FC = () => {
         onPageChange={() => {}}
         loading={historiqueEnAttente}
         isReloading={historiqueEnCours && !historiqueEnAttente}
-        error={erreurHistorique ? "Impossible de charger l'historique des campagnes." : null}
+        error={erreurHistorique ? t("Impossible de charger l'historique des campagnes.") : null}
         onRetry={() => refetchHistorique()}
-        emptyDescription="Aucune campagne n'a encore été exécutée."
+        emptyDescription={t("Aucune campagne n'a encore été exécutée.")}
         columns={colonnesHistorique}
         rowKey={c => c.id}
-        aria-label="Historique des campagnes"
+        aria-label={t('Historique des campagnes')}
         renderCard={c => {
           const s = STATUT_CAMPAGNE[c.status];
           return (
             <DataCard
               title={c.label}
-              aria-label={`Campagne ${c.label}`}
+              aria-label={t('Campagne {{label}}', { label: c.label })}
               subtitle={periodeSeule(c.periodMonth, c.periodYear)}
               status={<StatusTag status={c.status} tone={s.tone} label={s.label} />}
-              fields={[{ label: 'Exécutée le', value: c.finishedAt ? dateCourte(c.finishedAt) : '—' }]}
+              fields={[{ label: t('Exécutée le'), value: c.finishedAt ? dateCourte(c.finishedAt) : '—' }]}
               onOpen={() => ouvrirCampagne(c.id)}
             />
           );

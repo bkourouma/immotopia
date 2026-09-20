@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../ui/tabs';
 import { Clock, Calendar, CheckCircle, X, ExternalLink } from 'lucide-react';
 import type { Workbench as WorkbenchType, WorkbenchItem } from '../../../../types/crmDashboard';
 import dayjs from 'dayjs';
+import { t } from '../../../../i18n/t';
 
 interface WorkbenchProps {
   data: WorkbenchType;
@@ -55,24 +56,20 @@ const WorkbenchItemRow: React.FC<{
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-medium text-slate-900">{item.title}</p>
-            {item.description && (
-              <p className="text-sm text-slate-600 mt-1">{item.description}</p>
-            )}
+            {item.description && <p className="text-sm text-slate-600 mt-1">{item.description}</p>}
             <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
-              <span>
-                {dayjs(item.dueDate).format('DD MMM YYYY HH:mm')}
-              </span>
+              <span>{dayjs(item.dueDate).format('DD MMM YYYY HH:mm')}</span>
               {item.contactName && <span>• {item.contactName}</span>}
               {item.dealLabel && <span>• {item.dealLabel}</span>}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 ml-4">
+        <div className="flex items-center gap-2 ms-4">
           {item.canComplete && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={(e) => {
+              onClick={e => {
                 e.stopPropagation();
                 onComplete?.(item);
               }}
@@ -85,7 +82,7 @@ const WorkbenchItemRow: React.FC<{
             <Button
               variant="ghost"
               size="sm"
-              onClick={(e) => {
+              onClick={e => {
                 e.stopPropagation();
                 onReschedule?.(item);
               }}
@@ -97,7 +94,7 @@ const WorkbenchItemRow: React.FC<{
           <Button
             variant="ghost"
             size="sm"
-            onClick={(e) => {
+            onClick={e => {
               e.stopPropagation();
               onItemClick?.(item);
             }}
@@ -111,12 +108,7 @@ const WorkbenchItemRow: React.FC<{
   );
 };
 
-export const Workbench: React.FC<WorkbenchProps> = ({
-  data,
-  onItemClick,
-  onComplete,
-  onReschedule,
-}) => {
+export const Workbench: React.FC<WorkbenchProps> = ({ data, onItemClick, onComplete, onReschedule }) => {
   const [activeTab, setActiveTab] = useState<'now' | 'week'>('now');
 
   const nowItems = [...data.overdue, ...data.today];
@@ -124,13 +116,13 @@ export const Workbench: React.FC<WorkbenchProps> = ({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Workbench</CardTitle>
+        <CardTitle>{t('Workbench')}</CardTitle>
       </CardHeader>
       <CardContent>
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+        <Tabs value={activeTab} onValueChange={v => setActiveTab(v as typeof activeTab)}>
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="now">À faire maintenant</TabsTrigger>
-            <TabsTrigger value="week">Cette semaine</TabsTrigger>
+            <TabsTrigger value="now">{t('À faire maintenant')}</TabsTrigger>
+            <TabsTrigger value="week">{t('Cette semaine')}</TabsTrigger>
           </TabsList>
 
           <AnimatePresence mode="wait">
@@ -158,8 +150,8 @@ export const Workbench: React.FC<WorkbenchProps> = ({
                 ) : (
                   <div className="text-center py-12 text-slate-500">
                     <CheckCircle className="h-12 w-12 mx-auto mb-2 text-green-400" />
-                    <p className="font-medium">Tout est à jour!</p>
-                    <p className="text-sm">Aucune action urgente</p>
+                    <p className="font-medium">{t('Tout est à jour!')}</p>
+                    <p className="text-sm">{t('Aucune action urgente')}</p>
                   </div>
                 )}
               </motion.div>
@@ -189,7 +181,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
                 ) : (
                   <div className="text-center py-12 text-slate-500">
                     <Calendar className="h-12 w-12 mx-auto mb-2 text-slate-400" />
-                    <p className="font-medium">Aucun élément cette semaine</p>
+                    <p className="font-medium">{t('Aucun élément cette semaine')}</p>
                   </div>
                 )}
               </motion.div>
@@ -200,4 +192,3 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     </Card>
   );
 };
-

@@ -13,16 +13,19 @@ Ces quatre documents se recouvrent partiellement : ils ont été écrits à des
 moments différents du projet. Ils sont regroupés ici en attendant une passe
 éditoriale de fusion.
 
-| Document | Contenu | À lire pour |
-|---|---|---|
-| [overview.md](architecture/overview.md) | Vue d'ensemble technique la plus complète | Comprendre l'ensemble du système |
-| [modules.md](architecture/modules.md) | Découpage par module métier | Situer une fonctionnalité |
-| [implementation.md](architecture/implementation.md) | Choix d'implémentation et schéma | Détails techniques |
-| [features.md](architecture/features.md) | Inventaire fonctionnel | Savoir ce que fait l'application |
-| [functional-overview.md](architecture/functional-overview.md) | Présentation orientée prospect | Contexte commercial |
-| [database-schema.md](architecture/database-schema.md) | Schéma de base **partiel et daté** (38 tables sur 112) | À régénérer depuis `schema.prisma` |
+| Document                                                      | Contenu                                                | À lire pour                        |
+| ------------------------------------------------------------- | ------------------------------------------------------ | ---------------------------------- |
+| [overview.md](architecture/overview.md)                       | Vue d'ensemble technique la plus complète              | Comprendre l'ensemble du système   |
+| [modules.md](architecture/modules.md)                         | Découpage par module métier                            | Situer une fonctionnalité          |
+| [implementation.md](architecture/implementation.md)           | Choix d'implémentation et schéma                       | Détails techniques                 |
+| [features.md](architecture/features.md)                       | Inventaire fonctionnel                                 | Savoir ce que fait l'application   |
+| [functional-overview.md](architecture/functional-overview.md) | Présentation orientée prospect                         | Contexte commercial                |
+| [database-schema.md](architecture/database-schema.md)         | Schéma de base **partiel et daté** (38 tables sur 112) | À régénérer depuis `schema.prisma` |
 
 La référence à jour du schéma est `packages/api/prisma/schema.prisma`.
+
+- [Multilingue — français, anglais, arabe](architecture/i18n.md) — le texte
+  français **est** la clé de traduction ; à lire avant de toucher à un libellé.
 
 ## Intégrations
 

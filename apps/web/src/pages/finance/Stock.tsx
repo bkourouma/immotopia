@@ -42,7 +42,9 @@ import {
   FilterSheet,
   formatMoney
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text, Paragraph } = Typography;
 
 /**
@@ -190,7 +192,7 @@ const { Text, Paragraph } = Typography;
  * Un quart de mètre cube s'écrit « 0,25 m³ », pas « 0 FCFA ».
  */
 function quantite(valeur: number, unite?: string): string {
-  const texte = valeur.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 4 });
+  const texte = valeur.toLocaleString(activeLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 4 });
   return unite ? `${texte} ${unite}` : texte;
 }
 
@@ -472,7 +474,7 @@ export const Stock: React.FC = () => {
   );
 
   if (!tenantId) {
-    return <StateBlock variant="empty" title="Aucune agence sélectionnée" />;
+    return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
 
   const soldes = soldesData ?? [];
@@ -541,7 +543,7 @@ export const Stock: React.FC = () => {
   const validerReception = async () => {
     if (!peutRecevoir) {
       message.error(
-        'Le lieu, la facture validée, la date et chaque ligne (article, quantité, prix unitaire) sont obligatoires.'
+        t('Le lieu, la facture validée, la date et chaque ligne (article, quantité, prix unitaire) sont obligatoires.')
       );
       return;
     }
@@ -563,13 +565,17 @@ export const Stock: React.FC = () => {
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('stock-movements', tenantId) });
       const n = mouvementsCrees.length;
       message.success(
-        `Réception enregistrée : ${n} ligne${n > 1 ? 's' : ''} entrée${n > 1 ? 's' : ''} en stock. Aucun coût de chantier n'a bougé.`
+        t("Réception enregistrée : {{n}} ligne{{value}} entrée{{value2}} en stock. Aucun coût de chantier n'a bougé.", {
+          n: n,
+          value: n > 1 ? 's' : '',
+          value2: n > 1 ? 's' : ''
+        })
       );
       setReceptionOuverte(false);
     } catch (err: any) {
       // Facture non validée, lieu désactivé, article inconnu : le serveur seul
       // sait lequel des refus s'est produit, et son message le dit.
-      message.error(err?.response?.data?.message || "La réception n'a pas pu être enregistrée.");
+      message.error(err?.response?.data?.message || t("La réception n'a pas pu être enregistrée."));
     } finally {
       setReceptionEnCours(false);
     }
@@ -627,7 +633,9 @@ export const Stock: React.FC = () => {
   const validerSortie = async () => {
     if (!peutSortir) {
       message.error(
-        'Le lieu, l’article, la quantité, le chantier, le poste de dépense, le demandeur et la date sont tous obligatoires.'
+        t(
+          'Le lieu, l’article, la quantité, le chantier, le poste de dépense, le demandeur et la date sont tous obligatoires.'
+        )
       );
       return;
     }
@@ -650,14 +658,19 @@ export const Stock: React.FC = () => {
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('stock-movements', tenantId) });
       // Le montant annoncé est celui que le SERVEUR a retenu, jamais l'aperçu.
       message.success(
-        `Sortie enregistrée : ${quantite(mouvement.quantity, mouvement.itemUnit)} de ${mouvement.itemLabel} imputés à « ${mouvement.siteLabel ?? 'ce chantier'} » pour ${formatMoney(mouvement.totalValue)}.`
+        t('Sortie enregistrée : {{value}} de {{itemLabel}} imputés à « {{value2}} » pour {{value3}}.', {
+          value: quantite(mouvement.quantity, mouvement.itemUnit),
+          itemLabel: mouvement.itemLabel,
+          value2: mouvement.siteLabel ?? 'ce chantier',
+          value3: formatMoney(mouvement.totalValue)
+        })
       );
       setSortieOuverte(false);
     } catch (err: any) {
       // « Stock insuffisant », « chantier clos » : le message du serveur est
       // relayé tel quel, parce que lui seul dit ce qui s'est passé — et que la
       // réponse à un stock insuffisant est un inventaire, pas un réessai.
-      message.error(err?.response?.data?.message || "La sortie n'a pas pu être enregistrée.");
+      message.error(err?.response?.data?.message || t("La sortie n'a pas pu être enregistrée."));
     } finally {
       setSortieEnCours(false);
     }
@@ -669,7 +682,7 @@ export const Stock: React.FC = () => {
 
   const colonnesSoldes: ColumnsType<StockBalance> = [
     {
-      title: 'Article',
+      title: t('Article'),
       key: 'article',
       render: (_, b) => (
         <Space orientation="vertical" size={0}>
@@ -680,16 +693,18 @@ export const Stock: React.FC = () => {
         </Space>
       )
     },
-    { title: 'Lieu', key: 'lieu', render: (_, b) => b.locationLabel },
+    { title: t('Lieu'), key: 'lieu', render: (_, b) => b.locationLabel },
     {
-      title: 'Quantité',
+      title: t('Quantité'),
       key: 'quantite',
-      align: 'right',
+      align: 'end',
       // Quatre décimales, et jamais le formateur monétaire : un quart de
       // mètre cube vaut 0,25, pas « 0 ».
       render: (_, b) =>
         b.quantity === 0 ? (
-          <Text type="secondary">0 {b.itemUnit} — plus rien ici</Text>
+          <Text type="secondary">
+            0 {b.itemUnit} {t('— plus rien ici')}
+          </Text>
         ) : (
           quantite(b.quantity, b.itemUnit)
         )
@@ -697,9 +712,9 @@ export const Stock: React.FC = () => {
     {
       // Par (article, LIEU) : un même article peut avoir deux coûts moyens
       // dans deux magasins, et c'est normal.
-      title: 'Coût moyen unitaire',
+      title: t('Coût moyen unitaire'),
       key: 'cout-moyen',
-      align: 'right',
+      align: 'end',
       render: (_, b) => (
         <Space size={4}>
           <MoneyValue value={b.averageUnitCost} />
@@ -710,17 +725,17 @@ export const Stock: React.FC = () => {
       )
     },
     {
-      title: 'Valeur',
+      title: t('Valeur'),
       key: 'valeur',
-      align: 'right',
+      align: 'end',
       render: (_, b) => <MoneyValue value={b.value} />
     }
   ];
 
   const colonnesJournal: ColumnsType<StockMovement> = [
-    { title: 'Date', key: 'date', render: (_, m) => date(m.movementDate) },
+    { title: t('Date'), key: 'date', render: (_, m) => date(m.movementDate) },
     {
-      title: 'Nature',
+      title: t('Nature'),
       key: 'nature',
       render: (_, m) => (
         <StatusTag
@@ -731,7 +746,7 @@ export const Stock: React.FC = () => {
       )
     },
     {
-      title: 'Article',
+      title: t('Article'),
       key: 'article',
       render: (_, m) => (
         <Space orientation="vertical" size={0}>
@@ -742,34 +757,34 @@ export const Stock: React.FC = () => {
         </Space>
       )
     },
-    { title: 'Lieu', key: 'lieu', render: (_, m) => m.locationLabel },
+    { title: t('Lieu'), key: 'lieu', render: (_, m) => m.locationLabel },
     {
-      title: 'Quantité',
+      title: t('Quantité'),
       key: 'quantite',
-      align: 'right',
+      align: 'end',
       // La quantité est toujours positive dans le contrat : c'est `isDecrease`
       // qui dit le sens, et le signe affiché vient de lui.
       render: (_, m) => `${m.isDecrease ? '−' : '+'} ${quantite(m.quantity, m.itemUnit)}`
     },
     {
-      title: 'Prix unitaire',
+      title: t('Prix unitaire'),
       key: 'prix-unitaire',
-      align: 'right',
+      align: 'end',
       render: (_, m) => <MoneyValue value={m.unitCost} />
     },
     {
       // `totalValue` TEL QUEL, jamais `quantity × unitCost` : une sortie qui
       // vide un emplacement emporte la valeur résiduelle, et les deux peuvent
       // différer d'une unité monétaire.
-      title: 'Valeur du mouvement',
+      title: t('Valeur du mouvement'),
       key: 'valeur',
-      align: 'right',
+      align: 'end',
       render: (_, m) => <MoneyValue value={m.totalValue} />
     },
     {
-      title: 'Reste après',
+      title: t('Reste après'),
       key: 'reste',
-      align: 'right',
+      align: 'end',
       render: (_, m) => (
         <Space orientation="vertical" size={0} style={{ alignItems: 'flex-end' }}>
           <span>{quantite(m.quantityAfter, m.itemUnit)}</span>
@@ -780,33 +795,33 @@ export const Stock: React.FC = () => {
       )
     },
     {
-      title: 'Chantier imputé',
+      title: t('Chantier imputé'),
       key: 'chantier',
       render: (_, m) =>
         m.siteLabel ? (
           <Space orientation="vertical" size={0}>
             <span>{m.siteLabel}</span>
             <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-              {m.costCategoryLabel ?? 'Poste non renseigné'}
+              {m.costCategoryLabel ?? t('Poste non renseigné')}
             </Text>
           </Space>
         ) : (
           // Dit pourquoi la case est vide plutôt que de la laisser vide : une
           // réception n'impute aucun chantier, et ce n'est pas un oubli.
-          <Text type="secondary">Aucune imputation</Text>
+          <Text type="secondary">{t('Aucune imputation')}</Text>
         )
     },
     {
-      title: 'Demandeur',
+      title: t('Demandeur'),
       key: 'demandeur',
       render: (_, m) => m.requestedBy ?? <Text type="secondary">—</Text>
     },
     {
-      title: 'Pièce',
+      title: t('Pièce'),
       key: 'piece',
       render: (_, m) => m.supplierInvoiceReference ?? <Text type="secondary">—</Text>
     },
-    { title: 'Saisi par', key: 'auteur', render: (_, m) => m.createdByLabel }
+    { title: t('Saisi par'), key: 'auteur', render: (_, m) => m.createdByLabel }
   ];
 
   // -----------------------------------------------------------------------
@@ -815,13 +830,13 @@ export const Stock: React.FC = () => {
 
   const ongletSoldes = (
     <>
-      <FilterSheet activeCount={nbFiltresSoldes} onClear={effacerFiltresSoldes} title="Filtrer l'état du stock">
+      <FilterSheet activeCount={nbFiltresSoldes} onClear={effacerFiltresSoldes} title={t("Filtrer l'état du stock")}>
         <div style={{ minWidth: 220 }}>
-          <label htmlFor="filtre-lieu-stock">Lieu</label>
+          <label htmlFor="filtre-lieu-stock">{t('Lieu')}</label>
           <Select
             id="filtre-lieu-stock"
             style={{ width: '100%' }}
-            placeholder="Tous les lieux"
+            placeholder={t('Tous les lieux')}
             allowClear
             showSearch
             optionFilterProp="label"
@@ -831,11 +846,11 @@ export const Stock: React.FC = () => {
           />
         </div>
         <div style={{ minWidth: 260 }}>
-          <label htmlFor="filtre-article-stock">Article</label>
+          <label htmlFor="filtre-article-stock">{t('Article')}</label>
           <Select
             id="filtre-article-stock"
             style={{ width: '100%' }}
-            placeholder="Tous les articles"
+            placeholder={t('Tous les articles')}
             allowClear
             showSearch
             optionFilterProp="label"
@@ -846,7 +861,7 @@ export const Stock: React.FC = () => {
         </div>
         <div style={{ minWidth: 240 }}>
           <Checkbox checked={masquerZero} onChange={event => setMasquerZero(event.target.checked)}>
-            Masquer les lignes à zéro
+            {t('Masquer les lignes à zéro')}
           </Checkbox>
         </div>
       </FilterSheet>
@@ -862,15 +877,15 @@ export const Stock: React.FC = () => {
         onPageChange={() => {}}
         loading={soldesEnAttente}
         isReloading={soldesEnRechargement && !soldesEnAttente}
-        error={erreurSoldes ? "Impossible de charger l'état du stock." : null}
+        error={erreurSoldes ? t("Impossible de charger l'état du stock.") : null}
         onRetry={() => refetchSoldes()}
         isFiltered={nbFiltresSoldes > 0}
         onClearFilters={effacerFiltresSoldes}
-        emptyDescription="Aucun stock n'est encore enregistré."
-        emptyAction={{ label: 'Enregistrer une réception', onClick: ouvrirReception }}
+        emptyDescription={t("Aucun stock n'est encore enregistré.")}
+        emptyAction={{ label: t('Enregistrer une réception'), onClick: ouvrirReception }}
         columns={colonnesSoldes}
         rowKey={b => `${b.itemId}-${b.locationId}`}
-        aria-label="État du stock"
+        aria-label={t('État du stock')}
         renderCard={b => (
           <DataCard
             title={b.itemLabel}
@@ -878,30 +893,31 @@ export const Stock: React.FC = () => {
             subtitle={`${b.itemReference} — ${b.locationLabel}`}
             highlight={<MoneyValue value={b.value} />}
             fields={[
-              { label: 'Quantité', value: quantite(b.quantity, b.itemUnit) },
-              { label: 'Coût moyen unitaire', value: <MoneyValue value={b.averageUnitCost} /> }
+              { label: t('Quantité'), value: quantite(b.quantity, b.itemUnit) },
+              { label: t('Coût moyen unitaire'), value: <MoneyValue value={b.averageUnitCost} /> }
             ]}
           />
         )}
       />
 
       <Paragraph type="secondary" style={{ marginTop: 'var(--space-3)' }}>
-        Le <strong>coût moyen unitaire</strong> est propre à chaque couple article / lieu : un même article peut valoir
-        deux prix différents dans deux magasins, selon ce qu'on y a reçu et à quel prix. Il se déduit de la valeur et de
-        la quantité, et n'est jamais une donnée saisie.
+        {t('Le')} <strong>{t('coût moyen unitaire')}</strong>{' '}
+        {t(
+          "est propre à chaque couple article / lieu : un même article peut valoir deux prix différents dans deux magasins, selon ce qu'on y a reçu et à quel prix. Il se déduit de la valeur et de la quantité, et n'est jamais une donnée saisie."
+        )}
       </Paragraph>
     </>
   );
 
   const ongletJournal = (
     <>
-      <FilterSheet activeCount={nbFiltresJournal} onClear={effacerFiltresJournal} title="Filtrer le journal">
+      <FilterSheet activeCount={nbFiltresJournal} onClear={effacerFiltresJournal} title={t('Filtrer le journal')}>
         <div style={{ minWidth: 260 }}>
-          <label htmlFor="journal-article">Article</label>
+          <label htmlFor="journal-article">{t('Article')}</label>
           <Select
             id="journal-article"
             style={{ width: '100%' }}
-            placeholder="Tous les articles"
+            placeholder={t('Tous les articles')}
             allowClear
             showSearch
             optionFilterProp="label"
@@ -911,11 +927,11 @@ export const Stock: React.FC = () => {
           />
         </div>
         <div style={{ minWidth: 220 }}>
-          <label htmlFor="journal-lieu">Lieu</label>
+          <label htmlFor="journal-lieu">{t('Lieu')}</label>
           <Select
             id="journal-lieu"
             style={{ width: '100%' }}
-            placeholder="Tous les lieux"
+            placeholder={t('Tous les lieux')}
             allowClear
             showSearch
             optionFilterProp="label"
@@ -925,11 +941,11 @@ export const Stock: React.FC = () => {
           />
         </div>
         <div style={{ minWidth: 220 }}>
-          <label htmlFor="journal-chantier">Chantier</label>
+          <label htmlFor="journal-chantier">{t('Chantier')}</label>
           <Select
             id="journal-chantier"
             style={{ width: '100%' }}
-            placeholder="Tous les chantiers"
+            placeholder={t('Tous les chantiers')}
             allowClear
             showSearch
             optionFilterProp="label"
@@ -939,11 +955,11 @@ export const Stock: React.FC = () => {
           />
         </div>
         <div style={{ minWidth: 220 }}>
-          <label htmlFor="journal-nature">Nature</label>
+          <label htmlFor="journal-nature">{t('Nature')}</label>
           <Select
             id="journal-nature"
             style={{ width: '100%' }}
-            placeholder="Toutes les natures"
+            placeholder={t('Toutes les natures')}
             allowClear
             value={journalNature}
             onChange={valeur => setJournalNature(valeur as StockMovementType | undefined)}
@@ -954,7 +970,7 @@ export const Stock: React.FC = () => {
           />
         </div>
         <div style={{ minWidth: 180 }}>
-          <label htmlFor="journal-du">Du</label>
+          <label htmlFor="journal-du">{t('Du')}</label>
           <DatePicker
             id="journal-du"
             style={{ width: '100%' }}
@@ -964,7 +980,7 @@ export const Stock: React.FC = () => {
           />
         </div>
         <div style={{ minWidth: 180 }}>
-          <label htmlFor="journal-au">Au</label>
+          <label htmlFor="journal-au">{t('Au')}</label>
           <DatePicker
             id="journal-au"
             style={{ width: '100%' }}
@@ -985,14 +1001,14 @@ export const Stock: React.FC = () => {
         onPageChange={() => {}}
         loading={journalEnAttente}
         isReloading={journalEnRechargement && !journalEnAttente}
-        error={erreurJournal ? 'Impossible de charger le journal des mouvements.' : null}
+        error={erreurJournal ? t('Impossible de charger le journal des mouvements.') : null}
         onRetry={() => refetchJournal()}
         isFiltered={nbFiltresJournal > 0}
         onClearFilters={effacerFiltresJournal}
-        emptyDescription="Aucun mouvement de stock n'a encore été enregistré."
+        emptyDescription={t("Aucun mouvement de stock n'a encore été enregistré.")}
         columns={colonnesJournal}
         rowKey={m => m.id}
-        aria-label="Journal des mouvements de stock"
+        aria-label={t('Journal des mouvements de stock')}
         renderCard={m => (
           <DataCard
             title={m.itemLabel}
@@ -1007,10 +1023,10 @@ export const Stock: React.FC = () => {
             }
             highlight={<MoneyValue value={m.totalValue} />}
             fields={[
-              { label: 'Quantité', value: `${m.isDecrease ? '−' : '+'} ${quantite(m.quantity, m.itemUnit)}` },
-              { label: 'Chantier imputé', value: m.siteLabel ?? 'Aucune imputation' },
+              { label: t('Quantité'), value: `${m.isDecrease ? '−' : '+'} ${quantite(m.quantity, m.itemUnit)}` },
+              { label: t('Chantier imputé'), value: m.siteLabel ?? t('Aucune imputation') },
               { label: 'Demandeur', value: m.requestedBy ?? '—' },
-              { label: 'Pièce', value: m.supplierInvoiceReference ?? '—' }
+              { label: t('Pièce'), value: m.supplierInvoiceReference ?? '—' }
             ]}
           />
         )}
@@ -1020,7 +1036,7 @@ export const Stock: React.FC = () => {
 
   return (
     <>
-      <PageHeader title="Stock" subtitle="État du stock, réceptions, sorties et journal des mouvements" />
+      <PageHeader title={t('Stock')} subtitle={t('État du stock, réceptions, sorties et journal des mouvements')} />
 
       {/*
         Le piège central de ce lot, dit une fois, en haut, et jamais démenti
@@ -1030,24 +1046,26 @@ export const Stock: React.FC = () => {
         type="info"
         showIcon
         style={{ marginBottom: 'var(--space-4)' }}
-        message="C'est la sortie qui impute le chantier, pas la livraison"
-        description="Recevoir de la marchandise fait monter le stock, et rien d'autre : aucun coût de chantier ne bouge à ce moment-là. Le matériau entre dans le coût d'un chantier le jour où il sort du magasin pour lui, à son coût moyen d'alors."
+        message={t("C'est la sortie qui impute le chantier, pas la livraison")}
+        description={t(
+          "Recevoir de la marchandise fait monter le stock, et rien d'autre : aucun coût de chantier ne bouge à ce moment-là. Le matériau entre dans le coût d'un chantier le jour où il sort du magasin pour lui, à son coût moyen d'alors."
+        )}
       />
 
       <Space wrap size="middle" style={{ marginBottom: 'var(--space-4)' }}>
         <Button icon={<PlusOutlined />} onClick={ouvrirReception}>
-          Enregistrer une réception
+          {t('Enregistrer une réception')}
         </Button>
         <Button type="primary" icon={<PlusOutlined />} onClick={ouvrirSortie}>
-          Enregistrer une sortie
+          {t('Enregistrer une sortie')}
         </Button>
       </Space>
 
       <Tabs
         defaultActiveKey="etat"
         items={[
-          { key: 'etat', label: 'État du stock', children: ongletSoldes },
-          { key: 'journal', label: 'Journal des mouvements', children: ongletJournal }
+          { key: 'etat', label: t('État du stock'), children: ongletSoldes },
+          { key: 'journal', label: t('Journal des mouvements'), children: ongletJournal }
         ]}
       />
 
@@ -1055,16 +1073,16 @@ export const Stock: React.FC = () => {
           Enregistrer une réception
       ------------------------------------------------------------------ */}
       <Modal
-        title="Enregistrer une réception"
+        title={t('Enregistrer une réception')}
         open={receptionOuverte}
         onCancel={() => {
           if (!receptionEnCours) setReceptionOuverte(false);
         }}
         confirmLoading={receptionEnCours}
         onOk={validerReception}
-        okText="Enregistrer la réception"
+        okText={t('Enregistrer la réception')}
         okButtonProps={{ disabled: !peutRecevoir }}
-        cancelText="Annuler"
+        cancelText={t('Annuler')}
         destroyOnHidden
         width={820}
       >
@@ -1073,31 +1091,33 @@ export const Stock: React.FC = () => {
           <Alert
             type="info"
             showIcon
-            message="Une réception ne fait monter aucun coût de chantier"
-            description="Elle enregistre des quantités et la valeur qui leur est attachée. La facture a déjà porté cette valeur ; c'est la sortie vers un chantier qui l'imputera à son coût, plus tard."
+            message={t('Une réception ne fait monter aucun coût de chantier')}
+            description={t(
+              "Elle enregistre des quantités et la valeur qui leur est attachée. La facture a déjà porté cette valeur ; c'est la sortie vers un chantier qui l'imputera à son coût, plus tard."
+            )}
           />
 
           <div>
-            <label htmlFor="reception-lieu">Lieu de réception</label>
+            <label htmlFor="reception-lieu">{t('Lieu de réception')}</label>
             <Select
               id="reception-lieu"
               style={{ width: '100%' }}
-              placeholder="Choisir un lieu"
+              placeholder={t('Choisir un lieu')}
               showSearch
               optionFilterProp="label"
               value={receptionLieu}
               onChange={valeur => setReceptionLieu(valeur as string)}
               options={optionsLieux}
-              notFoundContent="Aucun lieu de stockage disponible"
+              notFoundContent={t('Aucun lieu de stockage disponible')}
             />
           </div>
 
           <div>
-            <label htmlFor="reception-fournisseur">Fournisseur</label>
+            <label htmlFor="reception-fournisseur">{t('Fournisseur')}</label>
             <Select
               id="reception-fournisseur"
               style={{ width: '100%' }}
-              placeholder="Choisir un fournisseur"
+              placeholder={t('Choisir un fournisseur')}
               showSearch
               optionFilterProp="label"
               value={receptionFournisseur}
@@ -1108,12 +1128,14 @@ export const Stock: React.FC = () => {
               options={optionsFournisseurs}
             />
             <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-              Le fournisseur sert à retrouver sa facture : aucune liste des factures restant à réceptionner n'existe.
+              {t(
+                "Le fournisseur sert à retrouver sa facture : aucune liste des factures restant à réceptionner n'existe."
+              )}
             </Text>
           </div>
 
           <div>
-            <label htmlFor="reception-facture">Facture validée</label>
+            <label htmlFor="reception-facture">{t('Facture validée')}</label>
             {/* Le lien est EXIGÉ (besoin S2, principe P-2) : une entrée de
                 stock sans pièce est une valeur qui apparaît de nulle part.
                 Seules les factures validées sont proposées — le serveur
@@ -1121,23 +1143,25 @@ export const Stock: React.FC = () => {
             <Select
               id="reception-facture"
               style={{ width: '100%' }}
-              placeholder={receptionFournisseur ? 'Choisir une facture' : "Choisir d'abord un fournisseur"}
+              placeholder={receptionFournisseur ? t('Choisir une facture') : t("Choisir d'abord un fournisseur")}
               disabled={!receptionFournisseur}
               showSearch
               optionFilterProp="label"
               value={receptionFacture}
               onChange={valeur => setReceptionFacture(valeur as string)}
               options={optionsFactures}
-              notFoundContent="Aucune facture validée pour ce fournisseur"
+              notFoundContent={t('Aucune facture validée pour ce fournisseur')}
             />
             <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-              La facture est <strong>obligatoire</strong> : c'est elle qui justifie la valeur entrée en stock. Le total
-              reçu n'a pas à égaler le montant de la facture — un écart est une donnée, que le rapprochement exposera.
+              {t('La facture est')} <strong>obligatoire</strong>{' '}
+              {t(
+                ": c'est elle qui justifie la valeur entrée en stock. Le total reçu n'a pas à égaler le montant de la facture — un écart est une donnée, que le rapprochement exposera."
+              )}
             </Text>
           </div>
 
           <div>
-            <label htmlFor="reception-date">Date de réception</label>
+            <label htmlFor="reception-date">{t('Date de réception')}</label>
             <DatePicker
               id="reception-date"
               style={{ width: '100%' }}
@@ -1148,35 +1172,36 @@ export const Stock: React.FC = () => {
           </div>
 
           <div>
-            <Text strong>Lignes reçues</Text>
+            <Text strong>{t('Lignes reçues')}</Text>
             <div>
               <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-                <strong>Une ligne par article</strong>, au moins une : le coût moyen se recalcule article par article,
-                et le serveur écrit un mouvement par ligne. Un prix unitaire à zéro est accepté — un don, une reprise,
-                une chute récupérée entrent en stock à valeur nulle.
+                <strong>{t('Une ligne par article')}</strong>
+                {t(
+                  ', au moins une : le coût moyen se recalcule article par article, et le serveur écrit un mouvement par ligne. Un prix unitaire à zéro est accepté — un don, une reprise, une chute récupérée entrent en stock à valeur nulle.'
+                )}
               </Text>
             </div>
           </div>
 
           {lignes.map((ligne, index) => (
-            <Card key={ligne.cle} size="small" title={`Ligne ${index + 1}`}>
+            <Card key={ligne.cle} size="small" title={t('Ligne {{value}}', { value: index + 1 })}>
               <Space orientation="vertical" size="small" style={{ width: '100%' }}>
                 <div>
-                  <label htmlFor={`reception-article-${index}`}>Article</label>
+                  <label htmlFor={`reception-article-${index}`}>{t('Article')}</label>
                   <Select
                     id={`reception-article-${index}`}
                     style={{ width: '100%' }}
-                    placeholder="Choisir un article"
+                    placeholder={t('Choisir un article')}
                     showSearch
                     optionFilterProp="label"
                     value={ligne.itemId}
                     onChange={valeur => modifierLigne(ligne.cle, { itemId: valeur as string })}
                     options={optionsArticles}
-                    notFoundContent="Aucun article disponible"
+                    notFoundContent={t('Aucun article disponible')}
                   />
                 </div>
                 <div>
-                  <label htmlFor={`reception-quantite-${index}`}>Quantité</label>
+                  <label htmlFor={`reception-quantite-${index}`}>{t('Quantité')}</label>
                   {/* Quatre décimales : on reçoit des tonnes et des mètres
                       cubes, pas seulement des sacs entiers. */}
                   <InputNumber
@@ -1190,7 +1215,7 @@ export const Stock: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label htmlFor={`reception-prix-${index}`}>Prix unitaire</label>
+                  <label htmlFor={`reception-prix-${index}`}>{t('Prix unitaire')}</label>
                   {/* Le SEUL prix saisi de cet écran, et il est ici parce
                       qu'une entrée en stock apporte une valeur neuve. Une
                       sortie, elle, n'en saisit aucun. */}
@@ -1209,9 +1234,9 @@ export const Stock: React.FC = () => {
                     danger
                     icon={<DeleteOutlined />}
                     onClick={() => retirerLigne(ligne.cle)}
-                    aria-label={`Retirer la ligne ${index + 1}`}
+                    aria-label={t('Retirer la ligne {{value}}', { value: index + 1 })}
                   >
-                    Retirer cette ligne
+                    {t('Retirer cette ligne')}
                   </Button>
                 )}
               </Space>
@@ -1219,7 +1244,7 @@ export const Stock: React.FC = () => {
           ))}
 
           <Button icon={<PlusOutlined />} onClick={ajouterLigne}>
-            Ajouter une ligne
+            {t('Ajouter une ligne')}
           </Button>
         </Space>
       </Modal>
@@ -1228,16 +1253,16 @@ export const Stock: React.FC = () => {
           Enregistrer une sortie — le geste du lot
       ------------------------------------------------------------------ */}
       <Modal
-        title="Enregistrer une sortie vers un chantier"
+        title={t('Enregistrer une sortie vers un chantier')}
         open={sortieOuverte}
         onCancel={() => {
           if (!sortieEnCours) setSortieOuverte(false);
         }}
         confirmLoading={sortieEnCours}
         onOk={validerSortie}
-        okText="Enregistrer la sortie"
+        okText={t('Enregistrer la sortie')}
         okButtonProps={{ disabled: !peutSortir }}
-        cancelText="Annuler"
+        cancelText={t('Annuler')}
         destroyOnHidden
         width={720}
       >
@@ -1245,42 +1270,44 @@ export const Stock: React.FC = () => {
           <Alert
             type="info"
             showIcon
-            message="C'est ce geste qui impute le chantier"
-            description="La sortie fait entrer le matériau dans le coût réel du chantier, au coût moyen du lieu avant la sortie. La livraison, elle, n'y avait rien changé."
+            message={t("C'est ce geste qui impute le chantier")}
+            description={t(
+              "La sortie fait entrer le matériau dans le coût réel du chantier, au coût moyen du lieu avant la sortie. La livraison, elle, n'y avait rien changé."
+            )}
           />
 
           <div>
-            <label htmlFor="sortie-lieu">Lieu de sortie</label>
+            <label htmlFor="sortie-lieu">{t('Lieu de sortie')}</label>
             <Select
               id="sortie-lieu"
               style={{ width: '100%' }}
-              placeholder="Choisir un lieu"
+              placeholder={t('Choisir un lieu')}
               showSearch
               optionFilterProp="label"
               value={sortieLieu}
               onChange={valeur => setSortieLieu(valeur as string)}
               options={optionsLieux}
-              notFoundContent="Aucun lieu de stockage disponible"
+              notFoundContent={t('Aucun lieu de stockage disponible')}
             />
           </div>
 
           <div>
-            <label htmlFor="sortie-article">Article</label>
+            <label htmlFor="sortie-article">{t('Article')}</label>
             <Select
               id="sortie-article"
               style={{ width: '100%' }}
-              placeholder="Choisir un article"
+              placeholder={t('Choisir un article')}
               showSearch
               optionFilterProp="label"
               value={sortieArticle}
               onChange={valeur => choisirArticleSortie(valeur as string)}
               options={optionsArticles}
-              notFoundContent="Aucun article disponible"
+              notFoundContent={t('Aucun article disponible')}
             />
           </div>
 
           <div>
-            <label htmlFor="sortie-quantite">Quantité</label>
+            <label htmlFor="sortie-quantite">{t('Quantité')}</label>
             <InputNumber
               id="sortie-quantite"
               style={{ width: '100%' }}
@@ -1296,11 +1323,11 @@ export const Stock: React.FC = () => {
             <div>
               {sortieArticle && sortieLieu ? (
                 <Text type={sortieAuDela ? 'danger' : 'secondary'}>
-                  Stock disponible dans ce lieu : <strong>{quantite(stockDisponible, uniteSortie)}</strong>
+                  {t('Stock disponible dans ce lieu :')} <strong>{quantite(stockDisponible, uniteSortie)}</strong>
                 </Text>
               ) : (
                 <Text type="secondary">
-                  Choisissez un lieu et un article pour voir le stock disponible avant de saisir la quantité.
+                  {t('Choisissez un lieu et un article pour voir le stock disponible avant de saisir la quantité.')}
                 </Text>
               )}
             </div>
@@ -1309,8 +1336,10 @@ export const Stock: React.FC = () => {
                 <Alert
                   type="warning"
                   showIcon
-                  message="Cette sortie dépasse le stock disponible, et sera refusée"
-                  description="Un stock négatif n'aurait pas de coût moyen qui veuille dire quelque chose, et toute la valorisation qui suit deviendrait fausse. Si la marchandise est bien partie, le geste juste est un inventaire, pas une sortie à découvert."
+                  message={t('Cette sortie dépasse le stock disponible, et sera refusée')}
+                  description={t(
+                    "Un stock négatif n'aurait pas de coût moyen qui veuille dire quelque chose, et toute la valorisation qui suit deviendrait fausse. Si la marchandise est bien partie, le geste juste est un inventaire, pas une sortie à découvert."
+                  )}
                 />
               </div>
             )}
@@ -1321,37 +1350,46 @@ export const Stock: React.FC = () => {
           {apercuSortie !== null && soldeSortie && (
             <Alert
               type="info"
-              message={`Aperçu : cette sortie vaudrait environ ${formatMoney(apercuSortie)}, au coût moyen actuel de ${formatMoney(soldeSortie.averageUnitCost)} par ${soldeSortie.itemUnit}.`}
-              description="Aperçu indicatif seulement. Aucun prix n'est saisi ni envoyé : le serveur valorise la sortie au coût moyen du lieu à l'instant de l'écriture, et c'est lui qui tranchera — une réception passée entre-temps aura changé ce coût."
+              message={t(
+                'Aperçu : cette sortie vaudrait environ {{value}}, au coût moyen actuel de {{value2}} par {{itemUnit}}.',
+                {
+                  value: formatMoney(apercuSortie),
+                  value2: formatMoney(soldeSortie.averageUnitCost),
+                  itemUnit: soldeSortie.itemUnit
+                }
+              )}
+              description={t(
+                "Aperçu indicatif seulement. Aucun prix n'est saisi ni envoyé : le serveur valorise la sortie au coût moyen du lieu à l'instant de l'écriture, et c'est lui qui tranchera — une réception passée entre-temps aura changé ce coût."
+              )}
             />
           )}
 
           <div>
-            <label htmlFor="sortie-chantier">Chantier imputé</label>
+            <label htmlFor="sortie-chantier">{t('Chantier imputé')}</label>
             <Select
               id="sortie-chantier"
               style={{ width: '100%' }}
-              placeholder="Choisir un chantier"
+              placeholder={t('Choisir un chantier')}
               showSearch
               optionFilterProp="label"
               value={sortieChantier}
               onChange={valeur => setSortieChantier(valeur as string)}
               options={optionsChantiers}
-              notFoundContent="Aucun chantier disponible"
+              notFoundContent={t('Aucun chantier disponible')}
             />
             <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-              Un chantier clos n'accepte plus d'imputation : la sortie y serait refusée.
+              {t("Un chantier clos n'accepte plus d'imputation : la sortie y serait refusée.")}
             </Text>
           </div>
 
           <div>
-            <label htmlFor="sortie-poste">Poste de dépense</label>
+            <label htmlFor="sortie-poste">{t('Poste de dépense')}</label>
             {/* EXIGÉ, jamais deviné. La proposition de l'article est
                 pré-sélectionnée, dite comme telle, et modifiable. */}
             <Select
               id="sortie-poste"
               style={{ width: '100%' }}
-              placeholder="Choisir un poste"
+              placeholder={t('Choisir un poste')}
               showSearch
               optionFilterProp="label"
               value={sortiePoste}
@@ -1360,40 +1398,45 @@ export const Stock: React.FC = () => {
                 setPostePropose(false);
               }}
               options={optionsPostes}
-              notFoundContent="Aucun poste disponible"
+              notFoundContent={t('Aucun poste disponible')}
             />
             {articleSortie?.defaultCostCategoryLabel ? (
               <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-                « {articleSortie.defaultCostCategoryLabel} » est le poste <strong>proposé</strong> par cet article : une
-                proposition seulement, pré-sélectionnée ici et libre d'être changée. C'est la sortie qui décide du
-                poste, jamais l'article.
+                « {articleSortie.defaultCostCategoryLabel} {t('» est le poste')} <strong>{t('proposé')}</strong>{' '}
+                {t(
+                  "par cet article : une proposition seulement, pré-sélectionnée ici et libre d'être changée. C'est la sortie qui décide du poste, jamais l'article."
+                )}
               </Text>
             ) : (
               <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-                Cet article ne propose aucun poste, et c'est un cas normal : choisissez celui de cette sortie. Le poste
-                est <strong>obligatoire</strong>.
+                {t(
+                  "Cet article ne propose aucun poste, et c'est un cas normal : choisissez celui de cette sortie. Le poste est"
+                )}{' '}
+                <strong>obligatoire</strong>.
               </Text>
             )}
           </div>
 
           <div>
-            <label htmlFor="sortie-demandeur">Demandeur</label>
+            <label htmlFor="sortie-demandeur">{t('Demandeur')}</label>
             {/* Exigé (besoin S3) : une sortie sans demandeur est un matériau
                 qui a disparu sans que personne n'en réponde. */}
             <Input
               id="sortie-demandeur"
               value={sortieDemandeur}
               onChange={event => setSortieDemandeur(event.target.value)}
-              placeholder="Ex. Mamadou Diallo, chef de chantier"
+              placeholder={t('Ex. Mamadou Diallo, chef de chantier')}
             />
             <Text type={sortieDemandeur.trim() ? 'secondary' : 'danger'} style={{ fontSize: 'var(--font-size-sm)' }}>
-              <strong>Obligatoire</strong> : c'est la personne qui répond de cette marchandise. Sans nom, le matériau
-              disparaît sans que personne n'en réponde.
+              <strong>{t('Obligatoire')}</strong>{' '}
+              {t(
+                ": c'est la personne qui répond de cette marchandise. Sans nom, le matériau disparaît sans que personne n'en réponde."
+              )}
             </Text>
           </div>
 
           <div>
-            <label htmlFor="sortie-date">Date de sortie</label>
+            <label htmlFor="sortie-date">{t('Date de sortie')}</label>
             <DatePicker
               id="sortie-date"
               style={{ width: '100%' }}
@@ -1406,9 +1449,10 @@ export const Stock: React.FC = () => {
           {/* Aucun champ de montant, et ce n'est pas un oubli : dit à
               l'utilisateur plutôt que laissé à deviner. */}
           <Text type="secondary">
-            Ce formulaire ne demande <strong>aucun prix</strong>, et c'est voulu : la valeur d'une sortie se déduit du
-            coût moyen du lieu au moment où elle est enregistrée. Personne ne la saisit, personne ne la corrige à la
-            main.
+            {t('Ce formulaire ne demande')} <strong>aucun prix</strong>
+            {t(
+              ", et c'est voulu : la valeur d'une sortie se déduit du coût moyen du lieu au moment où elle est enregistrée. Personne ne la saisit, personne ne la corrige à la main."
+            )}
           </Text>
         </Space>
       </Modal>

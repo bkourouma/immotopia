@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { logger } from '../utils/logger';
 import { isProduction } from '../config/env';
+import { t } from '../i18n';
 
 /**
  * Single error response shape for the whole API.
@@ -202,6 +203,18 @@ export function errorHandler(err: Error | AppError, req: Request, res: Response,
   }
 
   const { status, body } = toErrorResponse(err);
+
+  // Les messages sont traduits ICI, et nulle part ailleurs.
+  //
+  // Les services levent leurs erreurs en francais, sans rien savoir de la
+  // langue de l'appelant : la traduire au fond du code aurait voulu dire
+  // transporter une langue a travers 87 sites de levee. La mise en forme finale
+  // est le dernier endroit ou le message existe encore comme texte, et le seul
+  // ou la langue de la requete est connue a coup sur.
+  body.message = t(body.message);
+  if (body.errors) {
+    body.errors = body.errors.map(entry => ({ ...entry, message: t(entry.message) }));
+  }
 
   // 4xx are expected client mistakes; only 5xx deserve error level.
   const log = status >= 500 ? logger.error.bind(logger) : logger.warn.bind(logger);

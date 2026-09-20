@@ -2,6 +2,7 @@ import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Card } from 'antd';
 import { ConversionFunnel, FunnelStep } from '../../../../types/crmDashboard';
+import { t } from '../../../../i18n/t';
 
 interface FunnelChartProps {
   data: ConversionFunnel;
@@ -17,7 +18,7 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ data, onStepClick }) =
     .sort((a, b) => b.percentage - a.percentage)
     .map((step, index) => ({
       ...step,
-      fill: STEP_COLORS[index % STEP_COLORS.length],
+      fill: STEP_COLORS[index % STEP_COLORS.length]
     }));
 
   const CustomTooltip = ({ active, payload }: any) => {
@@ -30,7 +31,8 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ data, onStepClick }) =
           <p className="text-sm text-slate-600">Taux: {data.percentage.toFixed(1)}%</p>
           {data.dropOff !== undefined && (
             <p className={`text-sm ${data.dropOff > 0 ? 'text-red-600' : 'text-green-600'}`}>
-              Perte: {data.dropOff > 0 ? '+' : ''}{data.dropOff.toFixed(1)}%
+              Perte: {data.dropOff > 0 ? '+' : ''}
+              {data.dropOff.toFixed(1)}%
             </p>
           )}
         </div>
@@ -40,13 +42,9 @@ export const FunnelChart: React.FC<FunnelChartProps> = ({ data, onStepClick }) =
   };
 
   return (
-    <Card title="Entonnoir de conversion">
+    <Card title={t('Entonnoir de conversion')}>
       <ResponsiveContainer width="100%" height={300}>
-        <BarChart
-          data={chartData}
-          layout="vertical"
-          margin={{ top: 20, right: 30, left: 100, bottom: 20 }}
-        >
+        <BarChart data={chartData} layout="vertical" margin={{ top: 20, right: 30, left: 100, bottom: 20 }}>
           <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 12 }} />
           <YAxis dataKey="step" type="category" width={80} tick={{ fontSize: 12 }} />
           <Tooltip content={<CustomTooltip />} />

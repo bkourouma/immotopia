@@ -4,6 +4,7 @@ import { StarOutlined, DeleteOutlined, DragOutlined, PictureOutlined, PlayCircle
 import { PropertyMedia, PropertyMediaType } from '../../types/property-types';
 import apiClient from '../../utils/api-client';
 import { API_URL } from '../../config/api';
+import { t } from '../../i18n/t';
 
 interface PropertyMediaGalleryProps {
   propertyId: string;
@@ -53,9 +54,9 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
       await apiClient.post(`/tenants/${tenantId}/properties/${propertyId}/media/primary`, { mediaId });
       await loadMedia();
       if (onUpdate) onUpdate();
-      message.success('Photo principale mise à jour');
+      message.success(t('Photo principale mise à jour'));
     } catch (error: any) {
-      message.error(error.response?.data?.error || 'Erreur lors de la mise à jour');
+      message.error(error.response?.data?.error || t('Erreur lors de la mise à jour'));
     }
   };
 
@@ -64,9 +65,9 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
       await apiClient.delete(`/tenants/${tenantId}/properties/${propertyId}/media/${mediaId}`);
       await loadMedia();
       if (onUpdate) onUpdate();
-      message.success('Média supprimé avec succès');
+      message.success(t('Média supprimé avec succès'));
     } catch (error: any) {
-      message.error(error.response?.data?.error || 'Erreur lors de la suppression');
+      message.error(error.response?.data?.error || t('Erreur lors de la suppression'));
     }
   };
 
@@ -99,9 +100,9 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
       await apiClient.post(`/tenants/${tenantId}/properties/${propertyId}/media/reorder`, { mediaOrders });
 
       if (onUpdate) onUpdate();
-      message.success('Ordre des médias mis à jour');
+      message.success(t('Ordre des médias mis à jour'));
     } catch (error: any) {
-      message.error(error.response?.data?.error || 'Erreur lors du réordonnancement');
+      message.error(error.response?.data?.error || t('Erreur lors du réordonnancement'));
       await loadMedia(); // Reload on error
     } finally {
       setReordering(false);
@@ -121,7 +122,7 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
     return (
       <div style={{ textAlign: 'center', padding: '48px 0', color: '#8c8c8c' }}>
         <PictureOutlined style={{ fontSize: 48, color: '#bfbfbf', marginBottom: 16 }} />
-        <p>Aucun média pour cette propriété</p>
+        <p>{t('Aucun média pour cette propriété')}</p>
       </div>
     );
   }
@@ -184,12 +185,12 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
             ) : item.mediaType === PropertyMediaType.VIDEO ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: '#8c8c8c' }}>
                 <PlayCircleOutlined style={{ fontSize: 48 }} />
-                <span style={{ fontSize: 12 }}>Vidéo</span>
+                <span style={{ fontSize: 12 }}>{t('Vidéo')}</span>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: '#8c8c8c' }}>
                 <PictureOutlined style={{ fontSize: 48 }} />
-                <span style={{ fontSize: 12 }}>Tour 360°</span>
+                <span style={{ fontSize: 12 }}>{t('Tour 360°')}</span>
               </div>
             )}
           </div>
@@ -224,11 +225,13 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
               }}
             />
             <Popconfirm
-              title="Supprimer le média"
-              description={`Êtes-vous sûr de vouloir supprimer ${item.mediaType === PropertyMediaType.PHOTO ? 'cette photo' : 'cette vidéo'} ?`}
+              title={t('Supprimer le média')}
+              description={t('Êtes-vous sûr de vouloir supprimer {{value}} ?', {
+                value: item.mediaType === PropertyMediaType.PHOTO ? 'cette photo' : 'cette vidéo'
+              })}
               onConfirm={() => handleDelete(item.id)}
-              okText="Supprimer"
-              cancelText="Annuler"
+              okText={t('Supprimer')}
+              cancelText={t('Annuler')}
               okButtonProps={{ danger: true }}
             >
               <Button
@@ -264,7 +267,7 @@ export const PropertyMediaGallery: React.FC<PropertyMediaGalleryProps> = ({
               }}
             >
               <StarOutlined style={{ fontSize: 12 }} />
-              Principal
+              {t('Principal')}
             </div>
           )}
         </div>

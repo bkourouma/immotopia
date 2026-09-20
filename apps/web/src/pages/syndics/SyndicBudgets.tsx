@@ -30,18 +30,20 @@ import {
 } from '../../services/syndic-service';
 import { BudgetAllocation, ChargeCallBatch, SyndicateBudget, SyndicateLot } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Paragraph, Title } = Typography;
 
 const batchTypeLabels: Record<ChargeCallBatch['batchType'], string> = {
-  REGULAR: 'Régulier',
+  REGULAR: t('Régulier'),
   EXCEPTIONAL: 'Exceptionnel'
 };
 
 const batchStatusLabels: Record<ChargeCallBatch['status'], string> = {
   DRAFT: 'Brouillon',
-  SENT: 'Envoyé',
-  CLOSED: 'Clôturé'
+  SENT: t('Envoyé'),
+  CLOSED: t('Clôturé')
 };
 
 function buildLotDisplayName(allocation: BudgetAllocation, lotDirectoryEntry?: SyndicateLot): string {
@@ -95,7 +97,7 @@ export const SyndicBudgets: React.FC = () => {
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
       setLoading(false);
-      setError('Paramètres budget manquants');
+      setError(t('Paramètres budget manquants'));
       return;
     }
     void loadData();
@@ -124,7 +126,7 @@ export const SyndicBudgets: React.FC = () => {
       setBatches(batchesData);
       setLots(lotsData);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Impossible de charger les budgets');
+      setError(err.response?.data?.error || t('Impossible de charger les budgets'));
     } finally {
       setLoading(false);
     }
@@ -155,12 +157,12 @@ export const SyndicBudgets: React.FC = () => {
           }
         ]
       });
-      message.success('Budget créé');
+      message.success(t('Budget créé'));
       setOpenBudgetModal(false);
       budgetForm.resetFields();
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Création budget impossible');
+      message.error(err.response?.data?.error || t('Création budget impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -171,10 +173,10 @@ export const SyndicBudgets: React.FC = () => {
     setSubmitting(true);
     try {
       await updateBudget(effectiveTenantId, syndicId, budgetId, { status: 'APPROVED' });
-      message.success('Budget approuvé');
+      message.success(t('Budget approuvé'));
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Approbation impossible');
+      message.error(err.response?.data?.error || t('Approbation impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -188,10 +190,10 @@ export const SyndicBudgets: React.FC = () => {
       const budget = budgets.find(item => item.id === budgetId) || null;
       setAllocationRows(allocations);
       setAllocationBudgetLabel(budget ? `${budget.label} (${budget.fiscalYear})` : budgetId);
-      message.success(`Allocations recalculées (${allocations.length} lot(s))`);
+      message.success(t('Allocations recalculées ({{length}} lot(s))', { length: allocations.length }));
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Recalcul impossible');
+      message.error(err.response?.data?.error || t('Recalcul impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -215,13 +217,13 @@ export const SyndicBudgets: React.FC = () => {
         batchType: values.batchType,
         currency: values.currency || 'XOF'
       });
-      message.success("Batch d'appels généré");
+      message.success(t("Batch d'appels généré"));
       setOpenGenerateModal(false);
       setSelectedBudget(null);
       generateForm.resetFields();
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Generation des appels impossible');
+      message.error(err.response?.data?.error || t('Generation des appels impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -246,12 +248,12 @@ export const SyndicBudgets: React.FC = () => {
         totalAmount: values.totalAmount,
         currency: values.currency || 'XOF'
       });
-      message.success('Batch créé');
+      message.success(t('Batch créé'));
       setOpenBatchModal(false);
       batchForm.resetFields();
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Création batch impossible');
+      message.error(err.response?.data?.error || t('Création batch impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -266,24 +268,24 @@ export const SyndicBudgets: React.FC = () => {
               icon={<ArrowLeftOutlined />}
               onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
             >
-              Retour à la fiche syndic
+              {t('Retour à la fiche syndic')}
             </Button>
             <Title level={2} style={{ margin: 0 }}>
-              Budgets et batches d'appels
+              {t("Budgets et batches d'appels")}
             </Title>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Budget prévisionnel, répartitions et génération des appels de charges.
+              {t('Budget prévisionnel, répartitions et génération des appels de charges.')}
             </Paragraph>
           </Space>
           <Space>
             <Button icon={<PlusOutlined />} onClick={() => setOpenBudgetModal(true)}>
-              Nouveau budget
+              {t('Nouveau budget')}
             </Button>
             <Button icon={<PlusOutlined />} onClick={() => setOpenBatchModal(true)}>
-              Nouveau batch
+              {t('Nouveau batch')}
             </Button>
             <Button icon={<ReloadOutlined />} onClick={() => void loadData()}>
-              Actualiser
+              {t('Actualiser')}
             </Button>
           </Space>
         </div>
@@ -296,7 +298,7 @@ export const SyndicBudgets: React.FC = () => {
           </div>
         ) : (
           <>
-            <Card title="Budgets">
+            <Card title={t('Budgets')}>
               <Table
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
@@ -304,11 +306,11 @@ export const SyndicBudgets: React.FC = () => {
                 pagination={{ pageSize: 8 }}
                 columns={[
                   { title: 'Exercice', dataIndex: 'fiscalYear' },
-                  { title: 'Libellé', dataIndex: 'label' },
+                  { title: t('Libellé'), dataIndex: 'label' },
                   {
                     title: 'Montant',
                     dataIndex: 'totalAmount',
-                    render: (value: number | string) => `${Number(value).toLocaleString('fr-FR')} XOF`
+                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} XOF`
                   },
                   { title: 'Allocations', render: (_, budget) => budget.allocations?.length || 0 },
                   {
@@ -326,10 +328,10 @@ export const SyndicBudgets: React.FC = () => {
                           onClick={() => void handleApproveBudget(budget.id)}
                           disabled={budget.status === 'APPROVED'}
                         >
-                          Approuver
+                          {t('Approuver')}
                         </Button>
                         <Button size="small" onClick={() => void handleRecompute(budget.id)}>
-                          Répartir
+                          {t('Répartir')}
                         </Button>
                         <Button
                           size="small"
@@ -339,7 +341,7 @@ export const SyndicBudgets: React.FC = () => {
                             setAllocationBudgetLabel(`${budget.label} (${budget.fiscalYear})`);
                           }}
                         >
-                          Voir allocations
+                          {t('Voir allocations')}
                         </Button>
                         <Button
                           size="small"
@@ -348,14 +350,14 @@ export const SyndicBudgets: React.FC = () => {
                             setSelectedBudget(budget);
                             setOpenGenerateModal(true);
                             generateForm.setFieldsValue({
-                              label: `Batch ${budget.fiscalYear}`,
+                              label: t('Batch {{fiscalYear}}', { fiscalYear: budget.fiscalYear }),
                               period: `${budget.fiscalYear}-01`,
                               batchType: 'REGULAR',
                               currency: budget.currency || 'XOF'
                             });
                           }}
                         >
-                          Générer appels
+                          {t('Générer appels')}
                         </Button>
                       </Space>
                     )
@@ -365,7 +367,13 @@ export const SyndicBudgets: React.FC = () => {
             </Card>
 
             <Card
-              title={allocationBudgetLabel ? `Répartition des lots - ${allocationBudgetLabel}` : 'Répartition des lots'}
+              title={
+                allocationBudgetLabel
+                  ? t('Répartition des lots - {{allocationBudgetLabel}}', {
+                      allocationBudgetLabel: allocationBudgetLabel
+                    })
+                  : t('Répartition des lots')
+              }
             >
               <Table
                 scroll={{ x: 'max-content' }}
@@ -379,44 +387,44 @@ export const SyndicBudgets: React.FC = () => {
                     render: (_, row) => buildLotDisplayName(row, row.lotId ? lotsById[row.lotId] : undefined)
                   },
                   {
-                    title: 'Total alloué',
+                    title: t('Total alloué'),
                     dataIndex: 'totalAllocated',
-                    render: (value: number | string) => `${Number(value).toLocaleString('fr-FR')} XOF`
+                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} XOF`
                   },
                   {
-                    title: 'Détail lignes',
+                    title: t('Détail lignes'),
                     render: (_, row) =>
                       (row.breakdown || [])
-                        .map(line => `${line.category}: ${Number(line.allocated).toLocaleString('fr-FR')} XOF`)
+                        .map(line => `${line.category}: ${Number(line.allocated).toLocaleString(activeLocale())} XOF`)
                         .join(' | ') || '-'
                   }
                 ]}
               />
             </Card>
 
-            <Card title="Batches d'appels">
+            <Card title={t("Batches d'appels")}>
               <Table
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
                 dataSource={batches}
                 pagination={{ pageSize: 8 }}
                 columns={[
-                  { title: 'Libellé', dataIndex: 'label' },
-                  { title: 'Période', dataIndex: 'period' },
+                  { title: t('Libellé'), dataIndex: 'label' },
+                  { title: t('Période'), dataIndex: 'period' },
                   {
                     title: 'Type',
                     dataIndex: 'batchType',
                     render: (value: ChargeCallBatch['batchType']) => batchTypeLabels[value] || value
                   },
                   {
-                    title: 'Échéance',
+                    title: t('Échéance'),
                     dataIndex: 'dueDate',
                     render: (value: string) => dayjs(value).format('DD/MM/YYYY')
                   },
                   {
                     title: 'Montant',
                     dataIndex: 'totalAmount',
-                    render: (value: number | string) => `${Number(value).toLocaleString('fr-FR')} XOF`
+                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} XOF`
                   },
                   { title: 'Charges', render: (_, batch) => batch.chargeCalls?.length || 0 },
                   {
@@ -432,12 +440,12 @@ export const SyndicBudgets: React.FC = () => {
       </Space>
 
       <Modal
-        title="Nouveau budget"
+        title={t('Nouveau budget')}
         open={openBudgetModal}
         onCancel={() => setOpenBudgetModal(false)}
         onOk={() => void handleCreateBudget()}
-        okText="Créer budget"
-        cancelText="Annuler"
+        okText={t('Créer budget')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
         <Form
@@ -445,116 +453,116 @@ export const SyndicBudgets: React.FC = () => {
           layout="vertical"
           initialValues={{ fiscalYear: new Date().getFullYear(), distributionKey: 'GENERAL_SHARES', currency: 'XOF' }}
         >
-          <Form.Item label="Exercice" name="fiscalYear" rules={[{ required: true }]}>
+          <Form.Item label={t('Exercice')} name="fiscalYear" rules={[{ required: true }]}>
             <InputNumber min={2020} max={2100} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item label="Libellé" name="label" rules={[{ required: true, message: 'Libellé obligatoire' }]}>
+          <Form.Item label={t('Libellé')} name="label" rules={[{ required: true, message: t('Libellé obligatoire') }]}>
             <Input />
           </Form.Item>
           <Form.Item
-            label="Montant total"
+            label={t('Montant total')}
             name="totalAmount"
-            rules={[{ required: true, message: 'Montant obligatoire' }]}
+            rules={[{ required: true, message: t('Montant obligatoire') }]}
           >
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item
-            label="Catégorie principale"
+            label={t('Catégorie principale')}
             name="category"
-            rules={[{ required: true, message: 'Catégorie obligatoire' }]}
+            rules={[{ required: true, message: t('Catégorie obligatoire') }]}
           >
             <Input />
           </Form.Item>
           <Form.Item
-            label="Description ligne"
+            label={t('Description ligne')}
             name="description"
-            rules={[{ required: true, message: 'Description obligatoire' }]}
+            rules={[{ required: true, message: t('Description obligatoire') }]}
           >
             <Input />
           </Form.Item>
-          <Form.Item label="Clé de distribution" name="distributionKey" rules={[{ required: true }]}>
+          <Form.Item label={t('Clé de distribution')} name="distributionKey" rules={[{ required: true }]}>
             <Select
               options={[
-                { value: 'GENERAL_SHARES', label: 'Tantièmes généraux' },
-                { value: 'SPECIAL_SHARES', label: 'Tantièmes spéciaux' },
-                { value: 'EQUAL', label: 'Répartition égale' },
+                { value: 'GENERAL_SHARES', label: t('Tantièmes généraux') },
+                { value: 'SPECIAL_SHARES', label: t('Tantièmes spéciaux') },
+                { value: 'EQUAL', label: t('Répartition égale') },
                 { value: 'MANUAL', label: 'Manuelle' }
               ]}
             />
           </Form.Item>
-          <Form.Item label="Devise" name="currency">
+          <Form.Item label={t('Devise')} name="currency">
             <Input />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="Générer appels depuis budget"
+        title={t('Générer appels depuis budget')}
         open={openGenerateModal}
         onCancel={() => {
           setOpenGenerateModal(false);
           setSelectedBudget(null);
         }}
         onOk={() => void handleGenerateFromBudget()}
-        okText="Générer"
-        cancelText="Annuler"
+        okText={t('Générer')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
         <Form form={generateForm} layout="vertical">
-          <Form.Item label="Libellé batch" name="label" rules={[{ required: true }]}>
+          <Form.Item label={t('Libellé batch')} name="label" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item label="Période" name="period" rules={[{ required: true }]}>
-            <Input placeholder="Ex: 2026-01" />
+          <Form.Item label={t('Période')} name="period" rules={[{ required: true }]}>
+            <Input placeholder={t('Ex: 2026-01')} />
           </Form.Item>
-          <Form.Item label="Date échéance" name="dueDate" rules={[{ required: true }]}>
+          <Form.Item label={t('Date échéance')} name="dueDate" rules={[{ required: true }]}>
             <Input type="date" />
           </Form.Item>
-          <Form.Item label="Type batch" name="batchType" rules={[{ required: true }]}>
+          <Form.Item label={t('Type batch')} name="batchType" rules={[{ required: true }]}>
             <Select
               options={[
-                { value: 'REGULAR', label: 'Régulier' },
+                { value: 'REGULAR', label: t('Régulier') },
                 { value: 'EXCEPTIONAL', label: 'Exceptionnel' }
               ]}
             />
           </Form.Item>
-          <Form.Item label="Devise" name="currency">
+          <Form.Item label={t('Devise')} name="currency">
             <Input />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="Nouveau batch d'appels"
+        title={t("Nouveau batch d'appels")}
         open={openBatchModal}
         onCancel={() => setOpenBatchModal(false)}
         onOk={() => void handleCreateBatch()}
-        okText="Créer"
-        cancelText="Annuler"
+        okText={t('Créer')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
         <Form form={batchForm} layout="vertical" initialValues={{ batchType: 'EXCEPTIONAL', currency: 'XOF' }}>
-          <Form.Item label="Libellé" name="label" rules={[{ required: true }]}>
+          <Form.Item label={t('Libellé')} name="label" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item label="Période" name="period" rules={[{ required: true }]}>
+          <Form.Item label={t('Période')} name="period" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item label="Date échéance" name="dueDate" rules={[{ required: true }]}>
+          <Form.Item label={t('Date échéance')} name="dueDate" rules={[{ required: true }]}>
             <Input type="date" />
           </Form.Item>
-          <Form.Item label="Montant total" name="totalAmount" rules={[{ required: true }]}>
+          <Form.Item label={t('Montant total')} name="totalAmount" rules={[{ required: true }]}>
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item label="Type batch" name="batchType" rules={[{ required: true }]}>
+          <Form.Item label={t('Type batch')} name="batchType" rules={[{ required: true }]}>
             <Select
               options={[
-                { value: 'REGULAR', label: 'Régulier' },
+                { value: 'REGULAR', label: t('Régulier') },
                 { value: 'EXCEPTIONAL', label: 'Exceptionnel' }
               ]}
             />
           </Form.Item>
-          <Form.Item label="Devise" name="currency">
+          <Form.Item label={t('Devise')} name="currency">
             <Input />
           </Form.Item>
         </Form>

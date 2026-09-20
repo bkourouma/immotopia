@@ -20,6 +20,7 @@ import { DocumentVault } from '../../components/syndics/DocumentVault';
 import { createSyndicDocument, listSyndicDocuments } from '../../services/syndic-service';
 import { SyndicateDocument } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
 
@@ -41,7 +42,7 @@ export const SyndicDocuments: React.FC = () => {
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
       setLoading(false);
-      setError('Paramètres documents manquants');
+      setError(t('Paramètres documents manquants'));
       return;
     }
     void loadDocuments();
@@ -55,7 +56,7 @@ export const SyndicDocuments: React.FC = () => {
       const data = await listSyndicDocuments(effectiveTenantId, syndicId, { type: typeFilter });
       setDocuments(data);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Impossible de charger les documents');
+      setError(err.response?.data?.error || t('Impossible de charger les documents'));
     } finally {
       setLoading(false);
     }
@@ -65,7 +66,7 @@ export const SyndicDocuments: React.FC = () => {
     if (!effectiveTenantId || !syndicId) return;
     const values = await form.validateFields();
     if (!selectedFile) {
-      message.error('Veuillez selectionner un fichier');
+      message.error(t('Veuillez selectionner un fichier'));
       return;
     }
     setSubmitting(true);
@@ -76,13 +77,13 @@ export const SyndicDocuments: React.FC = () => {
         file: selectedFile,
         expiresAt: values.expiresAt ? values.expiresAt.toISOString() : undefined
       });
-      message.success('Document ajoute');
+      message.success(t('Document ajoute'));
       setOpenCreate(false);
       form.resetFields();
       setSelectedFile(null);
       await loadDocuments();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Ajout du document impossible');
+      message.error(err.response?.data?.error || t('Ajout du document impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -96,18 +97,18 @@ export const SyndicDocuments: React.FC = () => {
             icon={<ArrowLeftOutlined />}
             onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
           >
-            Retour à la fiche syndic
+            {t('Retour à la fiche syndic')}
           </Button>
           <div className="it-toolbar">
             <Title level={2} className="it-toolbar__title" style={{ margin: 0 }}>
-              Coffre documentaire
+              {t('Coffre documentaire')}
             </Title>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenCreate(true)}>
-              Ajouter un document
+              {t('Ajouter un document')}
             </Button>
           </div>
           <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            Consultez les documents de copropriété et surveillez les expirations.
+            {t('Consultez les documents de copropriété et surveillez les expirations.')}
           </Paragraph>
         </Space>
 
@@ -116,13 +117,13 @@ export const SyndicDocuments: React.FC = () => {
         <Card>
           <Select
             allowClear
-            placeholder="Filtrer par type"
+            placeholder={t('Filtrer par type')}
             style={{ minWidth: 260 }}
             value={typeFilter}
             onChange={value => setTypeFilter(value)}
             options={[
               { label: 'Reglement', value: 'REGULATION' },
-              { label: 'Proces-verbal AG', value: 'GENERAL_MEETING_MINUTES' },
+              { label: t('Proces-verbal AG'), value: 'GENERAL_MEETING_MINUTES' },
               { label: 'Diagnostic', value: 'DIAGNOSTIC' },
               { label: 'Assurance', value: 'INSURANCE' },
               { label: 'Budget', value: 'BUDGET' },
@@ -136,33 +137,37 @@ export const SyndicDocuments: React.FC = () => {
             <Spin size="large" />
           </div>
         ) : (
-          <Card title="Documents">
+          <Card title={t('Documents')}>
             <DocumentVault documents={documents} />
           </Card>
         )}
       </Space>
 
       <Modal
-        title="Ajouter un document"
+        title={t('Ajouter un document')}
         open={openCreate}
         onCancel={() => {
           setOpenCreate(false);
           setSelectedFile(null);
         }}
         onOk={() => void handleCreateDocument()}
-        okText="Ajouter"
-        cancelText="Annuler"
+        okText={t('Ajouter')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
         <Form form={form} layout="vertical">
-          <Form.Item label="Titre" name="title" rules={[{ required: true, message: 'Le titre est obligatoire' }]}>
+          <Form.Item
+            label={t('Titre')}
+            name="title"
+            rules={[{ required: true, message: t('Le titre est obligatoire') }]}
+          >
             <Input />
           </Form.Item>
-          <Form.Item label="Type" name="type" rules={[{ required: true, message: 'Le type est obligatoire' }]}>
+          <Form.Item label={t('Type')} name="type" rules={[{ required: true, message: t('Le type est obligatoire') }]}>
             <Select
               options={[
                 { label: 'Reglement', value: 'REGULATION' },
-                { label: 'Proces-verbal AG', value: 'GENERAL_MEETING_MINUTES' },
+                { label: t('Proces-verbal AG'), value: 'GENERAL_MEETING_MINUTES' },
                 { label: 'Diagnostic', value: 'DIAGNOSTIC' },
                 { label: 'Assurance', value: 'INSURANCE' },
                 { label: 'Budget', value: 'BUDGET' },
@@ -170,7 +175,7 @@ export const SyndicDocuments: React.FC = () => {
               ]}
             />
           </Form.Item>
-          <Form.Item label="Fichier" required>
+          <Form.Item label={t('Fichier')} required>
             <Upload
               maxCount={1}
               beforeUpload={file => {
@@ -181,10 +186,10 @@ export const SyndicDocuments: React.FC = () => {
                 setSelectedFile(null);
               }}
             >
-              <Button>Choisir un fichier</Button>
+              <Button>{t('Choisir un fichier')}</Button>
             </Upload>
           </Form.Item>
-          <Form.Item label="Date d'expiration" name="expiresAt">
+          <Form.Item label={t("Date d'expiration")} name="expiresAt">
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
         </Form>

@@ -42,7 +42,9 @@ import { PropertyNewsletterCampaignModal } from '../../components/newsletter/Pro
 import { PropertyPatrimoineTab } from '../../components/patrimoine/PropertyPatrimoineTab';
 import { API_URL } from '../../config/api';
 import { PageHeader, StatusTag } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Text, Title } = Typography;
 
 /**
@@ -81,35 +83,35 @@ const { Text, Title } = Typography;
 
 const TYPE_LABELS: Record<string, string> = {
   APPARTEMENT: 'Appartement',
-  MAISON_VILLA: 'Maison / Villa',
+  MAISON_VILLA: t('Maison / Villa'),
   STUDIO: 'Studio',
-  DUPLEX_TRIPLEX: 'Duplex / Triplex',
-  CHAMBRE_COLOCATION: 'Chambre en colocation',
+  DUPLEX_TRIPLEX: t('Duplex / Triplex'),
+  CHAMBRE_COLOCATION: t('Chambre en colocation'),
   BUREAU: 'Bureau',
-  BOUTIQUE_COMMERCIAL: 'Boutique / Local commercial',
-  ENTREPOT_INDUSTRIEL: 'Entrepôt / Local industriel',
+  BOUTIQUE_COMMERCIAL: t('Boutique / Local commercial'),
+  ENTREPOT_INDUSTRIEL: t('Entrepôt / Local industriel'),
   TERRAIN: 'Terrain',
   IMMEUBLE: 'Immeuble',
-  PARKING_BOX: 'Parking / Box',
-  LOT_PROGRAMME_NEUF: 'Lot de programme neuf'
+  PARKING_BOX: t('Parking / Box'),
+  LOT_PROGRAMME_NEUF: t('Lot de programme neuf')
 };
 
 const TRANSACTION_LABELS: Record<string, string> = {
   SALE: 'Vente',
   RENTAL: 'Location',
-  SHORT_TERM: 'Court terme'
+  SHORT_TERM: t('Court terme')
 };
 
 const FURNISHING_LABELS: Record<string, string> = {
-  FURNISHED: 'Meublé',
-  UNFURNISHED: 'Non meublé',
-  PARTIALLY_FURNISHED: 'Partiellement meublé'
+  FURNISHED: t('Meublé'),
+  UNFURNISHED: t('Non meublé'),
+  PARTIALLY_FURNISHED: t('Partiellement meublé')
 };
 
 const AVAILABILITY_LABELS: Record<string, string> = {
   AVAILABLE: 'Disponible',
   UNAVAILABLE: 'Indisponible',
-  SOON_AVAILABLE: 'Bientôt disponible'
+  SOON_AVAILABLE: t('Bientôt disponible')
 };
 
 /**
@@ -126,13 +128,13 @@ function proprietaireAffiche(property: Property): string {
   }
 
   if (property.ownershipType === 'TENANT') {
-    if (property.ownerUserId) return property.owner?.email || 'Propriétaire sélectionné';
+    if (property.ownerUserId) return property.owner?.email || t('Propriétaire sélectionné');
     const tenant = (property as unknown as { tenant?: { name?: string } }).tenant;
     return tenant?.name || 'Agence';
   }
 
   if (property.ownershipType === 'PUBLIC') {
-    if (property.ownerUserId) return property.owner?.email || property.owner?.fullName || 'Propriétaire privé';
+    if (property.ownerUserId) return property.owner?.email || property.owner?.fullName || t('Propriétaire privé');
     return 'Publique';
   }
 
@@ -215,7 +217,7 @@ export const PropertyDetail: React.FC = () => {
     if (effectiveTenantId && id) {
       loadProperty();
     } else {
-      setError('Paramètres manquants');
+      setError(t('Paramètres manquants'));
       setLoading(false);
     }
   }, [effectiveTenantId, id]);
@@ -230,7 +232,7 @@ export const PropertyDetail: React.FC = () => {
       setProperty(data);
       await loadMedia();
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Erreur lors du chargement de la propriété');
+      setError(err.response?.data?.error || t('Erreur lors du chargement de la propriété'));
     } finally {
       setLoading(false);
     }
@@ -267,15 +269,15 @@ export const PropertyDetail: React.FC = () => {
   };
 
   const formatPrice = (price?: number, currency?: string, propertyType?: string) => {
-    if (!price) return propertyType === 'IMMEUBLE' ? '' : 'Prix sur demande';
-    const formatted = new Intl.NumberFormat('fr-FR').format(price);
+    if (!price) return propertyType === 'IMMEUBLE' ? '' : t('Prix sur demande');
+    const formatted = new Intl.NumberFormat(activeLocale()).format(price);
     return `${formatted} ${currency || 'EUR'}`;
   };
 
   if (!effectiveTenantId) {
     return (
       <div style={{ textAlign: 'center', padding: '48px 0' }}>
-        <Text type="secondary">Aucune agence sélectionnée</Text>
+        <Text type="secondary">{t('Aucune agence sélectionnée')}</Text>
       </div>
     );
   }
@@ -292,12 +294,14 @@ export const PropertyDetail: React.FC = () => {
     return (
       <div style={{ textAlign: 'center', padding: '48px 0' }}>
         <Alert
-          message="Erreur"
-          description={error || 'Propriété non trouvée'}
+          message={t('Erreur')}
+          description={error || t('Propriété non trouvée')}
           type="error"
           showIcon
           action={
-            <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>Retour à la liste</Button>
+            <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/properties`)}>
+              {t('Retour à la liste')}
+            </Button>
           }
         />
       </div>
@@ -319,35 +323,35 @@ export const PropertyDetail: React.FC = () => {
    * lignes « — » enterreraient les trois qui portent l'information.
    */
   const caracteristiques: DescriptionsProps['items'] = [
-    property.surfaceArea ? { key: 'surface', label: 'Surface', children: `${property.surfaceArea} m²` } : null,
+    property.surfaceArea ? { key: 'surface', label: t('Surface'), children: `${property.surfaceArea} m²` } : null,
     property.surfaceUseful
-      ? { key: 'surfaceUseful', label: 'Surface utile', children: `${property.surfaceUseful} m²` }
+      ? { key: 'surfaceUseful', label: t('Surface utile'), children: `${property.surfaceUseful} m²` }
       : null,
     property.surfaceTerrain
-      ? { key: 'surfaceTerrain', label: 'Surface du terrain', children: `${property.surfaceTerrain} m²` }
+      ? { key: 'surfaceTerrain', label: t('Surface du terrain'), children: `${property.surfaceTerrain} m²` }
       : null,
-    property.rooms ? { key: 'rooms', label: 'Pièces', children: property.rooms } : null,
-    property.bedrooms ? { key: 'bedrooms', label: 'Chambres', children: property.bedrooms } : null,
-    property.bathrooms ? { key: 'bathrooms', label: 'Salles de bain', children: property.bathrooms } : null,
+    property.rooms ? { key: 'rooms', label: t('Pièces'), children: property.rooms } : null,
+    property.bedrooms ? { key: 'bedrooms', label: t('Chambres'), children: property.bedrooms } : null,
+    property.bathrooms ? { key: 'bathrooms', label: t('Salles de bain'), children: property.bathrooms } : null,
     property.furnishingStatus
       ? {
           key: 'furnishing',
-          label: 'Ameublement',
+          label: t('Ameublement'),
           children: FURNISHING_LABELS[property.furnishingStatus] || property.furnishingStatus
         }
       : null
   ].filter(Boolean) as DescriptionsProps['items'];
 
   const informations: DescriptionsProps['items'] = [
-    { key: 'reference', label: 'Référence', children: property.internalReference || '—' },
+    { key: 'reference', label: t('Référence'), children: property.internalReference || '—' },
     {
       key: 'type',
-      label: 'Type de bien',
+      label: t('Type de bien'),
       children: TYPE_LABELS[property.propertyType] || property.propertyType
     },
     {
       key: 'owner',
-      label: 'Propriété de',
+      label: t('Propriété de'),
       // Le contact nommé par la description l'emporte sur `ownerUserId` : c'est
       // la seule des deux sources qui désigne le vrai propriétaire du bien.
       children: contactProprietaire ? (
@@ -360,12 +364,12 @@ export const PropertyDetail: React.FC = () => {
     },
     {
       key: 'transaction',
-      label: 'Mise en marché',
+      label: t('Mise en marché'),
       children: property.transactionModes.map(mode => TRANSACTION_LABELS[mode] || mode).join(' • ') || '—'
     },
     {
       key: 'availability',
-      label: 'Disponibilité',
+      label: t('Disponibilité'),
       children: AVAILABILITY_LABELS[property.availability] || property.availability
     }
     // Ni « Publication », ni « Créé le », ni « Dernière modification ». La
@@ -376,12 +380,12 @@ export const PropertyDetail: React.FC = () => {
   ];
 
   const localisation: DescriptionsProps['items'] = [
-    { key: 'address', label: 'Adresse', children: property.address || '—' },
-    property.locationZone ? { key: 'zone', label: 'Zone', children: property.locationZone } : null,
+    { key: 'address', label: t('Adresse'), children: property.address || '—' },
+    property.locationZone ? { key: 'zone', label: t('Zone'), children: property.locationZone } : null,
     property.latitude && property.longitude
       ? {
           key: 'gps',
-          label: 'Coordonnées',
+          label: t('Coordonnées'),
           children: `${property.latitude.toFixed(6)}, ${property.longitude.toFixed(6)}`
         }
       : null
@@ -392,19 +396,19 @@ export const PropertyDetail: React.FC = () => {
 
   const ongletApercu = (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Card title="Description">
+      <Card title={t('Description')}>
         <Text style={{ whiteSpace: 'pre-wrap' }}>
-          {descriptionUtile(property.description) || 'Aucune description disponible'}
+          {descriptionUtile(property.description) || t('Aucune description disponible')}
         </Text>
       </Card>
 
       {caracteristiques && caracteristiques.length > 0 && (
-        <Card title="Caractéristiques">
+        <Card title={t('Caractéristiques')}>
           <Descriptions column={colonnes} size="small" bordered items={caracteristiques} />
         </Card>
       )}
 
-      <Card title="Informations">
+      <Card title={t('Informations')}>
         <Descriptions column={colonnes} size="small" bordered items={informations} />
       </Card>
 
@@ -412,7 +416,7 @@ export const PropertyDetail: React.FC = () => {
         title={
           <Space>
             <EnvironmentOutlined aria-hidden="true" />
-            Localisation
+            {t('Localisation')}
           </Space>
         }
       >
@@ -431,14 +435,14 @@ export const PropertyDetail: React.FC = () => {
         title={
           <Space>
             <PictureOutlined aria-hidden="true" />
-            Photos
+            {t('Photos')}
           </Space>
         }
       >
         {photos.length === 0 ? (
           <Empty
             image={<HomeOutlined style={{ fontSize: 64, color: 'var(--icon-muted)' }} />}
-            description="Aucune photo pour ce bien"
+            description={t('Aucune photo pour ce bien')}
           />
         ) : (
           <Carousel autoplay>
@@ -460,12 +464,12 @@ export const PropertyDetail: React.FC = () => {
         title={
           <Space>
             <PlayCircleOutlined aria-hidden="true" />
-            Vidéos
+            {t('Vidéos')}
           </Space>
         }
       >
         {videos.length === 0 ? (
-          <Empty description="Aucune vidéo pour ce bien" />
+          <Empty description={t('Aucune vidéo pour ce bien')} />
         ) : (
           <Row gutter={[16, 16]}>
             {videos.map(video => (
@@ -494,7 +498,7 @@ export const PropertyDetail: React.FC = () => {
       label: (
         <Space size="small">
           <ProfileOutlined aria-hidden="true" />
-          Aperçu
+          {t('Aperçu')}
         </Space>
       ),
       children: ongletApercu
@@ -504,7 +508,7 @@ export const PropertyDetail: React.FC = () => {
       label: (
         <Space size="small">
           <PictureOutlined aria-hidden="true" />
-          Médias
+          {t('Médias')}
           {media.length > 0 && <Badge count={media.length} color="var(--color-primary)" />}
         </Space>
       ),
@@ -516,7 +520,7 @@ export const PropertyDetail: React.FC = () => {
           label: (
             <Space size="small">
               <ApartmentOutlined aria-hidden="true" />
-              Lots
+              {t('Lots')}
             </Space>
           ),
           children: <PropertyApartments propertyId={id!} tenantId={effectiveTenantId} property={property} />
@@ -527,7 +531,7 @@ export const PropertyDetail: React.FC = () => {
       label: (
         <Space size="small">
           <ToolOutlined aria-hidden="true" />
-          Maintenance
+          {t('Maintenance')}
         </Space>
       ),
       children: <PropertyMaintenanceTab propertyId={id!} tenantId={effectiveTenantId} />
@@ -537,7 +541,7 @@ export const PropertyDetail: React.FC = () => {
       label: (
         <Space size="small">
           <BankOutlined aria-hidden="true" />
-          Patrimoine
+          {t('Patrimoine')}
         </Space>
       ),
       children: <PropertyPatrimoineTab propertyId={id!} tenantId={effectiveTenantId} />
@@ -547,11 +551,11 @@ export const PropertyDetail: React.FC = () => {
       label: (
         <Space size="small">
           <CalendarOutlined aria-hidden="true" />
-          Visites
+          {t('Visites')}
         </Space>
       ),
       children: (
-        <Card title="Planifier une visite">
+        <Card title={t('Planifier une visite')}>
           <PropertyVisitScheduler propertyId={id!} tenantId={effectiveTenantId} onVisitScheduled={() => {}} />
         </Card>
       )
@@ -609,13 +613,13 @@ export const PropertyDetail: React.FC = () => {
         secondaryActions={[
           {
             key: 'bail',
-            label: 'Générer un contrat de bail',
+            label: t('Générer un contrat de bail'),
             icon: <FileTextOutlined />,
             onClick: () => navigate(`/tenant/${effectiveTenantId}/rental/leases/new`, { state: { propertyId: id } })
           },
           {
             key: 'newsletter',
-            label: 'Créer une campagne newsletter',
+            label: t('Créer une campagne newsletter'),
             icon: <MailOutlined />,
             onClick: () => setNewsletterModalOpen(true)
           }
@@ -635,16 +639,18 @@ export const PropertyDetail: React.FC = () => {
               <Text type="secondary">
                 {property.transactionModes.map(mode => TRANSACTION_LABELS[mode] || mode).join(' • ')}
                 {property.fees
-                  ? ` · Frais : ${formatPrice(property.fees, property.currency, property.propertyType)}`
+                  ? t('· Frais : {{value}}', {
+                      value: formatPrice(property.fees, property.currency, property.propertyType)
+                    })
                   : ''}
               </Text>
             </Col>
             <Col xs={24} md={estImmeuble && !prix ? 24 : 14}>
               <Space size="large" wrap>
                 {property.surfaceArea && <ChiffreCle valeur={`${property.surfaceArea} m²`} libelle="Surface" />}
-                {property.rooms && <ChiffreCle valeur={property.rooms} libelle="Pièces" />}
+                {property.rooms && <ChiffreCle valeur={property.rooms} libelle={t('Pièces')} />}
                 {property.bedrooms && <ChiffreCle valeur={property.bedrooms} libelle="Chambres" />}
-                {property.bathrooms && <ChiffreCle valeur={property.bathrooms} libelle="Salles de bain" />}
+                {property.bathrooms && <ChiffreCle valeur={property.bathrooms} libelle={t('Salles de bain')} />}
                 {estImmeuble && property._count?.containerChildren ? (
                   <ChiffreCle valeur={property._count.containerChildren} libelle="Lots" />
                 ) : null}

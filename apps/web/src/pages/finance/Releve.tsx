@@ -10,7 +10,9 @@ import type { ThirdPartyMovementLine, ThirdPartyMovementType } from '../../types
 import { useListParams } from '../../hooks/useListParams';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, FilterSheet } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { RangePicker } = DatePicker;
 
 /**
@@ -31,13 +33,13 @@ const { RangePicker } = DatePicker;
 /** Nature d'un mouvement -> libellé français, prêt à afficher (P-1). */
 export const NATURE_LABELS: Record<ThirdPartyMovementType, string> = {
   INSTALLMENT: 'Loyer',
-  PAYMENT: 'Règlement',
-  ADVANCE_RECEIVED: 'Avance reçue',
-  ADVANCE_APPLIED: 'Avance imputée',
-  PENALTY: 'Pénalité',
+  PAYMENT: t('Règlement'),
+  ADVANCE_RECEIVED: t('Avance reçue'),
+  ADVANCE_APPLIED: t('Avance imputée'),
+  PENALTY: t('Pénalité'),
   WAIVER: 'Remise',
   ADJUSTMENT: 'Ajustement',
-  OPENING_BALANCE: 'Solde initial',
+  OPENING_BALANCE: t('Solde initial'),
   VOID: 'Annulation'
 };
 
@@ -53,7 +55,7 @@ export function natureLabel(type: ThirdPartyMovementLine['type']): string {
 }
 
 function dateCourte(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR');
+  return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 type Filters = { from: string; to: string };
@@ -85,7 +87,7 @@ export const Releve: React.FC = () => {
   });
 
   if (!tenantId || !accountId) {
-    return <StateBlock variant="empty" title="Aucun compte sélectionné" />;
+    return <StateBlock variant="empty" title={t('Aucun compte sélectionné')} />;
   }
 
   const mouvements = data?.movements ?? [];
@@ -102,25 +104,25 @@ export const Releve: React.FC = () => {
   };
 
   const colonnes: ColumnsType<ThirdPartyMovementLine> = [
-    { title: 'Date', key: 'date', width: 120, render: (_, m) => dateCourte(m.movementDate) },
-    { title: 'Nature', key: 'nature', width: 160, render: (_, m) => natureLabel(m.type) },
-    { title: 'Libellé', key: 'libelle', render: (_, m) => m.label },
+    { title: t('Date'), key: 'date', width: 120, render: (_, m) => dateCourte(m.movementDate) },
+    { title: t('Nature'), key: 'nature', width: 160, render: (_, m) => natureLabel(m.type) },
+    { title: t('Libellé'), key: 'libelle', render: (_, m) => m.label },
     {
-      title: 'Facturé',
+      title: t('Facturé'),
       key: 'facture',
-      align: 'right',
+      align: 'end',
       render: (_, m) => <MoneyValue value={m.amountBilled} />
     },
     {
-      title: 'Réglé',
+      title: t('Réglé'),
       key: 'regle',
-      align: 'right',
+      align: 'end',
       render: (_, m) => <MoneyValue value={m.amountSettled} />
     },
     {
-      title: 'Solde après',
+      title: t('Solde après'),
       key: 'solde',
-      align: 'right',
+      align: 'end',
       render: (_, m) => (
         <strong>
           <MoneyValue value={m.balanceAfter} />
@@ -132,16 +134,16 @@ export const Releve: React.FC = () => {
   return (
     <>
       <PageHeader
-        title={data?.label ?? 'Relevé de compte'}
+        title={data?.label ?? t('Relevé de compte')}
         breadcrumbs={[
           { label: 'Finance', to: `/tenant/${tenantId}/finance/balance-clients` },
           { label: 'Clients', to: `/tenant/${tenantId}/finance/balance-clients` },
-          { label: 'Relevé' }
+          { label: t('Relevé') }
         ]}
         subtitle={
           data ? (
             <>
-              Solde d'ouverture : <MoneyValue value={data.openingBalance} /> · Solde de clôture :{' '}
+              {t("Solde d'ouverture :")} <MoneyValue value={data.openingBalance} /> {t('· Solde de clôture :')}{' '}
               <MoneyValue value={data.closingBalance} />
             </>
           ) : undefined
@@ -152,10 +154,10 @@ export const Releve: React.FC = () => {
       <FilterSheet
         activeCount={[list.filters.from, list.filters.to].filter(Boolean).length}
         onClear={() => list.setFilters({ from: undefined, to: undefined })}
-        title="Période du relevé"
+        title={t('Période du relevé')}
       >
         <div style={{ minWidth: 260 }}>
-          <label htmlFor="periode-releve">Période</label>
+          <label htmlFor="periode-releve">{t('Période')}</label>
           <RangePicker
             id="periode-releve"
             style={{ width: '100%' }}
@@ -184,22 +186,22 @@ export const Releve: React.FC = () => {
         onPageChange={() => {}}
         loading={isPending}
         isReloading={isFetching && !isPending}
-        error={erreurRequete ? 'Impossible de charger le relevé.' : null}
+        error={erreurRequete ? t('Impossible de charger le relevé.') : null}
         onRetry={() => refetch()}
         isFiltered={list.isFiltered}
         onClearFilters={() => list.setFilters({ from: undefined, to: undefined })}
-        emptyDescription="Aucun mouvement sur cette période."
+        emptyDescription={t('Aucun mouvement sur cette période.')}
         columns={colonnes}
         rowKey={m => m.id}
-        aria-label="Mouvements du relevé"
+        aria-label={t('Mouvements du relevé')}
         renderCard={m => (
           <DataCard
             title={natureLabel(m.type)}
             subtitle={`${dateCourte(m.movementDate)} · ${m.label}`}
             highlight={<MoneyValue value={m.balanceAfter} />}
             fields={[
-              { label: 'Facturé', value: <MoneyValue value={m.amountBilled} /> },
-              { label: 'Réglé', value: <MoneyValue value={m.amountSettled} /> }
+              { label: t('Facturé'), value: <MoneyValue value={m.amountBilled} /> },
+              { label: t('Réglé'), value: <MoneyValue value={m.amountSettled} /> }
             ]}
           />
         )}

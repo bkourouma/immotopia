@@ -36,7 +36,9 @@ import {
   StatusTag,
   useConfirmAction
 } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
@@ -162,12 +164,12 @@ function arrondiDeuxDecimales(valeur: number): number {
 }
 
 function pourcentage(valeur: number): string {
-  return `${valeur.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %`;
+  return `${valeur.toLocaleString(activeLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %`;
 }
 
 function surfaceOuTiret(valeur: number | null): string {
   if (valeur === null || valeur === undefined) return '—';
-  return `${valeur.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} m²`;
+  return `${valeur.toLocaleString(activeLocale(), { maximumFractionDigits: 2 })} m²`;
 }
 
 function messageErreur(err: unknown, secours: string): string {
@@ -291,12 +293,12 @@ export const ClotureChantier: React.FC = () => {
         manualSharePercent: nouvelleQuotePart
       });
       await invaliderTout();
-      message.success(`Lot « ${nouveauNom.trim()} » ajouté.`);
+      message.success(t('Lot « {{value}} » ajouté.', { value: nouveauNom.trim() }));
       setNouveauNom('');
       setNouvelleSurface(null);
       setNouvelleQuotePart(null);
     } catch (err) {
-      message.error(messageErreur(err, "L'ajout du lot a échoué."));
+      message.error(messageErreur(err, t("L'ajout du lot a échoué.")));
     } finally {
       setAjoutEnCours(false);
     }
@@ -321,10 +323,10 @@ export const ClotureChantier: React.FC = () => {
         manualSharePercent: correctionQuotePart
       });
       await invaliderTout();
-      message.success(`Lot « ${correctionNom.trim()} » corrigé.`);
+      message.success(t('Lot « {{value}} » corrigé.', { value: correctionNom.trim() }));
       setLotCorrige(null);
     } catch (err) {
-      message.error(messageErreur(err, 'La correction du lot a échoué.'));
+      message.error(messageErreur(err, t('La correction du lot a échoué.')));
     } finally {
       setCorrectionEnCours(false);
     }
@@ -335,9 +337,9 @@ export const ClotureChantier: React.FC = () => {
     try {
       await deleteSiteLot(tenantId, siteId, lot.id);
       await invaliderTout();
-      message.success(`Lot « ${lot.name} » supprimé.`);
+      message.success(t('Lot « {{name}} » supprimé.', { name: lot.name }));
     } catch (err) {
-      message.error(messageErreur(err, 'La suppression du lot a échoué.'));
+      message.error(messageErreur(err, t('La suppression du lot a échoué.')));
     }
   };
 
@@ -347,11 +349,11 @@ export const ClotureChantier: React.FC = () => {
     try {
       await setLotAllocationMethod(tenantId, siteId, cleChoisie);
       await invaliderTout();
-      message.success(`Clé de répartition : ${ALLOCATION_METHOD_LABELS[cleChoisie]}.`);
+      message.success(t('Clé de répartition : {{value}}.', { value: ALLOCATION_METHOD_LABELS[cleChoisie] }));
     } catch (err) {
       // Le serveur refuse une clé que les lots ne supportent pas, et son
       // message nomme les lots fautifs : il est relayé tel quel.
-      message.error(messageErreur(err, "La clé de répartition n'a pas pu être posée."));
+      message.error(messageErreur(err, t("La clé de répartition n'a pas pu être posée.")));
     } finally {
       setCleEnCours(false);
     }
@@ -363,9 +365,9 @@ export const ClotureChantier: React.FC = () => {
       const closure = await closeSite(tenantId, siteId);
       setDernierGesteCloture(closure);
       await invaliderTout();
-      message.success('Chantier clôturé : son coût est figé.');
+      message.success(t('Chantier clôturé : son coût est figé.'));
     } catch (err) {
-      message.error(messageErreur(err, 'La clôture a échoué.'));
+      message.error(messageErreur(err, t('La clôture a échoué.')));
     }
   };
 
@@ -375,9 +377,9 @@ export const ClotureChantier: React.FC = () => {
       await reopenSite(tenantId, siteId);
       setDernierGesteCloture(null);
       await invaliderTout();
-      message.success('Chantier rouvert : son coût redevient dérivé des imputations.');
+      message.success(t('Chantier rouvert : son coût redevient dérivé des imputations.'));
     } catch (err) {
-      message.error(messageErreur(err, 'La réouverture a échoué.'));
+      message.error(messageErreur(err, t('La réouverture a échoué.')));
     }
   };
 
@@ -401,10 +403,14 @@ export const ClotureChantier: React.FC = () => {
         acquisitionDate: formulaireBien.acquisitionDate.format('YYYY-MM-DD')
       });
       await invaliderTout();
-      message.success(`Bien « ${cree.propertyInternalReference} » créé au patrimoine.`);
+      message.success(
+        t('Bien « {{propertyInternalReference}} » créé au patrimoine.', {
+          propertyInternalReference: cree.propertyInternalReference
+        })
+      );
       setLotABasculer(null);
     } catch (err) {
-      message.error(messageErreur(err, 'La bascule au patrimoine a échoué.'));
+      message.error(messageErreur(err, t('La bascule au patrimoine a échoué.')));
     } finally {
       setBasculeEnCours(false);
     }
@@ -413,28 +419,28 @@ export const ClotureChantier: React.FC = () => {
   // ---------------------------------------------------------------------
 
   if (!tenantId || !siteId) {
-    return <StateBlock variant="empty" title="Aucun chantier sélectionné" />;
+    return <StateBlock variant="empty" title={t('Aucun chantier sélectionné')} />;
   }
 
   const filAriane = [
-    { label: 'Finance', to: `/tenant/${tenantId}/finance/chantiers` },
-    { label: 'Chantiers', to: `/tenant/${tenantId}/finance/chantiers` },
+    { label: t('Finance'), to: `/tenant/${tenantId}/finance/chantiers` },
+    { label: t('Chantiers'), to: `/tenant/${tenantId}/finance/chantiers` },
     ...(repartition
       ? [
           { label: repartition.siteLabel, to: `/tenant/${tenantId}/finance/chantiers/${siteId}` },
-          { label: 'Lots et clôture' }
+          { label: t('Lots et clôture') }
         ]
-      : [{ label: 'Lots et clôture' }])
+      : [{ label: t('Lots et clôture') }])
   ];
 
   if (erreurRepartition) {
     return (
       <>
-        <PageHeader title="Lots et clôture du chantier" breadcrumbs={filAriane} />
+        <PageHeader title={t('Lots et clôture du chantier')} breadcrumbs={filAriane} />
         <StateBlock
           variant="error"
-          description="Impossible de charger le coût de revient de ce chantier."
-          actions={[{ label: 'Réessayer', onClick: () => refetchRepartition(), primary: true }]}
+          description={t('Impossible de charger le coût de revient de ce chantier.')}
+          actions={[{ label: t('Réessayer'), onClick: () => refetchRepartition(), primary: true }]}
         />
       </>
     );
@@ -443,7 +449,7 @@ export const ClotureChantier: React.FC = () => {
   if (repartitionEnAttente || !repartition) {
     return (
       <>
-        <PageHeader title="Lots et clôture du chantier" breadcrumbs={filAriane} />
+        <PageHeader title={t('Lots et clôture du chantier')} breadcrumbs={filAriane} />
         <StateBlock variant="loading" />
       </>
     );
@@ -455,20 +461,20 @@ export const ClotureChantier: React.FC = () => {
   const totalPiecesBloquantes = listeBloqueurs.reduce((somme, bloqueur) => somme + bloqueur.count, 0);
 
   const colonnesLots: ColumnsType<SiteLot> = [
-    { title: 'Lot', key: 'lot', render: (_, lot) => lot.name },
-    { title: 'Surface', key: 'surface', align: 'right', render: (_, lot) => surfaceOuTiret(lot.surfaceArea) },
+    { title: t('Lot'), key: 'lot', render: (_, lot) => lot.name },
+    { title: t('Surface'), key: 'surface', align: 'end', render: (_, lot) => surfaceOuTiret(lot.surfaceArea) },
     {
-      title: 'Quote-part saisie',
+      title: t('Quote-part saisie'),
       key: 'quotePart',
-      align: 'right',
+      align: 'end',
       render: (_, lot) => (lot.manualSharePercent === null ? '—' : pourcentage(lot.manualSharePercent))
     },
     // Dérivée par le serveur depuis la clé : jamais recalculée ici.
-    { title: 'Part', key: 'part', align: 'right', render: (_, lot) => pourcentage(lot.sharePercent) },
+    { title: t('Part'), key: 'part', align: 'end', render: (_, lot) => pourcentage(lot.sharePercent) },
     {
-      title: 'Coût de revient',
+      title: t('Coût de revient'),
       key: 'cout',
-      align: 'right',
+      align: 'end',
       render: (_, lot) => (
         <strong>
           <MoneyValue value={lot.costPrice} />
@@ -476,50 +482,52 @@ export const ClotureChantier: React.FC = () => {
       )
     },
     {
-      title: 'Au patrimoine',
+      title: t('Au patrimoine'),
       key: 'patrimoine',
       // Le libellé du bien, jamais son identifiant.
       render: (_, lot) => lot.propertyLabel ?? '—'
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
-      align: 'right',
+      align: 'end',
       render: (_, lot) => actionsDuLot(lot)
     }
   ];
 
   function actionsDuLot(lot: SiteLot): React.ReactNode {
     if (lot.propertyId) {
-      return <Text type="secondary">Basculé au patrimoine</Text>;
+      return <Text type="secondary">{t('Basculé au patrimoine')}</Text>;
     }
 
     if (clos) {
       return (
         <Button type="link" onClick={() => ouvrirBascule(lot)}>
-          Basculer au patrimoine
+          {t('Basculer au patrimoine')}
         </Button>
       );
     }
 
     if (unLotABascule) {
-      return <Text type="secondary">Figé : un lot de ce chantier a basculé</Text>;
+      return <Text type="secondary">{t('Figé : un lot de ce chantier a basculé')}</Text>;
     }
 
     return (
       <Space>
         <Button type="link" onClick={() => ouvrirCorrection(lot)}>
-          Corriger
+          {t('Corriger')}
         </Button>
         <ConfirmAction
-          title={`Supprimer le lot « ${lot.name} » ?`}
-          description="Le coût de revient de tous les autres lots sera recalculé. Le serveur refuse ce geste si un lot de ce chantier a déjà basculé au patrimoine."
-          okText="Confirmer la suppression"
+          title={t('Supprimer le lot « {{name}} » ?', { name: lot.name })}
+          description={t(
+            'Le coût de revient de tous les autres lots sera recalculé. Le serveur refuse ce geste si un lot de ce chantier a déjà basculé au patrimoine.'
+          )}
+          okText={t('Confirmer la suppression')}
           danger
           onConfirm={() => supprimerLot(lot)}
         >
           <Button type="link" danger>
-            Supprimer
+            {t('Supprimer')}
           </Button>
         </ConfirmAction>
       </Space>
@@ -537,7 +545,7 @@ export const ClotureChantier: React.FC = () => {
     }
 
     if (clos) {
-      return { primaryAction: { label: 'Basculer au patrimoine', onClick: () => ouvrirBascule(lot) } };
+      return { primaryAction: { label: t('Basculer au patrimoine'), onClick: () => ouvrirBascule(lot) } };
     }
 
     if (unLotABascule) {
@@ -545,18 +553,19 @@ export const ClotureChantier: React.FC = () => {
     }
 
     return {
-      primaryAction: { label: 'Corriger', onClick: () => ouvrirCorrection(lot) },
+      primaryAction: { label: t('Corriger'), onClick: () => ouvrirCorrection(lot) },
       secondaryActions: [
         {
           key: 'supprimer',
           danger: true,
-          label: 'Supprimer',
+          label: t('Supprimer'),
           onClick: () =>
             confirmerAction({
-              title: `Supprimer le lot « ${lot.name} » ?`,
-              description:
-                'Le coût de revient de tous les autres lots sera recalculé. Le serveur refuse ce geste si un lot de ce chantier a déjà basculé au patrimoine.',
-              okText: 'Confirmer la suppression',
+              title: t('Supprimer le lot « {{name}} » ?', { name: lot.name }),
+              description: t(
+                'Le coût de revient de tous les autres lots sera recalculé. Le serveur refuse ce geste si un lot de ce chantier a déjà basculé au patrimoine.'
+              ),
+              okText: t('Confirmer la suppression'),
               danger: true,
               onConfirm: () => supprimerLot(lot)
             })
@@ -577,9 +586,9 @@ export const ClotureChantier: React.FC = () => {
   return (
     <>
       <PageHeader
-        title={`${repartition.siteLabel} — lots et clôture`}
+        title={t('{{siteLabel}} — lots et clôture', { siteLabel: repartition.siteLabel })}
         breadcrumbs={filAriane}
-        extra={<StatusTag status={clos ? 'CLOSED' : 'IN_PROGRESS'} label={clos ? 'Clôturé' : 'Ouvert'} />}
+        extra={<StatusTag status={clos ? 'CLOSED' : 'IN_PROGRESS'} label={clos ? t('Clôturé') : t('Ouvert')} />}
       />
 
       {/*
@@ -592,16 +601,20 @@ export const ClotureChantier: React.FC = () => {
           type="success"
           showIcon
           style={{ marginBottom: 'var(--space-4)' }}
-          message="Chantier clôturé : les coûts de revient ci-dessous sont définitifs."
-          description="Le coût du chantier a été figé à la clôture. Le chantier n'accepte plus aucune imputation — facture, pièce de caisse, note de salaire ou situation d'avancement — et ces montants ne bougeront plus."
+          message={t('Chantier clôturé : les coûts de revient ci-dessous sont définitifs.')}
+          description={t(
+            "Le coût du chantier a été figé à la clôture. Le chantier n'accepte plus aucune imputation — facture, pièce de caisse, note de salaire ou situation d'avancement — et ces montants ne bougeront plus."
+          )}
         />
       ) : (
         <Alert
           type="warning"
           showIcon
           style={{ marginBottom: 'var(--space-4)' }}
-          message="Chantier ouvert : les coûts de revient ci-dessous sont une estimation."
-          description="Ils valent la part de chaque lot dans le coût réel à cet instant. Toute facture, pièce de caisse ou note de salaire validée ensuite les fera bouger. Ne fixez aucun prix de vente sur ces montants tant que le chantier n'est pas clôturé."
+          message={t('Chantier ouvert : les coûts de revient ci-dessous sont une estimation.')}
+          description={t(
+            "Ils valent la part de chaque lot dans le coût réel à cet instant. Toute facture, pièce de caisse ou note de salaire validée ensuite les fera bouger. Ne fixez aucun prix de vente sur ces montants tant que le chantier n'est pas clôturé."
+          )}
         />
       )}
 
@@ -615,33 +628,37 @@ export const ClotureChantier: React.FC = () => {
       >
         {/* Tous ces chiffres arrivent calculés du serveur (P-4). */}
         <StatCard
-          label="Coût réparti sur les lots"
+          label={t('Coût réparti sur les lots')}
           value={<MoneyValue value={repartition.totalCost} />}
-          hint={clos ? 'Coût figé à la clôture' : "Coût réel à l'instant de la lecture"}
+          hint={clos ? t('Coût figé à la clôture') : t("Coût réel à l'instant de la lecture")}
           tone={clos ? 'positive' : 'warning'}
         />
         <StatCard
-          label="Non réparti"
+          label={t('Non réparti')}
           value={<MoneyValue value={repartition.unallocatedCost} />}
           tone={repartition.unallocatedCost > 0 ? 'warning' : 'neutral'}
           hint={
             repartition.unallocatedCost > 0
               ? lots.length === 0
-                ? "Ce chantier coûte, et aucun lot ne porte ce coût : ajoutez les lots qu'il produit."
-                : "Aucune clé ne s'applique à ces lots : ce coût n'est encore porté par aucun d'eux."
+                ? t("Ce chantier coûte, et aucun lot ne porte ce coût : ajoutez les lots qu'il produit.")
+                : t("Aucune clé ne s'applique à ces lots : ce coût n'est encore porté par aucun d'eux.")
               : undefined
           }
         />
         <StatCard
-          label="Clé de répartition"
+          label={t('Clé de répartition')}
           value={
-            repartition.allocationMethod ? ALLOCATION_METHOD_LABELS[repartition.allocationMethod] : 'Aucune clé posée'
+            repartition.allocationMethod
+              ? ALLOCATION_METHOD_LABELS[repartition.allocationMethod]
+              : t('Aucune clé posée')
           }
           tone={repartition.allocationMethod ? 'neutral' : 'warning'}
           hint={
             repartition.allocationMethod
               ? undefined
-              : "Tant qu'aucune clé n'est posée, la part de chaque lot vaut zéro et aucun coût de revient n'est réparti."
+              : t(
+                  "Tant qu'aucune clé n'est posée, la part de chaque lot vaut zéro et aucun coût de revient n'est réparti."
+                )
           }
         />
       </div>
@@ -650,7 +667,7 @@ export const ClotureChantier: React.FC = () => {
       {/* Les lots                                                       */}
       {/* ------------------------------------------------------------- */}
 
-      <Title level={4}>Lots du chantier</Title>
+      <Title level={4}>{t('Lots du chantier')}</Title>
 
       <DataView<SiteLot>
         paginated={false}
@@ -660,22 +677,26 @@ export const ClotureChantier: React.FC = () => {
         page={1}
         pageSize={Math.max(lots.length, 1)}
         onPageChange={() => {}}
-        emptyDescription="Ce chantier ne produit encore aucun lot."
+        emptyDescription={t('Ce chantier ne produit encore aucun lot.')}
         columns={colonnesLots}
         rowKey={lot => lot.id}
-        aria-label="Lots du chantier"
+        aria-label={t('Lots du chantier')}
         renderCard={lot => (
           <DataCard
             title={lot.name}
             aria-label={lot.name}
             highlight={<MoneyValue value={lot.costPrice} />}
-            subtitle={lot.propertyLabel ? `Au patrimoine : ${lot.propertyLabel}` : undefined}
+            subtitle={
+              lot.propertyLabel
+                ? t('Au patrimoine : {{propertyLabel}}', { propertyLabel: lot.propertyLabel })
+                : undefined
+            }
             {...actionsCarteDuLot(lot)}
             fields={[
               { label: 'Part', value: pourcentage(lot.sharePercent) },
               { label: 'Surface', value: surfaceOuTiret(lot.surfaceArea) },
               {
-                label: 'Quote-part saisie',
+                label: t('Quote-part saisie'),
                 value: lot.manualSharePercent === null ? '—' : pourcentage(lot.manualSharePercent)
               }
             ]}
@@ -683,20 +704,21 @@ export const ClotureChantier: React.FC = () => {
         )}
       />
 
-      <Bloc titre="Clé de répartition">
+      <Bloc titre={t('Clé de répartition')}>
         <Paragraph type="secondary" style={{ marginBottom: 'var(--space-3)' }}>
-          La clé décide de la part de chaque lot, et donc de son coût de revient. Le serveur refuse une clé que les lots
-          ne supportent pas plutôt que de répartir à moitié.
+          {t(
+            'La clé décide de la part de chaque lot, et donc de son coût de revient. Le serveur refuse une clé que les lots ne supportent pas plutôt que de répartir à moitié.'
+          )}
         </Paragraph>
         <Space wrap align="end" size="middle">
           <div style={{ minWidth: 260 }}>
             <div>
-              <label htmlFor="cle-repartition">Clé de répartition</label>
+              <label htmlFor="cle-repartition">{t('Clé de répartition')}</label>
             </div>
             <Select
               id="cle-repartition"
               style={{ width: '100%' }}
-              placeholder="Choisir une clé"
+              placeholder={t('Choisir une clé')}
               value={cleChoisie ?? repartition.allocationMethod ?? undefined}
               onChange={valeur => setCleChoisie(valeur)}
               disabled={clos || unLotABascule}
@@ -709,7 +731,7 @@ export const ClotureChantier: React.FC = () => {
             disabled={!cleChoisie || clos || unLotABascule}
             onClick={appliquerCle}
           >
-            Appliquer la clé
+            {t('Appliquer la clé')}
           </Button>
         </Space>
         <Paragraph type="secondary" style={{ marginTop: 'var(--space-2)', marginBottom: 0 }}>
@@ -724,12 +746,18 @@ export const ClotureChantier: React.FC = () => {
         */}
         {(cleChoisie ?? repartition.allocationMethod) === 'MANUAL' && (
           <Paragraph style={{ marginTop: 'var(--space-3)', marginBottom: 0 }}>
-            <strong>Somme des quotes-parts saisies : {pourcentage(sommeQuotesParts)}</strong>{' '}
+            <strong>
+              {t('Somme des quotes-parts saisies :')} {pourcentage(sommeQuotesParts)}
+            </strong>{' '}
             {sommeQuotesParts === 100
-              ? '— le total vaut cent, la clé peut être posée.'
+              ? t('— le total vaut cent, la clé peut être posée.')
               : sommeQuotesParts < 100
-                ? `— il manque ${pourcentage(arrondiDeuxDecimales(100 - sommeQuotesParts))} pour atteindre cent.`
-                : `— le total dépasse cent de ${pourcentage(arrondiDeuxDecimales(sommeQuotesParts - 100))}.`}
+                ? t('— il manque {{value}} pour atteindre cent.', {
+                    value: pourcentage(arrondiDeuxDecimales(100 - sommeQuotesParts))
+                  })
+                : t('— le total dépasse cent de {{value}}.', {
+                    value: pourcentage(arrondiDeuxDecimales(sommeQuotesParts - 100))
+                  })}
           </Paragraph>
         )}
 
@@ -738,30 +766,32 @@ export const ClotureChantier: React.FC = () => {
             type="info"
             showIcon
             style={{ marginTop: 'var(--space-3)' }}
-            message="La répartition de ce chantier est figée."
-            description="Un lot a basculé au patrimoine : le bien créé porte déjà son coût de revient. Changer la clé, corriger ou supprimer un lot changerait la part de tous les autres, et ce bien porterait alors une valeur qui ne correspondrait plus à rien."
+            message={t('La répartition de ce chantier est figée.')}
+            description={t(
+              'Un lot a basculé au patrimoine : le bien créé porte déjà son coût de revient. Changer la clé, corriger ou supprimer un lot changerait la part de tous les autres, et ce bien porterait alors une valeur qui ne correspondrait plus à rien.'
+            )}
           />
         )}
       </Bloc>
 
       {!clos && !unLotABascule && (
-        <Bloc titre="Ajouter un lot">
+        <Bloc titre={t('Ajouter un lot')}>
           <Space wrap size="middle" align="end">
             <div>
               <div>
-                <label htmlFor="lot-nom">Nom du lot</label>
+                <label htmlFor="lot-nom">{t('Nom du lot')}</label>
               </div>
               <Input
                 id="lot-nom"
                 value={nouveauNom}
                 onChange={event => setNouveauNom(event.target.value)}
-                placeholder="Ex. Villa A3"
+                placeholder={t('Ex. Villa A3')}
                 style={{ width: 220 }}
               />
             </div>
             <div>
               <div>
-                <label htmlFor="lot-surface">Surface (m²)</label>
+                <label htmlFor="lot-surface">{t('Surface (m²)')}</label>
               </div>
               <InputNumber
                 id="lot-surface"
@@ -774,7 +804,7 @@ export const ClotureChantier: React.FC = () => {
             </div>
             <div>
               <div>
-                <label htmlFor="lot-quote-part">Quote-part (%)</label>
+                <label htmlFor="lot-quote-part">{t('Quote-part (%)')}</label>
               </div>
               <InputNumber
                 id="lot-quote-part"
@@ -787,12 +817,13 @@ export const ClotureChantier: React.FC = () => {
               />
             </div>
             <Button type="primary" loading={ajoutEnCours} disabled={!nouveauNom.trim()} onClick={ajouterLot}>
-              Ajouter le lot
+              {t('Ajouter le lot')}
             </Button>
           </Space>
           <Paragraph type="secondary" style={{ marginTop: 'var(--space-2)', marginBottom: 0 }}>
-            La surface n'est exigée que par la clé « Au prorata des surfaces », la quote-part que par la clé «
-            Quotes-parts saisies ». Les champs laissés vides ne sont pas envoyés.
+            {t(
+              "La surface n'est exigée que par la clé « Au prorata des surfaces », la quote-part que par la clé « Quotes-parts saisies ». Les champs laissés vides ne sont pas envoyés."
+            )}
           </Paragraph>
         </Bloc>
       )}
@@ -802,8 +833,10 @@ export const ClotureChantier: React.FC = () => {
           type="info"
           showIcon
           style={{ marginTop: 'var(--space-4)' }}
-          message="Ce chantier est clôturé : on ne peut plus y ajouter de lot."
-          description="Découper après coup ce qu'on a déclaré fini rouvrirait la question du coût de revient des lots. Rouvrez le chantier si le découpage doit changer."
+          message={t('Ce chantier est clôturé : on ne peut plus y ajouter de lot.')}
+          description={t(
+            "Découper après coup ce qu'on a déclaré fini rouvrirait la question du coût de revient des lots. Rouvrez le chantier si le découpage doit changer."
+          )}
         />
       )}
 
@@ -812,7 +845,7 @@ export const ClotureChantier: React.FC = () => {
       {/* ------------------------------------------------------------- */}
 
       <Title level={4} style={{ marginTop: 'var(--space-6)' }}>
-        Clôture du chantier
+        {t('Clôture du chantier')}
       </Title>
 
       {erreurBloqueurs && (
@@ -820,8 +853,10 @@ export const ClotureChantier: React.FC = () => {
           type="error"
           showIcon
           style={{ marginBottom: 'var(--space-3)' }}
-          message="Impossible de savoir ce qui empêche de clôturer."
-          description="La clôture reste possible, mais le serveur appliquera ses propres vérifications sans que cet écran ait pu les annoncer."
+          message={t('Impossible de savoir ce qui empêche de clôturer.')}
+          description={t(
+            'La clôture reste possible, mais le serveur appliquera ses propres vérifications sans que cet écran ait pu les annoncer.'
+          )}
         />
       )}
 
@@ -832,13 +867,19 @@ export const ClotureChantier: React.FC = () => {
               type="warning"
               showIcon
               style={{ marginBottom: 'var(--space-3)' }}
-              message={`${nombreBloqueurs} raison${nombreBloqueurs > 1 ? 's' : ''} empêche${
-                nombreBloqueurs > 1 ? 'nt' : ''
-              } de clôturer ce chantier (${totalPiecesBloquantes} pièce${totalPiecesBloquantes > 1 ? 's' : ''} concernée${
-                totalPiecesBloquantes > 1 ? 's' : ''
-              }).`}
+              message={t(
+                '{{nombreBloqueurs}} raison{{value}} empêche{{value2}} de clôturer ce chantier ({{totalPiecesBloquantes}} pièce{{value3}} concernée{{value4}}).',
+                {
+                  nombreBloqueurs: nombreBloqueurs,
+                  value: nombreBloqueurs > 1 ? 's' : '',
+                  value2: nombreBloqueurs > 1 ? 'nt' : '',
+                  totalPiecesBloquantes: totalPiecesBloquantes,
+                  value3: totalPiecesBloquantes > 1 ? 's' : '',
+                  value4: totalPiecesBloquantes > 1 ? 's' : ''
+                }
+              )}
               description={
-                <ul style={{ margin: 0, paddingLeft: 'var(--space-5)' }}>
+                <ul style={{ margin: 0, paddingInlineStart: 'var(--space-5)' }}>
                   {/* Le message du serveur est affiché TEL QUEL : il est écrit
                       pour être lu, et le réécrire ici le ferait diverger. */}
                   {listeBloqueurs.map(bloqueur => (
@@ -852,23 +893,27 @@ export const ClotureChantier: React.FC = () => {
               type="success"
               showIcon
               style={{ marginBottom: 'var(--space-3)' }}
-              message="Rien n'empêche de clôturer ce chantier."
-              description="Aucune pièce en brouillon ne le vise. Ce sont exactement les vérifications que le serveur appliquera."
+              message={t("Rien n'empêche de clôturer ce chantier.")}
+              description={t(
+                'Aucune pièce en brouillon ne le vise. Ce sont exactement les vérifications que le serveur appliquera.'
+              )}
             />
           )}
 
           {nombreBloqueurs > 0 ? (
             <Button type="primary" disabled>
-              Clôturer le chantier
+              {t('Clôturer le chantier')}
             </Button>
           ) : (
             <ConfirmAction
-              title={`Clôturer le chantier « ${repartition.siteLabel} » ?`}
-              description="Le coût du chantier sera figé à sa valeur actuelle, et il n'acceptera plus aucune imputation. C'est ce qui rend les coûts de revient des lots définitifs. Le chantier peut être rouvert tant qu'aucun lot n'a basculé au patrimoine."
-              okText="Confirmer la clôture"
+              title={t('Clôturer le chantier « {{siteLabel}} » ?', { siteLabel: repartition.siteLabel })}
+              description={t(
+                "Le coût du chantier sera figé à sa valeur actuelle, et il n'acceptera plus aucune imputation. C'est ce qui rend les coûts de revient des lots définitifs. Le chantier peut être rouvert tant qu'aucun lot n'a basculé au patrimoine."
+              )}
+              okText={t('Confirmer la clôture')}
               onConfirm={cloturer}
             >
-              <Button type="primary">Clôturer le chantier</Button>
+              <Button type="primary">{t('Clôturer le chantier')}</Button>
             </ConfirmAction>
           )}
         </>
@@ -878,8 +923,9 @@ export const ClotureChantier: React.FC = () => {
         <>
           {dernierGesteCloture && (
             <Paragraph>
-              Clôturé le {dayjs(dernierGesteCloture.closedAt).format('DD/MM/YYYY')} par{' '}
-              {dernierGesteCloture.closedByLabel}, coût figé à <MoneyValue value={dernierGesteCloture.finalCost} />.
+              {t('Clôturé le')} {dayjs(dernierGesteCloture.closedAt).format('DD/MM/YYYY')} par{' '}
+              {dernierGesteCloture.closedByLabel}
+              {t(', coût figé à')} <MoneyValue value={dernierGesteCloture.finalCost} />.
             </Paragraph>
           )}
 
@@ -889,25 +935,30 @@ export const ClotureChantier: React.FC = () => {
                 type="info"
                 showIcon
                 style={{ marginBottom: 'var(--space-3)' }}
-                message="Ce chantier ne peut plus être rouvert : un lot a basculé au patrimoine."
-                description="Un bien existe désormais, et sa valeur d'acquisition vient du coût de revient figé de ce lot. Rouvrir le chantier ferait de nouveau bouger ce coût, et le bien porterait une valeur que plus rien ne justifierait. Défaire la bascule voudrait dire supprimer un bien qui vit peut-être déjà sa vie — loué, publié, rattaché à un bail."
+                message={t('Ce chantier ne peut plus être rouvert : un lot a basculé au patrimoine.')}
+                description={t(
+                  "Un bien existe désormais, et sa valeur d'acquisition vient du coût de revient figé de ce lot. Rouvrir le chantier ferait de nouveau bouger ce coût, et le bien porterait une valeur que plus rien ne justifierait. Défaire la bascule voudrait dire supprimer un bien qui vit peut-être déjà sa vie — loué, publié, rattaché à un bail."
+                )}
               />
-              <Button disabled>Rouvrir le chantier</Button>
+              <Button disabled>{t('Rouvrir le chantier')}</Button>
             </>
           ) : (
             <ConfirmAction
-              title={`Rouvrir le chantier « ${repartition.siteLabel} » ?`}
-              description="Le coût figé sera effacé et redeviendra dérivé des imputations, qui seront de nouveau acceptées. Les coûts de revient des lots redeviendront des estimations."
-              okText="Confirmer la réouverture"
+              title={t('Rouvrir le chantier « {{siteLabel}} » ?', { siteLabel: repartition.siteLabel })}
+              description={t(
+                'Le coût figé sera effacé et redeviendra dérivé des imputations, qui seront de nouveau acceptées. Les coûts de revient des lots redeviendront des estimations.'
+              )}
+              okText={t('Confirmer la réouverture')}
               onConfirm={rouvrir}
             >
-              <Button>Rouvrir le chantier</Button>
+              <Button>{t('Rouvrir le chantier')}</Button>
             </ConfirmAction>
           )}
 
           <Paragraph type="secondary" style={{ marginTop: 'var(--space-3)' }}>
-            Chaque lot peut maintenant basculer au patrimoine, depuis sa ligne dans le tableau ci-dessus. La bascule
-            crée un bien réel : elle est irréversible et ne se fait qu'une fois par lot.
+            {t(
+              "Chaque lot peut maintenant basculer au patrimoine, depuis sa ligne dans le tableau ci-dessus. La bascule crée un bien réel : elle est irréversible et ne se fait qu'une fois par lot."
+            )}
           </Paragraph>
         </>
       )}
@@ -917,11 +968,11 @@ export const ClotureChantier: React.FC = () => {
       {/* ------------------------------------------------------------- */}
 
       <Modal
-        title={lotCorrige ? `Corriger le lot « ${lotCorrige.name} »` : 'Corriger le lot'}
+        title={lotCorrige ? t('Corriger le lot « {{name}} »', { name: lotCorrige.name }) : t('Corriger le lot')}
         open={Boolean(lotCorrige)}
         onCancel={() => setLotCorrige(null)}
-        okText="Enregistrer la correction"
-        cancelText="Annuler"
+        okText={t('Enregistrer la correction')}
+        cancelText={t('Annuler')}
         confirmLoading={correctionEnCours}
         okButtonProps={{ disabled: !correctionNom.trim() }}
         onOk={enregistrerCorrection}
@@ -930,13 +981,13 @@ export const ClotureChantier: React.FC = () => {
         <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
           <div>
             <div>
-              <label htmlFor="correction-nom">Nom du lot</label>
+              <label htmlFor="correction-nom">{t('Nom du lot')}</label>
             </div>
             <Input id="correction-nom" value={correctionNom} onChange={event => setCorrectionNom(event.target.value)} />
           </div>
           <div>
             <div>
-              <label htmlFor="correction-surface">Surface (m²)</label>
+              <label htmlFor="correction-surface">{t('Surface (m²)')}</label>
             </div>
             <InputNumber
               id="correction-surface"
@@ -949,7 +1000,7 @@ export const ClotureChantier: React.FC = () => {
           </div>
           <div>
             <div>
-              <label htmlFor="correction-quote-part">Quote-part (%)</label>
+              <label htmlFor="correction-quote-part">{t('Quote-part (%)')}</label>
             </div>
             <InputNumber
               id="correction-quote-part"
@@ -962,8 +1013,9 @@ export const ClotureChantier: React.FC = () => {
             />
           </div>
           <Text type="secondary">
-            Un champ laissé vide efface la valeur enregistrée. Le coût de revient de tous les lots sera recalculé par le
-            serveur.
+            {t(
+              'Un champ laissé vide efface la valeur enregistrée. Le coût de revient de tous les lots sera recalculé par le serveur.'
+            )}
           </Text>
         </Space>
       </Modal>
@@ -973,28 +1025,36 @@ export const ClotureChantier: React.FC = () => {
       {/* ------------------------------------------------------------- */}
 
       <Modal
-        title={lotABasculer ? `Basculer « ${lotABasculer.name} » au patrimoine` : 'Basculer au patrimoine'}
+        title={
+          lotABasculer
+            ? t('Basculer « {{name}} » au patrimoine', { name: lotABasculer.name })
+            : t('Basculer au patrimoine')
+        }
         open={Boolean(lotABasculer)}
         onCancel={() => setLotABasculer(null)}
         footer={
           <Space>
-            <Button onClick={() => setLotABasculer(null)}>Annuler</Button>
+            <Button onClick={() => setLotABasculer(null)}>{t('Annuler')}</Button>
             <ConfirmAction
-              title={lotABasculer ? `Créer le bien du lot « ${lotABasculer.name} » ?` : 'Créer le bien ?'}
+              title={
+                lotABasculer
+                  ? t('Créer le bien du lot « {{name}} » ?', { name: lotABasculer.name })
+                  : t('Créer le bien ?')
+              }
               description={
                 <span>
-                  Cette opération est irréversible. Elle crée un bien réel au patrimoine, «{' '}
-                  {formulaireBien.title.trim() || 'sans titre'} », de référence{' '}
-                  {formulaireBien.internalReference.trim() || '—'}, avec une valeur d'acquisition de{' '}
-                  <MoneyValue value={valeurAcquisition} /> — le coût de revient figé de ce lot. Un lot ne bascule qu'une
-                  fois.
+                  {t('Cette opération est irréversible. Elle crée un bien réel au patrimoine, «')}{' '}
+                  {formulaireBien.title.trim() || 'sans titre'} {t('», de référence')}{' '}
+                  {formulaireBien.internalReference.trim() || '—'}
+                  {t(", avec une valeur d'acquisition de")} <MoneyValue value={valeurAcquisition} />{' '}
+                  {t("— le coût de revient figé de ce lot. Un lot ne bascule qu'une fois.")}
                 </span>
               }
-              okText="Confirmer la création du bien"
+              okText={t('Confirmer la création du bien')}
               onConfirm={basculer}
             >
               <Button type="primary" loading={basculeEnCours} disabled={!basculePrete}>
-                Créer le bien au patrimoine
+                {t('Créer le bien au patrimoine')}
               </Button>
             </ConfirmAction>
           </Space>
@@ -1006,43 +1066,45 @@ export const ClotureChantier: React.FC = () => {
           <Alert
             type="warning"
             showIcon
-            message="Les champs du bien sont saisis, jamais repris du chantier."
-            description="Un chantier a une zone, pas une adresse postale, et une villa n'est pas un terrain nu. Rien n'est prérempli à partir du chantier : ce sont les informations du bien qui sera créé."
+            message={t('Les champs du bien sont saisis, jamais repris du chantier.')}
+            description={t(
+              "Un chantier a une zone, pas une adresse postale, et une villa n'est pas un terrain nu. Rien n'est prérempli à partir du chantier : ce sont les informations du bien qui sera créé."
+            )}
           />
 
           <div>
             <div>
-              <label htmlFor="bien-reference">Référence interne du bien</label>
+              <label htmlFor="bien-reference">{t('Référence interne du bien')}</label>
             </div>
             <Input
               id="bien-reference"
               value={formulaireBien.internalReference}
               onChange={event => setFormulaireBien({ ...formulaireBien, internalReference: event.target.value })}
-              placeholder="Ex. VIL-2026-014"
+              placeholder={t('Ex. VIL-2026-014')}
             />
           </div>
 
           <div>
             <div>
-              <label htmlFor="bien-titre">Titre du bien</label>
+              <label htmlFor="bien-titre">{t('Titre du bien')}</label>
             </div>
             <Input
               id="bien-titre"
               value={formulaireBien.title}
               onChange={event => setFormulaireBien({ ...formulaireBien, title: event.target.value })}
-              placeholder="Ex. Villa A3 — Nongo"
+              placeholder={t('Ex. Villa A3 — Nongo')}
             />
           </div>
 
           {/* Énumérations Postgres : liste de choix, jamais un champ libre. */}
           <div>
             <div>
-              <label htmlFor="bien-type">Type de bien</label>
+              <label htmlFor="bien-type">{t('Type de bien')}</label>
             </div>
             <Select
               id="bien-type"
               style={{ width: '100%' }}
-              placeholder="Choisir un type de bien"
+              placeholder={t('Choisir un type de bien')}
               value={formulaireBien.propertyType}
               onChange={valeur => setFormulaireBien({ ...formulaireBien, propertyType: valeur })}
               options={Object.values(PropertyType).map(type => ({
@@ -1054,12 +1116,12 @@ export const ClotureChantier: React.FC = () => {
 
           <div>
             <div>
-              <label htmlFor="bien-detention">Mode de détention</label>
+              <label htmlFor="bien-detention">{t('Mode de détention')}</label>
             </div>
             <Select
               id="bien-detention"
               style={{ width: '100%' }}
-              placeholder="Choisir un mode de détention"
+              placeholder={t('Choisir un mode de détention')}
               value={formulaireBien.ownershipType}
               onChange={valeur => setFormulaireBien({ ...formulaireBien, ownershipType: valeur })}
               options={Object.values(PropertyOwnershipType).map(mode => ({
@@ -1071,32 +1133,32 @@ export const ClotureChantier: React.FC = () => {
 
           <div>
             <div>
-              <label htmlFor="bien-adresse">Adresse du bien</label>
+              <label htmlFor="bien-adresse">{t('Adresse du bien')}</label>
             </div>
             <Input
               id="bien-adresse"
               value={formulaireBien.address}
               onChange={event => setFormulaireBien({ ...formulaireBien, address: event.target.value })}
-              placeholder="Ex. Quartier Nongo, Ratoma, Conakry"
+              placeholder={t('Ex. Quartier Nongo, Ratoma, Conakry')}
             />
           </div>
 
           <div>
             <div>
-              <label htmlFor="bien-description">Description</label>
+              <label htmlFor="bien-description">{t('Description')}</label>
             </div>
             <TextArea
               id="bien-description"
               rows={3}
               value={formulaireBien.description}
               onChange={event => setFormulaireBien({ ...formulaireBien, description: event.target.value })}
-              placeholder="Facultative — elle peut rester vide."
+              placeholder={t('Facultative — elle peut rester vide.')}
             />
           </div>
 
           <div>
             <div>
-              <label htmlFor="bien-date">Date d'acquisition</label>
+              <label htmlFor="bien-date">{t("Date d'acquisition")}</label>
             </div>
             <DatePicker
               id="bien-date"
@@ -1111,9 +1173,9 @@ export const ClotureChantier: React.FC = () => {
               revient figé du lot, et l'accepter en entrée permettrait
               d'inscrire au patrimoine une valeur que rien ne justifie. */}
           <StatCard
-            label="Valeur d'acquisition portée au patrimoine"
+            label={t("Valeur d'acquisition portée au patrimoine")}
             value={<MoneyValue value={valeurAcquisition} />}
-            hint="Le coût de revient figé de ce lot. Il n'est pas saisissable."
+            hint={t("Le coût de revient figé de ce lot. Il n'est pas saisissable.")}
           />
         </Space>
       </Modal>

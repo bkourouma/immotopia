@@ -1,4 +1,5 @@
 import { feedback } from '../lib/feedback';
+import { t } from '../i18n/t';
 
 /**
  * CSV / Excel export helpers.
@@ -45,7 +46,7 @@ export function exportToCSV(data: any[], filename: string): void {
   if (!data || data.length === 0) {
     // Module hors React : `App.useApp()` y est impossible. La passerelle
     // rejoue le `message` contextualise pose par <FeedbackBridge/> (§5.7).
-    feedback.warning('Aucune donnée à exporter');
+    feedback.warning(t('Aucune donnée à exporter'));
     return;
   }
 
@@ -76,7 +77,7 @@ export async function exportToExcel(data: any[], filename: string, sheetName: st
   if (!data || data.length === 0) {
     // Module hors React : `App.useApp()` y est impossible. La passerelle
     // rejoue le `message` contextualise pose par <FeedbackBridge/> (§5.7).
-    feedback.warning('Aucune donnée à exporter');
+    feedback.warning(t('Aucune donnée à exporter'));
     return;
   }
 

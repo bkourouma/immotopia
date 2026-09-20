@@ -1,17 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import {
-  Form,
-  Input,
-  Button,
-  Card,
-  Alert,
-  Typography,
-  Result,
-  Space,
-} from 'antd';
+import { Form, Input, Button, Card, Alert, Typography, Result, Space } from 'antd';
 import { MailOutlined, CheckCircleOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import { forgotPassword as forgotPasswordApi } from '../services/auth-service';
+import { t } from '../i18n/t';
 
 const { Text } = Typography;
 
@@ -33,7 +25,7 @@ export const ForgotPassword: React.FC = () => {
     } catch (err: any) {
       // Erreur réseau : afficher un message pour permettre une nouvelle tentative
       if (!err?.response) {
-        setError('Erreur de connexion. Veuillez vérifier votre connexion et réessayer.');
+        setError(t('Erreur de connexion. Veuillez vérifier votre connexion et réessayer.'));
       } else {
         // Le backend retourne toujours 200 pour la sécurité - en cas d'autre erreur, afficher succès
         setSuccess(true);
@@ -59,14 +51,16 @@ export const ForgotPassword: React.FC = () => {
           <Result
             status="success"
             icon={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
-            title="Email envoyé"
-            subTitle="Si cette adresse email existe dans notre système, un lien de réinitialisation de mot de passe a été envoyé. Veuillez vérifier votre boîte de réception (et les spams)."
+            title={t('Email envoyé')}
+            subTitle={t(
+              'Si cette adresse email existe dans notre système, un lien de réinitialisation de mot de passe a été envoyé. Veuillez vérifier votre boîte de réception (et les spams).'
+            )}
             extra={[
               <Button type="primary" key="login" onClick={() => navigate('/login')}>
-                Retour à la connexion
+                {t('Retour à la connexion')}
               </Button>,
               <Button key="resend" onClick={() => setSuccess(false)}>
-                Nouvelle demande
+                {t('Nouvelle demande')}
               </Button>
             ]}
           />
@@ -91,21 +85,15 @@ export const ForgotPassword: React.FC = () => {
         title={
           <Space>
             <MailOutlined />
-            <span>Mot de passe oublié ?</span>
+            <span>{t('Mot de passe oublié ?')}</span>
           </Space>
         }
       >
         <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-          Entrez votre adresse email et nous vous enverrons un lien pour réinitialiser votre mot de
-          passe.
+          {t('Entrez votre adresse email et nous vous enverrons un lien pour réinitialiser votre mot de passe.')}
         </Text>
 
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={handleSubmit}
-          onValuesChange={() => setError('')}
-        >
+        <Form form={form} layout="vertical" onFinish={handleSubmit} onValuesChange={() => setError('')}>
           {error && (
             <Alert
               message={error}
@@ -119,35 +107,24 @@ export const ForgotPassword: React.FC = () => {
 
           <Form.Item
             name="email"
-            label="Adresse email"
+            label={t('Adresse email')}
             rules={[
-              { required: true, message: "Veuillez entrer votre adresse email." },
-              { type: 'email', message: "Veuillez entrer une adresse email valide." }
+              { required: true, message: t('Veuillez entrer votre adresse email.') },
+              { type: 'email', message: t('Veuillez entrer une adresse email valide.') }
             ]}
           >
-            <Input
-              size="large"
-              prefix={<MailOutlined />}
-              placeholder="vous@example.com"
-              autoComplete="email"
-            />
+            <Input size="large" prefix={<MailOutlined />} placeholder={t('vous@example.com')} autoComplete="email" />
           </Form.Item>
 
           <Form.Item style={{ marginBottom: 16 }}>
-            <Button
-              type="primary"
-              htmlType="submit"
-              size="large"
-              block
-              loading={isSubmitting}
-            >
-              {isSubmitting ? 'Envoi en cours...' : 'Envoyer le lien de réinitialisation'}
+            <Button type="primary" htmlType="submit" size="large" block loading={isSubmitting}>
+              {isSubmitting ? t('Envoi en cours...') : t('Envoyer le lien de réinitialisation')}
             </Button>
           </Form.Item>
 
           <div style={{ textAlign: 'center' }}>
             <Link to="/login">
-              <ArrowLeftOutlined /> Retour à la connexion
+              <ArrowLeftOutlined /> {t('Retour à la connexion')}
             </Link>
           </div>
         </Form>

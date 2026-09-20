@@ -4,6 +4,7 @@ import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { SyndicateDocument } from '../../types/syndic-types';
 import { API_URL } from '../../config/api';
+import { t } from '../../i18n/t';
 
 const { Link, Text } = Typography;
 
@@ -14,7 +15,7 @@ interface DocumentVaultProps {
 
 const DOCUMENT_TYPE_LABELS: Record<SyndicateDocument['type'], string> = {
   REGULATION: 'Reglement',
-  GENERAL_MEETING_MINUTES: "Proces-verbal d'AG",
+  GENERAL_MEETING_MINUTES: t("Proces-verbal d'AG"),
   DIAGNOSTIC: 'Diagnostic',
   INSURANCE: 'Assurance',
   BUDGET: 'Budget',
@@ -35,29 +36,29 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({ documents, loading
   };
 
   const columns: ColumnsType<SyndicateDocument> = [
-    { title: 'Titre', dataIndex: 'title', key: 'title', render: (value: string) => <Text strong>{value}</Text> },
+    { title: t('Titre'), dataIndex: 'title', key: 'title', render: (value: string) => <Text strong>{value}</Text> },
     {
-      title: 'Type',
+      title: t('Type'),
       dataIndex: 'type',
       key: 'type',
       render: (value: SyndicateDocument['type']) => <Tag>{DOCUMENT_TYPE_LABELS[value] ?? value}</Tag>
     },
     {
-      title: 'Expiration',
+      title: t('Expiration'),
       dataIndex: 'expiresAt',
       key: 'expiresAt',
       render: (value?: string | null) => {
-        if (!value) return 'Sans expiration';
+        if (!value) return t('Sans expiration');
         const expired = dayjs(value).isBefore(dayjs(), 'day');
         return <Text type={expired ? 'danger' : undefined}>{dayjs(value).format('DD/MM/YYYY')}</Text>;
       }
     },
     {
-      title: 'Document',
+      title: t('Document'),
       key: 'fileUrl',
       render: (_: unknown, item: SyndicateDocument) => (
         <Link href={getDocumentUrl(item.fileUrl)} target="_blank" rel="noreferrer">
-          Ouvrir
+          {t('Ouvrir')}
         </Link>
       )
     }

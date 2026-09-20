@@ -3,6 +3,7 @@ import { Card, Button, Input, Select, DatePicker, Space, Typography, Tag, Row, C
 import { FilterOutlined, ClearOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { listMembers, Member } from '../../services/membership-service';
+import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -105,7 +106,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
       title={
         <Space>
           <FilterOutlined />
-          <span>Filtres avancés</span>
+          <span>{t('Filtres avancés')}</span>
           {hasActiveFilters && <Tag color="blue">{activeFiltersCount} actif(s)</Tag>}
         </Space>
       }
@@ -113,7 +114,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
         <Space>
           {hasActiveFilters && (
             <Button type="text" size="small" icon={<ClearOutlined />} onClick={clearFilters}>
-              Effacer
+              {t('Effacer')}
             </Button>
           )}
         </Space>
@@ -125,7 +126,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
           <Col xs={24} sm={12} lg={8}>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <Text strong style={{ fontSize: '12px' }}>
-                {config.dateRangeLabel || 'Période'}
+                {config.dateRangeLabel || t('Période')}
               </Text>
               <RangePicker
                 style={{ width: '100%' }}
@@ -150,7 +151,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
           <Col xs={24} sm={12} lg={8}>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <Text strong style={{ fontSize: '12px' }}>
-                {config.assignedToLabel || 'Assigné à'}
+                {config.assignedToLabel || t('Assigné à')}
               </Text>
               {loadingMembers ? (
                 <Spin size="small" />
@@ -158,7 +159,7 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
                 <Select
                   value={filters.assignedTo}
                   onChange={value => updateFilter('assignedTo', value)}
-                  placeholder="Tous"
+                  placeholder={t('Tous')}
                   allowClear
                   style={{ width: '100%' }}
                   showSearch
@@ -187,10 +188,10 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
           <Col xs={24} sm={12} lg={8}>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <Text strong style={{ fontSize: '12px' }}>
-                {config.sourceLabel || 'Source'}
+                {config.sourceLabel || t('Source')}
               </Text>
               <Input
-                placeholder="Ex: Site web, Référence..."
+                placeholder={t('Ex: Site web, Référence...')}
                 value={filters.source || ''}
                 onChange={e => updateFilter('source', e.target.value)}
                 allowClear
@@ -204,19 +205,19 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
           <Col xs={24} sm={12} lg={8}>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <Text strong style={{ fontSize: '12px' }}>
-                {config.budgetLabel || 'Budget (FCFA)'}
+                {config.budgetLabel || t('Budget (FCFA)')}
               </Text>
               <Space.Compact style={{ width: '100%' }}>
                 <Input
                   type="number"
-                  placeholder="Min"
+                  placeholder={t('Min')}
                   value={filters.budgetMin || ''}
                   onChange={e => updateFilter('budgetMin', e.target.value ? parseFloat(e.target.value) : undefined)}
                   style={{ width: '50%' }}
                 />
                 <Input
                   type="number"
-                  placeholder="Max"
+                  placeholder={t('Max')}
                   value={filters.budgetMax || ''}
                   onChange={e => updateFilter('budgetMax', e.target.value ? parseFloat(e.target.value) : undefined)}
                   style={{ width: '50%' }}
@@ -231,12 +232,12 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
           <Col xs={24} sm={12} lg={8}>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <Text strong style={{ fontSize: '12px' }}>
-                {config.statusLabel || 'Statut'}
+                {config.statusLabel || t('Statut')}
               </Text>
               <Select
                 value={filters.status}
                 onChange={value => updateFilter('status', value)}
-                placeholder="Tous"
+                placeholder={t('Tous')}
                 allowClear
                 style={{ width: '100%' }}
               >
@@ -255,12 +256,12 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
           <Col xs={24} sm={12} lg={8}>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <Text strong style={{ fontSize: '12px' }}>
-                {config.typeLabel || 'Type'}
+                {config.typeLabel || t('Type')}
               </Text>
               <Select
                 value={filters.type}
                 onChange={value => updateFilter('type', value)}
-                placeholder="Tous"
+                placeholder={t('Tous')}
                 allowClear
                 style={{ width: '100%' }}
               >
@@ -279,10 +280,10 @@ export const AdvancedFilters: React.FC<AdvancedFiltersProps> = ({
           <Col xs={24} sm={12} lg={8}>
             <Space direction="vertical" size="small" style={{ width: '100%' }}>
               <Text strong style={{ fontSize: '12px' }}>
-                {config.contactNameLabel || 'Nom du client'}
+                {config.contactNameLabel || t('Nom du client')}
               </Text>
               <Input
-                placeholder="Rechercher par nom..."
+                placeholder={t('Rechercher par nom...')}
                 value={filters.contactName || ''}
                 onChange={e => updateFilter('contactName', e.target.value)}
                 allowClear

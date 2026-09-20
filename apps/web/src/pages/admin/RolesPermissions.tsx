@@ -47,6 +47,7 @@ import type { MenuCatalogEntry } from '../../navigation/menu-catalog';
 import type { PersonaId } from '../../navigation/model';
 import { NAVIGATION } from '../../navigation/model';
 import { getPermissionLabelFr, getPermissionGroupLabelFr, getRoleLabelFr } from '../../constants/permissions-labels';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -84,9 +85,9 @@ interface ManagedRole {
 }
 
 const SCOPE_TAGS: Record<ManagedRole['scope'], { color: string; label: string }> = {
-  PLATFORM: { color: 'blue', label: 'Plateforme' },
-  TENANT: { color: 'green', label: 'Agence' },
-  PORTAL: { color: 'purple', label: 'Portail client' }
+  PLATFORM: { color: 'blue', label: t('Plateforme') },
+  TENANT: { color: 'green', label: t('Agence') },
+  PORTAL: { color: 'purple', label: t('Portail client') }
 };
 
 /**
@@ -174,7 +175,7 @@ export const RolesPermissions: React.FC = () => {
         setMenuAccess(menuAccessData);
         setSelectedKey(current => current ?? rolesData[0]?.key ?? PORTAL_PSEUDO_ROLES[0].key);
       } catch (err: any) {
-        if (!cancelled) setError(err.response?.data?.message || 'Erreur lors du chargement des données');
+        if (!cancelled) setError(err.response?.data?.message || t('Erreur lors du chargement des données'));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -207,7 +208,7 @@ export const RolesPermissions: React.FC = () => {
         setRolePermissionKeys(new Set(role.permissions?.map(p => p.key) ?? []));
       })
       .catch((err: any) => {
-        if (!cancelled) setError(err.response?.data?.message || 'Erreur lors du chargement des permissions du rôle');
+        if (!cancelled) setError(err.response?.data?.message || t('Erreur lors du chargement des permissions du rôle'));
       })
       .finally(() => {
         if (!cancelled) setLoadingRole(false);
@@ -286,9 +287,9 @@ export const RolesPermissions: React.FC = () => {
     try {
       const saved = await updateMenuAccess(selectedRole.key, menuDraft);
       setMenuAccess(prev => ({ ...prev, [selectedRole.key]: saved }));
-      setSuccess(`Menus de « ${selectedRole.name} » enregistrés.`);
+      setSuccess(t('Menus de « {{name}} » enregistrés.', { name: selectedRole.name }));
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de la mise à jour des menus');
+      setError(err.response?.data?.message || t('Erreur lors de la mise à jour des menus'));
     } finally {
       setSavingMenus(false);
     }
@@ -314,9 +315,9 @@ export const RolesPermissions: React.FC = () => {
       setRolePermissionIds(new Set(updated.permissions?.map(p => p.id) ?? []));
       setRolePermissionKeys(new Set(updated.permissions?.map(p => p.key) ?? []));
       setRoles(prev => prev.map(r => (r.id === updated.id ? { ...r, ...updated } : r)));
-      setSuccess('Permissions mises à jour avec succès.');
+      setSuccess(t('Permissions mises à jour avec succès.'));
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de la mise à jour des permissions');
+      setError(err.response?.data?.message || t('Erreur lors de la mise à jour des permissions'));
     } finally {
       setSavingPermissions(false);
     }
@@ -367,13 +368,13 @@ export const RolesPermissions: React.FC = () => {
             <Space size={8} wrap>
               <Text strong>{entry.label}</Text>
               {locked && (
-                <Tooltip title="Menu indispensable pour revenir régler les accès : il ne peut pas être coupé.">
+                <Tooltip title={t('Menu indispensable pour revenir régler les accès : il ne peut pas être coupé.')}>
                   <Tag icon={<LockOutlined />} color="default">
-                    Verrouillé
+                    {t('Verrouillé')}
                   </Tag>
                 </Tooltip>
               )}
-              {customised && !locked && <Tag color="orange">Personnalisé</Tag>}
+              {customised && !locked && <Tag color="orange">{t('Personnalisé')}</Tag>}
             </Space>
             {entry.href && (
               <div>
@@ -388,7 +389,7 @@ export const RolesPermissions: React.FC = () => {
               checked={enabled}
               disabled={locked}
               onChange={value => toggleEntry(entry, value)}
-              aria-label={`Activer le menu ${entry.label}`}
+              aria-label={t('Activer le menu {{label}}', { label: entry.label })}
             />
           </Col>
         </Row>
@@ -421,13 +422,15 @@ export const RolesPermissions: React.FC = () => {
 
   const menusTab = !selectedRole ? (
     <Card>
-      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Sélectionnez un rôle pour régler ses menus" />
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('Sélectionnez un rôle pour régler ses menus')} />
     </Card>
   ) : !selectedRole.persona ? (
     <Card>
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={`Le rôle « ${selectedRole.name} » n'est rattaché à aucune navigation : il n'a pas de menus à régler.`}
+        description={t("Le rôle « {{name}} » n'est rattaché à aucune navigation : il n'a pas de menus à régler.", {
+          name: selectedRole.name
+        })}
       />
     </Card>
   ) : (
@@ -435,7 +438,9 @@ export const RolesPermissions: React.FC = () => {
       title={
         <Space wrap>
           <AppstoreOutlined />
-          <span>Menus — {selectedRole.name}</span>
+          <span>
+            {t('Menus —')} {selectedRole.name}
+          </span>
           <Tag color={SCOPE_TAGS[selectedRole.scope].color}>{SCOPE_TAGS[selectedRole.scope].label}</Tag>
           <Badge
             count={`${menuCounts.enabled}/${menuCounts.total} actifs`}
@@ -446,13 +451,15 @@ export const RolesPermissions: React.FC = () => {
       extra={
         <Space>
           <Popconfirm
-            title="Rétablir les valeurs par défaut ?"
-            description="Les menus reprendront l'état déduit des permissions du rôle. Rien n'est enregistré tant que vous n'avez pas cliqué sur Enregistrer."
-            okText="Rétablir"
-            cancelText="Annuler"
+            title={t('Rétablir les valeurs par défaut ?')}
+            description={t(
+              "Les menus reprendront l'état déduit des permissions du rôle. Rien n'est enregistré tant que vous n'avez pas cliqué sur Enregistrer."
+            )}
+            okText={t('Rétablir')}
+            cancelText={t('Annuler')}
             onConfirm={handleResetMenus}
           >
-            <Button icon={<UndoOutlined />}>Valeurs par défaut</Button>
+            <Button icon={<UndoOutlined />}>{t('Valeurs par défaut')}</Button>
           </Popconfirm>
           <Button
             type="primary"
@@ -461,7 +468,7 @@ export const RolesPermissions: React.FC = () => {
             loading={savingMenus}
             disabled={!menusDirty}
           >
-            Enregistrer
+            {t('Enregistrer')}
           </Button>
         </Space>
       }
@@ -470,7 +477,7 @@ export const RolesPermissions: React.FC = () => {
         <Alert
           type="info"
           showIcon
-          title={personaLabel ? `Navigation « ${personaLabel} »` : 'Navigation'}
+          title={personaLabel ? t('Navigation « {{personaLabel}} »', { personaLabel: personaLabel }) : t('Navigation')}
           description={
             <Text type="secondary" style={{ fontSize: 13 }}>
               Les catégories et les entrées ci-dessous sont exactement celles du menu latéral de ce persona. Par défaut,
@@ -511,7 +518,7 @@ export const RolesPermissions: React.FC = () => {
 
   const permissionsTab = !selectedRole ? (
     <Card>
-      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Sélectionnez un rôle pour gérer ses permissions" />
+      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('Sélectionnez un rôle pour gérer ses permissions')} />
     </Card>
   ) : !selectedRole.id ? (
     <Card>
@@ -530,13 +537,15 @@ export const RolesPermissions: React.FC = () => {
       title={
         <Space wrap>
           <SafetyCertificateOutlined />
-          <span>Permissions — {selectedRole.name}</span>
+          <span>
+            {t('Permissions —')} {selectedRole.name}
+          </span>
           <Tag color={SCOPE_TAGS[selectedRole.scope].color}>{SCOPE_TAGS[selectedRole.scope].label}</Tag>
         </Space>
       }
       extra={
         <Button type="primary" icon={<SaveOutlined />} onClick={handleSavePermissions} loading={savingPermissions}>
-          Enregistrer
+          {t('Enregistrer')}
         </Button>
       }
     >
@@ -551,7 +560,7 @@ export const RolesPermissions: React.FC = () => {
           <Spin />
         </div>
       ) : Object.keys(groupedPermissions).length === 0 ? (
-        <Empty description="Aucune permission disponible" />
+        <Empty description={t('Aucune permission disponible')} />
       ) : (
         <Space orientation="vertical" size="large" style={{ width: '100%' }}>
           {Object.entries(groupedPermissions).map(([prefix, perms]) => (
@@ -571,7 +580,7 @@ export const RolesPermissions: React.FC = () => {
                       <Checkbox
                         checked={isChecked}
                         onChange={() => handlePermissionToggle(permission.id)}
-                        style={{ alignItems: 'flex-start', marginRight: 0 }}
+                        style={{ alignItems: 'flex-start', marginInlineEnd: 0 }}
                       >
                         <Space orientation="vertical" size={0}>
                           <Space>
@@ -598,34 +607,41 @@ export const RolesPermissions: React.FC = () => {
     <Space orientation="vertical" size="large" style={{ width: '100%' }}>
       <div>
         <Title level={3} style={{ margin: 0 }}>
-          Rôles, menus et permissions
+          {t('Rôles, menus et permissions')}
         </Title>
         <Text type="secondary">
-          Choisissez un rôle, puis réglez les menus qu'il voit et les permissions qu'il détient.
+          {t("Choisissez un rôle, puis réglez les menus qu'il voit et les permissions qu'il détient.")}
         </Text>
       </div>
 
       {error && (
-        <Alert title="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
+        <Alert title={t('Erreur')} description={error} type="error" showIcon closable onClose={() => setError(null)} />
       )}
 
       {success && (
-        <Alert title="Succès" description={success} type="success" showIcon closable onClose={() => setSuccess(null)} />
+        <Alert
+          title={t('Succès')}
+          description={success}
+          type="success"
+          showIcon
+          closable
+          onClose={() => setSuccess(null)}
+        />
       )}
 
       <Row gutter={24}>
         <Col xs={24} lg={7} xl={6}>
           <Card
-            title="Rôles"
+            title={t('Rôles')}
             size="small"
             extra={
-              <Tooltip title="Recharger les rôles et les menus">
+              <Tooltip title={t('Recharger les rôles et les menus')}>
                 <Button
                   type="text"
                   size="small"
                   icon={<ReloadOutlined />}
                   onClick={() => window.location.reload()}
-                  aria-label="Recharger"
+                  aria-label={t('Recharger')}
                 />
               </Tooltip>
             }
@@ -644,7 +660,7 @@ export const RolesPermissions: React.FC = () => {
                       borderRadius: 6,
                       marginBottom: 4,
                       paddingInlineStart: 8,
-                      borderLeft: isSelected ? '3px solid var(--ant-color-primary)' : '3px solid transparent'
+                      borderInlineStart: isSelected ? '3px solid var(--ant-color-primary)' : '3px solid transparent'
                     }}
                     onClick={() => handleSelectRole(role)}
                   >
@@ -658,7 +674,7 @@ export const RolesPermissions: React.FC = () => {
                       description={
                         <Space size={4} wrap>
                           <Tag color={SCOPE_TAGS[role.scope].color}>{SCOPE_TAGS[role.scope].label}</Tag>
-                          {overrideCount > 0 && <Tag color="orange">Menus personnalisés</Tag>}
+                          {overrideCount > 0 && <Tag color="orange">{t('Menus personnalisés')}</Tag>}
                         </Space>
                       }
                     />
@@ -673,8 +689,8 @@ export const RolesPermissions: React.FC = () => {
           <Tabs
             defaultActiveKey="menus"
             items={[
-              { key: 'menus', label: 'Menus accessibles', children: menusTab },
-              { key: 'permissions', label: 'Permissions détaillées', children: permissionsTab }
+              { key: 'menus', label: t('Menus accessibles'), children: menusTab },
+              { key: 'permissions', label: t('Permissions détaillées'), children: permissionsTab }
             ]}
           />
         </Col>

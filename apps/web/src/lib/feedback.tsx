@@ -18,6 +18,7 @@
  */
 import { useEffect } from 'react';
 import { App } from 'antd';
+import { t } from '../i18n/t';
 
 type AppInstances = ReturnType<typeof App.useApp>;
 

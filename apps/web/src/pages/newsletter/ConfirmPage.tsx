@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Card, Result, Spin } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import apiClient from '../../utils/api-client';
+import { t } from '../../i18n/t';
 
 export function ConfirmPage() {
   const [searchParams] = useSearchParams();
@@ -13,17 +14,17 @@ export function ConfirmPage() {
   useEffect(() => {
     if (!token) {
       setStatus('error');
-      setMessage('Lien de confirmation invalide.');
+      setMessage(t('Lien de confirmation invalide.'));
       return;
     }
     (async () => {
       try {
         const { data } = await apiClient.get('/newsletter/confirm', { params: { token } });
         setStatus(data?.success ? 'success' : 'error');
-        setMessage(data?.message || 'Votre inscription a été confirmée.');
+        setMessage(data?.message || t('Votre inscription a été confirmée.'));
       } catch (err: any) {
         setStatus('error');
-        setMessage(err?.response?.data?.message || 'Impossible de contacter le serveur. Réessayez plus tard.');
+        setMessage(err?.response?.data?.message || t('Impossible de contacter le serveur. Réessayez plus tard.'));
       }
     })();
   }, [token]);
@@ -31,7 +32,7 @@ export function ConfirmPage() {
   if (status === 'loading') {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Spin size="large" tip="Confirmation en cours..." />
+        <Spin size="large" tip={t('Confirmation en cours...')} />
       </div>
     );
   }
@@ -43,11 +44,11 @@ export function ConfirmPage() {
           <Result
             status="success"
             icon={<CheckCircleOutlined style={{ color: '#52c41a' }} />}
-            title="Inscription confirmée"
+            title={t('Inscription confirmée')}
             subTitle={message}
             extra={
               <a href="/" className="ant-btn ant-btn-primary">
-                Retour à l'accueil
+                {t("Retour à l'accueil")}
               </a>
             }
           />
@@ -55,11 +56,11 @@ export function ConfirmPage() {
           <Result
             status="error"
             icon={<CloseCircleOutlined style={{ color: '#ff4d4f' }} />}
-            title="Erreur"
+            title={t('Erreur')}
             subTitle={message}
             extra={
               <a href="/" className="ant-btn ant-btn-primary">
-                Retour à l'accueil
+                {t("Retour à l'accueil")}
               </a>
             }
           />

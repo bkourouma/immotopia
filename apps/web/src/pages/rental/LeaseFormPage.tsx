@@ -11,6 +11,7 @@ import {
   UpdateLeaseRequest,
   RentalLease
 } from '../../services/rental-service';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -39,10 +40,10 @@ export const LeaseFormPage: React.FC = () => {
       if (response.success) {
         setLease(response.data);
       } else {
-        setError('Erreur lors du chargement du bail');
+        setError(t('Erreur lors du chargement du bail'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement du bail');
+      setError(err.response?.data?.message || t('Erreur lors du chargement du bail'));
       console.error('Error loading lease:', err);
     } finally {
       setLoading(false);
@@ -72,7 +73,7 @@ export const LeaseFormPage: React.FC = () => {
           <div style={{ textAlign: 'center', padding: '48px 0' }}>
             <Spin size="large" />
             <div style={{ marginTop: 16 }}>
-              <Text>Chargement du bail...</Text>
+              <Text>{t('Chargement du bail...')}</Text>
             </div>
           </div>
         </Card>
@@ -85,15 +86,22 @@ export const LeaseFormPage: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div>
           <Title level={2} style={{ margin: 0 }}>
-            {leaseId ? 'Modifier le bail' : 'Nouveau bail'}
+            {leaseId ? t('Modifier le bail') : t('Nouveau bail')}
           </Title>
           <Text type="secondary">
-            {leaseId ? 'Modifiez les informations du bail' : 'Créez un nouveau bail de location'}
+            {leaseId ? t('Modifiez les informations du bail') : t('Créez un nouveau bail de location')}
           </Text>
         </div>
 
         {error && (
-          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
+          <Alert
+            message={t('Erreur')}
+            description={error}
+            type="error"
+            showIcon
+            closable
+            onClose={() => setError(null)}
+          />
         )}
 
         {leaseId ? (

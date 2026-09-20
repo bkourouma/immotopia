@@ -1,4 +1,5 @@
 import React from 'react';
+import { t } from '../i18n/t';
 
 interface PasswordStrengthProps {
   password: string;
@@ -23,11 +24,11 @@ export const PasswordStrength: React.FC<PasswordStrengthProps> = ({ password }) 
 
     const levels = [
       { level: 0, label: '', color: 'bg-gray-200' },
-      { level: 1, label: 'Très faible', color: 'bg-red-500' },
-      { level: 2, label: 'Faible', color: 'bg-orange-500' },
-      { level: 3, label: 'Moyen', color: 'bg-yellow-500' },
-      { level: 4, label: 'Fort', color: 'bg-green-500' },
-      { level: 5, label: 'Très fort', color: 'bg-green-600' }
+      { level: 1, label: t('Très faible'), color: 'bg-red-500' },
+      { level: 2, label: t('Faible'), color: 'bg-orange-500' },
+      { level: 3, label: t('Moyen'), color: 'bg-yellow-500' },
+      { level: 4, label: t('Fort'), color: 'bg-green-500' },
+      { level: 5, label: t('Très fort'), color: 'bg-green-600' }
     ];
 
     return levels[strength] || levels[0];
@@ -49,15 +50,14 @@ export const PasswordStrength: React.FC<PasswordStrengthProps> = ({ password }) 
           />
         </div>
         {strength.label && (
-          <span className={`text-sm font-medium ${strength.color.replace('bg-', 'text-')}`}>
-            {strength.label}
-          </span>
+          <span className={`text-sm font-medium ${strength.color.replace('bg-', 'text-')}`}>{strength.label}</span>
         )}
       </div>
       <div className="mt-1 text-xs text-gray-600">
-        Le mot de passe doit contenir au moins 8 caractères, une majuscule, une minuscule, un chiffre et un caractère spécial.
+        {t(
+          'Le mot de passe doit contenir au moins 8 caractères, une majuscule, une minuscule, un chiffre et un caractère spécial.'
+        )}
       </div>
     </div>
   );
 };
-

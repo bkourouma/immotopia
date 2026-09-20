@@ -12,7 +12,9 @@ import {
 } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 interface DashboardData {
@@ -72,17 +74,17 @@ export default function OwnerDashboard() {
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
-        setError('Erreur lors du chargement du tableau de bord');
+        setError(t('Erreur lors du chargement du tableau de bord'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement du tableau de bord');
+      setError(err.response?.data?.message || t('Erreur lors du chargement du tableau de bord'));
     } finally {
       setLoading(false);
     }
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', {
+    return new Intl.NumberFormat(activeLocale(), {
       style: 'currency',
       currency: 'XOF',
       minimumFractionDigits: 0
@@ -91,7 +93,7 @@ export default function OwnerDashboard() {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('fr-FR', {
+    return date.toLocaleDateString(activeLocale(), {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -100,10 +102,10 @@ export default function OwnerDashboard() {
 
   const getPaymentMethodLabel = (method: string) => {
     const methods: Record<string, string> = {
-      CASH: 'Espèces',
-      BANK_TRANSFER: 'Virement bancaire',
-      CHECK: 'Chèque',
-      MOBILE_MONEY: 'Mobile Money',
+      CASH: t('Espèces'),
+      BANK_TRANSFER: t('Virement bancaire'),
+      CHECK: t('Chèque'),
+      MOBILE_MONEY: t('Mobile Money'),
       CARD: 'Carte',
       OTHER: 'Autre'
     };
@@ -112,12 +114,12 @@ export default function OwnerDashboard() {
 
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
-      DUE: { label: 'Échéance', color: 'warning' },
-      OVERDUE: { label: 'En retard', color: 'error' },
-      PAID: { label: 'Payé', color: 'success' },
-      DECLARED: { label: 'Déclaré', color: 'default' },
-      IN_PROGRESS: { label: 'En cours', color: 'processing' },
-      RESOLVED: { label: 'Résolu', color: 'success' }
+      DUE: { label: t('Échéance'), color: 'warning' },
+      OVERDUE: { label: t('En retard'), color: 'error' },
+      PAID: { label: t('Payé'), color: 'success' },
+      DECLARED: { label: t('Déclaré'), color: 'default' },
+      IN_PROGRESS: { label: t('En cours'), color: 'processing' },
+      RESOLVED: { label: t('Résolu'), color: 'success' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -126,17 +128,17 @@ export default function OwnerDashboard() {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement du tableau de bord..." />
+        <Spin size="large" tip={t('Chargement du tableau de bord...')} />
       </div>
     );
   }
 
   if (error) {
-    return <Alert message="Erreur" description={error} type="error" showIcon />;
+    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   if (!data) {
-    return <Empty description="Aucune donnée disponible" />;
+    return <Empty description={t('Aucune donnée disponible')} />;
   }
 
   return (
@@ -144,16 +146,16 @@ export default function OwnerDashboard() {
       {/* Page Header */}
       <div className="it-toolbar">
         <div>
-          <Title level={2}>Tableau de bord</Title>
-          <Text type="secondary">Vue d'ensemble de votre portefeuille immobilier</Text>
+          <Title level={2}>{t('Tableau de bord')}</Title>
+          <Text type="secondary">{t("Vue d'ensemble de votre portefeuille immobilier")}</Text>
         </div>
         <Button
           icon={<SyncOutlined />}
           onClick={loadDashboard}
           loading={loading}
-          aria-label="Rafraîchir le tableau de bord"
+          aria-label={t('Rafraîchir le tableau de bord')}
         >
-          Actualiser
+          {t('Actualiser')}
         </Button>
       </div>
 
@@ -171,7 +173,7 @@ export default function OwnerDashboard() {
         <Col xs={24} sm={12} xl={6}>
           <StatCard
             compact
-            title="Total propriétés"
+            title={t('Total propriétés')}
             value={data.portfolioSummary.total}
             icon={<BankOutlined style={{ color: '#1890ff' }} />}
             valueStyle={{ fontSize: 24 }}
@@ -180,7 +182,7 @@ export default function OwnerDashboard() {
         <Col xs={24} sm={12} xl={6}>
           <StatCard
             compact
-            title="Louées"
+            title={t('Louées')}
             value={data.portfolioSummary.rented}
             icon={<HomeOutlined style={{ color: '#52c41a' }} />}
             valueStyle={{ fontSize: 24, color: '#52c41a' }}
@@ -189,7 +191,7 @@ export default function OwnerDashboard() {
         <Col xs={24} sm={12} xl={6}>
           <StatCard
             compact
-            title="Disponibles"
+            title={t('Disponibles')}
             value={data.portfolioSummary.available}
             icon={<HomeOutlined style={{ color: '#1890ff' }} />}
             valueStyle={{ fontSize: 24, color: '#1890ff' }}
@@ -198,7 +200,7 @@ export default function OwnerDashboard() {
         <Col xs={24} sm={12} xl={6}>
           <StatCard
             compact
-            title="En maintenance"
+            title={t('En maintenance')}
             value={data.portfolioSummary.inMaintenance}
             icon={<ToolOutlined style={{ color: '#faad14' }} />}
             valueStyle={{ fontSize: 24, color: '#faad14' }}
@@ -207,7 +209,7 @@ export default function OwnerDashboard() {
         <Col xs={24} sm={12} xl={6}>
           <StatCard
             compact
-            title="Taux d'occupation"
+            title={t("Taux d'occupation")}
             value={data.occupancyRate.toFixed(1)}
             suffix="%"
             icon={<PercentageOutlined style={{ color: '#1890ff' }} />}
@@ -217,7 +219,7 @@ export default function OwnerDashboard() {
         <Col xs={24} sm={12} xl={6}>
           <StatCard
             compact
-            title="Revenus ce mois"
+            title={t('Revenus ce mois')}
             value={formatCurrency(data.revenueMetrics.currentMonth)}
             icon={<DollarOutlined style={{ color: '#52c41a' }} />}
             valueStyle={{ color: '#52c41a' }}
@@ -226,7 +228,7 @@ export default function OwnerDashboard() {
         <Col xs={24} sm={12} xl={6}>
           <StatCard
             compact
-            title="Revenus cette année"
+            title={t('Revenus cette année')}
             value={formatCurrency(data.revenueMetrics.currentYear)}
             icon={<DollarOutlined style={{ color: '#1890ff' }} />}
             valueStyle={{ color: '#1890ff' }}
@@ -235,7 +237,7 @@ export default function OwnerDashboard() {
         <Col xs={24} sm={12} xl={6}>
           <StatCard
             compact
-            title="Revenus mois dernier"
+            title={t('Revenus mois dernier')}
             value={formatCurrency(data.revenueMetrics.lastMonth)}
             icon={<DollarOutlined style={{ color: '#722ed1' }} />}
           />
@@ -249,12 +251,12 @@ export default function OwnerDashboard() {
           <Card
             title={
               <>
-                <CalendarOutlined /> Prochains paiements
+                <CalendarOutlined /> {t('Prochains paiements')}
               </>
             }
             extra={
               <Text type="secondary" style={{ fontSize: 12 }}>
-                5 prochaines échéances
+                {t('5 prochaines échéances')}
               </Text>
             }
           >
@@ -275,7 +277,7 @@ export default function OwnerDashboard() {
                           <Text type="secondary">{payment.propertyAddress}</Text>
                           <Text type="secondary">Locataire: {payment.tenantName}</Text>
                           <Text type="secondary">
-                            Période: {payment.period} - {formatDate(payment.dueDate)}
+                            {t('Période:')} {payment.period} - {formatDate(payment.dueDate)}
                           </Text>
                         </Space>
                       }
@@ -284,7 +286,7 @@ export default function OwnerDashboard() {
                 )}
               />
             ) : (
-              <Empty description="Aucune échéance à venir" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              <Empty description={t('Aucune échéance à venir')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
             )}
           </Card>
         </Col>
@@ -294,7 +296,7 @@ export default function OwnerDashboard() {
           <Card
             title={
               <>
-                <WalletOutlined /> Paiements récents
+                <WalletOutlined /> {t('Paiements récents')}
               </>
             }
             extra={
@@ -327,7 +329,7 @@ export default function OwnerDashboard() {
                 )}
               />
             ) : (
-              <Empty description="Aucun paiement récent" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              <Empty description={t('Aucun paiement récent')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
             )}
           </Card>
         </Col>
@@ -339,7 +341,7 @@ export default function OwnerDashboard() {
           <Card
             title={
               <>
-                <ToolOutlined /> Tickets de maintenance récents
+                <ToolOutlined /> {t('Tickets de maintenance récents')}
               </>
             }
             extra={
@@ -371,7 +373,7 @@ export default function OwnerDashboard() {
                 )}
               />
             ) : (
-              <Empty description="Aucun ticket récent" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              <Empty description={t('Aucun ticket récent')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
             )}
           </Card>
         </Col>

@@ -1,3 +1,4 @@
+import { t } from '../i18n/t';
 /**
  * Contrat gelé de la frontière réseau — lot 4, quatrième sous-lot : les
  * tâcherons (PRD E8, besoin P10).
@@ -60,8 +61,8 @@ export type ContractorDocumentStatus = 'DRAFT' | 'VALIDATED' | 'VOIDED';
 
 export const CONTRACTOR_DOCUMENT_STATUS_LABELS: Record<ContractorDocumentStatus, string> = {
   DRAFT: 'Brouillon',
-  VALIDATED: 'Validée',
-  VOIDED: 'Annulée'
+  VALIDATED: t('Validée'),
+  VOIDED: t('Annulée')
 };
 
 // ---------------------------------------------------------------------------

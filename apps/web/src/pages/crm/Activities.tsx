@@ -32,6 +32,7 @@ import {
 import { listMembers, Member } from '../../services/membership-service';
 import { CrmActivityType } from '../../types/crm-types';
 import dayjs, { Dayjs } from 'dayjs';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -86,10 +87,10 @@ export const Activities: React.FC = () => {
         setActivities(response.activities);
         setPagination(response.pagination);
       } else {
-        setError('Erreur lors du chargement des activités');
+        setError(t('Erreur lors du chargement des activités'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des activités');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des activités'));
     } finally {
       setLoading(false);
     }
@@ -163,7 +164,7 @@ export const Activities: React.FC = () => {
       dealId: dealId
     });
     setShowAdvancedFilters(false);
-    message.info('Filtres réinitialisés');
+    message.info(t('Filtres réinitialisés'));
   };
 
   const typeLabels: Record<string, string> = {
@@ -172,9 +173,9 @@ export const Activities: React.FC = () => {
     SMS: 'SMS',
     WHATSAPP: 'WhatsApp',
     VISIT: 'Visite',
-    MEETING: 'Réunion',
+    MEETING: t('Réunion'),
     NOTE: 'Note',
-    TASK: 'Tâche'
+    TASK: t('Tâche')
   };
 
   const activityTypes = ['CALL', 'EMAIL', 'SMS', 'WHATSAPP', 'VISIT', 'MEETING', 'NOTE', 'TASK'];
@@ -185,19 +186,19 @@ export const Activities: React.FC = () => {
         <Row justify="space-between" align="middle" gutter={[16, 16]}>
           <Col xs={24} sm={24} md={12}>
             <Title level={2} style={{ margin: 0 }}>
-              Activités
+              {t('Activités')}
             </Title>
-            <Text type="secondary">Suivez toutes les interactions et activités</Text>
+            <Text type="secondary">{t('Suivez toutes les interactions et activités')}</Text>
           </Col>
-          <Col xs={24} sm={24} md={12} style={{ textAlign: 'right' }}>
+          <Col xs={24} sm={24} md={12} style={{ textAlign: 'end' }}>
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)}>
-              Nouvelle activité
+              {t('Nouvelle activité')}
             </Button>
           </Col>
         </Row>
 
         <Modal
-          title="Créer une nouvelle activité"
+          title={t('Créer une nouvelle activité')}
           open={showForm && !!tenantId}
           onCancel={() => setShowForm(false)}
           footer={null}
@@ -215,16 +216,16 @@ export const Activities: React.FC = () => {
         </Modal>
 
         {/* Filters */}
-        <Card title="Filtres" extra={<FilterOutlined />}>
+        <Card title={t('Filtres')} extra={<FilterOutlined />}>
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
             {/* Type Filters */}
             <div>
-              <Text strong style={{ marginRight: 16 }}>
-                Type d'activité:
+              <Text strong style={{ marginInlineEnd: 16 }}>
+                {t("Type d'activité:")}
               </Text>
               <Space wrap>
                 <Button type={!filters.type ? 'primary' : 'default'} onClick={() => handleTypeFilter('')}>
-                  Tous les types
+                  {t('Tous les types')}
                 </Button>
                 {activityTypes.map(type => (
                   <Button
@@ -243,11 +244,11 @@ export const Activities: React.FC = () => {
             {/* Advanced Filters */}
             <Space wrap>
               <Button icon={<FilterOutlined />} onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}>
-                {showAdvancedFilters ? 'Masquer' : 'Afficher'} les filtres avancés
+                {showAdvancedFilters ? t('Masquer') : t('Afficher')} {t('les filtres avancés')}
               </Button>
               {(filters.contactId || filters.createdBy || filters.startDate || filters.endDate) && (
                 <Button icon={<CloseOutlined />} onClick={clearFilters}>
-                  Réinitialiser
+                  {t('Réinitialiser')}
                 </Button>
               )}
             </Space>
@@ -259,11 +260,11 @@ export const Activities: React.FC = () => {
                   {/* Contact Filter */}
                   <Col xs={24} sm={12} md={6}>
                     <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                      Contact
+                      {t('Contact')}
                     </Text>
                     <Select
                       style={{ width: '100%' }}
-                      placeholder="Tous les contacts"
+                      placeholder={t('Tous les contacts')}
                       allowClear
                       value={filters.contactId || undefined}
                       onChange={value => handleContactFilter(value || '')}
@@ -281,11 +282,11 @@ export const Activities: React.FC = () => {
                   {/* Collaborator Filter */}
                   <Col xs={24} sm={12} md={6}>
                     <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                      Collaborateur
+                      {t('Collaborateur')}
                     </Text>
                     <Select
                       style={{ width: '100%' }}
-                      placeholder="Tous les collaborateurs"
+                      placeholder={t('Tous les collaborateurs')}
                       allowClear
                       value={filters.createdBy || undefined}
                       onChange={value => handleCollaboratorFilter(value || '')}
@@ -303,12 +304,12 @@ export const Activities: React.FC = () => {
                   {/* Date Range Filter */}
                   <Col xs={24} sm={12} md={12}>
                     <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                      Période
+                      {t('Période')}
                     </Text>
                     <RangePicker
                       style={{ width: '100%' }}
                       format="DD/MM/YYYY"
-                      placeholder={['Date début', 'Date fin']}
+                      placeholder={[t('Date début'), t('Date fin')]}
                       value={
                         filters.startDate && filters.endDate ? [dayjs(filters.startDate), dayjs(filters.endDate)] : null
                       }
@@ -323,7 +324,14 @@ export const Activities: React.FC = () => {
 
         {/* Activities Timeline */}
         {error && (
-          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
+          <Alert
+            message={t('Erreur')}
+            description={error}
+            type="error"
+            showIcon
+            closable
+            onClose={() => setError(null)}
+          />
         )}
 
         <Card>
@@ -331,7 +339,7 @@ export const Activities: React.FC = () => {
             <div style={{ textAlign: 'center', padding: '48px 0' }}>
               <Spin size="large" />
               <div style={{ marginTop: 16 }}>
-                <Text>Chargement des activités...</Text>
+                <Text>{t('Chargement des activités...')}</Text>
               </div>
             </div>
           ) : activities.length === 0 ? (
@@ -340,13 +348,13 @@ export const Activities: React.FC = () => {
               imageStyle={{ height: 64 }}
               description={
                 <Space direction="vertical" size="small">
-                  <Text strong>Aucune activité trouvée</Text>
-                  <Text type="secondary">Commencez par créer votre première activité.</Text>
+                  <Text strong>{t('Aucune activité trouvée')}</Text>
+                  <Text type="secondary">{t('Commencez par créer votre première activité.')}</Text>
                 </Space>
               }
             >
               <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)}>
-                Créer une activité
+                {t('Créer une activité')}
               </Button>
             </Empty>
           ) : (
@@ -360,11 +368,12 @@ export const Activities: React.FC = () => {
             <Row justify="space-between" align="middle" gutter={[16, 16]}>
               <Col xs={24} sm={12}>
                 <Text type="secondary">
-                  Affichage de {(pagination.page - 1) * pagination.limit + 1} à{' '}
-                  {Math.min(pagination.page * pagination.limit, pagination.total)} sur {pagination.total} activités
+                  {t('Affichage de')} {(pagination.page - 1) * pagination.limit + 1} à{' '}
+                  {Math.min(pagination.page * pagination.limit, pagination.total)} sur {pagination.total}{' '}
+                  {t('activités')}
                 </Text>
               </Col>
-              <Col xs={24} sm={12} style={{ textAlign: 'right' }}>
+              <Col xs={24} sm={12} style={{ textAlign: 'end' }}>
                 <Pagination
                   current={pagination.page}
                   total={pagination.total}

@@ -42,16 +42,17 @@ import {
   UpdateSyndicateLotRequest
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
 
 const lotTypeOptions: Array<{ label: string; value: LotType }> = [
-  { label: 'Appartement', value: 'APARTMENT' },
-  { label: 'Parking', value: 'PARKING' },
-  { label: 'Cave', value: 'CELLAR' },
-  { label: 'Bureau', value: 'OFFICE' },
-  { label: 'Commerce', value: 'COMMERCIAL' },
-  { label: 'Autre', value: 'OTHER' }
+  { label: t('Appartement'), value: 'APARTMENT' },
+  { label: t('Parking'), value: 'PARKING' },
+  { label: t('Cave'), value: 'CELLAR' },
+  { label: t('Bureau'), value: 'OFFICE' },
+  { label: t('Commerce'), value: 'COMMERCIAL' },
+  { label: t('Autre'), value: 'OTHER' }
 ];
 
 type PropertySelectOption = {
@@ -78,7 +79,7 @@ type PropertyLabelSource = {
 
 function buildPropertyNomenclatureLabel(property: PropertyLabelSource): string {
   const ownerLabel = property.owner?.fullName?.trim() || '';
-  const title = property.title?.trim() || property.internalReference || property.id || 'Sans libellé';
+  const title = property.title?.trim() || property.internalReference || property.id || t('Sans libellé');
   const buildingPart = property.containerParent?.title ? ` ( ${property.containerParent.title} )` : '';
   const titleWithBuilding = title + buildingPart;
   return ownerLabel ? `${ownerLabel} - ${titleWithBuilding}` : titleWithBuilding;
@@ -202,7 +203,7 @@ export const SyndicLots: React.FC = () => {
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
       setLoading(false);
-      setError('Paramètres lots manquants');
+      setError(t('Paramètres lots manquants'));
       return;
     }
     void loadData();
@@ -237,7 +238,7 @@ export const SyndicLots: React.FC = () => {
       setLots(lotData);
       await loadReferenceData(effectiveTenantId);
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Impossible de charger les lots');
+      setError(err.response?.data?.error || t('Impossible de charger les lots'));
     } finally {
       setLoading(false);
     }
@@ -293,7 +294,7 @@ export const SyndicLots: React.FC = () => {
       setAllPropertyOptions([]);
       setLotPropertyOptions([]);
       setImportPropertyOptions([]);
-      warnings.push('Liste des biens indisponible');
+      warnings.push(t('Liste des biens indisponible'));
     }
 
     if (contactsResult.status === 'fulfilled') {
@@ -308,7 +309,7 @@ export const SyndicLots: React.FC = () => {
       );
     } else {
       setOwnerOptions([]);
-      warnings.push('Liste des contacts CRM indisponible');
+      warnings.push(t('Liste des contacts CRM indisponible'));
     }
 
     setReferenceWarning(warnings.length > 0 ? warnings.join(' - ') : null);
@@ -399,15 +400,15 @@ export const SyndicLots: React.FC = () => {
           specialShares: values.specialShares ?? null
         };
         await updateSyndicateLot(effectiveTenantId, syndicId, editingLot.id, updatePayload);
-        message.success('Lot mis à jour');
+        message.success(t('Lot mis à jour'));
       } else {
         await createSyndicateLot(effectiveTenantId, syndicId, payload as CreateSyndicateLotRequest);
-        message.success('Lot créé');
+        message.success(t('Lot créé'));
       }
       resetModalState();
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Enregistrement du lot impossible');
+      message.error(err.response?.data?.error || t('Enregistrement du lot impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -421,7 +422,7 @@ export const SyndicLots: React.FC = () => {
     const values = await importForm.validateFields();
     const selectedPropertyIds = values.propertyIds || [];
     if (selectedPropertyIds.length === 0) {
-      message.warning('Sélectionnez au moins une propriété');
+      message.warning(t('Sélectionnez au moins une propriété'));
       return;
     }
 
@@ -432,9 +433,9 @@ export const SyndicLots: React.FC = () => {
       const skippedCount = result.skipped?.length || 0;
 
       if (createdCount > 0) {
-        message.success(`${createdCount} lot(s) importé(s) avec succès`);
+        message.success(t('{{createdCount}} lot(s) importé(s) avec succès', { createdCount: createdCount }));
       } else {
-        message.info(result.message || 'Aucun lot créé');
+        message.info(result.message || t('Aucun lot créé'));
       }
 
       if (skippedCount > 0) {
@@ -442,14 +443,19 @@ export const SyndicLots: React.FC = () => {
           .slice(0, 3)
           .map(item => item.reason)
           .join(' | ');
-        message.warning(`${skippedCount} lot(s) ignoré(s). ${skippedReasons}`);
+        message.warning(
+          t('{{skippedCount}} lot(s) ignoré(s). {{skippedReasons}}', {
+            skippedCount: skippedCount,
+            skippedReasons: skippedReasons
+          })
+        );
       }
 
       setImportOpen(false);
       importForm.resetFields();
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Import des lots impossible');
+      message.error(err.response?.data?.error || t('Import des lots impossible'));
     } finally {
       setImportSubmitting(false);
     }
@@ -470,13 +476,13 @@ export const SyndicLots: React.FC = () => {
         leaseId: values.leaseId || undefined,
         notes: values.notes || undefined
       });
-      message.success('Locataire assigné au lot');
+      message.success(t('Locataire assigné au lot'));
       setTenantOpen(false);
       setTenantLot(null);
       tenantForm.resetFields();
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || 'Assignation du locataire impossible');
+      message.error(err.response?.data?.error || t('Assignation du locataire impossible'));
     } finally {
       setTenantSubmitting(false);
     }
@@ -491,21 +497,22 @@ export const SyndicLots: React.FC = () => {
               icon={<ArrowLeftOutlined />}
               onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
             >
-              Retour à la fiche syndic
+              {t('Retour à la fiche syndic')}
             </Button>
             <Title level={2} style={{ margin: 0 }}>
-              Lots de {syndicate?.name || 'la copropriété'}
+              {t('Lots de')} {syndicate?.name || t('la copropriété')}
             </Title>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Ajoutez les lots et sélectionnez directement un bien existant pour proposer automatiquement le
-              propriétaire.
+              {t(
+                'Ajoutez les lots et sélectionnez directement un bien existant pour proposer automatiquement le propriétaire.'
+              )}
             </Paragraph>
           </Space>
 
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
-            Nouveau lot
+            {t('Nouveau lot')}
           </Button>
-          <Button onClick={openImportModal}>Importer des biens</Button>
+          <Button onClick={openImportModal}>{t('Importer des biens')}</Button>
         </div>
 
         {error ? <Alert type="error" message={error} showIcon /> : null}
@@ -521,13 +528,13 @@ export const SyndicLots: React.FC = () => {
             <Row gutter={[16, 16]}>
               <Col xs={24} md={8}>
                 <Card>
-                  <Statistic title="Nombre de lots" value={lots.length} />
+                  <Statistic title={t('Nombre de lots')} value={lots.length} />
                 </Card>
               </Col>
               <Col xs={24} md={8}>
                 <Card>
                   <Statistic
-                    title="Tantièmes généraux cumulés"
+                    title={t('Tantièmes généraux cumulés')}
                     value={lots.reduce((sum, lot) => sum + lot.generalShares, 0)}
                   />
                 </Card>
@@ -535,7 +542,7 @@ export const SyndicLots: React.FC = () => {
               <Col xs={24} md={8}>
                 <Card>
                   <Statistic
-                    title="Lots avec propriétaire"
+                    title={t('Lots avec propriétaire')}
                     value={lots.filter(lot => Boolean(lot.ownerContactId)).length}
                   />
                 </Card>
@@ -543,7 +550,7 @@ export const SyndicLots: React.FC = () => {
               <Col xs={24} md={8}>
                 <Card>
                   <Statistic
-                    title="Lots avec locataire actif"
+                    title={t('Lots avec locataire actif')}
                     value={
                       lots.filter(lot => (lot.tenantAssignments || []).some(assignment => assignment.isActive)).length
                     }
@@ -552,7 +559,7 @@ export const SyndicLots: React.FC = () => {
               </Col>
             </Row>
 
-            <Card title="Tableau des lots">
+            <Card title={t('Tableau des lots')}>
               <LotTable
                 lots={lots}
                 showMobileHint
@@ -571,30 +578,30 @@ export const SyndicLots: React.FC = () => {
       </Space>
 
       <Modal
-        title={editingLot ? `Modifier le lot ${editingLot.lotNumber}` : 'Créer un lot'}
+        title={editingLot ? t('Modifier le lot {{lotNumber}}', { lotNumber: editingLot.lotNumber }) : t('Créer un lot')}
         open={open}
         onCancel={resetModalState}
         onOk={() => void handleSubmitLot()}
-        okText={editingLot ? 'Enregistrer' : 'Créer le lot'}
-        cancelText="Annuler"
+        okText={editingLot ? t('Enregistrer') : t('Créer le lot')}
+        cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
         <Form form={form} layout="vertical" initialValues={{ lotType: 'APARTMENT' }}>
           <Row gutter={12}>
             <Col xs={24} md={12}>
               <Form.Item
-                label="Numéro de lot"
+                label={t('Numéro de lot')}
                 name="lotNumber"
-                rules={[{ required: true, message: 'Le numéro est obligatoire' }]}
+                rules={[{ required: true, message: t('Le numéro est obligatoire') }]}
               >
                 <Input />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
               <Form.Item
-                label="Type de lot"
+                label={t('Type de lot')}
                 name="lotType"
-                rules={[{ required: true, message: 'Le type est obligatoire' }]}
+                rules={[{ required: true, message: t('Le type est obligatoire') }]}
               >
                 <Select options={lotTypeOptions} />
               </Form.Item>
@@ -604,72 +611,74 @@ export const SyndicLots: React.FC = () => {
           <Row gutter={12}>
             <Col xs={24} md={12}>
               <Form.Item
-                label="Tantièmes généraux"
+                label={t('Tantièmes généraux')}
                 name="generalShares"
-                rules={[{ required: true, message: 'Champ obligatoire' }]}
+                rules={[{ required: true, message: t('Champ obligatoire') }]}
               >
                 <InputNumber min={1} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="Tantièmes spéciaux" name="specialShares">
+              <Form.Item label={t('Tantièmes spéciaux')} name="specialShares">
                 <InputNumber min={1} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
           </Row>
 
-          <Form.Item label="Bien lié" name="propertyId">
+          <Form.Item label={t('Bien lié')} name="propertyId">
             <Select
               allowClear
               showSearch
               optionFilterProp="label"
-              placeholder="Sélectionner un bien existant"
+              placeholder={t('Sélectionner un bien existant')}
               options={lotPropertyOptions}
               onChange={handlePropertyChange}
             />
           </Form.Item>
-          <Form.Item label="Propriétaire CRM" name="ownerContactId">
+          <Form.Item label={t('Propriétaire CRM')} name="ownerContactId">
             <Select
               allowClear
               showSearch
               optionFilterProp="label"
-              placeholder="Sélection automatique si disponible"
+              placeholder={t('Sélection automatique si disponible')}
               options={ownerOptions}
             />
           </Form.Item>
-          <Form.Item label="Propriétaire depuis le" name="ownerSince">
+          <Form.Item label={t('Propriétaire depuis le')} name="ownerSince">
             <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="Importer des lots depuis des propriétés"
+        title={t('Importer des lots depuis des propriétés')}
         open={importOpen}
         onCancel={() => setImportOpen(false)}
         onOk={() => void handleImportLots()}
-        okText="Importer"
-        cancelText="Annuler"
+        okText={t('Importer')}
+        cancelText={t('Annuler')}
         confirmLoading={importSubmitting}
       >
         <Form form={importForm} layout="vertical">
           <Alert
             type="info"
             showIcon
-            message="Règle d'import"
-            description="Si vous sélectionnez un IMMEUBLE, les lots importés seront ses sous-propriétés (appartements/unités). Pour une villa/bureau/commerce, le lot sera la propriété elle-même."
+            message={t("Règle d'import")}
+            description={t(
+              'Si vous sélectionnez un IMMEUBLE, les lots importés seront ses sous-propriétés (appartements/unités). Pour une villa/bureau/commerce, le lot sera la propriété elle-même.'
+            )}
             style={{ marginBottom: 12 }}
           />
           <Form.Item
-            label="Propriétés à importer"
+            label={t('Propriétés à importer')}
             name="propertyIds"
-            rules={[{ required: true, message: 'Sélectionnez au moins une propriété' }]}
+            rules={[{ required: true, message: t('Sélectionnez au moins une propriété') }]}
           >
             <Select
               mode="multiple"
               showSearch
               optionFilterProp="label"
-              placeholder="Sélectionner une ou plusieurs propriétés"
+              placeholder={t('Sélectionner une ou plusieurs propriétés')}
               options={importPropertyOptions.map(option => ({
                 value: option.value,
                 label: option.label
@@ -677,14 +686,18 @@ export const SyndicLots: React.FC = () => {
             />
           </Form.Item>
           <div>
-            <Tag color="blue">Flexible</Tag>
-            <span>Vous pouvez mélanger IMMEUBLE, villa, bureau, commerce, etc.</span>
+            <Tag color="blue">{t('Flexible')}</Tag>
+            <span>{t('Vous pouvez mélanger IMMEUBLE, villa, bureau, commerce, etc.')}</span>
           </div>
         </Form>
       </Modal>
 
       <Modal
-        title={tenantLot ? `Ajouter un locataire - ${tenantLot.lotNumber}` : 'Ajouter un locataire'}
+        title={
+          tenantLot
+            ? t('Ajouter un locataire - {{lotNumber}}', { lotNumber: tenantLot.lotNumber })
+            : t('Ajouter un locataire')
+        }
         open={tenantOpen}
         onCancel={() => {
           setTenantOpen(false);
@@ -692,27 +705,29 @@ export const SyndicLots: React.FC = () => {
           tenantForm.resetFields();
         }}
         onOk={() => void handleAssignTenant()}
-        okText="Assigner"
-        cancelText="Annuler"
+        okText={t('Assigner')}
+        cancelText={t('Annuler')}
         confirmLoading={tenantSubmitting}
       >
         <Form form={tenantForm} layout="vertical">
           <Alert
             type="info"
             showIcon
-            message="Source des locataires"
-            description="Sélectionnez un contact CRM existant. Cette action couvre le cas où le locataire n'a pas encore été rattaché via Gestion locative."
+            message={t('Source des locataires')}
+            description={t(
+              "Sélectionnez un contact CRM existant. Cette action couvre le cas où le locataire n'a pas encore été rattaché via Gestion locative."
+            )}
             style={{ marginBottom: 12 }}
           />
           <Form.Item
-            label="Contact locataire"
+            label={t('Contact locataire')}
             name="tenantId"
-            rules={[{ required: true, message: 'Le contact locataire est obligatoire' }]}
+            rules={[{ required: true, message: t('Le contact locataire est obligatoire') }]}
           >
             <Select
               showSearch
               optionFilterProp="label"
-              placeholder="Sélectionner un contact CRM"
+              placeholder={t('Sélectionner un contact CRM')}
               options={ownerOptions.map(contact => ({
                 value: contact.value,
                 label: contact.label
@@ -722,23 +737,23 @@ export const SyndicLots: React.FC = () => {
           <Row gutter={12}>
             <Col xs={24} md={12}>
               <Form.Item
-                label="Date de début"
+                label={t('Date de début')}
                 name="startDate"
-                rules={[{ required: true, message: 'La date de début est obligatoire' }]}
+                rules={[{ required: true, message: t('La date de début est obligatoire') }]}
               >
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
-              <Form.Item label="Date de fin" name="endDate">
+              <Form.Item label={t('Date de fin')} name="endDate">
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item label="Référence bail (optionnel)" name="leaseId">
+          <Form.Item label={t('Référence bail (optionnel)')} name="leaseId">
             <Input />
           </Form.Item>
-          <Form.Item label="Notes" name="notes">
+          <Form.Item label={t('Notes')} name="notes">
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>

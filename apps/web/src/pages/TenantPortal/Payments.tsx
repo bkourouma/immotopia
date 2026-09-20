@@ -30,7 +30,9 @@ import { getMyStatement } from '../../services/finance-service';
 import type { ThirdPartyMovementLine } from '../../types/finance-types';
 import { natureLabel } from '../finance/Releve';
 import { MoneyValue, StateBlock, SkeletonTable } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 
@@ -101,22 +103,22 @@ function MonReleve() {
     return (
       <StateBlock
         variant="empty"
-        title="Aucun compte rattaché"
-        description="Votre profil n'est pas encore relié à un compte locataire."
+        title={t('Aucun compte rattaché')}
+        description={t("Votre profil n'est pas encore relié à un compte locataire.")}
       />
     );
   }
 
   if (isPending) {
-    return <SkeletonTable rows={6} columns={6} aria-label="Relevé en cours de chargement" />;
+    return <SkeletonTable rows={6} columns={6} aria-label={t('Relevé en cours de chargement')} />;
   }
 
   if (error) {
     return (
       <StateBlock
         variant="error"
-        description="Impossible de charger votre relevé."
-        actions={[{ label: 'Réessayer', onClick: () => void refetch(), primary: true }]}
+        description={t('Impossible de charger votre relevé.')}
+        actions={[{ label: t('Réessayer'), onClick: () => void refetch(), primary: true }]}
       />
     );
   }
@@ -127,18 +129,18 @@ function MonReleve() {
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       <Card>
         <Descriptions column={{ xs: 1, sm: 2 }} size="small">
-          <Descriptions.Item label="Compte">{releve?.label}</Descriptions.Item>
-          <Descriptions.Item label="Solde d'ouverture">
+          <Descriptions.Item label={t('Compte')}>{releve?.label}</Descriptions.Item>
+          <Descriptions.Item label={t("Solde d'ouverture")}>
             <MoneyValue value={releve?.openingBalance} />
           </Descriptions.Item>
-          <Descriptions.Item label="Solde de clôture">
+          <Descriptions.Item label={t('Solde de clôture')}>
             <MoneyValue value={releve?.closingBalance} />
           </Descriptions.Item>
         </Descriptions>
       </Card>
 
       {mouvements.length === 0 ? (
-        <Empty description="Aucun mouvement enregistré." />
+        <Empty description={t('Aucun mouvement enregistré.')} />
       ) : (
         <div style={{ overflowX: 'auto' }}>
           <Table
@@ -150,30 +152,31 @@ function MonReleve() {
               {
                 title: 'Date',
                 key: 'date',
-                render: (_: unknown, m: ThirdPartyMovementLine) => new Date(m.movementDate).toLocaleDateString('fr-FR')
+                render: (_: unknown, m: ThirdPartyMovementLine) =>
+                  new Date(m.movementDate).toLocaleDateString(activeLocale())
               },
               {
                 title: 'Nature',
                 key: 'nature',
                 render: (_: unknown, m: ThirdPartyMovementLine) => natureLabel(m.type)
               },
-              { title: 'Libellé', dataIndex: 'label', key: 'libelle' },
+              { title: t('Libellé'), dataIndex: 'label', key: 'libelle' },
               {
-                title: 'Facturé',
+                title: t('Facturé'),
                 key: 'facture',
-                align: 'right' as const,
+                align: 'end' as const,
                 render: (_: unknown, m: ThirdPartyMovementLine) => <MoneyValue value={m.amountBilled} />
               },
               {
-                title: 'Réglé',
+                title: t('Réglé'),
                 key: 'regle',
-                align: 'right' as const,
+                align: 'end' as const,
                 render: (_: unknown, m: ThirdPartyMovementLine) => <MoneyValue value={m.amountSettled} />
               },
               {
-                title: 'Solde après',
+                title: t('Solde après'),
                 key: 'solde',
-                align: 'right' as const,
+                align: 'end' as const,
                 render: (_: unknown, m: ThirdPartyMovementLine) => <MoneyValue value={m.balanceAfter} />
               }
             ]}
@@ -242,17 +245,17 @@ export default function TenantPayments() {
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
-        setError('Erreur lors du chargement des échéances');
+        setError(t('Erreur lors du chargement des échéances'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des échéances');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des échéances'));
     } finally {
       setLoading(false);
     }
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', {
+    return new Intl.NumberFormat(activeLocale(), {
       style: 'currency',
       currency: 'XOF',
       minimumFractionDigits: 0
@@ -265,12 +268,12 @@ export default function TenantPayments() {
 
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
-      PAID: { label: 'Payé', color: 'success' },
-      DUE: { label: 'Dû', color: 'warning' },
-      OVERDUE: { label: 'En retard', color: 'error' },
-      PARTIAL: { label: 'Partiel', color: 'processing' },
-      DRAFT: { label: 'Brouillon', color: 'default' },
-      CANCELED: { label: 'Annulé', color: 'default' }
+      PAID: { label: t('Payé'), color: 'success' },
+      DUE: { label: t('Dû'), color: 'warning' },
+      OVERDUE: { label: t('En retard'), color: 'error' },
+      PARTIAL: { label: t('Partiel'), color: 'processing' },
+      DRAFT: { label: t('Brouillon'), color: 'default' },
+      CANCELED: { label: t('Annulé'), color: 'default' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -318,10 +321,10 @@ export default function TenantPayments() {
       if (response.data?.success && response.data?.data) {
         setPaymentHistoryData(response.data.data);
       } else {
-        setPaymentHistoryError("Erreur lors du chargement de l'historique");
+        setPaymentHistoryError(t("Erreur lors du chargement de l'historique"));
       }
     } catch (err: any) {
-      setPaymentHistoryError(err.response?.data?.message || "Erreur lors du chargement de l'historique");
+      setPaymentHistoryError(err.response?.data?.message || t("Erreur lors du chargement de l'historique"));
     } finally {
       setPaymentHistoryLoading(false);
     }
@@ -369,11 +372,11 @@ export default function TenantPayments() {
 
   const getPaymentMethodLabel = (method: string) => {
     const labels: Record<string, string> = {
-      CASH: 'Espèces',
-      BANK_TRANSFER: 'Virement bancaire',
-      MOBILE_MONEY: 'Mobile Money',
-      CHECK: 'Chèque',
-      CARD: 'Carte bancaire',
+      CASH: t('Espèces'),
+      BANK_TRANSFER: t('Virement bancaire'),
+      MOBILE_MONEY: t('Mobile Money'),
+      CHECK: t('Chèque'),
+      CARD: t('Carte bancaire'),
       OTHER: 'Autre'
     };
     return labels[method] || method;
@@ -388,14 +391,14 @@ export default function TenantPayments() {
 
   const columns = [
     {
-      title: 'Période',
+      title: t('Période'),
       dataIndex: 'period',
       key: 'period',
       width: 110,
       render: (period: string) => <Text strong>{period}</Text>
     },
     {
-      title: "Date d'échéance",
+      title: t("Date d'échéance"),
       dataIndex: 'dueDate',
       key: 'dueDate',
       width: 160,
@@ -408,7 +411,7 @@ export default function TenantPayments() {
       sorter: (a: InstallmentItem, b: InstallmentItem) => dayjs(a.dueDate).unix() - dayjs(b.dueDate).unix()
     },
     {
-      title: 'Montant total',
+      title: t('Montant total'),
       dataIndex: 'amount',
       key: 'amount',
       width: 150,
@@ -416,7 +419,7 @@ export default function TenantPayments() {
       sorter: (a: InstallmentItem, b: InstallmentItem) => a.amount - b.amount
     },
     {
-      title: 'Payé',
+      title: t('Payé'),
       dataIndex: 'paid',
       key: 'paid',
       width: 130,
@@ -424,7 +427,7 @@ export default function TenantPayments() {
       sorter: (a: InstallmentItem, b: InstallmentItem) => a.paid - b.paid
     },
     {
-      title: 'Solde',
+      title: t('Solde'),
       dataIndex: 'balance',
       key: 'balance',
       width: 140,
@@ -432,14 +435,14 @@ export default function TenantPayments() {
       sorter: (a: InstallmentItem, b: InstallmentItem) => a.balance - b.balance
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
       width: 120,
       render: (status: string) => getStatusTag(status)
     },
     {
-      title: 'Actions',
+      title: t('Actions'),
       key: 'actions',
       width: 190,
       render: (_: any, record: InstallmentItem) => (
@@ -454,11 +457,11 @@ export default function TenantPayments() {
                 setDeclarationModalVisible(true);
               }}
             >
-              Payer
+              {t('Payer')}
             </Button>
           )}
           <Button type="link" icon={<EyeOutlined />} onClick={() => handleViewDetails(record.id)}>
-            Détails
+            {t('Détails')}
           </Button>
         </Space>
       )
@@ -468,13 +471,13 @@ export default function TenantPayments() {
   if (loading && !data) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement des échéances..." />
+        <Spin size="large" tip={t('Chargement des échéances...')} />
       </div>
     );
   }
 
   if (error && !data) {
-    return <Alert message="Erreur" description={error} type="error" showIcon />;
+    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   return (
@@ -493,9 +496,9 @@ export default function TenantPayments() {
       >
         <div style={{ minWidth: 0 }}>
           <Title level={2} style={{ marginBottom: 4 }}>
-            Paiements et échéances
+            {t('Paiements et échéances')}
           </Title>
-          <Text type="secondary">Suivez vos échéances et l'historique de vos paiements</Text>
+          <Text type="secondary">{t("Suivez vos échéances et l'historique de vos paiements")}</Text>
         </div>
         <Button
           type="primary"
@@ -505,7 +508,7 @@ export default function TenantPayments() {
             setDeclarationModalVisible(true);
           }}
         >
-          Déclarer un paiement
+          {t('Déclarer un paiement')}
         </Button>
       </div>
 
@@ -514,13 +517,13 @@ export default function TenantPayments() {
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} lg={6}>
             <Card>
-              <Statistic title="Total échéances" value={data.summary.total} prefix={<DollarOutlined />} />
+              <Statistic title={t('Total échéances')} value={data.summary.total} prefix={<DollarOutlined />} />
             </Card>
           </Col>
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title="Payées"
+                title={t('Payées')}
                 value={data.summary.paid}
                 valueStyle={{ color: '#3f8600' }}
                 prefix={<DollarOutlined />}
@@ -530,7 +533,7 @@ export default function TenantPayments() {
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title="En attente"
+                title={t('En attente')}
                 value={data.summary.due}
                 valueStyle={{ color: '#faad14' }}
                 prefix={<DollarOutlined />}
@@ -540,7 +543,7 @@ export default function TenantPayments() {
           <Col xs={24} sm={12} lg={6}>
             <Card>
               <Statistic
-                title="En retard"
+                title={t('En retard')}
                 value={data.summary.overdue}
                 valueStyle={{ color: '#cf1322' }}
                 prefix={<DollarOutlined />}
@@ -555,23 +558,23 @@ export default function TenantPayments() {
         <div className="it-toolbar__actions">
           <Space>
             <FilterOutlined />
-            <Text strong>Filtres :</Text>
+            <Text strong>{t('Filtres :')}</Text>
           </Space>
           <Select
-            placeholder="Statut"
+            placeholder={t('Statut')}
             allowClear
             style={{ width: 150 }}
             value={statusFilter}
             onChange={value => setStatusFilter(value)}
           >
-            <Select.Option value="PAID">Payé</Select.Option>
-            <Select.Option value="DUE">Dû</Select.Option>
-            <Select.Option value="OVERDUE">En retard</Select.Option>
-            <Select.Option value="PARTIAL">Partiel</Select.Option>
-            <Select.Option value="DRAFT">Brouillon</Select.Option>
+            <Select.Option value="PAID">{t('Payé')}</Select.Option>
+            <Select.Option value="DUE">{t('Dû')}</Select.Option>
+            <Select.Option value="OVERDUE">{t('En retard')}</Select.Option>
+            <Select.Option value="PARTIAL">{t('Partiel')}</Select.Option>
+            <Select.Option value="DRAFT">{t('Brouillon')}</Select.Option>
           </Select>
           <RangePicker
-            placeholder={['Date début', 'Date fin']}
+            placeholder={[t('Date début'), t('Date fin')]}
             value={dateRange}
             onChange={dates => setDateRange(dates as [dayjs.Dayjs, dayjs.Dayjs] | null)}
             format="DD/MM/YYYY"
@@ -583,7 +586,7 @@ export default function TenantPayments() {
                 setDateRange(null);
               }}
             >
-              Réinitialiser
+              {t('Réinitialiser')}
             </Button>
           )}
         </div>
@@ -595,12 +598,12 @@ export default function TenantPayments() {
         items={[
           {
             key: 'installments',
-            label: 'Échéances',
+            label: t('Échéances'),
             children: (
               <Card
                 title={
                   <>
-                    <DollarOutlined /> Liste des échéances
+                    <DollarOutlined /> {t('Liste des échéances')}
                   </>
                 }
               >
@@ -618,20 +621,20 @@ export default function TenantPayments() {
                         pageSize: pagination.pageSize,
                         total: data.pagination.total,
                         showSizeChanger: true,
-                        showTotal: total => `Total: ${total} échéances`
+                        showTotal: total => t('Total: {{total}} échéances', { total: total })
                       }}
                       onChange={handleTableChange}
                     />
                   </div>
                 ) : (
-                  <Empty description="Aucune échéance trouvée" />
+                  <Empty description={t('Aucune échéance trouvée')} />
                 )}
               </Card>
             )
           },
           {
             key: 'payments',
-            label: 'Historique des paiements',
+            label: t('Historique des paiements'),
             children: (
               <Space direction="vertical" size="large" style={{ width: '100%' }}>
                 {/* Payment History Filters (T075) */}
@@ -639,24 +642,24 @@ export default function TenantPayments() {
                   <div className="it-toolbar__actions">
                     <Space>
                       <FilterOutlined />
-                      <Text strong>Filtres :</Text>
+                      <Text strong>{t('Filtres :')}</Text>
                     </Space>
                     <Select
-                      placeholder="Méthode de paiement"
+                      placeholder={t('Méthode de paiement')}
                       allowClear
                       style={{ width: 200 }}
                       value={paymentHistoryFilters.method}
                       onChange={value => setPaymentHistoryFilters({ ...paymentHistoryFilters, method: value })}
                     >
-                      <Select.Option value="CASH">Espèces</Select.Option>
-                      <Select.Option value="BANK_TRANSFER">Virement bancaire</Select.Option>
-                      <Select.Option value="MOBILE_MONEY">Mobile Money</Select.Option>
-                      <Select.Option value="CHECK">Chèque</Select.Option>
-                      <Select.Option value="CARD">Carte bancaire</Select.Option>
-                      <Select.Option value="OTHER">Autre</Select.Option>
+                      <Select.Option value="CASH">{t('Espèces')}</Select.Option>
+                      <Select.Option value="BANK_TRANSFER">{t('Virement bancaire')}</Select.Option>
+                      <Select.Option value="MOBILE_MONEY">{t('Mobile Money')}</Select.Option>
+                      <Select.Option value="CHECK">{t('Chèque')}</Select.Option>
+                      <Select.Option value="CARD">{t('Carte bancaire')}</Select.Option>
+                      <Select.Option value="OTHER">{t('Autre')}</Select.Option>
                     </Select>
                     <RangePicker
-                      placeholder={['Date début', 'Date fin']}
+                      placeholder={[t('Date début'), t('Date fin')]}
                       onChange={dates => {
                         if (dates && dates[0] && dates[1]) {
                           setPaymentHistoryFilters({
@@ -680,7 +683,7 @@ export default function TenantPayments() {
                           setPaymentHistoryFilters({});
                         }}
                       >
-                        Réinitialiser
+                        {t('Réinitialiser')}
                       </Button>
                     )}
                   </div>
@@ -690,12 +693,12 @@ export default function TenantPayments() {
                 <Card
                   title={
                     <>
-                      <DollarOutlined /> Historique des paiements
+                      <DollarOutlined /> {t('Historique des paiements')}
                     </>
                   }
                 >
                   {paymentHistoryError ? (
-                    <Alert message="Erreur" description={paymentHistoryError} type="error" showIcon />
+                    <Alert message={t('Erreur')} description={paymentHistoryError} type="error" showIcon />
                   ) : paymentHistoryData && paymentHistoryData.payments.length > 0 ? (
                     <div style={{ overflowX: 'auto' }}>
                       <Table
@@ -713,7 +716,7 @@ export default function TenantPayments() {
                                   {date ? formatDate(date) : '-'}
                                   {record.isDeclaration && (
                                     <Text type="secondary" style={{ fontSize: 11 }}>
-                                      (déclaration)
+                                      {t('(déclaration)')}
                                     </Text>
                                   )}
                                 </Space>
@@ -735,13 +738,13 @@ export default function TenantPayments() {
                             sorter: (a: any, b: any) => a.amount - b.amount
                           },
                           {
-                            title: 'Méthode',
+                            title: t('Méthode'),
                             dataIndex: 'method',
                             key: 'method',
                             render: (method: string) => getPaymentMethodLabel(method)
                           },
                           {
-                            title: 'Référence',
+                            title: t('Référence'),
                             dataIndex: 'reference',
                             key: 'reference',
                             render: (ref: string | null) => ref || '-'
@@ -754,11 +757,11 @@ export default function TenantPayments() {
                               const declStatus = record.declarationStatus || status;
                               const label =
                                 declStatus === 'SUCCESS' || declStatus === 'APPROVED'
-                                  ? 'Réussi'
+                                  ? t('Réussi')
                                   : declStatus === 'PENDING'
-                                    ? 'En attente'
+                                    ? t('En attente')
                                     : declStatus === 'REJECTED'
-                                      ? 'Rejetée'
+                                      ? t('Rejetée')
                                       : status;
                               const color =
                                 declStatus === 'SUCCESS' || declStatus === 'APPROVED'
@@ -772,20 +775,20 @@ export default function TenantPayments() {
                             }
                           },
                           {
-                            title: 'Alloué',
+                            title: t('Alloué'),
                             dataIndex: 'allocatedAmount',
                             key: 'allocated',
                             render: (amount: number) => formatCurrency(amount),
-                            align: 'right' as const
+                            align: 'end' as const
                           },
                           {
-                            title: 'Non alloué',
+                            title: t('Non alloué'),
                             dataIndex: 'unallocatedAmount',
                             key: 'unallocated',
                             render: (amount: number) => (
                               <Text type={amount > 0 ? 'warning' : 'success'}>{formatCurrency(amount)}</Text>
                             ),
-                            align: 'right' as const
+                            align: 'end' as const
                           }
                         ]}
                         dataSource={paymentHistoryData.payments}
@@ -797,26 +800,29 @@ export default function TenantPayments() {
                           total: paymentHistoryData.pagination?.total ?? paymentHistoryData.payments.length,
                           showSizeChanger: true,
                           showTotal: total =>
-                            `Total: ${total} élément${total !== 1 ? 's' : ''} (paiements et déclarations)`
+                            t('Total: {{total}} élément{{value}} (paiements et déclarations)', {
+                              total: total,
+                              value: total !== 1 ? 's' : ''
+                            })
                         }}
                         onChange={handlePaymentHistoryTableChange}
                         expandable={{
                           expandedRowRender: (record: any) => {
                             if (!record.allocations || record.allocations.length === 0) {
-                              return <Text type="secondary">Aucune allocation</Text>;
+                              return <Text type="secondary">{t('Aucune allocation')}</Text>;
                             }
                             return (
                               <Table
                                 columns={[
                                   {
-                                    title: 'Échéance',
+                                    title: t('Échéance'),
                                     dataIndex: ['installment', 'period'],
                                     key: 'period',
                                     render: (period: string | null, row: any) =>
                                       row?.installment?.period ?? period ?? '-'
                                   },
                                   {
-                                    title: "Date d'échéance",
+                                    title: t("Date d'échéance"),
                                     dataIndex: ['installment', 'dueDate'],
                                     key: 'dueDate',
                                     render: (date: string | null, row: any) =>
@@ -825,11 +831,11 @@ export default function TenantPayments() {
                                         : '-'
                                   },
                                   {
-                                    title: 'Montant alloué',
+                                    title: t('Montant alloué'),
                                     dataIndex: 'amount',
                                     key: 'amount',
                                     render: (amount: number) => formatCurrency(amount),
-                                    align: 'right' as const
+                                    align: 'end' as const
                                   }
                                 ]}
                                 dataSource={record.allocations}
@@ -844,7 +850,7 @@ export default function TenantPayments() {
                       />
                     </div>
                   ) : (
-                    <Empty description="Aucun paiement trouvé" />
+                    <Empty description={t('Aucun paiement trouvé')} />
                   )}
                 </Card>
 
@@ -852,7 +858,7 @@ export default function TenantPayments() {
                 {paymentHistoryData && (
                   <Card>
                     <Statistic
-                      title="Total payé (tous les paiements)"
+                      title={t('Total payé (tous les paiements)')}
                       value={paymentHistoryData.totalPaid}
                       prefix={<DollarOutlined />}
                       formatter={value => formatCurrency(Number(value))}
@@ -864,7 +870,7 @@ export default function TenantPayments() {
           },
           {
             key: 'releve',
-            label: 'Mon relevé',
+            label: t('Mon relevé'),
             children: <MonReleve />
           }
         ]}
@@ -872,7 +878,7 @@ export default function TenantPayments() {
 
       {/* Installment Details Modal */}
       <Modal
-        title="Détails de l'échéance"
+        title={t("Détails de l'échéance")}
         open={detailsModalVisible}
         onCancel={handleCloseDetails}
         footer={null}

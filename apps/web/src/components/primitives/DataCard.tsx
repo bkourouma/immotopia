@@ -2,6 +2,7 @@ import React from 'react';
 import { Card, Dropdown, Button } from 'antd';
 import { MoreOutlined } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
+import { t } from '../../i18n/t';
 
 /**
  * `<DataCard>` — une ligne de liste, sur mobile (REFONTE_UI_UX.md §5.1, §6).
@@ -133,7 +134,7 @@ export const DataCard: React.FC<DataCardProps> = ({
             </div>
           )}
         </div>
-        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+        <div style={{ textAlign: 'end', flexShrink: 0 }}>
           {highlight && <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{highlight}</div>}
           {status && <div style={{ marginTop: 'var(--space-1)' }}>{status}</div>}
         </div>
@@ -156,7 +157,7 @@ export const DataCard: React.FC<DataCardProps> = ({
                   margin: 0,
                   color: 'var(--text-primary)',
                   fontSize: 'var(--font-size-sm)',
-                  textAlign: 'right',
+                  textAlign: 'end',
                   minWidth: 0
                 }}
               >
@@ -192,7 +193,7 @@ export const DataCard: React.FC<DataCardProps> = ({
             <Dropdown menu={{ items: secondaryActions }} trigger={['click']} placement="bottomRight">
               {/* `aria-label` explicite : une icône seule n'a pas de nom
                   accessible, et « ⋮ » ne se prononce pas. */}
-              <Button icon={<MoreOutlined />} aria-label="Autres actions" />
+              <Button icon={<MoreOutlined />} aria-label={t('Autres actions')} />
             </Dropdown>
           )}
         </div>

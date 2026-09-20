@@ -39,7 +39,9 @@ import {
 import { getTemplate } from '../../services/property-service';
 import { useAuth } from '../../hooks/useAuth';
 import { getTenantClients, TenantClient } from '../../services/tenant-service';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
 const { Title, Text } = Typography;
 
@@ -196,7 +198,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
     if (numStr === '') return '';
     const num = parseFloat(numStr);
     if (isNaN(num)) return '';
-    return num.toLocaleString('fr-FR', { useGrouping: true, maximumFractionDigits: 0 });
+    return num.toLocaleString(activeLocale(), { useGrouping: true, maximumFractionDigits: 0 });
   };
 
   const parseNumber = (value: string): string => {
@@ -209,7 +211,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
 
     try {
       if (!location && !property) {
-        message.error('La localisation est requise');
+        message.error(t('La localisation est requise'));
         setIsSubmitting(false);
         return;
       }
@@ -259,8 +261,8 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
 
       await onSubmit(submitData);
     } catch (error: any) {
-      setSubmitError(error.response?.data?.error || "Une erreur est survenue lors de l'enregistrement");
-      message.error("Erreur lors de l'enregistrement");
+      setSubmitError(error.response?.data?.error || t("Une erreur est survenue lors de l'enregistrement"));
+      message.error(t("Erreur lors de l'enregistrement"));
     } finally {
       setIsSubmitting(false);
     }
@@ -340,7 +342,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
             label={field.label}
             rules={field.required ? [{ required: true, message: `${field.label} est requis` }] : []}
           >
-            <Select placeholder="Sélectionner...">
+            <Select placeholder={t('Sélectionner...')}>
               {field.validation?.options && Array.isArray(field.validation.options)
                 ? field.validation.options.map((option: string) => (
                     <Select.Option key={option} value={option}>
@@ -386,7 +388,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         {submitError && (
           <Alert
-            message="Erreur"
+            message={t('Erreur')}
             description={submitError}
             type="error"
             showIcon
@@ -396,13 +398,13 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         )}
 
         {/* SECTION 1: IDENTIFICATION */}
-        <Card title="1. Identification">
+        <Card title={t('1. Identification')}>
           {!property && (
             <>
               <Form.Item
-                label="Type de bien"
+                label={t('Type de bien')}
                 name="propertyType"
-                rules={[{ required: true, message: 'Le type de bien est requis' }]}
+                rules={[{ required: true, message: t('Le type de bien est requis') }]}
               >
                 <PropertyTypeSelector
                   selectedType={selectedType}
@@ -412,32 +414,32 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
               </Form.Item>
 
               <Form.Item
-                label="Type de propriété"
+                label={t('Type de propriété')}
                 name="ownershipType"
-                rules={[{ required: true, message: 'Le type de propriété est requis' }]}
+                rules={[{ required: true, message: t('Le type de propriété est requis') }]}
               >
                 <Select>
-                  <Select.Option value={PropertyOwnershipType.TENANT}>Propriété de l'agence</Select.Option>
-                  <Select.Option value={PropertyOwnershipType.PUBLIC}>Propriété privée</Select.Option>
-                  <Select.Option value={PropertyOwnershipType.CLIENT}>Mandat de gestion</Select.Option>
+                  <Select.Option value={PropertyOwnershipType.TENANT}>{t("Propriété de l'agence")}</Select.Option>
+                  <Select.Option value={PropertyOwnershipType.PUBLIC}>{t('Propriété privée')}</Select.Option>
+                  <Select.Option value={PropertyOwnershipType.CLIENT}>{t('Mandat de gestion')}</Select.Option>
                 </Select>
               </Form.Item>
             </>
           )}
 
           {property && (
-            <Form.Item label="Référence interne">
+            <Form.Item label={t('Référence interne')}>
               <Input value={property.internalReference} disabled />
             </Form.Item>
           )}
 
           <Form.Item
-            label="Propriétaire"
+            label={t('Propriétaire')}
             name="ownerUserId"
-            rules={[{ required: true, message: 'Le propriétaire est requis' }]}
+            rules={[{ required: true, message: t('Le propriétaire est requis') }]}
           >
             <Select
-              placeholder={loadingOwners ? 'Chargement...' : 'Sélectionner un propriétaire'}
+              placeholder={loadingOwners ? 'Chargement...' : t('Sélectionner un propriétaire')}
               allowClear
               loading={loadingOwners}
             >
@@ -450,40 +452,48 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
             </Select>
           </Form.Item>
 
-          <Form.Item label="Titre du bien" name="title" rules={[{ required: true, message: 'Le titre est requis' }]}>
-            <Input placeholder="Ex: Appartement 3 pièces à Cocody" />
+          <Form.Item
+            label={t('Titre du bien')}
+            name="title"
+            rules={[{ required: true, message: t('Le titre est requis') }]}
+          >
+            <Input placeholder={t('Ex: Appartement 3 pièces à Cocody')} />
           </Form.Item>
 
           {/* Facultative, comme sur l'écran de création. La colonne est
               `NOT NULL` en base mais sans défaut : la chaîne vide la satisfait. */}
-          <Form.Item label="Description" name="description">
-            <TextArea rows={5} placeholder="Décrivez la propriété (facultatif)..." />
+          <Form.Item label={t('Description')} name="description">
+            <TextArea rows={5} placeholder={t('Décrivez la propriété (facultatif)...')} />
           </Form.Item>
 
           <Row gutter={16}>
             <Col xs={24} sm={12}>
-              <Form.Item label="Statut" name="status" rules={[{ required: true, message: 'Le statut est requis' }]}>
+              <Form.Item
+                label={t('Statut')}
+                name="status"
+                rules={[{ required: true, message: t('Le statut est requis') }]}
+              >
                 <Select>
-                  <Select.Option value={PropertyStatus.DRAFT}>Brouillon</Select.Option>
-                  <Select.Option value={PropertyStatus.AVAILABLE}>Disponible</Select.Option>
-                  <Select.Option value={PropertyStatus.RESERVED}>Réservé</Select.Option>
-                  <Select.Option value={PropertyStatus.UNDER_OFFER}>Sous offre</Select.Option>
-                  <Select.Option value={PropertyStatus.SOLD}>Vendu</Select.Option>
-                  <Select.Option value={PropertyStatus.RENTED}>Loué</Select.Option>
-                  <Select.Option value={PropertyStatus.ARCHIVED}>Archivé</Select.Option>
+                  <Select.Option value={PropertyStatus.DRAFT}>{t('Brouillon')}</Select.Option>
+                  <Select.Option value={PropertyStatus.AVAILABLE}>{t('Disponible')}</Select.Option>
+                  <Select.Option value={PropertyStatus.RESERVED}>{t('Réservé')}</Select.Option>
+                  <Select.Option value={PropertyStatus.UNDER_OFFER}>{t('Sous offre')}</Select.Option>
+                  <Select.Option value={PropertyStatus.SOLD}>{t('Vendu')}</Select.Option>
+                  <Select.Option value={PropertyStatus.RENTED}>{t('Loué')}</Select.Option>
+                  <Select.Option value={PropertyStatus.ARCHIVED}>{t('Archivé')}</Select.Option>
                 </Select>
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
               <Form.Item
-                label="Disponibilité"
+                label={t('Disponibilité')}
                 name="availability"
-                rules={[{ required: true, message: 'La disponibilité est requise' }]}
+                rules={[{ required: true, message: t('La disponibilité est requise') }]}
               >
                 <Select>
-                  <Select.Option value={PropertyAvailability.AVAILABLE}>Immédiate</Select.Option>
-                  <Select.Option value={PropertyAvailability.SOON_AVAILABLE}>Bientôt disponible</Select.Option>
-                  <Select.Option value={PropertyAvailability.UNAVAILABLE}>Indisponible</Select.Option>
+                  <Select.Option value={PropertyAvailability.AVAILABLE}>{t('Immédiate')}</Select.Option>
+                  <Select.Option value={PropertyAvailability.SOON_AVAILABLE}>{t('Bientôt disponible')}</Select.Option>
+                  <Select.Option value={PropertyAvailability.UNAVAILABLE}>{t('Indisponible')}</Select.Option>
                 </Select>
               </Form.Item>
             </Col>
@@ -495,7 +505,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
           >
             {({ getFieldValue }) =>
               getFieldValue('availability') === PropertyAvailability.SOON_AVAILABLE ? (
-                <Form.Item label="Date de disponibilité" name="availabilityDate">
+                <Form.Item label={t('Date de disponibilité')} name="availabilityDate">
                   <DatePicker style={{ width: '100%' }} />
                 </Form.Item>
               ) : null
@@ -504,27 +514,29 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         </Card>
 
         {/* SECTION 2: LOCALISATION */}
-        <Card title="2. Localisation">
+        <Card title={t('2. Localisation')}>
           <Form.Item
-            label="Localisation (Pays > Région > Commune)"
+            label={t('Localisation (Pays > Région > Commune)')}
             required
             validateStatus={!location && !property ? 'error' : ''}
-            help={!location && !property ? 'La localisation est requise' : ''}
+            help={!location && !property ? t('La localisation est requise') : ''}
           >
             <LocationSelector
               value={location?.communeId}
               onChange={loc => setLocation(loc)}
-              placeholder="Rechercher une localisation (ex: Cocody, Abidjan, Côte d'Ivoire)..."
+              placeholder={t("Rechercher une localisation (ex: Cocody, Abidjan, Côte d'Ivoire)...")}
               required
             />
           </Form.Item>
 
           <Form.Item
-            label="Adresse précise (optionnel)"
-            help="Rue, quartier ou lieu – remplit automatiquement adresse et coordonnées (service gratuit Photon/OpenStreetMap)"
+            label={t('Adresse précise (optionnel)')}
+            help={t(
+              'Rue, quartier ou lieu – remplit automatiquement adresse et coordonnées (service gratuit Photon/OpenStreetMap)'
+            )}
           >
             <AddressAutocomplete
-              placeholder="Ex: rue de Rivoli, Paris ou quartier Cocody..."
+              placeholder={t('Ex: rue de Rivoli, Paris ou quartier Cocody...')}
               onSelect={(suggestion: AddressSuggestion) => {
                 form.setFieldsValue({
                   address: suggestion.address,
@@ -538,77 +550,77 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
 
           <Row gutter={16}>
             <Col xs={24} sm={12}>
-              <Form.Item label="Quartier/Zone (optionnel)" name="locationZone">
-                <Input placeholder="Ex: Angré, Riviera, etc." />
+              <Form.Item label={t('Quartier/Zone (optionnel)')} name="locationZone">
+                <Input placeholder={t('Ex: Angré, Riviera, etc.')} />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item label="Adresse" name="address">
-                <Input placeholder="Adresse complète (optionnel)" />
+              <Form.Item label={t('Adresse')} name="address">
+                <Input placeholder={t('Adresse complète (optionnel)')} />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item label="Latitude" name="latitude">
-                <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="Ex: 5.3600" />
+              <Form.Item label={t('Latitude')} name="latitude">
+                <InputNumber style={{ width: '100%' }} step={0.000001} placeholder={t('Ex: 5.3600')} />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item label="Longitude" name="longitude">
-                <InputNumber style={{ width: '100%' }} step={0.000001} placeholder="Ex: -4.0083" />
+              <Form.Item label={t('Longitude')} name="longitude">
+                <InputNumber style={{ width: '100%' }} step={0.000001} placeholder={t('Ex: -4.0083')} />
               </Form.Item>
             </Col>
             <Col xs={24}>
-              <Form.Item label="Points d'intérêt (optionnel)" name="pointsOfInterest">
-                <TextArea rows={2} placeholder="Écoles, transports, commerces à proximité..." />
+              <Form.Item label={t("Points d'intérêt (optionnel)")} name="pointsOfInterest">
+                <TextArea rows={2} placeholder={t('Écoles, transports, commerces à proximité...')} />
               </Form.Item>
             </Col>
           </Row>
         </Card>
 
         {/* SECTION 3: CARACTÉRISTIQUES GÉNÉRALES */}
-        <Card title="3. Caractéristiques générales">
+        <Card title={t('3. Caractéristiques générales')}>
           <Row gutter={16}>
             {selectedType !== PropertyType.TERRAIN && (
               <Col xs={24} sm={12}>
-                <Form.Item label="Surface principale (m²)" name="surfaceArea">
-                  <InputNumber style={{ width: '100%' }} placeholder="Ex: 75" />
+                <Form.Item label={t('Surface principale (m²)')} name="surfaceArea">
+                  <InputNumber style={{ width: '100%' }} placeholder={t('Ex: 75')} />
                 </Form.Item>
               </Col>
             )}
             {shouldShowUsefulSurface(selectedType || property?.propertyType || PropertyType.APPARTEMENT) && (
               <Col xs={24} sm={12}>
-                <Form.Item label="Surface utile (m²)" name="surfaceUseful">
-                  <InputNumber style={{ width: '100%' }} placeholder="Ex: 65" />
+                <Form.Item label={t('Surface utile (m²)')} name="surfaceUseful">
+                  <InputNumber style={{ width: '100%' }} placeholder={t('Ex: 65')} />
                 </Form.Item>
               </Col>
             )}
             <Col xs={24} sm={12}>
-              <Form.Item label="Année de construction" name="constructionYear">
+              <Form.Item label={t('Année de construction')} name="constructionYear">
                 <InputNumber
                   style={{ width: '100%' }}
                   min={1800}
                   max={new Date().getFullYear()}
-                  placeholder="Ex: 2020"
+                  placeholder={t('Ex: 2020')}
                 />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item label="État général" name="generalCondition">
-                <Select placeholder="Sélectionner...">
-                  <Select.Option value="NEUF">Neuf</Select.Option>
-                  <Select.Option value="BON">Bon</Select.Option>
-                  <Select.Option value="A_RENOVER">À rénover</Select.Option>
-                  <Select.Option value="EN_CHANTIER">En chantier</Select.Option>
+              <Form.Item label={t('État général')} name="generalCondition">
+                <Select placeholder={t('Sélectionner...')}>
+                  <Select.Option value="NEUF">{t('Neuf')}</Select.Option>
+                  <Select.Option value="BON">{t('Bon')}</Select.Option>
+                  <Select.Option value="A_RENOVER">{t('À rénover')}</Select.Option>
+                  <Select.Option value="EN_CHANTIER">{t('En chantier')}</Select.Option>
                 </Select>
               </Form.Item>
             </Col>
             <Col xs={24} sm={12}>
-              <Form.Item label="Standing" name="standing">
-                <Select placeholder="Sélectionner...">
-                  <Select.Option value="ECONOMIQUE">Économique</Select.Option>
-                  <Select.Option value="STANDARD">Standard</Select.Option>
-                  <Select.Option value="HAUT_STANDING">Haut standing</Select.Option>
-                  <Select.Option value="LUXE">Luxe</Select.Option>
+              <Form.Item label={t('Standing')} name="standing">
+                <Select placeholder={t('Sélectionner...')}>
+                  <Select.Option value="ECONOMIQUE">{t('Économique')}</Select.Option>
+                  <Select.Option value="STANDARD">{t('Standard')}</Select.Option>
+                  <Select.Option value="HAUT_STANDING">{t('Haut standing')}</Select.Option>
+                  <Select.Option value="LUXE">{t('Luxe')}</Select.Option>
                 </Select>
               </Form.Item>
             </Col>
@@ -616,7 +628,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         </Card>
 
         {/* SECTION 4: PRIX & CONDITIONS */}
-        <Card title="4. Prix & Conditions">
+        <Card title={t('4. Prix & Conditions')}>
           {/* Un bien est mis en vente **ou** en location, pas les deux — même
               règle que l'écran de création. Les cases à cocher permettaient les
               deux à la fois, alors que le modèle n'a qu'une colonne `price` :
@@ -627,9 +639,9 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
               porte déjà s'affiche sur « Location » et la conserve tant qu'on ne
               choisit pas autre chose. */}
           <Form.Item
-            label="Type d'opération"
+            label={t("Type d'opération")}
             name="transactionModes"
-            rules={[{ required: true, message: 'Un mode de transaction est requis' }]}
+            rules={[{ required: true, message: t('Un mode de transaction est requis') }]}
             getValueProps={(modes: PropertyTransactionMode[] = []) => ({
               value: modes.includes(PropertyTransactionMode.SALE)
                 ? PropertyTransactionMode.SALE
@@ -641,8 +653,8 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
           >
             <Radio.Group>
               <Space>
-                <Radio value={PropertyTransactionMode.SALE}>Vente</Radio>
-                <Radio value={PropertyTransactionMode.RENTAL}>Location</Radio>
+                <Radio value={PropertyTransactionMode.SALE}>{t('Vente')}</Radio>
+                <Radio value={PropertyTransactionMode.RENTAL}>{t('Location')}</Radio>
               </Space>
             </Radio.Group>
           </Form.Item>
@@ -668,9 +680,9 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                   {!hideRentAndFees && (
                     <>
                       <Col xs={24} sm={8}>
-                        <Form.Item label={isSale ? 'Prix de vente' : 'Loyer mensuel'} name="price">
+                        <Form.Item label={isSale ? t('Prix de vente') : t('Loyer mensuel')} name="price">
                           <Input
-                            placeholder="Ex: 50 000 000"
+                            placeholder={t('Ex: 50 000 000')}
                             onChange={e => {
                               const cleaned = parseNumber(e.target.value);
                               form.setFieldsValue({ price: cleaned });
@@ -681,11 +693,11 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                       </Col>
                       <Col xs={24} sm={8}>
                         <Form.Item
-                          label={isSale ? 'Charges de copropriété' : 'Charges (provision mensuelle)'}
+                          label={isSale ? t('Charges de copropriété') : t('Charges (provision mensuelle)')}
                           name="fees"
                         >
                           <Input
-                            placeholder="Ex: 50 000"
+                            placeholder={t('Ex: 50 000')}
                             onChange={e => {
                               const cleaned = parseNumber(e.target.value);
                               form.setFieldsValue({ fees: cleaned });
@@ -701,9 +713,9 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                       l'API — c'est le choix qui disparaît, pas la donnée. */}
                   {isRental && (
                     <Col xs={24} sm={8}>
-                      <Form.Item label="Dépôt de garantie" name="deposit">
+                      <Form.Item label={t('Dépôt de garantie')} name="deposit">
                         <Input
-                          placeholder="Ex: 500 000"
+                          placeholder={t('Ex: 500 000')}
                           onChange={e => {
                             const cleaned = parseNumber(e.target.value);
                             form.setFieldsValue({ deposit: cleaned });
@@ -725,27 +737,27 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
 
         {/* SECTION 5: CARACTÉRISTIQUES PHYSIQUES */}
         {selectedType && shouldShowRooms(selectedType) && (
-          <Card title="5. Caractéristiques physiques">
+          <Card title={t('5. Caractéristiques physiques')}>
             <Row gutter={16}>
               <Col xs={24} sm={12}>
-                <Form.Item label="Nombre de pièces" name="rooms">
-                  <InputNumber style={{ width: '100%' }} placeholder="Ex: 3" />
+                <Form.Item label={t('Nombre de pièces')} name="rooms">
+                  <InputNumber style={{ width: '100%' }} placeholder={t('Ex: 3')} />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
-                <Form.Item label="Chambres" name="bedrooms">
-                  <InputNumber style={{ width: '100%' }} placeholder="Ex: 2" />
+                <Form.Item label={t('Chambres')} name="bedrooms">
+                  <InputNumber style={{ width: '100%' }} placeholder={t('Ex: 2')} />
                 </Form.Item>
               </Col>
               <Col xs={24} sm={12}>
-                <Form.Item label="Salles de bain / WC" name="bathrooms">
-                  <InputNumber style={{ width: '100%' }} placeholder="Ex: 1" />
+                <Form.Item label={t('Salles de bain / WC')} name="bathrooms">
+                  <InputNumber style={{ width: '100%' }} placeholder={t('Ex: 1')} />
                 </Form.Item>
               </Col>
               {selectedType === PropertyType.MAISON_VILLA && (
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Surface terrain (m²)" name="surfaceTerrain">
-                    <InputNumber style={{ width: '100%' }} placeholder="Ex: 500" />
+                  <Form.Item label={t('Surface terrain (m²)')} name="surfaceTerrain">
+                    <InputNumber style={{ width: '100%' }} placeholder={t('Ex: 500')} />
                   </Form.Item>
                 </Col>
               )}
@@ -753,12 +765,12 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                 selectedType === PropertyType.STUDIO ||
                 selectedType === PropertyType.DUPLEX_TRIPLEX) && (
                 <Col xs={24} sm={12}>
-                  <Form.Item label="Meublé" name="furnishingStatus">
+                  <Form.Item label={t('Meublé')} name="furnishingStatus">
                     <Select>
-                      <Select.Option value={PropertyFurnishingStatus.UNFURNISHED}>Non meublé</Select.Option>
-                      <Select.Option value={PropertyFurnishingStatus.FURNISHED}>Meublé</Select.Option>
+                      <Select.Option value={PropertyFurnishingStatus.UNFURNISHED}>{t('Non meublé')}</Select.Option>
+                      <Select.Option value={PropertyFurnishingStatus.FURNISHED}>{t('Meublé')}</Select.Option>
                       <Select.Option value={PropertyFurnishingStatus.PARTIALLY_FURNISHED}>
-                        Partiellement meublé
+                        {t('Partiellement meublé')}
                       </Select.Option>
                     </Select>
                   </Form.Item>
@@ -770,7 +782,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
 
         {/* SECTION 6: CARACTÉRISTIQUES SPÉCIFIQUES */}
         {template && template.sections && Array.isArray(template.sections) && template.sections.length > 0 && (
-          <Card title="6. Caractéristiques spécifiques">
+          <Card title={t('6. Caractéristiques spécifiques')}>
             {loadingTemplate ? (
               <div style={{ textAlign: 'center', padding: '24px' }}>
                 <Spin />
@@ -789,7 +801,7 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
                             if (currentType === PropertyType.IMMEUBLE && field.key === 'occupancy_rate') return null;
                             const displayField =
                               currentType === PropertyType.IMMEUBLE && field.key === 'units_count'
-                                ? { ...field, label: "Nombre total d'appartements" }
+                                ? { ...field, label: t("Nombre total d'appartements") }
                                 : field;
                             return (
                               <Col key={field.key} xs={24} sm={12}>
@@ -817,11 +829,11 @@ export const PropertyForm: React.FC<PropertyFormProps> = ({
         >
           {onCancel && (
             <Button onClick={onCancel} disabled={isSubmitting}>
-              Annuler
+              {t('Annuler')}
             </Button>
           )}
           <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={isSubmitting || loading}>
-            {isSubmitting ? 'Enregistrement...' : property ? 'Mettre à jour' : 'Créer'}
+            {isSubmitting ? 'Enregistrement...' : property ? t('Mettre à jour') : t('Créer')}
           </Button>
         </div>
       </Space>

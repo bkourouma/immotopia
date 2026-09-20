@@ -1,4 +1,5 @@
 import apiClient from '../utils/api-client';
+import { t } from '../i18n/t';
 
 export interface EmailNotificationConfigItem {
   key: string;
@@ -29,7 +30,7 @@ export const emailNotificationConfigService = {
     const { data } = await apiClient.get<{ success: boolean; data: EmailNotificationConfigItem[] }>(
       `/tenants/${tenantId}/email-notifications`
     );
-    if (!data.success || !data.data) throw new Error('Invalid response');
+    if (!data.success || !data.data) throw new Error(t('Invalid response'));
     return data.data;
   },
 
@@ -42,7 +43,7 @@ export const emailNotificationConfigService = {
       `/tenants/${tenantId}/email-notifications/${encodeURIComponent(key)}`,
       payload
     );
-    if (!data.success || !data.data) throw new Error('Invalid response');
+    if (!data.success || !data.data) throw new Error(t('Invalid response'));
     return data.data;
   },
 
@@ -50,6 +51,6 @@ export const emailNotificationConfigService = {
     const { data } = await apiClient.post<{ success: boolean }>(
       `/tenants/${tenantId}/email-notifications/${encodeURIComponent(key)}/reset`
     );
-    if (!data.success) throw new Error('Invalid response');
+    if (!data.success) throw new Error(t('Invalid response'));
   }
 };

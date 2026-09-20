@@ -3,7 +3,9 @@ import { Descriptions, Typography, Spin, Alert, Table, Tag, Space, Card, Empty, 
 import { DollarOutlined, CalendarOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import dayjs from 'dayjs';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 interface InstallmentDetailsData {
@@ -89,17 +91,17 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
-        setError('Erreur lors du chargement des détails');
+        setError(t('Erreur lors du chargement des détails'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des détails');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des détails'));
     } finally {
       setLoading(false);
     }
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('fr-FR', {
+    return new Intl.NumberFormat(activeLocale(), {
       style: 'currency',
       currency: 'XOF',
       minimumFractionDigits: 0
@@ -113,12 +115,12 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
 
   const getStatusTag = (status: string) => {
     const statusMap: Record<string, { label: string; color: string }> = {
-      PAID: { label: 'Payé', color: 'success' },
-      DUE: { label: 'Dû', color: 'warning' },
-      OVERDUE: { label: 'En retard', color: 'error' },
-      PARTIAL: { label: 'Partiel', color: 'processing' },
-      DRAFT: { label: 'Brouillon', color: 'default' },
-      CANCELED: { label: 'Annulé', color: 'default' }
+      PAID: { label: t('Payé'), color: 'success' },
+      DUE: { label: t('Dû'), color: 'warning' },
+      OVERDUE: { label: t('En retard'), color: 'error' },
+      PARTIAL: { label: t('Partiel'), color: 'processing' },
+      DRAFT: { label: t('Brouillon'), color: 'default' },
+      CANCELED: { label: t('Annulé'), color: 'default' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -126,10 +128,10 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
 
   const getPaymentMethodLabel = (method: string) => {
     const labels: Record<string, string> = {
-      CASH: 'Espèces',
-      BANK_TRANSFER: 'Virement bancaire',
-      MOBILE_MONEY: 'Mobile Money',
-      CHECK: 'Chèque',
+      CASH: t('Espèces'),
+      BANK_TRANSFER: t('Virement bancaire'),
+      MOBILE_MONEY: t('Mobile Money'),
+      CHECK: t('Chèque'),
       OTHER: 'Autre'
     };
     return labels[method] || method;
@@ -138,95 +140,95 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}>
-        <Spin size="large" tip="Chargement des détails..." />
+        <Spin size="large" tip={t('Chargement des détails...')} />
       </div>
     );
   }
 
   if (error) {
-    return <Alert message="Erreur" description={error} type="error" showIcon />;
+    return <Alert message={t('Erreur')} description={error} type="error" showIcon />;
   }
 
   if (!data) {
-    return <Empty description="Aucune donnée disponible" />;
+    return <Empty description={t('Aucune donnée disponible')} />;
   }
 
   const { installment } = data;
   if (!installment) {
-    return <Empty description="Échéance introuvable" />;
+    return <Empty description={t('Échéance introuvable')} />;
   }
 
   // Items table columns
   const itemsColumns = [
     {
-      title: 'Description',
+      title: t('Description'),
       dataIndex: 'description',
       key: 'description'
     },
     {
-      title: 'Type',
+      title: t('Type'),
       dataIndex: 'type',
       key: 'type',
       render: (type: string) => {
         const typeLabels: Record<string, string> = {
           RENT: 'Loyer',
           SERVICE_CHARGE: 'Charges',
-          OTHER_FEE: 'Autres frais',
-          PENALTY: 'Pénalité'
+          OTHER_FEE: t('Autres frais'),
+          PENALTY: t('Pénalité')
         };
         return typeLabels[type] || type;
       }
     },
     {
-      title: 'Montant',
+      title: t('Montant'),
       dataIndex: 'amount',
       key: 'amount',
       render: (amount: number) => formatCurrency(amount),
-      align: 'right' as const
+      align: 'end' as const
     }
   ];
 
   // Payments table columns
   const paymentsColumns = [
     {
-      title: 'Date',
+      title: t('Date'),
       dataIndex: ['payment', 'succeeded_at'],
       key: 'date',
       render: (date: string | null) => formatDate(date)
     },
     {
-      title: 'Montant',
+      title: t('Montant'),
       dataIndex: ['payment', 'amount'],
       key: 'amount',
       render: (amount: number) => formatCurrency(amount),
-      align: 'right' as const
+      align: 'end' as const
     },
     {
-      title: 'Méthode',
+      title: t('Méthode'),
       dataIndex: ['payment', 'method'],
       key: 'method',
       render: (method: string) => getPaymentMethodLabel(method)
     },
     {
-      title: 'Référence',
+      title: t('Référence'),
       dataIndex: ['payment', 'reference'],
       key: 'reference',
       render: (ref: string | null) => ref || '-'
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: ['payment', 'status'],
       key: 'status',
       render: (status: string) => (
-        <Tag color={status === 'SUCCESS' ? 'success' : 'default'}>{status === 'SUCCESS' ? 'Réussi' : status}</Tag>
+        <Tag color={status === 'SUCCESS' ? 'success' : 'default'}>{status === 'SUCCESS' ? t('Réussi') : status}</Tag>
       )
     },
     {
-      title: 'Alloué',
+      title: t('Alloué'),
       dataIndex: 'amount',
       key: 'allocated',
       render: (amount: number) => formatCurrency(amount),
-      align: 'right' as const
+      align: 'end' as const
     }
   ];
 
@@ -239,24 +241,26 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
             title={
               <Space>
                 <DollarOutlined />
-                Informations financières
+                {t('Informations financières')}
               </Space>
             }
           >
             <Descriptions column={1} bordered size="small">
-              <Descriptions.Item label="Loyer">{formatCurrency(installment.amount_rent)}</Descriptions.Item>
-              <Descriptions.Item label="Charges de service">
+              <Descriptions.Item label={t('Loyer')}>{formatCurrency(installment.amount_rent)}</Descriptions.Item>
+              <Descriptions.Item label={t('Charges de service')}>
                 {formatCurrency(installment.amount_service)}
               </Descriptions.Item>
-              <Descriptions.Item label="Autres frais">
+              <Descriptions.Item label={t('Autres frais')}>
                 {formatCurrency(installment.amount_other_fees)}
               </Descriptions.Item>
-              <Descriptions.Item label="Pénalités">{formatCurrency(installment.penalty_amount || 0)}</Descriptions.Item>
-              <Descriptions.Item label="Total dû">
+              <Descriptions.Item label={t('Pénalités')}>
+                {formatCurrency(installment.penalty_amount || 0)}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('Total dû')}>
                 <Text strong>{formatCurrency(installment.totalAmount)}</Text>
               </Descriptions.Item>
-              <Descriptions.Item label="Montant payé">{formatCurrency(installment.amount_paid)}</Descriptions.Item>
-              <Descriptions.Item label="Reste à payer">
+              <Descriptions.Item label={t('Montant payé')}>{formatCurrency(installment.amount_paid)}</Descriptions.Item>
+              <Descriptions.Item label={t('Reste à payer')}>
                 <Text strong type={installment.balance > 0 ? 'danger' : 'success'}>
                   {formatCurrency(installment.balance)}
                 </Text>
@@ -269,20 +273,20 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
             title={
               <Space>
                 <CalendarOutlined />
-                Informations
+                {t('Informations')}
               </Space>
             }
           >
             <Descriptions column={1} bordered size="small">
-              <Descriptions.Item label="Période">
+              <Descriptions.Item label={t('Période')}>
                 {installment.period_month != null && installment.period_year != null
                   ? `${installment.period_month}/${installment.period_year}`
                   : '-'}
               </Descriptions.Item>
-              <Descriptions.Item label="Date d'échéance">{formatDate(installment.due_date)}</Descriptions.Item>
-              <Descriptions.Item label="Statut">{getStatusTag(installment.status)}</Descriptions.Item>
-              <Descriptions.Item label="Bail">{installment.lease.lease_number}</Descriptions.Item>
-              <Descriptions.Item label="Propriété">{installment.lease.property?.address || '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Date d'échéance")}>{formatDate(installment.due_date)}</Descriptions.Item>
+              <Descriptions.Item label={t('Statut')}>{getStatusTag(installment.status)}</Descriptions.Item>
+              <Descriptions.Item label={t('Bail')}>{installment.lease.lease_number}</Descriptions.Item>
+              <Descriptions.Item label={t('Propriété')}>{installment.lease.property?.address || '-'}</Descriptions.Item>
             </Descriptions>
           </Card>
         </Col>
@@ -293,7 +297,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
         <Card
           title={
             <>
-              <DollarOutlined /> Détail des éléments
+              <DollarOutlined /> {t('Détail des éléments')}
             </>
           }
         >
@@ -309,7 +313,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
                 <Table.Summary fixed>
                   <Table.Summary.Row>
                     <Table.Summary.Cell index={0}>
-                      <Text strong>Total</Text>
+                      <Text strong>{t('Total')}</Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={1} />
                     <Table.Summary.Cell index={2} align="right">
@@ -325,7 +329,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
 
       {/* Penalties (T056) */}
       {installment.penalties && installment.penalties.length > 0 && (
-        <Card title="Pénalités appliquées">
+        <Card title={t('Pénalités appliquées')}>
           <Table
             scroll={{ x: 'max-content' }}
             columns={[
@@ -334,7 +338,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
                 dataIndex: 'amount',
                 key: 'amount',
                 render: (amount: number) => formatCurrency(amount),
-                align: 'right' as const
+                align: 'end' as const
               },
               {
                 title: 'Raison',
@@ -343,7 +347,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
                 render: (reason: string | null) => reason || '-'
               },
               {
-                title: "Date d'application",
+                title: t("Date d'application"),
                 dataIndex: 'applied_at',
                 key: 'applied_at',
                 render: (date: string) => formatDate(date)
@@ -357,7 +361,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
       )}
 
       {/* Payment History (T050) */}
-      <Card title="Historique des paiements">
+      <Card title={t('Historique des paiements')}>
         {installment.payments && installment.payments.length > 0 ? (
           <Table
             scroll={{ x: 'max-content' }}
@@ -367,7 +371,7 @@ export default function InstallmentDetails({ installmentId }: InstallmentDetails
             pagination={false}
           />
         ) : (
-          <Empty description="Aucun paiement enregistré pour cette échéance" />
+          <Empty description={t('Aucun paiement enregistré pour cette échéance')} />
         )}
       </Card>
     </Space>

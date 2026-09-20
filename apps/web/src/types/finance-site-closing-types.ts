@@ -47,6 +47,7 @@
  */
 
 import { PropertyOwnershipType, PropertyType } from './property-types';
+import { t } from '../i18n/t';
 
 // ---------------------------------------------------------------------------
 // La clé de répartition
@@ -63,9 +64,9 @@ export type SiteLotAllocationMethod = 'SURFACE' | 'EQUAL' | 'MANUAL';
 
 /** Libellés français des trois clés. Jamais la valeur brute à l'écran. */
 export const ALLOCATION_METHOD_LABELS: Record<SiteLotAllocationMethod, string> = {
-  SURFACE: 'Au prorata des surfaces',
-  EQUAL: 'Parts égales',
-  MANUAL: 'Quotes-parts saisies'
+  SURFACE: t('Au prorata des surfaces'),
+  EQUAL: t('Parts égales'),
+  MANUAL: t('Quotes-parts saisies')
 };
 
 /**
@@ -76,9 +77,9 @@ export const ALLOCATION_METHOD_LABELS: Record<SiteLotAllocationMethod, string> =
  * donc l'exigence à côté du choix, pour que le refus ne soit pas une surprise.
  */
 export const ALLOCATION_METHOD_REQUIREMENTS: Record<SiteLotAllocationMethod, string> = {
-  SURFACE: 'Chaque lot doit porter une surface strictement positive.',
-  EQUAL: 'Aucune donnée supplémentaire à saisir sur les lots.',
-  MANUAL: 'Les quotes-parts saisies doivent totaliser exactement cent pour cent.'
+  SURFACE: t('Chaque lot doit porter une surface strictement positive.'),
+  EQUAL: t('Aucune donnée supplémentaire à saisir sur les lots.'),
+  MANUAL: t('Les quotes-parts saisies doivent totaliser exactement cent pour cent.')
 };
 
 // ---------------------------------------------------------------------------
@@ -282,23 +283,23 @@ export interface CapitalizedLot {
  */
 export const PROPERTY_TYPE_LABELS: Record<PropertyType, string> = {
   [PropertyType.APPARTEMENT]: 'Appartement',
-  [PropertyType.MAISON_VILLA]: 'Maison / Villa',
+  [PropertyType.MAISON_VILLA]: t('Maison / Villa'),
   [PropertyType.STUDIO]: 'Studio',
-  [PropertyType.DUPLEX_TRIPLEX]: 'Duplex / Triplex',
-  [PropertyType.CHAMBRE_COLOCATION]: 'Chambre / Colocation',
+  [PropertyType.DUPLEX_TRIPLEX]: t('Duplex / Triplex'),
+  [PropertyType.CHAMBRE_COLOCATION]: t('Chambre / Colocation'),
   [PropertyType.BUREAU]: 'Bureau',
-  [PropertyType.BOUTIQUE_COMMERCIAL]: 'Boutique / Commercial',
-  [PropertyType.ENTREPOT_INDUSTRIEL]: 'Entrepôt / Industriel',
+  [PropertyType.BOUTIQUE_COMMERCIAL]: t('Boutique / Commercial'),
+  [PropertyType.ENTREPOT_INDUSTRIEL]: t('Entrepôt / Industriel'),
   [PropertyType.TERRAIN]: 'Terrain',
   [PropertyType.IMMEUBLE]: 'Immeuble',
-  [PropertyType.PARKING_BOX]: 'Parking / Box',
-  [PropertyType.LOT_PROGRAMME_NEUF]: 'Lot programme neuf'
+  [PropertyType.PARKING_BOX]: t('Parking / Box'),
+  [PropertyType.LOT_PROGRAMME_NEUF]: t('Lot programme neuf')
 };
 
 export const OWNERSHIP_TYPE_LABELS: Record<PropertyOwnershipType, string> = {
-  [PropertyOwnershipType.TENANT]: "Propriété de l'agence",
-  [PropertyOwnershipType.PUBLIC]: 'Propriété privée',
-  [PropertyOwnershipType.CLIENT]: 'Mandat de gestion'
+  [PropertyOwnershipType.TENANT]: t("Propriété de l'agence"),
+  [PropertyOwnershipType.PUBLIC]: t('Propriété privée'),
+  [PropertyOwnershipType.CLIENT]: t('Mandat de gestion')
 };
 
 export { PropertyOwnershipType, PropertyType };

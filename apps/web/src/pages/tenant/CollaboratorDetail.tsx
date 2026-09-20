@@ -12,7 +12,9 @@ import {
 import apiClient from '../../utils/api-client';
 import { getRoleLabelFr } from '../../constants/permissions-labels';
 import { useConfirmAction } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 interface Role {
   id: string;
   key: string;
@@ -22,8 +24,8 @@ interface Role {
 
 const statusLabels: Record<string, string> = {
   ACTIVE: 'Actif',
-  PENDING_INVITE: 'Invitation en attente',
-  INACTIVE: 'Désactivé'
+  PENDING_INVITE: t('Invitation en attente'),
+  INACTIVE: t('Désactivé')
 };
 
 export const CollaboratorDetail: React.FC = () => {
@@ -56,10 +58,10 @@ export const CollaboratorDetail: React.FC = () => {
         setMember(response.data);
         setSelectedRoleIds(response.data.roles.map(r => r.id));
       } else {
-        setError('Erreur lors du chargement du collaborateur');
+        setError(t('Erreur lors du chargement du collaborateur'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement du collaborateur');
+      setError(err.response?.data?.message || t('Erreur lors du chargement du collaborateur'));
     } finally {
       setLoading(false);
     }
@@ -82,9 +84,9 @@ export const CollaboratorDetail: React.FC = () => {
     try {
       await updateMember(tenantId, userId, { roleIds: selectedRoleIds });
       await loadMember();
-      message.success('Rôles mis à jour avec succès');
+      message.success(t('Rôles mis à jour avec succès'));
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors de la mise à jour');
+      message.error(err.response?.data?.message || t('Erreur lors de la mise à jour'));
     } finally {
       setSavingRoles(false);
     }
@@ -93,16 +95,16 @@ export const CollaboratorDetail: React.FC = () => {
   const handleResetPassword = () => {
     if (!tenantId || !userId) return;
     confirmAction({
-      title: 'Réinitialiser le mot de passe',
-      description: "Êtes-vous sûr de vouloir réinitialiser le mot de passe ? Un email sera envoyé à l'utilisateur.",
-      okText: 'Réinitialiser',
-      cancelText: 'Annuler',
+      title: t('Réinitialiser le mot de passe'),
+      description: t("Êtes-vous sûr de vouloir réinitialiser le mot de passe ? Un email sera envoyé à l'utilisateur."),
+      okText: t('Réinitialiser'),
+      cancelText: t('Annuler'),
       onConfirm: async () => {
         try {
           await resetMemberPassword(tenantId, userId, { sendEmail: true });
-          message.success("Mot de passe réinitialisé. Un email a été envoyé à l'utilisateur.");
+          message.success(t("Mot de passe réinitialisé. Un email a été envoyé à l'utilisateur."));
         } catch (err: any) {
-          message.error(err.response?.data?.message || 'Erreur lors de la réinitialisation');
+          message.error(err.response?.data?.message || t('Erreur lors de la réinitialisation'));
         }
       }
     });
@@ -111,17 +113,17 @@ export const CollaboratorDetail: React.FC = () => {
   const handleRevokeSessions = () => {
     if (!tenantId || !userId) return;
     confirmAction({
-      title: 'Révoquer les sessions',
-      description: 'Êtes-vous sûr de vouloir révoquer toutes les sessions de cet utilisateur ?',
-      okText: 'Révoquer',
-      cancelText: 'Annuler',
+      title: t('Révoquer les sessions'),
+      description: t('Êtes-vous sûr de vouloir révoquer toutes les sessions de cet utilisateur ?'),
+      okText: t('Révoquer'),
+      cancelText: t('Annuler'),
       danger: true,
       onConfirm: async () => {
         try {
           await revokeMemberSessions(tenantId, userId);
-          message.success('Toutes les sessions ont été révoquées');
+          message.success(t('Toutes les sessions ont été révoquées'));
         } catch (err: any) {
-          message.error(err.response?.data?.message || 'Erreur lors de la révocation');
+          message.error(err.response?.data?.message || t('Erreur lors de la révocation'));
         }
       }
     });
@@ -140,7 +142,7 @@ export const CollaboratorDetail: React.FC = () => {
   if (error || !member) {
     return (
       <>
-        <Alert type="error" showIcon message={error || 'Collaborateur introuvable'} style={{ margin: 16 }} />
+        <Alert type="error" showIcon message={error || t('Collaborateur introuvable')} style={{ margin: 16 }} />
       </>
     );
   }
@@ -154,7 +156,7 @@ export const CollaboratorDetail: React.FC = () => {
             type="text"
             icon={<ArrowLeftOutlined />}
             onClick={() => navigate(`/tenant/${tenantId}/collaborators`)}
-            aria-label="Retour"
+            aria-label={t('Retour')}
           />
           <div>
             <Typography.Title level={3} style={{ margin: 0 }}>
@@ -165,22 +167,22 @@ export const CollaboratorDetail: React.FC = () => {
         </Space>
 
         {/* User Info & Roles */}
-        <Card title="Informations du collaborateur">
+        <Card title={t('Informations du collaborateur')}>
           <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
-            <Descriptions.Item label="Email">{member.user.email}</Descriptions.Item>
-            <Descriptions.Item label="Nom complet">{member.user.fullName || '—'}</Descriptions.Item>
-            <Descriptions.Item label="Statut">{statusLabels[member.status] ?? member.status}</Descriptions.Item>
-            <Descriptions.Item label="Dernière connexion">
-              {member.user.lastLoginAt ? new Date(member.user.lastLoginAt).toLocaleString('fr-FR') : 'Jamais'}
+            <Descriptions.Item label={t('Email')}>{member.user.email}</Descriptions.Item>
+            <Descriptions.Item label={t('Nom complet')}>{member.user.fullName || '—'}</Descriptions.Item>
+            <Descriptions.Item label={t('Statut')}>{statusLabels[member.status] ?? member.status}</Descriptions.Item>
+            <Descriptions.Item label={t('Dernière connexion')}>
+              {member.user.lastLoginAt ? new Date(member.user.lastLoginAt).toLocaleString(activeLocale()) : t('Jamais')}
             </Descriptions.Item>
           </Descriptions>
 
           <div style={{ marginTop: 24 }}>
             <Typography.Text strong style={{ display: 'block', marginBottom: 12 }}>
-              Rôles
+              {t('Rôles')}
             </Typography.Text>
             {availableRoles.length === 0 ? (
-              <Typography.Text type="secondary">Chargement des rôles...</Typography.Text>
+              <Typography.Text type="secondary">{t('Chargement des rôles...')}</Typography.Text>
             ) : (
               <>
                 <Checkbox.Group
@@ -217,7 +219,7 @@ export const CollaboratorDetail: React.FC = () => {
                   loading={savingRoles}
                   style={{ marginTop: 16 }}
                 >
-                  Enregistrer les rôles
+                  {t('Enregistrer les rôles')}
                 </Button>
               </>
             )}
@@ -226,14 +228,14 @@ export const CollaboratorDetail: React.FC = () => {
           {/* Actions */}
           <div style={{ marginTop: 32, paddingTop: 24, borderTop: '1px solid #f0f0f0' }}>
             <Typography.Text strong style={{ display: 'block', marginBottom: 12 }}>
-              Actions
+              {t('Actions')}
             </Typography.Text>
             <Space wrap>
               <Button icon={<KeyOutlined />} onClick={handleResetPassword}>
-                Réinitialiser le mot de passe
+                {t('Réinitialiser le mot de passe')}
               </Button>
               <Button icon={<LogoutOutlined />} onClick={handleRevokeSessions} danger>
-                Révoquer les sessions
+                {t('Révoquer les sessions')}
               </Button>
             </Space>
           </div>

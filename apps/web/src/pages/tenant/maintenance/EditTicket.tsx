@@ -10,6 +10,7 @@ import {
   TicketDetail
 } from '../../../types/maintenance-types';
 import { useAuth } from '../../../hooks/useAuth';
+import { t } from '../../../i18n/t';
 
 const { Title } = Typography;
 const { TextArea } = Input;
@@ -46,7 +47,7 @@ export const EditTicket: React.FC = () => {
 
         // Check if ticket can be edited
         if (ticketData.status !== MaintenanceTicketStatus.DECLARED) {
-          message.warning('Seuls les tickets avec le statut "Déclaré" peuvent être modifiés');
+          message.warning(t('Seuls les tickets avec le statut "Déclaré" peuvent être modifiés'));
           navigate(`/tenant/${effectiveTenantId}/maintenance/${ticketId}`);
           return;
         }
@@ -62,7 +63,7 @@ export const EditTicket: React.FC = () => {
       }
     } catch (error: any) {
       console.error('Error loading ticket:', error);
-      const errorMessage = error.response?.data?.message || 'Erreur lors du chargement du ticket';
+      const errorMessage = error.response?.data?.message || t('Erreur lors du chargement du ticket');
       message.error(errorMessage);
       navigate(`/tenant/${effectiveTenantId}/maintenance`);
     } finally {
@@ -102,22 +103,22 @@ export const EditTicket: React.FC = () => {
 
       // Check if there are any changes
       if (Object.keys(updateData).length === 0) {
-        message.info('Aucune modification à apporter');
+        message.info(t('Aucune modification à apporter'));
         return;
       }
 
       const response = await tenantMaintenanceService.updateTicket(effectiveTenantId, ticketId, updateData);
 
       if (response.success) {
-        message.success('Ticket modifié avec succès');
+        message.success(t('Ticket modifié avec succès'));
         navigate(`/tenant/${effectiveTenantId}/maintenance/${ticketId}`);
       }
     } catch (error: any) {
       console.error('Error updating ticket:', error);
-      const errorMessage = error.response?.data?.message || 'Erreur lors de la modification du ticket';
+      const errorMessage = error.response?.data?.message || t('Erreur lors de la modification du ticket');
 
       if (errorMessage.includes('Déclaré')) {
-        message.error('Seuls les tickets avec le statut "Déclaré" peuvent être modifiés');
+        message.error(t('Seuls les tickets avec le statut "Déclaré" peuvent être modifiés'));
       } else {
         message.error(errorMessage);
       }
@@ -141,12 +142,14 @@ export const EditTicket: React.FC = () => {
       <>
         <div style={{ padding: '24px' }}>
           <Alert
-            message="Ticket introuvable"
-            description="Le ticket demandé n'existe pas ou vous n'avez pas l'autorisation de le consulter."
+            message={t('Ticket introuvable')}
+            description={t("Le ticket demandé n'existe pas ou vous n'avez pas l'autorisation de le consulter.")}
             type="error"
             showIcon
             action={
-              <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>Retour à la liste</Button>
+              <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance`)}>
+                {t('Retour à la liste')}
+              </Button>
             }
           />
         </div>
@@ -159,13 +162,13 @@ export const EditTicket: React.FC = () => {
       <>
         <div style={{ padding: '24px' }}>
           <Alert
-            message="Modification impossible"
-            description="Seuls les tickets avec le statut 'Déclaré' peuvent être modifiés."
+            message={t('Modification impossible')}
+            description={t("Seuls les tickets avec le statut 'Déclaré' peuvent être modifiés.")}
             type="warning"
             showIcon
             action={
               <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance/${ticketId}`)}>
-                Voir le ticket
+                {t('Voir le ticket')}
               </Button>
             }
           />
@@ -182,15 +185,17 @@ export const EditTicket: React.FC = () => {
             icon={<ArrowLeftOutlined />}
             onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance/${ticketId}`)}
           >
-            Retour au ticket
+            {t('Retour au ticket')}
           </Button>
 
           <Card>
-            <Title level={2}>Modifier le ticket de maintenance</Title>
+            <Title level={2}>{t('Modifier le ticket de maintenance')}</Title>
 
             <Alert
-              message="Information"
-              description="Vous pouvez modifier le titre, la description, la catégorie, la priorité et les détails de localisation. La propriété et le bail ne peuvent pas être modifiés."
+              message={t('Information')}
+              description={t(
+                'Vous pouvez modifier le titre, la description, la catégorie, la priorité et les détails de localisation. La propriété et le bail ne peuvent pas être modifiés.'
+              )}
               type="info"
               showIcon
               style={{ marginBottom: 24 }}
@@ -199,69 +204,69 @@ export const EditTicket: React.FC = () => {
             <Form form={form} layout="vertical" onFinish={handleSubmit} style={{ maxWidth: 800 }}>
               <Form.Item
                 name="title"
-                label="Titre"
+                label={t('Titre')}
                 rules={[
-                  { required: true, message: 'Veuillez saisir un titre' },
-                  { min: 3, message: 'Le titre doit contenir au moins 3 caractères' },
-                  { max: 200, message: 'Le titre ne peut pas dépasser 200 caractères' }
+                  { required: true, message: t('Veuillez saisir un titre') },
+                  { min: 3, message: t('Le titre doit contenir au moins 3 caractères') },
+                  { max: 200, message: t('Le titre ne peut pas dépasser 200 caractères') }
                 ]}
               >
-                <Input placeholder="Ex: Fuite d'eau dans la salle de bain" />
+                <Input placeholder={t("Ex: Fuite d'eau dans la salle de bain")} />
               </Form.Item>
 
               <Form.Item
                 name="category"
-                label="Catégorie"
-                rules={[{ required: true, message: 'Veuillez sélectionner une catégorie' }]}
+                label={t('Catégorie')}
+                rules={[{ required: true, message: t('Veuillez sélectionner une catégorie') }]}
               >
-                <Select placeholder="Sélectionner une catégorie">
-                  <Option value={MaintenanceTicketCategory.PLUMBING}>Plomberie</Option>
-                  <Option value={MaintenanceTicketCategory.ELECTRICITY}>Électricité</Option>
-                  <Option value={MaintenanceTicketCategory.AC}>Climatisation</Option>
-                  <Option value={MaintenanceTicketCategory.OTHER}>Autre</Option>
+                <Select placeholder={t('Sélectionner une catégorie')}>
+                  <Option value={MaintenanceTicketCategory.PLUMBING}>{t('Plomberie')}</Option>
+                  <Option value={MaintenanceTicketCategory.ELECTRICITY}>{t('Électricité')}</Option>
+                  <Option value={MaintenanceTicketCategory.AC}>{t('Climatisation')}</Option>
+                  <Option value={MaintenanceTicketCategory.OTHER}>{t('Autre')}</Option>
                 </Select>
               </Form.Item>
 
               <Form.Item
                 name="priority"
-                label="Priorité"
-                rules={[{ required: true, message: 'Veuillez sélectionner une priorité' }]}
+                label={t('Priorité')}
+                rules={[{ required: true, message: t('Veuillez sélectionner une priorité') }]}
               >
-                <Select placeholder="Sélectionner une priorité">
-                  <Option value={MaintenanceTicketPriority.LOW}>Faible</Option>
-                  <Option value={MaintenanceTicketPriority.MEDIUM}>Moyenne</Option>
-                  <Option value={MaintenanceTicketPriority.HIGH}>Élevée</Option>
-                  <Option value={MaintenanceTicketPriority.URGENT}>Urgente</Option>
+                <Select placeholder={t('Sélectionner une priorité')}>
+                  <Option value={MaintenanceTicketPriority.LOW}>{t('Faible')}</Option>
+                  <Option value={MaintenanceTicketPriority.MEDIUM}>{t('Moyenne')}</Option>
+                  <Option value={MaintenanceTicketPriority.HIGH}>{t('Élevée')}</Option>
+                  <Option value={MaintenanceTicketPriority.URGENT}>{t('Urgente')}</Option>
                 </Select>
               </Form.Item>
 
               <Form.Item
                 name="description"
-                label="Description"
+                label={t('Description')}
                 rules={[
-                  { required: true, message: 'Veuillez saisir une description' },
-                  { min: 10, message: 'La description doit contenir au moins 10 caractères' },
-                  { max: 5000, message: 'La description ne peut pas dépasser 5000 caractères' }
+                  { required: true, message: t('Veuillez saisir une description') },
+                  { min: 10, message: t('La description doit contenir au moins 10 caractères') },
+                  { max: 5000, message: t('La description ne peut pas dépasser 5000 caractères') }
                 ]}
               >
-                <TextArea rows={6} placeholder="Décrivez le problème en détail..." />
+                <TextArea rows={6} placeholder={t('Décrivez le problème en détail...')} />
               </Form.Item>
 
               <Form.Item
                 name="locationDetails"
-                label="Détails de localisation (optionnel)"
-                rules={[{ max: 500, message: 'Les détails ne peuvent pas dépasser 500 caractères' }]}
+                label={t('Détails de localisation (optionnel)')}
+                rules={[{ max: 500, message: t('Les détails ne peuvent pas dépasser 500 caractères') }]}
               >
-                <TextArea rows={3} placeholder="Ex: Salle de bain principale, sous l'évier" />
+                <TextArea rows={3} placeholder={t("Ex: Salle de bain principale, sous l'évier")} />
               </Form.Item>
 
               <Form.Item>
                 <Space>
                   <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={loading}>
-                    Enregistrer les modifications
+                    {t('Enregistrer les modifications')}
                   </Button>
                   <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/maintenance/${ticketId}`)}>
-                    Annuler
+                    {t('Annuler')}
                   </Button>
                 </Space>
               </Form.Item>

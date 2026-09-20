@@ -28,7 +28,9 @@ import {
   WalletOutlined
 } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 const { TabPane } = Tabs;
 
@@ -105,7 +107,7 @@ interface LeaseDetailsData {
 }
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('fr-FR', {
+  return new Intl.NumberFormat(activeLocale(), {
     style: 'currency',
     currency: 'XOF',
     minimumFractionDigits: 0
@@ -114,7 +116,7 @@ const formatCurrency = (amount: number) => {
 
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
-  return date.toLocaleDateString('fr-FR', {
+  return date.toLocaleDateString(activeLocale(), {
     year: 'numeric',
     month: 'long',
     day: 'numeric'
@@ -123,11 +125,11 @@ const formatDate = (dateString: string) => {
 
 const getStatusTag = (status: string) => {
   const statusMap: Record<string, { label: string; color: string }> = {
-    ACTIVE: { label: 'Actif', color: 'success' },
-    ENDED: { label: 'Terminé', color: 'default' },
-    SUSPENDED: { label: 'Suspendu', color: 'warning' },
-    CANCELED: { label: 'Annulé', color: 'error' },
-    DRAFT: { label: 'Brouillon', color: 'default' }
+    ACTIVE: { label: t('Actif'), color: 'success' },
+    ENDED: { label: t('Terminé'), color: 'default' },
+    SUSPENDED: { label: t('Suspendu'), color: 'warning' },
+    CANCELED: { label: t('Annulé'), color: 'error' },
+    DRAFT: { label: t('Brouillon'), color: 'default' }
   };
   const config = statusMap[status] || { label: status, color: 'default' };
   return <Tag color={config.color}>{config.label}</Tag>;
@@ -135,10 +137,10 @@ const getStatusTag = (status: string) => {
 
 const getPaymentMethodLabel = (method: string) => {
   const methods: Record<string, string> = {
-    CASH: 'Espèces',
-    BANK_TRANSFER: 'Virement bancaire',
-    CHECK: 'Chèque',
-    MOBILE_MONEY: 'Mobile Money',
+    CASH: t('Espèces'),
+    BANK_TRANSFER: t('Virement bancaire'),
+    CHECK: t('Chèque'),
+    MOBILE_MONEY: t('Mobile Money'),
     CARD: 'Carte',
     OTHER: 'Autre'
   };
@@ -147,11 +149,11 @@ const getPaymentMethodLabel = (method: string) => {
 
 const getInstallmentStatusTag = (status: string) => {
   const statusMap: Record<string, { label: string; color: string }> = {
-    DUE: { label: 'Échéance', color: 'warning' },
-    OVERDUE: { label: 'En retard', color: 'error' },
-    PAID: { label: 'Payé', color: 'success' },
-    PARTIAL: { label: 'Partiel', color: 'processing' },
-    DRAFT: { label: 'Brouillon', color: 'default' }
+    DUE: { label: t('Échéance'), color: 'warning' },
+    OVERDUE: { label: t('En retard'), color: 'error' },
+    PAID: { label: t('Payé'), color: 'success' },
+    PARTIAL: { label: t('Partiel'), color: 'processing' },
+    DRAFT: { label: t('Brouillon'), color: 'default' }
   };
   const config = statusMap[status] || { label: status, color: 'default' };
   return <Tag color={config.color}>{config.label}</Tag>;
@@ -160,8 +162,8 @@ const getInstallmentStatusTag = (status: string) => {
 const getDepositMovementTypeLabel = (type: string) => {
   const types: Record<string, string> = {
     COLLECT: 'Collecte',
-    HOLD: 'Détention',
-    RELEASE: 'Libération',
+    HOLD: t('Détention'),
+    RELEASE: t('Libération'),
     REFUND: 'Remboursement',
     FORFEIT: 'Confiscation',
     ADJUSTMENT: 'Ajustement'
@@ -192,10 +194,10 @@ export default function LeaseDetails() {
       if (response.data?.success && response.data?.data) {
         setData(response.data.data);
       } else {
-        setError('Erreur lors du chargement des détails');
+        setError(t('Erreur lors du chargement des détails'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des détails');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des détails'));
     } finally {
       setLoading(false);
     }
@@ -204,7 +206,7 @@ export default function LeaseDetails() {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <Spin size="large" tip="Chargement des détails..." />
+        <Spin size="large" tip={t('Chargement des détails...')} />
       </div>
     );
   }
@@ -212,33 +214,33 @@ export default function LeaseDetails() {
   if (error) {
     return (
       <Alert
-        message="Erreur"
+        message={t('Erreur')}
         description={error}
         type="error"
         showIcon
-        action={<Button onClick={() => navigate('/owner/leases')}>Retour à la liste</Button>}
+        action={<Button onClick={() => navigate('/owner/leases')}>{t('Retour à la liste')}</Button>}
       />
     );
   }
 
   if (!data) {
-    return <Empty description="Aucune donnée disponible" />;
+    return <Empty description={t('Aucune donnée disponible')} />;
   }
 
   const installmentColumns = [
     {
-      title: 'Période',
+      title: t('Période'),
       key: 'period',
       render: (record: any) => `${record.period_year}-${String(record.period_month).padStart(2, '0')}`
     },
     {
-      title: "Date d'échéance",
+      title: t("Date d'échéance"),
       dataIndex: 'due_date',
       key: 'due_date',
       render: (date: string) => formatDate(date)
     },
     {
-      title: 'Montant',
+      title: t('Montant'),
       key: 'amount',
       render: (record: any) =>
         formatCurrency(
@@ -249,13 +251,13 @@ export default function LeaseDetails() {
         )
     },
     {
-      title: 'Payé',
+      title: t('Payé'),
       dataIndex: 'amount_paid',
       key: 'amount_paid',
       render: (amount: number) => formatCurrency(Number(amount))
     },
     {
-      title: 'Statut',
+      title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => getInstallmentStatusTag(status)
@@ -267,9 +269,11 @@ export default function LeaseDetails() {
       {/* Header */}
       <div>
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/owner/leases')} style={{ marginBottom: 16 }}>
-          Retour
+          {t('Retour')}
         </Button>
-        <Title level={2}>Bail {data.lease.lease_number}</Title>
+        <Title level={2}>
+          {t('Bail')} {data.lease.lease_number}
+        </Title>
         <Text type="secondary">{data.lease.property.address}</Text>
       </div>
 
@@ -278,29 +282,29 @@ export default function LeaseDetails() {
         <TabPane
           tab={
             <>
-              <FileTextOutlined /> Informations
+              <FileTextOutlined /> {t('Informations')}
             </>
           }
           key="info"
         >
-          <Card title="Informations du bail">
+          <Card title={t('Informations du bail')}>
             <Descriptions column={{ xs: 1, sm: 2 }} bordered>
-              <Descriptions.Item label="Propriété">{data.lease.property.address}</Descriptions.Item>
-              <Descriptions.Item label="Numéro de bail">{data.lease.lease_number}</Descriptions.Item>
-              <Descriptions.Item label="Date de début">{formatDate(data.lease.start_date)}</Descriptions.Item>
-              <Descriptions.Item label="Date de fin">
-                {data.lease.end_date ? formatDate(data.lease.end_date) : 'Non définie'}
+              <Descriptions.Item label={t('Propriété')}>{data.lease.property.address}</Descriptions.Item>
+              <Descriptions.Item label={t('Numéro de bail')}>{data.lease.lease_number}</Descriptions.Item>
+              <Descriptions.Item label={t('Date de début')}>{formatDate(data.lease.start_date)}</Descriptions.Item>
+              <Descriptions.Item label={t('Date de fin')}>
+                {data.lease.end_date ? formatDate(data.lease.end_date) : t('Non définie')}
               </Descriptions.Item>
-              <Descriptions.Item label="Loyer mensuel">
+              <Descriptions.Item label={t('Loyer mensuel')}>
                 {formatCurrency(Number(data.lease.rent_amount))}
               </Descriptions.Item>
-              <Descriptions.Item label="Charges">
+              <Descriptions.Item label={t('Charges')}>
                 {formatCurrency(Number(data.lease.service_charge_amount))}
               </Descriptions.Item>
-              <Descriptions.Item label="Dépôt de garantie">
+              <Descriptions.Item label={t('Dépôt de garantie')}>
                 {formatCurrency(Number(data.lease.security_deposit_amount))}
               </Descriptions.Item>
-              <Descriptions.Item label="Statut">{getStatusTag(data.lease.status)}</Descriptions.Item>
+              <Descriptions.Item label={t('Statut')}>{getStatusTag(data.lease.status)}</Descriptions.Item>
             </Descriptions>
           </Card>
         </TabPane>
@@ -309,20 +313,20 @@ export default function LeaseDetails() {
         <TabPane
           tab={
             <>
-              <UserOutlined /> Locataires
+              <UserOutlined /> {t('Locataires')}
             </>
           }
           key="renters"
         >
-          <Card title="Locataire principal">
+          <Card title={t('Locataire principal')}>
             <Descriptions column={{ xs: 1, sm: 2 }} bordered>
-              <Descriptions.Item label="Nom">{data.lease.primaryRenter.user.fullName}</Descriptions.Item>
-              <Descriptions.Item label="Email">{data.lease.primaryRenter.user.email}</Descriptions.Item>
+              <Descriptions.Item label={t('Nom')}>{data.lease.primaryRenter.user.fullName}</Descriptions.Item>
+              <Descriptions.Item label={t('Email')}>{data.lease.primaryRenter.user.email}</Descriptions.Item>
             </Descriptions>
           </Card>
 
           {data.lease.coRenters.length > 0 && (
-            <Card title="Co-locataires" style={{ marginTop: 16 }}>
+            <Card title={t('Co-locataires')} style={{ marginTop: 16 }}>
               <List
                 dataSource={data.lease.coRenters}
                 renderItem={coRenter => (
@@ -339,12 +343,12 @@ export default function LeaseDetails() {
         <TabPane
           tab={
             <>
-              <CalendarOutlined /> Échéances
+              <CalendarOutlined /> {t('Échéances')}
             </>
           }
           key="installments"
         >
-          <Card title="Calendrier des échéances">
+          <Card title={t('Calendrier des échéances')}>
             {data.installments.length > 0 ? (
               <Table
                 scroll={{ x: 'max-content' }}
@@ -354,7 +358,7 @@ export default function LeaseDetails() {
                 pagination={{ pageSize: 10 }}
               />
             ) : (
-              <Empty description="Aucune échéance" />
+              <Empty description={t('Aucune échéance')} />
             )}
           </Card>
         </TabPane>
@@ -363,12 +367,12 @@ export default function LeaseDetails() {
         <TabPane
           tab={
             <>
-              <WalletOutlined /> Historique des paiements
+              <WalletOutlined /> {t('Historique des paiements')}
             </>
           }
           key="payments"
         >
-          <Card title="Historique des paiements">
+          <Card title={t('Historique des paiements')}>
             {data.paymentHistory.length > 0 ? (
               <List
                 dataSource={data.paymentHistory}
@@ -408,7 +412,7 @@ export default function LeaseDetails() {
                 )}
               />
             ) : (
-              <Empty description="Aucun paiement" />
+              <Empty description={t('Aucun paiement')} />
             )}
           </Card>
         </TabPane>
@@ -417,16 +421,16 @@ export default function LeaseDetails() {
         <TabPane
           tab={
             <>
-              <DollarOutlined /> Solde
+              <DollarOutlined /> {t('Solde')}
             </>
           }
           key="balance"
         >
-          <Card title="Solde du bail">
+          <Card title={t('Solde du bail')}>
             <Row gutter={[16, 16]}>
               <Col xs={24} sm={12} lg={8}>
                 <Statistic
-                  title="Total dû"
+                  title={t('Total dû')}
                   value={formatCurrency(data.balance.totalDue)}
                   prefix={<DollarOutlined />}
                   valueStyle={{ color: '#ff4d4f' }}
@@ -434,7 +438,7 @@ export default function LeaseDetails() {
               </Col>
               <Col xs={24} sm={12} lg={8}>
                 <Statistic
-                  title="Total payé"
+                  title={t('Total payé')}
                   value={formatCurrency(data.balance.totalPaid)}
                   prefix={<DollarOutlined />}
                   valueStyle={{ color: '#52c41a' }}
@@ -442,7 +446,7 @@ export default function LeaseDetails() {
               </Col>
               <Col xs={24} sm={12} lg={8}>
                 <Statistic
-                  title="Reste à payer"
+                  title={t('Reste à payer')}
                   value={formatCurrency(data.balance.remaining)}
                   prefix={<DollarOutlined />}
                   valueStyle={{
@@ -454,8 +458,10 @@ export default function LeaseDetails() {
             </Row>
             {data.balance.remaining > 0 && (
               <Alert
-                message="Montant en attente de paiement"
-                description={`Il reste ${formatCurrency(data.balance.remaining)} à payer pour ce bail.`}
+                message={t('Montant en attente de paiement')}
+                description={t('Il reste {{value}} à payer pour ce bail.', {
+                  value: formatCurrency(data.balance.remaining)
+                })}
                 type="warning"
                 showIcon
                 style={{ marginTop: 16 }}
@@ -468,25 +474,25 @@ export default function LeaseDetails() {
         <TabPane
           tab={
             <>
-              <SafetyOutlined /> Dépôt de garantie
+              <SafetyOutlined /> {t('Dépôt de garantie')}
             </>
           }
           key="deposit"
         >
           {data.deposit ? (
             <>
-              <Card title="Dépôt de garantie">
+              <Card title={t('Dépôt de garantie')}>
                 <Row gutter={[16, 16]}>
                   <Col xs={24} sm={12} lg={8}>
                     <Statistic
-                      title="Montant cible"
+                      title={t('Montant cible')}
                       value={formatCurrency(Number(data.deposit.target_amount))}
                       prefix={<SafetyOutlined />}
                     />
                   </Col>
                   <Col xs={24} sm={12} lg={8}>
                     <Statistic
-                      title="Montant détenu"
+                      title={t('Montant détenu')}
                       value={formatCurrency(Number(data.deposit.held_amount))}
                       prefix={<SafetyOutlined />}
                       valueStyle={{ color: '#1890ff' }}
@@ -494,7 +500,7 @@ export default function LeaseDetails() {
                   </Col>
                   <Col xs={24} sm={12} lg={8}>
                     <Statistic
-                      title="Montant remboursé"
+                      title={t('Montant remboursé')}
                       value={formatCurrency(Number(data.deposit.refunded_amount))}
                       prefix={<SafetyOutlined />}
                       valueStyle={{ color: '#52c41a' }}
@@ -504,7 +510,7 @@ export default function LeaseDetails() {
               </Card>
 
               {data.deposit.movements.length > 0 && (
-                <Card title="Historique des mouvements" style={{ marginTop: 16 }}>
+                <Card title={t('Historique des mouvements')} style={{ marginTop: 16 }}>
                   <List
                     dataSource={data.deposit.movements}
                     renderItem={movement => (
@@ -530,7 +536,7 @@ export default function LeaseDetails() {
               )}
             </>
           ) : (
-            <Empty description="Aucun dépôt de garantie enregistré" />
+            <Empty description={t('Aucun dépôt de garantie enregistré')} />
           )}
         </TabPane>
       </Tabs>

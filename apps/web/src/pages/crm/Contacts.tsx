@@ -58,7 +58,9 @@ import {
 import { AdvancedFilters, AdvancedFilters as AdvancedFiltersType } from '../../components/crm/AdvancedFilters';
 import { exportToCSV, exportToExcel } from '../../utils/export-utils';
 import type { ColumnsType } from 'antd/es/table';
+import { t as translate } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 export const Contacts: React.FC = () => {
@@ -131,10 +133,10 @@ export const Contacts: React.FC = () => {
         setContacts(response.contacts);
         setPagination(response.pagination);
       } else {
-        setError('Erreur lors du chargement des contacts');
+        setError(translate('Erreur lors du chargement des contacts'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des contacts');
+      setError(err.response?.data?.message || translate('Erreur lors du chargement des contacts'));
     } finally {
       setLoading(false);
     }
@@ -188,11 +190,11 @@ export const Contacts: React.FC = () => {
     if (!tenantId) return;
     try {
       await deleteContactApi(tenantId, contact.id);
-      message.success('Contact supprimé avec succès');
+      message.success(translate('Contact supprimé avec succès'));
       await loadContacts();
     } catch (err: any) {
       console.error('Error deleting contact:', err);
-      message.error(err?.response?.data?.message || 'Erreur lors de la suppression du contact');
+      message.error(err?.response?.data?.message || translate('Erreur lors de la suppression du contact'));
     }
   };
 
@@ -223,18 +225,23 @@ export const Contacts: React.FC = () => {
       Nom: `${contact.firstName} ${contact.lastName}`,
       Email: contact.email,
       Téléphone: contact.phonePrimary || contact.phone || '',
-      Statut: contact.status === 'LEAD' ? 'Prospect' : contact.status === 'ACTIVE_CLIENT' ? 'Client actif' : 'Archivé',
+      Statut:
+        contact.status === 'LEAD'
+          ? 'Prospect'
+          : contact.status === 'ACTIVE_CLIENT'
+            ? translate('Client actif')
+            : translate('Archivé'),
       Source: contact.source || '',
       'Prochaine action': contact.nextAction
-        ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString('fr-FR')}`
+        ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString(activeLocale())}`
         : '',
       'Affaire en cours': contact.activeDeal
         ? `${contact.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${contact.activeDeal.stage}`
         : '',
-      'Date de création': new Date(contact.createdAt).toLocaleDateString('fr-FR')
+      'Date de création': new Date(contact.createdAt).toLocaleDateString(activeLocale())
     }));
     exportToCSV(exportData, 'contacts');
-    message.success('Export CSV réussi');
+    message.success(translate('Export CSV réussi'));
   };
 
   const handleExportExcel = async () => {
@@ -242,48 +249,53 @@ export const Contacts: React.FC = () => {
       Nom: `${contact.firstName} ${contact.lastName}`,
       Email: contact.email,
       Téléphone: contact.phonePrimary || contact.phone || '',
-      Statut: contact.status === 'LEAD' ? 'Prospect' : contact.status === 'ACTIVE_CLIENT' ? 'Client actif' : 'Archivé',
+      Statut:
+        contact.status === 'LEAD'
+          ? 'Prospect'
+          : contact.status === 'ACTIVE_CLIENT'
+            ? translate('Client actif')
+            : translate('Archivé'),
       Source: contact.source || '',
       'Prochaine action': contact.nextAction
-        ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString('fr-FR')}`
+        ? `${contact.nextAction.nextActionType || 'Action'} - ${new Date(contact.nextAction.nextActionAt).toLocaleDateString(activeLocale())}`
         : '',
       'Affaire en cours': contact.activeDeal
         ? `${contact.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location'} - ${contact.activeDeal.stage}`
         : '',
-      'Date de création': new Date(contact.createdAt).toLocaleDateString('fr-FR')
+      'Date de création': new Date(contact.createdAt).toLocaleDateString(activeLocale())
     }));
     await exportToExcel(exportData, 'contacts', 'Contacts');
-    message.success('Export Excel réussi');
+    message.success(translate('Export Excel réussi'));
   };
 
   const columns: ColumnsType<CrmContact> = [
     {
-      title: 'Nom',
+      title: translate('Nom'),
       key: 'name',
       render: (_, record) => <Text strong>{`${record.firstName} ${record.lastName}`}</Text>
     },
     {
-      title: 'Email',
+      title: translate('Email'),
       dataIndex: 'email',
       key: 'email'
     },
     {
-      title: 'Téléphone',
+      title: translate('Téléphone'),
       key: 'phone',
       // `phone` est un champ historique que l'API ne renseigne plus : le numero
       // vit dans `phonePrimary`. On garde le repli pour les contacts anciens.
       render: (_, record) => record.phonePrimary || record.phone || '-'
     },
     {
-      title: 'Prochaine action',
+      title: translate('Prochaine action'),
       key: 'nextAction',
       render: (_, record) => {
         if (!record.nextAction) return <Text type="secondary">-</Text>;
         return (
           <Space direction="vertical" size={0}>
-            <Text>{record.nextAction.nextActionType || 'Action'}</Text>
+            <Text>{record.nextAction.nextActionType || translate('Action')}</Text>
             <Text type="secondary" style={{ fontSize: '12px' }}>
-              {new Date(record.nextAction.nextActionAt).toLocaleDateString('fr-FR', {
+              {new Date(record.nextAction.nextActionAt).toLocaleDateString(activeLocale(), {
                 day: '2-digit',
                 month: 'short',
                 year: 'numeric'
@@ -294,16 +306,16 @@ export const Contacts: React.FC = () => {
       }
     },
     {
-      title: 'Affaire en cours',
+      title: translate('Affaire en cours'),
       key: 'activeDeal',
       render: (_, record) => {
         if (!record.activeDeal) return <Text type="secondary">-</Text>;
         const dealType = record.activeDeal.type === 'ACHAT' ? 'Achat' : 'Location';
         const stageMap: Record<string, string> = {
           NEW: 'Nouveau',
-          QUALIFIED: 'Qualifié',
+          QUALIFIED: translate('Qualifié'),
           VISIT: 'Visite',
-          NEGOTIATION: 'Négociation'
+          NEGOTIATION: translate('Négociation')
         };
         return (
           <Space direction="vertical" size={0}>
@@ -316,31 +328,31 @@ export const Contacts: React.FC = () => {
       }
     },
     {
-      title: 'Actions',
+      title: translate('Actions'),
       key: 'actions',
       width: 200,
       render: (_, record) => (
         <Space>
-          <Tooltip title="Ajouter une activité">
+          <Tooltip title={translate('Ajouter une activité')}>
             <Button type="text" icon={<CalendarOutlined />} onClick={() => handleAddActivity(record)} />
           </Tooltip>
-          <Tooltip title="Voir les détails">
+          <Tooltip title={translate('Voir les détails')}>
             <Button
               type="text"
               icon={<EyeOutlined />}
               onClick={() => navigate(`/tenant/${tenantId}/crm/contacts/${record.id}`)}
             />
           </Tooltip>
-          <Tooltip title="Modifier">
+          <Tooltip title={translate('Modifier')}>
             <Button type="text" icon={<EditOutlined />} onClick={() => setEditingContact(record)} />
           </Tooltip>
-          <Tooltip title="Supprimer">
+          <Tooltip title={translate('Supprimer')}>
             <Popconfirm
-              title="Supprimer ce contact ?"
-              description="Cette action est définitive. Confirmez la suppression du contact."
-              okText="Supprimer"
+              title={translate('Supprimer ce contact ?')}
+              description={translate('Cette action est définitive. Confirmez la suppression du contact.')}
+              okText={translate('Supprimer')}
               okType="danger"
-              cancelText="Annuler"
+              cancelText={translate('Annuler')}
               onConfirm={() => handleDeleteContact(record)}
             >
               <Button type="text" danger icon={<DeleteOutlined />} />
@@ -371,27 +383,27 @@ export const Contacts: React.FC = () => {
         <Row justify="space-between" align="middle" gutter={[16, 16]}>
           <Col xs={24} sm={24} md={12}>
             <Title level={2} style={{ margin: 0 }}>
-              Contacts
+              {translate('Contacts')}
             </Title>
-            <Text type="secondary">Gérez vos contacts et prospects CRM</Text>
+            <Text type="secondary">{translate('Gérez vos contacts et prospects CRM')}</Text>
           </Col>
           <Col xs={24} sm={24} md={12}>
             <Space wrap>
               <Button icon={<DownloadOutlined />} onClick={handleExportCSV}>
-                Exporter CSV
+                {translate('Exporter CSV')}
               </Button>
               <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>
-                Exporter Excel
+                {translate('Exporter Excel')}
               </Button>
               <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)}>
-                Nouveau contact
+                {translate('Nouveau contact')}
               </Button>
             </Space>
           </Col>
         </Row>
 
         <Modal
-          title="Créer un nouveau contact"
+          title={translate('Créer un nouveau contact')}
           open={showForm}
           onCancel={() => setShowForm(false)}
           footer={null}
@@ -401,7 +413,7 @@ export const Contacts: React.FC = () => {
         </Modal>
 
         <Modal
-          title="Modifier le contact"
+          title={translate('Modifier le contact')}
           open={!!editingContact}
           onCancel={() => setEditingContact(null)}
           footer={null}
@@ -413,7 +425,7 @@ export const Contacts: React.FC = () => {
         </Modal>
 
         <Modal
-          title="Ajouter une activité au contact"
+          title={translate('Ajouter une activité au contact')}
           open={showActivityForm && !!selectedContactForActivity}
           onCancel={() => {
             setShowActivityForm(false);
@@ -436,10 +448,10 @@ export const Contacts: React.FC = () => {
         </Modal>
 
         {/* Filters */}
-        <Card title="Filtres" extra={<FilterOutlined />}>
+        <Card title={translate('Filtres')} extra={<FilterOutlined />}>
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
             <InputSearch
-              placeholder="Rechercher des contacts..."
+              placeholder={translate('Rechercher des contacts...')}
               allowClear
               enterButton={<SearchOutlined />}
               size="large"
@@ -454,30 +466,30 @@ export const Contacts: React.FC = () => {
             <Divider style={{ margin: '12px 0' }} />
 
             <div>
-              <Text strong style={{ marginRight: 16 }}>
+              <Text strong style={{ marginInlineEnd: 16 }}>
                 Statut:
               </Text>
               <Space wrap>
                 <Button type={!filters.status ? 'primary' : 'default'} onClick={() => handleStatusFilter('')}>
-                  Tous
+                  {translate('Tous')}
                 </Button>
                 <Button
                   type={filters.status === 'LEAD' ? 'primary' : 'default'}
                   onClick={() => handleStatusFilter('LEAD')}
                 >
-                  Prospects
+                  {translate('Prospects')}
                 </Button>
                 <Button
                   type={filters.status === 'ACTIVE_CLIENT' ? 'primary' : 'default'}
                   onClick={() => handleStatusFilter('ACTIVE_CLIENT')}
                 >
-                  Clients
+                  {translate('Clients')}
                 </Button>
                 <Button
                   type={filters.status === 'ARCHIVED' ? 'primary' : 'default'}
                   onClick={() => handleStatusFilter('ARCHIVED')}
                 >
-                  Archivés
+                  {translate('Archivés')}
                 </Button>
               </Space>
             </div>
@@ -488,19 +500,20 @@ export const Contacts: React.FC = () => {
             <div>
               <Space style={{ marginBottom: 12, width: '100%' }} wrap>
                 <TagOutlined />
-                <Text strong>Filtrer par tags:</Text>
+                <Text strong>{translate('Filtrer par tags:')}</Text>
                 {selectedTags.length > 0 && (
                   <Text type="secondary">
-                    ({selectedTags.length} sélectionné{selectedTags.length > 1 ? 's' : ''})
+                    ({selectedTags.length} {translate('sélectionné')}
+                    {selectedTags.length > 1 ? 's' : ''})
                   </Text>
                 )}
                 {selectedTags.length > 0 && (
                   <Button type="text" size="small" icon={<CloseOutlined />} onClick={clearTagFilters}>
-                    Effacer
+                    {translate('Effacer')}
                   </Button>
                 )}
                 <Button size="small" icon={<FilterOutlined />} onClick={() => setShowTagFilter(!showTagFilter)}>
-                  {showTagFilter ? 'Masquer' : 'Afficher'}
+                  {showTagFilter ? translate('Masquer') : translate('Afficher')}
                 </Button>
               </Space>
 
@@ -508,7 +521,7 @@ export const Contacts: React.FC = () => {
                 <div style={{ marginTop: 12 }}>
                   {allTags.length === 0 ? (
                     <Text type="secondary" italic>
-                      Aucun tag disponible
+                      {translate('Aucun tag disponible')}
                     </Text>
                   ) : (
                     <Space wrap>
@@ -522,7 +535,7 @@ export const Contacts: React.FC = () => {
                           }}
                           onClick={() => handleTagToggle(tag.id)}
                         >
-                          {selectedTags.includes(tag.id) && <CheckOutlined style={{ marginRight: 4 }} />}
+                          {selectedTags.includes(tag.id) && <CheckOutlined style={{ marginInlineEnd: 4 }} />}
                           {tag.name}
                         </AntTag>
                       ))}
@@ -562,13 +575,13 @@ export const Contacts: React.FC = () => {
                 checked={hasActiveDealFilter === true}
                 onChange={e => setHasActiveDealFilter(e.target.checked ? true : undefined)}
               >
-                Affaire en cours
+                {translate('Affaire en cours')}
               </Checkbox>
               <Checkbox
                 checked={hasUpcomingActivityFilter === true}
                 onChange={e => setHasUpcomingActivityFilter(e.target.checked ? true : undefined)}
               >
-                Activité à venir
+                {translate('Activité à venir')}
               </Checkbox>
             </Space>
 
@@ -581,7 +594,7 @@ export const Contacts: React.FC = () => {
                 showDateRange: true,
                 showAssignedTo: true,
                 showSource: true,
-                dateRangeLabel: 'Date de création'
+                dateRangeLabel: translate('Date de création')
               }}
               filters={advancedFilters}
               onFiltersChange={setAdvancedFilters}
@@ -591,7 +604,14 @@ export const Contacts: React.FC = () => {
 
         {/* Contacts List */}
         {error && (
-          <Alert message="Erreur" description={error} type="error" showIcon closable onClose={() => setError(null)} />
+          <Alert
+            message={translate('Erreur')}
+            description={error}
+            type="error"
+            showIcon
+            closable
+            onClose={() => setError(null)}
+          />
         )}
 
         {loading ? (
@@ -599,7 +619,7 @@ export const Contacts: React.FC = () => {
             <div style={{ textAlign: 'center', padding: '48px 0' }}>
               <Spin size="large" />
               <div style={{ marginTop: 16 }}>
-                <Text>Chargement des contacts...</Text>
+                <Text>{translate('Chargement des contacts...')}</Text>
               </div>
             </div>
           </Card>
@@ -610,13 +630,13 @@ export const Contacts: React.FC = () => {
               imageStyle={{ height: 64 }}
               description={
                 <Space direction="vertical" size="small">
-                  <Text strong>Aucun contact trouvé</Text>
-                  <Text type="secondary">Commencez par créer votre premier contact.</Text>
+                  <Text strong>{translate('Aucun contact trouvé')}</Text>
+                  <Text type="secondary">{translate('Commencez par créer votre premier contact.')}</Text>
                 </Space>
               }
             >
               <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowForm(true)}>
-                Créer un contact
+                {translate('Créer un contact')}
               </Button>
             </Empty>
           </Card>
@@ -634,17 +654,18 @@ export const Contacts: React.FC = () => {
                   <Col xs={24} sm={12}>
                     <Space>
                       <Text strong>
-                        {selectedContacts.length} contact{selectedContacts.length > 1 ? 's' : ''} sélectionné
+                        {selectedContacts.length} contact{selectedContacts.length > 1 ? 's' : ''}{' '}
+                        {translate('sélectionné')}
                         {selectedContacts.length > 1 ? 's' : ''}
                       </Text>
                       <Button size="small" onClick={() => setSelectedContacts([])}>
-                        Désélectionner tout
+                        {translate('Désélectionner tout')}
                       </Button>
                     </Space>
                   </Col>
-                  <Col xs={24} sm={12} style={{ textAlign: 'right' }}>
+                  <Col xs={24} sm={12} style={{ textAlign: 'end' }}>
                     <Button type="primary" icon={<TagOutlined />} onClick={() => setShowBulkTagManager(true)}>
-                      Gérer les tags
+                      {translate('Gérer les tags')}
                     </Button>
                   </Col>
                 </Row>
@@ -671,11 +692,11 @@ export const Contacts: React.FC = () => {
                 <Row justify="space-between" align="middle" gutter={[16, 16]}>
                   <Col xs={24} sm={12}>
                     <Text type="secondary">
-                      Affichage de {(pagination.page - 1) * pagination.limit + 1} à{' '}
+                      {translate('Affichage de')} {(pagination.page - 1) * pagination.limit + 1} à{' '}
                       {Math.min(pagination.page * pagination.limit, pagination.total)} sur {pagination.total} contacts
                     </Text>
                   </Col>
-                  <Col xs={24} sm={12} style={{ textAlign: 'right' }}>
+                  <Col xs={24} sm={12} style={{ textAlign: 'end' }}>
                     <Pagination
                       current={pagination.page}
                       total={pagination.total}

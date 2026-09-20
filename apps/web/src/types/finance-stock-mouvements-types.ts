@@ -1,3 +1,4 @@
+import { t } from '../i18n/t';
 /**
  * Contrat gelé de la frontière réseau — lot 5, deuxième sous-lot : réceptions,
  * sorties et valorisation (PRD E9, besoins S2, S3, S4).
@@ -54,10 +55,10 @@
 export type StockMovementType = 'RECEIPT' | 'ISSUE' | 'TRANSFER' | 'ADJUSTMENT';
 
 export const STOCK_MOVEMENT_TYPE_LABELS: Record<StockMovementType, string> = {
-  RECEIPT: 'Réception',
-  ISSUE: 'Sortie vers un chantier',
-  TRANSFER: 'Transfert entre lieux',
-  ADJUSTMENT: 'Ajustement d’inventaire'
+  RECEIPT: t('Réception'),
+  ISSUE: t('Sortie vers un chantier'),
+  TRANSFER: t('Transfert entre lieux'),
+  ADJUSTMENT: t('Ajustement d’inventaire')
 };
 
 /**
@@ -274,7 +275,7 @@ export type StockLocationKind = 'WAREHOUSE' | 'SITE';
 
 export const STOCK_LOCATION_KIND_LABELS: Record<StockLocationKind, string> = {
   WAREHOUSE: 'Magasin',
-  SITE: 'Lieu de chantier'
+  SITE: t('Lieu de chantier')
 };
 
 export interface StockLocationRef {

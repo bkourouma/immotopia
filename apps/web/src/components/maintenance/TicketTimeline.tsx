@@ -2,6 +2,7 @@ import React from 'react';
 import { Timeline, Typography } from 'antd';
 import { StatusHistory } from '../../types/maintenance-types';
 import { formatTimelineDate } from '../../utils/date-utils';
+import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
@@ -10,16 +11,16 @@ interface TicketTimelineProps {
 }
 
 const statusLabels: Record<string, string> = {
-  DECLARED: 'Déclaré',
-  IN_PROGRESS: 'En cours',
-  ASSIGNED: 'Assigné',
-  RESOLVED: 'Résolu',
-  CANCELED: 'Annulé'
+  DECLARED: t('Déclaré'),
+  IN_PROGRESS: t('En cours'),
+  ASSIGNED: t('Assigné'),
+  RESOLVED: t('Résolu'),
+  CANCELED: t('Annulé')
 };
 
 export const TicketTimeline: React.FC<TicketTimelineProps> = ({ statusHistory }) => {
   if (statusHistory.length === 0) {
-    return <Text type="secondary">Aucun historique disponible</Text>;
+    return <Text type="secondary">{t('Aucun historique disponible')}</Text>;
   }
 
   const items = statusHistory.map((history, index) => {
@@ -40,7 +41,7 @@ export const TicketTimeline: React.FC<TicketTimelineProps> = ({ statusHistory })
           <Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
             {formattedDate}
             {history.changedByUser && ` par ${history.changedByUser.fullName || history.changedByUser.email}`}
-            {!history.changedByUser && ' (Système)'}
+            {!history.changedByUser && t('(Système)')}
           </Text>
         </div>
       ),

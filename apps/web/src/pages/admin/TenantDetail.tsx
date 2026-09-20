@@ -29,7 +29,9 @@ import {
 } from 'lucide-react';
 import { App } from 'antd';
 import { useConfirmAction } from '../../components/primitives';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 export const TenantDetail: React.FC = () => {
   const { message } = App.useApp();
   const confirmAction = useConfirmAction();
@@ -64,10 +66,10 @@ export const TenantDetail: React.FC = () => {
           setStats(statsResponse.data);
         }
       } else {
-        setError('Erreur lors du chargement du tenant');
+        setError(t('Erreur lors du chargement du tenant'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement du tenant');
+      setError(err.response?.data?.message || t('Erreur lors du chargement du tenant'));
     } finally {
       setLoading(false);
     }
@@ -76,17 +78,17 @@ export const TenantDetail: React.FC = () => {
   const handleSuspend = () => {
     if (!tenantId) return;
     confirmAction({
-      title: `Suspendre l'agence « ${tenant?.name ?? tenantId} » ?`,
-      description: "Ses collaborateurs perdent l'accès jusqu'à réactivation.",
-      okText: 'Suspendre',
+      title: t("Suspendre l'agence « {{value}} » ?", { value: tenant?.name ?? tenantId }),
+      description: t("Ses collaborateurs perdent l'accès jusqu'à réactivation."),
+      okText: t('Suspendre'),
       danger: true,
       onConfirm: async () => {
         try {
           await suspendTenant(tenantId);
           await loadTenant();
-          message.success('Agence suspendue');
+          message.success(t('Agence suspendue'));
         } catch (err: any) {
-          message.error(err.response?.data?.message || 'Erreur lors de la suspension');
+          message.error(err.response?.data?.message || t('Erreur lors de la suspension'));
         }
       }
     });
@@ -94,15 +96,15 @@ export const TenantDetail: React.FC = () => {
   const handleActivate = () => {
     if (!tenantId) return;
     confirmAction({
-      title: `Activer l'agence « ${tenant?.name ?? tenantId} » ?`,
-      okText: 'Activer',
+      title: t("Activer l'agence « {{value}} » ?", { value: tenant?.name ?? tenantId }),
+      okText: t('Activer'),
       onConfirm: async () => {
         try {
           await activateTenant(tenantId);
           await loadTenant();
-          message.success('Agence activée');
+          message.success(t('Agence activée'));
         } catch (err: any) {
-          message.error(err.response?.data?.message || "Erreur lors de l'activation");
+          message.error(err.response?.data?.message || t("Erreur lors de l'activation"));
         }
       }
     });
@@ -120,7 +122,7 @@ export const TenantDetail: React.FC = () => {
           styles[status as keyof typeof styles] || styles.INACTIVE
         }`}
       >
-        {status === 'ACTIVE' ? 'Actif' : status === 'SUSPENDED' ? 'Suspendu' : 'Inactif'}
+        {status === 'ACTIVE' ? t('Actif') : status === 'SUSPENDED' ? t('Suspendu') : t('Inactif')}
       </span>
     );
   };
@@ -139,7 +141,7 @@ export const TenantDetail: React.FC = () => {
     return (
       <>
         <div className="bg-red-50 border border-red-200 rounded-md p-4">
-          <p className="text-sm text-red-800">{error || 'Tenant introuvable'}</p>
+          <p className="text-sm text-red-800">{error || t('Tenant introuvable')}</p>
         </div>
       </>
     );
@@ -166,24 +168,24 @@ export const TenantDetail: React.FC = () => {
                 onClick={handleSuspend}
                 className="inline-flex items-center px-4 py-2 border border-red-300 rounded-md shadow-sm text-sm font-medium text-red-700 bg-white hover:bg-red-50"
               >
-                <AlertTriangle className="h-4 w-4 mr-2" />
-                Suspendre
+                <AlertTriangle className="h-4 w-4 me-2" />
+                {t('Suspendre')}
               </button>
             ) : (
               <button
                 onClick={handleActivate}
                 className="inline-flex items-center px-4 py-2 border border-green-300 rounded-md shadow-sm text-sm font-medium text-green-700 bg-white hover:bg-green-50"
               >
-                <CheckCircle className="h-4 w-4 mr-2" />
-                Activer
+                <CheckCircle className="h-4 w-4 me-2" />
+                {t('Activer')}
               </button>
             )}
             <button
               onClick={() => navigate(`/admin/tenants/${tenantId}/edit`)}
               className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
             >
-              <Edit className="h-4 w-4 mr-2" />
-              Modifier
+              <Edit className="h-4 w-4 me-2" />
+              {t('Modifier')}
             </button>
           </div>
         </div>
@@ -192,11 +194,11 @@ export const TenantDetail: React.FC = () => {
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
             {[
-              { id: 'overview', label: "Vue d'ensemble", icon: Building2 },
-              { id: 'collaborators', label: 'Collaborateurs', icon: Users },
-              { id: 'modules', label: 'Modules', icon: Settings },
-              { id: 'subscription', label: 'Abonnement', icon: CreditCard },
-              { id: 'stats', label: 'Statistiques', icon: BarChart3 }
+              { id: 'overview', label: t("Vue d'ensemble"), icon: Building2 },
+              { id: 'collaborators', label: t('Collaborateurs'), icon: Users },
+              { id: 'modules', label: t('Modules'), icon: Settings },
+              { id: 'subscription', label: t('Abonnement'), icon: CreditCard },
+              { id: 'stats', label: t('Statistiques'), icon: BarChart3 }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -216,27 +218,27 @@ export const TenantDetail: React.FC = () => {
             <div className="space-y-6">
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Nom</label>
+                  <label className="block text-sm font-medium text-gray-700">{t('Nom')}</label>
                   <p className="mt-1 text-sm text-gray-900">{tenant.name}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Nom legal</label>
+                  <label className="block text-sm font-medium text-gray-700">{t('Nom legal')}</label>
                   <p className="mt-1 text-sm text-gray-900">{tenant.legalName || '-'}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Email</label>
+                  <label className="block text-sm font-medium text-gray-700">{t('Email')}</label>
                   <p className="mt-1 text-sm text-gray-900">{tenant.contactEmail || '-'}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Telephone</label>
+                  <label className="block text-sm font-medium text-gray-700">{t('Telephone')}</label>
                   <p className="mt-1 text-sm text-gray-900">{tenant.contactPhone || '-'}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Ville</label>
+                  <label className="block text-sm font-medium text-gray-700">{t('Ville')}</label>
                   <p className="mt-1 text-sm text-gray-900">{tenant.city || '-'}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Pays</label>
+                  <label className="block text-sm font-medium text-gray-700">{t('Pays')}</label>
                   <p className="mt-1 text-sm text-gray-900">{tenant.country || '-'}</p>
                 </div>
               </div>
@@ -264,19 +266,19 @@ export const TenantDetail: React.FC = () => {
           {activeTab === 'stats' && stats && (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Proprietes</label>
+                <label className="block text-sm font-medium text-gray-700">{t('Proprietes')}</label>
                 <p className="mt-1 text-2xl font-bold text-gray-900">{stats.totalProperties}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Clients</label>
+                <label className="block text-sm font-medium text-gray-700">{t('Clients')}</label>
                 <p className="mt-1 text-2xl font-bold text-gray-900">{stats.totalClients}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Collaborateurs</label>
+                <label className="block text-sm font-medium text-gray-700">{t('Collaborateurs')}</label>
                 <p className="mt-1 text-2xl font-bold text-gray-900">{stats.totalCollaborators}</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Modules actifs</label>
+                <label className="block text-sm font-medium text-gray-700">{t('Modules actifs')}</label>
                 <p className="mt-1 text-2xl font-bold text-gray-900">{stats.activeModules}</p>
               </div>
             </div>
@@ -307,10 +309,10 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       if (response.success) {
         setMembers(response.data.members);
       } else {
-        setError('Erreur lors du chargement des collaborateurs');
+        setError(t('Erreur lors du chargement des collaborateurs'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement des collaborateurs');
+      setError(err.response?.data?.message || t('Erreur lors du chargement des collaborateurs'));
     } finally {
       setLoading(false);
     }
@@ -325,7 +327,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       }
       await loadMembers();
     } catch (err: any) {
-      message.error(err.response?.data?.message || 'Erreur lors de la modification');
+      message.error(err.response?.data?.message || t('Erreur lors de la modification'));
     }
   };
 
@@ -341,7 +343,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           styles[status as keyof typeof styles] || styles.DISABLED
         }`}
       >
-        {status === 'ACTIVE' ? 'Actif' : status === 'PENDING_INVITE' ? 'Invitation en attente' : 'Desactive'}
+        {status === 'ACTIVE' ? t('Actif') : status === 'PENDING_INVITE' ? t('Invitation en attente') : t('Desactive')}
       </span>
     );
   };
@@ -361,40 +363,43 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h3 className="text-lg font-medium text-gray-900">Collaborateurs ({members.length})</h3>
+        <h3 className="text-lg font-medium text-gray-900">
+          {t('Collaborateurs (')}
+          {members.length})
+        </h3>
         <button
           onClick={() => navigate(`/admin/tenants/${tenantId}/collaborators/invite`)}
           className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
         >
-          <Plus className="h-4 w-4 mr-2" />
-          Inviter
+          <Plus className="h-4 w-4 me-2" />
+          {t('Inviter')}
         </button>
       </div>
 
       {members.length === 0 ? (
         <div className="text-center py-8 text-gray-500">
           <Users className="h-12 w-12 mx-auto text-gray-400" />
-          <p className="mt-2">Aucun collaborateur</p>
+          <p className="mt-2">{t('Aucun collaborateur')}</p>
         </div>
       ) : (
         <div className="overflow-hidden border border-gray-200 rounded-lg">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Utilisateur
+                <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('Utilisateur')}
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Roles
+                <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('Roles')}
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Statut
+                <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('Statut')}
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Derniere connexion
+                <th className="px-6 py-3 text-start text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('Derniere connexion')}
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
+                <th className="px-6 py-3 text-end text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  {t('Actions')}
                 </th>
               </tr>
             </thead>
@@ -408,7 +413,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                           <Users className="h-6 w-6 text-blue-600" />
                         </div>
                       </div>
-                      <div className="ml-4">
+                      <div className="ms-4">
                         <div className="text-sm font-medium text-gray-900">
                           {member.user.fullName || member.user.email}
                         </div>
@@ -430,14 +435,16 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">{getStatusBadge(member.status)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {member.user.lastLoginAt ? new Date(member.user.lastLoginAt).toLocaleDateString('fr-FR') : 'Jamais'}
+                    {member.user.lastLoginAt
+                      ? new Date(member.user.lastLoginAt).toLocaleDateString(activeLocale())
+                      : t('Jamais')}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <td className="px-6 py-4 whitespace-nowrap text-end text-sm font-medium">
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => navigate(`/admin/tenants/${tenantId}/collaborators/${member.userId}`)}
                         className="text-blue-600 hover:text-blue-900"
-                        title="Voir les details"
+                        title={t('Voir les details')}
                       >
                         <Eye className="h-5 w-5" />
                       </button>
@@ -445,7 +452,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                         <button
                           onClick={() => handleToggleStatus(member.userId, member.status)}
                           className="text-red-600 hover:text-red-900"
-                          title="Desactiver"
+                          title={t('Desactiver')}
                         >
                           <UserX className="h-5 w-5" />
                         </button>
@@ -453,7 +460,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                         <button
                           onClick={() => handleToggleStatus(member.userId, member.status)}
                           className="text-green-600 hover:text-green-900"
-                          title="Activer"
+                          title={t('Activer')}
                         >
                           <UserCheck className="h-5 w-5" />
                         </button>
@@ -503,7 +510,7 @@ const ModulesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
       });
       await loadModules();
     } catch (err) {
-      message.error('Erreur lors de la mise à jour du module');
+      message.error(t('Erreur lors de la mise à jour du module'));
     }
   };
 
@@ -512,7 +519,7 @@ const ModulesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   }
 
   if (!modules || modules.length === 0) {
-    return <div className="text-center py-8 text-gray-500">Aucun module disponible</div>;
+    return <div className="text-center py-8 text-gray-500">{t('Aucun module disponible')}</div>;
   }
 
   return (
@@ -524,7 +531,7 @@ const ModulesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         >
           <div>
             <h3 className="font-medium text-gray-900">{module.moduleKey}</h3>
-            <p className="text-sm text-gray-500">{module.enabled ? 'Active' : 'Desactive'}</p>
+            <p className="text-sm text-gray-500">{module.enabled ? t('Active') : t('Desactive')}</p>
           </div>
           <button
             onClick={() => toggleModule(module.moduleKey, module.enabled)}
@@ -571,21 +578,21 @@ const SubscriptionTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   }
 
   if (!subscription) {
-    return <div className="text-center py-8 text-gray-500">Aucun abonnement</div>;
+    return <div className="text-center py-8 text-gray-500">{t('Aucun abonnement')}</div>;
   }
 
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700">Plan</label>
+        <label className="block text-sm font-medium text-gray-700">{t('Plan')}</label>
         <p className="mt-1 text-sm text-gray-900">{subscription.plan}</p>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700">Cycle de facturation</label>
+        <label className="block text-sm font-medium text-gray-700">{t('Cycle de facturation')}</label>
         <p className="mt-1 text-sm text-gray-900">{subscription.billingCycle}</p>
       </div>
       <div>
-        <label className="block text-sm font-medium text-gray-700">Statut</label>
+        <label className="block text-sm font-medium text-gray-700">{t('Statut')}</label>
         <p className="mt-1 text-sm text-gray-900">{subscription.status}</p>
       </div>
     </div>

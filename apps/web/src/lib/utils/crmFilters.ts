@@ -1,6 +1,8 @@
 import { CrmDashboardFilters } from '../../types/crmDashboard';
 import { CrmDealStage, CrmContactStatus } from '../../types/crm-types';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 /**
  * Parse dashboard filters from URL search params
  */
@@ -105,9 +107,9 @@ export function formatDateRange(start: Date, end: Date): string {
   const formatOptions: Intl.DateTimeFormatOptions = {
     day: 'numeric',
     month: 'short',
-    year: 'numeric',
+    year: 'numeric'
   };
-  return `${start.toLocaleDateString('fr-FR', formatOptions)} - ${end.toLocaleDateString('fr-FR', formatOptions)}`;
+  return `${start.toLocaleDateString(activeLocale(), formatOptions)} - ${end.toLocaleDateString(activeLocale(), formatOptions)}`;
 }
 
 /**
@@ -150,8 +152,8 @@ export function getActiveFilterChips(
     const end = new Date(filters.end);
     chips.push({
       key: 'dateRange',
-      label: 'Période',
-      value: formatDateRange(start, end),
+      label: t('Période'),
+      value: formatDateRange(start, end)
     });
   }
 
@@ -159,44 +161,43 @@ export function getActiveFilterChips(
     const label = filters.assignee === 'me' ? 'Moi' : options?.userLabels?.[filters.assignee] || filters.assignee;
     chips.push({
       key: 'assignee',
-      label: 'Collaborateur',
-      value: label,
+      label: t('Collaborateur'),
+      value: label
     });
   }
 
   if (filters.tags && filters.tags.length > 0) {
-    filters.tags.forEach((tagId) => {
+    filters.tags.forEach(tagId => {
       const label = options?.tagLabels?.[tagId] || tagId;
       chips.push({
         key: `tag-${tagId}`,
-        label: 'Tag',
-        value: label,
+        label: t('Tag'),
+        value: label
       });
     });
   }
 
   if (filters.stages && filters.stages.length > 0) {
-    filters.stages.forEach((stage) => {
+    filters.stages.forEach(stage => {
       const label = options?.stageLabels?.[stage] || stage;
       chips.push({
         key: `stage-${stage}`,
-        label: 'Étape',
-        value: label,
+        label: t('Étape'),
+        value: label
       });
     });
   }
 
   if (filters.statuses && filters.statuses.length > 0) {
-    filters.statuses.forEach((status) => {
+    filters.statuses.forEach(status => {
       const label = options?.statusLabels?.[status] || status;
       chips.push({
         key: `status-${status}`,
-        label: 'Statut',
-        value: label,
+        label: t('Statut'),
+        value: label
       });
     });
   }
 
   return chips;
 }
-

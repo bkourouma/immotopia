@@ -12,6 +12,7 @@ import {
   StrikethroughOutlined
 } from '@ant-design/icons';
 import { whatsappNotificationConfigService } from '../../services/whatsapp-notification-config-service';
+import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
 
@@ -22,7 +23,7 @@ function extractErrorMessage(error: unknown): string {
     const response = (error as { response?: { data?: { message?: string } } }).response;
     if (response?.data?.message) return response.data.message;
   }
-  return error instanceof Error ? error.message : "Erreur lors de l'envoi";
+  return error instanceof Error ? error.message : t("Erreur lors de l'envoi");
 }
 
 export function WhatsAppGroupMessagePage() {
@@ -103,18 +104,18 @@ export function WhatsAppGroupMessagePage() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      message.error('Veuillez choisir une image');
+      message.error(t('Veuillez choisir une image'));
       event.target.value = '';
       return;
     }
     const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png'];
     if (!allowedMimeTypes.includes(file.type)) {
-      message.error('Format non supporte. Utilisez JPEG ou PNG');
+      message.error(t('Format non supporte. Utilisez JPEG ou PNG'));
       event.target.value = '';
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      message.error('Image trop volumineuse (max 5MB)');
+      message.error(t('Image trop volumineuse (max 5MB)'));
       event.target.value = '';
       return;
     }
@@ -130,7 +131,7 @@ export function WhatsAppGroupMessagePage() {
   const handleSend = async () => {
     if (!tenantId) return;
     if (!canSend) {
-      message.warning('Ajoutez un texte ou une image');
+      message.warning(t('Ajoutez un texte ou une image'));
       return;
     }
 
@@ -143,7 +144,12 @@ export function WhatsAppGroupMessagePage() {
       const result = await whatsappNotificationConfigService.sendGroupBroadcast(tenantId, payload);
       const providerLabel = result.provider || 'WhatsApp';
       const fallbackNote = result.usedFallbackTextOnly ? ' (image non envoyee, texte envoye)' : '';
-      message.success(`Message envoye via ${providerLabel}${fallbackNote}`);
+      message.success(
+        t('Message envoye via {{providerLabel}}{{fallbackNote}}', {
+          providerLabel: providerLabel,
+          fallbackNote: fallbackNote
+        })
+      );
       setComposerText('');
       clearImage();
     } catch (error: unknown) {
@@ -171,45 +177,47 @@ export function WhatsAppGroupMessagePage() {
         <Space align="center" style={{ marginBottom: 8 }}>
           <PictureOutlined style={{ color: '#25D366', fontSize: 20 }} />
           <Title level={4} style={{ margin: 0 }}>
-            Message Groupe WhatsApp
+            {t('Message Groupe WhatsApp')}
           </Title>
         </Space>
         <Text type="secondary">
-          Envoyez un message spontane au groupe configure dans <code>WHATSAPP_GROUP_BROADCAST_TO</code>.
+          {t('Envoyez un message spontane au groupe configure dans')} <code>WHATSAPP_GROUP_BROADCAST_TO</code>.
         </Text>
         <Alert
           showIcon
           type="info"
           style={{ marginTop: 12 }}
-          message="Format WhatsApp"
-          description="Utilisez les boutons: ils inserent le format WhatsApp (*gras*, _italique_, ~barre~, `code`). Evitez d inclure les espaces a l interieur des symboles."
+          message={t('Format WhatsApp')}
+          description={t(
+            'Utilisez les boutons: ils inserent le format WhatsApp (*gras*, _italique_, ~barre~, `code`). Evitez d inclure les espaces a l interieur des symboles.'
+          )}
         />
 
         <Divider />
 
         <Space size={[8, 8]} wrap style={{ marginBottom: 12 }}>
           <Button size="small" icon={<BoldOutlined />} onClick={() => wrapSelection('*')}>
-            Gras
+            {t('Gras')}
           </Button>
           <Button size="small" icon={<ItalicOutlined />} onClick={() => wrapSelection('_')}>
-            Italique
+            {t('Italique')}
           </Button>
           <Button size="small" icon={<StrikethroughOutlined />} onClick={() => wrapSelection('~')}>
-            Barre
+            {t('Barre')}
           </Button>
           <Button size="small" icon={<CodeOutlined />} onClick={() => wrapSelection('`')}>
-            Code
+            {t('Code')}
           </Button>
           <Popover content={emojiPanel} trigger="click" placement="bottomLeft">
             <Button size="small" icon={<SmileOutlined />}>
-              Emojis
+              {t('Emojis')}
             </Button>
           </Popover>
           <Button size="small" icon={<PictureOutlined />} onClick={openImagePicker}>
-            Image
+            {t('Image')}
           </Button>
           <Button size="small" onClick={() => insertAtCursor('\n- ')}>
-            Liste
+            {t('Liste')}
           </Button>
         </Space>
 
@@ -218,7 +226,7 @@ export function WhatsAppGroupMessagePage() {
           value={composerText}
           onChange={event => setComposerText(event.target.value)}
           onClick={focusComposer}
-          placeholder="Tapez votre message WhatsApp..."
+          placeholder={t('Tapez votre message WhatsApp...')}
           rows={8}
           style={{
             width: '100%',
@@ -250,19 +258,19 @@ export function WhatsAppGroupMessagePage() {
               <Col xs={24} md={14}>
                 <img
                   src={previewUrl}
-                  alt="Apercu"
+                  alt={t('Apercu')}
                   style={{ width: '100%', maxHeight: 280, objectFit: 'cover', borderRadius: 8 }}
                 />
               </Col>
               <Col xs={24} md={10}>
                 <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                  Image jointe
+                  {t('Image jointe')}
                 </Text>
                 <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-                  Cette image sera envoyee avec votre message comme legende.
+                  {t('Cette image sera envoyee avec votre message comme legende.')}
                 </Text>
                 <Button icon={<DeleteOutlined />} onClick={clearImage}>
-                  Retirer l image
+                  {t('Retirer l image')}
                 </Button>
               </Col>
             </Row>
@@ -272,7 +280,7 @@ export function WhatsAppGroupMessagePage() {
         <Divider />
 
         <Space style={{ width: '100%', justifyContent: 'space-between' }} wrap>
-          <Text type="secondary">Le message part vers votre destination groupe configuree sur WaSender.</Text>
+          <Text type="secondary">{t('Le message part vers votre destination groupe configuree sur WaSender.')}</Text>
           <Button
             type="primary"
             icon={<SendOutlined />}
@@ -281,7 +289,7 @@ export function WhatsAppGroupMessagePage() {
             disabled={!canSend}
             onClick={handleSend}
           >
-            Envoyer au groupe
+            {t('Envoyer au groupe')}
           </Button>
         </Space>
       </Card>

@@ -18,7 +18,9 @@ import { Payments } from './Payments';
 import { Penalties } from './Penalties';
 import { Deposits } from './Deposits';
 import { Documents } from './Documents';
+import { t as translate } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
 export const LeaseDetailPage: React.FC = () => {
@@ -81,10 +83,10 @@ export const LeaseDetailPage: React.FC = () => {
       if (response.success) {
         setLease(response.data);
       } else {
-        setError('Erreur lors du chargement du bail');
+        setError(translate('Erreur lors du chargement du bail'));
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors du chargement du bail');
+      setError(err.response?.data?.message || translate('Erreur lors du chargement du bail'));
     } finally {
       setLoading(false);
     }
@@ -94,10 +96,10 @@ export const LeaseDetailPage: React.FC = () => {
     if (!tenantId || !leaseId) return;
     try {
       await updateLeaseStatus(tenantId, leaseId, newStatus);
-      message.success('Statut mis à jour avec succès');
+      message.success(translate('Statut mis à jour avec succès'));
       loadLease();
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || 'Erreur lors de la mise à jour du statut';
+      const errorMsg = err.response?.data?.message || translate('Erreur lors de la mise à jour du statut');
       setError(errorMsg);
       message.error(errorMsg);
     }
@@ -105,11 +107,11 @@ export const LeaseDetailPage: React.FC = () => {
 
   const getStatusTag = (status: RentalLeaseStatus) => {
     const statusMap: Record<RentalLeaseStatus, { label: string; color: string }> = {
-      DRAFT: { label: 'Brouillon', color: 'default' },
-      ACTIVE: { label: 'Actif', color: 'success' },
-      SUSPENDED: { label: 'Suspendu', color: 'warning' },
-      ENDED: { label: 'Terminé', color: 'default' },
-      CANCELED: { label: 'Annulé', color: 'error' }
+      DRAFT: { label: translate('Brouillon'), color: 'default' },
+      ACTIVE: { label: translate('Actif'), color: 'success' },
+      SUSPENDED: { label: translate('Suspendu'), color: 'warning' },
+      ENDED: { label: translate('Terminé'), color: 'default' },
+      CANCELED: { label: translate('Annulé'), color: 'error' }
     };
     const config = statusMap[status] || { label: status, color: 'default' };
     return <Tag color={config.color}>{config.label}</Tag>;
@@ -117,11 +119,11 @@ export const LeaseDetailPage: React.FC = () => {
 
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString('fr-FR');
+    return new Date(dateString).toLocaleDateString(activeLocale());
   };
 
   const formatCurrency = (amount: number, currency: string = 'FCFA') => {
-    return new Intl.NumberFormat('fr-FR', {
+    return new Intl.NumberFormat(activeLocale(), {
       style: 'currency',
       currency: currency === 'FCFA' ? 'XOF' : currency
     }).format(amount);
@@ -167,8 +169,8 @@ export const LeaseDetailPage: React.FC = () => {
     return (
       <>
         <Alert
-          message="Erreur"
-          description={error || 'Bail non trouvé'}
+          message={translate('Erreur')}
+          description={error || translate('Bail non trouvé')}
           type="error"
           showIcon
           style={{ margin: '24px' }}
@@ -198,13 +200,13 @@ export const LeaseDetailPage: React.FC = () => {
           <Col>
             <Space size="middle">
               <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${tenantId}/rental/leases`)}>
-                Retour
+                {translate('Retour')}
               </Button>
               <div>
                 <Title level={2} style={{ margin: 0 }}>
-                  Bail {lease.lease_number}
+                  {translate('Bail')} {lease.lease_number}
                 </Title>
-                <Text type="secondary">Détails du bail de location</Text>
+                <Text type="secondary">{translate('Détails du bail de location')}</Text>
               </div>
             </Space>
           </Col>
@@ -215,18 +217,18 @@ export const LeaseDetailPage: React.FC = () => {
                 onChange={value => handleStatusChange(value as RentalLeaseStatus)}
                 style={{ width: 180 }}
               >
-                <Select.Option value="DRAFT">Brouillon</Select.Option>
-                <Select.Option value="ACTIVE">Actif</Select.Option>
-                <Select.Option value="SUSPENDED">Suspendu</Select.Option>
-                <Select.Option value="ENDED">Terminé</Select.Option>
-                <Select.Option value="CANCELED">Annulé</Select.Option>
+                <Select.Option value="DRAFT">{translate('Brouillon')}</Select.Option>
+                <Select.Option value="ACTIVE">{translate('Actif')}</Select.Option>
+                <Select.Option value="SUSPENDED">{translate('Suspendu')}</Select.Option>
+                <Select.Option value="ENDED">{translate('Terminé')}</Select.Option>
+                <Select.Option value="CANCELED">{translate('Annulé')}</Select.Option>
               </Select>
               <Button
                 type="primary"
                 icon={<EditOutlined />}
                 onClick={() => navigate(`/tenant/${tenantId}/rental/leases/${leaseId}/edit`)}
               >
-                Modifier
+                {translate('Modifier')}
               </Button>
             </Space>
           </Col>
@@ -238,19 +240,19 @@ export const LeaseDetailPage: React.FC = () => {
               title={
                 <Space>
                   <FileTextOutlined />
-                  <span>Informations générales</span>
+                  <span>{translate('Informations générales')}</span>
                 </Space>
               }
             >
               <Descriptions column={1} bordered size="small">
-                <Descriptions.Item label="Numéro de bail">{lease.lease_number}</Descriptions.Item>
-                <Descriptions.Item label="Statut">{getStatusTag(lease.status)}</Descriptions.Item>
-                <Descriptions.Item label="Propriété">
+                <Descriptions.Item label={translate('Numéro de bail')}>{lease.lease_number}</Descriptions.Item>
+                <Descriptions.Item label={translate('Statut')}>{getStatusTag(lease.status)}</Descriptions.Item>
+                <Descriptions.Item label={translate('Propriété')}>
                   {lease.property?.internalReference || '-'}
                   {lease.property?.title && ` - ${lease.property.title}`}
                   {lease.property?.address && ` - ${lease.property.address}`}
                 </Descriptions.Item>
-                <Descriptions.Item label="Locataire principal">
+                <Descriptions.Item label={translate('Locataire principal')}>
                   {lease.primaryRenter?.crmContactId ? (
                     <Button
                       type="link"
@@ -265,7 +267,7 @@ export const LeaseDetailPage: React.FC = () => {
                     <span>{renterDisplayName}</span>
                   )}
                 </Descriptions.Item>
-                <Descriptions.Item label="Propriétaire">
+                <Descriptions.Item label={translate('Propriétaire')}>
                   {lease.ownerClient ? (
                     lease.ownerClient.crmContactId ? (
                       <Button
@@ -281,7 +283,7 @@ export const LeaseDetailPage: React.FC = () => {
                       <span>{ownerDisplayName}</span>
                     )
                   ) : (
-                    <Text type="secondary">Non renseigné</Text>
+                    <Text type="secondary">{translate('Non renseigné')}</Text>
                   )}
                 </Descriptions.Item>
               </Descriptions>
@@ -293,15 +295,19 @@ export const LeaseDetailPage: React.FC = () => {
               title={
                 <Space>
                   <CalendarOutlined />
-                  <span>Dates</span>
+                  <span>{translate('Dates')}</span>
                 </Space>
               }
             >
               <Descriptions column={1} bordered size="small">
-                <Descriptions.Item label="Date de début">{formatDate(lease.start_date)}</Descriptions.Item>
-                <Descriptions.Item label="Date de fin">{formatDate(lease.end_date)}</Descriptions.Item>
-                <Descriptions.Item label="Date d'emménagement">{formatDate(lease.move_in_date)}</Descriptions.Item>
-                <Descriptions.Item label="Date de déménagement">{formatDate(lease.move_out_date)}</Descriptions.Item>
+                <Descriptions.Item label={translate('Date de début')}>{formatDate(lease.start_date)}</Descriptions.Item>
+                <Descriptions.Item label={translate('Date de fin')}>{formatDate(lease.end_date)}</Descriptions.Item>
+                <Descriptions.Item label={translate("Date d'emménagement")}>
+                  {formatDate(lease.move_in_date)}
+                </Descriptions.Item>
+                <Descriptions.Item label={translate('Date de déménagement')}>
+                  {formatDate(lease.move_out_date)}
+                </Descriptions.Item>
               </Descriptions>
             </Card>
           </Col>
@@ -312,28 +318,28 @@ export const LeaseDetailPage: React.FC = () => {
                 title={
                   <Space>
                     <DollarOutlined />
-                    <span>Financier</span>
+                    <span>{translate('Financier')}</span>
                   </Space>
                 }
               >
                 <Descriptions column={1} bordered size="small">
-                  <Descriptions.Item label="Loyer">
+                  <Descriptions.Item label={translate('Loyer')}>
                     {formatCurrency(lease.rent_amount, lease.currency)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="Charges de service">
+                  <Descriptions.Item label={translate('Charges de service')}>
                     {formatCurrency(lease.service_charge_amount, lease.currency)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="Dépôt de garantie">
+                  <Descriptions.Item label={translate('Dépôt de garantie')}>
                     {formatCurrency(lease.security_deposit_amount, lease.currency)}
                   </Descriptions.Item>
-                  <Descriptions.Item label="Fréquence de facturation">
-                    {lease.billing_frequency === 'MONTHLY' && 'Mensuel'}
-                    {lease.billing_frequency === 'QUARTERLY' && 'Trimestriel'}
-                    {lease.billing_frequency === 'SEMIANNUAL' && 'Semestriel'}
-                    {lease.billing_frequency === 'ANNUAL' && 'Annuel'}
+                  <Descriptions.Item label={translate('Fréquence de facturation')}>
+                    {lease.billing_frequency === 'MONTHLY' && translate('Mensuel')}
+                    {lease.billing_frequency === 'QUARTERLY' && translate('Trimestriel')}
+                    {lease.billing_frequency === 'SEMIANNUAL' && translate('Semestriel')}
+                    {lease.billing_frequency === 'ANNUAL' && translate('Annuel')}
                   </Descriptions.Item>
-                  <Descriptions.Item label="Jour d'échéance">
-                    Le {lease.due_day_of_month} de chaque mois
+                  <Descriptions.Item label={translate("Jour d'échéance")}>
+                    {translate('Le')} {lease.due_day_of_month} de chaque mois
                   </Descriptions.Item>
                 </Descriptions>
               </Card>
@@ -346,70 +352,70 @@ export const LeaseDetailPage: React.FC = () => {
                 title={
                   <Space>
                     <SafetyOutlined />
-                    <span>Pénalités de retard</span>
+                    <span>{translate('Pénalités de retard')}</span>
                   </Space>
                 }
               >
                 <Descriptions column={1} bordered size="small">
-                  <Descriptions.Item label="Jours de grâce">
+                  <Descriptions.Item label={translate('Jours de grâce')}>
                     {lease.penalty_grace_days > 0 ? (
                       <>
                         {lease.penalty_grace_days} jour{lease.penalty_grace_days > 1 ? 's' : ''}
                         <br />
                         <Text type="secondary" style={{ fontSize: '12px' }}>
-                          Les pénalités seront appliquées après {lease.penalty_grace_days} jour
+                          {translate('Les pénalités seront appliquées après')} {lease.penalty_grace_days} jour
                           {lease.penalty_grace_days > 1 ? 's' : ''} de retard
                         </Text>
                       </>
                     ) : (
-                      'Aucun'
+                      translate('Aucun')
                     )}
                   </Descriptions.Item>
-                  <Descriptions.Item label="Mode de pénalité">
-                    {lease.penalty_mode === 'PERCENT_OF_BALANCE' && 'Pourcentage du solde'}
-                    {lease.penalty_mode === 'FIXED_AMOUNT' && 'Montant fixe'}
-                    {lease.penalty_mode === 'PERCENT_OF_RENT' && 'Pourcentage du loyer'}
+                  <Descriptions.Item label={translate('Mode de pénalité')}>
+                    {lease.penalty_mode === 'PERCENT_OF_BALANCE' && translate('Pourcentage du solde')}
+                    {lease.penalty_mode === 'FIXED_AMOUNT' && translate('Montant fixe')}
+                    {lease.penalty_mode === 'PERCENT_OF_RENT' && translate('Pourcentage du loyer')}
                   </Descriptions.Item>
                   {lease.penalty_mode === 'PERCENT_OF_BALANCE' && (
                     <>
-                      <Descriptions.Item label="Taux de pénalité">
+                      <Descriptions.Item label={translate('Taux de pénalité')}>
                         {formatPenaltyRate(lease.penalty_rate)}%
                         <br />
                         <Text type="secondary" style={{ fontSize: '12px' }}>
-                          Appliqué sur le solde impayé
+                          {translate('Appliqué sur le solde impayé')}
                         </Text>
                       </Descriptions.Item>
                       {lease.penalty_cap_amount && lease.penalty_cap_amount > 0 && (
-                        <Descriptions.Item label="Montant maximum de pénalité">
+                        <Descriptions.Item label={translate('Montant maximum de pénalité')}>
                           {formatCurrency(lease.penalty_cap_amount, lease.currency)}
                           <br />
                           <Text type="secondary" style={{ fontSize: '12px' }}>
-                            La pénalité ne dépassera pas ce montant
+                            {translate('La pénalité ne dépassera pas ce montant')}
                           </Text>
                         </Descriptions.Item>
                       )}
                     </>
                   )}
                   {lease.penalty_mode === 'FIXED_AMOUNT' && (
-                    <Descriptions.Item label="Montant fixe de pénalité">
+                    <Descriptions.Item label={translate('Montant fixe de pénalité')}>
                       {formatCurrency(lease.penalty_fixed_amount, lease.currency)}
                       <br />
                       <Text type="secondary" style={{ fontSize: '12px' }}>
-                        Montant fixe appliqué par période de retard
+                        {translate('Montant fixe appliqué par période de retard')}
                       </Text>
                     </Descriptions.Item>
                   )}
                   {lease.penalty_mode === 'PERCENT_OF_RENT' && (
                     <>
-                      <Descriptions.Item label="Taux de pénalité">
+                      <Descriptions.Item label={translate('Taux de pénalité')}>
                         {formatPenaltyRate(lease.penalty_rate)}%
                         <br />
                         <Text type="secondary" style={{ fontSize: '12px' }}>
-                          Appliqué sur le montant du loyer
+                          {translate('Appliqué sur le montant du loyer')}
                         </Text>
                       </Descriptions.Item>
                       {lease.penalty_cap_amount && lease.penalty_cap_amount > 0 && (
-                        <Descriptions.Item label="Montant maximum de pénalité">
+                        <Descriptions.Item label={translate('Montant maximum de pénalité')}>
                           {formatCurrency(lease.penalty_cap_amount, lease.currency)}
                         </Descriptions.Item>
                       )}
@@ -422,7 +428,7 @@ export const LeaseDetailPage: React.FC = () => {
 
           {lease.notes && (
             <Col xs={24}>
-              <Card title="Notes">
+              <Card title={translate('Notes')}>
                 <Text style={{ whiteSpace: 'pre-wrap' }}>{lease.notes}</Text>
               </Card>
             </Col>
@@ -437,7 +443,7 @@ export const LeaseDetailPage: React.FC = () => {
                 label: (
                   <span>
                     <CalendarOutlined />
-                    Échéances
+                    {translate('Échéances')}
                   </span>
                 ),
                 children: <Installments leaseId={leaseId} />
@@ -447,7 +453,7 @@ export const LeaseDetailPage: React.FC = () => {
                 label: (
                   <span>
                     <CreditCardOutlined />
-                    Paiements
+                    {translate('Paiements')}
                   </span>
                 ),
                 children: <Payments leaseId={leaseId} />
@@ -457,7 +463,7 @@ export const LeaseDetailPage: React.FC = () => {
                 label: (
                   <span>
                     <DollarOutlined />
-                    Pénalités
+                    {translate('Pénalités')}
                   </span>
                 ),
                 children: <Penalties leaseId={leaseId} />
@@ -467,7 +473,7 @@ export const LeaseDetailPage: React.FC = () => {
                 label: (
                   <span>
                     <SafetyOutlined />
-                    Dépôt de garantie
+                    {translate('Dépôt de garantie')}
                   </span>
                 ),
                 children: <Deposits leaseId={leaseId} />
@@ -477,7 +483,7 @@ export const LeaseDetailPage: React.FC = () => {
                 label: (
                   <span>
                     <FileTextOutlined />
-                    Documents
+                    {translate('Documents')}
                   </span>
                 ),
                 children: <Documents leaseId={leaseId} />

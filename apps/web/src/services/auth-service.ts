@@ -1,5 +1,6 @@
 import apiClient from '../utils/api-client';
-import { RegisterData, LoginCredentials, PasswordResetData } from '../types/auth-types';
+import { RegisterData, LoginCredentials, PasswordResetData, User } from '../types/auth-types';
+import type { Language } from '../i18n/config';
 
 /**
  * Register a new user
@@ -96,4 +97,17 @@ export interface AuthProviders {
 export async function getAuthProviders(): Promise<AuthProviders> {
   const response = await apiClient.get('/auth/providers');
   return { google: Boolean(response.data?.data?.google) };
+}
+
+/**
+ * Enregistre la langue preferee du compte.
+ *
+ * Le serveur ne s'en sert pas pour traduire ses reponses — l'en-tete
+ * `Accept-Language` le fait deja a chaque appel. Elle sert a retrouver son
+ * choix depuis un autre appareil, et a ecrire les e-mails dans la bonne langue
+ * quand personne n'est connecte.
+ */
+export async function updatePreferredLanguage(language: Language): Promise<User> {
+  const response = await apiClient.patch('/auth/me/language', { language });
+  return response.data.user;
 }

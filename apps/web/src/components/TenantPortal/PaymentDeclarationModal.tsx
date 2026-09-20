@@ -5,6 +5,7 @@ import { tenantPortalService } from '../../services/tenantPortalService';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import dayjs, { Dayjs } from 'dayjs';
 import type { UploadFile } from 'antd';
+import { t } from '../../i18n/t';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -65,7 +66,7 @@ export default function PaymentDeclarationModal({
       await tenantPortalService.declarePayment(formData);
 
       message.success({
-        content: "Déclaration de paiement créée avec succès. Elle est en attente d'approbation par le gestionnaire.",
+        content: t("Déclaration de paiement créée avec succès. Elle est en attente d'approbation par le gestionnaire."),
         duration: 5
       });
       form.resetFields();
@@ -73,7 +74,7 @@ export default function PaymentDeclarationModal({
       onSuccess();
       onCancel();
     } catch (error: any) {
-      message.error(error.response?.data?.message || 'Erreur lors de la déclaration du paiement');
+      message.error(error.response?.data?.message || t('Erreur lors de la déclaration du paiement'));
     } finally {
       setLoading(false);
     }
@@ -88,12 +89,12 @@ export default function PaymentDeclarationModal({
   const beforeUpload = (file: File) => {
     const isImageOrPdf = file.type.startsWith('image/') || file.type === 'application/pdf';
     if (!isImageOrPdf) {
-      message.error('Vous ne pouvez télécharger que des images ou des PDF!');
+      message.error(t('Vous ne pouvez télécharger que des images ou des PDF!'));
       return Upload.LIST_IGNORE;
     }
     const isLt5M = file.size / 1024 / 1024 < 5;
     if (!isLt5M) {
-      message.error('Le fichier doit être inférieur à 5MB!');
+      message.error(t('Le fichier doit être inférieur à 5MB!'));
       return Upload.LIST_IGNORE;
     }
     return false; // Prevent auto upload
@@ -105,7 +106,9 @@ export default function PaymentDeclarationModal({
         <Space>
           <DollarOutlined />
           <span>
-            {installmentLabel ? `Déclarer un paiement — échéance ${installmentLabel}` : 'Déclarer un paiement'}
+            {installmentLabel
+              ? t('Déclarer un paiement — échéance {{installmentLabel}}', { installmentLabel: installmentLabel })
+              : t('Déclarer un paiement')}
           </span>
         </Space>
       }
@@ -128,17 +131,17 @@ export default function PaymentDeclarationModal({
         }}
       >
         <Form.Item
-          label="Montant"
+          label={t('Montant')}
           name="amount"
           rules={[
-            { required: true, message: 'Le montant est requis' },
-            { type: 'number', min: 0.01, message: 'Le montant doit être positif' }
+            { required: true, message: t('Le montant est requis') },
+            { type: 'number', min: 0.01, message: t('Le montant doit être positif') }
           ]}
         >
           <InputNumber<number>
             prefix={<DollarOutlined />}
             style={{ width: '100%' }}
-            placeholder="Ex. 150 000"
+            placeholder={t('Ex. 150 000')}
             min={0.01}
             step={1000}
             precision={0}
@@ -148,30 +151,30 @@ export default function PaymentDeclarationModal({
         </Form.Item>
 
         <Form.Item
-          label="Date de paiement"
+          label={t('Date de paiement')}
           name="paymentDate"
-          rules={[{ required: true, message: 'La date de paiement est requise' }]}
+          rules={[{ required: true, message: t('La date de paiement est requise') }]}
         >
           <DatePicker
             style={{ width: '100%' }}
             format="DD/MM/YYYY"
             disabledDate={current => current && current > dayjs().endOf('day')}
-            placeholder="Sélectionner la date"
+            placeholder={t('Sélectionner la date')}
           />
         </Form.Item>
 
         <Form.Item
-          label="Méthode de paiement"
+          label={t('Méthode de paiement')}
           name="paymentMethod"
-          rules={[{ required: true, message: 'La méthode de paiement est requise' }]}
+          rules={[{ required: true, message: t('La méthode de paiement est requise') }]}
         >
-          <Select placeholder="Sélectionner la méthode">
-            <Select.Option value="CASH">Espèces</Select.Option>
-            <Select.Option value="BANK_TRANSFER">Virement bancaire</Select.Option>
-            <Select.Option value="MOBILE_MONEY">Mobile Money</Select.Option>
-            <Select.Option value="CHECK">Chèque</Select.Option>
-            <Select.Option value="CARD">Carte bancaire</Select.Option>
-            <Select.Option value="OTHER">Autre</Select.Option>
+          <Select placeholder={t('Sélectionner la méthode')}>
+            <Select.Option value="CASH">{t('Espèces')}</Select.Option>
+            <Select.Option value="BANK_TRANSFER">{t('Virement bancaire')}</Select.Option>
+            <Select.Option value="MOBILE_MONEY">{t('Mobile Money')}</Select.Option>
+            <Select.Option value="CHECK">{t('Chèque')}</Select.Option>
+            <Select.Option value="CARD">{t('Carte bancaire')}</Select.Option>
+            <Select.Option value="OTHER">{t('Autre')}</Select.Option>
           </Select>
         </Form.Item>
 
@@ -183,26 +186,26 @@ export default function PaymentDeclarationModal({
             getFieldValue('paymentMethod') === 'MOBILE_MONEY' ? (
               <>
                 <Form.Item
-                  label="Numéro de téléphone (transaction)"
+                  label={t('Numéro de téléphone (transaction)')}
                   name="transactionPhone"
                   rules={[
-                    { required: true, message: 'Le numéro de téléphone ayant servi à la transaction est requis' },
-                    { max: 50, message: 'Le numéro ne peut pas dépasser 50 caractères' }
+                    { required: true, message: t('Le numéro de téléphone ayant servi à la transaction est requis') },
+                    { max: 50, message: t('Le numéro ne peut pas dépasser 50 caractères') }
                   ]}
                 >
-                  <Input prefix={<PhoneOutlined />} placeholder="Ex. 07 00 00 00 00" maxLength={50} />
+                  <Input prefix={<PhoneOutlined />} placeholder={t('Ex. 07 00 00 00 00')} maxLength={50} />
                 </Form.Item>
                 <Form.Item
-                  label="Opérateur mobile"
+                  label={t('Opérateur mobile')}
                   name="mobileOperator"
-                  rules={[{ required: true, message: "L'opérateur mobile est requis" }]}
+                  rules={[{ required: true, message: t("L'opérateur mobile est requis") }]}
                 >
-                  <Select placeholder="Sélectionner l'opérateur">
-                    <Select.Option value="ORANGE">Orange Money</Select.Option>
-                    <Select.Option value="MTN">MTN Mobile Money</Select.Option>
-                    <Select.Option value="MOOV">Moov Money</Select.Option>
-                    <Select.Option value="WAVE">Wave</Select.Option>
-                    <Select.Option value="OTHER">Autre</Select.Option>
+                  <Select placeholder={t("Sélectionner l'opérateur")}>
+                    <Select.Option value="ORANGE">{'Orange Money'}</Select.Option>
+                    <Select.Option value="MTN">{'MTN Mobile Money'}</Select.Option>
+                    <Select.Option value="MOOV">{'Moov Money'}</Select.Option>
+                    <Select.Option value="WAVE">{'Wave'}</Select.Option>
+                    <Select.Option value="OTHER">{t('Autre')}</Select.Option>
                   </Select>
                 </Form.Item>
               </>
@@ -210,14 +213,14 @@ export default function PaymentDeclarationModal({
           }
         </Form.Item>
 
-        <Form.Item label="Référence / Numéro de transaction" name="reference">
-          <Input placeholder="Numéro de transaction, référence, etc." />
+        <Form.Item label={t('Référence / Numéro de transaction')} name="reference">
+          <Input placeholder={t('Numéro de transaction, référence, etc.')} />
         </Form.Item>
 
         <Form.Item
-          label="Justificatif de paiement"
+          label={t('Justificatif de paiement')}
           name="proof"
-          extra={<Text type="secondary">Image ou PDF (max 5MB)</Text>}
+          extra={<Text type="secondary">{t('Image ou PDF (max 5MB)')}</Text>}
         >
           <Upload
             fileList={fileList}
@@ -226,19 +229,19 @@ export default function PaymentDeclarationModal({
             maxCount={1}
             accept="image/*,.pdf"
           >
-            <Button icon={<UploadOutlined />}>Télécharger un fichier</Button>
+            <Button icon={<UploadOutlined />}>{t('Télécharger un fichier')}</Button>
           </Upload>
         </Form.Item>
 
-        <Form.Item label="Notes (optionnel)" name="notes">
-          <TextArea rows={3} placeholder="Informations complémentaires sur ce paiement..." />
+        <Form.Item label={t('Notes (optionnel)')} name="notes">
+          <TextArea rows={3} placeholder={t('Informations complémentaires sur ce paiement...')} />
         </Form.Item>
 
         <Form.Item>
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-            <Button onClick={onCancel}>Annuler</Button>
+            <Button onClick={onCancel}>{t('Annuler')}</Button>
             <Button type="primary" htmlType="submit" loading={loading}>
-              Déclarer le paiement
+              {t('Déclarer le paiement')}
             </Button>
           </Space>
         </Form.Item>

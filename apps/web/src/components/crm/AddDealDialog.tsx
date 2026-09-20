@@ -3,6 +3,7 @@ import { Button } from '../ui/button';
 import { DealForm } from './DealForm';
 import { CreateCrmDealRequest } from '../../types/crm-types';
 import { Briefcase, X } from 'lucide-react';
+import { t } from '../../i18n/t';
 
 interface AddDealDialogProps {
   tenantId: string;
@@ -19,7 +20,7 @@ export const AddDealDialog: React.FC<AddDealDialogProps> = ({
   contactName,
   onSubmit,
   onCancel,
-  loading = false,
+  loading = false
 }) => {
   const handleSubmit = async (data: CreateCrmDealRequest | any) => {
     await onSubmit(data as CreateCrmDealRequest);
@@ -35,17 +36,13 @@ export const AddDealDialog: React.FC<AddDealDialogProps> = ({
               <Briefcase className="h-5 w-5 text-blue-600" />
             </div>
             <div>
-              <h2 className="text-xl font-semibold">Nouvelle affaire</h2>
-              <p className="text-sm text-gray-600">Pour {contactName}</p>
+              <h2 className="text-xl font-semibold">{t('Nouvelle affaire')}</h2>
+              <p className="text-sm text-gray-600">
+                {t('Pour')} {contactName}
+              </p>
             </div>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onCancel}
-            className="h-8 w-8 p-0"
-          >
+          <Button type="button" variant="ghost" size="sm" onClick={onCancel} className="h-8 w-8 p-0">
             <X className="h-5 w-5" />
           </Button>
         </div>
@@ -64,5 +61,3 @@ export const AddDealDialog: React.FC<AddDealDialogProps> = ({
     </div>
   );
 };
-
-

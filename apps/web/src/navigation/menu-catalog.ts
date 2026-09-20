@@ -1,6 +1,7 @@
 import type React from 'react';
 import { NAVIGATION, SECTION_LABELS } from './model';
 import type { NavGroup, PersonaId, SectionId } from './model';
+import { t } from '../i18n/t';
 
 /**
  * Catalogue des menus, dérivé du modèle de navigation.
@@ -39,14 +40,17 @@ export const PORTAL_PSEUDO_ROLES: PortalPseudoRole[] = [
   {
     key: PORTAL_OWNER_ROLE_KEY,
     name: 'Propriétaire (portail)',
-    description:
-      "Bailleur rattaché à l'agence. Accède au portail propriétaire : ses biens, ses revenus, les incidents de ses immeubles.",
+    description: t(
+      "Bailleur rattaché à l'agence. Accède au portail propriétaire : ses biens, ses revenus, les incidents de ses immeubles."
+    ),
     persona: 'proprietaire'
   },
   {
     key: PORTAL_RENTER_ROLE_KEY,
     name: 'Locataire (portail)',
-    description: 'Occupant rattaché à un bail. Accède au portail locataire : son bail, ses paiements, ses incidents.',
+    description: t(
+      'Occupant rattaché à un bail. Accède au portail locataire : son bail, ses paiements, ses incidents.'
+    ),
     persona: 'locataire'
   }
 ];
@@ -171,7 +175,7 @@ function requirementsFor(navKey: string): string[] {
 }
 
 /** Intitulé des entrées sans domaine : un menu sans catégorie reste un menu. */
-const GENERAL_SECTION_LABEL = 'Général';
+const GENERAL_SECTION_LABEL = t('Général');
 
 function toEntry(persona: PersonaId, group: NavGroup): MenuCatalogEntry {
   return {

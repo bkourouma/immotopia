@@ -1,26 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Button,
-  Form,
-  Input,
-  InputNumber,
-  Select,
-  Space,
-  Alert,
-  Row,
-  Col,
-  Spin,
-} from 'antd';
+import { Button, Form, Input, InputNumber, Select, Space, Alert, Row, Col, Spin } from 'antd';
 import {
   CreateDepositMovementRequest,
   RentalSecurityDeposit,
   RentalDepositMovementType,
   RentalPayment,
   RentalPaymentStatus,
-  listPayments,
+  listPayments
 } from '../../services/rental-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
 
 interface DepositMovementFormProps {
@@ -38,7 +29,7 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
   leaseId,
   onSubmit,
   onCancel,
-  loading = false,
+  loading = false
 }) => {
   const [form] = Form.useForm();
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -57,13 +48,13 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
         try {
           const response = await listPayments(tenantId, {
             leaseId,
-            status: RentalPaymentStatus.SUCCESS,
+            status: RentalPaymentStatus.SUCCESS
           });
           if (response.success) {
             const all = response.data || [];
             const allocatedSum = (p: RentalPayment) =>
               (p.allocations || []).reduce((sum, a) => sum + Number(a.amount), 0);
-            const unallocated = all.filter((p) => allocatedSum(p) === 0);
+            const unallocated = all.filter(p => allocatedSum(p) === 0);
             setPayments(unallocated);
           }
         } catch (err) {
@@ -96,7 +87,7 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
         amount: amountNum,
         paymentId: values.paymentId && String(values.paymentId).trim() ? values.paymentId : undefined,
         installmentId: values.installmentId && String(values.installmentId).trim() ? values.installmentId : undefined,
-        note: values.note && String(values.note).trim() ? values.note : undefined,
+        note: values.note && String(values.note).trim() ? values.note : undefined
       };
 
       await onSubmit(submitData);
@@ -105,7 +96,7 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
       if (error.response?.data?.message) {
         setSubmitError(error.response.data.message);
       } else {
-        setSubmitError('Une erreur est survenue lors de l\'enregistrement du mouvement');
+        setSubmitError(t("Une erreur est survenue lors de l'enregistrement du mouvement"));
       }
     } finally {
       setIsSubmitting(false);
@@ -118,7 +109,7 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
       layout="vertical"
       onFinish={handleSubmit}
       initialValues={{
-        type: RentalDepositMovementType.COLLECT,
+        type: RentalDepositMovementType.COLLECT
       }}
     >
       {submitError && (
@@ -135,23 +126,23 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
       <Row gutter={16}>
         <Col xs={24} md={12}>
           <Form.Item
-            label="Type de mouvement"
+            label={t('Type de mouvement')}
             name="type"
-            rules={[{ required: true, message: 'Le type de mouvement est requis' }]}
+            rules={[{ required: true, message: t('Le type de mouvement est requis') }]}
           >
             <Select
-              onChange={(value) => {
+              onChange={value => {
                 setMovementType(value);
                 // Reset paymentId when type changes
                 form.setFieldsValue({ paymentId: undefined });
               }}
             >
-              <Select.Option value={RentalDepositMovementType.COLLECT}>Collecte</Select.Option>
-              <Select.Option value={RentalDepositMovementType.HOLD}>Blocage</Select.Option>
-              <Select.Option value={RentalDepositMovementType.RELEASE}>Libération</Select.Option>
-              <Select.Option value={RentalDepositMovementType.REFUND}>Remboursement</Select.Option>
-              <Select.Option value={RentalDepositMovementType.FORFEIT}>Confiscation</Select.Option>
-              <Select.Option value={RentalDepositMovementType.ADJUSTMENT}>Ajustement</Select.Option>
+              <Select.Option value={RentalDepositMovementType.COLLECT}>{t('Collecte')}</Select.Option>
+              <Select.Option value={RentalDepositMovementType.HOLD}>{t('Blocage')}</Select.Option>
+              <Select.Option value={RentalDepositMovementType.RELEASE}>{t('Libération')}</Select.Option>
+              <Select.Option value={RentalDepositMovementType.REFUND}>{t('Remboursement')}</Select.Option>
+              <Select.Option value={RentalDepositMovementType.FORFEIT}>{t('Confiscation')}</Select.Option>
+              <Select.Option value={RentalDepositMovementType.ADJUSTMENT}>{t('Ajustement')}</Select.Option>
             </Select>
           </Form.Item>
         </Col>
@@ -159,17 +150,17 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
         {movementType === RentalDepositMovementType.COLLECT && (
           <Col xs={24} md={12}>
             <Form.Item
-              label="Paiement associé"
+              label={t('Paiement associé')}
               name="paymentId"
-              rules={[
-                { required: true, message: 'Le paiement est requis pour une collecte' },
-              ]}
-              help="Choisissez le paiement qui correspond à la collecte du dépôt. Le montant ci-dessous sera rempli automatiquement."
+              rules={[{ required: true, message: t('Le paiement est requis pour une collecte') }]}
+              help={t(
+                'Choisissez le paiement qui correspond à la collecte du dépôt. Le montant ci-dessous sera rempli automatiquement.'
+              )}
             >
               <Select
-                placeholder="Sélectionner un paiement"
+                placeholder={t('Sélectionner un paiement')}
                 loading={loadingPayments}
-                notFoundContent={loadingPayments ? <Spin size="small" /> : 'Aucun paiement trouvé'}
+                notFoundContent={loadingPayments ? <Spin size="small" /> : t('Aucun paiement trouvé')}
                 showSearch
                 optionFilterProp="children"
                 filterOption={(input, option) =>
@@ -182,12 +173,13 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
                   }
                 }}
               >
-                {payments.map((payment) => (
+                {payments.map(payment => (
                   <Select.Option key={payment.id} value={payment.id}>
-                    {new Intl.NumberFormat('fr-FR', {
+                    {new Intl.NumberFormat(activeLocale(), {
                       style: 'currency',
-                      currency: payment.currency === 'FCFA' ? 'XOF' : payment.currency,
-                    }).format(payment.amount)} - {payment.method} - {new Date(payment.created_at).toLocaleDateString('fr-FR')}
+                      currency: payment.currency === 'FCFA' ? 'XOF' : payment.currency
+                    }).format(payment.amount)}{' '}
+                    - {payment.method} - {new Date(payment.created_at).toLocaleDateString(activeLocale())}
                   </Select.Option>
                 ))}
               </Select>
@@ -197,39 +189,39 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
 
         <Col xs={24} md={12}>
           <Form.Item
-            label="Montant"
+            label={t('Montant')}
             name="amount"
             rules={[
-              { required: true, message: 'Le montant est requis' },
-              { type: 'number', min: 0.01, message: 'Le montant doit être supérieur à 0' },
+              { required: true, message: t('Le montant est requis') },
+              { type: 'number', min: 0.01, message: t('Le montant doit être supérieur à 0') }
             ]}
-            help={movementType === RentalDepositMovementType.COLLECT ? 'Pour une collecte, ce montant doit être égal au montant cible du dépôt (rempli automatiquement).' : undefined}
+            help={
+              movementType === RentalDepositMovementType.COLLECT
+                ? t('Pour une collecte, ce montant doit être égal au montant cible du dépôt (rempli automatiquement).')
+                : undefined
+            }
           >
             <InputNumber
               style={{ width: '100%' }}
               min={0}
               step={1000}
-              formatter={(value) => formatNumberWithSpaces(value?.toString() || '')}
-              parser={((value) => {
-                if (!value) return 0;
-                const parsed = parseFormattedNumber(value);
-                const num = parseFloat(parsed);
-                return isNaN(num) ? 0 : num;
-              }) as (displayValue: string | undefined) => number}
-              placeholder="Ex: 500 000"
+              formatter={value => formatNumberWithSpaces(value?.toString() || '')}
+              parser={
+                (value => {
+                  if (!value) return 0;
+                  const parsed = parseFormattedNumber(value);
+                  const num = parseFloat(parsed);
+                  return isNaN(num) ? 0 : num;
+                }) as (displayValue: string | undefined) => number
+              }
+              placeholder={t('Ex: 500 000')}
             />
           </Form.Item>
         </Col>
 
         <Col xs={24}>
-          <Form.Item
-            label="Note"
-            name="note"
-          >
-            <TextArea
-              rows={3}
-              placeholder="Note optionnelle sur le mouvement..."
-            />
+          <Form.Item label={t('Note')} name="note">
+            <TextArea rows={3} placeholder={t('Note optionnelle sur le mouvement...')} />
           </Form.Item>
         </Col>
       </Row>
@@ -238,19 +230,14 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
         <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
           {onCancel && (
             <Button onClick={onCancel} disabled={isSubmitting || loading}>
-              Annuler
+              {t('Annuler')}
             </Button>
           )}
           <Button type="primary" htmlType="submit" loading={isSubmitting || loading}>
-            Enregistrer
+            {t('Enregistrer')}
           </Button>
         </Space>
       </Form.Item>
     </Form>
   );
 };
-
-
-
-
-

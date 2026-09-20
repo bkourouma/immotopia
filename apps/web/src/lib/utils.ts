@@ -1,8 +1,9 @@
-import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { activeLocale } from '../i18n/format';
+import { type ClassValue, clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+  return twMerge(clsx(inputs));
 }
 
 /**
@@ -16,7 +17,7 @@ export function formatNumberWithSpaces(value: string | number | undefined): stri
   if (numStr === '') return '';
   const num = parseFloat(numStr);
   if (isNaN(num)) return '';
-  return num.toLocaleString('fr-FR', { useGrouping: true, maximumFractionDigits: 0 });
+  return num.toLocaleString(activeLocale(), { useGrouping: true, maximumFractionDigits: 0 });
 }
 
 /**
@@ -27,4 +28,3 @@ export function formatNumberWithSpaces(value: string | number | undefined): stri
 export function parseFormattedNumber(value: string): string {
   return value.replace(/\s/g, '').replace(/[^\d]/g, '');
 }
-

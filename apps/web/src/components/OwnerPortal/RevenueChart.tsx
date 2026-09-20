@@ -11,7 +11,9 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
+import { t } from '../../i18n/t';
 
+import { activeLocale } from '../../i18n/format';
 interface RevenueChartProps {
   data: Array<{
     month?: string;
@@ -26,7 +28,7 @@ interface RevenueChartProps {
 }
 
 const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('fr-FR', {
+  return new Intl.NumberFormat(activeLocale(), {
     style: 'currency',
     currency: 'XOF',
     minimumFractionDigits: 0
@@ -36,13 +38,15 @@ const formatCurrency = (value: number) => {
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div style={{
-        backgroundColor: '#fff',
-        border: '1px solid #ccc',
-        borderRadius: 4,
-        padding: '8px 12px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
-      }}>
+      <div
+        style={{
+          backgroundColor: '#fff',
+          border: '1px solid #ccc',
+          borderRadius: 4,
+          padding: '8px 12px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+        }}
+      >
         <p style={{ margin: 0, marginBottom: 4, fontWeight: 'bold' }}>{label}</p>
         {payload.map((entry: any, index: number) => (
           <p key={index} style={{ margin: 0, color: entry.color }}>
@@ -55,22 +59,19 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export const RevenueChart: React.FC<RevenueChartProps> = ({
-  data,
-  type,
-  dataKey = 'revenue',
-  xAxisKey
-}) => {
+export const RevenueChart: React.FC<RevenueChartProps> = ({ data, type, dataKey = 'revenue', xAxisKey }) => {
   if (data.length === 0) {
     return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: 300,
-        color: '#999'
-      }}>
-        Aucune donnée disponible
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: 300,
+          color: '#999'
+        }}
+      >
+        {t('Aucune donnée disponible')}
       </div>
     );
   }
@@ -82,7 +83,7 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis 
+          <XAxis
             dataKey={xKey}
             stroke="#64748b"
             style={{ fontSize: '12px' }}
@@ -90,11 +91,7 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({
             textAnchor="end"
             height={80}
           />
-          <YAxis 
-            stroke="#64748b"
-            style={{ fontSize: '12px' }}
-            tickFormatter={(value) => formatCurrency(value)}
-          />
+          <YAxis stroke="#64748b" style={{ fontSize: '12px' }} tickFormatter={value => formatCurrency(value)} />
           <Tooltip content={<CustomTooltip />} />
           <Legend />
           <Line
@@ -115,27 +112,11 @@ export const RevenueChart: React.FC<RevenueChartProps> = ({
     <ResponsiveContainer width="100%" height={300}>
       <BarChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-        <XAxis
-          dataKey={xKey}
-          stroke="#64748b"
-          style={{ fontSize: '12px' }}
-          angle={-45}
-          textAnchor="end"
-          height={80}
-        />
-        <YAxis
-          stroke="#64748b"
-          style={{ fontSize: '12px' }}
-          tickFormatter={(value) => formatCurrency(value)}
-        />
+        <XAxis dataKey={xKey} stroke="#64748b" style={{ fontSize: '12px' }} angle={-45} textAnchor="end" height={80} />
+        <YAxis stroke="#64748b" style={{ fontSize: '12px' }} tickFormatter={value => formatCurrency(value)} />
         <Tooltip content={<CustomTooltip />} />
         <Legend />
-        <Bar
-          dataKey={dataKey}
-          name="Revenus"
-          fill="#2563eb"
-          radius={[8, 8, 0, 0]}
-        />
+        <Bar dataKey={dataKey} name="Revenus" fill="#2563eb" radius={[8, 8, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );

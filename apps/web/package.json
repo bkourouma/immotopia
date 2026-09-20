@@ -18,6 +18,7 @@
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "a11y:contrast": "node scripts/a11y-contrast.mjs",
+    "i18n:extract": "node scripts/i18n-migrate.mjs",
     "measure:entry": "node scripts/measure-entry.mjs"
   },
   "dependencies": {
@@ -39,11 +40,13 @@
     "dayjs": "^1.11.19",
     "exceljs": "^4.4.0",
     "framer-motion": "^12.23.26",
+    "i18next": "^23.16.8",
     "lucide-react": "^0.556.0",
     "prismjs": "^1.30.0",
     "react": "^18.2.0",
     "react-big-calendar": "^1.19.4",
     "react-dom": "^18.2.0",
+    "react-i18next": "^15.7.4",
     "react-router-dom": "^6.21.1",
     "react-simple-code-editor": "^0.14.1",
     "recharts": "^3.6.0",
