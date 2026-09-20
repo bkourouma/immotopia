@@ -350,6 +350,32 @@ describe('GET /tenants/:tenantId/finance/sites/:siteId/detail', () => {
     });
   });
 
+  /**
+   * Les trois champs ajoutés le 20 septembre 2026, après qu'un test de bout en
+   * bout a fait tomber la fiche d'un chantier faute de les recevoir. Ils sont
+   * épinglés séparément du cas nominal : ce sont des ajouts, et c'est leur
+   * absence — pas leur forme — qui avait cassé un écran.
+   */
+  it('porte le chantier lui-même, et le libellé lisible de chaque pièce', async () => {
+    getSiteDetail.mockResolvedValue(sampleSiteDetail());
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/sites/${SITE_A}/detail`);
+
+    expect(response.status).toBe(200);
+    // Sans le chantier, la réponse ne porte que des coûts : l'écran de détail
+    // n'a ni nom, ni zone, ni statut, ni dates à afficher en en-tête.
+    expect(response.body.data.site).toBeDefined();
+    expect(response.body.data.site.id).toBe(SITE_A);
+    expect(response.body.data.site.name).toBe(sampleSite().name);
+    expect(response.body.data.site.status).toBe(sampleSite().status);
+
+    // Le libellé lisible, que `sites.ts` résout et que la mise en forme
+    // jetait : la colonne « Pièce d'origine » restait vide, et l'identifiant
+    // brut n'est d'aucun secours à une gestionnaire (leçon du lot 1).
+    expect(response.body.data.allocations[0].sourceLabel).toBe('Bon de caisse 2026-0001 — Amara Camara');
+    expect(response.body.data.allocations[0].costCategoryId).toBe(CATEGORY_A);
+  });
+
   it('renvoie 404 pour un chantier inexistant', async () => {
     getSiteDetail.mockRejectedValue(new NotFoundError('Chantier introuvable.'));
 

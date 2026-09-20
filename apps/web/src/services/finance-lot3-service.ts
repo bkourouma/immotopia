@@ -95,23 +95,36 @@ export async function createSiteBudget(tenantId: string, params: CreateSiteBudge
 }
 
 /**
- * Le budget courant d'un chantier — brouillon ou validé.
+ * Le budget courant d'un chantier — **brouillon ou validé**.
  *
- * Le contrat serveur rend un 404 quand le chantier n'a encore aucun budget.
- * L'atelier, dont l'adaptateur simulé ne rend que des réponses 200
- * (`mock-api.ts`), modélise ce même cas par une donnée `null` : les deux
- * formes sont donc acceptées ici, pour que le comportement soit identique en
- * production et dans l'atelier sans toucher au branchement commun de
- * l'atelier, hors du territoire de cet agent.
+ * **Lit la liste (`/budgets`), jamais le singulier (`/budget`).** Les deux
+ * routes existent et ne disent pas la même chose : le singulier sert le
+ * budget **validé** et rend 404 sinon (`getValidatedSiteBudgetHandler`,
+ * « Ce chantier n'a pas encore de budget validé »). C'est son rôle, et il le
+ * garde — le calcul de l'écart n'a que faire d'un brouillon.
+ *
+ * Cette fonction l'appelait pourtant, en lisant son 404 comme « aucun budget
+ * sur ce chantier ». Résultat, corrigé le 20 septembre 2026 : un budget qui
+ * venait d'être créé — donc en brouillon — restait invisible à l'écran même
+ * qui venait de le créer. Blocage en boucle fermée, car on ne pouvait plus
+ * atteindre le bouton « Valider le budget » qui l'aurait rendu visible, et le
+ * seul bouton offert, « Créer le budget », en aurait fabriqué un second.
+ *
+ * Le budget retenu est **le validé s'il existe** — il n'y en a jamais plus
+ * d'un, l'index unique partiel de la base y veille — **sinon le plus récent**.
+ * La liste arrive déjà du plus récent au plus ancien (contrat du lot 3), et
+ * plusieurs brouillons sont permis par conception : il faut donc choisir, et
+ * le dernier saisi est celui qu'on vient d'écrire.
+ *
+ * Renvoie `null` quand la liste est vide, ce que l'écran traduit par sa carte
+ * « Aucun budget n'est encore posé pour ce chantier ».
  */
 export async function getSiteBudget(tenantId: string, siteId: string): Promise<SiteBudget | null> {
-  try {
-    const response = await apiClient.get<ApiResponse<SiteBudget | null>>(`${base(tenantId)}/sites/${siteId}/budget`);
-    return response.data.data ?? null;
-  } catch (err: any) {
-    if (err?.response?.status === 404) return null;
-    throw err;
-  }
+  const response = await apiClient.get<ApiResponse<SiteBudget[] | null>>(`${base(tenantId)}/sites/${siteId}/budgets`);
+  const budgets = Array.isArray(response.data.data) ? response.data.data : [];
+  if (budgets.length === 0) return null;
+
+  return budgets.find(budget => budget.status === 'VALIDATED') ?? budgets[0];
 }
 
 /**
@@ -209,20 +222,22 @@ export async function issuePurchaseOrder(tenantId: string, orderId: string): Pro
 /**
  * Annule un bon : irréversible, et l'écran doit le dire avant.
  *
- * **Écart de contrat, signalé et non corrigé ici.** Contrairement aux
- * annulations du lot 2 (`voidSupplierInvoice`, `voidCashVoucher`), le contrat
- * gelé ne déclare ici ni type d'entrée ni champ de motif pour cette route —
- * `data-model.md` §5 documente seulement `POST purchase-orders/{orderId}/cancel`,
- * sans corps. Cette fonction n'envoie donc aucun motif, plutôt que d'inventer
- * un champ que le serveur n'attend peut-être pas. Si l'annulation d'un bon
- * doit réellement être motivée comme le sont les annulations du lot 2, le
- * contrat doit être mis à jour en amont — voir la rubrique « Hypothèses » du
- * rapport de cet agent.
+ * **Le motif est obligatoire**, comme pour les annulations du lot 2
+ * (`voidSupplierInvoice`, `voidCashVoucher`). L'écart signalé ici jusqu'au
+ * 20 septembre 2026 était réel mais tranché dans l'autre sens que ce commentaire
+ * ne le supposait : le serveur exige `reason` depuis toujours
+ * (`cancelPurchaseOrderSchema`, « Le motif d'annulation est obligatoire »).
+ * Cette fonction n'en envoyait aucun, et l'annulation était donc **impossible
+ * depuis l'interface** — chaque tentative repartait en 400. Un bon qu'on
+ * croyait annulé continuait d'engager son chantier.
+ *
+ * Une annulation irréversible qui n'est pas tracée est un trou d'audit :
+ * l'obligation est du bon côté, c'est l'écran qui devait rattraper son retard.
  */
-export async function cancelPurchaseOrder(tenantId: string, orderId: string): Promise<PurchaseOrder> {
+export async function cancelPurchaseOrder(tenantId: string, orderId: string, reason: string): Promise<PurchaseOrder> {
   const response = await apiClient.post<ApiResponse<PurchaseOrder>>(
     `${base(tenantId)}/purchase-orders/${orderId}/cancel`,
-    {}
+    { reason }
   );
   return response.data.data;
 }

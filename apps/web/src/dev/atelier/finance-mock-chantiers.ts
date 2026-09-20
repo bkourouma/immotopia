@@ -10,10 +10,10 @@
  *
  * **Quatre chantiers, chacun pour une raison précise.**
  *
- * - `chantier-riche-01` (« Villa duplex — Kipé Centre ») porte une vingtaine
+ * - `chantier-riche-01` (« Villa duplex — Angré Centre ») porte une vingtaine
  *   d'imputations sur sept postes, venant à la fois de factures fournisseurs
  *   et de pièces de caisse — le jeu de données qui montre un détail complet.
- * - `chantier-sans-bien-01` (« Terrain loué — Nongo ») n'a aucun `propertyId` :
+ * - `chantier-sans-bien-01` (« Terrain loué — Riviera ») n'a aucun `propertyId` :
  *   c'est le cas exact de la cliente, un chantier sur un terrain loué qui
  *   n'avait nulle part où s'inscrire avant `ConstructionSite`.
  * - `chantier-cloture-01` porte un statut `CLOSED`, une date de clôture et un
@@ -95,11 +95,11 @@ function construireDetail(base: ChantierBase, allocations: SiteAllocationLine[])
 
 const RICHE_BASE: ChantierBase = {
   id: 'chantier-riche-01',
-  name: 'Villa duplex — Kipé Centre',
-  zone: 'Kipé, Ratoma',
+  name: 'Villa duplex — Angré Centre',
+  zone: 'Angré, Cocody',
   propertyId: 'bien-chantier-riche-01',
-  propertyLabel: 'Villa duplex — Kipé Centre (en construction)',
-  managerLabel: 'Mamadou Bah',
+  propertyLabel: 'Villa duplex — Angré Centre (en construction)',
+  managerLabel: 'Mamadou Konan',
   // Aucun bail de terrain par defaut : c'est le cas courant.
   landLeaseId: null,
   status: 'IN_PROGRESS',
@@ -129,7 +129,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Gros œuvre',
     sourceType: 'CASH_VOUCHER',
     sourceId: 'piece-caisse-riche-01',
-    sourceLabel: 'Pièce de caisse 2026-0031 — Sable et gravier, livraison Kipé',
+    sourceLabel: 'Pièce de caisse 2026-0031 — Sable et gravier, livraison Angré',
     amount: 850_000
   },
   {
@@ -149,7 +149,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Gros œuvre',
     sourceType: 'SUPPLIER_INVOICE',
     sourceId: 'facture-riche-02',
-    sourceLabel: 'Facture FC-2026-0158 — Fer à béton, Quincaillerie Diallo & Fils',
+    sourceLabel: 'Facture FC-2026-0158 — Fer à béton, Quincaillerie Kouassi & Fils',
     amount: 2_450_000
   },
   {
@@ -169,7 +169,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Toiture',
     sourceType: 'SUPPLIER_INVOICE',
     sourceId: 'facture-riche-03',
-    sourceLabel: 'Facture FC-2026-0172 — Charpente métallique, Sotraco Guinée',
+    sourceLabel: 'Facture FC-2026-0172 — Charpente métallique, Sotraco Ivoire',
     amount: 4_100_000
   },
   {
@@ -199,7 +199,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Plomberie',
     sourceType: 'SUPPLIER_INVOICE',
     sourceId: 'facture-riche-04',
-    sourceLabel: 'Facture FC-2026-0189 — Tuyauterie PVC et raccords, Plombex Conakry',
+    sourceLabel: 'Facture FC-2026-0189 — Tuyauterie PVC et raccords, Plombex Abidjan',
     amount: 1_180_000
   },
   {
@@ -249,7 +249,7 @@ const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Matériaux',
     sourceType: 'SUPPLIER_INVOICE',
     sourceId: 'facture-riche-07',
-    sourceLabel: 'Facture FC-2026-0221 — Carrelage et faïence, Ceramica Guinée',
+    sourceLabel: 'Facture FC-2026-0221 — Carrelage et faïence, Ceramica Ivoire',
     amount: 2_300_000
   },
   {
@@ -322,11 +322,11 @@ const DETAIL_RICHE = construireDetail(RICHE_BASE, RICHE_ALLOCATIONS);
 
 const SANS_BIEN_BASE: ChantierBase = {
   id: 'chantier-sans-bien-01',
-  name: 'Terrain loué — Nongo',
-  zone: 'Nongo, Ratoma',
+  name: 'Terrain loué — Riviera',
+  zone: 'Riviera, Cocody',
   propertyId: null,
   propertyLabel: null,
-  managerLabel: 'Ibrahima Sow',
+  managerLabel: 'Ibrahima Yao',
   // Aucun bail de terrain par defaut : c'est le cas courant.
   landLeaseId: null,
   status: 'IN_PROGRESS',
@@ -346,7 +346,7 @@ const SANS_BIEN_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Gros œuvre',
     sourceType: 'SUPPLIER_INVOICE',
     sourceId: 'facture-sans-bien-01',
-    sourceLabel: 'Facture FC-2026-0165 — Blocs de ciment, Bloc Guinée',
+    sourceLabel: 'Facture FC-2026-0165 — Blocs de ciment, Bloc Ivoire',
     amount: 1_800_000
   },
   {
@@ -376,7 +376,7 @@ const SANS_BIEN_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Gros œuvre',
     sourceType: 'SUPPLIER_INVOICE',
     sourceId: 'facture-sans-bien-02',
-    sourceLabel: 'Facture FC-2026-0230 — Fer à béton, Quincaillerie Diallo & Fils',
+    sourceLabel: 'Facture FC-2026-0230 — Fer à béton, Quincaillerie Kouassi & Fils',
     amount: 1_350_000
   }
 ];
@@ -406,7 +406,7 @@ const CLOTURE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Toiture',
     sourceType: 'SUPPLIER_INVOICE',
     sourceId: 'facture-cloture-02',
-    sourceLabel: 'Facture FC-2025-0865 — Charpente et tôles, Sotraco Guinée',
+    sourceLabel: 'Facture FC-2025-0865 — Charpente et tôles, Sotraco Ivoire',
     amount: 6_200_000
   },
   {
@@ -436,7 +436,7 @@ const CLOTURE_ALLOCATIONS: SiteAllocationLine[] = [
     costCategoryLabel: 'Plomberie',
     sourceType: 'SUPPLIER_INVOICE',
     sourceId: 'facture-cloture-04',
-    sourceLabel: 'Facture FC-2026-0048 — Plomberie complète, Plombex Conakry',
+    sourceLabel: 'Facture FC-2026-0048 — Plomberie complète, Plombex Abidjan',
     amount: 2_600_000
   },
   {
@@ -455,11 +455,11 @@ const COUT_CLOTURE = CLOTURE_ALLOCATIONS.reduce((somme, ligne) => somme + ligne.
 
 const CLOTURE_BASE: ChantierBase = {
   id: 'chantier-cloture-01',
-  name: 'Immeuble R+3 — Matam',
-  zone: 'Matam, Conakry',
+  name: 'Immeuble R+3 — Marcory',
+  zone: 'Marcory, Abidjan',
   propertyId: 'bien-cloture-01',
-  propertyLabel: 'Immeuble R+3 — Matam (livré)',
-  managerLabel: 'Aïssatou Barry',
+  propertyLabel: 'Immeuble R+3 — Marcory (livré)',
+  managerLabel: 'Aïssatou Brou',
   // Aucun bail de terrain par defaut : c'est le cas courant.
   landLeaseId: null,
   status: 'CLOSED',
@@ -482,11 +482,11 @@ const DETAIL_CLOTURE = construireDetail(CLOTURE_BASE, CLOTURE_ALLOCATIONS);
 
 const NOUVEAU_BASE: ChantierBase = {
   id: 'chantier-nouveau-01',
-  name: 'Extension villa — Lambanyi',
-  zone: 'Lambanyi, Ratoma',
+  name: 'Extension villa — Bingerville',
+  zone: 'Bingerville, Abidjan',
   propertyId: 'bien-nouveau-01',
-  propertyLabel: 'Villa Lambanyi 2 (extension)',
-  managerLabel: 'Mamadou Bah',
+  propertyLabel: 'Villa Bingerville 2 (extension)',
+  managerLabel: 'Mamadou Konan',
   // Aucun bail de terrain par defaut : c'est le cas courant.
   landLeaseId: null,
   status: 'PLANNED',
@@ -536,6 +536,30 @@ const PIECE_CAISSE_VALIDEE: CashVoucher = {
   validatedAt: '2026-09-18T10:00:00.000Z'
 };
 
+/**
+ * Met une maquette à la forme du réseau, celle du contrat gelé.
+ *
+ * L'atelier répondait jusqu'au 20 septembre 2026 avec la forme que le front
+ * souhaitait (`{ site, allocations, byCostCategory }`), et non celle que le
+ * serveur envoie (`{ siteId, site, actualCost, allocations,
+ * subtotalsByCategory }`). Une maquette qui imite le vœu du client plutôt que
+ * la réponse du serveur ne démontre rien : elle a masqué pendant tout un lot
+ * le défaut qui faisait tomber la fiche d'un chantier en conditions réelles.
+ */
+function versLeReseau(detail: SiteDetail) {
+  return {
+    siteId: detail.site.id,
+    site: detail.site,
+    actualCost: detail.site.actualCost,
+    allocations: detail.allocations,
+    subtotalsByCategory: detail.byCostCategory.map(poste => ({
+      costCategoryId: poste.costCategoryId,
+      label: poste.label,
+      total: poste.amount
+    }))
+  };
+}
+
 export function repondreChantiers(chemin: string, scenario: Scenario): unknown | null {
   const detailMatch = /\/tenants\/[^/]+\/finance\/sites\/([^/]+)\/detail$/.exec(chemin);
   if (detailMatch) {
@@ -543,8 +567,8 @@ export function repondreChantiers(chemin: string, scenario: Scenario): unknown |
     // déjà la fiche d'un bien dans `mock-api.ts` : la scène reste atteignable
     // sans connaître les identifiants simulés.
     const detail = SITE_DETAILS.find(candidat => candidat.site.id === detailMatch[1]) ?? SITE_DETAILS[0];
-    const data = scenario === 'vide' ? { ...detail, allocations: [], byCostCategory: [] } : detail;
-    return { success: true, data };
+    const scene: SiteDetail = scenario === 'vide' ? { ...detail, allocations: [], byCostCategory: [] } : detail;
+    return { success: true, data: versLeReseau(scene) };
   }
 
   if (/\/tenants\/[^/]+\/finance\/sites\/[^/]+\/cash-vouchers$/.test(chemin)) {

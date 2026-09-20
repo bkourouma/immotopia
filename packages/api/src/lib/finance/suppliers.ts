@@ -56,7 +56,7 @@ import { syncWorkProgramCostTx } from './cost-allocation';
 import { assertSiteOpenTx } from './site-closing';
 import { isSiteStockEnabledTx } from './stock-rapprochement';
 import { raiseBudgetAlertIfNeededTx } from './budget-alerts';
-import { roundMoneyXof } from './money';
+import { roundLineQuantity, roundMoneyXof } from './money';
 import type { FinanceSourceType } from './types';
 import { toAmountOrZero } from './types';
 import type {
@@ -182,8 +182,7 @@ function toSupplierRecord(row: any): SupplierRecord {
     tenantId: row.tenantId,
     name: row.name,
     kind: row.kind,
-    // Pas de colonne `contactName` sur `Supplier` — voir l'en-tete du fichier.
-    contactName: null,
+    contactName: row.contactName ?? null,
     phone: row.contactPhone ?? null,
     email: row.contactEmail ?? null,
     maintenanceVendorId: row.maintenanceVendorId ?? null,
@@ -253,6 +252,7 @@ export const createSupplierTx: CreateSupplierTx = async (tx, tenantId, params) =
       tenantId,
       name: params.name,
       kind: params.kind as any,
+      contactName: params.contactName ?? undefined,
       contactPhone: params.phone ?? undefined,
       contactEmail: params.email ?? undefined,
       maintenanceVendorId: params.maintenanceVendorId ?? undefined,
@@ -292,7 +292,18 @@ export const createSupplierInvoiceTx: CreateSupplierInvoiceTx = async (tx, tenan
   // Discipline du defaut n°1 : chaque montant est arrondi avant d'entrer
   // dans la somme, jamais apres — la somme brute puis arrondie peut differer
   // de la somme des valeurs deja arrondies qui seront stockees.
-  const roundedLines = params.lines.map(line => ({ label: line.label, amount: roundMoneyXof(line.amount) }));
+  //
+  // Quantite et prix unitaire (20 septembre 2026) : conserves tels quels,
+  // JAMAIS remultiplies. Le montant est la donnee de reference comptable ;
+  // l'ecran l'a deja calcule, et le recalculer ici donnerait deux chiffres
+  // qui finiraient par differer d'un franc d'arrondi. Nuls quand la ligne
+  // est saisie en montant direct — une prestation, un forfait.
+  const roundedLines = params.lines.map(line => ({
+    label: line.label,
+    amount: roundMoneyXof(line.amount),
+    quantity: line.quantity === null || line.quantity === undefined ? null : roundLineQuantity(line.quantity),
+    unitPrice: line.unitPrice === null || line.unitPrice === undefined ? null : roundMoneyXof(line.unitPrice)
+  }));
   const amount = roundMoneyXof(roundedLines.reduce((sum, line) => sum + line.amount, 0));
 
   // Le champ unique `siteId` de la facture n'est qu'un affichage — les
@@ -316,7 +327,13 @@ export const createSupplierInvoiceTx: CreateSupplierInvoiceTx = async (tx, tenan
 
   for (const line of roundedLines) {
     await tx.supplierInvoiceLine.create({
-      data: { invoiceId: invoice.id, label: line.label, amount: line.amount }
+      data: {
+        invoiceId: invoice.id,
+        label: line.label,
+        amount: line.amount,
+        quantity: line.quantity,
+        unitPrice: line.unitPrice
+      }
     });
   }
 

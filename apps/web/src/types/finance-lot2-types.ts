@@ -48,10 +48,19 @@ export const DOCUMENT_TYPE_LABELS: Record<VoidableDocumentType, string> = {
 
 export type ConstructionSiteStatus = 'PLANNED' | 'IN_PROGRESS' | 'SUSPENDED' | 'CLOSED';
 
+/**
+ * Les quatre etats d'un chantier.
+ *
+ * `PLANNED` se lit **« Planifie »**, et non « Prevu » : c'est le mot que
+ * `<StatusTag>` emploie deja pour cet etat, et un meme statut portait donc deux
+ * noms selon l'ecran — « Prevu » sur la fiche, « Planifie » sur le tableau de
+ * bord. Arbitre par le proprietaire du produit le 20 septembre 2026 en faveur
+ * de « Planifie ».
+ */
 export const SITE_STATUS_LABELS: Record<ConstructionSiteStatus, string> = {
-  PLANNED: t('Prévu'),
+  PLANNED: t('Planifié'),
   IN_PROGRESS: t('En cours'),
-  SUSPENDED: 'Suspendu',
+  SUSPENDED: t('Suspendu'),
   CLOSED: t('Clôturé')
 };
 
@@ -64,8 +73,8 @@ export interface Supplier {
   name: string;
   kind: SupplierKind;
   contactName: string | null;
-  phone: string | null;
-  email: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
   /** Prestataire de maintenance déjà connu, s'il y en a un. */
   maintenanceVendorId: string | null;
   /**
@@ -261,7 +270,14 @@ export interface CreateSupplierInvoiceInput {
   supplierId: string;
   invoiceDate: string;
   reference: string;
-  lines: Array<{ label: string; amount: number }>;
+  /**
+   * `quantity` et `unitPrice` sont **facultatifs** : beaucoup de dépenses
+   * n'ont pas de quantité — une prestation, un forfait. Quand ils sont
+   * renseignés, `amount` est leur produit, calculé par l'écran ; le serveur
+   * les conserve sans jamais refaire ce calcul. Le montant reste la donnée
+   * de référence comptable.
+   */
+  lines: Array<{ label: string; amount: number; quantity?: number | null; unitPrice?: number | null }>;
   /**
    * Obligatoire pour un fournisseur de matériaux.
    *

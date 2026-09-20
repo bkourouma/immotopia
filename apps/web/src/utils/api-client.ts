@@ -1,6 +1,7 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { API_URL } from '../config/api';
 import i18next from '../i18n';
+import { t } from '../i18n/t';
 
 /**
  * Délai maximal d'une requête (REFONTE_UI_UX.md §8.4).
@@ -85,12 +86,48 @@ function redirectToLogin(): void {
   window.location.href = `/login?redirect=${encodeURIComponent(redirect)}`;
 }
 
+/**
+ * Rend lisible le refus d'une requête, avant que l'écran ne l'affiche.
+ *
+ * Les écrans montrent tous `error.response.data.message` dans leur
+ * notification d'échec. Sur une erreur de validation, le serveur y met une
+ * phrase générique — « The data supplied is invalid. » — et range le vrai
+ * motif dans `errors[]`, que personne ne lit. L'utilisateur voit donc passer
+ * un message qui ne dit rien, et croit volontiers que son geste a abouti.
+ *
+ * C'est ce qui s'est joué le 20 septembre 2026 sur l'annulation d'un bon de
+ * commande : le champ `reason` manquait, le serveur répondait
+ * `errors: [{ field: 'reason', message: 'Required' }]`, et l'écran affichait
+ * la phrase creuse. Le bon restait émis et continuait d'engager son chantier.
+ *
+ * Réécrire le message ici profite à **tous** les écrans d'un coup, sans
+ * toucher à leurs dizaines de blocs de capture. On n'efface jamais le détail
+ * du serveur : on le remonte à la place de la phrase qui le cachait.
+ */
+function detaillerErreurDeValidation(error: AxiosError): void {
+  const corps = error.response?.data as
+    { message?: string; errors?: Array<{ field?: string; message?: string }> } | undefined;
+
+  if (!corps || !Array.isArray(corps.errors) || corps.errors.length === 0) {
+    return;
+  }
+
+  const details = corps.errors
+    .map(detail => [detail.field, detail.message].filter(Boolean).join(' : '))
+    .filter(Boolean);
+
+  if (details.length > 0) {
+    corps.message = `${corps.message ?? t('Requête refusée')} (${details.join(' ; ')})`;
+  }
+}
+
 // Response interceptor: Handle token refresh on 401
 apiClient.interceptors.response.use(
   response => {
     return response;
   },
   async (error: AxiosError) => {
+    detaillerErreurDeValidation(error);
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
     // If error is 401 and we haven't retried yet

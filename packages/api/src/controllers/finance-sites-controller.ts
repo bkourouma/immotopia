@@ -85,6 +85,11 @@ function toConstructionSiteResponse(site: ConstructionSiteRecord) {
     name: site.name,
     zone: site.zone,
     propertyId: site.propertyId,
+    // Le contrat gelé porte `landLeaseId` (`ConstructionSite`, openapi.yaml) et
+    // l'écran d'un bail de terrain s'en sert pour prévenir qu'un chantier
+    // appartient déjà à un autre bail. L'omettre ici le rendait toujours nul :
+    // l'avertissement ne pouvait jamais se déclencher.
+    landLeaseId: site.landLeaseId,
     managerId: site.managerId,
     status: site.status,
     startDate: site.startDate,
@@ -97,14 +102,39 @@ function toConstructionSiteResponse(site: ConstructionSiteRecord) {
   };
 }
 
+/**
+ * Le détail d'un chantier, tel qu'il part sur le réseau.
+ *
+ * **Trois champs ajoutés le 20 septembre 2026**, après qu'un test de bout en
+ * bout a fait tomber la fiche d'un chantier sur l'écran d'erreur global
+ * (« Cannot read properties of undefined »). Tous sont **additifs** : les
+ * quatre champs exigés par le contrat gelé (`siteId`, `actualCost`,
+ * `allocations`, `subtotalsByCategory`) restent à leur place, sous leur nom.
+ *
+ * - `site` : le chantier lui-même. Sans lui, la réponse ne portait que des
+ *   coûts, et l'écran qui la consomme n'avait ni nom, ni zone, ni statut, ni
+ *   dates à afficher. Il est gratuit — `getSiteDetail` a déjà lu la ligne pour
+ *   calculer le coût réel — et il évite au front un second aller-retour.
+ * - `sourceLabel` : le libellé lisible de la pièce d'origine. `sites.ts` le
+ *   résout déjà (« Facture FRS-2026-0142 — Matériaux du Sud »), et cette
+ *   fonction le jetait : la colonne « Pièce d'origine » ne pouvait afficher
+ *   que du vide. C'est précisément la leçon du lot 1, où un compte rendu ne
+ *   montrait que des identifiants — une gestionnaire qui lit « Pièce 3f2a9b8c »
+ *   ne peut rien en faire.
+ * - `costCategoryId` : l'identifiant du poste, que le front déclare sur chaque
+ *   ligne et qui ne se reconstitue pas depuis un libellé.
+ */
 function toSiteDetailResponse(detail: SiteDetail) {
   return {
     siteId: detail.site.id,
+    site: toConstructionSiteResponse(detail.site),
     actualCost: detail.site.actualCost,
     allocations: detail.allocations.map(allocation => ({
       id: allocation.id,
       sourceType: allocation.sourceType,
       sourceId: allocation.sourceId,
+      sourceLabel: allocation.sourceLabel,
+      costCategoryId: allocation.costCategoryId,
       costCategoryLabel: allocation.costCategoryLabel,
       amount: allocation.amount,
       allocationDate: allocation.allocationDate

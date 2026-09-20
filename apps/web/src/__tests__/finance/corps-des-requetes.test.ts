@@ -52,8 +52,14 @@ vi.mock('../../utils/api-client', () => ({
 }));
 
 import apiClient from '../../utils/api-client';
-import { createCashVoucher } from '../../services/finance-lot2-service';
-import { createSiteBudget, createBudgetAmendment, recordSiteProgress } from '../../services/finance-lot3-service';
+import { createCashVoucher, getSiteDetail, validateCashVoucher } from '../../services/finance-lot2-service';
+import {
+  createSiteBudget,
+  createBudgetAmendment,
+  getSiteBudget,
+  getSitesDashboard,
+  recordSiteProgress
+} from '../../services/finance-lot3-service';
 import {
   createContractor,
   createContractorContract,
@@ -203,7 +209,7 @@ describe('Le corps ne répète jamais un identifiant que le chemin porte déjà'
  */
 describe('Salaires — le corps ne répète jamais un identifiant que le chemin porte déjà', () => {
   it('salarié : le corps ne porte que le nom et le rôle', async () => {
-    await createEmployee(TENANT, { fullName: 'Ibrahima Sylla', role: 'Maçon' });
+    await createEmployee(TENANT, { fullName: 'Ibrahima Koffi', role: 'Maçon' });
 
     const { adresse, corps } = dernierAppel();
     expect(adresse).toBe(`/tenants/${TENANT}/finance/employees`);
@@ -212,7 +218,7 @@ describe('Salaires — le corps ne répète jamais un identifiant que le chemin 
   });
 
   it('salarié sans rôle : le champ est omis, jamais envoyé vide (le serveur refuse la chaîne vide)', async () => {
-    await createEmployee(TENANT, { fullName: 'Aïssatou Bangoura' });
+    await createEmployee(TENANT, { fullName: 'Aïssatou Bamba' });
 
     const { corps } = dernierAppel();
     expect(Object.keys(corps)).toEqual(['fullName']);
@@ -265,7 +271,7 @@ describe('Tâcherons — le corps ne répète jamais un identifiant que le chemi
   const getMock = apiClient.get as unknown as ReturnType<typeof vi.fn>;
 
   it('tâcheron : le corps ne porte que le nom et le corps de métier', async () => {
-    await createContractor(TENANT, { fullName: 'Sékou Camara', trade: 'Maçonnerie' });
+    await createContractor(TENANT, { fullName: 'Sékou Kouadio', trade: 'Maçonnerie' });
 
     const { adresse, corps } = dernierAppel();
     expect(adresse).toBe(`/tenants/${TENANT}/finance/contractors`);
@@ -274,7 +280,7 @@ describe('Tâcherons — le corps ne répète jamais un identifiant que le chemi
   });
 
   it('tâcheron sans métier : le champ est omis, jamais envoyé vide (le serveur refuse la chaîne vide)', async () => {
-    await createContractor(TENANT, { fullName: 'Aïssatou Bah', trade: '' });
+    await createContractor(TENANT, { fullName: 'Aïssatou Konan', trade: '' });
 
     const { corps } = dernierAppel();
     expect(Object.keys(corps)).toEqual(['fullName']);
@@ -400,9 +406,9 @@ describe('Clôture de chantier — le corps ne répète jamais un identifiant qu
       internalReference: 'VIL-2026-014',
       propertyType: PropertyType.MAISON_VILLA,
       ownershipType: PropertyOwnershipType.TENANT,
-      title: 'Villa A3 — Nongo',
+      title: 'Villa A3 — Riviera',
       description: '',
-      address: 'Quartier Nongo, Ratoma, Conakry',
+      address: 'Quartier Riviera, Cocody, Abidjan',
       acquisitionDate: '2026-09-19'
     });
 
@@ -528,7 +534,7 @@ describe('Stock — aucun prix sur une sortie, et la facture reste dans le corps
       quantity: 12,
       siteId: SITE,
       costCategoryId: 'poste-gros-oeuvre',
-      requestedBy: 'Mamadou Diallo',
+      requestedBy: 'Mamadou Kouassi',
       issueDate: '2026-09-19'
     });
 
@@ -558,12 +564,12 @@ describe('Stock — aucun prix sur une sortie, et la facture reste dans le corps
       quantity: 1,
       siteId: SITE,
       costCategoryId: 'poste-gros-oeuvre',
-      requestedBy: '  Mamadou Diallo  ',
+      requestedBy: '  Mamadou Kouassi  ',
       issueDate: '2026-09-19'
     });
 
     const { corps } = dernierAppel();
-    expect(corps.requestedBy).toBe('Mamadou Diallo');
+    expect(corps.requestedBy).toBe('Mamadou Kouassi');
   });
 
   it('réception : quatre champs, `supplierInvoiceId` compris — le chemin ne le porte pas', async () => {
@@ -855,7 +861,7 @@ describe('Transferts et inventaire — aucun identifiant répété, aucun attend
  */
 describe('Référentiel du stock — aucun identifiant du chemin dans le corps, aucune chaîne vide', () => {
   const putMock = apiClient.put as unknown as ReturnType<typeof vi.fn>;
-  const CHANTIER = 'chantier-nongo';
+  const CHANTIER = 'chantier-riviera';
   const POSTE = '3f1b1c2a-0000-4000-8000-000000000001';
 
   /** L'adresse et le corps du dernier `put`, calqué sur `dernierAppel()`. */
@@ -902,21 +908,21 @@ describe('Référentiel du stock — aucun identifiant du chemin dans le corps, 
   });
 
   it('magasin : le corps ne porte JAMAIS de chantier', async () => {
-    await createStockLocation(TENANT, { kind: 'WAREHOUSE', label: 'Magasin central de Kipé' });
+    await createStockLocation(TENANT, { kind: 'WAREHOUSE', label: "Magasin central d'Angré" });
 
     const { adresse, corps } = dernierAppel();
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/locations`);
-    expect(corps).toEqual({ kind: 'WAREHOUSE', label: 'Magasin central de Kipé' });
+    expect(corps).toEqual({ kind: 'WAREHOUSE', label: "Magasin central d'Angré" });
     // Le serveur REFUSE `siteId` pour un magasin, plutôt que de l'ignorer.
     expect(corps).not.toHaveProperty('siteId');
     expect(corps).not.toHaveProperty('tenantId');
   });
 
   it('lieu de chantier : le chantier est dans le corps, et le corps ne porte rien d’autre', async () => {
-    await createStockLocation(TENANT, { kind: 'SITE', label: 'Dépôt de la Villa de Nongo', siteId: CHANTIER });
+    await createStockLocation(TENANT, { kind: 'SITE', label: 'Dépôt de la Villa Riviera', siteId: CHANTIER });
 
     const { corps } = dernierAppel();
-    expect(corps).toEqual({ kind: 'SITE', label: 'Dépôt de la Villa de Nongo', siteId: CHANTIER });
+    expect(corps).toEqual({ kind: 'SITE', label: 'Dépôt de la Villa Riviera', siteId: CHANTIER });
     expect(corps).not.toHaveProperty('locationId');
   });
 
@@ -950,5 +956,323 @@ describe('Référentiel du stock — aucun identifiant du chemin dans le corps, 
 
     await listStockLocationsReferentiel(TENANT, { kind: 'SITE' });
     expect(getMock).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/stock/locations?kind=SITE`);
+  });
+});
+
+/**
+ * Le pendant du reste du fichier : ce que le web **relit** de la réponse.
+ *
+ * Le 20 septembre 2026, un test de bout en bout a fait tomber la fiche d'un
+ * chantier sur l'écran d'erreur global de l'application, sur un
+ * `Cannot read properties of undefined`. Le service annonçait rendre un
+ * `SiteDetail` et rendait la charge utile brute, dont la forme diffère :
+ * l'écran lisait `site.name` sur un objet absent.
+ *
+ * Aucune des deux moitiés décrites en tête de ce fichier ne pouvait le voir.
+ * Les tests d'écran remplacent le service par une doublure qui rend la forme
+ * attendue par l'écran, et l'atelier de développement faisait la même chose :
+ * tous deux imitaient le vœu du client, pas la réponse du serveur. Le
+ * compilateur ne voyait rien non plus, le mensonge étant dans l'annotation de
+ * type de la réponse.
+ *
+ * Ces cas épinglent donc la **lecture**, à partir d'une charge utile copiée du
+ * contrat gelé.
+ */
+describe('Détail d’un chantier — ce que le service relit de la réponse du serveur', () => {
+  const get = apiClient.get as unknown as ReturnType<typeof vi.fn>;
+
+  /** La charge utile telle que `ConstructionSiteDetailResponseWrapper` la décrit. */
+  function chargeUtile(surcharge: Record<string, unknown> = {}) {
+    return {
+      data: {
+        data: {
+          siteId: SITE,
+          site: {
+            id: SITE,
+            name: 'Villa de la Riviera',
+            zone: 'Riviera, Cocody',
+            propertyId: null,
+            landLeaseId: null,
+            managerId: null,
+            status: 'PLANNED',
+            startDate: '2026-03-01',
+            plannedEndDate: '2026-08-31',
+            progressPercent: 0,
+            closedAt: null,
+            finalCost: null,
+            actualCost: 4_500_000,
+            currency: 'XOF'
+          },
+          actualCost: 4_500_000,
+          allocations: [
+            {
+              id: 'imputation-1',
+              sourceType: 'SUPPLIER_INVOICE',
+              sourceId: 'facture-1',
+              sourceLabel: 'Facture FRS-2026-0142 — Matériaux du Sud',
+              costCategoryId: 'poste-gros-oeuvre',
+              costCategoryLabel: 'Gros œuvre',
+              amount: 4_500_000,
+              allocationDate: '2026-03-10T00:00:00.000Z'
+            }
+          ],
+          // Le serveur nomme le montant `total`, l'écran l'appelle `amount`.
+          subtotalsByCategory: [{ costCategoryId: 'poste-gros-oeuvre', label: 'Gros œuvre', total: 4_500_000 }],
+          ...surcharge
+        }
+      }
+    };
+  }
+
+  beforeEach(() => {
+    get.mockReset();
+  });
+
+  it('rend le chantier lui-même, sans quoi l’en-tête de la fiche n’a rien à afficher', async () => {
+    get.mockResolvedValue(chargeUtile());
+
+    const detail = await getSiteDetail(TENANT, SITE);
+
+    expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/sites/${SITE}/detail`);
+    expect(detail.site).toBeDefined();
+    expect(detail.site.name).toBe('Villa de la Riviera');
+    expect(detail.site.status).toBe('PLANNED');
+    expect(detail.site.actualCost).toBe(4_500_000);
+  });
+
+  it('traduit les sous-totaux : `subtotalsByCategory.total` devient `byCostCategory.amount`', async () => {
+    get.mockResolvedValue(chargeUtile());
+
+    const detail = await getSiteDetail(TENANT, SITE);
+
+    expect(detail.byCostCategory).toEqual([
+      { costCategoryId: 'poste-gros-oeuvre', label: 'Gros œuvre', amount: 4_500_000 }
+    ]);
+  });
+
+  it('conserve le libellé lisible de la pièce d’origine, jamais son identifiant', async () => {
+    get.mockResolvedValue(chargeUtile());
+
+    const detail = await getSiteDetail(TENANT, SITE);
+
+    expect(detail.allocations[0].sourceLabel).toBe('Facture FRS-2026-0142 — Matériaux du Sud');
+  });
+
+  it('refuse franchement une réponse sans chantier, au lieu de laisser l’écran tomber plus loin', async () => {
+    get.mockResolvedValue(chargeUtile({ site: undefined }));
+
+    await expect(getSiteDetail(TENANT, SITE)).rejects.toThrow(/ne porte pas le chantier/);
+  });
+});
+
+/**
+ * Le tableau de bord des chantiers, même famille de défaut que le détail
+ * ci-dessus, découverte le même jour à l'étape suivante du test.
+ *
+ * Le contrat gelé (`SitesDashboard`, spec 018) veut que `data` porte un objet
+ * `{ rows, currency }`. Le serveur mettait le tableau directement dans `data`
+ * et hissait `currency` à côté : l'écran lisait `data.rows`, obtenait
+ * `undefined`, le repliait sur une liste vide et annonçait « Aucun chantier ne
+ * correspond à ces critères » alors que la réponse portait les lignes. Ni
+ * exception, ni statut d'erreur — un écran vide qui ressemble à une base vide.
+ */
+describe('Tableau de bord des chantiers — ce que le service relit de la réponse', () => {
+  const get = apiClient.get as unknown as ReturnType<typeof vi.fn>;
+
+  const ligne = {
+    siteId: SITE,
+    siteLabel: 'Villa de la Riviera',
+    zone: 'Riviera, Cocody',
+    status: 'PLANNED',
+    initialBudget: null,
+    revisedBudget: null,
+    engagedAmount: 0,
+    actualCost: 0,
+    progressPercent: 0,
+    variance: null,
+    variancePercent: null,
+    openAlert: null,
+    currency: 'XOF'
+  };
+
+  beforeEach(() => {
+    get.mockReset();
+  });
+
+  it('lit les lignes sous `data.rows`, et la devise avec elles', async () => {
+    get.mockResolvedValue({ data: { data: { rows: [ligne], currency: 'XOF' } } });
+
+    const tableau = await getSitesDashboard(TENANT);
+
+    expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/sites/dashboard`);
+    expect(tableau.rows).toHaveLength(1);
+    expect(tableau.rows[0].siteLabel).toBe('Villa de la Riviera');
+    expect(tableau.currency).toBe('XOF');
+  });
+
+  it('garde un chantier SANS budget : c’est lui qu’on vient créer', async () => {
+    get.mockResolvedValue({ data: { data: { rows: [ligne], currency: 'XOF' } } });
+
+    const tableau = await getSitesDashboard(TENANT);
+
+    // `variance` nul se lit « Sans budget », jamais « à écarter » : un
+    // chantier neuf est précisément celui pour lequel on ouvre cet écran.
+    expect(tableau.rows[0].variance).toBeNull();
+    expect(tableau.rows[0].initialBudget).toBeNull();
+  });
+
+  it('n’envoie le filtre de dépassement que lorsqu’il est coché', async () => {
+    get.mockResolvedValue({ data: { data: { rows: [], currency: 'XOF' } } });
+
+    await getSitesDashboard(TENANT, { onlyOverBudget: false });
+    expect(get).toHaveBeenLastCalledWith(`/tenants/${TENANT}/finance/sites/dashboard`);
+
+    await getSitesDashboard(TENANT, { onlyOverBudget: true });
+    expect(get).toHaveBeenLastCalledWith(`/tenants/${TENANT}/finance/sites/dashboard?onlyOverBudget=true`);
+  });
+});
+
+/**
+ * Le budget d'un chantier : quelle route l'écran interroge, et lequel des
+ * budgets rendus il retient.
+ *
+ * Troisième défaut de la même veine, découvert à l'étape suivante du même
+ * test. Deux routes voisines ne disent pas la même chose — `/budget` sert le
+ * budget VALIDÉ et rend 404 sinon, `/budgets` sert l'historique complet — et
+ * l'écran de gestion interrogeait la première. Un budget fraîchement créé,
+ * donc en brouillon, restait invisible à l'écran qui venait de le créer.
+ */
+describe('Budget du chantier — quelle route, et quel budget retenu', () => {
+  const get = apiClient.get as unknown as ReturnType<typeof vi.fn>;
+
+  function budget(surcharge: Record<string, unknown> = {}) {
+    return {
+      id: BUDGET,
+      siteId: SITE,
+      label: 'Budget initial 2026',
+      status: 'DRAFT',
+      totalForecast: 150_000_000,
+      currency: 'XOF',
+      validatedAt: null,
+      validatedByUserId: null,
+      validatedByLabel: null,
+      createdAt: '2026-09-20T10:00:00.000Z',
+      lines: [],
+      ...surcharge
+    };
+  }
+
+  beforeEach(() => {
+    get.mockReset();
+  });
+
+  it('interroge la liste, jamais le singulier qui ne sert que le budget validé', async () => {
+    get.mockResolvedValue({ data: { data: [budget()] } });
+
+    await getSiteBudget(TENANT, SITE);
+
+    expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/sites/${SITE}/budgets`);
+    expect(get).not.toHaveBeenCalledWith(`/tenants/${TENANT}/finance/sites/${SITE}/budget`);
+  });
+
+  it('rend un budget en BROUILLON : c’est tout l’intérêt de l’étape de validation', async () => {
+    get.mockResolvedValue({ data: { data: [budget()] } });
+
+    const courant = await getSiteBudget(TENANT, SITE);
+
+    expect(courant).not.toBeNull();
+    expect(courant?.status).toBe('DRAFT');
+    expect(courant?.totalForecast).toBe(150_000_000);
+  });
+
+  it('préfère le budget validé quand il en existe un, quel que soit son rang', async () => {
+    const valide = budget({ id: 'budget-valide', status: 'VALIDATED' });
+    get.mockResolvedValue({ data: { data: [budget({ id: 'brouillon-recent' }), valide] } });
+
+    const courant = await getSiteBudget(TENANT, SITE);
+
+    expect(courant?.id).toBe('budget-valide');
+  });
+
+  it('à défaut de validé, retient le plus récent — la liste arrive déjà triée', async () => {
+    get.mockResolvedValue({
+      data: { data: [budget({ id: 'brouillon-recent' }), budget({ id: 'brouillon-ancien' })] }
+    });
+
+    const courant = await getSiteBudget(TENANT, SITE);
+
+    expect(courant?.id).toBe('brouillon-recent');
+  });
+
+  it('rend null sur une liste vide, ce que l’écran traduit par « aucun budget posé »', async () => {
+    get.mockResolvedValue({ data: { data: [] } });
+
+    await expect(getSiteBudget(TENANT, SITE)).resolves.toBeNull();
+  });
+});
+
+/**
+ * La pièce de caisse : ce que le service **relit** de la réponse.
+ *
+ * Le serveur nomme le bénéficiaire `beneficiaryName`, du nom de sa colonne et
+ * de son contrat ; les écrans l'appellent `beneficiary`. L'aller était traduit
+ * depuis le 19 septembre 2026, le retour ne l'était pas.
+ *
+ * Le champ valait donc `undefined`, et le défaut se voyait de deux façons : la
+ * ligne « Bénéficiaire : » de la carte restait vide, et les titres interpolés
+ * affichaient leur gabarit en clair — « Pièce à valider — {{beneficiary}} ».
+ * i18next laisse en effet le motif intact quand la valeur manque, au lieu
+ * d'écrire « undefined » : un gabarit visible à l'écran veut dire donnée
+ * absente, pas faute de traduction.
+ */
+describe('Pièce de caisse — le bénéficiaire survit à l’aller-retour', () => {
+  const post = apiClient.post as unknown as ReturnType<typeof vi.fn>;
+
+  /** La charge utile du serveur, au vocabulaire du contrat. */
+  function pieceDuServeur(surcharge: Record<string, unknown> = {}) {
+    return {
+      data: {
+        data: {
+          id: 'piece-1',
+          number: null,
+          siteId: SITE,
+          siteLabel: 'Villa de Nongo',
+          costCategoryId: 'poste-divers',
+          costCategoryLabel: 'Divers',
+          beneficiaryName: 'Mamadou Diallo, chef d’équipe',
+          amount: 350_000,
+          currency: 'XOF',
+          voucherDate: '2026-03-12',
+          reason: 'Petit outillage',
+          status: 'DRAFT',
+          validatedAt: null,
+          ...surcharge
+        }
+      }
+    };
+  }
+
+  it('rend le bénéficiaire à la création, sous le nom qu’attend l’écran', async () => {
+    post.mockResolvedValue(pieceDuServeur());
+
+    const piece = await createCashVoucher(TENANT, {
+      siteId: SITE,
+      costCategoryId: 'poste-divers',
+      beneficiary: 'Mamadou Diallo, chef d’équipe',
+      amount: 350_000,
+      voucherDate: '2026-03-12',
+      reason: 'Petit outillage'
+    });
+
+    expect(piece.beneficiary).toBe('Mamadou Diallo, chef d’équipe');
+  });
+
+  it('le rend aussi à la validation', async () => {
+    post.mockResolvedValue(pieceDuServeur({ status: 'VALIDATED', number: '2026-0001' }));
+
+    const piece = await validateCashVoucher(TENANT, 'piece-1');
+
+    expect(piece.beneficiary).toBe('Mamadou Diallo, chef d’équipe');
+    expect(piece.number).toBe('2026-0001');
   });
 });

@@ -74,6 +74,14 @@ paths:
         404 si le chantier n'a pas encore de budget valide. Un seul budget valide
         par chantier : garanti en base par un index partiel
         (`site_budgets_one_validated_per_site`). Permission `finance.accounts.read`.
+        ATTENTION, voisinage trompeur : cette route (singulier) ne sert QUE le
+        budget valide, et son 404 signifie « pas encore valide », jamais « pas de
+        budget ». Un ecran qui doit montrer un brouillon — pour le valider, par
+        exemple — interroge la liste `/sites/{siteId}/budgets` (pluriel) et
+        retient le budget valide s'il existe, sinon le plus recent. L'ecran de
+        gestion du budget avait fait ce contresens : un budget fraichement cree
+        restait invisible, et son bouton de validation inatteignable (corrige le
+        20 septembre 2026).
       parameters:
         - $ref: "#/components/parameters/TenantId"
         - $ref: "#/components/parameters/SiteId"
@@ -576,6 +584,18 @@ components:
           }
         label: { type: string }
         amountForecast: { type: number }
+        quantity:
+          {
+            type: number,
+            nullable: true,
+            description: "Quantite, FACULTATIVE. Ajout additif du 20 septembre 2026 : aide a la saisie et information conservee, jamais un recalcul serveur.",
+          }
+        unitPrice:
+          {
+            type: number,
+            nullable: true,
+            description: "Prix unitaire, FACULTATIF. Renseigne avec quantity, le montant en est le produit.",
+          }
 
     SiteBudget:
       type: object
@@ -640,6 +660,8 @@ components:
               costCategoryId: { type: string, format: uuid }
               label: { type: string }
               amountForecast: { type: number }
+              quantity: { type: number, nullable: true }
+              unitPrice: { type: number, nullable: true }
 
     SiteBudgetResponseWrapper:
       type: object
@@ -672,6 +694,18 @@ components:
           {
             type: number,
             description: "Signe : un avenant reduit parfois une enveloppe.",
+          }
+        quantity:
+          {
+            type: number,
+            nullable: true,
+            description: "Quantite, FACULTATIVE, toujours positive : une quantite negative n'a pas de sens.",
+          }
+        unitPrice:
+          {
+            type: number,
+            nullable: true,
+            description: "Prix unitaire, FACULTATIF et SIGNE : c'est lui qui porte le signe d'un ecart negatif, la quantite ne le pouvant pas.",
           }
 
     BudgetAmendment:
@@ -726,6 +760,8 @@ components:
             properties:
               costCategoryId: { type: string, format: uuid }
               amountDelta: { type: number }
+              quantity: { type: number, nullable: true }
+              unitPrice: { type: number, nullable: true }
 
     BudgetAmendmentResponseWrapper:
       type: object
@@ -756,6 +792,18 @@ components:
         costCategoryLabel: { type: string }
         label: { type: string }
         amount: { type: number }
+        quantity:
+          {
+            type: number,
+            nullable: true,
+            description: "Quantite, FACULTATIVE. Ajout additif du 20 septembre 2026 : aide a la saisie et information conservee, jamais un recalcul serveur.",
+          }
+        unitPrice:
+          {
+            type: number,
+            nullable: true,
+            description: "Prix unitaire, FACULTATIF. Renseigne avec quantity, le montant en est le produit.",
+          }
 
     PurchaseOrder:
       type: object
@@ -821,6 +869,8 @@ components:
               costCategoryId: { type: string, format: uuid }
               label: { type: string }
               amount: { type: number }
+              quantity: { type: number, nullable: true }
+              unitPrice: { type: number, nullable: true }
 
     CancelPurchaseOrderRequest:
       type: object

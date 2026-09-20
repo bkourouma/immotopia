@@ -176,11 +176,33 @@ export const acknowledgeBudgetAlertHandler = asyncHandler(async (req: Request, r
 // E. Tableau de bord des chantiers
 // ---------------------------------------------------------------------------
 
+/**
+ * **`data` porte un objet `{ rows, currency }`, pas le tableau nu.**
+ *
+ * C'est ce que dit le contrat gelé (`SitesDashboard`,
+ * `specs/018-finance-budget-pilotage/contracts/openapi.yaml`), et c'est ce que
+ * l'écran lit (`SitesDashboard.rows`, `types/finance-lot3-types.ts`). Cette
+ * fonction mettait pourtant le tableau directement dans `data` et hissait
+ * `currency` à la racine de l'enveloppe, à côté de `data`.
+ *
+ * Conséquence, corrigée le 20 septembre 2026 : `data.rows` valait `undefined`,
+ * l'écran le repliait sur une liste vide et affichait « Aucun chantier ne
+ * correspond à ces critères » alors que la réponse portait bien les lignes.
+ * Aucune exception, aucun statut d'erreur — le pire des défauts, celui qui
+ * ressemble à une base vide. La devise, elle, n'arrivait jamais à l'écran.
+ *
+ * Le test qui couvrait cette route épinglait la forme aplatie : il avait été
+ * écrit d'après ce code plutôt que d'après le contrat, et confirmait donc
+ * l'erreur au lieu de la révéler. Il est repris avec ce correctif.
+ */
 export const getSitesDashboardHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = requireTenantId(req);
   const query = sitesDashboardQuerySchema.parse(req.query ?? {});
 
   const result = await getSitesDashboard(tenantId, { status: query.status, onlyOverBudget: query.onlyOverBudget });
 
-  res.status(200).json({ success: true, data: result.rows.map(toDashboardRowResponse), currency: result.currency });
+  res.status(200).json({
+    success: true,
+    data: { rows: result.rows.map(toDashboardRowResponse), currency: result.currency }
+  });
 });

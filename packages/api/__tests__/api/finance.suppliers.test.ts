@@ -61,6 +61,10 @@ jest.mock('../../src/lib/finance/accounting', () => ({
 const supplierFindMany = jest.fn();
 const supplierFindFirst = jest.fn();
 const supplierInvoiceFindMany = jest.fn();
+// La liste des factures resout le NOM des chantiers vises, en une requete pour
+// toute la liste : sans cette doublure, l'appel partait dans le vide et le
+// gestionnaire repondait 500.
+const constructionSiteFindMany = jest.fn();
 const supplierInvoiceFindFirst = jest.fn();
 const thirdPartyAccountFindUniqueOrThrow = jest.fn();
 const supplierPaymentFindUniqueOrThrow = jest.fn();
@@ -83,6 +87,9 @@ function fakePrismaClient() {
     supplierInvoice: {
       findMany: (...args: any[]) => supplierInvoiceFindMany(...args),
       findFirst: (...args: any[]) => supplierInvoiceFindFirst(...args)
+    },
+    constructionSite: {
+      findMany: (...args: any[]) => constructionSiteFindMany(...args)
     },
     supplierPayment: {
       findUniqueOrThrow: (...args: any[]) => supplierPaymentFindUniqueOrThrow(...args)
@@ -205,6 +212,10 @@ function paymentRecord(overrides: Partial<Record<string, unknown>> = {}) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Par defaut, aucun chantier a nommer : chaque cas qui en attend un le dit
+  // lui-meme. `clearAllMocks` remet la doublure a `undefined`, ce qui ferait
+  // echouer le `.map` du gestionnaire.
+  constructionSiteFindMany.mockResolvedValue([]);
 });
 
 // ---------------------------------------------------------------------------
@@ -255,6 +266,29 @@ describe('POST /tenants/:tenantId/finance/suppliers', () => {
 
     expect(response.status).toBe(400);
     expect(createSupplierTx).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Le nom du contact, transmis et rendu. Le schéma de validation ne le
+   * déclarait pas jusqu'au 20 septembre 2026 : Zod l'écartait en silence, et
+   * la saisie de l'écran — qui l'a toujours proposée — se perdait sans le
+   * moindre avertissement. La colonne, elle, existait déjà en base.
+   */
+  it('transmet le nom du contact, et le rend dans la réponse', async () => {
+    createSupplierTx.mockResolvedValue(supplierRecord({ contactName: 'Konan Yao' }));
+    thirdPartyAccountFindUniqueOrThrow.mockResolvedValue({ balance: 0, currency: 'XOF' });
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/suppliers`)
+      .send({ ...body, contactName: 'Konan Yao' });
+
+    expect(response.status).toBe(201);
+    expect(createSupplierTx).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_A,
+      expect.objectContaining({ contactName: 'Konan Yao' })
+    );
+    expect(response.body.data.contactName).toBe('Konan Yao');
   });
 });
 
@@ -419,6 +453,92 @@ describe('POST /tenants/:tenantId/finance/suppliers/:supplierId/invoices', () =>
         allocations: [{ siteId: SITE_A, costCategoryId: CATEGORY_A, amount: 500_000 }]
       })
     );
+  });
+
+  // -------------------------------------------------------------------------
+  // Quantite et prix unitaire sur une ligne — additifs et facultatifs
+  // -------------------------------------------------------------------------
+
+  it('transmet au domaine la quantite et le prix unitaire d\u2019une ligne, a cote de son montant', async () => {
+    createSupplierInvoiceTx.mockResolvedValue(invoiceRecord());
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/invoices`)
+      .send({
+        invoiceDate: '2026-09-10',
+        reference: 'FAC-2026-010',
+        lines: [{ label: 'Ciment CPJ 45', amount: 237_500, quantity: 2.5, unitPrice: 95_000 }]
+      });
+
+    expect(response.status).toBe(201);
+    expect(createSupplierInvoiceTx).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_A,
+      expect.objectContaining({
+        lines: [{ label: 'Ciment CPJ 45', amount: 237_500, quantity: 2.5, unitPrice: 95_000 }]
+      })
+    );
+  });
+
+  it('accepte une ligne sans quantite ni prix unitaire (prestation, forfait)', async () => {
+    createSupplierInvoiceTx.mockResolvedValue(invoiceRecord());
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/invoices`)
+      .send({
+        invoiceDate: '2026-09-10',
+        reference: 'FAC-2026-011',
+        lines: [{ label: 'Forfait de depannage', amount: 850_000 }]
+      });
+
+    expect(response.status).toBe(201);
+    const [, , params] = createSupplierInvoiceTx.mock.calls[0];
+    expect(params.lines[0].quantity).toBeUndefined();
+    expect(params.lines[0].unitPrice).toBeUndefined();
+  });
+
+  it('accepte un null explicite sur quantite et prix unitaire (champ laisse vide par l\u2019ecran)', async () => {
+    createSupplierInvoiceTx.mockResolvedValue(invoiceRecord());
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/invoices`)
+      .send({
+        invoiceDate: '2026-09-10',
+        reference: 'FAC-2026-012',
+        lines: [{ label: 'Forfait de depannage', amount: 850_000, quantity: null, unitPrice: null }]
+      });
+
+    expect(response.status).toBe(201);
+  });
+
+  it('rejette en 400 une quantite negative', async () => {
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/invoices`)
+      .send({
+        invoiceDate: '2026-09-10',
+        reference: 'FAC-2026-013',
+        lines: [{ label: 'Ciment CPJ 45', amount: 237_500, quantity: -2, unitPrice: 95_000 }]
+      });
+
+    expect(response.status).toBe(400);
+    expect(createSupplierInvoiceTx).not.toHaveBeenCalled();
+  });
+
+  it('ne recalcule PAS le montant a partir de quantite x prix unitaire', async () => {
+    createSupplierInvoiceTx.mockResolvedValue(invoiceRecord());
+
+    // Le montant envoye ne vaut pas le produit : le serveur le conserve tel
+    // quel, parce que le montant est la donnee de reference comptable.
+    await request(app)
+      .post(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/invoices`)
+      .send({
+        invoiceDate: '2026-09-10',
+        reference: 'FAC-2026-014',
+        lines: [{ label: 'Ciment CPJ 45', amount: 240_000, quantity: 2.5, unitPrice: 95_000 }]
+      });
+
+    const [, , params] = createSupplierInvoiceTx.mock.calls[0];
+    expect(params.lines[0].amount).toBe(240_000);
   });
 
   it('rejette en 400 un corps sans référence ni montant', async () => {

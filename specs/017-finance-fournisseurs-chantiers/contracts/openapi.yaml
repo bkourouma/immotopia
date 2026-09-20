@@ -729,6 +729,7 @@ components:
         id: { type: string, format: uuid }
         name: { type: string }
         kind: { type: string, enum: [MATERIALS, SERVICES, MIXED] }
+        contactName: { type: string, nullable: true }
         contactPhone: { type: string, nullable: true }
         contactEmail: { type: string, nullable: true }
         maintenanceVendorId: { type: string, format: uuid, nullable: true }
@@ -747,6 +748,11 @@ components:
       properties:
         name: { type: string }
         kind: { type: string, enum: [MATERIALS, SERVICES, MIXED] }
+        contactName:
+          {
+            type: string,
+            description: "Nom de la personne a contacter. Ajoute le 20 septembre 2026 : la colonne existait en base et l'ecran le saisissait, mais le schema de validation ne le declarait pas — la saisie etait ecartee en silence.",
+          }
         contactPhone: { type: string }
         contactEmail: { type: string }
         maintenanceVendorId: { type: string, format: uuid }
@@ -815,6 +821,23 @@ components:
       properties:
         label: { type: string }
         amount: { type: number }
+        # Ajout additif et FACULTATIF du 20 septembre 2026. Le montant reste
+        # la donnee de reference comptable : ces deux champs sont une aide a
+        # la saisie et une information conservee, jamais une source de
+        # recalcul serveur. Une prestation ou un forfait n'a pas de quantite
+        # et les omet, le montant etant alors saisi directement.
+        quantity:
+          {
+            type: number,
+            nullable: true,
+            description: "Quantite commandee. Decimale : on achete 2,5 tonnes de ciment.",
+          }
+        unitPrice:
+          {
+            type: number,
+            nullable: true,
+            description: "Prix unitaire. Renseigne avec quantity, le montant en est le produit.",
+          }
 
     CostAllocationInput:
       type: object
@@ -1044,11 +1067,26 @@ components:
     CostAllocationLine:
       type: object
       required:
-        [id, sourceType, sourceId, costCategoryLabel, amount, allocationDate]
+        [
+          id,
+          sourceType,
+          sourceId,
+          sourceLabel,
+          costCategoryId,
+          costCategoryLabel,
+          amount,
+          allocationDate,
+        ]
       properties:
         id: { type: string, format: uuid }
         sourceType: { type: string, enum: [SUPPLIER_INVOICE, CASH_VOUCHER] }
         sourceId: { type: string, format: uuid }
+        sourceLabel:
+          {
+            type: string,
+            description: "Libelle lisible de la piece d'origine (« Facture FRS-2026-0142 — Materiaux du Sud »), resolu par le serveur. L'ecran n'affiche jamais sourceId. Ajoute le 20 septembre 2026 : la fonction de mise en forme le jetait, et la colonne « Piece d'origine » restait vide.",
+          }
+        costCategoryId: { type: string, format: uuid }
         costCategoryLabel: { type: string }
         amount: { type: number }
         allocationDate: { type: string, format: date-time }
@@ -1068,9 +1106,13 @@ components:
         success: { type: boolean, example: true }
         data:
           type: object
-          required: [siteId, actualCost, allocations, subtotalsByCategory]
+          required: [siteId, site, actualCost, allocations, subtotalsByCategory]
           properties:
             siteId: { type: string, format: uuid }
+            site:
+              allOf:
+                - $ref: "#/components/schemas/ConstructionSite"
+              description: "Le chantier lui-meme : nom, zone, statut, dates, avancement. Ajoute le 20 septembre 2026. Sans lui la reponse ne portait que des couts, et l'ecran de detail n'avait rien a afficher en en-tete. Gratuit : la ligne est deja lue pour calculer le cout reel."
             actualCost: { type: number }
             allocations:
               type: array

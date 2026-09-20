@@ -45,13 +45,13 @@ interface FormulaireFournisseur {
   name: string;
   kind: SupplierKind;
   contactName?: string;
-  phone?: string;
-  email?: string;
+  contactPhone?: string;
+  contactEmail?: string;
 }
 
 function correspond(fournisseur: Supplier, terme: string): boolean {
   const cible = terme.toLowerCase();
-  return [fournisseur.name, fournisseur.contactName, fournisseur.phone, fournisseur.email]
+  return [fournisseur.name, fournisseur.contactName, fournisseur.contactPhone, fournisseur.contactEmail]
     .filter((valeur): valeur is string => Boolean(valeur))
     .some(valeur => valeur.toLowerCase().includes(cible));
 }
@@ -98,8 +98,8 @@ export const Fournisseurs: React.FC = () => {
         name: valeurs.name,
         kind: valeurs.kind,
         contactName: valeurs.contactName || undefined,
-        phone: valeurs.phone || undefined,
-        email: valeurs.email || undefined
+        contactPhone: valeurs.contactPhone || undefined,
+        contactEmail: valeurs.contactEmail || undefined
       });
       await queryClient.invalidateQueries({ queryKey: entityKeyPrefix('suppliers', tenantId) });
       message.success(t('Fournisseur « {{name}} » créé.', { name: valeurs.name }));
@@ -129,7 +129,7 @@ export const Fournisseurs: React.FC = () => {
     {
       title: t('Contact'),
       key: 'contact',
-      render: (_, f) => [f.contactName, f.phone, f.email].filter(Boolean).join(' · ') || '—'
+      render: (_, f) => [f.contactName, f.contactPhone, f.contactEmail].filter(Boolean).join(' · ') || '—'
     },
     {
       title: t('Statut'),
@@ -205,7 +205,12 @@ export const Fournisseurs: React.FC = () => {
                 label={f.isActive ? t('Actif') : t('Inactif')}
               />
             }
-            fields={[{ label: 'Contact', value: [f.contactName, f.phone, f.email].filter(Boolean).join(' · ') || '—' }]}
+            fields={[
+              {
+                label: 'Contact',
+                value: [f.contactName, f.contactPhone, f.contactEmail].filter(Boolean).join(' · ') || '—'
+              }
+            ]}
             onOpen={() => ouvrirFactures(f)}
           />
         )}
@@ -227,7 +232,7 @@ export const Fournisseurs: React.FC = () => {
             label={t('Raison sociale')}
             rules={[{ required: true, message: t('La raison sociale est obligatoire.') }]}
           >
-            <Input placeholder={t('Ex. Matériaux du Fouta SARL')} />
+            <Input placeholder={t('Ex. Matériaux du Bandama SARL')} />
           </Form.Item>
           <Form.Item
             name="kind"
@@ -237,15 +242,15 @@ export const Fournisseurs: React.FC = () => {
             // sera obligatoire pour les factures de ce fournisseur.
             extra={t('Décide si le rattachement à un chantier sera obligatoire pour ses factures.')}
           >
-            <Select options={OPTIONS_NATURE} placeholder="Choisir…" />
+            <Select showSearch optionFilterProp="label" options={OPTIONS_NATURE} placeholder="Choisir…" />
           </Form.Item>
           <Form.Item name="contactName" label={t('Contact')}>
             <Input placeholder={t('Nom du contact')} />
           </Form.Item>
-          <Form.Item name="phone" label={t('Téléphone')}>
-            <Input placeholder="+224 …" />
+          <Form.Item name="contactPhone" label={t('Téléphone')}>
+            <Input placeholder="+225 …" />
           </Form.Item>
-          <Form.Item name="email" label={t('E-mail')}>
+          <Form.Item name="contactEmail" label={t('E-mail')}>
             <Input type="email" placeholder="contact@fournisseur.tld" />
           </Form.Item>
         </Form>

@@ -82,6 +82,7 @@ interface SupplierResponseInput {
   id: string;
   name: string;
   kind: string;
+  contactName: string | null;
   contactPhone: string | null;
   contactEmail: string | null;
   maintenanceVendorId: string | null;
@@ -101,6 +102,7 @@ function toSupplierResponseFromRecord(supplier: SupplierRecord, account: { balan
     id: supplier.id,
     name: supplier.name,
     kind: supplier.kind,
+    contactName: supplier.contactName,
     contactPhone: supplier.phone,
     contactEmail: supplier.email,
     maintenanceVendorId: supplier.maintenanceVendorId,
@@ -116,6 +118,7 @@ function toSupplierResponseFromRow(row: {
   id: string;
   name: string;
   kind: string;
+  contactName: string | null;
   contactPhone: string | null;
   contactEmail: string | null;
   maintenanceVendorId: string | null;
@@ -127,6 +130,7 @@ function toSupplierResponseFromRow(row: {
     id: row.id,
     name: row.name,
     kind: row.kind,
+    contactName: row.contactName,
     contactPhone: row.contactPhone,
     contactEmail: row.contactEmail,
     maintenanceVendorId: row.maintenanceVendorId,
@@ -140,6 +144,14 @@ function toSupplierResponseFromRow(row: {
 interface SupplierInvoiceResponseInput {
   id: string;
   supplierId: string;
+  /**
+   * Le nom du chantier, resolu par le serveur. Ajoute le 20 septembre 2026 :
+   * la liste des factures affichait un tiret dans sa colonne « Chantier » meme
+   * quand la facture en portait un, car seul l'identifiant partait sur le fil
+   * et l'ecran n'avait rien de lisible a montrer. Meme lecon que le compte
+   * rendu de campagne du lot 1 — un libelle, jamais un identifiant.
+   */
+  siteLabel?: string | null;
   siteId: string | null;
   invoiceDate: Date;
   reference: string;
@@ -295,6 +307,7 @@ export const createSupplierHandler = asyncHandler(async (req: Request, res: Resp
     const created = await createSupplierTx(tx, tenantId, {
       name: body.name,
       kind: body.kind as any,
+      contactName: body.contactName ?? null,
       phone: body.contactPhone ?? null,
       email: body.contactEmail ?? null,
       maintenanceVendorId: body.maintenanceVendorId ?? null
@@ -376,7 +389,25 @@ export const listSupplierInvoicesHandler = asyncHandler(async (req: Request, res
     orderBy: { invoiceDate: 'desc' }
   });
 
-  res.status(200).json({ success: true, data: invoices.map((row: any) => toSupplierInvoiceResponseFromRow(row)) });
+  // Les noms des chantiers visés, en UNE requete pour toute la liste, jamais
+  // une par ligne — meme discipline que `enrichirReglement` plus haut.
+  const siteIds = [...new Set(invoices.map((row: any) => row.siteId).filter(Boolean))] as string[];
+  const sites =
+    siteIds.length > 0
+      ? await prisma.constructionSite.findMany({
+          where: { id: { in: siteIds }, tenantId },
+          select: { id: true, name: true }
+        })
+      : [];
+  const nomParChantier = new Map(sites.map(site => [site.id, site.name]));
+
+  res.status(200).json({
+    success: true,
+    data: invoices.map((row: any) => ({
+      ...toSupplierInvoiceResponseFromRow(row),
+      siteLabel: row.siteId ? (nomParChantier.get(row.siteId) ?? null) : null
+    }))
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -392,14 +423,16 @@ export const createSupplierInvoiceHandler = asyncHandler(async (req: Request, re
   // Une ligne unique par défaut quand l'écran n'en envoie pas : le domaine
   // (`createSupplierInvoiceTx`, `lib/finance/suppliers.ts`) exige au moins
   // une ligne et calcule le montant de la facture à partir d'elles.
-  const lines = body.lines.length > 0 ? body.lines : [{ label: body.reference, amount: body.amount }];
+  const lines = body.lines.length > 0 ? body.lines : [{ label: body.reference, amount: body.amount as number }];
 
-  // Le contrat porte un `siteId` unique au niveau de la requête ; le domaine
-  // attend un `siteId` par ligne d'imputation. Le schéma Zod garantit déjà
-  // que `siteId` est présent dès qu'une imputation existe (voir
-  // `schemas-suppliers.ts`).
+  // Le chantier vient de l'imputation elle-même, et à défaut du `siteId`
+  // unique de la requête. C'était l'inverse jusqu'au 20 septembre 2026 : le
+  // `siteId` de la requête écrasait celui de chaque imputation, si bien que
+  // la forme envoyée par l'écran — un chantier par imputation, aucun à la
+  // racine — produisait des imputations sans chantier. Le schéma garantit
+  // qu'au moins l'un des deux est présent.
   const allocations = body.allocations.map(allocation => ({
-    siteId: body.siteId as string,
+    siteId: (allocation.siteId ?? body.siteId) as string,
     costCategoryId: allocation.costCategoryId,
     amount: allocation.amount
   }));

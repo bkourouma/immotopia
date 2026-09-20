@@ -377,9 +377,15 @@ describe('GET /tenants/:tenantId/finance/sites/dashboard', () => {
     const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/sites/dashboard`);
 
     expect(response.status).toBe(200);
-    expect(response.body.data).toHaveLength(1);
-    expect(response.body.data[0].revisedBudget).toBe(120000);
-    expect(response.body.currency).toBe('XOF');
+    // `data` est l'OBJET `{ rows, currency }` du contrat gelé, jamais le
+    // tableau nu. Cette assertion disait l'inverse jusqu'au 20 septembre
+    // 2026, et l'écran affichait un tableau de bord vide en présence de
+    // chantiers : elle avait été écrite d'après le code, pas d'après le
+    // contrat, et confirmait donc le défaut.
+    expect(Array.isArray(response.body.data)).toBe(false);
+    expect(response.body.data.rows).toHaveLength(1);
+    expect(response.body.data.rows[0].revisedBudget).toBe(120000);
+    expect(response.body.data.currency).toBe('XOF');
     expect(getSitesDashboard).toHaveBeenCalledWith(TENANT_A, { status: undefined, onlyOverBudget: undefined });
     expect(guardCalls).toEqual(['reportsRead']);
   });
@@ -404,6 +410,6 @@ describe('GET /tenants/:tenantId/finance/sites/dashboard', () => {
 
     const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/sites/dashboard`);
 
-    expect(response.body.data[0].openAlert.id).toBe(ALERT_A);
+    expect(response.body.data.rows[0].openAlert.id).toBe(ALERT_A);
   });
 });

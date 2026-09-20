@@ -14,6 +14,7 @@
  */
 
 import apiClient from '../utils/api-client';
+import { API_URL } from '../config/api';
 import type {
   AccountStatement,
   BalanceFilters,
@@ -87,7 +88,11 @@ export async function getAccountStatement(
  * du téléchargement.
  */
 export function getAccountStatementPdfUrl(tenantId: string, accountId: string, filters?: StatementFilters): string {
-  return `${base(tenantId)}/accounts/${accountId}/statement.pdf${toQuery(
+  // Absolue : `window.open` n'emprunte pas `apiClient` et ne connaît donc pas
+  // sa base. Un chemin relatif visait l'origine du front, qui rend la coquille
+  // de l'application au lieu du PDF (même défaut que le bon de caisse,
+  // corrigé le 20 septembre 2026).
+  return `${API_URL}${base(tenantId)}/accounts/${accountId}/statement.pdf${toQuery(
     filters as Record<string, string | number | undefined>
   )}`;
 }

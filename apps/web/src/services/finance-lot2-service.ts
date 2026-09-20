@@ -15,6 +15,7 @@
  */
 
 import apiClient from '../utils/api-client';
+import { API_URL } from '../config/api';
 import type {
   CashVoucher,
   ConstructionSite,
@@ -23,6 +24,7 @@ import type {
   CreateSupplierInvoiceInput,
   CreateSupplierPaymentInput,
   PendingDocument,
+  SiteAllocationLine,
   SiteDetail,
   Supplier,
   SupplierInvoice,
@@ -30,6 +32,7 @@ import type {
   SuppliersBalance,
   SuppliersBalanceFilters
 } from '../types/finance-lot2-types';
+import { t } from '../i18n/t';
 
 type ApiResponse<T> = { success: boolean; data: T };
 
@@ -61,7 +64,7 @@ export async function listSuppliers(tenantId: string): Promise<Supplier[]> {
 
 export async function createSupplier(
   tenantId: string,
-  params: { name: string; kind: Supplier['kind']; contactName?: string; phone?: string; email?: string }
+  params: { name: string; kind: Supplier['kind']; contactName?: string; contactPhone?: string; contactEmail?: string }
 ): Promise<Supplier> {
   const response = await apiClient.post<ApiResponse<Supplier>>(`${base(tenantId)}/suppliers`, params);
   return response.data.data;
@@ -179,14 +182,62 @@ export async function createConstructionSite(
 }
 
 /**
- * Le détail d'un chantier : ses imputations et leurs sous-totaux par poste.
+ * Forme réseau du détail d'un chantier, telle que le contrat gelé la décrit
+ * (`specs/017-.../contracts/openapi.yaml`, `ConstructionSiteDetailResponseWrapper`).
+ *
+ * Elle ne coïncide pas avec `SiteDetail`, le type que les écrans manipulent :
+ * le serveur nomme les sous-totaux `subtotalsByCategory` et leur montant
+ * `total`, là où l'écran attend `byCostCategory` et `amount`. La conversion se
+ * fait ici, comme pour `createCashVoucher` plus bas : le service est la seule
+ * couture entre le vocabulaire du réseau et celui de l'interface, et aucun
+ * composant ne doit connaître les deux.
+ */
+interface SiteDetailReseau {
+  siteId: string;
+  site?: SiteDetail['site'];
+  actualCost: number;
+  allocations: SiteAllocationLine[];
+  subtotalsByCategory: Array<{ costCategoryId: string; label: string; total: number }>;
+}
+
+/**
+ * Le détail d'un chantier : le chantier lui-même, ses imputations et leurs
+ * sous-totaux par poste.
  *
  * Le coût réel arrive **calculé** par le serveur. L'écran ne l'additionne pas,
  * et n'offre aucun moyen de le saisir.
+ *
+ * **Pourquoi cette fonction traduit au lieu de rendre la réponse telle quelle.**
+ * Elle le faisait, jusqu'au 20 septembre 2026 : elle annonçait rendre un
+ * `SiteDetail` et rendait en réalité la charge utile brute, dont la forme
+ * diffère. `ChantierDetail.tsx` lisait donc `site.name` sur un objet absent,
+ * et la fiche d'un chantier tombait sur l'écran d'erreur global de
+ * l'application — pas sur son propre état d'erreur, qui aurait au moins laissé
+ * la navigation debout. Le compilateur ne voyait rien : le mensonge était dans
+ * l'annotation de type de la réponse.
  */
 export async function getSiteDetail(tenantId: string, siteId: string): Promise<SiteDetail> {
-  const response = await apiClient.get<ApiResponse<SiteDetail>>(`${base(tenantId)}/sites/${siteId}/detail`);
-  return response.data.data;
+  const response = await apiClient.get<ApiResponse<SiteDetailReseau>>(`${base(tenantId)}/sites/${siteId}/detail`);
+  const charge = response.data.data;
+
+  // Un serveur antérieur au 20 septembre 2026 ne renvoie pas le chantier. On
+  // le dit franchement plutôt que de rendre un objet incomplet : react-query
+  // bascule alors l'écran sur son propre état d'erreur, qui porte un bouton
+  // « Réessayer », au lieu de laisser un composant tomber plus loin sur un
+  // champ manquant.
+  if (!charge?.site) {
+    throw new Error(t('La réponse du serveur ne porte pas le chantier : détail indisponible.'));
+  }
+
+  return {
+    site: charge.site,
+    allocations: charge.allocations ?? [],
+    byCostCategory: (charge.subtotalsByCategory ?? []).map(poste => ({
+      costCategoryId: poste.costCategoryId,
+      label: poste.label,
+      amount: poste.total
+    }))
+  };
 }
 
 export async function listCostCategories(tenantId: string): Promise<CostCategory[]> {
@@ -197,6 +248,23 @@ export async function listCostCategories(tenantId: string): Promise<CostCategory
 // ---------------------------------------------------------------------------
 // Caisse
 // ---------------------------------------------------------------------------
+
+/**
+ * Remet une pièce de caisse au vocabulaire des écrans.
+ *
+ * Le serveur nomme le bénéficiaire `beneficiaryName`, du nom de sa colonne et
+ * de son contrat ; le type `CashVoucher` des écrans l'appelle `beneficiary`.
+ * L'aller était déjà traduit depuis le 19 septembre 2026 — le retour, non.
+ *
+ * Conséquence, corrigée le 20 septembre 2026 : `piece.beneficiary` valait
+ * `undefined`, la ligne « Bénéficiaire : » de la carte restait vide, et les
+ * titres interpolés affichaient leur gabarit en clair — « Pièce à valider —
+ * {{beneficiary}} ». i18next laisse en effet le motif intact quand la valeur
+ * manque, plutôt que d'écrire « undefined ».
+ */
+function versLaPieceDeLEcran(charge: CashVoucher & { beneficiaryName?: string }): CashVoucher {
+  return { ...charge, beneficiary: charge.beneficiary ?? charge.beneficiaryName ?? '' };
+}
 
 export async function createCashVoucher(tenantId: string, params: CreateCashVoucherInput): Promise<CashVoucher> {
   // DEUX ecarts avec le serveur, tous deux corriges ici le 19 septembre 2026.
@@ -217,7 +285,7 @@ export async function createCashVoucher(tenantId: string, params: CreateCashVouc
     ...reste,
     beneficiaryName: beneficiary
   });
-  return response.data.data;
+  return versLaPieceDeLEcran(response.data.data);
 }
 
 export async function validateCashVoucher(tenantId: string, voucherId: string): Promise<CashVoucher> {
@@ -225,7 +293,7 @@ export async function validateCashVoucher(tenantId: string, voucherId: string): 
     `${base(tenantId)}/cash-vouchers/${voucherId}/validate`,
     {}
   );
-  return response.data.data;
+  return versLaPieceDeLEcran(response.data.data);
 }
 
 /**
@@ -239,9 +307,19 @@ export async function voidCashVoucher(tenantId: string, voucherId: string, reaso
   await apiClient.post(`${base(tenantId)}/cash-vouchers/${voucherId}/void`, { reason });
 }
 
-/** URL du bon imprimable. L'impression passe par le navigateur, comme le relevé. */
+/**
+ * URL du bon imprimable.
+ *
+ * **Absolue, et c'est tout l'enjeu.** Les autres fonctions de ce fichier
+ * passent par `apiClient`, qui porte déjà `API_URL` en base ; celle-ci rend
+ * une adresse que `window.open` ouvrira lui-même, sans passer par le client.
+ * Un chemin relatif s'y résolvait donc contre l'origine du FRONT — le
+ * navigateur demandait `localhost:3000/tenants/…/….pdf`, recevait la coquille
+ * de l'application en HTML, et l'onglet restait vide sans la moindre erreur.
+ * Trouvé par le test de bout en bout du 20 septembre 2026.
+ */
 export function getCashVoucherPdfUrl(tenantId: string, voucherId: string): string {
-  return `${base(tenantId)}/cash-vouchers/${voucherId}.pdf`;
+  return `${API_URL}${base(tenantId)}/cash-vouchers/${voucherId}.pdf`;
 }
 
 // ---------------------------------------------------------------------------

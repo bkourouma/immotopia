@@ -50,6 +50,11 @@ export const createSupplierSchema = z.object({
   kind: z.enum(['MATERIALS', 'SERVICES', 'MIXED'], {
     errorMap: () => ({ message: 'La nature du fournisseur doit être MATERIALS, SERVICES ou MIXED.' })
   }),
+  // Le nom du contact : accepte depuis le 20 septembre 2026. La colonne
+  // existait en base et l'ecran le saisissait deja, mais ce schema ne le
+  // declarait pas — Zod l'ecartait donc en silence, et la saisie etait perdue
+  // sans le moindre avertissement.
+  contactName: z.string().min(1).optional(),
   contactPhone: z.string().min(1).optional(),
   contactEmail: z.string().email('Adresse email invalide.').optional(),
   maintenanceVendorId: z.string().uuid('Identifiant de prestataire de maintenance invalide.').optional()
@@ -86,12 +91,35 @@ export type SuppliersBalanceQuery = z.infer<typeof suppliersBalanceQuerySchema>;
 // POST suppliers/:supplierId/invoices
 // ---------------------------------------------------------------------------
 
+/**
+ * Quantité et prix unitaire : **facultatifs, additifs, jamais recalculés
+ * ici** (20 septembre 2026).
+ *
+ * Beaucoup de dépenses n'ont pas de quantité — une prestation, un forfait :
+ * la ligne se saisit alors en montant direct, exactement comme avant, et ces
+ * deux champs restent absents. Quand l'écran les renseigne, il envoie le
+ * montant qu'il a lui-même calculé ; le serveur le conserve tel quel. **Il
+ * ne vérifie pas `amount === quantity × unitPrice`** : le montant reste la
+ * donnée de référence comptable, et un contrôle d'égalité sur des arrondis
+ * au franc rejetterait des saisies parfaitement légitimes.
+ *
+ * `.nullish()` plutôt que `.optional()` : un écran envoie volontiers `null`
+ * pour un champ laissé vide au lieu d'omettre la clé, et `.optional()` seul
+ * rejetterait ce `null` en 400 — silencieusement pour l'utilisateur, qui
+ * verrait sa saisie refusée sans comprendre pourquoi.
+ */
 const supplierInvoiceLineSchema = z.object({
   label: z.string().min(1, 'Le libellé de la ligne est obligatoire.'),
-  amount: z.number().positive('Le montant de la ligne doit être positif.')
+  amount: z.number().positive('Le montant de la ligne doit être positif.'),
+  quantity: z.number().positive('La quantité doit être positive.').nullish(),
+  unitPrice: z.number().nonnegative('Le prix unitaire ne peut pas être négatif.').nullish()
 });
 
 const costAllocationInputSchema = z.object({
+  // Le chantier, ligne par ligne. L'ecran le propose ainsi depuis toujours —
+  // une facture peut viser deux chantiers — et le domaine l'attend ainsi. Le
+  // `siteId` unique de la requete reste accepte, et sert de repli.
+  siteId: z.string().uuid('Identifiant de chantier invalide.').optional(),
   costCategoryId: z.string().uuid('Identifiant de poste de dépense invalide.'),
   amount: z.number().positive('Le montant imputé doit être positif.')
 });
@@ -107,13 +135,45 @@ export const createSupplierInvoiceSchema = z
   .object({
     invoiceDate: z.coerce.date({ errorMap: () => ({ message: 'Date de facture invalide.' }) }),
     reference: z.string().min(1, 'La référence de la facture est obligatoire.'),
-    amount: z.number().positive('Le montant de la facture doit être positif.'),
+    // Le montant total de la facture. **Facultatif dès qu'il y a des lignes** :
+    // il en est alors la somme, par construction. L'exiger en plus des lignes
+    // faisait echouer en 400 toute saisie de l'ecran, qui calculait ce total,
+    // l'affichait, et ne le transmettait pas — un refus silencieux pour une
+    // redondance. Fourni, il est verifie contre la somme des lignes plutot que
+    // cru sur parole.
+    amount: z.number().positive('Le montant de la facture doit être positif.').optional(),
     siteId: z.string().uuid('Identifiant de chantier invalide.').nullable().optional(),
     lines: z.array(supplierInvoiceLineSchema).optional().default([]),
     allocations: z.array(costAllocationInputSchema).optional().default([])
   })
   .superRefine((value, ctx) => {
-    if (value.allocations.length > 0 && !value.siteId) {
+    if (value.lines.length === 0 && value.amount === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Une facture sans ligne doit porter son montant.',
+        path: ['amount']
+      });
+    }
+
+    if (value.amount !== undefined && value.lines.length > 0) {
+      const sommeDesLignes = value.lines.reduce((somme, ligne) => somme + ligne.amount, 0);
+      // Tolerance au centime : les montants viennent d'un ecran, pas d'une
+      // base, et une addition en virgule flottante ne retombe pas toujours
+      // juste au dernier chiffre.
+      if (Math.abs(sommeDesLignes - value.amount) > 0.01) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Le montant de la facture doit égaler la somme de ses lignes.',
+          path: ['amount']
+        });
+      }
+    }
+
+    // Le chantier peut etre porte par la requete OU par chaque imputation.
+    // N'exiger que le premier refusait la seule forme que l'ecran sache
+    // produire, et interdisait au passage une facture visant deux chantiers.
+    const imputationSansChantier = value.allocations.some(allocation => !allocation.siteId);
+    if (imputationSansChantier && !value.siteId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Le chantier (siteId) est obligatoire dès qu'une imputation est fournie.",
