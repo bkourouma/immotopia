@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, Select } from 'antd';
+import { Button, Select, Space } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
@@ -21,6 +21,8 @@ import {
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { CLE_DUPLICATION_BON, copieDuBon } from '../../utils/duplication-piece';
+import type { DuplicationBonDeCommande } from '../../utils/duplication-piece';
 
 import { activeLocale } from '../../i18n/format';
 /**
@@ -45,6 +47,15 @@ import { activeLocale } from '../../i18n/format';
  * `limit` (contrat gelé) : comme `Chantiers.tsx` et `BalanceFournisseurs.tsx`,
  * cet écran déclare `paginated={false}` plutôt que de laisser croire à une
  * pagination qui n'existe pas côté serveur.
+ *
+ * **Dupliquer, sur chaque ligne.** Une action secondaire — un `<Button
+ * type="link">`, comme « Voir le détail » juste à côté, qui est la convention
+ * de cet écran — mène à la saisie d'un nouveau bon **pré-remplie** par le bon
+ * cliqué : chantier, fournisseur et lignes. Elle n'écrit RIEN : la copie
+ * voyage dans l'état de navigation de react-router (voir
+ * `utils/duplication-piece.ts`), et la pièce ne naît qu'au bouton
+ * d'enregistrement habituel. Offerte quel que soit le statut, **annulé
+ * compris** : on annule justement pour ressaisir.
  *
  * **Vocabulaire (P-1).** Le statut du bon (brouillon/émis/annulé) et son état
  * de facturation (non facturé/partiellement facturé/soldé) sont deux choses
@@ -137,6 +148,10 @@ export const BonsDeCommande: React.FC = () => {
 
   const ouvrirBon = (bon: PurchaseOrder) => navigate(`/tenant/${tenantId}/finance/bons-de-commande/${bon.id}`);
   const ouvrirNouveauBon = () => navigate(`/tenant/${tenantId}/finance/bons-de-commande/nouveau`);
+  const dupliquerBon = (bon: PurchaseOrder) =>
+    navigate(`/tenant/${tenantId}/finance/bons-de-commande/nouveau`, {
+      state: { [CLE_DUPLICATION_BON]: copieDuBon(bon) satisfies DuplicationBonDeCommande }
+    });
 
   const colonnes: ColumnsType<PurchaseOrder> = [
     { title: t('Référence'), key: 'reference', render: (_, b) => b.reference },
@@ -173,9 +188,14 @@ export const BonsDeCommande: React.FC = () => {
       key: 'actions',
       align: 'end',
       render: (_, b) => (
-        <Button type="link" onClick={() => ouvrirBon(b)}>
-          {t('Voir le détail')}
-        </Button>
+        <Space size="small">
+          <Button type="link" onClick={() => ouvrirBon(b)}>
+            {t('Voir le détail')}
+          </Button>
+          <Button type="link" onClick={() => dupliquerBon(b)}>
+            {t('Dupliquer')}
+          </Button>
+        </Space>
       )
     }
   ];
@@ -282,6 +302,7 @@ export const BonsDeCommande: React.FC = () => {
               { label: t('Reste à facturer'), value: <MoneyValue value={b.remainingAmount} /> }
             ]}
             onOpen={() => ouvrirBon(b)}
+            secondaryActions={[{ key: 'dupliquer', label: t('Dupliquer'), onClick: () => dupliquerBon(b) }]}
           />
         )}
       />

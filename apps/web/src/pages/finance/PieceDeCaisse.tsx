@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { App, Button, Card, DatePicker, Input, InputNumber, Modal, Select, Space, Typography } from 'antd';
-import { PrinterOutlined, SendOutlined } from '@ant-design/icons';
+import { CopyOutlined, PrinterOutlined, SendOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import dayjs, { Dayjs } from 'dayjs';
 import {
@@ -55,6 +55,19 @@ const { Title, Text } = Typography;
  * geste ponctuel. Le seul état porté par l'URL est le chantier préremply
  * lorsqu'on arrive depuis `ChantierDetail.tsx` (`?chantierId=`), en cohérence
  * avec le principe général — un lien partagé rouvre le même contexte.
+ *
+ * **Dupliquer.** Beaucoup de pièces se ressemblent d'un mois à l'autre. Il
+ * n'existe aucune LISTE des pièces de caisse dans l'application : la
+ * duplication ne peut donc porter que sur la pièce qui vient d'être émise et
+ * qui est affichée ci-dessous. Son bouton est posé à côté d'« Émettre une
+ * nouvelle pièce », qui remet déjà le formulaire à zéro : le geste voisin
+ * remet le formulaire à zéro *puis* le re-remplit d'après la pièce affichée.
+ * **Rien n'est créé** : la pièce ne naît qu'au bouton « Émettre la pièce ».
+ * Une pièce ANNULÉE se duplique aussi — on annule justement pour ressaisir.
+ *
+ * Une pièce de caisse n'a pas de référence saisie (son numéro vient du
+ * serveur, à la validation) : la règle « la référence de la copie est vide »
+ * ne trouve donc rien à vider ici. La date, elle, redevient celle du jour.
  *
  * **Vocabulaire (P-1).** On *impute*, jamais « débit » ni « crédit ».
  */
@@ -197,6 +210,35 @@ export const PieceDeCaisse: React.FC = () => {
     reinitialiserFormulaire();
   };
 
+  /**
+   * Repart de la pièce affichée : même chantier, même poste, même
+   * bénéficiaire, même montant, même motif — date du jour.
+   *
+   * **N'appelle aucune écriture.** Le formulaire redevient saisissable et
+   * pré-rempli ; c'est « Émettre la pièce » qui créera la nouvelle pièce, et
+   * lui seul. Ce qui n'est jamais repris : le numéro, le statut, la date de
+   * validation.
+   */
+  const dupliquerPiece = () => {
+    if (!piece) return;
+    const source = piece;
+    setPiece(null);
+    setSiteId(source.siteId);
+    setCostCategoryId(source.costCategoryId);
+    setBeneficiaire(source.beneficiary);
+    setMontant(source.amount);
+    setDate(dayjs());
+    setMotif(source.reason);
+    // `beneficiary` est toujours présent sur une pièce émise : rien
+    // d'`undefined` ne part dans l'interpolation, qui laisserait sinon le
+    // gabarit `{{beneficiary}}` visible à l'écran.
+    message.info(
+      t("Formulaire pré-rempli d'après la pièce de {{beneficiary}}. Vérifiez la date.", {
+        beneficiary: source.beneficiary
+      })
+    );
+  };
+
   const formulaireVerrouille = Boolean(piece);
 
   return (
@@ -299,7 +341,15 @@ export const PieceDeCaisse: React.FC = () => {
               {t('Émettre la pièce')}
             </Button>
           ) : (
-            <Button onClick={nouvellePiece}>{t('Émettre une nouvelle pièce')}</Button>
+            <Space wrap size="small">
+              <Button onClick={nouvellePiece}>{t('Émettre une nouvelle pièce')}</Button>
+              {/*
+                Sans condition de statut : une pièce annulée se duplique aussi.
+              */}
+              <Button icon={<CopyOutlined />} onClick={dupliquerPiece}>
+                {t('Dupliquer')}
+              </Button>
+            </Space>
           )}
         </Space>
       </Card>

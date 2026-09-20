@@ -66,6 +66,10 @@ const supplierInvoiceFindMany = jest.fn();
 // gestionnaire repondait 500.
 const constructionSiteFindMany = jest.fn();
 const supplierInvoiceFindFirst = jest.fn();
+// Le detail d'une facture rend aussi ses LIGNES et ses IMPUTATIONS depuis le
+// 20 septembre 2026 : deux lectures de plus, qu'il faut doubler ici.
+const supplierInvoiceLineFindMany = jest.fn();
+const costAllocationFindMany = jest.fn();
 const thirdPartyAccountFindUniqueOrThrow = jest.fn();
 const supplierPaymentFindUniqueOrThrow = jest.fn();
 const voidDocumentFindUniqueOrThrow = jest.fn();
@@ -87,6 +91,12 @@ function fakePrismaClient() {
     supplierInvoice: {
       findMany: (...args: any[]) => supplierInvoiceFindMany(...args),
       findFirst: (...args: any[]) => supplierInvoiceFindFirst(...args)
+    },
+    supplierInvoiceLine: {
+      findMany: (...args: any[]) => supplierInvoiceLineFindMany(...args)
+    },
+    costAllocation: {
+      findMany: (...args: any[]) => costAllocationFindMany(...args)
     },
     constructionSite: {
       findMany: (...args: any[]) => constructionSiteFindMany(...args)
@@ -587,6 +597,87 @@ describe('GET /tenants/:tenantId/finance/supplier-invoices/:invoiceId', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.id).toBe(INVOICE_A);
+  });
+
+  /**
+   * Les lignes et les imputations, ajoutees au detail le 20 septembre 2026.
+   *
+   * Sans elles, aucun ecran ne pouvait relire ce qui COMPOSE une facture :
+   * dupliquer une piece n'en aurait recopie que l'en-tete. Ce test verifie les
+   * trois choses qui comptent : elles sont bien rendues, la quantite absente
+   * reste nulle (jamais un « 0 » inventé, qui se lirait comme une saisie), et
+   * les imputations sont lues filtrees par tenant ET par piece source.
+   */
+  it('rend les lignes et les imputations de la facture, filtrées par agence', async () => {
+    supplierInvoiceFindFirst.mockResolvedValue(invoiceRow());
+    supplierInvoiceLineFindMany.mockResolvedValue([
+      { id: 'line-1', invoiceId: INVOICE_A, label: 'Ciment CPJ 45', amount: 300_000, quantity: 4, unitPrice: 75_000 },
+      { id: 'line-2', invoiceId: INVOICE_A, label: 'Forfait de pose', amount: 200_000, quantity: null, unitPrice: null }
+    ]);
+    costAllocationFindMany.mockResolvedValue([
+      {
+        id: 'alloc-1',
+        tenantId: TENANT_A,
+        siteId: SITE_A,
+        costCategoryId: CATEGORY_A,
+        sourceType: 'SUPPLIER_INVOICE',
+        sourceId: INVOICE_A,
+        amount: 500_000
+      }
+    ]);
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/supplier-invoices/${INVOICE_A}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.lines).toEqual([
+      { id: 'line-1', label: 'Ciment CPJ 45', amount: 300_000, quantity: 4, unitPrice: 75_000 },
+      { id: 'line-2', label: 'Forfait de pose', amount: 200_000, quantity: null, unitPrice: null }
+    ]);
+    expect(response.body.data.allocations).toEqual([
+      { id: 'alloc-1', siteId: SITE_A, costCategoryId: CATEGORY_A, amount: 500_000 }
+    ]);
+
+    // Les lignes tiennent leur isolation de la facture, dont l'appartenance a
+    // l'agence vient d'etre verifiee ; les imputations, elles, portent un
+    // `tenantId` et sont filtrees dessus explicitement.
+    expect(supplierInvoiceLineFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { invoiceId: INVOICE_A } })
+    );
+    expect(costAllocationFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { tenantId: TENANT_A, sourceType: 'SUPPLIER_INVOICE', sourceId: INVOICE_A }
+      })
+    );
+  });
+
+  /**
+   * Une facture ANNULEE garde ses lignes et ses imputations : on annule
+   * justement pour ressaisir, et la duplication doit rester possible.
+   */
+  it('rend aussi les lignes et imputations d’une facture annulée', async () => {
+    supplierInvoiceFindFirst.mockResolvedValue(invoiceRow({ status: 'VOIDED' }));
+    supplierInvoiceLineFindMany.mockResolvedValue([
+      { id: 'line-1', invoiceId: INVOICE_A, label: 'Ciment CPJ 45', amount: 500_000, quantity: null, unitPrice: null }
+    ]);
+    costAllocationFindMany.mockResolvedValue([
+      {
+        id: 'alloc-1',
+        tenantId: TENANT_A,
+        siteId: SITE_A,
+        costCategoryId: CATEGORY_A,
+        sourceType: 'SUPPLIER_INVOICE',
+        sourceId: INVOICE_A,
+        amount: 500_000,
+        voidedAt: new Date('2026-09-15')
+      }
+    ]);
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/supplier-invoices/${INVOICE_A}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.status).toBe('VOIDED');
+    expect(response.body.data.lines).toHaveLength(1);
+    expect(response.body.data.allocations).toHaveLength(1);
   });
 
   it('renvoie 404 pour une facture inexistante', async () => {

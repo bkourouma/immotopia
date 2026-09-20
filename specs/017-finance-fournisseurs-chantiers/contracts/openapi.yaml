@@ -132,16 +132,25 @@ paths:
     get:
       tags: [FacturesFournisseurs]
       summary: Detail d'une facture fournisseur
+      description: >
+        Le detail rend, EN PLUS de l'en-tete, les lignes de la facture et ses
+        imputations au chantier (ajout additif du 20 septembre 2026 : aucun
+        champ existant ne change). Sans elles, aucun ecran ne pouvait relire ce
+        qui compose une facture, et dupliquer une piece n'aurait recopie que son
+        en-tete. Les imputations annulees sont rendues elles aussi : on annule
+        justement pour ressaisir.
       parameters:
         - $ref: "#/components/parameters/TenantId"
         - $ref: "#/components/parameters/InvoiceId"
       responses:
         "200":
-          description: Facture
+          description: Facture, avec ses lignes et ses imputations
           content:
             application/json:
               schema:
-                { $ref: "#/components/schemas/SupplierInvoiceResponseWrapper" }
+                {
+                  $ref: "#/components/schemas/SupplierInvoiceDetailResponseWrapper",
+                }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -893,6 +902,59 @@ components:
       properties:
         success: { type: boolean, example: true }
         data: { $ref: "#/components/schemas/SupplierInvoice" }
+
+    # Ajout additif du 20 septembre 2026 : ce que porte une facture, et non
+    # seulement son en-tete. Emis par le SEUL detail
+    # (`GET supplier-invoices/{invoiceId}`) ; la liste des factures d'un
+    # fournisseur reste inchangee, une liste n'ayant pas a transporter le
+    # detail de chaque piece.
+    SupplierInvoiceLine:
+      type: object
+      required: [id, label, amount]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        amount: { type: number }
+        quantity:
+          {
+            type: number,
+            nullable: true,
+            description: "Nul pour une ligne saisie en montant direct — un forfait n'a pas de quantite.",
+          }
+        unitPrice: { type: number, nullable: true }
+
+    SupplierInvoiceAllocation:
+      type: object
+      required: [id, siteId, costCategoryId, amount]
+      properties:
+        id: { type: string, format: uuid }
+        siteId: { type: string, format: uuid }
+        costCategoryId: { type: string, format: uuid }
+        amount: { type: number }
+
+    SupplierInvoiceDetail:
+      allOf:
+        - $ref: "#/components/schemas/SupplierInvoice"
+        - type: object
+          required: [lines, allocations]
+          properties:
+            lines:
+              type: array
+              items: { $ref: "#/components/schemas/SupplierInvoiceLine" }
+            allocations:
+              type: array
+              items: { $ref: "#/components/schemas/SupplierInvoiceAllocation" }
+              description: >
+                Imputations de la facture (`CostAllocation` de
+                `sourceType = SUPPLIER_INVOICE`), y compris celles d'une facture
+                annulee.
+
+    SupplierInvoiceDetailResponseWrapper:
+      type: object
+      required: [success, data]
+      properties:
+        success: { type: boolean, example: true }
+        data: { $ref: "#/components/schemas/SupplierInvoiceDetail" }
 
     VoidDocumentRequest:
       type: object

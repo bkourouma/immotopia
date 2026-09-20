@@ -28,6 +28,7 @@ import type {
   SiteDetail,
   Supplier,
   SupplierInvoice,
+  SupplierInvoiceDetail,
   SupplierPayment,
   SuppliersBalance,
   SuppliersBalanceFilters
@@ -84,6 +85,21 @@ export async function getSuppliersBalance(
 export async function listSupplierInvoices(tenantId: string, supplierId: string): Promise<SupplierInvoice[]> {
   const response = await apiClient.get<ApiResponse<SupplierInvoice[]>>(
     `${base(tenantId)}/suppliers/${supplierId}/invoices`
+  );
+  return response.data.data;
+}
+
+/**
+ * Détail d'une facture : son en-tête, ses **lignes** et ses **imputations**.
+ *
+ * La liste (`listSupplierInvoices`) ne porte ni les unes ni les autres. Pour
+ * dupliquer une facture — la reprendre telle quelle dans le formulaire de
+ * saisie — il faut donc la relire ici, sans quoi on ne recopierait que son
+ * en-tête.
+ */
+export async function getSupplierInvoice(tenantId: string, invoiceId: string): Promise<SupplierInvoiceDetail> {
+  const response = await apiClient.get<ApiResponse<SupplierInvoiceDetail>>(
+    `${base(tenantId)}/supplier-invoices/${invoiceId}`
   );
   return response.data.data;
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
   Alert,
@@ -14,6 +14,7 @@ import {
   Space,
   Typography
 } from 'antd';
+import type { InputRef } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -21,6 +22,7 @@ import dayjs from 'dayjs';
 import {
   listSuppliers,
   listSupplierInvoices,
+  getSupplierInvoice,
   createSupplierInvoice,
   validateSupplierInvoice,
   voidSupplierInvoice,
@@ -90,6 +92,20 @@ const { Text, Title } = Typography;
  * cochée est accepté : l'écran l'annonce par une note neutre, jamais par une
  * bannière d'erreur — le compte du fournisseur devient débiteur, ce que le
  * relevé (lot 1) sait déjà représenter.
+ *
+ * **Dupliquer une facture.** Beaucoup se ressemblent d'un mois ou d'un
+ * chantier à l'autre. L'action, sur chaque ligne de la liste, **pré-remplit le
+ * formulaire de saisie ci-dessus et ne crée rien** : lignes et imputations
+ * reprises telles quelles, référence VIDE (et son champ reçoit le focus — deux
+ * factures sous la même référence sont une erreur comptable), date du jour.
+ * Elle est offerte quel que soit le statut, **annulée comprise** : on annule
+ * justement pour ressaisir.
+ *
+ * C'est la seule des trois pièces qui doive RELIRE le serveur : ni la liste ni
+ * le détail ne rendaient les lignes ni les imputations, pourtant bien en base.
+ * Le détail (`getSupplierInvoice`) les rend depuis le 20 septembre 2026, en
+ * ajout strictement additif — sans elles, dupliquer une facture n'aurait
+ * recopié que son en-tête.
  *
  * **Limite assumée du contrat gelé.** `finance-lot2-service.ts` n'expose
  * aucun `listSupplierPayments` : impossible de relire l'historique des
@@ -234,6 +250,9 @@ export const FactureFournisseur: React.FC = () => {
   const [lignes, setLignes] = useState<LigneSaisie[]>([nouvelleLigne()]);
   const [imputations, setImputations] = useState<ImputationSaisie[]>([]);
   const [enregistrementFacture, setEnregistrementFacture] = useState(false);
+  const champReference = useRef<InputRef>(null);
+  /** Identifiant de la facture en cours de relecture, pour l'attente du bouton. */
+  const [duplicationEnCours, setDuplicationEnCours] = useState<string | null>(null);
 
   // Changer de fournisseur repart d'une saisie vierge : les lignes d'un
   // fournisseur n'ont pas de sens pour un autre.
@@ -313,6 +332,67 @@ export const FactureFournisseur: React.FC = () => {
       message.error(err?.response?.data?.message || t("L'enregistrement de la facture a échoué."));
     } finally {
       setEnregistrementFacture(false);
+    }
+  };
+
+  /**
+   * Reprend une facture dans le formulaire de saisie ci-dessus.
+   *
+   * **N'écrit rien.** Aucun appel de création ne part : la facture ne naîtra
+   * qu'au bouton « Enregistrer en brouillon », comme toujours.
+   *
+   * Passe par le DÉTAIL et non par la ligne de liste, qui ne porte ni les
+   * lignes ni les imputations — recopier un en-tête seul n'aurait aucun
+   * intérêt. Le fournisseur n'est pas touché : on duplique dans le compte du
+   * fournisseur déjà choisi, celui de la facture d'origine.
+   *
+   * Ce qui n'est jamais repris : le statut, la date de validation, et le
+   * montant de la facture, que le serveur recalcule depuis les lignes.
+   */
+  const dupliquerFacture = async (facture: SupplierInvoice) => {
+    if (!tenantId) return;
+    setDuplicationEnCours(facture.id);
+    try {
+      const detail = await getSupplierInvoice(tenantId, facture.id);
+
+      // Règles non négociables : référence vide et date du jour.
+      setReference('');
+      setDate(dayjs());
+      setLignes(
+        detail.lines.length > 0
+          ? detail.lines.map(ligne => ({
+              id: crypto.randomUUID(),
+              label: ligne.label,
+              amount: ligne.amount,
+              quantity: ligne.quantity,
+              unitPrice: ligne.unitPrice
+            }))
+          : [nouvelleLigne()]
+      );
+      setImputations(
+        detail.allocations.map(imputation => ({
+          id: crypto.randomUUID(),
+          siteId: imputation.siteId,
+          costCategoryId: imputation.costCategoryId,
+          amount: imputation.amount
+        }))
+      );
+
+      champReference.current?.focus();
+      // `facture.reference` vient de la liste et est toujours renseignée ; le
+      // repli couvre le cas limite d'une chaîne vide, pour ne pas laisser le
+      // gabarit `{{reference}}` visible à l'écran.
+      message.info(
+        facture.reference
+          ? t("Formulaire pré-rempli d'après la facture {{reference}}. Vérifiez la référence et la date.", {
+              reference: facture.reference
+            })
+          : t("Formulaire pré-rempli d'après une facture existante. Vérifiez la référence et la date.")
+      );
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || t('La lecture de la facture à dupliquer a échoué.'));
+    } finally {
+      setDuplicationEnCours(null);
     }
   };
 
@@ -489,9 +569,13 @@ export const FactureFournisseur: React.FC = () => {
       title: t('Actions'),
       key: 'actions',
       align: 'end',
-      render: (_, f) => {
-        if (f.status === 'DRAFT') {
-          return (
+      render: (_, f) => (
+        // « Dupliquer » est proposée pour TOUS les statuts, annulé compris :
+        // on annule justement pour ressaisir. Même convention d'action
+        // secondaire que « Valider » et « Annuler » sur cet écran : un
+        // `<Button type="link">`.
+        <Space size="small">
+          {f.status === 'DRAFT' && (
             <ConfirmAction
               title={t('Valider la facture {{reference}} ?', { reference: f.reference })}
               description={t(
@@ -502,17 +586,17 @@ export const FactureFournisseur: React.FC = () => {
             >
               <Button type="link">{t('Valider')}</Button>
             </ConfirmAction>
-          );
-        }
-        if (f.status === 'VALIDATED') {
-          return (
+          )}
+          {f.status === 'VALIDATED' && (
             <Button type="link" onClick={() => ouvrirAnnulation(f)}>
               {t('Annuler')}
             </Button>
-          );
-        }
-        return null;
-      }
+          )}
+          <Button type="link" loading={duplicationEnCours === f.id} onClick={() => dupliquerFacture(f)}>
+            {t('Dupliquer')}
+          </Button>
+        </Space>
+      )
     }
   ];
 
@@ -564,6 +648,10 @@ export const FactureFournisseur: React.FC = () => {
                 </div>
                 <Input
                   id="facture-reference"
+                  // Le champ que la duplication met au premier plan : la
+                  // copie arrive sans référence, et c'est la première chose
+                  // à saisir.
+                  ref={champReference}
                   placeholder={t('Ex. FRS-2026-0142')}
                   value={reference}
                   onChange={event => setReference(event.target.value)}
@@ -759,6 +847,7 @@ export const FactureFournisseur: React.FC = () => {
                       ? { label: 'Annuler', onClick: () => ouvrirAnnulation(f) }
                       : undefined
                 }
+                secondaryActions={[{ key: 'dupliquer', label: t('Dupliquer'), onClick: () => dupliquerFacture(f) }]}
               />
             )}
           />

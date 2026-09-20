@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { App, Button, Card, DatePicker, Input, InputNumber, Modal, Select, Space, Typography } from 'antd';
+import type { InputRef } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { DeleteOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons';
+import { CopyOutlined, DeleteOutlined, PlusOutlined, SendOutlined } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs, { Dayjs } from 'dayjs';
 import {
@@ -29,6 +30,8 @@ import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
 import { montantCalcule, montantVerrouille } from '../../utils/ligne-quantite-prix';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { CLE_DUPLICATION_BON, copieDuBon, lireDuplicationBon } from '../../utils/duplication-piece';
+import type { DuplicationBonDeCommande } from '../../utils/duplication-piece';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -64,6 +67,15 @@ const { Title, Text } = Typography;
  * jusqu'au 20 septembre 2026, alors que le serveur l'a toujours réclamé
  * (`cancelPurchaseOrderSchema`) : aucune annulation ne pouvait aboutir, et le
  * bon continuait d'engager son chantier.
+ *
+ * **Dupliquer.** Beaucoup de bons se ressemblent d'un mois ou d'un chantier à
+ * l'autre. « Dupliquer » — sur la fiche ici, et sur chaque ligne de la liste
+ * (`BonsDeCommande.tsx`) — ramène à `…/nouveau` avec le chantier, le
+ * fournisseur et toutes les lignes du bon d'origine **pré-remplis, sans rien
+ * créer** : la copie voyage dans l'état de navigation de react-router (le
+ * pourquoi est dans `utils/duplication-piece.ts`), et rien n'est écrit tant
+ * que « Enregistrer en brouillon » n'a pas été cliqué. La référence reste
+ * vide et reçoit le focus ; la date est celle du jour.
  *
  * **Vocabulaire (P-1).** On *émet*, on *engage*, jamais « débit » ni
  * « crédit ».
@@ -120,6 +132,7 @@ export const BonDeCommande: React.FC = () => {
   const { tenantId, orderId } = useParams<{ tenantId: string; orderId: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
 
   const modeCreation = !orderId || orderId === 'nouveau';
@@ -180,10 +193,76 @@ export const BonDeCommande: React.FC = () => {
   const [date, setDate] = useState<Dayjs>(() => dayjs());
   const [lignes, setLignes] = useState<LigneSaisie[]>([nouvelleLigne()]);
   const [enregistrementEnCours, setEnregistrementEnCours] = useState(false);
+  const champReference = useRef<InputRef>(null);
 
   useEffect(() => {
     if (chantierPreselectionne) setSiteId(chantierPreselectionne);
   }, [chantierPreselectionne]);
+
+  /**
+   * Applique la copie portée par l'état de navigation, puis la consomme.
+   *
+   * Un `useEffect`, et non une valeur initiale de `useState` : la fiche et la
+   * saisie sont le MÊME composant sur la MÊME route (`:orderId`), si bien
+   * qu'aller de `…/bons-de-commande/bon-1` à `…/bons-de-commande/nouveau` ne
+   * remonte rien — seul le paramètre change, et les initialiseurs de `useState`
+   * ne sont pas rejoués. Sans cet effet, « Dupliquer » depuis la fiche
+   * n'aurait rien rempli du tout.
+   *
+   * La copie est effacée sitôt appliquée (`state: null`, en remplaçant
+   * l'entrée d'historique) : un retour arrière ou un rechargement ne doit pas
+   * re-remplir un formulaire qu'on vient peut-être d'abandonner.
+   */
+  useEffect(() => {
+    const copie = lireDuplicationBon(location.state);
+    if (!copie) return;
+
+    setSiteId(copie.siteId);
+    setSupplierId(copie.supplierId);
+    // Règles non négociables : référence vide (deux pièces sous la même
+    // référence sont une erreur comptable) et date du jour.
+    setReference('');
+    setDate(dayjs());
+    setLignes(
+      copie.lignes.length > 0
+        ? copie.lignes.map(ligne => ({
+            id: crypto.randomUUID(),
+            costCategoryId: ligne.costCategoryId,
+            label: ligne.label,
+            amount: ligne.amount,
+            quantity: ligne.quantity,
+            unitPrice: ligne.unitPrice
+          }))
+        : [nouvelleLigne()]
+    );
+
+    navigate(location.pathname + location.search, { replace: true, state: null });
+    champReference.current?.focus();
+
+    message.info(
+      copie.referenceOrigine
+        ? t("Formulaire pré-rempli d'après le bon {{reference}}. Vérifiez la référence et la date.", {
+            reference: copie.referenceOrigine
+          })
+        : t("Formulaire pré-rempli d'après un bon existant. Vérifiez la référence et la date.")
+    );
+    // `location.state` suffit : c'est lui seul qui porte une copie à appliquer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
+
+  /**
+   * Repart de ce bon dans une saisie vierge. **N'écrit rien** : la copie
+   * voyage dans l'état de navigation et rien n'est créé tant que la personne
+   * n'a pas cliqué sur « Enregistrer en brouillon ».
+   *
+   * Offert quel que soit le statut, **annulé compris** : on annule justement
+   * pour ressaisir, et c'est même le cas d'usage le plus courant.
+   */
+  const dupliquer = (source: PurchaseOrder) => {
+    navigate(`/tenant/${tenantId}/finance/bons-de-commande/nouveau`, {
+      state: { [CLE_DUPLICATION_BON]: copieDuBon(source) satisfies DuplicationBonDeCommande }
+    });
+  };
 
   const ajouterLigne = () => setLignes(prev => [...prev, nouvelleLigne()]);
   const retirerLigne = (id: string) => setLignes(prev => (prev.length > 1 ? prev.filter(l => l.id !== id) : prev));
@@ -333,6 +412,9 @@ export const BonDeCommande: React.FC = () => {
               </div>
               <Input
                 id="bon-reference"
+                // Le champ que la duplication met au premier plan : la copie
+                // arrive sans référence, et c'est la première chose à saisir.
+                ref={champReference}
                 placeholder={t('Ex. BC-2026-0042')}
                 value={reference}
                 onChange={event => setReference(event.target.value)}
@@ -523,6 +605,13 @@ export const BonDeCommande: React.FC = () => {
             {t('Annuler le bon')}
           </Button>
         )}
+        {/*
+          Sans condition de statut : un bon ANNULÉ se duplique aussi, et c'est
+          même le cas d'usage le plus courant — on annule pour ressaisir.
+        */}
+        <Button icon={<CopyOutlined />} onClick={() => dupliquer(bon)}>
+          {t('Dupliquer')}
+        </Button>
       </Space>
 
       <Modal

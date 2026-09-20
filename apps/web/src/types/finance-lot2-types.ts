@@ -126,6 +126,55 @@ export interface SupplierInvoice {
   validatedAt: string | null;
 }
 
+/**
+ * Une ligne de facture fournisseur, telle que le DÉTAIL la rend.
+ *
+ * La liste des factures d'un fournisseur n'en porte pas : une liste ne
+ * transporte pas le détail de chaque pièce. Il faut donc relire le détail
+ * (`getSupplierInvoice`) pour savoir ce que contient une facture — ce que la
+ * duplication exige, un en-tête recopié seul n'ayant aucun intérêt.
+ */
+export interface SupplierInvoiceLine {
+  id: string;
+  label: string;
+  amount: number;
+  /** Nuls pour une ligne saisie en montant direct — un forfait n'a pas de quantité. */
+  quantity: number | null;
+  unitPrice: number | null;
+}
+
+/** Une imputation de facture, telle que le détail la rend : des identifiants, pas des libellés. */
+export interface SupplierInvoiceAllocation {
+  id: string;
+  siteId: string;
+  costCategoryId: string;
+  amount: number;
+}
+
+/**
+ * Le détail d'une facture : son en-tête, ses lignes, ses imputations.
+ *
+ * Type distinct de `SupplierInvoice` — et non une extension — parce que le
+ * détail ne rend ni `supplierLabel` ni `siteLabel` : seule la LISTE résout ces
+ * deux libellés. Prétendre le contraire ferait promettre à TypeScript des
+ * champs qui n'arrivent jamais, exactement le défaut relevé plus haut sur
+ * `thirdPartyAccountId`.
+ */
+export interface SupplierInvoiceDetail {
+  id: string;
+  supplierId: string;
+  siteId: string | null;
+  invoiceDate: string;
+  reference: string;
+  amount: number;
+  currency: string;
+  status: DocumentStatus;
+  validatedAt: string | null;
+  lines: SupplierInvoiceLine[];
+  /** Y compris celles d'une facture annulée : on annule justement pour ressaisir. */
+  allocations: SupplierInvoiceAllocation[];
+}
+
 export interface SupplierPayment {
   id: string;
   supplierId: string;

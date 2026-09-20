@@ -10,7 +10,7 @@ import {
   validateSupplierInvoiceTx
 } from '../lib/finance/suppliers';
 import { resolveRange } from '../lib/finance/schemas';
-import { toAmountOrZero } from '../lib/finance/types';
+import { toAmount, toAmountOrZero } from '../lib/finance/types';
 import type { SupplierInvoiceRecord, SupplierPaymentRecord, SupplierRecord } from '../lib/finance/types-lot2';
 import {
   createSupplierInvoiceSchema,
@@ -453,6 +453,21 @@ export const createSupplierInvoiceHandler = asyncHandler(async (req: Request, re
 
 // ---------------------------------------------------------------------------
 // G. GET supplier-invoices/:invoiceId — détail
+//
+// **Ajout additif du 20 septembre 2026 : `lines` et `allocations`.** Le détail
+// ne rendait que l'en-tête de la facture, alors que ses lignes
+// (`SupplierInvoiceLine`) et ses imputations (`CostAllocation` de
+// `sourceType = 'SUPPLIER_INVOICE'`) sont en base depuis le lot 2. Aucun écran
+// ne pouvait donc relire ce qui compose une facture — ce que la duplication
+// d'une pièce exige, un en-tête recopié seul n'ayant aucun intérêt.
+//
+// Ajout strictement additif : les champs déjà émis ne bougent pas, et le
+// contrat (`contracts/openapi.yaml`, schéma `SupplierInvoiceDetail`) le décrit
+// comme tel.
+//
+// Les imputations ANNULÉES ne sont pas écartées : `voidedAt` dit ce qui ne
+// compte plus au coût du chantier, mais on annule justement pour ressaisir, et
+// une facture annulée doit rester duplicable telle qu'elle a été saisie.
 // ---------------------------------------------------------------------------
 
 export const getSupplierInvoiceHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -464,7 +479,38 @@ export const getSupplierInvoiceHandler = asyncHandler(async (req: Request, res: 
     throw new NotFoundError('Facture fournisseur introuvable ou inaccessible.');
   }
 
-  res.status(200).json({ success: true, data: toSupplierInvoiceResponseFromRow(invoice as any) });
+  // Les lignes n'ont pas de `tenantId` : elles tiennent leur isolation de la
+  // facture, dont l'appartenance à l'agence vient d'être vérifiée. Les
+  // imputations, elles, en portent un, et on le filtre explicitement.
+  const [lines, allocations] = await Promise.all([
+    prisma.supplierInvoiceLine.findMany({ where: { invoiceId }, orderBy: { createdAt: 'asc' } }),
+    prisma.costAllocation.findMany({
+      where: { tenantId, sourceType: 'SUPPLIER_INVOICE', sourceId: invoiceId },
+      orderBy: { createdAt: 'asc' }
+    })
+  ]);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      ...toSupplierInvoiceResponseFromRow(invoice as any),
+      lines: (lines ?? []).map((line: any) => ({
+        id: line.id,
+        label: line.label,
+        amount: toAmountOrZero(line.amount),
+        // `toAmount`, pas `toAmountOrZero` : une ligne sans quantité garde
+        // `null`, jamais un « 0 » inventé qui se lirait comme une saisie.
+        quantity: toAmount(line.quantity),
+        unitPrice: toAmount(line.unitPrice)
+      })),
+      allocations: (allocations ?? []).map((allocation: any) => ({
+        id: allocation.id,
+        siteId: allocation.siteId,
+        costCategoryId: allocation.costCategoryId,
+        amount: toAmountOrZero(allocation.amount)
+      }))
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
