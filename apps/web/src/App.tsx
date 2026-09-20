@@ -228,6 +228,11 @@ const FileDeValidation = lazy(() =>
     default: m.FileDeValidation
   }))
 );
+const Importation = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Importation').then(m => ({
+    default: m.Importation
+  }))
+);
 const SyndicsList = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicsList').then(m => ({ default: m.SyndicsList }))
 );
@@ -808,6 +813,15 @@ function App() {
                       */}
                           <Route path="/tenant/:tenantId/finance/caisse" element={<PieceDeCaisse />} />
                           <Route path="/tenant/:tenantId/finance/validation" element={<FileDeValidation />} />
+                          {/*
+                        Importation. Un seul menu, une seule adresse : la
+                        nature du document se choisit DANS l'ecran, pas dans
+                        l'URL. Rien n'y est propre a une nature, et la
+                        huitieme s'ajoutera par un descripteur de
+                        `lib/importation/natures.ts` sans toucher a cette
+                        route.
+                      */}
+                          <Route path="/tenant/:tenantId/finance/importation" element={<Importation />} />
 
                           {/*
                         Lot 3. L'ordre compte : « nouveau » AVANT

@@ -315,7 +315,8 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
             href: '/tenant/:tenantId/finance/fournisseurs/balance'
           },
           { key: 'finance-chantiers', label: t('Chantiers'), href: '/tenant/:tenantId/finance/chantiers' },
-          { key: 'finance-validation', label: t('Pièces à valider'), href: '/tenant/:tenantId/finance/validation' }
+          { key: 'finance-validation', label: t('Pièces à valider'), href: '/tenant/:tenantId/finance/validation' },
+          { key: 'finance-importation', label: t('Importation'), href: '/tenant/:tenantId/finance/importation' }
         ]
       },
       {
