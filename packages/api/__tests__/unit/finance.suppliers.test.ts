@@ -501,6 +501,68 @@ describe('createSupplierInvoiceTx', () => {
     const invoice = await createDraftInvoice(supplier.id, { amount: 75000, allocations: [] });
     expect(invoice.siteId).toBeNull();
   });
+
+  it('REFUSE une reference deja prise chez ce fournisseur, en la nommant', async () => {
+    // Le refus existait deja, mais par violation de contrainte Prisma : le
+    // middleware le traduisait en « Cette ressource existe deja. », sans dire
+    // quel champ ni quelle piece. Recette du 20 septembre 2026.
+    const supplier = await createSupplier('SERVICES', { name: 'QA Quincaillerie Angre' });
+    const params = {
+      supplierId: supplier.id,
+      invoiceDate: new Date('2026-09-01T00:00:00.000Z'),
+      reference: 'FRS-QA-006',
+      lines: [{ label: 'Prestation', amount: 100000 }],
+      allocations: [],
+      createdByUserId: USER_ID
+    };
+
+    await createSupplierInvoiceTx(tx(), TENANT_ID, params);
+
+    await expect(createSupplierInvoiceTx(tx(), TENANT_ID, params)).rejects.toThrow(
+      /FRS-QA-006.*QA Quincaillerie Angre/
+    );
+    // Une seule facture creee : le refus vient AVANT l'ecriture, et non d'un
+    // rattrapage apres coup — en PostgreSQL une commande en echec condamne
+    // le reste de la transaction, qui cree ensuite lignes et imputations.
+    expect(store.invoices).toHaveLength(1);
+  });
+
+  it("DIT qu'une reference reste reservee quand la facture qui la porte est ANNULEE", async () => {
+    // Le cas le plus courant, et le plus deroutant : on annule parce qu'on
+    // s'est trompe, et on ressaisit la meme facture. Un statut n'est pas une
+    // suppression, la reference ne se libere donc pas — encore faut-il le
+    // dire, sans quoi le refus est incomprehensible.
+    const supplier = await createSupplier('SERVICES', { name: 'QA Materiaux du Sud SARL' });
+    const params = {
+      supplierId: supplier.id,
+      invoiceDate: new Date('2026-09-20T00:00:00.000Z'),
+      reference: 'FRS-QA-006',
+      lines: [{ label: 'Ciment', amount: 11_000_000 }],
+      allocations: [],
+      createdByUserId: USER_ID
+    };
+
+    const premiere = await createSupplierInvoiceTx(tx(), TENANT_ID, params);
+    store.invoices.find(i => i.id === premiere.id)!.status = 'VOIDED';
+
+    await expect(createSupplierInvoiceTx(tx(), TENANT_ID, params)).rejects.toThrow(/annulée.*réservée/i);
+  });
+
+  it('laisse DEUX FOURNISSEURS porter la meme reference — chacun numerote ses factures', async () => {
+    const premier = await createSupplier('SERVICES', { name: 'Fournisseur A' });
+    const second = await createSupplier('SERVICES', { name: 'Fournisseur B' });
+    const facture = (supplierId: string) => ({
+      supplierId,
+      invoiceDate: new Date('2026-09-01T00:00:00.000Z'),
+      reference: 'F-2026-001',
+      lines: [{ label: 'Prestation', amount: 100000 }],
+      allocations: [],
+      createdByUserId: USER_ID
+    });
+
+    await createSupplierInvoiceTx(tx(), TENANT_ID, facture(premier.id));
+    await expect(createSupplierInvoiceTx(tx(), TENANT_ID, facture(second.id))).resolves.toBeTruthy();
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -271,11 +271,36 @@ export const createSupplierTx: CreateSupplierTx = async (tx, tenantId, params) =
 export const createSupplierInvoiceTx: CreateSupplierInvoiceTx = async (tx, tenantId, params) => {
   const supplier = await tx.supplier.findFirst({
     where: { id: params.supplierId, tenantId },
-    select: { id: true, kind: true }
+    select: { id: true, kind: true, name: true }
   });
 
   if (!supplier) {
     throw notFound('Fournisseur introuvable');
+  }
+
+  // `@@unique([tenantId, supplierId, reference])` : une reference dupliquee
+  // remonterait sinon comme un P2002 brut, traduit par le middleware en un
+  // 409 generique (« Cette ressource existe deja. ») qui ne dit ni le champ
+  // ni la piece en cause. Lecture avant ecriture — comme pour le fournisseur
+  // et le chantier ci-dessus — plutot que de rattraper l'erreur Prisma : en
+  // PostgreSQL une commande en echec condamne le reste de la transaction, et
+  // cette transaction cree ensuite les lignes puis les imputations.
+  //
+  // La reference reste reservee meme quand la facture qui la porte est
+  // annulee (VOIDED) : ce n'est pas une ligne supprimee, seulement un statut.
+  // Contre-intuitif pour qui saisit une nouvelle facture, donc explicite ici.
+  const existingInvoice = await tx.supplierInvoice.findFirst({
+    where: { tenantId, supplierId: params.supplierId, reference: params.reference },
+    select: { status: true }
+  });
+  if (existingInvoice) {
+    const voidedNote =
+      existingInvoice.status === ('VOIDED' as any)
+        ? ' Elle est annulée, mais sa référence reste réservée : il faut en choisir une autre.'
+        : '';
+    throw conflict(
+      `Une facture portant la référence ${params.reference} existe déjà pour ${supplier.name}.${voidedNote}`
+    );
   }
 
   // FR-010 / besoin B7 : un sac de ciment est toujours achete pour quelque
