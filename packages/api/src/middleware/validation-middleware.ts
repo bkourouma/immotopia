@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { z, ZodError } from 'zod';
+import { ValidationError } from './error-middleware';
 
 /**
  * Sanitize string input to prevent XSS
@@ -95,9 +96,16 @@ export const resendVerificationSchema = z.object({
  * Validation middleware factory
  * @param schema - Zod schema to validate against
  * @returns Express middleware function
+ *
+ * Ne construit jamais la réponse elle-même : une erreur de validation part en
+ * `next(...)` vers `errorHandler` (`middleware/error-middleware.ts`), seul
+ * endroit où un message est traduit (`t()`). Cette fonction construisait
+ * jusqu'ici sa propre réponse JSON avec un message français codé en dur,
+ * jamais passé par `t()` — donc jamais traduit, contrairement à toute autre
+ * erreur `VALIDATION_ERROR` de l'API, qui suit la langue de la requête.
  */
 export function validate(schema: z.ZodSchema) {
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return (req: Request, _res: Response, next: NextFunction): void => {
     try {
       // Sanitize input before validation
       req.body = sanitizeBody(req.body);
@@ -112,16 +120,9 @@ export function validate(schema: z.ZodSchema) {
           message: err.message
         }));
 
-        res.status(400).json({
-          success: false,
-          message: 'Les données fournies sont invalides.',
-          errors
-        });
+        next(new ValidationError('Les données fournies sont invalides.', errors));
       } else {
-        res.status(500).json({
-          success: false,
-          message: 'Une erreur est survenue lors de la validation.'
-        });
+        next(error);
       }
     }
   };

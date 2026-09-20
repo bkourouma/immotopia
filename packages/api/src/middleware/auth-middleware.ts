@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt-utils';
+import { t } from '../i18n';
 
 export const authenticate = (req: Request, res: Response, next: NextFunction) => {
   // Deja authentifie pour CETTE requete : on ne recommence pas.
@@ -29,14 +30,14 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
   }
 
   if (!token) {
-    res.status(401).json({ message: 'Authentication token missing' });
+    res.status(401).json({ message: t("Jeton d'authentification manquant.") });
     return;
   }
 
   const decoded = verifyToken(token);
 
   if (!decoded) {
-    res.status(403).json({ message: 'Invalid or expired token' });
+    res.status(403).json({ message: t('Jeton invalide ou expiré.') });
     return;
   }
 

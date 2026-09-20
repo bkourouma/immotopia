@@ -2,6 +2,11 @@ import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { logger } from '../utils/logger';
 import { isProduction } from '../config/env';
 import { t } from '../i18n';
+// Effet de bord : bascule le message par défaut de Zod en français (voir
+// `lib/zod-error-map.ts`). Importé ici — le point d'entrée le plus
+// systématiquement chargé avant qu'une erreur de validation ne soit formatée
+// — pour qu'aucun appelant n'ait à s'en souvenir.
+import '../lib/zod-error-map';
 
 /**
  * Single error response shape for the whole API.
