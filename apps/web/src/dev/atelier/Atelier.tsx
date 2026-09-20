@@ -121,7 +121,7 @@ const TABLEAU_DE_BORD_CHANTIERS = 'tenant/' + AGENCE + '/finance/tableau-de-bord
 // Lot 4. Le bail « riche » de la maquette est celui qui porte un paiement
 // valide et plusieurs constatations : c'est lui qui montre le mecanisme.
 const BAUX_DE_TERRAIN = 'tenant/' + AGENCE + '/finance/baux-terrain';
-const BAIL_DE_TERRAIN = BAUX_DE_TERRAIN + '/bail-nongo-01';
+const BAIL_DE_TERRAIN = BAUX_DE_TERRAIN + '/bail-riviera-01';
 const SIDEBAR = 'coquille/sidebar';
 
 const SCENES: Scene[] = [
@@ -545,10 +545,10 @@ function GaleriePrimitives() {
       <section>
         <h3>Montants</h3>
         <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
-          <MoneyValue value={1_250_000} currency="GNF" />
-          <MoneyValue value={0} currency="GNF" />
+          <MoneyValue value={1_250_000} currency="FCFA" />
+          <MoneyValue value={0} currency="FCFA" />
           <MoneyValue value={null} />
-          <MoneyValue value={-450_000} currency="GNF" signed />
+          <MoneyValue value={-450_000} currency="FCFA" signed />
         </div>
       </section>
 
@@ -562,7 +562,11 @@ function GaleriePrimitives() {
           }}
         >
           <StatCard label="Biens au portefeuille" value="57" />
-          <StatCard label="Encaissé ce mois" value={<MoneyValue value={18_400_000} currency="GNF" />} tone="positive" />
+          <StatCard
+            label="Encaissé ce mois"
+            value={<MoneyValue value={18_400_000} currency="FCFA" />}
+            tone="positive"
+          />
           <StatCard label="Échéances en retard" value="4" hint="dont 2 de plus de 30 jours" tone="danger" />
           <StatCard label="Taux d'occupation" value="86 %" tone="warning" onClick={() => {}} />
         </div>
@@ -572,10 +576,10 @@ function GaleriePrimitives() {
         <h3>Cartes de liste</h3>
         <div style={{ maxWidth: 420 }}>
           <DataCard
-            title="Villa 4 chambres avec piscine, quartier de Kipé Centre"
-            subtitle="Kipé, Ratoma • Conakry"
+            title="Villa 4 chambres avec piscine, quartier d'Angré Centre"
+            subtitle="Angré, Cocody • Abidjan"
             status={<StatusTag status="AVAILABLE" />}
-            highlight={<MoneyValue value={12_500_000} currency="GNF" />}
+            highlight={<MoneyValue value={12_500_000} currency="FCFA" />}
             fields={[
               { label: 'Type', value: 'Maison / Villa' },
               { label: 'Surface', value: '7 pièces • 4 ch. • 320 m²' }

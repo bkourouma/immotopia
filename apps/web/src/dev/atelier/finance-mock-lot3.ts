@@ -24,16 +24,16 @@
  * identifiants**, pour que l'atelier raconte une seule histoire cohérente
  * d'un volet à l'autre plutôt que deux jeux de données sans rapport :
  *
- * - `chantier-riche-01` (Villa duplex — Kipé Centre) porte un budget VALIDÉ,
+ * - `chantier-riche-01` (Villa duplex — Angré Centre) porte un budget VALIDÉ,
  *   un avenant validé et un second en brouillon, plusieurs bons de commande
  *   dans des états différents, et une alerte de seuil OUVERTE mais SANS
  *   dépassement (l'engagé approche le budget révisé sans le dépasser) — le
  *   cas qui distingue une alerte de seuil d'un dépassement réel.
- * - `chantier-sans-bien-01` (Terrain loué — Nongo) porte un budget plus
+ * - `chantier-sans-bien-01` (Terrain loué — Riviera) porte un budget plus
  *   modeste, sans avenant, et cette fois un DÉPASSEMENT réel (l'engagé
  *   dépasse le budget révisé) doublé d'une alerte ouverte — l'écart doit s'y
  *   afficher en rouge.
- * - `chantier-nouveau-01` (Extension villa — Lambanyi) n'a AUCUN budget : le
+ * - `chantier-nouveau-01` (Extension villa — Bingerville) n'a AUCUN budget : le
  *   cas qui doit se lire comme « pas encore budgété », jamais comme une
  *   panne. `getSiteBudget` y répond par une donnée `null` — voir le
  *   commentaire de cette fonction dans `finance-lot3-service.ts` sur
@@ -75,7 +75,7 @@ const BUDGET_RICHE: SiteBudget = {
   label: 'Budget initial 2026',
   status: 'VALIDATED',
   validatedAt: '2026-04-05T09:00:00.000Z',
-  validatedByLabel: 'Mamadou Bah',
+  validatedByLabel: 'Mamadou Konan',
   currency: 'XOF',
   lines: [
     {
@@ -146,7 +146,7 @@ const BUDGET_SANS_BIEN: SiteBudget = {
   label: 'Budget initial',
   status: 'VALIDATED',
   validatedAt: '2026-06-05T09:00:00.000Z',
-  validatedByLabel: 'Ibrahima Sow',
+  validatedByLabel: 'Ibrahima Yao',
   currency: 'XOF',
   lines: [
     {
@@ -192,9 +192,9 @@ const AVENANTS_RICHE: BudgetAmendment[] = [
     id: 'avenant-riche-01',
     budgetId: BUDGET_RICHE.id,
     amendmentDate: '2026-06-01',
-    reason: 'Renchérissement du ciment sur le marché de Conakry',
+    reason: "Renchérissement du ciment sur le marché d'Abidjan",
     status: 'VALIDATED',
-    createdByLabel: 'Mamadou Bah',
+    createdByLabel: 'Mamadou Konan',
     validatedAt: '2026-06-03T08:00:00.000Z',
     lines: [
       {
@@ -212,7 +212,7 @@ const AVENANTS_RICHE: BudgetAmendment[] = [
     amendmentDate: '2026-08-10',
     reason: 'Réduction du poste divers : imprévus non consommés à ce stade',
     status: 'DRAFT',
-    createdByLabel: 'Ibrahima Sow',
+    createdByLabel: 'Ibrahima Yao',
     validatedAt: null,
     lines: [
       { id: 'avenant-riche-02-l1', costCategoryId: 'poste-divers', costCategoryLabel: 'Divers', amountDelta: -300_000 }
@@ -234,7 +234,7 @@ const BONS: PurchaseOrder[] = [
   {
     id: 'bon-riche-01',
     siteId: SITE_RICHE,
-    siteLabel: 'Villa duplex — Kipé Centre',
+    siteLabel: 'Villa duplex — Angré Centre',
     supplierId: 'frs-ciments-afrique',
     supplierLabel: "Ciments d'Afrique CI",
     reference: 'BC-2026-0041',
@@ -258,9 +258,9 @@ const BONS: PurchaseOrder[] = [
   {
     id: 'bon-riche-02',
     siteId: SITE_RICHE,
-    siteLabel: 'Villa duplex — Kipé Centre',
+    siteLabel: 'Villa duplex — Angré Centre',
     supplierId: 'frs-sotraco',
-    supplierLabel: 'Sotraco Guinée',
+    supplierLabel: 'Sotraco Ivoire',
     reference: 'BC-2026-0052',
     orderDate: '2026-05-20',
     status: 'ISSUED',
@@ -282,7 +282,7 @@ const BONS: PurchaseOrder[] = [
   {
     id: 'bon-riche-03',
     siteId: SITE_RICHE,
-    siteLabel: 'Villa duplex — Kipé Centre',
+    siteLabel: 'Villa duplex — Angré Centre',
     supplierId: 'frs-elec-plus',
     supplierLabel: 'Elec Plus',
     reference: 'BC-2026-0060',
@@ -308,9 +308,9 @@ const BONS: PurchaseOrder[] = [
   {
     id: 'bon-riche-04',
     siteId: SITE_RICHE,
-    siteLabel: 'Villa duplex — Kipé Centre',
-    supplierId: 'frs-diallo',
-    supplierLabel: 'Quincaillerie Diallo & Fils',
+    siteLabel: 'Villa duplex — Angré Centre',
+    supplierId: 'frs-kouassi',
+    supplierLabel: 'Quincaillerie Kouassi & Fils',
     reference: 'BC-2026-0035',
     orderDate: '2026-03-15',
     status: 'CANCELLED',
@@ -332,9 +332,9 @@ const BONS: PurchaseOrder[] = [
   {
     id: 'bon-sans-bien-01',
     siteId: SITE_SANS_BIEN,
-    siteLabel: 'Terrain loué — Nongo',
-    supplierId: 'frs-bloc-guinee',
-    supplierLabel: 'Bloc Guinée',
+    siteLabel: 'Terrain loué — Riviera',
+    supplierId: 'frs-bloc-ivoire',
+    supplierLabel: 'Bloc Ivoire',
     reference: 'BC-2026-0071',
     orderDate: '2026-07-01',
     status: 'ISSUED',
@@ -401,7 +401,7 @@ const ENGAGEMENTS: Record<string, SiteEngagement> = {
 const ALERTE_RICHE: SiteBudgetAlert = {
   id: 'alerte-riche-01',
   siteId: SITE_RICHE,
-  siteLabel: 'Villa duplex — Kipé Centre',
+  siteLabel: 'Villa duplex — Angré Centre',
   budgetId: BUDGET_RICHE.id,
   thresholdPercent: 80,
   engagedAmount: 21_600_000,
@@ -416,7 +416,7 @@ const ALERTE_RICHE: SiteBudgetAlert = {
 const ALERTE_SANS_BIEN: SiteBudgetAlert = {
   id: 'alerte-sans-bien-01',
   siteId: SITE_SANS_BIEN,
-  siteLabel: 'Terrain loué — Nongo',
+  siteLabel: 'Terrain loué — Riviera',
   budgetId: BUDGET_SANS_BIEN.id,
   thresholdPercent: 100,
   engagedAmount: 4_000_000,
@@ -437,8 +437,8 @@ const ALERTES: SiteBudgetAlert[] = [ALERTE_RICHE, ALERTE_SANS_BIEN];
 const LIGNES_TABLEAU_DE_BORD: SiteDashboardRow[] = [
   {
     siteId: SITE_RICHE,
-    siteLabel: 'Villa duplex — Kipé Centre',
-    zone: 'Kipé, Ratoma',
+    siteLabel: 'Villa duplex — Angré Centre',
+    zone: 'Angré, Cocody',
     status: 'IN_PROGRESS',
     initialBudget: BUDGET_RICHE.totalForecast,
     // Révisé = initial (25 500 000) + avenants VALIDÉS (1 200 000) ; l'avenant
@@ -455,8 +455,8 @@ const LIGNES_TABLEAU_DE_BORD: SiteDashboardRow[] = [
   },
   {
     siteId: SITE_SANS_BIEN,
-    siteLabel: 'Terrain loué — Nongo',
-    zone: 'Nongo, Ratoma',
+    siteLabel: 'Terrain loué — Riviera',
+    zone: 'Riviera, Cocody',
     status: 'IN_PROGRESS',
     initialBudget: BUDGET_SANS_BIEN.totalForecast,
     revisedBudget: BUDGET_SANS_BIEN.totalForecast,
@@ -471,8 +471,8 @@ const LIGNES_TABLEAU_DE_BORD: SiteDashboardRow[] = [
   },
   {
     siteId: SITE_NOUVEAU,
-    siteLabel: 'Extension villa — Lambanyi',
-    zone: 'Lambanyi, Ratoma',
+    siteLabel: 'Extension villa — Bingerville',
+    zone: 'Bingerville, Abidjan',
     status: 'PLANNED',
     // Pas encore de budget : les trois champs qui en dépendent sont nuls,
     // sans que ce soit une panne (même doctrine que `finance-mock-chantiers.ts`
@@ -515,7 +515,7 @@ export function repondreLot3(chemin: string, scenario: Scenario): unknown | null
         ...BUDGET_RICHE,
         status: 'VALIDATED' as const,
         validatedAt: new Date().toISOString(),
-        validatedByLabel: 'Mamadou Bah'
+        validatedByLabel: 'Mamadou Konan'
       }
     };
   }

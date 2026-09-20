@@ -50,7 +50,7 @@ function penalite(overrides: Record<string, unknown> = {}) {
     tenant_id: 'agence-1',
     installment_id: 'ech-1',
     amount: 132_500,
-    currency: 'GNF',
+    currency: 'XOF',
     days_late: 10,
     calculated_at: '2026-04-15T00:00:00.000Z',
     adjusted_amount: null,
@@ -89,11 +89,11 @@ describe('Pénalités — montant retenu', () => {
     // de « ajusté à zéro ».
     mount([penalite({ adjusted_amount: 0, adjustment_reason: 'Annulée, erreur de date de valeur' })]);
 
-    const cellules = await screen.findAllByText(/GNF/, {}, { timeout: 8000 });
+    const cellules = await screen.findAllByText(/XOF/, {}, { timeout: 8000 });
     // `MoneyValue` sépare le nombre de la devise par une espace insécable :
     // comparer sur une espace ordinaire échouerait sans rien dire du code.
     const textes = cellules.map(c => c.textContent?.replace(/\s/g, ' '));
-    expect(textes.some(t => t?.trim() === '0 GNF')).toBe(true);
+    expect(textes.some(t => t?.trim() === '0 XOF')).toBe(true);
     // Le montant calculé reste visible : on doit pouvoir vérifier ce qui a été
     // annulé, pas seulement constater qu'il ne reste rien.
     expect(textes.some(t => t?.includes('132 500'))).toBe(true);
@@ -101,7 +101,7 @@ describe('Pénalités — montant retenu', () => {
 
   it('retient le montant calculé quand aucun ajustement n’existe', async () => {
     mount([penalite()]);
-    const montants = await screen.findAllByText(/132\s500\sGNF/, {}, { timeout: 8000 });
+    const montants = await screen.findAllByText(/132\s500\sXOF/, {}, { timeout: 8000 });
     // Une fois en « montant calculé », une fois en « montant retenu ».
     expect(montants.length).toBeGreaterThanOrEqual(2);
   });

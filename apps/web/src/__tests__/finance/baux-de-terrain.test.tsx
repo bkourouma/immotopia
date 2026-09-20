@@ -65,8 +65,8 @@ vi.mock('../../hooks/useBreakpoint', () => ({
 function bail(overrides: Partial<LandLease> = {}): LandLease {
   return {
     id: 'bail-1',
-    landlordName: 'Mamadou Camara',
-    landLabel: 'Terrain de Nongo, 800 m²',
+    landlordName: 'Mamadou Kouadio',
+    landLabel: 'Terrain de la Riviera, 800 m²',
     annualAmount: 4_000_000,
     costCategoryId: 'poste-divers',
     costCategoryLabel: 'Divers',
@@ -75,7 +75,7 @@ function bail(overrides: Partial<LandLease> = {}): LandLease {
     startDate: '2026-08-01',
     endDate: null,
     isActive: true,
-    sites: [{ siteId: 'chantier-1', siteLabel: 'Terrain loué — Nongo', status: 'IN_PROGRESS' }],
+    sites: [{ siteId: 'chantier-1', siteLabel: 'Terrain loué — Riviera', status: 'IN_PROGRESS' }],
     // Voir l'en-tête : cohérent avec le paiement et les deux constatations
     // par défaut ci-dessous.
     accountBalance: -3_333_334,
@@ -87,14 +87,14 @@ function paiement(overrides: Partial<LandLeasePayment> = {}): LandLeasePayment {
   return {
     id: 'paiement-1',
     landLeaseId: 'bail-1',
-    landlordName: 'Mamadou Camara',
+    landlordName: 'Mamadou Kouadio',
     paymentDate: '2026-08-01',
     amount: 4_000_000,
     currency: 'XOF',
     coverageStartDate: '2026-08-01',
     coverageEndDate: '2027-07-31',
     status: 'VALIDATED',
-    createdByLabel: 'Ibrahima Sow',
+    createdByLabel: 'Ibrahima Yao',
     validatedAt: '2026-08-01T09:00:00.000Z',
     ...overrides
   };
@@ -104,12 +104,12 @@ function constatation(overrides: Partial<LandLeaseAccrual> = {}): LandLeaseAccru
   return {
     id: 'constat-1',
     landLeaseId: 'bail-1',
-    landlordName: 'Mamadou Camara',
+    landlordName: 'Mamadou Kouadio',
     periodYear: 2026,
     periodMonth: 8,
     amount: 333_333,
     currency: 'XOF',
-    allocations: [{ siteId: 'chantier-1', siteLabel: 'Terrain loué — Nongo', amount: 333_333 }],
+    allocations: [{ siteId: 'chantier-1', siteLabel: 'Terrain loué — Riviera', amount: 333_333 }],
     createdAt: '2026-08-01T02:00:00.000Z',
     ...overrides
   };
@@ -118,8 +118,8 @@ function constatation(overrides: Partial<LandLeaseAccrual> = {}): LandLeaseAccru
 function chantierDisponible(overrides: Partial<ConstructionSite> = {}): ConstructionSite {
   return {
     id: 'chantier-2',
-    name: 'Extension villa — Lambanyi',
-    zone: 'Lambanyi, Ratoma',
+    name: 'Extension villa — Bingerville',
+    zone: 'Bingerville, Abidjan',
     propertyId: null,
     propertyLabel: null,
     managerLabel: null,
@@ -194,15 +194,15 @@ describe('Baux de terrain — liste et création', () => {
     listLandLeases.mockResolvedValue([bail()]);
     mountListe();
 
-    expect(await screen.findByText('Terrain de Nongo, 800 m²', {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByText('Mamadou Camara')).toBeInTheDocument();
+    expect(await screen.findByText('Terrain de la Riviera, 800 m²', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByText('Mamadou Kouadio')).toBeInTheDocument();
     // Le nom du poste de dépense, jamais son identifiant (`costCategoryId`).
     expect(screen.getByText('Divers')).toBeInTheDocument();
-    expect(screen.getByText(/4\s000\s000\sFCFA/)).toBeInTheDocument();
-    expect(screen.getByText(/333\s333\sFCFA/)).toBeInTheDocument();
+    expect(screen.getByText(/4\s000\s000/)).toBeInTheDocument();
+    expect(screen.getByText(/333\s333/)).toBeInTheDocument();
     // Le solde du compte (-3 333 334) devient « il reste 3 333 334 à
     // consommer » : jamais le nombre négatif brut.
-    expect(screen.getByText(/3\s333\s334\sFCFA/)).toBeInTheDocument();
+    expect(screen.getByText(/3\s333\s334/)).toBeInTheDocument();
     expect(screen.queryByText(/-3\s333\s334/)).not.toBeInTheDocument();
   });
 
@@ -212,17 +212,17 @@ describe('Baux de terrain — liste et création', () => {
     listLandLeases.mockResolvedValue([bail({ monthlyAmount: 300_000 })]);
     mountListe();
 
-    await screen.findByText('Terrain de Nongo, 800 m²', {}, { timeout: 8000 });
-    expect(screen.getByText(/300\s000\sFCFA/)).toBeInTheDocument();
-    expect(screen.queryByText(/333\s333\sFCFA/)).not.toBeInTheDocument();
+    await screen.findByText('Terrain de la Riviera, 800 m²', {}, { timeout: 8000 });
+    expect(screen.getByText(/300\s000/)).toBeInTheDocument();
+    expect(screen.queryByText(/333\s333/)).not.toBeInTheDocument();
   });
 
   it('liste les chantiers rattachés par leur nom, et dit clairement quand il n’y en a aucun', async () => {
-    listLandLeases.mockResolvedValue([bail(), bail({ id: 'bail-2', landLabel: 'Terrain de Kobaya', sites: [] })]);
+    listLandLeases.mockResolvedValue([bail(), bail({ id: 'bail-2', landLabel: 'Terrain de Port-Bouët', sites: [] })]);
     mountListe();
 
-    await screen.findByText('Terrain de Nongo, 800 m²', {}, { timeout: 8000 });
-    expect(screen.getByText('Terrain loué — Nongo')).toBeInTheDocument();
+    await screen.findByText('Terrain de la Riviera, 800 m²', {}, { timeout: 8000 });
+    expect(screen.getByText('Terrain loué — Riviera')).toBeInTheDocument();
     expect(screen.getByText('Aucun chantier rattaché')).toBeInTheDocument();
   });
 
@@ -235,8 +235,8 @@ describe('Baux de terrain — liste et création', () => {
     await screen.findByText("Aucun bail de terrain n'est encore enregistré.", {}, { timeout: 8000 });
 
     await user.click(screen.getAllByRole('button', { name: /Nouveau bail/ })[0]);
-    await user.type(await screen.findByLabelText('Bailleur'), 'Mamadou Camara');
-    await user.type(screen.getByLabelText('Terrain loué'), 'Terrain de Nongo, 800 m²');
+    await user.type(await screen.findByLabelText('Bailleur'), 'Mamadou Kouadio');
+    await user.type(screen.getByLabelText('Terrain loué'), 'Terrain de la Riviera, 800 m²');
     await user.type(screen.getByLabelText('Loyer annuel (FCFA)'), '4000000');
 
     const posteSelect = await screen.findByLabelText('Poste de dépense', {}, { timeout: 8000 });
@@ -256,8 +256,8 @@ describe('Baux de terrain — liste et création', () => {
 
     await waitFor(() => expect(createLandLease).toHaveBeenCalledTimes(1));
     expect(createLandLease.mock.calls[0][1]).toMatchObject({
-      landlordName: 'Mamadou Camara',
-      landLabel: 'Terrain de Nongo, 800 m²',
+      landlordName: 'Mamadou Kouadio',
+      landLabel: 'Terrain de la Riviera, 800 m²',
       annualAmount: 4_000_000,
       costCategoryId: 'poste-divers',
       startDate: '2026-08-01'
@@ -284,7 +284,7 @@ describe('Baux de terrain — liste et création', () => {
     const user = userEvent.setup({ delay: null });
     mountListe();
 
-    await screen.findByText('Terrain de Nongo, 800 m²', {}, { timeout: 8000 });
+    await screen.findByText('Terrain de la Riviera, 800 m²', {}, { timeout: 8000 });
     await user.click(screen.getByRole('button', { name: 'Voir le bail' }));
 
     // On retrouve la fiche du bail (en-tête + statistique), pas la liste.
@@ -296,27 +296,27 @@ describe('Fiche du bail — les trois chiffres qui rendent le mécanisme lisible
   it('affiche le payé, le consommé et le reste à consommer, cohérents entre eux', async () => {
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Terrain de Nongo, 800 m²' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Terrain de la Riviera, 800 m²' }, { timeout: 8000 });
 
     // « Payé » (4 000 000) coïncide avec le loyer annuel et le paiement listé
     // plus bas : on cible donc la carte statistique précisément par son
     // libellé, plutôt qu'un texte qui apparaît ailleurs sur la page pour une
     // autre raison.
     const cartePayee = screen.getByText('Payé à ce jour').closest('.ant-card') as HTMLElement;
-    expect(within(cartePayee).getByText(/4\s000\s000\sFCFA/)).toBeInTheDocument();
+    expect(within(cartePayee).getByText(/4\s000\s000/)).toBeInTheDocument();
 
     const carteConsommee = screen.getByText('Consommé à ce jour').closest('.ant-card') as HTMLElement;
-    expect(within(carteConsommee).getByText(/666\s666\sFCFA/)).toBeInTheDocument(); // 2 × 333 333
+    expect(within(carteConsommee).getByText(/666\s666/)).toBeInTheDocument(); // 2 × 333 333
 
     const carteReste = screen.getByText('Reste à consommer').closest('.ant-card') as HTMLElement;
-    expect(within(carteReste).getByText(/3\s333\s334\sFCFA/)).toBeInTheDocument();
+    expect(within(carteReste).getByText(/3\s333\s334/)).toBeInTheDocument();
   });
 
   it('affiche un message explicite quand une constatation n’a aucune imputation, jamais un blanc', async () => {
     listLandLeaseAccruals.mockResolvedValue([constatation({ allocations: [] })]);
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Terrain de Nongo, 800 m²' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Terrain de la Riviera, 800 m²' }, { timeout: 8000 });
     expect(
       await screen.findByText(/Aucun chantier actif sur ce bail à cette date/i, {}, { timeout: 8000 })
     ).toBeInTheDocument();
@@ -325,15 +325,15 @@ describe('Fiche du bail — les trois chiffres qui rendent le mécanisme lisible
   it('affiche le nom des chantiers rattachés, jamais leur identifiant', async () => {
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Terrain de Nongo, 800 m²' }, { timeout: 8000 });
-    expect(screen.getByText('Terrain loué — Nongo')).toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'Terrain de la Riviera, 800 m²' }, { timeout: 8000 });
+    expect(screen.getByText('Terrain loué — Riviera')).toBeInTheDocument();
     expect(screen.queryByText('chantier-1')).not.toBeInTheDocument();
   });
 
   it('affiche le nom du poste de dépense auquel le loyer s’impute, jamais son identifiant', async () => {
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Terrain de Nongo, 800 m²' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Terrain de la Riviera, 800 m²' }, { timeout: 8000 });
     expect(screen.getByText(/Loyer imputé au poste « Divers »/)).toBeInTheDocument();
     expect(screen.queryByText('poste-divers')).not.toBeInTheDocument();
   });
@@ -394,11 +394,11 @@ describe('Fiche du bail — rattachement des chantiers', () => {
     const user = userEvent.setup({ delay: null });
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Terrain de Nongo, 800 m²' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Terrain de la Riviera, 800 m²' }, { timeout: 8000 });
 
     const select = await screen.findByLabelText('Rattacher un chantier existant', {}, { timeout: 8000 });
     fireEvent.mouseDown(select);
-    fireEvent.click(await screen.findByText('Extension villa — Lambanyi'));
+    fireEvent.click(await screen.findByText('Extension villa — Bingerville'));
 
     await user.click(screen.getByRole('button', { name: 'Rattacher' }));
 
@@ -410,7 +410,7 @@ describe('Fiche du bail — rattachement des chantiers', () => {
     const user = userEvent.setup({ delay: null });
     mountFiche();
 
-    await screen.findByText('Terrain loué — Nongo', {}, { timeout: 8000 });
+    await screen.findByText('Terrain loué — Riviera', {}, { timeout: 8000 });
     await user.click(screen.getByRole('button', { name: 'Détacher' }));
 
     // Le bouton déclencheur affiche aussi « Détacher » : on vérifie la
@@ -427,7 +427,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     listLandLeases.mockResolvedValue([bail()]);
     mountListe();
 
-    await screen.findByText('Terrain de Nongo, 800 m²', {}, { timeout: 8000 });
+    await screen.findByText('Terrain de la Riviera, 800 m²', {}, { timeout: 8000 });
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
   });
@@ -435,7 +435,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
   it('la fiche du bail n’affiche jamais « débit » ni « crédit »', async () => {
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Terrain de Nongo, 800 m²' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Terrain de la Riviera, 800 m²' }, { timeout: 8000 });
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
   });

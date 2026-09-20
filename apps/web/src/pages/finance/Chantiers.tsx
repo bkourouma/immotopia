@@ -192,7 +192,11 @@ export const Chantiers: React.FC = () => {
     <>
       <PageHeader
         title={t('Chantiers')}
-        subtitle={chantiers.length > 0 ? `${chantiers.length} chantier${chantiers.length > 1 ? 's' : ''}` : undefined}
+        subtitle={
+          chantiers.length > 0
+            ? t('{{nombre}} chantier{{s}}', { nombre: chantiers.length, s: chantiers.length > 1 ? 's' : '' })
+            : undefined
+        }
         primaryAction={{ label: t('Nouveau chantier'), icon: <PlusOutlined />, onClick: ouvrirCreation }}
       />
 
@@ -269,7 +273,7 @@ export const Chantiers: React.FC = () => {
               id="chantier-nom"
               value={nom}
               onChange={event => setNom(event.target.value)}
-              placeholder={t('Ex. Villa duplex — Kipé Centre')}
+              placeholder={t('Ex. Villa duplex — Angré Centre')}
             />
           </div>
           <div>
@@ -278,7 +282,7 @@ export const Chantiers: React.FC = () => {
               id="chantier-zone"
               value={zone}
               onChange={event => setZone(event.target.value)}
-              placeholder={t('Ex. Kipé, Ratoma')}
+              placeholder={t('Ex. Angré, Cocody')}
             />
           </div>
           <div>

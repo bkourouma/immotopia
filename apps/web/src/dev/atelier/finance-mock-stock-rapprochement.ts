@@ -116,7 +116,7 @@ function ligne(
 /** Pas au stock, et rien ne s'y est encore passé. */
 const RAPPROCHEMENT_NON_BASCULE: SiteStockReconciliation = {
   siteId: NON_BASCULE,
-  siteLabel: 'Villa de Kipé',
+  siteLabel: "Villa d'Angré",
   stockEnabledAt: null,
   invoicedAmount: 0,
   receivedValue: 0,
@@ -137,7 +137,7 @@ const RAPPROCHEMENT_NON_BASCULE: SiteStockReconciliation = {
  */
 const RAPPROCHEMENT_NON_BASCULE_CONSOMME: SiteStockReconciliation = {
   siteId: NON_BASCULE_CONSOMME,
-  siteLabel: 'Résidence de Ratoma',
+  siteLabel: 'Résidence de Cocody',
   stockEnabledAt: null,
   // Pas de période de bascule : aucune facture n'est confrontée, et l'écart
   // n'est PAS la soustraction — il est posé à zéro par le serveur.
@@ -178,7 +178,7 @@ const RAPPROCHEMENT_NON_BASCULE_CONSOMME: SiteStockReconciliation = {
  */
 const RAPPROCHEMENT_ECART: SiteStockReconciliation = {
   siteId: ECART,
-  siteLabel: 'Immeuble de Kaloum',
+  siteLabel: 'Immeuble du Plateau',
   stockEnabledAt: '2026-06-01T08:00:00.000Z',
   invoicedAmount: 12_000_000,
   receivedValue: 11_100_000,
@@ -242,7 +242,7 @@ const RAPPROCHEMENT_ECART: SiteStockReconciliation = {
  */
 const RAPPROCHEMENT_TRANSFERTS: SiteStockReconciliation = {
   siteId: TRANSFERTS,
-  siteLabel: 'Villa de Nongo',
+  siteLabel: 'Villa de la Riviera',
   stockEnabledAt: '2026-07-15T09:30:00.000Z',
   invoicedAmount: 0,
   receivedValue: 0,
@@ -284,7 +284,7 @@ const RAPPROCHEMENT_TRANSFERTS: SiteStockReconciliation = {
 /** Passé au stock, et le facturé coïncide avec ce qui est entré. */
 const RAPPROCHEMENT_SANS_ECART: SiteStockReconciliation = {
   siteId: SANS_ECART,
-  siteLabel: 'Entrepôt de Coyah',
+  siteLabel: 'Entrepôt de Bouaké',
   stockEnabledAt: '2026-05-02T07:45:00.000Z',
   invoicedAmount: 4_500_000,
   receivedValue: 4_500_000,
@@ -324,9 +324,9 @@ const RAPPROCHEMENTS: Record<string, SiteStockReconciliation> = {
  * rien n'est « entré » ni « restant » chez eux, même quand ils ont consommé.
  */
 const LIEUX: Record<string, { id: string; label: string }> = {
-  [ECART]: { id: 'lieu-kaloum-11', label: 'Chantier Immeuble de Kaloum' },
-  [TRANSFERTS]: { id: 'lieu-nongo-12', label: 'Chantier Villa de Nongo' },
-  [SANS_ECART]: { id: 'lieu-coyah-13', label: 'Chantier Entrepôt de Coyah' }
+  [ECART]: { id: 'lieu-plateau-11', label: 'Chantier Immeuble du Plateau' },
+  [TRANSFERTS]: { id: 'lieu-riviera-12', label: 'Chantier Villa de la Riviera' },
+  [SANS_ECART]: { id: 'lieu-bouake-13', label: 'Chantier Entrepôt de Bouaké' }
 };
 
 function rapprochementDe(siteId: string): SiteStockReconciliation {

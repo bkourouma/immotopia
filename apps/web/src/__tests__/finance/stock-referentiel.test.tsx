@@ -85,8 +85,8 @@ const patch = apiClient.patch as unknown as ReturnType<typeof vi.fn>;
 const TENANT = 'agence-1';
 const CIMENT = 'article-ciment-01';
 const MAGASIN = 'lieu-magasin-01';
-const CHANTIER_NONGO = 'chantier-nongo';
-const CHANTIER_KIPE = 'chantier-kipe';
+const CHANTIER_RIVIERA = 'chantier-riviera';
+const CHANTIER_ANGRE = 'chantier-angre';
 const POSTE_GROS_OEUVRE = '3f1b1c2a-0000-4000-8000-000000000001';
 
 /** L'adresse et le corps du dernier appel, pour se lire d'un coup d'œil. */
@@ -146,7 +146,7 @@ function magasin(overrides: Partial<StockLocation> = {}): StockLocation {
     id: MAGASIN,
     tenantId: TENANT,
     kind: 'WAREHOUSE',
-    label: 'Magasin central de Kipé',
+    label: "Magasin central d'Angré",
     siteId: null,
     siteLabel: null,
     isActive: true,
@@ -154,14 +154,14 @@ function magasin(overrides: Partial<StockLocation> = {}): StockLocation {
   };
 }
 
-function depotNongo(overrides: Partial<StockLocation> = {}): StockLocation {
+function depotRiviera(overrides: Partial<StockLocation> = {}): StockLocation {
   return {
-    id: 'lieu-nongo-02',
+    id: 'lieu-riviera-02',
     tenantId: TENANT,
     kind: 'SITE',
-    label: 'Dépôt de la Villa de Nongo',
-    siteId: CHANTIER_NONGO,
-    siteLabel: 'Villa de Nongo',
+    label: 'Dépôt de la Villa Riviera',
+    siteId: CHANTIER_RIVIERA,
+    siteLabel: 'Villa de la Riviera',
     isActive: true,
     ...overrides
   };
@@ -187,7 +187,7 @@ function configurerGet(
   } = {}
 ) {
   const articles = options.articles ?? [ciment(), sable()];
-  const lieux = options.lieux ?? [magasin(), depotNongo()];
+  const lieux = options.lieux ?? [magasin(), depotRiviera()];
   const reglages = options.reglages ?? decisionArretee();
 
   get.mockImplementation(async (url: string) => {
@@ -217,8 +217,8 @@ function configurerGet(
       return {
         data: {
           data: [
-            { id: CHANTIER_NONGO, name: 'Villa de Nongo', status: 'IN_PROGRESS', currency: 'XOF' },
-            { id: CHANTIER_KIPE, name: 'Résidence de Kipé', status: 'IN_PROGRESS', currency: 'XOF' }
+            { id: CHANTIER_RIVIERA, name: 'Villa de la Riviera', status: 'IN_PROGRESS', currency: 'XOF' },
+            { id: CHANTIER_ANGRE, name: "Résidence d'Angré", status: 'IN_PROGRESS', currency: 'XOF' }
           ]
         }
       };
@@ -254,7 +254,7 @@ function monter(url = `/tenant/${TENANT}/finance/stock/parametrage`) {
 /** Ouvre l'onglet des lieux et attend qu'il soit rendu. */
 async function ouvrirOngletLieux(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole('tab', { name: 'Lieux de stockage' }));
-  await screen.findByText('Magasin central de Kipé', {}, { timeout: 8000 });
+  await screen.findByText("Magasin central d'Angré", {}, { timeout: 8000 });
 }
 
 /** Ouvre l'onglet de la méthode et attend qu'il soit rendu. */
@@ -432,7 +432,7 @@ describe('Changer l’unité d’un article avertit AVANT d’envoyer', () => {
 describe('Le sélecteur de chantier n’existe que pour un lieu de chantier', () => {
   it('un magasin ne montre aucun chantier, et son corps n’en porte aucun', async () => {
     const user = userEvent.setup({ delay: null });
-    post.mockResolvedValue({ data: { data: magasin({ label: 'Magasin de Matoto' }) } });
+    post.mockResolvedValue({ data: { data: magasin({ label: 'Magasin de Koumassi' }) } });
     monter();
 
     await ouvrirOngletLieux(user);
@@ -443,20 +443,20 @@ describe('Le sélecteur de chantier n’existe que pour un lieu de chantier', ()
     // magasin, plutôt que de l'ignorer.
     expect(within(dialogue).queryByLabelText('Chantier')).not.toBeInTheDocument();
 
-    await user.type(within(dialogue).getByLabelText('Libellé'), 'Magasin de Matoto');
+    await user.type(within(dialogue).getByLabelText('Libellé'), 'Magasin de Koumassi');
     await user.click(screen.getByRole('button', { name: 'Enregistrer le lieu' }));
 
     await waitFor(() => expect(post).toHaveBeenCalled());
     const { adresse, corps } = dernierAppel(post);
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/locations`);
-    expect(corps).toEqual({ kind: 'WAREHOUSE', label: 'Magasin de Matoto' });
+    expect(corps).toEqual({ kind: 'WAREHOUSE', label: 'Magasin de Koumassi' });
     expect(corps).not.toHaveProperty('siteId');
     expect(corps).not.toHaveProperty('tenantId');
   }, 30000);
 
   it('un lieu de chantier exige son chantier, et l’envoie dans le corps', async () => {
     const user = userEvent.setup({ delay: null });
-    post.mockResolvedValue({ data: { data: depotNongo({ label: 'Dépôt de Kipé', siteId: CHANTIER_KIPE }) } });
+    post.mockResolvedValue({ data: { data: depotRiviera({ label: "Dépôt d'Angré", siteId: CHANTIER_ANGRE }) } });
     monter();
 
     await ouvrirOngletLieux(user);
@@ -468,9 +468,9 @@ describe('Le sélecteur de chantier n’existe que pour un lieu de chantier', ()
     const chantier = await within(dialogue).findByLabelText('Chantier');
     expect(chantier).toBeInTheDocument();
 
-    await user.type(within(dialogue).getByLabelText('Libellé'), 'Dépôt de Kipé');
+    await user.type(within(dialogue).getByLabelText('Libellé'), "Dépôt d'Angré");
     fireEvent.mouseDown(chantier);
-    fireEvent.click(await screen.findByText('Résidence de Kipé', { selector: '.ant-select-item-option-content' }));
+    fireEvent.click(await screen.findByText("Résidence d'Angré", { selector: '.ant-select-item-option-content' }));
 
     const valider = screen.getByRole('button', { name: 'Enregistrer le lieu' });
     await waitFor(() => expect(valider).not.toBeDisabled());
@@ -479,7 +479,7 @@ describe('Le sélecteur de chantier n’existe que pour un lieu de chantier', ()
     await waitFor(() => expect(post).toHaveBeenCalled());
     const { adresse, corps } = dernierAppel(post);
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/locations`);
-    expect(corps).toEqual({ kind: 'SITE', label: 'Dépôt de Kipé', siteId: CHANTIER_KIPE });
+    expect(corps).toEqual({ kind: 'SITE', label: "Dépôt d'Angré", siteId: CHANTIER_ANGRE });
   }, 30000);
 
   it('avertit qu’un chantier n’a qu’un seul lieu quand celui choisi en a déjà un', async () => {
@@ -491,10 +491,10 @@ describe('Le sélecteur de chantier n’existe que pour un lieu de chantier', ()
 
     const dialogue = await screen.findByRole('dialog');
     await user.click(within(dialogue).getByRole('radio', { name: 'Lieu de chantier' }));
-    await user.type(within(dialogue).getByLabelText('Libellé'), 'Second dépôt de Nongo');
+    await user.type(within(dialogue).getByLabelText('Libellé'), 'Second dépôt de la Riviera');
 
     fireEvent.mouseDown(await within(dialogue).findByLabelText('Chantier'));
-    fireEvent.click(await screen.findByText('Villa de Nongo', { selector: '.ant-select-item-option-content' }));
+    fireEvent.click(await screen.findByText('Villa de la Riviera', { selector: '.ant-select-item-option-content' }));
 
     // Averti sans être bloqué : la liste affichée peut être filtrée, et le
     // serveur reste la seule autorité.
@@ -504,7 +504,7 @@ describe('Le sélecteur de chantier n’existe que pour un lieu de chantier', ()
 
   it('repasser en magasin oublie le chantier : il ne part jamais dans le corps d’un magasin', async () => {
     const user = userEvent.setup({ delay: null });
-    post.mockResolvedValue({ data: { data: magasin({ label: 'Magasin de Matoto' }) } });
+    post.mockResolvedValue({ data: { data: magasin({ label: 'Magasin de Koumassi' }) } });
     monter();
 
     await ouvrirOngletLieux(user);
@@ -513,17 +513,17 @@ describe('Le sélecteur de chantier n’existe que pour un lieu de chantier', ()
     const dialogue = await screen.findByRole('dialog');
     await user.click(within(dialogue).getByRole('radio', { name: 'Lieu de chantier' }));
     fireEvent.mouseDown(await within(dialogue).findByLabelText('Chantier'));
-    fireEvent.click(await screen.findByText('Résidence de Kipé', { selector: '.ant-select-item-option-content' }));
+    fireEvent.click(await screen.findByText("Résidence d'Angré", { selector: '.ant-select-item-option-content' }));
 
     // Retour en magasin : le chantier disparaît de l'écran ET du corps.
     await user.click(within(dialogue).getByRole('radio', { name: 'Magasin' }));
     await waitFor(() => expect(within(dialogue).queryByLabelText('Chantier')).not.toBeInTheDocument());
 
-    await user.type(within(dialogue).getByLabelText('Libellé'), 'Magasin de Matoto');
+    await user.type(within(dialogue).getByLabelText('Libellé'), 'Magasin de Koumassi');
     await user.click(screen.getByRole('button', { name: 'Enregistrer le lieu' }));
 
     await waitFor(() => expect(post).toHaveBeenCalled());
-    expect(dernierAppel(post).corps).toEqual({ kind: 'WAREHOUSE', label: 'Magasin de Matoto' });
+    expect(dernierAppel(post).corps).toEqual({ kind: 'WAREHOUSE', label: 'Magasin de Koumassi' });
   }, 30000);
 });
 
@@ -589,7 +589,7 @@ describe('Ce qui ne se corrige pas n’est pas proposé', () => {
     monter();
 
     await ouvrirOngletLieux(user);
-    const ligne = screen.getByText('Dépôt de la Villa de Nongo').closest('tr') as HTMLElement;
+    const ligne = screen.getByText('Dépôt de la Villa Riviera').closest('tr') as HTMLElement;
     await user.click(within(ligne).getByRole('button', { name: 'Corriger le libellé' }));
 
     const dialogue = await screen.findByRole('dialog');
@@ -603,17 +603,17 @@ describe('Ce qui ne se corrige pas n’est pas proposé', () => {
 
   it('la correction d’un lieu n’envoie que le libellé', async () => {
     const user = userEvent.setup({ delay: null });
-    patch.mockResolvedValue({ data: { data: magasin({ label: 'Magasin central de Kipé (bâtiment B)' }) } });
+    patch.mockResolvedValue({ data: { data: magasin({ label: "Magasin central d'Angré (bâtiment B)" }) } });
     monter();
 
     await ouvrirOngletLieux(user);
-    const ligne = screen.getByText('Magasin central de Kipé').closest('tr') as HTMLElement;
+    const ligne = screen.getByText("Magasin central d'Angré").closest('tr') as HTMLElement;
     await user.click(within(ligne).getByRole('button', { name: 'Corriger le libellé' }));
 
     const dialogue = await screen.findByRole('dialog');
     const libelle = within(dialogue).getByLabelText('Libellé');
     await user.clear(libelle);
-    await user.type(libelle, 'Magasin central de Kipé (bâtiment B)');
+    await user.type(libelle, "Magasin central d'Angré (bâtiment B)");
 
     const valider = screen.getByRole('button', { name: 'Enregistrer le libellé' });
     await waitFor(() => expect(valider).not.toBeDisabled());
@@ -622,7 +622,7 @@ describe('Ce qui ne se corrige pas n’est pas proposé', () => {
     await waitFor(() => expect(patch).toHaveBeenCalled());
     const { adresse, corps } = dernierAppel(patch);
     expect(adresse).toBe(`/tenants/${TENANT}/finance/stock/locations/${MAGASIN}`);
-    expect(corps).toEqual({ label: 'Magasin central de Kipé (bâtiment B)' });
+    expect(corps).toEqual({ label: "Magasin central d'Angré (bâtiment B)" });
     expect(corps).not.toHaveProperty('kind');
     expect(corps).not.toHaveProperty('siteId');
     expect(corps).not.toHaveProperty('locationId');
@@ -700,7 +700,7 @@ describe('Aucun bouton de suppression : désactiver n’est pas supprimer', () =
     monter();
 
     await user.click(screen.getByRole('tab', { name: 'Lieux de stockage' }));
-    const carte = await screen.findByRole('article', { name: 'Magasin central de Kipé' }, { timeout: 8000 });
+    const carte = await screen.findByRole('article', { name: "Magasin central d'Angré" }, { timeout: 8000 });
 
     await user.click(within(carte).getByRole('button', { name: 'Autres actions' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Désactiver' }));
@@ -957,9 +957,9 @@ describe('Les refus du serveur sont relayés tels quels', () => {
 
     const dialogue = await screen.findByRole('dialog');
     await user.click(within(dialogue).getByRole('radio', { name: 'Lieu de chantier' }));
-    await user.type(within(dialogue).getByLabelText('Libellé'), 'Second dépôt de Nongo');
+    await user.type(within(dialogue).getByLabelText('Libellé'), 'Second dépôt de la Riviera');
     fireEvent.mouseDown(await within(dialogue).findByLabelText('Chantier'));
-    fireEvent.click(await screen.findByText('Villa de Nongo', { selector: '.ant-select-item-option-content' }));
+    fireEvent.click(await screen.findByText('Villa de la Riviera', { selector: '.ant-select-item-option-content' }));
 
     const valider = screen.getByRole('button', { name: 'Enregistrer le lieu' });
     await waitFor(() => expect(valider).not.toBeDisabled());
@@ -1031,8 +1031,8 @@ describe('Vocabulaire (P-1 du PRD)', () => {
 
     await ouvrirOngletLieux(user);
     expect(screen.queryByText(MAGASIN)).not.toBeInTheDocument();
-    expect(screen.queryByText(CHANTIER_NONGO)).not.toBeInTheDocument();
+    expect(screen.queryByText(CHANTIER_RIVIERA)).not.toBeInTheDocument();
     // Le nom du chantier, lui, est bien là.
-    expect(screen.getAllByText('Villa de Nongo').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('Villa de la Riviera').length).toBeGreaterThanOrEqual(1);
   }, 30000);
 });

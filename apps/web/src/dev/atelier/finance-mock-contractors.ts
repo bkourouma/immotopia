@@ -26,15 +26,15 @@
  * confondent jamais (« marché restant » = ce qui reste à exécuter ;
  * « ce qu'on lui doit » = ce qui reste à payer) :
  *
- * - **Sékou Camara** — actif, créancier de 1 250 000. Deux marchés : l'un en
- *   cours (`marche-camara-01`, 7 500 000 situés sur 12 000 000), l'autre en
- *   **dépassement** (`marche-camara-02`, `remainingAmount` négatif et
+ * - **Sékou Kouadio** — actif, créancier de 1 250 000. Deux marchés : l'un en
+ *   cours (`marche-kouadio-01`, 7 500 000 situés sur 12 000 000), l'autre en
+ *   **dépassement** (`marche-kouadio-02`, `remainingAmount` négatif et
  *   `isOverrun` vrai). Ses situations montrent les deux états : une
  *   **validée** et une en **brouillon**.
- * - **Aïssatou Bah** — actif, `accountBalance` **négatif** : elle a reçu une
+ * - **Aïssatou Konan** — actif, `accountBalance` **négatif** : elle a reçu une
  *   avance de 500 000 alors que son marché n'a encore reçu aucune situation.
  *   Le cas qui prouve qu'un marché intact n'empêche pas un compte en avance.
- * - **Mamadou Sylla** — actif, marché **soldé** (`remainingAmount` à zéro,
+ * - **Mamadou Koffi** — actif, marché **soldé** (`remainingAmount` à zéro,
  *   sans dépassement) mais **créancier de 900 000** : le cas exact que l'écran
  *   ne doit jamais mélanger, et que le test dédié de
  *   `__tests__/finance/tacherons.test.tsx` épingle.
@@ -68,29 +68,29 @@ const DEVISE = 'XOF';
 // Les tâcherons
 // ---------------------------------------------------------------------------
 
-const CAMARA = 'tacheron-camara-01';
-const BAH = 'tacheron-bah-02';
-const SYLLA = 'tacheron-sylla-03';
+const KOUADIO = 'tacheron-kouadio-01';
+const KONAN = 'tacheron-konan-02';
+const KOFFI = 'tacheron-koffi-03';
 const TOURE = 'tacheron-toure-04';
 
 const TACHERONS: Contractor[] = [
   {
-    id: CAMARA,
+    id: KOUADIO,
     tenantId: 'agence-1',
-    fullName: 'Sékou Camara',
+    fullName: 'Sékou Kouadio',
     trade: 'Maçonnerie',
-    thirdPartyAccountId: 'compte-tiers-camara',
+    thirdPartyAccountId: 'compte-tiers-kouadio',
     isActive: true,
     // Créancier : des situations validées n'ont pas encore été réglées.
     accountBalance: 1_250_000,
     currency: DEVISE
   },
   {
-    id: BAH,
+    id: KONAN,
     tenantId: 'agence-1',
-    fullName: 'Aïssatou Bah',
+    fullName: 'Aïssatou Konan',
     trade: 'Peinture',
-    thirdPartyAccountId: 'compte-tiers-bah',
+    thirdPartyAccountId: 'compte-tiers-konan',
     isActive: true,
     // NÉGATIF : une avance de 500 000 versée avant toute situation. Son marché
     // est pourtant intact — les deux soldes disent bien deux choses.
@@ -98,13 +98,13 @@ const TACHERONS: Contractor[] = [
     currency: DEVISE
   },
   {
-    id: SYLLA,
+    id: KOFFI,
     tenantId: 'agence-1',
-    fullName: 'Mamadou Sylla',
+    fullName: 'Mamadou Koffi',
     trade: 'Plomberie',
-    thirdPartyAccountId: 'compte-tiers-sylla',
+    thirdPartyAccountId: 'compte-tiers-koffi',
     isActive: true,
-    // Son marché est SOLDÉ (voir `marche-sylla-01`) et il reste néanmoins
+    // Son marché est SOLDÉ (voir `marche-koffi-01`) et il reste néanmoins
     // créancier de toute la somme : le cas que l'écran ne doit jamais
     // mélanger.
     accountBalance: 900_000,
@@ -126,19 +126,19 @@ const TACHERONS: Contractor[] = [
 // Les marchés
 // ---------------------------------------------------------------------------
 
-const MARCHE_CAMARA_EN_COURS = 'marche-camara-01';
-const MARCHE_CAMARA_DEPASSE = 'marche-camara-02';
-const MARCHE_BAH = 'marche-bah-01';
-const MARCHE_SYLLA = 'marche-sylla-01';
+const MARCHE_KOUADIO_EN_COURS = 'marche-kouadio-01';
+const MARCHE_KOUADIO_DEPASSE = 'marche-kouadio-02';
+const MARCHE_KONAN = 'marche-konan-01';
+const MARCHE_KOFFI = 'marche-koffi-01';
 const MARCHE_TOURE = 'marche-toure-01';
 
 const MARCHES: ContractorContract[] = [
   {
-    id: MARCHE_CAMARA_EN_COURS,
-    contractorId: CAMARA,
-    contractorLabel: 'Sékou Camara',
-    siteId: 'chantier-kipe',
-    siteLabel: 'Résidence Kipé',
+    id: MARCHE_KOUADIO_EN_COURS,
+    contractorId: KOUADIO,
+    contractorLabel: 'Sékou Kouadio',
+    siteId: 'chantier-angre',
+    siteLabel: 'Résidence Angré',
     costCategoryId: 'poste-gros-oeuvre',
     costCategoryLabel: 'Gros œuvre',
     reference: 'MAR-2026-011',
@@ -151,11 +151,11 @@ const MARCHES: ContractorContract[] = [
     isOverrun: false
   },
   {
-    id: MARCHE_CAMARA_DEPASSE,
-    contractorId: CAMARA,
-    contractorLabel: 'Sékou Camara',
-    siteId: 'chantier-nongo',
-    siteLabel: 'Villa de Nongo',
+    id: MARCHE_KOUADIO_DEPASSE,
+    contractorId: KOUADIO,
+    contractorLabel: 'Sékou Kouadio',
+    siteId: 'chantier-riviera',
+    siteLabel: 'Villa de la Riviera',
     costCategoryId: 'poste-gros-oeuvre',
     costCategoryLabel: 'Gros œuvre',
     reference: 'MAR-2026-012',
@@ -170,11 +170,11 @@ const MARCHES: ContractorContract[] = [
     isOverrun: true
   },
   {
-    id: MARCHE_BAH,
-    contractorId: BAH,
-    contractorLabel: 'Aïssatou Bah',
-    siteId: 'chantier-kipe',
-    siteLabel: 'Résidence Kipé',
+    id: MARCHE_KONAN,
+    contractorId: KONAN,
+    contractorLabel: 'Aïssatou Konan',
+    siteId: 'chantier-angre',
+    siteLabel: 'Résidence Angré',
     costCategoryId: 'poste-second-oeuvre',
     costCategoryLabel: 'Second œuvre',
     reference: 'MAR-2026-020',
@@ -188,11 +188,11 @@ const MARCHES: ContractorContract[] = [
     isOverrun: false
   },
   {
-    id: MARCHE_SYLLA,
-    contractorId: SYLLA,
-    contractorLabel: 'Mamadou Sylla',
-    siteId: 'chantier-nongo',
-    siteLabel: 'Villa de Nongo',
+    id: MARCHE_KOFFI,
+    contractorId: KOFFI,
+    contractorLabel: 'Mamadou Koffi',
+    siteId: 'chantier-riviera',
+    siteLabel: 'Villa de la Riviera',
     costCategoryId: 'poste-second-oeuvre',
     costCategoryLabel: 'Second œuvre',
     reference: 'MAR-2026-007',
@@ -210,8 +210,8 @@ const MARCHES: ContractorContract[] = [
     id: MARCHE_TOURE,
     contractorId: TOURE,
     contractorLabel: 'Ibrahima Touré',
-    siteId: 'chantier-kipe',
-    siteLabel: 'Résidence Kipé',
+    siteId: 'chantier-angre',
+    siteLabel: 'Résidence Angré',
     costCategoryId: 'poste-second-oeuvre',
     costCategoryLabel: 'Second œuvre',
     reference: 'MAR-2025-044',
@@ -230,41 +230,41 @@ const MARCHES: ContractorContract[] = [
 // ---------------------------------------------------------------------------
 
 const SITUATIONS_PAR_MARCHE: Record<string, ProgressStatement[]> = {
-  [MARCHE_CAMARA_EN_COURS]: [
+  [MARCHE_KOUADIO_EN_COURS]: [
     {
-      id: 'situation-camara-02',
-      contractId: MARCHE_CAMARA_EN_COURS,
+      id: 'situation-kouadio-02',
+      contractId: MARCHE_KOUADIO_EN_COURS,
       contractReference: 'MAR-2026-011',
-      contractorLabel: 'Sékou Camara',
+      contractorLabel: 'Sékou Kouadio',
       statementDate: '2026-09-10',
       amount: 2_500_000,
       currency: DEVISE,
       description: 'Élévation des murs du premier niveau, 40 %',
       // BROUILLON : rien n'est encore constaté, aucun mouvement de compte.
       status: 'DRAFT',
-      createdByLabel: 'Fatoumata Diallo',
+      createdByLabel: 'Fatoumata Kouassi',
       validatedAt: null
     },
     {
-      id: 'situation-camara-01',
-      contractId: MARCHE_CAMARA_EN_COURS,
+      id: 'situation-kouadio-01',
+      contractId: MARCHE_KOUADIO_EN_COURS,
       contractReference: 'MAR-2026-011',
-      contractorLabel: 'Sékou Camara',
+      contractorLabel: 'Sékou Kouadio',
       statementDate: '2026-06-28',
       amount: 5_000_000,
       currency: DEVISE,
       description: 'Fondations et dallage du rez-de-chaussée',
       status: 'VALIDATED',
-      createdByLabel: 'Fatoumata Diallo',
+      createdByLabel: 'Fatoumata Kouassi',
       validatedAt: '2026-06-30T09:12:00.000Z'
     }
   ],
-  [MARCHE_CAMARA_DEPASSE]: [
+  [MARCHE_KOUADIO_DEPASSE]: [
     {
-      id: 'situation-camara-03',
-      contractId: MARCHE_CAMARA_DEPASSE,
+      id: 'situation-kouadio-03',
+      contractId: MARCHE_KOUADIO_DEPASSE,
       contractReference: 'MAR-2026-012',
-      contractorLabel: 'Sékou Camara',
+      contractorLabel: 'Sékou Kouadio',
       statementDate: '2026-08-22',
       amount: 3_400_000,
       currency: DEVISE,
@@ -272,23 +272,23 @@ const SITUATIONS_PAR_MARCHE: Record<string, ProgressStatement[]> = {
       // contrat exige d'elle.
       description: 'Reprise du mur de clôture effondré, hors marché initial',
       status: 'VALIDATED',
-      createdByLabel: 'Ousmane Bah',
+      createdByLabel: 'Ousmane Konan',
       validatedAt: '2026-08-25T11:40:00.000Z'
     }
   ],
-  [MARCHE_BAH]: [],
-  [MARCHE_SYLLA]: [
+  [MARCHE_KONAN]: [],
+  [MARCHE_KOFFI]: [
     {
-      id: 'situation-sylla-01',
-      contractId: MARCHE_SYLLA,
+      id: 'situation-koffi-01',
+      contractId: MARCHE_KOFFI,
       contractReference: 'MAR-2026-007',
-      contractorLabel: 'Mamadou Sylla',
+      contractorLabel: 'Mamadou Koffi',
       statementDate: '2026-04-30',
       amount: 900_000,
       currency: DEVISE,
       description: 'Pose complète du réseau sanitaire',
       status: 'VALIDATED',
-      createdByLabel: 'Fatoumata Diallo',
+      createdByLabel: 'Fatoumata Kouassi',
       validatedAt: '2026-05-02T08:05:00.000Z'
     }
   ],
@@ -303,7 +303,7 @@ const SITUATIONS_PAR_MARCHE: Record<string, ProgressStatement[]> = {
       currency: DEVISE,
       description: 'Installation électrique complète, 12 points lumineux',
       status: 'VALIDATED',
-      createdByLabel: 'Ousmane Bah',
+      createdByLabel: 'Ousmane Konan',
       validatedAt: '2025-12-18T15:30:00.000Z'
     }
   ]
@@ -314,47 +314,47 @@ const SITUATIONS_PAR_MARCHE: Record<string, ProgressStatement[]> = {
 // ---------------------------------------------------------------------------
 
 const REGLEMENTS_PAR_TACHERON: Record<string, ContractorPayment[]> = {
-  [CAMARA]: [
+  [KOUADIO]: [
     {
-      id: 'reglement-camara-02',
-      contractorId: CAMARA,
-      contractorLabel: 'Sékou Camara',
+      id: 'reglement-kouadio-02',
+      contractorId: KOUADIO,
+      contractorLabel: 'Sékou Kouadio',
       paymentDate: '2026-09-15',
       amount: 1_000_000,
       currency: DEVISE,
       status: 'DRAFT',
-      createdByLabel: 'Fatoumata Diallo',
+      createdByLabel: 'Fatoumata Kouassi',
       validatedAt: null
     },
     {
-      id: 'reglement-camara-01',
-      contractorId: CAMARA,
-      contractorLabel: 'Sékou Camara',
+      id: 'reglement-kouadio-01',
+      contractorId: KOUADIO,
+      contractorLabel: 'Sékou Kouadio',
       paymentDate: '2026-07-05',
       amount: 7_150_000,
       currency: DEVISE,
       status: 'VALIDATED',
-      createdByLabel: 'Fatoumata Diallo',
+      createdByLabel: 'Fatoumata Kouassi',
       validatedAt: '2026-07-05T10:00:00.000Z'
     }
   ],
-  [BAH]: [
+  [KONAN]: [
     {
-      id: 'reglement-bah-01',
-      contractorId: BAH,
-      contractorLabel: 'Aïssatou Bah',
+      id: 'reglement-konan-01',
+      contractorId: KONAN,
+      contractorLabel: 'Aïssatou Konan',
       paymentDate: '2026-08-06',
       amount: 500_000,
       currency: DEVISE,
       // Versé avant toute situation : c'est l'acompte qui rend son compte
       // négatif, et que ses prochaines situations résorberont.
       status: 'VALIDATED',
-      createdByLabel: 'Ousmane Bah',
+      createdByLabel: 'Ousmane Konan',
       validatedAt: '2026-08-06T09:00:00.000Z'
     }
   ],
-  // Rien n'a jamais été réglé à Sylla : son marché est pourtant soldé.
-  [SYLLA]: [],
+  // Rien n'a jamais été réglé à Koffi : son marché est pourtant soldé.
+  [KOFFI]: [],
   [TOURE]: [
     {
       id: 'reglement-toure-01',
@@ -364,7 +364,7 @@ const REGLEMENTS_PAR_TACHERON: Record<string, ContractorPayment[]> = {
       amount: 1_500_000,
       currency: DEVISE,
       status: 'VALIDATED',
-      createdByLabel: 'Ousmane Bah',
+      createdByLabel: 'Ousmane Konan',
       validatedAt: '2025-12-20T16:00:00.000Z'
     }
   ]

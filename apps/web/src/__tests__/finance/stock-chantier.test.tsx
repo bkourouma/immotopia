@@ -98,7 +98,7 @@ function ligne(
 function rapprochement(overrides: Partial<SiteStockReconciliation> = {}): SiteStockReconciliation {
   return {
     siteId: SITE,
-    siteLabel: 'Immeuble de Kaloum',
+    siteLabel: 'Immeuble du Plateau',
     stockEnabledAt: '2026-06-01T08:00:00.000Z',
     invoicedAmount: 12_000_000,
     receivedValue: 11_100_000,
@@ -144,7 +144,7 @@ function rapprochement(overrides: Partial<SiteStockReconciliation> = {}): SiteSt
 /** Le cas le plus courant : alimenté UNIQUEMENT depuis un magasin central. */
 function rapprochementTransferts(): SiteStockReconciliation {
   return rapprochement({
-    siteLabel: 'Villa de Nongo',
+    siteLabel: 'Villa de la Riviera',
     invoicedAmount: 0,
     receivedValue: 0,
     transferredInValue: 8_250_000,
@@ -178,7 +178,7 @@ function rapprochementTransferts(): SiteStockReconciliation {
  */
 function rapprochementNonBasculeConsomme(): SiteStockReconciliation {
   return rapprochement({
-    siteLabel: 'Résidence de Ratoma',
+    siteLabel: 'Résidence de Cocody',
     stockEnabledAt: null,
     invoicedAmount: 0,
     receivedValue: 0,
@@ -201,7 +201,7 @@ function rapprochementNonBasculeConsomme(): SiteStockReconciliation {
 
 function rapprochementNonBascule(): SiteStockReconciliation {
   return rapprochement({
-    siteLabel: 'Villa de Kipé',
+    siteLabel: "Villa d'Angré",
     stockEnabledAt: null,
     invoicedAmount: 0,
     receivedValue: 0,
@@ -216,10 +216,10 @@ function rapprochementNonBascule(): SiteStockReconciliation {
 function statut(overrides: Partial<SiteStockStatus> = {}): SiteStockStatus {
   return {
     siteId: SITE,
-    siteLabel: 'Immeuble de Kaloum',
+    siteLabel: 'Immeuble du Plateau',
     stockEnabledAt: '2026-06-01T08:00:00.000Z',
-    stockLocationId: 'lieu-kaloum-11',
-    stockLocationLabel: 'Chantier Immeuble de Kaloum',
+    stockLocationId: 'lieu-plateau-11',
+    stockLocationLabel: 'Chantier Immeuble du Plateau',
     ...overrides
   };
 }
@@ -300,7 +300,7 @@ describe("L'état du chantier : passé au stock, depuis quand, et où", () => {
     monter();
 
     expect(await screen.findByText(/est passé au stock le 01\/06\/2026/i, {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getAllByText(/Chantier Immeuble de Kaloum/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Chantier Immeuble du Plateau/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Passé au stock')).toBeInTheDocument();
   });
 
@@ -609,7 +609,7 @@ describe('Navigation et états', () => {
 
     await screen.findByText('CIM-42', {}, { timeout: 8000 });
     expect(screen.queryByText('article-ciment-01')).not.toBeInTheDocument();
-    expect(screen.queryByText('lieu-kaloum-11')).not.toBeInTheDocument();
+    expect(screen.queryByText('lieu-plateau-11')).not.toBeInTheDocument();
   });
 });
 

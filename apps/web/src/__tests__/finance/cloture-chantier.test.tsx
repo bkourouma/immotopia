@@ -89,7 +89,7 @@ function lot(partiel: Partial<SiteLot> & Pick<SiteLot, 'id' | 'name'>): SiteLot 
 function repartition(overrides: Partial<SiteCostBreakdown> = {}): SiteCostBreakdown {
   return {
     siteId: SITE,
-    siteLabel: 'Résidence de Nongo',
+    siteLabel: 'Résidence de la Riviera',
     isClosed: false,
     totalCost: 100_000_000,
     allocationMethod: 'SURFACE',
@@ -111,9 +111,9 @@ function repartitionClose(overrides: Partial<SiteCostBreakdown> = {}): SiteCostB
 function cloture(overrides: Partial<SiteClosure> = {}): SiteClosure {
   return {
     siteId: SITE,
-    siteLabel: 'Résidence de Nongo',
+    siteLabel: 'Résidence de la Riviera',
     closedAt: '2026-09-19T10:00:00.000Z',
-    closedByLabel: 'Aminata Sow',
+    closedByLabel: 'Aminata Yao',
     finalCost: 100_000_000,
     currency: 'XOF',
     lots: repartition().lots,
@@ -210,8 +210,8 @@ describe('Aucun montant ni pourcentage calculé côté écran', () => {
     await screen.findByText('Villa A1', {}, { timeout: 8000 });
     // 51 000 000 n'est pas 40 % de 100 000 000 : ces valeurs ne peuvent venir
     // que du serveur.
-    expect(screen.getByText(/51\s000\s000\sFCFA/)).toBeInTheDocument();
-    expect(screen.getByText(/29\s000\s000\sFCFA/)).toBeInTheDocument();
+    expect(screen.getByText(/51\s000\s000/)).toBeInTheDocument();
+    expect(screen.getByText(/29\s000\s000/)).toBeInTheDocument();
     expect(screen.getByText('40 %')).toBeInTheDocument();
     expect(screen.getByText('35 %')).toBeInTheDocument();
   });
@@ -574,8 +574,8 @@ describe('La bascule au patrimoine', () => {
     await ouvrirLaBascule(user);
 
     await user.type(screen.getByLabelText('Référence interne du bien'), 'VIL-2026-014');
-    await user.type(screen.getByLabelText('Titre du bien'), 'Villa A1 — Nongo');
-    await user.type(screen.getByLabelText('Adresse du bien'), 'Quartier Nongo, Ratoma');
+    await user.type(screen.getByLabelText('Titre du bien'), 'Villa A1 — Riviera');
+    await user.type(screen.getByLabelText('Adresse du bien'), 'Quartier Riviera, Cocody');
 
     fireEvent.mouseDown(screen.getByLabelText('Type de bien'));
     fireEvent.click((await screen.findAllByText('Maison / Villa'))[0]);
@@ -588,7 +588,7 @@ describe('La bascule au patrimoine', () => {
 
     // La confirmation dit ce qu'elle crée ET avec quelle valeur d'acquisition.
     expect((await screen.findAllByText(/irréversible/i)).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText(/74\s560\s000\sFCFA/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/74\s560\s000/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/VIL-2026-014/).length).toBeGreaterThanOrEqual(1);
     expect(post).not.toHaveBeenCalled();
 

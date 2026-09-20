@@ -68,7 +68,7 @@ const del = apiClient.delete as unknown as ReturnType<typeof vi.fn>;
 
 const TENANT = 'agence-1';
 const MAGASIN = 'lieu-magasin-01';
-const DEPOT = 'lieu-nongo-02';
+const DEPOT = 'lieu-riviera-02';
 const CIMENT = 'article-ciment-01';
 const FER = 'article-fer-02';
 const SABLE = 'article-sable-03';
@@ -85,13 +85,13 @@ const ARTICLES: StockItemRef[] = [
 ];
 
 const LIEUX: StockLocationRef[] = [
-  { id: MAGASIN, kind: 'WAREHOUSE', label: 'Magasin central de Kipé', siteId: null, siteLabel: null, isActive: true },
+  { id: MAGASIN, kind: 'WAREHOUSE', label: "Magasin central d'Angré", siteId: null, siteLabel: null, isActive: true },
   {
     id: DEPOT,
     kind: 'SITE',
-    label: 'Dépôt de la Villa de Nongo',
-    siteId: 'chantier-nongo',
-    siteLabel: 'Villa de Nongo',
+    label: 'Dépôt de la Villa Riviera',
+    siteId: 'chantier-riviera',
+    siteLabel: 'Villa de la Riviera',
     isActive: true
   }
 ];
@@ -104,11 +104,11 @@ const SOLDES: StockBalanceRef[] = [
     itemLabel: 'Ciment CPJ 42,5',
     itemUnit: 'sac',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     quantity: 420,
     value: 33_600_000,
     averageUnitCost: 80_000,
-    currency: 'GNF'
+    currency: 'XOF'
   },
   {
     itemId: SABLE,
@@ -116,11 +116,11 @@ const SOLDES: StockBalanceRef[] = [
     itemLabel: 'Sable lavé',
     itemUnit: 'm³',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     quantity: 0.25,
     value: 75_000,
     averageUnitCost: 300_000,
-    currency: 'GNF'
+    currency: 'XOF'
   }
 ];
 
@@ -149,7 +149,7 @@ function brouillon(overrides: Partial<StockCount> = {}): StockCount {
     id: BROUILLON,
     tenantId: TENANT,
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     countedAt: '2026-09-18T00:00:00.000Z',
     status: 'DRAFT',
     lines: [
@@ -183,8 +183,8 @@ function brouillon(overrides: Partial<StockCount> = {}): StockCount {
     ],
     varianceCount: 2,
     varianceValue: -565_000,
-    currency: 'GNF',
-    createdByLabel: 'Mariama Diallo',
+    currency: 'XOF',
+    createdByLabel: 'Mariama Kouassi',
     validatedAt: null,
     ...overrides
   };
@@ -203,7 +203,7 @@ function valide(): StockCount {
   return brouillon({
     id: VALIDE,
     locationId: DEPOT,
-    locationLabel: 'Dépôt de la Villa de Nongo',
+    locationLabel: 'Dépôt de la Villa Riviera',
     status: 'VALIDATED',
     validatedAt: '2026-09-01T09:15:00.000Z',
     lines: [
@@ -232,13 +232,13 @@ const TRANSFERT: StockTransfer = {
       itemLabel: 'Ciment CPJ 42,5',
       itemUnit: 'sac',
       locationId: MAGASIN,
-      locationLabel: 'Magasin central de Kipé',
+      locationLabel: "Magasin central d'Angré",
       movementDate: '2026-09-19T00:00:00.000Z',
       quantity: 50,
       isDecrease: true,
       unitCost: 80_000,
       totalValue: 4_000_000,
-      currency: 'GNF',
+      currency: 'XOF',
       quantityAfter: 370,
       valueAfter: 29_600_000
     },
@@ -250,22 +250,22 @@ const TRANSFERT: StockTransfer = {
       itemLabel: 'Ciment CPJ 42,5',
       itemUnit: 'sac',
       locationId: DEPOT,
-      locationLabel: 'Dépôt de la Villa de Nongo',
+      locationLabel: 'Dépôt de la Villa Riviera',
       movementDate: '2026-09-19T00:00:00.000Z',
       quantity: 50,
       isDecrease: false,
       unitCost: 80_000,
       totalValue: 4_000_000,
-      currency: 'GNF',
+      currency: 'XOF',
       quantityAfter: 125,
       valueAfter: 10_000_000
     }
   ],
-  fromLocationLabel: 'Magasin central de Kipé',
-  toLocationLabel: 'Dépôt de la Villa de Nongo',
+  fromLocationLabel: "Magasin central d'Angré",
+  toLocationLabel: 'Dépôt de la Villa Riviera',
   quantity: 50,
   value: 4_000_000,
-  currency: 'GNF'
+  currency: 'XOF'
 };
 
 /** Nettoie casse et accents, pour une vérification insensible aux deux. */
@@ -346,7 +346,7 @@ async function ongletInventaire() {
 async function ouvrirBrouillon() {
   await ongletInventaire();
   fireEvent.click((await screen.findAllByRole('button', { name: 'Poursuivre le comptage' }, { timeout: 8000 }))[0]);
-  return screen.findByText(/Comptage de « Magasin central de Kipé »/, {}, { timeout: 8000 });
+  return screen.findByText(/Comptage de « Magasin central d'Angré »/, {}, { timeout: 8000 });
 }
 
 // ===========================================================================
@@ -367,8 +367,8 @@ describe('Un transfert n’impute rien, et l’écran le dit', () => {
   it('présente la valeur d’un transfert comme DÉPLACÉE, jamais comme une charge', async () => {
     monter();
 
-    await choisir(/Lieu d’origine/, /Magasin central de Kipé \(Magasin\)/);
-    await choisir(/Lieu d’arrivée/, /Dépôt de la Villa de Nongo \(Lieu de chantier\)/);
+    await choisir(/Lieu d’origine/, /Magasin central d'Angré \(Magasin\)/);
+    await choisir(/Lieu d’arrivée/, /Dépôt de la Villa Riviera \(Lieu de chantier\)/);
     await choisir(/Article transféré/, /CIM-42/);
     fireEvent.change(screen.getByLabelText('Quantité'), { target: { value: '50' } });
 
@@ -389,8 +389,8 @@ describe('Le transfert', () => {
   it('poste cinq champs et rien d’autre : ni agence, ni prix, ni chantier', async () => {
     monter();
 
-    await choisir(/Lieu d’origine/, /Magasin central de Kipé \(Magasin\)/);
-    await choisir(/Lieu d’arrivée/, /Dépôt de la Villa de Nongo \(Lieu de chantier\)/);
+    await choisir(/Lieu d’origine/, /Magasin central d'Angré \(Magasin\)/);
+    await choisir(/Lieu d’arrivée/, /Dépôt de la Villa Riviera \(Lieu de chantier\)/);
     await choisir(/Article transféré/, /CIM-42/);
     fireEvent.change(screen.getByLabelText('Quantité'), { target: { value: '50' } });
 
@@ -417,7 +417,7 @@ describe('Le transfert', () => {
   it('annonce ce qu’il reste au lieu d’origine avec ses décimales, pas « 0 »', async () => {
     monter();
 
-    await choisir(/Lieu d’origine/, /Magasin central de Kipé \(Magasin\)/);
+    await choisir(/Lieu d’origine/, /Magasin central d'Angré \(Magasin\)/);
     await choisir(/Article transféré/, /SAB-00/);
 
     // Un quart de mètre cube. `formatMoney` afficherait « 0 ».
@@ -428,8 +428,8 @@ describe('Le transfert', () => {
   it('refuse les deux mêmes lieux avant l’envoi, en disant pourquoi', async () => {
     monter();
 
-    await choisir(/Lieu d’origine/, /Magasin central de Kipé \(Magasin\)/);
-    await choisir(/Lieu d’arrivée/, /Magasin central de Kipé \(Magasin\)/);
+    await choisir(/Lieu d’origine/, /Magasin central d'Angré \(Magasin\)/);
+    await choisir(/Lieu d’arrivée/, /Magasin central d'Angré \(Magasin\)/);
     await choisir(/Article transféré/, /CIM-42/);
     fireEvent.change(screen.getByLabelText('Quantité'), { target: { value: '5' } });
 
@@ -443,8 +443,8 @@ describe('Le transfert', () => {
   it('prévient quand la quantité dépasse le stock, sans se substituer au serveur', async () => {
     monter();
 
-    await choisir(/Lieu d’origine/, /Magasin central de Kipé \(Magasin\)/);
-    await choisir(/Lieu d’arrivée/, /Dépôt de la Villa de Nongo \(Lieu de chantier\)/);
+    await choisir(/Lieu d’origine/, /Magasin central d'Angré \(Magasin\)/);
+    await choisir(/Lieu d’arrivée/, /Dépôt de la Villa Riviera \(Lieu de chantier\)/);
     await choisir(/Article transféré/, /SAB-00/);
     fireEvent.change(screen.getByLabelText('Quantité'), { target: { value: '9' } });
 
@@ -476,7 +476,7 @@ describe('L’inventaire', () => {
     await ongletInventaire();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Ouvrir un comptage' }, { timeout: 8000 }));
-    await choisir(/Lieu à compter/, /Magasin central de Kipé \(Magasin\)/);
+    await choisir(/Lieu à compter/, /Magasin central d'Angré \(Magasin\)/);
     fireEvent.click(screen.getByRole('button', { name: 'Ouvrir le comptage' }));
 
     await waitFor(() => expect(post).toHaveBeenCalled(), { timeout: 8000 });
@@ -654,7 +654,7 @@ describe('La validation d’un inventaire', () => {
     await ongletInventaire();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Consulter' }, { timeout: 8000 }));
-    await screen.findByText(/Comptage de « Dépôt de la Villa de Nongo »/, {}, { timeout: 8000 });
+    await screen.findByText(/Comptage de « Dépôt de la Villa Riviera »/, {}, { timeout: 8000 });
 
     expect(screen.getByText(/Cet inventaire ne s’annule pas/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Valider l’inventaire' })).not.toBeInTheDocument();

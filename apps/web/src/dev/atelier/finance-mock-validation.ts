@@ -39,10 +39,10 @@ interface PieceSeed {
  * (`finance-lot2-types.ts`) : deux homonymes auraient suffi à rendre le
  * filtre faux si l'écran ou l'atelier s'appuyait sur le libellé.
  */
-const UTILISATEUR_MARIAM = 'user-mariam-camara';
-const UTILISATEUR_IBRAHIMA = 'user-ibrahima-sow';
-const UTILISATEUR_AISSATOU = 'user-aissatou-barry';
-const UTILISATEUR_FATOUMATA = 'user-fatoumata-diallo';
+const UTILISATEUR_MARIAM = 'user-mariam-kouadio';
+const UTILISATEUR_IBRAHIMA = 'user-ibrahima-yao';
+const UTILISATEUR_AISSATOU = 'user-aissatou-brou';
+const UTILISATEUR_FATOUMATA = 'user-fatoumata-kouassi';
 
 /**
  * Onze pièces en attente, des trois natures, saisies par quatre personnes
@@ -55,29 +55,29 @@ const PIECES_EN_ATTENTE: PieceSeed[] = [
   {
     documentType: 'SUPPLIER_INVOICE',
     documentId: 'facture-2026-0142',
-    label: 'Quincaillerie Almamya — Facture FA-2026-0142',
+    label: 'Quincaillerie Treichville — Facture FA-2026-0142',
     amount: 1_850_000,
     createdAt: '2026-09-10T09:15:00.000Z',
     createdByUserId: UTILISATEUR_MARIAM,
-    createdByLabel: 'Mariam Camara'
+    createdByLabel: 'Mariam Kouadio'
   },
   {
     documentType: 'SUPPLIER_INVOICE',
     documentId: 'facture-2026-0148',
-    label: 'Ciments de Guinée — Facture FA-2026-0148',
+    label: 'Ciments de Bassam — Facture FA-2026-0148',
     amount: 3_200_000,
     createdAt: '2026-09-14T11:40:00.000Z',
     createdByUserId: UTILISATEUR_IBRAHIMA,
-    createdByLabel: 'Ibrahima Sow'
+    createdByLabel: 'Ibrahima Yao'
   },
   {
     documentType: 'SUPPLIER_INVOICE',
     documentId: 'facture-2026-0151',
-    label: 'Menuiserie Fouta — Facture FA-2026-0151',
+    label: 'Menuiserie Bandama — Facture FA-2026-0151',
     amount: 640_000,
     createdAt: '2026-09-16T08:05:00.000Z',
     createdByUserId: UTILISATEUR_AISSATOU,
-    createdByLabel: 'Aïssatou Barry'
+    createdByLabel: 'Aïssatou Brou'
   },
   {
     documentType: 'SUPPLIER_INVOICE',
@@ -86,35 +86,35 @@ const PIECES_EN_ATTENTE: PieceSeed[] = [
     amount: 980_000,
     createdAt: '2026-09-17T14:22:00.000Z',
     createdByUserId: UTILISATEUR_MARIAM,
-    createdByLabel: 'Mariam Camara'
+    createdByLabel: 'Mariam Kouadio'
   },
   // Règlements fournisseurs
   {
     documentType: 'SUPPLIER_PAYMENT',
     documentId: 'reglement-2026-0031',
-    label: 'Quincaillerie Almamya — Règlement du 11/09/2026',
+    label: 'Quincaillerie Treichville — Règlement du 11/09/2026',
     amount: 1_000_000,
     createdAt: '2026-09-11T10:00:00.000Z',
     createdByUserId: UTILISATEUR_IBRAHIMA,
-    createdByLabel: 'Ibrahima Sow'
+    createdByLabel: 'Ibrahima Yao'
   },
   {
     documentType: 'SUPPLIER_PAYMENT',
     documentId: 'reglement-2026-0034',
-    label: 'Transport Nongo — Règlement du 15/09/2026',
+    label: 'Transport Riviera — Règlement du 15/09/2026',
     amount: 450_000,
     createdAt: '2026-09-15T16:30:00.000Z',
     createdByUserId: UTILISATEUR_FATOUMATA,
-    createdByLabel: 'Fatoumata Diallo'
+    createdByLabel: 'Fatoumata Kouassi'
   },
   {
     documentType: 'SUPPLIER_PAYMENT',
     documentId: 'reglement-2026-0037',
-    label: 'Ciments de Guinée — Règlement du 17/09/2026',
+    label: 'Ciments de Bassam — Règlement du 17/09/2026',
     amount: 2_000_000,
     createdAt: '2026-09-17T09:50:00.000Z',
     createdByUserId: UTILISATEUR_AISSATOU,
-    createdByLabel: 'Aïssatou Barry'
+    createdByLabel: 'Aïssatou Brou'
   },
   // Pièces de caisse
   {
@@ -124,16 +124,16 @@ const PIECES_EN_ATTENTE: PieceSeed[] = [
     amount: 150_000,
     createdAt: '2026-09-08T07:45:00.000Z',
     createdByUserId: UTILISATEUR_MARIAM,
-    createdByLabel: 'Mariam Camara'
+    createdByLabel: 'Mariam Kouadio'
   },
   {
     documentType: 'CASH_VOUCHER',
     documentId: 'caisse-2026-00034',
-    label: 'Pièce de caisse 2026-0034 — Sékou Condé',
+    label: 'Pièce de caisse 2026-0034 — Sékou Coulibaly',
     amount: 95_000,
     createdAt: '2026-09-12T13:10:00.000Z',
     createdByUserId: UTILISATEUR_FATOUMATA,
-    createdByLabel: 'Fatoumata Diallo'
+    createdByLabel: 'Fatoumata Kouassi'
   },
   {
     documentType: 'CASH_VOUCHER',
@@ -142,16 +142,16 @@ const PIECES_EN_ATTENTE: PieceSeed[] = [
     amount: 320_000,
     createdAt: '2026-09-15T15:05:00.000Z',
     createdByUserId: UTILISATEUR_IBRAHIMA,
-    createdByLabel: 'Ibrahima Sow'
+    createdByLabel: 'Ibrahima Yao'
   },
   {
     documentType: 'CASH_VOUCHER',
     documentId: 'caisse-2026-00039',
-    label: 'Pièce de caisse 2026-0039 — Hadja Bangoura',
+    label: 'Pièce de caisse 2026-0039 — Hadja Bamba',
     amount: 210_000,
     createdAt: '2026-09-18T08:30:00.000Z',
     createdByUserId: UTILISATEUR_AISSATOU,
-    createdByLabel: 'Aïssatou Barry'
+    createdByLabel: 'Aïssatou Brou'
   }
 ];
 

@@ -404,7 +404,7 @@ const MOUVEMENTS: ThirdPartyMovementLine[] = [
 
 export const RELEVE: AccountStatement = {
   accountId: ACCOUNT_ID,
-  label: 'Fatoumata Diallo — Villa Kipé 12',
+  label: 'Fatoumata Kouassi — Villa Angré 12',
   openingBalance: 0,
   closingBalance: MOUVEMENTS[MOUVEMENTS.length - 1].balanceAfter,
   currency: 'XOF',

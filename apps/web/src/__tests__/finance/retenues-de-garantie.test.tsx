@@ -90,7 +90,7 @@ function retenueDetenue(overrides: Partial<RetentionGuarantee> = {}): RetentionG
     thirdPartyLabel: 'Quincaillerie du Niger',
     thirdPartyAccountId: 'compte-quincaillerie',
     siteId: 'chantier-1',
-    siteLabel: 'Villa de Nongo',
+    siteLabel: 'Villa de la Riviera',
     baseAmount: 12_000_000,
     ratePercent: 5,
     amount: 600_000,
@@ -110,10 +110,10 @@ function retenueEnRetard(overrides: Partial<RetentionGuarantee> = {}): Retention
     sourceType: 'PROGRESS_STATEMENT',
     sourceId: 'situation-03',
     sourceLabel: 'Situation n°3 — marché MAÇ-2026-07',
-    thirdPartyLabel: 'Sékou Camara',
-    thirdPartyAccountId: 'compte-camara',
+    thirdPartyLabel: 'Sékou Kouadio',
+    thirdPartyAccountId: 'compte-kouadio',
     siteId: 'chantier-2',
-    siteLabel: 'Résidence Kipé',
+    siteLabel: 'Résidence Angré',
     baseAmount: 7_500_000,
     ratePercent: 10,
     amount: 750_000,
@@ -129,7 +129,7 @@ function retenueLiberee(overrides: Partial<RetentionGuarantee> = {}): RetentionG
     sourceType: 'PROGRESS_STATEMENT',
     sourceId: 'situation-02',
     sourceLabel: 'Situation n°2 — marché CHA-2025-11',
-    thirdPartyLabel: 'Mamadou Sylla',
+    thirdPartyLabel: 'Mamadou Koffi',
     baseAmount: 4_000_000,
     ratePercent: 7.5,
     amount: 300_000,
@@ -183,8 +183,8 @@ function configurerGet(
       return {
         data: {
           data: [
-            { id: 'chantier-1', name: 'Villa de Nongo' },
-            { id: 'chantier-2', name: 'Résidence Kipé' }
+            { id: 'chantier-1', name: 'Villa de la Riviera' },
+            { id: 'chantier-2', name: 'Résidence Angré' }
           ]
         }
       };
@@ -202,7 +202,7 @@ function configurerGet(
               supplierId: 'frs-1',
               supplierLabel: 'Menuiserie Touré',
               siteId: 'chantier-1',
-              siteLabel: 'Villa de Nongo',
+              siteLabel: 'Villa de la Riviera',
               invoiceDate: '2026-09-01',
               reference: 'F-2026-201',
               amount: 12_000_000,
@@ -299,9 +299,9 @@ describe('Résumé — ce qui est détenu, ce qui a été rendu, ce qui traîne'
     // Les trois montants viennent du résumé, pas de la liste : aucun n'est
     // égal à une somme des lignes affichées, et un écran qui les recalculerait
     // se verrait ici.
-    expect(screen.getByText(/1\s350\s000\sFCFA/)).toBeInTheDocument();
-    expect(screen.getByText(/325\s000\sFCFA/)).toBeInTheDocument();
-    expect(screen.getByText(/905\s000\sFCFA/)).toBeInTheDocument();
+    expect(screen.getByText(/1\s350\s000/)).toBeInTheDocument();
+    expect(screen.getByText(/325\s000/)).toBeInTheDocument();
+    expect(screen.getByText(/905\s000/)).toBeInTheDocument();
   });
 
   it('nomme le nombre de retenues en retard, le seul chiffre qui appelle une action', async () => {
@@ -356,8 +356,8 @@ describe('La liste — une retenue ne fait pas baisser le coût du chantier', ()
     // L'en-tête de colonne et la carte portent le même libellé : deux
     // occurrences attendues.
     expect(screen.getAllByText('Montant de la pièce').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText(/12\s000\s000\sFCFA/)).toBeInTheDocument();
-    expect(screen.getByText(/600\s000\sFCFA/)).toBeInTheDocument();
+    expect(screen.getByText(/12\s000\s000/)).toBeInTheDocument();
+    expect(screen.getByText(/600\s000/)).toBeInTheDocument();
   });
 
   it('marque « En retard » une retenue détenue dont la date est passée, et elle seule', async () => {

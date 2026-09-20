@@ -24,11 +24,11 @@ function bien(id: string, overrides: Partial<Record<keyof Property, unknown>> = 
     tenantId: 'agence-demo',
     title: `Bien ${id}`,
     description: '',
-    address: 'Kipé, Ratoma',
-    locationZone: 'Conakry',
+    address: 'Angré, Cocody',
+    locationZone: 'Abidjan',
     transactionModes: ['RENTAL'],
     price: 1_250_000,
-    currency: 'GNF',
+    currency: 'XOF',
     surfaceArea: 85,
     rooms: 3,
     bedrooms: 2,
@@ -50,7 +50,7 @@ export const BIENS: Property[] = [
       '',
       'Propriétaire : Arsène Djédjé (contact CRM 2fb9a016-ec59-4296-aa6a-bfb1398037c1).'
     ].join('\n'),
-    title: 'Villa 4 chambres avec piscine et dépendance, quartier résidentiel de Kipé Centre',
+    title: "Villa 4 chambres avec piscine et dépendance, quartier résidentiel d'Angré Centre",
     propertyType: 'MAISON_VILLA',
     price: 12_500_000,
     surfaceArea: 320,
@@ -60,7 +60,7 @@ export const BIENS: Property[] = [
     thumbnailUrl: '/uploads/demo/villa.jpg'
   }),
   bien('2', {
-    title: 'Studio meublé Matam',
+    title: 'Studio meublé Marcory',
     propertyType: 'STUDIO',
     price: 850_000,
     surfaceArea: 28,
@@ -70,7 +70,7 @@ export const BIENS: Property[] = [
     thumbnailUrl: '/uploads/demo/studio.jpg'
   }),
   // Sans photo : le substitut doit tenir la même hauteur, sinon la grille saute.
-  bien('3', { title: 'Bureau Almamya', propertyType: 'BUREAU', price: 3_200_000, thumbnailUrl: null }),
+  bien('3', { title: 'Bureau Treichville', propertyType: 'BUREAU', price: 3_200_000, thumbnailUrl: null }),
   // Immeuble : pas de prix affiché, mais un décompte de lots.
   bien('4', {
     title: 'Immeuble R+3, 8 appartements',
@@ -143,10 +143,10 @@ export const APPARTEMENTS: Property[] = [
 ];
 
 export const COMMUNES = [
-  { communeId: 'c1', commune: 'Ratoma', region: 'Conakry' },
-  { communeId: 'c2', commune: 'Matam', region: 'Conakry' },
-  { communeId: 'c3', commune: 'Dixinn', region: 'Conakry' },
-  { communeId: 'c4', commune: 'Kaloum', region: 'Conakry' }
+  { communeId: 'c1', commune: 'Cocody', region: 'Abidjan' },
+  { communeId: 'c2', commune: 'Marcory', region: 'Abidjan' },
+  { communeId: 'c3', commune: 'Adjamé', region: 'Abidjan' },
+  { communeId: 'c4', commune: 'Plateau', region: 'Abidjan' }
 ];
 
 /**
@@ -184,7 +184,7 @@ function echeance(mois: number, overrides: Partial<EcheanceSimulee> = {}): Echea
     period_month: mois,
     due_date: `2026-${String(mois).padStart(2, '0')}-05T00:00:00.000Z`,
     status: 'PAID',
-    currency: 'GNF',
+    currency: 'XOF',
     amount_rent: 1_250_000,
     amount_service: 75_000,
     amount_other_fees: 0,
@@ -222,7 +222,7 @@ export const PENALITES = [
     tenant_id: 'agence-demo',
     installment_id: 'ech-4',
     amount: 132_500,
-    currency: 'GNF',
+    currency: 'XOF',
     days_late: 10,
     calculated_at: '2026-04-15T00:00:00.000Z',
     adjusted_amount: null,
@@ -236,7 +236,7 @@ export const PENALITES = [
     tenant_id: 'agence-demo',
     installment_id: 'ech-3',
     amount: 66_250,
-    currency: 'GNF',
+    currency: 'XOF',
     days_late: 5,
     calculated_at: '2026-03-10T00:00:00.000Z',
     adjusted_amount: 30_000,
@@ -253,7 +253,7 @@ export const PENALITES = [
     tenant_id: 'agence-demo',
     installment_id: 'ech-2',
     amount: 26_500,
-    currency: 'GNF',
+    currency: 'XOF',
     days_late: 2,
     calculated_at: '2026-02-08T00:00:00.000Z',
     adjusted_amount: 0,
@@ -267,7 +267,7 @@ export const PENALITES = [
     tenant_id: 'agence-demo',
     installment_id: 'ech-1',
     amount: 1_987_500,
-    currency: 'GNF',
+    currency: 'XOF',
     days_late: 150,
     calculated_at: '2026-01-20T00:00:00.000Z',
     adjusted_amount: null,
@@ -291,7 +291,7 @@ export const PAIEMENTS = [
     tenant_id: 'agence-demo',
     lease_id: 'bail-demo',
     amount: 1_325_000,
-    currency: 'GNF',
+    currency: 'XOF',
     method: 'CASH',
     status: 'PENDING',
     initiated_at: '2026-05-06T09:30:00.000Z',
@@ -306,7 +306,7 @@ export const PAIEMENTS = [
     tenant_id: 'agence-demo',
     lease_id: 'bail-demo',
     amount: 1_000_000,
-    currency: 'GNF',
+    currency: 'XOF',
     method: 'MOBILE_MONEY',
     status: 'SUCCESS',
     initiated_at: '2026-04-06T11:00:00.000Z',
@@ -321,7 +321,7 @@ export const PAIEMENTS = [
     tenant_id: 'agence-demo',
     lease_id: 'bail-demo',
     amount: 2_500_000,
-    currency: 'GNF',
+    currency: 'XOF',
     method: 'BANK_TRANSFER',
     status: 'SUCCESS',
     initiated_at: '2026-01-05T08:00:00.000Z',
@@ -336,7 +336,7 @@ export const PAIEMENTS = [
     tenant_id: 'agence-demo',
     lease_id: 'bail-demo',
     amount: 500_000,
-    currency: 'GNF',
+    currency: 'XOF',
     method: 'CHECK',
     status: 'FAILED',
     initiated_at: '2026-03-06T14:20:00.000Z',
@@ -426,7 +426,7 @@ export const DOCUMENTS = [
     status: 'FINAL',
     lease_id: 'bail-demo',
     document_number: 'DOC-2026-0001',
-    title: 'Contrat de bail — Villa Kipé',
+    title: 'Contrat de bail — Villa Angré',
     issued_at: '2026-01-05T00:00:00.000Z',
     created_by_user_id: 'u1',
     created_at: '',
@@ -511,9 +511,9 @@ export const EVENEMENTS = [
     start: dansNJours(0, 9),
     end: dansNJours(0, 9),
     contactId: 'c1',
-    contactName: 'Aissatou Diallo',
+    contactName: 'Aissatou Kouassi',
     dealId: 'd1',
-    dealLabel: 'Location Villa Kipé',
+    dealLabel: 'Location Villa Angré',
     status: 'PENDING',
     badges: ['Urgent'],
     canEdit: true,
@@ -527,11 +527,11 @@ export const EVENEMENTS = [
   {
     eventId: 'ev-2',
     eventType: 'PROPERTY_VISIT',
-    title: 'Visite — Studio Matam',
+    title: 'Visite — Studio Marcory',
     start: dansNJours(0, 15),
     end: dansNJours(0, 16),
     contactId: 'c2',
-    contactName: 'Mamadou Bah',
+    contactName: 'Mamadou Konan',
     dealId: null,
     dealLabel: null,
     status: 'CONFIRMED',
@@ -539,7 +539,7 @@ export const EVENEMENTS = [
     canEdit: true,
     canDrag: false,
     nextActionType: null,
-    location: 'Matam, Conakry',
+    location: 'Marcory, Abidjan',
     assignedToUserId: 'u2',
     createdByUserId: 'u1',
     propertyId: 'prop-2'
@@ -551,7 +551,7 @@ export const EVENEMENTS = [
     start: dansNJours(1, 11),
     end: dansNJours(1, 11),
     contactId: 'c3',
-    contactName: 'Fatoumata Camara',
+    contactName: 'Fatoumata Kouadio',
     dealId: 'd2',
     dealLabel: 'Vente Boutique',
     status: 'DONE',
@@ -572,7 +572,7 @@ export const EVENEMENTS = [
     start: dansNJours(4, 10),
     end: dansNJours(4, 12),
     contactId: 'c4',
-    contactName: 'SCI Kaloum',
+    contactName: 'SCI Plateau',
     dealId: null,
     dealLabel: null,
     status: 'SCHEDULED',
@@ -580,14 +580,14 @@ export const EVENEMENTS = [
     canEdit: true,
     canDrag: false,
     nextActionType: null,
-    location: 'Kaloum, Conakry',
+    location: 'Plateau, Abidjan',
     assignedToUserId: 'u2',
     createdByUserId: 'u2',
     propertyId: 'prop-4'
   }
 ];
 
-/** Agrégat patrimoine : des valeurs plausibles pour une agence de Conakry. */
+/** Agrégat patrimoine : des valeurs plausibles pour une agence d'Abidjan. */
 export const APERCU_PATRIMOINE = {
   totalProperties: 57,
   occupiedProperties: 49,
@@ -610,11 +610,11 @@ export const TRAVAUX = [
     tenantId: 'agence-demo',
     title: 'Réfection de la toiture',
     estimatedCost: 18_500_000,
-    currency: 'GNF',
+    currency: 'XOF',
     plannedDate: '2026-06-15T00:00:00.000Z',
     status: 'PLANNED',
     isCapitalized: true,
-    property: { id: 'prop-1', title: 'Villa Kipé', internalReference: 'BIEN-2026-0001' }
+    property: { id: 'prop-1', title: 'Villa Angré', internalReference: 'BIEN-2026-0001' }
   },
   {
     id: 'tr-2',
@@ -622,11 +622,11 @@ export const TRAVAUX = [
     tenantId: 'agence-demo',
     title: 'Remise aux normes électriques',
     estimatedCost: 7_200_000,
-    currency: 'GNF',
+    currency: 'XOF',
     plannedDate: '2026-04-02T00:00:00.000Z',
     status: 'IN_PROGRESS',
     isCapitalized: false,
-    property: { id: 'prop-2', title: 'Studio Matam', internalReference: 'BIEN-2026-0002' }
+    property: { id: 'prop-2', title: 'Studio Marcory', internalReference: 'BIEN-2026-0002' }
   },
   {
     id: 'tr-3',
@@ -634,7 +634,7 @@ export const TRAVAUX = [
     tenantId: 'agence-demo',
     title: 'Peinture des parties communes de l’immeuble, cages d’escalier comprises',
     estimatedCost: 0,
-    currency: 'GNF',
+    currency: 'XOF',
     plannedDate: '2026-02-10T00:00:00.000Z',
     status: 'COMPLETED',
     isCapitalized: false,
@@ -646,11 +646,11 @@ export const TRAVAUX = [
     tenantId: 'agence-demo',
     title: 'Étanchéité terrasse',
     estimatedCost: 4_100_000,
-    currency: 'GNF',
+    currency: 'XOF',
     plannedDate: '2026-09-01T00:00:00.000Z',
     status: 'CANCELLED',
     isCapitalized: false,
-    property: { id: 'prop-3', title: 'Bureau Almamya', internalReference: 'BIEN-2026-0003' }
+    property: { id: 'prop-3', title: 'Bureau Treichville', internalReference: 'BIEN-2026-0003' }
   }
 ];
 
@@ -700,7 +700,7 @@ export const TABLEAU_DE_BORD = {
     amount: 12_400_000,
     previousAmount: 15_900_000,
     expected: 21_300_000,
-    currency: 'GNF',
+    currency: 'XOF',
     periodStart: '2026-09-01T00:00:00.000Z',
     periodEnd: '2026-10-01T00:00:00.000Z'
   },
@@ -805,10 +805,10 @@ export const TABLEAU_DE_BORD = {
     {
       id: 'installment:e-1',
       kind: 'OVERDUE_INSTALLMENT',
-      title: 'BAIL-2026-0184 · Villa 4 chambres avec piscine, quartier de Kipé Centre',
-      description: '2 450 000 GNF · 42 j de retard',
+      title: "BAIL-2026-0184 · Villa 4 chambres avec piscine, quartier d'Angré Centre",
+      description: '2 450 000 FCFA · 42 j de retard',
       amount: 2_450_000,
-      currency: 'GNF',
+      currency: 'XOF',
       occurredAt: '2026-08-05T00:00:00.000Z',
       severity: 'danger',
       href: `${AGENCE_DEMO}/rental/installments/e-1`
@@ -816,10 +816,10 @@ export const TABLEAU_DE_BORD = {
     {
       id: 'installment:e-2',
       kind: 'OVERDUE_INSTALLMENT',
-      title: 'BAIL-2026-0177 · Studio Ratoma',
-      description: '650 000 GNF · 12 j de retard',
+      title: 'BAIL-2026-0177 · Studio Cocody',
+      description: '650 000 FCFA · 12 j de retard',
       amount: 650_000,
-      currency: 'GNF',
+      currency: 'XOF',
       occurredAt: '2026-09-03T00:00:00.000Z',
       severity: 'danger',
       href: `${AGENCE_DEMO}/rental/installments/e-2`
@@ -828,9 +828,9 @@ export const TABLEAU_DE_BORD = {
       id: 'declaration:d-1',
       kind: 'PENDING_DECLARATION',
       title: 'Déclaration à valider · BAIL-2026-0161',
-      description: '1 200 000 GNF · Mobile Money',
+      description: '1 200 000 FCFA · Mobile Money',
       amount: 1_200_000,
-      currency: 'GNF',
+      currency: 'XOF',
       occurredAt: '2026-09-12T00:00:00.000Z',
       severity: 'warning',
       href: `${AGENCE_DEMO}/rental/payments?onglet=declarations`
@@ -839,7 +839,7 @@ export const TABLEAU_DE_BORD = {
       id: 'ticket:t-1',
       kind: 'URGENT_TICKET',
       title: 'Fuite au plafond du 3e étage',
-      description: 'Immeuble Kaloum, 12 logements',
+      description: 'Immeuble Plateau, 12 logements',
       amount: null,
       currency: null,
       occurredAt: '2026-09-13T08:30:00.000Z',
@@ -852,7 +852,7 @@ export const TABLEAU_DE_BORD = {
       id: 'payment:p-1',
       type: 'PAYMENT_SUCCEEDED',
       title: 'Paiement encaissé',
-      description: '1 250 000 GNF - bail BAIL-2026-0183',
+      description: '1 250 000 FCFA - bail BAIL-2026-0183',
       occurredAt: '2026-09-14T14:02:00.000Z',
       href: `${AGENCE_DEMO}/rental/payments/p-1`
     },
@@ -860,7 +860,7 @@ export const TABLEAU_DE_BORD = {
       id: 'property:b-1',
       type: 'PROPERTY_CREATED',
       title: 'Nouvelle propriété ajoutée',
-      description: 'Villa Kipé - Kipé, Ratoma',
+      description: 'Villa Angré - Angré, Cocody',
       occurredAt: '2026-09-14T11:20:00.000Z',
       href: `${AGENCE_DEMO}/properties/b-1`
     },
@@ -868,7 +868,7 @@ export const TABLEAU_DE_BORD = {
       id: 'contact:c-1',
       type: 'CONTACT_CREATED',
       title: 'Nouveau client enregistré',
-      description: 'Aissatou Barry - aissatou@example.com',
+      description: 'Aissatou Brou - aissatou@example.com',
       occurredAt: '2026-09-13T16:45:00.000Z',
       href: `${AGENCE_DEMO}/crm/contacts/c-1`
     }

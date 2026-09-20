@@ -39,25 +39,25 @@ const CAMPAGNE_NOVEMBRE: BillingRun = {
     billed: [
       {
         leaseId: 'BAIL-2026-0007',
-        leaseLabel: 'Fatoumata Diallo — Villa Kipé 12',
+        leaseLabel: 'Fatoumata Kouassi — Villa Angré 12',
         installmentId: 'ech-2026-11-0007',
         amount: 1_250_000
       },
       {
         leaseId: 'BAIL-2026-0012',
-        leaseLabel: 'Mamadou Bah — Appartement Almamya B3',
+        leaseLabel: 'Mamadou Konan — Appartement Treichville B3',
         installmentId: 'ech-2026-11-0012',
         amount: 980_000
       },
       {
         leaseId: 'BAIL-2026-0015',
-        leaseLabel: 'Aïssatou Barry — Duplex Ratoma 4',
+        leaseLabel: 'Aïssatou Brou — Duplex Cocody 4',
         installmentId: 'ech-2026-11-0015',
         amount: 1_500_000
       },
       {
         leaseId: 'BAIL-2026-0040',
-        leaseLabel: 'Mariam Camara — Villa Lambanyi 2',
+        leaseLabel: 'Mariam Kouadio — Villa Bingerville 2',
         installmentId: 'ech-2026-11-0040',
         amount: 750_000
       }
@@ -89,7 +89,7 @@ const CAMPAGNE_RELANCE_OCTOBRE: BillingRun = {
     billed: [
       {
         leaseId: 'BAIL-2026-0031',
-        leaseLabel: 'Ibrahima Sow — Studio Dixinn 7',
+        leaseLabel: 'Ibrahima Yao — Studio Adjamé 7',
         installmentId: 'ech-2026-10-0031',
         amount: 1_100_000
       }
@@ -97,22 +97,22 @@ const CAMPAGNE_RELANCE_OCTOBRE: BillingRun = {
     excluded: [
       {
         leaseId: 'BAIL-2026-0007',
-        leaseLabel: 'Fatoumata Diallo — Villa Kipé 12',
+        leaseLabel: 'Fatoumata Kouassi — Villa Angré 12',
         reason: 'INSTALLMENT_ALREADY_EXISTS'
       },
       {
         leaseId: 'BAIL-2026-0012',
-        leaseLabel: 'Mamadou Bah — Appartement Almamya B3',
+        leaseLabel: 'Mamadou Konan — Appartement Treichville B3',
         reason: 'INSTALLMENT_ALREADY_EXISTS'
       },
       {
         leaseId: 'BAIL-2026-0015',
-        leaseLabel: 'Aïssatou Barry — Duplex Ratoma 4',
+        leaseLabel: 'Aïssatou Brou — Duplex Cocody 4',
         reason: 'INSTALLMENT_ALREADY_EXISTS'
       },
       {
         leaseId: 'BAIL-2026-0040',
-        leaseLabel: 'Mariam Camara — Villa Lambanyi 2',
+        leaseLabel: 'Mariam Kouadio — Villa Bingerville 2',
         reason: 'INSTALLMENT_ALREADY_EXISTS'
       }
     ],
@@ -137,40 +137,44 @@ const CAMPAGNE_SEPTEMBRE: BillingRun = {
     billed: [
       {
         leaseId: 'BAIL-2026-0007',
-        leaseLabel: 'Fatoumata Diallo — Villa Kipé 12',
+        leaseLabel: 'Fatoumata Kouassi — Villa Angré 12',
         installmentId: 'ech-2026-09-0007',
         amount: 1_250_000
       },
       {
         leaseId: 'BAIL-2026-0012',
-        leaseLabel: 'Mamadou Bah — Appartement Almamya B3',
+        leaseLabel: 'Mamadou Konan — Appartement Treichville B3',
         installmentId: 'ech-2026-09-0012',
         amount: 980_000
       },
       {
         leaseId: 'BAIL-2026-0015',
-        leaseLabel: 'Aïssatou Barry — Duplex Ratoma 4',
+        leaseLabel: 'Aïssatou Brou — Duplex Cocody 4',
         installmentId: 'ech-2026-09-0015',
         amount: 1_500_000
       },
       {
         leaseId: 'BAIL-2026-0040',
-        leaseLabel: 'Mariam Camara — Villa Lambanyi 2',
+        leaseLabel: 'Mariam Kouadio — Villa Bingerville 2',
         installmentId: 'ech-2026-09-0040',
         amount: 750_000
       }
     ],
     excluded: [
-      { leaseId: 'BAIL-2026-0018', leaseLabel: 'Kadiatou Sylla — Appartement Taouyah C1', reason: 'LEASE_NOT_ACTIVE' },
-      { leaseId: 'BAIL-2026-0025', leaseLabel: 'Sékou Condé — Villa Nongo 5', reason: 'PERIOD_BEFORE_LEASE_START' },
-      { leaseId: 'BAIL-2026-0033', leaseLabel: 'Alpha Keita — Local Matam 11', reason: 'PERIOD_AFTER_LEASE_END' },
-      { leaseId: 'BAIL-2026-0044', leaseLabel: 'Hadja Bangoura — Studio Coleah 3', reason: 'LEASE_WITHOUT_AMOUNT' },
-      { leaseId: 'BAIL-2026-0050', leaseLabel: 'Mariama Baldé — Duplex Kaporo 8', reason: 'PERIOD_OFF_BILLING_CYCLE' }
+      { leaseId: 'BAIL-2026-0018', leaseLabel: 'Kadiatou Koffi — Appartement Cocody C1', reason: 'LEASE_NOT_ACTIVE' },
+      {
+        leaseId: 'BAIL-2026-0025',
+        leaseLabel: 'Sékou Coulibaly — Villa Riviera 5',
+        reason: 'PERIOD_BEFORE_LEASE_START'
+      },
+      { leaseId: 'BAIL-2026-0033', leaseLabel: 'Alpha Keita — Local Marcory 11', reason: 'PERIOD_AFTER_LEASE_END' },
+      { leaseId: 'BAIL-2026-0044', leaseLabel: 'Hadja Bamba — Studio Coleah 3', reason: 'LEASE_WITHOUT_AMOUNT' },
+      { leaseId: 'BAIL-2026-0050', leaseLabel: 'Mariama Assi — Duplex Koumassi 8', reason: 'PERIOD_OFF_BILLING_CYCLE' }
     ],
     advancesApplied: [
       {
         tenantClientId: 'CLI-2026-0091',
-        tenantLabel: 'Aïssatou Barry',
+        tenantLabel: 'Aïssatou Brou',
         installmentId: 'ech-2026-09-0007',
         amount: 250_000,
         sourcePaymentId: 'paiement-2026-0450'

@@ -30,7 +30,7 @@ function avecCache(ui: React.ReactNode, queryClient: QueryClient) {
 beforeEach(() => {
   vi.clearAllMocks();
   get.mockResolvedValue({
-    data: { success: true, data: [{ id: 'v1', name: 'Plomberie Kipé', specialties: ['Plomberie'] }] }
+    data: { success: true, data: [{ id: 'v1', name: 'Plomberie Angré', specialties: ['Plomberie'] }] }
   });
 });
 

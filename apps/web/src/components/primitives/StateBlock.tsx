@@ -45,26 +45,43 @@ export interface StateBlockProps {
   detail?: string;
 }
 
-const DEFAULTS: Record<StateVariant, { title: string; description: string }> = {
-  loading: { title: 'Chargement…', description: '' },
-  empty: { title: t('Aucune donnée'), description: t('Rien à afficher pour le moment.') },
-  'no-results': {
-    title: t('Aucun résultat'),
-    description: t('Aucun élément ne correspond aux filtres appliqués.')
-  },
-  error: {
-    title: t('Impossible de charger ces données'),
-    description: t('Une erreur est survenue. Vous pouvez réessayer.')
-  },
-  offline: {
-    title: t('Hors connexion'),
-    description: t('Les données affichées peuvent être datées.')
-  },
-  forbidden: {
-    title: t('Accès non autorisé'),
-    description: t('Votre rôle ne donne pas accès à cette section.')
-  }
-};
+/**
+ * Les textes par défaut, **résolus à chaque rendu et non au chargement du
+ * module**.
+ *
+ * C'était une table constante jusqu'au 20 septembre 2026, et `t()` s'y
+ * exécutait une seule fois, à l'import : la langue active à cet instant était
+ * gravée pour toute la session. Une interface passée en anglais gardait donc
+ * « Aucune donnée » sur tous ses états vides, alors que la traduction existe
+ * bien (« No data », `i18n/locales/en/common.json`). Le remontage par
+ * `key={language}` ne pouvait rien y faire : il réexécute les composants, pas
+ * les constantes de module déjà évaluées.
+ *
+ * Une fonction coûte un appel par rendu et rend la langue au moment où on
+ * l'affiche. C'est le prix juste.
+ */
+function defauts(): Record<StateVariant, { title: string; description: string }> {
+  return {
+    loading: { title: t('Chargement…'), description: '' },
+    empty: { title: t('Aucune donnée'), description: t('Rien à afficher pour le moment.') },
+    'no-results': {
+      title: t('Aucun résultat'),
+      description: t('Aucun élément ne correspond aux filtres appliqués.')
+    },
+    error: {
+      title: t('Impossible de charger ces données'),
+      description: t('Une erreur est survenue. Vous pouvez réessayer.')
+    },
+    offline: {
+      title: t('Hors connexion'),
+      description: t('Les données affichées peuvent être datées.')
+    },
+    forbidden: {
+      title: t('Accès non autorisé'),
+      description: t('Votre rôle ne donne pas accès à cette section.')
+    }
+  };
+}
 
 const ICON: Partial<Record<StateVariant, React.ReactNode>> = {
   'no-results': <FilterOutlined style={{ fontSize: 40, color: 'var(--text-tertiary)' }} />,
@@ -76,8 +93,9 @@ const ICON: Partial<Record<StateVariant, React.ReactNode>> = {
 export const StateBlock: React.FC<StateBlockProps> = ({ variant, title, description, actions = [], detail }) => {
   if (variant === 'loading') return <SkeletonList />;
 
-  const heading = title ?? DEFAULTS[variant].title;
-  const body = description ?? DEFAULTS[variant].description;
+  const parDefaut = defauts()[variant];
+  const heading = title ?? parDefaut.title;
+  const body = description ?? parDefaut.description;
 
   const buttons = actions.map(a => (
     <Button key={a.label} type={a.primary ? 'primary' : 'default'} onClick={a.onClick}>

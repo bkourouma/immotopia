@@ -528,7 +528,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
               // Le reste à payer est LA donnée de cet écran : elle passe en
               // tête de carte, alors qu'elle était la cinquième colonne d'un
               // tableau qui défilait. Sur une échéance soldée, elle disparaît :
-              // « 0 GNF » en gros occuperait la place la plus visible de la
+              // « 0 FCFA » en gros occuperait la place la plus visible de la
               // carte pour ne rien dire, quand l'étiquette « Payé » le dit déjà.
               highlight={solde ? undefined : <MoneyValue value={reste} currency={e.currency} />}
               fields={[

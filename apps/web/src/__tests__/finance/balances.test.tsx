@@ -303,7 +303,7 @@ describe('Vocabulaire — principe P-1 du PRD', () => {
   it('n’affiche jamais « débit » ni « crédit », sur aucun des deux écrans', async () => {
     const lignesNominales = [
       ligne({ accountId: 'compte-1', label: 'Mariam Diomandé', balance: 600_000 }),
-      ligne({ accountId: 'compte-7', label: 'Aïssatou Barry', balance: -450_000 })
+      ligne({ accountId: 'compte-7', label: 'Aïssatou Brou', balance: -450_000 })
     ];
     const lignesAgees = lignesNominales.map(l => ligneAgee(l));
 

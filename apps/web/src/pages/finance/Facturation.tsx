@@ -56,7 +56,7 @@ const { Text, Title } = Typography;
  * défaut du composant.
  *
  * **Le compte rendu se lit sans rien aller chercher.** Chaque ligne porte un
- * libellé — « Fatoumata Diallo — Villa Kipé 12 » — résolu par le serveur au
+ * libellé — « Fatoumata Kouassi — Villa Angré 12 » — résolu par le serveur au
  * moment de la campagne et stocké avec elle. L'identifiant reste dans la
  * donnée, pour les clés de ligne, mais ne s'affiche jamais : une gestionnaire
  * qui lit « Bail 3f2a9b8c-… » ne peut rien en faire.
@@ -475,6 +475,8 @@ export const Facturation: React.FC = () => {
               style={{ width: 180 }}
               value={moisChoisi}
               onChange={setMoisChoisi}
+              showSearch
+              optionFilterProp="label"
               options={OPTIONS_MOIS}
             />
           </div>
@@ -487,6 +489,8 @@ export const Facturation: React.FC = () => {
               style={{ width: 120 }}
               value={anneeChoisie}
               onChange={setAnneeChoisie}
+              showSearch
+              optionFilterProp="label"
               options={optionsAnnees}
             />
           </div>

@@ -51,7 +51,7 @@ function paiement(overrides: Record<string, unknown> = {}) {
     tenant_id: 'agence-1',
     lease_id: 'bail-1',
     amount: 1_000_000,
-    currency: 'GNF',
+    currency: 'XOF',
     method: 'CASH',
     status: 'PENDING',
     initiated_at: '2026-05-06T09:30:00.000Z',
@@ -123,7 +123,7 @@ describe('Paiements — montant affecté', () => {
     ]);
 
     // 1 000 000 − (300 000 + 200 000) = 500 000.
-    const restes = await screen.findAllByText(/500\s000\sGNF/, {}, { timeout: 8000 });
+    const restes = await screen.findAllByText(/500\s000\sXOF/, {}, { timeout: 8000 });
     expect(restes.length).toBeGreaterThan(0);
   });
 

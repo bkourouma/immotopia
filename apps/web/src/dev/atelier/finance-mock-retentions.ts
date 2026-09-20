@@ -23,17 +23,17 @@
  * Les cinq cas montrés, et pourquoi chacun est là
  * ---------------------------------------------------------------------------
  *
- * - **`ret-facture-nongo`** — sur une FACTURE FOURNISSEUR, détenue, libération
+ * - **`ret-facture-riviera`** — sur une FACTURE FOURNISSEUR, détenue, libération
  *   prévue au 31/03/2027 : **dans les temps**. Le cas tranquille, celui qui
  *   n'appelle aucune action et qui doit le rester à l'écran.
- * - **`ret-situation-camara`** — sur une SITUATION DE TÂCHERON, détenue,
+ * - **`ret-situation-kouadio`** — sur une SITUATION DE TÂCHERON, détenue,
  *   libération prévue au 30/06/2026 : **en retard**. C'est le cas qui alimente
  *   le seul chiffre du résumé qui appelle une action.
- * - **`ret-facture-almamya`** — sur une facture **sans chantier**
+ * - **`ret-facture-treichville`** — sur une facture **sans chantier**
  *   (`siteLabel: null`), détenue et **en retard** elle aussi : l'écran doit
  *   écrire « Hors chantier » plutôt que laisser une case vide, et le filtre
  *   par chantier ne doit pas la faire disparaître par accident.
- * - **`ret-situation-sylla`** — sur une situation, **déjà libérée** le
+ * - **`ret-situation-koffi`** — sur une situation, **déjà libérée** le
  *   01/09/2026 : l'argent est redevenu exigible, et aucun versement n'est né
  *   ici. La ligne ne propose plus de geste.
  * - **`ret-facture-toure`** — sur une facture, **déjà libérée** : le second
@@ -80,16 +80,16 @@ import type { Scenario } from './mock-api';
 // 1. Détenue, dans les temps, sur une facture fournisseur
 // ---------------------------------------------------------------------------
 
-const RET_FACTURE_NONGO: RetentionGuarantee = {
-  id: 'ret-facture-nongo',
+const RET_FACTURE_RIVIERA: RetentionGuarantee = {
+  id: 'ret-facture-riviera',
   tenantId: 'agence-demo',
   sourceType: 'SUPPLIER_INVOICE',
-  sourceId: 'facture-nongo-014',
+  sourceId: 'facture-riviera-014',
   sourceLabel: 'Facture F-2026-014',
   thirdPartyLabel: 'Quincaillerie du Niger',
   thirdPartyAccountId: 'compte-quincaillerie',
   siteId: 'chantier-riche-01',
-  siteLabel: 'Villa de Nongo',
+  siteLabel: 'Villa de la Riviera',
   // L'ASSIETTE, pas un coût de chantier : la facture reste imputée pour ces
   // 12 000 000 entiers, retenue ou non.
   baseAmount: 12_000_000,
@@ -106,16 +106,16 @@ const RET_FACTURE_NONGO: RetentionGuarantee = {
 // 2. Détenue, EN RETARD, sur une situation de tâcheron
 // ---------------------------------------------------------------------------
 
-const RET_SITUATION_CAMARA: RetentionGuarantee = {
-  id: 'ret-situation-camara',
+const RET_SITUATION_KOUADIO: RetentionGuarantee = {
+  id: 'ret-situation-kouadio',
   tenantId: 'agence-demo',
   sourceType: 'PROGRESS_STATEMENT',
-  sourceId: 'situation-camara-03',
+  sourceId: 'situation-kouadio-03',
   sourceLabel: 'Situation n°3 — marché MAÇ-2026-07',
-  thirdPartyLabel: 'Sékou Camara',
-  thirdPartyAccountId: 'compte-camara',
+  thirdPartyLabel: 'Sékou Kouadio',
+  thirdPartyAccountId: 'compte-kouadio',
   siteId: 'chantier-01',
-  siteLabel: 'Résidence Kipé',
+  siteLabel: 'Résidence Angré',
   baseAmount: 7_500_000,
   ratePercent: 10,
   amount: 750_000,
@@ -131,14 +131,14 @@ const RET_SITUATION_CAMARA: RetentionGuarantee = {
 // 3. Détenue, EN RETARD, sur une facture SANS CHANTIER
 // ---------------------------------------------------------------------------
 
-const RET_FACTURE_ALMAMYA: RetentionGuarantee = {
-  id: 'ret-facture-almamya',
+const RET_FACTURE_TREICHVILLE: RetentionGuarantee = {
+  id: 'ret-facture-treichville',
   tenantId: 'agence-demo',
   sourceType: 'SUPPLIER_INVOICE',
-  sourceId: 'facture-almamya-221',
+  sourceId: 'facture-treichville-221',
   sourceLabel: 'Facture F-2026-221',
-  thirdPartyLabel: 'Électricité Générale Almamya',
-  thirdPartyAccountId: 'compte-elec-almamya',
+  thirdPartyLabel: 'Électricité Générale Treichville',
+  thirdPartyAccountId: 'compte-elec-treichville',
   // Une facture peut n'être rattachée à aucun chantier : l'écran écrit
   // « Hors chantier », il ne laisse pas la case vide.
   siteId: null,
@@ -157,16 +157,16 @@ const RET_FACTURE_ALMAMYA: RetentionGuarantee = {
 // 4. DÉJÀ LIBÉRÉE, sur une situation de tâcheron
 // ---------------------------------------------------------------------------
 
-const RET_SITUATION_SYLLA: RetentionGuarantee = {
-  id: 'ret-situation-sylla',
+const RET_SITUATION_KOFFI: RetentionGuarantee = {
+  id: 'ret-situation-koffi',
   tenantId: 'agence-demo',
   sourceType: 'PROGRESS_STATEMENT',
-  sourceId: 'situation-sylla-02',
+  sourceId: 'situation-koffi-02',
   sourceLabel: 'Situation n°2 — marché CHA-2025-11',
-  thirdPartyLabel: 'Mamadou Sylla',
-  thirdPartyAccountId: 'compte-sylla',
+  thirdPartyLabel: 'Mamadou Koffi',
+  thirdPartyAccountId: 'compte-koffi',
   siteId: 'chantier-01',
-  siteLabel: 'Résidence Kipé',
+  siteLabel: 'Résidence Angré',
   baseAmount: 4_000_000,
   ratePercent: 7.5,
   amount: 300_000,
@@ -192,7 +192,7 @@ const RET_FACTURE_TOURE: RetentionGuarantee = {
   thirdPartyLabel: 'Menuiserie Touré',
   thirdPartyAccountId: 'compte-toure',
   siteId: 'chantier-riche-01',
-  siteLabel: 'Villa de Nongo',
+  siteLabel: 'Villa de la Riviera',
   baseAmount: 2_000_000,
   ratePercent: 5,
   amount: 100_000,
@@ -204,10 +204,10 @@ const RET_FACTURE_TOURE: RetentionGuarantee = {
 };
 
 const RETENUES: RetentionGuarantee[] = [
-  RET_FACTURE_NONGO,
-  RET_SITUATION_CAMARA,
-  RET_FACTURE_ALMAMYA,
-  RET_SITUATION_SYLLA,
+  RET_FACTURE_RIVIERA,
+  RET_SITUATION_KOUADIO,
+  RET_FACTURE_TREICHVILLE,
+  RET_SITUATION_KOFFI,
   RET_FACTURE_TOURE
 ];
 
@@ -241,7 +241,7 @@ export function repondreRetentions(chemin: string, scenario: Scenario): unknown 
   // --- Libération (chemin propre, aucune collision) ------------------------
   const liberationMatch = /\/tenants\/[^/]+\/finance\/retentions\/([^/]+)\/release$/.exec(chemin);
   if (liberationMatch) {
-    const retenue = RETENUES.find(candidate => candidate.id === liberationMatch[1]) ?? RET_SITUATION_CAMARA;
+    const retenue = RETENUES.find(candidate => candidate.id === liberationMatch[1]) ?? RET_SITUATION_KOUADIO;
     // Libérer ne crée aucun versement : seuls le statut et l'instant changent.
     return {
       success: true,

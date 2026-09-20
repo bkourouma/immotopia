@@ -48,12 +48,12 @@
  * un écran qui recalculerait au lieu d'afficher ce que le serveur envoie
  * tomberait ici.
  *
- * **Un comptage VALIDÉ**, sur le dépôt du chantier de Nongo, avec sa date de
+ * **Un comptage VALIDÉ**, sur le dépôt du chantier de la Riviera, avec sa date de
  * validation et une ligne en écart justifiée. Il montre l'état où plus aucun
  * geste n'est offert : aucune route ne défait un inventaire validé, et l'écran
  * n'en propose aucun bouton.
  *
- * **Un transfert** du magasin central vers le lieu du chantier de Nongo : le
+ * **Un transfert** du magasin central vers le lieu du chantier de la Riviera : le
  * cas exact du piège de ce sous-lot. Les deux mouvements sont là, liés par leur
  * `transferGroupId`, la sortie d'abord et l'entrée ensuite, et la valeur
  * déplacée vaut la même chose des deux côtés — transférer ne crée ni ne détruit
@@ -81,7 +81,7 @@ import type {
 } from '../../types/finance-stock-inventaire-types';
 import type { Scenario } from './mock-api';
 
-const DEVISE = 'GNF';
+const DEVISE = 'XOF';
 
 // ---------------------------------------------------------------------------
 // Le référentiel lu chez les voisins — mêmes identifiants que le sous-lot 1
@@ -101,23 +101,23 @@ const ARTICLES: StockItemRef[] = [
 ];
 
 const MAGASIN = 'lieu-magasin-01';
-const DEPOT_NONGO = 'lieu-nongo-02';
+const DEPOT_RIVIERA = 'lieu-riviera-02';
 
 const LIEUX: StockLocationRef[] = [
   {
     id: MAGASIN,
     kind: 'WAREHOUSE',
-    label: 'Magasin central de Kipé',
+    label: "Magasin central d'Angré",
     siteId: null,
     siteLabel: null,
     isActive: true
   },
   {
-    id: DEPOT_NONGO,
+    id: DEPOT_RIVIERA,
     kind: 'SITE',
-    label: 'Dépôt de la Villa de Nongo',
-    siteId: 'chantier-nongo',
-    siteLabel: 'Villa de Nongo',
+    label: 'Dépôt de la Villa Riviera',
+    siteId: 'chantier-riviera',
+    siteLabel: 'Villa de la Riviera',
     isActive: true
   }
 ];
@@ -137,7 +137,7 @@ const SOLDES: StockBalanceRef[] = [
     itemLabel: 'Ciment CPJ 42,5',
     itemUnit: 'sac',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     quantity: 420,
     value: 33_600_000,
     averageUnitCost: 80_000,
@@ -149,7 +149,7 @@ const SOLDES: StockBalanceRef[] = [
     itemLabel: 'Fer à béton HA 12',
     itemUnit: 'barre',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     quantity: 188,
     value: 13_160_000,
     averageUnitCost: 70_000,
@@ -161,7 +161,7 @@ const SOLDES: StockBalanceRef[] = [
     itemLabel: 'Sable lavé',
     itemUnit: 'm³',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     // Un quart de mètre cube : la valeur qui s'afficherait « 12 » si quelqu'un
     // rendait cette quantité avec le formateur monétaire.
     quantity: 12.25,
@@ -175,7 +175,7 @@ const SOLDES: StockBalanceRef[] = [
     itemLabel: 'Tôle bac alu 6 m',
     itemUnit: 'tôle',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     quantity: 60,
     value: 7_200_000,
     averageUnitCost: 120_000,
@@ -186,8 +186,8 @@ const SOLDES: StockBalanceRef[] = [
     itemReference: 'CIM-42',
     itemLabel: 'Ciment CPJ 42,5',
     itemUnit: 'sac',
-    locationId: DEPOT_NONGO,
-    locationLabel: 'Dépôt de la Villa de Nongo',
+    locationId: DEPOT_RIVIERA,
+    locationLabel: 'Dépôt de la Villa Riviera',
     quantity: 75,
     value: 6_000_000,
     averageUnitCost: 80_000,
@@ -203,7 +203,7 @@ const COMPTAGE_BROUILLON: StockCount = {
   id: 'comptage-brouillon-01',
   tenantId: 'agence-1',
   locationId: MAGASIN,
-  locationLabel: 'Magasin central de Kipé',
+  locationLabel: "Magasin central d'Angré",
   countedAt: '2026-09-18T00:00:00.000Z',
   status: 'DRAFT',
   lines: [
@@ -262,7 +262,7 @@ const COMPTAGE_BROUILLON: StockCount = {
   varianceCount: 3,
   varianceValue: -827_500,
   currency: DEVISE,
-  createdByLabel: 'Mariama Diallo',
+  createdByLabel: 'Mariama Kouassi',
   validatedAt: null
 };
 
@@ -273,8 +273,8 @@ const COMPTAGE_BROUILLON: StockCount = {
 const COMPTAGE_VALIDE: StockCount = {
   id: 'comptage-valide-02',
   tenantId: 'agence-1',
-  locationId: DEPOT_NONGO,
-  locationLabel: 'Dépôt de la Villa de Nongo',
+  locationId: DEPOT_RIVIERA,
+  locationLabel: 'Dépôt de la Villa Riviera',
   countedAt: '2026-08-31T00:00:00.000Z',
   status: 'VALIDATED',
   lines: [
@@ -304,7 +304,7 @@ const COMPTAGE_VALIDE: StockCount = {
   varianceCount: 1,
   varianceValue: -400_000,
   currency: DEVISE,
-  createdByLabel: 'Ibrahima Camara',
+  createdByLabel: 'Ibrahima Kouadio',
   validatedAt: '2026-09-01T09:15:00.000Z'
 };
 
@@ -328,7 +328,7 @@ const TRANSFERT: StockTransfer = {
       itemLabel: 'Ciment CPJ 42,5',
       itemUnit: 'sac',
       locationId: MAGASIN,
-      locationLabel: 'Magasin central de Kipé',
+      locationLabel: "Magasin central d'Angré",
       movementDate: '2026-09-19T00:00:00.000Z',
       // Toujours positive : c'est `isDecrease` qui dit le sens.
       quantity: 50,
@@ -346,8 +346,8 @@ const TRANSFERT: StockTransfer = {
       itemReference: 'CIM-42',
       itemLabel: 'Ciment CPJ 42,5',
       itemUnit: 'sac',
-      locationId: DEPOT_NONGO,
-      locationLabel: 'Dépôt de la Villa de Nongo',
+      locationId: DEPOT_RIVIERA,
+      locationLabel: 'Dépôt de la Villa Riviera',
       movementDate: '2026-09-19T00:00:00.000Z',
       quantity: 50,
       isDecrease: false,
@@ -360,8 +360,8 @@ const TRANSFERT: StockTransfer = {
       valueAfter: 10_000_000
     }
   ],
-  fromLocationLabel: 'Magasin central de Kipé',
-  toLocationLabel: 'Dépôt de la Villa de Nongo',
+  fromLocationLabel: "Magasin central d'Angré",
+  toLocationLabel: 'Dépôt de la Villa Riviera',
   quantity: 50,
   // La valeur DÉPLACÉE. Pas une dépense, et l'écran ne doit pas la présenter
   // comme telle.

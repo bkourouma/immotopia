@@ -72,7 +72,7 @@ const LOCATAIRES: Array<{
   {
     accountId: 'compte-04',
     tenantClientId: 'client-04',
-    label: 'Ibrahima Sow',
+    label: 'Ibrahima Yao',
     propertyLabels: ['Villa duplex - Riviera Palmeraie'],
     totalBilled: 6_000_000,
     totalSettled: 4_500_000,
@@ -81,7 +81,7 @@ const LOCATAIRES: Array<{
   {
     accountId: 'compte-05',
     tenantClientId: 'client-05',
-    label: 'Fatoumata Camara',
+    label: 'Fatoumata Kouadio',
     propertyLabels: ['Appartement 2 pièces - Plateau'],
     totalBilled: 2_100_000,
     totalSettled: 1_950_000,
@@ -103,7 +103,7 @@ const LOCATAIRES: Array<{
     // nous doit » — ici, c'est l'agence qui lui doit un report.
     accountId: 'compte-07',
     tenantClientId: 'client-07',
-    label: 'Aïssatou Barry',
+    label: 'Aïssatou Brou',
     propertyLabels: ['Villa 5 chambres - Bingerville'],
     totalBilled: 3_000_000,
     totalSettled: 3_450_000,
@@ -112,7 +112,7 @@ const LOCATAIRES: Array<{
   {
     accountId: 'compte-08',
     tenantClientId: 'client-08',
-    label: 'Kadiatou Diallo',
+    label: 'Kadiatou Kouassi',
     propertyLabels: ['Appartement meublé - Marcory'],
     totalBilled: 2_700_000,
     totalSettled: 2_250_000,
@@ -121,7 +121,7 @@ const LOCATAIRES: Array<{
   {
     accountId: 'compte-09',
     tenantClientId: 'client-09',
-    label: 'Boubacar Sylla',
+    label: 'Boubacar Koffi',
     propertyLabels: ['Local commercial - Koumassi'],
     totalBilled: 3_900_000,
     totalSettled: 3_120_000,

@@ -41,7 +41,7 @@
  *
  * **Soldes** — cinq lignes, choisies pour exercer chaque règle de l'écran :
  *
- * - **CIM-42 au Magasin central** et **CIM-42 au Dépôt de Nongo** : le même
+ * - **CIM-42 au Magasin central** et **CIM-42 au Dépôt de la Riviera** : le même
  *   article, dans deux lieux, à **deux coûts moyens différents** (4 750 et
  *   5 100 le sac). Le coût moyen est par (article, LIEU) — un coût global ne
  *   saurait pas dire ce que vaut le stock d'un dépôt.
@@ -51,14 +51,14 @@
  * - **SAB-00 au Magasin central**, `18,75 m³` : la ligne qui prouve que les
  *   quantités portent **quatre décimales**. Affichée « 19 » ou « 0 », elle
  *   serait fausse.
- * - **TOL-BA au Dépôt de Nongo** : un article **désactivé** qui garde son
+ * - **TOL-BA au Dépôt de la Riviera** : un article **désactivé** qui garde son
  *   stock. Désactiver n'est pas supprimer — la marchandise est toujours là.
  *
  * **Mouvements** — sept, mêlant les quatre natures :
  *
  * - **deux RECEIPT du même jour, même facture** : la réception multi-lignes,
  *   qui écrit un mouvement PAR LIGNE et non un mouvement fourre-tout ;
- * - **une RECEIPT au Dépôt de Nongo, plus chère** : c'est elle qui explique
+ * - **une RECEIPT au Dépôt de la Riviera, plus chère** : c'est elle qui explique
  *   que le coût moyen y soit différent ;
  * - **deux ISSUE vers des chantiers**, avec demandeur et poste. La seconde
  *   **vide l'emplacement** : `quantity × unitCost` y vaut 47 500 alors que
@@ -96,10 +96,10 @@ const SABLE = 'article-sable-03';
 const TOLE = 'article-tole-04';
 
 const MAGASIN = 'lieu-magasin-01';
-const DEPOT_NONGO = 'lieu-nongo-02';
+const DEPOT_RIVIERA = 'lieu-riviera-02';
 
-const NONGO = 'chantier-nongo';
-const RATOMA = 'chantier-ratoma';
+const RIVIERA = 'chantier-riviera';
+const COCODY = 'chantier-cocody';
 
 const DEVISE = 'XOF';
 
@@ -155,13 +155,13 @@ const ARTICLES: StockItemRef[] = [
 ];
 
 const LIEUX: StockLocationRef[] = [
-  { id: MAGASIN, kind: 'WAREHOUSE', label: 'Magasin central de Kipé', siteId: null, siteLabel: null, isActive: true },
+  { id: MAGASIN, kind: 'WAREHOUSE', label: "Magasin central d'Angré", siteId: null, siteLabel: null, isActive: true },
   {
-    id: DEPOT_NONGO,
+    id: DEPOT_RIVIERA,
     kind: 'SITE',
-    label: 'Dépôt de la Villa de Nongo',
-    siteId: NONGO,
-    siteLabel: 'Villa de Nongo',
+    label: 'Dépôt de la Villa Riviera',
+    siteId: RIVIERA,
+    siteLabel: 'Villa de la Riviera',
     isActive: true
   }
 ];
@@ -177,7 +177,7 @@ const SOLDES: StockBalance[] = [
     itemLabel: 'Ciment CPJ 42,5',
     itemUnit: 'sac',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     quantity: 320,
     value: 1_520_000,
     // 1 520 000 / 320. Déduit par le serveur, jamais stocké.
@@ -191,8 +191,8 @@ const SOLDES: StockBalance[] = [
     itemReference: 'CIM-42',
     itemLabel: 'Ciment CPJ 42,5',
     itemUnit: 'sac',
-    locationId: DEPOT_NONGO,
-    locationLabel: 'Dépôt de la Villa de Nongo',
+    locationId: DEPOT_RIVIERA,
+    locationLabel: 'Dépôt de la Villa Riviera',
     quantity: 80,
     value: 408_000,
     averageUnitCost: 5_100,
@@ -207,7 +207,7 @@ const SOLDES: StockBalance[] = [
     itemLabel: 'Fer à béton HA 12',
     itemUnit: 'barre',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     quantity: 0,
     value: 0,
     averageUnitCost: 0,
@@ -220,7 +220,7 @@ const SOLDES: StockBalance[] = [
     itemLabel: 'Sable lavé',
     itemUnit: 'm³',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     quantity: 18.75,
     value: 243_750,
     averageUnitCost: 13_000,
@@ -232,8 +232,8 @@ const SOLDES: StockBalance[] = [
     itemReference: 'TOL-BA',
     itemLabel: 'Tôle bac alu 6 m',
     itemUnit: 'tôle',
-    locationId: DEPOT_NONGO,
-    locationLabel: 'Dépôt de la Villa de Nongo',
+    locationId: DEPOT_RIVIERA,
+    locationLabel: 'Dépôt de la Villa Riviera',
     quantity: 42,
     value: 1_260_000,
     averageUnitCost: 30_000,
@@ -255,7 +255,7 @@ const MOUVEMENTS: StockMovement[] = [
     itemLabel: 'Ciment CPJ 42,5',
     itemUnit: 'sac',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     movementDate: '2026-09-02T00:00:00.000Z',
     quantity: 400,
     isDecrease: false,
@@ -271,7 +271,7 @@ const MOUVEMENTS: StockMovement[] = [
     costCategoryLabel: null,
     requestedBy: null,
     supplierInvoiceReference: 'F-2026-0142',
-    createdByLabel: 'Aissatou Barry',
+    createdByLabel: 'Aissatou Brou',
     createdAt: '2026-09-02T08:12:00.000Z'
   },
   {
@@ -282,7 +282,7 @@ const MOUVEMENTS: StockMovement[] = [
     itemLabel: 'Sable lavé',
     itemUnit: 'm³',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     movementDate: '2026-09-02T00:00:00.000Z',
     // Quatre décimales dès la réception.
     quantity: 24.5,
@@ -298,19 +298,19 @@ const MOUVEMENTS: StockMovement[] = [
     requestedBy: null,
     // MÊME facture que la ligne précédente : une réception, deux lignes.
     supplierInvoiceReference: 'F-2026-0142',
-    createdByLabel: 'Aissatou Barry',
+    createdByLabel: 'Aissatou Brou',
     createdAt: '2026-09-02T08:12:00.000Z'
   },
   // --- Réception plus chère ailleurs : d'où le coût moyen différent ---------
   {
-    id: 'mvt-receipt-ciment-nongo',
+    id: 'mvt-receipt-ciment-riviera',
     type: 'RECEIPT',
     itemId: CIMENT,
     itemReference: 'CIM-42',
     itemLabel: 'Ciment CPJ 42,5',
     itemUnit: 'sac',
-    locationId: DEPOT_NONGO,
-    locationLabel: 'Dépôt de la Villa de Nongo',
+    locationId: DEPOT_RIVIERA,
+    locationLabel: 'Dépôt de la Villa Riviera',
     movementDate: '2026-09-05T00:00:00.000Z',
     quantity: 80,
     isDecrease: false,
@@ -326,7 +326,7 @@ const MOUVEMENTS: StockMovement[] = [
     costCategoryLabel: null,
     requestedBy: null,
     supplierInvoiceReference: 'F-2026-0151',
-    createdByLabel: 'Aissatou Barry',
+    createdByLabel: 'Aissatou Brou',
     createdAt: '2026-09-05T09:40:00.000Z'
   },
   // --- Sorties : le geste qui impute ---------------------------------------
@@ -338,7 +338,7 @@ const MOUVEMENTS: StockMovement[] = [
     itemLabel: 'Ciment CPJ 42,5',
     itemUnit: 'sac',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     movementDate: '2026-09-08T00:00:00.000Z',
     quantity: 80,
     isDecrease: true,
@@ -348,12 +348,12 @@ const MOUVEMENTS: StockMovement[] = [
     currency: DEVISE,
     quantityAfter: 320,
     valueAfter: 1_504_000,
-    siteId: NONGO,
-    siteLabel: 'Villa de Nongo',
+    siteId: RIVIERA,
+    siteLabel: 'Villa de la Riviera',
     costCategoryLabel: 'Gros œuvre',
-    requestedBy: 'Mamadou Diallo, chef de chantier',
+    requestedBy: 'Mamadou Kouassi, chef de chantier',
     supplierInvoiceReference: null,
-    createdByLabel: 'Ibrahima Sow',
+    createdByLabel: 'Ibrahima Yao',
     createdAt: '2026-09-08T07:55:00.000Z'
   },
   {
@@ -369,7 +369,7 @@ const MOUVEMENTS: StockMovement[] = [
     itemLabel: 'Fer à béton HA 12',
     itemUnit: 'barre',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     movementDate: '2026-09-11T00:00:00.000Z',
     quantity: 25,
     isDecrease: true,
@@ -380,12 +380,12 @@ const MOUVEMENTS: StockMovement[] = [
     // La quantité tombe à zéro, la valeur aussi : sans cette règle, un
     // résidu resterait sur un stock inexistant.
     valueAfter: 0,
-    siteId: RATOMA,
-    siteLabel: 'Résidence Ratoma',
+    siteId: COCODY,
+    siteLabel: 'Résidence Cocody',
     costCategoryLabel: 'Gros œuvre',
-    requestedBy: 'Fatoumata Camara, conductrice de travaux',
+    requestedBy: 'Fatoumata Kouadio, conductrice de travaux',
     supplierInvoiceReference: null,
-    createdByLabel: 'Ibrahima Sow',
+    createdByLabel: 'Ibrahima Yao',
     createdAt: '2026-09-11T16:20:00.000Z'
   },
   // --- Transfert : aucune imputation ---------------------------------------
@@ -396,8 +396,8 @@ const MOUVEMENTS: StockMovement[] = [
     itemReference: 'TOL-BA',
     itemLabel: 'Tôle bac alu 6 m',
     itemUnit: 'tôle',
-    locationId: DEPOT_NONGO,
-    locationLabel: 'Dépôt de la Villa de Nongo',
+    locationId: DEPOT_RIVIERA,
+    locationLabel: 'Dépôt de la Villa Riviera',
     movementDate: '2026-09-14T00:00:00.000Z',
     quantity: 42,
     isDecrease: false,
@@ -413,7 +413,7 @@ const MOUVEMENTS: StockMovement[] = [
     costCategoryLabel: null,
     requestedBy: null,
     supplierInvoiceReference: null,
-    createdByLabel: 'Aissatou Barry',
+    createdByLabel: 'Aissatou Brou',
     createdAt: '2026-09-14T11:05:00.000Z'
   },
   // --- Ajustement d'inventaire : la réponse juste à un écart ---------------
@@ -425,7 +425,7 @@ const MOUVEMENTS: StockMovement[] = [
     itemLabel: 'Sable lavé',
     itemUnit: 'm³',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     movementDate: '2026-09-16T00:00:00.000Z',
     // Un quart de mètre cube : la valeur qui s'afficherait « 0 » si on la
     // passait au formateur monétaire.
@@ -441,7 +441,7 @@ const MOUVEMENTS: StockMovement[] = [
     costCategoryLabel: null,
     requestedBy: null,
     supplierInvoiceReference: null,
-    createdByLabel: 'Aissatou Barry',
+    createdByLabel: 'Aissatou Brou',
     createdAt: '2026-09-16T17:30:00.000Z'
   }
 ];

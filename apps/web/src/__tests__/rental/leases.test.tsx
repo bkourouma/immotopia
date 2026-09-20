@@ -38,7 +38,7 @@ function bail(overrides: Record<string, unknown> = {}) {
     status: 'ACTIVE',
     start_date: '2026-01-01T00:00:00.000Z',
     end_date: '2026-12-31T00:00:00.000Z',
-    currency: 'GNF',
+    currency: 'XOF',
     rent_amount: 1_250_000,
     service_charge_amount: 0,
     security_deposit_amount: 0,
@@ -51,12 +51,12 @@ function bail(overrides: Record<string, unknown> = {}) {
     created_by_user_id: 'u1',
     created_at: '',
     updated_at: '',
-    property: { id: 'prop-1', internalReference: 'BIEN-0001', address: 'Kipé', title: 'Villa Kipé' },
+    property: { id: 'prop-1', internalReference: 'BIEN-0001', address: 'Angré', title: 'Villa Angré' },
     primaryRenter: {
       id: 'c1',
       userId: 'u2',
       clientType: 'RENTER',
-      user: { id: 'u2', fullName: 'Aissatou Diallo', email: 'a@b.c' }
+      user: { id: 'u2', fullName: 'Aissatou Kouassi', email: 'a@b.c' }
     },
     ...overrides
   };
@@ -159,11 +159,11 @@ describe('Baux — montant de référence', () => {
           property: {
             id: 'prop-9',
             internalReference: 'BIEN-0009',
-            address: 'Kaloum',
+            address: 'Plateau',
             title: 'Boutique',
             transactionModes: ['SALE'],
             price: 45_000_000,
-            currency: 'GNF'
+            currency: 'XOF'
           }
         })
       ],

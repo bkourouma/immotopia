@@ -91,7 +91,7 @@ function tacheron(overrides: Partial<Contractor> = {}): Contractor {
   return {
     id: TACHERON,
     tenantId: TENANT,
-    fullName: 'Mamadou Sylla',
+    fullName: 'Mamadou Koffi',
     trade: 'Plomberie',
     thirdPartyAccountId: 'compte-tiers-1',
     isActive: true,
@@ -105,9 +105,9 @@ function marcheExecute(overrides: Partial<ContractorContract> = {}): ContractorC
   return {
     id: 'marche-1',
     contractorId: TACHERON,
-    contractorLabel: 'Mamadou Sylla',
+    contractorLabel: 'Mamadou Koffi',
     siteId: 'chantier-1',
-    siteLabel: 'Villa de Nongo',
+    siteLabel: 'Villa de la Riviera',
     costCategoryId: 'poste-1',
     costCategoryLabel: 'Second œuvre',
     reference: 'MAR-2026-007',
@@ -141,13 +141,13 @@ function situation(overrides: Partial<ProgressStatement> = {}): ProgressStatemen
     id: 'situation-1',
     contractId: 'marche-1',
     contractReference: 'MAR-2026-007',
-    contractorLabel: 'Mamadou Sylla',
+    contractorLabel: 'Mamadou Koffi',
     statementDate: '2026-04-30',
     amount: 900_000,
     currency: 'XOF',
     description: 'Pose complète du réseau sanitaire',
     status: 'VALIDATED',
-    createdByLabel: 'Fatoumata Diallo',
+    createdByLabel: 'Fatoumata Kouassi',
     validatedAt: '2026-05-02T08:05:00.000Z',
     ...overrides
   };
@@ -157,12 +157,12 @@ function reglement(overrides: Partial<ContractorPayment> = {}): ContractorPaymen
   return {
     id: 'reglement-1',
     contractorId: TACHERON,
-    contractorLabel: 'Mamadou Sylla',
+    contractorLabel: 'Mamadou Koffi',
     paymentDate: '2026-05-10',
     amount: 175_000,
     currency: 'XOF',
     status: 'VALIDATED',
-    createdByLabel: 'Fatoumata Diallo',
+    createdByLabel: 'Fatoumata Kouassi',
     validatedAt: '2026-05-10T09:00:00.000Z',
     ...overrides
   };
@@ -204,7 +204,7 @@ function configurerGet(
           data: [
             {
               id: 'chantier-1',
-              name: 'Villa de Nongo',
+              name: 'Villa de la Riviera',
               zone: null,
               propertyId: null,
               propertyLabel: null,
@@ -271,9 +271,9 @@ describe('Tâcherons — liste', () => {
   it('affiche le corps de métier et ce qu’on lui doit, jamais un « solde » anonyme', async () => {
     mountListe();
 
-    expect(await screen.findByText('Mamadou Sylla', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(await screen.findByText('Mamadou Koffi', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getByText('Plomberie')).toBeInTheDocument();
-    expect(screen.getAllByText(/725\s000\sFCFA/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/725\s000/).length).toBeGreaterThanOrEqual(1);
     // Le libellé est dit en toutes lettres, et le mot « solde » seul
     // n'apparaît nulle part : c'est ce qui l'empêche d'être confondu avec le
     // marché restant.
@@ -282,17 +282,17 @@ describe('Tâcherons — liste', () => {
   });
 
   it('dit en clair qu’une avance a déjà été versée quand le compte est négatif', async () => {
-    configurerGet({ tacherons: [tacheron({ accountBalance: -500_000, fullName: 'Aïssatou Bah' })] });
+    configurerGet({ tacherons: [tacheron({ accountBalance: -500_000, fullName: 'Aïssatou Konan' })] });
     mountListe();
 
-    await screen.findByText('Aïssatou Bah', {}, { timeout: 8000 });
+    await screen.findByText('Aïssatou Konan', {}, { timeout: 8000 });
     expect(screen.getByText(/Avance déjà versée/i)).toBeInTheDocument();
   });
 
   it('n’affiche jamais les identifiants, seulement les noms', async () => {
     mountListe();
 
-    await screen.findByText('Mamadou Sylla', {}, { timeout: 8000 });
+    await screen.findByText('Mamadou Koffi', {}, { timeout: 8000 });
     expect(screen.queryByText(TACHERON)).not.toBeInTheDocument();
     expect(screen.queryByText('compte-tiers-1')).not.toBeInTheDocument();
   });
@@ -301,7 +301,7 @@ describe('Tâcherons — liste', () => {
     const user = userEvent.setup({ delay: null });
     mountListe();
 
-    await screen.findByText('Mamadou Sylla', {}, { timeout: 8000 });
+    await screen.findByText('Mamadou Koffi', {}, { timeout: 8000 });
     // Sans le filtre, aucun paramètre de requête.
     expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/contractors`);
 
@@ -311,20 +311,20 @@ describe('Tâcherons — liste', () => {
   }, 15000);
 
   it('enregistre un tâcheron avec les champs du contrat gelé, puis ouvre sa fiche', async () => {
-    post.mockResolvedValue({ data: { data: tacheron({ id: TACHERON, fullName: 'Sékou Camara' }) } });
+    post.mockResolvedValue({ data: { data: tacheron({ id: TACHERON, fullName: 'Sékou Kouadio' }) } });
     const user = userEvent.setup({ delay: null });
     mountListe();
 
-    await screen.findByText('Mamadou Sylla', {}, { timeout: 8000 });
+    await screen.findByText('Mamadou Koffi', {}, { timeout: 8000 });
     await user.click(screen.getAllByRole('button', { name: /Nouveau tâcheron/ })[0]);
 
-    await user.type(await screen.findByLabelText('Nom du tâcheron'), 'Sékou Camara');
+    await user.type(await screen.findByLabelText('Nom du tâcheron'), 'Sékou Kouadio');
     await user.type(screen.getByLabelText('Corps de métier (facultatif)'), 'Maçonnerie');
     await user.click(screen.getByRole('button', { name: 'Enregistrer le tâcheron' }));
 
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/contractors`, {
-        fullName: 'Sékou Camara',
+        fullName: 'Sékou Kouadio',
         trade: 'Maçonnerie'
       })
     );
@@ -338,15 +338,15 @@ describe('Tâcherons — liste', () => {
     const user = userEvent.setup({ delay: null });
     mountListe();
 
-    await screen.findByText('Mamadou Sylla', {}, { timeout: 8000 });
+    await screen.findByText('Mamadou Koffi', {}, { timeout: 8000 });
     await user.click(screen.getAllByRole('button', { name: /Nouveau tâcheron/ })[0]);
-    await user.type(await screen.findByLabelText('Nom du tâcheron'), 'Sékou Camara');
+    await user.type(await screen.findByLabelText('Nom du tâcheron'), 'Sékou Kouadio');
     await user.click(screen.getByRole('button', { name: 'Enregistrer le tâcheron' }));
 
     await waitFor(() => expect(post).toHaveBeenCalled());
     const { corps } = dernierAppel(post);
     // Le schéma serveur refuse `trade: ''` (`.min(1)`) : la clé est retirée.
-    expect(corps).toEqual({ fullName: 'Sékou Camara' });
+    expect(corps).toEqual({ fullName: 'Sékou Kouadio' });
     expect(corps).not.toHaveProperty('trade');
   }, 20000);
 
@@ -365,19 +365,19 @@ describe('Les deux soldes ne se confondent jamais', () => {
   it('marché intégralement exécuté et tâcheron non payé : les deux chiffres, sous deux libellés distincts', async () => {
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Mamadou Sylla' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Mamadou Koffi' }, { timeout: 8000 });
 
     // --- Ce qu'on lui doit : 725 000, et ce nombre n'apparaît NULLE PART
     // ailleurs — ni dans le marché, ni dans les situations, ni dans les
     // règlements.
-    expect(screen.getAllByText(/725\s000\sFCFA/)).toHaveLength(1);
+    expect(screen.getAllByText(/725\s000/)).toHaveLength(1);
     expect(screen.getByText(/ce qui reste à payer, tous marchés confondus/i)).toBeInTheDocument();
 
     // --- Marché restant : ZÉRO, sur la ligne du marché, et cette ligne ne
     // porte jamais ce qu'on lui doit.
     const ligneMarche = (await screen.findByText('MAR-2026-007', {}, { timeout: 8000 })).closest('tr') as HTMLElement;
-    expect(within(ligneMarche).getByText(/^0\sFCFA$/)).toBeInTheDocument();
-    expect(within(ligneMarche).queryByText(/725\s000\sFCFA/)).not.toBeInTheDocument();
+    expect(within(ligneMarche).getByText(/^0$/)).toBeInTheDocument();
+    expect(within(ligneMarche).queryByText(/725\s000/)).not.toBeInTheDocument();
 
     // --- Les deux libellés coexistent, en toutes lettres, et « solde » seul
     // n'est écrit nulle part.
@@ -390,7 +390,7 @@ describe('Les deux soldes ne se confondent jamais', () => {
   it('explique la différence en toutes lettres : exécuter d’un côté, payer de l’autre', async () => {
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Mamadou Sylla' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Mamadou Koffi' }, { timeout: 8000 });
     const texte = normaliser(document.body.textContent ?? '');
     expect(texte).toContain('ce qui reste a executer');
     expect(texte).toContain('ce qui reste a payer');
@@ -404,11 +404,11 @@ describe('Les deux soldes ne se confondent jamais', () => {
     });
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Mamadou Sylla' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Mamadou Koffi' }, { timeout: 8000 });
     // Le marché est intact, et le compte est pourtant en avance : les deux
     // grandeurs sont indépendantes.
-    expect(screen.getAllByText(/2\s000\s000\sFCFA/).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText(/-500\s000\sFCFA/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/2\s000\s000/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/-500\s000/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Avance déjà versée/i)).toBeInTheDocument();
   }, 15000);
 });
@@ -420,7 +420,7 @@ describe('Un dépassement de marché s’affiche, il ne s’interdit pas', () =>
 
     await screen.findByText('MAR-2026-012', {}, { timeout: 8000 });
     expect(screen.getAllByText('Dépassement').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText(/-400\s000\sFCFA/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/-400\s000/).length).toBeGreaterThanOrEqual(1);
     // Ce n'est pas une erreur : rien n'est présenté comme tel.
     expect(screen.queryByText(/interdit/i)).not.toBeInTheDocument();
   }, 15000);
@@ -493,7 +493,7 @@ describe('Les gestes de la fiche', () => {
     await screen.findByText("Convenir d'un marché", {}, { timeout: 8000 });
 
     fireEvent.mouseDown(screen.getByLabelText('Chantier'));
-    fireEvent.click(await screen.findByText('Villa de Nongo', { selector: '.ant-select-item-option-content' }));
+    fireEvent.click(await screen.findByText('Villa de la Riviera', { selector: '.ant-select-item-option-content' }));
 
     fireEvent.mouseDown(screen.getByLabelText('Poste de dépense'));
     fireEvent.click(await screen.findByText('Second œuvre', { selector: '.ant-select-item-option-content' }));
@@ -540,7 +540,7 @@ describe('Les gestes de la fiche', () => {
     const user = userEvent.setup({ delay: null });
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Mamadou Sylla' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Mamadou Koffi' }, { timeout: 8000 });
     // 900 000 dépasse les 725 000 qu'on lui doit : c'est un acompte, que le
     // contrat prévoit explicitement.
     await user.type(screen.getByLabelText('Montant du règlement'), '900000');
@@ -564,7 +564,7 @@ describe('Navigation — les chemins déclarés par les écrans', () => {
   it('la fiche lit `tenantId` et `contractorId` dans le CHEMIN, pas en paramètre de requête', async () => {
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Mamadou Sylla' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Mamadou Koffi' }, { timeout: 8000 });
     // Les marchés du tâcheron sont demandés avec son identifiant en FILTRE de
     // requête (la route des marchés est transversale, contrat gelé), et ses
     // règlements avec son identifiant dans le CHEMIN.
@@ -577,7 +577,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
   it('la liste des tâcherons n’affiche jamais « débit » ni « crédit »', async () => {
     mountListe();
 
-    await screen.findByText('Mamadou Sylla', {}, { timeout: 8000 });
+    await screen.findByText('Mamadou Koffi', {}, { timeout: 8000 });
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
   });
@@ -586,7 +586,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     configurerGet({ marches: [marcheExecute(), marcheDepasse()] });
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Mamadou Sylla' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Mamadou Koffi' }, { timeout: 8000 });
     await screen.findByText('MAR-2026-012', {}, { timeout: 8000 });
 
     const texte = normaliser(document.body.textContent ?? '');

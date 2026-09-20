@@ -38,12 +38,12 @@
  *
  * **Lieux** — trois, pour les trois cas du contrat :
  *
- * - **Magasin central de Kipé** — un `WAREHOUSE`, `siteId` et `siteLabel`
+ * - **Magasin central d'Angré** — un `WAREHOUSE`, `siteId` et `siteLabel`
  *   nuls. Le cas où le formulaire ne doit montrer aucun sélecteur de chantier.
- * - **Dépôt de la Villa de Nongo** — un `SITE`, rattaché à un chantier. Un
- *   chantier n'a qu'un lieu : en créer un second sur « chantier-nongo » doit
+ * - **Dépôt de la Villa Riviera** — un `SITE`, rattaché à un chantier. Un
+ *   chantier n'a qu'un lieu : en créer un second sur « chantier-riviera » doit
  *   être refusé.
- * - **Ancien dépôt de Ratoma** — un `SITE` **désactivé**, sur un autre
+ * - **Ancien dépôt de Cocody** — un `SITE` **désactivé**, sur un autre
  *   chantier. Il occupe toujours son chantier, désactivé ou non.
  *
  * **Méthode de valorisation** — une décision **arrêtée, datée et motivée**,
@@ -141,15 +141,15 @@ const ARTICLES: StockItem[] = [
 // ---------------------------------------------------------------------------
 
 const MAGASIN = 'lieu-magasin-01';
-const DEPOT_NONGO = 'lieu-nongo-02';
-const DEPOT_RATOMA = 'lieu-ratoma-03';
+const DEPOT_RIVIERA = 'lieu-riviera-02';
+const DEPOT_COCODY = 'lieu-cocody-03';
 
 const LIEUX: StockLocation[] = [
   {
     id: MAGASIN,
     tenantId: AGENCE,
     kind: 'WAREHOUSE',
-    label: 'Magasin central de Kipé',
+    label: "Magasin central d'Angré",
     // Un magasin n'a pas de chantier, et le serveur refuse `siteId` pour
     // cette nature plutôt que de l'ignorer.
     siteId: null,
@@ -157,21 +157,21 @@ const LIEUX: StockLocation[] = [
     isActive: true
   },
   {
-    id: DEPOT_NONGO,
+    id: DEPOT_RIVIERA,
     tenantId: AGENCE,
     kind: 'SITE',
-    label: 'Dépôt de la Villa de Nongo',
-    siteId: 'chantier-nongo',
-    siteLabel: 'Villa de Nongo',
+    label: 'Dépôt de la Villa Riviera',
+    siteId: 'chantier-riviera',
+    siteLabel: 'Villa de la Riviera',
     isActive: true
   },
   {
-    id: DEPOT_RATOMA,
+    id: DEPOT_COCODY,
     tenantId: AGENCE,
     kind: 'SITE',
-    label: 'Ancien dépôt de Ratoma',
-    siteId: 'chantier-ratoma',
-    siteLabel: 'Résidence Ratoma',
+    label: 'Ancien dépôt de Cocody',
+    siteId: 'chantier-cocody',
+    siteLabel: 'Résidence Cocody',
     // Désactivé, et il occupe pourtant toujours son chantier : un second lieu
     // y serait refusé.
     isActive: false

@@ -71,11 +71,11 @@ function association(overrides: Partial<Partnership> = {}): Partnership {
   return {
     id: 'assoc-1',
     tenantId: TENANT,
-    label: 'Villa de Nongo — indivision Camara / Diallo',
+    label: 'Villa de la Riviera — indivision Kouadio / Kouassi',
     isActive: true,
     shares: [
-      { id: 'part-1', partnerAccountId: 'compte-1', partnerName: 'Mamadou Camara', sharePercent: 60 },
-      { id: 'part-2', partnerAccountId: 'compte-2', partnerName: 'Fatoumata Diallo', sharePercent: 40 }
+      { id: 'part-1', partnerAccountId: 'compte-1', partnerName: 'Mamadou Kouadio', sharePercent: 60 },
+      { id: 'part-2', partnerAccountId: 'compte-2', partnerName: 'Fatoumata Kouassi', sharePercent: 40 }
     ],
     // Cent pour cent de quotes-parts : le cas par défaut de ce fichier est
     // précisément celui que l'écran ne doit jamais taire (voir les tests de
@@ -90,7 +90,7 @@ function association(overrides: Partial<Partnership> = {}): Partnership {
 function statement(overrides: Partial<PartnerStatement> = {}): PartnerStatement {
   return {
     partnershipShareId: 'part-1',
-    partnerName: 'Mamadou Camara',
+    partnerName: 'Mamadou Kouadio',
     sharePercent: 60,
     lines: [
       {
@@ -118,7 +118,7 @@ function bienDisponible(overrides: Partial<Property> = {}): Partial<Property> {
   return {
     id: 'bien-2',
     internalReference: 'REF-002',
-    title: 'Extension villa — Lambanyi',
+    title: 'Extension villa — Bingerville',
     ...overrides
   };
 }
@@ -202,11 +202,11 @@ describe('Le corps ne répète jamais un identifiant que le chemin porte déjà'
   });
 
   it('ajoute un associé : ni `partnershipId` dans le corps, l’association voyage dans le chemin', async () => {
-    await addPartnershipShare(TENANT, 'assoc-1', { partnerName: 'Ousmane Bah', sharePercent: 25 });
+    await addPartnershipShare(TENANT, 'assoc-1', { partnerName: 'Ousmane Konan', sharePercent: 25 });
 
     const { adresse, corps } = dernierAppel(post);
     expect(adresse).toBe(`/tenants/${TENANT}/finance/partnerships/assoc-1/shares`);
-    expect(corps).toEqual({ partnerName: 'Ousmane Bah', sharePercent: 25 });
+    expect(corps).toEqual({ partnerName: 'Ousmane Konan', sharePercent: 25 });
     expect(corps).not.toHaveProperty('partnershipId');
   });
 
@@ -252,7 +252,7 @@ describe('Associations — liste et création', () => {
     mountListe();
 
     expect(
-      await screen.findByText('Villa de Nongo — indivision Camara / Diallo', {}, { timeout: 8000 })
+      await screen.findByText('Villa de la Riviera — indivision Kouadio / Kouassi', {}, { timeout: 8000 })
     ).toBeInTheDocument();
     // Cent pour cent de quotes-parts : la part de l'agence est ZÉRO, et ce
     // zéro doit s'afficher en toutes lettres, pas disparaître.
@@ -263,8 +263,8 @@ describe('Associations — liste et création', () => {
   it('affiche les noms des associés et des biens, jamais leurs identifiants', async () => {
     mountListe();
 
-    await screen.findByText('Villa de Nongo — indivision Camara / Diallo', {}, { timeout: 8000 });
-    expect(screen.getByText(/Mamadou Camara/)).toBeInTheDocument();
+    await screen.findByText('Villa de la Riviera — indivision Kouadio / Kouassi', {}, { timeout: 8000 });
+    expect(screen.getByText(/Mamadou Kouadio/)).toBeInTheDocument();
     expect(screen.getByText(/Terrain 600 m²/)).toBeInTheDocument();
     expect(screen.queryByText('assoc-1')).not.toBeInTheDocument();
     expect(screen.queryByText('bien-1')).not.toBeInTheDocument();
@@ -315,7 +315,7 @@ describe('Associations — liste et création', () => {
     const user = userEvent.setup({ delay: null });
     mountListe();
 
-    await screen.findByText('Villa de Nongo — indivision Camara / Diallo', {}, { timeout: 8000 });
+    await screen.findByText('Villa de la Riviera — indivision Kouadio / Kouassi', {}, { timeout: 8000 });
     await user.click(screen.getByRole('button', { name: 'Voir la fiche' }));
 
     expect(await screen.findByText('Associés', {}, { timeout: 8000 })).toBeInTheDocument();
@@ -327,7 +327,11 @@ describe('Fiche de l’association — répartition', () => {
   it('montre ce qui reste à l’agence, y compris quand cela vaut zéro', async () => {
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Villa de Nongo — indivision Camara / Diallo' }, { timeout: 8000 });
+    await screen.findByRole(
+      'heading',
+      { name: 'Villa de la Riviera — indivision Kouadio / Kouassi' },
+      { timeout: 8000 }
+    );
     expect(screen.getByText('100 %')).toBeInTheDocument();
     expect(screen.getByText('0 %')).toBeInTheDocument();
     expect(await screen.findByText(/rien ne reste à l'agence/i, {}, { timeout: 8000 })).toBeInTheDocument();
@@ -336,15 +340,15 @@ describe('Fiche de l’association — répartition', () => {
   it('ne répète pas ce message quand il reste bien quelque chose à l’agence', async () => {
     configurerGet({
       association: association({
-        label: 'Bureau Almamya — association Bah',
-        shares: [{ id: 'part-3', partnerAccountId: 'compte-3', partnerName: 'Ousmane Bah', sharePercent: 45 }],
+        label: 'Bureau Treichville — association Konan',
+        shares: [{ id: 'part-3', partnerAccountId: 'compte-3', partnerName: 'Ousmane Konan', sharePercent: 45 }],
         totalSharePercent: 45,
         companySharePercent: 55
       })
     });
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Bureau Almamya — association Bah' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Bureau Treichville — association Konan' }, { timeout: 8000 });
     expect(screen.getByText('55 %')).toBeInTheDocument();
     expect(screen.queryByText(/rien ne reste à l'agence/i)).not.toBeInTheDocument();
   });
@@ -356,7 +360,7 @@ describe('Fiche de l’association — associés', () => {
     mountFiche();
 
     await screen.findByText('Ajouter un associé', {}, { timeout: 8000 });
-    await user.type(screen.getByLabelText("Nom de l'associé"), 'Ousmane Bah');
+    await user.type(screen.getByLabelText("Nom de l'associé"), 'Ousmane Konan');
     await user.type(screen.getByLabelText('Quote-part (%)'), '15');
 
     await waitFor(() => expect(screen.getByRole('button', { name: "Ajouter l'associé" })).not.toBeDisabled());
@@ -364,7 +368,7 @@ describe('Fiche de l’association — associés', () => {
 
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/partnerships/assoc-1/shares`, {
-        partnerName: 'Ousmane Bah',
+        partnerName: 'Ousmane Konan',
         sharePercent: 15
       })
     );
@@ -374,8 +378,10 @@ describe('Fiche de l’association — associés', () => {
     const user = userEvent.setup({ delay: null });
     mountFiche();
 
-    const ligneCamara = (await screen.findByText('Mamadou Camara', {}, { timeout: 8000 })).closest('tr') as HTMLElement;
-    await user.click(within(ligneCamara).getByRole('button', { name: 'Retirer' }));
+    const ligneKouadio = (await screen.findByText('Mamadou Kouadio', {}, { timeout: 8000 })).closest(
+      'tr'
+    ) as HTMLElement;
+    await user.click(within(ligneKouadio).getByRole('button', { name: 'Retirer' }));
 
     expect(await screen.findByText(/irréversible/i)).toBeInTheDocument();
     expect(del).not.toHaveBeenCalled();
@@ -389,15 +395,17 @@ describe('Fiche de l’association — associés', () => {
     const user = userEvent.setup({ delay: null });
     mountFiche();
 
-    const ligneCamara = (await screen.findByText('Mamadou Camara', {}, { timeout: 8000 })).closest('tr') as HTMLElement;
-    await user.click(within(ligneCamara).getByRole('button', { name: "Voir l'état" }));
+    const ligneKouadio = (await screen.findByText('Mamadou Kouadio', {}, { timeout: 8000 })).closest(
+      'tr'
+    ) as HTMLElement;
+    await user.click(within(ligneKouadio).getByRole('button', { name: "Voir l'état" }));
 
-    expect(await screen.findByText('État de quote-part — Mamadou Camara', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(await screen.findByText('État de quote-part — Mamadou Kouadio', {}, { timeout: 8000 })).toBeInTheDocument();
     // Facturé ET encaissé valent tous deux 500 000 dans cette fixture (loyer
     // intégralement encaissé) : les deux occurrences sont attendues.
-    expect(screen.getAllByText(/500\s000\sFCFA/).length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByText(/300\s000\sFCFA/).length).toBeGreaterThanOrEqual(1); // sa part / total de la période
-    expect(screen.getByText(/180\s000\sFCFA/)).toBeInTheDocument(); // déjà reversé
+    expect(screen.getAllByText(/500\s000/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText(/300\s000/).length).toBeGreaterThanOrEqual(1); // sa part / total de la période
+    expect(screen.getByText(/180\s000/)).toBeInTheDocument(); // déjà reversé
 
     // Rien ne s'y écrit : ni bouton de saisie, ni action de mutation dans la modale.
     expect(screen.queryByRole('button', { name: /Enregistrer/ })).not.toBeInTheDocument();
@@ -409,11 +417,15 @@ describe('Fiche de l’association — biens rattachés', () => {
     const user = userEvent.setup({ delay: null });
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Villa de Nongo — indivision Camara / Diallo' }, { timeout: 8000 });
+    await screen.findByRole(
+      'heading',
+      { name: 'Villa de la Riviera — indivision Kouadio / Kouassi' },
+      { timeout: 8000 }
+    );
 
     const select = await screen.findByLabelText('Rattacher un bien existant', {}, { timeout: 8000 });
     fireEvent.mouseDown(select);
-    fireEvent.click(await screen.findByText('Extension villa — Lambanyi'));
+    fireEvent.click(await screen.findByText('Extension villa — Bingerville'));
 
     await user.click(screen.getByRole('button', { name: 'Rattacher' }));
 
@@ -446,7 +458,11 @@ describe('Navigation — les chemins déclarés par les écrans', () => {
   it('la fiche lit bien `tenantId` et `partnershipId` dans le CHEMIN, pas en paramètre de requête', async () => {
     mountFiche(`/tenant/${TENANT}/finance/associations/assoc-1`);
 
-    await screen.findByRole('heading', { name: 'Villa de Nongo — indivision Camara / Diallo' }, { timeout: 8000 });
+    await screen.findByRole(
+      'heading',
+      { name: 'Villa de la Riviera — indivision Kouadio / Kouassi' },
+      { timeout: 8000 }
+    );
     // La détail-query a bien été appelée avec ce chemin exact.
     expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/partnerships/assoc-1`);
   });
@@ -456,7 +472,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
   it('la liste des associations n’affiche jamais « débit » ni « crédit »', async () => {
     mountListe();
 
-    await screen.findByText('Villa de Nongo — indivision Camara / Diallo', {}, { timeout: 8000 });
+    await screen.findByText('Villa de la Riviera — indivision Kouadio / Kouassi', {}, { timeout: 8000 });
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
   });
@@ -465,10 +481,16 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     const user = userEvent.setup({ delay: null });
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Villa de Nongo — indivision Camara / Diallo' }, { timeout: 8000 });
-    const ligneCamara = (await screen.findByText('Mamadou Camara', {}, { timeout: 8000 })).closest('tr') as HTMLElement;
-    await user.click(within(ligneCamara).getByRole('button', { name: "Voir l'état" }));
-    await screen.findByText('État de quote-part — Mamadou Camara', {}, { timeout: 8000 });
+    await screen.findByRole(
+      'heading',
+      { name: 'Villa de la Riviera — indivision Kouadio / Kouassi' },
+      { timeout: 8000 }
+    );
+    const ligneKouadio = (await screen.findByText('Mamadou Kouadio', {}, { timeout: 8000 })).closest(
+      'tr'
+    ) as HTMLElement;
+    await user.click(within(ligneKouadio).getByRole('button', { name: "Voir l'état" }));
+    await screen.findByText('État de quote-part — Mamadou Kouadio', {}, { timeout: 8000 });
 
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);

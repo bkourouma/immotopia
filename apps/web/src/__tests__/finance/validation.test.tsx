@@ -45,12 +45,12 @@ function piece(overrides: Partial<PendingDocument> = {}): PendingDocument {
   return {
     documentType: 'SUPPLIER_INVOICE',
     documentId: 'facture-1',
-    label: 'Quincaillerie Almamya — Facture FA-2026-0142',
+    label: 'Quincaillerie Treichville — Facture FA-2026-0142',
     amount: 1_850_000,
     currency: 'XOF',
     createdAt: '2026-09-10T09:15:00.000Z',
-    createdByUserId: 'user-mariam-camara',
-    createdByLabel: 'Mariam Camara',
+    createdByUserId: 'user-mariam-kouadio',
+    createdByLabel: 'Mariam Kouadio',
     ...overrides
   };
 }
@@ -61,11 +61,11 @@ function fileTypique(): PendingDocument[] {
     piece({
       documentType: 'SUPPLIER_PAYMENT',
       documentId: 'reglement-1',
-      label: 'Transport Nongo — Règlement du 15/09/2026',
+      label: 'Transport Riviera — Règlement du 15/09/2026',
       amount: 450_000,
       createdAt: '2026-09-15T16:30:00.000Z',
-      createdByUserId: 'user-ibrahima-sow',
-      createdByLabel: 'Ibrahima Sow'
+      createdByUserId: 'user-ibrahima-yao',
+      createdByLabel: 'Ibrahima Yao'
     }),
     piece({
       documentType: 'CASH_VOUCHER',
@@ -73,8 +73,8 @@ function fileTypique(): PendingDocument[] {
       label: 'Pièce de caisse 2026-0031 — Ousmane Touré',
       amount: 150_000,
       createdAt: '2026-09-08T07:45:00.000Z',
-      createdByUserId: 'user-aissatou-barry',
-      createdByLabel: 'Aïssatou Barry'
+      createdByUserId: 'user-aissatou-brou',
+      createdByLabel: 'Aïssatou Brou'
     })
   ];
 }
@@ -122,23 +122,23 @@ describe('File de validation — les trois natures', () => {
   it('nomme le saisisseur sur chaque ligne — la raison d’être de l’écran', async () => {
     mount();
 
-    await screen.findByText('Quincaillerie Almamya — Facture FA-2026-0142', {}, { timeout: 8000 });
+    await screen.findByText('Quincaillerie Treichville — Facture FA-2026-0142', {}, { timeout: 8000 });
 
-    expect(screen.getByText('Mariam Camara')).toBeInTheDocument();
-    expect(screen.getByText('Ibrahima Sow')).toBeInTheDocument();
-    expect(screen.getByText('Aïssatou Barry')).toBeInTheDocument();
+    expect(screen.getByText('Mariam Kouadio')).toBeInTheDocument();
+    expect(screen.getByText('Ibrahima Yao')).toBeInTheDocument();
+    expect(screen.getByText('Aïssatou Brou')).toBeInTheDocument();
   });
 });
 
 describe('File de validation — filtre par saisisseur', () => {
   it('porte le filtre par saisisseur dans l’URL et envoie un identifiant, jamais un nom', async () => {
     getValidationQueue.mockResolvedValue([piece()]);
-    mount('/tenant/agence-1/finance/validation?saisisseur=user-mariam-camara');
+    mount('/tenant/agence-1/finance/validation?saisisseur=user-mariam-kouadio');
 
-    await screen.findByText('Quincaillerie Almamya — Facture FA-2026-0142', {}, { timeout: 8000 });
+    await screen.findByText('Quincaillerie Treichville — Facture FA-2026-0142', {}, { timeout: 8000 });
 
     await waitFor(() =>
-      expect(getValidationQueue).toHaveBeenCalledWith('agence-1', { createdByUserId: 'user-mariam-camara' })
+      expect(getValidationQueue).toHaveBeenCalledWith('agence-1', { createdByUserId: 'user-mariam-kouadio' })
     );
 
     // La régression que ce test empêche : deux homonymes enverraient le même
@@ -146,13 +146,13 @@ describe('File de validation — filtre par saisisseur', () => {
     // au lot 1 sur le filtre par bien. L'argument reçu ne doit jamais
     // ressembler à un nom de personne.
     const argumentRecu = getValidationQueue.mock.calls[0][1] as { createdByUserId?: string };
-    expect(argumentRecu.createdByUserId).toBe('user-mariam-camara');
-    expect(argumentRecu.createdByUserId).not.toMatch(/Mariam|Camara/);
+    expect(argumentRecu.createdByUserId).toBe('user-mariam-kouadio');
+    expect(argumentRecu.createdByUserId).not.toMatch(/Mariam|Kouadio/);
   });
 
   it('interroge la file sans filtre quand aucun saisisseur n’est choisi', async () => {
     mount();
-    await screen.findByText('Quincaillerie Almamya — Facture FA-2026-0142', {}, { timeout: 8000 });
+    await screen.findByText('Quincaillerie Treichville — Facture FA-2026-0142', {}, { timeout: 8000 });
 
     await waitFor(() => expect(getValidationQueue).toHaveBeenCalledWith('agence-1', { createdByUserId: undefined }));
   });
@@ -163,7 +163,7 @@ describe('File de validation — valider une pièce', () => {
     const user = userEvent.setup({ delay: null });
     mount();
 
-    await screen.findByText('Quincaillerie Almamya — Facture FA-2026-0142', {}, { timeout: 8000 });
+    await screen.findByText('Quincaillerie Treichville — Facture FA-2026-0142', {}, { timeout: 8000 });
 
     const boutonsAvant = await screen.findAllByRole('button', { name: 'Valider' }, { timeout: 8000 });
     const nombreAvant = boutonsAvant.length;
@@ -195,7 +195,7 @@ describe('File de validation — validation en lot', () => {
     const user = userEvent.setup({ delay: null });
     mount();
 
-    await screen.findByText('Quincaillerie Almamya — Facture FA-2026-0142', {}, { timeout: 8000 });
+    await screen.findByText('Quincaillerie Treichville — Facture FA-2026-0142', {}, { timeout: 8000 });
 
     const cases = screen.getAllByRole('checkbox').filter(c => c.getAttribute('aria-label')?.startsWith('Sélectionner'));
     await user.click(cases[0]);
@@ -219,9 +219,9 @@ describe('File de validation — validation en lot', () => {
     // simple total muet, ce qui distinguerait un validateur qui coche tout
     // sans lire d'un qui vérifie.
     expect(await screen.findByText('Compte rendu de la validation en lot', {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByText(/Quincaillerie Almamya — Facture FA-2026-0142 — validée/)).toBeInTheDocument();
+    expect(screen.getByText(/Quincaillerie Treichville — Facture FA-2026-0142 — validée/)).toBeInTheDocument();
     expect(
-      screen.getByText(/Transport Nongo — Règlement du 15\/09\/2026 — Compte fournisseur introuvable\./)
+      screen.getByText(/Transport Riviera — Règlement du 15\/09\/2026 — Compte fournisseur introuvable\./)
     ).toBeInTheDocument();
   });
 });
@@ -260,8 +260,8 @@ describe('File de validation — vocabulaire (P-1 du PRD)', () => {
   it('ne montre jamais « débit » ni « crédit », casse et accents indifférents', async () => {
     mount();
 
-    await screen.findByText('Quincaillerie Almamya — Facture FA-2026-0142', {}, { timeout: 8000 });
-    await screen.findByText('Transport Nongo — Règlement du 15/09/2026');
+    await screen.findByText('Quincaillerie Treichville — Facture FA-2026-0142', {}, { timeout: 8000 });
+    await screen.findByText('Transport Riviera — Règlement du 15/09/2026');
     await screen.findByText('Pièce de caisse 2026-0031 — Ousmane Touré');
 
     const texte = document.body.textContent ?? '';

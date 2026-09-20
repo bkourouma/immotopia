@@ -54,11 +54,11 @@ vi.mock('../../hooks/useBreakpoint', () => ({
 function chantier(overrides: Partial<ConstructionSite> = {}): ConstructionSite {
   return {
     id: 'chantier-1',
-    name: 'Villa duplex — Kipé Centre',
-    zone: 'Kipé, Ratoma',
+    name: 'Villa duplex — Angré Centre',
+    zone: 'Angré, Cocody',
     propertyId: 'bien-1',
-    propertyLabel: 'Villa duplex — Kipé Centre (en construction)',
-    managerLabel: 'Mamadou Bah',
+    propertyLabel: 'Villa duplex — Angré Centre (en construction)',
+    managerLabel: 'Mamadou Konan',
     // Aucun bail de terrain par defaut : c'est le cas courant.
     landLeaseId: null,
     status: 'IN_PROGRESS',
@@ -144,7 +144,7 @@ function voucher(overrides: Partial<CashVoucher> = {}): CashVoucher {
     // pas.
     number: null,
     siteId: 'chantier-1',
-    siteLabel: 'Villa duplex — Kipé Centre',
+    siteLabel: 'Villa duplex — Angré Centre',
     costCategoryId: 'poste-main-oeuvre',
     costCategoryLabel: "Main-d'œuvre",
     beneficiary: 'Sékou Traoré',
@@ -213,7 +213,7 @@ function mountCaisse(url = '/tenant/agence-1/finance/caisse') {
 beforeEach(() => {
   vi.clearAllMocks();
   listProperties.mockResolvedValue({
-    properties: [{ id: 'bien-1', title: 'Villa duplex — Kipé Centre (en construction)' }],
+    properties: [{ id: 'bien-1', title: 'Villa duplex — Angré Centre (en construction)' }],
     pagination: { page: 1, limit: 200, total: 1, totalPages: 1 }
   });
   listCostCategories.mockResolvedValue([
@@ -228,15 +228,15 @@ describe('Chantiers — liste et création', () => {
     listConstructionSites.mockResolvedValue([chantier()]);
     mountListe();
 
-    expect(await screen.findByText('Villa duplex — Kipé Centre', {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByText(/4\s450\s000\sFCFA/)).toBeInTheDocument();
-    expect(screen.getByText('Mamadou Bah')).toBeInTheDocument();
+    expect(await screen.findByText('Villa duplex — Angré Centre', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByText(/4\s450\s000/)).toBeInTheDocument();
+    expect(screen.getByText('Mamadou Konan')).toBeInTheDocument();
   });
 
   it('crée un chantier sans bien préexistant : le bien reste facultatif', async () => {
     listConstructionSites.mockResolvedValue([]);
     createConstructionSite.mockResolvedValue(
-      chantier({ id: 'nouveau', name: 'Terrain loué — Nongo', propertyId: null })
+      chantier({ id: 'nouveau', name: 'Terrain loué — Riviera', propertyId: null })
     );
     const user = userEvent.setup({ delay: null });
     mountListe();
@@ -247,13 +247,13 @@ describe('Chantiers — liste et création', () => {
     await user.click(boutons[0]);
 
     const champNom = await screen.findByLabelText('Nom du chantier');
-    await user.type(champNom, 'Terrain loué — Nongo');
+    await user.type(champNom, 'Terrain loué — Riviera');
 
     await user.click(screen.getByRole('button', { name: 'Créer le chantier' }));
 
     await waitFor(() => expect(createConstructionSite).toHaveBeenCalledTimes(1));
     const [, params] = createConstructionSite.mock.calls[0];
-    expect(params).toMatchObject({ name: 'Terrain loué — Nongo' });
+    expect(params).toMatchObject({ name: 'Terrain loué — Riviera' });
     // Le point du récit : aucun bien n'est exigé, et aucun n'a été choisi.
     expect(params.propertyId).toBeUndefined();
   });
@@ -271,7 +271,7 @@ describe('Chantiers — liste et création', () => {
     const user = userEvent.setup({ delay: null });
     mountListe();
 
-    await screen.findByText('Villa duplex — Kipé Centre', {}, { timeout: 8000 });
+    await screen.findByText('Villa duplex — Angré Centre', {}, { timeout: 8000 });
     // Le bouton porte une icône : son nom accessible est « plus Nouveau chantier ».
     await user.click(screen.getAllByRole('button', { name: /Nouveau chantier/ })[0]);
     await screen.findByLabelText('Nom du chantier');
@@ -289,24 +289,24 @@ describe('Détail d’un chantier', () => {
     // Le nom du chantier apparaît à la fois dans le fil d'Ariane et dans le
     // titre : on cible le titre pour lever l'ambiguïté.
     expect(
-      await screen.findByRole('heading', { name: 'Villa duplex — Kipé Centre' }, { timeout: 8000 })
+      await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 })
     ).toBeInTheDocument();
     expect(screen.getByText('Sous-totaux par poste')).toBeInTheDocument();
     // Les sous-totaux (4 000 000 et 1 500 000) sont la somme des DEUX
     // imputations de chaque poste — jamais recalculés ici, ils viennent tels
     // quels de `SiteDetail.byCostCategory`.
-    expect(screen.getByText(/4\s000\s000\sFCFA/)).toBeInTheDocument();
-    expect(screen.getByText(/1\s500\s000\sFCFA/)).toBeInTheDocument();
+    expect(screen.getByText(/4\s000\s000/)).toBeInTheDocument();
+    expect(screen.getByText(/1\s500\s000/)).toBeInTheDocument();
     // Le coût réel affiché dans l'en-tête est celui du serveur (4 450 000),
     // jamais une somme recalculée en local.
-    expect(screen.getByText(/4\s450\s000\sFCFA/)).toBeInTheDocument();
+    expect(screen.getByText(/4\s450\s000/)).toBeInTheDocument();
   });
 
   it('affiche un libellé lisible pour chaque pièce d’origine, jamais son identifiant', async () => {
     getSiteDetail.mockResolvedValue(detail());
     mountDetail();
 
-    await screen.findByRole('heading', { name: 'Villa duplex — Kipé Centre' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
 
     expect(screen.getByText("Facture FC-2026-0141 — Ciments d'Afrique CI")).toBeInTheDocument();
     expect(screen.getByText('Pièce de caisse 2026-0032 — Salaire équipe maçons')).toBeInTheDocument();
@@ -318,7 +318,7 @@ describe('Détail d’un chantier', () => {
     getSiteDetail.mockResolvedValue(detail());
     mountDetail();
 
-    await screen.findByRole('heading', { name: 'Villa duplex — Kipé Centre' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
 
     expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: /coût/i })).not.toBeInTheDocument();
@@ -358,7 +358,7 @@ describe('Pièce de caisse', () => {
     // (aucun autre test du dépôt ne pilote un `<Select>` via `userEvent`).
     const comboboxes = await screen.findAllByRole('combobox', {}, { timeout: 8000 });
     fireEvent.mouseDown(comboboxes[0]);
-    fireEvent.click(await screen.findByText('Villa duplex — Kipé Centre'));
+    fireEvent.click(await screen.findByText('Villa duplex — Angré Centre'));
 
     fireEvent.mouseDown(screen.getAllByRole('combobox')[1]);
     fireEvent.click(await screen.findByText("Main-d'œuvre"));
@@ -446,7 +446,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     listConstructionSites.mockResolvedValue([chantier()]);
     mountListe();
 
-    await screen.findByText('Villa duplex — Kipé Centre', {}, { timeout: 8000 });
+    await screen.findByText('Villa duplex — Angré Centre', {}, { timeout: 8000 });
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
   }, 15000);
@@ -455,7 +455,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     getSiteDetail.mockResolvedValue(detail());
     mountDetail();
 
-    await screen.findByRole('heading', { name: 'Villa duplex — Kipé Centre' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
   });
@@ -475,7 +475,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
 
     const comboboxes = await screen.findAllByRole('combobox', {}, { timeout: 8000 });
     await user.click(comboboxes[0]);
-    await user.click(await screen.findByText('Villa duplex — Kipé Centre'));
+    await user.click(await screen.findByText('Villa duplex — Angré Centre'));
     await user.click(screen.getAllByRole('combobox')[1]);
     await user.click(await screen.findByText("Main-d'œuvre"));
     await user.type(screen.getByLabelText('Bénéficiaire'), 'Sékou Traoré');

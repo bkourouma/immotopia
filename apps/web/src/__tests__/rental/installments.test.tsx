@@ -58,7 +58,7 @@ function echeance(overrides: Record<string, unknown> = {}) {
     period_month: 4,
     due_date: '2026-04-05T00:00:00.000Z',
     status: 'OVERDUE',
-    currency: 'GNF',
+    currency: 'XOF',
     amount_rent: 1_250_000,
     amount_service: 75_000,
     amount_other_fees: 0,
@@ -164,7 +164,7 @@ describe('Échéances — idempotence de l’encaissement', () => {
     await user.click(await screen.findByRole('button', { name: /Encaisser/ }, { timeout: 8000 }));
 
     await waitFor(() => expect(createPayment).toHaveBeenCalled());
-    expect(createPayment.mock.calls[0][1]).toMatchObject({ amount: 1_457_500, method: 'CASH', currency: 'GNF' });
+    expect(createPayment.mock.calls[0][1]).toMatchObject({ amount: 1_457_500, method: 'CASH', currency: 'XOF' });
   });
 
   it('affecte le paiement à l’échéance encaissée', async () => {

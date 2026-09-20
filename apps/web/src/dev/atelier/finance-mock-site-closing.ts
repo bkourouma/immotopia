@@ -111,7 +111,7 @@ const SITE_OUVERT = 'chantier-ouvert-01';
 
 const REPARTITION_OUVERT: SiteCostBreakdown = {
   siteId: SITE_OUVERT,
-  siteLabel: 'Résidence de Nongo — trois villas',
+  siteLabel: 'Résidence de la Riviera — trois villas',
   isClosed: false,
   // Le coût réel à cet instant, dérivé des imputations validées. Il bougera.
   totalCost: 186_400_000,
@@ -157,7 +157,7 @@ const SITE_CLOS = 'chantier-clos-01';
 
 const REPARTITION_CLOS: SiteCostBreakdown = {
   siteId: SITE_CLOS,
-  siteLabel: 'Immeuble de Kipé — six appartements',
+  siteLabel: "Immeuble d'Angré — six appartements",
   isClosed: true,
   // Le coût FIGÉ à la clôture. Il ne bougera plus.
   totalCost: 412_000_000,
@@ -172,7 +172,7 @@ const REPARTITION_CLOS: SiteCostBreakdown = {
       costPrice: 185_400_000,
       // Déjà basculé : ce lot interdit la réouverture du chantier, ET fige la
       // répartition de tous les autres.
-      propertyId: 'bien-kipe-r1g',
+      propertyId: 'bien-angre-r1g',
       propertyLabel: 'APP-2026-031'
     }),
     lot({
@@ -200,7 +200,7 @@ const CLOTURE_CLOS: SiteClosure = {
   siteId: SITE_CLOS,
   siteLabel: REPARTITION_CLOS.siteLabel,
   closedAt: '2026-08-31T16:40:00.000Z',
-  closedByLabel: 'Aminata Sow',
+  closedByLabel: 'Aminata Yao',
   finalCost: REPARTITION_CLOS.totalCost,
   currency: DEVISE,
   lots: REPARTITION_CLOS.lots
@@ -214,7 +214,7 @@ const SITE_BLOQUE = 'chantier-bloque-01';
 
 const REPARTITION_BLOQUE: SiteCostBreakdown = {
   siteId: SITE_BLOQUE,
-  siteLabel: 'Duplex de Lambanyi — deux lots',
+  siteLabel: 'Duplex de Bingerville — deux lots',
   isClosed: false,
   totalCost: 98_750_000,
   allocationMethod: 'EQUAL',
@@ -248,7 +248,7 @@ const SITE_SANS_CLE = 'chantier-sans-cle-01';
 
 const REPARTITION_SANS_CLE: SiteCostBreakdown = {
   siteId: SITE_SANS_CLE,
-  siteLabel: 'Parcelles de Kagbelen — découpage en cours',
+  siteLabel: 'Parcelles de Grand-Bassam — découpage en cours',
   isClosed: false,
   totalCost: 54_300_000,
   // Aucune clé : l'écran doit le dire, et dire ce que cela implique.
@@ -275,7 +275,7 @@ const SITE_SANS_LOT = 'chantier-sans-lot-01';
 
 const REPARTITION_SANS_LOT: SiteCostBreakdown = {
   siteId: SITE_SANS_LOT,
-  siteLabel: 'Voirie de Sonfonia — aucun lot produit',
+  siteLabel: 'Voirie de Yopougon — aucun lot produit',
   isClosed: false,
   totalCost: 31_900_000,
   allocationMethod: null,
@@ -314,7 +314,7 @@ function clotureDe(siteId: string): SiteClosure {
     siteId: repartition.siteId,
     siteLabel: repartition.siteLabel,
     closedAt: new Date().toISOString(),
-    closedByLabel: 'Aminata Sow',
+    closedByLabel: 'Aminata Yao',
     finalCost: repartition.totalCost,
     currency: DEVISE,
     lots: repartition.lots

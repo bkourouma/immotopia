@@ -121,7 +121,7 @@ export const BILLING_EXCLUSION_LABELS: Record<BillingExclusionReason, string> = 
 
 /**
  * Chaque ligne du compte rendu porte un libelle lisible en plus de son
- * identifiant : « Fatoumata Diallo — Villa Kipe 12 », et non un UUID.
+ * identifiant : « Fatoumata Kouassi — Villa Angre 12 », et non un UUID.
  *
  * Les libelles sont resolus par le serveur au moment de la campagne et
  * stockes avec elle. Un compte rendu est une trace, pas une vue : il doit

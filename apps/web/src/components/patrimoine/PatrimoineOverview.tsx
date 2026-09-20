@@ -14,9 +14,9 @@ interface Props {
  *
  * Trois défauts, tous visibles à l'écran et tous corrigés ici :
  *
- * - **Les montants étaient suffixés `XOF`**, le franc CFA d'Afrique de
- *   l'Ouest. L'application sert la Guinée, dont la monnaie est le **franc
- *   guinéen** ; la devise venait d'un suffixe écrit en dur, pas de la donnée.
+ * - **Les montants étaient suffixés `XOF`** par un littéral écrit en dur :
+ *   la devise ne venait pas de la donnée, et un montant libellé autrement
+ *   s'affichait sous une devise qui n'était pas la sienne.
  *   `<MoneyValue>` la rend, avec la mise en forme française.
  * - **Les nombres portaient des séparateurs anglais** — `4,820,000,000` — là
  *   où le français attend une espace insécable.

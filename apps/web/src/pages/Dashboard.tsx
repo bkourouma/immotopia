@@ -386,7 +386,10 @@ export const Dashboard: React.FC = () => {
         noeud: (
           <ChartCard
             title={t('Tickets ouverts par priorité')}
-            subtitle={`${ouverts} ticket${ouverts > 1 ? 's' : ''} en cours de traitement`}
+            subtitle={t('{{nombre}} ticket{{s}} en cours de traitement', {
+              nombre: ouverts,
+              s: ouverts > 1 ? 's' : ''
+            })}
             link={{ label: t('Voir les tickets'), to: `${base}/admin/maintenance/tickets` }}
             empty={ouverts === 0}
             emptyText={t('Aucun ticket ouvert.')}

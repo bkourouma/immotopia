@@ -25,11 +25,11 @@
  * Le cas heureux seul ne prouve rien : un écran qui n'a jamais vu un solde
  * négatif affiche « −120 000 » sans s'en apercevoir.
  *
- * - `emp-sylla` (maçon) : **on lui doit**. Deux notes validées, un seul
+ * - `emp-koffi` (maçon) : **on lui doit**. Deux notes validées, un seul
  *   règlement. Son solde est positif, c'est le cas courant du mois en cours.
- * - `emp-bangoura` (gardien) : **soldé**. Tout ce qui a été constaté a été
+ * - `emp-bamba` (gardien) : **soldé**. Tout ce qui a été constaté a été
  *   réglé — l'écran doit dire « rien à lui verser », pas afficher un zéro nu.
- * - `emp-conde` (chef d'équipe) : **débiteur d'une avance**. Un règlement
+ * - `emp-coulibaly` (chef d'équipe) : **débiteur d'une avance**. Un règlement
  *   supérieur à ce qui lui était dû a été validé, et c'est voulu (contrat
  *   gelé, `ValidateSalaryPaymentTx`). Son solde est NÉGATIF, et l'écran doit
  *   le lire comme une avance à retenir, pas comme une dette de l'agence.
@@ -37,10 +37,10 @@
  *   recevoir. Son solde est nul et son statut se lit « Inactif ».
  *
  * **Les notes couvrent les deux états et les deux natures** : un brouillon
- * (`note-sylla-09`, pas encore validé, donc rien de constaté), une note
+ * (`note-koffi-09`, pas encore validé, donc rien de constaté), une note
  * validée IMPUTÉE à un chantier avec son poste de dépense
- * (`note-sylla-08`, besoin P9 — c'est elle qui fait qu'un chantier connaît sa
- * main-d'œuvre), et une note validée SANS chantier (`note-bangoura-08`, une
+ * (`note-koffi-08`, besoin P9 — c'est elle qui fait qu'un chantier connaît sa
+ * main-d'œuvre), et une note validée SANS chantier (`note-bamba-08`, une
  * charge de structure : l'écran doit dire « aucun chantier », pas laisser un
  * blanc).
  *
@@ -76,19 +76,19 @@ const TENANT = 'agence-1';
 // Chantier repris par son seul identifiant plutôt que réimporté de
 // `finance-mock-chantiers.ts` : les deux fichiers appartiennent à des agents
 // différents, même raison qu'aux sous-lots précédents.
-const CHANTIER_NONGO = 'chantier-nongo-01';
+const CHANTIER_RIVIERA = 'chantier-riviera-01';
 const POSTE_MAIN_DOEUVRE = 'poste-main-doeuvre';
 
 // ---------------------------------------------------------------------------
 // Les salariés
 // ---------------------------------------------------------------------------
 
-const EMP_SYLLA: Employee = {
-  id: 'emp-sylla',
+const EMP_KOFFI: Employee = {
+  id: 'emp-koffi',
   tenantId: TENANT,
-  fullName: 'Ibrahima Sylla',
+  fullName: 'Ibrahima Koffi',
   role: 'Maçon',
-  thirdPartyAccountId: 'compte-sylla',
+  thirdPartyAccountId: 'compte-koffi',
   isActive: true,
   // On lui doit : positif. Volontairement DIFFÉRENT de la somme des notes
   // moins les règlements listés plus bas — voir l'en-tête.
@@ -96,24 +96,24 @@ const EMP_SYLLA: Employee = {
   currency: 'XOF'
 };
 
-const EMP_BANGOURA: Employee = {
-  id: 'emp-bangoura',
+const EMP_BAMBA: Employee = {
+  id: 'emp-bamba',
   tenantId: TENANT,
-  fullName: 'Aïssatou Bangoura',
+  fullName: 'Aïssatou Bamba',
   role: 'Gardienne',
-  thirdPartyAccountId: 'compte-bangoura',
+  thirdPartyAccountId: 'compte-bamba',
   isActive: true,
   // Soldée : rien ne lui reste dû. L'écran doit le dire en toutes lettres.
   accountBalance: 0,
   currency: 'XOF'
 };
 
-const EMP_CONDE: Employee = {
-  id: 'emp-conde',
+const EMP_COULIBALY: Employee = {
+  id: 'emp-coulibaly',
   tenantId: TENANT,
-  fullName: 'Mamadou Condé',
+  fullName: 'Mamadou Coulibaly',
   role: "Chef d'équipe",
-  thirdPartyAccountId: 'compte-conde',
+  thirdPartyAccountId: 'compte-coulibaly',
   isActive: true,
   // Avance sur salaire : c'est LUI qui doit à l'agence. Négatif, et voulu.
   accountBalance: -180_000,
@@ -132,7 +132,7 @@ const EMP_TOURE: Employee = {
   currency: 'XOF'
 };
 
-const SALARIES: Employee[] = [EMP_SYLLA, EMP_BANGOURA, EMP_CONDE, EMP_TOURE];
+const SALARIES: Employee[] = [EMP_KOFFI, EMP_BAMBA, EMP_COULIBALY, EMP_TOURE];
 
 // ---------------------------------------------------------------------------
 // Les notes de salaire
@@ -142,45 +142,45 @@ const NOTES: SalaryNote[] = [
   {
     // Validée ET imputée à un chantier, avec son poste : le besoin P9, c'est
     // cette note qui fait qu'un chantier connaît sa main-d'œuvre.
-    id: 'note-sylla-08',
-    employeeId: EMP_SYLLA.id,
-    employeeLabel: EMP_SYLLA.fullName,
+    id: 'note-koffi-08',
+    employeeId: EMP_KOFFI.id,
+    employeeLabel: EMP_KOFFI.fullName,
     periodYear: 2026,
     periodMonth: 8,
     amount: 450_000,
     currency: 'XOF',
-    siteId: CHANTIER_NONGO,
-    siteLabel: 'Villa de Nongo — gros œuvre',
+    siteId: CHANTIER_RIVIERA,
+    siteLabel: 'Villa de la Riviera — gros œuvre',
     costCategoryId: POSTE_MAIN_DOEUVRE,
     costCategoryLabel: "Main-d'œuvre",
     status: 'VALIDATED',
-    createdByLabel: 'Aminata Bah',
+    createdByLabel: 'Aminata Konan',
     validatedAt: '2026-08-31T16:20:00.000Z'
   },
   {
     // Brouillon : rien n'est encore constaté, aucun mouvement de compte. La
     // seule note de ce jeu d'essai qui offre le geste « Valider ».
-    id: 'note-sylla-09',
-    employeeId: EMP_SYLLA.id,
-    employeeLabel: EMP_SYLLA.fullName,
+    id: 'note-koffi-09',
+    employeeId: EMP_KOFFI.id,
+    employeeLabel: EMP_KOFFI.fullName,
     periodYear: 2026,
     periodMonth: 9,
     amount: 450_000,
     currency: 'XOF',
-    siteId: CHANTIER_NONGO,
-    siteLabel: 'Villa de Nongo — gros œuvre',
+    siteId: CHANTIER_RIVIERA,
+    siteLabel: 'Villa de la Riviera — gros œuvre',
     costCategoryId: POSTE_MAIN_DOEUVRE,
     costCategoryLabel: "Main-d'œuvre",
     status: 'DRAFT',
-    createdByLabel: 'Aminata Bah',
+    createdByLabel: 'Aminata Konan',
     validatedAt: null
   },
   {
     // Validée SANS chantier : une charge de structure, imputable à rien.
     // L'écran doit dire « aucun chantier », pas laisser une case vide.
-    id: 'note-bangoura-08',
-    employeeId: EMP_BANGOURA.id,
-    employeeLabel: EMP_BANGOURA.fullName,
+    id: 'note-bamba-08',
+    employeeId: EMP_BAMBA.id,
+    employeeLabel: EMP_BAMBA.fullName,
     periodYear: 2026,
     periodMonth: 8,
     amount: 180_000,
@@ -190,23 +190,23 @@ const NOTES: SalaryNote[] = [
     costCategoryId: null,
     costCategoryLabel: null,
     status: 'VALIDATED',
-    createdByLabel: 'Aminata Bah',
+    createdByLabel: 'Aminata Konan',
     validatedAt: '2026-08-31T16:22:00.000Z'
   },
   {
-    id: 'note-conde-08',
-    employeeId: EMP_CONDE.id,
-    employeeLabel: EMP_CONDE.fullName,
+    id: 'note-coulibaly-08',
+    employeeId: EMP_COULIBALY.id,
+    employeeLabel: EMP_COULIBALY.fullName,
     periodYear: 2026,
     periodMonth: 8,
     amount: 620_000,
     currency: 'XOF',
-    siteId: CHANTIER_NONGO,
-    siteLabel: 'Villa de Nongo — gros œuvre',
+    siteId: CHANTIER_RIVIERA,
+    siteLabel: 'Villa de la Riviera — gros œuvre',
     costCategoryId: POSTE_MAIN_DOEUVRE,
     costCategoryLabel: "Main-d'œuvre",
     status: 'VALIDATED',
-    createdByLabel: 'Aminata Bah',
+    createdByLabel: 'Aminata Konan',
     validatedAt: '2026-08-31T16:25:00.000Z'
   }
 ];
@@ -216,57 +216,57 @@ const NOTES: SalaryNote[] = [
 // ---------------------------------------------------------------------------
 
 const REGLEMENTS_PAR_SALARIE: Record<string, SalaryPayment[]> = {
-  [EMP_SYLLA.id]: [
+  [EMP_KOFFI.id]: [
     {
-      id: 'regl-sylla-08',
-      employeeId: EMP_SYLLA.id,
-      employeeLabel: EMP_SYLLA.fullName,
+      id: 'regl-koffi-08',
+      employeeId: EMP_KOFFI.id,
+      employeeLabel: EMP_KOFFI.fullName,
       paymentDate: '2026-09-03T00:00:00.000Z',
       amount: 450_000,
       currency: 'XOF',
       status: 'VALIDATED',
-      createdByLabel: 'Aminata Bah',
+      createdByLabel: 'Aminata Konan',
       validatedAt: '2026-09-03T11:05:00.000Z'
     },
     {
       // Brouillon : offre le geste « Valider » sur la fiche.
-      id: 'regl-sylla-09',
-      employeeId: EMP_SYLLA.id,
-      employeeLabel: EMP_SYLLA.fullName,
+      id: 'regl-koffi-09',
+      employeeId: EMP_KOFFI.id,
+      employeeLabel: EMP_KOFFI.fullName,
       paymentDate: '2026-09-18T00:00:00.000Z',
       amount: 175_000,
       currency: 'XOF',
       status: 'DRAFT',
-      createdByLabel: 'Aminata Bah',
+      createdByLabel: 'Aminata Konan',
       validatedAt: null
     }
   ],
-  [EMP_BANGOURA.id]: [
+  [EMP_BAMBA.id]: [
     {
-      id: 'regl-bangoura-08',
-      employeeId: EMP_BANGOURA.id,
-      employeeLabel: EMP_BANGOURA.fullName,
+      id: 'regl-bamba-08',
+      employeeId: EMP_BAMBA.id,
+      employeeLabel: EMP_BAMBA.fullName,
       paymentDate: '2026-09-03T00:00:00.000Z',
       amount: 180_000,
       currency: 'XOF',
       status: 'VALIDATED',
-      createdByLabel: 'Aminata Bah',
+      createdByLabel: 'Aminata Konan',
       validatedAt: '2026-09-03T11:07:00.000Z'
     }
   ],
-  [EMP_CONDE.id]: [
+  [EMP_COULIBALY.id]: [
     {
       // Le règlement qui DÉPASSE ce qui lui était dû, validé sans être
       // refusé : c'est ce versement qui a rendu son compte débiteur d'une
       // avance. Le serveur l'accepte délibérément.
-      id: 'regl-conde-avance',
-      employeeId: EMP_CONDE.id,
-      employeeLabel: EMP_CONDE.fullName,
+      id: 'regl-coulibaly-avance',
+      employeeId: EMP_COULIBALY.id,
+      employeeLabel: EMP_COULIBALY.fullName,
       paymentDate: '2026-09-05T00:00:00.000Z',
       amount: 800_000,
       currency: 'XOF',
       status: 'VALIDATED',
-      createdByLabel: 'Aminata Bah',
+      createdByLabel: 'Aminata Konan',
       validatedAt: '2026-09-05T09:40:00.000Z'
     }
   ],

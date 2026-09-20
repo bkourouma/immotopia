@@ -499,7 +499,11 @@ export const FileDeValidation: React.FC = () => {
               </Space>
             }
             aria-label={doc.label}
-            subtitle={`${libelleNature(doc.documentType)} · Saisie par ${doc.createdByLabel} le ${dateCourte(doc.createdAt)}`}
+            subtitle={t('{{nature}} · Saisie par {{auteur}} le {{date}}', {
+              nature: libelleNature(doc.documentType),
+              auteur: doc.createdByLabel,
+              date: dateCourte(doc.createdAt)
+            })}
             highlight={<MoneyValue value={doc.amount} />}
             primaryAction={{
               label: 'Valider',

@@ -23,8 +23,8 @@ import { t } from '../i18n/t';
  * ---------------------------------------------------------------------------
  *
  * Sac, tonne, barre, m³ : le PRD donne des exemples, pas une liste fermée, et
- * les unités d'une agence ivoirienne ne sont pas celles d'une agence
- * guinéenne. Aucune énumération ici, donc, et aucune normalisation.
+ * les unités d'une agence d'Abidjan ne sont pas celles d'une agence de
+ * Bouaké. Aucune énumération ici, donc, et aucune normalisation.
  *
  * ---------------------------------------------------------------------------
  * Le poste de dépense d'un article est une PROPOSITION

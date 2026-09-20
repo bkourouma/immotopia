@@ -45,11 +45,11 @@ function programme(overrides: Record<string, unknown> = {}) {
     tenantId: 'agence-1',
     title: 'Réfection de la toiture',
     estimatedCost: 18_500_000,
-    currency: 'GNF',
+    currency: 'XOF',
     plannedDate: '2026-06-15T00:00:00.000Z',
     status: 'PLANNED',
     isCapitalized: true,
-    property: { id: 'prop-1', title: 'Villa Kipé', internalReference: 'BIEN-0001' },
+    property: { id: 'prop-1', title: 'Villa Angré', internalReference: 'BIEN-0001' },
     ...overrides
   };
 }
@@ -123,7 +123,7 @@ describe('Programmes de travaux — une requête, filtrée au serveur', () => {
       '/tenant/agence-1/patrimoine/work-programs'
     );
 
-    expect(await screen.findByText('Villa Kipé', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(await screen.findByText('Villa Angré', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(listProperties).not.toHaveBeenCalled();
   });
 });

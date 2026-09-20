@@ -308,8 +308,8 @@ export function installerFausseApi(scenario: Scenario) {
         success: true,
         data: {
           members: [
-            { id: 'u1', userId: 'u1', user: { id: 'u1', fullName: 'Aissatou Barry', email: 'a@b.c' } },
-            { id: 'u2', userId: 'u2', user: { id: 'u2', fullName: 'Ibrahima Sow', email: 'i@b.c' } }
+            { id: 'u1', userId: 'u1', user: { id: 'u1', fullName: 'Aissatou Brou', email: 'a@b.c' } },
+            { id: 'u2', userId: 'u2', user: { id: 'u2', fullName: 'Ibrahima Yao', email: 'i@b.c' } }
           ],
           pagination: { page: 1, limit: 100, total: 2, totalPages: 1 }
         }

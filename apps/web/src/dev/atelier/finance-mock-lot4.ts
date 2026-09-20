@@ -20,20 +20,20 @@
  *
  * **Trois baux, trois moments du cycle décrit par `data-model.md` §2** :
  *
- * - `bail-nongo-01` (Mamadou Camara — Terrain de Nongo) est **en cours de
+ * - `bail-riviera-01` (Mamadou Kouadio — Terrain de la Riviera) est **en cours de
  *   consommation** : payé d'avance, deux mois déjà constatés, rattaché à
- *   `chantier-sans-bien-01` (« Terrain loué — Nongo »), le même chantier que
+ *   `chantier-sans-bien-01` (« Terrain loué — Riviera »), le même chantier que
  *   `finance-mock-chantiers.ts` — pour que l'atelier raconte une seule
  *   histoire cohérente d'un volet à l'autre. Son compte de tiers est donc
  *   négatif : c'est le cas nominal de l'écran.
- * - `bail-kobaya-01` (Fatoumata Diallo — Terrain de Kobaya) a **terminé son
+ * - `bail-port-bouet-01` (Fatoumata Kouassi — Terrain de Port-Bouët) a **terminé son
  *   année** : douze constatations, générées ci-dessous par la même règle que
  *   le serveur (onze douzièmes arrondis, le reliquat au douzième), ramènent
  *   son compte exactement à zéro — le critère de sortie 1 de `data-model.md`
  *   §7. Il ne porte **aucun chantier actif** : chacune de ses constatations a
  *   une liste `allocations` vide, le cas que l'écran doit lire comme « rien à
  *   imputer », jamais comme une ligne manquante (§3.1 du modèle).
- * - `bail-lambanyi-01` (Ousmane Bah — Terrain de Lambanyi) vient d'être
+ * - `bail-bingerville-01` (Ousmane Konan — Terrain de Bingerville) vient d'être
  *   **enregistré** : son unique paiement est encore en BROUILLON, rien n'a
  *   bougé à son compte, et aucun chantier n'y est encore rattaché — le cas
  *   qui exerce la confirmation de validation d'un paiement.
@@ -56,8 +56,8 @@ import type { Scenario } from './mock-api';
 // son identifiant plutôt que réimporté : les deux fichiers appartiennent à
 // des agents différents, et la frontière entre volets ne doit pas dépendre
 // d'un import croisé qui romprait si l'un des deux bouge sa fixture interne.
-const SITE_NONGO_ID = 'chantier-sans-bien-01';
-const SITE_NONGO_LABEL = 'Terrain loué — Nongo';
+const SITE_RIVIERA_ID = 'chantier-sans-bien-01';
+const SITE_RIVIERA_LABEL = 'Terrain loué — Riviera';
 
 // Même poste que la ligne « Location du terrain » du budget de
 // `chantier-sans-bien-01` dans `finance-mock-lot3.ts` (`poste-divers`) : les
@@ -72,71 +72,71 @@ const POSTE_LABEL = 'Divers';
 // Bail 1 — en cours de consommation, rattaché à un chantier actif
 // ---------------------------------------------------------------------------
 
-const ANNUEL_NONGO = 4_000_000;
+const ANNUEL_RIVIERA = 4_000_000;
 // Onze douzièmes arrondis ; le douzième mois porterait le reliquat, mais ce
 // bail n'y est pas encore arrivé (voir plus bas) — la règle du reliquat est
-// démontrée par `bail-kobaya-01`, pas ici.
-const MENSUEL_NONGO = Math.round(ANNUEL_NONGO / 12); // 333 333
+// démontrée par `bail-port-bouet-01`, pas ici.
+const MENSUEL_RIVIERA = Math.round(ANNUEL_RIVIERA / 12); // 333 333
 
-const BAIL_NONGO: LandLease = {
-  id: 'bail-nongo-01',
-  landlordName: 'Mamadou Camara',
-  landLabel: 'Terrain de Nongo, 800 m²',
-  annualAmount: ANNUEL_NONGO,
+const BAIL_RIVIERA: LandLease = {
+  id: 'bail-riviera-01',
+  landlordName: 'Mamadou Kouadio',
+  landLabel: 'Terrain de la Riviera, 800 m²',
+  annualAmount: ANNUEL_RIVIERA,
   costCategoryId: POSTE_ID,
   costCategoryLabel: POSTE_LABEL,
-  monthlyAmount: MENSUEL_NONGO,
+  monthlyAmount: MENSUEL_RIVIERA,
   currency: 'XOF',
   startDate: '2026-08-01',
   // Tacite reconduction : le cas courant (§2 du modèle).
   endDate: null,
   isActive: true,
-  sites: [{ siteId: SITE_NONGO_ID, siteLabel: SITE_NONGO_LABEL, status: 'IN_PROGRESS' }],
+  sites: [{ siteId: SITE_RIVIERA_ID, siteLabel: SITE_RIVIERA_LABEL, status: 'IN_PROGRESS' }],
   // Payé (4 000 000) moins consommé (2 × 333 333 = 666 666) : le compte est
   // débiteur du bailleur de 3 333 334, donc négatif de ce même montant côté
   // tiers — voir le commentaire de `LandLease.accountBalance` dans le contrat
   // gelé. C'est le nombre que l'écran doit lire comme « il reste 3 333 334 à
   // consommer », jamais afficher brut.
-  accountBalance: -(ANNUEL_NONGO - 2 * MENSUEL_NONGO)
+  accountBalance: -(ANNUEL_RIVIERA - 2 * MENSUEL_RIVIERA)
 };
 
-const PAIEMENTS_NONGO: LandLeasePayment[] = [
+const PAIEMENTS_RIVIERA: LandLeasePayment[] = [
   {
-    id: 'paiement-nongo-01',
-    landLeaseId: BAIL_NONGO.id,
-    landlordName: BAIL_NONGO.landlordName,
+    id: 'paiement-riviera-01',
+    landLeaseId: BAIL_RIVIERA.id,
+    landlordName: BAIL_RIVIERA.landlordName,
     paymentDate: '2026-08-01',
-    amount: ANNUEL_NONGO,
+    amount: ANNUEL_RIVIERA,
     currency: 'XOF',
     coverageStartDate: '2026-08-01',
     coverageEndDate: '2027-07-31',
     status: 'VALIDATED',
-    createdByLabel: 'Ibrahima Sow',
+    createdByLabel: 'Ibrahima Yao',
     validatedAt: '2026-08-01T09:00:00.000Z'
   }
 ];
 
-const ACCRUALS_NONGO: LandLeaseAccrual[] = [
+const ACCRUALS_RIVIERA: LandLeaseAccrual[] = [
   {
-    id: 'constat-nongo-2026-08',
-    landLeaseId: BAIL_NONGO.id,
-    landlordName: BAIL_NONGO.landlordName,
+    id: 'constat-riviera-2026-08',
+    landLeaseId: BAIL_RIVIERA.id,
+    landlordName: BAIL_RIVIERA.landlordName,
     periodYear: 2026,
     periodMonth: 8,
-    amount: MENSUEL_NONGO,
+    amount: MENSUEL_RIVIERA,
     currency: 'XOF',
-    allocations: [{ siteId: SITE_NONGO_ID, siteLabel: SITE_NONGO_LABEL, amount: MENSUEL_NONGO }],
+    allocations: [{ siteId: SITE_RIVIERA_ID, siteLabel: SITE_RIVIERA_LABEL, amount: MENSUEL_RIVIERA }],
     createdAt: '2026-08-01T02:00:00.000Z'
   },
   {
-    id: 'constat-nongo-2026-09',
-    landLeaseId: BAIL_NONGO.id,
-    landlordName: BAIL_NONGO.landlordName,
+    id: 'constat-riviera-2026-09',
+    landLeaseId: BAIL_RIVIERA.id,
+    landlordName: BAIL_RIVIERA.landlordName,
     periodYear: 2026,
     periodMonth: 9,
-    amount: MENSUEL_NONGO,
+    amount: MENSUEL_RIVIERA,
     currency: 'XOF',
-    allocations: [{ siteId: SITE_NONGO_ID, siteLabel: SITE_NONGO_LABEL, amount: MENSUEL_NONGO }],
+    allocations: [{ siteId: SITE_RIVIERA_ID, siteLabel: SITE_RIVIERA_LABEL, amount: MENSUEL_RIVIERA }],
     createdAt: '2026-09-01T02:00:00.000Z'
   }
 ];
@@ -145,7 +145,7 @@ const ACCRUALS_NONGO: LandLeaseAccrual[] = [
 // Bail 2 — année complète, sans aucun chantier actif
 // ---------------------------------------------------------------------------
 
-const ANNUEL_KOBAYA = 3_700_000;
+const ANNUEL_PORT_BOUET = 3_700_000;
 
 /**
  * Reproduit la règle du serveur (§3.2 du modèle) pour fabriquer les douze
@@ -164,7 +164,7 @@ function genererConstatationsAnneeComplete(bail: LandLease, moisDebut: { year: n
   for (let i = 0; i < 12; i += 1) {
     const montant = i === 11 ? dernier : standard;
     lignes.push({
-      id: `constat-kobaya-${year}-${String(month).padStart(2, '0')}`,
+      id: `constat-port-bouet-${year}-${String(month).padStart(2, '0')}`,
       landLeaseId: bail.id,
       landlordName: bail.landlordName,
       periodYear: year,
@@ -186,18 +186,18 @@ function genererConstatationsAnneeComplete(bail: LandLease, moisDebut: { year: n
   return lignes;
 }
 
-const BAIL_KOBAYA: LandLease = {
-  id: 'bail-kobaya-01',
-  landlordName: 'Fatoumata Diallo',
-  landLabel: 'Terrain de Kobaya, 1200 m²',
-  annualAmount: ANNUEL_KOBAYA,
+const BAIL_PORT_BOUET: LandLease = {
+  id: 'bail-port-bouet-01',
+  landlordName: 'Fatoumata Kouassi',
+  landLabel: 'Terrain de Port-Bouët, 1200 m²',
+  annualAmount: ANNUEL_PORT_BOUET,
   costCategoryId: POSTE_ID,
   costCategoryLabel: POSTE_LABEL,
-  monthlyAmount: Math.round(ANNUEL_KOBAYA / 12),
+  monthlyAmount: Math.round(ANNUEL_PORT_BOUET / 12),
   currency: 'XOF',
   startDate: '2025-06-01',
   // Bail à durée fixe, non reconduit — à la différence du cas courant
-  // (`bail-nongo-01`) : il ne l'a pas été, ce qui explique l'absence de
+  // (`bail-riviera-01`) : il ne l'a pas été, ce qui explique l'absence de
   // chantier actif ci-dessous.
   endDate: '2026-05-31',
   isActive: false,
@@ -207,38 +207,38 @@ const BAIL_KOBAYA: LandLease = {
   accountBalance: 0
 };
 
-const PAIEMENTS_KOBAYA: LandLeasePayment[] = [
+const PAIEMENTS_PORT_BOUET: LandLeasePayment[] = [
   {
-    id: 'paiement-kobaya-01',
-    landLeaseId: BAIL_KOBAYA.id,
-    landlordName: BAIL_KOBAYA.landlordName,
+    id: 'paiement-port-bouet-01',
+    landLeaseId: BAIL_PORT_BOUET.id,
+    landlordName: BAIL_PORT_BOUET.landlordName,
     paymentDate: '2025-06-01',
-    amount: ANNUEL_KOBAYA,
+    amount: ANNUEL_PORT_BOUET,
     currency: 'XOF',
     coverageStartDate: '2025-06-01',
     coverageEndDate: '2026-05-31',
     status: 'VALIDATED',
-    createdByLabel: 'Mamadou Bah',
+    createdByLabel: 'Mamadou Konan',
     validatedAt: '2025-06-01T09:00:00.000Z'
   }
 ];
 
-const ACCRUALS_KOBAYA = genererConstatationsAnneeComplete(BAIL_KOBAYA, { year: 2025, month: 6 });
+const ACCRUALS_PORT_BOUET = genererConstatationsAnneeComplete(BAIL_PORT_BOUET, { year: 2025, month: 6 });
 
 // ---------------------------------------------------------------------------
 // Bail 3 — tout juste enregistré, paiement encore en brouillon
 // ---------------------------------------------------------------------------
 
-const ANNUEL_LAMBANYI = 2_400_000;
+const ANNUEL_BINGERVILLE = 2_400_000;
 
-const BAIL_LAMBANYI: LandLease = {
-  id: 'bail-lambanyi-01',
-  landlordName: 'Ousmane Bah',
-  landLabel: 'Terrain de Lambanyi, 500 m²',
-  annualAmount: ANNUEL_LAMBANYI,
+const BAIL_BINGERVILLE: LandLease = {
+  id: 'bail-bingerville-01',
+  landlordName: 'Ousmane Konan',
+  landLabel: 'Terrain de Bingerville, 500 m²',
+  annualAmount: ANNUEL_BINGERVILLE,
   costCategoryId: POSTE_ID,
   costCategoryLabel: POSTE_LABEL,
-  monthlyAmount: Math.round(ANNUEL_LAMBANYI / 12),
+  monthlyAmount: Math.round(ANNUEL_BINGERVILLE / 12),
   currency: 'XOF',
   startDate: '2026-09-01',
   endDate: null,
@@ -250,42 +250,42 @@ const BAIL_LAMBANYI: LandLease = {
   accountBalance: 0
 };
 
-const PAIEMENTS_LAMBANYI: LandLeasePayment[] = [
+const PAIEMENTS_BINGERVILLE: LandLeasePayment[] = [
   {
-    id: 'paiement-lambanyi-01',
-    landLeaseId: BAIL_LAMBANYI.id,
-    landlordName: BAIL_LAMBANYI.landlordName,
+    id: 'paiement-bingerville-01',
+    landLeaseId: BAIL_BINGERVILLE.id,
+    landlordName: BAIL_BINGERVILLE.landlordName,
     paymentDate: '2026-09-01',
-    amount: ANNUEL_LAMBANYI,
+    amount: ANNUEL_BINGERVILLE,
     currency: 'XOF',
     coverageStartDate: '2026-09-01',
     coverageEndDate: '2027-08-31',
     status: 'DRAFT',
-    createdByLabel: 'Ibrahima Sow',
+    createdByLabel: 'Ibrahima Yao',
     validatedAt: null
   }
 ];
 
 // ---------------------------------------------------------------------------
 
-const BAUX: LandLease[] = [BAIL_NONGO, BAIL_KOBAYA, BAIL_LAMBANYI];
+const BAUX: LandLease[] = [BAIL_RIVIERA, BAIL_PORT_BOUET, BAIL_BINGERVILLE];
 
 const PAIEMENTS_PAR_BAIL: Record<string, LandLeasePayment[]> = {
-  [BAIL_NONGO.id]: PAIEMENTS_NONGO,
-  [BAIL_KOBAYA.id]: PAIEMENTS_KOBAYA,
-  [BAIL_LAMBANYI.id]: PAIEMENTS_LAMBANYI
+  [BAIL_RIVIERA.id]: PAIEMENTS_RIVIERA,
+  [BAIL_PORT_BOUET.id]: PAIEMENTS_PORT_BOUET,
+  [BAIL_BINGERVILLE.id]: PAIEMENTS_BINGERVILLE
 };
 
 const ACCRUALS_PAR_BAIL: Record<string, LandLeaseAccrual[]> = {
-  [BAIL_NONGO.id]: ACCRUALS_NONGO,
-  [BAIL_KOBAYA.id]: ACCRUALS_KOBAYA,
-  [BAIL_LAMBANYI.id]: []
+  [BAIL_RIVIERA.id]: ACCRUALS_RIVIERA,
+  [BAIL_PORT_BOUET.id]: ACCRUALS_PORT_BOUET,
+  [BAIL_BINGERVILLE.id]: []
 };
 
 export function repondreLot4(chemin: string, scenario: Scenario): unknown | null {
   // --- Rattachement d'un chantier (pas de collision : aucun GET sur ce chemin) ---
   if (/\/tenants\/[^/]+\/finance\/sites\/[^/]+\/land-lease$/.test(chemin)) {
-    return { success: true, data: BAIL_NONGO };
+    return { success: true, data: BAIL_RIVIERA };
   }
 
   // --- Le bail (détail) ----------------------------------------------------
@@ -307,7 +307,7 @@ export function repondreLot4(chemin: string, scenario: Scenario): unknown | null
     // l'autre.
     return {
       success: true,
-      data: { ...PAIEMENTS_LAMBANYI[0], status: 'VALIDATED' as const, validatedAt: new Date().toISOString() }
+      data: { ...PAIEMENTS_BINGERVILLE[0], status: 'VALIDATED' as const, validatedAt: new Date().toISOString() }
     };
   }
 
@@ -315,7 +315,7 @@ export function repondreLot4(chemin: string, scenario: Scenario): unknown | null
   const paiementsMatch = /\/tenants\/[^/]+\/finance\/land-leases\/([^/]+)\/payments$/.exec(chemin);
   if (paiementsMatch) {
     const bailId = paiementsMatch[1];
-    const liste = bailId in PAIEMENTS_PAR_BAIL ? PAIEMENTS_PAR_BAIL[bailId] : PAIEMENTS_NONGO;
+    const liste = bailId in PAIEMENTS_PAR_BAIL ? PAIEMENTS_PAR_BAIL[bailId] : PAIEMENTS_RIVIERA;
     return { success: true, data: scenario === 'vide' ? [] : liste };
   }
 
@@ -327,7 +327,7 @@ export function repondreLot4(chemin: string, scenario: Scenario): unknown | null
   const accrualsMatch = /\/tenants\/[^/]+\/finance\/land-leases\/([^/]+)\/accruals$/.exec(chemin);
   if (accrualsMatch) {
     const bailId = accrualsMatch[1];
-    const liste = bailId in ACCRUALS_PAR_BAIL ? ACCRUALS_PAR_BAIL[bailId] : ACCRUALS_NONGO;
+    const liste = bailId in ACCRUALS_PAR_BAIL ? ACCRUALS_PAR_BAIL[bailId] : ACCRUALS_RIVIERA;
     return { success: true, data: scenario === 'vide' ? [] : liste };
   }
 

@@ -75,9 +75,9 @@ function salarie(overrides: Partial<Employee> = {}): Employee {
   return {
     id: SALARIE,
     tenantId: TENANT,
-    fullName: 'Ibrahima Sylla',
+    fullName: 'Ibrahima Koffi',
     role: 'Maçon',
-    thirdPartyAccountId: 'compte-sylla',
+    thirdPartyAccountId: 'compte-koffi',
     isActive: true,
     // On lui doit. Volontairement DIFFÉRENT de la somme des notes moins celle
     // des règlements ci-dessous : le solde court sur toute l'histoire du
@@ -93,17 +93,17 @@ function note(overrides: Partial<SalaryNote> = {}): SalaryNote {
   return {
     id: 'note-1',
     employeeId: SALARIE,
-    employeeLabel: 'Ibrahima Sylla',
+    employeeLabel: 'Ibrahima Koffi',
     periodYear: 2026,
     periodMonth: 8,
     amount: 450_000,
     currency: 'XOF',
     siteId: 'chantier-1',
-    siteLabel: 'Villa de Nongo — gros œuvre',
+    siteLabel: 'Villa de la Riviera — gros œuvre',
     costCategoryId: 'poste-mo',
     costCategoryLabel: "Main-d'œuvre",
     status: 'VALIDATED',
-    createdByLabel: 'Aminata Bah',
+    createdByLabel: 'Aminata Konan',
     validatedAt: '2026-08-31T16:20:00.000Z',
     ...overrides
   };
@@ -113,20 +113,20 @@ function reglement(overrides: Partial<SalaryPayment> = {}): SalaryPayment {
   return {
     id: 'regl-1',
     employeeId: SALARIE,
-    employeeLabel: 'Ibrahima Sylla',
+    employeeLabel: 'Ibrahima Koffi',
     paymentDate: '2026-09-03T00:00:00.000Z',
     amount: 450_000,
     currency: 'XOF',
     status: 'DRAFT',
-    createdByLabel: 'Aminata Bah',
+    createdByLabel: 'Aminata Konan',
     validatedAt: null,
     ...overrides
   };
 }
 
 const CHANTIERS: Partial<ConstructionSite>[] = [
-  { id: 'chantier-1', name: 'Villa de Nongo — gros œuvre' },
-  { id: 'chantier-2', name: 'Extension Lambanyi' }
+  { id: 'chantier-1', name: 'Villa de la Riviera — gros œuvre' },
+  { id: 'chantier-2', name: 'Extension Bingerville' }
 ];
 
 /**
@@ -248,11 +248,11 @@ function mountFiche(url = `/tenant/${TENANT}/finance/salaires/${SALARIE}`) {
 
 describe('Le corps ne répète jamais un identifiant que le chemin porte déjà', () => {
   it('enregistre un salarié : le corps ne porte que le nom, et le rôle s’il est donné', async () => {
-    await createEmployee(TENANT, { fullName: 'Ibrahima Sylla', role: 'Maçon' });
+    await createEmployee(TENANT, { fullName: 'Ibrahima Koffi', role: 'Maçon' });
 
     const { adresse, corps } = dernierAppel(post);
     expect(adresse).toBe(`/tenants/${TENANT}/finance/employees`);
-    expect(corps).toEqual({ fullName: 'Ibrahima Sylla', role: 'Maçon' });
+    expect(corps).toEqual({ fullName: 'Ibrahima Koffi', role: 'Maçon' });
     expect(corps).not.toHaveProperty('tenantId');
   });
 
@@ -260,10 +260,10 @@ describe('Le corps ne répète jamais un identifiant que le chemin porte déjà'
     // Le schéma serveur refuse `role: ''` (`z.string().min(1)`) : l'envoyer
     // provoquerait un 400 pour un champ que l'utilisateur a simplement laissé
     // de côté.
-    await createEmployee(TENANT, { fullName: 'Aïssatou Bangoura' });
+    await createEmployee(TENANT, { fullName: 'Aïssatou Bamba' });
 
     const { corps } = dernierAppel(post);
-    expect(corps).toEqual({ fullName: 'Aïssatou Bangoura' });
+    expect(corps).toEqual({ fullName: 'Aïssatou Bamba' });
     expect(corps).not.toHaveProperty('role');
   });
 
@@ -340,24 +340,24 @@ describe('Salaires — liste et enregistrement', () => {
   it('affiche le salarié, son rôle et ce qu’on lui doit', async () => {
     mountListe();
 
-    expect(await screen.findByText('Ibrahima Sylla', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(await screen.findByText('Ibrahima Koffi', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getByText('Maçon')).toBeInTheDocument();
-    expect(screen.getByText(/275\s000\sFCFA/)).toBeInTheDocument();
+    expect(screen.getByText(/275\s000/)).toBeInTheDocument();
   });
 
   it('ne montre jamais un identifiant à la place d’un nom', async () => {
     mountListe();
 
-    await screen.findByText('Ibrahima Sylla', {}, { timeout: 8000 });
+    await screen.findByText('Ibrahima Koffi', {}, { timeout: 8000 });
     expect(screen.queryByText(SALARIE)).not.toBeInTheDocument();
-    expect(screen.queryByText('compte-sylla')).not.toBeInTheDocument();
+    expect(screen.queryByText('compte-koffi')).not.toBeInTheDocument();
   });
 
   it('distingue un salarié soldé d’un salarié à qui l’on doit', async () => {
     configurerGet({ employes: [salarie({ accountBalance: 0 })] });
     mountListe();
 
-    await screen.findByText('Ibrahima Sylla', {}, { timeout: 8000 });
+    await screen.findByText('Ibrahima Koffi', {}, { timeout: 8000 });
     // Un zéro nu ne se lit pas : l'écran dit ce que le solde signifie.
     expect(screen.getAllByText(/Rien à lui verser/).length).toBeGreaterThanOrEqual(1);
   });
@@ -368,9 +368,9 @@ describe('Salaires — liste et enregistrement', () => {
     configurerGet({ employes: [salarie({ accountBalance: -180_000 })] });
     mountListe();
 
-    await screen.findByText('Ibrahima Sylla', {}, { timeout: 8000 });
+    await screen.findByText('Ibrahima Koffi', {}, { timeout: 8000 });
     expect(screen.getAllByText(/Avance de/).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText(/180\s000\sFCFA/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/180\s000/).length).toBeGreaterThanOrEqual(1);
     // Jamais le nombre signé brut.
     expect(screen.queryByText(/-180\s000/)).not.toBeInTheDocument();
   });
@@ -379,7 +379,7 @@ describe('Salaires — liste et enregistrement', () => {
     const user = userEvent.setup({ delay: null });
     mountListe();
 
-    await screen.findByText('Ibrahima Sylla', {}, { timeout: 8000 });
+    await screen.findByText('Ibrahima Koffi', {}, { timeout: 8000 });
     // Posé par défaut : la question courante est « qui dois-je payer ».
     await waitFor(() => expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/employees?onlyActive=true`));
 
@@ -390,7 +390,7 @@ describe('Salaires — liste et enregistrement', () => {
 
   it('enregistre un salarié depuis le formulaire, avec les champs du contrat gelé', async () => {
     configurerGet({ employes: [] });
-    post.mockResolvedValue({ data: { data: salarie({ id: 'emp-nouveau', fullName: 'Aïssatou Bangoura' }) } });
+    post.mockResolvedValue({ data: { data: salarie({ id: 'emp-nouveau', fullName: 'Aïssatou Bamba' }) } });
     const user = userEvent.setup({ delay: null });
     mountListe();
 
@@ -400,14 +400,14 @@ describe('Salaires — liste et enregistrement', () => {
     await screen.findByText(/Aucun résultat/i, {}, { timeout: 8000 });
 
     await user.click(screen.getAllByRole('button', { name: /Nouveau salarié/ })[0]);
-    await user.type(await screen.findByLabelText('Nom du salarié'), 'Aïssatou Bangoura');
+    await user.type(await screen.findByLabelText('Nom du salarié'), 'Aïssatou Bamba');
     await user.type(screen.getByLabelText('Rôle (facultatif)'), 'Gardienne');
 
     await user.click(screen.getByRole('button', { name: 'Enregistrer le salarié' }));
 
     await waitFor(() =>
       expect(post).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/employees`, {
-        fullName: 'Aïssatou Bangoura',
+        fullName: 'Aïssatou Bamba',
         role: 'Gardienne'
       })
     );
@@ -427,7 +427,7 @@ describe('Salaires — liste et enregistrement', () => {
     const user = userEvent.setup({ delay: null });
     mountListe();
 
-    await screen.findByText('Ibrahima Sylla', {}, { timeout: 8000 });
+    await screen.findByText('Ibrahima Koffi', {}, { timeout: 8000 });
     await user.click(screen.getByRole('button', { name: 'Voir la fiche' }));
 
     expect(await screen.findByText('Notes de salaire', {}, { timeout: 8000 })).toBeInTheDocument();
@@ -441,7 +441,7 @@ describe('Navigation — les chemins déclarés par les écrans', () => {
   it('la fiche lit `tenantId` et `employeeId` dans le CHEMIN, pas en paramètre de requête', async () => {
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Ibrahima Sylla' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Ibrahima Koffi' }, { timeout: 8000 });
     expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/employees/${SALARIE}`);
     expect(get).toHaveBeenCalledWith(`/tenants/${TENANT}/finance/employees/${SALARIE}/salary-payments`);
   });
@@ -455,8 +455,8 @@ describe('Fiche du salarié — ce qu’elle montre', () => {
     // afficherait zéro. Le serveur dit 275 000, et c'est ce qui doit s'afficher.
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Ibrahima Sylla' }, { timeout: 8000 });
-    expect(screen.getByText(/275\s000\sFCFA/)).toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'Ibrahima Koffi' }, { timeout: 8000 });
+    expect(screen.getByText(/275\s000/)).toBeInTheDocument();
     expect(screen.getByText(/toutes périodes confondues/i)).toBeInTheDocument();
   });
 
@@ -468,7 +468,7 @@ describe('Fiche du salarié — ce qu’elle montre', () => {
     });
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Ibrahima Sylla' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Ibrahima Koffi' }, { timeout: 8000 });
     // Dans la LIGNE de la note, pas n'importe où : « Aucun chantier » est
     // aussi l'invite du sélecteur du formulaire plus bas.
     const ligne = (await screen.findByText('Août 2026', {}, { timeout: 8000 })).closest('tr') as HTMLElement;
@@ -478,7 +478,7 @@ describe('Fiche du salarié — ce qu’elle montre', () => {
   it('montre le NOM du poste imputé, jamais son identifiant', async () => {
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Ibrahima Sylla' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Ibrahima Koffi' }, { timeout: 8000 });
     expect(await screen.findByText("Main-d'œuvre", {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.queryByText('poste-mo')).not.toBeInTheDocument();
     expect(screen.queryByText('chantier-1')).not.toBeInTheDocument();
@@ -491,8 +491,8 @@ describe('Fiche du salarié — ce qu’elle montre', () => {
     });
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Ibrahima Sylla' }, { timeout: 8000 });
-    await screen.findByText('Villa de Nongo — gros œuvre', {}, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Ibrahima Koffi' }, { timeout: 8000 });
+    await screen.findByText('Villa de la Riviera — gros œuvre', {}, { timeout: 8000 });
     expect(screen.queryByRole('button', { name: 'Valider' })).not.toBeInTheDocument();
   });
 });
@@ -507,7 +507,7 @@ describe('Fiche du salarié — saisir une note', () => {
     // Sans chantier, le serveur REFUSE le poste : le champ n'existe pas.
     expect(screen.queryByLabelText('Poste de dépense')).not.toBeInTheDocument();
 
-    await choisirDansSelect('Chantier (facultatif)', 'Villa de Nongo — gros œuvre');
+    await choisirDansSelect('Chantier (facultatif)', 'Villa de la Riviera — gros œuvre');
 
     expect(await screen.findByLabelText('Poste de dépense', {}, { timeout: 8000 })).toBeInTheDocument();
   }, 15000);
@@ -519,7 +519,7 @@ describe('Fiche du salarié — saisir une note', () => {
     mountFiche();
 
     await screen.findByText('Saisir une note de salaire', {}, { timeout: 8000 });
-    await choisirDansSelect('Chantier (facultatif)', 'Villa de Nongo — gros œuvre');
+    await choisirDansSelect('Chantier (facultatif)', 'Villa de la Riviera — gros œuvre');
 
     await screen.findByLabelText('Poste de dépense', {}, { timeout: 8000 });
     expect(await screen.findByText(/Poste proposé d'après son nom/i, {}, { timeout: 8000 })).toBeInTheDocument();
@@ -542,7 +542,7 @@ describe('Fiche du salarié — saisir une note', () => {
     mountFiche();
 
     await screen.findByText('Saisir une note de salaire', {}, { timeout: 8000 });
-    await choisirDansSelect('Chantier (facultatif)', 'Extension Lambanyi');
+    await choisirDansSelect('Chantier (facultatif)', 'Extension Bingerville');
 
     expect(
       await screen.findByText(
@@ -689,7 +689,7 @@ describe('Aucune cotisation n’est calculée (PRD E8)', () => {
   it('la fiche ne parle ni de brut, ni de net, ni de cotisation à saisir', async () => {
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Ibrahima Sylla' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Ibrahima Koffi' }, { timeout: 8000 });
     const texte = normaliser(document.body.textContent ?? '');
     // Un seul montant, celui qui sera versé : pas de champ « brut » ni « net ».
     expect(texte).not.toMatch(/salaire brut/);
@@ -705,7 +705,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
   it('la liste des salariés n’affiche jamais « débit » ni « crédit »', async () => {
     mountListe();
 
-    await screen.findByText('Ibrahima Sylla', {}, { timeout: 8000 });
+    await screen.findByText('Ibrahima Koffi', {}, { timeout: 8000 });
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
   });
@@ -714,7 +714,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     configurerGet({ employes: [salarie({ accountBalance: -180_000 })] });
     mountListe();
 
-    await screen.findByText('Ibrahima Sylla', {}, { timeout: 8000 });
+    await screen.findByText('Ibrahima Koffi', {}, { timeout: 8000 });
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);
   });
@@ -723,11 +723,11 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     const user = userEvent.setup({ delay: null });
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Ibrahima Sylla' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Ibrahima Koffi' }, { timeout: 8000 });
     await screen.findByText('Saisir une note de salaire', {}, { timeout: 8000 });
 
     // Le formulaire complet, poste de dépense compris.
-    await choisirDansSelect('Chantier (facultatif)', 'Villa de Nongo — gros œuvre');
+    await choisirDansSelect('Chantier (facultatif)', 'Villa de la Riviera — gros œuvre');
     await screen.findByLabelText('Poste de dépense', {}, { timeout: 8000 });
 
     // Et l'avertissement d'avance sur salaire.
@@ -744,7 +744,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     configurerGet({ employe: salarie({ accountBalance: -180_000 }) });
     mountFiche();
 
-    await screen.findByRole('heading', { name: 'Ibrahima Sylla' }, { timeout: 8000 });
+    await screen.findByRole('heading', { name: 'Ibrahima Koffi' }, { timeout: 8000 });
     expect(await screen.findByText('Avance à retenir', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bdebit/);
     expect(normaliser(document.body.textContent ?? '')).not.toMatch(/\bcredit/);

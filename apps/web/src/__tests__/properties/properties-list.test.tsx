@@ -31,7 +31,7 @@ vi.mock('../../services/property-service', () => ({
 }));
 
 vi.mock('../../services/geographic-service', () => ({
-  getAllCommunes: vi.fn(async () => [{ communeId: 'c1', commune: 'Ratoma', region: 'Conakry' }])
+  getAllCommunes: vi.fn(async () => [{ communeId: 'c1', commune: 'Cocody', region: 'Abidjan' }])
 }));
 
 vi.mock('../../hooks/useAuth', () => ({
@@ -54,9 +54,9 @@ function bien(id: string, overrides: Partial<Property> = {}): Property {
     ownershipType: 'TENANT',
     title: `Bien ${id}`,
     description: '',
-    address: 'Kipé',
+    address: 'Angré',
     transactionModes: ['RENTAL'],
-    currency: 'GNF',
+    currency: 'XOF',
     status: 'AVAILABLE',
     isPublished: false,
     availability: 'AVAILABLE',

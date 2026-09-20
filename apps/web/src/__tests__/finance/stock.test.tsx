@@ -74,9 +74,9 @@ const CIMENT = 'article-ciment-01';
 const FER = 'article-fer-02';
 const SABLE = 'article-sable-03';
 const MAGASIN = 'lieu-magasin-01';
-const DEPOT_NONGO = 'lieu-nongo-02';
-const NONGO = 'chantier-nongo';
-const RATOMA = 'chantier-ratoma';
+const DEPOT_RIVIERA = 'lieu-riviera-02';
+const RIVIERA = 'chantier-riviera';
+const COCODY = 'chantier-cocody';
 const POSTE_GROS_OEUVRE = 'poste-gros-oeuvre';
 const POSTE_COUVERTURE = 'poste-couverture';
 
@@ -123,13 +123,13 @@ const ARTICLES: StockItemRef[] = [
 ];
 
 const LIEUX: StockLocationRef[] = [
-  { id: MAGASIN, kind: 'WAREHOUSE', label: 'Magasin central de Kipé', siteId: null, siteLabel: null, isActive: true },
+  { id: MAGASIN, kind: 'WAREHOUSE', label: "Magasin central d'Angré", siteId: null, siteLabel: null, isActive: true },
   {
-    id: DEPOT_NONGO,
+    id: DEPOT_RIVIERA,
     kind: 'SITE',
-    label: 'Dépôt de la Villa de Nongo',
-    siteId: NONGO,
-    siteLabel: 'Villa de Nongo',
+    label: 'Dépôt de la Villa Riviera',
+    siteId: RIVIERA,
+    siteLabel: 'Villa de la Riviera',
     isActive: true
   }
 ];
@@ -147,7 +147,7 @@ const SOLDES: StockBalance[] = [
     itemLabel: 'Ciment CPJ 42,5',
     itemUnit: 'sac',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     quantity: 320,
     value: 1_520_000,
     averageUnitCost: 4_750,
@@ -158,8 +158,8 @@ const SOLDES: StockBalance[] = [
     itemReference: 'CIM-42',
     itemLabel: 'Ciment CPJ 42,5',
     itemUnit: 'sac',
-    locationId: DEPOT_NONGO,
-    locationLabel: 'Dépôt de la Villa de Nongo',
+    locationId: DEPOT_RIVIERA,
+    locationLabel: 'Dépôt de la Villa Riviera',
     quantity: 80,
     value: 408_000,
     // Reçu plus cher sur place : le MÊME article, un AUTRE coût moyen.
@@ -174,7 +174,7 @@ const SOLDES: StockBalance[] = [
     itemLabel: 'Fer à béton HA 12',
     itemUnit: 'barre',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     quantity: 0,
     value: 0,
     averageUnitCost: 0,
@@ -187,7 +187,7 @@ const SOLDES: StockBalance[] = [
     itemLabel: 'Sable lavé',
     itemUnit: 'm³',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     quantity: 18.75,
     value: 243_750,
     averageUnitCost: 13_000,
@@ -204,7 +204,7 @@ const MOUVEMENTS: StockMovement[] = [
     itemLabel: 'Ciment CPJ 42,5',
     itemUnit: 'sac',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     movementDate: '2026-09-02T00:00:00.000Z',
     quantity: 400,
     isDecrease: false,
@@ -219,7 +219,7 @@ const MOUVEMENTS: StockMovement[] = [
     costCategoryLabel: null,
     requestedBy: null,
     supplierInvoiceReference: 'F-2026-0142',
-    createdByLabel: 'Aissatou Barry',
+    createdByLabel: 'Aissatou Brou',
     createdAt: '2026-09-02T08:12:00.000Z'
   },
   {
@@ -236,7 +236,7 @@ const MOUVEMENTS: StockMovement[] = [
     itemLabel: 'Fer à béton HA 12',
     itemUnit: 'barre',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     movementDate: '2026-09-11T00:00:00.000Z',
     quantity: 25,
     isDecrease: true,
@@ -245,12 +245,12 @@ const MOUVEMENTS: StockMovement[] = [
     currency: 'XOF',
     quantityAfter: 0,
     valueAfter: 0,
-    siteId: RATOMA,
-    siteLabel: 'Résidence Ratoma',
+    siteId: COCODY,
+    siteLabel: 'Résidence Cocody',
     costCategoryLabel: 'Gros œuvre',
-    requestedBy: 'Fatoumata Camara, conductrice de travaux',
+    requestedBy: 'Fatoumata Kouadio, conductrice de travaux',
     supplierInvoiceReference: null,
-    createdByLabel: 'Ibrahima Sow',
+    createdByLabel: 'Ibrahima Yao',
     createdAt: '2026-09-11T16:20:00.000Z'
   },
   {
@@ -261,7 +261,7 @@ const MOUVEMENTS: StockMovement[] = [
     itemLabel: 'Sable lavé',
     itemUnit: 'm³',
     locationId: MAGASIN,
-    locationLabel: 'Magasin central de Kipé',
+    locationLabel: "Magasin central d'Angré",
     movementDate: '2026-09-16T00:00:00.000Z',
     // Un quart de mètre cube : « 0,25 », jamais « 0 ».
     quantity: 0.25,
@@ -276,7 +276,7 @@ const MOUVEMENTS: StockMovement[] = [
     costCategoryLabel: null,
     requestedBy: null,
     supplierInvoiceReference: null,
-    createdByLabel: 'Aissatou Barry',
+    createdByLabel: 'Aissatou Brou',
     createdAt: '2026-09-16T17:30:00.000Z'
   }
 ];
@@ -294,9 +294,9 @@ const SORTIE_RENDUE: StockMovement = {
   totalValue: 57_000,
   quantityAfter: 308,
   valueAfter: 1_463_000,
-  siteId: NONGO,
-  siteLabel: 'Villa de Nongo',
-  requestedBy: 'Mamadou Diallo'
+  siteId: RIVIERA,
+  siteLabel: 'Villa de la Riviera',
+  requestedBy: 'Mamadou Kouassi'
 };
 
 /** Route les GET par motif d'URL, comme le ferait le vrai serveur. */
@@ -313,8 +313,8 @@ function configurerGet(options: { soldes?: StockBalance[]; mouvements?: StockMov
       return {
         data: {
           data: [
-            { id: NONGO, name: 'Villa de Nongo' },
-            { id: RATOMA, name: 'Résidence Ratoma' }
+            { id: RIVIERA, name: 'Villa de la Riviera' },
+            { id: COCODY, name: 'Résidence Cocody' }
           ]
         }
       };
@@ -473,7 +473,7 @@ function saisirNombre(id: string, valeur: string): void {
  * La ligne du tableau qui porte ce texte.
  *
  * Le texte passé doit être **unique dans le document** : « Magasin central de
- * Kipé » ne l'est pas — trois soldes y sont — et c'est pourquoi les lignes
+ * Angré » ne l'est pas — trois soldes y sont — et c'est pourquoi les lignes
  * sont retrouvées ici par leur référence de pièce, leur demandeur ou leur
  * nature, jamais par leur lieu.
  */
@@ -489,9 +489,9 @@ function boiteOuverte(): HTMLElement {
   return boite as HTMLElement;
 }
 
-/** Le tableau des soldes est chargé. Ancre UNIQUE : un seul solde à Nongo. */
+/** Le tableau des soldes est chargé. Ancre UNIQUE : un seul solde à Riviera. */
 async function attendreEtat(): Promise<void> {
-  await screen.findByText('Dépôt de la Villa de Nongo', {}, { timeout: 8000 });
+  await screen.findByText('Dépôt de la Villa Riviera', {}, { timeout: 8000 });
 }
 
 async function ouvrirSortie(): Promise<void> {
@@ -516,13 +516,13 @@ async function ouvrirJournal(): Promise<void> {
   await screen.findByText('F-2026-0142', {}, { timeout: 8000 });
 }
 
-/** Remplit la sortie de bout en bout : 12 sacs de ciment vers la Villa de Nongo. */
+/** Remplit la sortie de bout en bout : 12 sacs de ciment vers la Villa de la Riviera. */
 async function remplirSortie(): Promise<void> {
-  await choisirOption('sortie-lieu', 'Magasin central de Kipé');
+  await choisirOption('sortie-lieu', "Magasin central d'Angré");
   await choisirOption('sortie-article', 'CIM-42 — Ciment CPJ 42,5');
   saisirNombre('sortie-quantite', '12');
-  await choisirOption('sortie-chantier', 'Villa de Nongo');
-  fireEvent.change(champ('sortie-demandeur'), { target: { value: 'Mamadou Diallo' } });
+  await choisirOption('sortie-chantier', 'Villa de la Riviera');
+  fireEvent.change(champ('sortie-demandeur'), { target: { value: 'Mamadou Kouassi' } });
 }
 
 function dernierPost(): { adresse: string; corps: Record<string, unknown> } {
@@ -537,17 +537,17 @@ describe("L'état du stock — par lieu et par article", () => {
     monter();
 
     await attendreEtat();
-    // Trois soldes au magasin central, un au dépôt de Nongo.
-    expect(screen.getAllByText('Magasin central de Kipé').length).toBe(3);
+    // Trois soldes au magasin central, un au dépôt de la Riviera.
+    expect(screen.getAllByText("Magasin central d'Angré").length).toBe(3);
 
     // Le coût moyen est par (article, LIEU) : un coût global ne saurait pas
     // dire ce que vaut le stock d'un dépôt.
-    expect(screen.getByText(/4\s750\sFCFA/)).toBeInTheDocument();
-    expect(screen.getByText(/5\s100\sFCFA/)).toBeInTheDocument();
+    expect(screen.getByText(/4\s750/)).toBeInTheDocument();
+    expect(screen.getByText(/5\s100/)).toBeInTheDocument();
 
     // Et les valeurs propres à chaque lieu, telles que le serveur les émet.
-    expect(screen.getByText(/1\s520\s000\sFCFA/)).toBeInTheDocument();
-    expect(screen.getByText(/408\s000\sFCFA/)).toBeInTheDocument();
+    expect(screen.getByText(/1\s520\s000/)).toBeInTheDocument();
+    expect(screen.getByText(/408\s000/)).toBeInTheDocument();
   }, 15000);
 
   it('affiche les quantités à quatre décimales — « 18,75 m³ », jamais « 0 »', async () => {
@@ -584,7 +584,7 @@ describe("L'état du stock — par lieu et par article", () => {
     monter();
 
     await attendreEtat();
-    await choisirOption('filtre-lieu-stock', 'Magasin central de Kipé');
+    await choisirOption('filtre-lieu-stock', "Magasin central d'Angré");
 
     await waitFor(() =>
       expect(
@@ -618,11 +618,11 @@ describe('Le journal des mouvements', () => {
     monter();
     await ouvrirJournal();
 
-    const ligneSortie = await ligne('Fatoumata Camara, conductrice de travaux');
+    const ligneSortie = await ligne('Fatoumata Kouadio, conductrice de travaux');
     // 25 × 1 900 = 47 500, mais le serveur émet 47 503 : la dernière sortie a
     // emporté la valeur résiduelle de l'emplacement.
-    expect(within(ligneSortie).getByText(/47\s503\sFCFA/)).toBeInTheDocument();
-    expect(within(ligneSortie).queryByText(/47\s500\sFCFA/)).not.toBeInTheDocument();
+    expect(within(ligneSortie).getByText(/47\s503/)).toBeInTheDocument();
+    expect(within(ligneSortie).queryByText(/47\s500/)).not.toBeInTheDocument();
   }, 20000);
 
   it('montre le sens du mouvement par un signe, et les quantités à quatre décimales', async () => {
@@ -644,8 +644,8 @@ describe('Le journal des mouvements', () => {
     expect(within(ligneReception).getByText('Aucune imputation')).toBeInTheDocument();
 
     // La sortie, elle, porte son chantier, son poste et son demandeur.
-    const ligneSortie = await ligne('Fatoumata Camara, conductrice de travaux');
-    expect(within(ligneSortie).getByText('Résidence Ratoma')).toBeInTheDocument();
+    const ligneSortie = await ligne('Fatoumata Kouadio, conductrice de travaux');
+    expect(within(ligneSortie).getByText('Résidence Cocody')).toBeInTheDocument();
   }, 20000);
 
   it('les filtres de nature et de période partent en requête', async () => {
@@ -722,7 +722,7 @@ describe('Le prix d’une sortie n’est pas saisi (principe P-4)', () => {
     expect(screen.getByText(/Aperçu indicatif seulement/i)).toBeInTheDocument();
     expect(screen.getByText(/Aucun prix n'est saisi ni envoyé/i)).toBeInTheDocument();
     // 12 sacs au coût moyen de 4 750 : l'aperçu, et rien de plus.
-    expect(screen.getByText(/57\s000\sFCFA/)).toBeInTheDocument();
+    expect(screen.getByText(/57\s000/)).toBeInTheDocument();
   }, 25000);
 
   it('poste exactement les sept champs du schéma, et AUCUN prix', async () => {
@@ -759,11 +759,11 @@ describe('Le prix d’une sortie n’est pas saisi (principe P-4)', () => {
       locationId: MAGASIN,
       itemId: CIMENT,
       quantity: 12,
-      siteId: NONGO,
+      siteId: RIVIERA,
       // Pré-sélectionné depuis la PROPOSITION de l'article, et envoyé parce
       // que l'utilisateur ne l'a pas changé.
       costCategoryId: POSTE_GROS_OEUVRE,
-      requestedBy: 'Mamadou Diallo',
+      requestedBy: 'Mamadou Kouassi',
       issueDate: AUJOURDHUI
     });
   }, 30000);
@@ -777,7 +777,7 @@ describe('Une sortie supérieure au stock est refusée, et l’écran le montre 
     // Avant tout choix, l'écran dit quoi faire plutôt que d'annoncer zéro.
     expect(screen.getByText(/Choisissez un lieu et un article pour voir le stock disponible/i)).toBeInTheDocument();
 
-    await choisirOption('sortie-lieu', 'Magasin central de Kipé');
+    await choisirOption('sortie-lieu', "Magasin central d'Angré");
     await choisirOption('sortie-article', 'CIM-42 — Ciment CPJ 42,5');
 
     expect(await screen.findByText(/Stock disponible dans ce lieu/i, {}, { timeout: 8000 })).toBeInTheDocument();
@@ -790,7 +790,7 @@ describe('Une sortie supérieure au stock est refusée, et l’écran le montre 
     monter();
     await ouvrirSortie();
 
-    await choisirOption('sortie-lieu', 'Magasin central de Kipé');
+    await choisirOption('sortie-lieu', "Magasin central d'Angré");
     await choisirOption('sortie-article', 'CIM-42 — Ciment CPJ 42,5');
     saisirNombre('sortie-quantite', '400');
 
@@ -853,15 +853,15 @@ describe('Le demandeur est exigé (besoin S3)', () => {
     monter();
     await ouvrirSortie();
 
-    await choisirOption('sortie-lieu', 'Magasin central de Kipé');
+    await choisirOption('sortie-lieu', "Magasin central d'Angré");
     await choisirOption('sortie-article', 'CIM-42 — Ciment CPJ 42,5');
     saisirNombre('sortie-quantite', '12');
-    await choisirOption('sortie-chantier', 'Villa de Nongo');
+    await choisirOption('sortie-chantier', 'Villa de la Riviera');
 
     expect(screen.getByRole('button', { name: 'Enregistrer la sortie' })).toBeDisabled();
     expect(screen.getByText(/c'est la personne qui répond de cette marchandise/i)).toBeInTheDocument();
 
-    fireEvent.change(champ('sortie-demandeur'), { target: { value: 'Mamadou Diallo' } });
+    fireEvent.change(champ('sortie-demandeur'), { target: { value: 'Mamadou Kouassi' } });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Enregistrer la sortie' })).toBeEnabled());
   }, 30000);
 });
@@ -885,7 +885,7 @@ describe('Une réception s’adosse à une facture fournisseur validée (besoin 
     monter();
     await ouvrirReception();
 
-    await choisirOption('reception-lieu', 'Magasin central de Kipé');
+    await choisirOption('reception-lieu', "Magasin central d'Angré");
     await choisirOption('reception-fournisseur', 'Quincaillerie du Niger');
     await choisirOption('reception-facture', /F-2026-0142/);
 
@@ -922,7 +922,7 @@ describe('Une réception s’adosse à une facture fournisseur validée (besoin 
     monter();
     await ouvrirReception();
 
-    await choisirOption('reception-lieu', 'Magasin central de Kipé');
+    await choisirOption('reception-lieu', "Magasin central d'Angré");
     await choisirOption('reception-article-0', 'CIM-42 — Ciment CPJ 42,5');
     saisirNombre('reception-quantite-0', '400');
     saisirNombre('reception-prix-0', '4700');
@@ -943,7 +943,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     expect(corpsDuDocument()).not.toMatch(/\bcredit/);
 
     await user.click(screen.getByRole('tab', { name: 'Journal des mouvements' }));
-    await ligne('Fatoumata Camara, conductrice de travaux');
+    await ligne('Fatoumata Kouadio, conductrice de travaux');
     expect(corpsDuDocument()).not.toMatch(/\bdebit/);
     expect(corpsDuDocument()).not.toMatch(/\bcredit/);
   }, 20000);

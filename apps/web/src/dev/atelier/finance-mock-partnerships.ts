@@ -20,16 +20,16 @@
  *
  * **Trois associations, trois moments du besoin B9 du PRD** :
  *
- * - `assoc-nongo-01` (Camara / Diallo) totalise CENT pour cent de quotes-parts :
+ * - `assoc-riviera-01` (Kouadio / Kouassi) totalise CENT pour cent de quotes-parts :
  *   `companySharePercent` vaut zéro. C'est le cas que l'écran ne doit jamais
  *   taire — voir `pages/finance/Association.tsx`. Rattachée au bien `'5'`
  *   (« Terrain 600 m² » de `fixtures.ts`), repris par son identifiant plutôt
  *   que réimporté : les deux fichiers appartiennent à des agents différents,
  *   même raison qu'au sous-lot 1 pour le chantier partagé.
- * - `assoc-kobaya-01` (Bah) ne totalise que quarante-cinq pour cent : c'est le
+ * - `assoc-port-bouet-01` (Konan) ne totalise que quarante-cinq pour cent : c'est le
  *   cas nominal où il reste bien quelque chose à l'agence (55 %). Rattachée au
- *   bien `'3'` (« Bureau Almamya »).
- * - `assoc-lambanyi-01` vient d'être créée, sans aucun associé ni bien : le cas
+ *   bien `'3'` (« Bureau Treichville »).
+ * - `assoc-bingerville-01` vient d'être créée, sans aucun associé ni bien : le cas
  *   qui exerce le formulaire d'ajout du premier associé et le message
  *   « aucun associé ».
  *
@@ -51,17 +51,17 @@ import type { Scenario } from './mock-api';
 // Association 1 — cent pour cent des quotes-parts, rien pour l'agence
 // ---------------------------------------------------------------------------
 
-const PART_NONGO_CAMARA = 'part-nongo-camara';
-const PART_NONGO_DIALLO = 'part-nongo-diallo';
+const PART_RIVIERA_KOUADIO = 'part-riviera-kouadio';
+const PART_RIVIERA_KOUASSI = 'part-riviera-kouassi';
 
-const ASSOC_NONGO: Partnership = {
-  id: 'assoc-nongo-01',
+const ASSOC_RIVIERA: Partnership = {
+  id: 'assoc-riviera-01',
   tenantId: 'agence-1',
-  label: 'Villa de Nongo — indivision Camara / Diallo',
+  label: 'Villa de la Riviera — indivision Kouadio / Kouassi',
   isActive: true,
   shares: [
-    { id: PART_NONGO_CAMARA, partnerAccountId: 'compte-camara', partnerName: 'Mamadou Camara', sharePercent: 60 },
-    { id: PART_NONGO_DIALLO, partnerAccountId: 'compte-diallo', partnerName: 'Fatoumata Diallo', sharePercent: 40 }
+    { id: PART_RIVIERA_KOUADIO, partnerAccountId: 'compte-kouadio', partnerName: 'Mamadou Kouadio', sharePercent: 60 },
+    { id: PART_RIVIERA_KOUASSI, partnerAccountId: 'compte-kouassi', partnerName: 'Fatoumata Kouassi', sharePercent: 40 }
   ],
   totalSharePercent: 100,
   // Cent pour cent de quotes-parts : rien ne reste à l'agence. Le cas que
@@ -74,27 +74,29 @@ const ASSOC_NONGO: Partnership = {
 // Association 2 — cas nominal, il reste bien quelque chose à l'agence
 // ---------------------------------------------------------------------------
 
-const PART_KOBAYA_BAH = 'part-kobaya-bah';
+const PART_PORT_BOUET_KONAN = 'part-port-bouet-konan';
 
-const ASSOC_KOBAYA: Partnership = {
-  id: 'assoc-kobaya-01',
+const ASSOC_PORT_BOUET: Partnership = {
+  id: 'assoc-port-bouet-01',
   tenantId: 'agence-1',
-  label: 'Bureau Almamya — association Bah',
+  label: 'Bureau Treichville — association Konan',
   isActive: true,
-  shares: [{ id: PART_KOBAYA_BAH, partnerAccountId: 'compte-bah', partnerName: 'Ousmane Bah', sharePercent: 45 }],
+  shares: [
+    { id: PART_PORT_BOUET_KONAN, partnerAccountId: 'compte-konan', partnerName: 'Ousmane Konan', sharePercent: 45 }
+  ],
   totalSharePercent: 45,
   companySharePercent: 55,
-  properties: [{ propertyId: '3', propertyLabel: 'Bureau Almamya' }]
+  properties: [{ propertyId: '3', propertyLabel: 'Bureau Treichville' }]
 };
 
 // ---------------------------------------------------------------------------
 // Association 3 — tout juste créée, sans associé ni bien
 // ---------------------------------------------------------------------------
 
-const ASSOC_LAMBANYI: Partnership = {
-  id: 'assoc-lambanyi-01',
+const ASSOC_BINGERVILLE: Partnership = {
+  id: 'assoc-bingerville-01',
   tenantId: 'agence-1',
-  label: 'Terrain de Lambanyi — association à constituer',
+  label: 'Terrain de Bingerville — association à constituer',
   isActive: true,
   shares: [],
   totalSharePercent: 0,
@@ -104,7 +106,7 @@ const ASSOC_LAMBANYI: Partnership = {
   properties: []
 };
 
-const ASSOCIATIONS: Partnership[] = [ASSOC_NONGO, ASSOC_KOBAYA, ASSOC_LAMBANYI];
+const ASSOCIATIONS: Partnership[] = [ASSOC_RIVIERA, ASSOC_PORT_BOUET, ASSOC_BINGERVILLE];
 
 // ---------------------------------------------------------------------------
 // L'état de quote-part — un relevé par part, pour la démonstration du geste
@@ -112,9 +114,9 @@ const ASSOCIATIONS: Partnership[] = [ASSOC_NONGO, ASSOC_KOBAYA, ASSOC_LAMBANYI];
 // ---------------------------------------------------------------------------
 
 const RELEVES_PAR_PART: Record<string, PartnerStatement> = {
-  [PART_NONGO_CAMARA]: {
-    partnershipShareId: PART_NONGO_CAMARA,
-    partnerName: 'Mamadou Camara',
+  [PART_RIVIERA_KOUADIO]: {
+    partnershipShareId: PART_RIVIERA_KOUADIO,
+    partnerName: 'Mamadou Kouadio',
     sharePercent: 60,
     lines: [
       {
@@ -147,9 +149,9 @@ const RELEVES_PAR_PART: Record<string, PartnerStatement> = {
     accountBalance: 210_000,
     currency: 'XOF'
   },
-  [PART_NONGO_DIALLO]: {
-    partnershipShareId: PART_NONGO_DIALLO,
-    partnerName: 'Fatoumata Diallo',
+  [PART_RIVIERA_KOUASSI]: {
+    partnershipShareId: PART_RIVIERA_KOUASSI,
+    partnerName: 'Fatoumata Kouassi',
     sharePercent: 40,
     lines: [
       {
@@ -175,13 +177,13 @@ const RELEVES_PAR_PART: Record<string, PartnerStatement> = {
     accountBalance: 0,
     currency: 'XOF'
   },
-  [PART_KOBAYA_BAH]: {
-    partnershipShareId: PART_KOBAYA_BAH,
-    partnerName: 'Ousmane Bah',
+  [PART_PORT_BOUET_KONAN]: {
+    partnershipShareId: PART_PORT_BOUET_KONAN,
+    partnerName: 'Ousmane Konan',
     sharePercent: 45,
     lines: [
       {
-        propertyLabel: 'Bureau Almamya',
+        propertyLabel: 'Bureau Treichville',
         periodYear: 2026,
         periodMonth: 9,
         rentBilled: 3_200_000,
@@ -201,7 +203,7 @@ export function repondrePartnerships(chemin: string, scenario: Scenario): unknow
   // --- Ajout d'un associé (pas de collision : aucun GET sur ce chemin) -----
   const ajoutMatch = /\/tenants\/[^/]+\/finance\/partnerships\/([^/]+)\/shares$/.exec(chemin);
   if (ajoutMatch) {
-    const association = ASSOCIATIONS.find(candidate => candidate.id === ajoutMatch[1]) ?? ASSOC_NONGO;
+    const association = ASSOCIATIONS.find(candidate => candidate.id === ajoutMatch[1]) ?? ASSOC_RIVIERA;
     return { success: true, data: association };
   }
 
@@ -209,20 +211,20 @@ export function repondrePartnerships(chemin: string, scenario: Scenario): unknow
   const retraitMatch = /\/tenants\/[^/]+\/finance\/partnership-shares\/([^/]+)$/.exec(chemin);
   if (retraitMatch && !chemin.endsWith('/statement')) {
     const association =
-      ASSOCIATIONS.find(candidate => candidate.shares.some(share => share.id === retraitMatch[1])) ?? ASSOC_NONGO;
+      ASSOCIATIONS.find(candidate => candidate.shares.some(share => share.id === retraitMatch[1])) ?? ASSOC_RIVIERA;
     return { success: true, data: association };
   }
 
   // --- Relevé d'une part (état de quote-part, lecture seule) --------------
   const releveMatch = /\/tenants\/[^/]+\/finance\/partnership-shares\/([^/]+)\/statement$/.exec(chemin);
   if (releveMatch) {
-    const releve = RELEVES_PAR_PART[releveMatch[1]] ?? RELEVES_PAR_PART[PART_NONGO_CAMARA];
+    const releve = RELEVES_PAR_PART[releveMatch[1]] ?? RELEVES_PAR_PART[PART_RIVIERA_KOUADIO];
     return { success: true, data: releve };
   }
 
   // --- Rattachement / détachement d'un bien (pas de collision) -------------
   if (/\/tenants\/[^/]+\/finance\/properties\/[^/]+\/partnership$/.test(chemin)) {
-    return { success: true, data: ASSOC_NONGO };
+    return { success: true, data: ASSOC_RIVIERA };
   }
 
   // --- L'association (détail) ----------------------------------------------

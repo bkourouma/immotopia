@@ -47,7 +47,7 @@ export interface LandLeaseSiteRef {
 export interface LandLease {
   id: string;
   landlordName: string;
-  /** Ce qu'on loue, en clair : « Terrain de Nongo, 800 m² ». */
+  /** Ce qu'on loue, en clair : « Terrain de la Riviera, 800 m² ». */
   landLabel: string;
   annualAmount: number;
   costCategoryId: string;
