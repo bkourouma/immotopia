@@ -133,6 +133,7 @@ function chantierDisponible(overrides: Partial<ConstructionSite> = {}): Construc
     finalCost: null,
     actualCost: 0,
     currency: 'XOF',
+    stockEnabledAt: null,
     ...overrides
   };
 }

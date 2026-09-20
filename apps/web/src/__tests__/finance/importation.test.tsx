@@ -112,7 +112,8 @@ const CHANTIER_RIVIERA: ConstructionSite = {
   closedAt: null,
   actualCost: 0,
   finalCost: null,
-  currency: 'XOF'
+  currency: 'XOF',
+  stockEnabledAt: null
 };
 
 function contexte(surcharges: Partial<ContexteImportation> = {}): ContexteImportation {

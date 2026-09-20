@@ -383,6 +383,29 @@ describe('GET /tenants/:tenantId/finance/sites/:siteId/detail', () => {
 
     expect(response.status).toBe(404);
   });
+
+  /**
+   * Champ ajouté le 20 septembre 2026 (contrat gelé, additif) : jusque-là,
+   * seule la route `stock/reconciliation` portait la date de bascule au
+   * stock, et la fiche du chantier ne pouvait pas dire s'il était passé au
+   * stock ni depuis quand.
+   */
+  it('porte la date de bascule au stock (stockEnabledAt), ou null tant que le chantier n’a pas basculé', async () => {
+    const bascule = new Date('2026-09-20T13:15:55.397Z');
+    getSiteDetail.mockResolvedValue(sampleSiteDetail({ site: sampleSite({ stockEnabledAt: bascule }) }));
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/sites/${SITE_A}/detail`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.site.stockEnabledAt).toBe(bascule.toISOString());
+
+    getSiteDetail.mockResolvedValue(sampleSiteDetail({ site: sampleSite({ stockEnabledAt: null }) }));
+
+    const responseSansBascule = await request(app).get(`/api/tenants/${TENANT_A}/finance/sites/${SITE_A}/detail`);
+
+    expect(responseSansBascule.status).toBe(200);
+    expect(responseSansBascule.body.data.site.stockEnabledAt).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

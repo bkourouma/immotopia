@@ -86,7 +86,8 @@ function toSiteRecord(row: Record<string, any>, actualCost: number): Constructio
     closedAt: row.closedAt ?? null,
     finalCost: toAmount(row.finalCost),
     actualCost,
-    currency: CURRENCY
+    currency: CURRENCY,
+    stockEnabledAt: row.stockEnabledAt ?? null
   };
 }
 

@@ -69,6 +69,7 @@ function chantier(overrides: Partial<ConstructionSite> = {}): ConstructionSite {
     finalCost: null,
     actualCost: 4_450_000,
     currency: 'XOF',
+    stockEnabledAt: null,
     ...overrides
   };
 }
@@ -187,6 +188,7 @@ function mountDetail(url = '/tenant/agence-1/finance/chantiers/chantier-1') {
         <MemoryRouter initialEntries={[url]}>
           <Routes>
             <Route path="/tenant/:tenantId/finance/chantiers/:siteId" element={<ChantierDetail />} />
+            <Route path="/tenant/:tenantId/finance/chantiers/:siteId/stock" element={<span>stock du chantier</span>} />
             <Route path="/tenant/:tenantId/finance/caisse" element={<span>pièce de caisse</span>} />
           </Routes>
         </MemoryRouter>
@@ -339,6 +341,30 @@ describe('Détail d’un chantier', () => {
 
     expect(await screen.findByText('Impossible de charger ce chantier.', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument();
+  });
+
+  it('mentionne la date de bascule au stock, avec un lien vers l’écran Stock du chantier, quand le chantier y est passé', async () => {
+    const user = userEvent.setup();
+    getSiteDetail.mockResolvedValue(detail({ site: chantier({ stockEnabledAt: '2026-09-20T13:15:55.397Z' }) }));
+    mountDetail();
+
+    await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
+
+    expect(screen.getByText(/Passé au stock le/)).toBeInTheDocument();
+    const lien = screen.getByRole('button', { name: 'Voir le stock' });
+    await user.click(lien);
+
+    expect(await screen.findByText('stock du chantier')).toBeInTheDocument();
+  });
+
+  it('ne mentionne rien sur le stock quand le chantier n’a pas basculé', async () => {
+    getSiteDetail.mockResolvedValue(detail({ site: chantier({ stockEnabledAt: null }) }));
+    mountDetail();
+
+    await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
+
+    expect(screen.queryByText(/Passé au stock/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Voir le stock' })).not.toBeInTheDocument();
   });
 });
 

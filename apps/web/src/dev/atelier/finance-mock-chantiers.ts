@@ -108,7 +108,8 @@ const RICHE_BASE: ChantierBase = {
   progressPercent: 70,
   closedAt: null,
   finalCost: null,
-  currency: 'XOF'
+  currency: 'XOF',
+  stockEnabledAt: null
 };
 
 const RICHE_ALLOCATIONS: SiteAllocationLine[] = [
@@ -335,7 +336,8 @@ const SANS_BIEN_BASE: ChantierBase = {
   progressPercent: 35,
   closedAt: null,
   finalCost: null,
-  currency: 'XOF'
+  currency: 'XOF',
+  stockEnabledAt: null
 };
 
 const SANS_BIEN_ALLOCATIONS: SiteAllocationLine[] = [
@@ -471,7 +473,8 @@ const CLOTURE_BASE: ChantierBase = {
   // fois, à la clôture, par un geste distinct de la lecture courante — il
   // n'est ici que recopié, égal au coût réel dérivé, jamais divergent.
   finalCost: COUT_CLOTURE,
-  currency: 'XOF'
+  currency: 'XOF',
+  stockEnabledAt: null
 };
 
 const DETAIL_CLOTURE = construireDetail(CLOTURE_BASE, CLOTURE_ALLOCATIONS);
@@ -495,7 +498,8 @@ const NOUVEAU_BASE: ChantierBase = {
   progressPercent: 0,
   closedAt: null,
   finalCost: null,
-  currency: 'XOF'
+  currency: 'XOF',
+  stockEnabledAt: null
 };
 
 const DETAIL_NOUVEAU = construireDetail(NOUVEAU_BASE, []);

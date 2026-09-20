@@ -409,6 +409,18 @@ export interface ConstructionSiteRecord {
    */
   actualCost: number;
   currency: string;
+  /**
+   * Date de bascule au stock (lot 5), ou `null` tant que le chantier n'a pas
+   * basculé. Ajouté le 20 septembre 2026 : jusqu'ici, seule la route
+   * `stock/reconciliation` portait cette date, et la fiche du chantier ne
+   * pouvait pas dire si — ni depuis quand — il était passé au stock.
+   *
+   * Colonne `ConstructionSite.stockEnabledAt` (`prisma/schema.prisma`),
+   * lue et jamais posée ici : la bascule elle-même reste l'affaire du lot 5
+   * (`lib/finance/stock-rapprochement.ts`), irréversible et hors de portée de
+   * ce contrôleur.
+   */
+  stockEnabledAt: Date | null;
 }
 
 export type CreateConstructionSite = (

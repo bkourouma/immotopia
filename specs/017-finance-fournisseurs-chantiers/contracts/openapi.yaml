@@ -1109,6 +1109,18 @@ components:
             description: "Toujours calcule (somme des imputations validees). Aucune route de ce contrat n'accepte ce champ en entree (FR-021, SC-003).",
           }
         currency: { type: string, example: XOF }
+        stockEnabledAt:
+          {
+            type: string,
+            format: date-time,
+            nullable: true,
+            description:
+              "Date de bascule au stock (lot 5), ou null tant que le chantier
+              n'a pas bascule. Ajoute le 20 septembre 2026 : seule la route
+              `stock/reconciliation` portait cette date, et la fiche du
+              chantier ne pouvait pas dire s'il etait passe au stock, ni
+              depuis quand. Bascule irreversible, posee ailleurs.",
+          }
 
     ConstructionSiteResponseWrapper:
       type: object

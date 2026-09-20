@@ -98,7 +98,12 @@ function toConstructionSiteResponse(site: ConstructionSiteRecord) {
     closedAt: site.closedAt,
     finalCost: site.finalCost,
     actualCost: site.actualCost,
-    currency: site.currency
+    currency: site.currency,
+    // Ajouté le 20 septembre 2026 (contrat gelé, champ additif) : la fiche du
+    // chantier n'avait aucun moyen de savoir s'il était passé au stock, ni
+    // depuis quand — seule la route `stock/reconciliation` portait cette
+    // date. `null` tant que le chantier n'a pas basculé.
+    stockEnabledAt: site.stockEnabledAt
   };
 }
 

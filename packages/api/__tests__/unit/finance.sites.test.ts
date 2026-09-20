@@ -380,6 +380,18 @@ describe('getSiteDetail — sous-totaux et libellés lisibles', () => {
   it('chantier introuvable : refuse plutôt que de renvoyer un détail vide', async () => {
     await expect(getSiteDetail(TENANT_ID, 'site-inconnu')).rejects.toThrow(/introuvable/i);
   });
+
+  it('porte la date de bascule au stock (lot 5), ou null tant que le chantier n’a pas basculé', async () => {
+    const bascule = new Date('2026-09-20T13:15:55.397Z');
+    const chantierBascule = seedSite({ stockEnabledAt: bascule });
+    const chantierOrdinaire = seedSite();
+
+    const detailBascule = await getSiteDetail(TENANT_ID, chantierBascule.id);
+    const detailOrdinaire = await getSiteDetail(TENANT_ID, chantierOrdinaire.id);
+
+    expect(detailBascule.site.stockEnabledAt).toEqual(bascule);
+    expect(detailOrdinaire.site.stockEnabledAt).toBeNull();
+  });
 });
 
 describe('listCostCategories — jeu par défaut', () => {

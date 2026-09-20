@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Typography } from 'antd';
+import { Button, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery } from '@tanstack/react-query';
 import { getSiteDetail } from '../../services/finance-lot2-service';
@@ -20,7 +20,7 @@ import {
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 /**
  * Détail d'un chantier — récits B8 et B9 du lot 2
@@ -173,6 +173,23 @@ export const ChantierDetail: React.FC = () => {
         ]}
         extra={<StatusTag status={site.status} label={SITE_STATUS_LABELS[site.status]} />}
       />
+
+      {/* Discret : ce chantier n'a peut-être jamais basculé au stock (lot 5),
+          auquel cas `stockEnabledAt` est nul et rien ne s'affiche ici. Ajouté
+          le 20 septembre 2026 — jusque-là, seul l'écran Stock du chantier lui-
+          même portait cette date, introuvable depuis la fiche. */}
+      {site.stockEnabledAt && (
+        <Text type="secondary" style={{ display: 'block', marginBottom: 'var(--space-4)' }}>
+          {t('Passé au stock le {{date}}', { date: dateCourte(site.stockEnabledAt) })}{' '}
+          <Button
+            type="link"
+            style={{ padding: 0, height: 'auto' }}
+            onClick={() => navigate(`/tenant/${tenantId}/finance/chantiers/${siteId}/stock`)}
+          >
+            {t('Voir le stock')}
+          </Button>
+        </Text>
+      )}
 
       <div
         style={{

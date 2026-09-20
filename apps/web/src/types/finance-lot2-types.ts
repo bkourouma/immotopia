@@ -219,6 +219,14 @@ export interface ConstructionSite {
    */
   actualCost: number;
   currency: string;
+  /**
+   * Date de bascule au stock (lot 5), ou `null` tant que le chantier n'a pas
+   * basculé. Ajouté le 20 septembre 2026 : la fiche du chantier n'avait
+   * jusque-là aucun moyen de savoir s'il était passé au stock ni depuis
+   * quand — seul l'écran Stock du chantier (`stock/reconciliation`) portait
+   * cette date.
+   */
+  stockEnabledAt: string | null;
 }
 
 export interface CostCategory {

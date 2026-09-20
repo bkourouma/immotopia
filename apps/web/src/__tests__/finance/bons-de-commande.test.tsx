@@ -68,6 +68,7 @@ function chantier(overrides: Partial<ConstructionSite> = {}): ConstructionSite {
     finalCost: null,
     actualCost: 0,
     currency: 'XOF',
+    stockEnabledAt: null,
     ...overrides
   };
 }
