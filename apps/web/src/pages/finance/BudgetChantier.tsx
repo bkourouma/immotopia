@@ -31,6 +31,8 @@ import {
 } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { montantCalcule, montantVerrouille } from '../../utils/ligne-quantite-prix';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
@@ -77,20 +79,58 @@ interface LigneBudgetSaisie {
   costCategoryId?: string;
   label: string;
   amountForecast: number | null;
+  /**
+   * Quantité et prix unitaire, facultatifs. Règle complète dans
+   * `utils/ligne-quantite-prix.ts` : les deux renseignés, le montant prévu
+   * devient leur produit et son champ passe en lecture seule ; sinon il se
+   * saisit comme avant — une enveloppe de frais divers n'a pas de quantité.
+   */
+  quantity: number | null;
+  unitPrice: number | null;
 }
 
 interface LigneAvenantSaisie {
   id: string;
   costCategoryId?: string;
   amountDelta: number | null;
+  quantity: number | null;
+  unitPrice: number | null;
 }
 
 function nouvelleLigneBudget(): LigneBudgetSaisie {
-  return { id: crypto.randomUUID(), label: '', amountForecast: null };
+  return { id: crypto.randomUUID(), label: '', amountForecast: null, quantity: null, unitPrice: null };
 }
 
 function nouvelleLigneAvenant(): LigneAvenantSaisie {
-  return { id: crypto.randomUUID(), amountDelta: null };
+  return { id: crypto.randomUUID(), amountDelta: null, quantity: null, unitPrice: null };
+}
+
+/**
+ * Le montant prévu retenu pour une ligne de budget : le produit quand
+ * quantité ET prix unitaire sont là, la saisie directe sinon.
+ */
+function montantPrevuDeLaLigne(ligne: LigneBudgetSaisie): number | null {
+  return montantCalcule(ligne.quantity, ligne.unitPrice) ?? ligne.amountForecast;
+}
+
+/**
+ * Idem pour une ligne d'avenant — **et c'est là que l'avenant se distingue**.
+ *
+ * L'écart d'un avenant est SIGNÉ : on réduit parfois une enveloppe. Une
+ * quantité négative, elle, n'a aucun sens — on ne commande pas moins deux
+ * tonnes. La décision prise ici : le champ « Quantité » reste positif et
+ * c'est le « Prix unitaire » qui accepte le signe, de sorte que « 2 tonnes à
+ * −95 000 » exprime une reprise de deux tonnes. La saisie en écart direct
+ * reste évidemment ouverte, et c'est le chemin le plus simple pour une
+ * réduction forfaitaire : on laisse quantité et prix unitaire vides.
+ *
+ * L'alternative — laisser l'avenant en saisie directe seule — a été écartée :
+ * la hausse d'enveloppe motivée par « trois tonnes de ciment en plus » est
+ * justement le cas courant d'un avenant, et c'est celui où quantité et prix
+ * unitaire servent le plus.
+ */
+function ecartDeLaLigne(ligne: LigneAvenantSaisie): number | null {
+  return montantCalcule(ligne.quantity, ligne.unitPrice) ?? ligne.amountDelta;
 }
 
 const TONE_BUDGET: Record<string, StatusTone> = { DRAFT: 'neutral', VALIDATED: 'success' };
@@ -179,7 +219,10 @@ export const BudgetChantier: React.FC = () => {
 
   const lignesBudgetInvalides =
     lignesBudget.length === 0 ||
-    lignesBudget.some(l => !l.costCategoryId || !l.label.trim() || !(l.amountForecast && l.amountForecast > 0));
+    lignesBudget.some(l => {
+      const montant = montantPrevuDeLaLigne(l);
+      return !l.costCategoryId || !l.label.trim() || !(montant && montant > 0);
+    });
 
   const peutCreerBudget = Boolean(siteId) && Boolean(nomBudget.trim()) && !lignesBudgetInvalides;
 
@@ -193,7 +236,11 @@ export const BudgetChantier: React.FC = () => {
         lines: lignesBudget.map(l => ({
           costCategoryId: l.costCategoryId as string,
           label: l.label.trim(),
-          amountForecast: l.amountForecast as number
+          amountForecast: montantPrevuDeLaLigne(l) as number,
+          // Conservés tels quels : le serveur les range à côté du montant
+          // prévu, il ne refait pas la multiplication.
+          quantity: l.quantity,
+          unitPrice: l.unitPrice
         }))
       });
       await queryClient.invalidateQueries({ queryKey: detailKey('site-budget', tenantId, siteId) });
@@ -244,7 +291,10 @@ export const BudgetChantier: React.FC = () => {
   // une ligne « vide » se glisserait dans un avenant enregistré.
   const lignesAvenantInvalides =
     lignesAvenant.length === 0 ||
-    lignesAvenant.some(l => !l.costCategoryId || l.amountDelta === null || l.amountDelta === 0);
+    lignesAvenant.some(l => {
+      const ecart = ecartDeLaLigne(l);
+      return !l.costCategoryId || ecart === null || ecart === 0;
+    });
 
   const peutEnregistrerAvenant = Boolean(budget) && Boolean(motifAvenant.trim()) && !lignesAvenantInvalides;
 
@@ -264,7 +314,9 @@ export const BudgetChantier: React.FC = () => {
         reason: motifAvenant.trim(),
         lines: lignesAvenant.map(l => ({
           costCategoryId: l.costCategoryId as string,
-          amountDelta: l.amountDelta as number
+          amountDelta: ecartDeLaLigne(l) as number,
+          quantity: l.quantity,
+          unitPrice: l.unitPrice
         }))
       });
       await queryClient.invalidateQueries({ queryKey: detailKey('budget-amendments', tenantId, budget.id) });
@@ -323,9 +375,24 @@ export const BudgetChantier: React.FC = () => {
     );
   }
 
+  // Quantité et prix unitaire ne s'affichent que là où ils existent : une
+  // ligne saisie en montant direct montre une case vide plutôt qu'un « 1 »
+  // inventé.
   const colonnesLignes: ColumnsType<SiteBudget['lines'][number]> = [
     { title: t('Poste'), key: 'poste', render: (_, l) => l.costCategoryLabel },
     { title: t('Libellé'), key: 'libelle', render: (_, l) => l.label },
+    {
+      title: t('Quantité'),
+      key: 'quantite',
+      align: 'end',
+      render: (_, l) => (l.quantity == null ? '' : l.quantity.toLocaleString(activeLocale()))
+    },
+    {
+      title: t('Prix unitaire'),
+      key: 'prix-unitaire',
+      align: 'end',
+      render: (_, l) => (l.unitPrice == null ? '' : <MoneyValue value={l.unitPrice} />)
+    },
     {
       title: t('Montant prévu'),
       key: 'montant',
@@ -413,6 +480,8 @@ export const BudgetChantier: React.FC = () => {
                   style={{ width: 200 }}
                   value={ligne.costCategoryId}
                   onChange={value => modifierLigneBudget(ligne.id, { costCategoryId: value })}
+                  showSearch
+                  optionFilterProp="label"
                   options={optionsPostes}
                 />
                 <Input
@@ -423,14 +492,34 @@ export const BudgetChantier: React.FC = () => {
                   onChange={event => modifierLigneBudget(ligne.id, { label: event.target.value })}
                 />
                 <InputNumber
+                  aria-label={t('Quantité')}
+                  placeholder={t('Quantité')}
+                  min={0}
+                  style={{ width: 120 }}
+                  value={ligne.quantity ?? undefined}
+                  onChange={value => modifierLigneBudget(ligne.id, { quantity: (value as number | null) ?? null })}
+                />
+                <InputNumber
+                  aria-label={t('Prix unitaire')}
+                  placeholder={t('Prix unitaire')}
+                  min={0}
+                  style={{ width: 160 }}
+                  value={ligne.unitPrice ?? undefined}
+                  onChange={value => modifierLigneBudget(ligne.id, { unitPrice: (value as number | null) ?? null })}
+                  {...montantSaisiProps}
+                />
+                <InputNumber
                   aria-label={t('Montant prévu')}
                   placeholder={t('Montant prévu')}
                   min={0}
                   style={{ width: 180 }}
-                  value={ligne.amountForecast ?? undefined}
+                  // Lecture seule dès que le produit prend le relais.
+                  disabled={montantVerrouille(ligne.quantity, ligne.unitPrice)}
+                  value={montantPrevuDeLaLigne(ligne) ?? undefined}
                   onChange={value =>
                     modifierLigneBudget(ligne.id, { amountForecast: (value as number | null) ?? null })
                   }
+                  {...montantSaisiProps}
                 />
                 <Button
                   aria-label={t('Retirer la ligne')}
@@ -459,10 +548,15 @@ export const BudgetChantier: React.FC = () => {
               marginBottom: 'var(--space-6)'
             }}
           >
-            {/* `totalForecast` est le seul total que porte `SiteBudget` (voir
-                l'en-tête) : c'est le budget INITIAL, jamais un « révisé »
-                recomposé ici. */}
+            {/* Les deux totaux viennent du serveur, jamais d'une addition faite
+                ici : `totalForecast` est l'initial, `revisedTotal` l'initial
+                augmenté des avenants VALIDÉS. C'est le révisé qui fait foi dès
+                qu'un avenant est passé, et il manquait à cet écran — celui-là
+                même où l'on saisit les avenants. Il fallait aller au tableau de
+                bord des chantiers pour lire le chiffre qu'on venait de changer
+                (demandé le 20 septembre 2026). */}
             <StatCard label={t('Budget initial')} value={<MoneyValue value={budget.totalForecast} />} />
+            <StatCard label={t('Budget révisé')} value={<MoneyValue value={budget.revisedTotal} />} />
             {engagement && (
               <>
                 <StatCard label={t('Réalisé')} value={<MoneyValue value={engagement.actualCost} />} />
@@ -516,6 +610,20 @@ export const BudgetChantier: React.FC = () => {
                 aria-label={l.label}
                 subtitle={l.costCategoryLabel}
                 highlight={<MoneyValue value={l.amountForecast} />}
+                fields={
+                  l.quantity != null || l.unitPrice != null
+                    ? [
+                        {
+                          label: t('Quantité'),
+                          value: l.quantity == null ? '' : l.quantity.toLocaleString(activeLocale())
+                        },
+                        {
+                          label: t('Prix unitaire'),
+                          value: l.unitPrice == null ? '' : <MoneyValue value={l.unitPrice} />
+                        }
+                      ]
+                    : undefined
+                }
               />
             )}
           />
@@ -610,16 +718,38 @@ export const BudgetChantier: React.FC = () => {
                     style={{ width: 200 }}
                     value={ligne.costCategoryId}
                     onChange={value => modifierLigneAvenant(ligne.id, { costCategoryId: value })}
+                    showSearch
+                    optionFilterProp="label"
                     options={optionsPostes}
+                  />
+                  <InputNumber
+                    aria-label={t('Quantité')}
+                    placeholder={t('Quantité')}
+                    // Jamais négative : c'est le prix unitaire qui porte le
+                    // signe d'un écart en baisse (voir `ecartDeLaLigne`).
+                    min={0}
+                    style={{ width: 120 }}
+                    value={ligne.quantity ?? undefined}
+                    onChange={value => modifierLigneAvenant(ligne.id, { quantity: (value as number | null) ?? null })}
+                  />
+                  <InputNumber
+                    aria-label={t('Prix unitaire')}
+                    placeholder={t('Prix unitaire (+/-)')}
+                    style={{ width: 160 }}
+                    value={ligne.unitPrice ?? undefined}
+                    onChange={value => modifierLigneAvenant(ligne.id, { unitPrice: (value as number | null) ?? null })}
+                    {...montantSaisiProps}
                   />
                   <InputNumber
                     aria-label={t('Écart')}
                     placeholder={t('Écart (+/-)')}
                     style={{ width: 180 }}
-                    value={ligne.amountDelta ?? undefined}
+                    disabled={montantVerrouille(ligne.quantity, ligne.unitPrice)}
+                    value={ecartDeLaLigne(ligne) ?? undefined}
                     onChange={value =>
                       modifierLigneAvenant(ligne.id, { amountDelta: (value as number | null) ?? null })
                     }
+                    {...montantSaisiProps}
                   />
                   <Button
                     aria-label={t('Retirer la ligne')}

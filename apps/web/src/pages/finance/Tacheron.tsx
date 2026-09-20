@@ -16,6 +16,7 @@ import {
   validateProgressStatement
 } from '../../services/finance-contractors-service';
 import { listConstructionSites, listCostCategories } from '../../services/finance-lot2-service';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 import { CONTRACTOR_DOCUMENT_STATUS_LABELS } from '../../types/finance-contractors-types';
 import type {
   Contractor,
@@ -608,7 +609,10 @@ export const Tacheron: React.FC = () => {
           <DataCard
             title={m.reference}
             aria-label={m.reference}
-            subtitle={`${m.siteLabel} — poste « ${m.costCategoryLabel} »`}
+            subtitle={t('{{chantier}} — poste « {{poste}} »', {
+              chantier: m.siteLabel,
+              poste: m.costCategoryLabel
+            })}
             status={m.isOverrun ? <StatusTag status="OVERRUN" tone="warning" label={t('Dépassement')} /> : undefined}
             highlight={<MoneyValue value={m.agreedAmount} />}
             fields={[
@@ -636,6 +640,8 @@ export const Tacheron: React.FC = () => {
               placeholder={t('Choisir un chantier')}
               value={chantierMarche}
               onChange={setChantierMarche}
+              showSearch
+              optionFilterProp="label"
               options={optionsChantiers}
               notFoundContent={t('Aucun chantier disponible')}
             />
@@ -652,6 +658,8 @@ export const Tacheron: React.FC = () => {
               placeholder={t('Choisir un poste')}
               value={posteMarche}
               onChange={setPosteMarche}
+              showSearch
+              optionFilterProp="label"
               options={optionsPostes}
               notFoundContent={t('Aucun poste de dépense disponible')}
             />
@@ -678,6 +686,7 @@ export const Tacheron: React.FC = () => {
               style={{ width: 180 }}
               value={montantMarche ?? undefined}
               onChange={value => setMontantMarche((value as number | null) ?? null)}
+              {...montantSaisiProps}
             />
           </div>
           <div>
@@ -793,6 +802,7 @@ export const Tacheron: React.FC = () => {
                   style={{ width: 180 }}
                   value={montantSituation ?? undefined}
                   onChange={value => setMontantSituation((value as number | null) ?? null)}
+                  {...montantSaisiProps}
                 />
               </div>
               <div style={{ minWidth: 320 }}>
@@ -927,6 +937,7 @@ export const Tacheron: React.FC = () => {
               style={{ width: 180 }}
               value={montantReglement ?? undefined}
               onChange={value => setMontantReglement((value as number | null) ?? null)}
+              {...montantSaisiProps}
             />
           </div>
           <Button

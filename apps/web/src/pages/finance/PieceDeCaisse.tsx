@@ -18,6 +18,7 @@ import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, StatusTag, ConfirmAction } from '../../components/primitives';
 import type { StatusTone } from '../../components/primitives';
 import { t } from '../../i18n/t';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 
 import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
@@ -238,6 +239,8 @@ export const PieceDeCaisse: React.FC = () => {
                 placeholder={t('Choisir le poste')}
                 value={costCategoryId}
                 onChange={setCostCategoryId}
+                showSearch
+                optionFilterProp="label"
                 options={optionsPostes}
                 disabled={formulaireVerrouille}
               />
@@ -264,6 +267,7 @@ export const PieceDeCaisse: React.FC = () => {
                 value={montant ?? undefined}
                 onChange={valeur => setMontant(typeof valeur === 'number' ? valeur : null)}
                 disabled={formulaireVerrouille}
+                {...montantSaisiProps}
               />
             </div>
             <div style={{ minWidth: 160 }}>

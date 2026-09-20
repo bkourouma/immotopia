@@ -1,10 +1,11 @@
-import React from 'react';
-import { Table, Pagination, Spin, Row, Col } from 'antd';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { Table, Pagination, Spin, Row, Col, Typography } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { SorterResult } from 'antd/es/table/interface';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { StateBlock } from './StateBlock';
 import { SkeletonList, SkeletonTable } from './Skeleton';
+import { ContexteMontants, deviseParDefaut } from './MoneyValue';
 import type { Sort } from '../../hooks/useListParams';
 import { t } from '../../i18n/t';
 
@@ -141,6 +142,24 @@ export function DataView<T>(props: DataViewProps<T>) {
   const columns = (props as { columns?: import('antd/es/table').ColumnsType<T> }).columns ?? [];
   const { isDesktop } = useBreakpoint();
 
+  /**
+   * La devise se dit une fois, sous le tableau, au lieu de se repeter a chaque
+   * ligne. Une colonne qui affiche vingt fois « FCFA » noie le chiffre, seul
+   * element qui varie d'une ligne a l'autre, et mange une largeur precieuse.
+   *
+   * La mention n'apparait que si le tableau porte reellement un montant : les
+   * `<MoneyValue>` rendus a l'interieur le signalent. Un tableau de dates et de
+   * libelles n'affiche donc rien.
+   */
+  const [porteDesMontants, setPorteDesMontants] = useState(false);
+  const dejaSignale = useRef(false);
+  const signaler = useCallback(() => {
+    if (dejaSignale.current) return;
+    dejaSignale.current = true;
+    setPorteDesMontants(true);
+  }, []);
+  const contexteMontants = useMemo(() => ({ sansDevise: true, signaler }), [signaler]);
+
   if (error) {
     return (
       <StateBlock
@@ -231,23 +250,33 @@ export function DataView<T>(props: DataViewProps<T>) {
     layout === 'grid' ? (
       cardGrid
     ) : isDesktop ? (
-      <Table<T>
-        dataSource={items}
-        columns={columns}
-        rowKey={rowKey}
-        // La pagination est rendue séparément : identique en tableau et en
-        // cartes, elle ne doit pas changer de forme avec le palier.
-        pagination={false}
-        onChange={handleTableChange}
-        // Pas de `scroll={{ x }}` par DÉFAUT : au-dessus de 992 px les colonnes
-        // tiennent, en dessous ce sont des cartes, et un défilement horizontal
-        // posé partout dispenserait de faire la stratégie de colonnes. Les
-        // écrans dont les colonnes ne tiennent pas au plancher du desktop le
-        // demandent explicitement par `scrollX` — la stratégie carte reste due.
-        scroll={scrollX ? { x: scrollX } : undefined}
-        size="middle"
-        aria-label={ariaLabel}
-      />
+      <ContexteMontants.Provider value={contexteMontants}>
+        <Table<T>
+          dataSource={items}
+          columns={columns}
+          rowKey={rowKey}
+          // La pagination est rendue séparément : identique en tableau et en
+          // cartes, elle ne doit pas changer de forme avec le palier.
+          pagination={false}
+          onChange={handleTableChange}
+          // Pas de `scroll={{ x }}` par DÉFAUT : au-dessus de 992 px les colonnes
+          // tiennent, en dessous ce sont des cartes, et un défilement horizontal
+          // posé partout dispenserait de faire la stratégie de colonnes. Les
+          // écrans dont les colonnes ne tiennent pas au plancher du desktop le
+          // demandent explicitement par `scrollX` — la stratégie carte reste due.
+          scroll={scrollX ? { x: scrollX } : undefined}
+          size="middle"
+          aria-label={ariaLabel}
+        />
+        {porteDesMontants && (
+          <Typography.Text
+            type="secondary"
+            style={{ display: 'block', marginTop: 'var(--space-2)', fontSize: 'var(--font-size-caption)' }}
+          >
+            {t('Tous les montants sont en {{devise}}.', { devise: deviseParDefaut() })}
+          </Typography.Text>
+        )}
+      </ContexteMontants.Provider>
     ) : (
       cardList
     );

@@ -17,6 +17,7 @@ import { listConstructionSites } from '../../services/finance-lot2-service';
 import { LAND_LEASE_STATUS_LABELS } from '../../types/finance-lot4-types';
 import type { LandLeaseAccrual, LandLeasePayment, LandLeaseSiteRef } from '../../types/finance-lot4-types';
 import { detailKey, entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 import {
   PageHeader,
   StateBlock,
@@ -530,6 +531,8 @@ export const BailDeTerrain: React.FC = () => {
               placeholder={t('Choisir un chantier')}
               value={siteARattacher}
               onChange={setSiteARattacher}
+              showSearch
+              optionFilterProp="label"
               options={optionsRattachement}
               notFoundContent={t('Aucun chantier disponible')}
             />
@@ -614,6 +617,7 @@ export const BailDeTerrain: React.FC = () => {
               style={{ width: 180 }}
               value={montantPaiement ?? undefined}
               onChange={value => setMontantPaiement((value as number | null) ?? null)}
+              {...montantSaisiProps}
             />
           </div>
           <div>
@@ -712,6 +716,8 @@ export const BailDeTerrain: React.FC = () => {
               style={{ width: 160 }}
               value={moisConstat ?? undefined}
               onChange={setMoisConstat}
+              showSearch
+              optionFilterProp="label"
               options={OPTIONS_MOIS}
             />
           </div>

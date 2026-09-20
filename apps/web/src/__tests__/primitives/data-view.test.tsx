@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { DataView } from '../../components/primitives/DataView';
 import { DataCard } from '../../components/primitives/DataCard';
+import { MoneyValue } from '../../components/primitives/MoneyValue';
 
 /**
  * `<DataView>` — les deux représentations et les états (§5.1, §10.1).
@@ -34,8 +35,8 @@ vi.mock('../../hooks/useBreakpoint', () => ({
 type Bien = { id: string; titre: string; prix: number };
 
 const BIENS: Bien[] = [
-  { id: '1', titre: 'Villa Kipe', prix: 450_000 },
-  { id: '2', titre: 'Studio Matam', prix: 120_000 }
+  { id: '1', titre: 'Villa Angre', prix: 450_000 },
+  { id: '2', titre: 'Studio Marcory', prix: 120_000 }
 ];
 
 const COLUMNS = [
@@ -108,7 +109,7 @@ describe('DataView — représentation selon le palier', () => {
   it('rend un tableau au-dessus de 992 px', () => {
     view();
     expect(screen.getByRole('table')).toBeInTheDocument();
-    expect(screen.getByText('Villa Kipe')).toBeInTheDocument();
+    expect(screen.getByText('Villa Angre')).toBeInTheDocument();
   });
 
   it('rend une liste de cartes en dessous, et aucun tableau', () => {
@@ -170,7 +171,7 @@ describe('DataView — les états sont distingués', () => {
     // Repasser par le squelette fait sauter la mise en page et perdre le fil
     // de lecture : la donnée reste, l'indicateur dit qu'elle bouge.
     view({ isReloading: true });
-    expect(screen.getByText('Villa Kipe')).toBeInTheDocument();
+    expect(screen.getByText('Villa Angre')).toBeInTheDocument();
     expect(screen.getByRole('table')).toBeInTheDocument();
   });
 });
@@ -220,7 +221,7 @@ describe('DataCard', () => {
   it('expose une action par carte, le reste derrière « ⋮ »', () => {
     render(
       <DataCard
-        title="Villa Kipe"
+        title="Villa Angre"
         primaryAction={{ label: 'Encaisser', onClick: () => {} }}
         secondaryActions={[{ key: 'edit', label: 'Modifier' }]}
       />
@@ -232,8 +233,8 @@ describe('DataCard', () => {
 
   it('rend la carte entière actionnable au clavier', async () => {
     const onOpen = vi.fn();
-    render(<DataCard title="Villa Kipe" onOpen={onOpen} aria-label="Villa Kipe" />);
-    const card = screen.getByRole('link', { name: 'Villa Kipe' });
+    render(<DataCard title="Villa Angre" onOpen={onOpen} aria-label="Villa Angre" />);
+    const card = screen.getByRole('link', { name: 'Villa Angre' });
     card.focus();
     await userEvent.keyboard('{Enter}');
     expect(onOpen).toHaveBeenCalledOnce();
@@ -243,9 +244,66 @@ describe('DataCard', () => {
     // Sans arrêt de propagation, « Encaisser » ouvrirait aussi la fiche.
     const onOpen = vi.fn();
     const onPay = vi.fn();
-    render(<DataCard title="Villa Kipe" onOpen={onOpen} primaryAction={{ label: 'Encaisser', onClick: onPay }} />);
+    render(<DataCard title="Villa Angre" onOpen={onOpen} primaryAction={{ label: 'Encaisser', onClick: onPay }} />);
     await userEvent.click(screen.getByText('Encaisser'));
     expect(onPay).toHaveBeenCalledOnce();
     expect(onOpen).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * La devise se dit une fois, sous le tableau, au lieu de se répéter à chaque
+ * ligne. Demande du 20 septembre 2026 : une colonne de montants qui affiche
+ * vingt fois « FCFA » noie le chiffre, seul élément qui varie d'une ligne à
+ * l'autre, et mange une largeur précieuse.
+ */
+describe('DataView — la devise ne se répète pas sur chaque ligne', () => {
+  function vueAvecMontants(colonnes = COLUMNS_MONTANT) {
+    return render(
+      <MemoryRouter>
+        <DataView<Bien>
+          items={BIENS}
+          total={BIENS.length}
+          page={1}
+          pageSize={20}
+          paginated={false}
+          onPageChange={() => {}}
+          columns={colonnes}
+          rowKey={b => b.id}
+          renderCard={b => <DataCard title={b.titre} />}
+          aria-label="Biens"
+        />
+      </MemoryRouter>
+    );
+  }
+
+  const COLUMNS_MONTANT = [
+    { title: 'Bien', key: 'titre', render: (_: unknown, b: Bien) => b.titre },
+    { title: 'Prix', key: 'prix', render: (_: unknown, b: Bien) => <MoneyValue value={b.prix} /> }
+  ];
+
+  const COLUMNS_SANS_MONTANT = [{ title: 'Bien', key: 'titre', render: (_: unknown, b: Bien) => b.titre }];
+
+  it('affiche le montant nu dans la ligne, sans sa devise', () => {
+    vueAvecMontants();
+    const tableau = screen.getByRole('table');
+    const montant = within(tableau).getByText(/450\s000/);
+    expect(montant).toBeInTheDocument();
+    expect(montant.textContent).not.toMatch(/FCFA/);
+  });
+
+  it('porte la devise une seule fois, sous le tableau', () => {
+    vueAvecMontants();
+    expect(screen.getAllByText('Tous les montants sont en FCFA.')).toHaveLength(1);
+  });
+
+  it('ne dit rien de la devise quand le tableau ne porte aucun montant', () => {
+    vueAvecMontants(COLUMNS_SANS_MONTANT);
+    expect(screen.queryByText('Tous les montants sont en FCFA.')).not.toBeInTheDocument();
+  });
+
+  it('garde sa devise à un montant rendu hors d’un tableau', () => {
+    render(<MoneyValue value={450_000} />);
+    expect(screen.getByText(/450\s000\sFCFA/)).toBeInTheDocument();
   });
 });

@@ -148,8 +148,17 @@ export const TableauDeBordChantiers: React.FC = () => {
       title: t('Écart'),
       key: 'ecart',
       align: 'end',
+      // L'étiquette DIT le sens, le montant DIT de combien. L'étiquette seule
+      // laissait la question la plus utile sans réponse — « dans le budget,
+      // oui, mais avec quelle marge ? » — et obligeait à ouvrir le budget pour
+      // un chiffre que la ligne portait déjà (demandé le 20 septembre 2026).
+      // Un chantier sans budget n'a pas d'écart : l'étiquette « Sans budget »
+      // reste seule, et `variance` vaut alors nul.
       render: (_, r) => (
-        <StatusTag status={labelEcart(r.variance)} tone={toneEcart(r.variance)} label={labelEcart(r.variance)} />
+        <Space size={4} wrap style={{ justifyContent: 'flex-end' }}>
+          <StatusTag status={labelEcart(r.variance)} tone={toneEcart(r.variance)} label={labelEcart(r.variance)} />
+          {r.variance !== null && <MoneyValue value={r.variance} signed />}
+        </Space>
       )
     },
     {
@@ -255,12 +264,17 @@ export const TableauDeBordChantiers: React.FC = () => {
               { label: t('Réalisé'), value: <MoneyValue value={r.actualCost} /> },
               {
                 label: t('Écart'),
+                // Comme en colonne : l'étiquette dit le sens, le montant dit
+                // de combien. Un chantier sans budget n'a que l'étiquette.
                 value: (
-                  <StatusTag
-                    status={labelEcart(r.variance)}
-                    tone={toneEcart(r.variance)}
-                    label={labelEcart(r.variance)}
-                  />
+                  <Space size={4} wrap>
+                    <StatusTag
+                      status={labelEcart(r.variance)}
+                      tone={toneEcart(r.variance)}
+                      label={labelEcart(r.variance)}
+                    />
+                    {r.variance !== null && <MoneyValue value={r.variance} signed />}
+                  </Space>
                 )
               },
               ...(r.openAlert

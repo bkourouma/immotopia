@@ -18,6 +18,7 @@ import type { SalaryNote, SalaryPayment } from '../../types/finance-salaries-typ
 import { SALARY_STATUS_LABELS } from '../../types/finance-salaries-types';
 import type { SalaryDocumentStatus } from '../../types/finance-salaries-types';
 import { detailKey, entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 import {
   PageHeader,
   StateBlock,
@@ -751,6 +752,7 @@ function Carte_SaisirNote(props: {
               style={{ width: 180 }}
               value={props.montant ?? undefined}
               onChange={value => props.setMontant((value as number | null) ?? null)}
+              {...montantSaisiProps}
             />
           </div>
           <div style={{ minWidth: 240 }}>
@@ -785,6 +787,8 @@ function Carte_SaisirNote(props: {
                 status={props.posteManquant ? 'error' : undefined}
                 value={props.posteId}
                 onChange={value => props.setPosteId((value as string | undefined) ?? undefined)}
+                showSearch
+                optionFilterProp="label"
                 options={props.optionsPostes}
                 notFoundContent={t('Aucun poste de dépense')}
               />
@@ -869,6 +873,7 @@ function Carte_EnregistrerReglement(props: {
               style={{ width: 180 }}
               value={props.montant ?? undefined}
               onChange={value => props.setMontant((value as number | null) ?? null)}
+              {...montantSaisiProps}
             />
           </div>
           <Button

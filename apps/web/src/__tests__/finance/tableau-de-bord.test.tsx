@@ -35,7 +35,7 @@ function alerte(overrides: Partial<SiteBudgetAlert> = {}): SiteBudgetAlert {
   return {
     id: 'alerte-1',
     siteId: 'chantier-1',
-    siteLabel: 'Villa duplex — Kipé Centre',
+    siteLabel: 'Villa duplex — Angré Centre',
     budgetId: 'budget-1',
     thresholdPercent: 80,
     engagedAmount: 21_600_000,
@@ -51,8 +51,8 @@ function alerte(overrides: Partial<SiteBudgetAlert> = {}): SiteBudgetAlert {
 function ligne(overrides: Partial<SiteDashboardRow> = {}): SiteDashboardRow {
   return {
     siteId: 'chantier-1',
-    siteLabel: 'Villa duplex — Kipé Centre',
-    zone: 'Kipé, Ratoma',
+    siteLabel: 'Villa duplex — Angré Centre',
+    zone: 'Angré, Cocody',
     status: 'IN_PROGRESS',
     initialBudget: 25_500_000,
     revisedBudget: 26_700_000,
@@ -137,12 +137,12 @@ describe('Tableau de bord — affichage sans aucun recalcul côté écran', () =
     getSitesDashboard.mockResolvedValue({ rows: [ligne()], currency: 'XOF' });
     mountTableau();
 
-    expect(await screen.findByText('Villa duplex — Kipé Centre', {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByText('Kipé, Ratoma')).toBeInTheDocument();
-    expect(screen.getByText(/25\s500\s000\sFCFA/)).toBeInTheDocument();
-    expect(screen.getByText(/26\s700\s000\sFCFA/)).toBeInTheDocument();
-    expect(screen.getByText(/21\s600\s000\sFCFA/)).toBeInTheDocument();
-    expect(screen.getByText(/19\s500\s000\sFCFA/)).toBeInTheDocument();
+    expect(await screen.findByText('Villa duplex — Angré Centre', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(screen.getByText('Angré, Cocody')).toBeInTheDocument();
+    expect(screen.getByText(/25\s500\s000/)).toBeInTheDocument();
+    expect(screen.getByText(/26\s700\s000/)).toBeInTheDocument();
+    expect(screen.getByText(/21\s600\s000/)).toBeInTheDocument();
+    expect(screen.getByText(/19\s500\s000/)).toBeInTheDocument();
   });
 
   it('lit le signe de l’écart déjà fourni, sans jamais recalculer `revisedBudget - engagedAmount`', async () => {
@@ -166,7 +166,7 @@ describe('Tableau de bord — affichage sans aucun recalcul côté écran', () =
       rows: [
         ligne({
           siteId: 'chantier-nouveau',
-          siteLabel: 'Extension villa — Lambanyi',
+          siteLabel: 'Extension villa — Bingerville',
           status: 'PLANNED',
           initialBudget: null,
           revisedBudget: null,
@@ -182,7 +182,7 @@ describe('Tableau de bord — affichage sans aucun recalcul côté écran', () =
     });
     mountTableau();
 
-    expect(await screen.findByText('Extension villa — Lambanyi', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(await screen.findByText('Extension villa — Bingerville', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getByText('Sans budget')).toBeInTheDocument();
   });
 
@@ -203,7 +203,7 @@ describe('Tableau de bord — code couleur sur l’écart', () => {
       rows: [
         ligne({
           siteId: 'chantier-sans-bien',
-          siteLabel: 'Terrain loué — Nongo',
+          siteLabel: 'Terrain loué — Riviera',
           variance: -500_000,
           variancePercent: -14
         })
@@ -234,17 +234,17 @@ describe('Tableau de bord — alertes', () => {
     });
     mountTableau();
 
-    await screen.findByText('Villa duplex — Kipé Centre', {}, { timeout: 8000 });
-    expect(within(ligneDuChantier('Villa duplex — Kipé Centre')).getByText('Alerte')).toBeInTheDocument();
-    expect(within(ligneDuChantier('Villa duplex — Kipé Centre')).getByText('Dans le budget')).toBeInTheDocument();
+    await screen.findByText('Villa duplex — Angré Centre', {}, { timeout: 8000 });
+    expect(within(ligneDuChantier('Villa duplex — Angré Centre')).getByText('Alerte')).toBeInTheDocument();
+    expect(within(ligneDuChantier('Villa duplex — Angré Centre')).getByText('Dans le budget')).toBeInTheDocument();
   });
 
   it('n’affiche aucune alerte quand la ligne n’en porte pas', async () => {
     getSitesDashboard.mockResolvedValue({ rows: [ligne({ openAlert: null })], currency: 'XOF' });
     mountTableau();
 
-    await screen.findByText('Villa duplex — Kipé Centre', {}, { timeout: 8000 });
-    expect(within(ligneDuChantier('Villa duplex — Kipé Centre')).queryByText('Alerte')).not.toBeInTheDocument();
+    await screen.findByText('Villa duplex — Angré Centre', {}, { timeout: 8000 });
+    expect(within(ligneDuChantier('Villa duplex — Angré Centre')).queryByText('Alerte')).not.toBeInTheDocument();
   });
 
   it('acquitte une alerte depuis le tableau de bord', async () => {
@@ -265,7 +265,7 @@ describe('Tableau de bord — filtres et navigation', () => {
     getSitesDashboard.mockResolvedValue({ rows: [ligne()], currency: 'XOF' });
     mountTableau();
 
-    await screen.findByText('Villa duplex — Kipé Centre', {}, { timeout: 8000 });
+    await screen.findByText('Villa duplex — Angré Centre', {}, { timeout: 8000 });
 
     const combobox = await screen.findByRole('combobox', {}, { timeout: 8000 });
     fireEvent.mouseDown(combobox);
@@ -281,7 +281,7 @@ describe('Tableau de bord — filtres et navigation', () => {
     const user = userEvent.setup({ delay: null });
     mountTableau();
 
-    await screen.findByText('Villa duplex — Kipé Centre', {}, { timeout: 8000 });
+    await screen.findByText('Villa duplex — Angré Centre', {}, { timeout: 8000 });
     await user.click(screen.getByRole('checkbox', { name: /dépassement/i }));
 
     await waitFor(() =>
@@ -307,7 +307,7 @@ describe('Vocabulaire (P-1 du PRD)', () => {
     getSitesDashboard.mockResolvedValue({ rows: [ligne({ openAlert: alerte() })], currency: 'XOF' });
     const { container } = mountTableau();
 
-    await screen.findByText('Villa duplex — Kipé Centre', {}, { timeout: 8000 });
+    await screen.findByText('Villa duplex — Angré Centre', {}, { timeout: 8000 });
     expect(normaliser(container.textContent ?? '')).not.toMatch(/\bdebit\b/);
     expect(normaliser(container.textContent ?? '')).not.toMatch(/\bcredit\b/);
   });

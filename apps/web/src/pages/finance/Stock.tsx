@@ -32,6 +32,7 @@ import { listConstructionSites, listCostCategories, listSuppliers } from '../../
 import { STOCK_MOVEMENT_TYPE_LABELS, STOCK_MOVEMENT_TYPE_TONES } from '../../types/finance-stock-mouvements-types';
 import type { StockBalance, StockMovement, StockMovementType } from '../../types/finance-stock-mouvements-types';
 import { entityKeyPrefix, queryKey, STALE_TIME } from '../../lib/query-keys';
+import { montantSaisiProps } from '../../utils/montant-saisi';
 import {
   DataCard,
   DataView,
@@ -1226,6 +1227,7 @@ export const Stock: React.FC = () => {
                     step={100}
                     value={ligne.unitCost ?? undefined}
                     onChange={valeur => modifierLigne(ligne.cle, { unitCost: (valeur as number | null) ?? null })}
+                    {...montantSaisiProps}
                   />
                 </div>
                 {lignes.length > 1 && (
@@ -1425,7 +1427,7 @@ export const Stock: React.FC = () => {
               id="sortie-demandeur"
               value={sortieDemandeur}
               onChange={event => setSortieDemandeur(event.target.value)}
-              placeholder={t('Ex. Mamadou Diallo, chef de chantier')}
+              placeholder={t('Ex. Mamadou Kouassi, chef de chantier')}
             />
             <Text type={sortieDemandeur.trim() ? 'secondary' : 'danger'} style={{ fontSize: 'var(--font-size-sm)' }}>
               <strong>{t('Obligatoire')}</strong>{' '}

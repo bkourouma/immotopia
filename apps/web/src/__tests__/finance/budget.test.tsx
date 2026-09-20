@@ -54,11 +54,11 @@ vi.mock('../../hooks/useBreakpoint', () => ({
 function chantier(overrides: Partial<ConstructionSite> = {}): ConstructionSite {
   return {
     id: 'chantier-1',
-    name: 'Villa duplex — Kipé Centre',
-    zone: 'Kipé, Ratoma',
+    name: 'Villa duplex — Angré Centre',
+    zone: 'Angré, Cocody',
     propertyId: 'bien-1',
-    propertyLabel: 'Villa duplex — Kipé Centre (en construction)',
-    managerLabel: 'Mamadou Bah',
+    propertyLabel: 'Villa duplex — Angré Centre (en construction)',
+    managerLabel: 'Mamadou Konan',
     // Aucun bail de terrain par defaut : c'est le cas courant.
     landLeaseId: null,
     status: 'IN_PROGRESS',
@@ -84,7 +84,7 @@ function budget(overrides: Partial<SiteBudget> = {}): SiteBudget {
     label: 'Budget initial 2026',
     status: 'VALIDATED',
     validatedAt: '2026-04-05T09:00:00.000Z',
-    validatedByLabel: 'Mamadou Bah',
+    validatedByLabel: 'Mamadou Konan',
     currency: 'XOF',
     lines: [
       {
@@ -120,7 +120,7 @@ function avenant(overrides: Partial<BudgetAmendment> = {}): BudgetAmendment {
     amendmentDate: '2026-06-01',
     reason: 'Renchérissement du ciment',
     status: 'DRAFT',
-    createdByLabel: 'Ibrahima Sow',
+    createdByLabel: 'Ibrahima Yao',
     validatedAt: null,
     lines: [
       {
@@ -201,8 +201,13 @@ describe('Budget — affichage sans aucun recalcul côté écran', () => {
 
     expect(await screen.findByRole('heading', { name: 'Budget initial 2026' }, { timeout: 8000 })).toBeInTheDocument();
     // Le total du serveur (25 500 000), jamais la somme des deux lignes (13 000 000).
-    expect(screen.getByText(/25\s500\s000\sFCFA/)).toBeInTheDocument();
-    expect(screen.queryByText(/13\s000\s000\sFCFA/)).not.toBeInTheDocument();
+    //
+    // Il paraît DEUX fois depuis le 20 septembre 2026 : sur la carte « Budget
+    // initial » et sur la carte « Budget révisé », qui lui est égale tant
+    // qu'aucun avenant n'est validé. Les deux viennent du serveur, aucune
+    // n'est recomposée à l'écran.
+    expect(screen.getAllByText(/25\s500\s000/)).toHaveLength(2);
+    expect(screen.queryByText(/13\s000\s000/)).not.toBeInTheDocument();
   });
 
   it('affiche un libellé de poste pour chaque ligne, jamais son identifiant', async () => {
@@ -220,7 +225,7 @@ describe('Budget — affichage sans aucun recalcul côté écran', () => {
     mountBudget();
 
     await screen.findByRole('heading', { name: 'Budget initial 2026' }, { timeout: 8000 });
-    expect(screen.getByText(/Validé par Mamadou Bah/)).toBeInTheDocument();
+    expect(screen.getByText(/Validé par Mamadou Konan/)).toBeInTheDocument();
   });
 
   it('affiche l’engagé et le réalisé du serveur, sans les recalculer', async () => {
@@ -228,8 +233,8 @@ describe('Budget — affichage sans aucun recalcul côté écran', () => {
     mountBudget();
 
     await screen.findByRole('heading', { name: 'Budget initial 2026' }, { timeout: 8000 });
-    expect(screen.getByText(/21\s600\s000\sFCFA/)).toBeInTheDocument();
-    expect(screen.getByText(/19\s500\s000\sFCFA/)).toBeInTheDocument();
+    expect(screen.getByText(/21\s600\s000/)).toBeInTheDocument();
+    expect(screen.getByText(/19\s500\s000/)).toBeInTheDocument();
   });
 
   it('affiche un état d’erreur avec un moyen de réessayer', async () => {
@@ -271,6 +276,114 @@ describe('Budget — création, quand le chantier n’en a encore aucun', () => 
   }, 30000);
 });
 
+describe('Budget et avenant — quantité et prix unitaire', () => {
+  it('calcule le montant prévu d’une ligne de budget, et transmet les trois valeurs', async () => {
+    getSiteBudget.mockResolvedValue(null);
+    createSiteBudget.mockResolvedValue(budget());
+    const user = userEvent.setup({ delay: null });
+    mountBudget();
+
+    await screen.findByText("Aucun budget n'est encore posé pour ce chantier", {}, { timeout: 8000 });
+
+    await user.type(screen.getByLabelText('Nom du budget'), 'Budget initial 2026');
+    const comboboxes = await screen.findAllByRole('combobox', {}, { timeout: 8000 });
+    await user.click(comboboxes[0]);
+    await user.click(await optionParLibelle('Gros œuvre'));
+    await user.type(screen.getByLabelText('Libellé de la ligne'), 'Ciment CPJ 45');
+    await user.type(screen.getByLabelText('Quantité'), '100');
+    await user.type(screen.getByLabelText('Prix unitaire'), '80000');
+
+    // 100 × 80 000 = 8 000 000, et le montant prévu passe en lecture seule.
+    const champMontant = screen.getByLabelText('Montant prévu');
+    await waitFor(() => expect(champMontant).toBeDisabled());
+    // Le champ regroupe les milliers pendant la frappe (espace insécable
+    // étroite, comme `<MoneyValue>`) : 8000000 s'affiche « 8 000 000 ».
+    await waitFor(() => expect(champMontant).toHaveValue('8 000 000'));
+
+    await user.click(screen.getByRole('button', { name: 'Créer le budget' }));
+
+    await waitFor(() => expect(createSiteBudget).toHaveBeenCalledTimes(1));
+    expect(createSiteBudget.mock.calls[0][1]).toMatchObject({
+      lines: [
+        {
+          costCategoryId: 'poste-gros-oeuvre',
+          label: 'Ciment CPJ 45',
+          amountForecast: 8_000_000,
+          quantity: 100,
+          unitPrice: 80_000
+        }
+      ]
+    });
+  }, 30000);
+
+  it('laisse le montant prévu saisissable sans quantité ni prix unitaire', async () => {
+    getSiteBudget.mockResolvedValue(null);
+    mountBudget();
+
+    await screen.findByText("Aucun budget n'est encore posé pour ce chantier", {}, { timeout: 8000 });
+    // Le cas d'une enveloppe forfaitaire : rien à multiplier.
+    expect(screen.getByLabelText('Montant prévu')).not.toBeDisabled();
+  }, 30000);
+
+  it('accepte un prix unitaire négatif sur un avenant, la quantité restant positive', async () => {
+    getSiteBudget.mockResolvedValue(budget());
+    listBudgetAmendments.mockResolvedValue([]);
+    createBudgetAmendment.mockResolvedValue(avenant());
+    const user = userEvent.setup({ delay: null });
+    mountBudget();
+
+    await screen.findByText('Nouvel avenant', {}, { timeout: 8000 });
+
+    await user.type(screen.getByLabelText('Motif'), 'Reprise de deux tonnes non livrées');
+    const comboboxes = await screen.findAllByRole('combobox', {}, { timeout: 8000 });
+    await user.click(comboboxes[0]);
+    await user.click(await optionParLibelle('Gros œuvre'));
+    await user.type(screen.getByLabelText('Quantité'), '2');
+    await user.type(screen.getByLabelText('Prix unitaire'), '-95000');
+
+    // 2 × (−95 000) = −190 000 : l'écart est négatif sans qu'aucune quantité
+    // ne l'ait été. C'est la décision prise pour l'avenant.
+    const champEcart = screen.getByLabelText('Écart');
+    await waitFor(() => expect(champEcart).toBeDisabled());
+    // Le champ regroupe les milliers pendant la frappe, signe compris :
+    // -190000 s'affiche « -190 000 ».
+    await waitFor(() => expect(champEcart).toHaveValue('-190 000'));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: "Enregistrer l'avenant" })).not.toBeDisabled());
+    await user.click(screen.getByRole('button', { name: "Enregistrer l'avenant" }));
+
+    await waitFor(() => expect(createBudgetAmendment).toHaveBeenCalledTimes(1));
+    expect(createBudgetAmendment.mock.calls[0][1]).toMatchObject({
+      lines: [{ costCategoryId: 'poste-gros-oeuvre', amountDelta: -190_000, quantity: 2, unitPrice: -95_000 }]
+    });
+  }, 30000);
+
+  it('affiche la quantité et le prix unitaire des lignes du budget quand elles en portent', async () => {
+    getSiteBudget.mockResolvedValue(
+      budget({
+        lines: [
+          {
+            id: 'ligne-1',
+            costCategoryId: 'poste-gros-oeuvre',
+            costCategoryLabel: 'Gros œuvre',
+            label: 'Fondations et murs',
+            amountForecast: 8_000_000,
+            quantity: 100,
+            unitPrice: 80_000
+          }
+        ]
+      })
+    );
+    mountBudget();
+
+    await screen.findByText('Lignes du budget', {}, { timeout: 8000 });
+    expect(screen.getByRole('columnheader', { name: 'Quantité' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Prix unitaire' })).toBeInTheDocument();
+    expect(screen.getByText('100')).toBeInTheDocument();
+    expect(screen.getByText(/80\s000/)).toBeInTheDocument();
+  }, 30000);
+});
+
 describe('Budget — validation, irréversible et dite avant', () => {
   it('avertit avant de valider, puis appelle le service seulement après confirmation', async () => {
     getSiteBudget.mockResolvedValue(budget({ status: 'DRAFT', validatedAt: null, validatedByLabel: null }));
@@ -297,8 +410,8 @@ describe('Avenants', () => {
     mountBudget();
 
     expect(await screen.findByText('Renchérissement du ciment', {}, { timeout: 8000 })).toBeInTheDocument();
-    expect(screen.getByText('Ibrahima Sow')).toBeInTheDocument();
-    expect(screen.getByText(/1\s200\s000\sFCFA/)).toBeInTheDocument();
+    expect(screen.getByText('Ibrahima Yao')).toBeInTheDocument();
+    expect(screen.getByText(/1\s200\s000/)).toBeInTheDocument();
   });
 
   it('exige un motif et au moins une ligne pour enregistrer un avenant', async () => {
