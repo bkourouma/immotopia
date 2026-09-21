@@ -408,6 +408,15 @@ export const Contacts: React.FC = () => {
           onCancel={() => setShowForm(false)}
           footer={null}
           width={800}
+          // ANO-22, recette du 20 septembre 2026 : sans ce démontage, `ContactForm`
+          // restait monté entre deux ouvertures et rouvrait sur le dernier onglet
+          // visité, avec les valeurs du contact précédemment saisi encore dans le
+          // formulaire — y compris après « Annuler ». La modale d'édition
+          // (ci-dessous) n'a jamais eu ce défaut : elle ne rend `ContactForm` que
+          // lorsque `editingContact` est défini, ce qui le démonte déjà à la
+          // fermeture. Ici, `ContactForm` était rendu inconditionnellement, sans
+          // jamais se démonter — `destroyOnHidden` force ce même démontage.
+          destroyOnHidden
         >
           <ContactForm onSubmit={handleCreate} onCancel={() => setShowForm(false)} />
         </Modal>
