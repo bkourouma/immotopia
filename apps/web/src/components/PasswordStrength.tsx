@@ -24,8 +24,13 @@ export const PasswordStrength: React.FC<PasswordStrengthProps> = ({ password }) 
     const levels = [
       { level: 0, label: '', color: 'bg-gray-200' },
       { level: 1, label: 'Très faible', color: 'bg-red-500' },
-      { level: 2, label: 'Faible', color: 'bg-orange-500' },
-      { level: 3, label: 'Moyen', color: 'bg-yellow-500' },
+      // Rampe SEQUENTIELLE, laissee sur la palette brute : le systeme n'a que
+      // trois roles semantiques pour cinq crans. Seul le cran orange a du
+      // bouger — il tombait sur la teinte de la marque, a qui le systeme
+      // interdit de porter un etat. Il prend le role `warning`, et le cran
+      // suivant s'eclaircit pour rester distinct de ce nouvel or.
+      { level: 2, label: 'Faible', color: 'bg-warning' },
+      { level: 3, label: 'Moyen', color: 'bg-yellow-400' },
       { level: 4, label: 'Fort', color: 'bg-green-500' },
       { level: 5, label: 'Très fort', color: 'bg-green-600' }
     ];
@@ -49,15 +54,13 @@ export const PasswordStrength: React.FC<PasswordStrengthProps> = ({ password }) 
           />
         </div>
         {strength.label && (
-          <span className={`text-sm font-medium ${strength.color.replace('bg-', 'text-')}`}>
-            {strength.label}
-          </span>
+          <span className={`text-sm font-medium ${strength.color.replace('bg-', 'text-')}`}>{strength.label}</span>
         )}
       </div>
       <div className="mt-1 text-xs text-gray-600">
-        Le mot de passe doit contenir au moins 8 caractères, une majuscule, une minuscule, un chiffre et un caractère spécial.
+        Le mot de passe doit contenir au moins 8 caractères, une majuscule, une minuscule, un chiffre et un caractère
+        spécial.
       </div>
     </div>
   );
 };
-

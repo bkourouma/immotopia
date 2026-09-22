@@ -19,7 +19,7 @@ export const AddDealDialog: React.FC<AddDealDialogProps> = ({
   contactName,
   onSubmit,
   onCancel,
-  loading = false,
+  loading = false
 }) => {
   const handleSubmit = async (data: CreateCrmDealRequest | any) => {
     await onSubmit(data as CreateCrmDealRequest);
@@ -31,21 +31,15 @@ export const AddDealDialog: React.FC<AddDealDialogProps> = ({
         {/* Header */}
         <div className="p-6 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="bg-blue-100 rounded-full p-2">
-              <Briefcase className="h-5 w-5 text-blue-600" />
+            <div className="bg-primary-bg rounded-full p-2">
+              <Briefcase className="h-5 w-5 text-primary" />
             </div>
             <div>
               <h2 className="text-xl font-semibold">Nouvelle affaire</h2>
               <p className="text-sm text-gray-600">Pour {contactName}</p>
             </div>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={onCancel}
-            className="h-8 w-8 p-0"
-          >
+          <Button type="button" variant="ghost" size="sm" onClick={onCancel} className="h-8 w-8 p-0">
             <X className="h-5 w-5" />
           </Button>
         </div>
@@ -64,5 +58,3 @@ export const AddDealDialog: React.FC<AddDealDialogProps> = ({
     </div>
   );
 };
-
-

@@ -31,13 +31,10 @@ const statusLabels: Record<PropertyStatus, string> = {
   [PropertyStatus.UNDER_OFFER]: 'Sous offre',
   [PropertyStatus.RENTED]: 'Loué',
   [PropertyStatus.SOLD]: 'Vendu',
-  [PropertyStatus.ARCHIVED]: 'Archivé',
+  [PropertyStatus.ARCHIVED]: 'Archivé'
 };
 
-export const PropertyStatusHistory: React.FC<PropertyStatusHistoryProps> = ({
-  propertyId,
-  tenantId,
-}) => {
+export const PropertyStatusHistory: React.FC<PropertyStatusHistoryProps> = ({ propertyId, tenantId }) => {
   const [history, setHistory] = useState<StatusHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -63,14 +60,14 @@ export const PropertyStatusHistory: React.FC<PropertyStatusHistoryProps> = ({
     const date = new Date(dateString);
     return new Intl.DateTimeFormat('fr-FR', {
       dateStyle: 'medium',
-      timeStyle: 'short',
+      timeStyle: 'short'
     }).format(date);
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
     );
   }
@@ -87,48 +84,32 @@ export const PropertyStatusHistory: React.FC<PropertyStatusHistoryProps> = ({
   return (
     <div className="space-y-4">
       {history.map((entry, index) => (
-        <div
-          key={entry.id}
-          className="flex items-start gap-4 pb-4 border-b last:border-b-0"
-        >
+        <div key={entry.id} className="flex items-start gap-4 pb-4 border-b last:border-b-0">
           <div className="flex-shrink-0 mt-1">
-            <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-              <Clock className="h-4 w-4 text-blue-600" />
+            <div className="h-8 w-8 rounded-full bg-primary-bg flex items-center justify-center">
+              <Clock className="h-4 w-4 text-primary" />
             </div>
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               {entry.previousStatus && (
                 <>
-                  <span className="text-sm text-gray-600">
-                    {statusLabels[entry.previousStatus]}
-                  </span>
+                  <span className="text-sm text-gray-600">{statusLabels[entry.previousStatus]}</span>
                   <span className="text-gray-400">→</span>
                 </>
               )}
-              <span className="font-medium text-gray-900">
-                {statusLabels[entry.newStatus]}
-              </span>
+              <span className="font-medium text-gray-900">{statusLabels[entry.newStatus]}</span>
             </div>
             <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
               <User className="h-3 w-3" />
-              <span>
-                {entry.changedBy?.fullName || entry.changedBy?.email || 'Utilisateur inconnu'}
-              </span>
+              <span>{entry.changedBy?.fullName || entry.changedBy?.email || 'Utilisateur inconnu'}</span>
               <span>•</span>
               <span>{formatDate(entry.createdAt)}</span>
             </div>
-            {entry.notes && (
-              <p className="text-sm text-gray-600 mt-1 italic">"{entry.notes}"</p>
-            )}
+            {entry.notes && <p className="text-sm text-gray-600 mt-1 italic">"{entry.notes}"</p>}
           </div>
         </div>
       ))}
     </div>
   );
 };
-
-
-
-
-

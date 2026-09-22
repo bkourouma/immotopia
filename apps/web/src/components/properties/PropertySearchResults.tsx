@@ -15,7 +15,7 @@ export const PropertySearchResults: React.FC<PropertySearchResultsProps> = ({
   properties,
   tenantId,
   loading = false,
-  onPropertyClick,
+  onPropertyClick
 }) => {
   const formatPrice = (price?: number, currency?: string, propertyType?: string) => {
     if (!price) return propertyType === 'IMMEUBLE' ? '' : 'Prix sur demande';
@@ -24,15 +24,23 @@ export const PropertySearchResults: React.FC<PropertySearchResultsProps> = ({
   };
 
   const getStatusBadge = (status: string, isPublished: boolean) => {
+    // Echelle CATEGORIELLE : ces couleurs distinguent des valeurs d'enumeration,
+    // elles ne disent ni gravite ni interaction. Elles restent donc sur la
+    // palette brute de Tailwind et non sur les roles du design system, qui
+    // n'expriment que du semantique (succes, alerte, erreur, primaire) — verser
+    // « Reserve » dans `warning` lui ferait dire une alarme qu'il ne porte pas.
+    // Une echelle categorielle reste a definir dans le systeme.
+    // Seul l'orange a bouge : a 22 deg de teinte, il se lisait comme l'accent de
+    // marque, auquel le systeme interdit justement de porter un statut.
     const statusConfig: Record<string, { label: string; className: string }> = {
       DRAFT: { label: 'Brouillon', className: 'bg-gray-100 text-gray-800' },
       UNDER_REVIEW: { label: 'En révision', className: 'bg-yellow-100 text-yellow-800' },
       AVAILABLE: { label: 'Disponible', className: 'bg-green-100 text-green-800' },
-      RESERVED: { label: 'Réservé', className: 'bg-orange-100 text-orange-800' },
+      RESERVED: { label: 'Réservé', className: 'bg-teal-100 text-teal-800' },
       UNDER_OFFER: { label: 'Sous offre', className: 'bg-blue-100 text-blue-800' },
       RENTED: { label: 'Loué', className: 'bg-purple-100 text-purple-800' },
       SOLD: { label: 'Vendu', className: 'bg-red-100 text-red-800' },
-      ARCHIVED: { label: 'Archivé', className: 'bg-gray-100 text-gray-800' },
+      ARCHIVED: { label: 'Archivé', className: 'bg-gray-100 text-gray-800' }
     };
 
     const config = statusConfig[status] || statusConfig.DRAFT;
@@ -46,7 +54,7 @@ export const PropertySearchResults: React.FC<PropertySearchResultsProps> = ({
   if (loading) {
     return (
       <div className="text-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
         <p className="mt-4 text-gray-600">Recherche en cours...</p>
       </div>
     );
@@ -56,39 +64,28 @@ export const PropertySearchResults: React.FC<PropertySearchResultsProps> = ({
     return (
       <div className="text-center py-12">
         <Building2 className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">
-          Aucun résultat trouvé
-        </h3>
-        <p className="text-gray-600">
-          Essayez de modifier vos critères de recherche
-        </p>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">Aucun résultat trouvé</h3>
+        <p className="text-gray-600">Essayez de modifier vos critères de recherche</p>
       </div>
     );
   }
 
   return (
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-      {properties.map((property) => (
-        <div
-          key={property.id}
-          className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow"
-        >
+      {properties.map(property => (
+        <div key={property.id} className="bg-white rounded-lg shadow overflow-hidden hover:shadow-lg transition-shadow">
           {/* Property Image */}
           <div className="h-48 bg-slate-200 flex items-center justify-center relative">
             <Building2 className="h-16 w-16 text-slate-400" />
             {property.isPublished && (
-              <div className="absolute top-2 right-2 bg-blue-600 text-white text-xs px-2 py-1 rounded">
-                Publié
-              </div>
+              <div className="absolute top-2 right-2 bg-primary text-white text-xs px-2 py-1 rounded">Publié</div>
             )}
           </div>
 
           {/* Property Details */}
           <div className="p-5">
             <div className="flex items-start justify-between mb-2">
-              <h3 className="text-lg font-semibold text-slate-900 line-clamp-1 flex-1">
-                {property.title}
-              </h3>
+              <h3 className="text-lg font-semibold text-slate-900 line-clamp-1 flex-1">{property.title}</h3>
               {getStatusBadge(property.status, property.isPublished)}
             </div>
 
@@ -127,7 +124,7 @@ export const PropertySearchResults: React.FC<PropertySearchResultsProps> = ({
 
             {/* Price */}
             <div className="mb-4">
-              <span className="text-2xl font-bold text-blue-600">
+              <span className="text-2xl font-bold text-primary">
                 {formatPrice(property.price, property.currency, property.propertyType)}
               </span>
             </div>
@@ -149,8 +146,3 @@ export const PropertySearchResults: React.FC<PropertySearchResultsProps> = ({
     </div>
   );
 };
-
-
-
-
-

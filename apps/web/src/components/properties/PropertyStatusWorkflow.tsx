@@ -30,7 +30,7 @@ const statusConfig: Record<PropertyStatus, { label: string; color: string; icon:
   },
   [PropertyStatus.RESERVED]: {
     label: 'Réservé',
-    color: 'bg-orange-100 text-orange-800',
+    color: 'bg-teal-100 text-teal-800',
     icon: <Clock className="h-4 w-4" />
   },
   [PropertyStatus.UNDER_OFFER]: {
@@ -133,7 +133,7 @@ export const PropertyStatusWorkflow: React.FC<PropertyStatusWorkflowProps> = ({
                   type="button"
                   onClick={() => setSelectedStatus(status)}
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-colors ${
-                    selectedStatus === status ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                    selectedStatus === status ? 'border-primary bg-primary-bg' : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
                   {config.icon}

@@ -26,8 +26,8 @@ const getItemIcon = (type: WorkbenchItem['type']) => {
 };
 
 const getItemColor = (type: WorkbenchItem['type'], priority?: WorkbenchItem['priority']) => {
-  if (type === 'OVERDUE_ACTION') return 'text-red-600 bg-red-50';
-  if (priority === 'HIGH') return 'text-orange-600 bg-orange-50';
+  if (type === 'OVERDUE_ACTION') return 'text-error-text bg-error-bg';
+  if (priority === 'HIGH') return 'text-warning-text bg-warning-bg';
   return 'text-slate-600 bg-slate-50';
 };
 
@@ -55,13 +55,9 @@ const WorkbenchItemRow: React.FC<{
           </div>
           <div className="flex-1 min-w-0">
             <p className="font-medium text-slate-900">{item.title}</p>
-            {item.description && (
-              <p className="text-sm text-slate-600 mt-1">{item.description}</p>
-            )}
+            {item.description && <p className="text-sm text-slate-600 mt-1">{item.description}</p>}
             <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
-              <span>
-                {dayjs(item.dueDate).format('DD MMM YYYY HH:mm')}
-              </span>
+              <span>{dayjs(item.dueDate).format('DD MMM YYYY HH:mm')}</span>
               {item.contactName && <span>• {item.contactName}</span>}
               {item.dealLabel && <span>• {item.dealLabel}</span>}
             </div>
@@ -72,7 +68,7 @@ const WorkbenchItemRow: React.FC<{
             <Button
               variant="ghost"
               size="sm"
-              onClick={(e) => {
+              onClick={e => {
                 e.stopPropagation();
                 onComplete?.(item);
               }}
@@ -85,19 +81,19 @@ const WorkbenchItemRow: React.FC<{
             <Button
               variant="ghost"
               size="sm"
-              onClick={(e) => {
+              onClick={e => {
                 e.stopPropagation();
                 onReschedule?.(item);
               }}
               className="h-8 w-8 p-0"
             >
-              <Calendar className="h-4 w-4 text-blue-600" />
+              <Calendar className="h-4 w-4 text-primary" />
             </Button>
           )}
           <Button
             variant="ghost"
             size="sm"
-            onClick={(e) => {
+            onClick={e => {
               e.stopPropagation();
               onItemClick?.(item);
             }}
@@ -111,12 +107,7 @@ const WorkbenchItemRow: React.FC<{
   );
 };
 
-export const Workbench: React.FC<WorkbenchProps> = ({
-  data,
-  onItemClick,
-  onComplete,
-  onReschedule,
-}) => {
+export const Workbench: React.FC<WorkbenchProps> = ({ data, onItemClick, onComplete, onReschedule }) => {
   const [activeTab, setActiveTab] = useState<'now' | 'week'>('now');
 
   const nowItems = [...data.overdue, ...data.today];
@@ -127,7 +118,7 @@ export const Workbench: React.FC<WorkbenchProps> = ({
         <CardTitle>Workbench</CardTitle>
       </CardHeader>
       <CardContent>
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)}>
+        <Tabs value={activeTab} onValueChange={v => setActiveTab(v as typeof activeTab)}>
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="now">À faire maintenant</TabsTrigger>
             <TabsTrigger value="week">Cette semaine</TabsTrigger>
@@ -200,4 +191,3 @@ export const Workbench: React.FC<WorkbenchProps> = ({
     </Card>
   );
 };
-

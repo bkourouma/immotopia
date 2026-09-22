@@ -14,23 +14,21 @@ const roleOptions: { value: CrmContactRoleType; label: string }[] = [
   { value: 'PROPRIETAIRE', label: 'Propriétaire (Owner)' },
   { value: 'LOCATAIRE', label: 'Locataire (Renter)' },
   { value: 'COPROPRIETAIRE', label: 'Copropriétaire (Co-owner)' },
-  { value: 'ACQUEREUR', label: 'Acquéreur (Buyer)' },
+  { value: 'ACQUEREUR', label: 'Acquéreur (Buyer)' }
 ];
 
 export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
   contactName,
   onSubmit,
   onCancel,
-  loading = false,
+  loading = false
 }) => {
   const [selectedRoles, setSelectedRoles] = useState<CrmContactRoleType[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleRoleToggle = (role: CrmContactRoleType) => {
-    setSelectedRoles((prev) =>
-      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
-    );
+    setSelectedRoles(prev => (prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -57,8 +55,8 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
         <div className="p-6">
           <div className="flex items-center gap-3 mb-4">
-            <div className="bg-blue-100 rounded-full p-2">
-              <UserCheck className="h-5 w-5 text-blue-600" />
+            <div className="bg-primary-bg rounded-full p-2">
+              <UserCheck className="h-5 w-5 text-primary" />
             </div>
             <h2 className="text-xl font-semibold">Convert Lead to Client</h2>
           </div>
@@ -67,15 +65,11 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
             Convert <strong>{contactName}</strong> from a lead to an active client by assigning one or more roles.
           </p>
 
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
-              {error}
-            </div>
-          )}
+          {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">{error}</div>}
 
           <form onSubmit={handleSubmit}>
             <div className="space-y-3 mb-6">
-              {roleOptions.map((role) => (
+              {roleOptions.map(role => (
                 <label
                   key={role.value}
                   className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"
@@ -84,7 +78,7 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
                     type="checkbox"
                     checked={selectedRoles.includes(role.value)}
                     onChange={() => handleRoleToggle(role.value)}
-                    className="mr-3 h-4 w-4 text-blue-600"
+                    className="mr-3 h-4 w-4 text-primary"
                   />
                   <span className="text-sm font-medium text-gray-900">{role.label}</span>
                 </label>
@@ -105,8 +99,3 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
     </div>
   );
 };
-
-
-
-
-

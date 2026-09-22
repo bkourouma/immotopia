@@ -6,7 +6,7 @@ import {
   PropertyType,
   PropertyTransactionMode,
   PropertyStatus,
-  PropertyOwnershipType,
+  PropertyOwnershipType
 } from '../../types/property-types';
 
 interface PropertySearchFiltersProps {
@@ -27,13 +27,13 @@ const propertyTypeLabels: Record<PropertyType, string> = {
   [PropertyType.TERRAIN]: 'Terrain',
   [PropertyType.IMMEUBLE]: 'Immeuble',
   [PropertyType.PARKING_BOX]: 'Parking/Box',
-  [PropertyType.LOT_PROGRAMME_NEUF]: 'Lot (Programme neuf)',
+  [PropertyType.LOT_PROGRAMME_NEUF]: 'Lot (Programme neuf)'
 };
 
 export const PropertySearchFilters: React.FC<PropertySearchFiltersProps> = ({
   onSearch,
   onReset,
-  initialFilters = {},
+  initialFilters = {}
 }) => {
   const [filters, setFilters] = useState({
     propertyType: initialFilters.propertyType || '',
@@ -46,13 +46,13 @@ export const PropertySearchFilters: React.FC<PropertySearchFiltersProps> = ({
     bedrooms: initialFilters.bedrooms || '',
     transactionMode: initialFilters.transactionMode || '',
     status: initialFilters.status || PropertyStatus.AVAILABLE,
-    ownershipType: initialFilters.ownershipType || '',
+    ownershipType: initialFilters.ownershipType || ''
   });
 
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const handleChange = (field: string, value: any) => {
-    setFilters((prev) => ({ ...prev, [field]: value }));
+    setFilters(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -86,7 +86,7 @@ export const PropertySearchFilters: React.FC<PropertySearchFiltersProps> = ({
       bedrooms: '',
       transactionMode: '',
       status: PropertyStatus.AVAILABLE,
-      ownershipType: '',
+      ownershipType: ''
     });
     if (onReset) {
       onReset();
@@ -99,12 +99,10 @@ export const PropertySearchFilters: React.FC<PropertySearchFiltersProps> = ({
         {/* Basic Filters */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Type de propriété
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Type de propriété</label>
             <select
               value={filters.propertyType}
-              onChange={(e) => handleChange('propertyType', e.target.value)}
+              onChange={e => handleChange('propertyType', e.target.value)}
               className="w-full rounded-md border border-gray-300 px-3 py-2"
             >
               <option value="">Tous les types</option>
@@ -117,24 +115,20 @@ export const PropertySearchFilters: React.FC<PropertySearchFiltersProps> = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Zone/Quartier
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Zone/Quartier</label>
             <Input
               type="text"
               value={filters.locationZone}
-              onChange={(e) => handleChange('locationZone', e.target.value)}
+              onChange={e => handleChange('locationZone', e.target.value)}
               placeholder="Ex: Cocody, Abidjan..."
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Mode de transaction
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Mode de transaction</label>
             <select
               value={filters.transactionMode}
-              onChange={(e) => handleChange('transactionMode', e.target.value)}
+              onChange={e => handleChange('transactionMode', e.target.value)}
               className="w-full rounded-md border border-gray-300 px-3 py-2"
             >
               <option value="">Tous</option>
@@ -150,7 +144,7 @@ export const PropertySearchFilters: React.FC<PropertySearchFiltersProps> = ({
           <button
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+            className="flex items-center gap-2 text-sm text-primary hover:text-primary-hover"
           >
             <Filter className="h-4 w-4" />
             {showAdvanced ? 'Masquer les filtres avancés' : 'Afficher les filtres avancés'}
@@ -161,84 +155,70 @@ export const PropertySearchFilters: React.FC<PropertySearchFiltersProps> = ({
         {showAdvanced && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Prix min (FCFA)
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Prix min (FCFA)</label>
               <Input
                 type="number"
                 value={filters.priceMin}
-                onChange={(e) => handleChange('priceMin', e.target.value)}
+                onChange={e => handleChange('priceMin', e.target.value)}
                 placeholder="0"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Prix max (FCFA)
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Prix max (FCFA)</label>
               <Input
                 type="number"
                 value={filters.priceMax}
-                onChange={(e) => handleChange('priceMax', e.target.value)}
+                onChange={e => handleChange('priceMax', e.target.value)}
                 placeholder="0"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Surface min (m²)
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Surface min (m²)</label>
               <Input
                 type="number"
                 value={filters.surfaceAreaMin}
-                onChange={(e) => handleChange('surfaceAreaMin', e.target.value)}
+                onChange={e => handleChange('surfaceAreaMin', e.target.value)}
                 placeholder="0"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Surface max (m²)
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Surface max (m²)</label>
               <Input
                 type="number"
                 value={filters.surfaceAreaMax}
-                onChange={(e) => handleChange('surfaceAreaMax', e.target.value)}
+                onChange={e => handleChange('surfaceAreaMax', e.target.value)}
                 placeholder="0"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Nombre de pièces min
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de pièces min</label>
               <Input
                 type="number"
                 value={filters.rooms}
-                onChange={(e) => handleChange('rooms', e.target.value)}
+                onChange={e => handleChange('rooms', e.target.value)}
                 placeholder="0"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Nombre de chambres min
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de chambres min</label>
               <Input
                 type="number"
                 value={filters.bedrooms}
-                onChange={(e) => handleChange('bedrooms', e.target.value)}
+                onChange={e => handleChange('bedrooms', e.target.value)}
                 placeholder="0"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Statut
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Statut</label>
               <select
                 value={filters.status}
-                onChange={(e) => handleChange('status', e.target.value)}
+                onChange={e => handleChange('status', e.target.value)}
                 className="w-full rounded-md border border-gray-300 px-3 py-2"
               >
                 <option value={PropertyStatus.AVAILABLE}>Disponible</option>
@@ -249,12 +229,10 @@ export const PropertySearchFilters: React.FC<PropertySearchFiltersProps> = ({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Type de propriété
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Type de propriété</label>
               <select
                 value={filters.ownershipType}
-                onChange={(e) => handleChange('ownershipType', e.target.value)}
+                onChange={e => handleChange('ownershipType', e.target.value)}
                 className="w-full rounded-md border border-gray-300 px-3 py-2"
               >
                 <option value="">Tous</option>
@@ -281,8 +259,3 @@ export const PropertySearchFilters: React.FC<PropertySearchFiltersProps> = ({
     </form>
   );
 };
-
-
-
-
-

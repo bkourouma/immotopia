@@ -41,30 +41,28 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ data }) => {
   const metricLabels: Record<string, string> = {
     activities: 'Activités',
     newLeads: 'Nouveaux leads',
-    wonDeals: 'Affaires gagnées',
+    wonDeals: 'Affaires gagnées'
   };
 
   const metricColors: Record<string, string> = {
     activities: '#3b82f6',
     newLeads: '#10b981',
-    wonDeals: '#f59e0b',
+    wonDeals: '#f59e0b'
   };
 
   return (
     <div className="space-y-4">
       {/* Metric selector */}
       <div className="flex flex-wrap gap-2">
-        {Object.keys(metricLabels).map((key) => (
+        {Object.keys(metricLabels).map(key => (
           <button
             key={key}
             onClick={() => {
-              setSelectedMetrics((prev) =>
-                prev.includes(key) ? prev.filter((m) => m !== key) : [...prev, key]
-              );
+              setSelectedMetrics(prev => (prev.includes(key) ? prev.filter(m => m !== key) : [...prev, key]));
             }}
             className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
               selectedMetrics.includes(key)
-                ? 'bg-blue-100 text-blue-700'
+                ? 'bg-primary-bg text-primary-hover'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
@@ -77,16 +75,11 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ data }) => {
       <ResponsiveContainer width="100%" height={400}>
         <LineChart data={data.data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-          <XAxis
-            dataKey="date"
-            tickFormatter={formatDate}
-            stroke="#64748b"
-            style={{ fontSize: '12px' }}
-          />
+          <XAxis dataKey="date" tickFormatter={formatDate} stroke="#64748b" style={{ fontSize: '12px' }} />
           <YAxis stroke="#64748b" style={{ fontSize: '12px' }} />
           <Tooltip content={<CustomTooltip />} />
           <Legend />
-          {selectedMetrics.map((metric) => (
+          {selectedMetrics.map(metric => (
             <Line
               key={metric}
               type="monotone"
@@ -99,12 +92,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ data }) => {
               animationDuration={1000}
             />
           ))}
-          <Brush
-            dataKey="date"
-            height={30}
-            stroke="#64748b"
-            tickFormatter={formatDate}
-          />
+          <Brush dataKey="date" height={30} stroke="#64748b" tickFormatter={formatDate} />
         </LineChart>
       </ResponsiveContainer>
     </div>

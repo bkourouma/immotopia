@@ -190,7 +190,7 @@ export const AdminCollaboratorDetail: React.FC = () => {
     return (
       <>
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
         </div>
       </>
     );
@@ -219,8 +219,8 @@ export const AdminCollaboratorDetail: React.FC = () => {
               <ArrowLeft className="h-5 w-5" />
             </button>
             <div className="flex items-center gap-3">
-              <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
-                <Users className="h-7 w-7 text-blue-600" />
+              <div className="h-12 w-12 rounded-full bg-primary-bg flex items-center justify-center">
+                <Users className="h-7 w-7 text-primary" />
               </div>
               <div>
                 <h1 className="text-3xl font-bold text-slate-900">{member.user.fullName || member.user.email}</h1>
@@ -288,7 +288,7 @@ export const AdminCollaboratorDetail: React.FC = () => {
                         setSelectedRoleIds(selectedRoleIds.filter(id => id !== role.id));
                       }
                     }}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
                   />
                   <div className="ml-3">
                     <div className="text-sm font-medium text-gray-900">{role.name}</div>
@@ -299,7 +299,7 @@ export const AdminCollaboratorDetail: React.FC = () => {
               <button
                 onClick={handleSaveRoles}
                 disabled={saving}
-                className="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                className="mt-4 inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-hover disabled:opacity-50"
               >
                 <Edit className="h-4 w-4 mr-2" />
                 {saving ? 'Enregistrement...' : 'Enregistrer les roles'}

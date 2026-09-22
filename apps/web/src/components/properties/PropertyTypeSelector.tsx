@@ -21,13 +21,13 @@ const propertyTypeConfig: Record<PropertyType, { label: string; icon: React.Reac
   TERRAIN: { label: 'Terrain', icon: <MapPin className="h-5 w-5" /> },
   IMMEUBLE: { label: 'Immeuble', icon: <Building className="h-5 w-5" /> },
   PARKING_BOX: { label: 'Parking/Box', icon: <Car className="h-5 w-5" /> },
-  LOT_PROGRAMME_NEUF: { label: 'Lot (Programme neuf)', icon: <Building className="h-5 w-5" /> },
+  LOT_PROGRAMME_NEUF: { label: 'Lot (Programme neuf)', icon: <Building className="h-5 w-5" /> }
 };
 
 export const PropertyTypeSelector: React.FC<PropertyTypeSelectorProps> = ({
   selectedType,
   onSelect,
-  disabled = false,
+  disabled = false
 }) => {
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
@@ -39,24 +39,17 @@ export const PropertyTypeSelector: React.FC<PropertyTypeSelectorProps> = ({
           disabled={disabled}
           className={cn(
             'flex flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 transition-all',
-            'hover:border-blue-500 hover:bg-blue-50',
+            'hover:border-primary hover:bg-primary-bg',
             selectedType === type
-              ? 'border-blue-600 bg-blue-50 text-blue-900'
+              ? 'border-primary bg-primary-bg text-primary-active'
               : 'border-slate-200 bg-white text-slate-700',
             disabled && 'cursor-not-allowed opacity-50'
           )}
         >
-          <div className={cn(selectedType === type ? 'text-blue-600' : 'text-slate-400')}>
-            {config.icon}
-          </div>
+          <div className={cn(selectedType === type ? 'text-primary' : 'text-slate-400')}>{config.icon}</div>
           <span className="text-sm font-medium">{config.label}</span>
         </button>
       ))}
     </div>
   );
 };
-
-
-
-
-

@@ -129,7 +129,7 @@ export const TenantDetail: React.FC = () => {
     return (
       <>
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
         </div>
       </>
     );
@@ -180,7 +180,7 @@ export const TenantDetail: React.FC = () => {
             )}
             <button
               onClick={() => navigate(`/admin/tenants/${tenantId}/edit`)}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-hover"
             >
               <Edit className="h-4 w-4 mr-2" />
               Modifier
@@ -364,7 +364,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
         <h3 className="text-lg font-medium text-gray-900">Collaborateurs ({members.length})</h3>
         <button
           onClick={() => navigate(`/admin/tenants/${tenantId}/collaborators/invite`)}
-          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-hover"
         >
           <Plus className="h-4 w-4 mr-2" />
           Inviter
@@ -404,8 +404,8 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="flex-shrink-0 h-10 w-10">
-                        <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                          <Users className="h-6 w-6 text-blue-600" />
+                        <div className="h-10 w-10 rounded-full bg-primary-bg flex items-center justify-center">
+                          <Users className="h-6 w-6 text-primary" />
                         </div>
                       </div>
                       <div className="ml-4">
@@ -421,7 +421,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                       {member.roles.map(role => (
                         <span
                           key={role.id}
-                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary-bg text-primary-active"
                         >
                           {role.name}
                         </span>
@@ -436,7 +436,7 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => navigate(`/admin/tenants/${tenantId}/collaborators/${member.userId}`)}
-                        className="text-blue-600 hover:text-blue-900"
+                        className="text-primary hover:text-primary-active"
                         title="Voir les details"
                       >
                         <Eye className="h-5 w-5" />
@@ -528,8 +528,8 @@ const ModulesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           </div>
           <button
             onClick={() => toggleModule(module.moduleKey, module.enabled)}
-            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-              module.enabled ? 'bg-blue-600' : 'bg-gray-200'
+            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+              module.enabled ? 'bg-primary' : 'bg-gray-200'
             }`}
           >
             <span

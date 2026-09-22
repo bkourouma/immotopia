@@ -16,7 +16,7 @@ export const BulkTagManager: React.FC<BulkTagManagerProps> = ({
   contactIds,
   contactCount,
   onClose,
-  onComplete,
+  onComplete
 }) => {
   const [allTags, setAllTags] = useState<CrmTag[]>([]);
   const [selectedTagsToAdd, setSelectedTagsToAdd] = useState<string[]>([]);
@@ -47,32 +47,31 @@ export const BulkTagManager: React.FC<BulkTagManagerProps> = ({
 
   const toggleTagToAdd = (tagId: string) => {
     if (selectedTagsToAdd.includes(tagId)) {
-      setSelectedTagsToAdd(selectedTagsToAdd.filter((id) => id !== tagId));
+      setSelectedTagsToAdd(selectedTagsToAdd.filter(id => id !== tagId));
     } else {
       setSelectedTagsToAdd([...selectedTagsToAdd, tagId]);
       // Remove from "to remove" list if present
-      setSelectedTagsToRemove(selectedTagsToRemove.filter((id) => id !== tagId));
+      setSelectedTagsToRemove(selectedTagsToRemove.filter(id => id !== tagId));
     }
   };
 
   const toggleTagToRemove = (tagId: string) => {
     if (selectedTagsToRemove.includes(tagId)) {
-      setSelectedTagsToRemove(selectedTagsToRemove.filter((id) => id !== tagId));
+      setSelectedTagsToRemove(selectedTagsToRemove.filter(id => id !== tagId));
     } else {
       setSelectedTagsToRemove([...selectedTagsToRemove, tagId]);
       // Remove from "to add" list if present
-      setSelectedTagsToAdd(selectedTagsToAdd.filter((id) => id !== tagId));
+      setSelectedTagsToAdd(selectedTagsToAdd.filter(id => id !== tagId));
     }
   };
 
   const handleApply = async () => {
     setProcessing(true);
     setError(null);
-    
-    const totalOperations = 
-      (selectedTagsToAdd.length * contactIds.length) + 
-      (selectedTagsToRemove.length * contactIds.length);
-    
+
+    const totalOperations =
+      selectedTagsToAdd.length * contactIds.length + selectedTagsToRemove.length * contactIds.length;
+
     setProgress({ current: 0, total: totalOperations });
 
     let currentOperation = 0;
@@ -102,7 +101,9 @@ export const BulkTagManager: React.FC<BulkTagManagerProps> = ({
           } catch (err: any) {
             // Ignore "tag not assigned" errors
             if (!err.response?.data?.message?.includes('not assigned')) {
-              errors.push(`Erreur lors de la suppression du tag d'un contact: ${err.response?.data?.message || err.message}`);
+              errors.push(
+                `Erreur lors de la suppression du tag d'un contact: ${err.response?.data?.message || err.message}`
+              );
             }
             currentOperation++;
             setProgress({ current: currentOperation, total: totalOperations });
@@ -120,12 +121,12 @@ export const BulkTagManager: React.FC<BulkTagManagerProps> = ({
         onClose();
       }, 500);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Erreur lors de l\'application des tags');
+      setError(err.response?.data?.message || "Erreur lors de l'application des tags");
       setProcessing(false);
     }
   };
 
-  const getTagById = (tagId: string) => allTags.find((tag) => tag.id === tagId);
+  const getTagById = (tagId: string) => allTags.find(tag => tag.id === tagId);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -149,27 +150,23 @@ export const BulkTagManager: React.FC<BulkTagManagerProps> = ({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-              {error}
-            </div>
-          )}
+          {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{error}</div>}
 
           {loading ? (
             <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               <p className="mt-2 text-gray-600">Chargement...</p>
             </div>
           ) : processing ? (
             <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
               <p className="text-lg font-semibold text-gray-900 mb-2">Application des modifications...</p>
               <p className="text-sm text-gray-600">
                 {progress.current} / {progress.total} opérations
               </p>
               <div className="w-full max-w-md mx-auto mt-4 bg-gray-200 rounded-full h-2">
                 <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  className="bg-primary h-2 rounded-full transition-all duration-300"
                   style={{ width: `${(progress.current / progress.total) * 100}%` }}
                 ></div>
               </div>
@@ -177,10 +174,10 @@ export const BulkTagManager: React.FC<BulkTagManagerProps> = ({
           ) : (
             <>
               {/* Instructions */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  <strong>Instructions:</strong> Sélectionnez les tags à ajouter ou à retirer pour tous les contacts sélectionnés.
-                  Les modifications seront appliquées lorsque vous cliquerez sur "Appliquer".
+              <div className="bg-primary-bg border border-primary-border rounded-lg p-4">
+                <p className="text-sm text-primary-active">
+                  <strong>Instructions:</strong> Sélectionnez les tags à ajouter ou à retirer pour tous les contacts
+                  sélectionnés. Les modifications seront appliquées lorsque vous cliquerez sur "Appliquer".
                 </p>
               </div>
 
@@ -191,7 +188,7 @@ export const BulkTagManager: React.FC<BulkTagManagerProps> = ({
                   Tags à ajouter ({selectedTagsToAdd.length})
                 </h3>
                 <div className="flex flex-wrap gap-2">
-                  {allTags.map((tag) => (
+                  {allTags.map(tag => (
                     <button
                       key={tag.id}
                       onClick={() => toggleTagToAdd(tag.id)}
@@ -205,17 +202,15 @@ export const BulkTagManager: React.FC<BulkTagManagerProps> = ({
                         selectedTagsToAdd.includes(tag.id)
                           ? {
                               backgroundColor: tag.color || '#3B82F6',
-                              color: '#FFFFFF',
+                              color: '#FFFFFF'
                             }
                           : {
                               borderColor: tag.color || '#3B82F6',
-                              color: tag.color || '#3B82F6',
+                              color: tag.color || '#3B82F6'
                             }
                       }
                     >
-                      {selectedTagsToAdd.includes(tag.id) && (
-                        <Plus className="h-3 w-3 mr-1" />
-                      )}
+                      {selectedTagsToAdd.includes(tag.id) && <Plus className="h-3 w-3 mr-1" />}
                       {tag.name}
                     </button>
                   ))}
@@ -229,7 +224,7 @@ export const BulkTagManager: React.FC<BulkTagManagerProps> = ({
                   Tags à retirer ({selectedTagsToRemove.length})
                 </h3>
                 <div className="flex flex-wrap gap-2">
-                  {allTags.map((tag) => (
+                  {allTags.map(tag => (
                     <button
                       key={tag.id}
                       onClick={() => toggleTagToRemove(tag.id)}
@@ -243,14 +238,12 @@ export const BulkTagManager: React.FC<BulkTagManagerProps> = ({
                         !selectedTagsToRemove.includes(tag.id)
                           ? {
                               borderColor: tag.color || '#3B82F6',
-                              color: tag.color || '#3B82F6',
+                              color: tag.color || '#3B82F6'
                             }
                           : undefined
                       }
                     >
-                      {selectedTagsToRemove.includes(tag.id) && (
-                        <X className="h-3 w-3 mr-1" />
-                      )}
+                      {selectedTagsToRemove.includes(tag.id) && <X className="h-3 w-3 mr-1" />}
                       {tag.name}
                     </button>
                   ))}
@@ -266,8 +259,9 @@ export const BulkTagManager: React.FC<BulkTagManagerProps> = ({
                       <li className="flex items-start">
                         <Plus className="h-4 w-4 mr-2 text-green-600 mt-0.5" />
                         <span>
-                          Ajouter {selectedTagsToAdd.length} tag{selectedTagsToAdd.length > 1 ? 's' : ''} à {contactCount} contact{contactCount > 1 ? 's' : ''} 
-                          ({selectedTagsToAdd.length * contactCount} opérations)
+                          Ajouter {selectedTagsToAdd.length} tag{selectedTagsToAdd.length > 1 ? 's' : ''} à{' '}
+                          {contactCount} contact{contactCount > 1 ? 's' : ''}({selectedTagsToAdd.length * contactCount}{' '}
+                          opérations)
                         </span>
                       </li>
                     )}
@@ -275,8 +269,9 @@ export const BulkTagManager: React.FC<BulkTagManagerProps> = ({
                       <li className="flex items-start">
                         <Minus className="h-4 w-4 mr-2 text-red-600 mt-0.5" />
                         <span>
-                          Retirer {selectedTagsToRemove.length} tag{selectedTagsToRemove.length > 1 ? 's' : ''} de {contactCount} contact{contactCount > 1 ? 's' : ''} 
-                          ({selectedTagsToRemove.length * contactCount} opérations)
+                          Retirer {selectedTagsToRemove.length} tag{selectedTagsToRemove.length > 1 ? 's' : ''} de{' '}
+                          {contactCount} contact{contactCount > 1 ? 's' : ''}(
+                          {selectedTagsToRemove.length * contactCount} opérations)
                         </span>
                       </li>
                     )}

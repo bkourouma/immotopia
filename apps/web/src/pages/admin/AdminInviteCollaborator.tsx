@@ -114,10 +114,10 @@ export const AdminInviteCollaborator: React.FC = () => {
             </div>
           )}
 
-          <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
+          <div className="bg-primary-bg border border-primary-border rounded-md p-4">
             <div className="flex items-center gap-2">
-              <Mail className="h-5 w-5 text-blue-600" />
-              <p className="text-sm text-blue-800">Une invitation sera envoyee par email au collaborateur.</p>
+              <Mail className="h-5 w-5 text-primary" />
+              <p className="text-sm text-primary-active">Une invitation sera envoyee par email au collaborateur.</p>
             </div>
           </div>
 
@@ -132,7 +132,7 @@ export const AdminInviteCollaborator: React.FC = () => {
               required
               value={formData.email}
               onChange={e => setFormData({ ...formData, email: e.target.value })}
-              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary"
               placeholder="email@example.com"
             />
           </div>
@@ -153,7 +153,7 @@ export const AdminInviteCollaborator: React.FC = () => {
                     key={role.id}
                     className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${
                       formData.roleIds.includes(role.id)
-                        ? 'border-blue-500 bg-blue-50'
+                        ? 'border-primary bg-primary-bg'
                         : 'border-gray-200 hover:bg-gray-50'
                     }`}
                   >
@@ -161,7 +161,7 @@ export const AdminInviteCollaborator: React.FC = () => {
                       type="checkbox"
                       checked={formData.roleIds.includes(role.id)}
                       onChange={() => handleRoleToggle(role.id)}
-                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                      className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
                     />
                     <div className="ml-3">
                       <div className="text-sm font-medium text-gray-900">{role.name}</div>
@@ -184,7 +184,7 @@ export const AdminInviteCollaborator: React.FC = () => {
             <button
               type="submit"
               disabled={loading || formData.roleIds.length === 0}
-              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-hover disabled:opacity-50"
             >
               {loading ? 'Envoi en cours...' : "Envoyer l'invitation"}
             </button>

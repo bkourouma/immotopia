@@ -39,16 +39,17 @@ export const CommuneMultiSelect: React.FC<CommuneMultiSelectProps> = ({
     }
   };
 
-  const filteredCommunes = communes.filter(commune =>
-    commune.commune.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    commune.region.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredCommunes = communes.filter(
+    commune =>
+      commune.commune.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      commune.region.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const selectedCommunes = communes.filter(c => value.includes(c.communeId));
 
   const toggleCommune = (communeId: string) => {
     if (disabled) return;
-    
+
     if (value.includes(communeId)) {
       onChange(value.filter(id => id !== communeId));
     } else {
@@ -80,17 +81,17 @@ export const CommuneMultiSelect: React.FC<CommuneMultiSelectProps> = ({
           {selectedCommunes.length === 0 ? (
             <span className="text-muted-foreground">{placeholder}</span>
           ) : (
-            selectedCommunes.map((commune) => (
+            selectedCommunes.map(commune => (
               <span
                 key={commune.communeId}
-                className="inline-flex items-center gap-1 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-800"
+                className="inline-flex items-center gap-1 rounded bg-primary-bg px-2 py-0.5 text-xs text-primary-active"
               >
                 {commune.commune}
                 {!disabled && (
                   <button
                     type="button"
-                    onClick={(e) => removeCommune(commune.communeId, e)}
-                    className="hover:text-blue-900"
+                    onClick={e => removeCommune(commune.communeId, e)}
+                    className="hover:text-primary-active"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -105,19 +106,16 @@ export const CommuneMultiSelect: React.FC<CommuneMultiSelectProps> = ({
       {/* Dropdown */}
       {isOpen && !disabled && (
         <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOpen(false)}
-          />
+          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
           <div className="absolute z-50 mt-1 w-full rounded-md border bg-white shadow-lg">
             {/* Search Input */}
             <div className="border-b p-2">
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Rechercher une commune..."
-                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 autoFocus
               />
             </div>
@@ -129,25 +127,23 @@ export const CommuneMultiSelect: React.FC<CommuneMultiSelectProps> = ({
                   <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
                 </div>
               ) : filteredCommunes.length === 0 ? (
-                <div className="px-3 py-2 text-sm text-gray-500">
-                  Aucune commune trouvée
-                </div>
+                <div className="px-3 py-2 text-sm text-gray-500">Aucune commune trouvée</div>
               ) : (
-                filteredCommunes.map((commune) => {
+                filteredCommunes.map(commune => {
                   const isSelected = value.includes(commune.communeId);
                   return (
                     <label
                       key={commune.communeId}
                       className={cn(
                         'flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-100',
-                        isSelected && 'bg-blue-50'
+                        isSelected && 'bg-primary-bg'
                       )}
                     >
                       <input
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleCommune(commune.communeId)}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                       />
                       <div className="flex-1">
                         <div className="font-medium">{commune.commune}</div>
@@ -162,7 +158,8 @@ export const CommuneMultiSelect: React.FC<CommuneMultiSelectProps> = ({
             {/* Selected Count */}
             {selectedCommunes.length > 0 && (
               <div className="border-t px-3 py-2 text-xs text-gray-500">
-                {selectedCommunes.length} commune{selectedCommunes.length > 1 ? 's' : ''} sélectionnée{selectedCommunes.length > 1 ? 's' : ''}
+                {selectedCommunes.length} commune{selectedCommunes.length > 1 ? 's' : ''} sélectionnée
+                {selectedCommunes.length > 1 ? 's' : ''}
               </div>
             )}
           </div>
@@ -171,5 +168,3 @@ export const CommuneMultiSelect: React.FC<CommuneMultiSelectProps> = ({
     </div>
   );
 };
-
-
