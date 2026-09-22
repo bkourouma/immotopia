@@ -654,7 +654,10 @@ export const Properties: React.FC = () => {
             status={<StatusTag status={property.status} />}
             highlight={
               property.propertyType === 'IMMEUBLE' ? undefined : (
-                <MoneyValue value={property.price} currency={property.currency} />
+                // Sans `currency`, `MoneyValue` ecrit « FCFA ». Le lui passer
+                // affichait la valeur STOCKEE en base — « CFA » —, qui n'est
+                // pas la notation retenue partout ailleurs dans le produit.
+                <MoneyValue value={property.price} />
               )
             }
             fields={[

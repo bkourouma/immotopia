@@ -119,7 +119,12 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
               typeSpecificData: Object.keys(inheritedLocation).length > 0 ? inheritedLocation : undefined,
               transactionModes: group.transactionModes || property.transactionModes,
               price: group.price != null ? parseFloat(parseNumber(String(group.price))) : undefined,
-              currency: property.currency || 'EUR',
+              // Repli sur le FRANC CFA, jamais sur l'euro : ce produit est
+              // deploye en zone franc, et un appartement herite de la devise
+              // de son immeuble. Le repli precedent — 'EUR' — faisait naitre
+              // des appartements libelles en euros des que l'immeuble n'avait
+              // pas de devise.
+              currency: property.currency || 'FCFA',
               surfaceArea: group.surfaceArea,
               rooms: rooms,
               bedrooms: bedrooms,
@@ -287,9 +292,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
       key: 'price',
       width: 170,
       align: 'end',
-      render: (valeur: number, appartement: Property) => (
-        <MoneyValue value={valeur} currency={appartement.currency || 'FCFA'} />
-      )
+      render: (valeur: number, appartement: Property) => <MoneyValue value={valeur} />
     },
     {
       title: t('Statut'),
@@ -370,11 +373,7 @@ export const PropertyApartments: React.FC<PropertyApartmentsProps> = ({ property
               .filter(Boolean)
               .join(' · ')}
             status={<StatusTag status={appartement.status} />}
-            highlight={
-              appartement.price ? (
-                <MoneyValue value={appartement.price} currency={appartement.currency || 'FCFA'} />
-              ) : undefined
-            }
+            highlight={appartement.price ? <MoneyValue value={appartement.price} /> : undefined}
             onOpen={() => navigate(`/tenant/${tenantId}/properties/${appartement.id}`)}
           />
         )}
