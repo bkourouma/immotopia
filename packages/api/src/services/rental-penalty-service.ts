@@ -12,6 +12,7 @@ import {
 import { appendThirdPartyMovementTx } from '../lib/finance/ledger';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import { getProjectRoot } from '../utils/project-root';
 
 // ---------------------------------------------------------------------------
 // Pont vers le grand livre des comptes de tiers — lot 1, tâche 1.3
@@ -730,9 +731,7 @@ export async function uploadPenaltyJustification(
   }
 
   // Generate file path
-  const cwd = process.cwd();
-  const projectRoot =
-    path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages' ? path.resolve(cwd, '..') : cwd;
+  const projectRoot = getProjectRoot();
   const uploadDir = path.join(projectRoot, 'uploads', 'rental', 'penalties', penaltyId);
   await fs.mkdir(uploadDir, { recursive: true });
 

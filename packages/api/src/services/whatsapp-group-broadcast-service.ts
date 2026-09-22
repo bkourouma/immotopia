@@ -2,6 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { randomBytes } from 'crypto';
 import { logger } from '../utils/logger';
+import { getProjectRoot } from '../utils/project-root';
 import {
   configureWhatsAppProvider,
   getConfiguredWhatsAppProvider,
@@ -30,11 +31,6 @@ export interface SendManualGroupBroadcastResult {
   messageId?: string;
   mediaUrl?: string | null;
   usedFallbackTextOnly?: boolean;
-}
-
-function getProjectRoot(): string {
-  const cwd = process.cwd();
-  return path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages' ? path.resolve(cwd, '..') : cwd;
 }
 
 function getApiBaseUrl(): string {
@@ -71,7 +67,10 @@ function inferExtension(file: Express.Multer.File): string {
   return MIME_TYPE_TO_EXT[file.mimetype] || '.jpg';
 }
 
-async function saveBroadcastImage(tenantId: string, file: Express.Multer.File): Promise<{ relativeUrl: string; absoluteUrl: string }> {
+async function saveBroadcastImage(
+  tenantId: string,
+  file: Express.Multer.File
+): Promise<{ relativeUrl: string; absoluteUrl: string }> {
   const projectRoot = getProjectRoot();
   const uploadDir = path.join(projectRoot, 'uploads', 'whatsapp', 'group-broadcast', tenantId);
   await fs.mkdir(uploadDir, { recursive: true });
@@ -89,7 +88,9 @@ async function saveBroadcastImage(tenantId: string, file: Express.Multer.File): 
   };
 }
 
-export async function sendManualGroupBroadcast(input: SendManualGroupBroadcastInput): Promise<SendManualGroupBroadcastResult> {
+export async function sendManualGroupBroadcast(
+  input: SendManualGroupBroadcastInput
+): Promise<SendManualGroupBroadcastResult> {
   const message = normalizeMessage(input.message);
   const hasImage = Boolean(input.imageFile);
 

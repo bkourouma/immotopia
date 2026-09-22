@@ -1,5 +1,14 @@
 import { MaintenanceTicketStatus } from '@prisma/client';
 
+/** Libelles des etapes, tels que l'interface les affiche. */
+const STATUS_LABELS: Record<MaintenanceTicketStatus, string> = {
+  DECLARED: 'Déclaré',
+  IN_PROGRESS: 'En cours',
+  ASSIGNED: 'Assigné',
+  RESOLVED: 'Résolu',
+  CANCELED: 'Annulé'
+};
+
 /**
  * Validates status transition according to workflow rules
  * State machine pattern: DECLARED → IN_PROGRESS → ASSIGNED → RESOLVED
@@ -38,9 +47,22 @@ export function validateStatusTransition(
   const allowedNextStatuses = validTransitions[fromStatus] || [];
 
   if (!allowedNextStatuses.includes(toStatus)) {
+    // Le message part a l'ecran : il nomme les etapes comme l'interface les
+    // affiche. Renvoyer `DECLARED` ou `IN_PROGRESS` obligeait la personne a
+    // deviner quel bouton de son ecran correspondait a quelle valeur brute.
+    if (allowedNextStatuses.length === 0) {
+      return {
+        isValid: false,
+        error: `Un ticket « ${STATUS_LABELS[fromStatus]} » est arrivé au bout de son parcours : son statut ne change plus.`
+      };
+    }
+
+    const etapes = allowedNextStatuses.map(statut => `« ${STATUS_LABELS[statut]} »`).join(' ou ');
     return {
       isValid: false,
-      error: `Transition invalide de ${fromStatus} vers ${toStatus}. Transitions autorisées: ${allowedNextStatuses.join(', ')}`
+      error:
+        `Un ticket « ${STATUS_LABELS[fromStatus]} » ne peut pas passer directement à ` +
+        `« ${STATUS_LABELS[toStatus]} ». Étape suivante possible : ${etapes}.`
     };
   }
 
@@ -48,7 +70,7 @@ export function validateStatusTransition(
   if (toStatus === MaintenanceTicketStatus.ASSIGNED && !hasAssignment) {
     return {
       isValid: false,
-      error: "Le statut ASSIGNED nécessite l'attribution d'un prestataire ou d'un utilisateur"
+      error: "Le statut « Assigné » demande d'abord de choisir un prestataire ou un responsable."
     };
   }
 

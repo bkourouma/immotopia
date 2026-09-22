@@ -2173,7 +2173,15 @@ model DocumentTemplate {
   createdBy User             @relation("DocumentTemplateCreatedBy", fields: [created_by_user_id], references: [id])
   documents RentalDocument[]
 
-  @@unique([tenant_id, doc_type, is_default])
+  // Un seul modele par defaut par (tenant_id, doc_type) : la regle est tenue
+  // par un index unique PARTIEL cree a la main dans la migration
+  // 20260922100000_document_template_single_default, car Prisma ne sait pas
+  // exprimer de clause WHERE sur un index PostgreSQL.
+  //
+  // L'ancienne contrainte @@unique([tenant_id, doc_type, is_default]) est
+  // retiree volontairement : portant aussi sur les lignes a false, elle
+  // interdisait deux modeles non-defaut du meme type et bloquait tout
+  // changement de modele par defaut des le deuxieme modele.
   @@index([tenant_id])
   @@index([tenant_id, doc_type])
   @@index([tenant_id, doc_type, status])

@@ -9,6 +9,7 @@ import {
   RentalLeaseStatus
 } from '@prisma/client';
 import { validateStatusTransition } from '../utils/maintenance-validators';
+import { badRequest } from '../lib/errors';
 import { sendTicketCreatedNotification, sendStatusChangeNotification } from './maintenance-notification-service';
 
 async function ensureMaintenanceVendorMirrorFromServiceProvider(tenantId: string, vendorId: string) {
@@ -484,7 +485,11 @@ export async function cancelTicket(tenantId: string, ticketId: string, tenantCon
   const transition = validateStatusTransition(existingTicket.status, MaintenanceTicketStatus.CANCELED);
 
   if (!transition.isValid) {
-    throw new Error(transition.error || 'Transition de statut invalide');
+    // `badRequest` porte le statut HTTP avec l'erreur. Le controleur classait
+    // les refus au mot present dans le message (« invalide ») : un message
+    // reecrit en francais courant devenait alors un 500 « Echec de la mise a
+    // jour du ticket », et la raison du refus n'arrivait plus a l'ecran.
+    throw badRequest(transition.error || 'Cette étape du ticket ne peut pas être atteinte depuis son statut actuel.');
   }
 
   // Status change and its history entry must commit together.
@@ -894,7 +899,11 @@ export async function updateTicketStatus(
   const transition = validateStatusTransition(existingTicket.status, newStatus, hasAssignment);
 
   if (!transition.isValid) {
-    throw new Error(transition.error || 'Transition de statut invalide');
+    // `badRequest` porte le statut HTTP avec l'erreur. Le controleur classait
+    // les refus au mot present dans le message (« invalide ») : un message
+    // reecrit en francais courant devenait alors un 500 « Echec de la mise a
+    // jour du ticket », et la raison du refus n'arrivait plus a l'ecran.
+    throw badRequest(transition.error || 'Cette étape du ticket ne peut pas être atteinte depuis son statut actuel.');
   }
 
   // Prepare update data with timestamps

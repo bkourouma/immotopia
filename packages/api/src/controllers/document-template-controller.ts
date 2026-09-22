@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
 import {
   uploadTemplate,
@@ -19,11 +19,26 @@ const updateTemplateSchema = z.object({
   status: z.enum(['ACTIVE', 'INACTIVE']).optional()
 });
 
+/*
+ * Les erreurs partent au middleware `errorHandler` (`next(error)`) plutot que
+ * d'etre mises en forme ici.
+ *
+ * Chaque handler renvoyait auparavant `error.message` avec un 400. Pour une
+ * erreur metier, le message etait juste ; pour une erreur Prisma, il exposait
+ * au navigateur la trace complete — chemin absolu du fichier source du
+ * serveur, numero de ligne, extrait de code et noms techniques des colonnes.
+ * Le middleware, lui, traduit les codes Prisma connus en messages metier et
+ * tait le reste en production.
+ *
+ * Les erreurs metier du service portent desormais leur propre statut (voir
+ * `lib/errors`) : le 404 d'un modele introuvable reste un 404.
+ */
+
 /**
  * Upload a template
  * POST /api/v1/templates/upload
  */
-export async function uploadTemplateHandler(req: Request, res: Response): Promise<void> {
+export async function uploadTemplateHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const tenantId = req.tenantContext?.tenantId || null;
     const actorUserId = req.user?.userId;
@@ -62,27 +77,7 @@ export async function uploadTemplateHandler(req: Request, res: Response): Promis
       message: 'Template téléchargé avec succès'
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: error.errors
-      });
-      return;
-    }
-
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors du téléchargement du template'
-    });
+    next(error);
   }
 }
 
@@ -90,7 +85,7 @@ export async function uploadTemplateHandler(req: Request, res: Response): Promis
  * List templates
  * GET /api/v1/templates
  */
-export async function listTemplatesHandler(req: Request, res: Response): Promise<void> {
+export async function listTemplatesHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const tenantId = req.tenantContext?.tenantId || null;
     const { docType, status } = req.query;
@@ -110,10 +105,7 @@ export async function listTemplatesHandler(req: Request, res: Response): Promise
       data: templates
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération des templates'
-    });
+    next(error);
   }
 }
 
@@ -121,7 +113,7 @@ export async function listTemplatesHandler(req: Request, res: Response): Promise
  * Update template (activate/deactivate)
  * PATCH /api/v1/templates/:id
  */
-export async function updateTemplateHandler(req: Request, res: Response): Promise<void> {
+export async function updateTemplateHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const tenantId = req.tenantContext?.tenantId || null;
     const { id } = req.params;
@@ -155,27 +147,7 @@ export async function updateTemplateHandler(req: Request, res: Response): Promis
       data: template
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: error.errors
-      });
-      return;
-    }
-
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la mise à jour du template'
-    });
+    next(error);
   }
 }
 
@@ -183,7 +155,7 @@ export async function updateTemplateHandler(req: Request, res: Response): Promis
  * Set template as default
  * POST /api/v1/templates/:id/set-default
  */
-export async function setDefaultTemplateHandler(req: Request, res: Response): Promise<void> {
+export async function setDefaultTemplateHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const tenantId = req.tenantContext?.tenantId || null;
     const { id } = req.params;
@@ -205,18 +177,7 @@ export async function setDefaultTemplateHandler(req: Request, res: Response): Pr
       message: 'Template défini par défaut'
     });
   } catch (error) {
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la définition du template par défaut'
-    });
+    next(error);
   }
 }
 
@@ -224,7 +185,7 @@ export async function setDefaultTemplateHandler(req: Request, res: Response): Pr
  * Delete template
  * DELETE /api/v1/templates/:id
  */
-export async function deleteTemplateHandler(req: Request, res: Response): Promise<void> {
+export async function deleteTemplateHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const tenantId = req.tenantContext?.tenantId || null;
     const { id } = req.params;
@@ -245,17 +206,6 @@ export async function deleteTemplateHandler(req: Request, res: Response): Promis
       message: 'Template supprimé'
     });
   } catch (error) {
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la suppression du template'
-    });
+    next(error);
   }
 }

@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Button, Card, Empty, List, Space, Tag, Typography } from 'antd';
-import { ThunderboltOutlined, UserOutlined } from '@ant-design/icons';
+import { LoginOutlined, ThunderboltOutlined, UserOutlined } from '@ant-design/icons';
 import { DEV_TENANT_ACCOUNTS } from './dev-accounts';
 import type { DevAccount } from './dev-accounts';
 
@@ -12,10 +12,17 @@ const { Text } = Typography;
  * Affiché en développement, et en production si `VITE_SHOW_DEMO_ACCOUNTS=true`
  * au build. Voir `dev-accounts.ts`.
  *
- * Le panneau ne connecte personne : il remplit le formulaire et laisse la
- * soumission à l'utilisateur. Se connecter d'un seul clic sauterait l'étape où
- * l'on voit quel compte part — précisément l'information qu'on vient chercher
- * quand on jongle entre quatre personas.
+ * Deux gestes par ligne, et ce n'est pas une redondance :
+ *
+ * - « Utiliser » remplit le formulaire et laisse soumettre. C'est le geste
+ *   d'origine : on voit quel compte part avant qu'il parte.
+ * - « Se connecter » ouvre la session directement. Il a été ajouté pour la
+ *   recette : changer de persona dix fois dans un parcours coûtait deux clics
+ *   à chaque fois, et un agent qui s'interdit de toucher un champ de mot de
+ *   passe ne pouvait pas dérouler les parties « portail locataire »,
+ *   « portail propriétaire » et « administration ». La ligne nomme déjà le
+ *   compte et son rôle : ce que l'étape intermédiaire donnait à voir est
+ *   toujours là.
  */
 
 const PERSONA_COLORS: Record<DevAccount['persona'], string> = {
@@ -28,11 +35,13 @@ const PERSONA_COLORS: Record<DevAccount['persona'], string> = {
 export interface DevAccountsPanelProps {
   /** Reçoit le compte choisi, pour remplir le formulaire de connexion. */
   onPick: (account: DevAccount) => void;
+  /** Reçoit le compte à connecter tout de suite, sans passer par le formulaire. */
+  onConnect?: (account: DevAccount) => void;
   /** Adresse actuellement chargée dans le formulaire, pour la marquer ici. */
   activeEmail?: string;
 }
 
-export const DevAccountsPanel: React.FC<DevAccountsPanelProps> = ({ onPick, activeEmail }) => {
+export const DevAccountsPanel: React.FC<DevAccountsPanelProps> = ({ onPick, onConnect, activeEmail }) => {
   /**
    * Tous les comptes, à plat.
    *
@@ -76,7 +85,6 @@ export const DevAccountsPanel: React.FC<DevAccountsPanelProps> = ({ onPick, acti
                   actions={[
                     <Button
                       key="fill"
-                      type={isActive ? 'primary' : 'default'}
                       size="small"
                       onClick={event => {
                         // Le `List.Item` porte déjà le clic : sans cela, le
@@ -86,7 +94,23 @@ export const DevAccountsPanel: React.FC<DevAccountsPanelProps> = ({ onPick, acti
                       }}
                     >
                       {isActive ? 'Chargé' : 'Utiliser'}
-                    </Button>
+                    </Button>,
+                    ...(onConnect
+                      ? [
+                          <Button
+                            key="connect"
+                            type="primary"
+                            size="small"
+                            icon={<LoginOutlined />}
+                            onClick={event => {
+                              event.stopPropagation();
+                              onConnect(account);
+                            }}
+                          >
+                            Se connecter
+                          </Button>
+                        ]
+                      : [])
                   ]}
                 >
                   {/* Nom et rôle, rien de plus : l'adresse et le mot de passe

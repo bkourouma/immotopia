@@ -88,6 +88,29 @@ export const Login: React.FC = () => {
     form.setFieldsValue({ email: account.email, password: account.password });
   };
 
+  /**
+   * Ouvre la session d'un compte de démonstration, sans passer par le champ
+   * de mot de passe.
+   *
+   * Le panneau remplissait le formulaire et laissait soumettre, pour qu'on voie
+   * quel compte part. C'est toujours ce que fait « Utiliser ». Mais une recette
+   * pilotée par un agent doit changer de persona une dizaine de fois, et
+   * certains s'interdisent — à raison — de toucher un champ de mot de passe :
+   * ils restaient bloqués sur des parties entières du parcours. La ligne
+   * cliquée nomme déjà le compte et son rôle : l'information qu'on venait
+   * chercher est là, avant le clic.
+   *
+   * Ce chemin n'existe que là où le panneau existe : en développement, ou sur
+   * la démonstration construite avec `VITE_SHOW_DEMO_ACCOUNTS=true`. Jamais
+   * dans une installation cliente.
+   */
+  const handleConnectDevAccount = (account: { email: string; password: string }): void => {
+    clearError();
+    setPickedEmail(account.email);
+    form.setFieldsValue({ email: account.email, password: account.password });
+    void handleSubmit({ email: account.email, password: account.password });
+  };
+
   return (
     <div
       style={{
@@ -229,7 +252,11 @@ export const Login: React.FC = () => {
             {DevAccountsPanel && (
               <Col xs={24} lg={12}>
                 <Suspense fallback={null}>
-                  <DevAccountsPanel onPick={handlePickDevAccount} activeEmail={pickedEmail} />
+                  <DevAccountsPanel
+                    onPick={handlePickDevAccount}
+                    onConnect={handleConnectDevAccount}
+                    activeEmail={pickedEmail}
+                  />
                 </Suspense>
               </Col>
             )}

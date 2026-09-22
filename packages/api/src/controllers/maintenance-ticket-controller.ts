@@ -27,6 +27,28 @@ import {
 } from '@prisma/client';
 
 /**
+ * Repond directement quand l'erreur porte deja son statut HTTP.
+ *
+ * Les `catch` de ce fichier classaient les erreurs au mot present dans leur
+ * message (« introuvable », « invalide »). Un message reecrit changeait donc
+ * son code HTTP : un refus metier devenait un 500 generique, et la raison du
+ * refus n'atteignait plus l'ecran. Les erreurs de `lib/errors` disent
+ * elles-memes leur statut ; c'est cette reponse-la qui prime.
+ */
+function repondreErreurPortee(res: Response, error: unknown): boolean {
+  const statut = Number((error as { status?: unknown })?.status);
+  if (!Number.isInteger(statut) || statut < 400 || statut >= 600) {
+    return false;
+  }
+
+  res.status(statut).json({
+    success: false,
+    message: (error as Error).message
+  });
+  return true;
+}
+
+/**
  * Create a new maintenance ticket
  * POST /tenants/:tenantId/maintenance/tenant/tickets
  */
@@ -51,6 +73,9 @@ export async function createTicketHandler(req: Request, res: Response): Promise<
       data: ticket
     });
   } catch (error) {
+    if (repondreErreurPortee(res, error)) {
+      return;
+    }
     console.error('Error creating maintenance ticket:', error);
     if (error instanceof Error) {
       if (error.message.includes('Bail actif introuvable')) {
@@ -115,6 +140,9 @@ export async function listTenantTicketsHandler(req: Request, res: Response): Pro
       pagination: result.pagination
     });
   } catch (error) {
+    if (repondreErreurPortee(res, error)) {
+      return;
+    }
     console.error('Error listing tenant tickets:', error);
     res.status(500).json({
       success: false,
@@ -260,6 +288,9 @@ export async function getTenantTicketHandler(req: Request, res: Response): Promi
       data: transformedTicket
     });
   } catch (error) {
+    if (repondreErreurPortee(res, error)) {
+      return;
+    }
     console.error('Error getting ticket:', error);
     if (error instanceof Error) {
       if (error.message.includes('introuvable')) {
@@ -319,6 +350,9 @@ export async function cancelTicketHandler(req: Request, res: Response): Promise<
       data: ticket
     });
   } catch (error) {
+    if (repondreErreurPortee(res, error)) {
+      return;
+    }
     console.error('Error updating/canceling ticket:', error);
     if (error instanceof Error) {
       if (error.message.includes('introuvable')) {
@@ -374,6 +408,9 @@ export async function updateTenantTicketHandler(req: Request, res: Response): Pr
       data: ticket
     });
   } catch (error) {
+    if (repondreErreurPortee(res, error)) {
+      return;
+    }
     console.error('Error updating ticket:', error);
     if (error instanceof Error) {
       if (error.message.includes('introuvable')) {
@@ -423,6 +460,9 @@ export async function deleteTicketHandler(req: Request, res: Response): Promise<
       message: 'Ticket supprimé définitivement'
     });
   } catch (error) {
+    if (repondreErreurPortee(res, error)) {
+      return;
+    }
     console.error('Error deleting ticket:', error);
     if (error instanceof Error) {
       if (error.message.includes('introuvable')) {
@@ -521,6 +561,9 @@ export async function addCommentHandler(req: Request, res: Response): Promise<vo
       data: comment
     });
   } catch (error) {
+    if (repondreErreurPortee(res, error)) {
+      return;
+    }
     console.error('Error adding comment:', error);
     if (error instanceof Error) {
       if (error.message.includes('introuvable')) {
@@ -590,6 +633,9 @@ export async function listAllTicketsHandler(req: Request, res: Response): Promis
       pagination: result.pagination
     });
   } catch (error) {
+    if (repondreErreurPortee(res, error)) {
+      return;
+    }
     console.error('Error listing all tickets:', error);
     res.status(500).json({
       success: false,
@@ -616,6 +662,9 @@ export async function getTicketHandler(req: Request, res: Response): Promise<voi
       data: transformedTicket
     });
   } catch (error) {
+    if (repondreErreurPortee(res, error)) {
+      return;
+    }
     console.error('Error getting ticket:', error);
     if (error instanceof Error) {
       if (error.message.includes('introuvable')) {
@@ -664,6 +713,9 @@ export async function updateTicketHandler(req: Request, res: Response): Promise<
       data: ticket
     });
   } catch (error) {
+    if (repondreErreurPortee(res, error)) {
+      return;
+    }
     // Safe error logging
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error updating ticket:', errorMessage);
@@ -735,6 +787,9 @@ export async function addManagerCommentHandler(req: Request, res: Response): Pro
       data: comment
     });
   } catch (error) {
+    if (repondreErreurPortee(res, error)) {
+      return;
+    }
     console.error('Error adding manager comment:', error);
     if (error instanceof Error) {
       if (error.message.includes('introuvable')) {
@@ -789,6 +844,9 @@ export async function getPropertyMaintenanceHistoryHandler(req: Request, res: Re
       data: transformedTickets
     });
   } catch (error) {
+    if (repondreErreurPortee(res, error)) {
+      return;
+    }
     console.error('Error getting property maintenance history:', error);
     if (error instanceof Error) {
       if (error.message.includes('introuvable')) {

@@ -1,5 +1,6 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { badRequest, notFound } from '../lib/errors';
 import { logAuditEvent } from './audit-service';
 import { DocumentTemplateStatus, DocumentType } from '@prisma/client';
 import * as fs from 'fs/promises';
@@ -105,13 +106,13 @@ export async function uploadTemplate(
 ) {
   // Validate file size
   if (fileBuffer.length > MAX_FILE_SIZE) {
-    throw new Error('File size exceeds maximum allowed size (10 MB)');
+    throw badRequest('Le fichier dépasse la taille maximale autorisée (10 Mo).');
   }
 
   // Validate MIME type
   const mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   if (!originalFilename.toLowerCase().endsWith('.docx')) {
-    throw new Error('Only DOCX files are allowed');
+    throw badRequest('Seuls les fichiers DOCX sont acceptés.');
   }
 
   // Calculate file hash
@@ -130,7 +131,7 @@ export async function uploadTemplate(
   });
 
   if (existing) {
-    throw new Error('A template with the same content already exists');
+    throw badRequest('Un modèle au contenu identique existe déjà pour ce type de document.');
   }
 
   // Determine storage path
@@ -293,7 +294,7 @@ export async function activateTemplate(tenantId: string | null, templateId: stri
   });
 
   if (!template) {
-    throw new Error('Template not found');
+    throw notFound('Ce modèle est introuvable.');
   }
 
   const updated = await prisma.documentTemplate.update({
@@ -327,13 +328,45 @@ export async function deactivateTemplate(tenantId: string | null, templateId: st
   });
 
   if (!template) {
-    throw new Error('Template not found');
+    throw notFound('Ce modèle est introuvable.');
   }
 
-  const updated = await prisma.documentTemplate.update({
-    where: { id: templateId },
-    data: { status: DocumentTemplateStatus.INACTIVE }
-  });
+  // Un modele desactive ne garde pas le defaut : l'ecran affichait sinon
+  // « Par defaut » et « Inactif » sur la meme ligne, alors que la generation
+  // d'un document, qui n'accepte que les modeles actifs, prenait en realite un
+  // autre modele. Le badge annoncait un modele qui ne servait plus.
+  let successorId: string | null = null;
+  if (template.is_default && tenantId) {
+    const alternative = await prisma.documentTemplate.findFirst({
+      where: {
+        tenant_id: tenantId,
+        doc_type: template.doc_type,
+        status: DocumentTemplateStatus.ACTIVE,
+        id: { not: templateId }
+      },
+      orderBy: { created_at: 'desc' }
+    });
+
+    successorId = alternative?.id ?? null;
+  }
+
+  const [updated] = await prisma.$transaction([
+    prisma.documentTemplate.update({
+      where: { id: templateId },
+      data: {
+        status: DocumentTemplateStatus.INACTIVE,
+        ...(template.is_default && tenantId ? { is_default: false } : {})
+      }
+    }),
+    ...(successorId
+      ? [
+          prisma.documentTemplate.update({
+            where: { id: successorId },
+            data: { is_default: true }
+          })
+        ]
+      : [])
+  ]);
 
   logAuditEvent({
     actorUserId,
@@ -351,7 +384,7 @@ export async function deactivateTemplate(tenantId: string | null, templateId: st
  */
 export async function setDefaultTemplate(tenantId: string | null, templateId: string, actorUserId: string) {
   if (!tenantId) {
-    throw new Error('Cannot set default template for global templates');
+    throw badRequest("Un modèle global n'a pas de modèle par défaut d'agence.");
   }
 
   const template = await prisma.documentTemplate.findFirst({
@@ -363,29 +396,32 @@ export async function setDefaultTemplate(tenantId: string | null, templateId: st
   });
 
   if (!template) {
-    throw new Error('Template not found or not active');
+    throw notFound("Ce modèle est introuvable ou n'est pas actif.");
   }
 
-  // Unset other defaults for this tenant/docType
-  await prisma.documentTemplate.updateMany({
-    where: {
-      tenant_id: tenantId,
-      doc_type: template.doc_type,
-      is_default: true,
-      id: {
-        not: templateId
+  // Retirer le defaut aux autres, puis le poser ici — dans la meme
+  // transaction. Entre les deux ecritures, la base porte zero modele par
+  // defaut pour ce type : une generation de document qui tomberait dans cet
+  // intervalle ne trouverait aucun modele.
+  const [, updated] = await prisma.$transaction([
+    prisma.documentTemplate.updateMany({
+      where: {
+        tenant_id: tenantId,
+        doc_type: template.doc_type,
+        is_default: true,
+        id: {
+          not: templateId
+        }
+      },
+      data: {
+        is_default: false
       }
-    },
-    data: {
-      is_default: false
-    }
-  });
-
-  // Set this as default
-  const updated = await prisma.documentTemplate.update({
-    where: { id: templateId },
-    data: { is_default: true }
-  });
+    }),
+    prisma.documentTemplate.update({
+      where: { id: templateId },
+      data: { is_default: true }
+    })
+  ]);
 
   logAuditEvent({
     actorUserId,
@@ -413,10 +449,15 @@ export async function deleteTemplate(tenantId: string | null, templateId: string
   });
 
   if (!template) {
-    throw new Error('Template not found');
+    throw notFound('Ce modèle est introuvable.');
   }
 
-  // If it's default, we need to set another one as default
+  // Si le modele supprime portait le defaut, il passe a un remplacant. Le
+  // drapeau doit quitter le modele supprime dans le meme mouvement : le
+  // laisser a true donnerait deux modeles par defaut pour un meme type, ce que
+  // l'index partiel refuse — et ce qui, avant lui, faisait silencieusement
+  // resservir un modele supprime.
+  let successorId: string | null = null;
   if (template.is_default && tenantId) {
     const alternative = await prisma.documentTemplate.findFirst({
       where: {
@@ -430,18 +471,23 @@ export async function deleteTemplate(tenantId: string | null, templateId: string
       orderBy: { created_at: 'desc' }
     });
 
-    if (alternative) {
-      await prisma.documentTemplate.update({
-        where: { id: alternative.id },
-        data: { is_default: true }
-      });
-    }
+    successorId = alternative?.id ?? null;
   }
 
-  const updated = await prisma.documentTemplate.update({
-    where: { id: templateId },
-    data: { status: DocumentTemplateStatus.DELETED }
-  });
+  const [updated] = await prisma.$transaction([
+    prisma.documentTemplate.update({
+      where: { id: templateId },
+      data: { status: DocumentTemplateStatus.DELETED, is_default: false }
+    }),
+    ...(successorId
+      ? [
+          prisma.documentTemplate.update({
+            where: { id: successorId },
+            data: { is_default: true }
+          })
+        ]
+      : [])
+  ]);
 
   logAuditEvent({
     actorUserId,

@@ -49,6 +49,11 @@ La référence à jour du schéma est `packages/api/prisma/schema.prisma`.
 - [Dépannage des problèmes de connexion](runbooks/troubleshooting-connection.md)
 - [Workflows de test de bout en bout](WORKFLOW_E2E_SIDEBAR_COMPLET.md) — voir
   aussi les workflows patrimoine et syndic du même dossier
+- [Scénario de test — du chantier à la location](SCENARIO_TEST_E2E_CHANTIER_VERS_LOCATION.md) —
+  chantiers, financement, biens, baux, encaissements, comptabilité locative
+- [Scénario de test — les modules restants](SCENARIO_TEST_MODULES_RESTANTS.md) —
+  CRM, documents, maintenance, communication, newsletter, portails,
+  administration, et les écrans Finance non couverts par le parcours chantier
 
 ## Qualité du code
 

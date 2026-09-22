@@ -184,6 +184,24 @@ function toErrorResponse(err: unknown): { status: number; body: ErrorResponse } 
     }
   }
 
+  // Une erreur Prisma non reconnue ci-dessus ne sort jamais telle quelle, meme
+  // en developpement : son message porte le chemin absolu du fichier source du
+  // serveur, le numero de ligne, un extrait de code et le nom technique des
+  // colonnes. En recette, cette trace s'est affichee dans le navigateur d'un
+  // utilisateur d'agence. Le detail reste entier dans les journaux, juste
+  // en dessous.
+  const nomErreur = String(anyErr?.name ?? '');
+  if (nomErreur.startsWith('PrismaClient')) {
+    return {
+      status: 500,
+      body: {
+        success: false,
+        message: "L'opération n'a pas pu être enregistrée. Réessayez, et signalez-le si cela se reproduit.",
+        code: ErrorCode.INTERNAL
+      }
+    };
+  }
+
   return {
     status: 500,
     body: {

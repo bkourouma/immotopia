@@ -35,6 +35,34 @@ const priorityLabels: Record<string, string> = {
   URGENT: 'Urgente'
 };
 
+const statusLabels: Record<MaintenanceTicketStatus, string> = {
+  [MaintenanceTicketStatus.DECLARED]: t('Déclaré'),
+  [MaintenanceTicketStatus.IN_PROGRESS]: t('En cours'),
+  [MaintenanceTicketStatus.ASSIGNED]: t('Assigné'),
+  [MaintenanceTicketStatus.RESOLVED]: t('Résolu'),
+  [MaintenanceTicketStatus.CANCELED]: t('Annulé')
+};
+
+/**
+ * Etapes atteignables depuis l'etape courante.
+ *
+ * Le serveur refuse les autres (`validateStatusTransition`, cote API). Tant que
+ * cette liste n'etait pas reprise ici, le selecteur proposait les cinq etapes :
+ * un gestionnaire pouvait choisir « Assigne » depuis « Declare », voir l'ecran
+ * afficher son choix, et n'apprendre qu'au rechargement que rien n'avait ete
+ * enregistre. Le refus existait, il arrivait trop tard.
+ *
+ * La liste inclut toujours l'etape courante, sans quoi le formulaire afficherait
+ * un champ vide a l'ouverture.
+ */
+const NEXT_STATUSES: Record<MaintenanceTicketStatus, MaintenanceTicketStatus[]> = {
+  [MaintenanceTicketStatus.DECLARED]: [MaintenanceTicketStatus.IN_PROGRESS, MaintenanceTicketStatus.CANCELED],
+  [MaintenanceTicketStatus.IN_PROGRESS]: [MaintenanceTicketStatus.ASSIGNED, MaintenanceTicketStatus.CANCELED],
+  [MaintenanceTicketStatus.ASSIGNED]: [MaintenanceTicketStatus.RESOLVED],
+  [MaintenanceTicketStatus.RESOLVED]: [],
+  [MaintenanceTicketStatus.CANCELED]: []
+};
+
 export const TicketDetail: React.FC = () => {
   const { message } = App.useApp();
 
@@ -94,6 +122,12 @@ export const TicketDetail: React.FC = () => {
       await loadTicket();
     } catch (error: any) {
       message.error(error.response?.data?.message || t('Erreur lors de la mise à jour du ticket'));
+      // Le serveur a refuse : l'ecran doit revenir a ce qui est reellement
+      // enregistre. Sans ce rechargement, le formulaire continuait d'afficher
+      // le statut et le prestataire choisis — un gestionnaire pouvait quitter
+      // la page en croyant l'intervention planifiee alors que rien n'avait ete
+      // ecrit.
+      await loadTicket();
     } finally {
       setSaving(false);
     }
@@ -199,13 +233,21 @@ export const TicketDetail: React.FC = () => {
                     </Space>
                   </div>
 
-                  <Form.Item name="status" label={t('Statut')}>
-                    <Select showSearch optionFilterProp="children">
-                      <Option value={MaintenanceTicketStatus.DECLARED}>{t('Déclaré')}</Option>
-                      <Option value={MaintenanceTicketStatus.IN_PROGRESS}>{t('En cours')}</Option>
-                      <Option value={MaintenanceTicketStatus.ASSIGNED}>{t('Assigné')}</Option>
-                      <Option value={MaintenanceTicketStatus.RESOLVED}>{t('Résolu')}</Option>
-                      <Option value={MaintenanceTicketStatus.CANCELED}>{t('Annulé')}</Option>
+                  <Form.Item
+                    name="status"
+                    label={t('Statut')}
+                    extra={
+                      NEXT_STATUSES[ticket.status].length === 0
+                        ? t('Ce ticket est arrivé au bout de son parcours : son statut ne change plus.')
+                        : undefined
+                    }
+                  >
+                    <Select showSearch optionFilterProp="children" disabled={NEXT_STATUSES[ticket.status].length === 0}>
+                      {[ticket.status, ...NEXT_STATUSES[ticket.status]].map(statut => (
+                        <Option key={statut} value={statut}>
+                          {statusLabels[statut]}
+                        </Option>
+                      ))}
                     </Select>
                   </Form.Item>
 
