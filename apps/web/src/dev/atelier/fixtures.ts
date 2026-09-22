@@ -806,9 +806,8 @@ export const TABLEAU_DE_BORD = {
       id: 'installment:e-1',
       kind: 'OVERDUE_INSTALLMENT',
       title: "BAIL-2026-0184 · Villa 4 chambres avec piscine, quartier d'Angré Centre",
-      description: '2 450 000 FCFA · 42 j de retard',
+      description: '42 j de retard',
       amount: 2_450_000,
-      currency: 'XOF',
       occurredAt: '2026-08-05T00:00:00.000Z',
       severity: 'danger',
       href: `${AGENCE_DEMO}/rental/installments/e-1`
@@ -817,9 +816,8 @@ export const TABLEAU_DE_BORD = {
       id: 'installment:e-2',
       kind: 'OVERDUE_INSTALLMENT',
       title: 'BAIL-2026-0177 · Studio Cocody',
-      description: '650 000 FCFA · 12 j de retard',
+      description: '12 j de retard',
       amount: 650_000,
-      currency: 'XOF',
       occurredAt: '2026-09-03T00:00:00.000Z',
       severity: 'danger',
       href: `${AGENCE_DEMO}/rental/installments/e-2`
@@ -828,9 +826,8 @@ export const TABLEAU_DE_BORD = {
       id: 'declaration:d-1',
       kind: 'PENDING_DECLARATION',
       title: 'Déclaration à valider · BAIL-2026-0161',
-      description: '1 200 000 FCFA · Mobile Money',
+      description: 'Mobile Money',
       amount: 1_200_000,
-      currency: 'XOF',
       occurredAt: '2026-09-12T00:00:00.000Z',
       severity: 'warning',
       href: `${AGENCE_DEMO}/rental/payments?onglet=declarations`
@@ -841,7 +838,6 @@ export const TABLEAU_DE_BORD = {
       title: 'Fuite au plafond du 3e étage',
       description: 'Immeuble Plateau, 12 logements',
       amount: null,
-      currency: null,
       occurredAt: '2026-09-13T08:30:00.000Z',
       severity: 'danger',
       href: `${AGENCE_DEMO}/admin/maintenance/tickets/t-1`
@@ -852,7 +848,8 @@ export const TABLEAU_DE_BORD = {
       id: 'payment:p-1',
       type: 'PAYMENT_SUCCEEDED',
       title: 'Paiement encaissé',
-      description: '1 250 000 FCFA - bail BAIL-2026-0183',
+      description: 'bail BAIL-2026-0183',
+      amount: 1_250_000,
       occurredAt: '2026-09-14T14:02:00.000Z',
       href: `${AGENCE_DEMO}/rental/payments/p-1`
     },
@@ -861,6 +858,7 @@ export const TABLEAU_DE_BORD = {
       type: 'PROPERTY_CREATED',
       title: 'Nouvelle propriété ajoutée',
       description: 'Villa Angré - Angré, Cocody',
+      amount: null,
       occurredAt: '2026-09-14T11:20:00.000Z',
       href: `${AGENCE_DEMO}/properties/b-1`
     },
@@ -869,6 +867,7 @@ export const TABLEAU_DE_BORD = {
       type: 'CONTACT_CREATED',
       title: 'Nouveau client enregistré',
       description: 'Aissatou Brou - aissatou@example.com',
+      amount: null,
       occurredAt: '2026-09-13T16:45:00.000Z',
       href: `${AGENCE_DEMO}/crm/contacts/c-1`
     }
