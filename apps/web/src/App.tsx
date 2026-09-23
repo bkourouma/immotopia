@@ -109,6 +109,16 @@ const CommissionsAgents = lazy(() =>
     default: m.CommissionsAgents
   }))
 );
+const ComptesProprietaires = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/ComptesProprietaires').then(m => ({
+    default: m.ComptesProprietaires
+  }))
+);
+const CompteProprietaire = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/CompteProprietaire').then(m => ({
+    default: m.CompteProprietaire
+  }))
+);
 const Releve = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/Releve').then(m => ({ default: m.Releve }))
 );
@@ -537,6 +547,7 @@ const OwnerLeaseDetails = lazy(() => import(/* webpackChunkName: "owner-portal" 
 const OwnerRevenues = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Revenues'));
 const OwnerInstallments = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Installments'));
 const OwnerPayments = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Payments'));
+const OwnerAccount = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Account'));
 const OwnerDeposits = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Deposits'));
 const OwnerMaintenance = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Maintenance'));
 const OwnerDocuments = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Documents'));
@@ -788,6 +799,11 @@ function App() {
                           <Route path="/tenant/:tenantId/finance/balance-clients" element={<BalanceClients />} />
                           <Route path="/tenant/:tenantId/finance/balance-agee" element={<BalanceAgee />} />
                           <Route path="/tenant/:tenantId/finance/commissions" element={<CommissionsAgents />} />
+                          <Route path="/tenant/:tenantId/finance/owner-accounts" element={<ComptesProprietaires />} />
+                          <Route
+                            path="/tenant/:tenantId/finance/owner-accounts/:ownerClientId"
+                            element={<CompteProprietaire />}
+                          />
                           <Route path="/tenant/:tenantId/finance/comptes/:accountId" element={<Releve />} />
                           <Route path="/tenant/:tenantId/finance/facturation" element={<Facturation />} />
                           <Route path="/tenant/:tenantId/finance/fournisseurs" element={<Fournisseurs />} />
@@ -993,6 +1009,7 @@ function App() {
                           <Route path="revenues" element={<OwnerRevenues />} />
                           <Route path="installments" element={<OwnerInstallments />} />
                           <Route path="payments" element={<OwnerPayments />} />
+                          <Route path="account" element={<OwnerAccount />} />
                           <Route path="deposits" element={<OwnerDeposits />} />
                           <Route path="maintenance" element={<OwnerMaintenance />} />
                           <Route path="documents" element={<OwnerDocuments />} />

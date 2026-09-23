@@ -263,6 +263,11 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
             href: '/tenant/:tenantId/finance/commissions'
           },
           {
+            key: 'finance-owner-accounts',
+            label: t('Comptes propriétaires'),
+            href: '/tenant/:tenantId/finance/owner-accounts'
+          },
+          {
             key: 'finance-facturation',
             label: t('Facturation du mois'),
             href: '/tenant/:tenantId/finance/facturation'
@@ -535,6 +540,16 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         zone: 'primary',
         section: 'portefeuille',
         href: '/owner/revenues'
+      },
+      {
+        // Le compte courant tenu par l'agence : ce qu'elle doit au
+        // propriétaire, et ce qu'elle lui a déjà reversé.
+        key: 'compte',
+        label: t('Mon compte'),
+        icon: <WalletOutlined />,
+        zone: 'primary',
+        section: 'portefeuille',
+        href: '/owner/account'
       },
       {
         key: 'incidents',

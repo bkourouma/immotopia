@@ -48,6 +48,7 @@ import patrimoineRoutes from './routes/patrimoine-routes';
 import ownerStatementsRoutes from './routes/owner-statements-routes';
 import agencySettingsRoutes from './routes/agency-settings-routes';
 import managementFeeRoutes from './routes/management-fee-routes';
+import ownerAccountRoutes, { ownerAccountPortalRouter } from './routes/owner-account-routes';
 import { startPenaltyCalculationJob } from './jobs/penalty-calculation-job';
 import { startLandLeaseAccrualJob } from './jobs/land-lease-accrual-job';
 import { startReminderSchedulerJob } from './jobs/reminder-scheduler.job';
@@ -215,6 +216,7 @@ app.use('/api/tenants/:tenantId/newsletter', newsletterRoutes); // Newsletter / 
 app.use('/api/newsletter', newsletterPublicRoutes); // Newsletter public (subscribe, confirm, unsubscribe)
 app.use('/api/portal/tenant', tenantPortalRoutes); // Tenant portal routes
 app.use('/api/portal/owner', ownerPortalRoutes); // Owner portal routes
+app.use('/api/portal/owner', ownerAccountPortalRouter); // Compte courant du proprietaire connecte
 
 // Public routes must be mounted before any broad /api router
 // that applies auth middleware globally (router.use(authenticate)).
@@ -227,6 +229,7 @@ app.use('/api', patrimoineRoutes); // Patrimoine routes (tenant-scoped)
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)
 app.use('/api', agencySettingsRoutes); // Parametres financiers de l'agence (tenant-scoped)
 app.use('/api', managementFeeRoutes); // Honoraires de gestion : conditions, gestionnaires, commissions
+app.use('/api', ownerAccountRoutes); // Comptes proprietaires et reversements (agence et portail)
 
 // 404 handler for unmatched routes (before the error handler, which only runs
 // for actual errors).

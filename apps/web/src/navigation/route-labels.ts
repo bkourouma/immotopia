@@ -53,6 +53,12 @@ export const ROUTE_LABELS: Record<string, string> = {
   'profils-incidents': t('Profils et incidents'),
   compte: t('Compte propriétaire'),
 
+  // Gestion locative, lots 2 et 3 : sans ces entrées, le fil d'Ariane
+  // affichait « Owner accounts » et « Account », tels que dans l'adresse.
+  'owner-accounts': t('Comptes propriétaires'),
+  commissions: t('Commissions des agents'),
+  account: t('Mon compte'),
+
   // CRM
   crm: 'CRM',
   contacts: 'Contacts',

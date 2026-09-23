@@ -40,6 +40,7 @@ const TENANT_FIELD_BY_MODEL: Record<string, string> = {
   LeaseManagementTerms: 'tenantId',
   AgentCommissionRate: 'tenantId',
   ManagementFee: 'tenantId',
+  OwnerPayout: 'tenantId',
   PropertyLoan: 'tenantId',
   PropertyExpense: 'tenantId',
   PropertyValuation: 'tenantId',

@@ -94,7 +94,14 @@ const SOURCE_TYPE_BY_DOCUMENT: Record<string, string> = {
   // silence : le grand livre reste equilibre et devient illisible.
   STOCK_RECEIPT: 'STOCK_RECEIPT',
   STOCK_ISSUE: 'STOCK_ISSUE',
-  STOCK_ADJUSTMENT: 'STOCK_ADJUSTMENT'
+  STOCK_ADJUSTMENT: 'STOCK_ADJUSTMENT',
+  // Gestion locative, lot 3. La contre-passation d'un mouvement du compte
+  // proprietaire porte la nature VOID, comme toute annulation du module.
+  OWNER_RENT_COLLECTED: 'OWNER_RENT_COLLECTED',
+  OWNER_MANAGEMENT_FEE: 'OWNER_MANAGEMENT_FEE',
+  OWNER_EXPENSE: 'OWNER_EXPENSE',
+  OWNER_PAYOUT: 'OWNER_PAYOUT',
+  OWNER_VOID: 'VOID'
 };
 
 /**

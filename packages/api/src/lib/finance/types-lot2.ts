@@ -112,7 +112,15 @@ export interface PostDocumentEntryParams {
     // porte et qu'une nature declaree a moitie est un piege.
     | 'STOCK_RECEIPT'
     | 'STOCK_ISSUE'
-    | 'STOCK_ADJUSTMENT';
+    | 'STOCK_ADJUSTMENT'
+    // Gestion locative, lot 3 : le compte des proprietaires mandants. Aucune
+    // n'est annulable par `voidDocumentTx` : leur contre-passation est ecrite
+    // par `lib/owner-account`, sous la nature OWNER_VOID.
+    | 'OWNER_RENT_COLLECTED'
+    | 'OWNER_MANAGEMENT_FEE'
+    | 'OWNER_EXPENSE'
+    | 'OWNER_PAYOUT'
+    | 'OWNER_VOID';
   documentId: string;
   lines: JournalLineInput[];
 }

@@ -608,6 +608,7 @@ model Tenant {
   leaseManagementTerms     LeaseManagementTerms[]
   agentCommissionRates     AgentCommissionRate[]
   managementFees           ManagementFee[]
+  ownerPayouts             OwnerPayout[]
   stockItems               StockItem[]
   stockLocations           StockLocation[]
   stockBalances            StockBalance[]
@@ -653,6 +654,7 @@ model TenantClient {
   communicationPreferences  CommunicationPreference[]
   thirdPartyAccounts        ThirdPartyAccount[]
   managementTerms           OwnerManagementTerms?
+  ownerPayouts              OwnerPayout[]
 
   @@unique([userId, tenantId])
   @@index([userId])
@@ -2862,6 +2864,11 @@ enum SourceType {
   STOCK_RECEIPT
   STOCK_ISSUE
   STOCK_ADJUSTMENT
+  // Gestion locative, lot 3 : le compte des proprietaires mandants.
+  OWNER_RENT_COLLECTED
+  OWNER_MANAGEMENT_FEE
+  OWNER_EXPENSE
+  OWNER_PAYOUT
 }
 
 /// Portee d'un plan de comptes, d'un journal ou d'une ecriture.
@@ -4286,6 +4293,9 @@ enum ThirdPartyKind {
   CONTRACTOR
   PARTNER
   EMPLOYEE
+  /// Lot 3 de la gestion locative : le proprietaire d'un bien gere. A ne pas
+  /// confondre avec LANDLORD, le bailleur d'un terrain de chantier.
+  OWNER
 }
 
 /// Nature d'un mouvement de compte de tiers.
@@ -4305,6 +4315,12 @@ enum ThirdPartyMovementType {
   ADJUSTMENT
   OPENING_BALANCE
   VOID
+  // Gestion locative, lot 3 : le compte courant d'un proprietaire.
+  RENT_COLLECTED
+  MANAGEMENT_FEE
+  MANAGEMENT_FEE_VAT
+  EXPENSE
+  PAYOUT
 }
 
 enum RentBillingRunStatus {
@@ -6121,4 +6137,48 @@ model StockCountLine {
   @@unique([countId, itemId])
   @@index([countId])
   @@map("stock_count_lines")
+}
+
+// =============================================================
+// GESTION LOCATIVE — Lot 3, compte proprietaire et reversements
+// =============================================================
+
+enum OwnerPayoutStatus {
+  VALIDATED
+  VOIDED
+}
+
+/// Reversement fait par l'agence a un proprietaire.
+///
+/// Valide des son enregistrement et numerote `REV-AAAA-NNNN` : c'est une
+/// sortie d'argent reelle, elle ne passe pas par un brouillon. Elle ne se
+/// modifie pas et ne se supprime pas ; une erreur s'annule, avec un motif, par
+/// une contre-passation qui reste visible dans le compte et au grand livre.
+model OwnerPayout {
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @map("tenant_id")
+  ownerClientId   String            @map("owner_client_id")
+  accountId       String            @map("account_id") @db.Uuid
+  year            Int
+  sequence        Int
+  amount          Decimal           @db.Decimal(14, 2)
+  paidAt          DateTime          @map("paid_at")
+  method          PaymentMethod
+  reference       String?
+  notes           String?
+  /// Releve de gerance regle par ce reversement, s'il y en a un.
+  statementId     String?           @map("statement_id") @db.Uuid
+  status          OwnerPayoutStatus @default(VALIDATED)
+  voidReason      String?           @map("void_reason")
+  voidedAt        DateTime?         @map("voided_at")
+  voidedByUserId  String?           @map("voided_by_user_id")
+  createdByUserId String?           @map("created_by_user_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownerClient TenantClient @relation(fields: [ownerClientId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, ownerClientId])
+  @@map("owner_payouts")
 }
