@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { App, Form, Input, Select, Button, Row, Col, Alert, InputNumber, Space } from 'antd';
+import { App, Form, Input, Select, Button, Row, Col, Alert, InputNumber, DatePicker, Space } from 'antd';
+import dayjs from 'dayjs';
 import { CreatePaymentRequest, RentalPaymentMethod } from '../../services/rental-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
 import { t } from '../../i18n/t';
@@ -52,7 +53,8 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
         mmPhone: values.mmPhone || undefined,
         pspName: values.pspName || undefined,
         pspTransactionId: values.pspTransactionId || undefined,
-        pspReference: values.pspReference || undefined
+        pspReference: values.pspReference || undefined,
+        paidAt: values.paidAt ? values.paidAt.format('YYYY-MM-DD') : undefined
       };
 
       await onSubmit(submitData);
@@ -91,7 +93,8 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
       initialValues={{
         method: RentalPaymentMethod.CASH,
         amount: defaultAmount,
-        currency: defaultCurrency
+        currency: defaultCurrency,
+        paidAt: dayjs()
       }}
     >
       {errors.submit && (
@@ -150,6 +153,25 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
                 }) as (displayValue: string | undefined) => number
               }
               placeholder={t('Ex: 150000')}
+            />
+          </Form.Item>
+        </Col>
+
+        <Col xs={24} md={12}>
+          <Form.Item
+            label={t('Date du règlement')}
+            name="paidAt"
+            required
+            validateStatus={errors.paidAt ? 'error' : ''}
+            help={errors.paidAt}
+            extra={t('La date à laquelle le locataire a payé, pas celle de la saisie.')}
+            rules={[{ required: true, message: t('La date du règlement est requise') }]}
+          >
+            <DatePicker
+              style={{ width: '100%' }}
+              format="DD/MM/YYYY"
+              disabledDate={current => current && current > dayjs().endOf('day')}
+              placeholder={t('Sélectionner la date')}
             />
           </Form.Item>
         </Col>

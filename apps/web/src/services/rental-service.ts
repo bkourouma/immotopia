@@ -435,6 +435,8 @@ export interface CreatePaymentRequest {
   pspTransactionId?: string;
   pspReference?: string;
   idempotencyKey?: string;
+  /** Date du règlement, `YYYY-MM-DD`. Absente : aujourd'hui. */
+  paidAt?: string;
 }
 
 export interface AllocatePaymentRequest {

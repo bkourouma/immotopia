@@ -24,6 +24,11 @@ const createPaymentSchema = z.object({
   pspName: z.string().optional(),
   pspTransactionId: z.string().optional(),
   pspReference: z.string().optional(),
+  /** Date à laquelle le locataire a payé, `YYYY-MM-DD`. Absente : maintenant. */
+  paidAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date du règlement attendue au format AAAA-MM-JJ')
+    .optional(),
   idempotencyKey: z.string().optional() // Auto-generated if not provided
 });
 
