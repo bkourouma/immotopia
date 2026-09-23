@@ -49,6 +49,8 @@ import ownerStatementsRoutes from './routes/owner-statements-routes';
 import agencySettingsRoutes from './routes/agency-settings-routes';
 import managementFeeRoutes from './routes/management-fee-routes';
 import ownerAccountRoutes, { ownerAccountPortalRouter } from './routes/owner-account-routes';
+import leaseLifecycleRoutes from './routes/lease-lifecycle-routes';
+import leaseInspectionRoutes from './routes/lease-inspection-routes';
 import { startPenaltyCalculationJob } from './jobs/penalty-calculation-job';
 import { startLandLeaseAccrualJob } from './jobs/land-lease-accrual-job';
 import { startReminderSchedulerJob } from './jobs/reminder-scheduler.job';
@@ -230,6 +232,8 @@ app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scope
 app.use('/api', agencySettingsRoutes); // Parametres financiers de l'agence (tenant-scoped)
 app.use('/api', managementFeeRoutes); // Honoraires de gestion : conditions, gestionnaires, commissions
 app.use('/api', ownerAccountRoutes); // Comptes proprietaires et reversements (agence et portail)
+app.use('/api', leaseLifecycleRoutes); // Vie du bail : revision, renouvellement, avenant, resiliation
+app.use('/api', leaseInspectionRoutes); // Etats des lieux d'entree et de sortie
 
 // 404 handler for unmatched routes (before the error handler, which only runs
 // for actual errors).

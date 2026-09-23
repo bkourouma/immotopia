@@ -609,6 +609,9 @@ model Tenant {
   agentCommissionRates     AgentCommissionRate[]
   managementFees           ManagementFee[]
   ownerPayouts             OwnerPayout[]
+  leaseEvents              LeaseEvent[]
+  leaseInspections         LeaseInspection[]
+  leaseInspectionPhotos    LeaseInspectionPhoto[]
   stockItems               StockItem[]
   stockLocations           StockLocation[]
   stockBalances            StockBalance[]
@@ -1827,6 +1830,8 @@ model RentalLease {
   maintenanceTickets  MaintenanceTicket[]
   thirdPartyMovements ThirdPartyMovement[]
   managementTerms     LeaseManagementTerms?
+  events              LeaseEvent[]
+  inspections         LeaseInspection[]
 
   @@unique([tenant_id, lease_number])
   @@index([tenant_id])
@@ -6181,4 +6186,140 @@ model OwnerPayout {
   @@unique([tenantId, year, sequence])
   @@index([tenantId, ownerClientId])
   @@map("owner_payouts")
+}
+
+// =============================================================
+// GESTION LOCATIVE — Lot 5, vie du bail et etats des lieux
+// =============================================================
+
+enum LeaseEventType {
+  REVISION
+  RENEWAL
+  AMENDMENT
+  TERMINATION
+}
+
+enum LeaseTerminationInitiator {
+  TENANT
+  LANDLORD
+  MUTUAL
+}
+
+/// Historique d'un bail : revisions de loyer, renouvellements, avenants,
+/// resiliation.
+///
+/// Un evenement ne se modifie pas et ne se supprime pas : il raconte ce qui a
+/// ete decide, a quelle date, et ce que le bail etait avant. Les colonnes
+/// `previous*` gardent l'etat anterieur, pour qu'on puisse relire l'histoire
+/// d'un loyer sans la reconstituer.
+model LeaseEvent {
+  id              String                     @id @default(uuid()) @db.Uuid
+  tenantId        String                     @map("tenant_id")
+  leaseId         String                     @map("lease_id") @db.Uuid
+  type            LeaseEventType
+  effectiveDate   DateTime                   @map("effective_date")
+  // Revision (et renouvellement avec nouveau loyer)
+  previousRent    Decimal?                   @map("previous_rent") @db.Decimal(12, 2)
+  newRent         Decimal?                   @map("new_rent") @db.Decimal(12, 2)
+  previousCharges Decimal?                   @map("previous_charges") @db.Decimal(12, 2)
+  newCharges      Decimal?                   @map("new_charges") @db.Decimal(12, 2)
+  /// Taux de revision annonce, en pourcentage ; informatif.
+  revisionRate    Decimal?                   @map("revision_rate") @db.Decimal(6, 3)
+  // Renouvellement et resiliation
+  previousEndDate DateTime?                  @map("previous_end_date")
+  newEndDate      DateTime?                  @map("new_end_date")
+  // Resiliation
+  noticeDate      DateTime?                  @map("notice_date")
+  initiatedBy     LeaseTerminationInitiator? @map("initiated_by")
+  moveOutDate     DateTime?                  @map("move_out_date")
+  /// Motif, objet de l'avenant, observations.
+  summary         String?                    @db.Text
+  /// Effets constates : echeances recalculees, creees ou annulees.
+  details         Json?
+  createdByUserId String?                    @map("created_by_user_id")
+  createdAt       DateTime                   @default(now()) @map("created_at")
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lease  RentalLease @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([leaseId, effectiveDate])
+  @@map("lease_events")
+}
+
+enum LeaseInspectionType {
+  ENTRY
+  EXIT
+}
+
+enum LeaseInspectionStatus {
+  DRAFT
+  FINALIZED
+}
+
+/// Etat des lieux d'entree ou de sortie.
+///
+/// Brouillon tant qu'on le remplit ; fige une fois finalise, parce qu'il fait
+/// foi entre le bailleur et le locataire. Un par type et par bail.
+///
+/// `rooms` : `[{ id, name, items: [{ id, label, condition, comment }] }]`,
+/// `condition` parmi NEW, GOOD, FAIR, POOR, BROKEN. Les identifiants de piece
+/// et d'element sont stables : la comparaison entree/sortie et les photos s'y
+/// accrochent. `deductions` (sortie seulement) :
+/// `[{ id, label, amount, roomId?, itemId? }]`, les retenues proposees sur le
+/// depot de garantie.
+model LeaseInspection {
+  id                  String                @id @default(uuid()) @db.Uuid
+  tenantId            String                @map("tenant_id")
+  leaseId             String                @map("lease_id") @db.Uuid
+  type                LeaseInspectionType
+  status              LeaseInspectionStatus @default(DRAFT)
+  inspectionDate      DateTime              @map("inspection_date")
+  rooms               Json                  @default("[]")
+  /// Index des compteurs : `{ electricity?, water?, gas? }`, en texte.
+  meters              Json?
+  keysCount           Int?                  @map("keys_count")
+  generalComment      String?               @map("general_comment") @db.Text
+  tenantPresent       Boolean               @default(true) @map("tenant_present")
+  tenantSignatoryName String?               @map("tenant_signatory_name")
+  agentSignatoryName  String?               @map("agent_signatory_name")
+  deductions          Json?
+  finalizedAt         DateTime?             @map("finalized_at")
+  finalizedByUserId   String?               @map("finalized_by_user_id")
+  createdByUserId     String?               @map("created_by_user_id")
+  createdAt           DateTime              @default(now()) @map("created_at")
+  updatedAt           DateTime              @updatedAt @map("updated_at")
+
+  tenant Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lease  RentalLease            @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  photos LeaseInspectionPhoto[]
+
+  @@unique([leaseId, type])
+  @@index([tenantId])
+  @@map("lease_inspections")
+}
+
+/// Photo d'un etat des lieux, rattachee a une piece ou a un element.
+/// Fichier prive : jamais servi en statique, toujours par une route qui
+/// verifie l'agence.
+model LeaseInspectionPhoto {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id")
+  inspectionId     String   @map("inspection_id") @db.Uuid
+  roomId           String?  @map("room_id")
+  itemId           String?  @map("item_id")
+  fileName         String   @map("file_name")
+  filePath         String   @map("file_path")
+  mimeType         String   @map("mime_type")
+  sizeBytes        Int      @map("size_bytes")
+  caption          String?
+  uploadedByUserId String?  @map("uploaded_by_user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inspection LeaseInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([inspectionId])
+  @@map("lease_inspection_photos")
 }
