@@ -128,6 +128,9 @@ const Comptabilite = lazy(() =>
 const Caisse = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/Caisse').then(m => ({ default: m.Caisse }))
 );
+const Tresorerie = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Tresorerie').then(m => ({ default: m.Tresorerie }))
+);
 const Facturation = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/Facturation').then(m => ({ default: m.Facturation }))
 );
@@ -807,6 +810,7 @@ function App() {
                           <Route path="/tenant/:tenantId/finance/commissions" element={<CommissionsAgents />} />
                           <Route path="/tenant/:tenantId/finance/comptabilite" element={<Comptabilite />} />
                           <Route path="/tenant/:tenantId/finance/caisse" element={<Caisse />} />
+                          <Route path="/tenant/:tenantId/finance/tresorerie" element={<Tresorerie />} />
                           <Route path="/tenant/:tenantId/finance/owner-accounts" element={<ComptesProprietaires />} />
                           <Route
                             path="/tenant/:tenantId/finance/owner-accounts/:ownerClientId"

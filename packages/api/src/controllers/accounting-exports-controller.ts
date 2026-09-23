@@ -3,9 +3,14 @@ import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
 import {
   getGeneralLedger,
   getJournal,
+  getMandantSubledger,
+  getMandantTrialBalance,
   getTrialBalance,
   journalTable,
   ledgerTable,
+  mandantSubledgerTable,
+  mandantTrialBalanceTable,
+  parseAsOfDate,
   parsePeriod,
   Table,
   toCsv,
@@ -70,4 +75,18 @@ export const getTrialBalanceHandler = asyncHandler(async (req: Request, res: Res
   const period = parsePeriod(req.query);
   const data = await getTrialBalance(requireTenantId(req), period);
   await send(res, format, `balance_${suffix(period)}`, data, () => trialBalanceTable(data));
+});
+
+export const getMandantSubledgerHandler = asyncHandler(async (req: Request, res: Response) => {
+  const format = formatOf(req);
+  const period = parsePeriod(req.query);
+  const data = await getMandantSubledger(requireTenantId(req), period);
+  await send(res, format, `grand-livre-auxiliaire-mandants_${suffix(period)}`, data, () => mandantSubledgerTable(data));
+});
+
+export const getMandantTrialBalanceHandler = asyncHandler(async (req: Request, res: Response) => {
+  const format = formatOf(req);
+  const asOf = parseAsOfDate(req.query);
+  const data = await getMandantTrialBalance(requireTenantId(req), asOf);
+  await send(res, format, `balance-auxiliaire-mandants_${asOf.label}`, data, () => mandantTrialBalanceTable(data));
 });

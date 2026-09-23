@@ -14,6 +14,30 @@ import {
 } from '../utils/tenant-portal-validators';
 import { handleTenantPortalFinanceStatement } from './finance-controller';
 
+/**
+ * Message a montrer au locataire.
+ *
+ * Ces `catch` renvoyaient `error.message` des qu'il existait. Pour une erreur
+ * metier levee par le service, c'etait le bon texte ; pour une erreur Prisma,
+ * cela envoyait au navigateur d'un locataire — un tiers exterieur a l'agence —
+ * le chemin absolu du fichier source du serveur, le numero de ligne, un
+ * extrait de code et le nom technique des colonnes. Constate en recette le
+ * 22/09/2026 sur la creation d'une demande de maintenance.
+ *
+ * Une erreur du moteur de base rend donc le message de repli, et rien d'autre.
+ * Son detail reste entier dans les journaux de l'API.
+ */
+function messageErreurPortail(error: unknown, repli: string): string {
+  const nom = String((error as { name?: unknown })?.name ?? '');
+  if (nom.startsWith('PrismaClient')) {
+    return repli;
+  }
+
+  const message = (error as { message?: unknown })?.message;
+  return typeof message === 'string' && message.trim() ? message : repli;
+}
+
+
 export class TenantPortalController {
   private service: TenantPortalService;
 
@@ -45,7 +69,7 @@ export class TenantPortalController {
       });
     } catch (error: any) {
       const statusCode = error.statusCode || 500;
-      const message = error.message || 'Erreur lors de la récupération du tableau de bord.';
+      const message = messageErreurPortail(error, 'Erreur lors de la récupération du tableau de bord.');
 
       res.status(statusCode).json({
         success: false,
@@ -79,7 +103,7 @@ export class TenantPortalController {
       });
     } catch (error: any) {
       const statusCode = error.statusCode || 500;
-      const message = error.message || 'Erreur lors de la récupération des détails du bail.';
+      const message = messageErreurPortail(error, 'Erreur lors de la récupération des détails du bail.');
 
       res.status(statusCode).json({
         success: false,
@@ -138,7 +162,7 @@ export class TenantPortalController {
       });
     } catch (error: any) {
       const statusCode = error.statusCode || 500;
-      const message = error.message || 'Erreur lors de la récupération des échéances.';
+      const message = messageErreurPortail(error, 'Erreur lors de la récupération des échéances.');
 
       res.status(statusCode).json({
         success: false,
@@ -188,7 +212,7 @@ export class TenantPortalController {
       // Check if it's a "not found" error
       const statusCode =
         error.message?.includes('non trouvé') || error.message?.includes('not found') ? 404 : error.statusCode || 500;
-      const message = error.message || "Erreur lors de la récupération des détails de l'échéance.";
+      const message = messageErreurPortail(error, "Erreur lors de la récupération des détails de l'échéance.");
 
       res.status(statusCode).json({
         success: false,
@@ -268,7 +292,7 @@ export class TenantPortalController {
     } catch (error: any) {
       console.error('[DECLARATION] Erreur contrôleur:', error?.message, error);
       const statusCode = error.statusCode || 500;
-      const message = error.message || 'Erreur lors de la déclaration du paiement.';
+      const message = messageErreurPortail(error, 'Erreur lors de la déclaration du paiement.');
 
       res.status(statusCode).json({
         success: false,
@@ -327,7 +351,7 @@ export class TenantPortalController {
       });
     } catch (error: any) {
       const statusCode = error.statusCode || 500;
-      const message = error.message || "Erreur lors de la récupération de l'historique des paiements.";
+      const message = messageErreurPortail(error, "Erreur lors de la récupération de l'historique des paiements.");
 
       res.status(statusCode).json({
         success: false,
@@ -361,7 +385,7 @@ export class TenantPortalController {
       });
     } catch (error: any) {
       const statusCode = error.statusCode || 500;
-      const message = error.message || 'Erreur lors de la récupération des informations du dépôt.';
+      const message = messageErreurPortail(error, 'Erreur lors de la récupération des informations du dépôt.');
 
       res.status(statusCode).json({
         success: false,
@@ -441,7 +465,7 @@ export class TenantPortalController {
       });
     } catch (error: any) {
       const statusCode = error.statusCode || 500;
-      const message = error.message || 'Erreur lors de la création du ticket de maintenance.';
+      const message = messageErreurPortail(error, 'Erreur lors de la création du ticket de maintenance.');
 
       res.status(statusCode).json({
         success: false,
@@ -494,7 +518,7 @@ export class TenantPortalController {
       });
     } catch (error: any) {
       const statusCode = error.statusCode || 500;
-      const message = error.message || 'Erreur lors de la récupération des tickets de maintenance.';
+      const message = messageErreurPortail(error, 'Erreur lors de la récupération des tickets de maintenance.');
 
       res.status(statusCode).json({
         success: false,
@@ -539,7 +563,7 @@ export class TenantPortalController {
       // Check if it's a "not found" error
       const statusCode =
         error.message?.includes('introuvable') || error.message?.includes('not found') ? 404 : error.statusCode || 500;
-      const message = error.message || 'Erreur lors de la récupération des détails du ticket.';
+      const message = messageErreurPortail(error, 'Erreur lors de la récupération des détails du ticket.');
 
       res.status(statusCode).json({
         success: false,
@@ -606,7 +630,7 @@ export class TenantPortalController {
       });
     } catch (error: any) {
       const statusCode = error.statusCode || 500;
-      const message = error.message || "Erreur lors de l'ajout du commentaire.";
+      const message = messageErreurPortail(error, "Erreur lors de l'ajout du commentaire.");
 
       res.status(statusCode).json({
         success: false,
@@ -650,7 +674,7 @@ export class TenantPortalController {
       });
     } catch (error: any) {
       const statusCode = error.statusCode || 500;
-      const message = error.message || 'Erreur lors de la récupération des documents.';
+      const message = messageErreurPortail(error, 'Erreur lors de la récupération des documents.');
 
       res.status(statusCode).json({
         success: false,
@@ -699,7 +723,7 @@ export class TenantPortalController {
       // Check if it's a "not found" error
       const statusCode =
         error.message?.includes('non trouvé') || error.message?.includes('not found') ? 404 : error.statusCode || 500;
-      const message = error.message || 'Erreur lors du téléchargement du document.';
+      const message = messageErreurPortail(error, 'Erreur lors du téléchargement du document.');
 
       res.status(statusCode).json({
         success: false,

@@ -70,6 +70,10 @@ export interface JournalLineInput {
   debit?: number;
   credit?: number;
   label: string;
+  /** Lot 10 : compte auxiliaire (le propriétaire mandant d'une ligne du 4731). */
+  thirdPartyAccountId?: string | null;
+  /** Lot 10 : nature des fonds de mandant portés par la ligne. */
+  fundsNature?: 'CURRENT' | 'DEPOSIT' | 'UNALLOCATED' | null;
 }
 
 export interface PostDocumentEntryParams {
@@ -122,7 +126,14 @@ export interface PostDocumentEntryParams {
     | 'OWNER_PAYOUT'
     | 'OWNER_VOID'
     // Lot 6 : l'ecart constate a la cloture d'une session de caisse.
-    | 'CASH_SESSION_DIFFERENCE';
+    | 'CASH_SESSION_DIFFERENCE'
+    // Lot 10, conformite SYSCOHADA.
+    | 'OWNER_UNALLOCATED'
+    | 'OWNER_AUX_REALLOC'
+    | 'OWNER_WITHHOLDING'
+    | 'OWNER_DEPOSIT'
+    | 'TREASURY_TRANSFER'
+    | 'TAX_REMITTANCE';
   documentId: string;
   lines: JournalLineInput[];
 }

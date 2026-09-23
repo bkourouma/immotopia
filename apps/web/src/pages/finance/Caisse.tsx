@@ -33,6 +33,7 @@ import type { StatusTone } from '../../components/primitives';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccountSelector';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -107,6 +108,7 @@ export const Caisse: React.FC = () => {
   // --- Ouverture -----------------------------------------------------------
   const [fondDeCaisse, setFondDeCaisse] = useState<number | null>(null);
   const [noteOuverture, setNoteOuverture] = useState('');
+  const [caisseChoisie, setCaisseChoisie] = useState<string | null>(null);
   const [ouvertureEnCours, setOuvertureEnCours] = useState(false);
 
   // --- Clôture ---------------------------------------------------------------
@@ -163,9 +165,14 @@ export const Caisse: React.FC = () => {
     }
     setOuvertureEnCours(true);
     try {
-      await openCashSession(tenantId, { openingFloat: fondDeCaisse, openingNote: noteOuverture.trim() || undefined });
+      await openCashSession(tenantId, {
+        openingFloat: fondDeCaisse,
+        openingNote: noteOuverture.trim() || undefined,
+        treasuryAccountId: caisseChoisie || undefined
+      });
       setFondDeCaisse(null);
       setNoteOuverture('');
+      setCaisseChoisie(null);
       message.success(t('Caisse ouverte.'));
       queryClient.invalidateQueries({ queryKey: queryKey('cash-session-current', tenantId, {}) });
     } catch (err: any) {
@@ -239,6 +246,16 @@ export const Caisse: React.FC = () => {
       </Title>
       <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
         <div>
+          <label htmlFor="caisse-compte">{t('Caisse')}</label>
+          <TreasuryAccountSelector
+            id="caisse-compte"
+            tenantId={tenantId}
+            paymentMethod="CASH"
+            value={caisseChoisie}
+            onChange={setCaisseChoisie}
+          />
+        </div>
+        <div>
           <label htmlFor="caisse-fond">{t('Fond de caisse (FCFA)')}</label>
           <InputNumber
             id="caisse-fond"
@@ -284,6 +301,11 @@ export const Caisse: React.FC = () => {
               {t('Caisse {{number}}', { number: session.number })}
             </Title>
             <Text type="secondary">{t('Ouverte le {{heure}}', { heure: dateHeure(session.openedAt) })}</Text>
+            {session.treasuryLabel && (
+              <Text type="secondary" style={{ display: 'block' }}>
+                {session.treasuryLabel}
+              </Text>
+            )}
           </div>
           <Button
             icon={<ReloadOutlined />}
@@ -367,6 +389,7 @@ export const Caisse: React.FC = () => {
 
   const colonnesHistorique: ColumnsType<CashSession> = [
     { title: t('Numéro'), key: 'number', render: (_, s) => s.number },
+    { title: t('Caisse'), key: 'treasury', render: (_, s) => s.treasuryLabel || '—' },
     { title: t('Caissier'), key: 'cashier', render: (_, s) => s.cashierName },
     { title: t('Ouverture'), key: 'openedAt', render: (_, s) => dateHeure(s.openedAt) },
     { title: t('Clôture'), key: 'closedAt', render: (_, s) => (s.closedAt ? dateHeure(s.closedAt) : '—') },
@@ -446,6 +469,7 @@ export const Caisse: React.FC = () => {
             highlight={<MoneyValue value={s.expected.amount} />}
             onOpen={() => setSessionOuverteId(s.id)}
             fields={[
+              { label: t('Caisse'), value: s.treasuryLabel || '—' },
               { label: t('Ouverture'), value: dateHeure(s.openedAt) },
               { label: t('Compté'), value: <MoneyValue value={s.countedAmount} /> }
             ]}
@@ -646,6 +670,11 @@ export const Caisse: React.FC = () => {
               <Text>
                 {t('Caissier :')} <strong>{detailQuery.data.cashierName}</strong>
               </Text>
+              {detailQuery.data.treasuryLabel && (
+                <Text>
+                  {t('Caisse :')} {detailQuery.data.treasuryLabel}
+                </Text>
+              )}
               <Text>
                 {t('Ouverture :')} {dateHeure(detailQuery.data.openedAt)}
               </Text>

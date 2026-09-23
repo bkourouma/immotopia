@@ -4,14 +4,29 @@
     {
       "name": "web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:web"],
-      "port": 3000
+      "runtimeArgs": [
+        "run",
+        "dev:web"
+      ],
+      "port": 3002
     },
     {
       "name": "api",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:api"],
+      "runtimeArgs": [
+        "run",
+        "dev:api"
+      ],
       "port": 8001
+    },
+    {
+      "name": "site-vitrine",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd /d D:\\APP\\ImmoTopiaWebsite2Version2\\site && npm run build && npx next start -p 3044"
+      ],
+      "port": 3044
     }
   ]
 }

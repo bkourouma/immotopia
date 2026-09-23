@@ -26,6 +26,7 @@ import type { StatusTone } from '../../components/primitives';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
 import { montantSaisiProps } from '../../utils/montant-saisi';
+import { TreasuryAccountSelector } from '../../components/finance/TreasuryAccountSelector';
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
@@ -68,7 +69,9 @@ const MOVEMENT_LABELS: Record<OwnerMovementType, string> = {
   MANAGEMENT_FEE_VAT: t('TVA sur honoraires'),
   EXPENSE: t('Dépense'),
   PAYOUT: t('Reversement'),
-  VOID: t('Annulation')
+  VOID: t('Annulation'),
+  WITHHOLDING_TAX: t('Retenue à la source'),
+  DEPOSIT_RETAINED: t('Dépôt de garantie conservé')
 };
 
 const MOVEMENT_TONE: Record<OwnerMovementType, StatusTone> = {
@@ -77,7 +80,9 @@ const MOVEMENT_TONE: Record<OwnerMovementType, StatusTone> = {
   MANAGEMENT_FEE_VAT: 'neutral',
   EXPENSE: 'warning',
   PAYOUT: 'info',
-  VOID: 'danger'
+  VOID: 'danger',
+  WITHHOLDING_TAX: 'warning',
+  DEPOSIT_RETAINED: 'neutral'
 };
 
 function dateCourte(iso: string): string {
@@ -113,6 +118,7 @@ export const CompteProprietaire: React.FC = () => {
   const [mode, setMode] = useState<PayoutMethod>('CASH');
   const [reference, setReference] = useState('');
   const [notes, setNotes] = useState('');
+  const [treasuryAccountId, setTreasuryAccountId] = useState<string | null>(null);
   const [enregistrementEnCours, setEnregistrementEnCours] = useState(false);
 
   const ouvrirNouveauReversement = () => {
@@ -123,6 +129,7 @@ export const CompteProprietaire: React.FC = () => {
     setMode('CASH');
     setReference('');
     setNotes('');
+    setTreasuryAccountId(null);
     setModalOuverte(true);
   };
 
@@ -138,7 +145,8 @@ export const CompteProprietaire: React.FC = () => {
         paidAt: date.format('YYYY-MM-DD'),
         method: mode,
         reference: reference.trim() || undefined,
-        notes: notes.trim() || undefined
+        notes: notes.trim() || undefined,
+        treasuryAccountId: treasuryAccountId || undefined
       });
       message.success(t('Reversement {{number}} enregistré.', { number: payout.number }));
       setModalOuverte(false);
@@ -441,11 +449,26 @@ export const CompteProprietaire: React.FC = () => {
             id="reversement-mode"
             style={{ width: '100%' }}
             value={mode}
-            onChange={setMode}
+            onChange={valeur => {
+              setMode(valeur);
+              // Le compte choisi ne correspond plus forcément au nouveau mode.
+              setTreasuryAccountId(null);
+            }}
             options={(Object.keys(METHOD_LABELS) as PayoutMethod[]).map(cle => ({
               value: cle,
               label: METHOD_LABELS[cle]
             }))}
+          />
+        </div>
+
+        <div style={{ marginBottom: 'var(--space-3)' }}>
+          <label htmlFor="reversement-compte">{t('Compte de trésorerie')}</label>
+          <TreasuryAccountSelector
+            id="reversement-compte"
+            tenantId={tenantId}
+            paymentMethod={mode}
+            value={treasuryAccountId}
+            onChange={setTreasuryAccountId}
           />
         </div>
 

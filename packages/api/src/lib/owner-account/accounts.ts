@@ -1,28 +1,45 @@
-import type { PaymentMethod, RentalPaymentMethod } from '@prisma/client';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { badRequest } from '../errors';
 import { ensureOperationalJournalTx } from '../finance/accounting';
-import type { AgencyFinanceSettingsDto } from '../settings/finance-settings';
+import {
+  AgencyFinanceSettingsDto,
+  DEFAULT_MANAGEMENT_FEE_ACCOUNT,
+  DEFAULT_OWNER_FUNDS_ACCOUNT,
+  DEFAULT_VAT_COLLECTED_ACCOUNT,
+  DEFAULT_WITHHOLDING_ACCOUNT
+} from '../settings/finance-settings';
 
 /**
  * Comptes comptables de la gestion locative.
  *
- * Le compte des fonds des propriétaires n'a pas de valeur par défaut dans les
- * paramètres : un cabinet le numérote à sa façon. Tant que l'agence ne l'a pas
- * fixé, les écritures vont au 4712 « Créditeurs divers », PROVISOIREMENT. Le
- * numéro choisi ensuite dans les paramètres vaut pour les écritures à venir ;
- * celles déjà passées restent où elles sont, comme toute écriture verrouillée.
+ * Numérotation de la consolidation SYSCOHADA (lot 10) : 4731 « Mandants »
+ * pour les fonds détenus pour les propriétaires, 70611 pour les honoraires,
+ * 4432 pour leur TVA, 4478 pour la retenue à la source. Chaque numéro se
+ * change dans les paramètres financiers ; le nouveau vaut pour les écritures à
+ * venir, celles déjà passées restent où elles sont, comme toute écriture
+ * verrouillée.
+ *
+ * La trésorerie (caisses, banques, Mobile Money, valeurs à encaisser) ne se
+ * résout plus ici mais dans `lib/treasury/accounts.ts` : chaque pièce dit quel
+ * compte elle a réellement touché.
  */
-export const PROVISIONAL_OWNER_FUNDS_ACCOUNT = '4712';
+export const OWNER_FUNDS_ACCOUNT = DEFAULT_OWNER_FUNDS_ACCOUNT;
+/** Ancien compte provisoire des fonds propriétaires, avant le lot 10. */
+export const LEGACY_OWNER_FUNDS_ACCOUNT = '4712';
+/** @deprecated Lot 10 : la caisse se résout par `lib/treasury/accounts.ts`. */
 export const CASH_ACCOUNT = '571';
+/** @deprecated Lot 10 : la banque se résout par `lib/treasury/accounts.ts`. */
 export const BANK_ACCOUNT = '521';
+export const SUPPLIERS_ACCOUNT = '401';
 
 export interface RentalAccounts {
   ownerFunds: string;
   fees: string;
   vat: string;
-  cash: string;
-  bank: string;
+  withholding: string;
+  suppliers: string;
+  /** Produit des pénalités revenant à l'agence ; nul quand elles vont au propriétaire. */
+  penaltyIncome: string | null;
 }
 
 type AccountTypeName = 'ASSET' | 'LIABILITY' | 'INCOME';
@@ -32,28 +49,42 @@ export async function ensureRentalAccountsTx(
   tenantId: string,
   settings: AgencyFinanceSettingsDto
 ): Promise<RentalAccounts> {
+  const penaltyToAgency = settings.penaltyBeneficiary === 'AGENCY' && Boolean(settings.penaltyIncomeAccountNumber);
   const specs: Array<{ key: keyof RentalAccounts; number: string; name: string; type: AccountTypeName }> = [
     {
       key: 'ownerFunds',
-      number: settings.ownerFundsAccountNumber ?? PROVISIONAL_OWNER_FUNDS_ACCOUNT,
-      name: 'Propriétaires mandants',
+      number: settings.ownerFundsAccountNumber ?? OWNER_FUNDS_ACCOUNT,
+      name: 'Mandants',
       type: 'LIABILITY'
     },
     {
       key: 'fees',
-      number: settings.managementFeeAccountNumber ?? '706',
-      name: 'Honoraires de gestion',
+      number: settings.managementFeeAccountNumber ?? DEFAULT_MANAGEMENT_FEE_ACCOUNT,
+      name: 'Honoraires de gestion locative',
       type: 'INCOME'
     },
     {
       key: 'vat',
-      number: settings.vatCollectedAccountNumber ?? '4432',
+      number: settings.vatCollectedAccountNumber ?? DEFAULT_VAT_COLLECTED_ACCOUNT,
       name: 'TVA facturée sur prestations de services',
       type: 'LIABILITY'
     },
-    { key: 'cash', number: CASH_ACCOUNT, name: 'Caisse', type: 'ASSET' },
-    { key: 'bank', number: BANK_ACCOUNT, name: 'Banques', type: 'ASSET' }
+    {
+      key: 'withholding',
+      number: settings.withholdingAccountNumber ?? DEFAULT_WITHHOLDING_ACCOUNT,
+      name: 'Retenues à la source sur loyers',
+      type: 'LIABILITY'
+    },
+    { key: 'suppliers', number: SUPPLIERS_ACCOUNT, name: 'Fournisseurs', type: 'LIABILITY' }
   ];
+  if (penaltyToAgency) {
+    specs.push({
+      key: 'penaltyIncome',
+      number: settings.penaltyIncomeAccountNumber as string,
+      name: 'Pénalités de retard',
+      type: 'INCOME'
+    });
+  }
 
   // Deux rôles sur un même compte rendraient les écritures illisibles, et le
   // solde des propriétaires se confondrait avec les honoraires de l'agence.
@@ -70,7 +101,7 @@ export async function ensureRentalAccountsTx(
   });
   const byNumber = new Map(existing.map(account => [account.accountNumber, account.id]));
 
-  const result = {} as RentalAccounts;
+  const result = { penaltyIncome: null } as RentalAccounts;
   for (const spec of specs) {
     let id = byNumber.get(spec.number);
     if (!id) {
@@ -88,19 +119,9 @@ export async function ensureRentalAccountsTx(
       });
       id = created.id;
     }
-    result[spec.key] = id;
+    (result as unknown as Record<string, string>)[spec.key] = id;
   }
   return result;
-}
-
-/** L'espèce passe par la caisse ; tout le reste, par la banque. */
-export function treasuryFor(
-  method: PaymentMethod | RentalPaymentMethod | string,
-  accounts: RentalAccounts
-): { accountId: string; journal: 'CASH' | 'BANK' } {
-  return method === 'CASH'
-    ? { accountId: accounts.cash, journal: 'CASH' }
-    : { accountId: accounts.bank, journal: 'BANK' };
 }
 
 /** Journaux opérationnels par exercice, créés à la demande et mis en cache. */

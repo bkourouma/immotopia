@@ -14,7 +14,11 @@ const createDepositMovementSchema = z.object({
   amount: z.coerce.number().positive(),
   paymentId: z.string().uuid().optional().nullable(),
   installmentId: z.string().uuid().optional().nullable(),
-  note: z.string().optional().nullable()
+  note: z.string().optional().nullable(),
+  /** Lot 10 : compte de tresorerie d'un remboursement. Absent : caisse par defaut. */
+  treasuryAccountId: z.string().uuid().optional().nullable(),
+  /** Moyen de paiement du mouvement, pour valider `treasuryAccountId`. */
+  method: z.enum(['MOBILE_MONEY', 'BANK_TRANSFER', 'CASH', 'CHECK', 'CARD', 'OTHER']).optional().nullable()
 });
 
 /**
@@ -140,7 +144,9 @@ export async function createDepositMovementHandler(req: Request, res: Response):
       validatedData.paymentId ?? undefined,
       validatedData.installmentId ?? undefined,
       validatedData.note ?? undefined,
-      actorUserId
+      actorUserId,
+      validatedData.treasuryAccountId ?? undefined,
+      validatedData.method ?? undefined
     );
 
     res.status(201).json({

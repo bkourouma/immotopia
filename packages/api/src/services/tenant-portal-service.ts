@@ -29,6 +29,49 @@ import { getDocumentFile } from './document-generation-service';
 
 export class TenantPortalService {
   /**
+   * Fiche CRM du locataire connecte, pour les colonnes qui en exigent une.
+   *
+   * Le portail ne connait que son `TenantClient` — le compte qui ouvre la
+   * session. Mais `maintenance_tickets.tenant_contact_id`,
+   * `created_by_contact_id`, `maintenance_ticket_attachments.uploaded_by_contact_id`
+   * et `maintenance_ticket_comments.author_contact_id` referencent tous
+   * `crm_contacts`. Passer l'identifiant du `TenantClient` a ces colonnes
+   * violait la cle etrangere : toute demande de maintenance deposee depuis le
+   * portail echouait en 500, avant meme les pieces jointes.
+   *
+   * Les deux tables n'ont aucun lien structurel : l'adresse e-mail du compte
+   * est la seule correspondance. On la suit, et on rend `undefined` quand
+   * aucune fiche ne repond — ces colonnes sont nullables, un ticket sans
+   * fiche CRM vaut mieux qu'un ticket refuse.
+   */
+  private async resolveCrmContactId(tenantId: string, tenantClientId: string): Promise<string | undefined> {
+    const client = await prisma.tenantClient.findFirst({
+      where: { id: tenantClientId, tenantId },
+      select: { user: { select: { email: true } } }
+    });
+
+    const email = client?.user?.email?.trim();
+    if (!email) {
+      return undefined;
+    }
+
+    const contact = await prisma.crmContact.findFirst({
+      where: {
+        tenantId,
+        email: { equals: email, mode: 'insensitive' }
+      },
+      select: { id: true }
+    });
+
+    if (!contact) {
+      logger.warn('Aucune fiche CRM pour ce locataire du portail', { tenantId, tenantClientId });
+      return undefined;
+    }
+
+    return contact.id;
+  }
+
+  /**
    * Get dashboard data for tenant portal
    * Aggregates lease overview, balance, next installment, recent payments, deposit, and maintenance summary
    * @param tenantClientId - Tenant client ID
@@ -1500,18 +1543,22 @@ export class TenantPortalService {
         locationDetails: data.locationDetails
       };
 
+      // La fiche CRM, pas le compte du portail : ces colonnes referencent
+      // `crm_contacts` (voir `resolveCrmContactId`).
+      const crmContactId = await this.resolveCrmContactId(tenantId, tenantClientId);
+
       // Create ticket
       const ticket = await createTicket(
         tenantId,
         ticketData,
         undefined, // actorUserId - not available from tenant portal
-        tenantClientId // actorContactId - using tenantClientId as contact
+        crmContactId
       );
 
       // Upload attachments if provided
       if (files && files.length > 0) {
         const uploadPromises = files.map(file =>
-          uploadAttachment(tenantId, ticket.id, file, undefined, tenantClientId)
+          uploadAttachment(tenantId, ticket.id, file, undefined, crmContactId)
         );
         await Promise.all(uploadPromises);
       }
@@ -1686,7 +1733,7 @@ export class TenantPortalService {
         { content: comment },
         MaintenanceTicketCommentAuthorType.TENANT,
         undefined, // authorUserId
-        tenantClientId // authorContactId
+        await this.resolveCrmContactId(tenantId, tenantClientId)
       );
 
       logger.info('Maintenance comment added', {

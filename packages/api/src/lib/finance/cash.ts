@@ -86,6 +86,7 @@ import {
 import { syncWorkProgramCostTx } from './cost-allocation';
 import { assertSiteOpenTx } from './site-closing';
 import { raiseBudgetAlertIfNeededTx } from './budget-alerts';
+import { ensureDefaultTreasuryAccountTx } from '../treasury/accounts';
 import type {
   CashVoucherRecord,
   CreateCashVoucherTx,
@@ -196,9 +197,10 @@ async function ensureOperationalAccountsTx(
   tenantId: string,
   fiscalYear: number
 ): Promise<{ journalId: string; cashAccountId: string; expenseAccountId: string }> {
-  const [journalId, comptes] = await Promise.all([
+  const [journalId, comptes, cashTreasury] = await Promise.all([
     ensureOperationalJournalTx(tx, tenantId, fiscalYear, 'CASH'),
-    ensureOperationalChartOfAccountsTx(tx, tenantId)
+    ensureOperationalChartOfAccountsTx(tx, tenantId),
+    ensureDefaultTreasuryAccountTx(tx, tenantId, 'CASH')
   ]);
 
   const exiger = (numero: string): string => {
@@ -209,7 +211,7 @@ async function ensureOperationalAccountsTx(
     return id;
   };
 
-  return { journalId, cashAccountId: exiger('571'), expenseAccountId: exiger('605') };
+  return { journalId, cashAccountId: cashTreasury.chartOfAccountId, expenseAccountId: exiger('605') };
 }
 
 // ---------------------------------------------------------------------------

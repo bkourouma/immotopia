@@ -957,15 +957,20 @@ export class OwnerPortalService {
         totalDue += installmentTotal;
       }
 
-      // Get total allocated payments for these installments
+      // Tous les reglements encaisses sur ce bail, quel que soit le statut
+      // actuel de l'echeance qu'ils ont soldee.
+      //
+      // Le filtre precedent ne comptait que les allocations portant sur une
+      // echeance encore DUE ou OVERDUE. Or une echeance passe PAID
+      // precisement parce qu'elle a ete reglee : son allocation sortait donc
+      // du calcul au moment meme ou elle aurait du y entrer. Le proprietaire
+      // lisait « Total paye : 0 » sur un bail dont l'onglet voisin listait
+      // trois paiements.
       const allocatedPayments = await prisma.rentalPaymentAllocation.aggregate({
         where: {
           tenant_id: tenantId,
           installment: {
-            lease_id: leaseId,
-            status: {
-              in: [RentalInstallmentStatus.DUE, RentalInstallmentStatus.OVERDUE]
-            }
+            lease_id: leaseId
           },
           payment: {
             status: RentalPaymentStatus.SUCCESS
@@ -1449,7 +1454,12 @@ export class OwnerPortalService {
       const installments = await prisma.rentalInstallment.findMany({
         where,
         include: {
-          allocations: {
+          // La relation s'appelle `payments` sur `RentalInstallment` —
+          // `allocations` est son nom vu depuis `RentalPayment`. L'`include`
+          // etait donc rejete par Prisma avant meme d'atteindre la base :
+          // l'ecran des echeances du proprietaire repondait 500 a chaque
+          // appel, depuis l'import initial du depot.
+          payments: {
             include: {
               payment: {
                 select: {
@@ -1493,7 +1503,7 @@ export class OwnerPortalService {
       // Transform to InstallmentListItem
       const installmentList: InstallmentListItem[] = installments.map(inst => {
         const paidAmount = Number(
-          (inst.allocations || []).reduce(
+          (inst.payments || []).reduce(
             (sum, alloc) =>
               alloc.payment?.status === RentalPaymentStatus.SUCCESS ? sum + Number(alloc.amount || 0) : sum,
             0

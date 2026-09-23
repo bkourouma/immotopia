@@ -41,6 +41,13 @@ vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
 
+// `TreasuryAccountSelector` (lot 10) appelle `listTreasuryAccounts` depuis le
+// formulaire de reversement : sans ce mock, Vitest laisserait partir une
+// vraie requête réseau.
+vi.mock('../../services/treasury-service', () => ({
+  listTreasuryAccounts: vi.fn().mockResolvedValue([])
+}));
+
 function compteResume(overrides: Record<string, unknown> = {}) {
   return {
     ownerClientId: 'owner-1',

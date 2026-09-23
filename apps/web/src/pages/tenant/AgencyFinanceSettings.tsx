@@ -1,7 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, App, Button, Card, Col, Form, Input, InputNumber, Row, Space, Spin, Switch, Typography } from 'antd';
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Col,
+  DatePicker,
+  Form,
+  Input,
+  InputNumber,
+  Radio,
+  Row,
+  Space,
+  Spin,
+  Switch,
+  Typography
+} from 'antd';
 import { SaveOutlined } from '@ant-design/icons';
+import dayjs, { Dayjs } from 'dayjs';
 import {
   AgencyFinanceSettings as Settings,
   AgencyFinanceSettingsInput,
@@ -23,6 +40,13 @@ const EXAMPLE_RENT = 200_000;
 const ACCOUNT_PATTERN = /^\d{2,12}$/;
 
 /**
+ * Valeurs du formulaire : identiques au DTO, sauf `withholdingStartsOn` que
+ * le `DatePicker` manipule en `Dayjs` — converti en chaîne `AAAA-MM-JJ` à
+ * l'envoi, et l'inverse au chargement.
+ */
+type FormValues = Omit<AgencyFinanceSettingsInput, 'withholdingStartsOn'> & { withholdingStartsOn: Dayjs | null };
+
+/**
  * Paramètres financiers de l'agence : fiscalité, honoraires de gestion et
  * comptes de la gestion locative.
  *
@@ -32,7 +56,7 @@ const ACCOUNT_PATTERN = /^\d{2,12}$/;
 export const AgencyFinanceSettings: React.FC = () => {
   const { message } = App.useApp();
   const { tenantId } = useParams<{ tenantId: string }>();
-  const [form] = Form.useForm<AgencyFinanceSettingsInput>();
+  const [form] = Form.useForm<FormValues>();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -50,6 +74,14 @@ export const AgencyFinanceSettings: React.FC = () => {
   const feeMode = Form.useWatch('managementFeeMode', form);
   const feeRate = Form.useWatch('managementFeeRate', form);
   const feeFixedAmount = Form.useWatch('managementFeeFixedAmount', form);
+  const penaltyBeneficiary = Form.useWatch('penaltyBeneficiary', form);
+  const withholdingEnabled = Form.useWatch('withholdingEnabled', form);
+
+  /** `withholdingStartsOn` voyage en `AAAA-MM-JJ` côté API, en `Dayjs` dans le `DatePicker`. */
+  const toFormValues = (data: Settings): FormValues => ({
+    ...data,
+    withholdingStartsOn: data.withholdingStartsOn ? dayjs(data.withholdingStartsOn) : null
+  });
 
   const load = async () => {
     if (!tenantId) return;
@@ -58,7 +90,7 @@ export const AgencyFinanceSettings: React.FC = () => {
     try {
       const data = await getAgencyFinanceSettings(tenantId);
       setSettings(data);
-      form.setFieldsValue(data);
+      form.setFieldsValue(toFormValues(data));
     } catch (e: any) {
       setError(
         e?.response?.data?.message || e?.response?.data?.error || t('Erreur lors du chargement des informations')
@@ -72,7 +104,7 @@ export const AgencyFinanceSettings: React.FC = () => {
     void load();
   }, [tenantId]);
 
-  const handleSubmit = async (values: AgencyFinanceSettingsInput) => {
+  const handleSubmit = async (values: FormValues) => {
     if (!tenantId) return;
     setSaving(true);
     try {
@@ -80,10 +112,11 @@ export const AgencyFinanceSettings: React.FC = () => {
         ...values,
         managementFeeRate: values.managementFeeRate ?? null,
         managementFeeFixedAmount: values.managementFeeFixedAmount ?? null,
-        vatRate: values.vatRate ?? 0
+        vatRate: values.vatRate ?? 0,
+        withholdingStartsOn: values.withholdingStartsOn ? values.withholdingStartsOn.format('YYYY-MM-DD') : null
       });
       setSettings(saved);
-      form.setFieldsValue(saved);
+      form.setFieldsValue(toFormValues(saved));
       message.success(t('Paramètres financiers enregistrés'));
     } catch (e: any) {
       message.error(e?.response?.data?.message || e?.response?.data?.error || t('Erreur lors de la sauvegarde'));
@@ -220,18 +253,129 @@ export const AgencyFinanceSettings: React.FC = () => {
           </Paragraph>
           <Row gutter={16}>
             <Col xs={24} md={8}>
-              <Form.Item label={t('Fonds des propriétaires')} name="ownerFundsAccountNumber" rules={[ACCOUNT_RULE]}>
+              <Form.Item
+                label={t('Fonds des propriétaires')}
+                name="ownerFundsAccountNumber"
+                rules={[ACCOUNT_RULE]}
+                extra={t('Compte de tiers « Mandants », avec un auxiliaire par propriétaire. Défaut : 4731.')}
+              >
                 <Input inputMode="numeric" placeholder={t('À fixer avec votre comptable')} />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item label={t('Honoraires de gestion')} name="managementFeeAccountNumber" rules={[ACCOUNT_RULE]}>
+              <Form.Item
+                label={t('Honoraires de gestion')}
+                name="managementFeeAccountNumber"
+                rules={[ACCOUNT_RULE]}
+                extra={t('Compte de produit « Honoraires de gestion locative ». Défaut : 70611.')}
+              >
                 <Input inputMode="numeric" />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
               <Form.Item label={t('TVA collectée')} name="vatCollectedAccountNumber" rules={[ACCOUNT_RULE]}>
                 <Input inputMode="numeric" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item
+                label={t('Écart de caisse — manquant')}
+                name="cashShortageAccountNumber"
+                rules={[ACCOUNT_RULE]}
+                extra={t('Compte de charge débité quand une session de caisse révèle un manquant, après enquête.')}
+              >
+                <Input inputMode="numeric" placeholder="6588" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item
+                label={t('Écart de caisse — excédent')}
+                name="cashSurplusAccountNumber"
+                rules={[ACCOUNT_RULE]}
+                extra={t('Compte de produit crédité quand une session de caisse révèle un excédent, après enquête.')}
+              >
+                <Input inputMode="numeric" placeholder="7588" />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Card>
+
+        <Card title={t('Pénalités de retard')} style={{ marginBottom: 16 }}>
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t('Bénéficiaire des pénalités')}
+                name="penaltyBeneficiary"
+                rules={[{ required: true, message: t('Le bénéficiaire des pénalités est requis') }]}
+              >
+                <Radio.Group>
+                  <Radio.Button value="OWNER">{t('Le propriétaire')}</Radio.Button>
+                  <Radio.Button value="AGENCY">{t("L'agence")}</Radio.Button>
+                </Radio.Group>
+              </Form.Item>
+            </Col>
+            {penaltyBeneficiary === 'AGENCY' ? (
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label={t('Compte de produit des pénalités')}
+                  name="penaltyIncomeAccountNumber"
+                  rules={[
+                    ACCOUNT_RULE,
+                    { required: true, message: t('Le compte de produit des pénalités est requis') }
+                  ]}
+                >
+                  <Input inputMode="numeric" />
+                </Form.Item>
+              </Col>
+            ) : null}
+          </Row>
+        </Card>
+
+        <Card title={t('Retenue à la source sur loyers')} style={{ marginBottom: 16 }}>
+          <Form.Item
+            label={t('Appliquer une retenue à la source sur les loyers')}
+            name="withholdingEnabled"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message={t(
+              'À activer seulement après confirmation du cabinet : statut fiscal de chaque propriétaire, assiette et échéances'
+            )}
+          />
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t('Appliquer aux encaissements à partir du')}
+                name="withholdingStartsOn"
+                extra={t("La retenue n'est jamais appliquée aux loyers déjà encaissés avant cette date.")}
+                rules={[
+                  {
+                    required: !!withholdingEnabled,
+                    message: t("Indiquez à partir de quelle date la retenue s'applique")
+                  }
+                ]}
+              >
+                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" disabled={!withholdingEnabled} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={6}>
+              <Form.Item label={t('Taux — personne physique (%)')} name="withholdingRateIndividual">
+                <InputNumber min={0} max={100} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={6}>
+              <Form.Item label={t('Taux — personne morale (%)')} name="withholdingRateCompany">
+                <InputNumber min={0} max={100} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label={t('Compte de retenue à la source')} name="withholdingAccountNumber" rules={[ACCOUNT_RULE]}>
+                <Input inputMode="numeric" placeholder="4478" />
               </Form.Item>
             </Col>
           </Row>

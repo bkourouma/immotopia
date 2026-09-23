@@ -5,6 +5,8 @@ import { requirePermission } from '../middleware/rbac-middleware';
 import {
   getGeneralLedgerHandler,
   getJournalHandler,
+  getMandantSubledgerHandler,
+  getMandantTrialBalanceHandler,
   getTrialBalanceHandler
 } from '../controllers/accounting-exports-controller';
 

@@ -6,7 +6,8 @@ import { appendThirdPartyMovementTx } from '../finance/ledger';
 import { roundMoney } from '../finance/money';
 import { materializeManagementFees } from '../rental-fees/materialize';
 import { getAgencyFinanceSettings } from '../settings/finance-settings';
-import { ensureRentalAccountsTx, journalResolver, treasuryFor } from './accounts';
+import { assertTreasuryAccountUsableTx, resolveTreasuryAccountTx } from '../treasury/accounts';
+import { ensureRentalAccountsTx, journalResolver } from './accounts';
 import {
   getOrCreateOwnerAccountTx,
   listAgencyOwners,
@@ -52,6 +53,7 @@ function toPayoutDto(
     amount: Decimalish;
     paidAt: Date;
     method: string;
+    treasuryAccountId?: string | null;
     reference: string | null;
     notes: string | null;
     statementId: string | null;
@@ -69,6 +71,7 @@ function toPayoutDto(
     amount: amount(payout.amount),
     paidAt: payout.paidAt.toISOString(),
     method: payout.method,
+    treasuryAccountId: payout.treasuryAccountId ?? null,
     reference: payout.reference,
     notes: payout.notes,
     statementId: payout.statementId,
@@ -233,6 +236,12 @@ const payoutSchema = z.object({
   amount: z.coerce.number().positive(),
   paidAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date attendue au format AAAA-MM-JJ'),
   method: z.enum(['CASH', 'BANK_TRANSFER', 'CHECK', 'MOBILE_MONEY', 'OTHER']),
+  // Lot 10 : le compte de trésorerie réellement débité ; vide, celui par défaut du moyen.
+  treasuryAccountId: z
+    .string()
+    .uuid()
+    .nullish()
+    .transform(v => v || null),
   reference: z
     .string()
     .trim()
@@ -288,6 +297,7 @@ export async function createOwnerPayout(
 
   const payout = await prisma.$transaction(async tx => {
     const account = await getOrCreateOwnerAccountTx(tx, tenantId, ownerClientId);
+    await assertTreasuryAccountUsableTx(tx, tenantId, input.treasuryAccountId, input.method);
     const fresh = await tx.thirdPartyAccount.findUnique({ where: { id: account.id }, select: { balance: true } });
     if (value > due(fresh?.balance)) {
       throw conflict('Le reversement dépasse le solde dû au propriétaire');
@@ -309,6 +319,7 @@ export async function createOwnerPayout(
         amount: value,
         paidAt,
         method: input.method,
+        treasuryAccountId: input.treasuryAccountId,
         reference: input.reference,
         notes: input.notes,
         statementId: input.statementId,
@@ -331,7 +342,10 @@ export async function createOwnerPayout(
     } as any);
 
     const accounts = await ensureRentalAccountsTx(tx, tenantId, settings);
-    const treasury = treasuryFor(input.method, accounts);
+    const treasury = await resolveTreasuryAccountTx(tx, tenantId, {
+      method: input.method,
+      treasuryAccountId: input.treasuryAccountId
+    });
     const journalFor = journalResolver(tx, tenantId);
     await postDocumentEntryTx(tx, {
       tenantId,
@@ -342,8 +356,14 @@ export async function createOwnerPayout(
       documentType: 'OWNER_PAYOUT',
       documentId: created.id,
       lines: [
-        { accountId: accounts.ownerFunds, debit: value, label: `Reversement ${number}` },
-        { accountId: treasury.accountId, credit: value, label: `Reversement ${number}` }
+        {
+          accountId: accounts.ownerFunds,
+          debit: value,
+          label: `Reversement ${number}`,
+          thirdPartyAccountId: account.id,
+          fundsNature: 'CURRENT'
+        },
+        { accountId: treasury.chartOfAccountId, credit: value, label: `Reversement ${number}` }
       ]
     });
 

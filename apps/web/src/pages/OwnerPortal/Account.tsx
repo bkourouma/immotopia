@@ -47,6 +47,32 @@ function methodLabel(method: PayoutMethod): string {
 }
 
 /**
+ * Nature d'un mouvement, en français.
+ *
+ * `WITHHOLDING_TAX` et `DEPOSIT_RETAINED` (retenue à la source, dépôt de
+ * garantie conservé — lot 10, conformité SYSCOHADA) n'existent pas encore
+ * dans `OwnerMovementType` côté service : ce type est élargi localement pour
+ * ne pas modifier `owner-portal-account-service.ts`, hors périmètre de cette
+ * tâche.
+ */
+type ExtendedMovementType = OwnerMovement['type'] | 'WITHHOLDING_TAX' | 'DEPOSIT_RETAINED';
+
+const MOVEMENT_TYPE_LABELS: Record<ExtendedMovementType, string> = {
+  RENT_COLLECTED: t('Loyer encaissé'),
+  MANAGEMENT_FEE: t('Honoraires de gestion'),
+  MANAGEMENT_FEE_VAT: t('TVA sur honoraires'),
+  EXPENSE: t('Dépense'),
+  PAYOUT: t('Reversement'),
+  VOID: t('Annulation'),
+  WITHHOLDING_TAX: t('Retenue à la source'),
+  DEPOSIT_RETAINED: t('Dépôt de garantie conservé')
+};
+
+function movementTypeLabel(type: OwnerMovement['type']): string {
+  return MOVEMENT_TYPE_LABELS[type as ExtendedMovementType] ?? type;
+}
+
+/**
  * La phrase d'en-tête dépend du sens du solde (§ spec) : jamais un simple
  * nombre sans contexte, toujours l'une de ces trois phrases.
  */
@@ -126,6 +152,7 @@ export default function Account() {
 
   const movementColumns: ColumnsType<OwnerMovement> = [
     { title: t('Date'), key: 'date', render: (_, m) => dateCourte(m.date) },
+    { title: t('Type'), key: 'type', render: (_, m) => movementTypeLabel(m.type) },
     { title: t('Libellé'), dataIndex: 'label', key: 'libelle' },
     { title: t('Bien'), key: 'bien', render: (_, m) => m.propertyTitle ?? m.leaseNumber ?? '—' },
     {
@@ -262,7 +289,10 @@ export default function Account() {
               title={m.label}
               subtitle={m.propertyTitle ? `${dateCourte(m.date)} · ${m.propertyTitle}` : dateCourte(m.date)}
               highlight={<MontantMouvement movement={m} />}
-              fields={[{ label: t('Solde après'), value: <MoneyValue value={m.balanceAfter} /> }]}
+              fields={[
+                { label: t('Type'), value: movementTypeLabel(m.type) },
+                { label: t('Solde après'), value: <MoneyValue value={m.balanceAfter} /> }
+              ]}
             />
           )}
         />

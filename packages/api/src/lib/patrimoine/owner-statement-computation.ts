@@ -21,11 +21,17 @@ import { roundMoney, roundMoneyXof } from '../finance/money';
  * - **Honoraires** : ceux figés à l'encaissement (`ManagementFee`), selon les
  *   conditions du bail, du propriétaire ou de l'agence, TVA comprise. Ce
  *   module les additionne ; il ne les calcule pas.
+ * - **Retenue à la source** (lot 10) : Σ `RentWithholding.amount` du
+ *   propriétaire, sur les biens du relevé, collectée dans le mois — déduite
+ *   du net.
+ * - **Dépôt de garantie conservé** (lot 10) : mouvements `DEPOSIT_RETAINED`
+ *   du compte tiers du propriétaire, dans le mois — ajouté au net.
  *
- * Net à reverser = encaissé − honoraires − TVA − dépenses.
+ * Net à reverser = encaissé − honoraires − TVA − dépenses − retenue à la
+ * source + dépôts de garantie conservés.
  */
 
-export const OWNER_STATEMENT_COMPUTATION_VERSION = 2;
+export const OWNER_STATEMENT_COMPUTATION_VERSION = 3;
 
 export interface StatementInstallmentInput {
   propertyId: string;
@@ -45,6 +51,18 @@ export interface StatementExpenseInput {
   label: string;
   amount: number;
   category: ExpenseCategory;
+}
+
+/** Retenue à la source (lot 10) : une ligne `RentWithholding`, déjà rattachée à un bien du relevé. */
+export interface StatementWithholdingInput {
+  propertyId: string;
+  amount: number;
+}
+
+/** Dépôt de garantie conservé (lot 10) : un mouvement `DEPOSIT_RETAINED`, rattaché à un bien via son bail. */
+export interface StatementDepositRetainedInput {
+  propertyId: string;
+  amount: number;
 }
 
 /** Honoraires figés d'un encaissement — une ligne de `management_fees`. */
@@ -67,6 +85,10 @@ export interface StatementComputationInput {
   expenses: StatementExpenseInput[];
   /** Honoraires des encaissements du mois, sur les biens du relevé. */
   fees: StatementFeeInput[];
+  /** Retenue à la source (lot 10) du propriétaire, sur les biens du relevé, dans le mois. */
+  withholdings?: StatementWithholdingInput[];
+  /** Dépôts de garantie conservés (lot 10) du propriétaire, dans le mois. */
+  depositsRetained?: StatementDepositRetainedInput[];
   /**
    * Indivision (lot 4) : quote-part du propriétaire, en pourcentage, pour
    * chaque bien en indivision. Un bien absent appartient en entier au
@@ -75,7 +97,12 @@ export interface StatementComputationInput {
   shareByProperty?: Map<string, number>;
 }
 
-export type ComputedItemType = 'RENT_COLLECTED' | 'MANAGEMENT_FEE' | 'MANAGEMENT_FEE_VAT' | 'EXPENSE_DEDUCTED';
+export type ComputedItemType =
+  | 'RENT_COLLECTED'
+  | 'MANAGEMENT_FEE'
+  | 'MANAGEMENT_FEE_VAT'
+  | 'EXPENSE_DEDUCTED'
+  | 'OTHER';
 
 export interface ComputedStatementItem {
   propertyId: string;
@@ -92,6 +119,10 @@ export interface StatementComputationResult {
   totalManagementFees: number;
   totalManagementFeesVat: number;
   totalExpenses: number;
+  /** Retenue à la source (lot 10), déduite du net. */
+  totalWithholdingTax: number;
+  /** Dépôts de garantie conservés (lot 10), ajoutés au net. */
+  totalDepositRetained: number;
   netAmount: number;
   /** Paramètres effectivement appliqués, figés avec le relevé. */
   appliedFeeRate: number | null;
@@ -135,6 +166,8 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
   let totalManagementFees = 0;
   let totalManagementFeesVat = 0;
   let totalExpenses = 0;
+  let totalWithholdingTax = 0;
+  let totalDepositRetained = 0;
 
   for (const propertyId of input.propertyIds) {
     const installments = input.installments.filter(inst => inst.propertyId === propertyId);
@@ -212,6 +245,29 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
       totalExpenses += amount;
     }
 
+    // Lot 10 : retenue à la source et dépôts de garantie conservés, agrégés
+    // par bien en amont (queries.ts), avant application de la quote-part.
+    const withholding = part(
+      (input.withholdings ?? []).filter(w => w.propertyId === propertyId).reduce((sum, w) => sum + w.amount, 0)
+    );
+    if (withholding > 0) {
+      items.push({ propertyId, label: `Retenue à la source${suffix}`, type: 'OTHER', amount: withholding });
+      totalWithholdingTax += withholding;
+    }
+
+    const depositRetained = part(
+      (input.depositsRetained ?? []).filter(d => d.propertyId === propertyId).reduce((sum, d) => sum + d.amount, 0)
+    );
+    if (depositRetained > 0) {
+      items.push({
+        propertyId,
+        label: `Dépôt de garantie conservé${suffix}`,
+        type: 'OTHER',
+        amount: depositRetained
+      });
+      totalDepositRetained += depositRetained;
+    }
+
     totalRentDue += rentDue;
     totalRevenue += collected;
     totalArrears += arrears;
@@ -223,6 +279,8 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
   totalRevenue = roundMoney(totalRevenue);
   totalArrears = roundMoney(totalArrears);
   totalExpenses = roundMoney(totalExpenses);
+  totalWithholdingTax = roundMoney(totalWithholdingTax);
+  totalDepositRetained = roundMoney(totalDepositRetained);
 
   return {
     items,
@@ -232,7 +290,11 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
     totalManagementFees,
     totalManagementFeesVat,
     totalExpenses,
-    netAmount: roundMoney(totalRevenue - totalManagementFees - totalManagementFeesVat - totalExpenses),
+    totalWithholdingTax,
+    totalDepositRetained,
+    netAmount: roundMoney(
+      totalRevenue - totalManagementFees - totalManagementFeesVat - totalExpenses - totalWithholdingTax + totalDepositRetained
+    ),
     // Figés avec le relevé quand ils sont uniformes ; `null` s'ils divergent
     // d'un bail à l'autre, ou s'il n'y a aucun honoraire.
     appliedFeeRate: input.fees.every(f => f.mode === ManagementFeeMode.PERCENT)

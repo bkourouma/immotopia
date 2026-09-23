@@ -200,6 +200,42 @@ describe('computeOwnerStatement', () => {
     expect(result.netAmount).toBe(200_000 - 20_000 - 3_600 - 30_000);
   });
 
+  it('déduit la retenue à la source du net et l’ajoute en ligne du relevé', () => {
+    const result = computeOwnerStatement(
+      input({
+        installments: [installment({ allocations: [{ amount: 200_000, paidAt: PAID_SEPT }] })],
+        withholdings: [{ propertyId: 'prop-1', amount: 24_000 }]
+      })
+    );
+
+    expect(result.totalWithholdingTax).toBe(24_000);
+    expect(result.netAmount).toBe(200_000 - 24_000);
+    expect(result.items).toContainEqual({
+      propertyId: 'prop-1',
+      label: 'Retenue à la source',
+      type: 'OTHER',
+      amount: 24_000
+    });
+  });
+
+  it('ajoute au net le dépôt de garantie conservé dans le mois', () => {
+    const result = computeOwnerStatement(
+      input({
+        installments: [installment({ allocations: [{ amount: 200_000, paidAt: PAID_SEPT }] })],
+        depositsRetained: [{ propertyId: 'prop-1', amount: 100_000 }]
+      })
+    );
+
+    expect(result.totalDepositRetained).toBe(100_000);
+    expect(result.netAmount).toBe(200_000 + 100_000);
+    expect(result.items).toContainEqual({
+      propertyId: 'prop-1',
+      label: 'Dépôt de garantie conservé',
+      type: 'OTHER',
+      amount: 100_000
+    });
+  });
+
   it("n'attribue pas à un bien l'argent ni les honoraires d'un autre", () => {
     const result = computeOwnerStatement(
       input({

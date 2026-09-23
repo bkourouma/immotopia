@@ -39,6 +39,13 @@ vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
 
+// `TreasuryAccountSelector` (lot 10) appelle `listTreasuryAccounts` : sans ce
+// mock, Vitest laisserait partir une vraie requête réseau depuis le
+// formulaire d'ouverture.
+vi.mock('../../services/treasury-service', () => ({
+  listTreasuryAccounts: vi.fn().mockResolvedValue([])
+}));
+
 function sessionOuverte(overrides: Partial<CashSession> = {}): CashSession {
   return {
     id: 'sess-1',

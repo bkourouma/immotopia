@@ -17,7 +17,16 @@ import apiClient from '../utils/api-client';
 type ApiResponse<T> = { success: boolean; data: T };
 
 export type OwnerMovementType =
-  'RENT_COLLECTED' | 'MANAGEMENT_FEE' | 'MANAGEMENT_FEE_VAT' | 'EXPENSE' | 'PAYOUT' | 'VOID';
+  | 'RENT_COLLECTED'
+  | 'MANAGEMENT_FEE'
+  | 'MANAGEMENT_FEE_VAT'
+  | 'EXPENSE'
+  | 'PAYOUT'
+  | 'VOID'
+  /** Retenue à la source prélevée sur les loyers, pour le compte du propriétaire (lot 10). */
+  | 'WITHHOLDING_TAX'
+  /** Dépôt de garantie conservé par l'agence, non reversé au propriétaire (lot 10). */
+  | 'DEPOSIT_RETAINED';
 
 export type PayoutMethod = 'CASH' | 'BANK_TRANSFER' | 'CHECK' | 'MOBILE_MONEY' | 'OTHER';
 
@@ -55,6 +64,8 @@ export interface OwnerPayout {
   reference: string | null;
   notes: string | null;
   statementId: string | null;
+  /** Compte de trésorerie débité par le reversement (lot 10, conformité SYSCOHADA). */
+  treasuryAccountId: string | null;
   status: 'VALIDATED' | 'VOIDED';
   voidReason: string | null;
   voidedAt: string | null;
@@ -90,6 +101,8 @@ export interface CreateOwnerPayoutPayload {
   reference?: string;
   notes?: string;
   statementId?: string;
+  /** Compte de trésorerie débité. Absent : compte par défaut du mode de paiement (lot 10). */
+  treasuryAccountId?: string | null;
 }
 
 /** Comptes courants des propriétaires d'une agence, pour la liste. */

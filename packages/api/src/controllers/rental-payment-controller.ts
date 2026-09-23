@@ -29,7 +29,9 @@ const createPaymentSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date du règlement attendue au format AAAA-MM-JJ')
     .optional(),
-  idempotencyKey: z.string().optional() // Auto-generated if not provided
+  idempotencyKey: z.string().optional(), // Auto-generated if not provided
+  /** Lot 10 : compte de trésorerie réellement crédité. Absent : celui par défaut du moyen de paiement. */
+  treasuryAccountId: z.string().uuid().optional().nullable()
 });
 
 const allocatePaymentSchema = z.object({
