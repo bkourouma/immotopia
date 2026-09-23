@@ -258,6 +258,11 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
           { key: 'finance-clients', label: t('Balance clients'), href: '/tenant/:tenantId/finance/balance-clients' },
           { key: 'finance-clients-agee', label: t('Balance âgée'), href: '/tenant/:tenantId/finance/balance-agee' },
           {
+            key: 'finance-agent-commissions',
+            label: t('Commissions des agents'),
+            href: '/tenant/:tenantId/finance/commissions'
+          },
+          {
             key: 'finance-facturation',
             label: t('Facturation du mois'),
             href: '/tenant/:tenantId/finance/facturation'

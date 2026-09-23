@@ -47,6 +47,7 @@ import ownerPortalRoutes from './routes/owner-portal-routes';
 import patrimoineRoutes from './routes/patrimoine-routes';
 import ownerStatementsRoutes from './routes/owner-statements-routes';
 import agencySettingsRoutes from './routes/agency-settings-routes';
+import managementFeeRoutes from './routes/management-fee-routes';
 import { startPenaltyCalculationJob } from './jobs/penalty-calculation-job';
 import { startLandLeaseAccrualJob } from './jobs/land-lease-accrual-job';
 import { startReminderSchedulerJob } from './jobs/reminder-scheduler.job';
@@ -225,6 +226,7 @@ app.use('/api', syndicRoutes); // Syndic (copropriétés) routes (tenant-scoped)
 app.use('/api', patrimoineRoutes); // Patrimoine routes (tenant-scoped)
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)
 app.use('/api', agencySettingsRoutes); // Parametres financiers de l'agence (tenant-scoped)
+app.use('/api', managementFeeRoutes); // Honoraires de gestion : conditions, gestionnaires, commissions
 
 // 404 handler for unmatched routes (before the error handler, which only runs
 // for actual errors).

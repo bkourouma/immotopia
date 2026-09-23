@@ -435,37 +435,39 @@ model User {
   newsletterCampaignsCreated  NewsletterCampaign[]
   savedContactSearches        SavedContactSearch[]
   rentBillingRuns             RentBillingRun[]
-  supplierInvoicesCreated     SupplierInvoice[]    @relation("SupplierInvoiceCreatedBy")
-  supplierInvoicesValidated   SupplierInvoice[]    @relation("SupplierInvoiceValidatedBy")
-  supplierPaymentsCreated     SupplierPayment[]    @relation("SupplierPaymentCreatedBy")
-  supplierPaymentsValidated   SupplierPayment[]    @relation("SupplierPaymentValidatedBy")
-  cashVouchersCreated         CashVoucher[]        @relation("CashVoucherCreatedBy")
-  cashVouchersValidated       CashVoucher[]        @relation("CashVoucherValidatedBy")
-  managedConstructionSites    ConstructionSite[]   @relation("ConstructionSiteManager")
-  siteBudgetsValidated        SiteBudget[]         @relation("SiteBudgetValidatedBy")
-  budgetAmendmentsCreated     BudgetAmendment[]    @relation("BudgetAmendmentCreatedBy")
-  budgetAmendmentsValidated   BudgetAmendment[]    @relation("BudgetAmendmentValidatedBy")
-  purchaseOrdersCreated       PurchaseOrder[]      @relation("PurchaseOrderCreatedBy")
-  purchaseOrdersIssued        PurchaseOrder[]      @relation("PurchaseOrderIssuedBy")
-  siteProgressEntriesLogged   SiteProgressEntry[]  @relation("SiteProgressEntryCreatedBy")
-  siteBudgetAlertsSeen        SiteBudgetAlert[]    @relation("SiteBudgetAlertAcknowledgedBy")
-  landLeasePaymentsCreated    LandLeasePayment[]   @relation("LandLeasePaymentCreatedBy")
-  landLeasePaymentsValidated  LandLeasePayment[]   @relation("LandLeasePaymentValidatedBy")
-  salaryNotesCreated          SalaryNote[]         @relation("SalaryNoteCreatedBy")
-  salaryNotesValidated        SalaryNote[]         @relation("SalaryNoteValidatedBy")
-  salaryPaymentsCreated       SalaryPayment[]      @relation("SalaryPaymentCreatedBy")
-  salaryPaymentsValidated     SalaryPayment[]      @relation("SalaryPaymentValidatedBy")
-  progressStatementsCreated   ProgressStatement[]  @relation("ProgressStatementCreatedBy")
-  progressStatementsValidated ProgressStatement[]  @relation("ProgressStatementValidatedBy")
-  contractorPaymentsCreated   ContractorPayment[]  @relation("ContractorPaymentCreatedBy")
-  contractorPaymentsValidated ContractorPayment[]  @relation("ContractorPaymentValidatedBy")
-  retentionsCreated           RetentionGuarantee[] @relation("RetentionCreatedBy")
-  retentionsReleased          RetentionGuarantee[] @relation("RetentionReleasedBy")
-  sitesClosed                 ConstructionSite[]   @relation("ConstructionSiteClosedBy")
-  stockMovementsCreated       StockMovement[]      @relation("StockMovementCreatedBy")
-  stockCountsCreated          StockCount[]         @relation("StockCountCreatedBy")
-  stockCountsValidated        StockCount[]         @relation("StockCountValidatedBy")
+  supplierInvoicesCreated     SupplierInvoice[]      @relation("SupplierInvoiceCreatedBy")
+  supplierInvoicesValidated   SupplierInvoice[]      @relation("SupplierInvoiceValidatedBy")
+  supplierPaymentsCreated     SupplierPayment[]      @relation("SupplierPaymentCreatedBy")
+  supplierPaymentsValidated   SupplierPayment[]      @relation("SupplierPaymentValidatedBy")
+  cashVouchersCreated         CashVoucher[]          @relation("CashVoucherCreatedBy")
+  cashVouchersValidated       CashVoucher[]          @relation("CashVoucherValidatedBy")
+  managedConstructionSites    ConstructionSite[]     @relation("ConstructionSiteManager")
+  siteBudgetsValidated        SiteBudget[]           @relation("SiteBudgetValidatedBy")
+  budgetAmendmentsCreated     BudgetAmendment[]      @relation("BudgetAmendmentCreatedBy")
+  budgetAmendmentsValidated   BudgetAmendment[]      @relation("BudgetAmendmentValidatedBy")
+  purchaseOrdersCreated       PurchaseOrder[]        @relation("PurchaseOrderCreatedBy")
+  purchaseOrdersIssued        PurchaseOrder[]        @relation("PurchaseOrderIssuedBy")
+  siteProgressEntriesLogged   SiteProgressEntry[]    @relation("SiteProgressEntryCreatedBy")
+  siteBudgetAlertsSeen        SiteBudgetAlert[]      @relation("SiteBudgetAlertAcknowledgedBy")
+  landLeasePaymentsCreated    LandLeasePayment[]     @relation("LandLeasePaymentCreatedBy")
+  landLeasePaymentsValidated  LandLeasePayment[]     @relation("LandLeasePaymentValidatedBy")
+  salaryNotesCreated          SalaryNote[]           @relation("SalaryNoteCreatedBy")
+  salaryNotesValidated        SalaryNote[]           @relation("SalaryNoteValidatedBy")
+  salaryPaymentsCreated       SalaryPayment[]        @relation("SalaryPaymentCreatedBy")
+  salaryPaymentsValidated     SalaryPayment[]        @relation("SalaryPaymentValidatedBy")
+  progressStatementsCreated   ProgressStatement[]    @relation("ProgressStatementCreatedBy")
+  progressStatementsValidated ProgressStatement[]    @relation("ProgressStatementValidatedBy")
+  contractorPaymentsCreated   ContractorPayment[]    @relation("ContractorPaymentCreatedBy")
+  contractorPaymentsValidated ContractorPayment[]    @relation("ContractorPaymentValidatedBy")
+  retentionsCreated           RetentionGuarantee[]   @relation("RetentionCreatedBy")
+  retentionsReleased          RetentionGuarantee[]   @relation("RetentionReleasedBy")
+  sitesClosed                 ConstructionSite[]     @relation("ConstructionSiteClosedBy")
+  stockMovementsCreated       StockMovement[]        @relation("StockMovementCreatedBy")
+  stockCountsCreated          StockCount[]           @relation("StockCountCreatedBy")
+  stockCountsValidated        StockCount[]           @relation("StockCountValidatedBy")
   voidedDocuments             VoidDocument[]
+  leasesManaged               LeaseManagementTerms[] @relation("LeaseManagementAgent")
+  agentCommissionRates        AgentCommissionRate[]
 
   @@index([email])
   @@map("users")
@@ -602,6 +604,10 @@ model Tenant {
   siteLots                 SiteLot[]
   stockSettings            StockSettings?
   financeSettings          AgencyFinanceSettings?
+  ownerManagementTerms     OwnerManagementTerms[]
+  leaseManagementTerms     LeaseManagementTerms[]
+  agentCommissionRates     AgentCommissionRate[]
+  managementFees           ManagementFee[]
   stockItems               StockItem[]
   stockLocations           StockLocation[]
   stockBalances            StockBalance[]
@@ -646,6 +652,7 @@ model TenantClient {
   communicationsAsRecipient Communication[]           @relation("CommRecipientClient")
   communicationPreferences  CommunicationPreference[]
   thirdPartyAccounts        ThirdPartyAccount[]
+  managementTerms           OwnerManagementTerms?
 
   @@unique([userId, tenantId])
   @@index([userId])
@@ -1817,6 +1824,7 @@ model RentalLease {
   paymentDeclarations RentalPaymentDeclaration[] @relation("RentalPaymentDeclarationLease")
   maintenanceTickets  MaintenanceTicket[]
   thirdPartyMovements ThirdPartyMovement[]
+  managementTerms     LeaseManagementTerms?
 
   @@unique([tenant_id, lease_number])
   @@index([tenant_id])
@@ -1968,9 +1976,10 @@ model RentalPaymentAllocation {
   currency       String   @default("FCFA")
   created_at     DateTime @default(now()) @map("created_at")
 
-  tenant      Tenant            @relation(fields: [tenant_id], references: [id])
-  payment     RentalPayment     @relation(fields: [payment_id], references: [id], onDelete: Cascade)
-  installment RentalInstallment @relation(fields: [installment_id], references: [id], onDelete: Cascade)
+  tenant        Tenant            @relation(fields: [tenant_id], references: [id])
+  payment       RentalPayment     @relation(fields: [payment_id], references: [id], onDelete: Cascade)
+  installment   RentalInstallment @relation(fields: [installment_id], references: [id], onDelete: Cascade)
+  managementFee ManagementFee?
 
   @@unique([payment_id, installment_id])
   @@index([tenant_id])
@@ -3844,6 +3853,130 @@ enum ManagementFeeBase {
   ALL_COLLECTED
 }
 
+/// PERCENT : un taux sur l'assiette. FIXED : un forfait par echeance, au
+/// prorata de ce qui en est encaisse.
+enum ManagementFeeMode {
+  PERCENT
+  FIXED
+}
+
+/// D'ou vient le taux applique a un encaissement : le bail l'emporte sur le
+/// proprietaire, qui l'emporte sur l'agence.
+enum ManagementFeeSource {
+  LEASE
+  OWNER
+  AGENCY
+}
+
+/// Conditions d'honoraires negociees avec un proprietaire. Remplacent celles
+/// de l'agence pour tous ses baux, sauf ceux qui ont les leurs.
+model OwnerManagementTerms {
+  id                       String            @id @default(uuid()) @db.Uuid
+  tenantId                 String            @map("tenant_id")
+  ownerClientId            String            @unique @map("owner_client_id")
+  managementFeeMode        ManagementFeeMode @default(PERCENT) @map("management_fee_mode")
+  managementFeeRate        Decimal?          @map("management_fee_rate") @db.Decimal(5, 2)
+  managementFeeFixedAmount Decimal?          @map("management_fee_fixed_amount") @db.Decimal(14, 2)
+  managementFeeBase        ManagementFeeBase @default(RENT_ONLY) @map("management_fee_base")
+  updatedByUserId          String?           @map("updated_by_user_id")
+  createdAt                DateTime          @default(now()) @map("created_at")
+  updatedAt                DateTime          @updatedAt @map("updated_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownerClient TenantClient @relation(fields: [ownerClientId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("owner_management_terms")
+}
+
+/// Conditions propres a un bail, et son gestionnaire.
+///
+/// `managementFeeMode` nul : le bail n'a pas de conditions propres et suit
+/// son proprietaire, puis l'agence. Le gestionnaire, lui, peut exister sans
+/// conditions propres.
+model LeaseManagementTerms {
+  id                       String             @id @default(uuid()) @db.Uuid
+  tenantId                 String             @map("tenant_id")
+  leaseId                  String             @unique @map("lease_id") @db.Uuid
+  managementFeeMode        ManagementFeeMode? @map("management_fee_mode")
+  managementFeeRate        Decimal?           @map("management_fee_rate") @db.Decimal(5, 2)
+  managementFeeFixedAmount Decimal?           @map("management_fee_fixed_amount") @db.Decimal(14, 2)
+  managementFeeBase        ManagementFeeBase? @map("management_fee_base")
+  agentUserId              String?            @map("agent_user_id")
+  updatedByUserId          String?            @map("updated_by_user_id")
+  createdAt                DateTime           @default(now()) @map("created_at")
+  updatedAt                DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lease  RentalLease @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  agent  User?       @relation("LeaseManagementAgent", fields: [agentUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([agentUserId])
+  @@map("lease_management_terms")
+}
+
+/// Part des honoraires HT reversee a un collaborateur sur les baux dont il
+/// est le gestionnaire.
+model AgentCommissionRate {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id")
+  userId       String   @map("user_id")
+  sharePercent Decimal  @map("share_percent") @db.Decimal(5, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@map("agent_commission_rates")
+}
+
+/// Honoraires de gestion d'un encaissement : un par affectation de reglement.
+///
+/// FIGES a leur creation : taux, TVA, gestionnaire et part de l'agent sont
+/// ceux en vigueur ce jour-la. Changer un taux ne reecrit pas des honoraires
+/// deja comptes, ni la commission due a un agent.
+///
+/// Crees a la demande (`lib/rental-fees/materialize.ts`) pour toute
+/// affectation qui n'en a pas encore, ce qui couvre toutes les voies
+/// d'affectation (saisie, campagne de facturation, declaration validee) sans
+/// en modifier aucune. Disparaissent avec leur affectation : un reglement
+/// annule ne laisse pas d'honoraires derriere lui.
+model ManagementFee {
+  id                String              @id @default(uuid()) @db.Uuid
+  tenantId          String              @map("tenant_id")
+  allocationId      String              @unique @map("allocation_id") @db.Uuid
+  paymentId         String              @map("payment_id") @db.Uuid
+  leaseId           String              @map("lease_id") @db.Uuid
+  propertyId        String              @map("property_id")
+  ownerClientId     String?             @map("owner_client_id")
+  collectedAt       DateTime            @map("collected_at")
+  collectedAmount   Decimal             @map("collected_amount") @db.Decimal(14, 2)
+  baseAmount        Decimal             @map("base_amount") @db.Decimal(14, 2)
+  source            ManagementFeeSource
+  mode              ManagementFeeMode
+  rate              Decimal?            @db.Decimal(5, 2)
+  fixedAmount       Decimal?            @map("fixed_amount") @db.Decimal(14, 2)
+  feeBase           ManagementFeeBase?  @map("fee_base")
+  feeAmount         Decimal             @map("fee_amount") @db.Decimal(14, 2)
+  vatRate           Decimal?            @map("vat_rate") @db.Decimal(5, 2)
+  vatAmount         Decimal             @default(0) @map("vat_amount") @db.Decimal(14, 2)
+  agentUserId       String?             @map("agent_user_id")
+  agentSharePercent Decimal?            @map("agent_share_percent") @db.Decimal(5, 2)
+  agentShareAmount  Decimal             @default(0) @map("agent_share_amount") @db.Decimal(14, 2)
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  tenant     Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  allocation RentalPaymentAllocation @relation(fields: [allocationId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, collectedAt])
+  @@index([tenantId, propertyId, collectedAt])
+  @@index([agentUserId])
+  @@map("management_fees")
+}
+
 enum WorkProgramStatus {
   PLANNED
   IN_PROGRESS
@@ -3954,6 +4087,9 @@ model AgencyFinanceSettings {
   /// En pourcentage du montant de l'assiette : 10 pour 10 %.
   managementFeeRate          Decimal?          @map("management_fee_rate") @db.Decimal(5, 2)
   managementFeeBase          ManagementFeeBase @default(RENT_ONLY) @map("management_fee_base")
+  managementFeeMode          ManagementFeeMode @default(PERCENT) @map("management_fee_mode")
+  /// Forfait par echeance mensuelle, en mode FIXED.
+  managementFeeFixedAmount   Decimal?          @map("management_fee_fixed_amount") @db.Decimal(14, 2)
   /// Comptes de la gestion locative. Lus par les ecritures a partir du lot 3
   /// (compte proprietaire) ; poses ici pour que le comptable les fixe avant.
   ownerFundsAccountNumber    String?           @map("owner_funds_account_number")

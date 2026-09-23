@@ -4,7 +4,7 @@ import { prisma } from '../../utils/database';
 import type { YieldInput } from './yield';
 import { syncWorkProgramCostTx } from '../finance/cost-allocation';
 import { logger } from '../../utils/logger';
-import { getAgencyFinanceSettings } from '../settings/finance-settings';
+import { materializeManagementFees } from '../rental-fees/materialize';
 import { computeOwnerStatement, OWNER_STATEMENT_COMPUTATION_VERSION } from './owner-statement-computation';
 
 // `services/audit-service.ts` n'est PAS importe ici bien que la specification
@@ -852,7 +852,11 @@ export async function generateOwnerStatement(
     ]
   };
 
-  const [installments, expenses, settings] = await Promise.all([
+  // Les honoraires des encaissements du mois, figés s'ils ne l'étaient pas
+  // encore : le relevé et l'état des commissions lisent les mêmes chiffres.
+  await materializeManagementFees(tenantId, { from: periodStart, to: periodEnd, propertyIds });
+
+  const [installments, expenses, fees] = await Promise.all([
     leaseIds.length === 0
       ? Promise.resolve([])
       : prisma.rentalInstallment.findMany({
@@ -887,7 +891,18 @@ export async function generateOwnerStatement(
       },
       select: { propertyId: true, label: true, amount: true, category: true }
     }),
-    getAgencyFinanceSettings(tenantId)
+    prisma.managementFee.findMany({
+      where: { tenantId, propertyId: { in: propertyIds }, collectedAt: { gte: periodStart, lte: periodEnd } },
+      select: {
+        propertyId: true,
+        feeAmount: true,
+        vatAmount: true,
+        mode: true,
+        rate: true,
+        feeBase: true,
+        vatRate: true
+      }
+    })
   ]);
 
   const computed = computeOwnerStatement({
@@ -916,12 +931,15 @@ export async function generateOwnerStatement(
       amount: Number(expense.amount),
       category: expense.category
     })),
-    settings: {
-      managementFeeRate: settings.managementFeeRate,
-      managementFeeBase: settings.managementFeeBase,
-      vatRegistered: settings.vatRegistered,
-      vatRate: settings.vatRate
-    }
+    fees: fees.map(fee => ({
+      propertyId: fee.propertyId,
+      feeAmount: Number(fee.feeAmount),
+      vatAmount: Number(fee.vatAmount),
+      mode: fee.mode,
+      rate: fee.rate === null ? null : Number(fee.rate),
+      feeBase: fee.feeBase,
+      vatRate: fee.vatRate === null ? null : Number(fee.vatRate)
+    }))
   });
 
   const decimal = (value: number) => new Prisma.Decimal(value);

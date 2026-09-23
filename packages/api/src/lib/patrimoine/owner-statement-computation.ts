@@ -1,5 +1,5 @@
-import { ExpenseCategory, ManagementFeeBase } from '@prisma/client';
-import { roundMoney, roundMoneyXof } from '../finance/money';
+import { ExpenseCategory, ManagementFeeBase, ManagementFeeMode } from '@prisma/client';
+import { roundMoney } from '../finance/money';
 
 /**
  * Calcul d'un relevé de gérance, sans accès à la base.
@@ -18,8 +18,9 @@ import { roundMoney, roundMoneyXof } from '../finance/money';
  * - **Impayé** : pour chaque échéance exigible au plus tard le dernier jour du
  *   mois, ce qui restait dû CE JOUR-LÀ. Un paiement saisi plus tard ne réécrit
  *   pas l'impayé d'un relevé passé.
- * - **Honoraires** : taux de l'agence appliqué à l'assiette encaissée, puis TVA
- *   si l'agence y est assujettie.
+ * - **Honoraires** : ceux figés à l'encaissement (`ManagementFee`), selon les
+ *   conditions du bail, du propriétaire ou de l'agence, TVA comprise. Ce
+ *   module les additionne ; il ne les calcule pas.
  *
  * Net à reverser = encaissé − honoraires − TVA − dépenses.
  */
@@ -46,13 +47,16 @@ export interface StatementExpenseInput {
   category: ExpenseCategory;
 }
 
-export interface StatementFeeSettings {
-  /** En pourcentage ; `null` : non paramétré. */
-  managementFeeRate: number | null;
-  managementFeeBase: ManagementFeeBase;
-  vatRegistered: boolean;
-  /** En pourcentage. */
-  vatRate: number;
+/** Honoraires figés d'un encaissement — une ligne de `management_fees`. */
+export interface StatementFeeInput {
+  propertyId: string;
+  feeAmount: number;
+  vatAmount: number;
+  mode: ManagementFeeMode;
+  /** En pourcentage, en mode PERCENT. */
+  rate: number | null;
+  feeBase: ManagementFeeBase | null;
+  vatRate: number | null;
 }
 
 export interface StatementComputationInput {
@@ -61,7 +65,8 @@ export interface StatementComputationInput {
   propertyIds: string[];
   installments: StatementInstallmentInput[];
   expenses: StatementExpenseInput[];
-  settings: StatementFeeSettings;
+  /** Honoraires des encaissements du mois, sur les biens du relevé. */
+  fees: StatementFeeInput[];
 }
 
 export type ComputedItemType = 'RENT_COLLECTED' | 'MANAGEMENT_FEE' | 'MANAGEMENT_FEE_VAT' | 'EXPENSE_DEDUCTED';
@@ -102,11 +107,20 @@ function formatRate(rate: number): string {
   return `${String(rate).replace('.', ',')} %`;
 }
 
+/** La valeur commune à toutes les lignes, ou `null` si elles divergent. */
+function uniform<T>(values: T[]): T | null {
+  if (values.length === 0) return null;
+  return values.every(value => value === values[0]) ? values[0] : null;
+}
+
+function feeLabel(fees: StatementFeeInput[]): string {
+  if (fees.every(fee => fee.mode === ManagementFeeMode.FIXED)) return 'Honoraires de gestion (forfait)';
+  const rate = fees.every(fee => fee.mode === ManagementFeeMode.PERCENT) ? uniform(fees.map(fee => fee.rate)) : null;
+  return rate === null ? 'Honoraires de gestion' : `Honoraires de gestion (${formatRate(rate)})`;
+}
+
 export function computeOwnerStatement(input: StatementComputationInput): StatementComputationResult {
-  const { periodStart, periodEnd, settings } = input;
-  const feeRate = settings.managementFeeRate;
-  const feesApply = feeRate !== null;
-  const vatApplies = feesApply && settings.vatRegistered;
+  const { periodStart, periodEnd } = input;
 
   const items: ComputedStatementItem[] = [];
   let totalRentDue = 0;
@@ -121,7 +135,6 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
 
     let rentDue = 0;
     let collected = 0;
-    let feeBase = 0;
     let arrears = 0;
 
     for (const inst of installments) {
@@ -138,14 +151,6 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
         }
         if (within(allocation.paidAt, periodStart, periodEnd)) {
           collected += allocation.amount;
-          // Assiette « loyer seul » : la part loyer de l'échéance soldée, au
-          // prorata. Un règlement de 50 000 sur une échéance de 90 000 loyer +
-          // 10 000 charges porte 45 000 d'assiette.
-          if (settings.managementFeeBase === ManagementFeeBase.ALL_COLLECTED) {
-            feeBase += allocation.amount;
-          } else if (total > 0) {
-            feeBase += (allocation.amount * inst.amountRent) / total;
-          }
         }
       }
 
@@ -155,8 +160,10 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
     }
 
     collected = roundMoney(collected);
-    const fee = feesApply ? roundMoneyXof((feeBase * (feeRate as number)) / 100) : 0;
-    const vat = vatApplies ? roundMoneyXof((fee * settings.vatRate) / 100) : 0;
+    const propertyFees = input.fees.filter(f => f.propertyId === propertyId);
+    const fee = roundMoney(propertyFees.reduce((sum, f) => sum + f.feeAmount, 0));
+    const vat = roundMoney(propertyFees.reduce((sum, f) => sum + f.vatAmount, 0));
+    const vatRate = uniform(propertyFees.filter(f => f.vatAmount > 0).map(f => f.vatRate));
 
     if (collected > 0) {
       items.push({ propertyId, label: 'Loyers encaissés', type: 'RENT_COLLECTED', amount: collected });
@@ -164,7 +171,7 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
     if (fee > 0) {
       items.push({
         propertyId,
-        label: `Honoraires de gestion (${formatRate(feeRate as number)})`,
+        label: feeLabel(propertyFees),
         type: 'MANAGEMENT_FEE',
         amount: fee
       });
@@ -172,7 +179,7 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
     if (vat > 0) {
       items.push({
         propertyId,
-        label: `TVA sur honoraires (${formatRate(settings.vatRate)})`,
+        label: vatRate === null ? 'TVA sur honoraires' : `TVA sur honoraires (${formatRate(vatRate)})`,
         type: 'MANAGEMENT_FEE_VAT',
         amount: vat
       });
@@ -181,9 +188,9 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
     for (const expense of input.expenses) {
       if (expense.propertyId !== propertyId) continue;
       // Une dépense saisie à la main en « frais de gestion » ferait double
-      // emploi avec les honoraires calculés : elle n'est reprise que tant que
-      // l'agence n'a pas paramétré son taux.
-      if (feesApply && expense.category === ExpenseCategory.MANAGEMENT_FEES) continue;
+      // emploi avec les honoraires calculés : elle n'est reprise que si le bien
+      // n'en porte aucun ce mois-ci.
+      if (fee > 0 && expense.category === ExpenseCategory.MANAGEMENT_FEES) continue;
       const amount = roundMoney(expense.amount);
       items.push({ propertyId, label: expense.label, type: 'EXPENSE_DEDUCTED', amount });
       totalExpenses += amount;
@@ -210,8 +217,12 @@ export function computeOwnerStatement(input: StatementComputationInput): Stateme
     totalManagementFeesVat,
     totalExpenses,
     netAmount: roundMoney(totalRevenue - totalManagementFees - totalManagementFeesVat - totalExpenses),
-    appliedFeeRate: feesApply ? (feeRate as number) : null,
-    appliedFeeBase: feesApply ? settings.managementFeeBase : null,
-    appliedVatRate: vatApplies ? settings.vatRate : null
+    // Figés avec le relevé quand ils sont uniformes ; `null` s'ils divergent
+    // d'un bail à l'autre, ou s'il n'y a aucun honoraire.
+    appliedFeeRate: input.fees.every(f => f.mode === ManagementFeeMode.PERCENT)
+      ? uniform(input.fees.map(f => f.rate))
+      : null,
+    appliedFeeBase: uniform(input.fees.map(f => f.feeBase)),
+    appliedVatRate: uniform(input.fees.filter(f => f.vatAmount > 0).map(f => f.vatRate))
   };
 }

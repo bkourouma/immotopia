@@ -1,21 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  Alert,
-  App,
-  Button,
-  Card,
-  Col,
-  Form,
-  Input,
-  InputNumber,
-  Radio,
-  Row,
-  Space,
-  Spin,
-  Switch,
-  Typography
-} from 'antd';
+import { Alert, App, Button, Card, Col, Form, Input, InputNumber, Row, Space, Spin, Switch, Typography } from 'antd';
 import { SaveOutlined } from '@ant-design/icons';
 import {
   AgencyFinanceSettings as Settings,
@@ -25,6 +10,9 @@ import {
 } from '../../services/agency-finance-settings-service';
 import { formatMoney } from '../../components/primitives';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
+import { FeeTermsFields } from '../../components/settings/FeeTermsFields';
+import { OwnerFeeTermsCard } from '../../components/settings/OwnerFeeTermsCard';
+import { AgentCommissionCard } from '../../components/settings/AgentCommissionCard';
 import { t } from '../../i18n/t';
 
 const { Title, Text, Paragraph } = Typography;
@@ -59,7 +47,9 @@ export const AgencyFinanceSettings: React.FC = () => {
 
   const vatRegistered = Form.useWatch('vatRegistered', form);
   const vatRate = Form.useWatch('vatRate', form);
+  const feeMode = Form.useWatch('managementFeeMode', form);
   const feeRate = Form.useWatch('managementFeeRate', form);
+  const feeFixedAmount = Form.useWatch('managementFeeFixedAmount', form);
 
   const load = async () => {
     if (!tenantId) return;
@@ -89,6 +79,7 @@ export const AgencyFinanceSettings: React.FC = () => {
       const saved = await updateAgencyFinanceSettings(tenantId, {
         ...values,
         managementFeeRate: values.managementFeeRate ?? null,
+        managementFeeFixedAmount: values.managementFeeFixedAmount ?? null,
         vatRate: values.vatRate ?? 0
       });
       setSettings(saved);
@@ -125,8 +116,18 @@ export const AgencyFinanceSettings: React.FC = () => {
     );
   }
 
-  // Exemple chiffré : ce que le propriétaire toucherait sur un loyer encaissé.
-  const exampleFee = typeof feeRate === 'number' ? Math.round((EXAMPLE_RENT * feeRate) / 100) : null;
+  // Exemple chiffré : ce que le propriétaire toucherait sur une échéance de
+  // loyer entièrement encaissée. En mode forfait, les honoraires valent le
+  // forfait dans ce cas — ils ne seraient réduits qu'au prorata d'une
+  // échéance partiellement payée, ce que cet exemple ne représente pas.
+  const isFixedFeeMode = feeMode === 'FIXED';
+  const exampleFee = isFixedFeeMode
+    ? typeof feeFixedAmount === 'number' && feeFixedAmount > 0
+      ? feeFixedAmount
+      : null
+    : typeof feeRate === 'number'
+      ? Math.round((EXAMPLE_RENT * feeRate) / 100)
+      : null;
   const exampleVat =
     exampleFee !== null && vatRegistered && typeof vatRate === 'number' ? Math.round((exampleFee * vatRate) / 100) : 0;
 
@@ -183,34 +184,20 @@ export const AgencyFinanceSettings: React.FC = () => {
         </Card>
 
         <Card title={t('Honoraires de gestion')} style={{ marginBottom: 16 }}>
-          <Row gutter={16}>
-            <Col xs={24} md={12}>
-              <Form.Item
-                label={t("Taux d'honoraires (%)")}
-                name="managementFeeRate"
-                extra={t('Laisser vide tant que le taux n’est pas décidé.')}
-              >
-                <InputNumber min={0} max={100} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label={t('Calculés sur')} name="managementFeeBase">
-                <Radio.Group>
-                  <Space direction="vertical">
-                    <Radio value="RENT_ONLY">{t('Le loyer seul, hors charges et pénalités')}</Radio>
-                    <Radio value="ALL_COLLECTED">{t('Tout ce qui est encaissé')}</Radio>
-                  </Space>
-                </Radio.Group>
-              </Form.Item>
-            </Col>
-          </Row>
+          <FeeTermsFields />
           {exampleFee !== null ? (
             <Alert
               type="info"
               showIcon
-              message={t('Exemple sur un loyer encaissé de {{amount}}', {
-                amount: formatMoney(EXAMPLE_RENT)
-              })}
+              message={
+                isFixedFeeMode
+                  ? t('Exemple sur une échéance de loyer de {{amount}}, entièrement payée', {
+                      amount: formatMoney(EXAMPLE_RENT)
+                    })
+                  : t('Exemple sur un loyer encaissé de {{amount}}', {
+                      amount: formatMoney(EXAMPLE_RENT)
+                    })
+              }
               description={
                 <Paragraph style={{ margin: 0 }}>
                   {t('Honoraires : {{fee}}', { fee: formatMoney(exampleFee) })}
@@ -254,6 +241,11 @@ export const AgencyFinanceSettings: React.FC = () => {
           {t('Enregistrer')}
         </Button>
       </Form>
+
+      {/* Cartes indépendantes du formulaire ci-dessus : chacune gère son propre
+          formulaire de modale, ce qu'un <form> HTML imbriqué n'autoriserait pas. */}
+      {tenantId ? <OwnerFeeTermsCard tenantId={tenantId} /> : null}
+      {tenantId ? <AgentCommissionCard tenantId={tenantId} /> : null}
     </Space>
   );
 };

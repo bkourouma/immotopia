@@ -18,6 +18,7 @@ import { Payments } from './Payments';
 import { Penalties } from './Penalties';
 import { Deposits } from './Deposits';
 import { Documents } from './Documents';
+import { LeaseManagementTermsCard } from '../../components/rental/LeaseManagementTermsCard';
 import { t as translate } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -345,6 +346,12 @@ export const LeaseDetailPage: React.FC = () => {
                   </Descriptions.Item>
                 </Descriptions>
               </Card>
+            </Col>
+          )}
+
+          {!isSaleOnly && tenantId && leaseId && (
+            <Col xs={24} md={12}>
+              <LeaseManagementTermsCard tenantId={tenantId} leaseId={leaseId} />
             </Col>
           )}
 

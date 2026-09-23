@@ -1,21 +1,24 @@
-import { ExpenseCategory, ManagementFeeBase } from '@prisma/client';
+import { ExpenseCategory, ManagementFeeBase, ManagementFeeMode } from '@prisma/client';
 import {
   computeOwnerStatement,
   StatementComputationInput,
+  StatementFeeInput,
   StatementInstallmentInput
 } from '../../src/lib/patrimoine/owner-statement-computation';
 
 /**
- * Relevé de gérance — lot 1 de la gestion locative.
+ * Relevé de gérance.
  *
  * L'ancien calcul prenait le loyer du CONTRAT de chaque bail actif pour un
  * loyer encaissé et ne déduisait aucun honoraire. Ces tests figent la règle qui
- * le remplace : on reverse ce qui a été réellement payé, moins les honoraires,
- * leur TVA et les dépenses.
+ * le remplace : on reverse ce qui a été réellement payé, moins les honoraires
+ * figés à l'encaissement, leur TVA et les dépenses. Le calcul des honoraires
+ * eux-mêmes est couvert par `rental-fees.fee-terms.test.ts`.
  */
 
 const SEPT_START = new Date(Date.UTC(2026, 8, 1));
 const SEPT_END = new Date(Date.UTC(2026, 8, 30, 23, 59, 59, 999));
+const PAID_SEPT = new Date(Date.UTC(2026, 8, 6));
 
 function installment(overrides: Partial<StatementInstallmentInput> = {}): StatementInstallmentInput {
   return {
@@ -31,6 +34,19 @@ function installment(overrides: Partial<StatementInstallmentInput> = {}): Statem
   };
 }
 
+function fee(overrides: Partial<StatementFeeInput> = {}): StatementFeeInput {
+  return {
+    propertyId: 'prop-1',
+    feeAmount: 20_000,
+    vatAmount: 3_600,
+    mode: ManagementFeeMode.PERCENT,
+    rate: 10,
+    feeBase: ManagementFeeBase.RENT_ONLY,
+    vatRate: 18,
+    ...overrides
+  };
+}
+
 function input(overrides: Partial<StatementComputationInput> = {}): StatementComputationInput {
   return {
     periodStart: SEPT_START,
@@ -38,12 +54,7 @@ function input(overrides: Partial<StatementComputationInput> = {}): StatementCom
     propertyIds: ['prop-1'],
     installments: [],
     expenses: [],
-    settings: {
-      managementFeeRate: 10,
-      managementFeeBase: ManagementFeeBase.RENT_ONLY,
-      vatRegistered: true,
-      vatRate: 18
-    },
+    fees: [],
     ...overrides
   };
 }
@@ -60,10 +71,11 @@ describe('computeOwnerStatement', () => {
     expect(result.items).toEqual([]);
   });
 
-  it('déduit honoraires et TVA du loyer encaissé — le cas de la démonstration', () => {
+  it('déduit les honoraires figés et leur TVA du loyer encaissé', () => {
     const result = computeOwnerStatement(
       input({
-        installments: [installment({ allocations: [{ amount: 200_000, paidAt: new Date(Date.UTC(2026, 8, 6)) }] })]
+        installments: [installment({ allocations: [{ amount: 200_000, paidAt: PAID_SEPT }] })],
+        fees: [fee()]
       })
     );
 
@@ -71,7 +83,8 @@ describe('computeOwnerStatement', () => {
     expect(result.totalManagementFees).toBe(20_000);
     expect(result.totalManagementFeesVat).toBe(3_600);
     expect(result.netAmount).toBe(176_400);
-    expect(result.totalArrears).toBe(0);
+    expect(result.appliedFeeRate).toBe(10);
+    expect(result.appliedVatRate).toBe(18);
     expect(result.items.map(item => [item.type, item.label, item.amount])).toEqual([
       ['RENT_COLLECTED', 'Loyers encaissés', 200_000],
       ['MANAGEMENT_FEE', 'Honoraires de gestion (10 %)', 20_000],
@@ -79,18 +92,38 @@ describe('computeOwnerStatement', () => {
     ]);
   });
 
-  it('prend les honoraires sur la part payée seulement, et laisse le reste en impayé', () => {
+  it("ne fige aucun taux quand les baux du relevé n'ont pas le même", () => {
     const result = computeOwnerStatement(
       input({
-        installments: [installment({ allocations: [{ amount: 50_000, paidAt: new Date(Date.UTC(2026, 8, 10)) }] })]
+        installments: [installment({ allocations: [{ amount: 200_000, paidAt: PAID_SEPT }] })],
+        fees: [fee({ feeAmount: 10_000, vatAmount: 1_800 }), fee({ rate: 8, feeAmount: 8_000, vatAmount: 1_440 })]
       })
     );
 
-    expect(result.totalRevenue).toBe(50_000);
-    expect(result.totalArrears).toBe(150_000);
-    expect(result.totalManagementFees).toBe(5_000);
-    expect(result.totalManagementFeesVat).toBe(900);
-    expect(result.netAmount).toBe(44_100);
+    expect(result.totalManagementFees).toBe(18_000);
+    expect(result.appliedFeeRate).toBeNull();
+    expect(result.items.find(item => item.type === 'MANAGEMENT_FEE')?.label).toBe('Honoraires de gestion');
+  });
+
+  it('nomme un forfait comme tel', () => {
+    const result = computeOwnerStatement(
+      input({
+        installments: [installment({ allocations: [{ amount: 200_000, paidAt: PAID_SEPT }] })],
+        fees: [
+          fee({
+            mode: ManagementFeeMode.FIXED,
+            rate: null,
+            feeBase: null,
+            feeAmount: 15_000,
+            vatAmount: 0,
+            vatRate: null
+          })
+        ]
+      })
+    );
+
+    expect(result.items.find(item => item.type === 'MANAGEMENT_FEE')?.label).toBe('Honoraires de gestion (forfait)');
+    expect(result.appliedFeeRate).toBeNull();
   });
 
   it('compte un arriéré de juin payé en septembre comme un encaissement de septembre', () => {
@@ -98,9 +131,8 @@ describe('computeOwnerStatement', () => {
       dueDate: new Date(Date.UTC(2026, 5, 5)),
       allocations: [{ amount: 200_000, paidAt: new Date(Date.UTC(2026, 8, 15)) }]
     });
-    const september = installment();
 
-    const result = computeOwnerStatement(input({ installments: [june, september] }));
+    const result = computeOwnerStatement(input({ installments: [june, installment()] }));
 
     expect(result.totalRentDue).toBe(200_000);
     expect(result.totalRevenue).toBe(200_000);
@@ -126,36 +158,10 @@ describe('computeOwnerStatement', () => {
     expect(result.totalArrears).toBe(0);
   });
 
-  it("limite l'assiette « loyer seul » à la part loyer, au prorata", () => {
-    const withCharges = installment({
-      amountRent: 90_000,
-      amountService: 10_000,
-      allocations: [{ amount: 50_000, paidAt: new Date(Date.UTC(2026, 8, 6)) }]
-    });
-
-    const rentOnly = computeOwnerStatement(input({ installments: [withCharges] }));
-    const allCollected = computeOwnerStatement(
-      input({
-        installments: [withCharges],
-        settings: {
-          managementFeeRate: 10,
-          managementFeeBase: ManagementFeeBase.ALL_COLLECTED,
-          vatRegistered: false,
-          vatRate: 18
-        }
-      })
-    );
-
-    expect(rentOnly.totalManagementFees).toBe(4_500);
-    expect(allCollected.totalManagementFees).toBe(5_000);
-    expect(allCollected.totalManagementFeesVat).toBe(0);
-    expect(allCollected.appliedVatRate).toBeNull();
-  });
-
-  it("n'invente pas d'honoraires quand l'agence n'a pas fixé son taux", () => {
+  it('garde une dépense « frais de gestion » saisie à la main quand le bien ne porte aucun honoraire', () => {
     const result = computeOwnerStatement(
       input({
-        installments: [installment({ allocations: [{ amount: 200_000, paidAt: new Date(Date.UTC(2026, 8, 6)) }] })],
+        installments: [installment({ allocations: [{ amount: 200_000, paidAt: PAID_SEPT }] })],
         expenses: [
           {
             propertyId: 'prop-1',
@@ -163,28 +169,21 @@ describe('computeOwnerStatement', () => {
             amount: 15_000,
             category: ExpenseCategory.MANAGEMENT_FEES
           }
-        ],
-        settings: {
-          managementFeeRate: null,
-          managementFeeBase: ManagementFeeBase.RENT_ONLY,
-          vatRegistered: true,
-          vatRate: 18
-        }
+        ]
       })
     );
 
     expect(result.totalManagementFees).toBe(0);
-    expect(result.totalManagementFeesVat).toBe(0);
     expect(result.appliedFeeRate).toBeNull();
-    // Sans taux, la dépense saisie à la main reste la seule trace des frais.
     expect(result.totalExpenses).toBe(15_000);
     expect(result.netAmount).toBe(185_000);
   });
 
-  it('écarte une dépense « frais de gestion » quand les honoraires sont calculés, pour ne pas les déduire deux fois', () => {
+  it('écarte cette dépense quand le bien porte des honoraires, pour ne pas les déduire deux fois', () => {
     const result = computeOwnerStatement(
       input({
-        installments: [installment({ allocations: [{ amount: 200_000, paidAt: new Date(Date.UTC(2026, 8, 6)) }] })],
+        installments: [installment({ allocations: [{ amount: 200_000, paidAt: PAID_SEPT }] })],
+        fees: [fee()],
         expenses: [
           {
             propertyId: 'prop-1',
@@ -201,42 +200,18 @@ describe('computeOwnerStatement', () => {
     expect(result.netAmount).toBe(200_000 - 20_000 - 3_600 - 30_000);
   });
 
-  it('arrondit honoraires et TVA au franc, bien par bien', () => {
-    const result = computeOwnerStatement(
-      input({
-        propertyIds: ['prop-1', 'prop-2'],
-        installments: [
-          installment({
-            amountRent: 33_335,
-            allocations: [{ amount: 33_335, paidAt: new Date(Date.UTC(2026, 8, 6)) }]
-          }),
-          installment({
-            propertyId: 'prop-2',
-            amountRent: 33_335,
-            allocations: [{ amount: 33_335, paidAt: new Date(Date.UTC(2026, 8, 6)) }]
-          })
-        ]
-      })
-    );
-
-    // 3 333,5 arrondi à 3 334 par bien ; TVA 600,12 arrondie à 600.
-    expect(result.totalManagementFees).toBe(6_668);
-    expect(result.totalManagementFeesVat).toBe(1_200);
-  });
-
-  it("n'attribue pas à un bien l'argent d'un autre", () => {
+  it("n'attribue pas à un bien l'argent ni les honoraires d'un autre", () => {
     const result = computeOwnerStatement(
       input({
         installments: [
-          installment({
-            propertyId: 'prop-other',
-            allocations: [{ amount: 500_000, paidAt: new Date(Date.UTC(2026, 8, 6)) }]
-          })
-        ]
+          installment({ propertyId: 'prop-other', allocations: [{ amount: 500_000, paidAt: PAID_SEPT }] })
+        ],
+        fees: [fee({ propertyId: 'prop-other' })]
       })
     );
 
     expect(result.totalRevenue).toBe(0);
+    expect(result.totalManagementFees).toBe(0);
     expect(result.items).toEqual([]);
   });
 });

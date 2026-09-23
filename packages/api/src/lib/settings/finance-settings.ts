@@ -1,4 +1,4 @@
-import { ManagementFeeBase, Prisma } from '@prisma/client';
+import { ManagementFeeBase, ManagementFeeMode, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../utils/database';
 
@@ -31,6 +31,9 @@ export interface AgencyFinanceSettingsDto {
   /** En pourcentage. `null` : non paramétré, ce qui n'est pas zéro. */
   managementFeeRate: number | null;
   managementFeeBase: ManagementFeeBase;
+  managementFeeMode: ManagementFeeMode;
+  /** Forfait par échéance, en mode FIXED. */
+  managementFeeFixedAmount: number | null;
   ownerFundsAccountNumber: string | null;
   managementFeeAccountNumber: string | null;
   vatCollectedAccountNumber: string | null;
@@ -45,6 +48,8 @@ export const DEFAULT_FINANCE_SETTINGS: AgencyFinanceSettingsDto = {
   taxpayerNumber: null,
   managementFeeRate: null,
   managementFeeBase: ManagementFeeBase.RENT_ONLY,
+  managementFeeMode: ManagementFeeMode.PERCENT,
+  managementFeeFixedAmount: null,
   ownerFundsAccountNumber: null,
   managementFeeAccountNumber: DEFAULT_MANAGEMENT_FEE_ACCOUNT,
   vatCollectedAccountNumber: DEFAULT_VAT_COLLECTED_ACCOUNT,
@@ -72,16 +77,27 @@ const accountNumber = z
 
 const percentage = z.coerce.number().min(0).max(100);
 
-export const updateFinanceSettingsSchema = z.object({
-  vatRegistered: z.boolean(),
-  vatRate: percentage,
-  taxpayerNumber: optionalText(30),
-  managementFeeRate: percentage.nullable(),
-  managementFeeBase: z.nativeEnum(ManagementFeeBase),
-  ownerFundsAccountNumber: accountNumber,
-  managementFeeAccountNumber: accountNumber,
-  vatCollectedAccountNumber: accountNumber
-});
+export const updateFinanceSettingsSchema = z
+  .object({
+    vatRegistered: z.boolean(),
+    vatRate: percentage,
+    taxpayerNumber: optionalText(30),
+    managementFeeRate: percentage.nullable(),
+    managementFeeBase: z.nativeEnum(ManagementFeeBase),
+    // Absent chez un client antérieur au mode forfait : pourcentage, comme avant.
+    managementFeeMode: z.nativeEnum(ManagementFeeMode).default(ManagementFeeMode.PERCENT),
+    managementFeeFixedAmount: z.coerce.number().positive().nullish(),
+    ownerFundsAccountNumber: accountNumber,
+    managementFeeAccountNumber: accountNumber,
+    vatCollectedAccountNumber: accountNumber
+  })
+  .refine(
+    value => value.managementFeeMode !== ManagementFeeMode.FIXED || (value.managementFeeFixedAmount ?? null) !== null,
+    {
+      path: ['managementFeeFixedAmount'],
+      message: 'Le montant du forfait est requis'
+    }
+  );
 
 export type UpdateFinanceSettingsInput = z.infer<typeof updateFinanceSettingsSchema>;
 
@@ -94,6 +110,8 @@ function toDto(row: StoredSettings): AgencyFinanceSettingsDto {
     taxpayerNumber: row.taxpayerNumber,
     managementFeeRate: row.managementFeeRate === null ? null : Number(row.managementFeeRate),
     managementFeeBase: row.managementFeeBase,
+    managementFeeMode: row.managementFeeMode,
+    managementFeeFixedAmount: row.managementFeeFixedAmount === null ? null : Number(row.managementFeeFixedAmount),
     ownerFundsAccountNumber: row.ownerFundsAccountNumber,
     managementFeeAccountNumber: row.managementFeeAccountNumber,
     vatCollectedAccountNumber: row.vatCollectedAccountNumber,
@@ -118,6 +136,11 @@ export async function updateAgencyFinanceSettings(
     taxpayerNumber: input.taxpayerNumber,
     managementFeeRate: input.managementFeeRate === null ? null : new Prisma.Decimal(input.managementFeeRate),
     managementFeeBase: input.managementFeeBase,
+    managementFeeMode: input.managementFeeMode,
+    managementFeeFixedAmount:
+      input.managementFeeMode === ManagementFeeMode.FIXED && input.managementFeeFixedAmount
+        ? new Prisma.Decimal(input.managementFeeFixedAmount)
+        : null,
     ownerFundsAccountNumber: input.ownerFundsAccountNumber,
     managementFeeAccountNumber: input.managementFeeAccountNumber,
     vatCollectedAccountNumber: input.vatCollectedAccountNumber,
@@ -129,4 +152,14 @@ export async function updateAgencyFinanceSettings(
     update: data
   });
   return toDto(row);
+}
+
+/** Conditions d'honoraires de l'agence, au format commun des trois niveaux. */
+export function agencyFeeTerms(settings: AgencyFinanceSettingsDto) {
+  return {
+    managementFeeMode: settings.managementFeeMode,
+    managementFeeRate: settings.managementFeeRate,
+    managementFeeFixedAmount: settings.managementFeeFixedAmount,
+    managementFeeBase: settings.managementFeeBase
+  };
 }
