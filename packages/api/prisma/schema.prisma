@@ -612,6 +612,7 @@ model Tenant {
   leaseEvents              LeaseEvent[]
   leaseInspections         LeaseInspection[]
   leaseInspectionPhotos    LeaseInspectionPhoto[]
+  propertyOwnershipShares  PropertyOwnershipShare[]
   stockItems               StockItem[]
   stockLocations           StockLocation[]
   stockBalances            StockBalance[]
@@ -658,6 +659,7 @@ model TenantClient {
   thirdPartyAccounts        ThirdPartyAccount[]
   managementTerms           OwnerManagementTerms?
   ownerPayouts              OwnerPayout[]
+  ownershipShares           PropertyOwnershipShare[]
 
   @@unique([userId, tenantId])
   @@index([userId])
@@ -1379,6 +1381,7 @@ model Property {
   constructionSites   ConstructionSite[]
   patrimonyDocuments  PatrimonyDocument[]
   ownerStatementItems OwnerStatementItem[]
+  ownershipShares     PropertyOwnershipShare[]
 
   // Agency A's "REF-001" must not block agency B's.
   partnership Partnership? @relation(fields: [partnershipId], references: [id], onDelete: SetNull)
@@ -6322,4 +6325,36 @@ model LeaseInspectionPhoto {
   @@index([tenantId])
   @@index([inspectionId])
   @@map("lease_inspection_photos")
+}
+
+// =============================================================
+// GESTION LOCATIVE — Lot 4, indivision
+// =============================================================
+
+/// Quote-part d'un indivisaire dans un bien.
+///
+/// Un bien sans quote-part appartient en entier au proprietaire designe sur
+/// ses baux, comme avant ce lot. Un bien qui en a est reparti entre ses
+/// indivisaires, et les parts somment a 100 : loyers encaisses, honoraires,
+/// TVA et depenses du bien se partagent au prorata dans les comptes des
+/// proprietaires et sur leurs releves.
+model PropertyOwnershipShare {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id")
+  propertyId      String   @map("property_id")
+  ownerClientId   String   @map("owner_client_id")
+  /// En pourcentage : 50 pour 50 %. Quatre decimales pour les tiers.
+  sharePercent    Decimal  @map("share_percent") @db.Decimal(7, 4)
+  updatedByUserId String?  @map("updated_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property    Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  ownerClient TenantClient @relation(fields: [ownerClientId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, ownerClientId])
+  @@index([tenantId])
+  @@index([ownerClientId])
+  @@map("property_ownership_shares")
 }

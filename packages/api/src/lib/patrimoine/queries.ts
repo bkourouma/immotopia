@@ -5,6 +5,7 @@ import type { YieldInput } from './yield';
 import { syncWorkProgramCostTx } from '../finance/cost-allocation';
 import { logger } from '../../utils/logger';
 import { materializeManagementFees } from '../rental-fees/materialize';
+import { ownerSharesByProperty } from '../ownership/service';
 import { computeOwnerStatement, OWNER_STATEMENT_COMPUTATION_VERSION } from './owner-statement-computation';
 
 // `services/audit-service.ts` n'est PAS importe ici bien que la specification
@@ -852,6 +853,15 @@ export async function generateOwnerStatement(
     ]
   };
 
+  // Indivision (lot 4) : le relevé désigne son propriétaire par un contact
+  // CRM ; sa quote-part est portée par son TenantClient, relié au contact par
+  // `details.crmContactId`. Sans ce lien, le relevé garde les montants entiers.
+  const ownerClient = await prisma.tenantClient.findFirst({
+    where: { tenantId, details: { path: ['crmContactId'], equals: params.ownerContactId } },
+    select: { id: true }
+  });
+  const shareByProperty = ownerClient ? await ownerSharesByProperty(tenantId, ownerClient.id, propertyIds) : undefined;
+
   // Les honoraires des encaissements du mois, figés s'ils ne l'étaient pas
   // encore : le relevé et l'état des commissions lisent les mêmes chiffres.
   await materializeManagementFees(tenantId, { from: periodStart, to: periodEnd, propertyIds });
@@ -939,7 +949,8 @@ export async function generateOwnerStatement(
       rate: fee.rate === null ? null : Number(fee.rate),
       feeBase: fee.feeBase,
       vatRate: fee.vatRate === null ? null : Number(fee.vatRate)
-    }))
+    })),
+    shareByProperty
   });
 
   const decimal = (value: number) => new Prisma.Decimal(value);

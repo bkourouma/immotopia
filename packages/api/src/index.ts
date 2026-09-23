@@ -52,6 +52,7 @@ import ownerAccountRoutes, { ownerAccountPortalRouter } from './routes/owner-acc
 import leaseLifecycleRoutes from './routes/lease-lifecycle-routes';
 import leaseInspectionRoutes from './routes/lease-inspection-routes';
 import accountingExportsRoutes from './routes/accounting-exports-routes';
+import propertyOwnershipRoutes from './routes/property-ownership-routes';
 import { startPenaltyCalculationJob } from './jobs/penalty-calculation-job';
 import { startLandLeaseAccrualJob } from './jobs/land-lease-accrual-job';
 import { startReminderSchedulerJob } from './jobs/reminder-scheduler.job';
@@ -236,6 +237,7 @@ app.use('/api', ownerAccountRoutes); // Comptes proprietaires et reversements (a
 app.use('/api', leaseLifecycleRoutes); // Vie du bail : revision, renouvellement, avenant, resiliation
 app.use('/api', leaseInspectionRoutes); // Etats des lieux d'entree et de sortie
 app.use('/api', accountingExportsRoutes); // Exports comptables : journal, grand livre, balance
+app.use('/api', propertyOwnershipRoutes); // Indivision : quotes-parts des proprietaires d'un bien
 
 // 404 handler for unmatched routes (before the error handler, which only runs
 // for actual errors).
