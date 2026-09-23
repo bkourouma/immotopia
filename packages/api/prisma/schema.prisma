@@ -384,8 +384,8 @@ model User {
   /// `DEFAULT 'fr'` aurait rendu ce cas indistinguable d'un choix explicite du
   /// francais, et impose le francais a un utilisateur arabophone.
   preferredLanguage String?  @map("preferred_language")
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   // Relationships
   clientProfiles TenantClient[]
@@ -601,6 +601,7 @@ model Tenant {
   retentionGuarantees      RetentionGuarantee[]
   siteLots                 SiteLot[]
   stockSettings            StockSettings?
+  financeSettings          AgencyFinanceSettings?
   stockItems               StockItem[]
   stockLocations           StockLocation[]
   stockBalances            StockBalance[]
@@ -3827,8 +3828,20 @@ enum StatementItemType {
   RENT_COLLECTED
   EXPENSE_DEDUCTED
   MANAGEMENT_FEE
+  /// TVA facturee sur les honoraires, quand l'agence y est assujettie.
+  MANAGEMENT_FEE_VAT
   ADVANCE
   OTHER
+}
+
+/// Assiette des honoraires de gestion.
+///
+/// RENT_ONLY : la seule part « loyer » de chaque encaissement, au prorata de
+/// l'echeance qu'il solde — les charges et les penalites n'en portent pas.
+/// ALL_COLLECTED : tout ce qui est encaisse.
+enum ManagementFeeBase {
+  RENT_ONLY
+  ALL_COLLECTED
 }
 
 enum WorkProgramStatus {
@@ -3921,20 +3934,79 @@ model PropertyExpense {
   @@map("property_expenses")
 }
 
+/// Parametres financiers d'une agence : fiscalite, honoraires de gestion,
+/// comptes comptables de la gestion locative.
+///
+/// Un par agence au plus. Tant qu'il n'existe pas, l'API renvoie les valeurs
+/// par defaut de `lib/settings/finance-settings.ts` sans rien ecrire.
+///
+/// `managementFeeRate` nul veut dire « non parametre », pas « zero » : un
+/// releve calcule sans taux le signale au lieu de laisser croire que l'agence
+/// travaille gratuitement.
+model AgencyFinanceSettings {
+  id                         String            @id @default(uuid()) @db.Uuid
+  tenantId                   String            @unique @map("tenant_id")
+  vatRegistered              Boolean           @default(false) @map("vat_registered")
+  /// En pourcentage : 18 pour 18 %.
+  vatRate                    Decimal           @default(18) @map("vat_rate") @db.Decimal(5, 2)
+  /// Numero de compte contribuable (NCC).
+  taxpayerNumber             String?           @map("taxpayer_number")
+  /// En pourcentage du montant de l'assiette : 10 pour 10 %.
+  managementFeeRate          Decimal?          @map("management_fee_rate") @db.Decimal(5, 2)
+  managementFeeBase          ManagementFeeBase @default(RENT_ONLY) @map("management_fee_base")
+  /// Comptes de la gestion locative. Lus par les ecritures a partir du lot 3
+  /// (compte proprietaire) ; poses ici pour que le comptable les fixe avant.
+  ownerFundsAccountNumber    String?           @map("owner_funds_account_number")
+  managementFeeAccountNumber String?           @map("management_fee_account_number")
+  vatCollectedAccountNumber  String?           @map("vat_collected_account_number")
+  updatedByUserId            String?           @map("updated_by_user_id")
+  createdAt                  DateTime          @default(now()) @map("created_at")
+  updatedAt                  DateTime          @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("agency_finance_settings")
+}
+
+/// Releve de gerance d'un proprietaire pour un mois.
+///
+/// Un releve est un INSTANTANE : ses totaux sont stockes parce qu'un releve
+/// envoye ne doit pas changer apres coup si un paiement est saisi en retard.
+///
+/// - `totalRevenue`  : loyers reellement ENCAISSES dans le mois (date du
+///   reglement), arrieres compris. Pas le loyer du contrat.
+/// - `totalRentDue`  : ce qui etait appele sur les echeances du mois.
+/// - `totalArrears`  : reste du a la fin du mois, toutes echeances echues.
+/// - `netAmount`     : encaisse - honoraires - TVA - depenses.
+///
+/// `computationVersion` 1 designe les releves calcules avant le 22 septembre
+/// 2026, qui prenaient le loyer du contrat de chaque bail actif pour un loyer
+/// encaisse. Ils restent lisibles et peuvent etre recalcules.
 model OwnerStatement {
-  id             String          @id @default(uuid()) @db.Uuid
-  tenantId       String          @map("tenant_id")
-  ownerContactId String          @map("owner_contact_id")
-  period         String
-  totalRevenue   Decimal         @map("total_revenue") @db.Decimal(14, 2)
-  totalExpenses  Decimal         @map("total_expenses") @db.Decimal(14, 2)
-  netAmount      Decimal         @map("net_amount") @db.Decimal(14, 2)
-  currency       String          @default("XOF")
-  status         StatementStatus @default(DRAFT)
-  sentAt         DateTime?       @map("sent_at")
-  paidAt         DateTime?       @map("paid_at")
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
+  id                     String             @id @default(uuid()) @db.Uuid
+  tenantId               String             @map("tenant_id")
+  ownerContactId         String             @map("owner_contact_id")
+  period                 String
+  totalRevenue           Decimal            @map("total_revenue") @db.Decimal(14, 2)
+  totalExpenses          Decimal            @map("total_expenses") @db.Decimal(14, 2)
+  netAmount              Decimal            @map("net_amount") @db.Decimal(14, 2)
+  totalRentDue           Decimal            @default(0) @map("total_rent_due") @db.Decimal(14, 2)
+  totalArrears           Decimal            @default(0) @map("total_arrears") @db.Decimal(14, 2)
+  totalManagementFees    Decimal            @default(0) @map("total_management_fees") @db.Decimal(14, 2)
+  totalManagementFeesVat Decimal            @default(0) @map("total_management_fees_vat") @db.Decimal(14, 2)
+  /// Parametres appliques au calcul, figes avec le releve.
+  managementFeeRate      Decimal?           @map("management_fee_rate") @db.Decimal(5, 2)
+  managementFeeBase      ManagementFeeBase? @map("management_fee_base")
+  vatRate                Decimal?           @map("vat_rate") @db.Decimal(5, 2)
+  /// Biens retenus a la generation, pour pouvoir recalculer a l'identique.
+  propertyIds            String[]           @default([]) @map("property_ids")
+  computationVersion     Int                @default(1) @map("computation_version")
+  currency               String             @default("XOF")
+  status                 StatementStatus    @default(DRAFT)
+  sentAt                 DateTime?          @map("sent_at")
+  paidAt                 DateTime?          @map("paid_at")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
 
   tenant Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   owner  CrmContact           @relation(fields: [ownerContactId], references: [id], onDelete: Cascade)

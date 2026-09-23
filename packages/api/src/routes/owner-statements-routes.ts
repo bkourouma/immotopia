@@ -7,6 +7,7 @@ import {
   createOwnerStatementHandler,
   getOwnerStatementHandler,
   listOwnerStatementsHandler,
+  recomputeOwnerStatementHandler,
   sendOwnerStatementHandler,
   updateOwnerStatementHandler
 } from '../controllers/owner-statements-controller';
@@ -38,10 +39,14 @@ router.patch(
   updateOwnerStatementHandler
 );
 router.post(
+  '/tenants/:tenantId/owner-statements/:statementId/recompute',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  recomputeOwnerStatementHandler
+);
+router.post(
   '/tenants/:tenantId/owner-statements/:statementId/send',
   requirePropertyPermission('PROPERTIES_EDIT'),
   sendOwnerStatementHandler
 );
 
 export default router;
-

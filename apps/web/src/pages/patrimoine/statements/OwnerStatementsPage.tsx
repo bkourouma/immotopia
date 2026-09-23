@@ -2,22 +2,21 @@
 import { useNavigate, useParams } from 'react-router-dom';
 import { App, Alert, Button, Card, Space, Table, Tag, Typography } from 'antd';
 import { OwnerStatementGenerator } from '../../../components/patrimoine/OwnerStatementGenerator';
-import { createOwnerStatement, listOwnerStatements, sendOwnerStatement } from '../../../services/patrimoine-service';
+import {
+  createOwnerStatement,
+  listOwnerStatements,
+  recomputeOwnerStatement,
+  sendOwnerStatement
+} from '../../../services/patrimoine-service';
+import { isLegacyStatement, statementStatusLabel } from '../../../components/patrimoine/owner-statement-helpers';
+import { MoneyValue } from '../../../components/primitives';
 import { listContacts } from '../../../services/crm-service';
 import { listProperties } from '../../../services/property-service';
 import type { OwnerStatement } from '../../../types/patrimoine-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { t } from '../../../i18n/t';
 
-import { activeLocale } from '../../../i18n/format';
 const { Title, Text } = Typography;
-
-function statementStatusLabel(status: OwnerStatement['status']): string {
-  if (status === 'DRAFT') return 'Brouillon';
-  if (status === 'SENT') return t('Envoyé');
-  if (status === 'PAID') return t('Payé');
-  return status;
-}
 
 function sendReasonLabel(reason?: string): string {
   if (reason === 'NO_EMAIL') {
@@ -46,6 +45,7 @@ export const OwnerStatementsPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [createLoading, setCreateLoading] = useState(false);
   const [sendLoadingId, setSendLoadingId] = useState<string | null>(null);
+  const [recomputeLoadingId, setRecomputeLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statements, setStatements] = useState<OwnerStatement[]>([]);
   const [ownerOptions, setOwnerOptions] = useState<Array<{ value: string; label: string }>>([]);
@@ -115,6 +115,24 @@ export const OwnerStatementsPage: React.FC = () => {
     }
   };
 
+  const handleRecompute = async (statementId: string) => {
+    if (!effectiveTenantId) return;
+    setRecomputeLoadingId(statementId);
+    try {
+      await recomputeOwnerStatement(effectiveTenantId, statementId);
+      message.success(t('Relevé recalculé. Vérifiez-le avant de le renvoyer au propriétaire.'));
+      await loadData();
+    } catch (e: any) {
+      message.error(e?.response?.data?.error || e?.response?.data?.message || t('Échec du recalcul du relevé'));
+    } finally {
+      setRecomputeLoadingId(null);
+    }
+  };
+
+  const legacyCount = statements.filter(
+    statement => isLegacyStatement(statement) && statement.status !== 'PAID'
+  ).length;
+
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -126,6 +144,16 @@ export const OwnerStatementsPage: React.FC = () => {
         </div>
 
         {error ? <Alert type="error" showIcon message={error} /> : null}
+        {legacyCount > 0 ? (
+          <Alert
+            type="warning"
+            showIcon
+            message={t('{{count}} relevé(s) calculé(s) selon l’ancienne méthode', { count: legacyCount })}
+            description={t(
+              'Ils affichent le loyer du contrat comme loyer encaissé et ne déduisent aucun honoraire. Recalculez-les avant de les envoyer ou de les renvoyer.'
+            )}
+          />
+        ) : null}
         <OwnerStatementGenerator
           ownerOptions={ownerOptions}
           propertyOptions={propertyOptions}
@@ -142,39 +170,78 @@ export const OwnerStatementsPage: React.FC = () => {
             columns={[
               { title: t('Période'), dataIndex: 'period' },
               {
-                title: t('Total revenus'),
+                title: t('Propriétaire'),
+                key: 'owner',
+                render: (_: unknown, record: OwnerStatement) =>
+                  `${record.owner?.firstName || ''} ${record.owner?.lastName || ''}`.trim() ||
+                  record.owner?.email ||
+                  '—'
+              },
+              {
+                title: t('Loyers encaissés'),
                 dataIndex: 'totalRevenue',
-                render: (value: number) => Number(value).toLocaleString(activeLocale())
+                align: 'end' as const,
+                render: (value: number) => <MoneyValue value={value} />
               },
               {
-                title: t('Total charges'),
-                dataIndex: 'totalExpenses',
-                render: (value: number) => Number(value).toLocaleString(activeLocale())
-              },
-              {
-                title: 'Net',
-                dataIndex: 'netAmount',
-                render: (value: number, record: OwnerStatement) =>
-                  `${Number(value).toLocaleString(activeLocale())} ${record.currency}`
-              },
-              {
-                title: 'Statut',
-                dataIndex: 'status',
-                render: (status: OwnerStatement['status']) => <Tag>{statementStatusLabel(status)}</Tag>
-              },
-              {
-                title: 'Actions',
-                key: 'actions',
+                title: t('Honoraires et TVA'),
+                key: 'fees',
+                align: 'end' as const,
                 render: (_: unknown, record: OwnerStatement) => (
-                  <Space>
-                    <Button onClick={() => navigate(`/tenant/${effectiveTenantId}/patrimoine/statements/${record.id}`)}>
-                      {t('Détails')}
-                    </Button>
-                    <Button loading={sendLoadingId === record.id} onClick={() => handleSend(record.id)}>
-                      {t('Envoyer')}
-                    </Button>
+                  <MoneyValue value={Number(record.totalManagementFees) + Number(record.totalManagementFeesVat)} />
+                )
+              },
+              {
+                title: t('Dépenses'),
+                dataIndex: 'totalExpenses',
+                align: 'end' as const,
+                render: (value: number) => <MoneyValue value={value} />
+              },
+              {
+                title: t('Net à reverser'),
+                dataIndex: 'netAmount',
+                align: 'end' as const,
+                render: (value: number) => <MoneyValue value={value} signed />
+              },
+              {
+                title: t('Statut'),
+                dataIndex: 'status',
+                render: (status: OwnerStatement['status'], record: OwnerStatement) => (
+                  <Space size={4} wrap>
+                    <Tag>{statementStatusLabel(status)}</Tag>
+                    {isLegacyStatement(record) ? <Tag color="warning">{t('Ancien calcul')}</Tag> : null}
                   </Space>
                 )
+              },
+              {
+                title: t('Actions'),
+                key: 'actions',
+                render: (_: unknown, record: OwnerStatement) => {
+                  const legacy = isLegacyStatement(record);
+                  return (
+                    <Space>
+                      <Button
+                        onClick={() => navigate(`/tenant/${effectiveTenantId}/patrimoine/statements/${record.id}`)}
+                      >
+                        {t('Détails')}
+                      </Button>
+                      {legacy && record.status !== 'PAID' ? (
+                        <Button
+                          type="primary"
+                          loading={recomputeLoadingId === record.id}
+                          onClick={() => handleRecompute(record.id)}
+                        >
+                          {t('Recalculer')}
+                        </Button>
+                      ) : null}
+                      {!legacy ? (
+                        <Button loading={sendLoadingId === record.id} onClick={() => handleSend(record.id)}>
+                          {t('Envoyer')}
+                        </Button>
+                      ) : null}
+                    </Space>
+                  );
+                }
               }
             ]}
           />

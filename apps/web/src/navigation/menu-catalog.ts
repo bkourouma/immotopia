@@ -167,7 +167,8 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   agence: ['USERS_VIEW', 'TENANT_SETTINGS_VIEW'],
   'agence-collaborators': ['USERS_VIEW'],
   'agence-invitations': ['USERS_CREATE'],
-  'agence-settings': ['TENANT_SETTINGS_VIEW']
+  'agence-settings': ['TENANT_SETTINGS_VIEW'],
+  'agence-finance-settings': ['TENANT_SETTINGS_VIEW']
 };
 
 function requirementsFor(navKey: string): string[] {

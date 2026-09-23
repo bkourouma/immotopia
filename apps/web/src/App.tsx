@@ -361,6 +361,11 @@ const InvitationsList = lazy(() =>
 const TenantSettings = lazy(() =>
   import(/* webpackChunkName: "tenant" */ './pages/tenant/TenantSettings').then(m => ({ default: m.TenantSettings }))
 );
+const AgencyFinanceSettings = lazy(() =>
+  import(/* webpackChunkName: "tenant" */ './pages/tenant/AgencyFinanceSettings').then(m => ({
+    default: m.AgencyFinanceSettings
+  }))
+);
 // CRM pages
 const Contacts = lazy(() =>
   import(/* webpackChunkName: "crm" */ './pages/crm/Contacts').then(m => ({ default: m.Contacts }))
@@ -751,6 +756,7 @@ function App() {
                           <Route path="/tenant/:tenantId/invite" element={<InviteCollaborator />} />
                           <Route path="/tenant/:tenantId/invitations" element={<InvitationsList />} />
                           <Route path="/tenant/:tenantId/settings" element={<TenantSettings />} />
+                          <Route path="/tenant/:tenantId/settings/finance" element={<AgencyFinanceSettings />} />
                           <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
                           <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
                           <Route path="/tenant/:tenantId/crm/contacts/new" element={<ContactFormPage />} />

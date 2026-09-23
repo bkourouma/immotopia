@@ -492,7 +492,12 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         children: [
           { key: 'agence-collaborators', label: t('Collaborateurs'), href: '/tenant/:tenantId/collaborators' },
           { key: 'agence-invitations', label: t('Invitations'), href: '/tenant/:tenantId/invitations' },
-          { key: 'agence-settings', label: t("Paramètres de l'agence"), href: '/tenant/:tenantId/settings' }
+          { key: 'agence-settings', label: t("Paramètres de l'agence"), href: '/tenant/:tenantId/settings' },
+          {
+            key: 'agence-finance-settings',
+            label: t('Paramètres financiers'),
+            href: '/tenant/:tenantId/settings/finance'
+          }
         ]
       }
     ]

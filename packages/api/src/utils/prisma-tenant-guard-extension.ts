@@ -35,6 +35,7 @@ const TENANT_FIELD_BY_MODEL: Record<string, string> = {
   CrmDealProperty: 'tenantId',
   Syndicate: 'tenantId',
   OwnerStatement: 'tenantId',
+  AgencyFinanceSettings: 'tenantId',
   PropertyLoan: 'tenantId',
   PropertyExpense: 'tenantId',
   PropertyValuation: 'tenantId',

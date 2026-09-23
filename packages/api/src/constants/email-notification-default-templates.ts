@@ -279,7 +279,9 @@ export const EMAIL_NOTIFICATION_DEFAULT_TEMPLATES: Record<EmailNotificationKey, 
     bodyHtml: `<h1 style="margin:0 0 8px 0; font-size:22px; color:#1d4ed8;">Relevé de gérance</h1>
 <p style="margin:0 0 20px 0; color:#666; font-size:15px;">Bonjour {{ownerName}},</p>
 <p style="margin:0 0 20px 0;">Votre relevé pour la période <strong>{{period}}</strong> est disponible.</p>
-<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Total des revenus : {{totalRevenue}} {{currency}} - Total des charges : {{totalExpenses}} {{currency}} - Net : {{netAmount}} {{currency}}</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Loyers appelés : {{totalRentDue}} {{currency}} - Loyers encaissés : {{totalRevenue}} {{currency}} - Restant dû par les locataires : {{totalArrears}} {{currency}}</p>
+<p style="margin:0 0 12px 0; font-size:14px; color:#555;">Honoraires de gestion : {{managementFees}} {{currency}} - TVA sur honoraires : {{managementFeesVat}} {{currency}} - Dépenses : {{totalExpenses}} {{currency}}</p>
+<p style="margin:0 0 12px 0; font-size:15px;"><strong>Net à vous reverser : {{netAmount}} {{currency}}</strong></p>
 <p style="margin:0 0 12px 0; font-size:14px; color:#555;">{{statementLines}}</p>`
   },
   LOAN_MATURITY_ALERT: {

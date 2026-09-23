@@ -132,7 +132,7 @@ export interface OwnerStatementItem {
     internalReference?: string;
   };
   label: string;
-  type: 'RENT_COLLECTED' | 'EXPENSE_DEDUCTED' | 'MANAGEMENT_FEE' | 'ADVANCE' | 'OTHER';
+  type: 'RENT_COLLECTED' | 'EXPENSE_DEDUCTED' | 'MANAGEMENT_FEE' | 'MANAGEMENT_FEE_VAT' | 'ADVANCE' | 'OTHER';
   amount: number;
 }
 
@@ -147,9 +147,25 @@ export interface OwnerStatement {
     email?: string;
   };
   period: string;
+  /** Loyers réellement encaissés dans le mois. */
   totalRevenue: number;
+  /** Dépenses des biens payées dans le mois. */
   totalExpenses: number;
+  /** Encaissé − honoraires − TVA − dépenses. */
   netAmount: number;
+  /** Montant appelé sur les échéances du mois. */
+  totalRentDue: number;
+  /** Restant dû par les locataires à la fin du mois. */
+  totalArrears: number;
+  totalManagementFees: number;
+  totalManagementFeesVat: number;
+  /** Taux appliqués, figés avec le relevé ; `null` si non appliqués. */
+  managementFeeRate: number | null;
+  managementFeeBase: 'RENT_ONLY' | 'ALL_COLLECTED' | null;
+  vatRate: number | null;
+  propertyIds: string[];
+  /** 1 : ancien calcul (loyer du contrat pris pour un loyer encaissé). */
+  computationVersion: number;
   currency: string;
   status: StatementStatus;
   sentAt?: string | null;

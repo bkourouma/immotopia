@@ -105,7 +105,8 @@ export async function sendOwnerStatement(statementId: string) {
   const defaults = EMAIL_NOTIFICATION_DEFAULT_TEMPLATES[eventKey];
   const ownerName = [owner.firstName, owner.lastName].filter(Boolean).join(' ') || 'Propriétaire';
   const statementLineItems = statement.items.map(
-    item => `- ${item.label} (${item.property.internalReference}): ${Number(item.amount).toLocaleString('fr-FR')} ${statement.currency}`
+    item =>
+      `- ${item.label} (${item.property.internalReference}): ${Number(item.amount).toLocaleString('fr-FR')} ${statement.currency}`
   );
   const linesHtml = statementLineItems.join('<br/>');
   const linesText = statementLineItems.join(' | ');
@@ -113,7 +114,11 @@ export async function sendOwnerStatement(statementId: string) {
   const variables = {
     ownerName,
     period: statement.period,
+    totalRentDue: Number(statement.totalRentDue).toLocaleString('fr-FR'),
     totalRevenue: Number(statement.totalRevenue).toLocaleString('fr-FR'),
+    totalArrears: Number(statement.totalArrears).toLocaleString('fr-FR'),
+    managementFees: Number(statement.totalManagementFees).toLocaleString('fr-FR'),
+    managementFeesVat: Number(statement.totalManagementFeesVat).toLocaleString('fr-FR'),
     totalExpenses: Number(statement.totalExpenses).toLocaleString('fr-FR'),
     netAmount: Number(statement.netAmount).toLocaleString('fr-FR'),
     currency: statement.currency,
