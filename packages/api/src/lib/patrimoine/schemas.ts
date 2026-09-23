@@ -53,7 +53,12 @@ export const createExpenseSchema = z.object({
   paidAt: z.coerce.date(),
   isCapitalized: z.boolean().default(false),
   receiptUrl: z.string().url().optional(),
-  notes: z.string().optional()
+  notes: z.string().optional(),
+  /** Lot 10 : moyen et compte de paiement reels. Absent : caisse par defaut. */
+  paymentMethod: z.enum(['MOBILE_MONEY', 'BANK_TRANSFER', 'CASH', 'CHECK', 'CARD', 'OTHER']).optional().nullable(),
+  treasuryAccountId: z.string().uuid().optional().nullable(),
+  agencyIsBuyer: z.boolean().optional(),
+  supplierName: z.string().optional().nullable()
 });
 
 export const updateExpenseSchema = createExpenseSchema.partial().refine(value => Object.keys(value).length > 0, {

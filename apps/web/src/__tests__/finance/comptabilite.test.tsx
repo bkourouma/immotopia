@@ -22,12 +22,16 @@ import { Comptabilite } from '../../pages/finance/Comptabilite';
 const getJournal = vi.fn();
 const getGeneralLedger = vi.fn();
 const getTrialBalance = vi.fn();
+const getMandantSubledger = vi.fn();
+const getMandantTrialBalance = vi.fn();
 const downloadAccountingExport = vi.fn();
 
 vi.mock('../../services/accounting-exports-service', () => ({
   getJournal: (...a: unknown[]) => getJournal(...a),
   getGeneralLedger: (...a: unknown[]) => getGeneralLedger(...a),
   getTrialBalance: (...a: unknown[]) => getTrialBalance(...a),
+  getMandantSubledger: (...a: unknown[]) => getMandantSubledger(...a),
+  getMandantTrialBalance: (...a: unknown[]) => getMandantTrialBalance(...a),
   downloadAccountingExport: (...a: unknown[]) => downloadAccountingExport(...a)
 }));
 
@@ -53,11 +57,21 @@ function donneesJournal(overrides: Record<string, unknown> = {}) {
         documentType: null,
         reversed: false,
         lines: [
-          { accountNumber: '411000', accountName: 'Clients', label: 'Loyer janvier', debit: 450_000, credit: 0 },
+          {
+            accountNumber: '411000',
+            accountName: 'Clients',
+            label: 'Loyer janvier',
+            thirdParty: 'Diomandé Mariam',
+            nature: 'Compte courant',
+            debit: 450_000,
+            credit: 0
+          },
           {
             accountNumber: '706000',
             accountName: 'Produits locatifs',
             label: 'Loyer janvier',
+            thirdParty: null,
+            nature: null,
             debit: 0,
             credit: 450_000
           }
@@ -72,8 +86,24 @@ function donneesJournal(overrides: Record<string, unknown> = {}) {
         documentType: null,
         reversed: true,
         lines: [
-          { accountNumber: '411000', accountName: 'Clients', label: 'Annulation', debit: 100_000, credit: 0 },
-          { accountNumber: '706000', accountName: 'Produits locatifs', label: 'Annulation', debit: 0, credit: 100_000 }
+          {
+            accountNumber: '411000',
+            accountName: 'Clients',
+            label: 'Annulation',
+            thirdParty: null,
+            nature: null,
+            debit: 100_000,
+            credit: 0
+          },
+          {
+            accountNumber: '706000',
+            accountName: 'Produits locatifs',
+            label: 'Annulation',
+            thirdParty: null,
+            nature: null,
+            debit: 0,
+            credit: 100_000
+          }
         ]
       }
     ],
@@ -97,6 +127,8 @@ function donneesGrandLivre(overrides: Record<string, unknown> = {}) {
             journalCode: 'OP-GENERAL',
             reference: 'JRN-0001',
             label: 'Loyer janvier',
+            thirdParty: 'Diomandé Mariam',
+            nature: 'Compte courant',
             debit: 450_000,
             credit: 0,
             balance: 450_000
@@ -107,6 +139,70 @@ function donneesGrandLivre(overrides: Record<string, unknown> = {}) {
         closingBalance: 450_000
       }
     ],
+    ...overrides
+  };
+}
+
+function donneesMandantSubledger(overrides: Record<string, unknown> = {}) {
+  return {
+    from: '2026-01-01',
+    to: '2026-09-23',
+    accountNumber: '4731',
+    accountName: 'Mandants',
+    owners: [
+      {
+        thirdPartyAccountId: 'owner-1',
+        ownerLabel: 'Diomandé Mariam',
+        natures: [
+          {
+            nature: 'CURRENT',
+            natureLabel: 'Compte courant',
+            openingBalance: 0,
+            lines: [
+              {
+                date: '2026-01-05',
+                journalCode: 'OP-GENERAL',
+                reference: 'JRN-0001',
+                label: 'Loyer janvier',
+                debit: 0,
+                credit: 450_000,
+                balance: 450_000
+              }
+            ],
+            totalDebit: 0,
+            totalCredit: 450_000,
+            closingBalance: 450_000
+          }
+        ],
+        openingBalance: 0,
+        totalDebit: 0,
+        totalCredit: 450_000,
+        closingBalance: 450_000
+      }
+    ],
+    totals: { openingBalance: 0, totalDebit: 0, totalCredit: 450_000, closingBalance: 450_000 },
+    control: { auxiliaryBalance: 450_000, generalBalance: 450_000, difference: 0, isBalanced: true },
+    ...overrides
+  };
+}
+
+function donneesMandantTrialBalance(overrides: Record<string, unknown> = {}) {
+  return {
+    date: '2026-09-23',
+    accountNumber: '4731',
+    accountName: 'Mandants',
+    rows: [
+      {
+        thirdPartyAccountId: 'owner-1',
+        ownerLabel: 'Diomandé Mariam',
+        current: 450_000,
+        deposit: 0,
+        unallocated: 0,
+        total: 450_000
+      }
+    ],
+    totals: { current: 450_000, deposit: 0, unallocated: 0, total: 450_000 },
+    control: { auxiliaryBalance: 450_000, generalBalance: 450_000, difference: 0, isBalanced: true },
     ...overrides
   };
 }
@@ -210,6 +306,8 @@ beforeEach(() => {
   getJournal.mockResolvedValue(donneesJournal());
   getGeneralLedger.mockResolvedValue(donneesGrandLivre());
   getTrialBalance.mockResolvedValue(donneesBalance());
+  getMandantSubledger.mockResolvedValue(donneesMandantSubledger());
+  getMandantTrialBalance.mockResolvedValue(donneesMandantTrialBalance());
   downloadAccountingExport.mockResolvedValue({ blob: new Blob(['x']), filename: 'journal.xlsx' });
 
   // jsdom n'implémente ni `createObjectURL` ni `revokeObjectURL`.
@@ -374,5 +472,123 @@ describe('Comptabilité — export', () => {
 
     await waitFor(() => expect(downloadAccountingExport).toHaveBeenCalled());
     expect(downloadAccountingExport.mock.calls[0][1]).toBe('trial-balance');
+  });
+});
+
+describe('Comptabilité — colonnes Tiers et Nature (lot 10)', () => {
+  it('affiche le tiers et la nature de la ligne du journal', async () => {
+    mount();
+    await screen.findByText('JRN-0001', {}, { timeout: 8000 });
+
+    expect(screen.getByText('Diomandé Mariam')).toBeInTheDocument();
+    expect(screen.getByText('Compte courant')).toBeInTheDocument();
+  });
+
+  it('affiche le tiers et la nature d’un mouvement du grand livre', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount();
+    await user.click(screen.getByRole('tab', { name: 'Grand livre' }));
+    await screen.findByText('411000 — Clients', {}, { timeout: 8000 });
+
+    // Le panneau « Journal », déjà visité, reste monté (AntD `Tabs`) et porte
+    // aussi « Diomandé Mariam » : on scope au panneau actif pour lever l'ambiguïté.
+    const panneau = within(ongletActif());
+    expect(panneau.getByText('Diomandé Mariam')).toBeInTheDocument();
+    expect(panneau.getByText('Compte courant')).toBeInTheDocument();
+  });
+});
+
+describe('Comptabilité — onglet Mandants', () => {
+  // AntD `Tabs` garde les panneaux déjà visités montés dans le DOM : le
+  // journal (qui porte aussi « Diomandé Mariam » dans sa colonne Tiers, testé
+  // plus haut) reste présent. Toute recherche de texte partagé passe donc par
+  // `within(ongletActif())`, jamais par `screen` nu — sous peine d'ambiguïté.
+  it('affiche le grand livre auxiliaire, groupé par propriétaire et par nature', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount();
+    await user.click(screen.getByRole('tab', { name: 'Mandants' }));
+
+    const panneau = () => within(ongletActif());
+    expect((await panneau().findAllByText('Diomandé Mariam', {}, { timeout: 8000 })).length).toBeGreaterThan(0);
+    expect(panneau().getAllByText('Compte courant').length).toBeGreaterThan(0);
+    expect(panneau().getAllByText(/450\s000/).length).toBeGreaterThan(0);
+  });
+
+  it('affiche la balance auxiliaire des mandants avec son total', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount();
+    await user.click(screen.getByRole('tab', { name: 'Mandants' }));
+
+    const panneau = () => within(ongletActif());
+    await panneau().findAllByText('Diomandé Mariam', {}, { timeout: 8000 });
+    expect(await panneau().findByText('Balance auxiliaire des mandants', {}, { timeout: 8000 })).toBeInTheDocument();
+    expect(panneau().getAllByText(/450\s000/).length).toBeGreaterThan(0);
+  });
+
+  it('affiche une alerte quand le grand livre auxiliaire ne coïncide pas avec le solde général', async () => {
+    getMandantSubledger.mockResolvedValue(
+      donneesMandantSubledger({
+        control: { auxiliaryBalance: 450_000, generalBalance: 400_000, difference: 50_000, isBalanced: false }
+      })
+    );
+    const user = userEvent.setup({ delay: null });
+    mount();
+    await user.click(screen.getByRole('tab', { name: 'Mandants' }));
+
+    expect(
+      await within(ongletActif()).findByText(
+        "Le grand livre auxiliaire des mandants ne coïncide pas avec le solde général du compte : signalez-le à l'éditeur.",
+        {},
+        { timeout: 8000 }
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('affiche une alerte quand la balance auxiliaire ne coïncide pas avec le solde général', async () => {
+    getMandantTrialBalance.mockResolvedValue(
+      donneesMandantTrialBalance({
+        control: { auxiliaryBalance: 450_000, generalBalance: 400_000, difference: 50_000, isBalanced: false }
+      })
+    );
+    const user = userEvent.setup({ delay: null });
+    mount();
+    await user.click(screen.getByRole('tab', { name: 'Mandants' }));
+
+    expect(
+      await within(ongletActif()).findByText(
+        "La balance auxiliaire des mandants ne coïncide pas avec le solde général du compte : signalez-le à l'éditeur.",
+        {},
+        { timeout: 8000 }
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('exporte le grand livre auxiliaire des mandants en Excel', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount();
+    await user.click(screen.getByRole('tab', { name: 'Mandants' }));
+    const panneau = () => within(ongletActif());
+    await panneau().findAllByText('Diomandé Mariam', {}, { timeout: 8000 });
+
+    const boutons = panneau().getAllByRole('button', { name: /Exporter en Excel/ });
+    await user.click(boutons[0]);
+
+    await waitFor(() => expect(downloadAccountingExport).toHaveBeenCalled());
+    expect(downloadAccountingExport.mock.calls[0][1]).toBe('mandant-subledger');
+  });
+
+  it('exporte la balance auxiliaire des mandants en CSV', async () => {
+    const user = userEvent.setup({ delay: null });
+    mount();
+    await user.click(screen.getByRole('tab', { name: 'Mandants' }));
+    const panneau = () => within(ongletActif());
+    await panneau().findAllByText('Diomandé Mariam', {}, { timeout: 8000 });
+
+    const boutons = panneau().getAllByRole('button', { name: /Exporter en CSV/ });
+    await user.click(boutons[boutons.length - 1]);
+
+    await waitFor(() => expect(downloadAccountingExport).toHaveBeenCalled());
+    expect(downloadAccountingExport.mock.calls[0][1]).toBe('mandant-trial-balance');
+    expect(downloadAccountingExport.mock.calls[0][2]).toBe('csv');
   });
 });

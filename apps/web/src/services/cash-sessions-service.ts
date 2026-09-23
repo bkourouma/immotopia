@@ -53,6 +53,10 @@ export interface CashSession {
   openedAt: string;
   openingFloat: number;
   openingNote: string | null;
+  /** Caisse (compte de trésorerie CASH) sur laquelle la session est ouverte (lot 10). */
+  treasuryAccountId: string | null;
+  /** Libellé de cette caisse, déjà formé côté serveur — « Caisse principale · 5711 ». */
+  treasuryLabel: string | null;
   closedAt: string | null;
   expected: CashSessionExpected;
   countedAmount: number | null;
@@ -68,6 +72,8 @@ export interface CashSession {
 export interface OpenCashSessionInput {
   openingFloat: number;
   openingNote?: string;
+  /** Caisse à ouvrir. Absente : caisse par défaut de l'agence (lot 10). */
+  treasuryAccountId?: string | null;
 }
 
 export interface CloseCashSessionInput {

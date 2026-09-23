@@ -5,6 +5,8 @@ import { requirePermission } from '../middleware/rbac-middleware';
 import {
   getGeneralLedgerHandler,
   getJournalHandler,
+  getMandantSubledgerHandler,
+  getMandantTrialBalanceHandler,
   getTrialBalanceHandler
 } from '../controllers/accounting-exports-controller';
 
@@ -23,5 +25,8 @@ const BASE = '/tenants/:tenantId/finance/accounting';
 router.get(`${BASE}/journal`, ...guard, getJournalHandler);
 router.get(`${BASE}/general-ledger`, ...guard, getGeneralLedgerHandler);
 router.get(`${BASE}/trial-balance`, ...guard, getTrialBalanceHandler);
+// Lot 10 : grand livre auxiliaire et balance auxiliaire des mandants.
+router.get(`${BASE}/mandant-subledger`, ...guard, getMandantSubledgerHandler);
+router.get(`${BASE}/mandant-trial-balance`, ...guard, getMandantTrialBalanceHandler);
 
 export default router;

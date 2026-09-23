@@ -3,6 +3,13 @@ export type LoanStatus = 'ACTIVE' | 'CLOSED' | 'DEFAULTED';
 export type WorkProgramStatus = 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 export type StatementStatus = 'DRAFT' | 'SENT' | 'PAID';
 
+/**
+ * Moyen de paiement d'une dépense (lot 10, conformité SYSCOHADA —
+ * `LOT10-CONTRAT.md`). Mêmes valeurs que `RentalPaymentMethod` côté
+ * encaissement locataire.
+ */
+export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'MOBILE_MONEY' | 'CHECK' | 'CARD' | 'OTHER';
+
 export type ExpenseCategory =
   | 'PROPERTY_TAX'
   | 'CONDO_FEES'
@@ -81,6 +88,14 @@ export interface PropertyExpense {
   isCapitalized: boolean;
   receiptUrl?: string | null;
   notes?: string | null;
+  /** Moyen de paiement de la dépense (lot 10, SYSCOHADA). */
+  paymentMethod?: PaymentMethod | null;
+  /** Compte de trésorerie débité. */
+  treasuryAccountId?: string | null;
+  /** L'agence a commandé et doit la facture (dépense refacturée au propriétaire). */
+  agencyIsBuyer?: boolean;
+  /** Fournisseur, requis dès que `agencyIsBuyer` est coché. */
+  supplierName?: string | null;
 }
 
 export interface PropertyLoan {

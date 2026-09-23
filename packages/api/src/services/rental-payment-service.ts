@@ -10,6 +10,7 @@ import {
 import { Decimal } from '@prisma/client/runtime/library';
 import { appendThirdPartyMovementTx } from '../lib/finance/ledger';
 import { roundMoney } from '../lib/finance/money';
+import { assertTreasuryAccountUsableTx } from '../lib/treasury/accounts';
 import {
   annulerPieceTx,
   compteLocataireDuBailTx,
@@ -241,6 +242,8 @@ interface CreatePaymentData {
   pspTransactionId?: string;
   pspReference?: string;
   idempotencyKey: string;
+  /** Lot 10 : compte de trésorerie réellement crédité. Nul : celui par défaut du moyen de paiement. */
+  treasuryAccountId?: string | null;
 }
 
 interface AllocatePaymentData {
@@ -314,6 +317,8 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
     // règlement enregistré dont le compte du locataire ne saurait rien ferait
     // apparaître le locataire débiteur d'un loyer qu'il a payé.
     const payment = await prisma.$transaction(async tx => {
+      await assertTreasuryAccountUsableTx(tx, tenantId, data.treasuryAccountId, data.method);
+
       const created = await tx.rentalPayment.create({
         data: {
           tenant_id: tenantId,
@@ -325,6 +330,7 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
           currency: data.currency || 'FCFA',
           mm_operator: data.mmOperator as any,
           mm_phone: data.mmPhone,
+          treasury_account_id: data.treasuryAccountId || null,
           psp_name: data.pspName,
           psp_transaction_id: data.pspTransactionId,
           psp_reference: data.pspReference,

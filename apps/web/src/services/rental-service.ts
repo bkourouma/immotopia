@@ -403,6 +403,8 @@ export interface RentalPayment {
   psp_name?: string | null;
   psp_transaction_id?: string | null;
   psp_reference?: string | null;
+  /** Compte de trésorerie crédité par l'encaissement (lot 10, conformité SYSCOHADA). */
+  treasury_account_id?: string | null;
   initiated_at: string;
   succeeded_at?: string | null;
   failed_at?: string | null;
@@ -437,6 +439,8 @@ export interface CreatePaymentRequest {
   idempotencyKey?: string;
   /** Date du règlement, `YYYY-MM-DD`. Absente : aujourd'hui. */
   paidAt?: string;
+  /** Compte de trésorerie crédité. Absent : compte par défaut du moyen de paiement (lot 10). */
+  treasuryAccountId?: string | null;
 }
 
 export interface AllocatePaymentRequest {
@@ -545,6 +549,8 @@ export interface PaymentDeclarationResponse {
 
 export interface ApprovePaymentDeclarationRequest {
   reviewNotes?: string;
+  /** Compte de trésorerie crédité par le paiement créé à l'approbation (lot 10). */
+  treasuryAccountId?: string | null;
 }
 
 export interface RejectPaymentDeclarationRequest {
@@ -724,6 +730,8 @@ export interface RentalDepositMovement {
   metadata?: any;
   created_by_user_id: string;
   created_at: string;
+  /** Compte de trésorerie mouvementé (lot 10, SYSCOHADA) — surtout pour un remboursement. */
+  treasuryAccountId?: string | null;
 }
 
 export interface CreateDepositMovementRequest {
@@ -733,6 +741,8 @@ export interface CreateDepositMovementRequest {
   installmentId?: string;
   note?: string;
   metadata?: any;
+  /** Compte de trésorerie mouvementé (lot 10, SYSCOHADA) — surtout pour un remboursement. */
+  treasuryAccountId?: string | null;
 }
 
 export async function getDeposit(

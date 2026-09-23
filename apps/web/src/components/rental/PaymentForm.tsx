@@ -3,6 +3,7 @@ import { App, Form, Input, Select, Button, Row, Col, Alert, InputNumber, DatePic
 import dayjs from 'dayjs';
 import { CreatePaymentRequest, RentalPaymentMethod } from '../../services/rental-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
 
 interface PaymentFormProps {
@@ -54,7 +55,8 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
         pspName: values.pspName || undefined,
         pspTransactionId: values.pspTransactionId || undefined,
         pspReference: values.pspReference || undefined,
-        paidAt: values.paidAt ? values.paidAt.format('YYYY-MM-DD') : undefined
+        paidAt: values.paidAt ? values.paidAt.format('YYYY-MM-DD') : undefined,
+        treasuryAccountId: values.treasuryAccountId || undefined
       };
 
       await onSubmit(submitData);
@@ -116,7 +118,17 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
             required
             rules={[{ required: true, message: t('La méthode de paiement est requise') }]}
           >
-            <Select showSearch optionFilterProp="children">
+            <Select
+              showSearch
+              optionFilterProp="children"
+              onChange={value => {
+                setMethod(value as RentalPaymentMethod);
+                // Le compte de trésorerie choisi ne correspond plus forcément
+                // au nouveau moyen de paiement : on repart d'un choix vide
+                // plutôt que de laisser un compte incompatible sélectionné.
+                form.setFieldValue('treasuryAccountId', undefined);
+              }}
+            >
               <Select.Option value={RentalPaymentMethod.CASH}>{t('Espèces')}</Select.Option>
               <Select.Option value={RentalPaymentMethod.BANK_TRANSFER}>{t('Virement bancaire')}</Select.Option>
               <Select.Option value={RentalPaymentMethod.CHECK}>{t('Chèque')}</Select.Option>
@@ -124,6 +136,12 @@ export const PaymentForm: React.FC<PaymentFormProps> = ({
               <Select.Option value={RentalPaymentMethod.CARD}>{t('Carte bancaire')}</Select.Option>
               <Select.Option value={RentalPaymentMethod.OTHER}>{t('Autre')}</Select.Option>
             </Select>
+          </Form.Item>
+        </Col>
+
+        <Col xs={24} md={12}>
+          <Form.Item label={t('Compte de trésorerie')} name="treasuryAccountId">
+            <TreasuryAccountSelector tenantId={tenantId} paymentMethod={method} />
           </Form.Item>
         </Col>
 

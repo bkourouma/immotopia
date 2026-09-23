@@ -7,6 +7,7 @@ import { logger } from '../../utils/logger';
 import { materializeManagementFees } from '../rental-fees/materialize';
 import { ownerSharesByProperty } from '../ownership/service';
 import { computeOwnerStatement, OWNER_STATEMENT_COMPUTATION_VERSION } from './owner-statement-computation';
+import { assertTreasuryAccountUsableTx } from '../treasury/accounts';
 
 // `services/audit-service.ts` n'est PAS importe ici bien que la specification
 // (edge case US12) demande une trace d'audit du remplacement d'un cout saisi
@@ -173,23 +174,45 @@ export async function createPropertyExpense(
     isCapitalized: boolean;
     receiptUrl?: string;
     notes?: string;
+    /** Lot 10 : moyen de paiement reel. Absent a la creation : caisse par defaut. */
+    paymentMethod?: 'MOBILE_MONEY' | 'BANK_TRANSFER' | 'CASH' | 'CHECK' | 'CARD' | 'OTHER' | null;
+    treasuryAccountId?: string | null;
+    /** Vrai quand l'agence a elle-meme commande le travail et doit la facture. */
+    agencyIsBuyer?: boolean;
+    supplierName?: string | null;
   }
 ) {
   await ensureTenantProperty(tenantId, propertyId);
-  return prisma.propertyExpense.create({
-    data: {
-      tenantId,
-      propertyId,
-      category: data.category,
-      label: data.label,
-      amount: new Prisma.Decimal(data.amount),
-      currency: data.currency,
-      paidAt: data.paidAt,
-      isCapitalized: data.isCapitalized,
-      receiptUrl: data.receiptUrl,
-      notes: data.notes
-    },
-    include: { property: true }
+
+  const agencyIsBuyer = data.agencyIsBuyer ?? false;
+  if (agencyIsBuyer && !data.supplierName?.trim()) {
+    throw badRequest("Le nom du fournisseur est requis quand l'agence est elle-meme l'acheteuse");
+  }
+
+  const paymentMethod = data.paymentMethod ?? 'CASH';
+
+  return prisma.$transaction(async tx => {
+    await assertTreasuryAccountUsableTx(tx, tenantId, data.treasuryAccountId, paymentMethod);
+
+    return tx.propertyExpense.create({
+      data: {
+        tenantId,
+        propertyId,
+        category: data.category,
+        label: data.label,
+        amount: new Prisma.Decimal(data.amount),
+        currency: data.currency,
+        paidAt: data.paidAt,
+        isCapitalized: data.isCapitalized,
+        receiptUrl: data.receiptUrl,
+        notes: data.notes,
+        paymentMethod,
+        treasuryAccountId: data.treasuryAccountId || null,
+        agencyIsBuyer,
+        supplierName: data.supplierName ?? null
+      },
+      include: { property: true }
+    });
   });
 }
 
@@ -224,6 +247,11 @@ export async function updatePropertyExpense(
     isCapitalized: boolean;
     receiptUrl: string;
     notes: string;
+    /** Lot 10 : moyen de paiement reel. */
+    paymentMethod: 'MOBILE_MONEY' | 'BANK_TRANSFER' | 'CASH' | 'CHECK' | 'CARD' | 'OTHER' | null;
+    treasuryAccountId: string | null;
+    agencyIsBuyer: boolean;
+    supplierName: string | null;
   }>
 ) {
   await ensureTenantProperty(tenantId, propertyId);
@@ -232,19 +260,36 @@ export async function updatePropertyExpense(
   });
   if (!existing) throw notFound('Depense introuvable');
 
-  return prisma.propertyExpense.update({
-    where: { id: expenseId },
-    data: {
-      category: data.category,
-      label: data.label,
-      amount: typeof data.amount === 'number' ? new Prisma.Decimal(data.amount) : undefined,
-      currency: data.currency,
-      paidAt: data.paidAt,
-      isCapitalized: data.isCapitalized,
-      receiptUrl: data.receiptUrl,
-      notes: data.notes
-    },
-    include: { property: true }
+  const effectiveAgencyIsBuyer = data.agencyIsBuyer ?? existing.agencyIsBuyer;
+  const effectiveSupplierName = data.supplierName !== undefined ? data.supplierName : existing.supplierName;
+  if (effectiveAgencyIsBuyer && !effectiveSupplierName?.trim()) {
+    throw badRequest("Le nom du fournisseur est requis quand l'agence est elle-meme l'acheteuse");
+  }
+
+  const treasuryAccountId = data.treasuryAccountId !== undefined ? data.treasuryAccountId : existing.treasuryAccountId;
+  const methodForValidation = data.paymentMethod !== undefined ? data.paymentMethod : existing.paymentMethod;
+
+  return prisma.$transaction(async tx => {
+    await assertTreasuryAccountUsableTx(tx, tenantId, treasuryAccountId, methodForValidation ?? 'CASH');
+
+    return tx.propertyExpense.update({
+      where: { id: expenseId },
+      data: {
+        category: data.category,
+        label: data.label,
+        amount: typeof data.amount === 'number' ? new Prisma.Decimal(data.amount) : undefined,
+        currency: data.currency,
+        paidAt: data.paidAt,
+        isCapitalized: data.isCapitalized,
+        receiptUrl: data.receiptUrl,
+        notes: data.notes,
+        paymentMethod: data.paymentMethod,
+        treasuryAccountId: data.treasuryAccountId,
+        agencyIsBuyer: data.agencyIsBuyer,
+        supplierName: data.supplierName
+      },
+      include: { property: true }
+    });
   });
 }
 
@@ -866,7 +911,7 @@ export async function generateOwnerStatement(
   // encore : le relevé et l'état des commissions lisent les mêmes chiffres.
   await materializeManagementFees(tenantId, { from: periodStart, to: periodEnd, propertyIds });
 
-  const [installments, expenses, fees] = await Promise.all([
+  const [installments, expenses, fees, withholdings, depositMovements] = await Promise.all([
     leaseIds.length === 0
       ? Promise.resolve([])
       : prisma.rentalInstallment.findMany({
@@ -912,13 +957,58 @@ export async function generateOwnerStatement(
         feeBase: true,
         vatRate: true
       }
-    })
+    }),
+    // Lot 10 : retenue à la source sur loyers, sur les biens du relevé, dans le mois.
+    ownerClient
+      ? prisma.rentWithholding.findMany({
+          where: {
+            tenantId,
+            ownerClientId: ownerClient.id,
+            propertyId: { in: propertyIds },
+            collectedAt: { gte: periodStart, lte: periodEnd }
+          },
+          select: { propertyId: true, amount: true }
+        })
+      : Promise.resolve([]),
+    // Lot 10 : dépôts de garantie conservés dans le mois, sur le compte de
+    // tiers OWNER du propriétaire. Rattachés à un bien via leur bail — un
+    // mouvement sans bail resolu n'entre dans aucun relevé.
+    ownerClient
+      ? prisma.thirdPartyMovement.findMany({
+          where: {
+            tenantId,
+            type: 'DEPOSIT_RETAINED',
+            movementDate: { gte: periodStart, lte: periodEnd },
+            account: { tenantId, kind: 'OWNER', tenantClientId: ownerClient.id }
+          },
+          select: {
+            debit: true,
+            credit: true,
+            lease: { select: { property_id: true } }
+          }
+        })
+      : Promise.resolve([])
   ]);
+
+  const withholdingsByProperty = withholdings
+    .filter(w => propertyIds.includes(w.propertyId))
+    .map(w => ({ propertyId: w.propertyId, amount: Number(w.amount) }));
+
+  const depositsRetainedByProperty = depositMovements
+    .filter(m => m.lease?.property_id && propertyIds.includes(m.lease.property_id))
+    .map(m => ({
+      propertyId: m.lease!.property_id,
+      // Le sens debit/credit du mouvement n'importe pas ici : une seule des
+      // deux colonnes est renseignée par mouvement (voir `appendThirdPartyMovementTx`).
+      amount: Number(m.debit ?? 0) + Number(m.credit ?? 0)
+    }));
 
   const computed = computeOwnerStatement({
     periodStart,
     periodEnd,
     propertyIds,
+    withholdings: withholdingsByProperty,
+    depositsRetained: depositsRetainedByProperty,
     installments: installments.map(inst => ({
       propertyId: inst.lease.property_id,
       dueDate: inst.due_date,

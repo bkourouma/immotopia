@@ -9,10 +9,24 @@ import {
   listPayments
 } from '../../services/rental-service';
 import { formatNumberWithSpaces, parseFormattedNumber } from '../../lib/utils';
+import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
+
+/**
+ * Adaptateur Form.Item : `value` et `onChange` sont injectés par le formulaire,
+ * alors que `TreasuryAccountSelector` les exige explicitement. Pas de moyen de
+ * paiement dans ce formulaire : tous les comptes actifs sont proposés.
+ */
+const RefundTreasuryAccountField: React.FC<{
+  tenantId: string;
+  value?: string | null;
+  onChange?: (id: string | null) => void;
+}> = ({ tenantId, value, onChange }) => (
+  <TreasuryAccountSelector tenantId={tenantId} paymentMethod="OTHER" value={value} onChange={id => onChange?.(id)} />
+);
 
 interface DepositMovementFormProps {
   tenantId: string;
@@ -87,7 +101,8 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
         amount: amountNum,
         paymentId: values.paymentId && String(values.paymentId).trim() ? values.paymentId : undefined,
         installmentId: values.installmentId && String(values.installmentId).trim() ? values.installmentId : undefined,
-        note: values.note && String(values.note).trim() ? values.note : undefined
+        note: values.note && String(values.note).trim() ? values.note : undefined,
+        treasuryAccountId: values.treasuryAccountId ?? undefined
       };
 
       await onSubmit(submitData);
@@ -135,8 +150,8 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
               optionFilterProp="children"
               onChange={value => {
                 setMovementType(value);
-                // Reset paymentId when type changes
-                form.setFieldsValue({ paymentId: undefined });
+                // Reset paymentId et treasuryAccountId quand le type change
+                form.setFieldsValue({ paymentId: undefined, treasuryAccountId: undefined });
               }}
             >
               <Select.Option value={RentalDepositMovementType.COLLECT}>{t('Collecte')}</Select.Option>
@@ -220,6 +235,18 @@ export const DepositMovementForm: React.FC<DepositMovementFormProps> = ({
             />
           </Form.Item>
         </Col>
+
+        {movementType === RentalDepositMovementType.REFUND && (
+          <Col xs={24} md={12}>
+            <Form.Item
+              label={t('Compte de trésorerie')}
+              name="treasuryAccountId"
+              help={t('Compte débité pour le remboursement du dépôt de garantie au locataire.')}
+            >
+              <RefundTreasuryAccountField tenantId={tenantId} />
+            </Form.Item>
+          </Col>
+        )}
 
         <Col xs={24}>
           <Form.Item label={t('Note')} name="note">

@@ -44,6 +44,15 @@ const AGENCY_SETTINGS = {
   ownerFundsAccountNumber: null,
   managementFeeAccountNumber: null,
   vatCollectedAccountNumber: null,
+  cashShortageAccountNumber: '6588',
+  cashSurplusAccountNumber: '7588',
+  penaltyBeneficiary: 'OWNER' as const,
+  penaltyIncomeAccountNumber: null,
+  withholdingEnabled: false,
+  withholdingRateIndividual: 12,
+  withholdingRateCompany: 15,
+  withholdingAccountNumber: '4478',
+  withholdingStartsOn: null,
   isDefault: false,
   updatedAt: '2026-01-01T00:00:00.000Z'
 };
@@ -54,7 +63,8 @@ const OWNERS = [
     ownerName: 'Amadou Diallo',
     email: 'amadou@example.com',
     leaseCount: 3,
-    terms: null
+    terms: null,
+    ownerTaxStatus: null
   },
   {
     ownerClientId: 'owner-2',
@@ -66,7 +76,8 @@ const OWNERS = [
       managementFeeRate: null,
       managementFeeFixedAmount: 15000,
       managementFeeBase: 'RENT_ONLY' as const
-    }
+    },
+    ownerTaxStatus: 'INDIVIDUAL' as const
   }
 ];
 
@@ -114,6 +125,42 @@ describe('AgencyFinanceSettings — Lot 2, honoraires de gestion', () => {
     // Carte collaborateurs : les deux agents, avec ou sans part actuelle.
     expect(await screen.findByText('Boubacar Sy')).toBeTruthy();
     expect(await screen.findByText('Awa Traoré')).toBeTruthy();
+  });
+
+  it('le compte de produit des pénalités n’apparaît que si l’agence en bénéficie', async () => {
+    mount();
+
+    await screen.findAllByText('Honoraires de gestion');
+    expect(screen.getByText('Pénalités de retard')).toBeTruthy();
+    expect(screen.queryByLabelText('Compte de produit des pénalités')).toBeNull();
+
+    fireEvent.click(screen.getByRole('radio', { name: "L'agence" }));
+
+    await waitFor(() => expect(screen.getByLabelText('Compte de produit des pénalités')).toBeTruthy());
+  });
+
+  it('avertit avant d’activer la retenue à la source et exige une date de départ', async () => {
+    mount();
+
+    await screen.findAllByText('Honoraires de gestion');
+    expect(
+      screen.getByText(
+        'À activer seulement après confirmation du cabinet : statut fiscal de chaque propriétaire, assiette et échéances'
+      )
+    ).toBeTruthy();
+
+    const interrupteur = screen.getByLabelText('Appliquer une retenue à la source sur les loyers');
+    expect(screen.getByLabelText('Appliquer aux encaissements à partir du')).toBeDisabled();
+
+    fireEvent.click(interrupteur);
+    await waitFor(() => expect(screen.getByLabelText('Appliquer aux encaissements à partir du')).toBeEnabled());
+    // Date de départ proposée à aujourd'hui.
+    const aujourdHui = new Date();
+    const attendu = [aujourdHui.getDate(), aujourdHui.getMonth() + 1]
+      .map(n => String(n).padStart(2, '0'))
+      .concat(String(aujourdHui.getFullYear()))
+      .join('/');
+    expect((screen.getByLabelText('Appliquer aux encaissements à partir du') as HTMLInputElement).value).toBe(attendu);
   });
 
   it('en mode forfait, le champ montant remplace le taux', async () => {

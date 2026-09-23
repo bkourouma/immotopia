@@ -101,9 +101,16 @@ describe('Paramètres financiers de l’agence', () => {
       vatRegistered: false,
       vatRate: 18,
       managementFeeRate: null,
-      managementFeeAccountNumber: '706',
+      // Consolidation SYSCOHADA (lot 10) : 4731 mandants, 70611 honoraires.
+      managementFeeAccountNumber: '70611',
       vatCollectedAccountNumber: '4432',
-      ownerFundsAccountNumber: null
+      ownerFundsAccountNumber: '4731',
+      cashShortageAccountNumber: '6588',
+      cashSurplusAccountNumber: '7588',
+      penaltyBeneficiary: 'OWNER',
+      withholdingEnabled: false,
+      withholdingStartsOn: null,
+      withholdingAccountNumber: '4478'
     });
     expect(prisma.agencyFinanceSettings.upsert).not.toHaveBeenCalled();
   });

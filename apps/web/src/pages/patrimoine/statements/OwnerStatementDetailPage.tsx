@@ -5,7 +5,12 @@ import { getOwnerStatementById, recomputeOwnerStatement } from '../../../service
 import type { OwnerStatement } from '../../../types/patrimoine-types';
 import { useAuth } from '../../../hooks/useAuth';
 import { MoneyValue } from '../../../components/primitives';
-import { isLegacyStatement, statementStatusLabel } from '../../../components/patrimoine/owner-statement-helpers';
+import {
+  isLegacyStatement,
+  statementStatusLabel,
+  totalDepositRetained,
+  totalWithholdingTax
+} from '../../../components/patrimoine/owner-statement-helpers';
 import { t } from '../../../i18n/t';
 
 import { activeLocale } from '../../../i18n/format';
@@ -190,6 +195,12 @@ export const OwnerStatementDetailPage: React.FC = () => {
                 </Descriptions.Item>
                 <Descriptions.Item label={t('Dépenses')} span="filled">
                   <MoneyValue value={statement.totalExpenses} />
+                </Descriptions.Item>
+                <Descriptions.Item label={t('Retenue à la source')}>
+                  <MoneyValue value={totalWithholdingTax(statement)} />
+                </Descriptions.Item>
+                <Descriptions.Item label={t('Dépôt de garantie conservé')}>
+                  <MoneyValue value={totalDepositRetained(statement)} />
                 </Descriptions.Item>
               </>
             )}

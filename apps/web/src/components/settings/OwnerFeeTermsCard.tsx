@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { App, Alert, Button, Card, Form, Modal, Space, Table, Tag, Typography } from 'antd';
+import { App, Alert, Button, Card, Form, Modal, Select, Space, Table, Tag, Typography } from 'antd';
 import { EditOutlined, UndoOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
   FeeTerms,
   OwnerFeeTerms,
+  OwnerFeeTermsInput,
+  OwnerTaxStatus,
   deleteOwnerFeeTerms,
   listOwnerFeeTerms,
   updateOwnerFeeTerms
@@ -17,12 +19,24 @@ import { t } from '../../i18n/t';
 const { Text } = Typography;
 
 /** Conditions par défaut proposées à l'ouverture de la modale d'édition. */
-const DEFAULT_TERMS: FeeTerms = {
+const DEFAULT_TERMS: OwnerFeeTermsInput = {
   managementFeeMode: 'PERCENT',
   managementFeeRate: null,
   managementFeeFixedAmount: null,
-  managementFeeBase: 'RENT_ONLY'
+  managementFeeBase: 'RENT_ONLY',
+  ownerTaxStatus: null
 };
+
+/** Libellés du statut fiscal, utilisés à la fois dans la modale et le tableau. */
+const TAX_STATUS_LABELS: Record<OwnerTaxStatus, string> = {
+  INDIVIDUAL: t('Personne physique'),
+  COMPANY: t('Personne morale'),
+  EXEMPT: t('Exonéré')
+};
+
+function taxStatusLabel(status: OwnerTaxStatus | null): string {
+  return status ? TAX_STATUS_LABELS[status] : t('Non renseigné');
+}
 
 /** Résumé lisible des conditions d'un propriétaire, pour la colonne du tableau. */
 function summarizeTerms(terms: FeeTerms | null): string {
@@ -51,7 +65,7 @@ export interface OwnerFeeTermsCardProps {
  */
 export const OwnerFeeTermsCard: React.FC<OwnerFeeTermsCardProps> = ({ tenantId }) => {
   const { message } = App.useApp();
-  const [form] = Form.useForm<FeeTerms>();
+  const [form] = Form.useForm<OwnerFeeTermsInput>();
   const [owners, setOwners] = useState<OwnerFeeTerms[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +91,10 @@ export const OwnerFeeTermsCard: React.FC<OwnerFeeTermsCardProps> = ({ tenantId }
 
   const openEdit = (owner: OwnerFeeTerms) => {
     setEditing(owner);
-    form.setFieldsValue(owner.terms ?? DEFAULT_TERMS);
+    form.setFieldsValue({
+      ...(owner.terms ?? DEFAULT_TERMS),
+      ownerTaxStatus: owner.ownerTaxStatus
+    });
   };
 
   const closeEdit = () => {
@@ -85,14 +102,15 @@ export const OwnerFeeTermsCard: React.FC<OwnerFeeTermsCardProps> = ({ tenantId }
     form.resetFields();
   };
 
-  const handleSave = async (values: FeeTerms) => {
+  const handleSave = async (values: OwnerFeeTermsInput) => {
     if (!editing) return;
     setSaving(true);
     try {
       await updateOwnerFeeTerms(tenantId, editing.ownerClientId, {
         ...values,
         managementFeeRate: values.managementFeeRate ?? null,
-        managementFeeFixedAmount: values.managementFeeFixedAmount ?? null
+        managementFeeFixedAmount: values.managementFeeFixedAmount ?? null,
+        ownerTaxStatus: values.ownerTaxStatus ?? null
       });
       message.success(t('Conditions du propriétaire enregistrées'));
       closeEdit();
@@ -135,6 +153,16 @@ export const OwnerFeeTermsCard: React.FC<OwnerFeeTermsCardProps> = ({ tenantId }
           <Tag color="blue">{summarizeTerms(owner.terms)}</Tag>
         ) : (
           <Text type="secondary">{summarizeTerms(owner.terms)}</Text>
+        )
+    },
+    {
+      title: t('Statut fiscal (retenue à la source)'),
+      key: 'ownerTaxStatus',
+      render: (_, owner) =>
+        owner.ownerTaxStatus ? (
+          <Tag>{taxStatusLabel(owner.ownerTaxStatus)}</Tag>
+        ) : (
+          <Text type="secondary">{taxStatusLabel(owner.ownerTaxStatus)}</Text>
         )
     },
     {
@@ -188,6 +216,23 @@ export const OwnerFeeTermsCard: React.FC<OwnerFeeTermsCardProps> = ({ tenantId }
       >
         <Form form={form} layout="vertical" onFinish={handleSave} onFinishFailed={onAntFormValidationFailed(form)}>
           <FeeTermsFields />
+          <Form.Item
+            label={t('Statut fiscal (retenue à la source)')}
+            name="ownerTaxStatus"
+            extra={t(
+              'Sert à déterminer le taux de retenue à la source applicable à ce propriétaire, une fois la retenue activée.'
+            )}
+          >
+            <Select
+              allowClear
+              placeholder={t('Non renseigné')}
+              options={[
+                { value: 'INDIVIDUAL', label: t('Personne physique') },
+                { value: 'COMPANY', label: t('Personne morale') },
+                { value: 'EXEMPT', label: t('Exonéré') }
+              ]}
+            />
+          </Form.Item>
         </Form>
       </Modal>
     </Card>

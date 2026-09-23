@@ -54,6 +54,7 @@ import leaseInspectionRoutes from './routes/lease-inspection-routes';
 import accountingExportsRoutes from './routes/accounting-exports-routes';
 import propertyOwnershipRoutes from './routes/property-ownership-routes';
 import cashSessionRoutes from './routes/cash-session-routes';
+import treasuryRoutes from './routes/treasury-routes';
 import { startPenaltyCalculationJob } from './jobs/penalty-calculation-job';
 import { startLandLeaseAccrualJob } from './jobs/land-lease-accrual-job';
 import { startReminderSchedulerJob } from './jobs/reminder-scheduler.job';
@@ -240,6 +241,7 @@ app.use('/api', leaseInspectionRoutes); // Etats des lieux d'entree et de sortie
 app.use('/api', accountingExportsRoutes); // Exports comptables : journal, grand livre, balance
 app.use('/api', propertyOwnershipRoutes); // Indivision : quotes-parts des proprietaires d'un bien
 app.use('/api', cashSessionRoutes); // Caisse d'agence : sessions, comptage, validation
+app.use('/api', treasuryRoutes); // Tresorerie : comptes, virements internes, versements DGI
 
 // 404 handler for unmatched routes (before the error handler, which only runs
 // for actual errors).

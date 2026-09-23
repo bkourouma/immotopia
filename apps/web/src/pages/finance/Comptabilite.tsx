@@ -9,6 +9,8 @@ import {
   getJournal,
   getGeneralLedger,
   getTrialBalance,
+  getMandantSubledger,
+  getMandantTrialBalance,
   downloadAccountingExport
 } from '../../services/accounting-exports-service';
 import type {
@@ -17,6 +19,10 @@ import type {
   GeneralLedgerLine,
   JournalEntry,
   JournalEntryLine,
+  MandantSubledgerLine,
+  MandantSubledgerNatureGroup,
+  MandantSubledgerOwnerGroup,
+  MandantTrialBalanceRow,
   TrialBalanceLine
 } from '../../services/accounting-exports-service';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
@@ -50,18 +56,25 @@ const { Text } = Typography;
  * (`__tests__/finance/comptabilite.test.tsx`) mockent ce service.
  */
 
-type Onglet = 'journal' | 'grand-livre' | 'balance-generale';
+type Onglet = 'journal' | 'grand-livre' | 'balance-generale' | 'mandants';
 
+// « Mandants » n'a pas d'unique export généré par `handleExport` : c'est un
+// onglet à deux états (grand livre auxiliaire, balance auxiliaire), chacun
+// avec son propre bouton d'export — voir `exporterMandantSubledger` et
+// `exporterMandantTrialBalance`. Ces deux entrées ne servent donc que
+// l'exhaustivité du type `Record<Onglet, …>` et ne sont jamais lues.
 const REPORT_BY_ONGLET: Record<Onglet, AccountingReport> = {
   journal: 'journal',
   'grand-livre': 'general-ledger',
-  'balance-generale': 'trial-balance'
+  'balance-generale': 'trial-balance',
+  mandants: 'mandant-subledger'
 };
 
 const FALLBACK_NAME: Record<Onglet, string> = {
   journal: 'journal',
   'grand-livre': 'grand-livre',
-  'balance-generale': 'balance-generale'
+  'balance-generale': 'balance-generale',
+  mandants: 'grand-livre-auxiliaire-mandants'
 };
 
 const ONGLET_KEY = 'tab';
@@ -69,6 +82,7 @@ const FROM_KEY = 'from';
 const TO_KEY = 'to';
 const JOURNAL_KEY = 'journal';
 const ACCOUNT_KEY = 'account';
+const DATE_MANDANTS_KEY = 'date-mandants';
 
 function debutAnneeCourante(): string {
   return dayjs().startOf('year').format('YYYY-MM-DD');
@@ -133,6 +147,22 @@ export const Comptabilite: React.FC = () => {
     staleTime: STALE_TIME.list
   });
 
+  const dateMandants = searchParams.get(DATE_MANDANTS_KEY) || to;
+
+  const mandantSubledgerQuery = useQuery({
+    queryKey: queryKey('accounting-mandant-subledger', tenantId, periode),
+    queryFn: () => getMandantSubledger(tenantId as string, periode),
+    enabled: Boolean(tenantId) && onglet === 'mandants',
+    staleTime: STALE_TIME.list
+  });
+
+  const mandantTrialBalanceQuery = useQuery({
+    queryKey: queryKey('accounting-mandant-trial-balance', tenantId, { date: dateMandants }),
+    queryFn: () => getMandantTrialBalance(tenantId as string, { date: dateMandants }),
+    enabled: Boolean(tenantId) && onglet === 'mandants',
+    staleTime: STALE_TIME.list
+  });
+
   if (!tenantId) {
     return <StateBlock variant="empty" title={t('Aucune agence sélectionnée')} />;
   }
@@ -141,6 +171,20 @@ export const Comptabilite: React.FC = () => {
     if (onglet === 'journal') return { journal: journalFiltre || undefined };
     if (onglet === 'grand-livre') return { account: compteFiltre || undefined };
     return {};
+  };
+
+  /** Déclenche le téléchargement d'un fichier déjà reçu du serveur — factorisé pour les cinq exports de l'écran. */
+  const telecharger = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob);
+    const lien = window.document.createElement('a');
+    lien.href = url;
+    lien.download = filename;
+    window.document.body.appendChild(lien);
+    lien.click();
+    // L'URL d'objet est révoquée APRÈS le retrait du lien : l'inverse laisse
+    // au navigateur une référence vers une URL déjà libérée.
+    window.document.body.removeChild(lien);
+    window.URL.revokeObjectURL(url);
   };
 
   const handleExport = async (format: 'xlsx' | 'csv') => {
@@ -155,16 +199,45 @@ export const Comptabilite: React.FC = () => {
         { ...periode, ...parametresExport() },
         `${FALLBACK_NAME[onglet]}.${format}`
       );
-      const url = window.URL.createObjectURL(blob);
-      const lien = window.document.createElement('a');
-      lien.href = url;
-      lien.download = filename;
-      window.document.body.appendChild(lien);
-      lien.click();
-      // L'URL d'objet est révoquée APRÈS le retrait du lien : l'inverse laisse
-      // au navigateur une référence vers une URL déjà libérée.
-      window.document.body.removeChild(lien);
-      window.URL.revokeObjectURL(url);
+      telecharger(blob, filename);
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || t('Le téléchargement a échoué.'));
+    } finally {
+      setExportEnCours(null);
+    }
+  };
+
+  const exporterMandantSubledger = async (format: 'xlsx' | 'csv') => {
+    const cle = `mandant-subledger-${format}`;
+    setExportEnCours(cle);
+    try {
+      const { blob, filename } = await downloadAccountingExport(
+        tenantId,
+        'mandant-subledger',
+        format,
+        periode,
+        `grand-livre-auxiliaire-mandants.${format}`
+      );
+      telecharger(blob, filename);
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || t('Le téléchargement a échoué.'));
+    } finally {
+      setExportEnCours(null);
+    }
+  };
+
+  const exporterMandantTrialBalance = async (format: 'xlsx' | 'csv') => {
+    const cle = `mandant-trial-balance-${format}`;
+    setExportEnCours(cle);
+    try {
+      const { blob, filename } = await downloadAccountingExport(
+        tenantId,
+        'mandant-trial-balance',
+        format,
+        { date: dateMandants },
+        `balance-auxiliaire-mandants.${format}`
+      );
+      telecharger(blob, filename);
     } catch (err: any) {
       message.error(err?.response?.data?.message || t('Le téléchargement a échoué.'));
     } finally {
@@ -196,6 +269,8 @@ export const Comptabilite: React.FC = () => {
     { title: t('Compte'), key: 'compte', width: 120, render: (_, l) => l.accountNumber },
     { title: t('Intitulé'), key: 'intitule', render: (_, l) => l.accountName },
     { title: t('Libellé'), key: 'libelle', render: (_, l) => l.label },
+    { title: t('Tiers'), key: 'tiers', render: (_, l) => l.thirdParty ?? '—' },
+    { title: t('Nature'), key: 'nature', render: (_, l) => l.nature ?? '—' },
     { title: t('Débit'), key: 'debit', align: 'end', render: (_, l) => <MoneyValue value={l.debit} /> },
     { title: t('Crédit'), key: 'credit', align: 'end', render: (_, l) => <MoneyValue value={l.credit} /> }
   ];
@@ -306,6 +381,8 @@ export const Comptabilite: React.FC = () => {
     { title: t('Journal'), key: 'journal', width: 100, render: (_, l) => l.journalCode },
     { title: t('Référence'), key: 'reference', render: (_, l) => l.reference },
     { title: t('Libellé'), key: 'libelle', render: (_, l) => l.label },
+    { title: t('Tiers'), key: 'tiers', render: (_, l) => l.thirdParty ?? '—' },
+    { title: t('Nature'), key: 'nature', render: (_, l) => l.nature ?? '—' },
     { title: t('Débit'), key: 'debit', align: 'end', render: (_, l) => <MoneyValue value={l.debit} /> },
     { title: t('Crédit'), key: 'credit', align: 'end', render: (_, l) => <MoneyValue value={l.credit} /> },
     { title: t('Solde'), key: 'solde', align: 'end', render: (_, l) => <MoneyValue value={l.balance} signed /> }
@@ -541,6 +618,230 @@ export const Comptabilite: React.FC = () => {
     </>
   );
 
+  // --- Mandants (auxiliaire) ----------------------------------------------
+  const colonnesMouvementsMandant: ColumnsType<MandantSubledgerLine> = [
+    { title: t('Date'), key: 'date', width: 120, render: (_, l) => dateCourte(l.date) },
+    { title: t('Journal'), key: 'journal', width: 100, render: (_, l) => l.journalCode },
+    { title: t('Référence'), key: 'reference', render: (_, l) => l.reference },
+    { title: t('Libellé'), key: 'libelle', render: (_, l) => l.label },
+    { title: t('Débit'), key: 'debit', align: 'end', render: (_, l) => <MoneyValue value={l.debit} /> },
+    { title: t('Crédit'), key: 'credit', align: 'end', render: (_, l) => <MoneyValue value={l.credit} /> },
+    { title: t('Solde'), key: 'solde', align: 'end', render: (_, l) => <MoneyValue value={l.balance} signed /> }
+  ];
+
+  const blocNatureMandant = (nature: MandantSubledgerNatureGroup) => (
+    <div key={nature.nature} style={{ marginBottom: 'var(--space-4)' }}>
+      <Space size="large" style={{ marginBottom: 'var(--space-2)' }}>
+        <Text strong>{nature.natureLabel}</Text>
+        <Text type="secondary">
+          {t("Solde d'ouverture")} : <MoneyValue value={nature.openingBalance} signed />
+        </Text>
+        <Text type="secondary">
+          {t('Solde de clôture')} : <MoneyValue value={nature.closingBalance} signed />
+        </Text>
+      </Space>
+      <Table<MandantSubledgerLine>
+        dataSource={nature.lines}
+        columns={colonnesMouvementsMandant}
+        rowKey={(l, index) => `${nature.nature}-${index}`}
+        pagination={false}
+        size="small"
+        scroll={{ x: 'max-content' }}
+        aria-label={t('Mouvements — {{nature}}', { nature: nature.natureLabel })}
+      />
+    </div>
+  );
+
+  const blocProprietaireMandant = (proprietaire: MandantSubledgerOwnerGroup) => (
+    <Card
+      key={proprietaire.thirdPartyAccountId ?? 'non-reparti'}
+      title={proprietaire.ownerLabel}
+      style={{ marginBottom: 'var(--space-4)' }}
+      extra={
+        <Text type="secondary">
+          {t('Solde de clôture')} : <MoneyValue value={proprietaire.closingBalance} signed />
+        </Text>
+      }
+    >
+      {proprietaire.natures.map(blocNatureMandant)}
+    </Card>
+  );
+
+  const mandantSubledgerData = mandantSubledgerQuery.data;
+  const proprietaires = mandantSubledgerData?.owners ?? [];
+
+  const colonnesBalanceMandants: ColumnsType<MandantTrialBalanceRow> = [
+    { title: t('Mandant'), key: 'mandant', render: (_, r) => r.ownerLabel },
+    {
+      title: t('Compte courant'),
+      key: 'compte-courant',
+      align: 'end',
+      render: (_, r) => <MoneyValue value={r.current} signed />
+    },
+    {
+      title: t('Dépôt de garantie'),
+      key: 'depot-garantie',
+      align: 'end',
+      render: (_, r) => <MoneyValue value={r.deposit} signed />
+    },
+    {
+      title: t('À affecter'),
+      key: 'a-affecter',
+      align: 'end',
+      render: (_, r) => <MoneyValue value={r.unallocated} signed />
+    },
+    { title: t('Total'), key: 'total', align: 'end', render: (_, r) => <MoneyValue value={r.total} signed /> }
+  ];
+
+  const mandantTrialBalanceData = mandantTrialBalanceQuery.data;
+  const lignesBalanceMandants = mandantTrialBalanceData?.rows ?? [];
+
+  const ongletMandants = (
+    <>
+      <Card
+        title={t('Grand livre auxiliaire des mandants')}
+        style={{ marginBottom: 'var(--space-4)' }}
+        extra={
+          <Space>
+            <Button
+              icon={<DownloadOutlined />}
+              loading={exportEnCours === 'mandant-subledger-xlsx'}
+              onClick={() => exporterMandantSubledger('xlsx')}
+            >
+              {t('Exporter en Excel')}
+            </Button>
+            <Button
+              icon={<DownloadOutlined />}
+              loading={exportEnCours === 'mandant-subledger-csv'}
+              onClick={() => exporterMandantSubledger('csv')}
+            >
+              {t('Exporter en CSV')}
+            </Button>
+          </Space>
+        }
+      >
+        {mandantSubledgerData && !mandantSubledgerData.control.isBalanced && (
+          <Alert
+            type="error"
+            showIcon
+            message={t(
+              "Le grand livre auxiliaire des mandants ne coïncide pas avec le solde général du compte : signalez-le à l'éditeur."
+            )}
+            description={t('Écart : {{montant}}', { montant: mandantSubledgerData.control.difference })}
+            style={{ marginBottom: 'var(--space-4)' }}
+          />
+        )}
+        {mandantSubledgerQuery.error ? (
+          <StateBlock
+            variant="error"
+            description={t('Impossible de charger le grand livre auxiliaire des mandants.')}
+            actions={[{ label: t('Réessayer'), onClick: () => mandantSubledgerQuery.refetch(), primary: true }]}
+          />
+        ) : mandantSubledgerQuery.isPending ? (
+          <StateBlock variant="loading" />
+        ) : proprietaires.length === 0 ? (
+          <StateBlock variant="empty" description={t('Aucun mouvement de mandant sur cette période.')} />
+        ) : (
+          proprietaires.map(blocProprietaireMandant)
+        )}
+      </Card>
+
+      <Card
+        title={t('Balance auxiliaire des mandants')}
+        extra={
+          <Space wrap align="end">
+            <div>
+              <label htmlFor="comptabilite-mandants-date">{t('Date')}</label>
+              <DatePicker
+                id="comptabilite-mandants-date"
+                format="DD/MM/YYYY"
+                value={dayjs(dateMandants)}
+                onChange={date => date && majParametres({ [DATE_MANDANTS_KEY]: date.format('YYYY-MM-DD') })}
+                allowClear={false}
+              />
+            </div>
+            <Button
+              icon={<DownloadOutlined />}
+              loading={exportEnCours === 'mandant-trial-balance-xlsx'}
+              onClick={() => exporterMandantTrialBalance('xlsx')}
+            >
+              {t('Exporter en Excel')}
+            </Button>
+            <Button
+              icon={<DownloadOutlined />}
+              loading={exportEnCours === 'mandant-trial-balance-csv'}
+              onClick={() => exporterMandantTrialBalance('csv')}
+            >
+              {t('Exporter en CSV')}
+            </Button>
+          </Space>
+        }
+      >
+        {mandantTrialBalanceData && !mandantTrialBalanceData.control.isBalanced && (
+          <Alert
+            type="error"
+            showIcon
+            message={t(
+              "La balance auxiliaire des mandants ne coïncide pas avec le solde général du compte : signalez-le à l'éditeur."
+            )}
+            description={t('Écart : {{montant}}', { montant: mandantTrialBalanceData.control.difference })}
+            style={{ marginBottom: 'var(--space-4)' }}
+          />
+        )}
+        {mandantTrialBalanceQuery.error ? (
+          <StateBlock
+            variant="error"
+            description={t('Impossible de charger la balance auxiliaire des mandants.')}
+            actions={[{ label: t('Réessayer'), onClick: () => mandantTrialBalanceQuery.refetch(), primary: true }]}
+          />
+        ) : mandantTrialBalanceQuery.isPending ? (
+          <StateBlock variant="loading" />
+        ) : lignesBalanceMandants.length === 0 ? (
+          <StateBlock variant="empty" description={t('Aucun solde de mandant à cette date.')} />
+        ) : (
+          <Table<MandantTrialBalanceRow>
+            dataSource={lignesBalanceMandants}
+            columns={colonnesBalanceMandants}
+            rowKey={r => r.thirdPartyAccountId ?? 'non-reparti'}
+            pagination={false}
+            loading={mandantTrialBalanceQuery.isFetching && !mandantTrialBalanceQuery.isPending}
+            scroll={{ x: 'max-content' }}
+            aria-label={t('Balance auxiliaire des mandants')}
+            summary={() =>
+              mandantTrialBalanceData ? (
+                <Table.Summary.Row>
+                  <Table.Summary.Cell index={0}>
+                    <Text strong>{t('Total')}</Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={1}>
+                    <Text strong>
+                      <MoneyValue value={mandantTrialBalanceData.totals.current} signed />
+                    </Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={2}>
+                    <Text strong>
+                      <MoneyValue value={mandantTrialBalanceData.totals.deposit} signed />
+                    </Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={3}>
+                    <Text strong>
+                      <MoneyValue value={mandantTrialBalanceData.totals.unallocated} signed />
+                    </Text>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={4}>
+                    <Text strong>
+                      <MoneyValue value={mandantTrialBalanceData.totals.total} signed />
+                    </Text>
+                  </Table.Summary.Cell>
+                </Table.Summary.Row>
+              ) : null
+            }
+          />
+        )}
+      </Card>
+    </>
+  );
+
   return (
     <>
       <PageHeader title={t('Comptabilité')} />
@@ -594,7 +895,8 @@ export const Comptabilite: React.FC = () => {
           items={[
             { key: 'journal', label: t('Journal'), children: ongletJournal },
             { key: 'grand-livre', label: t('Grand livre'), children: ongletGrandLivre },
-            { key: 'balance-generale', label: t('Balance générale'), children: ongletBalance }
+            { key: 'balance-generale', label: t('Balance générale'), children: ongletBalance },
+            { key: 'mandants', label: t('Mandants'), children: ongletMandants }
           ]}
         />
       </ContexteMontants.Provider>

@@ -42,6 +42,7 @@ export async function listOwnerFeeTerms(tenantId: string) {
       id: true,
       user: { select: { fullName: true, email: true } },
       managementTerms: true,
+      ownerTaxStatus: true,
       _count: { select: { ownerLeases: true } }
     },
     orderBy: { user: { fullName: 'asc' } }
@@ -51,7 +52,9 @@ export async function listOwnerFeeTerms(tenantId: string) {
     ownerName: owner.user.fullName || owner.user.email,
     email: owner.user.email ?? null,
     leaseCount: owner._count.ownerLeases,
-    terms: feeTermsFromRow(owner.managementTerms)
+    terms: feeTermsFromRow(owner.managementTerms),
+    /** Lot 10 : statut fiscal du proprietaire, pour la retenue a la source sur loyers. */
+    ownerTaxStatus: owner.ownerTaxStatus ?? null
   }));
 }
 
@@ -60,6 +63,13 @@ async function assertOwnerInTenant(tenantId: string, ownerClientId: string) {
   if (!owner) throw notFound('Proprietaire introuvable');
 }
 
+/**
+ * Statut fiscal du proprietaire (lot 10), pour la retenue a la source sur
+ * loyers. Optionnel dans le corps de la requete : absent ou `undefined`, on
+ * ne touche pas au champ deja enregistre.
+ */
+const ownerTaxStatusSchema = z.enum(['INDIVIDUAL', 'COMPANY', 'EXEMPT']).nullable();
+
 export async function setOwnerFeeTerms(
   tenantId: string,
   ownerClientId: string,
@@ -67,12 +77,21 @@ export async function setOwnerFeeTerms(
   userId: string | undefined
 ): Promise<FeeTerms> {
   const terms = feeTermsSchema.parse(body);
+  const rawOwnerTaxStatus = (body as { ownerTaxStatus?: unknown } | null | undefined)?.ownerTaxStatus;
+  const ownerTaxStatus = rawOwnerTaxStatus === undefined ? undefined : ownerTaxStatusSchema.parse(rawOwnerTaxStatus);
+
   await assertOwnerInTenant(tenantId, ownerClientId);
   const data = { ...feeTermsData(terms), updatedByUserId: userId ?? null };
-  const row = await prisma.ownerManagementTerms.upsert({
-    where: { ownerClientId },
-    create: { tenantId, ownerClientId, ...data },
-    update: data
+  const row = await prisma.$transaction(async tx => {
+    const upserted = await tx.ownerManagementTerms.upsert({
+      where: { ownerClientId },
+      create: { tenantId, ownerClientId, ...data },
+      update: data
+    });
+    if (ownerTaxStatus !== undefined) {
+      await tx.tenantClient.update({ where: { id: ownerClientId }, data: { ownerTaxStatus } });
+    }
+    return upserted;
   });
   return feeTermsFromRow(row) as FeeTerms;
 }

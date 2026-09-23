@@ -16,7 +16,8 @@ import apiClient from '../utils/api-client';
 const BASE = (tenantId: string) => `/tenants/${tenantId}/finance/accounting`;
 
 export type AccountingExportFormat = 'json' | 'csv' | 'xlsx';
-export type AccountingReport = 'journal' | 'general-ledger' | 'trial-balance';
+export type AccountingReport =
+  'journal' | 'general-ledger' | 'trial-balance' | 'mandant-subledger' | 'mandant-trial-balance';
 
 /** Bornes de période communes aux trois lectures. `from`/`to` au format `YYYY-MM-DD`. */
 export interface AccountingPeriodParams {
@@ -33,6 +34,10 @@ export interface JournalEntryLine {
   accountNumber: string;
   accountName: string;
   label: string;
+  /** Lot 10 : libellé du compte de tiers de la ligne (mandant), absent sinon. */
+  thirdParty: string | null;
+  /** Lot 10 : nature des fonds de mandant portés par la ligne — « Compte courant », « Dépôt de garantie », « À affecter ». */
+  nature: string | null;
   debit: number;
   credit: number;
 }
@@ -63,6 +68,10 @@ export interface GeneralLedgerLine {
   journalCode: string;
   reference: string;
   label: string;
+  /** Lot 10 : libellé du compte de tiers de la ligne (mandant), absent sinon. */
+  thirdParty: string | null;
+  /** Lot 10 : nature des fonds de mandant portés par la ligne. */
+  nature: string | null;
   debit: number;
   credit: number;
   /** Solde progressif, déjà calculé côté serveur. */
@@ -114,6 +123,82 @@ export interface TrialBalanceData {
   isBalanced: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Grand livre auxiliaire et balance auxiliaire des mandants — lot 10
+// ---------------------------------------------------------------------------
+
+/** Contrôle commun aux deux états auxiliaires : le total auxiliaire doit égaler le solde général du compte. */
+export interface MandantControl {
+  auxiliaryBalance: number;
+  generalBalance: number;
+  difference: number;
+  isBalanced: boolean;
+}
+
+export interface MandantSubledgerLine {
+  date: string;
+  journalCode: string;
+  reference: string;
+  label: string;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+export interface MandantSubledgerNatureGroup {
+  nature: 'CURRENT' | 'DEPOSIT' | 'UNALLOCATED';
+  natureLabel: string;
+  openingBalance: number;
+  lines: MandantSubledgerLine[];
+  totalDebit: number;
+  totalCredit: number;
+  closingBalance: number;
+}
+
+export interface MandantSubledgerOwnerGroup {
+  thirdPartyAccountId: string | null;
+  /** « Non réparti » pour les lignes sans compte de tiers. */
+  ownerLabel: string;
+  natures: MandantSubledgerNatureGroup[];
+  openingBalance: number;
+  totalDebit: number;
+  totalCredit: number;
+  closingBalance: number;
+}
+
+export interface MandantSubledgerData {
+  from: string;
+  to: string;
+  accountNumber: string;
+  accountName: string;
+  owners: MandantSubledgerOwnerGroup[];
+  totals: {
+    openingBalance: number;
+    totalDebit: number;
+    totalCredit: number;
+    closingBalance: number;
+  };
+  control: MandantControl;
+}
+
+export interface MandantTrialBalanceRow {
+  thirdPartyAccountId: string | null;
+  ownerLabel: string;
+  current: number;
+  deposit: number;
+  unallocated: number;
+  total: number;
+}
+
+export interface MandantTrialBalanceData {
+  date: string;
+  accountNumber: string;
+  accountName: string;
+  rows: MandantTrialBalanceRow[];
+  totals: { current: number; deposit: number; unallocated: number; total: number };
+  control: MandantControl;
+}
+
 /** Journal — `GET /journal`. Paramètre facultatif : `journal` (code). */
 export async function getJournal(
   tenantId: string,
@@ -144,10 +229,34 @@ export async function getTrialBalance(tenantId: string, params: AccountingPeriod
   return response.data.data;
 }
 
+/** Grand livre auxiliaire des mandants (lot 10) — `GET /mandant-subledger`, sur une période. */
+export async function getMandantSubledger(
+  tenantId: string,
+  params: AccountingPeriodParams
+): Promise<MandantSubledgerData> {
+  const response = await apiClient.get(`${BASE(tenantId)}/mandant-subledger`, {
+    params: { from: params.from, to: params.to, format: 'json' }
+  });
+  return response.data.data;
+}
+
+/** Balance auxiliaire des mandants (lot 10) — `GET /mandant-trial-balance`, à une date. */
+export async function getMandantTrialBalance(
+  tenantId: string,
+  params: { date?: string }
+): Promise<MandantTrialBalanceData> {
+  const response = await apiClient.get(`${BASE(tenantId)}/mandant-trial-balance`, {
+    params: { date: params.date, format: 'json' }
+  });
+  return response.data.data;
+}
+
 const REPORT_ROUTES: Record<AccountingReport, string> = {
   journal: 'journal',
   'general-ledger': 'general-ledger',
-  'trial-balance': 'trial-balance'
+  'trial-balance': 'trial-balance',
+  'mandant-subledger': 'mandant-subledger',
+  'mandant-trial-balance': 'mandant-trial-balance'
 };
 
 /**
@@ -165,7 +274,7 @@ export async function downloadAccountingExport(
   tenantId: string,
   report: AccountingReport,
   format: Exclude<AccountingExportFormat, 'json'>,
-  params: AccountingPeriodParams & { journal?: string; account?: string },
+  params: AccountingPeriodParams & { journal?: string; account?: string; date?: string },
   fallbackName: string
 ): Promise<{ blob: Blob; filename: string }> {
   const response = await apiClient.get<Blob>(`${BASE(tenantId)}/${REPORT_ROUTES[report]}`, {
@@ -174,6 +283,7 @@ export async function downloadAccountingExport(
       to: params.to,
       journal: params.journal || undefined,
       account: params.account || undefined,
+      date: params.date || undefined,
       format
     },
     responseType: 'blob'

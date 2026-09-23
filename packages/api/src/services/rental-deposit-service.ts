@@ -2,6 +2,7 @@ import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
 import { RentalDepositMovementType } from '@prisma/client';
+import { assertTreasuryAccountUsableTx, type PaymentMethodLike } from '../lib/treasury/accounts';
 
 /**
  * Create security deposit for a lease
@@ -233,7 +234,16 @@ export async function createDepositMovement(
   paymentId?: string,
   installmentId?: string,
   note?: string,
-  actorUserId?: string
+  actorUserId?: string,
+  /** Lot 10 : compte de tresorerie d'un remboursement. Nul : caisse par defaut. */
+  treasuryAccountId?: string | null,
+  /**
+   * Moyen de paiement du mouvement, pour valider `treasuryAccountId`. Ce
+   * champ n'a pas de colonne propre sur `RentalDepositMovement` (seule
+   * `treasury_account_id` a ete ajoutee au lot 10) : il ne sert qu'a la
+   * verification, `CASH` par defaut quand il manque.
+   */
+  method?: PaymentMethodLike
 ) {
   // Get deposit with tenant isolation
   const deposit = await prisma.rentalSecurityDeposit.findFirst({
@@ -283,21 +293,6 @@ export async function createDepositMovement(
     }
   }
 
-  // Create movement
-  const movement = await prisma.rentalDepositMovement.create({
-    data: {
-      tenant_id: tenantId,
-      deposit_id: depositId,
-      type: type,
-      currency: deposit.currency,
-      amount: amount,
-      payment_id: paymentId || null,
-      installment_id: installmentId || null,
-      note: note || null,
-      created_by_user_id: actorUserId || null
-    }
-  });
-
   // Update deposit aggregated amounts
   const updateData: any = {};
 
@@ -322,11 +317,35 @@ export async function createDepositMovement(
     }
   }
 
-  await prisma.rentalSecurityDeposit.update({
-    where: {
-      id: depositId
-    },
-    data: updateData
+  // Le compte de tresorerie d'un remboursement est verifie et la piece
+  // ecrite dans la meme transaction : un remboursement enregistre sur un
+  // compte finalement invalide ne doit rien laisser derriere lui.
+  const movement = await prisma.$transaction(async tx => {
+    await assertTreasuryAccountUsableTx(tx, tenantId, treasuryAccountId, method ?? 'CASH');
+
+    const created = await tx.rentalDepositMovement.create({
+      data: {
+        tenant_id: tenantId,
+        deposit_id: depositId,
+        type: type,
+        currency: deposit.currency,
+        amount: amount,
+        payment_id: paymentId || null,
+        installment_id: installmentId || null,
+        treasury_account_id: treasuryAccountId || null,
+        note: note || null,
+        created_by_user_id: actorUserId || null
+      }
+    });
+
+    await tx.rentalSecurityDeposit.update({
+      where: {
+        id: depositId
+      },
+      data: updateData
+    });
+
+    return created;
   });
 
   logger.info('Deposit movement created', {

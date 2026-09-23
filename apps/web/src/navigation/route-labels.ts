@@ -50,6 +50,7 @@ export const ROUTE_LABELS: Record<string, string> = {
   recouvrement: 'Recouvrement',
   comptabilite: t('Comptabilité'),
   caisse: t('Caisse'),
+  tresorerie: t('Trésorerie'),
   budgets: 'Budgets',
   'profils-incidents': t('Profils et incidents'),
   compte: t('Compte propriétaire'),

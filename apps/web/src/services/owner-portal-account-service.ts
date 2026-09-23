@@ -22,6 +22,8 @@ export type OwnerMovementType =
   | 'MANAGEMENT_FEE_VAT' // TVA sur honoraires (débit)
   | 'EXPENSE' // dépense d'un bien (débit)
   | 'PAYOUT' // reversement au propriétaire (débit)
+  | 'WITHHOLDING_TAX' // retenue à la source sur loyers (débit, lot 10)
+  | 'DEPOSIT_RETAINED' // dépôt de garantie conservé au profit du propriétaire (crédit, lot 10)
   | 'VOID'; // contre-passation d'un mouvement annulé (sens inverse)
 
 /** Une ligne du compte courant, déjà soldée par le serveur. */

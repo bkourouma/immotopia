@@ -2,6 +2,10 @@ import apiClient from '../utils/api-client';
 
 export type ManagementFeeMode = 'PERCENT' | 'FIXED';
 export type ManagementFeeBase = 'RENT_ONLY' | 'ALL_COLLECTED';
+/** À qui reviennent les pénalités de retard encaissées. */
+export type PenaltyBeneficiary = 'OWNER' | 'AGENCY';
+/** Statut fiscal d'un propriétaire, pour la retenue à la source sur loyers. */
+export type OwnerTaxStatus = 'INDIVIDUAL' | 'COMPANY' | 'EXEMPT';
 
 /**
  * Conditions d'honoraires de gestion — contrat Lot 2 (`lot2-contrat-api.md`).
@@ -29,6 +33,23 @@ export interface AgencyFinanceSettings extends FeeTerms {
   ownerFundsAccountNumber: string | null;
   managementFeeAccountNumber: string | null;
   vatCollectedAccountNumber: string | null;
+  /** Compte de charge pour un écart de caisse en moins (manquant), défaut 6588. */
+  cashShortageAccountNumber: string | null;
+  /** Compte de produit pour un écart de caisse en plus (excédent), défaut 7588. */
+  cashSurplusAccountNumber: string | null;
+  /** À qui reviennent les pénalités de retard encaissées. */
+  penaltyBeneficiary: PenaltyBeneficiary;
+  /** Compte de produit, requis quand les pénalités reviennent à l'agence. */
+  penaltyIncomeAccountNumber: string | null;
+  /** Retenue à la source sur loyers : désactivée tant que le cabinet ne l'a pas confirmée. */
+  withholdingEnabled: boolean;
+  /** En pourcentage, propriétaire personne physique. */
+  withholdingRateIndividual: number;
+  /** En pourcentage, propriétaire personne morale. */
+  withholdingRateCompany: number;
+  withholdingAccountNumber: string | null;
+  /** AAAA-MM-JJ. Premier jour d'encaissement soumis à la retenue ; requis si `withholdingEnabled`. */
+  withholdingStartsOn: string | null;
   /** Vrai tant que l'agence n'a jamais enregistré ses paramètres. */
   isDefault: boolean;
   updatedAt: string | null;
@@ -44,6 +65,8 @@ export interface OwnerFeeTerms {
   leaseCount: number;
   /** `null` : le propriétaire suit les paramètres de l'agence. */
   terms: FeeTerms | null;
+  /** Statut fiscal pour la retenue à la source sur loyers ; `null` : non renseigné. */
+  ownerTaxStatus: OwnerTaxStatus | null;
 }
 
 /** Part de commission d'un collaborateur — `GET .../settings/finance/agents`. */
@@ -78,8 +101,15 @@ export async function listOwnerFeeTerms(tenantId: string): Promise<OwnerFeeTerms
   return response.data.data;
 }
 
-export async function updateOwnerFeeTerms(tenantId: string, ownerClientId: string, terms: FeeTerms): Promise<FeeTerms> {
-  const response = await apiClient.put<ApiResponse<FeeTerms>>(
+/** Corps de `PUT .../settings/finance/owners/:ownerClientId` : conditions d'honoraires + statut fiscal. */
+export type OwnerFeeTermsInput = FeeTerms & { ownerTaxStatus: OwnerTaxStatus | null };
+
+export async function updateOwnerFeeTerms(
+  tenantId: string,
+  ownerClientId: string,
+  terms: OwnerFeeTermsInput
+): Promise<OwnerFeeTermsInput> {
+  const response = await apiClient.put<ApiResponse<OwnerFeeTermsInput>>(
     `/tenants/${tenantId}/settings/finance/owners/${ownerClientId}`,
     terms
   );

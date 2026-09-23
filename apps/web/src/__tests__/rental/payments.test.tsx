@@ -52,6 +52,14 @@ vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
 }));
 
+// Le vrai `PaymentForm` (rendu plus bas via `vi.importActual`) embarque
+// désormais `TreasuryAccountSelector` (lot 10), qui appelle
+// `listTreasuryAccounts` : sans ce mock, Vitest laisserait partir une vraie
+// requête réseau.
+vi.mock('../../services/treasury-service', () => ({
+  listTreasuryAccounts: vi.fn().mockResolvedValue([])
+}));
+
 function paiement(overrides: Record<string, unknown> = {}) {
   return {
     id: 'pay-1',
@@ -229,11 +237,14 @@ describe('Paiements — date du règlement', () => {
     );
     const user = userEvent.setup({ delay: null });
     const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
 
     render(
-      <AntApp>
-        <PaymentForm tenantId="agence-1" leaseId="bail-1" onSubmit={onSubmit} />
-      </AntApp>
+      <QueryClientProvider client={queryClient}>
+        <AntApp>
+          <PaymentForm tenantId="agence-1" leaseId="bail-1" onSubmit={onSubmit} />
+        </AntApp>
+      </QueryClientProvider>
     );
 
     await user.type(await screen.findByPlaceholderText('Ex: 150000'), '150000');

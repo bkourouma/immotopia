@@ -1,19 +1,16 @@
 /**
- * Comptes comptables de la gestion locative — lot 3.
+ * Comptes comptables de la gestion locative — lots 3 et 10.
  *
- * Deux règles qu'une erreur de paramétrage ou de mode de paiement suffirait à
- * casser en silence : un même numéro ne peut pas porter deux rôles, et
- * l'argent en espèces passe par la caisse, le reste par la banque.
+ * Deux règles qu'une erreur de paramétrage suffirait à casser en silence : les
+ * numéros par défaut sont ceux de la consolidation SYSCOHADA (4731 mandants,
+ * 70611 honoraires), et un même numéro ne peut pas porter deux rôles. La
+ * trésorerie se résout ailleurs (`lib/treasury/accounts.ts`).
  */
 
 jest.mock('../../src/utils/database', () => ({ prisma: {} }));
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const {
-  ensureRentalAccountsTx,
-  treasuryFor,
-  PROVISIONAL_OWNER_FUNDS_ACCOUNT
-} = require('../../src/lib/owner-account/accounts');
+const { ensureRentalAccountsTx, OWNER_FUNDS_ACCOUNT } = require('../../src/lib/owner-account/accounts');
 
 const settings = (overrides: Record<string, unknown> = {}) => ({
   vatRegistered: true,
@@ -24,8 +21,17 @@ const settings = (overrides: Record<string, unknown> = {}) => ({
   managementFeeMode: 'PERCENT',
   managementFeeFixedAmount: null,
   ownerFundsAccountNumber: null,
-  managementFeeAccountNumber: '706',
-  vatCollectedAccountNumber: '4432',
+  managementFeeAccountNumber: null,
+  vatCollectedAccountNumber: null,
+  cashShortageAccountNumber: null,
+  cashSurplusAccountNumber: null,
+  penaltyBeneficiary: 'OWNER',
+  penaltyIncomeAccountNumber: null,
+  withholdingEnabled: false,
+  withholdingStartsOn: null,
+  withholdingRateIndividual: 12,
+  withholdingRateCompany: 15,
+  withholdingAccountNumber: null,
   isDefault: false,
   updatedAt: null,
   ...overrides
@@ -50,16 +56,21 @@ function fakeTx(existingNumbers: string[] = []) {
 }
 
 describe('ensureRentalAccountsTx', () => {
-  it('pose le compte des fonds des propriétaires au 4712, provisoirement, tant qu’il n’est pas paramétré', async () => {
-    const tx = fakeTx(['571']);
+  it('pose les numéros de la consolidation SYSCOHADA tant que l’agence n’en a pas choisi', async () => {
+    const tx = fakeTx(['401']);
     const accounts = await ensureRentalAccountsTx(tx, 'tenant-1', settings());
 
-    expect(PROVISIONAL_OWNER_FUNDS_ACCOUNT).toBe('4712');
-    expect(accounts.ownerFunds).toBe('new-4712');
-    // La caisse existait déjà : elle est reprise, pas recréée.
-    expect(accounts.cash).toBe('id-571');
-    expect(tx.created.map(c => c.accountNumber).sort()).toEqual(['4432', '4712', '521', '706']);
-    expect(tx.created.find(c => c.accountNumber === '706')).toMatchObject({ accountType: 'INCOME', accountClass: 7 });
+    expect(OWNER_FUNDS_ACCOUNT).toBe('4731');
+    expect(accounts.ownerFunds).toBe('new-4731');
+    // Le 401 existait déjà : il est repris, pas recréé.
+    expect(accounts.suppliers).toBe('id-401');
+    expect(accounts.penaltyIncome).toBeNull();
+    expect(tx.created.map(c => c.accountNumber).sort()).toEqual(['4432', '4478', '4731', '70611']);
+    expect(tx.created.find(c => c.accountNumber === '70611')).toMatchObject({ accountType: 'INCOME', accountClass: 7 });
+    expect(tx.created.find(c => c.accountNumber === '4731')).toMatchObject({
+      accountType: 'LIABILITY',
+      accountClass: 4
+    });
   });
 
   it('suit le numéro choisi par l’agence', async () => {
@@ -67,21 +78,18 @@ describe('ensureRentalAccountsTx', () => {
     expect(accounts.ownerFunds).toBe('new-4671');
   });
 
+  it('ouvre le compte de produit des pénalités seulement quand elles reviennent à l’agence', async () => {
+    const accounts = await ensureRentalAccountsTx(
+      fakeTx(),
+      'tenant-1',
+      settings({ penaltyBeneficiary: 'AGENCY', penaltyIncomeAccountNumber: '7078' })
+    );
+    expect(accounts.penaltyIncome).toBe('new-7078');
+  });
+
   it('refuse deux rôles sur un même compte', async () => {
     await expect(
-      ensureRentalAccountsTx(fakeTx(), 'tenant-1', settings({ ownerFundsAccountNumber: '706' }))
+      ensureRentalAccountsTx(fakeTx(), 'tenant-1', settings({ ownerFundsAccountNumber: '70611' }))
     ).rejects.toThrow('Deux comptes de la gestion locative portent le même numéro');
-  });
-});
-
-describe('treasuryFor', () => {
-  const accounts = { ownerFunds: 'o', fees: 'f', vat: 'v', cash: 'caisse', bank: 'banque' };
-
-  it('fait passer les espèces par la caisse', () => {
-    expect(treasuryFor('CASH', accounts)).toEqual({ accountId: 'caisse', journal: 'CASH' });
-  });
-
-  it.each(['BANK_TRANSFER', 'CHECK', 'MOBILE_MONEY', 'CARD', 'OTHER'])('fait passer %s par la banque', method => {
-    expect(treasuryFor(method, accounts)).toEqual({ accountId: 'banque', journal: 'BANK' });
   });
 });
