@@ -255,6 +255,11 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         section: 'finance',
         href: '/tenant/:tenantId/finance/balance-clients',
         children: [
+          {
+            key: 'finance-comptabilite',
+            label: t('Comptabilité'),
+            href: '/tenant/:tenantId/finance/comptabilite'
+          },
           { key: 'finance-clients', label: t('Balance clients'), href: '/tenant/:tenantId/finance/balance-clients' },
           { key: 'finance-clients-agee', label: t('Balance âgée'), href: '/tenant/:tenantId/finance/balance-agee' },
           {

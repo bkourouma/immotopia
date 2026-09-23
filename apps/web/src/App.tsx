@@ -122,6 +122,9 @@ const CompteProprietaire = lazy(() =>
 const Releve = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/Releve').then(m => ({ default: m.Releve }))
 );
+const Comptabilite = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Comptabilite').then(m => ({ default: m.Comptabilite }))
+);
 const Facturation = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/Facturation').then(m => ({ default: m.Facturation }))
 );
@@ -799,6 +802,7 @@ function App() {
                           <Route path="/tenant/:tenantId/finance/balance-clients" element={<BalanceClients />} />
                           <Route path="/tenant/:tenantId/finance/balance-agee" element={<BalanceAgee />} />
                           <Route path="/tenant/:tenantId/finance/commissions" element={<CommissionsAgents />} />
+                          <Route path="/tenant/:tenantId/finance/comptabilite" element={<Comptabilite />} />
                           <Route path="/tenant/:tenantId/finance/owner-accounts" element={<ComptesProprietaires />} />
                           <Route
                             path="/tenant/:tenantId/finance/owner-accounts/:ownerClientId"

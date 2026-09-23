@@ -174,13 +174,23 @@ export async function getOwnerAccount(tenantId: string, ownerClientId: string) {
   return buildAccountDetail(tenantId, ownerClientId);
 }
 
-export async function listOwnerAccounts(tenantId: string) {
+/**
+ * Met à jour le compte de chaque propriétaire de l'agence, et par là leurs
+ * écritures au grand livre. Les écritures de la gestion locative s'écrivent à
+ * la consultation : tout ce qui lit le grand livre doit passer par ici avant.
+ */
+export async function syncAllOwnerAccounts(tenantId: string) {
   const owners = await listAgencyOwners(tenantId);
   // Les honoraires une seule fois pour toute l'agence, puis chaque compte.
   await materializeManagementFees(tenantId, { from: new Date(0), to: new Date() });
   for (const owner of owners) {
     await syncOwnerAccount(tenantId, owner.id, { skipFees: true });
   }
+  return owners;
+}
+
+export async function listOwnerAccounts(tenantId: string) {
+  const owners = await syncAllOwnerAccounts(tenantId);
 
   const [accounts, payouts] = await Promise.all([
     prisma.thirdPartyAccount.findMany({

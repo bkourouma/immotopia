@@ -28,7 +28,9 @@ export function corsMiddleware(req: Request, res: Response, next: NextFunction):
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
 
   // Exposed headers
-  res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Type');
+  // Content-Disposition : sans lui, le front d'une autre origine ne lit pas
+  // le nom du fichier d'un export et doit en inventer un.
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Type, Content-Disposition');
 
   // Handle preflight requests
   if (req.method === 'OPTIONS') {

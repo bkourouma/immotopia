@@ -136,6 +136,7 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'rental-payments': ['RENTAL_PAYMENTS_VIEW'],
 
   // Finance.
+  'finance-comptabilite': ['FINANCE_REPORTS_READ'],
   'finance-agent-commissions': ['FINANCE_REPORTS_READ'],
   'finance-owner-accounts': ['FINANCE_ACCOUNTS_READ'],
 
