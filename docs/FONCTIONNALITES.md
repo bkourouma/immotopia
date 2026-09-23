@@ -1,5 +1,8 @@
 # ImmoTopia — Liste des fonctionnalités
 
+Mise à jour du 23 septembre 2026, branche `feat/gestion-locative-lot-1` (pas
+encore fusionnée sur `main`).
+
 Recensement établi à partir du code réel (routes API `packages/api/src/routes`,
 services `packages/api/src/services`, écrans `apps/web/src/pages`, modèle de
 navigation `apps/web/src/navigation/model.tsx`, schéma `prisma/schema.prisma`).
@@ -50,12 +53,20 @@ navigation `apps/web/src/navigation/model.tsx`, schéma `prisma/schema.prisma`).
 
 - **Baux** (`RentalLease`) : création, modification, colocataires (`CoRenter`), détail du bail.
 - **Échéances** (`RentalInstallment`) : génération automatique des échéances, lignes de détail (loyer, charges…), suivi et fiche d'échéance.
-- **Paiements** (`RentalPayment`) : saisie, allocation d'un paiement sur une ou plusieurs échéances (`RentalPaymentAllocation`), fiche paiement.
+- **Paiements** (`RentalPayment`) : saisie, allocation d'un paiement sur une ou plusieurs échéances (`RentalPaymentAllocation`), fiche paiement. La date retenue est celle du règlement effectif, pas celle de la saisie (`96ad470`).
 - **Déclarations de paiement** (`RentalPaymentDeclaration`) : le locataire déclare un règlement, l'agence valide.
 - **Remboursements** (`RentalRefund`).
 - **Pénalités de retard** : règles paramétrables (`RentalPenaltyRule`), calcul automatique par tâche planifiée (`penalty-calculation-job`), consultation et ajustement manuel.
 - **Dépôts de garantie** (`RentalSecurityDeposit`) : constitution, mouvements (retenues, restitutions).
 - **Documents locatifs** (`RentalDocument`) : génération, consultation, modification.
+- **Honoraires de gestion** (`ManagementFee`) : calculés à chaque affectation de règlement, figés à leur création (taux, TVA, gestionnaire, part d'agent). Barème à trois niveaux — bail (`LeaseManagementTerms`) > propriétaire (`OwnerManagementTerms`) > agence (`AgencyFinanceSettings`) — en pourcentage ou forfait, sur le loyer seul ou loyer + charges. TVA calculée si l'agence y est assujettie. Commission d'agent sur les honoraires (`AgentCommissionRate`) : part du collaborateur gestionnaire du bail.
+- **Compte courant du propriétaire** (`ThirdPartyAccount` de nature mandant, `ThirdPartyMovement`) : solde alimenté automatiquement par chaque encaissement, honoraires, TVA et dépense, jamais de saisie libre. Suivi SYSCOHADA au compte 4731, un sous-compte par mandant.
+- **Reversements aux propriétaires** (`OwnerPayout`, numérotés REV-AAAA-NNNN) : paiement du solde dû, moyen de règlement, compte de trésorerie débité, annulation tracée (motif, auteur).
+- **Relevé de gérance** (`OwnerStatement` / `OwnerStatementItem`) : instantané mensuel — loyers réellement encaissés dans le mois (arriérés compris), loyers appelés, arriérés restants, montant net (encaissé − honoraires − TVA − dépenses) —, figé à l'envoi pour ne pas bouger si un paiement est saisi en retard (`c69e6c5`).
+- **Indivision** (`PropertyOwnershipShare`) : quotes-parts des indivisaires d'un bien, sommant à 100 %. Loyers, honoraires, TVA et dépenses répartis au prorata dans les comptes et relevés de chaque indivisaire (`7826e57`).
+- **Vie du bail** (`LeaseEvent`) : révision de loyer avec historique et taux annoncé, renouvellement, avenant, résiliation (initiateur locataire/bailleur/mutuel, préavis, date de sortie) — chaque événement conserve l'état antérieur du bail (`38cc322`).
+- **États des lieux** (`LeaseInspection`, `LeaseInspectionPhoto`) : un par type (entrée/sortie) et par bail, brouillon puis finalisé, pièce par pièce avec état de chaque élément, index des compteurs, retenues proposées sur le dépôt de garantie à la sortie, photos rattachées (fichiers privés, jamais servis en statique) (`38cc322`).
+- **Retenue à la source sur loyers** (`RentWithholding`, `TaxRemittance`) : taux distinct particulier/société, assiette et montant figés à l'encaissement, activable par l'agence avec une date de début (n'affecte jamais les encaissements passés), versement à la DGI numéroté DGI-AAAA-NNNN (`65ad2cd`).
 
 ## 5. Documents et modèles
 
@@ -141,10 +152,57 @@ Tableau de bord, mon bail, paiements (dont déclaration de règlement), dépôt 
 - Collaborateurs : liste, fiche, rôles, désactivation.
 - Invitations : envoi et suivi.
 - Modèles de documents et configurations de notification (voir §5 et §9).
+- **Paramètres financiers** (`AgencyFinanceSettings`) : assujettissement et taux de TVA, numéro de contribuable (NCC), barème d'honoraires de gestion par défaut (taux ou forfait, assiette), numéros de comptes de la gestion locative (fonds propriétaires, honoraires, TVA collectée, écarts de caisse), bénéficiaire des pénalités de retard (propriétaire ou agence), retenue à la source sur loyers (activation, date de départ, taux particulier/société, compte).
 
-## 15. Technique
+## 15. Finance opérationnelle et chantiers
+
+Module distinct de la gestion locative, pour les dépenses de l'agence, ses
+fournisseurs et ses chantiers (routes `packages/api/src/routes/finance-*`,
+écrans `apps/web/src/pages/finance`, `specs/016-finance-operationnelle`,
+`specs/017-finance-fournisseurs-chantiers`, `specs/018-finance-budget-pilotage`,
+`specs/019-finance-baux-terrain`, `docs/finance/PRD-gestion-financiere-chantiers.md`).
+
+- **Caisse** : pièces de caisse (`CashVoucher`), brouillon jetable, duplication d'une pièce existante (`apps/web/src/utils/duplication-piece.ts`).
+- **Sessions de caisse** (`CashSession`) : ouverture avec fonds de caisse, clôture avec montant attendu/compté, billetage (nombre de billets et pièces par coupure), écart et validation par le responsable (`7ba61a9`).
+- **Trésorerie** (`TreasuryAccount`, `TreasuryTransfer`) : comptes caisse/banque/Mobile Money/chèques et cartes à encaisser, virements internes numérotés VIR-AAAA-NNNN (remise en banque, approvisionnement de caisse).
+- **Fournisseurs** (`Supplier`) : fiche, compte de tiers, factures (`SupplierInvoice`, lignes `SupplierInvoiceLine`), règlements (`SupplierPayment`, allocation `SupplierPaymentAllocation`), balance fournisseurs.
+- **Bons de commande** (`PurchaseOrder`, `PurchaseOrderLine`).
+- **Chantiers** (`ConstructionSite`) : fiche, tableau de bord transverse, clôture (`finance-site-closing-routes.ts`), imputation des dépenses (`CostAllocation`, `CostCategory`).
+- **Budgets de chantier** (`SiteBudget`, `SiteBudgetLine`) et avenants (`BudgetAmendment`, `BudgetAmendmentLine`) : écart budget/engagé/réalisé, alertes de dépassement (`SiteBudgetAlert`).
+- **Avancement de chantier** (`SiteProgressEntry`) et lots (`SiteLot`).
+- **Stock de matériaux** : référentiel (`StockItem`, `StockLocation`, `StockSettings`), soldes (`StockBalance`), mouvements (`StockMovement`), inventaire et rapprochement (`StockCount`, `StockCountLine`) — bascule d'un chantier au stock traçable et datée en jours, pas en instants.
+- **Sous-traitants** (`Contractor`, `ContractorContract`) : situations d'avancement (`ProgressStatement`), règlements (`ContractorPayment`), retenues de garantie (`RetentionGuarantee`).
+- **Salaires** (`Employee`, `SalaryNote`, `SalaryPayment`) : notes de salaire et paiements, hors calcul de paie/cotisations (explicitement hors périmètre, voir §18 « Non couvert à ce jour »).
+- **Baux de terrain** (`LandLease`, `LandLeasePayment`, `LandLeaseAccrual`) : loyers versés à un bailleur de terrain, échéances courues.
+- **Partenariats** (`Partnership`, `PartnershipShare`, `PartnershipDistribution`) : quotes-parts d'associés et répartitions.
+- **Importation** : reprise de suivis Excel existants (écran `Importation.tsx`, menu dédié), sans modèle Prisma propre — passage direct par les pièces (`08a668f`).
+- **Pièces annulées** (`VoidDocument`) : traçabilité des annulations, sans réécriture des pièces d'origine.
+
+## 16. Comptabilité et trésorerie (agence)
+
+Moteur comptable généralisé depuis le module Syndic (voir §10) à la gestion
+locative et à la finance opérationnelle, conforme SYSCOHADA (`65ad2cd`).
+
+- **Plan comptable** (`ChartOfAccount`) et **journaux** (`AccountingJournal`) portés par le tenant (`scope` syndicat ou agence).
+- **Écritures** (`JournalEntry`, `JournalEntryLine`) en partie double, jamais de saisie libre : chaque écriture naît d'une pièce existante (échéance, paiement, pénalité, annulation).
+- **Grand livre et balance**, exportables en CSV et Excel (`d265e9b`, écran `Comptabilite.tsx`).
+- **Comptes de tiers mandants** (`ThirdPartyAccount`, `ThirdPartyMovement`) : un sous-compte 4731 par propriétaire, solde courant et relevé imprimable, alimenté uniquement par les pièces (jamais de saisie libre).
+- **Comptes de trésorerie** (`TreasuryAccount`) : caisse (5711x), banque (5211x), Mobile Money (552x), chèques (513) et cartes (515) à encaisser — chaque encaissement/décaissement précise le compte touché.
+- **Retenue à la source** (compte 4478) : voir §4 « Retenue à la source sur loyers ».
+- **Écarts de caisse** : imputés aux comptes 6588 (charge) / 7588 (produit) par défaut, paramétrables.
+- **Balances clients et fournisseurs** (`Balance clients`, `Balance âgée`, `Balance fournisseurs`) dans le menu Finance.
+
+## 17. Technique
 
 - Monorepo npm : `packages/api` (Express + Prisma) et `apps/web` (React + Vite + Ant Design + Tailwind).
 - Tâches planifiées : calcul des pénalités, planificateur de campagnes, planificateur de relances.
 - Déploiement conteneurisé (`docker-compose.yml`, `infra/`).
 - Contrôle qualité : ESLint, Prettier, TypeScript, tests API et web, vérification de contraste d'accessibilité (`npm run a11y:contrast`).
+
+## 18. Non couvert à ce jour
+
+- **Mobile Money intégré avec rapprochement opérateur** : la saisie et la déclaration de paiement existent (§4), mais aucune intégration d'un opérateur (confirmation automatique, affectation directe au dossier) n'est présente dans le code.
+- **SMS** : les notifications passent par e-mail et WhatsApp (§9) ; aucun envoi de SMS.
+- **Gestion des ventes immobilières** : offres, compromis et contrat de vente au-delà du suivi d'une affaire CRM (§8) — en cours, lot 9, pas encore dans le code de cette branche.
+- **Mode hors ligne** : aucune installation locale ni synchronisation différée ; l'application suppose une connexion permanente.
+- **Assistant IA** interrogeant les données de gestion : aucune fonctionnalité de ce type dans le code.
