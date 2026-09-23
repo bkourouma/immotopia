@@ -45,6 +45,7 @@ const TENANT_FIELD_BY_MODEL: Record<string, string> = {
   LeaseInspectionPhoto: 'tenantId',
   LeaseEvent: 'tenantId',
   PropertyOwnershipShare: 'tenantId',
+  CashSession: 'tenantId',
   PropertyLoan: 'tenantId',
   PropertyExpense: 'tenantId',
   PropertyValuation: 'tenantId',

@@ -120,7 +120,9 @@ export interface PostDocumentEntryParams {
     | 'OWNER_MANAGEMENT_FEE'
     | 'OWNER_EXPENSE'
     | 'OWNER_PAYOUT'
-    | 'OWNER_VOID';
+    | 'OWNER_VOID'
+    // Lot 6 : l'ecart constate a la cloture d'une session de caisse.
+    | 'CASH_SESSION_DIFFERENCE';
   documentId: string;
   lines: JournalLineInput[];
 }

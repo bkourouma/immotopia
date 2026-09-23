@@ -137,6 +137,7 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
 
   // Finance.
   'finance-comptabilite': ['FINANCE_REPORTS_READ'],
+  'finance-caisse': ['FINANCE_DOCUMENTS_CREATE'],
   'finance-agent-commissions': ['FINANCE_REPORTS_READ'],
   'finance-owner-accounts': ['FINANCE_ACCOUNTS_READ'],
 

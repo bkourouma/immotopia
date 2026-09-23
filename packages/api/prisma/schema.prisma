@@ -613,6 +613,7 @@ model Tenant {
   leaseInspections         LeaseInspection[]
   leaseInspectionPhotos    LeaseInspectionPhoto[]
   propertyOwnershipShares  PropertyOwnershipShare[]
+  cashSessions             CashSession[]
   stockItems               StockItem[]
   stockLocations           StockLocation[]
   stockBalances            StockBalance[]
@@ -2877,6 +2878,8 @@ enum SourceType {
   OWNER_MANAGEMENT_FEE
   OWNER_EXPENSE
   OWNER_PAYOUT
+  // Lot 6 : l'ecart constate a la cloture d'une session de caisse.
+  CASH_SESSION_DIFFERENCE
 }
 
 /// Portee d'un plan de comptes, d'un journal ou d'une ecriture.
@@ -6357,4 +6360,56 @@ model PropertyOwnershipShare {
   @@index([tenantId])
   @@index([ownerClientId])
   @@map("property_ownership_shares")
+}
+
+// =============================================================
+// GESTION LOCATIVE — Lot 6, caisse d'agence
+// =============================================================
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+  VALIDATED
+}
+
+/// Session de caisse d'un caissier : ouverte avec un fond de caisse, close
+/// par un comptage, validee par un responsable.
+///
+/// Le montant ATTENDU n'est jamais saisi : il se deduit des encaissements et
+/// decaissements en especes enregistres par le caissier pendant la session
+/// (`lib/cash-sessions`). Il est fige a la cloture, avec son detail, pour que
+/// la session relue plus tard dise ce qu'on attendait ce jour-la.
+///
+/// Un ecart non nul exige un motif. A la validation, il passe en comptabilite :
+/// un manquant en charge, un excedent en produit.
+model CashSession {
+  id                String            @id @default(uuid()) @db.Uuid
+  tenantId          String            @map("tenant_id")
+  year              Int
+  sequence          Int
+  cashierUserId     String            @map("cashier_user_id")
+  status            CashSessionStatus @default(OPEN)
+  openedAt          DateTime          @default(now()) @map("opened_at")
+  openingFloat      Decimal           @map("opening_float") @db.Decimal(14, 2)
+  openingNote       String?           @map("opening_note")
+  closedAt          DateTime?         @map("closed_at")
+  /// Detail fige a la cloture : `{ receipts, disbursements, lines: [...] }`.
+  expectedBreakdown Json?             @map("expected_breakdown")
+  expectedAmount    Decimal?          @map("expected_amount") @db.Decimal(14, 2)
+  countedAmount     Decimal?          @map("counted_amount") @db.Decimal(14, 2)
+  /// Billetage : `{ "10000": 3, "5000": 2, ... }`, nombre de billets et pieces.
+  denominations     Json?
+  difference        Decimal?          @db.Decimal(14, 2)
+  differenceReason  String?           @map("difference_reason")
+  validatedAt       DateTime?         @map("validated_at")
+  validatedByUserId String?           @map("validated_by_user_id")
+  validationComment String?           @map("validation_comment")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, cashierUserId, status])
+  @@map("cash_sessions")
 }
