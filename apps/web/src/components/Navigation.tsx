@@ -22,14 +22,14 @@ export const Navigation: React.FC = () => {
         <div className="flex justify-between h-16">
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
-              <Link to="/dashboard" className="text-xl font-bold text-blue-600">
+              <Link to="/dashboard" className="text-xl font-bold text-primary">
                 {t('Standard App')}
               </Link>
             </div>
             <div className="hidden sm:ms-6 sm:flex sm:space-x-8">
               <Link
                 to="/dashboard"
-                className="border-blue-500 text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+                className="border-primary text-gray-900 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
               >
                 {t('Tableau de bord')}
               </Link>
@@ -51,7 +51,7 @@ export const Navigation: React.FC = () => {
             <div className="ms-3 relative">
               <div className="flex items-center space-x-4">
                 <span className="text-sm text-gray-700">{user?.fullName || user?.email}</span>
-                <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
+                <span className="text-xs px-2 py-1 bg-primary-bg text-primary-active rounded-full">
                   {user?.globalRole === 'SUPER_ADMIN' ? t('Super Admin') : t('Utilisateur')}
                 </span>
                 <button onClick={handleLogout} className="text-sm text-gray-500 hover:text-gray-700">

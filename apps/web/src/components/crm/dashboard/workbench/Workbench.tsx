@@ -27,8 +27,8 @@ const getItemIcon = (type: WorkbenchItem['type']) => {
 };
 
 const getItemColor = (type: WorkbenchItem['type'], priority?: WorkbenchItem['priority']) => {
-  if (type === 'OVERDUE_ACTION') return 'text-red-600 bg-red-50';
-  if (priority === 'HIGH') return 'text-orange-600 bg-orange-50';
+  if (type === 'OVERDUE_ACTION') return 'text-error-text bg-error-bg';
+  if (priority === 'HIGH') return 'text-warning-text bg-warning-bg';
   return 'text-slate-600 bg-slate-50';
 };
 
@@ -88,7 +88,7 @@ const WorkbenchItemRow: React.FC<{
               }}
               className="h-8 w-8 p-0"
             >
-              <Calendar className="h-4 w-4 text-blue-600" />
+              <Calendar className="h-4 w-4 text-primary" />
             </Button>
           )}
           <Button

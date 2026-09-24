@@ -59,14 +59,14 @@ export const PropertyTypeSelector: React.FC<PropertyTypeSelectorProps> = ({
           disabled={disabled}
           className={cn(
             'flex flex-col items-center justify-center gap-2 rounded-lg border-2 p-4 transition-all',
-            'hover:border-blue-500 hover:bg-blue-50',
+            'hover:border-primary hover:bg-primary-bg',
             selectedType === type
-              ? 'border-blue-600 bg-blue-50 text-blue-900'
+              ? 'border-primary bg-primary-bg text-primary-active'
               : 'border-slate-200 bg-white text-slate-700',
             disabled && 'cursor-not-allowed opacity-50'
           )}
         >
-          <div className={cn(selectedType === type ? 'text-blue-600' : 'text-slate-400')}>{config.icon}</div>
+          <div className={cn(selectedType === type ? 'text-primary' : 'text-slate-400')}>{config.icon}</div>
           <span className="text-sm font-medium">{config.label}</span>
         </button>
       ))}

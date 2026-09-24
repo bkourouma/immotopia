@@ -166,19 +166,19 @@ export const BulkTagManager: React.FC<BulkTagManagerProps> = ({
 
           {loading ? (
             <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
               <p className="mt-2 text-gray-600">Chargement...</p>
             </div>
           ) : processing ? (
             <div className="text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+              <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
               <p className="text-lg font-semibold text-gray-900 mb-2">{t('Application des modifications...')}</p>
               <p className="text-sm text-gray-600">
                 {progress.current} / {progress.total} {t('opérations')}
               </p>
               <div className="w-full max-w-md mx-auto mt-4 bg-gray-200 rounded-full h-2">
                 <div
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  className="bg-primary h-2 rounded-full transition-all duration-300"
                   style={{ width: `${(progress.current / progress.total) * 100}%` }}
                 ></div>
               </div>
@@ -186,8 +186,8 @@ export const BulkTagManager: React.FC<BulkTagManagerProps> = ({
           ) : (
             <>
               {/* Instructions */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
+              <div className="bg-primary-bg border border-primary-border rounded-lg p-4">
+                <p className="text-sm text-primary-active">
                   <strong>Instructions:</strong>{' '}
                   {t(
                     'Sélectionnez les tags à ajouter ou à retirer pour tous les contacts sélectionnés. Les modifications seront appliquées lorsque vous cliquerez sur "Appliquer".'
