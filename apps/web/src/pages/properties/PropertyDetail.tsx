@@ -41,6 +41,7 @@ import { PropertyApartments } from '../../components/properties/PropertyApartmen
 import { PropertyNewsletterCampaignModal } from '../../components/newsletter/PropertyNewsletterCampaignModal';
 import { PropertyPatrimoineTab } from '../../components/patrimoine/PropertyPatrimoineTab';
 import { PropertyOwnershipCard } from '../../components/properties/PropertyOwnershipCard';
+import { PropertySaleCard } from '../../components/properties/PropertySaleCard';
 import { API_URL } from '../../config/api';
 import { PageHeader, StatusTag } from '../../components/primitives';
 import { t } from '../../i18n/t';
@@ -414,6 +415,8 @@ export const PropertyDetail: React.FC = () => {
       </Card>
 
       <PropertyOwnershipCard tenantId={effectiveTenantId} propertyId={id!} />
+
+      <PropertySaleCard tenantId={effectiveTenantId} propertyId={id!} />
 
       <Card
         title={

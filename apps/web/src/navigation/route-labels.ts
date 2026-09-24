@@ -110,7 +110,11 @@ export const ROUTE_LABELS: Record<string, string> = {
   groups: 'Groupes',
   transactions: 'Transactions',
   sales: 'Ventes',
-  rentals: 'Locations'
+  rentals: 'Locations',
+
+  // Ventes immobilières (lot 9).
+  mandates: t('Mandats de vente'),
+  agreements: t('Compromis de vente')
 };
 
 /** Vrai pour un segment d'identifiant : UUID, ObjectId ou entier. */

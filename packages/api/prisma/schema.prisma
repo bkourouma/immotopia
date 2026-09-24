@@ -432,42 +432,50 @@ model User {
   maintenanceCommentsAuthored     MaintenanceTicketComment[]       @relation("MaintenanceCommentAuthorUser")
   maintenanceStatusHistoryChanged MaintenanceTicketStatusHistory[] @relation("MaintenanceStatusHistoryChangedBy")
 
-  newsletterCampaignsCreated  NewsletterCampaign[]
-  savedContactSearches        SavedContactSearch[]
-  rentBillingRuns             RentBillingRun[]
-  supplierInvoicesCreated     SupplierInvoice[]      @relation("SupplierInvoiceCreatedBy")
-  supplierInvoicesValidated   SupplierInvoice[]      @relation("SupplierInvoiceValidatedBy")
-  supplierPaymentsCreated     SupplierPayment[]      @relation("SupplierPaymentCreatedBy")
-  supplierPaymentsValidated   SupplierPayment[]      @relation("SupplierPaymentValidatedBy")
-  cashVouchersCreated         CashVoucher[]          @relation("CashVoucherCreatedBy")
-  cashVouchersValidated       CashVoucher[]          @relation("CashVoucherValidatedBy")
-  managedConstructionSites    ConstructionSite[]     @relation("ConstructionSiteManager")
-  siteBudgetsValidated        SiteBudget[]           @relation("SiteBudgetValidatedBy")
-  budgetAmendmentsCreated     BudgetAmendment[]      @relation("BudgetAmendmentCreatedBy")
-  budgetAmendmentsValidated   BudgetAmendment[]      @relation("BudgetAmendmentValidatedBy")
-  purchaseOrdersCreated       PurchaseOrder[]        @relation("PurchaseOrderCreatedBy")
-  purchaseOrdersIssued        PurchaseOrder[]        @relation("PurchaseOrderIssuedBy")
-  siteProgressEntriesLogged   SiteProgressEntry[]    @relation("SiteProgressEntryCreatedBy")
-  siteBudgetAlertsSeen        SiteBudgetAlert[]      @relation("SiteBudgetAlertAcknowledgedBy")
-  landLeasePaymentsCreated    LandLeasePayment[]     @relation("LandLeasePaymentCreatedBy")
-  landLeasePaymentsValidated  LandLeasePayment[]     @relation("LandLeasePaymentValidatedBy")
-  salaryNotesCreated          SalaryNote[]           @relation("SalaryNoteCreatedBy")
-  salaryNotesValidated        SalaryNote[]           @relation("SalaryNoteValidatedBy")
-  salaryPaymentsCreated       SalaryPayment[]        @relation("SalaryPaymentCreatedBy")
-  salaryPaymentsValidated     SalaryPayment[]        @relation("SalaryPaymentValidatedBy")
-  progressStatementsCreated   ProgressStatement[]    @relation("ProgressStatementCreatedBy")
-  progressStatementsValidated ProgressStatement[]    @relation("ProgressStatementValidatedBy")
-  contractorPaymentsCreated   ContractorPayment[]    @relation("ContractorPaymentCreatedBy")
-  contractorPaymentsValidated ContractorPayment[]    @relation("ContractorPaymentValidatedBy")
-  retentionsCreated           RetentionGuarantee[]   @relation("RetentionCreatedBy")
-  retentionsReleased          RetentionGuarantee[]   @relation("RetentionReleasedBy")
-  sitesClosed                 ConstructionSite[]     @relation("ConstructionSiteClosedBy")
-  stockMovementsCreated       StockMovement[]        @relation("StockMovementCreatedBy")
-  stockCountsCreated          StockCount[]           @relation("StockCountCreatedBy")
-  stockCountsValidated        StockCount[]           @relation("StockCountValidatedBy")
-  voidedDocuments             VoidDocument[]
-  leasesManaged               LeaseManagementTerms[] @relation("LeaseManagementAgent")
-  agentCommissionRates        AgentCommissionRate[]
+  newsletterCampaignsCreated    NewsletterCampaign[]
+  savedContactSearches          SavedContactSearch[]
+  rentBillingRuns               RentBillingRun[]
+  supplierInvoicesCreated       SupplierInvoice[]       @relation("SupplierInvoiceCreatedBy")
+  supplierInvoicesValidated     SupplierInvoice[]       @relation("SupplierInvoiceValidatedBy")
+  supplierPaymentsCreated       SupplierPayment[]       @relation("SupplierPaymentCreatedBy")
+  supplierPaymentsValidated     SupplierPayment[]       @relation("SupplierPaymentValidatedBy")
+  cashVouchersCreated           CashVoucher[]           @relation("CashVoucherCreatedBy")
+  cashVouchersValidated         CashVoucher[]           @relation("CashVoucherValidatedBy")
+  managedConstructionSites      ConstructionSite[]      @relation("ConstructionSiteManager")
+  siteBudgetsValidated          SiteBudget[]            @relation("SiteBudgetValidatedBy")
+  budgetAmendmentsCreated       BudgetAmendment[]       @relation("BudgetAmendmentCreatedBy")
+  budgetAmendmentsValidated     BudgetAmendment[]       @relation("BudgetAmendmentValidatedBy")
+  purchaseOrdersCreated         PurchaseOrder[]         @relation("PurchaseOrderCreatedBy")
+  purchaseOrdersIssued          PurchaseOrder[]         @relation("PurchaseOrderIssuedBy")
+  siteProgressEntriesLogged     SiteProgressEntry[]     @relation("SiteProgressEntryCreatedBy")
+  siteBudgetAlertsSeen          SiteBudgetAlert[]       @relation("SiteBudgetAlertAcknowledgedBy")
+  landLeasePaymentsCreated      LandLeasePayment[]      @relation("LandLeasePaymentCreatedBy")
+  landLeasePaymentsValidated    LandLeasePayment[]      @relation("LandLeasePaymentValidatedBy")
+  salaryNotesCreated            SalaryNote[]            @relation("SalaryNoteCreatedBy")
+  salaryNotesValidated          SalaryNote[]            @relation("SalaryNoteValidatedBy")
+  salaryPaymentsCreated         SalaryPayment[]         @relation("SalaryPaymentCreatedBy")
+  salaryPaymentsValidated       SalaryPayment[]         @relation("SalaryPaymentValidatedBy")
+  progressStatementsCreated     ProgressStatement[]     @relation("ProgressStatementCreatedBy")
+  progressStatementsValidated   ProgressStatement[]     @relation("ProgressStatementValidatedBy")
+  contractorPaymentsCreated     ContractorPayment[]     @relation("ContractorPaymentCreatedBy")
+  contractorPaymentsValidated   ContractorPayment[]     @relation("ContractorPaymentValidatedBy")
+  retentionsCreated             RetentionGuarantee[]    @relation("RetentionCreatedBy")
+  retentionsReleased            RetentionGuarantee[]    @relation("RetentionReleasedBy")
+  sitesClosed                   ConstructionSite[]      @relation("ConstructionSiteClosedBy")
+  stockMovementsCreated         StockMovement[]         @relation("StockMovementCreatedBy")
+  stockCountsCreated            StockCount[]            @relation("StockCountCreatedBy")
+  stockCountsValidated          StockCount[]            @relation("StockCountValidatedBy")
+  voidedDocuments               VoidDocument[]
+  leasesManaged                 LeaseManagementTerms[]  @relation("LeaseManagementAgent")
+  agentCommissionRates          AgentCommissionRate[]
+  // Lot 9 : ventes immobilieres.
+  saleMandatesAsAgent           SaleMandate[]           @relation("SaleMandateAgent")
+  saleMandatesRevoked           SaleMandate[]           @relation("SaleMandateRevokedBy")
+  saleOffersDecided             SaleOffer[]             @relation("SaleOfferDecidedBy")
+  saleAgreementsCancelled       SaleAgreement[]         @relation("SaleAgreementCancelledBy")
+  saleCommissionsAsAgent        SaleCommission[]        @relation("SaleCommissionAgent")
+  saleCommissionPaymentsCreated SaleCommissionPayment[] @relation("SaleCommissionPaymentCreatedBy")
+  saleCommissionPaymentsVoided  SaleCommissionPayment[] @relation("SaleCommissionPaymentVoidedBy")
 
   @@index([email])
   @@map("users")
@@ -628,6 +636,14 @@ model Tenant {
   chartOfAccounts          ChartOfAccount[]
   accountingJournals       AccountingJournal[]
   journalEntries           JournalEntry[]
+  // Lot 9 : ventes immobilieres.
+  saleMandates             SaleMandate[]
+  saleOffers               SaleOffer[]
+  saleAgreements           SaleAgreement[]
+  saleAgreementConditions  SaleAgreementCondition[]
+  salePaymentMilestones    SalePaymentMilestone[]
+  saleCommissions          SaleCommission[]
+  saleCommissionPayments   SaleCommissionPayment[]
 
   @@index([slug])
   @@index([status])
@@ -668,6 +684,7 @@ model TenantClient {
   managementTerms           OwnerManagementTerms?
   ownerPayouts              OwnerPayout[]
   ownershipShares           PropertyOwnershipShare[]
+  saleMandatesAsSeller      SaleMandate[]
 
   @@unique([userId, tenantId])
   @@index([userId])
@@ -1073,6 +1090,7 @@ model CrmContact {
   reportedSyndicateIncidents SyndicateIncident[]
   ownerStatements            OwnerStatement[]
   patrimonyDocuments         PatrimonyDocument[]   @relation("PatrimonyDocumentOwner")
+  saleOffersAsBuyer          SaleOffer[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -1141,6 +1159,7 @@ model CrmDeal {
   propertyMatches CrmDealProperty[]
   notes           CrmNote[]
   propertyVisits  PropertyVisit[]
+  saleOffers      SaleOffer[]
 
   @@index([tenantId])
   @@index([tenantId, contactId])
@@ -1394,6 +1413,10 @@ model Property {
   // Agency A's "REF-001" must not block agency B's.
   partnership Partnership? @relation(fields: [partnershipId], references: [id], onDelete: SetNull)
   siteLot     SiteLot?
+
+  // Lot 9 : ventes immobilieres.
+  saleMandates   SaleMandate[]
+  saleAgreements SaleAgreement[]
 
   @@unique([tenantId, internalReference])
   @@index([tenantId])
@@ -2899,6 +2922,8 @@ enum SourceType {
   OWNER_DEPOSIT
   TREASURY_TRANSFER
   TAX_REMITTANCE
+  // Lot 9 : ventes immobilieres. Le versement d'une commission de transaction.
+  SALE_COMMISSION_PAYMENT
 }
 
 /// Portee d'un plan de comptes, d'un journal ou d'une ecriture.
@@ -6615,4 +6640,340 @@ model TaxRemittance {
 
   @@unique([tenantId, year, sequence])
   @@map("tax_remittances")
+}
+
+// =============================================================
+// VENTES IMMOBILIERES — Lot 9
+// =============================================================
+//
+// Chaine complete d'une vente ou l'agence est intermediaire : mandat de vente,
+// offres d'achat, compromis, acte authentique, commission de transaction.
+// Voir docs/ventes/PRD-lot-9-ventes.md, section 3, qui fait foi.
+//
+// P3 : l'agence ne detient aucun fonds de la vente. Seule la commission entre
+// en comptabilite (P4 : nee a l'acte ; P5 : comptabilisee a l'encaissement,
+// comme la gestion locative du lot 10).
+//
+// Numerotation annuelle par agence (colonnes year + sequence, comme
+// `TreasuryTransfer` et `TaxRemittance` du lot 10) : MV, OA, CV, HT, RC.
+
+enum SaleMandateType {
+  SIMPLE
+  EXCLUSIVE
+}
+
+enum SaleMandateStatus {
+  ACTIVE
+  REVOKED
+  COMPLETED
+}
+
+enum SaleCommissionMode {
+  PERCENT
+  FIXED
+}
+
+enum SaleCommissionPayer {
+  SELLER
+  BUYER
+}
+
+enum SaleFinancing {
+  CASH
+  LOAN
+  MIXED
+}
+
+enum SaleOfferStatus {
+  SUBMITTED
+  COUNTERED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum SaleDepositHolder {
+  NOTARY
+  SELLER
+}
+
+enum SaleAgreementStatus {
+  DRAFT
+  SIGNED
+  COMPLETED
+  CANCELLED
+}
+
+enum SaleConditionStatus {
+  PENDING
+  MET
+  FAILED
+  WAIVED
+}
+
+enum SaleCommissionStatus {
+  DUE
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum SaleCommissionPaymentStatus {
+  POSTED
+  VOIDED
+}
+
+/// Mandat de vente d'un bien : vendeur (`TenantClient`, decision du 22/09),
+/// prix demande et honoraires convenus. Numerote MV-AAAA-NNNN.
+///
+/// UN SEUL MANDAT ACTIVE PAR BIEN ET PAR AGENCE : controle applicatif (le
+/// service verifie avant de creer), pas de contrainte SQL — un index simple
+/// suffit a la lecture, une contrainte d'unicite partielle sur (propertyId)
+/// filtree par statut n'a pas de syntaxe Prisma native et aurait exige du SQL
+/// brut dans la migration pour un gain modeste face au controle applicatif
+/// deja necessaire pour le message d'erreur en francais.
+model SaleMandate {
+  id                    String              @id @default(uuid()) @db.Uuid
+  tenantId              String              @map("tenant_id")
+  year                  Int
+  sequence              Int
+  propertyId            String              @map("property_id")
+  sellerClientId        String              @map("seller_client_id")
+  mandateType           SaleMandateType     @map("mandate_type")
+  askingPrice           Decimal             @map("asking_price") @db.Decimal(14, 2)
+  /// Prix plancher confidentiel : jamais restitue a l'acquereur.
+  minimumPrice          Decimal?            @map("minimum_price") @db.Decimal(14, 2)
+  commissionMode        SaleCommissionMode  @map("commission_mode")
+  commissionRate        Decimal?            @map("commission_rate") @db.Decimal(7, 4)
+  commissionFixedAmount Decimal?            @map("commission_fixed_amount") @db.Decimal(14, 2)
+  commissionPayer       SaleCommissionPayer @map("commission_payer")
+  agentUserId           String?             @map("agent_user_id")
+  /// Part du negociateur sur la commission HT encaissee, en pourcentage.
+  agentSharePercent     Decimal?            @map("agent_share_percent") @db.Decimal(7, 4)
+  startDate             DateTime            @map("start_date") @db.Date
+  endDate               DateTime?           @map("end_date") @db.Date
+  status                SaleMandateStatus   @default(ACTIVE)
+  revokedAt             DateTime?           @map("revoked_at")
+  revokedByUserId       String?             @map("revoked_by_user_id")
+  revokeReason          String?             @map("revoke_reason") @db.Text
+  notes                 String?             @db.Text
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property     Property         @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  sellerClient TenantClient     @relation(fields: [sellerClientId], references: [id], onDelete: Restrict)
+  agentUser    User?            @relation("SaleMandateAgent", fields: [agentUserId], references: [id], onDelete: SetNull)
+  revokedBy    User?            @relation("SaleMandateRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+  offers       SaleOffer[]
+  agreements   SaleAgreement[]
+  commissions  SaleCommission[]
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, status])
+  @@index([tenantId, propertyId])
+  @@index([sellerClientId])
+  @@index([agentUserId])
+  @@map("sale_mandates")
+}
+
+/// Offre d'achat sur un mandat, portee par un acquereur (`CrmContact`, P2).
+/// Numerotee OA-AAAA-NNNN.
+model SaleOffer {
+  id              String          @id @default(uuid()) @db.Uuid
+  tenantId        String          @map("tenant_id")
+  year            Int
+  sequence        Int
+  mandateId       String          @map("mandate_id") @db.Uuid
+  buyerContactId  String          @map("buyer_contact_id")
+  /// Affaire CRM d'origine, si l'offre en vient.
+  dealId          String?         @map("deal_id")
+  amount          Decimal         @db.Decimal(14, 2)
+  financing       SaleFinancing
+  conditions      String?         @db.Text
+  validUntil      DateTime?       @map("valid_until") @db.Date
+  status          SaleOfferStatus @default(SUBMITTED)
+  /// Contre-offre du vendeur, posee par l'action COUNTER.
+  counterAmount   Decimal?        @map("counter_amount") @db.Decimal(14, 2)
+  decidedAt       DateTime?       @map("decided_at")
+  decidedByUserId String?         @map("decided_by_user_id")
+  decisionReason  String?         @map("decision_reason") @db.Text
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  mandate      SaleMandate    @relation(fields: [mandateId], references: [id], onDelete: Cascade)
+  buyerContact CrmContact     @relation(fields: [buyerContactId], references: [id], onDelete: Restrict)
+  deal         CrmDeal?       @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  decidedBy    User?          @relation("SaleOfferDecidedBy", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  agreement    SaleAgreement?
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, status])
+  @@index([mandateId])
+  @@index([buyerContactId])
+  @@index([dealId])
+  @@map("sale_offers")
+}
+
+/// Compromis de vente ne d'une offre ACCEPTED. Numerote CV-AAAA-NNNN.
+/// Un seul compromis par offre : `@unique` sur `offerId` (PRD §3).
+model SaleAgreement {
+  id                String              @id @default(uuid()) @db.Uuid
+  tenantId          String              @map("tenant_id")
+  year              Int
+  sequence          Int
+  offerId           String              @unique @map("offer_id") @db.Uuid
+  /// Recopies de l'offre/du mandat pour les requetes, jamais divergents en
+  /// dehors de la creation.
+  mandateId         String              @map("mandate_id") @db.Uuid
+  propertyId        String              @map("property_id")
+  price             Decimal             @db.Decimal(14, 2)
+  depositAmount     Decimal?            @map("deposit_amount") @db.Decimal(14, 2)
+  depositHolder     SaleDepositHolder?  @map("deposit_holder")
+  notaryName        String?             @map("notary_name")
+  signedAt          DateTime?           @map("signed_at") @db.Date
+  expectedDeedDate  DateTime?           @map("expected_deed_date") @db.Date
+  deedDate          DateTime?           @map("deed_date") @db.Date
+  status            SaleAgreementStatus @default(DRAFT)
+  cancelledAt       DateTime?           @map("cancelled_at")
+  cancelReason      String?             @map("cancel_reason") @db.Text
+  cancelledByUserId String?             @map("cancelled_by_user_id")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant      Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  offer       SaleOffer                @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  mandate     SaleMandate              @relation(fields: [mandateId], references: [id], onDelete: Restrict)
+  property    Property                 @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  cancelledBy User?                    @relation("SaleAgreementCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+  conditions  SaleAgreementCondition[]
+  milestones  SalePaymentMilestone[]
+  commission  SaleCommission?
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, status])
+  @@index([mandateId])
+  @@index([propertyId])
+  @@map("sale_agreements")
+}
+
+/// Condition suspensive d'un compromis. Une condition FAILED n'annule pas
+/// seule le compromis : l'agent decide (PRD §3).
+model SaleAgreementCondition {
+  id          String              @id @default(uuid()) @db.Uuid
+  tenantId    String              @map("tenant_id")
+  agreementId String              @map("agreement_id") @db.Uuid
+  label       String
+  dueDate     DateTime?           @map("due_date") @db.Date
+  status      SaleConditionStatus @default(PENDING)
+  resolvedAt  DateTime?           @map("resolved_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agreement SaleAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([agreementId])
+  @@map("sale_agreement_conditions")
+}
+
+/// Echeancier de paiement de l'acquereur : suivi, sans ecriture comptable
+/// (P3 — l'agence ne detient pas ces fonds).
+model SalePaymentMilestone {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id")
+  agreementId String    @map("agreement_id") @db.Uuid
+  label       String
+  dueDate     DateTime? @map("due_date") @db.Date
+  amount      Decimal   @db.Decimal(14, 2)
+  paidAt      DateTime? @map("paid_at") @db.Date
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agreement SaleAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([agreementId])
+  @@map("sale_payment_milestones")
+}
+
+/// Commission de transaction, creee automatiquement au passage du compromis
+/// a COMPLETED (P4). Figee a sa creation : taux de TVA et part du negociateur
+/// ne suivent plus les parametres ou le mandat apres coup. Numerotee
+/// HT-AAAA-NNNN. `paidAmount` et `status` sont calcules a la lecture depuis
+/// les reglements POSTED — jamais stockes, pour ne jamais diverger d'eux.
+model SaleCommission {
+  id                String               @id @default(uuid()) @db.Uuid
+  tenantId          String               @map("tenant_id")
+  year              Int
+  sequence          Int
+  agreementId       String               @unique @map("agreement_id") @db.Uuid
+  mandateId         String               @map("mandate_id") @db.Uuid
+  /// Recopie du mandat.
+  payer             SaleCommissionPayer
+  /// Prix de vente du compromis complete.
+  baseAmount        Decimal              @map("base_amount") @db.Decimal(14, 2)
+  amountExclTax     Decimal              @map("amount_excl_tax") @db.Decimal(14, 2)
+  /// Taux des parametres financiers si l'agence est assujettie, sinon 0 —
+  /// fige au moment de la creation (P5).
+  vatRate           Decimal              @map("vat_rate") @db.Decimal(5, 2)
+  vatAmount         Decimal              @map("vat_amount") @db.Decimal(14, 2)
+  amountInclTax     Decimal              @map("amount_incl_tax") @db.Decimal(14, 2)
+  /// Recopies (figees) du mandat.
+  agentUserId       String?              @map("agent_user_id")
+  agentSharePercent Decimal?             @map("agent_share_percent") @db.Decimal(7, 4)
+  status            SaleCommissionStatus @default(DUE)
+  /// = deedDate du compromis.
+  issuedAt          DateTime             @map("issued_at") @db.Date
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  tenant    Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agreement SaleAgreement           @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  mandate   SaleMandate             @relation(fields: [mandateId], references: [id], onDelete: Restrict)
+  agentUser User?                   @relation("SaleCommissionAgent", fields: [agentUserId], references: [id], onDelete: SetNull)
+  payments  SaleCommissionPayment[]
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, status])
+  @@index([mandateId])
+  @@map("sale_commissions")
+}
+
+/// Reglement (encaissement) d'une commission de vente. Numerote RC-AAAA-NNNN.
+/// `treasuryAccountId` designe librement un `TreasuryAccount` (pas de
+/// relation Prisma), comme `TaxRemittance.treasuryAccountId` au lot 10 : le
+/// compte est verifie par `assertTreasuryAccountUsableTx` au moment d'ecrire,
+/// pas par une contrainte de cle etrangere supplementaire.
+model SaleCommissionPayment {
+  id                String                      @id @default(uuid()) @db.Uuid
+  tenantId          String                      @map("tenant_id")
+  year              Int
+  sequence          Int
+  commissionId      String                      @map("commission_id") @db.Uuid
+  amount            Decimal                     @db.Decimal(14, 2)
+  paidAt            DateTime                    @map("paid_at")
+  paymentMethod     RentalPaymentMethod         @map("payment_method")
+  treasuryAccountId String                      @map("treasury_account_id") @db.Uuid
+  reference         String?
+  status            SaleCommissionPaymentStatus @default(POSTED)
+  voidReason        String?                     @map("void_reason")
+  voidedAt          DateTime?                   @map("voided_at")
+  voidedByUserId    String?                     @map("voided_by_user_id")
+  createdByUserId   String?                     @map("created_by_user_id")
+  createdAt         DateTime                    @default(now()) @map("created_at")
+
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  commission SaleCommission @relation(fields: [commissionId], references: [id], onDelete: Restrict)
+  voidedBy   User?          @relation("SaleCommissionPaymentVoidedBy", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+  createdBy  User?          @relation("SaleCommissionPaymentCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, status])
+  @@index([commissionId])
+  @@map("sale_commission_payments")
 }

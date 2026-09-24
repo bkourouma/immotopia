@@ -122,6 +122,25 @@ const CompteProprietaire = lazy(() =>
 const Releve = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/Releve').then(m => ({ default: m.Releve }))
 );
+const SalesDashboard = lazy(() =>
+  import(/* webpackChunkName: "sales" */ './pages/sales/SalesDashboard').then(m => ({ default: m.SalesDashboard }))
+);
+const SaleMandates = lazy(() =>
+  import(/* webpackChunkName: "sales" */ './pages/sales/SaleMandates').then(m => ({ default: m.SaleMandates }))
+);
+const SaleMandateDetail = lazy(() =>
+  import(/* webpackChunkName: "sales" */ './pages/sales/SaleMandateDetail').then(m => ({
+    default: m.SaleMandateDetail
+  }))
+);
+const SaleAgreementDetail = lazy(() =>
+  import(/* webpackChunkName: "sales" */ './pages/sales/SaleAgreementDetail').then(m => ({
+    default: m.SaleAgreementDetail
+  }))
+);
+const SaleCommissions = lazy(() =>
+  import(/* webpackChunkName: "sales" */ './pages/sales/SaleCommissions').then(m => ({ default: m.SaleCommissions }))
+);
 const Comptabilite = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/Comptabilite').then(m => ({ default: m.Comptabilite }))
 );
@@ -817,6 +836,11 @@ function App() {
                             element={<CompteProprietaire />}
                           />
                           <Route path="/tenant/:tenantId/finance/comptes/:accountId" element={<Releve />} />
+                          <Route path="/tenant/:tenantId/sales" element={<SalesDashboard />} />
+                          <Route path="/tenant/:tenantId/sales/mandates" element={<SaleMandates />} />
+                          <Route path="/tenant/:tenantId/sales/mandates/:id" element={<SaleMandateDetail />} />
+                          <Route path="/tenant/:tenantId/sales/agreements/:id" element={<SaleAgreementDetail />} />
+                          <Route path="/tenant/:tenantId/sales/commissions" element={<SaleCommissions />} />
                           <Route path="/tenant/:tenantId/finance/facturation" element={<Facturation />} />
                           <Route path="/tenant/:tenantId/finance/fournisseurs" element={<Fournisseurs />} />
                           <Route

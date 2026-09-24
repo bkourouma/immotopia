@@ -133,7 +133,12 @@ export interface PostDocumentEntryParams {
     | 'OWNER_WITHHOLDING'
     | 'OWNER_DEPOSIT'
     | 'TREASURY_TRANSFER'
-    | 'TAX_REMITTANCE';
+    | 'TAX_REMITTANCE'
+    // Lot 9 : ventes immobilieres. La contre-passation d'un reglement de
+    // commission passe par `reverseDocumentEntryTx` (nature OWNER_VOID),
+    // comme la tresorerie du lot 10 : elle n'est pas annulable par
+    // `voidDocumentTx`.
+    | 'SALE_COMMISSION_PAYMENT';
   documentId: string;
   lines: JournalLineInput[];
 }

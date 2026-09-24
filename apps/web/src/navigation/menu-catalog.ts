@@ -152,6 +152,12 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'maintenance-mes-demandes': ['MAINTENANCE_TENANT', 'MAINTENANCE_ADMIN'],
   'maintenance-agence-vendors': ['MAINTENANCE_ADMIN'],
 
+  // Ventes immobilières (lot 9).
+  ventes: ['CRM_DEALS_VIEW', 'FINANCE_ACCOUNTS_READ'],
+  'sales-dashboard': ['CRM_DEALS_VIEW'],
+  'sales-mandates': ['CRM_DEALS_VIEW'],
+  'sales-commissions': ['CRM_DEALS_VIEW', 'FINANCE_ACCOUNTS_READ'],
+
   // Commercial et communication.
   crm: ['CRM_CONTACTS_VIEW', 'CRM_DEALS_VIEW', 'CRM_ACTIVITIES_VIEW'],
   'crm-dashboard': ['CRM_CONTACTS_VIEW', 'CRM_DEALS_VIEW'],

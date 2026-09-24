@@ -12,6 +12,7 @@ import {
   MenuOutlined,
   RiseOutlined,
   SafetyOutlined,
+  ShopOutlined,
   TeamOutlined,
   ToolOutlined,
   WalletOutlined
@@ -104,6 +105,7 @@ export type SectionId =
   | 'parc'
   | 'locatif'
   | 'finance'
+  | 'ventes'
   | 'patrimoine'
   | 'commercial'
   | 'copropriete'
@@ -116,6 +118,7 @@ export const SECTION_LABELS: Record<SectionId, string> = {
   parc: t('Parc immobilier'),
   locatif: t('Gestion locative'),
   finance: 'Finance',
+  ventes: t('Ventes'),
   patrimoine: t('Patrimoine et entretien'),
   commercial: t('Commercial et communication'),
   copropriete: t('Copropriété'),
@@ -381,6 +384,22 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
             label: t('Prestataires'),
             href: '/tenant/:tenantId/admin/maintenance/vendors'
           }
+        ]
+      },
+      {
+        // Ventes immobilières (lot 9) : mandats, offres, compromis, actes,
+        // commissions. Posée juste avant CRM — l'affaire CRM gagnée est le
+        // point d'entrée d'où naît un mandat de vente.
+        key: 'ventes',
+        label: t('Ventes'),
+        icon: <ShopOutlined />,
+        zone: 'more',
+        section: 'ventes',
+        href: '/tenant/:tenantId/sales',
+        children: [
+          { key: 'sales-dashboard', label: t('Tableau des ventes'), href: '/tenant/:tenantId/sales' },
+          { key: 'sales-mandates', label: t('Mandats de vente'), href: '/tenant/:tenantId/sales/mandates' },
+          { key: 'sales-commissions', label: t('Commissions de vente'), href: '/tenant/:tenantId/sales/commissions' }
         ]
       },
       {

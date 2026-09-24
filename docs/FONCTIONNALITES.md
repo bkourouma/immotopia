@@ -1,6 +1,6 @@
 # ImmoTopia — Liste des fonctionnalités
 
-Mise à jour du 23 septembre 2026, branche `feat/gestion-locative-lot-1` (pas
+Mise à jour du 24 septembre 2026, branche `feat/gestion-locative-lot-1` (pas
 encore fusionnée sur `main`).
 
 Recensement établi à partir du code réel (routes API `packages/api/src/routes`,
@@ -104,6 +104,17 @@ navigation `apps/web/src/navigation/model.tsx`, schéma `prisma/schema.prisma`).
 - **Tableau de bord CRM** : indicateurs commerciaux.
 - **Recherches de contacts enregistrées** (`SavedContactSearch`).
 
+### Ventes immobilières (lot 9)
+
+L'agence intermédiaire la vente d'un bien, du mandat à l'encaissement de sa commission. Cahier des charges : `docs/ventes/PRD-lot-9-ventes.md`. Menu **Ventes**.
+
+- **Mandats de vente** (`SaleMandate`, `MV-AAAA-NNNN`) : vendeur `TenantClient` (co-vendeurs d'un bien en indivision affichés), mandat simple ou exclusif, prix demandé et plancher, honoraires en pourcentage ou forfait, à la charge du vendeur ou de l'acquéreur, négociateur et sa part ; un seul mandat actif par bien, révocation motivée.
+- **Offres d'achat** (`SaleOffer`, `OA-AAAA-NNNN`) : acquéreur `CrmContact`, affaire CRM d'origine, financement, validité ; contre-offre, acceptation, refus, retrait. Une seule offre acceptée vivante par mandat ; les offres encore ouvertes sont refusées d'office à la vente ou à la révocation.
+- **Compromis** (`SaleAgreement`, `CV-AAAA-NNNN`) : prix convenu, dépôt de l'acquéreur (chez le notaire ou le vendeur), notaire, conditions suspensives (`SaleAgreementCondition`), échéancier de l'acquéreur (`SalePaymentMilestone`, suivi sans écriture) ; brouillon → signé → acte signé, ou annulé. L'acte exige que toutes les conditions soient réalisées ou renoncées.
+- **Statut du bien** synchronisé avec l'historique : réservé à l'acceptation, sous offre au compromis, vendu à l'acte, disponible à l'annulation. L'affaire CRM liée passe « gagnée » à l'acte.
+- **Commissions de vente** (`SaleCommission`, `HT-AAAA-NNNN`) : créées à l'acte, TVA figée selon les paramètres financiers, encaissements partiels (`SaleCommissionPayment`, `RC-AAAA-NNNN`) comptabilisés `trésorerie / 70612 + 4432`, annulation par contre-passation, part du négociateur.
+- **Tableau des ventes** : mandats actifs et expirés, offres ouvertes, compromis signés, ventes et commissions du mois ; encart « Vente » sur la fiche d'un bien.
+
 ## 9. Communication
 
 - **Notifications e-mail** : configuration par événement métier (`EmailNotificationConfig`), modèles par défaut fournis, écran unifié d'édition.
@@ -203,6 +214,6 @@ locative et à la finance opérationnelle, conforme SYSCOHADA (`65ad2cd`).
 
 - **Mobile Money intégré avec rapprochement opérateur** : la saisie et la déclaration de paiement existent (§4), mais aucune intégration d'un opérateur (confirmation automatique, affectation directe au dossier) n'est présente dans le code.
 - **SMS** : les notifications passent par e-mail et WhatsApp (§9) ; aucun envoi de SMS.
-- **Gestion des ventes immobilières** : offres, compromis et contrat de vente au-delà du suivi d'une affaire CRM (§8) — en cours, lot 9, pas encore dans le code de cette branche.
+- **Documents de vente** : le mandat, l'offre et le compromis ne se génèrent pas encore en DOCX ; ventes du promoteur en VEFA (appels de fonds), séquestre tenu par l'agence et portail acquéreur hors du lot 9.
 - **Mode hors ligne** : aucune installation locale ni synchronisation différée ; l'application suppose une connexion permanente.
 - **Assistant IA** interrogeant les données de gestion : aucune fonctionnalité de ce type dans le code.

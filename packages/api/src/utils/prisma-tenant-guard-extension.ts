@@ -53,6 +53,14 @@ const TENANT_FIELD_BY_MODEL: Record<string, string> = {
   TenantClient: 'tenantId',
   Invitation: 'tenantId',
   Invoice: 'tenantId',
+  // Lot 9 : ventes immobilieres.
+  SaleMandate: 'tenantId',
+  SaleOffer: 'tenantId',
+  SaleAgreement: 'tenantId',
+  SaleAgreementCondition: 'tenantId',
+  SalePaymentMilestone: 'tenantId',
+  SaleCommission: 'tenantId',
+  SaleCommissionPayment: 'tenantId',
 
   // snake_case tenant_id (rental / maintenance / document modules)
   RentalLease: 'tenant_id',
