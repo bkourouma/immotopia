@@ -71,7 +71,7 @@ export const AuthCallback: React.FC = () => {
         {status === 'loading' && (
           <>
             <div className="flex justify-center">
-              <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600"></div>
+              <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
             </div>
             <h2 className="mt-6 text-3xl font-extrabold text-gray-900">{message}</h2>
           </>

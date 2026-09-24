@@ -57,10 +57,10 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600 bg-green-50 border-green-200';
-    if (score >= 60) return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-    if (score >= 40) return 'text-orange-600 bg-orange-50 border-orange-200';
-    return 'text-red-600 bg-red-50 border-red-200';
+    if (score >= 80) return 'text-success-text bg-success-bg border-success';
+    if (score >= 60) return 'text-lime-700 bg-lime-50 border-lime-200';
+    if (score >= 40) return 'text-warning-text bg-warning-bg border-warning';
+    return 'text-error-text bg-error-bg border-error';
   };
 
   const getScoreLabel = (score: number) => {
@@ -74,7 +74,7 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
     return (
       <div className="bg-white rounded-lg shadow p-6">
         <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
         </div>
       </div>
     );
@@ -168,7 +168,7 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
             </div>
             <div className="w-full bg-gray-200 rounded-full h-2">
               <div
-                className="bg-orange-600 h-2 rounded-full"
+                className="bg-teal-600 h-2 rounded-full"
                 style={{ width: `${qualityScore.breakdown.description}%` }}
               />
             </div>
@@ -185,8 +185,11 @@ export const PropertyQualityScore: React.FC<PropertyQualityScoreProps> = ({ prop
           </h4>
           <div className="space-y-2">
             {qualityScore.suggestions.map((suggestion, index) => (
-              <div key={index} className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <CheckCircle className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div
+                key={index}
+                className="flex items-start gap-2 p-3 bg-primary-bg border border-primary-border rounded-lg"
+              >
+                <CheckCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
                 <span className="text-sm text-gray-700">{suggestion}</span>
               </div>
             ))}

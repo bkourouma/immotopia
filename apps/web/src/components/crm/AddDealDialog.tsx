@@ -32,8 +32,8 @@ export const AddDealDialog: React.FC<AddDealDialogProps> = ({
         {/* Header */}
         <div className="p-6 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="bg-blue-100 rounded-full p-2">
-              <Briefcase className="h-5 w-5 text-blue-600" />
+            <div className="bg-primary-bg rounded-full p-2">
+              <Briefcase className="h-5 w-5 text-primary" />
             </div>
             <div>
               <h2 className="text-xl font-semibold">{t('Nouvelle affaire')}</h2>

@@ -63,7 +63,7 @@ export const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ data }) => {
             }}
             className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
               selectedMetrics.includes(key)
-                ? 'bg-blue-100 text-blue-700'
+                ? 'bg-primary-bg text-primary-hover'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >

@@ -193,11 +193,14 @@ export const Deals: React.FC = () => {
   };
 
   const getStageBadge = (stage: string) => {
+    // Echelle CATEGORIELLE (voir PropertySearchResults) : palette brute
+    // assumee, les roles du systeme n'exprimant que du semantique. Seul
+    // l'orange a bouge, pour ne pas se lire comme l'accent de marque.
     const styles: Record<string, string> = {
       NEW: 'bg-gray-100 text-gray-800',
       QUALIFIED: 'bg-blue-100 text-blue-800',
       APPOINTMENT: 'bg-yellow-100 text-yellow-800',
-      VISIT: 'bg-orange-100 text-orange-800',
+      VISIT: 'bg-teal-100 text-teal-800',
       NEGOTIATION: 'bg-purple-100 text-purple-800',
       WON: 'bg-green-100 text-green-800',
       LOST: 'bg-red-100 text-red-800'

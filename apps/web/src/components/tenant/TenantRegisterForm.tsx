@@ -137,7 +137,7 @@ export const TenantRegisterForm: React.FC<TenantRegisterFormProps> = ({ tenantId
               id="tenant"
               value={selectedTenantId}
               onChange={e => setSelectedTenantId(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
             >
               {tenants.map(tenant => (
                 <option key={tenant.id} value={tenant.id}>
@@ -160,7 +160,7 @@ export const TenantRegisterForm: React.FC<TenantRegisterFormProps> = ({ tenantId
                 value="RENTER"
                 checked={clientType === 'RENTER'}
                 onChange={e => setClientType(e.target.value as ClientType)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                className="h-4 w-4 text-primary focus:ring-primary border-gray-300"
               />
               <span className="ms-2 text-sm text-gray-700">{t('Locataire')}</span>
             </label>
@@ -170,7 +170,7 @@ export const TenantRegisterForm: React.FC<TenantRegisterFormProps> = ({ tenantId
                 value="BUYER"
                 checked={clientType === 'BUYER'}
                 onChange={e => setClientType(e.target.value as ClientType)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                className="h-4 w-4 text-primary focus:ring-primary border-gray-300"
               />
               <span className="ms-2 text-sm text-gray-700">{t('Acheteur')}</span>
             </label>
@@ -180,7 +180,7 @@ export const TenantRegisterForm: React.FC<TenantRegisterFormProps> = ({ tenantId
                 value="OWNER"
                 checked={clientType === 'OWNER'}
                 onChange={e => setClientType(e.target.value as ClientType)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                className="h-4 w-4 text-primary focus:ring-primary border-gray-300"
               />
               <span className="ms-2 text-sm text-gray-700">{t('Propriétaire')}</span>
             </label>
@@ -190,7 +190,7 @@ export const TenantRegisterForm: React.FC<TenantRegisterFormProps> = ({ tenantId
                 value="CO_OWNER"
                 checked={clientType === 'CO_OWNER'}
                 onChange={e => setClientType(e.target.value as ClientType)}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                className="h-4 w-4 text-primary focus:ring-primary border-gray-300"
               />
               <span className="ms-2 text-sm text-gray-700">{t('Co-propriétaire')}</span>
             </label>
@@ -207,7 +207,7 @@ export const TenantRegisterForm: React.FC<TenantRegisterFormProps> = ({ tenantId
             id="budget"
             value={details.budget}
             onChange={e => handleDetailChange('budget', e.target.value)}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
             placeholder={t('Ex: 50000')}
           />
         </div>
@@ -222,7 +222,7 @@ export const TenantRegisterForm: React.FC<TenantRegisterFormProps> = ({ tenantId
             id="preferredLocation"
             value={details.preferredLocation}
             onChange={e => handleDetailChange('preferredLocation', e.target.value)}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
             placeholder={t('Ex: Cocody, Angré')}
           />
         </div>
@@ -236,7 +236,7 @@ export const TenantRegisterForm: React.FC<TenantRegisterFormProps> = ({ tenantId
             id="propertyType"
             value={details.propertyType}
             onChange={e => handleDetailChange('propertyType', e.target.value)}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
           >
             <option value="">{t('Sélectionnez')}</option>
             <option value="apartment">{t('Appartement')}</option>
@@ -258,7 +258,7 @@ export const TenantRegisterForm: React.FC<TenantRegisterFormProps> = ({ tenantId
             id="bedrooms"
             value={details.bedrooms}
             onChange={e => handleDetailChange('bedrooms', e.target.value)}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
             placeholder={t('Ex: 3')}
             min="0"
           />
@@ -275,7 +275,7 @@ export const TenantRegisterForm: React.FC<TenantRegisterFormProps> = ({ tenantId
               id="moveInDate"
               value={details.moveInDate}
               onChange={e => handleDetailChange('moveInDate', e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
             />
           </div>
         )}
@@ -290,7 +290,7 @@ export const TenantRegisterForm: React.FC<TenantRegisterFormProps> = ({ tenantId
             rows={4}
             value={details.notes}
             onChange={e => handleDetailChange('notes', e.target.value)}
-            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary sm:text-sm"
             placeholder={t('Informations supplémentaires ou exigences spécifiques...')}
           />
         </div>
@@ -300,7 +300,7 @@ export const TenantRegisterForm: React.FC<TenantRegisterFormProps> = ({ tenantId
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? t('Inscription en cours...') : t("S'inscrire")}
           </button>

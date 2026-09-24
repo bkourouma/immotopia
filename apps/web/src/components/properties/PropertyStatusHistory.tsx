@@ -69,7 +69,7 @@ export const PropertyStatusHistory: React.FC<PropertyStatusHistoryProps> = ({ pr
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
     );
   }
@@ -88,8 +88,8 @@ export const PropertyStatusHistory: React.FC<PropertyStatusHistoryProps> = ({ pr
       {history.map((entry, index) => (
         <div key={entry.id} className="flex items-start gap-4 pb-4 border-b last:border-b-0">
           <div className="flex-shrink-0 mt-1">
-            <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
-              <Clock className="h-4 w-4 text-blue-600" />
+            <div className="h-8 w-8 rounded-full bg-primary-bg flex items-center justify-center">
+              <Clock className="h-4 w-4 text-primary" />
             </div>
           </div>
           <div className="flex-1 min-w-0">

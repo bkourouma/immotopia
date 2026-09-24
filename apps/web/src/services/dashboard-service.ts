@@ -33,9 +33,14 @@ export interface DashboardTask {
   id: string;
   kind: DashboardTaskKind;
   title: string;
+  /**
+   * Le complément non monétaire : le retard, le moyen de paiement, le bien.
+   * Le montant n'y figure pas — il arrive brut dans `amount`, et l'écran
+   * l'écrit avec `formatMoney`, qui pose la devise du produit.
+   */
   description: string;
+  /** Montant brut, sans devise. `null` quand la ligne n'en porte pas. */
   amount: number | null;
-  currency: string | null;
   occurredAt: string;
   severity: 'danger' | 'warning' | 'info';
   href: string;
@@ -48,6 +53,8 @@ export interface DashboardActivity {
   type: DashboardActivityType;
   title: string;
   description: string;
+  /** Montant brut, sans devise. `null` pour les événements non monétaires. */
+  amount: number | null;
   occurredAt: string;
   href?: string;
 }

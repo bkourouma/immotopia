@@ -130,10 +130,10 @@ export const AddressAutocomplete: React.FC<AddressAutocompleteProps> = ({
           <Select.Option key={item.id} value={item.id}>
             <div className="flex items-center py-2 px-1">
               <div
-                className="bg-blue-50 p-2 rounded-full me-3 flex-shrink-0 flex items-center justify-center"
+                className="bg-primary-bg p-2 rounded-full me-3 flex-shrink-0 flex items-center justify-center"
                 style={{ width: '36px', height: '36px' }}
               >
-                <MapPin className="h-4 w-4 text-blue-500" />
+                <MapPin className="h-4 w-4 text-primary" />
               </div>
               <div className="flex flex-col overflow-hidden" style={{ lineHeight: '1.2' }}>
                 <Text strong style={{ fontSize: '14px', marginBottom: '2px' }} ellipsis>

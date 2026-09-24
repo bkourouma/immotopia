@@ -86,7 +86,82 @@ code {
 }
 
 .app-drawer-header .ant-drawer-title {
-  color: var(--text-primary);
+  color: var(--text-on-nav);
+}
+
+/* Le bouton de fermeture du drawer. Ant Design le rend en gris sombre : sur le
+   navy, le seul geste de sortie decouvrable au clavier devenait invisible. */
+.app-drawer-header .ant-drawer-close {
+  color: var(--text-on-nav-muted);
+}
+
+.app-drawer-header .ant-drawer-close:hover {
+  color: var(--text-on-nav);
+  background: var(--nav-item-hover-bg);
+}
+
+/* Couleurs du menu sur la navigation navy.
+   Portee volontairement limitee a la sidebar et au drawer, et non passee par
+   les tokens de composant `Menu` du ConfigProvider : ceux-ci sont GLOBAUX et
+   repeindraient aussi le menu deroulant du compte, dans l'en-tete clair.
+   Le selecteur vise `.ant-menu-light` parce que le Menu reste declare
+   `theme="light"` : c'est le fond qui a change, pas l'algorithme de theme. */
+.ant-layout-sider .ant-menu-light,
+.ant-drawer-body .ant-menu-light {
+  background: transparent;
+}
+
+/* Les selecteurs portent QUATRE classes a dessein. Ant Design emet ses propres
+   regles avec trois (`.ant-menu-light .ant-menu-submenu-open >
+   .ant-menu-submenu-title`), enveloppees dans un `:where()` qui annule la
+   specificite du hash cssinjs. A specificite egale, c'est l'ordre d'injection
+   qui tranche — et cssinjs injecte au runtime, donc APRES cette feuille. Une
+   classe de plus met le resultat hors de portee de cet alea. */
+.ant-layout-sider .ant-menu-light .ant-menu-item,
+.ant-layout-sider .ant-menu-light .ant-menu-submenu .ant-menu-submenu-title,
+.ant-drawer-body .ant-menu-light .ant-menu-item,
+.ant-drawer-body .ant-menu-light .ant-menu-submenu .ant-menu-submenu-title {
+  color: var(--text-on-nav-muted);
+}
+
+/* Un groupe DEPLIE ou contenant la destination courante : Ant Design repasse
+   son titre en colorText (#0f172a), soit du navy sur du navy. */
+.ant-layout-sider .ant-menu-light .ant-menu-submenu-open .ant-menu-submenu-title,
+.ant-layout-sider .ant-menu-light .ant-menu-submenu-selected .ant-menu-submenu-title,
+.ant-drawer-body .ant-menu-light .ant-menu-submenu-open .ant-menu-submenu-title,
+.ant-drawer-body .ant-menu-light .ant-menu-submenu-selected .ant-menu-submenu-title {
+  color: var(--text-on-nav);
+}
+
+/* Le panneau des destinations d'un groupe deplie. Ant Design le remplit en
+   colorFillAlter — cable sur --surface-sunken (#f1f5f9) par le theme : une
+   bande claire au milieu du navy, sur laquelle les libelles en
+   --text-on-nav-muted tombaient a 1,3:1. Le groupe deplie n'a pas besoin d'un
+   fond pour se lire, son indentation suffit. */
+.ant-layout-sider .ant-menu-light .ant-menu-sub.ant-menu-inline,
+.ant-drawer-body .ant-menu-light .ant-menu-sub.ant-menu-inline {
+  background: transparent;
+}
+
+.ant-layout-sider .ant-menu-light .ant-menu-item:hover,
+.ant-layout-sider .ant-menu-light .ant-menu-submenu .ant-menu-submenu-title:hover,
+.ant-drawer-body .ant-menu-light .ant-menu-item:hover,
+.ant-drawer-body .ant-menu-light .ant-menu-submenu .ant-menu-submenu-title:hover {
+  color: var(--text-on-nav);
+  background: var(--nav-item-hover-bg);
+}
+
+.ant-layout-sider .ant-menu-light .ant-menu-item-selected,
+.ant-drawer-body .ant-menu-light .ant-menu-item-selected {
+  color: var(--text-on-nav);
+  background: var(--nav-item-active-bg);
+}
+
+/* Le chevron d'un groupe repliable. Laisse a sa valeur d'origine, il restait en
+   gris sombre, invisible sur le navy. */
+.ant-layout-sider .ant-menu-light .ant-menu-submenu .ant-menu-submenu-arrow,
+.ant-drawer-body .ant-menu-light .ant-menu-submenu .ant-menu-submenu-arrow {
+  color: inherit;
 }
 
 /* Zone tactile de l'icone d'effacement des champs (REFONTE_UI_UX.md §10.1).
@@ -116,10 +191,12 @@ code {
 /* Ascenseur de la zone defilante du menu. La barre par defaut de Chrome fait
    15 px de large et s'affiche en gris sombre : sur --surface-nav, elle pese
    plus que les intertitres qu'elle longe. Filet de 8 px, sans piste, comme
-   pour les tableaux plus haut — mais cale sur les tokens. */
+   pour les tableaux plus haut — mais cale sur les tokens.
+   --border-nav-strong et non --border-strong : ce dernier est un gris slate,
+   concu pour les surfaces claires, et disparaissait sur le navy. */
 .app-nav-scroll {
   scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-color: var(--border-nav-strong) transparent;
 }
 
 .app-nav-scroll::-webkit-scrollbar {
@@ -131,7 +208,7 @@ code {
 }
 
 .app-nav-scroll::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
+  background: var(--border-nav-strong);
   border-radius: 999px;
 }
 
@@ -139,12 +216,13 @@ code {
    Ant Design rend `type: 'group'` avec la meme graisse et la meme taille qu'une
    entree : le titre se confond alors avec les destinations qu'il coiffe, et le
    regroupement ne se lit plus. Les capitales espacees et la taille reduite en
-   font un intertitre, pas une ligne de menu de plus. --text-tertiary (4,76:1 sur
-   --surface-nav) le pose un cran sous les destinations qu'il coiffe, sans
+   font un intertitre, pas une ligne de menu de plus. --text-on-nav-muted
+   (7,90:1 sur --surface-nav) le pose un cran sous les destinations qu'il
+   coiffe — lesquelles passent a --text-on-nav au survol et en selection — sans
    descendre sous le plancher AA. */
 .ant-layout-sider .ant-menu-item-group-title,
 .ant-drawer-body .ant-menu-item-group-title {
-  color: var(--text-tertiary);
+  color: var(--text-on-nav-muted);
   font-size: var(--font-size-caption);
   font-weight: var(--font-weight-semibold);
   letter-spacing: 0.08em;
@@ -152,11 +230,15 @@ code {
   padding-block: var(--space-3) var(--space-1);
 }
 
-/* Destination courante. Sur fond clair, Ant Design ne la marque que par la
-   couleur du libelle et un bleu de fond a 1,03:1 sur le blanc : la couleur
-   seule porte l'etat, ce que WCAG 1.4.1 refuse, et le fond est indiscernable.
-   Un filet vertical de 3 px et la graisse semi-grasse ajoutent deux signaux
-   non colorimetriques. Le filet epouse le rayon de l'entree cote interieur. */
+/* Destination courante. Ant Design ne la marque que par la couleur du libelle
+   et un fond a peine distinct : la couleur seule porte l'etat, ce que WCAG
+   1.4.1 refuse. Un filet vertical de 3 px et la graisse semi-grasse ajoutent
+   deux signaux non colorimetriques. Le filet epouse le rayon de l'entree cote
+   interieur.
+   Ce filet est --color-accent, et c'est le seul pixel orange de la
+   navigation : la ou l'on est. Il ne porte pas l'etat a lui seul, les deux
+   signaux ci-dessus s'en chargent ; a 4,87:1 sur le navy, il le porte quand
+   meme largement au-dessus du seuil non-texte. */
 .ant-layout-sider .ant-menu-item-selected,
 .ant-drawer-body .ant-menu-item-selected {
   position: relative;
@@ -172,7 +254,7 @@ code {
   width: 3px;
   border-start-start-radius: var(--radius-sm);
   border-end-start-radius: var(--radius-sm);
-  background: var(--color-primary);
+  background: var(--color-accent);
 }
 
 /* Filet entre un bloc titre et une entree qui n'appartient a aucun domaine

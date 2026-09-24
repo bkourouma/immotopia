@@ -9,7 +9,7 @@ import {
   TransactionOutlined,
   UserOutlined
 } from '@ant-design/icons';
-import { StateBlock } from '../primitives';
+import { StateBlock, formatMoney } from '../primitives';
 import { formatRelativeDate, safeFormatDate } from '../../utils/date-utils';
 import type { DashboardActivity, DashboardTask, DashboardTaskKind } from '../../services/dashboard-service';
 import { t } from '../../i18n/t';
@@ -30,6 +30,21 @@ const SEVERITE: Record<DashboardTask['severity'], { color: string; label: string
   warning: { color: 'var(--color-warning)', label: t('À surveiller') },
   info: { color: 'var(--color-primary)', label: t('Information') }
 };
+
+/**
+ * La ligne secondaire : le montant, puis ce qui le qualifie.
+ *
+ * Le montant est mis en forme ICI, par `formatMoney`, et nulle part ailleurs.
+ * L'API l'envoie brut : elle composait autrefois la phrase elle-même en
+ * recopiant le code devise stocké, si bien qu'une même liste affichait
+ * « 105 000 XOF » au-dessus de « 840 000 FCFA », selon que le bail venait du
+ * jeu de démonstration ou du défaut de schéma. Hors tableau — et cette file
+ * n'en est pas un — le montant porte sa devise, une fois, par le seul
+ * utilitaire du produit.
+ */
+function ligneSecondaire(montant: number | null, complement: string): string {
+  return [montant === null ? null : formatMoney(montant), complement || null].filter(Boolean).join(' · ');
+}
 
 const ICONE_TACHE: Record<DashboardTaskKind, React.ReactNode> = {
   OVERDUE_INSTALLMENT: <ClockCircleOutlined />,
@@ -98,7 +113,7 @@ export const WorkQueue: React.FC<WorkQueueProps> = ({ tasks, loading, link }) =>
                 <span style={{ minWidth: 0, flex: 1 }}>
                   <span style={{ display: 'block', fontWeight: 600, color: 'var(--text-primary)' }}>{tache.title}</span>
                   <span style={{ display: 'block', color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>
-                    {tache.description}
+                    {ligneSecondaire(tache.amount, tache.description)}
                   </span>
                 </span>
                 <Tooltip title={safeFormatDate(tache.occurredAt)}>
@@ -159,7 +174,7 @@ export const ActivityFeed: React.FC<ActivityFeedProps> = ({ activities, loading 
               <span style={{ minWidth: 0, flex: 1 }}>
                 <span style={{ display: 'block', color: 'var(--text-primary)' }}>{activite.title}</span>
                 <span style={{ display: 'block', color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)' }}>
-                  {activite.description}
+                  {ligneSecondaire(activite.amount, activite.description)}
                 </span>
               </span>
               <Tooltip title={safeFormatDate(activite.occurredAt)}>
