@@ -16,12 +16,12 @@ import {
   Space,
   Tag,
   Spin,
-  Statistic,
   Typography
 } from 'antd';
-import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { LotTable } from '../../components/syndics/LotTable';
+import { StatCard } from '../../components/primitives';
 import { listContacts } from '../../services/crm-service';
 import { listProperties } from '../../services/property-service';
 import {
@@ -493,12 +493,6 @@ export const SyndicLots: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
-            >
-              {t('Retour à la fiche syndic')}
-            </Button>
             <Title level={2} style={{ margin: 0 }}>
               {t('Lots de')} {syndicate?.name || t('la copropriété')}
             </Title>
@@ -527,35 +521,27 @@ export const SyndicLots: React.FC = () => {
 
             <Row gutter={[16, 16]}>
               <Col xs={24} md={8}>
-                <Card>
-                  <Statistic title={t('Nombre de lots')} value={lots.length} />
-                </Card>
+                <StatCard label={t('Nombre de lots')} value={lots.length} />
               </Col>
               <Col xs={24} md={8}>
-                <Card>
-                  <Statistic
-                    title={t('Tantièmes généraux cumulés')}
-                    value={lots.reduce((sum, lot) => sum + lot.generalShares, 0)}
-                  />
-                </Card>
+                <StatCard
+                  label={t('Tantièmes généraux cumulés')}
+                  value={lots.reduce((sum, lot) => sum + lot.generalShares, 0)}
+                />
               </Col>
               <Col xs={24} md={8}>
-                <Card>
-                  <Statistic
-                    title={t('Lots avec propriétaire')}
-                    value={lots.filter(lot => Boolean(lot.ownerContactId)).length}
-                  />
-                </Card>
+                <StatCard
+                  label={t('Lots avec propriétaire')}
+                  value={lots.filter(lot => Boolean(lot.ownerContactId)).length}
+                />
               </Col>
               <Col xs={24} md={8}>
-                <Card>
-                  <Statistic
-                    title={t('Lots avec locataire actif')}
-                    value={
-                      lots.filter(lot => (lot.tenantAssignments || []).some(assignment => assignment.isActive)).length
-                    }
-                  />
-                </Card>
+                <StatCard
+                  label={t('Lots avec locataire actif')}
+                  value={
+                    lots.filter(lot => (lot.tenantAssignments || []).some(assignment => assignment.isActive)).length
+                  }
+                />
               </Col>
             </Row>
 

@@ -61,9 +61,7 @@ import {
 } from '../types/syndic-types';
 
 export async function listSyndicates(tenantId: string): Promise<Syndicate[]> {
-  const response = await apiClient.get<{ success: boolean; data: Syndicate[] }>(
-    `/tenants/${tenantId}/syndics`
-  );
+  const response = await apiClient.get<{ success: boolean; data: Syndicate[] }>(`/tenants/${tenantId}/syndics`);
   return response.data.data;
 }
 
@@ -74,31 +72,19 @@ export async function getSyndicate(tenantId: string, syndicId: string): Promise<
   return response.data.data;
 }
 
-export async function createSyndicate(
-  tenantId: string,
-  data: CreateSyndicateRequest
-): Promise<Syndicate> {
-  const response = await apiClient.post<{ success: boolean; data: Syndicate }>(
-    `/tenants/${tenantId}/syndics`,
-    data
-  );
+export async function createSyndicate(tenantId: string, data: CreateSyndicateRequest): Promise<Syndicate> {
+  const response = await apiClient.post<{ success: boolean; data: Syndicate }>(`/tenants/${tenantId}/syndics`, data);
   return response.data.data;
 }
 
-export async function deleteSyndicate(
-  tenantId: string,
-  syndicId: string
-): Promise<Syndicate> {
+export async function deleteSyndicate(tenantId: string, syndicId: string): Promise<Syndicate> {
   const response = await apiClient.delete<{ success: boolean; data: Syndicate }>(
     `/tenants/${tenantId}/syndics/${syndicId}`
   );
   return response.data.data;
 }
 
-export async function listSyndicateLots(
-  tenantId: string,
-  syndicId: string
-): Promise<SyndicateLot[]> {
+export async function listSyndicateLots(tenantId: string, syndicId: string): Promise<SyndicateLot[]> {
   const response = await apiClient.get<{ success: boolean; data: SyndicateLot[] }>(
     `/tenants/${tenantId}/syndics/${syndicId}/lots`
   );
@@ -117,7 +103,7 @@ export async function createSyndicateLot(
     lotType: data.lotType,
     tantiemes: data.generalShares,
     // v2 backend derives special shares from isParkingIncluded/tantiemes.
-    isParkingIncluded: data.lotType === 'PARKING' || (data.specialShares ?? 0) > 0,
+    isParkingIncluded: data.lotType === 'PARKING' || (data.specialShares ?? 0) > 0
   };
 
   const response = await apiClient.post<{ success: boolean; data: SyndicateLot }>(
@@ -140,9 +126,7 @@ export async function updateSyndicateLot(
     lotType: data.lotType,
     tantiemes: data.generalShares,
     isParkingIncluded:
-      data.lotType !== undefined
-        ? data.lotType === 'PARKING' || (data.specialShares ?? 0) > 0
-        : undefined,
+      data.lotType !== undefined ? data.lotType === 'PARKING' || (data.specialShares ?? 0) > 0 : undefined
   };
 
   const response = await apiClient.patch<{ success: boolean; data: SyndicateLot }>(
@@ -180,13 +164,43 @@ export async function addLotTenantAssignment(
 export async function listChargeCalls(
   tenantId: string,
   syndicId: string,
-  filters?: { period?: string; status?: string }
+  filters?: { period?: string; status?: string; page?: number; limit?: number }
 ): Promise<ChargeCall[]> {
   const response = await apiClient.get<{ success: boolean; data: ChargeCall[] }>(
     `/tenants/${tenantId}/syndics/${syndicId}/charges`,
     { params: filters }
   );
   return response.data.data;
+}
+
+/**
+ * Tous les appels de charges de la copropriété, toutes pages confondues.
+ *
+ * `GET .../charges` pagine par défaut (20 par page, 100 au maximum) : une
+ * copropriété avec plus de 20 appels voyait sa page Finances afficher un total
+ * de carte (calculé côté API sans pagination) qui ne correspondait plus à la
+ * somme du tableau de détail (limité à la première page). Cette fonction
+ * tourne les pages jusqu'à épuisement pour que les deux se recoupent toujours.
+ */
+export async function listAllChargeCalls(
+  tenantId: string,
+  syndicId: string,
+  filters?: { period?: string; status?: string }
+): Promise<ChargeCall[]> {
+  const limit = 100;
+  let page = 1;
+  let all: ChargeCall[] = [];
+
+  // Garde-fou : 50 pages (5000 appels) couvrent tout usage réel et évitent une
+  // boucle infinie si l'API venait à renvoyer la page courante indéfiniment.
+  for (let i = 0; i < 50; i += 1) {
+    const batch = await listChargeCalls(tenantId, syndicId, { ...filters, page, limit });
+    all = all.concat(batch);
+    if (batch.length < limit) break;
+    page += 1;
+  }
+
+  return all;
 }
 
 export async function createChargeCall(
@@ -207,10 +221,7 @@ export async function recordChargePayment(
   chargeId: string,
   data: CreateChargePaymentRequest
 ) {
-  const response = await apiClient.post(
-    `/tenants/${tenantId}/syndics/${syndicId}/charges/${chargeId}/pay`,
-    data
-  );
+  const response = await apiClient.post(`/tenants/${tenantId}/syndics/${syndicId}/charges/${chargeId}/pay`, data);
   return response.data.data;
 }
 
@@ -226,11 +237,7 @@ export async function listMeetings(
   return response.data.data;
 }
 
-export async function getMeeting(
-  tenantId: string,
-  syndicId: string,
-  meetingId: string
-): Promise<GeneralMeeting> {
+export async function getMeeting(tenantId: string, syndicId: string, meetingId: string): Promise<GeneralMeeting> {
   const response = await apiClient.get<{ success: boolean; data: GeneralMeeting }>(
     `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}`
   );
@@ -328,11 +335,7 @@ export async function deleteMeetingAgendaItem(
   return response.data.data;
 }
 
-export async function generateMeetingMinutesDocx(
-  tenantId: string,
-  syndicId: string,
-  meetingId: string
-): Promise<Blob> {
+export async function generateMeetingMinutesDocx(tenantId: string, syndicId: string, meetingId: string): Promise<Blob> {
   const response = await apiClient.post(
     `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/compte-rendu`,
     {},
@@ -341,10 +344,7 @@ export async function generateMeetingMinutesDocx(
   return response.data;
 }
 
-export async function listProvidersContracts(
-  tenantId: string,
-  syndicId: string
-): Promise<SyndicProvidersPayload> {
+export async function listProvidersContracts(tenantId: string, syndicId: string): Promise<SyndicProvidersPayload> {
   const response = await apiClient.get<{ success: boolean; data: SyndicProvidersPayload }>(
     `/tenants/${tenantId}/syndics/${syndicId}/prestataires`
   );
@@ -412,20 +412,14 @@ export async function createSyndicDocument(
   return response.data.data;
 }
 
-export async function getSyndicFinanceSummary(
-  tenantId: string,
-  syndicId: string
-): Promise<FinanceSummary> {
+export async function getSyndicFinanceSummary(tenantId: string, syndicId: string): Promise<FinanceSummary> {
   const response = await apiClient.get<{ success: boolean; data: FinanceSummary }>(
     `/tenants/${tenantId}/syndics/${syndicId}/finances`
   );
   return response.data.data;
 }
 
-export async function getOverdueDashboard(
-  tenantId: string,
-  syndicId: string
-): Promise<OverdueDashboard> {
+export async function getOverdueDashboard(tenantId: string, syndicId: string): Promise<OverdueDashboard> {
   const response = await apiClient.get<{ success: boolean; data: OverdueDashboard }>(
     `/tenants/${tenantId}/syndics/${syndicId}/retards`
   );
@@ -457,10 +451,7 @@ export async function createManualReminder(
   return response.data.data;
 }
 
-export async function runReminderBatch(
-  tenantId: string,
-  syndicId: string
-): Promise<ReminderBatchResult> {
+export async function runReminderBatch(tenantId: string, syndicId: string): Promise<ReminderBatchResult> {
   const response = await apiClient.post<{ success: boolean; data: ReminderBatchResult }>(
     `/tenants/${tenantId}/syndics/${syndicId}/relances/batch`,
     {}
@@ -531,11 +522,7 @@ export async function listPaymentSchedules(
   return response.data.data;
 }
 
-export async function getLotOwnerAccount(
-  tenantId: string,
-  syndicId: string,
-  lotId: string
-): Promise<OwnerAccount> {
+export async function getLotOwnerAccount(tenantId: string, syndicId: string, lotId: string): Promise<OwnerAccount> {
   const response = await apiClient.get<{ success: boolean; data: OwnerAccount }>(
     `/tenants/${tenantId}/syndics/${syndicId}/lots/${lotId}/compte`
   );
@@ -574,13 +561,10 @@ export async function downloadLotOwnerAccountStatement(
   lotId: string,
   query?: { from?: string; to?: string }
 ): Promise<Blob> {
-  const response = await apiClient.get(
-    `/tenants/${tenantId}/syndics/${syndicId}/lots/${lotId}/compte/releve`,
-    {
-      params: query,
-      responseType: 'blob'
-    }
-  );
+  const response = await apiClient.get(`/tenants/${tenantId}/syndics/${syndicId}/lots/${lotId}/compte/releve`, {
+    params: query,
+    responseType: 'blob'
+  });
   return response.data as Blob;
 }
 
@@ -656,11 +640,7 @@ export async function createAccountingEntry(
   return response.data.data;
 }
 
-export async function lockAccountingEntry(
-  tenantId: string,
-  syndicId: string,
-  entryId: string
-): Promise<JournalEntry> {
+export async function lockAccountingEntry(tenantId: string, syndicId: string, entryId: string): Promise<JournalEntry> {
   const response = await apiClient.patch<{ success: boolean; data: JournalEntry }>(
     `/tenants/${tenantId}/syndics/${syndicId}/comptabilite/ecritures/${entryId}/verrouiller`,
     { lock: true }

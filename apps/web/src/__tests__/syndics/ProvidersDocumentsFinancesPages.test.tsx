@@ -5,8 +5,14 @@ import AuthContext from '../../context/AuthContext';
 import { AuthContextType } from '../../types/auth-types';
 import { SyndicProviders } from '../../pages/syndics/SyndicProviders';
 import { SyndicDocuments } from '../../pages/syndics/SyndicDocuments';
-import { SyndicFinances } from '../../pages/syndics/SyndicFinances';
 import apiClient from '../../utils/api-client';
+
+// SyndicFinances a son propre test dédié (`SyndicFinances.test.tsx`) : depuis
+// son passage à `<DataView>`/`<StatCard>` (composants/primitives), la page
+// s'appuie sur une bien plus large surface d'antd (Skeleton, Pagination,
+// Empty, Result…) que le mock volontairement minimal ci-dessous ne couvre
+// pas, et n'a donc plus sa place dans ce fichier partagé avec les pages
+// Prestataires et Documents.
 
 vi.mock('../../utils/api-client', () => ({
   __esModule: true,
@@ -130,14 +136,13 @@ function renderWithRoute(route: string) {
         <Routes>
           <Route path="/tenant/:tenantId/syndics/:syndicId/prestataires" element={<SyndicProviders />} />
           <Route path="/tenant/:tenantId/syndics/:syndicId/documents" element={<SyndicDocuments />} />
-          <Route path="/tenant/:tenantId/syndics/:syndicId/finances" element={<SyndicFinances />} />
         </Routes>
       </MemoryRouter>
     </AuthContext.Provider>
   );
 }
 
-describe('Providers/Documents/Finances pages', () => {
+describe('Providers/Documents pages', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -168,27 +173,5 @@ describe('Providers/Documents/Finances pages', () => {
     renderWithRoute('/tenant/tenant-1/syndics/syndic-1/documents');
     expect(await screen.findByText('Coffre documentaire')).toBeTruthy();
     expect(await screen.findByText(/Reglement/)).toBeTruthy();
-  });
-
-  it('renders finances page', async () => {
-    mockApiClient.get.mockResolvedValueOnce({
-      data: {
-        success: true,
-        data: {
-          funds: [{ id: 'f1', name: 'Fonds travaux', balance: 1000000, currency: 'XOF' }],
-          totals: {
-            totalFundsBalance: 1000000,
-            totalCalled: 350000,
-            totalPaid: 300000,
-            totalOutstanding: 50000,
-            overdueCount: 1,
-            overdueAmount: 50000
-          }
-        }
-      }
-    } as never);
-    renderWithRoute('/tenant/tenant-1/syndics/syndic-1/finances');
-    expect(await screen.findByText('Finances copropriété')).toBeTruthy();
-    expect(await screen.findByText(/Fonds travaux/)).toBeTruthy();
   });
 });

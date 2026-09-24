@@ -83,15 +83,17 @@ jest.mock('../../src/lib/syndics/queries', () => ({
     if (!charge || charge.tenantId !== tenantId) return null;
     return charge;
   }),
-  listChargeCallsBySyndicate: jest.fn(async (tenantId: string, syndicateId: string, filters?: { period?: string; status?: string }) => {
-    return Array.from(store.charges.values()).filter((charge) => {
-      if (charge.tenantId !== tenantId) return false;
-      if (charge.syndicateId !== syndicateId) return false;
-      if (filters?.period && charge.period !== filters.period) return false;
-      if (filters?.status && charge.status !== filters.status) return false;
-      return true;
-    });
-  }),
+  listChargeCallsBySyndicate: jest.fn(
+    async (tenantId: string, syndicateId: string, filters?: { period?: string; status?: string }) => {
+      return Array.from(store.charges.values()).filter(charge => {
+        if (charge.tenantId !== tenantId) return false;
+        if (charge.syndicateId !== syndicateId) return false;
+        if (filters?.period && charge.period !== filters.period) return false;
+        if (filters?.status && charge.status !== filters.status) return false;
+        return true;
+      });
+    }
+  ),
   createChargeCallAndUpdateStatus: jest.fn(async (tenantId: string, data: any) => {
     const id = nextUuidFromSeq(store.seq++);
     const created: Charge = {
@@ -168,15 +170,13 @@ describe('Syndics charges routes', () => {
   });
 
   it('creates charge call with PENDING status', async () => {
-    const response = await request(app)
-      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges`)
-      .send({
-        lotId: LOT_ID,
-        period: '2026-Q2',
-        amount: 100000,
-        currency: 'XOF',
-        dueDate: '2026-06-15T00:00:00.000Z'
-      });
+    const response = await request(app).post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges`).send({
+      lotId: LOT_ID,
+      period: '2026-Q2',
+      amount: 100000,
+      currency: 'XOF',
+      dueDate: '2026-06-15T00:00:00.000Z'
+    });
 
     expect(response.status).toBe(201);
     expect(response.body.success).toBe(true);
@@ -184,15 +184,13 @@ describe('Syndics charges routes', () => {
   });
 
   it('transitions charge status from PENDING to PARTIAL to PAID', async () => {
-    const create = await request(app)
-      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges`)
-      .send({
-        lotId: LOT_ID,
-        period: '2026-Q2',
-        amount: 100000,
-        currency: 'XOF',
-        dueDate: '2026-06-15T00:00:00.000Z'
-      });
+    const create = await request(app).post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges`).send({
+      lotId: LOT_ID,
+      period: '2026-Q2',
+      amount: 100000,
+      currency: 'XOF',
+      dueDate: '2026-06-15T00:00:00.000Z'
+    });
 
     const chargeId = create.body.data.id as string;
 
@@ -215,6 +213,22 @@ describe('Syndics charges routes', () => {
     expect(response.body.success).toBe(true);
     expect(response.body.data).toHaveLength(1);
     expect(response.body.data[0].status).toBe('OVERDUE');
+  });
+
+  it('forwards page and limit query params to the service so the full list can be paged through', async () => {
+    const { listChargeCallsBySyndicate } = jest.requireMock('../../src/lib/syndics/queries') as {
+      listChargeCallsBySyndicate: jest.Mock;
+    };
+    listChargeCallsBySyndicate.mockClear();
+
+    const response = await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/charges?page=2&limit=100`);
+
+    expect(response.status).toBe(200);
+    expect(listChargeCallsBySyndicate).toHaveBeenCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      expect.objectContaining({ pagination: { page: 2, limit: 100 } })
+    );
   });
 
   it('enforces tenant isolation when paying a charge call', async () => {

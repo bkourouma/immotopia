@@ -1,5 +1,4 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   App,
   Alert,
@@ -15,13 +14,13 @@ import {
   Select,
   Space,
   Spin,
-  Statistic,
   Table,
   Tag,
   Typography
 } from 'antd';
-import { ArrowLeftOutlined, ClockCircleOutlined, ExclamationCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import { ClockCircleOutlined, ExclamationCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { formatMoney, MoneyValue, StatCard } from '../../components/primitives';
 import {
   createLatePaymentPenalty,
   createManualReminder,
@@ -45,7 +44,6 @@ import {
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
 const { Paragraph, Title, Text } = Typography;
 
 const reminderChannelOptions: Array<{ label: string; value: ReminderChannel }> = [
@@ -133,7 +131,6 @@ export const SyndicRecovery: React.FC = () => {
   const { message } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
-  const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -170,10 +167,10 @@ export const SyndicRecovery: React.FC = () => {
     () =>
       dashboard.items.map(item => ({
         value: item.chargeCallId,
-        label: t('{{value}} - {{value2}} - reste {{value3}} XOF', {
+        label: t('{{value}} - {{value2}} - reste {{value3}}', {
           value: propertyLabel(item),
           value2: ownerLabel(item.owner),
-          value3: item.outstanding.toLocaleString(activeLocale())
+          value3: formatMoney(item.outstanding)
         })
       })),
     [dashboard.items]
@@ -207,11 +204,13 @@ export const SyndicRecovery: React.FC = () => {
     try {
       const result = await runReminderBatch(effectiveTenantId, syndicId);
       message.success(
-        t('Batch terminé: {{remindersCreated}} relance(s) créée(s)', { remindersCreated: result.remindersCreated })
+        t('Relances groupées envoyées : {{remindersCreated}} relance(s) créée(s)', {
+          remindersCreated: result.remindersCreated
+        })
       );
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || t('Batch de relances impossible'));
+      message.error(err.response?.data?.error || t('Envoi des relances groupées impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -307,12 +306,6 @@ export const SyndicRecovery: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
-            >
-              {t('Retour à la fiche syndic')}
-            </Button>
             <Title level={2} style={{ margin: 0 }}>
               {t('Recouvrement des impayés')}
             </Title>
@@ -339,7 +332,7 @@ export const SyndicRecovery: React.FC = () => {
               {t('Créer échéancier')}
             </Button>
             <Button type="primary" onClick={() => void handleRunBatch()} loading={submitting}>
-              {t('Lancer batch relances')}
+              {t('Lancer les relances groupées')}
             </Button>
           </Space>
         </div>
@@ -354,18 +347,22 @@ export const SyndicRecovery: React.FC = () => {
           <>
             <Row gutter={[16, 16]}>
               <Col xs={24} md={12}>
-                <Card>
-                  <Statistic title={t('Lots en retard')} value={dashboard.totals.overdueCount} />
-                </Card>
+                <StatCard
+                  label={t('Lots en retard')}
+                  value={dashboard.totals.overdueCount}
+                  tone={dashboard.totals.overdueCount > 0 ? 'danger' : 'neutral'}
+                />
               </Col>
               <Col xs={24} md={12}>
-                <Card>
-                  <Statistic title={t('Montant restant du')} value={dashboard.totals.overdueAmount} suffix="XOF" />
-                </Card>
+                <StatCard
+                  label={t('Montant restant dû')}
+                  value={<MoneyValue value={dashboard.totals.overdueAmount} />}
+                  tone={dashboard.totals.overdueAmount > 0 ? 'danger' : 'neutral'}
+                />
               </Col>
             </Row>
 
-            <Card title={t('Dashboard retards')}>
+            <Card title={t('Tableau des retards')}>
               <Table
                 scroll={{ x: 'max-content' }}
                 rowKey="chargeCallId"
@@ -389,17 +386,20 @@ export const SyndicRecovery: React.FC = () => {
                   {
                     title: 'Montant',
                     dataIndex: 'amount',
-                    render: (value: number) => `${value.toLocaleString(activeLocale())} XOF`
+                    align: 'end',
+                    render: (value: number) => <MoneyValue value={value} />
                   },
                   {
                     title: t('Payé'),
                     dataIndex: 'paid',
-                    render: (value: number) => `${value.toLocaleString(activeLocale())} XOF`
+                    align: 'end',
+                    render: (value: number) => <MoneyValue value={value} />
                   },
                   {
                     title: 'Reste',
                     dataIndex: 'outstanding',
-                    render: (value: number) => `${value.toLocaleString(activeLocale())} XOF`
+                    align: 'end',
+                    render: (value: number) => <MoneyValue value={value} />
                   }
                 ]}
               />
@@ -444,7 +444,8 @@ export const SyndicRecovery: React.FC = () => {
                   {
                     title: 'Montant',
                     dataIndex: 'penaltyAmount',
-                    render: (value: number) => `${Number(value).toLocaleString(activeLocale())} XOF`
+                    align: 'end',
+                    render: (value: number) => <MoneyValue value={value} />
                   },
                   {
                     title: 'Statut',
@@ -484,7 +485,8 @@ export const SyndicRecovery: React.FC = () => {
                   {
                     title: t('Montant total'),
                     dataIndex: 'totalAmount',
-                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} XOF`
+                    align: 'end',
+                    render: (value: number | string) => <MoneyValue value={value} />
                   },
                   {
                     title: 'Accord',
@@ -495,10 +497,7 @@ export const SyndicRecovery: React.FC = () => {
                     title: t('Échéances'),
                     render: (_, item) =>
                       (item.instalments || [])
-                        .map(
-                          inst =>
-                            `${dayjs(inst.dueDate).format('DD/MM/YYYY')} (${Number(inst.amount).toLocaleString(activeLocale())} XOF)`
-                        )
+                        .map(inst => `${dayjs(inst.dueDate).format('DD/MM/YYYY')} (${formatMoney(inst.amount)})`)
                         .join(' | ') || '-'
                   },
                   { title: 'Statut', dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag> }

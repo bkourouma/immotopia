@@ -50,7 +50,14 @@ function flatten(tree: NavGroup[], context: NavContext) {
     if (group.children?.length) {
       for (const child of group.children) {
         const href = resolveHref(child.href, context);
-        if (href) out.push({ key: child.key, label: child.label, parent: group.label, href });
+        if (!href) continue;
+        out.push({ key: child.key, label: child.label, parent: group.label, href });
+        // Placées après la destination principale : un clic suit toujours le
+        // premier couple de la clé, ceux-ci ne servent qu'à l'allumer.
+        for (const extra of child.activeFor ?? []) {
+          const extraHref = resolveHref(extra, context);
+          if (extraHref) out.push({ key: child.key, label: child.label, parent: group.label, href: extraHref });
+        }
       }
     } else if (group.href) {
       const href = resolveHref(group.href, context);

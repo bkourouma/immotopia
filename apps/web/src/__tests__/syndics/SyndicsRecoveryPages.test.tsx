@@ -204,7 +204,7 @@ describe('Syndics recovery page', () => {
     });
 
     renderWithRoute();
-    fireEvent.click(await screen.findByText('Lancer batch relances'));
+    fireEvent.click(await screen.findByText('Lancer les relances groupées'));
 
     await waitFor(() => {
       expect(mockApiClient.post).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1/relances/batch', {});

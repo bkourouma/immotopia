@@ -1,5 +1,4 @@
 ﻿import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   App,
   Alert,
@@ -15,7 +14,7 @@ import {
   Typography,
   Upload
 } from 'antd';
-import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import { DocumentVault } from '../../components/syndics/DocumentVault';
 import { createSyndicDocument, listSyndicDocuments } from '../../services/syndic-service';
 import { SyndicateDocument } from '../../types/syndic-types';
@@ -28,7 +27,6 @@ export const SyndicDocuments: React.FC = () => {
   const { message } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
-  const navigate = useNavigate();
 
   const [documents, setDocuments] = useState<SyndicateDocument[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,12 +91,6 @@ export const SyndicDocuments: React.FC = () => {
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Space direction="vertical" size={4}>
-          <Button
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
-          >
-            {t('Retour à la fiche syndic')}
-          </Button>
           <div className="it-toolbar">
             <Title level={2} className="it-toolbar__title" style={{ margin: 0 }}>
               {t('Coffre documentaire')}

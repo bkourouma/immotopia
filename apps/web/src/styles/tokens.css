@@ -110,10 +110,31 @@
    *
    * Règle du système, et elle tient tout le reste : **le bleu dit où cliquer,
    * l'orange dit où l'on est.** L'accent marque la position et la mise en
-   * avant — filet de l'entrée de menu active, onglet courant, un chiffre par
-   * écran. Il ne porte jamais une action, et surtout jamais un statut : le
+   * avant. Il ne porte jamais une action, et surtout jamais un statut : le
    * jour où l'orange veut dire « attention », il ne veut plus dire ImmoTopia.
    * Les états gardent `--color-warning` et `--color-error`.
+   *
+   * Usages — tous des marqueurs de POSITION ou de MISE EN AVANT, jamais une
+   * action ni un statut (voir `theme/antd-theme.ts` et `index.css` pour le
+   * détail de chacun) :
+   *   - filet de l'entrée de menu active, icône de cette entrée, et repère du
+   *     groupe parent déplié qui la contient (sidebar, rail, drawer) ;
+   *   - indicateur (inkBar) de l'onglet courant dans `<Tabs>` — le texte de
+   *     l'onglet sélectionné reste en `--text-primary` ;
+   *   - pastille de l'étape EN COURS dans `<Steps>`, jamais l'étape
+   *     terminée, qui reste bleue : « terminé » est un statut, pas une
+   *     position ;
+   *   - bordure/texte de la page courante dans `<Pagination>` ;
+   *   - fond de l'option choisie dans `<Segmented>`, et de l'entrée
+   *     sélectionnée dans un `<Menu>` hors sidebar (ex. la langue active) ;
+   *   - un chiffre par écran (ex. « Encaissé » du tableau de bord), via la
+   *     variante `highlight` de `<StatCard>`.
+   * Boutons primaires, liens, cases à cocher, interrupteurs, Radio et
+   * indicateurs de statut (succès/avertissement/erreur) restent BLEUS ou
+   * gardent leur couleur sémantique : ce sont des actions ou des états, pas
+   * une position. Radio.Button en particulier reste bleu dans tout le dépôt :
+   * ses usages actuels sont des choix de saisie (type de bien, régime...),
+   * pas des vues qu'on bascule — donc une action, pas une position.
    */
   --color-accent: var(--orange-500); /* 2,98:1 sur la page — NON-TEXTE uniquement */
   --color-accent-strong: var(--orange-700); /* 4,60:1 — la seule teinte orange qui porte du texte */

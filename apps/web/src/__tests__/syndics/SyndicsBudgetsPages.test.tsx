@@ -191,7 +191,7 @@ describe('Syndics budgets page', () => {
 
   it('renders budgets and batches', async () => {
     renderWithRoute();
-    expect(await screen.findByText("Budgets et batches d'appels")).toBeTruthy();
+    expect(await screen.findByText("Budgets et campagnes d'appels")).toBeTruthy();
     expect(await screen.findByText('Budget 2026')).toBeTruthy();
   });
 

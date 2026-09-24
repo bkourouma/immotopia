@@ -26,6 +26,14 @@ export interface StatCardProps {
   onClick?: () => void;
   /** Accent de couleur, tiré des rôles de `tokens.css`. */
   tone?: 'neutral' | 'positive' | 'warning' | 'danger';
+  /**
+   * Marque LE chiffre clé de l'écran (règle « un chiffre par écran »,
+   * tokens.css §ACCENT). N'ajoute qu'un repère non-textuel — un filet
+   * `--color-accent` — jamais une couleur de statut : la valeur garde la
+   * teinte donnée par `tone` (le vert d'une évolution positive reste vert,
+   * pas orange, l'orange ne portant jamais un statut).
+   */
+  highlight?: boolean;
 }
 
 const TONE_COLOR: Record<NonNullable<StatCardProps['tone']>, string> = {
@@ -35,7 +43,15 @@ const TONE_COLOR: Record<NonNullable<StatCardProps['tone']>, string> = {
   danger: 'var(--color-danger)'
 };
 
-export const StatCard: React.FC<StatCardProps> = ({ label, value, hint, icon, onClick, tone = 'neutral' }) => {
+export const StatCard: React.FC<StatCardProps> = ({
+  label,
+  value,
+  hint,
+  icon,
+  onClick,
+  tone = 'neutral',
+  highlight = false
+}) => {
   const interactive = Boolean(onClick);
 
   return (
@@ -57,7 +73,15 @@ export const StatCard: React.FC<StatCardProps> = ({ label, value, hint, icon, on
       style={{
         height: '100%',
         cursor: interactive ? 'pointer' : undefined,
-        borderColor: 'var(--border-default)'
+        borderColor: 'var(--border-default)',
+        // Repère de position, pas un statut : un filet `--color-accent` sur
+        // le bord de lecture (inline-start, RTL-safe), plutôt qu'une bordure
+        // pleine qui se lirait comme un état "en alerte". `!important` non
+        // nécessaire : posé après `borderColor` dans le même style inline, il
+        // l'emporte pour ce seul bord (border-inline-start-color et
+        // border-color ciblent la même propriété physique, le dernier
+        // déclaré gagne).
+        ...(highlight ? { borderInlineStartWidth: 3, borderInlineStartColor: 'var(--color-accent)' } : null)
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
