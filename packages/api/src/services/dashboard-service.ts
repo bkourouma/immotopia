@@ -59,9 +59,14 @@ export interface DashboardTask {
   id: string;
   kind: 'OVERDUE_INSTALLMENT' | 'PENDING_DECLARATION' | 'URGENT_TICKET';
   title: string;
+  /**
+   * Le complément non monétaire de la ligne : le retard, le moyen de paiement,
+   * le bien. Le montant n'y figure pas — il voyage dans `amount`, et c'est
+   * l'affichage qui l'écrit, avec la devise du produit.
+   */
   description: string;
+  /** Montant brut, sans devise. `null` quand la ligne n'en porte pas. */
   amount: number | null;
-  currency: string | null;
   /** Date qui justifie l'urgence : échéance dépassée, déclaration, ouverture. */
   occurredAt: string;
   severity: 'danger' | 'warning' | 'info';
@@ -73,6 +78,8 @@ export interface DashboardActivity {
   type: 'PROPERTY_CREATED' | 'CONTACT_CREATED' | 'PAYMENT_SUCCEEDED';
   title: string;
   description: string;
+  /** Montant brut, sans devise. `null` pour les événements non monétaires. */
+  amount: number | null;
   occurredAt: string;
   /** Fiche concernée, pour que le fil mène quelque part. */
   href?: string;
@@ -208,9 +215,16 @@ function toNumber(value: unknown): number {
   return value === null || value === undefined ? 0 : Number(value);
 }
 
-function formatAmount(amount: number, currency: string): string {
-  return `${amount.toLocaleString('fr-FR')} ${currency}`;
-}
+/*
+ * Aucune mise en forme monétaire ici — volontairement.
+ *
+ * Ce service a longtemps composé « 105 000 XOF » en recopiant le code devise
+ * STOCKÉ (`XOF` pour les baux du jeu de démonstration, `FCFA` pour ceux nés du
+ * défaut de schéma). La même liste affichait donc deux notations. La règle du
+ * produit est celle des écrans Biens et Stock : la devise stockée est `XOF`,
+ * la devise affichée est « FCFA », et c'est l'affichage seul qui l'écrit
+ * (`formatMoney` / `<MoneyValue>`). Les montants partent donc bruts.
+ */
 
 /** Arrondi à une décimale d'un pourcentage, `null` si le dénominateur est nul. */
 function part(numerateur: number, denominateur: number): number | null {
@@ -818,7 +832,6 @@ async function getWorkQueue(
           select: {
             id: true,
             due_date: true,
-            currency: true,
             amount_rent: true,
             amount_service: true,
             amount_other_fees: true,
@@ -885,9 +898,8 @@ async function getWorkQueue(
         id: `installment:${echeance.id}`,
         kind: 'OVERDUE_INSTALLMENT' as const,
         title: [echeance.lease?.lease_number, bien].filter(Boolean).join(' · ') || 'Échéance en retard',
-        description: `${formatAmount(reste, echeance.currency)} · ${retard} j de retard`,
+        description: `${retard} j de retard`,
         amount: reste,
-        currency: echeance.currency,
         occurredAt: echeance.due_date.toISOString(),
         severity: 'danger' as const,
         href: `${base}/rental/installments/${echeance.id}`
@@ -899,9 +911,8 @@ async function getWorkQueue(
       title: declaration.lease?.lease_number
         ? `Déclaration à valider · ${declaration.lease.lease_number}`
         : 'Déclaration à valider',
-      description: `${formatAmount(toNumber(declaration.amount), 'FCFA')} · ${declaration.payment_method}`,
+      description: declaration.payment_method,
       amount: toNumber(declaration.amount),
-      currency: 'FCFA',
       occurredAt: declaration.payment_date.toISOString(),
       severity: 'warning' as const,
       // L'onglet vit dans l'URL de l'écran des paiements : le lien ouvre
@@ -914,7 +925,6 @@ async function getWorkQueue(
       title: ticket.title,
       description: ticket.property?.title || ticket.property?.address || 'Bien non renseigné',
       amount: null,
-      currency: null,
       occurredAt: ticket.declared_at.toISOString(),
       severity: ticket.priority === MaintenanceTicketPriority.URGENT ? ('danger' as const) : ('warning' as const),
       href: `${base}/admin/maintenance/tickets/${ticket.id}`
@@ -961,7 +971,6 @@ async function getRecentActivity(
           select: {
             id: true,
             amount: true,
-            currency: true,
             succeeded_at: true,
             lease: { select: { lease_number: true } }
           },
@@ -977,6 +986,7 @@ async function getRecentActivity(
       type: 'PROPERTY_CREATED' as const,
       title: 'Nouvelle propriété ajoutée',
       description: [property.title, property.address].filter(Boolean).join(' - '),
+      amount: null,
       occurredAt: property.createdAt.toISOString(),
       href: `${base}/properties/${property.id}`
     })),
@@ -985,6 +995,7 @@ async function getRecentActivity(
       type: 'CONTACT_CREATED' as const,
       title: 'Nouveau client enregistré',
       description: [`${contact.firstName} ${contact.lastName}`.trim(), contact.email].filter(Boolean).join(' - '),
+      amount: null,
       occurredAt: contact.createdAt.toISOString(),
       href: `${base}/crm/contacts/${contact.id}`
     })),
@@ -992,12 +1003,8 @@ async function getRecentActivity(
       id: `payment:${payment.id}`,
       type: 'PAYMENT_SUCCEEDED' as const,
       title: 'Paiement encaissé',
-      description: [
-        formatAmount(toNumber(payment.amount), payment.currency),
-        payment.lease?.lease_number ? `bail ${payment.lease.lease_number}` : null
-      ]
-        .filter(Boolean)
-        .join(' - '),
+      description: payment.lease?.lease_number ? `bail ${payment.lease.lease_number}` : '',
+      amount: toNumber(payment.amount),
       // `succeeded_at` est filtré non nul ci-dessus.
       occurredAt: (payment.succeeded_at as Date).toISOString(),
       href: `${base}/rental/payments/${payment.id}`
