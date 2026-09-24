@@ -298,7 +298,7 @@ export async function activateTemplate(tenantId: string | null, templateId: stri
   }
 
   const updated = await prisma.documentTemplate.update({
-    where: { id: templateId },
+    where: { id: templateId, tenant_id: tenantId },
     data: { status: DocumentTemplateStatus.ACTIVE }
   });
 
@@ -352,7 +352,7 @@ export async function deactivateTemplate(tenantId: string | null, templateId: st
 
   const [updated] = await prisma.$transaction([
     prisma.documentTemplate.update({
-      where: { id: templateId },
+      where: { id: templateId, tenant_id: tenantId },
       data: {
         status: DocumentTemplateStatus.INACTIVE,
         ...(template.is_default && tenantId ? { is_default: false } : {})
@@ -361,7 +361,7 @@ export async function deactivateTemplate(tenantId: string | null, templateId: st
     ...(successorId
       ? [
           prisma.documentTemplate.update({
-            where: { id: successorId },
+            where: { id: successorId, tenant_id: tenantId },
             data: { is_default: true }
           })
         ]
@@ -418,7 +418,7 @@ export async function setDefaultTemplate(tenantId: string | null, templateId: st
       }
     }),
     prisma.documentTemplate.update({
-      where: { id: templateId },
+      where: { id: templateId, tenant_id: tenantId },
       data: { is_default: true }
     })
   ]);
@@ -476,13 +476,13 @@ export async function deleteTemplate(tenantId: string | null, templateId: string
 
   const [updated] = await prisma.$transaction([
     prisma.documentTemplate.update({
-      where: { id: templateId },
+      where: { id: templateId, tenant_id: tenantId },
       data: { status: DocumentTemplateStatus.DELETED, is_default: false }
     }),
     ...(successorId
       ? [
           prisma.documentTemplate.update({
-            where: { id: successorId },
+            where: { id: successorId, tenant_id: tenantId },
             data: { is_default: true }
           })
         ]

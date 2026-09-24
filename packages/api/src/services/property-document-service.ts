@@ -148,7 +148,7 @@ export async function uploadDocument(
 export async function getDocuments(propertyId: string, tenantId: string, includeExpired: boolean = true) {
   await getPropertyForTenant(propertyId, tenantId);
 
-  const where: any = { propertyId };
+  const where: any = { propertyId, tenantId };
 
   if (!includeExpired) {
     where.OR = [{ expirationDate: null }, { expirationDate: { gt: new Date() } }];
@@ -177,7 +177,8 @@ export async function deleteDocument(propertyId: string, tenantId: string, docum
   const document = await prisma.propertyDocument.findFirst({
     where: {
       id: documentId,
-      propertyId
+      propertyId,
+      tenantId
     },
     include: {
       property: true
@@ -200,7 +201,7 @@ export async function deleteDocument(propertyId: string, tenantId: string, docum
 
   // Delete document record
   await prisma.propertyDocument.delete({
-    where: { id: documentId }
+    where: { id: documentId, tenantId }
   });
 
   logger.info('Property document deleted', {

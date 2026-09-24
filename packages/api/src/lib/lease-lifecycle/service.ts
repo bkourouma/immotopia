@@ -219,7 +219,7 @@ async function reprice(
   for (const inst of targets) {
     const before = installmentTotal(inst);
     await tx.rentalInstallment.update({
-      where: { id: inst.id },
+      where: { id: inst.id, tenant_id: tenantId },
       data: { amount_rent: new Prisma.Decimal(rent), amount_service: new Prisma.Decimal(charges) }
     });
     await tx.rentalInstallmentItem.updateMany({
@@ -280,7 +280,7 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
   const newCharges = input.newCharges ?? Number(lease.service_charge_amount);
   const event = await prisma.$transaction(async tx => {
     await tx.rentalLease.update({
-      where: { id: leaseId },
+      where: { id: leaseId, tenant_id: tenantId },
       data: { rent_amount: new Prisma.Decimal(input.newRent), service_charge_amount: new Prisma.Decimal(newCharges) }
     });
     const created = await tx.leaseEvent.create({
@@ -309,7 +309,10 @@ export async function reviseRent(tenantId: string, leaseId: string, body: unknow
       rent: input.newRent,
       charges: newCharges
     });
-    return tx.leaseEvent.update({ where: { id: created.id }, data: { details: { installmentsUpdated: updated } } });
+    return tx.leaseEvent.update({
+      where: { id: created.id, tenantId },
+      data: { details: { installmentsUpdated: updated } }
+    });
   });
   audit(actorUserId, tenantId, leaseId, 'RENTAL_LEASE_RENT_REVISED', input);
   return eventDto(event);
@@ -353,7 +356,7 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
 
   const result = await prisma.$transaction(async tx => {
     const updatedLease = await tx.rentalLease.update({
-      where: { id: leaseId },
+      where: { id: leaseId, tenant_id: tenantId },
       data: {
         end_date: newEnd,
         status: lease.status === RentalLeaseStatus.ENDED ? RentalLeaseStatus.ACTIVE : undefined,
@@ -542,7 +545,7 @@ export async function terminateLease(tenantId: string, leaseId: string, body: un
 
     const endedNow = end.getTime() <= Date.now();
     await tx.rentalLease.update({
-      where: { id: leaseId },
+      where: { id: leaseId, tenant_id: tenantId },
       data: {
         end_date: end,
         move_out_date: moveOut ?? undefined,

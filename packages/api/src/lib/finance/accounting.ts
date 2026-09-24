@@ -528,7 +528,11 @@ export async function deactivateOperationalAccountTx(tx: PrismaTransactionClient
   await assertOperationalAccountsTenantOwnership(tx, tenantId, [accountId]);
 
   return tx.chartOfAccount.update({
-    where: { id: accountId },
+    // `tenantId` dans le `where`, en plus de la vérification qui précède :
+    // anticipe le futur garde-fou Prisma (lot D du plan multi-tenant), qui
+    // exigera le champ d'agence dans le `where` de tout `update`/`delete` sur
+    // un modèle qui en porte un.
+    where: { id: accountId, tenantId },
     data: { isActive: false }
   });
 }
@@ -874,7 +878,8 @@ export const voidDocumentTx: VoidDocumentTx = async (tx, params) => {
   });
 
   await tx.voidDocument.update({
-    where: { id: voidDocument.id },
+    // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+    where: { id: voidDocument.id, tenantId },
     data: { reversingEntryId: reversing.id }
   });
 
@@ -922,7 +927,8 @@ export const voidDocumentTx: VoidDocumentTx = async (tx, params) => {
   // la facture, seule a stocker son etat, qui l'oubliait.
   if (documentType === 'SUPPLIER_INVOICE') {
     await tx.supplierInvoice.update({
-      where: { id: documentId },
+      // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+      where: { id: documentId, tenantId },
       data: { status: 'VOIDED' as any }
     });
   }

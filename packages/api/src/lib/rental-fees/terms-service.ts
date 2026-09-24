@@ -84,12 +84,12 @@ export async function setOwnerFeeTerms(
   const data = { ...feeTermsData(terms), updatedByUserId: userId ?? null };
   const row = await prisma.$transaction(async tx => {
     const upserted = await tx.ownerManagementTerms.upsert({
-      where: { ownerClientId },
+      where: { ownerClientId, tenantId },
       create: { tenantId, ownerClientId, ...data },
       update: data
     });
     if (ownerTaxStatus !== undefined) {
-      await tx.tenantClient.update({ where: { id: ownerClientId }, data: { ownerTaxStatus } });
+      await tx.tenantClient.update({ where: { id: ownerClientId, tenantId }, data: { ownerTaxStatus } });
     }
     return upserted;
   });
@@ -206,7 +206,7 @@ export async function setLeaseManagementTerms(
     : { managementFeeMode: null, managementFeeRate: null, managementFeeFixedAmount: null, managementFeeBase: null };
   const data = { ...fee, agentUserId: input.agentUserId, updatedByUserId: userId ?? null };
   await prisma.leaseManagementTerms.upsert({
-    where: { leaseId },
+    where: { leaseId, tenantId },
     create: { tenantId, leaseId, ...data },
     update: data
   });

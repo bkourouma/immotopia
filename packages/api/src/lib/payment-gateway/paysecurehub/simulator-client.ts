@@ -29,9 +29,9 @@ export const simulatorClient: GatewayClient = {
     };
   },
 
-  async getStatus(_credentials: GatewayCredentials, codePaiement: string): Promise<ProviderStatus> {
-    const checkout = await prisma.onlinePaymentCheckout.findUnique({
-      where: { codePaiement },
+  async getStatus(credentials: GatewayCredentials, codePaiement: string): Promise<ProviderStatus> {
+    const checkout = await prisma.onlinePaymentCheckout.findFirst({
+      where: { codePaiement, tenantId: credentials.tenantId },
       select: { simulatedOutcome: true, amount: true }
     });
 

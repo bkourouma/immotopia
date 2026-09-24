@@ -1,12 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Form, Input, Card, Button, Space, Alert, Spin, Typography, Row, Col } from 'antd';
-import { SaveOutlined, SettingOutlined, CheckCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
-import { getTenant, updateTenantSelf, Tenant, UpdateTenantRequest } from '../../services/tenant-service';
+import { App, Form, Input, Card, Button, Space, Alert, Spin, Typography, Row, Col, Upload } from 'antd';
+import {
+  SaveOutlined,
+  SettingOutlined,
+  CheckCircleOutlined,
+  ExclamationCircleOutlined,
+  UploadOutlined,
+  DeleteOutlined
+} from '@ant-design/icons';
+import { getTenant, Tenant, UpdateTenantRequest } from '../../services/tenant-service';
+import {
+  updateTenantBrandingSelf,
+  uploadTenantLogo,
+  TenantWithBranding
+} from '../../services/tenant-branding-service';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
+
+const HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 
 export const TenantSettings: React.FC = () => {
   const { message } = App.useApp();
@@ -18,6 +32,10 @@ export const TenantSettings: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [removingLogo, setRemovingLogo] = useState(false);
+  const brandingColorValue = Form.useWatch('brandingPrimaryColor', form);
 
   useEffect(() => {
     if (tenantId) {
@@ -34,6 +52,7 @@ export const TenantSettings: React.FC = () => {
       if (response.success && response.data) {
         const tenantData = response.data;
         setTenant(tenantData);
+        setLogoUrl((tenantData as TenantWithBranding).logoUrl ?? null);
         form.setFieldsValue({
           name: tenantData.name || '',
           legalName: tenantData.legalName || '',
@@ -42,7 +61,8 @@ export const TenantSettings: React.FC = () => {
           address: tenantData.address || '',
           city: tenantData.city || '',
           country: tenantData.country || '',
-          website: tenantData.website || ''
+          website: tenantData.website || '',
+          brandingPrimaryColor: tenantData.brandingPrimaryColor || ''
         });
       } else {
         setError(t('Erreur lors du chargement des informations'));
@@ -70,10 +90,11 @@ export const TenantSettings: React.FC = () => {
         address: values.address || undefined,
         city: values.city || undefined,
         country: values.country || undefined,
-        website: values.website || undefined
+        website: values.website || undefined,
+        brandingPrimaryColor: values.brandingPrimaryColor || undefined
       };
 
-      const response = await updateTenantSelf(tenantId, updateData);
+      const response = await updateTenantBrandingSelf(tenantId, updateData);
       if (response.success) {
         setSuccess(true);
         setTenant(response.data);
@@ -88,6 +109,44 @@ export const TenantSettings: React.FC = () => {
       message.error(t('Erreur lors de la sauvegarde'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleLogoSelect = async (file: File) => {
+    const allowed = ['image/png', 'image/jpeg', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      message.error(t('Format non supporté (PNG, JPEG ou WebP)'));
+      return Upload.LIST_IGNORE;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      message.error(t('Le logo ne doit pas dépasser 2 Mo'));
+      return Upload.LIST_IGNORE;
+    }
+    if (!tenantId) return Upload.LIST_IGNORE;
+    setUploadingLogo(true);
+    try {
+      const response = await uploadTenantLogo(tenantId, file);
+      setLogoUrl(response.data.logoUrl);
+      message.success(t('Logo mis à jour'));
+    } catch (err: any) {
+      message.error(err.response?.data?.message || t('Erreur lors du téléversement du logo'));
+    } finally {
+      setUploadingLogo(false);
+    }
+    return Upload.LIST_IGNORE;
+  };
+
+  const handleRemoveLogo = async () => {
+    if (!tenantId) return;
+    setRemovingLogo(true);
+    try {
+      await updateTenantBrandingSelf(tenantId, { logoUrl: null });
+      setLogoUrl(null);
+      message.success(t('Logo retiré'));
+    } catch (err: any) {
+      message.error(err.response?.data?.message || t('Erreur lors du retrait du logo'));
+    } finally {
+      setRemovingLogo(false);
     }
   };
 
@@ -175,9 +234,93 @@ export const TenantSettings: React.FC = () => {
             address: '',
             city: '',
             country: '',
-            website: ''
+            website: '',
+            brandingPrimaryColor: ''
           }}
         >
+          {/* Logo et couleur de marque */}
+          <Card title={t('Logo et couleur de marque')} style={{ marginBottom: 16 }}>
+            <Row gutter={16}>
+              <Col xs={24} md={12}>
+                <Form.Item label={t('Logo')}>
+                  <Space align="start" wrap>
+                    {logoUrl ? (
+                      <img
+                        src={logoUrl}
+                        alt={t("Logo de l'agence")}
+                        style={{
+                          width: 80,
+                          height: 80,
+                          objectFit: 'contain',
+                          border: '1px solid var(--border-default)',
+                          borderRadius: 'var(--radius-sm)'
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 80,
+                          height: 80,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: '1px dashed var(--border-default)',
+                          borderRadius: 'var(--radius-sm)',
+                          color: 'var(--text-tertiary)',
+                          fontSize: 'var(--font-size-sm)',
+                          textAlign: 'center'
+                        }}
+                      >
+                        {t('Aucun logo')}
+                      </div>
+                    )}
+                    <Space direction="vertical">
+                      <Upload accept="image/png,image/jpeg,image/webp" showUploadList={false} beforeUpload={handleLogoSelect}>
+                        <Button icon={<UploadOutlined />} loading={uploadingLogo}>
+                          {t('Téléverser un logo')}
+                        </Button>
+                      </Upload>
+                      {logoUrl && (
+                        <Button danger icon={<DeleteOutlined />} loading={removingLogo} onClick={handleRemoveLogo}>
+                          {t('Retirer')}
+                        </Button>
+                      )}
+                      <Text type="secondary" style={{ fontSize: 'var(--font-size-caption)' }}>
+                        {t('PNG, JPEG ou WebP, 2 Mo maximum')}
+                      </Text>
+                    </Space>
+                  </Space>
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item
+                  label={t('Couleur de marque')}
+                  name="brandingPrimaryColor"
+                  rules={[{ pattern: HEX_COLOR_PATTERN, message: t('Couleur invalide (#RRGGBB)') }]}
+                >
+                  <Input
+                    placeholder="#1677FF"
+                    prefix={
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          display: 'inline-block',
+                          width: 14,
+                          height: 14,
+                          borderRadius: 'var(--radius-sm)',
+                          border: '1px solid var(--border-default)',
+                          backgroundColor: HEX_COLOR_PATTERN.test(brandingColorValue || '')
+                            ? brandingColorValue
+                            : 'transparent'
+                        }}
+                      />
+                    }
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Card>
+
           {/* Informations Générales */}
           <Card title={t('Informations Générales')} style={{ marginBottom: 16 }}>
             <Row gutter={16}>

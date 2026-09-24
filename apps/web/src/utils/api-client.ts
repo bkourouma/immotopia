@@ -2,6 +2,8 @@ import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'ax
 import { API_URL } from '../config/api';
 import i18next from '../i18n';
 import { t } from '../i18n/t';
+import { getStoredActiveTenantId } from './active-tenant';
+import { TENANT_SUSPENDED_EVENT } from './tenant-events';
 
 /**
  * Délai maximal d'une requête (REFONTE_UI_UX.md §8.4).
@@ -48,6 +50,19 @@ apiClient.interceptors.request.use(
     // valeur-la serait figee a la langue du premier rendu, et ne suivrait pas
     // un changement de langue en cours de session.
     config.headers.set('Accept-Language', i18next.resolvedLanguage ?? i18next.language);
+
+    // Portail (locataire/propriétaire) : un client rattaché à plusieurs
+    // agences dit laquelle. La clé n'existe en stockage que si
+    // `<TenantSwitcher>` a servi au moins une fois (voir `active-tenant.ts`) —
+    // un client d'une seule agence n'envoie donc jamais cet en-tête, ce que
+    // l'API n'exige d'ailleurs que pour trancher une ambiguïté.
+    if (config.url?.includes('/portal/')) {
+      const activeTenantId = getStoredActiveTenantId();
+      if (activeTenantId) {
+        config.headers.set('X-Portal-Tenant-Id', activeTenantId);
+      }
+    }
+
     return config;
   },
   (error: AxiosError) => {
@@ -220,6 +235,39 @@ apiClient.interceptors.response.use(
     config._retryCount = attempt + 1;
     await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
     return apiClient(config);
+  }
+);
+
+/**
+ * Déduit l'agence d'une requête refusée, pour le bandeau d'agence suspendue.
+ *
+ * L'URL le dit directement sur les routes d'agence (`/tenants/:id/...`,
+ * `/admin/tenants/:id/...`) ; sur une route de portail, l'URL ne porte pas
+ * l'agence — on relit alors l'en-tête `X-Portal-Tenant-Id` posé par
+ * l'intercepteur de requête ci-dessus.
+ */
+function deduireTenantIdSuspendu(config?: InternalAxiosRequestConfig): string | null {
+  const url = config?.url ?? '';
+  const match = url.match(/\/(?:admin\/)?tenants\/([^/?]+)/);
+  if (match) return match[1];
+
+  const header = config?.headers?.get?.('X-Portal-Tenant-Id');
+  return typeof header === 'string' ? header : null;
+}
+
+// Agence suspendue : toute route d'agence ou de portail renvoie alors 403
+// avec `code: 'TENANT_SUSPENDED'`. On le transforme en évènement DOM plutôt
+// que de le traiter ici — cet intercepteur ne sait rien afficher, et
+// plusieurs écrans (agence, portails) ont besoin du même signal.
+apiClient.interceptors.response.use(
+  response => response,
+  (error: AxiosError) => {
+    const body = error.response?.data as { code?: string } | undefined;
+    if (error.response?.status === 403 && body?.code === 'TENANT_SUSPENDED' && typeof window !== 'undefined') {
+      const tenantId = deduireTenantIdSuspendu(error.config as InternalAxiosRequestConfig | undefined);
+      window.dispatchEvent(new CustomEvent(TENANT_SUSPENDED_EVENT, { detail: { tenantId } }));
+    }
+    return Promise.reject(error);
   }
 );
 

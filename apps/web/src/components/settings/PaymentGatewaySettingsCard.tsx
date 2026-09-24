@@ -159,6 +159,15 @@ export const PaymentGatewaySettingsCard: React.FC<PaymentGatewaySettingsCardProp
     }
   };
 
+  const refreshLastTest = async () => {
+    try {
+      const data = await getPaymentGatewaySettings(tenantId);
+      setSettings(courant => (courant ? { ...courant, lastTest: data.lastTest } : data));
+    } catch {
+      // Sans gravité : le résultat du test reste affiché, seul « Dernier test » attendra le prochain chargement.
+    }
+  };
+
   const handleTest = async () => {
     if (!tenantId) return;
     setTesting(true);
@@ -171,7 +180,9 @@ export const PaymentGatewaySettingsCard: React.FC<PaymentGatewaySettingsCardProp
       } else {
         message.error(result.message || t('La connexion a échoué'));
       }
-      await load();
+      // Relit seulement `lastTest` : un `load()` complet effacerait le résultat
+      // qu'on vient d'afficher et les saisies non enregistrées du formulaire.
+      await refreshLastTest();
     } catch (e: any) {
       const msg = e?.response?.data?.message || e?.response?.data?.error || t('Erreur lors du test de connexion');
       setTestResult({ ok: false, message: msg, balance: null });
@@ -332,7 +343,7 @@ export const PaymentGatewaySettingsCard: React.FC<PaymentGatewaySettingsCardProp
           <Button type="primary" htmlType="submit" loading={saving}>
             {t('Enregistrer')}
           </Button>
-          <Button icon={<ReloadOutlined />} onClick={() => void handleTest()} loading={testing}>
+          <Button icon={<ReloadOutlined aria-hidden />} onClick={() => void handleTest()} loading={testing}>
             {t('Tester la connexion')}
           </Button>
         </Space>

@@ -45,6 +45,21 @@ export async function ensureTenantProperty(tenantId: string, propertyId: string)
   return property;
 }
 
+/**
+ * `PatrimonyDocument.ownerContactId` pointe vers un `CrmContact` optionnel,
+ * saisi depuis le corps de la requete : sans ce controle, un contact d'une
+ * autre agence pouvait y etre attache (IDOR).
+ */
+async function ensureContactBelongsToTenant(tenantId: string, contactId: string) {
+  const contact = await prisma.crmContact.findFirst({
+    where: { id: contactId, tenantId },
+    select: { id: true }
+  });
+  if (!contact) {
+    throw notFound('Contact introuvable ou inaccessible');
+  }
+}
+
 function toDecimal(value: number | undefined): Prisma.Decimal | undefined {
   if (typeof value === 'number') {
     return new Prisma.Decimal(value);
@@ -112,7 +127,7 @@ export async function updatePropertyValuation(
   if (!existing) throw notFound('Valorisation introuvable');
 
   return prisma.assetValuation.update({
-    where: { id: valuationId },
+    where: { id: valuationId, tenantId },
     data: {
       valuatedAt: data.valuatedAt,
       estimatedValue: typeof data.estimatedValue === 'number' ? new Prisma.Decimal(data.estimatedValue) : undefined,
@@ -142,7 +157,7 @@ export async function deletePropertyValuation(tenantId: string, propertyId: stri
     where: { id: valuationId, tenantId, propertyId }
   });
   if (!existing) throw notFound('Valorisation introuvable');
-  await prisma.assetValuation.delete({ where: { id: valuationId } });
+  await prisma.assetValuation.delete({ where: { id: valuationId, tenantId } });
 }
 
 export async function listPropertyExpenses(tenantId: string, propertyId: string) {
@@ -273,7 +288,7 @@ export async function updatePropertyExpense(
     await assertTreasuryAccountUsableTx(tx, tenantId, treasuryAccountId, methodForValidation ?? 'CASH');
 
     return tx.propertyExpense.update({
-      where: { id: expenseId },
+      where: { id: expenseId, tenantId },
       data: {
         category: data.category,
         label: data.label,
@@ -299,7 +314,7 @@ export async function deletePropertyExpense(tenantId: string, propertyId: string
     where: { id: expenseId, tenantId, propertyId }
   });
   if (!existing) throw notFound('Depense introuvable');
-  await prisma.propertyExpense.delete({ where: { id: expenseId } });
+  await prisma.propertyExpense.delete({ where: { id: expenseId, tenantId } });
 }
 
 export async function listPropertyLoans(tenantId: string, propertyId: string) {
@@ -383,7 +398,7 @@ export async function updatePropertyLoan(
   }
 
   return prisma.propertyLoan.update({
-    where: { id: loanId },
+    where: { id: loanId, tenantId },
     data: {
       lender: data.lender,
       capitalAmount: typeof data.capitalAmount === 'number' ? new Prisma.Decimal(data.capitalAmount) : undefined,
@@ -406,7 +421,7 @@ export async function deletePropertyLoan(tenantId: string, propertyId: string, l
     where: { id: loanId, tenantId, propertyId }
   });
   if (!existing) throw notFound('Pret introuvable');
-  await prisma.propertyLoan.delete({ where: { id: loanId } });
+  await prisma.propertyLoan.delete({ where: { id: loanId, tenantId } });
 }
 
 export async function listPropertyWorkPrograms(tenantId: string, propertyId: string) {
@@ -530,7 +545,7 @@ export async function updatePropertyWorkProgram(
   }
 
   return prisma.workProgram.update({
-    where: { id: programId },
+    where: { id: programId, tenantId },
     data: {
       title: data.title,
       description: data.description,
@@ -590,7 +605,7 @@ export async function linkWorkProgramConstructionSite(
     const previousActualCost = existing.actualCost !== null ? Number(existing.actualCost) : null;
 
     await tx.workProgram.update({
-      where: { id: workProgramId },
+      where: { id: workProgramId, tenantId },
       data: { constructionSiteId }
     });
 
@@ -630,7 +645,7 @@ export async function deletePropertyWorkProgram(tenantId: string, propertyId: st
     where: { id: programId, tenantId, propertyId }
   });
   if (!existing) throw notFound('Programme de travaux introuvable');
-  await prisma.workProgram.delete({ where: { id: programId } });
+  await prisma.workProgram.delete({ where: { id: programId, tenantId } });
 }
 
 export async function listPropertyDocuments(tenantId: string, propertyId: string) {
@@ -662,6 +677,9 @@ export async function createPropertyDocument(
   }
 ) {
   await ensureTenantProperty(tenantId, propertyId);
+  if (data.ownerContactId) {
+    await ensureContactBelongsToTenant(tenantId, data.ownerContactId);
+  }
   return prisma.patrimonyDocument.create({
     data: {
       tenantId,
@@ -692,7 +710,7 @@ export async function deletePropertyDocument(tenantId: string, propertyId: strin
     where: { id: documentId, tenantId, propertyId }
   });
   if (!existing) throw notFound('Document patrimoine introuvable');
-  await prisma.patrimonyDocument.delete({ where: { id: documentId } });
+  await prisma.patrimonyDocument.delete({ where: { id: documentId, tenantId } });
 }
 
 export async function getPatrimoineOverview(tenantId: string) {
@@ -1064,7 +1082,7 @@ export async function generateOwnerStatement(
     if (existing) {
       await tx.ownerStatementItem.deleteMany({ where: { statementId: existing.id } });
       await tx.ownerStatement.update({
-        where: { id: existing.id },
+        where: { id: existing.id, tenantId },
         data: { ...statementData, status: StatementStatus.DRAFT }
       });
       statementId = existing.id;
@@ -1094,7 +1112,7 @@ export async function generateOwnerStatement(
     }
 
     return tx.ownerStatement.findUnique({
-      where: { id: statementId },
+      where: { id: statementId, tenantId },
       include: STATEMENT_INCLUDE
     });
   });
@@ -1143,7 +1161,7 @@ export async function updateOwnerStatement(
   if (!existing) throw notFound('Releve introuvable');
 
   return prisma.ownerStatement.update({
-    where: { id: statementId },
+    where: { id: statementId, tenantId },
     data: {
       status: data.status,
       paidAt: data.paidAt

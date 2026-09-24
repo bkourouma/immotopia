@@ -31,6 +31,7 @@
  * c'est ce qui rend la règle « jamais supprimé » vraie par construction.
  */
 
+import { MembershipStatus } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { NotFoundError, BadRequestError, ConflictError } from '../../middleware/error-middleware';
 import { toAmount, toAmountOrZero } from './types';
@@ -163,7 +164,8 @@ export async function setCostCategoryAccount(
     }
   }
 
-  await prisma.costCategory.update({ where: { id: costCategoryId }, data: { chartOfAccountId } });
+  // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+  await prisma.costCategory.update({ where: { id: costCategoryId, tenantId }, data: { chartOfAccountId } });
 
   // On relit la liste ordonnee pour rendre le poste avec sa POSITION juste :
   // elle se deduit de l'ordre de creation et n'a pas de colonne.
@@ -287,7 +289,8 @@ export async function setCostCategoryActive(
   if (!existing) {
     throw new NotFoundError('Poste de dépense introuvable.');
   }
-  const updated = await prisma.costCategory.update({ where: { id: costCategoryId }, data: { isActive } });
+  // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+  const updated = await prisma.costCategory.update({ where: { id: costCategoryId, tenantId }, data: { isActive } });
   const ordered = await fetchOrderedCostCategories(tenantId);
   return ordered.find(c => c.id === updated.id) ?? toCategoryRecord(updated, ordered.length);
 }
@@ -311,9 +314,19 @@ export const createConstructionSite: CreateConstructionSite = async (tenantId, p
   }
 
   if (params.managerId) {
-    const manager = await prisma.user.findUnique({ where: { id: params.managerId } });
-    if (!manager) {
-      throw new NotFoundError('Responsable introuvable.');
+    // Audit multi-tenant du 24 septembre 2026 (lot B2) : `user.findUnique` ne
+    // vérifiait que l'existence GLOBALE de l'utilisateur, pas son
+    // appartenance à cette agence — n'importe quel utilisateur de la
+    // plateforme, actif dans une agence tierce, pouvait devenir responsable
+    // d'un chantier. Le responsable doit être membre ACTIF de l'agence,
+    // exactement comme `requireTenantAccess` l'exige pour accéder aux
+    // données de l'agence.
+    const membership = await prisma.membership.findUnique({
+      where: { userId_tenantId: { userId: params.managerId, tenantId } },
+      select: { status: true }
+    });
+    if (!membership || membership.status !== MembershipStatus.ACTIVE) {
+      throw new NotFoundError('Responsable introuvable pour cette agence.');
     }
   }
 

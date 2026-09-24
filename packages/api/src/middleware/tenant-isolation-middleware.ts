@@ -1,38 +1,21 @@
 import { Request, Response, NextFunction } from 'express';
-import { runWithTenantContext } from '../utils/tenant-context';
 
 /**
  * Middleware to enforce tenant isolation for CRM operations
  * Ensures tenantId is present in request context and adds helper to enforce filtering
  *
  * This middleware should be used after requireTenantAccess to ensure tenantContext exists
- */
-
-/**
- * Publish the resolved tenant as the ambient context for the rest of the
- * request, so the Prisma tenant guard can tell whether a query that touches a
- * tenant-scoped model forgot its filter.
  *
- * Mount after requireTenantAccess. Purely observational by default; see
- * utils/prisma-tenant-guard-extension.ts and TENANT_GUARD_MODE.
+ * D1 : le contexte ambiant (AsyncLocalStorage) utilisé par le garde-fou Prisma
+ * (utils/prisma-tenant-guard-extension.ts) n'est plus posé par un middleware
+ * séparé ici — il l'était, sous le nom `withTenantContext`, mais rien ne le
+ * montait jamais dans `index.ts` : le garde-fou ne voyait donc jamais de
+ * contexte. Il est posé directement dans `requireTenantAccess`
+ * (middleware/tenant-middleware.ts) et dans les deux middlewares de portail
+ * (tenant-portal-access.ts, owner-portal-access.ts), autour de leur propre
+ * appel à `next()`. `withTenantContext` n'avait aucun importeur ailleurs dans
+ * le code : supprimé plutôt que laissé mort à côté de son remplaçant.
  */
-export const withTenantContext = (req: Request, _res: Response, next: NextFunction): void => {
-  const tenantId = req.tenantContext?.tenantId;
-
-  if (!tenantId) {
-    next();
-    return;
-  }
-
-  runWithTenantContext(
-    {
-      tenantId,
-      userId: req.user?.userId,
-      isSuperAdmin: Boolean(req.tenantContext?.isSuperAdmin)
-    },
-    next
-  );
-};
 
 /**
  * Middleware to ensure tenant context exists for CRM operations

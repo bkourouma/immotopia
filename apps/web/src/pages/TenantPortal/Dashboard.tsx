@@ -162,7 +162,7 @@ export default function TenantDashboard() {
           <Text type="secondary">{t("Vue d'ensemble de votre situation locative")}</Text>
         </div>
         {onlinePaymentAvailability?.available && data.currentBalance > 0 ? (
-          <Button type="primary" icon={<CreditCardOutlined />} onClick={() => navigate('/tenant/payments')}>
+          <Button type="primary" icon={<CreditCardOutlined aria-hidden />} onClick={() => navigate('/tenant/payments')}>
             {t('Payer en ligne')}
           </Button>
         ) : null}

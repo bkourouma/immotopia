@@ -4,13 +4,14 @@ import {
   getTenant,
   getTenantBySlugHandler,
   listTenants,
-  createTenantHandler,
   getTenantClientsHandler,
   getMyMemberships,
   updateClientDetails,
   unregisterFromTenant,
-  updateTenantSelfHandler
+  updateTenantSelfHandler,
+  uploadTenantLogoHandler
 } from '../controllers/tenant-controller';
+import { logoUpload } from '../middleware/logo-upload-middleware';
 import {
   inviteCollaboratorHandler,
   resendInvitationHandler,
@@ -32,7 +33,8 @@ import { requireTenantAccess, requireTenantCollaborator } from '../middleware/te
 
 const router = Router();
 
-// Public routes
+// Public routes — vitrine d'agence : seuls les champs de PUBLIC_TENANT_SELECT
+// (services/tenant-service.ts) sortent.
 router.get('/', listTenants);
 router.get('/slug/:slug', getTenantBySlugHandler);
 
@@ -49,8 +51,21 @@ router.patch(
   updateTenantSelfHandler
 );
 
-// Public routes with tenantId (must come after specific routes)
-router.get('/:tenantId', getTenant);
+// Depot du logo d'agence (lot G). Le super-admin passe (requireTenantAccess
+// le laisse toujours entrer), un collaborateur a besoin de TENANT_SETTINGS_EDIT.
+router.post(
+  '/:tenantId/logo',
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_EDIT'),
+  logoUpload.single('logo'),
+  uploadTenantLogoHandler
+);
+
+// Fiche complete d'une agence (membres, clients, abonnement) : reservee a ses
+// membres et au super-admin. Elle etait publique et renvoyait des `User`
+// complets, empreinte du mot de passe comprise.
+router.get('/:tenantId', authenticate, requireTenantAccess, getTenant);
 router.post('/:tenantId/register', authenticate, registerAsTenantClient);
 
 // Client directory exposes e-mails and names: restricted to collaborators of
@@ -58,13 +73,12 @@ router.post('/:tenantId/register', authenticate, registerAsTenantClient);
 // user could previously read any tenant's client list.
 router.get('/:tenantId/clients', authenticate, requireTenantAccess, requireTenantCollaborator, getTenantClientsHandler);
 
-router.patch('/:tenantId/client-details', authenticate, updateClientDetails);
+router.patch('/:tenantId/client-details', authenticate, requireTenantAccess, updateClientDetails);
 router.delete('/:tenantId/unregister', authenticate, unregisterFromTenant);
 
-// Admin only routes
-// Tenant creation is a platform-level operation: the canonical endpoint is
-// POST /api/admin/tenants. This alias now enforces the same permission.
-router.post('/', authenticate, requirePermission('PLATFORM_TENANTS_CREATE'), createTenantHandler);
+// L'alias POST /api/tenants a ete supprime (lot F2) : la creation d'agence
+// est desormais POST /api/admin/tenants uniquement (provisionTenantHandler),
+// qui remplace l'ancien `createTenantHandler` a comportement minimal.
 
 // Tenant user management routes (require tenant context and permissions)
 router.get(

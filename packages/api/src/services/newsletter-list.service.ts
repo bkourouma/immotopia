@@ -110,7 +110,7 @@ export async function updateList(tenantId: string, listId: string, data: { name?
   }
 
   return prisma.newsletterList.update({
-    where: { id: listId },
+    where: { id: listId, tenantId },
     data: {
       ...(data.name != null && { name: data.name }),
       ...(data.doubleOptIn != null && { doubleOptIn: data.doubleOptIn })
@@ -122,6 +122,6 @@ export async function deleteList(tenantId: string, listId: string) {
   const list = await prisma.newsletterList.findFirst({ where: { id: listId, tenantId } });
   if (!list) throw new Error('Liste non trouvée.');
 
-  await prisma.newsletterList.delete({ where: { id: listId } });
+  await prisma.newsletterList.delete({ where: { id: listId, tenantId } });
   return { success: true };
 }

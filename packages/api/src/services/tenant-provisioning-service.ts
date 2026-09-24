@@ -1,0 +1,471 @@
+import { prisma, PrismaTransactionClient } from '../utils/database';
+import {
+  TenantType,
+  TenantStatus,
+  ModuleKey,
+  SubscriptionPlan,
+  BillingCycle,
+  SubscriptionStatus,
+  MembershipStatus,
+  InvitationStatus
+} from '@prisma/client';
+import { logger } from '../utils/logger';
+import { logAuditEvent, AuditActionKey } from './audit-service';
+import { hashPassword } from '../utils/password-utils';
+import crypto from 'crypto';
+import { generateSlugFromName } from './tenant-service';
+import {
+  createInvitationRecordTx,
+  buildInvitationAcceptUrl,
+  generateInvitationToken,
+  resolveRoleLabels
+} from './invitation-service';
+import { emailService } from './email-service';
+import { ensureOperationalChartOfAccountsTx, ensureOperationalJournalTx } from '../lib/finance/accounting';
+import { ensureDefaultTreasuryAccountTx } from '../lib/treasury/accounts';
+import { ensureStockSettingsTx } from '../lib/finance/stock-referentiel';
+import { ensureRentalAccountsTx } from '../lib/owner-account/accounts';
+import { DEFAULT_FINANCE_SETTINGS } from '../lib/settings/finance-settings';
+import { ProvisionTenantRequest, ProvisionTenantResult } from '../types/tenant-types';
+import { tenantProvisioningIdempotencyStore } from '../utils/idempotency';
+
+/**
+ * Provisioning d'une agence en un clic (lot F1, docs/architecture/PLAN-MULTI-TENANT.md).
+ *
+ * `provisionTenant` cree, dans UNE transaction Prisma, tout ce qu'une agence
+ * neuve a besoin pour etre utilisable des l'acceptation de l'invitation de son
+ * administrateur : Tenant ACTIF, modules, abonnement d'essai, parametres
+ * financiers par defaut, socle comptable/tresorerie/stock, et l'invitation de
+ * l'administrateur. L'envoi de l'e-mail d'invitation vient APRES le commit,
+ * jamais dedans : un e-mail parti doit toujours pointer vers une agence qui
+ * existe reellement, et une transaction ne doit jamais attendre un appel
+ * reseau externe.
+ */
+
+/** Duree d'essai par defaut d'un abonnement fraichement cree (lot F1.3). */
+const TRIAL_DAYS = 30;
+
+/** Delais de la transaction de creation (attente d'une connexion, duree totale). */
+const PROVISIONING_TX_OPTIONS = { maxWait: 10_000, timeout: 30_000 };
+
+/** Fenetre du controle d'idempotence cote base (lot F1.9). */
+const IDEMPOTENCY_DB_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Modules par defaut, par type d'agence (decision [D] du plan). */
+const DEFAULT_MODULES_BY_TYPE: Record<TenantType, ModuleKey[]> = {
+  [TenantType.AGENCY]: [ModuleKey.MODULE_AGENCY],
+  [TenantType.OPERATOR]: [ModuleKey.MODULE_AGENCY, ModuleKey.MODULE_SYNDIC, ModuleKey.MODULE_PROMOTER]
+};
+
+/** Slug unique a partir du nom, en tentant `-2`, `-3`... comme les autres slugs de la plateforme. */
+async function generateUniqueSlugTx(tx: PrismaTransactionClient, name: string): Promise<string> {
+  const base = generateSlugFromName(name) || 'agence';
+  let candidate = base;
+  let suffix = 2;
+  // eslint-disable-next-line no-await-in-loop -- verification sequentielle necessaire : chaque essai depend du precedent.
+  while (await tx.tenant.findFirst({ where: { slug: candidate }, select: { id: true } })) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+interface ProvisioningOutcome {
+  result: ProvisionTenantResult;
+  tenantId: string;
+  tenantName: string;
+  adminEmail: string;
+  adminRoleId: string;
+  inviteToken: string;
+  inviteExpiresAt: Date;
+}
+
+/** La partie ECRITURE, tout-ou-rien : tout ce que F1.1 a F1.7 decrit, sauf l'envoi d'e-mail (F1.8) et l'idempotence (F1.9). */
+async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: string): Promise<ProvisioningOutcome> {
+  return prisma.$transaction(async tx => {
+    const type = input.type ?? TenantType.AGENCY;
+    const modules = input.modules?.length
+      ? ([...new Set(input.modules)] as ModuleKey[])
+      : DEFAULT_MODULES_BY_TYPE[type];
+    const planKey = (input.planKey ?? 'PRO') as SubscriptionPlan;
+    const billingCycle = (input.billingCycle ?? 'MONTHLY') as BillingCycle;
+
+    // 1. Tenant ACTIF, slug unique.
+    const slug = await generateUniqueSlugTx(tx, input.name);
+    const tenant = await tx.tenant.create({
+      data: {
+        name: input.name,
+        slug,
+        type,
+        status: TenantStatus.ACTIVE,
+        isActive: true,
+        legalName: input.legalName,
+        contactEmail: input.contactEmail,
+        contactPhone: input.contactPhone,
+        country: input.country,
+        city: input.city,
+        address: input.address,
+        website: input.website,
+        brandingPrimaryColor: input.brandingPrimaryColor
+      }
+    });
+
+    // 2. Modules.
+    await tx.tenantModule.createMany({
+      data: modules.map(moduleKey => ({
+        tenantId: tenant.id,
+        moduleKey,
+        enabled: true,
+        enabledAt: new Date(),
+        enabledBy: actorUserId
+      }))
+    });
+
+    // 3. Abonnement d'essai.
+    const now = new Date();
+    const currentPeriodEnd = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+    const subscription = await tx.subscription.create({
+      data: {
+        tenantId: tenant.id,
+        planKey,
+        billingCycle,
+        status: SubscriptionStatus.TRIALING,
+        startAt: now,
+        currentPeriodStart: now,
+        currentPeriodEnd
+      }
+    });
+
+    // 4. Parametres financiers par defaut : un `create` sans donnees suffit,
+    // toutes les colonnes ont un defaut Prisma qui reprend exactement
+    // `DEFAULT_FINANCE_SETTINGS` (lib/settings/finance-settings.ts).
+    await tx.agencyFinanceSettings.create({ data: { tenantId: tenant.id } });
+
+    // 5. Socle comptable, tresorerie et stock — fonctions `ensure*Tx`
+    // existantes (lecture puis creation de ce qui manque), non modifiees ici.
+    await ensureOperationalChartOfAccountsTx(tx, tenant.id);
+    await ensureOperationalJournalTx(tx, tenant.id, now.getFullYear(), 'GENERAL');
+    await ensureDefaultTreasuryAccountTx(tx, tenant.id, 'CASH');
+    await ensureRentalAccountsTx(tx, tenant.id, DEFAULT_FINANCE_SETTINGS);
+    await ensureStockSettingsTx(tx, tenant.id);
+
+    // 6. Administrateur : utilisateur trouve ou cree, Membership, role,
+    // invitation. Le tenant vient d'etre cree DANS cette transaction : aucune
+    // ligne existante ne peut deja pointer vers lui, donc chaque `create`
+    // ci-dessous est sans risque de doublon (pas besoin d'upsert).
+    const tenantAdminRole = await tx.role.findFirst({
+      where: { key: 'TENANT_ADMIN', scope: 'TENANT' },
+      select: { id: true }
+    });
+    if (!tenantAdminRole) {
+      throw new Error('Le rôle TENANT_ADMIN est introuvable : vérifiez le seed des rôles plateforme.');
+    }
+
+    let adminUser = await tx.user.findFirst({
+      where: { email: { equals: input.adminEmail, mode: 'insensitive' } }
+    });
+    const existingUser = Boolean(adminUser);
+
+    if (!adminUser) {
+      // Convention reprise de `getOrCreateTenantClientFromContact`
+      // (tenant-service.ts) : mot de passe jamais utilisable, l'acces reel se
+      // fait par le jeton d'invitation ci-dessous.
+      const throwawayPassword = crypto.randomBytes(32).toString('base64url');
+      const passwordHash = await hashPassword(throwawayPassword);
+      adminUser = await tx.user.create({
+        data: {
+          email: input.adminEmail,
+          fullName: input.adminFullName,
+          passwordHash,
+          emailVerified: false,
+          isActive: true
+        }
+      });
+    }
+
+    await tx.membership.create({
+      data: {
+        userId: adminUser.id,
+        tenantId: tenant.id,
+        status: MembershipStatus.PENDING_INVITE,
+        invitedBy: actorUserId,
+        invitedAt: now
+      }
+    });
+
+    await tx.userRole.create({
+      data: { userId: adminUser.id, roleId: tenantAdminRole.id, tenantId: tenant.id }
+    });
+
+    const { invitation, token } = await createInvitationRecordTx(tx, {
+      tenantId: tenant.id,
+      email: input.adminEmail,
+      roleIds: [tenantAdminRole.id],
+      invitedByUserId: actorUserId
+    });
+
+    return {
+      result: {
+        tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, type: tenant.type, status: tenant.status },
+        modules,
+        subscription: {
+          planKey: subscription.planKey,
+          billingCycle: subscription.billingCycle,
+          status: subscription.status,
+          currentPeriodEnd: subscription.currentPeriodEnd.toISOString()
+        },
+        admin: {
+          userId: adminUser.id,
+          email: adminUser.email,
+          fullName: adminUser.fullName ?? input.adminFullName,
+          existingUser
+        },
+        invitation: {
+          id: invitation.id,
+          expiresAt: invitation.expiresAt.toISOString(),
+          acceptUrl: buildInvitationAcceptUrl(token)
+        },
+        // Rempli par l'appelant apres l'envoi (hors transaction) : un e-mail
+        // ne doit jamais etre tente tant que la transaction n'a pas commit.
+        emailSent: false
+      },
+      tenantId: tenant.id,
+      tenantName: tenant.name,
+      adminEmail: adminUser.email,
+      adminRoleId: tenantAdminRole.id,
+      inviteToken: token,
+      inviteExpiresAt: invitation.expiresAt
+    };
+    // Le plan de comptes et les journaux ecrivent plusieurs dizaines de lignes :
+    // les 5 s par defaut d'une transaction interactive ne suffisent pas toujours.
+  }, PROVISIONING_TX_OPTIONS);
+}
+
+/**
+ * Rejeu idempotent (base) : regenere un jeton d'invitation utilisable pour
+ * l'agence deja creee, sans rien recreer.
+ *
+ * Le jeton en clair n'est jamais persiste (seul son hash l'est) : impossible
+ * de reconstruire le lien d'origine pour une agence creee par une AUTRE
+ * instance du process (donc absente du cache memoire). On emet un nouveau
+ * jeton pour la meme invitation — exactement ce que fait un "renvoyer
+ * l'invitation" manuel — plutot que d'echouer ou de mentir sur `acceptUrl`.
+ */
+async function refreshReplayInvitationToken(
+  invitationId: string,
+  roleIds: string[],
+  tenantName: string,
+  tenantId: string,
+  email: string
+): Promise<{ acceptUrl: string; emailSent: boolean; expiresAt: Date }> {
+  const { token, hash } = generateInvitationToken();
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + 7);
+  await prisma.invitation.update({ where: { id: invitationId }, data: { tokenHash: hash, expiresAt } });
+  const acceptUrl = buildInvitationAcceptUrl(token);
+
+  let emailSent = false;
+  try {
+    const roleLabels = await resolveRoleLabels(roleIds);
+    await emailService.sendInviteEmail(email, token, tenantName, roleLabels, expiresAt, tenantId);
+    emailSent = true;
+  } catch (error) {
+    logger.error('Tenant provisioning replay: failed to resend invitation email', { invitationId, error });
+  }
+
+  return { acceptUrl, emailSent, expiresAt };
+}
+
+/** Une agence recemment creee par ce meme super-admin, avec le meme nom et le meme e-mail admin (voir F1.9). */
+async function findRecentDuplicateTenantId(
+  actorUserId: string,
+  name: string,
+  adminEmail: string
+): Promise<string | null> {
+  const since = new Date(Date.now() - IDEMPOTENCY_DB_WINDOW_MS);
+  const logs = await prisma.auditLog.findMany({
+    where: { actorUserId, actionKey: 'TENANT_PROVISIONED', createdAt: { gte: since } },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+    select: { payload: true }
+  });
+
+  for (const log of logs) {
+    const payload = (log.payload as Record<string, unknown> | null) ?? {};
+    if (payload.name === name && payload.adminEmail === adminEmail && typeof payload.tenantId === 'string') {
+      return payload.tenantId;
+    }
+  }
+  return null;
+}
+
+/** Reconstruit la reponse de F2 pour une agence deja creee, sans rien ecrire d'autre qu'un eventuel nouveau jeton d'invitation. */
+async function buildReplayResult(tenantId: string, input: ProvisionTenantRequest): Promise<ProvisionTenantResult> {
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { id: true, name: true, slug: true, type: true, status: true }
+  });
+  if (!tenant) {
+    throw new Error("Rejeu idempotent : l'agence déjà créée est introuvable.");
+  }
+
+  const [modules, subscription, invitation, membership] = await Promise.all([
+    prisma.tenantModule.findMany({ where: { tenantId, enabled: true }, select: { moduleKey: true } }),
+    prisma.subscription.findUnique({ where: { tenantId } }),
+    prisma.invitation.findFirst({ where: { tenantId, email: input.adminEmail }, orderBy: { createdAt: 'desc' } }),
+    prisma.membership.findFirst({
+      where: { tenantId, user: { email: { equals: input.adminEmail, mode: 'insensitive' } } },
+      include: { user: { select: { id: true, email: true, fullName: true } } }
+    })
+  ]);
+
+  if (!subscription || !invitation || !membership) {
+    throw new Error('Rejeu idempotent : données incomplètes pour cette agence.');
+  }
+
+  let acceptUrl = '';
+  let emailSent = false;
+  let expiresAt = invitation.expiresAt;
+
+  if (invitation.status === InvitationStatus.PENDING) {
+    const refreshed = await refreshReplayInvitationToken(
+      invitation.id,
+      invitation.roleIds,
+      tenant.name,
+      tenantId,
+      invitation.email
+    );
+    acceptUrl = refreshed.acceptUrl;
+    emailSent = refreshed.emailSent;
+    expiresAt = refreshed.expiresAt;
+  }
+
+  return {
+    tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, type: tenant.type, status: tenant.status },
+    modules: modules.map(m => m.moduleKey),
+    subscription: {
+      planKey: subscription.planKey,
+      billingCycle: subscription.billingCycle,
+      status: subscription.status,
+      currentPeriodEnd: subscription.currentPeriodEnd.toISOString()
+    },
+    admin: {
+      userId: membership.user.id,
+      email: membership.user.email,
+      fullName: membership.user.fullName ?? input.adminFullName,
+      existingUser: true
+    },
+    invitation: { id: invitation.id, expiresAt: expiresAt.toISOString(), acceptUrl },
+    emailSent
+  };
+}
+
+/**
+ * Cree une agence prete a l'emploi en un clic (F1). Voir le contrat d'API F2
+ * dans docs/architecture/PLAN-MULTI-TENANT.md pour la forme exacte du corps
+ * et de la reponse.
+ *
+ * @param idempotencyKey En-tete `Idempotency-Key` optionnel (<=100 caracteres,
+ * verifie par l'appelant). Meme cle + meme super-admin dans les 24h : le
+ * resultat deja produit est renvoye tel quel, rien n'est recree.
+ * @returns `replay: true` quand la reponse vient d'une creation anterieure
+ * (le controleur y lit le code HTTP a renvoyer : 200 au lieu de 201).
+ */
+export async function provisionTenant(
+  input: ProvisionTenantRequest,
+  actorUserId: string,
+  idempotencyKey?: string
+): Promise<{ result: ProvisionTenantResult; replay: boolean }> {
+  // Barriere 1 : memoire du process, immediate — le cas courant (double clic
+  // sur le meme bouton, meme onglet).
+  if (idempotencyKey) {
+    const cached = tenantProvisioningIdempotencyStore.get(actorUserId, idempotencyKey) as
+      | ProvisionTenantResult
+      | undefined;
+    if (cached) {
+      logger.info('Tenant provisioning: idempotent replay (memory)', {
+        actorUserId,
+        idempotencyKey,
+        tenantId: cached.tenant.id
+      });
+      return { result: cached, replay: true };
+    }
+  }
+
+  // Barriere 2 : base de donnees — resiste a un redemarrage du process ou a
+  // un deuxieme appel sans (ou avec un autre) en-tete `Idempotency-Key`, tant
+  // que le nom de l'agence et l'e-mail de l'administrateur sont identiques.
+  const duplicateTenantId = await findRecentDuplicateTenantId(actorUserId, input.name, input.adminEmail);
+  if (duplicateTenantId) {
+    logger.info('Tenant provisioning: idempotent replay (audit log)', { actorUserId, tenantId: duplicateTenantId });
+    const result = await buildReplayResult(duplicateTenantId, input);
+    if (idempotencyKey) {
+      tenantProvisioningIdempotencyStore.set(actorUserId, idempotencyKey, result);
+    }
+    return { result, replay: true };
+  }
+
+  const outcome = await runProvisioningTx(input, actorUserId);
+
+  // Journal d'audit, APRES commit (la file d'audit ecrit par un client Prisma
+  // separe, hors de la transaction ci-dessus). TENANT_CREATED pour rester
+  // compatible avec tout ce qui filtre deja sur cette cle ; TENANT_PROVISIONED
+  // en plus, avec le detail complet — c'est lui que relit
+  // `findRecentDuplicateTenantId`. `actionKey` est une colonne texte libre
+  // (voir prisma/schema.prisma, model AuditLog) : aucune migration requise
+  // pour cette nouvelle valeur.
+  logAuditEvent({
+    actorUserId,
+    tenantId: outcome.tenantId,
+    actionKey: AuditActionKey.TENANT_CREATED,
+    entityType: 'Tenant',
+    entityId: outcome.tenantId,
+    payload: { provisioned: true, modules: outcome.result.modules, planKey: outcome.result.subscription.planKey }
+  });
+  logAuditEvent({
+    actorUserId,
+    tenantId: outcome.tenantId,
+    actionKey: 'TENANT_PROVISIONED',
+    entityType: 'Tenant',
+    entityId: outcome.tenantId,
+    payload: {
+      tenantId: outcome.tenantId,
+      name: input.name,
+      adminEmail: input.adminEmail,
+      idempotencyKey: idempotencyKey ?? null,
+      modules: outcome.result.modules,
+      planKey: outcome.result.subscription.planKey
+    }
+  });
+
+  // E-mail d'invitation, APRES commit : un echec ne defait rien, il est
+  // simplement reporte dans `emailSent: false` (l'invitation reste renvoyable
+  // via POST /api/tenants/:tenantId/users/invitations/:invitationId/resend).
+  let emailSent = false;
+  try {
+    const roleLabels = await resolveRoleLabels([outcome.adminRoleId]);
+    await emailService.sendInviteEmail(
+      outcome.adminEmail,
+      outcome.inviteToken,
+      outcome.tenantName,
+      roleLabels,
+      outcome.inviteExpiresAt,
+      outcome.tenantId
+    );
+    emailSent = true;
+  } catch (error) {
+    logger.error('Tenant provisioning: invitation email failed (tenant kept, resend possible)', {
+      tenantId: outcome.tenantId,
+      adminEmail: outcome.adminEmail,
+      error
+    });
+  }
+
+  const result: ProvisionTenantResult = { ...outcome.result, emailSent };
+
+  if (idempotencyKey) {
+    tenantProvisioningIdempotencyStore.set(actorUserId, idempotencyKey, result);
+  }
+
+  return { result, replay: false };
+}

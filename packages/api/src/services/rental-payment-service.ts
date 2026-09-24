@@ -76,9 +76,14 @@ async function comptePayeurTx(
 }
 
 /** Le règlement a-t-il déjà été porté au compte comme avance reçue ? */
-async function avanceDejaCrediteeTx(tx: PrismaTransactionClient, paymentId: string): Promise<boolean> {
+async function avanceDejaCrediteeTx(
+  tx: PrismaTransactionClient,
+  tenantId: string,
+  paymentId: string
+): Promise<boolean> {
   const avance = await tx.thirdPartyMovement.findUnique({
     where: {
+      tenantId,
       sourceType_sourceId_type: {
         sourceType: 'RENTAL_PAYMENT',
         sourceId: paymentId,
@@ -183,9 +188,9 @@ export async function inscrireReliquatTx(
 }
 
 /** Somme des affectations d'un règlement, telle qu'elle est en base à cet instant. */
-async function totalAffecteTx(tx: PrismaTransactionClient, paymentId: string): Promise<number> {
+async function totalAffecteTx(tx: PrismaTransactionClient, tenantId: string, paymentId: string): Promise<number> {
   const allocations = await tx.rentalPaymentAllocation.findMany({
-    where: { payment_id: paymentId },
+    where: { payment_id: paymentId, tenant_id: tenantId },
     select: { amount: true }
   });
 
@@ -308,6 +313,34 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
 
       if (!lease) {
         throw new Error('Bail introuvable');
+      }
+    }
+
+    // Validate renter client exists and belongs to this tenant, if provided.
+    if (data.renterClientId) {
+      const renterClient = await prisma.tenantClient.findFirst({
+        where: {
+          id: data.renterClientId,
+          tenantId: tenantId
+        }
+      });
+
+      if (!renterClient) {
+        throw new Error('Locataire introuvable');
+      }
+    }
+
+    // Validate invoice exists and belongs to this tenant, if provided.
+    if (data.invoiceId) {
+      const invoice = await prisma.invoice.findFirst({
+        where: {
+          id: data.invoiceId,
+          tenantId: tenantId
+        }
+      });
+
+      if (!invoice) {
+        throw new Error('Facture introuvable');
       }
     }
 
@@ -444,7 +477,7 @@ export async function allocatePaymentTx(
     // Calculate remaining amount due for this installment
     // Get existing allocations for this installment
     const existingAllocations = await tx.rentalPaymentAllocation.findMany({
-      where: { installment_id: installment.id }
+      where: { installment_id: installment.id, tenant_id: tenantId }
     });
 
     const allocatedToInstallment = existingAllocations.reduce((sum, alloc) => sum + Number(alloc.amount), 0);
@@ -492,7 +525,7 @@ export async function allocatePaymentTx(
     // Le compte du payeur est résolu une fois pour toute la transaction :
     // toutes les affectations d'un même règlement vont au même compte.
     const compteId = await comptePayeurTx(tx, tenantId, payment);
-    const avanceDejaCreditee = compteId ? await avanceDejaCrediteeTx(tx, paymentId) : false;
+    const avanceDejaCreditee = compteId ? await avanceDejaCrediteeTx(tx, tenantId, paymentId) : false;
     const moyen = libelleMoyen(payment.method);
     const dateReglement = payment.succeeded_at ?? payment.initiated_at ?? undefined;
 
@@ -523,7 +556,7 @@ export async function allocatePaymentTx(
 
       // Get all allocations for this installment including the new one
       const allAllocations = await tx.rentalPaymentAllocation.findMany({
-        where: { installment_id: installment.id }
+        where: { installment_id: installment.id, tenant_id: tenantId }
       });
 
       // Calculate total allocated - allAllocations already includes the newly created allocation
@@ -544,7 +577,7 @@ export async function allocatePaymentTx(
       }
 
       await tx.rentalInstallment.update({
-        where: { id: installment.id },
+        where: { id: installment.id, tenant_id: tenantId },
         data: {
           status: newStatus,
           amount_paid: new Decimal(totalAllocated),
@@ -561,7 +594,7 @@ export async function allocatePaymentTx(
         tenantId,
         accountId: compteId,
         payment,
-        dejaAffecte: await totalAffecteTx(tx, paymentId),
+        dejaAffecte: await totalAffecteTx(tx, tenantId, paymentId),
         movementDate: dateReglement
       });
     }
@@ -622,7 +655,7 @@ export async function allocatePayment(
         });
         const { emailService } = await import('./email-service');
         const lease = await prisma.rentalLease.findUnique({
-          where: { id: leaseId },
+          where: { id: leaseId, tenant_id: tenantId },
           select: { lease_number: true }
         });
         const leaseNumber = lease?.lease_number || '';
@@ -746,17 +779,18 @@ export async function allocatePayment(
  */
 async function reverseInstallmentAllocations(
   tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  tenantId: string,
   installmentIds: string[]
 ): Promise<void> {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   for (const installmentId of installmentIds) {
-    const installment = await tx.rentalInstallment.findUnique({ where: { id: installmentId } });
+    const installment = await tx.rentalInstallment.findUnique({ where: { id: installmentId, tenant_id: tenantId } });
     if (!installment) continue;
 
     const remaining = await tx.rentalPaymentAllocation.findMany({
-      where: { installment_id: installmentId },
+      where: { installment_id: installmentId, tenant_id: tenantId },
       select: { amount: true }
     });
     const totalPaid = remaining.reduce((sum, alloc) => sum + Number(alloc.amount), 0);
@@ -782,7 +816,7 @@ async function reverseInstallmentAllocations(
     }
 
     await tx.rentalInstallment.update({
-      where: { id: installmentId },
+      where: { id: installmentId, tenant_id: tenantId },
       data: {
         amount_paid: new Decimal(totalPaid),
         status,
@@ -852,7 +886,7 @@ export async function updatePaymentStatusTx(
 
     if (reversesAllocations) {
       const allocations = await tx.rentalPaymentAllocation.findMany({
-        where: { payment_id: paymentId },
+        where: { payment_id: paymentId, tenant_id: tenantId },
         select: {
           id: true,
           installment_id: true,
@@ -862,8 +896,8 @@ export async function updatePaymentStatusTx(
       const installmentIds = [...new Set(allocations.map(a => a.installment_id))];
 
       if (installmentIds.length > 0) {
-        await tx.rentalPaymentAllocation.deleteMany({ where: { payment_id: paymentId } });
-        await reverseInstallmentAllocations(tx, installmentIds);
+        await tx.rentalPaymentAllocation.deleteMany({ where: { payment_id: paymentId, tenant_id: tenantId } });
+        await reverseInstallmentAllocations(tx, tenantId, installmentIds);
         logger.info(`Payment ${paymentId} ${status}: reversed ${installmentIds.length} installment(s)`);
       }
 
@@ -913,7 +947,7 @@ export async function updatePaymentStatusTx(
     } else if (status === RentalPaymentStatus.SUCCESS) {
       // Un règlement qui devient encaissé porte au compte ce qu'il ne solde
       // encore aucune échéance.
-      const dejaAffecte = await totalAffecteTx(tx, paymentId);
+      const dejaAffecte = await totalAffecteTx(tx, tenantId, paymentId);
       const accountId = roundMoney(Number(payment.amount ?? 0) - dejaAffecte) > 0 ? await compteId() : null;
 
       if (accountId) {
@@ -928,7 +962,7 @@ export async function updatePaymentStatusTx(
     }
 
     return tx.rentalPayment.update({
-      where: { id: paymentId },
+      where: { id: paymentId, tenant_id: tenantId },
       data: updateData,
       include: {
         allocations: {

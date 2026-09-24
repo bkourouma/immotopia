@@ -163,6 +163,20 @@ export async function createTicket(
   actorUserId?: string,
   actorContactId?: string
 ) {
+  // Le contact déclarant (venant du corps de la requête) doit appartenir à
+  // cette agence : même erreur qu'un identifiant inexistant.
+  if (actorContactId) {
+    const contact = await prisma.crmContact.findFirst({
+      where: {
+        id: actorContactId,
+        tenantId: tenantId
+      }
+    });
+    if (!contact) {
+      throw new Error('Contact introuvable');
+    }
+  }
+
   // Validate active lease for property
   await validateActiveLease(tenantId, data.propertyId, actorContactId, data.leaseId);
 
@@ -496,7 +510,8 @@ export async function cancelTicket(tenantId: string, ticketId: string, tenantCon
   const ticket = await prisma.$transaction(async tx => {
     const updated = await tx.maintenanceTicket.update({
       where: {
-        id: ticketId
+        id: ticketId,
+        tenant_id: tenantId
       },
       data: {
         status: MaintenanceTicketStatus.CANCELED,
@@ -640,7 +655,7 @@ export async function deleteTicket(
   // Hard delete - Prisma will cascade delete related records (attachments, comments, statusHistory)
   // based on the schema's onDelete: Cascade relationships
   await prisma.maintenanceTicket.delete({
-    where: { id: ticketId }
+    where: { id: ticketId, tenant_id: tenantId }
   });
 
   logger.info('Maintenance ticket deleted successfully', {
@@ -716,7 +731,8 @@ export async function updateTenantTicket(
   // Update ticket
   const ticket = await prisma.maintenanceTicket.update({
     where: {
-      id: ticketId
+      id: ticketId,
+      tenant_id: tenantId
     },
     data: updateData,
     include: {
@@ -928,7 +944,8 @@ export async function updateTicketStatus(
   const ticket = await prisma.$transaction(async tx => {
     const updated = await tx.maintenanceTicket.update({
       where: {
-        id: ticketId
+        id: ticketId,
+        tenant_id: tenantId
       },
       data: updateData,
       include: {
@@ -1019,7 +1036,8 @@ export async function assignVendor(tenantId: string, ticketId: string, vendorId:
   // Update ticket with vendor assignment
   const ticket = await prisma.maintenanceTicket.update({
     where: {
-      id: ticketId
+      id: ticketId,
+      tenant_id: tenantId
     },
     data: {
       assigned_vendor_id: vendorId,
@@ -1112,6 +1130,20 @@ export async function updateTicket(tenantId: string, ticketId: string, data: Upd
   }
 
   if (data.assignedToUserId !== undefined) {
+    if (data.assignedToUserId) {
+      // L'utilisateur assigné doit être membre actif de cette agence : sinon
+      // même erreur qu'un identifiant inexistant.
+      const membership = await prisma.membership.findFirst({
+        where: {
+          userId: data.assignedToUserId,
+          tenantId,
+          status: 'ACTIVE'
+        }
+      });
+      if (!membership) {
+        throw new Error("Utilisateur introuvable ou non membre actif de cette agence");
+      }
+    }
     updateData.assigned_to_user_id = data.assignedToUserId || null;
   }
 
@@ -1125,7 +1157,8 @@ export async function updateTicket(tenantId: string, ticketId: string, data: Upd
   if (Object.keys(updateData).length > 0) {
     const ticket = await prisma.maintenanceTicket.update({
       where: {
-        id: ticketId
+        id: ticketId,
+        tenant_id: tenantId
       },
       data: updateData,
       include: {

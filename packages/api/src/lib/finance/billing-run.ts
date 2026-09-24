@@ -183,7 +183,8 @@ async function findOrStartRun(
 
   if (existing) {
     return prisma.rentBillingRun.update({
-      where: { id: existing.id },
+      // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+      where: { id: existing.id, tenantId },
       data: { label, status: RentBillingRunStatus.RUNNING, startedAt: new Date(), finishedAt: null }
     });
   }
@@ -211,7 +212,8 @@ async function findOrStartRun(
       throw error;
     }
     return prisma.rentBillingRun.update({
-      where: { id: raced.id },
+      // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+      where: { id: raced.id, tenantId },
       data: { label, status: RentBillingRunStatus.RUNNING, startedAt: new Date(), finishedAt: null }
     });
   }
@@ -383,7 +385,8 @@ async function applyAdvancesTx(
       totalAppliedToInstallment >= args.totalAmountDue ? RentalInstallmentStatus.PAID : RentalInstallmentStatus.PARTIAL;
 
     await tx.rentalInstallment.update({
-      where: { id: args.installment.id },
+      // `tenant_id` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+      where: { id: args.installment.id, tenant_id: args.tenantId },
       data: {
         amount_paid: new Decimal(totalAppliedToInstallment),
         status,
@@ -535,7 +538,8 @@ export const runRentBilling: RunRentBilling = async (tenantId, params, actorUser
     }
 
     const finished = await prisma.rentBillingRun.update({
-      where: { id: run.id },
+      // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+      where: { id: run.id, tenantId },
       data: {
         status: RentBillingRunStatus.DONE,
         finishedAt: new Date(),
@@ -547,7 +551,7 @@ export const runRentBilling: RunRentBilling = async (tenantId, params, actorUser
   } catch (error) {
     await prisma.rentBillingRun
       .update({
-        where: { id: run.id },
+        where: { id: run.id, tenantId },
         data: {
           status: RentBillingRunStatus.FAILED,
           finishedAt: new Date(),

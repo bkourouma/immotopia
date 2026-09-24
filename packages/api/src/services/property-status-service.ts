@@ -215,11 +215,23 @@ export async function recordStatusHistory(
 
 /**
  * Get status history for a property
+ *
+ * The route (`GET /tenants/:tenantId/properties/:id/status/history`) is
+ * protected only by `enforcePropertyTenantIsolation`, which checks that a
+ * tenant context exists, not that `:id` belongs to it (same gap fixed for
+ * property mandates). Without this check here, any authenticated user could
+ * read another agency's property status history by id.
  * @param propertyId - Property ID
+ * @param tenantId - Tenant the caller is authorised for
  * @param limit - Maximum number of records to return (default: 50)
  * @returns List of status history records
  */
-export async function getStatusHistory(propertyId: string, limit: number = 50) {
+export async function getStatusHistory(propertyId: string, tenantId: string, limit: number = 50) {
+  const property = await getPropertyById(propertyId, tenantId);
+  if (!property) {
+    throw new Error('Property not found or access denied');
+  }
+
   const history = await prisma.propertyStatusHistory.findMany({
     where: { propertyId },
     orderBy: { createdAt: 'desc' },

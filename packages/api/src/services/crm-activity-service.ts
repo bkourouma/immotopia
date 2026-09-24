@@ -253,11 +253,11 @@ export async function getActivityTimeline(tenantId: string, contactId?: string, 
   };
 
   if (contactId) {
-    where.AND.push({ contactId });
+    where.contactId = contactId;
   }
 
   if (dealId) {
-    where.AND.push({ dealId });
+    where.dealId = dealId;
   }
 
   const activities = await prisma.crmActivity.findMany({
@@ -337,7 +337,7 @@ export async function rescheduleFollowUp(
   }
 
   const updatedActivity = await prisma.crmActivity.update({
-    where: { id: activityId },
+    where: { id: activityId, tenantId },
     data: {
       nextActionAt
     },
@@ -410,7 +410,7 @@ export async function markFollowUpDone(tenantId: string, activityId: string, act
   }
 
   const updatedActivity = await prisma.crmActivity.update({
-    where: { id: activityId },
+    where: { id: activityId, tenantId },
     data: {
       nextActionAt: null
     },

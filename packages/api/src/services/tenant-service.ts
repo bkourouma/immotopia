@@ -1,9 +1,14 @@
 import { prisma } from '../utils/database';
-import { ClientType, TenantType, Prisma, TenantStatus } from '@prisma/client';
+import { ClientType, Prisma, TenantStatus } from '@prisma/client';
 import { logger } from '../utils/logger';
-import { CreateTenantRequest, UpdateTenantRequest, TenantFilters, TenantStats } from '../types/tenant-types';
+import { UpdateTenantRequest, TenantFilters, TenantStats } from '../types/tenant-types';
 import { revokeTenantSessions } from '../middleware/session-invalidation';
 import { logAuditEvent, AuditActionKey } from './audit-service';
+import { BadRequestError, NotFoundError } from '../middleware/error-middleware';
+import { getUploadsRoot } from '../utils/project-root';
+import { env } from '../config/env';
+import * as path from 'path';
+import * as fs from 'fs/promises';
 import crypto from 'crypto';
 
 /**
@@ -16,16 +21,18 @@ export interface RegisterTenantClientRequest {
   details?: Prisma.InputJsonValue;
 }
 
-/**
- * Interface for creating a new tenant (legacy - use types from tenant-types.ts)
- */
-export interface CreateTenantRequest {
-  name: string;
-  slug: string;
-  type: TenantType;
-  logoUrl?: string;
-  website?: string;
-}
+/** Champs d'une agence exposables sans authentification. */
+const PUBLIC_TENANT_SELECT = {
+  id: true,
+  name: true,
+  slug: true,
+  type: true,
+  logoUrl: true,
+  website: true,
+  brandingPrimaryColor: true,
+  city: true,
+  country: true
+} satisfies Prisma.TenantSelect;
 
 /**
  * Get tenant by ID (extended with new relationships)
@@ -36,8 +43,9 @@ export async function getTenantById(tenantId: string) {
   return prisma.tenant.findUnique({
     where: { id: tenantId },
     include: {
+      // Jamais `user: true` : l'objet User complet porte `passwordHash`.
       clients: {
-        include: { user: true }
+        include: { user: { select: { id: true, email: true, fullName: true } } }
       },
       modules: true,
       memberships: {
@@ -70,88 +78,22 @@ export async function getTenantById(tenantId: string) {
  * @returns Tenant or null
  */
 export async function getTenantBySlug(slug: string) {
+  // Route publique (vitrine, inscription d'un client) : uniquement ce qu'une
+  // agence affiche d'elle-meme. Ni membres, ni clients, ni abonnement.
   return prisma.tenant.findUnique({
     where: { slug },
-    include: {
-      memberships: {
-        include: { user: true }
-      }
-    }
+    select: PUBLIC_TENANT_SELECT
   });
 }
 
-/**
- * Create a new tenant (extended with new fields)
- * @param data - Tenant creation data
- * @param actorUserId - User ID creating the tenant (for audit log)
- * @returns Created tenant
- */
-export async function createTenant(
-  data: CreateTenantRequest | import('../types/tenant-types').CreateTenantRequest,
-  actorUserId?: string
-) {
-  // Check if slug already exists
-  const existingTenant = await prisma.tenant.findUnique({
-    where: { slug: 'slug' in data ? data.slug : generateSlugFromName(data.name) }
-  });
-
-  if (existingTenant) {
-    throw new Error('Un tenant avec ce slug existe déjà.');
-  }
-
-  // Check if subdomain already exists (if provided)
-  if ('subdomain' in data && data.subdomain) {
-    const existingSubdomain = await prisma.tenant.findUnique({
-      where: { subdomain: data.subdomain }
-    });
-    if (existingSubdomain) {
-      throw new Error('Ce sous-domaine est déjà utilisé.');
-    }
-  }
-
-  const slug = 'slug' in data ? data.slug : generateSlugFromName(data.name);
-  const tenant = await prisma.tenant.create({
-    data: {
-      name: data.name,
-      slug,
-      type: data.type,
-      logoUrl: 'logoUrl' in data ? data.logoUrl : undefined,
-      website: 'website' in data ? data.website : undefined,
-      isActive: true,
-      // New fields
-      legalName: 'legalName' in data ? data.legalName : undefined,
-      status: 'status' in data ? (data.status as TenantStatus) : TenantStatus.PENDING,
-      contactEmail: 'contactEmail' in data ? data.contactEmail : undefined,
-      contactPhone: 'contactPhone' in data ? data.contactPhone : undefined,
-      country: 'country' in data ? data.country : undefined,
-      city: 'city' in data ? data.city : undefined,
-      address: 'address' in data ? data.address : undefined,
-      brandingPrimaryColor: 'brandingPrimaryColor' in data ? data.brandingPrimaryColor : undefined,
-      subdomain: 'subdomain' in data ? data.subdomain : undefined,
-      customDomain: 'customDomain' in data ? data.customDomain : undefined
-    }
-  });
-
-  logger.info('Tenant created', { tenantId: tenant.id, slug: tenant.slug, type: tenant.type });
-
-  // Audit log
-  if (actorUserId) {
-    logAuditEvent({
-      actorUserId,
-      tenantId: tenant.id,
-      actionKey: AuditActionKey.TENANT_CREATED,
-      entityType: 'Tenant',
-      entityId: tenant.id
-    });
-  }
-
-  return tenant;
-}
+// La creation d'une agence passe par `provisionTenant`
+// (services/tenant-provisioning-service.ts) : agence, modules, abonnement,
+// socle comptable et administrateur en une seule transaction.
 
 /**
  * Generate slug from name
  */
-function generateSlugFromName(name: string): string {
+export function generateSlugFromName(name: string): string {
   return name
     .toLowerCase()
     .normalize('NFD')
@@ -747,15 +689,8 @@ export async function removeTenantClient(userId: string, tenantId: string) {
  */
 export async function listActiveTenants() {
   return prisma.tenant.findMany({
-    where: { isActive: true },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      type: true,
-      logoUrl: true,
-      website: true
-    },
+    where: { isActive: true, status: TenantStatus.ACTIVE },
+    select: PUBLIC_TENANT_SELECT,
     orderBy: { name: 'asc' }
   });
 }
@@ -990,4 +925,78 @@ export async function getOrCreateTenantClientFromContact(
     passwordResetToken,
     user: tenantClient.user
   };
+}
+
+// --- Lot G : logo d'agence -------------------------------------------------
+
+const LOGO_ALLOWED_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+const LOGO_MAX_SIZE_BYTES = 2 * 1024 * 1024;
+
+function extensionForLogoMimeType(mimeType: string): string {
+  switch (mimeType) {
+    case 'image/png':
+      return '.png';
+    case 'image/webp':
+      return '.webp';
+    default:
+      return '.jpg';
+  }
+}
+
+/**
+ * Enregistre le logo d'une agence et met a jour `Tenant.logoUrl`.
+ *
+ * Chemin de stockage : `uploads/properties/agency-logos/<tenantId>/<fichier>`.
+ * Un logo doit etre PUBLIC (affiche sans authentification sur la vitrine, le
+ * portail, l'e-mail...). `middleware/uploads-access-middleware.ts` (hors
+ * territoire de cet agent, lecture seule) classe `properties/<X>/<...>` comme
+ * public tant que le second segment n'est pas `documents` — c'est le cas ici
+ * (`agency-logos`), donc AUCUNE modification de ce middleware n'est
+ * necessaire. Une racine dediee (`tenants/<tenantId>/logo/...`) serait plus
+ * lisible mais demanderait d'y ajouter un cas ; voir le rapport de l'agent
+ * pour le detail exact du changement si ce choix est reconsidere.
+ */
+export async function uploadTenantLogo(tenantId: string, file: Express.Multer.File, actorUserId?: string) {
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+  if (!tenant) {
+    throw new NotFoundError('Agence introuvable.');
+  }
+
+  if (!file.mimetype || !LOGO_ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+    throw new BadRequestError('Logo invalide : formats acceptés PNG, JPEG ou WebP (SVG refusé).');
+  }
+  if (file.size > LOGO_MAX_SIZE_BYTES) {
+    throw new BadRequestError('Logo trop volumineux : 2 Mo maximum.');
+  }
+
+  const uploadDir = path.join(getUploadsRoot(env.UPLOADS_DIR), 'properties', 'agency-logos', tenantId);
+  await fs.mkdir(uploadDir, { recursive: true });
+
+  const originalExtension = path.extname(file.originalname).toLowerCase();
+  const fileExtension =
+    originalExtension && ['.png', '.jpg', '.jpeg', '.webp'].includes(originalExtension)
+      ? originalExtension
+      : extensionForLogoMimeType(file.mimetype);
+  const fileName = `${crypto.randomUUID()}${fileExtension}`;
+
+  await fs.writeFile(path.join(uploadDir, fileName), file.buffer);
+
+  const logoUrl = `/uploads/properties/agency-logos/${tenantId}/${fileName}`;
+
+  await prisma.tenant.update({ where: { id: tenantId }, data: { logoUrl } });
+
+  logger.info('Tenant logo uploaded', { tenantId, fileName });
+
+  if (actorUserId) {
+    logAuditEvent({
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.TENANT_UPDATED,
+      entityType: 'Tenant',
+      entityId: tenantId,
+      payload: { logoUploaded: true }
+    });
+  }
+
+  return { logoUrl };
 }

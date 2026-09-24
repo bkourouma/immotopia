@@ -45,9 +45,18 @@ export async function updateStatusHandler(req: Request, res: Response): Promise<
 export async function getStatusHistoryHandler(req: Request, res: Response): Promise<void> {
   try {
     const propertyId = req.params.id;
+    const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
 
-    const history = await getStatusHistory(propertyId, limit);
+    if (!tenantId) {
+      res.status(400).json({
+        success: false,
+        error: 'Tenant ID is required'
+      });
+      return;
+    }
+
+    const history = await getStatusHistory(propertyId, tenantId, limit);
 
     res.json({
       success: true,

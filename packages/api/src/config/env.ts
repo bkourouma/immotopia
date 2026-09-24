@@ -89,7 +89,12 @@ const envSchema = z
     PAYSECUREHUB_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
     // '1' autorise le simulateur en production (démonstration). Hors
     // production il est toujours disponible, quelle que soit cette valeur.
-    PAYMENT_GATEWAY_SIMULATOR: z.string().optional()
+    PAYMENT_GATEWAY_SIMULATOR: z.string().optional(),
+
+    // Prisma tenant guard (utils/prisma-tenant-guard-extension.ts).
+    // `warn` logs unscoped queries on tenant-owned models without blocking
+    // them; `enforce` throws. See env.example for the warn → enforce sequence.
+    TENANT_GUARD_MODE: z.enum(['off', 'warn', 'enforce']).default('warn')
   })
   // Unknown keys are preserved: many optional integrations still read
   // process.env directly (WhatsApp, SMTP, Twilio).

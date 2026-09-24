@@ -3,7 +3,8 @@ import type { PaymentGatewayConfig } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { env } from '../../config/env';
 import { t } from '../../i18n';
-import { BadRequestError } from '../../middleware/error-middleware';
+import { BadRequestError, NotFoundError } from '../../middleware/error-middleware';
+import { assertBelongsToTenant } from '../../utils/tenant-ownership';
 import { encryptSecret, isEncryptionAvailable, last4 } from './crypto';
 import { credentialsFrom, ensureCollectionAccountTx, loadConfig, paymentGatewaySimulatorAvailable } from './config';
 import { gatewayClientForMode } from './paysecurehub';
@@ -134,12 +135,17 @@ export async function updatePaymentGatewaySettings(
     input.treasuryAccountId !== undefined ? input.treasuryAccountId : (existing?.treasuryAccountId ?? null);
 
   if (treasuryAccountId) {
+    // Multi-tenant (AGENTS.md) : un compte d'une autre agence lève la même
+    // NotFoundError qu'un compte inexistant, sans rien confirmer.
+    await assertBelongsToTenant(prisma, 'treasuryAccount', treasuryAccountId, tenantId, {
+      message: 'Compte de trésorerie introuvable.'
+    });
     const account = await prisma.treasuryAccount.findFirst({
       where: { id: treasuryAccountId, tenantId },
       select: { kind: true, isActive: true }
     });
     if (!account) {
-      throw new BadRequestError('Compte de trésorerie introuvable.');
+      throw new NotFoundError('Compte de trésorerie introuvable.');
     }
     if (!account.isActive) {
       throw new BadRequestError('Ce compte de trésorerie est désactivé.');
@@ -149,7 +155,7 @@ export async function updatePaymentGatewaySettings(
     }
   }
 
-  const row = await prisma.$transaction(async tx => {
+  await prisma.$transaction(async tx => {
     // Contrat §1 : à l'activation, sans compte désigné, on ouvre (ou reprend)
     // le compte de collecte 5525.
     const resolvedTreasuryAccountId =
@@ -173,7 +179,9 @@ export async function updatePaymentGatewaySettings(
     });
   });
 
-  return toSettingsDto(row);
+  // Relu plutôt que construit depuis la ligne écrite : le libellé du compte
+  // de trésorerie (treasuryAccountLabel) fait partie de la réponse.
+  return getPaymentGatewaySettings(tenantId);
 }
 
 export async function testPaymentGatewayConnection(tenantId: string): Promise<{

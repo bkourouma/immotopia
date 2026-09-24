@@ -31,7 +31,6 @@ export function startOnlinePaymentReconciliationJob() {
       }
     },
     {
-      scheduled: true,
       timezone: 'UTC'
     }
   );

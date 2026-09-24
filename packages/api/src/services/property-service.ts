@@ -227,13 +227,42 @@ export async function createProperty(
     });
   }
 
-  // Calculate quality score (async, don't wait)
-  const { calculateAndStoreQualityScore } = await import('./property-quality-service');
-  calculateAndStoreQualityScore(property.id).catch(error => {
-    logger.warn('Failed to calculate quality score', { propertyId: property.id, error });
-  });
+  // Calculate quality score (async, don't wait). Only for tenant-scoped
+  // creations: calculateAndStoreQualityScore requires a tenantId to re-check
+  // ownership itself (defense in depth).
+  if (tenantId) {
+    const { calculateAndStoreQualityScore } = await import('./property-quality-service');
+    calculateAndStoreQualityScore(property.id, tenantId).catch(error => {
+      logger.warn('Failed to calculate quality score', { propertyId: property.id, error });
+    });
+  }
 
   return property as PropertyDetail;
+}
+
+/**
+ * Whether the caller may see a property, whatever its ownership type.
+ *
+ * The agency acting (`tenantId`) must own the property or hold an active
+ * mandate on it. Only a PUBLIC listing can be reached outside any agency: by
+ * its owner, or by anyone once published. Before this check, a CLIENT property
+ * was returned to any agency that knew its id.
+ */
+function canAccessProperty(
+  property: { ownershipType: PropertyOwnershipType; tenantId: string | null; ownerUserId: string | null; isPublished: boolean },
+  tenantId: string | null | undefined,
+  userId: string | null | undefined,
+  activeMandateTenantIds: string[]
+): boolean {
+  if (tenantId) {
+    return property.tenantId === tenantId || activeMandateTenantIds.includes(tenantId);
+  }
+
+  if (property.ownershipType === PropertyOwnershipType.PUBLIC) {
+    return Boolean(userId && property.ownerUserId === userId) || property.isPublished;
+  }
+
+  return Boolean(userId && property.ownerUserId === userId);
 }
 
 /**
@@ -276,6 +305,10 @@ export async function getPropertyById(
         },
         take: 10
       },
+      mandates: {
+        where: { isActive: true },
+        select: { tenantId: true }
+      },
       containerParent: true,
       containerChildren: {
         include: {
@@ -297,31 +330,22 @@ export async function getPropertyById(
     return null;
   }
 
-  // Tenant isolation check for tenant-owned properties
-  if (property.ownershipType === PropertyOwnershipType.TENANT) {
-    if (tenantId && property.tenantId !== tenantId) {
-      logger.warn('Property access denied - tenant mismatch', {
-        propertyId,
-        propertyTenantId: property.tenantId,
-        requestedTenantId: tenantId
-      });
-      return null;
-    }
+  const activeMandateTenantIds = property.mandates.map(mandate => mandate.tenantId);
+
+  if (!canAccessProperty(property, tenantId, userId, activeMandateTenantIds)) {
+    logger.warn('Property access denied', {
+      propertyId,
+      ownershipType: property.ownershipType,
+      propertyTenantId: property.tenantId,
+      requestedTenantId: tenantId
+    });
+    return null;
   }
 
-  // Ownership check for public properties
-  if (property.ownershipType === PropertyOwnershipType.PUBLIC) {
-    if (userId && property.ownerUserId !== userId && !property.isPublished) {
-      logger.warn('Property access denied - not owner and not published', {
-        propertyId,
-        propertyOwnerId: property.ownerUserId,
-        requestedUserId: userId
-      });
-      return null;
-    }
-  }
-
-  return property as PropertyDetail;
+  // Les mandats ne servaient qu'au controle d'acces : ils ne sortent pas.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { mandates: _mandates, ...detail } = property;
+  return detail as PropertyDetail;
 }
 
 /**
@@ -463,11 +487,17 @@ export async function updateProperty(
     });
   }
 
-  // Calculate quality score (async, don't wait)
-  const { calculateAndStoreQualityScore } = await import('./property-quality-service');
-  calculateAndStoreQualityScore(updated.id).catch(error => {
-    logger.warn('Failed to calculate quality score', { propertyId: updated.id, error });
-  });
+  // Calculate quality score (async, don't wait). Only when a tenant is known
+  // (the acting agency, or else the property's own owning tenant):
+  // calculateAndStoreQualityScore requires a tenantId to re-check ownership
+  // itself (defense in depth).
+  const qualityScoreTenantId = tenantId || updated.tenantId || null;
+  if (qualityScoreTenantId) {
+    const { calculateAndStoreQualityScore } = await import('./property-quality-service');
+    calculateAndStoreQualityScore(updated.id, qualityScoreTenantId).catch(error => {
+      logger.warn('Failed to calculate quality score', { propertyId: updated.id, error });
+    });
+  }
 
   return updated as PropertyDetail;
 }

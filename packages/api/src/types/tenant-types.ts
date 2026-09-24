@@ -47,10 +47,12 @@ export interface UpdateTenantRequest {
   country?: string;
   city?: string;
   address?: string;
-  brandingPrimaryColor?: string;
+  // `| null` (lot G3) : efface une valeur deja posee, comme la colonne Prisma
+  // (`String?`) le permet deja.
+  brandingPrimaryColor?: string | null;
   subdomain?: string;
   customDomain?: string;
-  logoUrl?: string;
+  logoUrl?: string | null;
   website?: string;
 }
 
@@ -85,4 +87,39 @@ export interface UpdateTenantModulesRequest {
     moduleKey: string;
     enabled: boolean;
   }>;
+}
+
+// --- Lot F : creation d'agence en un clic --------------------------------
+
+/** Corps de POST /api/admin/tenants (voir docs/architecture/PLAN-MULTI-TENANT.md, lot F2). */
+export interface ProvisionTenantRequest {
+  name: string;
+  adminFullName: string;
+  adminEmail: string;
+  planKey?: 'BASIC' | 'PRO' | 'ELITE';
+  billingCycle?: 'MONTHLY' | 'ANNUAL';
+  type?: TenantType;
+  modules?: Array<'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER'>;
+  legalName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  country?: string;
+  city?: string;
+  address?: string;
+  website?: string;
+  brandingPrimaryColor?: string;
+}
+
+/** Reponse de POST /api/admin/tenants. */
+export interface ProvisionTenantResult {
+  // `status` en `string` (pas l'enum local `TenantStatus` ci-dessus) : cette
+  // valeur vient de `@prisma/client`, un enum TypeScript distinct meme quand
+  // ses membres portent les memes noms — les deux ne s'assignent pas l'un a
+  // l'autre sans cast, et cette interface n'est qu'un DTO JSON.
+  tenant: { id: string; name: string; slug: string; type: TenantType; status: string };
+  modules: string[];
+  subscription: { planKey: string; billingCycle: string; status: string; currentPeriodEnd: string };
+  admin: { userId: string; email: string; fullName: string; existingUser: boolean };
+  invitation: { id: string; expiresAt: string; acceptUrl: string };
+  emailSent: boolean;
 }

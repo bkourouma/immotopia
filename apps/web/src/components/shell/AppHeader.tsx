@@ -7,6 +7,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { Breadcrumbs } from './Breadcrumbs';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { TenantSwitcher } from '../TenantSwitcher';
 import { t } from '../../i18n/t';
 
 const { Header: AntHeader } = Layout;
@@ -108,6 +109,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ onOpenNavigation }) => {
       </div>
 
       <Space size="middle" style={{ flexShrink: 0 }}>
+        <TenantSwitcher />
         <LanguageSwitcher />
         <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" trigger={['click']}>
           <Button

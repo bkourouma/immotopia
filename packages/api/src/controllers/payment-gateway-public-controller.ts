@@ -2,12 +2,16 @@ import { Request, Response } from 'express';
 import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 import { logger } from '../utils/logger';
 import { env } from '../config/env';
-import { prisma } from '../utils/database';
-import { reconcileCheckoutPublic } from '../lib/payment-gateway/checkout';
+import { currentLanguage, t } from '../i18n';
+import {
+  findSimulatorCheckout,
+  reconcileCheckoutPublic,
+  recordSimulatedOutcome
+} from '../lib/payment-gateway/checkout';
 
 /**
  * Points d'entrée publics du paiement en ligne — contrat §3.4. Montés dans
- * `index.ts` AVANT les routeurs qui imposent l'authentification.
+ * `app.ts` AVANT les routeurs qui imposent l'authentification.
  */
 
 function readCodePaiement(body: unknown): string | null {
@@ -45,11 +49,13 @@ export const paysecurehubIpnHandler = asyncHandler(async (req: Request, res: Res
   res.status(200).json({ received: true });
 });
 
-const OUTCOME_LABELS: Record<string, string> = {
-  success: 'SUCCESS',
-  failed: 'FAILED',
-  canceled: 'CANCELED'
-};
+// Map plutôt qu'objet littéral : 'constructor' ou '__proto__' dans l'URL ne
+// doivent pas tomber sur une propriété héritée d'Object.prototype.
+const OUTCOME_LABELS = new Map<string, 'SUCCESS' | 'FAILED' | 'CANCELED'>([
+  ['success', 'SUCCESS'],
+  ['failed', 'FAILED'],
+  ['canceled', 'CANCELED']
+]);
 
 function escapeHtml(value: string): string {
   return value
@@ -62,26 +68,33 @@ function escapeHtml(value: string): string {
 
 /**
  * Page HTML autonome du simulateur (contrat §3.4). Aucun script externe,
- * tout le texte inséré est échappé.
+ * tout le texte inséré est échappé, libellés traduits dans la langue de la
+ * requête (`Accept-Language`, middleware `resolveLanguage`).
+ *
+ * Sa propre Content-Security-Policy remplace celle posée par Helmet pour
+ * l'API : la directive `form-action 'self'` par défaut s'applique aussi à la
+ * redirection 303 qui suit la soumission, et bloquerait dans le navigateur le
+ * retour vers le frontend (autre origine).
  */
 export const simulatorPageHandler = asyncHandler(async (req: Request, res: Response) => {
   const { codePaiement } = req.params;
-  const checkout = await prisma.onlinePaymentCheckout.findFirst({
-    where: { codePaiement, mode: 'SIMULATOR' }
-  });
+  const checkout = await findSimulatorCheckout(codePaiement);
   if (!checkout) {
     throw new NotFoundError('Paiement introuvable.');
   }
 
-  const montant = escapeHtml(Number(checkout.amount).toLocaleString('fr-FR'));
-  const code = escapeHtml(checkout.codePaiement);
+  const language = currentLanguage();
+  const locale = language === 'ar' ? 'ar' : language === 'en' ? 'en-US' : 'fr-FR';
+  const montant = escapeHtml(Number(checkout.amount).toLocaleString(locale));
   const base = `/api/payment-gateway/simulator/${encodeURIComponent(checkout.codePaiement)}`;
+  const titre = escapeHtml(t('Simulateur PaySecureHub'));
 
   const html = `<!DOCTYPE html>
-<html lang="fr">
+<html lang="${language}" dir="${language === 'ar' ? 'rtl' : 'ltr'}">
 <head>
 <meta charset="utf-8">
-<title>Simulateur PaySecureHub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${titre}</title>
 <style>
   body { font-family: sans-serif; max-width: 480px; margin: 48px auto; padding: 0 16px; }
   button { display: block; width: 100%; margin-block-end: 12px; padding: 12px; font-size: 1rem; cursor: pointer; }
@@ -89,37 +102,42 @@ export const simulatorPageHandler = asyncHandler(async (req: Request, res: Respo
 </style>
 </head>
 <body>
-  <h1>Simulateur PaySecureHub</h1>
-  <p>Mode démonstration — aucun paiement réel.</p>
+  <h1>${titre}</h1>
+  <p>${escapeHtml(t('Mode démonstration — aucun paiement réel.'))}</p>
   <p class="amount">${montant} FCFA</p>
-  <p>Référence : ${code}</p>
-  <form method="POST" action="${base}/success"><button type="submit">Payer</button></form>
-  <form method="POST" action="${base}/failed"><button type="submit">Solde insuffisant</button></form>
-  <form method="POST" action="${base}/canceled"><button type="submit">Annuler</button></form>
+  <p>${escapeHtml(t('Référence : {{code}}', { code: checkout.codePaiement }))}</p>
+  <form method="POST" action="${base}/success"><button type="submit">${escapeHtml(t('Payer'))}</button></form>
+  <form method="POST" action="${base}/failed"><button type="submit">${escapeHtml(t('Solde insuffisant'))}</button></form>
+  <form method="POST" action="${base}/canceled"><button type="submit">${escapeHtml(t('Annuler'))}</button></form>
 </body>
 </html>`;
 
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'none'",
+      "style-src 'unsafe-inline'",
+      `form-action 'self' ${new URL(env.FRONTEND_URL).origin}`,
+      "base-uri 'none'",
+      "frame-ancestors 'none'"
+    ].join('; ')
+  );
   res.type('html').send(html);
 });
 
 export const simulatorActionHandler = asyncHandler(async (req: Request, res: Response) => {
   const { codePaiement, outcome } = req.params;
-  const mapped = OUTCOME_LABELS[outcome];
+  const mapped = OUTCOME_LABELS.get(outcome);
   if (!mapped) {
     throw new BadRequestError('Issue de simulation inconnue.');
   }
 
-  const checkout = await prisma.onlinePaymentCheckout.findFirst({
-    where: { codePaiement, mode: 'SIMULATOR' }
-  });
+  const checkout = await findSimulatorCheckout(codePaiement);
   if (!checkout) {
     throw new NotFoundError('Paiement introuvable.');
   }
 
-  await prisma.onlinePaymentCheckout.update({
-    where: { id: checkout.id },
-    data: { simulatedOutcome: mapped }
-  });
+  await recordSimulatedOutcome(checkout, mapped);
 
   try {
     await reconcileCheckoutPublic(codePaiement);

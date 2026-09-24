@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -98,11 +98,15 @@ function mount(url = '/tenant/payments') {
   );
 }
 
-let assignMock: ReturnType<typeof vi.spyOn>;
+// jsdom rend `window.location.assign` non configurable : la redirection passe
+// par un module dédié (`utils/external-redirect`), remplacé ici.
+const assignMock = vi.fn();
+vi.mock('../../utils/external-redirect', () => ({
+  redirectToExternalUrl: (url: string) => assignMock(url)
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();
-  assignMock = vi.spyOn(window.location, 'assign').mockImplementation(() => undefined);
 
   getInstallments.mockResolvedValue({
     data: {
@@ -121,10 +125,6 @@ beforeEach(() => {
     }
   });
   getOnlinePaymentAvailability.mockResolvedValue({ available: false, mode: null, feesPaidBy: null });
-});
-
-afterEach(() => {
-  assignMock.mockRestore();
 });
 
 describe('Portail locataire — sélection et paiement en ligne', () => {

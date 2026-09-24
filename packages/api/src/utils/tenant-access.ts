@@ -1,4 +1,4 @@
-import { MembershipStatus } from '@prisma/client';
+import { MembershipStatus, TenantStatus } from '@prisma/client';
 import { prisma } from './database';
 
 /**
@@ -25,6 +25,11 @@ export async function userHasTenantAccess(
     return true;
   }
 
+  const status = await getTenantStatus(tenantId);
+  if (status === null || status === TenantStatus.SUSPENDED) {
+    return false;
+  }
+
   const membership = await prisma.membership.findUnique({
     where: { userId_tenantId: { userId, tenantId } },
     select: { status: true }
@@ -40,4 +45,18 @@ export async function userHasTenantAccess(
   });
 
   return Boolean(client);
+}
+
+/**
+ * Status of a tenant, or null when it does not exist.
+ *
+ * Checked on every tenant-scoped request so that suspending an agency cuts
+ * access at once, including for users who log in again after the suspension.
+ */
+export async function getTenantStatus(tenantId: string): Promise<TenantStatus | null> {
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { status: true }
+  });
+  return tenant?.status ?? null;
 }

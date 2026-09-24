@@ -44,6 +44,7 @@
 
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
+import { assertBelongsToTenant } from '../../utils/tenant-ownership';
 import { badRequest, conflict, notFound } from '../errors';
 import {
   ensureOperationalChartOfAccountsTx,
@@ -315,6 +316,25 @@ export const createSupplierInvoiceTx: CreateSupplierInvoiceTx = async (tx, tenan
 
   if (params.lines.length === 0) {
     throw badRequest('Une facture doit porter au moins une ligne');
+  }
+
+  // Audit multi-tenant du 24 septembre 2026 (lot B1) : `siteId` et
+  // `costCategoryId` arrivent du corps de la requête, imputation par
+  // imputation — rien ici ne garantissait avant ce jour qu'ils désignaient un
+  // chantier et un poste de dépense de CETTE agence. Une agence pouvait
+  // imputer sa facture au chantier d'une autre, silencieusement.
+  //
+  // Vérifiés AVANT toute écriture (ni la facture, ni ses lignes) : la
+  // transaction reste atomique quel que soit l'ordre, mais un refus qui suit
+  // une écriture inutile laisserait croire à la lecture du code que c'est un
+  // rattrapage plutôt qu'un contrôle d'entrée.
+  for (const allocation of params.allocations) {
+    await assertBelongsToTenant(tx, 'constructionSite', allocation.siteId, tenantId, {
+      message: 'Chantier introuvable'
+    });
+    await assertBelongsToTenant(tx, 'costCategory', allocation.costCategoryId, tenantId, {
+      message: 'Poste de dépense introuvable'
+    });
   }
 
   // Discipline du defaut n°1 : chaque montant est arrondi avant d'entrer
@@ -616,7 +636,8 @@ export const validateSupplierInvoiceTx: ValidateSupplierInvoiceTx = async (
   }
 
   const updated = await tx.supplierInvoice.update({
-    where: { id: invoiceId },
+    // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+    where: { id: invoiceId, tenantId },
     data: {
       status: 'VALIDATED' as any,
       validatedByUserId,

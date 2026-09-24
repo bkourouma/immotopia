@@ -1,0 +1,48 @@
+/**
+ * Lance la suite E1 (isolation multi-tenant, lot E) sur une base DEDIEE.
+ *
+ * `npm run test:isolation` (package.json) appelle ce script plutot que
+ * d'enchainer les commandes en JSON, pour rester lisible et portable
+ * (Windows/PowerShell inclus — aucune syntaxe `VAR=valeur commande` qui ne
+ * marche pas sous cmd/PowerShell).
+ *
+ * `DATABASE_URL_TEST` est LA variable documentee (env.example) pour ce lot.
+ * `__tests__/setup.ts`, deja commit et partage par toute la suite, lit de son
+ * cote `TEST_DATABASE_URL` (nom different, convention preexistante) pour
+ * definir `DATABASE_URL` avant chaque fichier de test. On ne touche pas ce
+ * fichier partage : on lui fournit `TEST_DATABASE_URL` avec la MEME valeur
+ * que `DATABASE_URL_TEST`, pour que les deux conventions pointent sur la
+ * meme base.
+ *
+ * Si `DATABASE_URL_TEST` est absente, ce script ne fait rien (code 0) :
+ * `__tests__/integration/isolation.test.ts` s'auto-ignore alors via
+ * `describe.skip`, et `npm test` (qui decouvre ce fichier normalement, sans
+ * ce script) reste vert.
+ */
+const { execSync } = require('child_process');
+
+// Meme mecanisme que src/config/env.ts : charge packages/api/.env si present,
+// sans ecraser une variable deja fournie par l'environnement appelant.
+require('dotenv').config();
+
+const testDatabaseUrl = process.env.DATABASE_URL_TEST;
+
+if (!testDatabaseUrl) {
+  console.log(
+    'DATABASE_URL_TEST absente : suite isolation (E1) ignoree. ' +
+      'Voir env.example et __tests__/integration/isolation.test.ts.'
+  );
+  process.exit(0);
+}
+
+const env = {
+  ...process.env,
+  DATABASE_URL: testDatabaseUrl,
+  TEST_DATABASE_URL: testDatabaseUrl
+};
+
+console.log('Application des migrations sur la base de test isolation...');
+execSync('npx prisma migrate deploy', { stdio: 'inherit', env });
+
+console.log('Execution de la suite isolation (E1)...');
+execSync('npx jest __tests__/integration/isolation.test.ts', { stdio: 'inherit', env });

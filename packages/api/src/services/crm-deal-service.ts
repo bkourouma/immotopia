@@ -4,6 +4,7 @@ import { logAuditEvent } from './audit-service';
 import { CRM_ENTITY_TYPES } from '../types/audit-types';
 import { CreateDealRequest, UpdateDealRequest, DealFilters, DealDetail } from '../types/crm-types';
 import { CrmDealStage } from '@prisma/client';
+import { assertActiveMember } from './crm-contact-service';
 
 /**
  * Create a new deal
@@ -23,6 +24,11 @@ export async function createDeal(tenantId: string, data: CreateDealRequest, acto
 
   if (!contact) {
     throw new Error('Contact not found');
+  }
+
+  // The assignee must belong to this tenant (reference received in the request body)
+  if (data.assignedToUserId) {
+    await assertActiveMember(tenantId, data.assignedToUserId);
   }
 
   // Create deal with default NEW stage
@@ -352,6 +358,9 @@ export async function updateDeal(tenantId: string, dealId: string, data: UpdateD
     }
   }
   if (data.assignedToUserId !== undefined) {
+    if (data.assignedToUserId) {
+      await assertActiveMember(tenantId, data.assignedToUserId);
+    }
     updateData.assignedToUserId = data.assignedToUserId || null;
     if (data.assignedToUserId !== existingDeal.assignedToUserId) {
       changedFields.assignedToUserId = data.assignedToUserId;
@@ -373,7 +382,7 @@ export async function updateDeal(tenantId: string, dealId: string, data: UpdateD
 
   // Update deal
   const updatedDeal = await prisma.crmDeal.update({
-    where: { id: dealId },
+    where: { id: dealId, tenantId },
     data: updateData,
     include: {
       contact: {

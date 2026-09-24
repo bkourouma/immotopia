@@ -16,7 +16,7 @@ export async function loadConfig(tenantId: string): Promise<PaymentGatewayConfig
  * Une config est utilisable pour créer un paiement en ligne : active, et,
  * hors simulateur, avec un identifiant marchand et une clé API enregistrés.
  */
-export function isConfigUsable(config: PaymentGatewayConfig | null): boolean {
+export function isConfigUsable(config: PaymentGatewayConfig | null): config is PaymentGatewayConfig {
   if (!config || !config.isActive) return false;
   if (config.mode === 'SIMULATOR') return true;
   return Boolean(config.merchantId && config.apiKeyEncrypted);
@@ -29,6 +29,7 @@ export function credentialsFrom(config: PaymentGatewayConfig): GatewayCredential
     throw new BadRequestError("Le paiement en ligne n'est pas paramétré pour cette agence.");
   }
   return {
+    tenantId: config.tenantId,
     merchantId: config.merchantId ?? '',
     apiKey,
     baseUrl: env.PAYSECUREHUB_BASE_URL,

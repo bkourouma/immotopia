@@ -6,6 +6,12 @@
  */
 
 export interface GatewayCredentials {
+  /**
+   * Agence propriétaire de ce compte marchand. Le client réel ne l'envoie pas
+   * à l'agrégateur ; le simulateur s'en sert pour filtrer ses lectures par
+   * agence (garde multi-tenant, utils/prisma-tenant-guard-extension.ts).
+   */
+  tenantId: string;
   merchantId: string;
   /** Clé API en clair — jamais journalisée, jamais renvoyée par l'API. */
   apiKey: string;

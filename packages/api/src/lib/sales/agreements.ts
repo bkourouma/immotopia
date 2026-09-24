@@ -179,7 +179,7 @@ export async function updateAgreement(tenantId: string, agreementId: string, bod
   }
 
   const updated = await prisma.saleAgreement.update({
-    where: { id: row.id },
+    where: { id: row.id, tenantId },
     data: {
       price: input.price ?? undefined,
       depositAmount: input.depositAmount !== undefined ? input.depositAmount : undefined,
@@ -205,7 +205,7 @@ export async function signAgreement(
 
   const updated = await prisma.$transaction(async tx => {
     const result = await tx.saleAgreement.update({
-      where: { id: row.id },
+      where: { id: row.id, tenantId },
       data: { status: SaleAgreementStatus.SIGNED, signedAt: input.signedAt }
     });
     await setPropertyStatusTx(tx, {
@@ -248,7 +248,7 @@ export async function completeAgreement(
 
   const updated = await prisma.$transaction(async tx => {
     const result = await tx.saleAgreement.update({
-      where: { id: row.id },
+      where: { id: row.id, tenantId },
       data: { status: SaleAgreementStatus.COMPLETED, deedDate: input.deedDate }
     });
 
@@ -299,7 +299,7 @@ export async function cancelAgreement(
 
   const updated = await prisma.$transaction(async tx => {
     const result = await tx.saleAgreement.update({
-      where: { id: row.id },
+      where: { id: row.id, tenantId },
       data: {
         status: SaleAgreementStatus.CANCELLED,
         cancelledAt: new Date(),
@@ -357,7 +357,7 @@ export async function patchCondition(tenantId: string, conditionId: string, body
 
   const statusChanged = input.status !== undefined && input.status !== row.status;
   const updated = await prisma.saleAgreementCondition.update({
-    where: { id: row.id },
+    where: { id: row.id, tenantId },
     data: {
       label: input.label ?? undefined,
       dueDate: input.dueDate !== undefined ? input.dueDate : undefined,
@@ -375,7 +375,7 @@ export async function deleteCondition(tenantId: string, conditionId: string): Pr
   if (!agreement || agreement.status !== SaleAgreementStatus.DRAFT) {
     throw conflict('Une condition ne se supprime que tant que le compromis est en brouillon.');
   }
-  await prisma.saleAgreementCondition.delete({ where: { id: row.id } });
+  await prisma.saleAgreementCondition.delete({ where: { id: row.id, tenantId } });
 }
 
 // ---------------------------------------------------------------------------

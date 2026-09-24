@@ -1,6 +1,6 @@
 import { prisma } from '../utils/database';
 import { PropertyMatch } from '../types/crm-types';
-import { CrmDealPropertyStatus } from '@prisma/client';
+import { CrmDealPropertyStatus, PropertyStatus } from '@prisma/client';
 
 /**
  * Calculate match score for a property against deal criteria
@@ -172,10 +172,14 @@ export async function matchPropertiesForDeal(
   }
 
   // Get available properties for tenant
+  // Pre-existing bug: the lowercase 'available' never matches the
+  // PropertyStatus enum (AVAILABLE), so this filter silently returned zero
+  // rows for every tenant. Fixed alongside the tenant-isolation audit since
+  // it is a one-line, same-file, low-risk correction.
   const properties = await prisma.property.findMany({
     where: {
       tenantId,
-      status: 'available' // Only match available properties
+      status: PropertyStatus.AVAILABLE
     }
   });
 
@@ -194,8 +198,11 @@ export async function matchPropertiesForDeal(
         price: property.price ? Number(property.price) : null,
         locationZone: property.locationZone,
         rooms: property.rooms,
-        surface: property.surface ? Number(property.surface) : null,
-        type: property.type,
+        // Pre-existing bug: `surface`/`type` are not Property fields (the
+        // columns are `surfaceArea`/`propertyType`), so this always scored
+        // size/extras against `undefined`. Fixed alongside the isolation audit.
+        surface: property.surfaceArea ? Number(property.surfaceArea) : null,
+        type: property.propertyType,
         furnishingStatus: property.furnishingStatus
       }
     );
@@ -257,6 +264,17 @@ export async function addPropertyToShortlist(
     throw new Error('Property not found');
   }
 
+  // The owner contact, if supplied, is a reference received in the request
+  // body and must belong to the same tenant as the deal/property.
+  if (sourceOwnerContactId) {
+    const owner = await prisma.crmContact.findFirst({
+      where: { id: sourceOwnerContactId, tenantId }
+    });
+    if (!owner) {
+      throw new Error('Owner contact not found');
+    }
+  }
+
   // Check if already in shortlist
   const existing = await prisma.crmDealProperty.findUnique({
     where: {
@@ -271,7 +289,7 @@ export async function addPropertyToShortlist(
   if (existing) {
     // Update existing record
     return prisma.crmDealProperty.update({
-      where: { id: existing.id },
+      where: { id: existing.id, tenantId },
       data: {
         matchScore,
         matchExplanationJson: matchExplanation as any,
@@ -324,7 +342,7 @@ export async function updatePropertyMatchStatus(
   }
 
   return prisma.crmDealProperty.update({
-    where: { id: dealProperty.id },
+    where: { id: dealProperty.id, tenantId },
     data: { status }
   });
 }

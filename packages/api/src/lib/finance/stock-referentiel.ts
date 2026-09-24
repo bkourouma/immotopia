@@ -234,7 +234,8 @@ export const updateStockItemTx: UpdateStockItemTx = async (tx, tenantId, itemId,
   // jamais modifiée ici : c'est elle qu'on lit sur les bons déjà imprimés.
 
   const updated = await tx.stockItem.update({
-    where: { id: itemId },
+    // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+    where: { id: itemId, tenantId },
     data,
     include: { defaultCostCategory: { select: { label: true } } }
   });
@@ -372,7 +373,8 @@ export const updateStockLocationTx: UpdateStockLocationTx = async (tx, tenantId,
   // Zod de correction est `.strict()` et les refuse en 400 dès la frontière.
 
   const updated = await tx.stockLocation.update({
-    where: { id: locationId },
+    // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+    where: { id: locationId, tenantId },
     data,
     include: { site: { select: { name: true } } }
   });

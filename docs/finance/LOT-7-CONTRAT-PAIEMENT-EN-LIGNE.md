@@ -110,12 +110,22 @@ l'agence et par la tâche planifiée.
 4. Échec / annulation : paiement `FAILED` / `CANCELED`, checkout idem.
 5. Un checkout `FAILED` peut repasser `SUCCESS` (l'agrégateur corrige un échec
    déjà notifié) ; un checkout `SUCCESS` ne redescend jamais — un état contraire
-   le met en `REVIEW`.
+   le met en `REVIEW`. Tant que le paiement associé est `SUCCESS`, aucun état
+   contraire ultérieur ne le défait (le checkout reste en `REVIEW`) ; un retour
+   de l'agrégateur au succès repasse le checkout en `SUCCESS` sans réencaisser.
+   Au succès, `mm_operator` (déduit de `payments.serviceName`) et
+   `psp_transaction_id` sont reportés sur le paiement.
 6. Idempotent : rejouer un rapprochement déjà conclu ne réécrit rien. Verrou
    par ligne (`SELECT … FOR UPDATE`) ou mise à jour conditionnelle sur `status`.
 7. `EXPIRED` : la tâche planifiée passe en `EXPIRED` (et le paiement en
    `CANCELED`) un checkout toujours en attente 48 h après sa création, après une
    dernière vérification.
+8. Multi-tenant : l'IPN, le simulateur et la tâche planifiée retrouvent le
+   checkout hors contexte (lecture transverse par `codePaiement`), puis
+   rapprochent dans `runWithTenantContext({ tenantId: checkout.tenantId })`,
+   pour que le garde-fou Prisma contrôle chaque requête. Le checkout d'une
+   agence suspendue est encore rapproché (l'argent a été versé), mais le
+   portail et la page du simulateur lui sont fermés.
 
 ## 3. Points d'entrée
 
@@ -159,8 +169,9 @@ interface UpdatePaymentGatewaySettings {
 Refus 400 (message français, clé i18n) : activer en `LIVE` sans `merchantId`
 ou sans clé ; enregistrer une clé si `encryptionAvailable` est faux ; choisir
 `SIMULATOR` quand `simulatorAvailable` est faux ; compte de trésorerie
-inexistant, inactif, d'une autre agence ou d'une nature autre que
-`MOBILE_MONEY` / `BANK`.
+inactif ou d'une nature autre que `MOBILE_MONEY` / `BANK`. Un compte de
+trésorerie inexistant ou d'une autre agence donne 404 (même `NotFoundError`,
+`assertBelongsToTenant` — règle multi-tenant d'AGENTS.md).
 
 `POST /api/tenants/:tenantId/settings/payment-gateway/test` (`TENANT_SETTINGS_EDIT`)
 → `{ ok: boolean; message: string; balance: { amount: number; currency: string; at: string } | null }`.
@@ -247,7 +258,11 @@ Simulateur — monté seulement si `simulatorAvailable` :
 
 - `GET /api/payment-gateway/simulator/:codePaiement` : page HTML autonome
   (montant, libellé, trois boutons : Payer, Solde insuffisant, Annuler). HTML
-  échappé, aucun script externe.
+  échappé, aucun script externe, libellés traduits selon `Accept-Language`.
+  Sa propre `Content-Security-Policy` autorise `form-action 'self'` et
+  l'origine de `FRONTEND_URL` : sans elle, la directive par défaut de Helmet
+  bloquerait dans le navigateur la redirection 303 vers le frontend. 404 pour
+  un code inconnu, un checkout `LIVE` ou une agence suspendue.
 - `POST /api/payment-gateway/simulator/:codePaiement/:outcome`
   (`success` | `failed` | `canceled`) : enregistre `simulatedOutcome`, lance
   `reconcileCheckout`, redirige (303) vers `Url_Retour`.

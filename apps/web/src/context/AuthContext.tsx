@@ -1,13 +1,26 @@
-import React, { createContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { login as loginApi, logout as logoutApi, getMe } from '../services/auth-service';
-import { User, LoginCredentials, AuthContextType, TenantMembership, TenantClient } from '../types/auth-types';
+import { User, LoginCredentials, AuthContextType, TenantMembership, TenantClient, AvailableTenant } from '../types/auth-types';
 import apiClient, { refreshSession } from '../utils/api-client';
+import { getStoredActiveTenantId, setStoredActiveTenantId } from '../utils/active-tenant';
 import { t } from '../i18n/t';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 interface AuthProviderProps {
   children: ReactNode;
+}
+
+/** Dédoublonne par agence, en gardant l'ordre d'apparition (le plus récent d'abord, `my-memberships` trie déjà ainsi). */
+function dedupeTenants(tenants: Array<{ id: string; name: string; slug: string } | undefined>): AvailableTenant[] {
+  const seen = new Set<string>();
+  const result: AvailableTenant[] = [];
+  for (const tenant of tenants) {
+    if (!tenant?.id || seen.has(tenant.id)) continue;
+    seen.add(tenant.id);
+    result.push({ id: tenant.id, name: tenant.name, slug: tenant.slug || tenant.id });
+  }
+  return result;
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
@@ -18,12 +31,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [tenantMembership, setTenantMembership] = useState<TenantMembership | null>(null);
   const [tenantClient, setTenantClient] = useState<TenantClient | null>(null);
   const [isLoadingMembership, setIsLoadingMembership] = useState(false);
+  const [availableTenants, setAvailableTenants] = useState<AvailableTenant[]>([]);
+
+  /**
+   * Copie brute de la dernière réponse `/tenants/my-memberships`, gardée pour
+   * que `switchTenant` change d'agence sans nouvel appel réseau : c'est un
+   * changement de sélection parmi des données déjà en main, pas une
+   * resynchronisation.
+   */
+  const rawMembershipsRef = useRef<{ asMember: any[]; asClient: any[] }>({ asMember: [], asClient: [] });
 
   // Fetch tenant membership and client status
   const refreshMembership = async (): Promise<void> => {
     if (!user || user.globalRole === 'SUPER_ADMIN') {
       setTenantMembership(null);
       setTenantClient(null);
+      setAvailableTenants([]);
+      rawMembershipsRef.current = { asMember: [], asClient: [] };
       return;
     }
 
@@ -34,25 +58,44 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const memberships = response.data.data;
         const asClient = Array.isArray(memberships.asClient) ? memberships.asClient : [];
         const asMember = Array.isArray(memberships.asMember) ? memberships.asMember : [];
+        rawMembershipsRef.current = { asMember, asClient };
+
+        // Agence mémorisée par un geste explicite du sélecteur (voir
+        // `utils/active-tenant.ts`) : elle prime sur « la première active »,
+        // tant qu'elle désigne encore une agence à laquelle l'utilisateur
+        // appartient toujours.
+        const storedTenantId = getStoredActiveTenantId();
 
         // Tenant clients: prioritize OWNER/RENTER profiles for portal routing.
+        const portalCandidates = asClient.filter(
+          (client: any) => client?.clientType === 'OWNER' || client?.clientType === 'RENTER'
+        );
         const prioritizedClient =
-          asClient.find((client: any) => client?.clientType === 'OWNER' || client?.clientType === 'RENTER') ||
+          (storedTenantId && portalCandidates.find((client: any) => client?.tenant?.id === storedTenantId)) ||
+          portalCandidates[0] ||
           asClient[0];
 
         if (prioritizedClient?.tenant?.id && prioritizedClient?.clientType) {
           setTenantClient({
             id: prioritizedClient.id,
             tenantId: prioritizedClient.tenant.id,
-            clientType: prioritizedClient.clientType as 'OWNER' | 'RENTER' | 'BUYER' | 'CO_OWNER'
+            clientType: prioritizedClient.clientType as 'OWNER' | 'RENTER' | 'BUYER' | 'CO_OWNER',
+            tenant: {
+              id: prioritizedClient.tenant.id,
+              name: prioritizedClient.tenant.name,
+              slug: prioritizedClient.tenant.slug || prioritizedClient.tenant.id
+            }
           });
         } else {
           setTenantClient(null);
         }
 
         // Tenant collaborators: prefer ACTIVE membership first.
+        const activeMembers = asMember.filter((membership: any) => membership?.status === 'ACTIVE');
         const prioritizedMembership =
-          asMember.find((membership: any) => membership?.status === 'ACTIVE') || asMember[0];
+          (storedTenantId && activeMembers.find((membership: any) => membership?.tenant?.id === storedTenantId)) ||
+          activeMembers[0] ||
+          asMember[0];
 
         if (prioritizedMembership?.tenant?.id) {
           setTenantMembership({
@@ -68,16 +111,77 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         } else {
           setTenantMembership(null);
         }
+
+        // Le sélecteur porte sur UNE seule liste à la fois — collaborateur ou
+        // client de portail, jamais les deux : le persona ne change pas en
+        // cours de session (voir `resolvePersona`), seule l'agence courante
+        // à l'intérieur du persona change.
+        if (prioritizedMembership?.tenant?.id) {
+          setAvailableTenants(dedupeTenants(activeMembers.map((membership: any) => membership?.tenant)));
+        } else if (prioritizedClient?.tenant?.id) {
+          setAvailableTenants(dedupeTenants(portalCandidates.map((client: any) => client?.tenant)));
+        } else {
+          setAvailableTenants([]);
+        }
       } else {
         setTenantMembership(null);
         setTenantClient(null);
+        setAvailableTenants([]);
+        rawMembershipsRef.current = { asMember: [], asClient: [] };
       }
     } catch (error: any) {
       console.error('Error fetching membership:', error);
       setTenantMembership(null);
       setTenantClient(null);
+      setAvailableTenants([]);
+      rawMembershipsRef.current = { asMember: [], asClient: [] };
     } finally {
       setIsLoadingMembership(false);
+    }
+  };
+
+  /**
+   * Change l'agence courante parmi `availableTenants`, depuis les données
+   * déjà chargées par `refreshMembership` — pas de nouvel appel réseau.
+   * `<TenantSwitcher>` enchaîne avec `queryClient.clear()` et une navigation
+   * vers le tableau de bord ; `AuthContext` n'a pas connaissance de React
+   * Query et ne s'en charge pas.
+   */
+  const switchTenant = (tenantId: string): void => {
+    const { asMember, asClient } = rawMembershipsRef.current;
+
+    const membership = asMember.find((m: any) => m?.status === 'ACTIVE' && m?.tenant?.id === tenantId);
+    if (membership) {
+      setStoredActiveTenantId(tenantId);
+      setTenantMembership({
+        id: membership.id,
+        tenantId: membership.tenant.id,
+        tenant: {
+          id: membership.tenant.id,
+          name: membership.tenant.name,
+          slug: membership.tenant.slug || membership.tenant.id
+        },
+        status: membership.status
+      });
+      return;
+    }
+
+    const client = asClient.find(
+      (c: any) =>
+        c?.tenant?.id === tenantId && (c?.clientType === 'OWNER' || c?.clientType === 'RENTER')
+    );
+    if (client) {
+      setStoredActiveTenantId(tenantId);
+      setTenantClient({
+        id: client.id,
+        tenantId: client.tenant.id,
+        clientType: client.clientType,
+        tenant: {
+          id: client.tenant.id,
+          name: client.tenant.name,
+          slug: client.tenant.slug || client.tenant.id
+        }
+      });
     }
   };
 
@@ -259,6 +363,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     tenantMembership,
     tenantClient,
     isLoadingMembership,
+    availableTenants,
+    activeTenantId: tenantMembership?.tenantId ?? tenantClient?.tenantId ?? null,
     login,
     logout,
     register: async () => {
@@ -266,7 +372,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     },
     refreshToken: refresh,
     clearError,
-    refreshMembership
+    refreshMembership,
+    switchTenant
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

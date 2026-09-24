@@ -32,9 +32,19 @@ npm run test:web     # tests frontend
 
 **Isolation multi-tenant.** Toute requête sur une entité appartenant à un tenant
 est filtrée par `tenantId`. Pour les biens et leurs enfants, passer par
-`packages/api/src/utils/property-tenant-guard.ts`. Une extension Prisma
-(`prisma-tenant-guard-extension.ts`) signale les requêtes non filtrées dans les
-logs : ne pas ignorer ces avertissements.
+`packages/api/src/utils/property-tenant-guard.ts`. Tout identifiant reçu dans
+une requête (`siteId`, `contactId`, utilisateur assigné…) est vérifié comme
+appartenant à l'agence avant écriture — `utils/tenant-ownership.ts`
+(`assertBelongsToTenant`) — et un utilisateur désigné doit être membre ACTIF de
+l'agence. Une référence d'une autre agence lève la même `NotFoundError` qu'un
+objet inexistant. Une extension Prisma (`prisma-tenant-guard-extension.ts`,
+mode `TENANT_GUARD_MODE`) contrôle chaque requête, id compris, dans le contexte
+d'agence posé par `requireTenantAccess` et les portails : ne pas ignorer ses
+avertissements. Jamais de `include: { user: true }` : toujours un `select` sur
+`User` (l'objet complet porte `passwordHash`). Une nouvelle route passe
+`__tests__/unit/routes-inventory.test.ts`, un nouveau modèle
+`__tests__/unit/schema-tenant-coverage.test.ts` ; l'étanchéité de bout en bout
+se vérifie avec `npm run test:isolation` (base dédiée `DATABASE_URL_TEST`).
 
 **Erreurs.** Les services lèvent des erreurs typées de
 `middleware/error-middleware` ; les contrôleurs sont enveloppés dans

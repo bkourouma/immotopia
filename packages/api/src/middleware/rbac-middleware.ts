@@ -36,7 +36,7 @@ declare module 'express-serve-static-core' {
  * @returns Express middleware function
  */
 export function requirePermission(permissionKey: string) {
-  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const middleware = async function requirePermissionCheck(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       // User must be authenticated
       if (!req.user?.userId) {
@@ -73,6 +73,11 @@ export function requirePermission(permissionKey: string) {
       });
     }
   };
+
+  // La cle reste lisible sur le middleware monte : l'inventaire des routes
+  // (__tests__/unit/routes-inventory.test.ts) reconnait ainsi une garde de
+  // plateforme sans avoir a mocker ce module.
+  return Object.assign(middleware, { permissionKey });
 }
 
 /**

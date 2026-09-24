@@ -174,7 +174,10 @@ export async function reverseDocumentEntryTx(
       fundsNature: line.fundsNature
     }))
   });
-  await tx.journalEntry.update({ where: { id: original.id }, data: { voidedByEntryId: entryId } });
+  await tx.journalEntry.update({
+    where: { id: original.id, tenantId: params.tenantId },
+    data: { voidedByEntryId: entryId }
+  });
 }
 
 type MovementType =

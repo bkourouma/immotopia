@@ -24,3 +24,19 @@ export function mapProviderState(state: string | null | undefined): MappedGatewa
   logger.warn('PaySecureHub : état payments.state inconnu, traité comme en attente', { state });
   return 'PENDING';
 }
+
+/**
+ * Moyen réel utilisé sur la page PaySecureHub (`payments.serviceName`) ->
+ * `RentalPayment.mm_operator` — contrat §1. La carte bancaire et tout nom
+ * inconnu retombent sur `OTHER`.
+ */
+export function operatorFromServiceName(
+  serviceName: string | null | undefined
+): 'ORANGE' | 'MTN' | 'MOOV' | 'WAVE' | 'OTHER' {
+  const normalized = (serviceName ?? '').toUpperCase();
+  if (normalized.includes('WAVE')) return 'WAVE';
+  if (normalized.includes('ORANGE')) return 'ORANGE';
+  if (normalized.includes('MTN')) return 'MTN';
+  if (normalized.includes('MOOV')) return 'MOOV';
+  return 'OTHER';
+}

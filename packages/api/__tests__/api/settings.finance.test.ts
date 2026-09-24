@@ -89,7 +89,16 @@ describe('Paramètres financiers de l’agence', () => {
   });
 
   it('protège la lecture et l’écriture par les permissions des paramètres de l’agence', () => {
-    expect(mockPermissionsAsked).toEqual(['TENANT_SETTINGS_VIEW', 'TENANT_SETTINGS_EDIT']);
+    // Les deux premières gardent `…/settings/finance` ; les trois suivantes les
+    // paramètres « Paiement en ligne » du lot 7, montés sur le même routeur
+    // (lecture, écriture, test de connexion) avec les mêmes permissions.
+    expect(mockPermissionsAsked).toEqual([
+      'TENANT_SETTINGS_VIEW',
+      'TENANT_SETTINGS_EDIT',
+      'TENANT_SETTINGS_VIEW',
+      'TENANT_SETTINGS_EDIT',
+      'TENANT_SETTINGS_EDIT'
+    ]);
   });
 
   it('renvoie les valeurs par défaut sans rien écrire pour une agence jamais paramétrée', async () => {

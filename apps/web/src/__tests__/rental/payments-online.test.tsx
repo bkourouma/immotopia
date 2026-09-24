@@ -117,7 +117,9 @@ describe('Paiements de l’agence — badge « En ligne »', () => {
 
     mountListe([paiement({ onlineCheckout: checkoutSummary() })]);
 
-    expect(await screen.findByText('En ligne', {}, { timeout: 8000 })).toBeInTheDocument();
+    // Sélecteur sur l'étiquette : l'en-tête de colonne « En ligne » existe aussi
+    // (deux fois, antd le recopie dans sa ligne de mesure quand le tableau défile).
+    expect(await screen.findByText('En ligne', { selector: '.ant-tag' }, { timeout: 8000 })).toBeInTheDocument();
     // Le paiement lui-même ET son checkout affichent chacun « En attente » :
     // l'un dans la colonne Statut, l'autre dans la colonne En ligne.
     expect(screen.getAllByText('En attente').length).toBeGreaterThan(0);
@@ -131,15 +133,17 @@ describe('Paiements de l’agence — badge « En ligne »', () => {
   it('ne propose pas de vérifier un checkout déjà réussi', async () => {
     mountListe([paiement({ onlineCheckout: checkoutSummary({ status: 'SUCCESS' }) })]);
 
-    await screen.findByText('En ligne', {}, { timeout: 8000 });
+    await screen.findByText('En ligne', { selector: '.ant-tag' }, { timeout: 8000 });
     expect(screen.getByText('Réussi')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Vérifier le statut/ })).not.toBeInTheDocument();
   });
 
   it('n’affiche rien pour un paiement qui n’est pas passé par le portail', async () => {
     mountListe([paiement()]);
-    await waitFor(() => expect(listPayments).toHaveBeenCalled());
-    expect(screen.queryByText('En ligne')).not.toBeInTheDocument();
+    // Attendre la ligne elle-même, pas seulement l'appel : sinon on ne
+    // vérifierait que le squelette de chargement.
+    await screen.findByRole('cell', { name: 'Mobile Money' }, { timeout: 8000 });
+    expect(screen.queryByText('En ligne', { selector: '.ant-tag' })).not.toBeInTheDocument();
   });
 });
 

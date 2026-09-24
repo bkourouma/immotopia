@@ -1,5 +1,6 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { NotFoundError } from '../middleware/error-middleware';
 import { getTemplateByType } from './property-template-service';
 
 /**
@@ -13,11 +14,34 @@ const QUALITY_WEIGHTS = {
 };
 
 /**
+ * Whether a property belongs to `tenantId`, directly or through an active
+ * mandate. Mirrors `canAccessProperty` in `property-service.ts` for the
+ * tenant-scoped case (no anonymous/public access here: quality scoring is an
+ * agency-side feature).
+ */
+function belongsToTenant(
+  property: { tenantId: string | null; mandates: { tenantId: string }[] },
+  tenantId: string
+): boolean {
+  return property.tenantId === tenantId || property.mandates.some(mandate => mandate.tenantId === tenantId);
+}
+
+/**
  * Calculate quality score for a property
+ *
+ * Defense in depth: the property must belong to `tenantId`, directly or
+ * through an active mandate (same rule as `canAccessProperty` in
+ * `property-service.ts`). Today only the controller checks tenant ownership
+ * before calling this — this function checks it again itself so it stays
+ * safe if ever called from elsewhere without that prior check.
  * @param propertyId - Property ID
+ * @param tenantId - Tenant the caller is authorised for
  * @returns Quality score (0-100) and suggestions
  */
-export async function calculateQualityScore(propertyId: string): Promise<{
+export async function calculateQualityScore(
+  propertyId: string,
+  tenantId: string
+): Promise<{
   score: number;
   suggestions: string[];
   breakdown: {
@@ -37,12 +61,16 @@ export async function calculateQualityScore(propertyId: string): Promise<{
           isRequired: true,
           isValid: true
         }
+      },
+      mandates: {
+        where: { isActive: true },
+        select: { tenantId: true }
       }
     }
   });
 
-  if (!property) {
-    throw new Error('Property not found');
+  if (!property || !belongsToTenant(property, tenantId)) {
+    throw new NotFoundError('Bien introuvable.');
   }
 
   // Get template for required fields
@@ -296,6 +324,11 @@ async function generateSuggestions(
 
 /**
  * Store quality score in database
+ *
+ * `PropertyQualityScore` carries no `tenantId` of its own (it is a child of
+ * `Property`, reached only through it), so the tenant check happens on the
+ * property before this is called — see `calculateQualityScore` and
+ * `calculateAndStoreQualityScore`.
  * @param propertyId - Property ID
  * @param score - Quality score (0-100)
  * @param suggestions - Improvement suggestions
@@ -314,9 +347,22 @@ export async function storeQualityScore(propertyId: string, score: number, sugge
 /**
  * Get latest quality score for a property
  * @param propertyId - Property ID
+ * @param tenantId - Tenant the caller is authorised for
  * @returns Latest quality score or null
  */
-export async function getLatestQualityScore(propertyId: string) {
+export async function getLatestQualityScore(propertyId: string, tenantId: string) {
+  const property = await prisma.property.findUnique({
+    where: { id: propertyId },
+    select: {
+      tenantId: true,
+      mandates: { where: { isActive: true }, select: { tenantId: true } }
+    }
+  });
+
+  if (!property || !belongsToTenant(property, tenantId)) {
+    throw new NotFoundError('Bien introuvable.');
+  }
+
   const score = await prisma.propertyQualityScore.findFirst({
     where: { propertyId },
     orderBy: { calculatedAt: 'desc' }
@@ -328,10 +374,11 @@ export async function getLatestQualityScore(propertyId: string) {
 /**
  * Calculate and store quality score
  * @param propertyId - Property ID
+ * @param tenantId - Tenant the caller is authorised for
  * @returns Quality score result
  */
-export async function calculateAndStoreQualityScore(propertyId: string) {
-  const result = await calculateQualityScore(propertyId);
+export async function calculateAndStoreQualityScore(propertyId: string, tenantId: string) {
+  const result = await calculateQualityScore(propertyId, tenantId);
   await storeQualityScore(propertyId, result.score, result.suggestions);
 
   logger.info('Property quality score calculated', {

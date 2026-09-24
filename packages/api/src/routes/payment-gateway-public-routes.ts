@@ -9,7 +9,7 @@ import {
 
 /**
  * Points d'entrée publics du paiement en ligne (lot 7) — contrat §3.4.
- * Monté dans `index.ts` AVANT les routeurs qui imposent l'authentification,
+ * Monté dans `app.ts` AVANT les routeurs qui imposent l'authentification,
  * comme `whatsapp.webhook.route.ts`.
  */
 const router = Router();

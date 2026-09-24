@@ -4,12 +4,14 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
 import { env } from '../../config/env';
+import { runWithTenantContext } from '../../utils/tenant-context';
 import { AppError, BadRequestError, ErrorCode, NotFoundError } from '../../middleware/error-middleware';
 import { roundMoney } from '../finance/money';
 import { updatePaymentStatusTx, allocatePaymentTx } from '../../services/rental-payment-service';
 import { credentialsFrom, ensureCollectionAccountTx, isConfigUsable, loadConfig } from './config';
 import { gatewayClientForMode } from './paysecurehub';
 import { GatewayError } from './types';
+import { operatorFromServiceName } from './status-mapping';
 import type { ProviderStatus } from './types';
 
 /**
@@ -247,7 +249,7 @@ export async function startCheckout(
   const codePaiement = generateCodePaiement();
 
   const { payment, checkout } = await prisma.$transaction(async tx => {
-    const treasuryAccountId = config!.treasuryAccountId ?? (await ensureCollectionAccountTx(tx, tenantId));
+    const treasuryAccountId = config.treasuryAccountId ?? (await ensureCollectionAccountTx(tx, tenantId));
 
     const payment = await tx.rentalPayment.create({
       data: {
@@ -273,7 +275,7 @@ export async function startCheckout(
         leaseId,
         renterClientId: tenantClientId,
         provider: 'PAYSECUREHUB',
-        mode: config!.mode,
+        mode: config.mode,
         codePaiement,
         amount: new Decimal(amount),
         currency: 'FCFA',
@@ -290,8 +292,8 @@ export async function startCheckout(
   // temps d'attendre PaySecureHub.
   try {
     const renter = await renterContactInfo(tenantId, tenantClientId);
-    const client = gatewayClientForMode(config!.mode);
-    const credentials = credentialsFrom(config!);
+    const client = gatewayClientForMode(config.mode);
+    const credentials = credentialsFrom(config);
     const result = await client.buildAway(credentials, {
       codePaiement,
       nomUsager: renter.nom,
@@ -307,15 +309,18 @@ export async function startCheckout(
     });
 
     const updated = await prisma.onlinePaymentCheckout.update({
-      where: { id: checkout.id },
+      where: { id: checkout.id, tenantId: checkout.tenantId },
       data: { checkoutUrl: result.url, providerToken: result.tokens }
     });
     return toOnlineCheckoutDto(updated);
   } catch (error) {
     await prisma.$transaction([
-      prisma.rentalPayment.update({ where: { id: payment.id }, data: { status: 'FAILED', failed_at: new Date() } }),
+      prisma.rentalPayment.update({
+        where: { id: payment.id, tenant_id: tenantId },
+        data: { status: 'FAILED', failed_at: new Date() }
+      }),
       prisma.onlinePaymentCheckout.update({
-        where: { id: checkout.id },
+        where: { id: checkout.id, tenantId: checkout.tenantId },
         data: {
           status: 'FAILED',
           failureMessage: error instanceof GatewayError ? error.message : 'Erreur agrégateur.'
@@ -378,7 +383,7 @@ async function reconcileCheckoutRow(checkout: CheckoutRow): Promise<CheckoutRow>
     providerStatus = await client.getStatus(credentials, checkout.codePaiement);
   } catch (error) {
     await prisma.onlinePaymentCheckout.update({
-      where: { id: checkout.id },
+      where: { id: checkout.id, tenantId: checkout.tenantId },
       data: { checkAttempts: { increment: 1 }, lastCheckedAt: new Date() }
     });
     logger.warn('reconcileCheckout: agrégateur injoignable', {
@@ -414,13 +419,13 @@ async function applyProviderStatus(checkout: CheckoutRow, ps: ProviderStatus): P
 
   if (target === null || checkout.status === target) {
     // En attente, ou conclusion déjà écrite (rejeu idempotent — contrat règle 6).
-    return prisma.onlinePaymentCheckout.update({ where: { id: checkout.id }, data: bookkeeping });
+    return prisma.onlinePaymentCheckout.update({ where: { id: checkout.id, tenantId }, data: bookkeeping });
   }
 
   if (checkout.status === 'SUCCESS') {
     // Règle 5 : un succès déjà conclu ne redescend jamais — l'état contraire va en REVIEW.
     return prisma.onlinePaymentCheckout.update({
-      where: { id: checkout.id },
+      where: { id: checkout.id, tenantId },
       data: {
         ...bookkeeping,
         status: 'REVIEW',
@@ -432,7 +437,7 @@ async function applyProviderStatus(checkout: CheckoutRow, ps: ProviderStatus): P
   if (target === 'SUCCESS') {
     if (ps.amount !== null && Math.round(ps.amount) !== Math.round(Number(checkout.amount))) {
       return prisma.onlinePaymentCheckout.update({
-        where: { id: checkout.id },
+        where: { id: checkout.id, tenantId },
         data: {
           ...bookkeeping,
           status: 'REVIEW',
@@ -447,7 +452,24 @@ async function applyProviderStatus(checkout: CheckoutRow, ps: ProviderStatus): P
         data: { ...bookkeeping, status: 'SUCCESS', completedAt: new Date() }
       });
 
-      if (claim.count === 1) {
+      // Un checkout en REVIEW après un succès déjà encaissé (règle 5) revient
+      // à SUCCESS sans rejouer l'encaissement : le paiement est déjà SUCCESS
+      // et ses affectations sont en place.
+      const payment = await tx.rentalPayment.findFirst({
+        where: { id: checkout.paymentId, tenant_id: tenantId },
+        select: { status: true }
+      });
+
+      if (claim.count === 1 && payment?.status !== RentalPaymentStatus.SUCCESS) {
+        // Contrat §1 : le moyen réel (Wave, Orange…) et la référence de
+        // l'agrégateur sont reportés sur le paiement au succès.
+        await tx.rentalPayment.update({
+          where: { id: checkout.paymentId, tenant_id: tenantId },
+          data: {
+            mm_operator: operatorFromServiceName(ps.serviceName),
+            ...(ps.transactionId ? { psp_transaction_id: ps.transactionId } : {})
+          }
+        });
         await updatePaymentStatusTx(tx, tenantId, checkout.paymentId, RentalPaymentStatus.SUCCESS);
         try {
           await allocatePaymentTx(
@@ -468,12 +490,31 @@ async function applyProviderStatus(checkout: CheckoutRow, ps: ProviderStatus): P
         }
       }
 
-      return tx.onlinePaymentCheckout.findFirstOrThrow({ where: { id: checkout.id } });
+      return tx.onlinePaymentCheckout.findFirstOrThrow({ where: { id: checkout.id, tenantId } });
     });
   }
 
   // target === 'FAILED' | 'CANCELED'
   return prisma.$transaction(async tx => {
+    // Règle 5, suite : un checkout passé en REVIEW alors que son paiement est
+    // déjà encaissé ne doit jamais défaire cet encaissement sur un nouvel
+    // état contraire — il reste en REVIEW, à trancher par l'agence.
+    const payment = await tx.rentalPayment.findFirst({
+      where: { id: checkout.paymentId, tenant_id: tenantId },
+      select: { status: true }
+    });
+    if (payment?.status === RentalPaymentStatus.SUCCESS) {
+      await tx.onlinePaymentCheckout.updateMany({
+        where: { id: checkout.id, tenantId },
+        data: {
+          ...bookkeeping,
+          status: 'REVIEW',
+          reviewReason: `PaySecureHub rapporte maintenant « ${ps.rawState ?? ''} » pour un paiement déjà réussi.`
+        }
+      });
+      return tx.onlinePaymentCheckout.findFirstOrThrow({ where: { id: checkout.id, tenantId } });
+    }
+
     const claim = await tx.onlinePaymentCheckout.updateMany({
       where: { id: checkout.id, tenantId, status: { notIn: ['SUCCESS', target] } },
       data: { ...bookkeeping, status: target, failureMessage: ps.error ?? checkout.failureMessage }
@@ -488,7 +529,7 @@ async function applyProviderStatus(checkout: CheckoutRow, ps: ProviderStatus): P
       );
     }
 
-    return tx.onlinePaymentCheckout.findFirstOrThrow({ where: { id: checkout.id } });
+    return tx.onlinePaymentCheckout.findFirstOrThrow({ where: { id: checkout.id, tenantId } });
   });
 }
 
@@ -516,7 +557,41 @@ export async function reconcileCheckoutByCode(tenantId: string, codePaiement: st
 export async function reconcileCheckoutPublic(codePaiement: string): Promise<CheckoutRow | null> {
   const checkout = await prisma.onlinePaymentCheckout.findFirst({ where: { codePaiement } });
   if (!checkout) return null;
-  return reconcileCheckoutRow(checkout);
+  // Multi-tenant : la seule lecture transverse est celle qui retrouve le code
+  // (hors contexte, comme les tâches planifiées — D6). Le rapprochement tourne
+  // ensuite dans le contexte de l'agence du checkout, pour que le garde-fou
+  // Prisma (utils/prisma-tenant-guard-extension.ts) signale toute requête qui
+  // sortirait de cette agence.
+  //
+  // Une agence suspendue voit quand même ses paiements rapprochés : l'argent a
+  // été versé chez l'agrégateur, le taire laisserait un loyer payé en attente.
+  // Elle ne peut en revanche plus en démarrer (portail bloqué par
+  // `requireTenantPortalAccess`, simulateur fermé par `findSimulatorCheckout`).
+  return runWithTenantContext({ tenantId: checkout.tenantId }, () => reconcileCheckoutRow(checkout));
+}
+
+/**
+ * Checkout du simulateur par son code — page et boutons publics (contrat
+ * §3.4). `null` si le code est inconnu, n'est pas en mode simulateur, ou si
+ * l'agence est suspendue : le contrôleur répond alors 404 sans distinguer.
+ */
+export async function findSimulatorCheckout(codePaiement: string): Promise<CheckoutRow | null> {
+  return prisma.onlinePaymentCheckout.findFirst({
+    where: { codePaiement, mode: 'SIMULATOR', tenant: { status: { not: 'SUSPENDED' } } }
+  });
+}
+
+/** Enregistre l'issue choisie sur la page du simulateur, dans le contexte de l'agence du checkout. */
+export async function recordSimulatedOutcome(
+  checkout: CheckoutRow,
+  outcome: 'SUCCESS' | 'FAILED' | 'CANCELED'
+): Promise<void> {
+  await runWithTenantContext({ tenantId: checkout.tenantId }, () =>
+    prisma.onlinePaymentCheckout.update({
+      where: { id: checkout.id, tenantId: checkout.tenantId },
+      data: { simulatedOutcome: outcome }
+    })
+  );
 }
 
 async function expireCheckout(checkout: { id: string; tenantId: string; paymentId: string }): Promise<boolean> {
@@ -553,7 +628,11 @@ export async function reconcilePendingCheckouts(): Promise<{ reconciled: number;
   for (const row of pending) {
     let stillPending = true;
     try {
-      const result = await reconcileCheckout(row.tenantId, row.id);
+      // Lecture transverse ci-dessus hors contexte (D6), traitement de chaque
+      // checkout dans le contexte de son agence.
+      const result = await runWithTenantContext({ tenantId: row.tenantId }, () =>
+        reconcileCheckout(row.tenantId, row.id)
+      );
       reconciled++;
       stillPending = result.status === 'PENDING';
     } catch (error) {
@@ -566,7 +645,7 @@ export async function reconcilePendingCheckouts(): Promise<{ reconciled: number;
 
     if (stillPending && row.createdAt <= fortyEightHoursAgo) {
       try {
-        if (await expireCheckout(row)) expired++;
+        if (await runWithTenantContext({ tenantId: row.tenantId }, () => expireCheckout(row))) expired++;
       } catch (error) {
         errors++;
         logger.warn("reconcilePendingCheckouts: échec de l'expiration", {

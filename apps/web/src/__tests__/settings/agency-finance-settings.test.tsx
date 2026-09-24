@@ -33,6 +33,13 @@ vi.mock('../../services/agency-finance-settings-service', () => ({
   updateAgentCommissionShare: (...a: unknown[]) => updateAgentCommissionShare(...a)
 }));
 
+// La carte « Paiement en ligne » (Lot 7) a ses propres tests
+// (`payment-gateway-settings.test.tsx`) et interroge react-query : remplacée
+// ici par un repère, pour que cette suite reste centrée sur les honoraires.
+vi.mock('../../components/settings/PaymentGatewaySettingsCard', () => ({
+  PaymentGatewaySettingsCard: () => <div>carte paiement en ligne</div>
+}));
+
 const AGENCY_SETTINGS = {
   vatRegistered: true,
   vatRate: 18,

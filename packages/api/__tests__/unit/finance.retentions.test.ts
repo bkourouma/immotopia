@@ -90,6 +90,7 @@ const store = {
   contracts: [] as Row[],
   statements: [] as Row[],
   sites: [] as Row[],
+  categories: [] as Row[],
   allocations: [] as Row[],
   retentions: [] as Row[],
   seq: 0
@@ -269,6 +270,15 @@ const mockPrisma: Row = {
       const ids: string[] = where.id?.in ?? [];
       return store.sites.filter(s => s.tenantId === where.tenantId && ids.includes(s.id));
     })
+  },
+
+  // Audit multi-tenant du 24 septembre 2026 (lot B1) : `createSupplierInvoiceTx`
+  // vérifie désormais que `costCategoryId` appartient à l'agence avant d'écrire,
+  // comme `siteId`.
+  costCategory: {
+    findFirst: jest.fn(
+      async ({ where }: Row) => store.categories.find(c => c.id === where.id && c.tenantId === where.tenantId) ?? null
+    )
   },
 
   costAllocation: {
@@ -452,8 +462,16 @@ function seedSite(name = 'Résidence Kipé'): Row {
   return site;
 }
 
-function seedCategory(): string {
-  return nextId('poste');
+/**
+ * Depuis le lot B1 (audit multi-tenant du 24 septembre 2026),
+ * `createSupplierInvoiceTx` vérifie que `costCategoryId` appartient à
+ * l'agence avant d'écrire : un id qui ne désigne rien de seedé ici serait
+ * désormais refusé (`NotFoundError`).
+ */
+function seedCategory(tenantId: string = TENANT_ID): string {
+  const category = { id: nextId('poste'), tenantId, label: 'Poste de test' };
+  store.categories.push(category);
+  return category.id;
 }
 
 function seedSupplier(name = 'Ciments de Guinée', kind = 'MATERIALS'): Row {

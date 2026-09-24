@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../utils/database';
 import { RoleScope } from '@prisma/client';
+import { userHasTenantAccess } from '../utils/tenant-access';
 
 /**
  * List roles
@@ -128,7 +129,7 @@ export async function getRoleHandler(req: Request, res: Response): Promise<void>
  * List all permissions
  * GET /api/roles/permissions
  */
-export async function listPermissionsHandler(req: Request, res: Response): Promise<void> {
+export async function listPermissionsHandler(_req: Request, res: Response): Promise<void> {
   try {
     const permissions = await prisma.permission.findMany({
       select: {
@@ -298,10 +299,23 @@ export async function getMyMenuAccessHandler(req: Request, res: Response): Promi
     }
 
     const rawTenantId = Array.isArray(req.query.tenantId) ? req.query.tenantId[0] : req.query.tenantId;
-    const tenantId =
-      typeof rawTenantId === 'string' && rawTenantId.trim().length > 0
-        ? rawTenantId.trim()
-        : req.tenantContext?.tenantId;
+    const queryTenantId =
+      typeof rawTenantId === 'string' && rawTenantId.trim().length > 0 ? rawTenantId.trim() : undefined;
+
+    // Un tenantId fourni en query n'est pas garanti par un middleware de route
+    // (cette route est accessible sans agence, pour un utilisateur plateforme) :
+    // s'il en fournit un, on vérifie ici qu'il y appartient réellement, sinon
+    // n'importe quel utilisateur authentifié pourrait lire les menus coupés
+    // d'une autre agence.
+    if (queryTenantId) {
+      const hasAccess = await userHasTenantAccess(req.user.userId, queryTenantId, req.user.globalRole);
+      if (!hasAccess) {
+        res.status(403).json({ success: false, message: "Accès refusé à cette agence." });
+        return;
+      }
+    }
+
+    const tenantId = queryTenantId ?? req.tenantContext?.tenantId;
 
     const { getDisabledMenusForUser } = await import('../services/role-menu-service');
     const disabledMenuKeys = await getDisabledMenusForUser(req.user.userId, tenantId);

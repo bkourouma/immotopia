@@ -45,6 +45,7 @@ import {
   getOnlinePaymentAvailability,
   getOnlinePaymentCheckout
 } from '../../services/payment-gateway-service';
+import { redirectToExternalUrl } from '../../utils/external-redirect';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -514,14 +515,14 @@ export default function TenantPayments() {
     try {
       const checkout = await createOnlinePaymentCheckout(selectedInstallmentIds);
       if (checkout.checkoutUrl) {
-        window.location.assign(checkout.checkoutUrl);
+        redirectToExternalUrl(checkout.checkoutUrl);
         return;
       }
       setError(t("Le paiement en ligne n'a pas pu être initié."));
     } catch (err: any) {
       if (err?.response?.status === 409 && err.response?.data?.data?.checkoutUrl) {
         const conflit = err.response.data.data as OnlineCheckoutConflict;
-        window.location.assign(conflit.checkoutUrl as string);
+        redirectToExternalUrl(conflit.checkoutUrl as string);
         return;
       }
       setError(err?.response?.data?.message || t('Erreur lors de la création du paiement en ligne'));
@@ -851,7 +852,7 @@ export default function TenantPayments() {
                       </Space>
                       <Button
                         type="primary"
-                        icon={<CreditCardOutlined />}
+                        icon={<CreditCardOutlined aria-hidden />}
                         disabled={selectedInstallmentIds.length === 0}
                         loading={payingOnline}
                         onClick={() => void handlePayOnline()}
