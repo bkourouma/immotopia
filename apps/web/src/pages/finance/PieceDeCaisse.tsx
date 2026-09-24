@@ -146,6 +146,16 @@ export const PieceDeCaisse: React.FC = () => {
       setSiteId(undefined);
     }
   }, [chantierPreselectionneEstClos, chantierPreselectionne, siteId]);
+
+  // Le `<Select>` n'affiche jamais `siteId` tel quel : entre le rendu où les
+  // chantiers arrivent (et où `chantierPreselectionneEstClos` devient vrai)
+  // et celui, un tour plus tard, où l'effet ci-dessus a fini de vider l'état,
+  // `siteId` vaut encore l'identifiant du chantier clos — sans cette
+  // dérivation, ce tour intermédiaire affiche brièvement l'identifiant brut
+  // (`chantier-clos`) au lieu du champ vide, un aller-retour qu'un test lent
+  // ou une machine chargée peut surprendre en plein milieu.
+  const valeurChantierAffichee =
+    siteId && optionsChantiers.some(option => option.value === siteId) ? siteId : undefined;
   const optionsPostes = (postes ?? [])
     .filter(poste => poste.isActive)
     .sort((a, b) => a.position - b.position)
@@ -325,7 +335,7 @@ export const PieceDeCaisse: React.FC = () => {
                 showSearch
                 optionFilterProp="label"
                 placeholder={t('Choisir le chantier')}
-                value={siteId}
+                value={valeurChantierAffichee}
                 onChange={setSiteId}
                 options={optionsChantiers}
                 disabled={formulaireVerrouille}
