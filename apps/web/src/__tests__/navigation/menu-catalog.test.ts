@@ -43,6 +43,7 @@ describe('catalogue des menus — fidélité au modèle de navigation', () => {
       SECTION_LABELS.locatif,
       SECTION_LABELS.finance,
       SECTION_LABELS.patrimoine,
+      SECTION_LABELS.ventes,
       SECTION_LABELS.commercial,
       SECTION_LABELS.copropriete,
       SECTION_LABELS.parametrage
