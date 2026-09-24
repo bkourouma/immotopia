@@ -330,6 +330,14 @@ const SyndicProfilesIncidents = lazy(() =>
     default: m.SyndicProfilesIncidents
   }))
 );
+// Layout d'onglets commun aux trois familles d'écrans Syndic (Copropriété,
+// Finances, Assemblées et documents) — même découpe de chunk que les écrans
+// qu'il encadre : il ne sert jamais seul.
+const SyndicWorkspaceLayout = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './components/navigation/SyndicWorkspaceLayout').then(m => ({
+    default: m.SyndicWorkspaceLayout
+  }))
+);
 const ForgotPassword = lazy(() =>
   import(/* webpackChunkName: "pages-root" */ './pages/ForgotPassword').then(m => ({ default: m.ForgotPassword }))
 );
@@ -767,34 +775,52 @@ function App() {
                             element={<OwnerStatementDetailPage />}
                           />
                           <Route path="/tenant/:tenantId/syndics" element={<SyndicsList />} />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId" element={<SyndicDetail />} />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId/lots" element={<SyndicLots />} />
-                          <Route
-                            path="/tenant/:tenantId/syndics/:syndicId/lots/:lotId/compte"
-                            element={<SyndicOwnerAccount />}
-                          />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId/assemblees" element={<SyndicMeetings />} />
-                          <Route
-                            path="/tenant/:tenantId/syndics/:syndicId/assemblees/:meetingId"
-                            element={<SyndicMeetingDetail />}
-                          />
-                          <Route
-                            path="/tenant/:tenantId/syndics/:syndicId/prestataires"
-                            element={<SyndicProviders />}
-                          />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId/documents" element={<SyndicDocuments />} />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId/finances" element={<SyndicFinances />} />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId/recouvrement" element={<SyndicRecovery />} />
-                          <Route
-                            path="/tenant/:tenantId/syndics/:syndicId/comptabilite"
-                            element={<SyndicAccounting />}
-                          />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId/budgets" element={<SyndicBudgets />} />
-                          <Route
-                            path="/tenant/:tenantId/syndics/:syndicId/profils-incidents"
-                            element={<SyndicProfilesIncidents />}
-                          />
+                          {/* Famille « Copropriété » — fiche, lots (et le compte d'un lot,
+                        rattaché à l'onglet Lots), prestataires, profils et incidents.
+                        Même route de layout que les deux familles suivantes : elle ne
+                        change aucune URL, elle pose l'en-tête de la copropriété et la
+                        barre d'onglets au-dessus de <Outlet/>. */}
+                          <Route element={<SyndicWorkspaceLayout family="copropriete" />}>
+                            <Route path="/tenant/:tenantId/syndics/:syndicId" element={<SyndicDetail />} />
+                            <Route path="/tenant/:tenantId/syndics/:syndicId/lots" element={<SyndicLots />} />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/lots/:lotId/compte"
+                              element={<SyndicOwnerAccount />}
+                            />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/prestataires"
+                              element={<SyndicProviders />}
+                            />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/profils-incidents"
+                              element={<SyndicProfilesIncidents />}
+                            />
+                          </Route>
+                          {/* Famille « Finances » — dans l'ordre du flux : budgets, appels de
+                        charges, recouvrement, trésorerie, comptabilité. */}
+                          <Route element={<SyndicWorkspaceLayout family="finances" />}>
+                            <Route path="/tenant/:tenantId/syndics/:syndicId/budgets" element={<SyndicBudgets />} />
+                            <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/recouvrement"
+                              element={<SyndicRecovery />}
+                            />
+                            <Route path="/tenant/:tenantId/syndics/:syndicId/finances" element={<SyndicFinances />} />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/comptabilite"
+                              element={<SyndicAccounting />}
+                            />
+                          </Route>
+                          {/* Famille « Assemblées et documents » — la fiche d'une assemblée
+                        reste rattachée à l'onglet Assemblées générales. */}
+                          <Route element={<SyndicWorkspaceLayout family="assemblees-documents" />}>
+                            <Route path="/tenant/:tenantId/syndics/:syndicId/assemblees" element={<SyndicMeetings />} />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/assemblees/:meetingId"
+                              element={<SyndicMeetingDetail />}
+                            />
+                            <Route path="/tenant/:tenantId/syndics/:syndicId/documents" element={<SyndicDocuments />} />
+                          </Route>
                           <Route path="/tenant/:tenantId/collaborators" element={<CollaboratorsList />} />
                           <Route path="/tenant/:tenantId/collaborators/:userId" element={<CollaboratorDetail />} />
                           <Route path="/tenant/:tenantId/invite" element={<InviteCollaborator />} />

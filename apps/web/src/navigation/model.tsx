@@ -131,6 +131,12 @@ export interface NavLeaf {
   key: string;
   label: string;
   href: string;
+  /**
+   * Autres destinations qui allument cette entrée. Une entrée qui ouvre un
+   * espace à onglets (Syndic › Finances) doit rester active sur chaque
+   * onglet, pas seulement sur celui où son lien atterrit.
+   */
+  activeFor?: string[];
 }
 
 export interface NavGroup {
@@ -461,45 +467,37 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         section: 'copropriete',
         href: '/tenant/:tenantId/syndics',
         children: [
+          // Quatre entrées dans l'ordre du travail d'un syndic : choisir la
+          // copropriété, la décrire, gérer son argent, la faire voter. Le
+          // détail vit dans les onglets de SyndicWorkspaceLayout ; les clés
+          // réutilisent les anciennes pour garder les réglages de menu des rôles.
           { key: 'syndics-list', label: t('Copropriétés'), href: '/tenant/:tenantId/syndics' },
           {
             key: 'syndics-detail',
-            label: t('Fiche de la copropriété'),
-            href: '/tenant/:tenantId/syndics/:syndicId'
+            label: t('Copropriété'),
+            href: '/tenant/:tenantId/syndics/:syndicId',
+            activeFor: [
+              '/tenant/:tenantId/syndics/:syndicId/lots',
+              '/tenant/:tenantId/syndics/:syndicId/prestataires',
+              '/tenant/:tenantId/syndics/:syndicId/profils-incidents'
+            ]
           },
-          { key: 'syndics-lots', label: t('Lots'), href: '/tenant/:tenantId/syndics/:syndicId/lots' },
-          { key: 'syndics-charges', label: t('Charges'), href: '/tenant/:tenantId/syndics/:syndicId/charges' },
+          {
+            key: 'syndics-finances',
+            label: t('Finances'),
+            href: '/tenant/:tenantId/syndics/:syndicId/budgets',
+            activeFor: [
+              '/tenant/:tenantId/syndics/:syndicId/charges',
+              '/tenant/:tenantId/syndics/:syndicId/recouvrement',
+              '/tenant/:tenantId/syndics/:syndicId/finances',
+              '/tenant/:tenantId/syndics/:syndicId/comptabilite'
+            ]
+          },
           {
             key: 'syndics-assemblees',
-            label: t('Assemblées générales'),
-            href: '/tenant/:tenantId/syndics/:syndicId/assemblees'
-          },
-          {
-            key: 'syndics-prestataires',
-            label: t('Prestataires'),
-            href: '/tenant/:tenantId/syndics/:syndicId/prestataires'
-          },
-          {
-            key: 'syndics-documents',
-            label: t('Documents'),
-            href: '/tenant/:tenantId/syndics/:syndicId/documents'
-          },
-          { key: 'syndics-finances', label: t('Finances'), href: '/tenant/:tenantId/syndics/:syndicId/finances' },
-          {
-            key: 'syndics-recouvrement',
-            label: t('Recouvrement'),
-            href: '/tenant/:tenantId/syndics/:syndicId/recouvrement'
-          },
-          {
-            key: 'syndics-comptabilite',
-            label: t('Comptabilité'),
-            href: '/tenant/:tenantId/syndics/:syndicId/comptabilite'
-          },
-          { key: 'syndics-budgets', label: t('Budgets'), href: '/tenant/:tenantId/syndics/:syndicId/budgets' },
-          {
-            key: 'syndics-profils-incidents',
-            label: t('Profils et incidents'),
-            href: '/tenant/:tenantId/syndics/:syndicId/profils-incidents'
+            label: t('Assemblées et documents'),
+            href: '/tenant/:tenantId/syndics/:syndicId/assemblees',
+            activeFor: ['/tenant/:tenantId/syndics/:syndicId/documents']
           }
         ]
       },

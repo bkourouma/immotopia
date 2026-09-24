@@ -77,6 +77,35 @@ describe('modèle de navigation — intégrité', () => {
     expect(more.map(g => g.label)).toContain('Syndic');
   });
 
+  it('ramène le syndic à quatre entrées qui couvrent chacune leurs onglets', () => {
+    const syndic = NAVIGATION.collaborateur.tree.find(g => g.key === 'syndic');
+    expect(syndic?.children?.map(c => c.label)).toEqual([
+      'Copropriétés',
+      'Copropriété',
+      'Finances',
+      'Assemblées et documents'
+    ]);
+
+    // Chaque écran de la copropriété allume exactement une entrée.
+    const screens = [
+      'lots',
+      'prestataires',
+      'profils-incidents',
+      'budgets',
+      'charges',
+      'recouvrement',
+      'finances',
+      'comptabilite',
+      'assemblees',
+      'documents'
+    ];
+    for (const screen of screens) {
+      const path = `/tenant/:tenantId/syndics/:syndicId/${screen}`;
+      const owners = (syndic?.children ?? []).filter(c => c.href === path || c.activeFor?.includes(path));
+      expect({ screen, owners: owners.length }).toEqual({ screen, owners: 1 });
+    }
+  });
+
   it('coiffe chaque entrée d’un domaine, sauf l’accueil', () => {
     // L'accueil n'a pas de domaine : un intertitre au-dessus d'une entrée
     // unique qui s'appelle déjà « Tableau de bord » ne dirait rien de plus.
