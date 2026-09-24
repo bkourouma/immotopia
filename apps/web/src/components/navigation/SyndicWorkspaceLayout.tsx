@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Outlet, useParams } from 'react-router-dom';
-import { Skeleton, Typography } from 'antd';
+import { useParams } from 'react-router-dom';
 import {
   AccountBookOutlined,
   AlertOutlined,
@@ -14,16 +13,16 @@ import {
   ToolOutlined,
   WalletOutlined
 } from '@ant-design/icons';
-import { WorkspaceTabs } from './WorkspaceTabs';
+import { WorkspaceLayout } from './WorkspaceLayout';
 import type { WorkspaceTabItem } from './WorkspaceTabs';
 import { getSyndicate } from '../../services/syndic-service';
 import { t } from '../../i18n/t';
 
-const { Title, Text } = Typography;
-
 /**
  * `<SyndicWorkspaceLayout>` — en-tête + barre d'onglets communs aux trois
  * familles d'écrans Syndic (Copropriété, Finances, Assemblées et documents).
+ * Le rendu est celui de `<WorkspaceLayout>`, partagé avec la finance ; ce
+ * composant n'y ajoute que le nom de la copropriété et ses onglets.
  *
  * Posé comme route de layout autour de plusieurs `<Route>` existantes dans
  * `App.tsx` : les URL ne changent pas, seul un bandeau apparaît au-dessus de
@@ -123,34 +122,12 @@ export const SyndicWorkspaceLayout: React.FC<SyndicWorkspaceLayoutProps> = ({ fa
   const tabs = tenantId && syndicId ? buildTabs(family, tenantId, syndicId) : [];
 
   return (
-    <div>
-      <div style={{ marginBottom: 'var(--space-3)' }}>
-        <Text
-          style={{
-            display: 'block',
-            fontSize: 'var(--font-size-caption)',
-            fontWeight: 'var(--font-weight-caption)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-            color: 'var(--text-tertiary)'
-          }}
-        >
-          {FAMILY_LABELS[family]}
-        </Text>
-        {loading ? (
-          <Skeleton.Input active size="small" style={{ marginTop: 'var(--space-1)', maxWidth: 280 }} />
-        ) : (
-          <Title level={3} style={{ margin: 0 }}>
-            {name ?? t('Copropriété')}
-          </Title>
-        )}
-      </div>
-
-      <div style={{ marginBottom: 'var(--space-5)' }}>
-        <WorkspaceTabs items={tabs} ariaLabel={t('Sections de la copropriété')} />
-      </div>
-
-      <Outlet />
-    </div>
+    <WorkspaceLayout
+      eyebrow={FAMILY_LABELS[family]}
+      title={name ?? t('Copropriété')}
+      titleLoading={loading}
+      tabs={tabs}
+      tabsLabel={t('Sections de la copropriété')}
+    />
   );
 };

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MORE_TAB_HREF } from '../navigation/model';
 import type { NavGroup, PersonaNav } from '../navigation/model';
-import { menuKeyFor } from '../navigation/menu-catalog';
+import { isMenuKeyDisabled, menuKeyFor } from '../navigation/menu-catalog';
 import type { PersonaId } from '../navigation/model';
 import { getMyDisabledMenus } from '../services/role-menu-service';
 
@@ -52,11 +52,15 @@ export function useDisabledMenuKeys(tenantId?: string | null): Set<string> {
  * n'existe plus.
  */
 function pruneGroup(persona: PersonaId, group: NavGroup, disabled: Set<string>): NavGroup | null {
-  if (disabled.has(menuKeyFor(persona, group.key))) return null;
+  // `isMenuKeyDisabled` et non `disabled.has` : une entrée issue d'une
+  // réorganisation du menu hérite des coupures posées sur ses anciennes clés.
+  if (isMenuKeyDisabled(menuKeyFor(persona, group.key), disabled)) return null;
 
   if (!group.children || group.children.length === 0) return group;
 
-  const children = group.children.filter(leaf => !disabled.has(menuKeyFor(persona, group.key, leaf.key)));
+  const children = group.children.filter(
+    leaf => !isMenuKeyDisabled(menuKeyFor(persona, group.key, leaf.key), disabled)
+  );
   if (children.length === 0) return null;
 
   return { ...group, children };

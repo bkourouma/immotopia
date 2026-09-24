@@ -30,6 +30,12 @@ export interface WorkspaceTabItem {
   /** URL absolue de la route existante — jamais un fragment de panneau local. */
   href: string;
   icon?: React.ReactNode;
+  /**
+   * Autres chemins qui allument cet onglet sans en prolonger l'URL — la
+   * facture d'un fournisseur (`/finance/factures-fournisseurs`) relève de
+   * l'onglet « Fournisseurs » sans vivre sous `/finance/fournisseurs`.
+   */
+  activeFor?: string[];
 }
 
 export interface WorkspaceTabsProps {
@@ -68,10 +74,12 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({ items, ariaLabel, 
     let best = -1;
     let bestLength = -1;
     items.forEach((item, index) => {
-      const [path] = item.href.split('?');
-      if (matchesTab(location.pathname, item.href) && path.length > bestLength) {
-        best = index;
-        bestLength = path.length;
+      for (const href of [item.href, ...(item.activeFor ?? [])]) {
+        const [path] = href.split('?');
+        if (matchesTab(location.pathname, href) && path.length > bestLength) {
+          best = index;
+          bestLength = path.length;
+        }
       }
     });
     return best;

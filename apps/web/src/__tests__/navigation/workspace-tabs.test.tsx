@@ -56,6 +56,23 @@ describe('WorkspaceTabs', () => {
     expect(screen.getByRole('tab', { name: 'Lots' })).toHaveAttribute('aria-selected', 'true');
   });
 
+  it('allume un onglet sur un chemin déclaré dans son `activeFor`', () => {
+    // La facture d'un fournisseur vit hors de /fournisseurs mais relève de
+    // cet onglet.
+    renderTabs('/tenant/t1/finance/factures-fournisseurs', [
+      {
+        key: 'fournisseurs',
+        label: 'Fournisseurs',
+        href: '/tenant/t1/finance/fournisseurs',
+        activeFor: ['/tenant/t1/finance/factures-fournisseurs']
+      },
+      { key: 'balance', label: 'Balance fournisseurs', href: '/tenant/t1/finance/fournisseurs/balance' }
+    ]);
+
+    expect(screen.getByRole('tab', { name: 'Fournisseurs' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Balance fournisseurs' })).toHaveAttribute('aria-selected', 'false');
+  });
+
   it('ne garde qu’un seul onglet dans l’ordre de tabulation (roving tabindex)', () => {
     renderTabs('/tenant/t1/syndics/s1/prestataires');
 

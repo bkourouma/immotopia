@@ -135,11 +135,14 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'rental-installments': ['RENTAL_INSTALLMENTS_VIEW'],
   'rental-payments': ['RENTAL_PAYMENTS_VIEW'],
 
-  // Finance.
+  // Finance. Une entrée à onglets ouvre plusieurs écrans : elle n'exige une
+  // permission que si CHACUN de ses écrans en exigeait une, sinon un rôle
+  // perdrait par défaut un écran qu'il voyait. D'où l'absence volontaire de
+  // `finance-tresorerie` (Caisse exigeait FINANCE_DOCUMENTS_CREATE, Trésorerie
+  // rien) et de `finance-owner-accounts` (Comptes propriétaires exigeait
+  // FINANCE_ACCOUNTS_READ, Associations rien). Les cinq groupes, comme
+  // l'ancien groupe « Finance », ne sont conditionnés par rien.
   'finance-comptabilite': ['FINANCE_REPORTS_READ'],
-  'finance-caisse': ['FINANCE_DOCUMENTS_CREATE'],
-  'finance-agent-commissions': ['FINANCE_REPORTS_READ'],
-  'finance-owner-accounts': ['FINANCE_ACCOUNTS_READ'],
 
   // Patrimoine et entretien.
   patrimoine: ['PROPERTIES_VIEW'],
@@ -185,6 +188,80 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
 
 function requirementsFor(navKey: string): string[] {
   return MENU_REQUIREMENTS[navKey] ?? [];
+}
+
+/**
+ * Anciennes clés de menu reprises par une clé actuelle.
+ *
+ * Le serveur ne connaît que des clés opaques (`role-menu-service.ts`) : quand
+ * l'arbre change, les décisions déjà enregistrées portent sur des clés qui
+ * n'existent plus. Sans reprise, `resolveMenuMap` les ignorerait et la
+ * coquille ne les verrait plus — un menu coupé par un administrateur
+ * réapparaîtrait sans que personne l'ait décidé.
+ *
+ * Règle : tant qu'une clé actuelle n'a pas de décision propre, elle hérite de
+ * ses anciennes clés, et reste visible dès qu'**une seule** l'était — un rôle
+ * qui voyait un écran continue de le voir. Au premier enregistrement du rôle,
+ * l'écran d'administration écrit les clés actuelles et efface les anciennes
+ * (`replaceMenuAccessForRole` remplace tout) : la reprise s'éteint d'elle-même.
+ *
+ * Une ancienne clé ne doit plus être une clé vivante : sinon deux entrées
+ * différentes se disputeraient la même décision. C'est pourquoi aucun des
+ * cinq groupes de la finance ne garde la clé `finance`.
+ */
+const LEGACY_FINANCE_GROUP = 'finance';
+
+/**
+ * Finance, septembre 2026 : l'unique groupe `finance` et ses vingt-trois
+ * feuilles deviennent cinq groupes. Chaque feuille actuelle → les anciennes
+ * feuilles du groupe `finance` dont elle ouvre désormais les écrans.
+ */
+const LEGACY_FINANCE_LEAVES: Record<string, string[]> = {
+  'finance-tresorerie': ['finance-caisse', 'finance-tresorerie'],
+  'finance-validation': ['finance-validation', 'finance-importation'],
+  'finance-comptabilite': ['finance-comptabilite'],
+  'finance-clients': ['finance-facturation', 'finance-clients', 'finance-clients-agee'],
+  'finance-owner-accounts': ['finance-owner-accounts', 'finance-associations', 'finance-agent-commissions'],
+  'finance-fournisseurs': ['finance-fournisseurs', 'finance-bons-de-commande', 'finance-fournisseurs-balance'],
+  'finance-retenues': ['finance-retenues'],
+  'finance-chantiers': ['finance-chantiers', 'finance-tableau-de-bord-chantiers', 'finance-baux-terrain'],
+  'finance-stock': ['finance-stock', 'finance-stock-inventaire', 'finance-stock-parametrage'],
+  'finance-salaires': ['finance-salaires'],
+  'finance-tacherons': ['finance-tacherons']
+};
+
+function buildLegacyMenuKeys(): Record<string, string[]> {
+  const persona: PersonaId = 'collaborateur';
+  const legacy: Record<string, string[]> = {};
+  for (const group of NAVIGATION[persona].tree) {
+    if (group.section !== 'finance') continue;
+    legacy[menuKeyFor(persona, group.key)] = [menuKeyFor(persona, LEGACY_FINANCE_GROUP)];
+    for (const leaf of group.children ?? []) {
+      const previous = LEGACY_FINANCE_LEAVES[leaf.key] ?? [];
+      legacy[menuKeyFor(persona, group.key, leaf.key)] = previous.map(old =>
+        menuKeyFor(persona, LEGACY_FINANCE_GROUP, old)
+      );
+    }
+  }
+  return legacy;
+}
+
+const LEGACY_MENU_KEYS = buildLegacyMenuKeys();
+
+/** Anciennes clés dont `menuKey` reprend les décisions enregistrées. */
+export function legacyMenuKeysFor(menuKey: string): string[] {
+  return LEGACY_MENU_KEYS[menuKey] ?? [];
+}
+
+/**
+ * Vrai si la coquille doit masquer `menuKey`, d'après la liste des clés coupées
+ * que renvoie le serveur : coupée elle-même, ou toutes ses anciennes clés
+ * coupées.
+ */
+export function isMenuKeyDisabled(menuKey: string, disabled: Set<string>): boolean {
+  if (disabled.has(menuKey)) return true;
+  const legacy = legacyMenuKeysFor(menuKey);
+  return legacy.length > 0 && legacy.every(key => disabled.has(key));
 }
 
 /** Intitulé des entrées sans domaine : un menu sans catégorie reste un menu. */
@@ -283,8 +360,10 @@ export function defaultMenuMap(persona: PersonaId, rolePermissionKeys: Set<strin
  * Fusionne les défauts avec les décisions enregistrées.
  *
  * L'enregistrement gagne quand il existe : c'est la décision explicite d'un
- * administrateur. Sinon on retombe sur le défaut, ce qui fait qu'un menu ajouté
- * après coup apparaît sans qu'il faille ré-enregistrer chaque rôle.
+ * administrateur. À défaut, les décisions prises sur les anciennes clés que la
+ * clé reprend (`legacyMenuKeysFor`) — ouverte si l'une l'était. Sinon on
+ * retombe sur le défaut, ce qui fait qu'un menu ajouté après coup apparaît
+ * sans qu'il faille ré-enregistrer chaque rôle.
  */
 export function resolveMenuMap(
   persona: PersonaId,
@@ -294,8 +373,17 @@ export function resolveMenuMap(
   const map = defaultMenuMap(persona, rolePermissionKeys);
   if (!overrides) return map;
 
-  for (const [menuKey, enabled] of Object.entries(overrides)) {
-    if (menuKey in map) map[menuKey] = enabled;
+  for (const menuKey of Object.keys(map)) {
+    if (typeof overrides[menuKey] === 'boolean') {
+      map[menuKey] = overrides[menuKey];
+      continue;
+    }
+    const legacy = legacyMenuKeysFor(menuKey);
+    if (legacy.some(key => typeof overrides[key] === 'boolean')) {
+      // Même lecture que la coquille (`isMenuKeyDisabled`) : fermée seulement
+      // si TOUTES ses anciennes clés étaient explicitement coupées.
+      map[menuKey] = legacy.some(key => overrides[key] !== false);
+    }
   }
   return map;
 }
