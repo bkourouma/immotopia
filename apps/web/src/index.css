@@ -257,6 +257,29 @@ code {
   background: var(--color-accent);
 }
 
+/* Icone de la destination active : meme regle de position que le filet
+   ci-dessus, portee au pictogramme. --color-accent (non --color-accent-strong,
+   reserve au texte) atteint 4,87:1 sur --surface-nav -- le meme calcul que
+   --color-accent-text-on sur --color-accent dans tokens.css, la paire de
+   contraste etant symetrique -- largement au-dessus du plancher non-texte de
+   3:1. Le libelle continue de porter --text-on-nav : seul le pictogramme
+   passe a l'orange, pour ne pas repeter un signal deja donne par le filet et
+   la graisse semi-grasse. */
+.ant-layout-sider .ant-menu-item-selected .ant-menu-item-icon,
+.ant-drawer-body .ant-menu-item-selected .ant-menu-item-icon {
+  color: var(--color-accent);
+}
+
+/* Repere du groupe parent DEPLIE qui contient la destination active :
+   `.ant-menu-submenu-selected` est deja pose par Ant Design sur tout
+   ascendant d'un item selectionne (cf. le commentaire plus haut sur le
+   libelle du groupe). On y ajoute un petit signal supplementaire, reserve au
+   chevron pour rester sobre -- le libelle du groupe garde --text-on-nav. */
+.ant-layout-sider .ant-menu-submenu-selected > .ant-menu-submenu-title .ant-menu-submenu-arrow,
+.ant-drawer-body .ant-menu-submenu-selected > .ant-menu-submenu-title .ant-menu-submenu-arrow {
+  color: var(--color-accent);
+}
+
 /* Filet entre un bloc titre et une entree qui n'appartient a aucun domaine
    (« Plus », dans le portail proprietaire). --border-subtle suffit a le poser
    sans concurrencer les intertitres. */
@@ -271,6 +294,44 @@ code {
 .ant-layout-sider .ant-menu-item-group + .ant-menu-item-group .ant-menu-item-group-title,
 .ant-drawer-body .ant-menu-item-group + .ant-menu-item-group .ant-menu-item-group-title {
   padding-top: var(--space-4);
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   <Steps> — l'etape EN COURS marque une position, jamais un statut
+   (tokens.css, regle ACCENT). Ant Design construit le statut « process »
+   (en cours) et le statut « finish » (termine) sur EXACTEMENT le meme jeu de
+   tokens (`colorPrimary`, `colorPrimaryBg`, ...) -- une surcharge par
+   `ConfigProvider` (theme/antd-theme.ts) reteindrait donc aussi les etapes
+   deja terminees, qui doivent rester bleues : « termine » est un statut, pas
+   une position. D'ou une regle CSS ciblee, hors de portee du theme de
+   composant.
+
+   Cible le rendu par defaut (icone numerotee) : les deux usages du depot
+   (`Importation.tsx`, `SaleAgreementDetail.tsx`) n'utilisent ni `type="dot"`
+   ni les variantes `filled`/`outlined`. `:not(.ant-steps-item-custom)` ecarte
+   une icone fournie par l'appelant, qui n'a ni fond ni bordure a reteindre.
+
+   Specificite verifiee au navigateur (DevTools) et pas seulement lue dans le
+   code source : Ant Design pose SA regle de fond sur
+   `.ant-steps-item:not(.ant-steps-item-custom).ant-steps-item-active
+   .ant-steps-item-icon` (six classes, le `:where()` qui l'enveloppe ne
+   comptant pour rien) -- `.ant-steps-item-active`, pas `.ant-steps-item-
+   process` seul. Une regle a trois classes (comme un premier essai
+   `.ant-steps-item-process:not(.ant-steps-item-custom)
+   .ant-steps-item-icon`) reste donc invisible malgre l'ordre d'injection
+   favorable : la specificite tranche avant l'ordre. Le sixieme selecteur
+   ci-dessous restaure l'egalite ; a specificite egale, cette feuille
+   l'emporte car chargee apres celle d'Ant Design. */
+.ant-steps:not(.ant-steps-dot) .ant-steps-item-process:not(.ant-steps-item-custom).ant-steps-item-active .ant-steps-item-icon {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-text-on);
+}
+
+/* Icone personnalisee (`icon` fourni en prop) : pas de pastille a reteindre,
+   seul le pictogramme prend l'accent-texte, contraste AA oblige. */
+.ant-steps:not(.ant-steps-dot) .ant-steps-item-process.ant-steps-item-custom.ant-steps-item-active .ant-steps-item-icon {
+  color: var(--color-accent-strong);
 }
 
 /* ════════════════════════════════════════════════════════════════════════

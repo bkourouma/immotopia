@@ -526,7 +526,8 @@ export const Dashboard: React.FC = () => {
         : t('Module non accessible'),
       icon: <AlertOutlined />,
       tone: 'danger' as const,
-      to: impayes ? `${base}/rental/installments?status=OVERDUE` : undefined
+      to: impayes ? `${base}/rental/installments?status=OVERDUE` : undefined,
+      highlight: false
     },
     {
       cle: 'semaine',
@@ -537,7 +538,8 @@ export const Dashboard: React.FC = () => {
         : t('Module non accessible'),
       icon: <ClockCircleOutlined />,
       tone: 'warning' as const,
-      to: semaine ? `${base}/rental/installments?status=DUE` : undefined
+      to: semaine ? `${base}/rental/installments?status=DUE` : undefined,
+      highlight: false
     },
     {
       cle: 'encaisse',
@@ -552,7 +554,11 @@ export const Dashboard: React.FC = () => {
         : t('Module non accessible'),
       icon: <RiseOutlined />,
       tone: 'positive' as const,
-      to: revenus ? `${base}/rental/payments` : undefined
+      to: revenus ? `${base}/rental/payments` : undefined,
+      // « Un chiffre par écran » (tokens.css §ACCENT) : le montant encaissé
+      // du mois est celui qui coûte ou rapporte le plus à l'agence, donc
+      // celui que le regard doit trouver en premier.
+      highlight: true
     },
     {
       cle: 'biens',
@@ -573,7 +579,8 @@ export const Dashboard: React.FC = () => {
         : t('Module non accessible'),
       icon: <HomeOutlined />,
       tone: 'neutral' as const,
-      to: tableau?.properties ? `${base}/properties` : undefined
+      to: tableau?.properties ? `${base}/properties` : undefined,
+      highlight: false
     },
     {
       cle: 'contacts',
@@ -586,7 +593,8 @@ export const Dashboard: React.FC = () => {
         : t('Module non accessible'),
       icon: <TeamOutlined />,
       tone: 'neutral' as const,
-      to: tableau?.clients ? `${base}/crm/contacts` : undefined
+      to: tableau?.clients ? `${base}/crm/contacts` : undefined,
+      highlight: false
     },
     {
       cle: 'tickets',
@@ -603,7 +611,8 @@ export const Dashboard: React.FC = () => {
             : t('Module non accessible'),
       icon: <ToolOutlined />,
       tone: 'neutral' as const,
-      to: tableau?.maintenance ? `${base}/admin/maintenance/tickets` : undefined
+      to: tableau?.maintenance ? `${base}/admin/maintenance/tickets` : undefined,
+      highlight: false
     }
   ];
 
@@ -663,6 +672,7 @@ export const Dashboard: React.FC = () => {
                   hint={tuile.hint}
                   icon={tuile.icon}
                   tone={tuile.tone}
+                  highlight={tuile.highlight}
                   onClick={tuile.to ? () => navigate(tuile.to as string) : undefined}
                 />
               </Col>
