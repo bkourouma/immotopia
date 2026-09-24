@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../utils/database';
-import { MembershipStatus } from '@prisma/client';
+import { MembershipStatus, TenantStatus } from '@prisma/client';
+import { t } from '../i18n';
+import { getTenantStatus } from '../utils/tenant-access';
 
 /**
  * Middleware to require tenant access (T029)
@@ -69,6 +71,20 @@ export const requireTenantAccess = async (req: Request, res: Response, next: Nex
         isSuperAdmin: true
       };
       next();
+      return;
+    }
+
+    // Une agence suspendue n'est plus accessible, meme apres reconnexion : la
+    // suspension revoque les sessions, mais sans ce controle un simple nouveau
+    // login rouvrait l'acces. Le super-admin, lui, passe (bloc ci-dessus) pour
+    // pouvoir la consulter et la reactiver.
+    const tenantStatus = await getTenantStatus(tenantId as string);
+    if (tenantStatus === null) {
+      res.status(404).json({ success: false, message: t('Agence introuvable.') });
+      return;
+    }
+    if (tenantStatus === TenantStatus.SUSPENDED) {
+      res.status(403).json({ success: false, code: 'TENANT_SUSPENDED', message: t('Cette agence est suspendue.') });
       return;
     }
 

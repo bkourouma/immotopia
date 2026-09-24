@@ -27,6 +27,19 @@ export interface CreateTenantRequest {
   website?: string;
 }
 
+/** Champs d'une agence exposables sans authentification. */
+const PUBLIC_TENANT_SELECT = {
+  id: true,
+  name: true,
+  slug: true,
+  type: true,
+  logoUrl: true,
+  website: true,
+  brandingPrimaryColor: true,
+  city: true,
+  country: true
+} satisfies Prisma.TenantSelect;
+
 /**
  * Get tenant by ID (extended with new relationships)
  * @param tenantId - Tenant ID
@@ -36,8 +49,9 @@ export async function getTenantById(tenantId: string) {
   return prisma.tenant.findUnique({
     where: { id: tenantId },
     include: {
+      // Jamais `user: true` : l'objet User complet porte `passwordHash`.
       clients: {
-        include: { user: true }
+        include: { user: { select: { id: true, email: true, fullName: true } } }
       },
       modules: true,
       memberships: {
@@ -70,13 +84,11 @@ export async function getTenantById(tenantId: string) {
  * @returns Tenant or null
  */
 export async function getTenantBySlug(slug: string) {
+  // Route publique (vitrine, inscription d'un client) : uniquement ce qu'une
+  // agence affiche d'elle-meme. Ni membres, ni clients, ni abonnement.
   return prisma.tenant.findUnique({
     where: { slug },
-    include: {
-      memberships: {
-        include: { user: true }
-      }
-    }
+    select: PUBLIC_TENANT_SELECT
   });
 }
 
@@ -747,15 +759,8 @@ export async function removeTenantClient(userId: string, tenantId: string) {
  */
 export async function listActiveTenants() {
   return prisma.tenant.findMany({
-    where: { isActive: true },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      type: true,
-      logoUrl: true,
-      website: true
-    },
+    where: { isActive: true, status: TenantStatus.ACTIVE },
+    select: PUBLIC_TENANT_SELECT,
     orderBy: { name: 'asc' }
   });
 }

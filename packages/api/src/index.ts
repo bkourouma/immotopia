@@ -62,6 +62,7 @@ import { startReminderSchedulerJob } from './jobs/reminder-scheduler.job';
 import { startNewsletterCampaignSchedulerJob } from './jobs/newsletter-campaign-scheduler.job';
 import { corsMiddleware } from './middleware/cors-middleware';
 import { requestLogger } from './middleware/logging-middleware';
+import { responseSanitizer } from './middleware/response-sanitizer-middleware';
 import { requestContextMiddleware } from './middleware/request-context-middleware';
 import { resolveLanguage } from './middleware/language-middleware';
 import { errorHandler } from './middleware/error-middleware';
@@ -156,6 +157,10 @@ app.use(globalApiRateLimiter);
 
 // Request context (IP, User-Agent) for audit logs – must run before routes
 app.use(requestContextMiddleware);
+
+// Aucune reponse JSON ne porte d'empreinte de mot de passe ni de jeton, meme
+// quand un service renvoie un `User` complet. Voir le middleware.
+app.use(responseSanitizer);
 
 // Langue de la requete (Accept-Language) — avant les routes, pour que les
 // messages d'erreur sortent dans la langue de l'appelant. Voir

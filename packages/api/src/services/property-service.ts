@@ -237,6 +237,31 @@ export async function createProperty(
 }
 
 /**
+ * Whether the caller may see a property, whatever its ownership type.
+ *
+ * The agency acting (`tenantId`) must own the property or hold an active
+ * mandate on it. Only a PUBLIC listing can be reached outside any agency: by
+ * its owner, or by anyone once published. Before this check, a CLIENT property
+ * was returned to any agency that knew its id.
+ */
+function canAccessProperty(
+  property: { ownershipType: PropertyOwnershipType; tenantId: string | null; ownerUserId: string | null; isPublished: boolean },
+  tenantId: string | null | undefined,
+  userId: string | null | undefined,
+  activeMandateTenantIds: string[]
+): boolean {
+  if (tenantId) {
+    return property.tenantId === tenantId || activeMandateTenantIds.includes(tenantId);
+  }
+
+  if (property.ownershipType === PropertyOwnershipType.PUBLIC) {
+    return Boolean(userId && property.ownerUserId === userId) || property.isPublished;
+  }
+
+  return Boolean(userId && property.ownerUserId === userId);
+}
+
+/**
  * Get property by ID with ownership checks
  * @param propertyId - Property ID
  * @param tenantId - Tenant ID (for tenant isolation)
@@ -276,6 +301,10 @@ export async function getPropertyById(
         },
         take: 10
       },
+      mandates: {
+        where: { isActive: true },
+        select: { tenantId: true }
+      },
       containerParent: true,
       containerChildren: {
         include: {
@@ -297,31 +326,22 @@ export async function getPropertyById(
     return null;
   }
 
-  // Tenant isolation check for tenant-owned properties
-  if (property.ownershipType === PropertyOwnershipType.TENANT) {
-    if (tenantId && property.tenantId !== tenantId) {
-      logger.warn('Property access denied - tenant mismatch', {
-        propertyId,
-        propertyTenantId: property.tenantId,
-        requestedTenantId: tenantId
-      });
-      return null;
-    }
+  const activeMandateTenantIds = property.mandates.map(mandate => mandate.tenantId);
+
+  if (!canAccessProperty(property, tenantId, userId, activeMandateTenantIds)) {
+    logger.warn('Property access denied', {
+      propertyId,
+      ownershipType: property.ownershipType,
+      propertyTenantId: property.tenantId,
+      requestedTenantId: tenantId
+    });
+    return null;
   }
 
-  // Ownership check for public properties
-  if (property.ownershipType === PropertyOwnershipType.PUBLIC) {
-    if (userId && property.ownerUserId !== userId && !property.isPublished) {
-      logger.warn('Property access denied - not owner and not published', {
-        propertyId,
-        propertyOwnerId: property.ownerUserId,
-        requestedUserId: userId
-      });
-      return null;
-    }
-  }
-
-  return property as PropertyDetail;
+  // Les mandats ne servaient qu'au controle d'acces : ils ne sortent pas.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { mandates: _mandates, ...detail } = property;
+  return detail as PropertyDetail;
 }
 
 /**

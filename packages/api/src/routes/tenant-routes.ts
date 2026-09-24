@@ -32,7 +32,8 @@ import { requireTenantAccess, requireTenantCollaborator } from '../middleware/te
 
 const router = Router();
 
-// Public routes
+// Public routes — vitrine d'agence : seuls les champs de PUBLIC_TENANT_SELECT
+// (services/tenant-service.ts) sortent.
 router.get('/', listTenants);
 router.get('/slug/:slug', getTenantBySlugHandler);
 
@@ -49,8 +50,10 @@ router.patch(
   updateTenantSelfHandler
 );
 
-// Public routes with tenantId (must come after specific routes)
-router.get('/:tenantId', getTenant);
+// Fiche complete d'une agence (membres, clients, abonnement) : reservee a ses
+// membres et au super-admin. Elle etait publique et renvoyait des `User`
+// complets, empreinte du mot de passe comprise.
+router.get('/:tenantId', authenticate, requireTenantAccess, getTenant);
 router.post('/:tenantId/register', authenticate, registerAsTenantClient);
 
 // Client directory exposes e-mails and names: restricted to collaborators of
