@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { App as AntApp, ConfigProvider, Spin } from 'antd';
 import { buildAntdTheme } from './theme/antd-theme';
 import './i18n';
@@ -664,6 +664,27 @@ function ThemedApp({ children }: { children: React.ReactNode }) {
  */
 const queryClient = createQueryClient();
 
+/**
+ * `/finance/caisse` a longtemps servi deux écrans en même temps — Caisse
+ * (sessions de caisse de l'agence) ET, avant le 24 septembre 2026, la pièce
+ * de caisse (voir le commentaire près de sa route, plus bas) — si bien qu'un
+ * signet ou un lien d'hier peut encore pointer vers
+ * `/finance/caisse?chantierId=…`. Un `chantierId` en paramètre de requête
+ * n'a de sens que pour la pièce de caisse — l'écran Caisse (sessions,
+ * billetage) n'a pas de notion de chantier — donc ce cas précis est renvoyé
+ * vers sa vraie destination, `/finance/pieces-de-caisse`, sans toucher à
+ * l'écran Caisse lui-même.
+ */
+function CaisseOuPieceDeCaisse() {
+  const { tenantId } = useParams<{ tenantId: string }>();
+  const [searchParams] = useSearchParams();
+  const chantierId = searchParams.get('chantierId');
+  if (chantierId) {
+    return <Navigate to={`/tenant/${tenantId}/finance/pieces-de-caisse?chantierId=${chantierId}`} replace />;
+  }
+  return <Caisse />;
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -866,12 +887,25 @@ function App() {
                         Les sous-routes de détail sont rangées avec leur liste,
                         pour garder les onglets visibles et actifs.
                       */}
-                          {/* Caisse et trésorerie. Doit rester AVANT la route
-                        PieceDeCaisse plus bas, déclarée sur la même adresse :
-                        à égalité, React Router garde la première rencontrée. */}
+                          {/* Caisse et trésorerie. */}
                           <Route element={<FinanceWorkspaceLayout family="caisse-tresorerie" />}>
-                            <Route path="/tenant/:tenantId/finance/caisse" element={<Caisse />} />
+                            <Route path="/tenant/:tenantId/finance/caisse" element={<CaisseOuPieceDeCaisse />} />
                             <Route path="/tenant/:tenantId/finance/tresorerie" element={<Tresorerie />} />
+                            {/*
+                          La pièce de caisse (dépense en espèces imputée à un
+                          chantier) a longtemps partagé `/finance/caisse` avec
+                          l'écran Caisse ci-dessus — à égalité de route, React
+                          Router garde la première déclarée, donc cet écran
+                          n'était jamais rendu. Adresse propre depuis le 24
+                          septembre 2026 : `/finance/pieces-de-caisse`, avec
+                          `?chantierId=` en préselection depuis
+                          `ChantierDetail.tsx`, comme les factures fournisseurs
+                          voyagent en paramètre de requête (`?fournisseur=`) et
+                          non dans le chemin. Rattachée à l'onglet Caisse par
+                          son `activeFor` : c'est un document de la caisse,
+                          pas une fiche de chantier.
+                        */}
+                            <Route path="/tenant/:tenantId/finance/pieces-de-caisse" element={<PieceDeCaisse />} />
                           </Route>
                           <Route element={<FinanceWorkspaceLayout family="saisie-validation" />}>
                             <Route path="/tenant/:tenantId/finance/validation" element={<FileDeValidation />} />
@@ -987,22 +1021,6 @@ function App() {
                           <Route path="/tenant/:tenantId/finance/salaires/:employeeId" element={<Salarie />} />
                           <Route path="/tenant/:tenantId/finance/tacherons" element={<Tacherons />} />
                           <Route path="/tenant/:tenantId/finance/tacherons/:contractorId" element={<Tacheron />} />
-                          {/*
-                        Le chantier voyage en PARAMETRE DE REQUETE
-                        (`?chantierId=`), comme l'ecran le lit : il porte son
-                        propre selecteur et s'ouvre legitimement sans chantier
-                        choisi. Le detail d'un chantier pointe vers cette
-                        adresse depuis toujours ; c'est la route qui portait
-                        l'identifiant dans le chemin, si bien que le bouton
-                        « Nouvelle piece de caisse » ne menait nulle part.
-                        Meme defaut que sur les factures fournisseurs, corrige
-                        la veille, et reste ici. Trouve par l'agent des ecrans
-                        du lot 3, hors de son territoire.
-                        NB : la route Caisse, plus haut, porte la même adresse
-                        et passe la première — cet écran n'est aujourd'hui
-                        jamais rendu.
-                      */}
-                          <Route path="/tenant/:tenantId/finance/caisse" element={<PieceDeCaisse />} />
                           <Route path="/tenant/:tenantId/sales" element={<SalesDashboard />} />
                           <Route path="/tenant/:tenantId/sales/mandates" element={<SaleMandates />} />
                           <Route path="/tenant/:tenantId/sales/mandates/:id" element={<SaleMandateDetail />} />

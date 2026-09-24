@@ -153,7 +153,7 @@ export const ChantierDetail: React.FC = () => {
           .join(' · ')}
         primaryAction={{
           label: t('Nouvelle pièce de caisse'),
-          onClick: () => navigate(`/tenant/${tenantId}/finance/caisse?chantierId=${siteId}`),
+          onClick: () => navigate(`/tenant/${tenantId}/finance/pieces-de-caisse?chantierId=${siteId}`),
           // Le garde-fou serveur (`assertSiteOpenTx`) refuse déjà la
           // validation d'une pièce sur un chantier clôturé, mais trop tard :
           // rien n'empêchait jusqu'ici de SAISIR un brouillon qu'on ne pouvait
