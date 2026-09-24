@@ -710,5 +710,21 @@
   "Vous pouvez modifier le titre, la description, la catégorie, la priorité et les détails de localisation. La propriété et le bail ne peuvent pas être modifiés.": "يمكنك تعديل العنوان والوصف والفئة والأولوية وتفاصيل الموقع. أما العقار والعقد فلا يمكن تعديلهما.",
   "Vous recevrez les newsletters.": "ستتلقّى النشرات البريدية.",
   "Vue d'ensemble de votre portefeuille immobilier": "نظرة عامة على محفظتك العقارية",
-  "Vue d'ensemble de votre situation locative": "نظرة عامة على وضعك الإيجاري"
+  "Vue d'ensemble de votre situation locative": "نظرة عامة على وضعك الإيجاري",
+  "Des frais de l'agrégateur de paiement peuvent s'ajouter au montant.": "قد تُضاف رسوم مزوّد الدفع إلى المبلغ.",
+  "En cours de confirmation…": "جارٍ التأكيد…",
+  "En cours de vérification par l’agence.": "قيد المراجعة من قبل الوكالة.",
+  "Erreur lors de la création du paiement en ligne": "خطأ أثناء إنشاء الدفع عبر الإنترنت",
+  "Impossible de vérifier ce paiement.": "تعذّر التحقق من هذا الدفع.",
+  "Le délai de paiement a expiré.": "انتهت مهلة الدفع.",
+  "Le paiement a échoué.": "فشلت عملية الدفع.",
+  "Le paiement a été annulé.": "تم إلغاء الدفع.",
+  "Le paiement en ligne n'a pas pu être initié.": "تعذّر بدء الدفع عبر الإنترنت.",
+  "Mode démonstration": "وضع العرض التجريبي",
+  "Paiement confirmé.": "تم تأكيد الدفع.",
+  "Payer en ligne": "الدفع عبر الإنترنت",
+  "Sélectionner {{period}}": "اختيار {{period}}",
+  "Sélectionnez une ou plusieurs échéances à régler en ligne.": "اختر مستحقًا واحدًا أو أكثر لتسديده عبر الإنترنت.",
+  "Total à payer : {{value}}": "الإجمالي المستحق: {{value}}",
+  "Vérification du paiement en cours…": "جارٍ التحقق من الدفع…"
 }

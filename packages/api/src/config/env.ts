@@ -31,6 +31,31 @@ const secretSchema = z
 
 const optionalUrl = z.string().url().optional();
 
+/**
+ * Clé de chiffrement des clés API des agrégateurs de paiement (lot 7).
+ *
+ * Optionnelle : une agence ne peut alors pas enregistrer de clé API
+ * (`encryptionAvailable = false` côté paramètres), mais le serveur démarre
+ * quand même — contrairement à `JWT_SECRET`, l'absence de cette variable ne
+ * rend rien d'existant inutilisable. Quand elle est présente, elle doit
+ * décoder en exactement 32 octets base64 (`openssl rand -base64 32`) : la
+ * taille d'une clé AES-256.
+ */
+const paymentSecretsKeySchema = z
+  .string()
+  .optional()
+  .refine(
+    value => {
+      if (!value) return true;
+      try {
+        return Buffer.from(value, 'base64').length === 32;
+      } catch {
+        return false;
+      }
+    },
+    { message: 'doit être 32 octets encodés en base64 (`openssl rand -base64 32`)' }
+  );
+
 const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -56,7 +81,15 @@ const envSchema = z
     // Google OAuth (optional: the strategy is skipped when unset)
     GOOGLE_CLIENT_ID: z.string().optional(),
     GOOGLE_CLIENT_SECRET: z.string().optional(),
-    GOOGLE_CALLBACK_URL: optionalUrl
+    GOOGLE_CALLBACK_URL: optionalUrl,
+
+    // Paiement en ligne des loyers (lot 7) — agrégateur PaySecureHub.
+    PAYMENT_SECRETS_KEY: paymentSecretsKeySchema,
+    PAYSECUREHUB_BASE_URL: z.string().url().default('https://rest-airtime.paysecurehub.com/api'),
+    PAYSECUREHUB_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
+    // '1' autorise le simulateur en production (démonstration). Hors
+    // production il est toujours disponible, quelle que soit cette valeur.
+    PAYMENT_GATEWAY_SIMULATOR: z.string().optional()
   })
   // Unknown keys are preserved: many optional integrations still read
   // process.env directly (WhatsApp, SMTP, Twilio).
@@ -109,3 +142,12 @@ export const frontendUrl = env.CLIENT_URL || env.FRONTEND_URL;
 
 export const isProduction = env.NODE_ENV === 'production';
 export const isTest = env.NODE_ENV === 'test';
+
+/**
+ * Le simulateur PaySecureHub est-il autorisé sur ce serveur ?
+ *
+ * Toujours vrai hors production (dev, test, démonstration). En production,
+ * seulement si l'agence a explicitement demandé la démo
+ * (`PAYMENT_GATEWAY_SIMULATOR=1`).
+ */
+export const paymentGatewaySimulatorAvailable = !isProduction || env.PAYMENT_GATEWAY_SIMULATOR === '1';

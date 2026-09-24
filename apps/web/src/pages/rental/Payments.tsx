@@ -18,6 +18,7 @@ import {
 import { PaymentForm } from '../../components/rental/PaymentForm';
 import { AllocatePaymentForm } from '../../components/rental/AllocatePaymentForm';
 import { PaymentDeclarationsList } from '../../components/rental/PaymentDeclarationsList';
+import { OnlineCheckoutStatus } from '../../components/rental/OnlineCheckoutStatus';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { useListParams } from '../../hooks/useListParams';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
@@ -242,6 +243,20 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
     { title: t('Méthode'), key: 'methode', render: (_, p) => METHOD_LABELS[p.method] || p.method },
     { title: t('Statut'), key: 'statut', render: (_, p) => <StatusTag status={p.status} /> },
     {
+      title: t('En ligne'),
+      key: 'en-ligne',
+      render: (_, p) =>
+        p.onlineCheckout ? (
+          <OnlineCheckoutStatus
+            compact
+            tenantId={tenantId as string}
+            paymentId={p.id}
+            checkout={p.onlineCheckout}
+            onChecked={() => rafraichir()}
+          />
+        ) : null
+    },
+    {
       title: t('Actions'),
       key: 'actions',
       align: 'end',
@@ -328,8 +343,8 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
               aria-label={t('Paiement du {{value}}', { value: dateCourte(p.initiated_at) })}
               subtitle={`${dateCourte(p.initiated_at)} · ${METHOD_LABELS[p.method as RentalPaymentMethod] || p.method}`}
               status={<StatusTag status={p.status} />}
-              fields={
-                reste > 0
+              fields={[
+                ...(reste > 0
                   ? [
                       {
                         label: t('Déjà affecté'),
@@ -337,8 +352,24 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
                       },
                       { label: t('Reste à affecter'), value: <MoneyValue value={reste} currency={p.currency} /> }
                     ]
-                  : [{ label: 'Affectation', value: t('Intégralement affecté') }]
-              }
+                  : [{ label: 'Affectation', value: t('Intégralement affecté') }]),
+                ...(p.onlineCheckout
+                  ? [
+                      {
+                        label: t('En ligne'),
+                        value: (
+                          <OnlineCheckoutStatus
+                            compact
+                            tenantId={tenantId as string}
+                            paymentId={p.id}
+                            checkout={p.onlineCheckout}
+                            onChecked={() => rafraichir()}
+                          />
+                        )
+                      }
+                    ]
+                  : [])
+              ]}
               onOpen={() => navigate(`/tenant/${tenantId}/rental/payments/${p.id}`)}
               primaryAction={reste > 0 ? { label: 'Affecter', onClick: () => setAffectePour(p) } : undefined}
             />

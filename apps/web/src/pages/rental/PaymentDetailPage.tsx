@@ -34,6 +34,7 @@ import {
   updatePaymentStatus
 } from '../../services/rental-service';
 import { AllocatePaymentForm } from '../../components/rental/AllocatePaymentForm';
+import { OnlineCheckoutStatus } from '../../components/rental/OnlineCheckoutStatus';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -286,6 +287,24 @@ export const PaymentDetailPage: React.FC = () => {
             </Card>
           </Col>
         </Row>
+
+        {payment.onlineCheckout ? (
+          <Card
+            title={
+              <Space>
+                <CreditCardOutlined />
+                <span>{t('Paiement en ligne')}</span>
+              </Space>
+            }
+          >
+            <OnlineCheckoutStatus
+              tenantId={tenantId as string}
+              paymentId={payment.id}
+              checkout={payment.onlineCheckout}
+              onChecked={() => void loadPayment()}
+            />
+          </Card>
+        ) : null}
 
         <Card
           title={

@@ -44,7 +44,8 @@ import {
   allocatePaymentHandler,
   updatePaymentStatusHandler,
   getPaymentHandler,
-  listPaymentsHandler
+  listPaymentsHandler,
+  onlineCheckHandler
 } from '../controllers/rental-payment-controller';
 import {
   approvePaymentDeclarationHandler,
@@ -114,6 +115,8 @@ router.get('/:tenantId/rental/payments', requirePaymentsView, listPaymentsHandle
 router.get('/:tenantId/rental/payments/:paymentId', requirePaymentsView, getPaymentHandler);
 router.post('/:tenantId/rental/payments/:paymentId/allocate', requirePaymentsAllocate, allocatePaymentHandler);
 router.patch('/:tenantId/rental/payments/:paymentId/status', requirePaymentsAllocate, updatePaymentStatusHandler);
+// Lot 7 : relance le rapprochement d'un paiement en ligne.
+router.post('/:tenantId/rental/payments/:paymentId/online-check', requirePaymentsAllocate, onlineCheckHandler);
 
 // Payment Declaration routes
 router.get('/:tenantId/rental/payment-declarations', requirePaymentsView, listPaymentDeclarationsHandler);

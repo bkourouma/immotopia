@@ -6,6 +6,11 @@ import {
   getAgencyFinanceSettingsHandler,
   updateAgencyFinanceSettingsHandler
 } from '../controllers/agency-finance-settings-controller';
+import {
+  getPaymentGatewaySettingsHandler,
+  updatePaymentGatewaySettingsHandler,
+  testPaymentGatewayConnectionHandler
+} from '../controllers/payment-gateway-settings-controller';
 
 /**
  * Paramètres de l'agence qui ne relèvent pas de son identité (`PATCH
@@ -33,6 +38,32 @@ router.put(
   requireTenantAccess,
   requirePermission('TENANT_SETTINGS_EDIT'),
   updateAgencyFinanceSettingsHandler
+);
+
+// Lot 7 : paiement en ligne des loyers (PaySecureHub). Mêmes permissions que
+// les autres paramètres agence.
+const PAYMENT_GATEWAY_PATH = '/tenants/:tenantId/settings/payment-gateway';
+
+router.get(
+  PAYMENT_GATEWAY_PATH,
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_VIEW'),
+  getPaymentGatewaySettingsHandler
+);
+router.put(
+  PAYMENT_GATEWAY_PATH,
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_EDIT'),
+  updatePaymentGatewaySettingsHandler
+);
+router.post(
+  `${PAYMENT_GATEWAY_PATH}/test`,
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_EDIT'),
+  testPaymentGatewayConnectionHandler
 );
 
 export default router;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Card,
   Row,
@@ -19,7 +20,14 @@ import {
   Tabs,
   Collapse
 } from 'antd';
-import { DollarOutlined, CalendarOutlined, EyeOutlined, FilterOutlined, PlusOutlined } from '@ant-design/icons';
+import {
+  DollarOutlined,
+  CalendarOutlined,
+  EyeOutlined,
+  FilterOutlined,
+  PlusOutlined,
+  CreditCardOutlined
+} from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import InstallmentDetails from '../../components/TenantPortal/InstallmentDetails';
@@ -30,6 +38,13 @@ import { getMyStatement } from '../../services/finance-service';
 import type { ThirdPartyMovementLine } from '../../types/finance-types';
 import { natureLabel } from '../finance/Releve';
 import { MoneyValue, StateBlock, SkeletonTable } from '../../components/primitives';
+import {
+  OnlineCheckout,
+  OnlineCheckoutConflict,
+  createOnlinePaymentCheckout,
+  getOnlinePaymentAvailability,
+  getOnlinePaymentCheckout
+} from '../../services/payment-gateway-service';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -187,7 +202,149 @@ function MonReleve() {
   );
 }
 
+/** Intervalle et délai maximal du suivi de retour — contrat Lot 7 §3.3. */
+const SUIVI_INTERVALLE_MS = 3_000;
+const SUIVI_DELAI_MAX_MS = 60_000;
+
+function libelleStatutRetour(status: OnlineCheckout['status']): {
+  type: 'success' | 'error' | 'warning' | 'info';
+  message: string;
+} {
+  switch (status) {
+    case 'SUCCESS':
+      return { type: 'success', message: t('Paiement confirmé.') };
+    case 'FAILED':
+      return { type: 'error', message: t('Le paiement a échoué.') };
+    case 'CANCELED':
+      return { type: 'warning', message: t('Le paiement a été annulé.') };
+    case 'EXPIRED':
+      return { type: 'warning', message: t('Le délai de paiement a expiré.') };
+    case 'REVIEW':
+      return { type: 'info', message: t('En cours de vérification par l’agence.') };
+    default:
+      return { type: 'info', message: t('En cours de confirmation…') };
+  }
+}
+
+/**
+ * Bandeau de suivi du retour depuis PaySecureHub — `?paiement=<code>`.
+ *
+ * Interroge `GET .../online-payments/:codePaiement` toutes les 3 s tant que le
+ * statut reste `PENDING`, 60 s au plus (contrat §3.3). `onResolved` retire le
+ * paramètre de l'adresse une fois un état définitif atteint (ou le délai
+ * écoulé) ; `codePaiement` vient d'un état local capturé une seule fois au
+ * montage, pas de l'adresse en direct, pour que ce bandeau reste affiché après
+ * ce retrait.
+ */
+function SuiviPaiementEnLigne({
+  codePaiement,
+  onResolved,
+  onSuccess
+}: {
+  codePaiement: string;
+  onResolved: () => void;
+  onSuccess: () => void;
+}) {
+  const [checkout, setCheckout] = useState<OnlineCheckout | null>(null);
+  const [expire, setExpire] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const debutRef = useRef(Date.now());
+  const minuteurRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const traiteRef = useRef(false);
+
+  useEffect(() => {
+    let annule = false;
+
+    const verifier = async () => {
+      try {
+        const donnees = await getOnlinePaymentCheckout(codePaiement);
+        if (annule) return;
+        setCheckout(donnees);
+        if (donnees.status === 'PENDING') {
+          if (Date.now() - debutRef.current >= SUIVI_DELAI_MAX_MS) {
+            setExpire(true);
+            if (!traiteRef.current) {
+              traiteRef.current = true;
+              onResolved();
+            }
+            return;
+          }
+          minuteurRef.current = setTimeout(() => void verifier(), SUIVI_INTERVALLE_MS);
+        } else if (!traiteRef.current) {
+          traiteRef.current = true;
+          onResolved();
+          if (donnees.status === 'SUCCESS') onSuccess();
+        }
+      } catch (e: any) {
+        if (annule) return;
+        setErreur(e?.response?.data?.message || t('Impossible de vérifier ce paiement.'));
+        if (!traiteRef.current) {
+          traiteRef.current = true;
+          onResolved();
+        }
+      }
+    };
+
+    void verifier();
+    return () => {
+      annule = true;
+      if (minuteurRef.current) clearTimeout(minuteurRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codePaiement]);
+
+  if (erreur) {
+    return (
+      <Alert type="error" showIcon closable message={t('Erreur')} description={erreur} style={{ marginBottom: 16 }} />
+    );
+  }
+
+  if (checkout?.status === 'PENDING' && expire) {
+    return (
+      <Alert
+        type="info"
+        showIcon
+        closable
+        message={t('En cours de confirmation…')}
+        description={t(
+          'Le paiement met plus de temps que prévu à se confirmer. Il apparaîtra automatiquement dans votre historique dès sa confirmation.'
+        )}
+        style={{ marginBottom: 16 }}
+      />
+    );
+  }
+
+  if (!checkout || checkout.status === 'PENDING') {
+    return (
+      <Alert
+        type="info"
+        showIcon
+        message={t('Vérification du paiement en cours…')}
+        icon={<Spin size="small" />}
+        style={{ marginBottom: 16 }}
+      />
+    );
+  }
+
+  const { type, message } = libelleStatutRetour(checkout.status);
+  return (
+    <Alert
+      type={type}
+      showIcon
+      closable
+      message={message}
+      description={checkout.status === 'FAILED' && checkout.failureMessage ? checkout.failureMessage : undefined}
+      style={{ marginBottom: 16 }}
+    />
+  );
+}
+
 export default function TenantPayments() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Capturé une seule fois au montage : le bandeau de suivi reste affiché même
+  // après que `onResolved` a retiré `paiement` de l'adresse.
+  const [paiementCode] = useState<string | null>(() => searchParams.get('paiement'));
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<InstallmentsData | null>(null);
@@ -199,6 +356,16 @@ export default function TenantPayments() {
   // Echeance visee quand la declaration est lancee depuis une ligne du tableau.
   const [declarationFor, setDeclarationFor] = useState<InstallmentItem | null>(null);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
+
+  // Paiement en ligne (Lot 7) : disponibilité, échéances choisies, création du checkout.
+  const { data: availability } = useQuery({
+    queryKey: ['online-payment-availability'],
+    queryFn: () => getOnlinePaymentAvailability(),
+    staleTime: 60_000,
+    retry: false
+  });
+  const [selectedInstallmentIds, setSelectedInstallmentIds] = useState<string[]>([]);
+  const [payingOnline, setPayingOnline] = useState(false);
 
   // Payment history state
   const [paymentHistoryLoading, setPaymentHistoryLoading] = useState(false);
@@ -331,6 +498,37 @@ export default function TenantPayments() {
   };
 
   loadRef.current = { loadInstallments, loadPaymentHistory };
+
+  /**
+   * Crée le checkout PaySecureHub pour les échéances choisies, puis redirige
+   * vers la page hébergée de l'agrégateur (contrat §3.3).
+   *
+   * Un 409 signale qu'un checkout `PENDING` de moins de 15 minutes couvre déjà
+   * l'une des échéances : on reprend ce checkout au lieu d'en ouvrir un autre,
+   * plutôt que de montrer une erreur.
+   */
+  const handlePayOnline = async () => {
+    if (selectedInstallmentIds.length === 0) return;
+    setPayingOnline(true);
+    setError(null);
+    try {
+      const checkout = await createOnlinePaymentCheckout(selectedInstallmentIds);
+      if (checkout.checkoutUrl) {
+        window.location.assign(checkout.checkoutUrl);
+        return;
+      }
+      setError(t("Le paiement en ligne n'a pas pu être initié."));
+    } catch (err: any) {
+      if (err?.response?.status === 409 && err.response?.data?.data?.checkoutUrl) {
+        const conflit = err.response.data.data as OnlineCheckoutConflict;
+        window.location.assign(conflit.checkoutUrl as string);
+        return;
+      }
+      setError(err?.response?.data?.message || t('Erreur lors de la création du paiement en ligne'));
+    } finally {
+      setPayingOnline(false);
+    }
+  };
 
   useEffect(() => {
     loadInstallments();
@@ -468,6 +666,10 @@ export default function TenantPayments() {
     }
   ];
 
+  const totalSelectionOnline = (data?.installments ?? [])
+    .filter(installment => selectedInstallmentIds.includes(installment.id))
+    .reduce((somme, installment) => somme + installment.balance, 0);
+
   if (loading && !data) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
@@ -482,6 +684,26 @@ export default function TenantPayments() {
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      {paiementCode ? (
+        <SuiviPaiementEnLigne
+          codePaiement={paiementCode}
+          onResolved={() =>
+            setSearchParams(
+              precedent => {
+                const suivant = new URLSearchParams(precedent);
+                suivant.delete('paiement');
+                return suivant;
+              },
+              { replace: true }
+            )
+          }
+          onSuccess={() => {
+            void loadRef.current?.loadInstallments();
+            void loadRef.current?.loadPaymentHistory();
+          }}
+        />
+      ) : null}
+
       {/* Page Header */}
       <div
         style={{
@@ -609,6 +831,36 @@ export default function TenantPayments() {
                   </>
                 }
               >
+                {availability?.available ? (
+                  <Space direction="vertical" size="small" style={{ width: '100%', marginBottom: 16 }}>
+                    {availability.mode === 'SIMULATOR' ? (
+                      <Alert type="info" showIcon message={t('Mode démonstration')} />
+                    ) : null}
+                    <div className="it-toolbar__actions" style={{ alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                      <Space direction="vertical" size={0}>
+                        <Text>
+                          {selectedInstallmentIds.length > 0
+                            ? t('Total à payer : {{value}}', { value: formatCurrency(totalSelectionOnline) })
+                            : t('Sélectionnez une ou plusieurs échéances à régler en ligne.')}
+                        </Text>
+                        {selectedInstallmentIds.length > 0 && availability.feesPaidBy === 'CLIENT' ? (
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            {t("Des frais de l'agrégateur de paiement peuvent s'ajouter au montant.")}
+                          </Text>
+                        ) : null}
+                      </Space>
+                      <Button
+                        type="primary"
+                        icon={<CreditCardOutlined />}
+                        disabled={selectedInstallmentIds.length === 0}
+                        loading={payingOnline}
+                        onClick={() => void handlePayOnline()}
+                      >
+                        {t('Payer en ligne')}
+                      </Button>
+                    </div>
+                  </Space>
+                ) : null}
                 {data && data.installments.length > 0 ? (
                   <div style={{ overflowX: 'auto' }}>
                     <Table
@@ -618,6 +870,18 @@ export default function TenantPayments() {
                       loading={loading}
                       size="middle"
                       scroll={{ x: 1000 }}
+                      rowSelection={
+                        availability?.available
+                          ? {
+                              selectedRowKeys: selectedInstallmentIds,
+                              onChange: keys => setSelectedInstallmentIds(keys as string[]),
+                              getCheckboxProps: (record: InstallmentItem) => ({
+                                disabled: record.balance <= 0,
+                                'aria-label': t('Sélectionner {{period}}', { period: record.period })
+                              })
+                            }
+                          : undefined
+                      }
                       pagination={{
                         current: pagination.current,
                         pageSize: pagination.pageSize,

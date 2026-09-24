@@ -2,6 +2,11 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantPortalAccess } from '../middleware/tenant-portal-access';
 import { TenantPortalController } from '../controllers/tenant-portal-controller';
+import {
+  getOnlinePaymentAvailabilityHandler,
+  startOnlinePaymentHandler,
+  getOnlinePaymentHandler
+} from '../controllers/tenant-portal-online-payment-controller';
 import multer from 'multer';
 
 const router = Router();
@@ -30,6 +35,11 @@ router.get('/installments/:id', (req, res) => controller.getInstallmentDetails(r
 // Payments
 router.get('/payments', (req, res) => controller.getPaymentHistory(req, res));
 router.post('/payments/declare', upload.single('proof'), (req, res) => controller.declarePayment(req, res));
+
+// Lot 7 : paiement en ligne (PaySecureHub).
+router.get('/online-payments/availability', getOnlinePaymentAvailabilityHandler);
+router.post('/online-payments', startOnlinePaymentHandler);
+router.get('/online-payments/:codePaiement', getOnlinePaymentHandler);
 
 // Deposit
 router.get('/deposit', (req, res) => controller.getDepositInfo(req, res));

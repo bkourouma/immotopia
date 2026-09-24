@@ -10,6 +10,21 @@ import {
 } from '../services/rental-payment-service';
 import { RentalPaymentStatus, RentalPaymentMethod } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
+import { asyncHandler, NotFoundError } from '../middleware/error-middleware';
+import { getCheckoutForPayment, reconcileCheckout, toOnlineCheckoutSummaryDto } from '../lib/payment-gateway/checkout';
+
+/**
+ * Lot 7 : `onlineCheckout` sort en `OnlineCheckoutSummary` (contrat §3.2),
+ * jamais la ligne Prisma brute (qui porterait `lastProviderPayload`,
+ * `providerToken`...).
+ */
+function withOnlineCheckoutSummary<T extends { onlineCheckout?: unknown }>(payment: T) {
+  const { onlineCheckout, ...rest } = payment;
+  return {
+    ...rest,
+    onlineCheckout: onlineCheckout ? toOnlineCheckoutSummaryDto(onlineCheckout as any) : null
+  };
+}
 
 // Validation schemas
 const createPaymentSchema = z.object({
@@ -225,7 +240,7 @@ export async function getPaymentHandler(req: Request, res: Response): Promise<vo
 
     res.json({
       success: true,
-      data: payment
+      data: withOnlineCheckoutSummary(payment)
     });
   } catch (error) {
     res.status(500).json({
@@ -271,7 +286,8 @@ export async function listPaymentsHandler(req: Request, res: Response): Promise<
 
     res.json({
       success: true,
-      ...result
+      ...result,
+      data: (result.data as any[]).map(withOnlineCheckoutSummary)
     });
   } catch (error) {
     res.status(500).json({
@@ -280,3 +296,20 @@ export async function listPaymentsHandler(req: Request, res: Response): Promise<
     });
   }
 }
+
+/**
+ * Relance le rapprochement d'un paiement en ligne — contrat §3.2.
+ * POST /tenants/:tenantId/rental/payments/:paymentId/online-check
+ */
+export const onlineCheckHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { paymentId } = req.params;
+
+  const checkout = await getCheckoutForPayment(tenantId, paymentId);
+  if (!checkout) {
+    throw new NotFoundError("Ce paiement n'a pas de paiement en ligne associé.");
+  }
+
+  const updated = await reconcileCheckout(tenantId, checkout.id);
+  res.json({ success: true, data: toOnlineCheckoutSummaryDto(updated) });
+});

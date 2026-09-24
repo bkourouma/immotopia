@@ -574,5 +574,15 @@
   "Vie du bail": "مسار عقد الإيجار",
   "Virement bancaire": "تحويل مصرفي",
   "Voir": "عرض",
-  "Voir la preuve de paiement": "عرض إثبات الدفع"
+  "Voir la preuve de paiement": "عرض إثبات الدفع",
+  "En cours de vérification par l’agence": "قيد المراجعة من قبل الوكالة",
+  "En ligne": "عبر الإنترنت",
+  "Erreur lors de la vérification du statut": "خطأ أثناء التحقق من الحالة",
+  "Expiré": "منتهي الصلاحية",
+  "Frais : {{value}}": "الرسوم: {{value}}",
+  "Mode démonstration": "وضع العرض التجريبي",
+  "Opérateur : {{value}}": "المشغّل: {{value}}",
+  "Statut vérifié": "تم التحقق من الحالة",
+  "Vérifier le statut": "التحقق من الحالة",
+  "Paiement en ligne": "الدفع عبر الإنترنت"
 }

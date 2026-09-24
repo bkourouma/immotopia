@@ -540,6 +540,10 @@ model Tenant {
   rentalPayments           RentalPayment[]
   rentalPaymentAllocations RentalPaymentAllocation[]
   rentalRefunds            RentalRefund[]
+  /// Lot 7 : paiement en ligne des loyers (PaySecureHub). Un compte marchand
+  /// par agence, jamais rempli tant qu'elle n'a pas ouvert la page.
+  paymentGatewayConfig     PaymentGatewayConfig?
+  onlinePaymentCheckouts   OnlinePaymentCheckout[]
   rentalPenaltyRules       RentalPenaltyRule[]
   rentalPenalties          RentalPenalty[]
   rentalSecurityDeposits   RentalSecurityDeposit[]
@@ -1731,6 +1735,32 @@ enum MobileMoneyOperator {
   OTHER
 }
 
+// Lot 7 : paiement en ligne des loyers via l'agrégateur PaySecureHub.
+// Voir docs/finance/LOT-7-CONTRAT-PAIEMENT-EN-LIGNE.md — le contrat entre ce
+// backend et le frontend, à respecter à la lettre.
+enum PaymentGatewayProvider {
+  PAYSECUREHUB
+}
+
+enum PaymentGatewayMode {
+  SIMULATOR
+  LIVE
+}
+
+enum PaymentGatewayFeesPayer {
+  CLIENT
+  AGENCY
+}
+
+enum OnlineCheckoutStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELED
+  EXPIRED
+  REVIEW
+}
+
 enum RentalPenaltyMode {
   FIXED_AMOUNT
   PERCENT_OF_RENT
@@ -1997,6 +2027,9 @@ model RentalPayment {
   refunds          RentalRefund[]
   depositMovements RentalDepositMovement[]
   documents        RentalDocument[]
+  /// Lot 7 : tentative de paiement en ligne (PaySecureHub) adossée 1-1 à ce
+  /// paiement PENDING.
+  onlineCheckout   OnlinePaymentCheckout?
 
   // Client-supplied idempotency keys are only unique within a tenant.
   @@unique([tenant_id, idempotency_key])
@@ -2030,6 +2063,85 @@ model RentalPaymentAllocation {
   @@index([payment_id])
   @@index([installment_id])
   @@map("rental_payment_allocations")
+}
+
+/// Lot 7 : compte marchand PaySecureHub d'une agence. Un par agence
+/// (`tenantId` unique). Tant qu'elle n'a rien enregistré, le service renvoie
+/// des valeurs par défaut sans écrire de ligne.
+model PaymentGatewayConfig {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @unique @map("tenant_id")
+
+  provider          PaymentGatewayProvider  @default(PAYSECUREHUB)
+  mode              PaymentGatewayMode      @default(SIMULATOR)
+  isActive          Boolean                 @default(false) @map("is_active")
+  merchantId        String?                 @map("merchant_id")
+  /// AES-256-GCM (`lib/payment-gateway/crypto.ts`), jamais renvoyée par l'API.
+  apiKeyEncrypted   String?                 @map("api_key_encrypted")
+  apiKeyLast4       String?                 @map("api_key_last4")
+  /// Compte de trésorerie de collecte (5525). Champ simple, vérifié à
+  /// l'applicatif comme `rental_payments.treasury_account_id` : pas de
+  /// relation Prisma formelle.
+  treasuryAccountId String?                 @map("treasury_account_id") @db.Uuid
+  feesPaidBy        PaymentGatewayFeesPayer @default(CLIENT) @map("fees_paid_by")
+  lastTestAt        DateTime?               @map("last_test_at")
+  lastTestOk        Boolean?                @map("last_test_ok")
+  lastTestMessage   String?                 @map("last_test_message")
+  createdAt         DateTime                @default(now()) @map("created_at")
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("payment_gateway_configs")
+}
+
+/// Lot 7 : une tentative de paiement en ligne, adossée 1-1 à un
+/// `RentalPayment` PENDING. `reconcileCheckout` (`lib/payment-gateway/`) est
+/// la seule porte qui change son statut — voir le contrat pour les règles.
+model OnlinePaymentCheckout {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id")
+
+  paymentId      String                 @unique @map("payment_id") @db.Uuid
+  /// Champs simples, comme `renter_client_id` sur `RentalPayment` : pas de
+  /// relation Prisma formelle vers le bail ou le locataire.
+  leaseId        String                 @map("lease_id") @db.Uuid
+  renterClientId String                 @map("renter_client_id")
+  provider       PaymentGatewayProvider
+  mode           PaymentGatewayMode
+  /// "IMT-" + 20 caractères aléatoires, imprévisible : c'est la référence
+  /// donnée au locataire et à l'agrégateur.
+  codePaiement   String                 @unique @map("code_paiement")
+  amount         Decimal                @db.Decimal(12, 2)
+  currency       String                 @default("FCFA")
+  installmentIds String[]               @map("installment_ids")
+  checkoutUrl    String?                @map("checkout_url")
+  providerToken  String?                @map("provider_token")
+
+  providerTransactionId String?  @map("provider_transaction_id")
+  providerServiceName   String?  @map("provider_service_name")
+  providerFees          Decimal? @map("provider_fees") @db.Decimal(12, 2)
+
+  status              OnlineCheckoutStatus @default(PENDING)
+  lastProviderState   String?              @map("last_provider_state")
+  lastProviderPayload Json?                @map("last_provider_payload")
+  lastCheckedAt       DateTime?            @map("last_checked_at")
+  checkAttempts       Int                  @default(0) @map("check_attempts")
+  failureMessage      String?              @map("failure_message")
+  reviewReason        String?              @map("review_reason")
+  /// SUCCESS | FAILED | CANCELED — mode simulateur seulement.
+  simulatedOutcome    String?              @map("simulated_outcome")
+
+  createdByUserId String?   @map("created_by_user_id")
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  tenant  Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payment RentalPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@map("online_payment_checkouts")
 }
 
 // Rental Refund

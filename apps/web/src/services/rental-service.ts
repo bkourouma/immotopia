@@ -1,4 +1,5 @@
 import apiClient from '../utils/api-client';
+import type { OnlineCheckoutSummary } from './payment-gateway-service';
 
 // Enums matching Prisma schema
 export enum RentalLeaseStatus {
@@ -422,6 +423,8 @@ export interface RentalPayment {
     property?: { id: string; title?: string | null; address?: string | null; internalReference?: string | null } | null;
   } | null;
   renterClient?: { id: string; user?: { fullName?: string | null; email?: string | null } | null } | null;
+  /** Paiement en ligne (Lot 7) : `null` si ce paiement n'a pas été initié depuis le portail. */
+  onlineCheckout?: OnlineCheckoutSummary | null;
 }
 
 export interface CreatePaymentRequest {
