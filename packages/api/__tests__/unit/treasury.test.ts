@@ -381,3 +381,7 @@ describe('Versements DGI — refus au-delà du dû', () => {
     expect(summary.accountNumber).toBe('4478');
   });
 });
+
+// Module, pas script : sans cela ses declarations entrent en collision avec
+// celles des autres fichiers de test sous ts-jest.
+export {};
