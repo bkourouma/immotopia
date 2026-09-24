@@ -151,8 +151,10 @@ export async function createMandate(
   if (!seller) throw badRequest('Vendeur introuvable pour cette agence');
 
   if (input.agentUserId) {
-    const agent = await prisma.membership.findFirst({ where: { userId: input.agentUserId, tenantId } });
-    if (!agent) throw badRequest('Négociateur introuvable pour cette agence');
+    const agent = await prisma.membership.findFirst({
+      where: { userId: input.agentUserId, tenantId, status: 'ACTIVE' }
+    });
+    if (!agent) throw badRequest("Le négociateur choisi n'est pas un collaborateur actif de cette agence");
   }
 
   const already = await prisma.saleMandate.findFirst({
@@ -264,8 +266,15 @@ export async function updateMandate(tenantId: string, mandateId: string, body: u
     throw badRequest('La date de fin ne peut pas précéder la date de début');
   }
 
+  if (input.agentUserId !== undefined && input.agentUserId !== null) {
+    const agent = await prisma.membership.findFirst({
+      where: { userId: input.agentUserId, tenantId, status: 'ACTIVE' }
+    });
+    if (!agent) throw badRequest("Le négociateur choisi n'est pas un collaborateur actif de cette agence");
+  }
+
   const updated = await prisma.saleMandate.update({
-    where: { id: row.id },
+    where: { id: row.id, tenantId },
     data: {
       mandateType: input.mandateType ?? undefined,
       askingPrice: input.askingPrice ?? undefined,
@@ -319,7 +328,7 @@ export async function revokeMandate(
 
   const updated = await prisma.$transaction(async tx => {
     const result = await tx.saleMandate.update({
-      where: { id: row.id },
+      where: { id: row.id, tenantId },
       data: {
         status: SaleMandateStatus.REVOKED,
         revokedAt: new Date(),

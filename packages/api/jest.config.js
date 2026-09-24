@@ -1,13 +1,44 @@
-module.exports = {
+/**
+ * Deux projets Jest partagent la meme configuration de base.
+ *
+ * - `api` : toutes les suites, comme avant. ts-jest y verifie les types de
+ *   chaque fichier compile.
+ * - `api-app` : les suites qui importent l'app Express ENTIERE (`src/app`) —
+ *   inventaire des routes, secrets absents des reponses, etancheite entre
+ *   agences. Elles chargent tous les routeurs, donc tous les services ; or le
+ *   paquet porte encore des erreurs TypeScript anciennes (voir AGENTS.md), et
+ *   ts-jest refuserait la suite a la premiere rencontree. Elles sont donc
+ *   compilees sans verification de types (`isolatedModules`) : ce qu'elles
+ *   testent, c'est le comportement, et `npm run typecheck` surveille les types.
+ */
+
+const APP_LEVEL_TESTS = [
+  '<rootDir>/__tests__/unit/routes-inventory.test.ts',
+  '<rootDir>/__tests__/unit/no-secret-in-responses.test.ts',
+  '<rootDir>/__tests__/integration/isolation.test.ts'
+];
+
+const base = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/src', '<rootDir>/__tests__'],
-  testMatch: ['**/__tests__/**/*.spec.ts', '**/__tests__/**/*.test.ts'],
-  collectCoverageFrom: [
-    'src/**/*.ts',
-    '!src/**/*.d.ts',
-    '!src/index.ts'
-  ],
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+    // `uuid` v13 est ESM-only ; jest-runtime ne sait pas encore le charger
+    // via `require(esm)` (Node 24 le peut, Jest non). Voir le commentaire de
+    // tete du shim pour le detail — necessaire depuis que des tests du lot E
+    // (multi-tenant) importent l'app Express complete.
+    '^uuid$': '<rootDir>/__tests__/helpers/uuid-jest-shim.js'
+    // jsdom et dompurify (ESM-only eux aussi) ne sont PAS remplaces ici : un
+    // DOMPurify factice qui ne nettoie rien ferait passer a tort tout test de
+    // la newsletter. Seuls les tests qui importent l'app entiere les
+    // remplacent, par jest.mock (voir __tests__/helpers/app-shims.ts).
+  },
+  setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts']
+};
+
+module.exports = {
+  collectCoverageFrom: ['src/**/*.ts', '!src/**/*.d.ts', '!src/index.ts'],
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
   coverageThreshold: {
@@ -18,9 +49,20 @@ module.exports = {
       statements: 80
     }
   },
-  moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1'
-  },
-  setupFilesAfterEnv: ['<rootDir>/__tests__/setup.ts']
+  projects: [
+    {
+      ...base,
+      displayName: 'api',
+      testMatch: ['**/__tests__/**/*.spec.ts', '**/__tests__/**/*.test.ts'],
+      testPathIgnorePatterns: ['/node_modules/', ...APP_LEVEL_TESTS.map(p => p.replace('<rootDir>', ''))]
+    },
+    {
+      ...base,
+      displayName: 'api-app',
+      testMatch: APP_LEVEL_TESTS,
+      transform: {
+        '^.+\\.tsx?$': ['ts-jest', { isolatedModules: true }]
+      }
+    }
+  ]
 };
-

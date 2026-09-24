@@ -210,6 +210,7 @@ export interface CreateMandateRequest {
   tenantId: string;
   startDate: Date;
   endDate?: Date;
+  scope?: Record<string, unknown> | null;
   notes?: string;
 }
 

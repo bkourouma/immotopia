@@ -13,6 +13,7 @@ import { appendThirdPartyMovementTx } from '../lib/finance/ledger';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { getProjectRoot } from '../utils/project-root';
+import { runWithTenantContext } from '../utils/tenant-context';
 
 // ---------------------------------------------------------------------------
 // Pont vers le grand livre des comptes de tiers — lot 1, tâche 1.3
@@ -219,7 +220,8 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
       // Update existing penalty
       ligne = await tx.rentalPenalty.update({
         where: {
-          id: existingPenalty.id
+          id: existingPenalty.id,
+          tenant_id: tenantId
         },
         data: {
           calculated_at: new Date(),
@@ -254,7 +256,8 @@ export async function calculatePenalty(tenantId: string, installmentId: string, 
     if (!existingPenalty || !existingPenalty.is_manual_override) {
       await tx.rentalInstallment.update({
         where: {
-          id: installmentId
+          id: installmentId,
+          tenant_id: tenantId
         },
         data: {
           penalty_amount: penaltyAmount
@@ -342,48 +345,52 @@ export async function calculatePenaltiesForOverdueInstallments(tenantId?: string
   };
 
   for (const installment of installments) {
-    try {
-      // Check if there's already a manual override penalty for this installment
-      const existingPenalty = await prisma.rentalPenalty.findFirst({
-        where: {
-          installment_id: installment.id,
-          tenant_id: installment.tenant_id,
-          is_manual_override: true
-        },
-        orderBy: {
-          calculated_at: 'desc'
-        }
-      });
-
-      // Skip calculation if there's a manual override penalty
-      if (existingPenalty) {
-        logger.debug('Skipping penalty calculation for installment with manual override', {
-          installmentId: installment.id,
-          penaltyId: existingPenalty.id
+    // Lecture transverse ci-dessus ; chaque echeance est traitee dans le
+    // contexte de SON agence, pour le garde-fou Prisma.
+    await runWithTenantContext({ tenantId: installment.tenant_id }, async () => {
+      try {
+        // Check if there's already a manual override penalty for this installment
+        const existingPenalty = await prisma.rentalPenalty.findFirst({
+          where: {
+            installment_id: installment.id,
+            tenant_id: installment.tenant_id,
+            is_manual_override: true
+          },
+          orderBy: {
+            calculated_at: 'desc'
+          }
         });
-        continue;
-      }
 
-      const dueDate = new Date(installment.due_date);
-      dueDate.setHours(0, 0, 0, 0);
-      const graceDays = installment.lease.penalty_grace_days ?? 0;
-      const graceDate = new Date(dueDate);
-      graceDate.setDate(graceDate.getDate() + graceDays);
+        // Skip calculation if there's a manual override penalty
+        if (existingPenalty) {
+          logger.debug('Skipping penalty calculation for installment with manual override', {
+            installmentId: installment.id,
+            penaltyId: existingPenalty.id
+          });
+          return;
+        }
 
-      // Only calculate if overdue (past grace period)
-      if (today > graceDate) {
-        const penalty = await calculatePenalty(installment.tenant_id, installment.id, undefined, actorUserId);
-        results.penalties.push(penalty);
-        results.processed++;
+        const dueDate = new Date(installment.due_date);
+        dueDate.setHours(0, 0, 0, 0);
+        const graceDays = installment.lease.penalty_grace_days ?? 0;
+        const graceDate = new Date(dueDate);
+        graceDate.setDate(graceDate.getDate() + graceDays);
+
+        // Only calculate if overdue (past grace period)
+        if (today > graceDate) {
+          const penalty = await calculatePenalty(installment.tenant_id, installment.id, undefined, actorUserId);
+          results.penalties.push(penalty);
+          results.processed++;
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        results.errors.push(`Installment ${installment.id}: ${errorMsg}`);
+        logger.error('Error calculating penalty for installment', {
+          installmentId: installment.id,
+          error: errorMsg
+        });
       }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      results.errors.push(`Installment ${installment.id}: ${errorMsg}`);
-      logger.error('Error calculating penalty for installment', {
-        installmentId: installment.id,
-        error: errorMsg
-      });
-    }
+    });
   }
 
   logger.info('Penalty calculation job completed', {
@@ -432,7 +439,8 @@ export async function updatePenalty(
     // Update penalty
     const ligne = await tx.rentalPenalty.update({
       where: {
-        id: penaltyId
+        id: penaltyId,
+        tenant_id: tenantId
       },
       data: {
         amount: amount,
@@ -445,7 +453,8 @@ export async function updatePenalty(
     // Update installment penalty amount
     await tx.rentalInstallment.update({
       where: {
-        id: penalty.installment_id
+        id: penalty.installment_id,
+        tenant_id: tenantId
       },
       data: {
         penalty_amount: amount
@@ -620,7 +629,8 @@ export async function deletePenalty(tenantId: string, penaltyId: string, actorUs
     // Delete penalty
     await tx.rentalPenalty.delete({
       where: {
-        id: penaltyId
+        id: penaltyId,
+        tenant_id: tenantId
       }
     });
 
@@ -637,7 +647,8 @@ export async function deletePenalty(tenantId: string, penaltyId: string, actorUs
     // Update installment penalty amount
     await tx.rentalInstallment.update({
       where: {
-        id: penalty.installment_id
+        id: penalty.installment_id,
+        tenant_id: tenantId
       },
       data: {
         penalty_amount: totalPenaltyAmount
@@ -765,7 +776,8 @@ export async function uploadPenaltyJustification(
 
   const updatedPenalty = await prisma.rentalPenalty.update({
     where: {
-      id: penaltyId
+      id: penaltyId,
+      tenant_id: tenantId
     },
     data: {
       override_reason: JSON.stringify(justificationInfo)

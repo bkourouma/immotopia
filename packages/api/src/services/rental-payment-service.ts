@@ -311,6 +311,34 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
       }
     }
 
+    // Validate renter client exists and belongs to this tenant, if provided.
+    if (data.renterClientId) {
+      const renterClient = await prisma.tenantClient.findFirst({
+        where: {
+          id: data.renterClientId,
+          tenantId: tenantId
+        }
+      });
+
+      if (!renterClient) {
+        throw new Error('Locataire introuvable');
+      }
+    }
+
+    // Validate invoice exists and belongs to this tenant, if provided.
+    if (data.invoiceId) {
+      const invoice = await prisma.invoice.findFirst({
+        where: {
+          id: data.invoiceId,
+          tenantId: tenantId
+        }
+      });
+
+      if (!invoice) {
+        throw new Error('Facture introuvable');
+      }
+    }
+
     // Create the payment
     //
     // L'encaissement et son mouvement de compte sont indivisibles : un
@@ -540,7 +568,7 @@ export async function allocatePayment(
         }
 
         await tx.rentalInstallment.update({
-          where: { id: installment.id },
+          where: { id: installment.id, tenant_id: tenantId },
           data: {
             status: newStatus,
             amount_paid: new Decimal(totalAllocated),
@@ -591,7 +619,7 @@ export async function allocatePayment(
         });
         const { emailService } = await import('./email-service');
         const lease = await prisma.rentalLease.findUnique({
-          where: { id: leaseId },
+          where: { id: leaseId, tenant_id: tenantId },
           select: { lease_number: true }
         });
         const leaseNumber = lease?.lease_number || '';
@@ -898,7 +926,7 @@ export async function updatePaymentStatus(
       }
 
       return tx.rentalPayment.update({
-        where: { id: paymentId },
+        where: { id: paymentId, tenant_id: tenantId },
         data: updateData,
         include: {
           allocations: {

@@ -72,9 +72,18 @@ export async function matchPropertiesForDeal(
     }
   });
 
-  // Calculate match scores
+  // Calculate match scores. `deal.budgetMin`/`budgetMax` come back as Prisma
+  // `Decimal` (or null); `calculateMatchScore` takes plain numbers, same as
+  // `matchBudget` already does internally with `Number(...)` on whatever it
+  // receives — converting here is a type-only change, not a behaviour one.
+  const dealForScoring = {
+    ...deal,
+    budgetMin: deal.budgetMin !== null ? Number(deal.budgetMin) : null,
+    budgetMax: deal.budgetMax !== null ? Number(deal.budgetMax) : null
+  };
+
   const matches: PropertyMatchResult[] = properties.map(property => {
-    const score = calculateMatchScore(deal, property);
+    const score = calculateMatchScore(dealForScoring, property);
     return {
       propertyId: property.id,
       matchScore: score.total,
@@ -457,6 +466,40 @@ export async function addToShortlist(
   matchExplanation?: any,
   sourceOwnerContactId?: string | null
 ) {
+  // dealId and propertyId are received from the request (route param / body):
+  // without these checks, a caller could attach ANY other agency's property
+  // to a deal that itself must be verified as theirs — the compound unique
+  // key below only guards the read/update path (it forces an exact tenantId
+  // match on lookup), never the create path.
+  const [deal, property] = await Promise.all([
+    prisma.crmDeal.findFirst({ where: { id: dealId, tenantId }, select: { id: true } }),
+    prisma.property.findFirst({
+      where: {
+        id: propertyId,
+        OR: [
+          { ownershipType: 'TENANT', tenantId },
+          { ownershipType: 'CLIENT', mandates: { some: { tenantId, isActive: true } } }
+        ]
+      },
+      select: { id: true }
+    })
+  ]);
+  if (!deal) {
+    throw new Error('Deal not found');
+  }
+  if (!property) {
+    throw new Error('Property not found or access denied');
+  }
+  if (sourceOwnerContactId) {
+    const contact = await prisma.crmContact.findFirst({
+      where: { id: sourceOwnerContactId, tenantId },
+      select: { id: true }
+    });
+    if (!contact) {
+      throw new Error('Owner contact not found or access denied');
+    }
+  }
+
   // Check if already exists
   const existing = await prisma.crmDealProperty.findUnique({
     where: {

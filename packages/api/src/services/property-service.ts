@@ -227,11 +227,15 @@ export async function createProperty(
     });
   }
 
-  // Calculate quality score (async, don't wait)
-  const { calculateAndStoreQualityScore } = await import('./property-quality-service');
-  calculateAndStoreQualityScore(property.id).catch(error => {
-    logger.warn('Failed to calculate quality score', { propertyId: property.id, error });
-  });
+  // Calculate quality score (async, don't wait). Only for tenant-scoped
+  // creations: calculateAndStoreQualityScore requires a tenantId to re-check
+  // ownership itself (defense in depth).
+  if (tenantId) {
+    const { calculateAndStoreQualityScore } = await import('./property-quality-service');
+    calculateAndStoreQualityScore(property.id, tenantId).catch(error => {
+      logger.warn('Failed to calculate quality score', { propertyId: property.id, error });
+    });
+  }
 
   return property as PropertyDetail;
 }
@@ -483,11 +487,17 @@ export async function updateProperty(
     });
   }
 
-  // Calculate quality score (async, don't wait)
-  const { calculateAndStoreQualityScore } = await import('./property-quality-service');
-  calculateAndStoreQualityScore(updated.id).catch(error => {
-    logger.warn('Failed to calculate quality score', { propertyId: updated.id, error });
-  });
+  // Calculate quality score (async, don't wait). Only when a tenant is known
+  // (the acting agency, or else the property's own owning tenant):
+  // calculateAndStoreQualityScore requires a tenantId to re-check ownership
+  // itself (defense in depth).
+  const qualityScoreTenantId = tenantId || updated.tenantId || null;
+  if (qualityScoreTenantId) {
+    const { calculateAndStoreQualityScore } = await import('./property-quality-service');
+    calculateAndStoreQualityScore(updated.id, qualityScoreTenantId).catch(error => {
+      logger.warn('Failed to calculate quality score', { propertyId: updated.id, error });
+    });
+  }
 
   return updated as PropertyDetail;
 }

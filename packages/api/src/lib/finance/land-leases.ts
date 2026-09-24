@@ -59,6 +59,7 @@ import { roundMoneyXof } from './money';
 import { ensureDefaultTreasuryAccountTx } from '../treasury/accounts';
 import type { FinanceSourceType } from './types';
 import { toAmountOrZero } from './types';
+import { runWithTenantContext } from '../../utils/tenant-context';
 import type {
   AttachSiteToLandLeaseTx,
   CreateLandLeasePaymentTx,
@@ -395,7 +396,8 @@ export const attachSiteToLandLeaseTx: AttachSiteToLandLeaseTx = async (tx, tenan
   if (landLeaseId === null) {
     // Détache : aucun bail à renvoyer, `null` est la réponse elle-même (voir
     // le commentaire du contrat sur cette fonction).
-    await tx.constructionSite.update({ where: { id: siteId }, data: { landLeaseId: null } });
+    // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+    await tx.constructionSite.update({ where: { id: siteId, tenantId }, data: { landLeaseId: null } });
     return null;
   }
 
@@ -411,7 +413,8 @@ export const attachSiteToLandLeaseTx: AttachSiteToLandLeaseTx = async (tx, tenan
   // bail : c'est une correction, pas un conflit (voir le contrat). Aucune
   // constatation passée n'est recalculée — cette fonction ne touche à rien
   // d'autre que la colonne `landLeaseId`.
-  await tx.constructionSite.update({ where: { id: siteId }, data: { landLeaseId } });
+  // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+  await tx.constructionSite.update({ where: { id: siteId, tenantId }, data: { landLeaseId } });
 
   const { sites, accountBalance } = await loadSingleLeaseAssociations(tx, tenantId, lease.id, lease.landlordAccountId);
   return toLandLeaseRecord(lease, sites, accountBalance);
@@ -921,7 +924,8 @@ async function recordLandLeaseAccrualInternalTx(
   }
 
   const updated = await tx.landLeaseAccrual.update({
-    where: { id: accrual.id },
+    // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+    where: { id: accrual.id, tenantId },
     data: { journalEntryId: entry.entryId }
   });
 
@@ -1003,12 +1007,17 @@ export const runMonthlyLandLeaseAccruals: RunMonthlyLandLeaseAccruals = async pa
   // pas empêcher les autres d'être constatés (contrat, §6 du data-model).
   for (const lease of leases as Array<Record<string, any>>) {
     try {
-      const { alreadyExisted } = await prisma.$transaction(tx =>
-        recordLandLeaseAccrualInternalTx(tx, lease.tenantId, {
-          landLeaseId: lease.id,
-          periodYear: params.periodYear,
-          periodMonth: params.periodMonth
-        })
+      // La lecture ci-dessus traverse toutes les agences ; chaque bail, lui, est
+      // constate dans le contexte de SON agence, pour que le garde-fou Prisma
+      // (utils/prisma-tenant-guard-extension.ts) controle ses ecritures.
+      const { alreadyExisted } = await runWithTenantContext({ tenantId: lease.tenantId }, () =>
+        prisma.$transaction(tx =>
+          recordLandLeaseAccrualInternalTx(tx, lease.tenantId, {
+            landLeaseId: lease.id,
+            periodYear: params.periodYear,
+            periodMonth: params.periodMonth
+          })
+        )
       );
       if (alreadyExisted) {
         dejaConstatees += 1;

@@ -157,7 +157,7 @@ export async function resolveRecipients(tenantId: string, listId: string): Promi
   if (list.type === 'FROM_OWNERS') {
     const owners = await prisma.tenantClient.findMany({
       where: { tenantId, clientType: 'OWNER', newsletterConsent: true },
-      include: { user: true }
+      include: { user: { select: { id: true, email: true, fullName: true } } }
     });
     const recipients = owners
       .filter(o => o.user?.email)
@@ -177,7 +177,7 @@ export async function resolveRecipients(tenantId: string, listId: string): Promi
   if (list.type === 'FROM_RENTERS') {
     const renters = await prisma.tenantClient.findMany({
       where: { tenantId, clientType: 'RENTER', newsletterConsent: true },
-      include: { user: true }
+      include: { user: { select: { id: true, email: true, fullName: true } } }
     });
     const recipients = renters
       .filter(r => r.user?.email)
@@ -285,7 +285,7 @@ export async function updateCampaign(
   const bodyHtml = data.bodyHtml != null ? sanitizeHtml(data.bodyHtml) : undefined;
 
   return prisma.newsletterCampaign.update({
-    where: { id: campaignId },
+    where: { id: campaignId, tenantId },
     data: {
       ...(data.subject != null && { subject: data.subject }),
       ...(bodyHtml != null && { bodyHtml }),
@@ -350,7 +350,7 @@ export async function sendCampaign(tenantId: string, campaignId: string): Promis
   }
 
   await prisma.newsletterCampaign.update({
-    where: { id: campaignId },
+    where: { id: campaignId, tenantId },
     data: { status: 'SENDING' }
   });
 
@@ -449,7 +449,7 @@ export async function sendCampaign(tenantId: string, campaignId: string): Promis
 
   const finalStatus = successfulRecipients > 0 ? 'SENT' : 'FAILED';
   await prisma.newsletterCampaign.update({
-    where: { id: campaignId },
+    where: { id: campaignId, tenantId },
     data: {
       status: finalStatus,
       sentAt: new Date(),
@@ -478,7 +478,7 @@ export async function scheduleCampaign(tenantId: string, campaignId: string, sch
   if (scheduledAt <= new Date()) throw new Error("La date d'envoi doit être dans le futur.");
 
   return prisma.newsletterCampaign.update({
-    where: { id: campaignId },
+    where: { id: campaignId, tenantId },
     data: { status: 'SCHEDULED', scheduledAt }
   });
 }
@@ -489,7 +489,7 @@ export async function cancelCampaign(tenantId: string, campaignId: string) {
   if (c.status !== 'SCHEDULED') throw new Error('Seules les campagnes planifiées peuvent être annulées.');
 
   return prisma.newsletterCampaign.update({
-    where: { id: campaignId },
+    where: { id: campaignId, tenantId },
     data: { status: 'CANCELLED' }
   });
 }
@@ -551,7 +551,7 @@ export async function trackOpen(token: string): Promise<Buffer> {
   });
   if (recipient && !recipient.openedAt) {
     await prisma.newsletterCampaignRecipient.update({
-      where: { id: recipient.id },
+      where: { id: recipient.id, tenantId: recipient.tenantId },
       data: { openedAt: new Date() }
     });
   }

@@ -230,7 +230,8 @@ export const appendThirdPartyMovementTx: AppendThirdPartyMovementTx = async (tx,
     });
 
     await tx.thirdPartyAccount.update({
-      where: { id: params.accountId },
+      // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+      where: { id: params.accountId, tenantId: params.tenantId },
       data: { balance: balanceAfter }
     });
 

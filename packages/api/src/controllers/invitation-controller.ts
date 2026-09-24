@@ -113,12 +113,16 @@ export async function resendInvitationHandler(req: Request, res: Response): Prom
     const { invitationId } = req.params;
     const result = await resendInvitation(invitationId, req.user.userId);
 
-    // Comme a l'invitation, le nouveau token n'est jamais renvoye par l'API.
+    // Comme a l'invitation, le nouveau token n'est jamais renvoye par l'API :
+    // acceptUrl porte deja le jeton en clair dans le lien, ce qui reste
+    // necessaire pour que le super-admin puisse le copier/coller (F2).
     res.status(200).json({
       success: true,
       message: 'Invitation renvoyée avec succès.',
       data: {
-        expiresAt: result.expiresAt
+        expiresAt: result.expiresAt,
+        acceptUrl: result.acceptUrl,
+        emailSent: result.emailSent
       }
     });
   } catch (error) {

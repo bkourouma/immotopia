@@ -33,6 +33,15 @@ jest.mock('@prisma/client', () => {
     incidentCostImputation: {
       create: jest.fn(),
     },
+    crmContact: {
+      findFirst: jest.fn(),
+    },
+    commonAreaAsset: {
+      findFirst: jest.fn(),
+    },
+    serviceProvider: {
+      findFirst: jest.fn(),
+    },
   };
 
   return {
@@ -45,6 +54,7 @@ import {
   addIncidentImputationBySyndicate,
   createIncidentBySyndicate,
   createLotOwnerProfileBySyndicate,
+  createLotTenantProfileBySyndicate,
   listLotOwnerProfilesBySyndicate,
   listLotTenantProfilesBySyndicate,
   updateIncidentBySyndicate,
@@ -59,6 +69,9 @@ describe('Syndics profiles/incidents queries - US5', () => {
     jest.clearAllMocks();
     mockPrisma.syndicate.findFirst.mockResolvedValue({ id: 'syndic-1' });
     mockPrisma.syndicateLot.findFirst.mockResolvedValue({ id: 'lot-1' });
+    // Contact belongs to the acting tenant by default; tests for the
+    // cross-tenant rejection override this to `null`.
+    mockPrisma.crmContact.findFirst.mockResolvedValue({ id: 'contact-1' });
   });
 
   it('lists owner and tenant profiles', async () => {
@@ -116,6 +129,65 @@ describe('Syndics profiles/incidents queries - US5', () => {
       notes: 'A imputer au budget maintenance',
     });
     expect(imputation.id).toBe('imp-1');
+  });
+
+  // C3 : un profil proprietaire/locataire de lot ne doit jamais pouvoir
+  // pointer vers un contact CRM d'une autre agence.
+  it('refuse de creer un profil proprietaire avec un contact d\'une autre agence', async () => {
+    mockPrisma.crmContact.findFirst.mockResolvedValue(null);
+
+    await expect(
+      createLotOwnerProfileBySyndicate('tenant-1', 'syndic-1', {
+        lotId: 'lot-1',
+        contactId: 'contact-autre-agence',
+        ownershipPercentage: 100,
+        ownedSince: new Date('2026-01-01T00:00:00.000Z'),
+      })
+    ).rejects.toThrow();
+    expect(mockPrisma.lotOwnerProfile.create).not.toHaveBeenCalled();
+  });
+
+  it('refuse de creer un profil locataire avec un contact d\'une autre agence', async () => {
+    mockPrisma.crmContact.findFirst.mockResolvedValue(null);
+
+    await expect(
+      createLotTenantProfileBySyndicate('tenant-1', 'syndic-1', {
+        lotId: 'lot-1',
+        contactId: 'contact-autre-agence',
+        tenantSince: new Date('2026-01-01T00:00:00.000Z'),
+      })
+    ).rejects.toThrow();
+    expect(mockPrisma.lotTenantProfile.create).not.toHaveBeenCalled();
+  });
+
+  // Balayage B5/B6 : l'auteur d'un incident (reportedByContactId) doit lui
+  // aussi appartenir a l'agence, pas seulement le lot.
+  it("refuse de creer un incident dont l'auteur (reportedByContactId) est d'une autre agence", async () => {
+    mockPrisma.crmContact.findFirst.mockResolvedValue(null);
+
+    await expect(
+      createIncidentBySyndicate('tenant-1', 'syndic-1', {
+        reportedByContactId: 'contact-autre-agence',
+        lotId: 'lot-1',
+        incidentType: 'LEAK',
+        description: 'Fuite',
+        urgency: 'HIGH',
+        reportedAt: new Date('2026-03-06T00:00:00.000Z'),
+      })
+    ).rejects.toThrow();
+    expect(mockPrisma.syndicateIncident.create).not.toHaveBeenCalled();
+  });
+
+  it("refuse d'assigner un prestataire (providerId) d'une autre agence a un incident", async () => {
+    mockPrisma.syndicateIncident.findFirst.mockResolvedValue({ id: 'incident-1' });
+    mockPrisma.serviceProvider.findFirst.mockResolvedValue(null);
+
+    await expect(
+      updateIncidentBySyndicate('tenant-1', 'syndic-1', 'incident-1', {
+        providerId: 'provider-autre-agence',
+      })
+    ).rejects.toThrow();
+    expect(mockPrisma.syndicateIncident.update).not.toHaveBeenCalled();
   });
 });
 

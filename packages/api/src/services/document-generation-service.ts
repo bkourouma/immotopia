@@ -106,12 +106,14 @@ export async function generateDocument(
   tenantId: string,
   docType: DocumentType,
   sourceKey: string, // leaseId or paymentId
-  templateId?: string,
-  additionalParams?: {
-    installmentId?: string;
-    startDate?: Date;
-    endDate?: Date;
-  },
+  templateId: string | undefined,
+  additionalParams:
+    | {
+        installmentId?: string;
+        startDate?: Date;
+        endDate?: Date;
+      }
+    | undefined,
   actorUserId: string
 ) {
   logger.info('generateDocument: Starting document generation', {
@@ -351,7 +353,7 @@ export async function generateDocument(
 export async function regenerateDocument(
   tenantId: string,
   documentId: string,
-  templateId?: string,
+  templateId: string | undefined,
   actorUserId: string
 ) {
   // Get existing document

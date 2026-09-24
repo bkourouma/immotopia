@@ -722,7 +722,7 @@ export async function updateInstallmentStatus(tenantId: string, installmentId: s
     // écritures laisserait une créance exigible qu'aucun relevé ne montre.
     const updatedInstallment = await prisma.$transaction(async tx => {
       const updated = await tx.rentalInstallment.update({
-        where: { id: installment.id },
+        where: { id: installment.id, tenant_id: tenantId },
         data: { status: newStatus }
       });
 
@@ -816,7 +816,7 @@ export async function recalculateInstallmentStatuses(tenantId: string, leaseId: 
       // indivisible, c'est le couple (statut, mouvement) d'une même échéance.
       await prisma.$transaction(async tx => {
         const updated = await tx.rentalInstallment.update({
-          where: { id: installment.id },
+          where: { id: installment.id, tenant_id: tenantId },
           data: { status: newStatus }
         });
 

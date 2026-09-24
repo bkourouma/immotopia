@@ -544,7 +544,7 @@ export async function deleteSavedSearch(searchId: string, tenantId: string, user
     throw new Error('Vous ne pouvez supprimer que vos propres recherches');
   }
   return prisma.savedContactSearch.delete({
-    where: { id: searchId }
+    where: { id: searchId, tenantId }
   });
 }
 

@@ -3,6 +3,35 @@ import { prisma } from '../utils/database';
 import { MembershipStatus, TenantStatus } from '@prisma/client';
 import { t } from '../i18n';
 import { getTenantStatus } from '../utils/tenant-access';
+import { runWithTenantContext } from '../utils/tenant-context';
+
+/**
+ * Publie le tenant résolu comme contexte ambiant (AsyncLocalStorage) pour le
+ * reste de la requête, puis appelle `next()` DANS ce contexte.
+ *
+ * D1 : c'est ici, et non plus dans un middleware séparé, que
+ * `runWithTenantContext` est posé — sur les quatre issues qui appellent
+ * `next()` (court-circuit, super-admin, adhésion active, TenantClient
+ * historique). Express exécute `next()` de façon synchrone : le reste de la
+ * chaîne (middlewares suivants, contrôleur, `await` inclus) s'exécute donc
+ * bien à l'intérieur du `storage.run(...)` d'AsyncLocalStorage, et
+ * `getCurrentTenantId()` reste visible en aval, y compris après un `await`.
+ */
+function proceedWithTenantContext(req: Request, next: NextFunction): void {
+  const context = req.tenantContext;
+  if (!context) {
+    next();
+    return;
+  }
+  runWithTenantContext(
+    {
+      tenantId: context.tenantId,
+      userId: req.user?.userId,
+      isSuperAdmin: Boolean(context.isSuperAdmin)
+    },
+    next
+  );
+}
 
 /**
  * Middleware to require tenant access (T029)
@@ -57,7 +86,10 @@ export const requireTenantAccess = async (req: Request, res: Response, next: Nex
     // deux verifications distinctes. Le cas n'existe pas aujourd'hui, mais
     // s'en remettre a cela serait poser un piege pour plus tard.
     if (req.tenantContext && req.tenantContext.tenantId === tenantId) {
-      next();
+      // Le contexte AsyncLocalStorage a été posé au premier passage ; il ne
+      // couvre que CE `runWithTenantContext(..., next)`-ci, pas les passages
+      // suivants des routeurs empilés sur `/api`. On le repose ici aussi.
+      proceedWithTenantContext(req, next);
       return;
     }
 
@@ -70,7 +102,7 @@ export const requireTenantAccess = async (req: Request, res: Response, next: Nex
         isClient: false,
         isSuperAdmin: true
       };
-      next();
+      proceedWithTenantContext(req, next);
       return;
     }
 
@@ -118,7 +150,7 @@ export const requireTenantAccess = async (req: Request, res: Response, next: Nex
         isCollaborator: hasTenantRoles,
         isClient: !hasTenantRoles
       };
-      next();
+      proceedWithTenantContext(req, next);
       return;
     }
 
@@ -142,7 +174,7 @@ export const requireTenantAccess = async (req: Request, res: Response, next: Nex
         isClient: true,
         clientType: client.clientType
       };
-      next();
+      proceedWithTenantContext(req, next);
       return;
     }
 

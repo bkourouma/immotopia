@@ -1,0 +1,189 @@
+/**
+ * Fabriques pour E1 (isolation bout en bout, base dediee) — lot E,
+ * multi-tenant.
+ *
+ * Reutilise le client Prisma partage (`src/utils/database.ts`, avec le
+ * garde-fou d'agence deja branche) plutot qu'un second client : les fabriques
+ * tournent HORS contexte de requete (pas d'AsyncLocalStorage actif), donc le
+ * garde-fou les laisse passer quel que soit `TENANT_GUARD_MODE` — voir
+ * `utils/prisma-tenant-guard-extension.ts`.
+ *
+ * `DATABASE_URL`/`DATABASE_URL_TEST` : voir `__tests__/integration/isolation.test.ts`
+ * pour la resolution de la base et le describe.skip quand elle est absente.
+ */
+
+import { randomUUID } from 'crypto';
+import { MembershipStatus, RoleScope, TenantStatus, PropertyOwnershipType, PropertyType } from '@prisma/client';
+import { prisma } from '../../src/utils/database';
+import { generateAccessToken } from '../../src/utils/jwt-utils';
+
+/**
+ * Permissions accordees au role TENANT_ADMIN de test. Limitee aux ressources
+ * couvertes par `__tests__/integration/isolation.test.ts` : etendre cette
+ * liste est le seul geste necessaire pour ajouter une ressource testee (avec
+ * une ligne dans le tableau `RESOURCES` du fichier de test).
+ */
+const TENANT_ADMIN_TEST_PERMISSIONS = [
+  'CRM_CONTACTS_VIEW',
+  'CRM_CONTACTS_EDIT',
+  'CRM_DEALS_VIEW',
+  'CRM_DEALS_CREATE',
+  'PROPERTIES_VIEW',
+  'PROPERTIES_EDIT',
+  'MAINTENANCE_ADMIN'
+] as const;
+
+let tenantAdminRoleId: string | null = null;
+
+/** Cree (ou reutilise) le role TENANT_ADMIN de test avec les permissions ci-dessus. Idempotent. */
+export async function ensureTenantAdminRole(): Promise<string> {
+  if (tenantAdminRoleId) {
+    return tenantAdminRoleId;
+  }
+
+  const role = await prisma.role.upsert({
+    where: { key: 'TENANT_ADMIN' },
+    update: {},
+    create: {
+      key: 'TENANT_ADMIN',
+      name: 'Tenant Admin',
+      description: 'Role TENANT_ADMIN (reutilise ou cree par les fixtures du lot E)',
+      scope: RoleScope.TENANT
+    }
+  });
+
+  for (const key of TENANT_ADMIN_TEST_PERMISSIONS) {
+    const permission = await prisma.permission.upsert({
+      where: { key },
+      update: {},
+      create: { key, description: `Permission de test (lot E) : ${key}` }
+    });
+    await prisma.rolePermission.upsert({
+      where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } },
+      update: {},
+      create: { roleId: role.id, permissionId: permission.id }
+    });
+  }
+
+  tenantAdminRoleId = role.id;
+  return role.id;
+}
+
+export interface TestTenant {
+  id: string;
+  slug: string;
+}
+
+export interface TestUser {
+  id: string;
+  email: string;
+  /** En-tete pret a l'emploi : `.set('Authorization', user.authHeader)`. */
+  authHeader: string;
+}
+
+/** Cree une agence ACTIVE, nom/slug uniques (suffixe aleatoire). */
+export async function createTestTenant(namePrefix: string): Promise<TestTenant> {
+  const suffix = randomUUID().slice(0, 8);
+  const tenant = await prisma.tenant.create({
+    data: {
+      name: `${namePrefix} ${suffix}`,
+      slug: `${namePrefix.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${suffix}`,
+      type: 'AGENCY',
+      status: TenantStatus.ACTIVE
+    }
+  });
+  return { id: tenant.id, slug: tenant.slug };
+}
+
+/**
+ * Cree un utilisateur, membre ACTIF de `tenant` avec le role TENANT_ADMIN de
+ * test, et un jeton d'acces valide (memes utilitaires que la vraie
+ * authentification — `utils/jwt-utils.ts`).
+ */
+export async function createTenantAdminUser(tenant: TestTenant, emailPrefix: string): Promise<TestUser> {
+  const roleId = await ensureTenantAdminRole();
+  const suffix = randomUUID().slice(0, 8);
+  const email = `${emailPrefix}-${suffix}@isolation-test.local`;
+
+  const user = await prisma.user.create({
+    data: {
+      email,
+      passwordHash: null,
+      fullName: `${emailPrefix} (test isolation)`,
+      globalRole: 'USER',
+      emailVerified: true,
+      isActive: true
+    }
+  });
+
+  await prisma.membership.create({
+    data: { userId: user.id, tenantId: tenant.id, status: MembershipStatus.ACTIVE, acceptedAt: new Date() }
+  });
+
+  await prisma.userRole.create({
+    data: { userId: user.id, roleId, tenantId: tenant.id }
+  });
+
+  const accessToken = generateAccessToken({ userId: user.id, email: user.email, globalRole: user.globalRole });
+
+  return { id: user.id, email, authHeader: `Bearer ${accessToken}` };
+}
+
+export async function suspendTenant(tenantId: string): Promise<void> {
+  await prisma.tenant.update({ where: { id: tenantId }, data: { status: TenantStatus.SUSPENDED } });
+}
+
+/** Cree un contact CRM minimal, directement, pour l'agence donnee. */
+export async function createContactDirect(tenantId: string, label: string): Promise<string> {
+  const contact = await prisma.crmContact.create({
+    data: {
+      tenantId,
+      firstName: label,
+      lastName: 'Test',
+      email: `${label.toLowerCase()}-${randomUUID().slice(0, 8)}@isolation-test.local`
+    }
+  });
+  return contact.id;
+}
+
+/** Cree un bien minimal, directement, pour l'agence donnee. */
+export async function createPropertyDirect(tenantId: string, label: string): Promise<string> {
+  const property = await prisma.property.create({
+    data: {
+      tenantId,
+      internalReference: `TST-${randomUUID().slice(0, 8)}`,
+      propertyType: PropertyType.APPARTEMENT,
+      ownershipType: PropertyOwnershipType.TENANT,
+      title: label,
+      description: `Bien de test (${label}) — genere par les fixtures du lot E.`,
+      address: '1 rue du Test'
+    }
+  });
+  return property.id;
+}
+
+/** Cree un ticket de maintenance minimal, directement, pour l'agence donnee (necessite un bien). */
+export async function createMaintenanceTicketDirect(tenantId: string, propertyId: string, label: string): Promise<string> {
+  const ticket = await prisma.maintenanceTicket.create({
+    data: {
+      tenant_id: tenantId,
+      property_id: propertyId,
+      title: label,
+      category: 'PLUMBING',
+      priority: 'MEDIUM',
+      description: `Ticket de test (${label}) — genere par les fixtures du lot E.`
+    }
+  });
+  return ticket.id;
+}
+
+/** Nettoyage best-effort : supprime les agences de test et tout ce qui en depend en cascade. */
+export async function cleanupTenants(tenantIds: string[]): Promise<void> {
+  for (const tenantId of tenantIds) {
+    try {
+      await prisma.tenant.delete({ where: { id: tenantId } });
+    } catch {
+      // Best-effort : la base de test est jetable, une ligne orpheline n'est pas bloquante.
+    }
+  }
+}

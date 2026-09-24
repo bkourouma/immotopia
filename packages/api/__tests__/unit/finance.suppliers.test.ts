@@ -107,11 +107,15 @@ const store = {
   invoiceLines: [] as Row[],
   costAllocations: [] as Row[],
   // La garde « chantier clos » du sous-lot 6 lit le chantier avant d'imputer.
-  // Vide par defaut : un chantier absent laisse passer, exactement comme le
-  // fait `assertSiteOpenTx` en vrai — elle ne se prononce pas sur ce qui
-  // n'existe pas. Les tests qui veulent prouver le refus poussent un chantier
-  // clos ici.
+  // Depuis l'audit multi-tenant du 24 septembre 2026 (lot B1), un chantier
+  // absent — ou d'une autre agence — REFUSE l'écriture (`NotFoundError`,
+  // `assertSiteOpenTx` comme la vérification d'appartenance qui la précède
+  // désormais) : `createSiteAndCategory()` sème donc un chantier réel pour
+  // que les tests du chemin heureux continuent de passer. Les tests qui
+  // veulent prouver un refus poussent un chantier clos, ou d'une autre
+  // agence, explicitement.
   constructionSites: [] as Row[],
+  costCategories: [] as Row[],
   chartOfAccounts: [] as Row[],
   journals: [] as Row[],
   payments: [] as Row[],
@@ -197,6 +201,12 @@ const mockPrisma: Row = {
 
   constructionSite: {
     findFirst: jest.fn(async ({ where }: Row) => store.constructionSites.find(c => matchesFlat(c, where)) ?? null)
+  },
+
+  // Audit multi-tenant du 24 septembre 2026 (lot B1) : `createSupplierInvoiceTx`
+  // vérifie désormais `costCategoryId` avant d'écrire, comme `siteId`.
+  costCategory: {
+    findFirst: jest.fn(async ({ where }: Row) => store.costCategories.find(c => matchesFlat(c, where)) ?? null)
   },
 
   costAllocation: {
@@ -374,6 +384,7 @@ beforeEach(() => {
   store.invoiceLines = [];
   store.costAllocations = [];
   store.constructionSites = [];
+  store.costCategories = [];
   store.chartOfAccounts = [];
   store.journals = [];
   store.payments = [];
@@ -434,8 +445,20 @@ async function createSupplier(kind: 'MATERIALS' | 'SERVICES' | 'MIXED' = 'SERVIC
   });
 }
 
-async function createSiteAndCategory() {
-  return { siteId: nextId('site'), costCategoryId: nextId('cat') };
+/**
+ * Sème un chantier OUVERT et un poste de dépense, pour l'agence donnée
+ * (`TENANT_ID` par défaut). Depuis le lot B1 (audit multi-tenant du
+ * 24 septembre 2026), `createSupplierInvoiceTx` vérifie que `siteId` et
+ * `costCategoryId` appartiennent à l'agence avant d'écrire : un id qui ne
+ * désigne rien de seedé ici serait désormais refusé (`NotFoundError`), là où
+ * il ne l'était pas avant ce jour.
+ */
+async function createSiteAndCategory(tenantId: string = TENANT_ID) {
+  const siteId = nextId('site');
+  const costCategoryId = nextId('cat');
+  store.constructionSites.push({ id: siteId, tenantId, name: 'Chantier de test', closedAt: null });
+  store.costCategories.push({ id: costCategoryId, tenantId, label: 'Poste de test' });
+  return { siteId, costCategoryId };
 }
 
 async function createDraftInvoice(
@@ -929,12 +952,11 @@ describe('chantier cloture — refus d imputer', () => {
   it('refuse une facture imputee a un chantier clos, a la saisie', async () => {
     const supplier = await createSupplier('MATERIALS', { name: 'Quincaillerie du Plateau' });
     const { siteId, costCategoryId } = await createSiteAndCategory();
-    store.constructionSites.push({
-      id: siteId,
-      tenantId: TENANT_ID,
-      name: 'Residence Akwaba',
-      closedAt: new Date('2026-08-31T00:00:00.000Z')
-    });
+    // On CLOT le chantier deja seme par `createSiteAndCategory` (une seconde
+    // ligne portant le meme id serait invisible : `constructionSite.findFirst`
+    // rend la premiere qui correspond, l'ouverte).
+    const site = store.constructionSites.find(c => c.id === siteId)!;
+    site.closedAt = new Date('2026-08-31T00:00:00.000Z');
 
     await expect(
       createDraftInvoice(supplier.id, { amount: 120000, allocations: [{ siteId, costCategoryId, amount: 120000 }] })
@@ -947,7 +969,6 @@ describe('chantier cloture — refus d imputer', () => {
   it('laisse passer un chantier ouvert', async () => {
     const supplier = await createSupplier('MATERIALS', { name: 'Quincaillerie de Cocody' });
     const { siteId, costCategoryId } = await createSiteAndCategory();
-    store.constructionSites.push({ id: siteId, tenantId: TENANT_ID, name: 'Residence Akwaba', closedAt: null });
 
     const invoice = await createDraftInvoice(supplier.id, {
       amount: 120000,
@@ -956,6 +977,58 @@ describe('chantier cloture — refus d imputer', () => {
 
     expect(invoice.id).toBeTruthy();
     expect(store.costAllocations).toHaveLength(1);
+  });
+
+  // ---------------------------------------------------------------------
+  // Audit multi-tenant du 24 septembre 2026 (lot B1) : une agence ne doit
+  // plus pouvoir imputer sa facture au chantier — ni au poste de dépense —
+  // d'une AUTRE agence. Avant ce jour, `assertSiteOpenTx` se taisait quand le
+  // chantier n'existait pas pour l'agence, et `costCategoryId` n'était vérifié
+  // nulle part : les deux références passaient, silencieusement.
+  // ---------------------------------------------------------------------
+
+  it("refuse un siteId d'une AUTRE agence (IDOR) — NotFoundError, avant toute ecriture", async () => {
+    const supplier = await createSupplier('MATERIALS', { name: 'Quincaillerie de Kaloum' });
+    const { siteId: siteAutreAgence } = await createSiteAndCategory('autre-tenant');
+    const { costCategoryId } = await createSiteAndCategory();
+
+    await expect(
+      createDraftInvoice(supplier.id, {
+        amount: 120000,
+        allocations: [{ siteId: siteAutreAgence, costCategoryId, amount: 120000 }]
+      })
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    expect(store.invoices).toHaveLength(0);
+    expect(store.costAllocations).toHaveLength(0);
+  });
+
+  it("refuse un costCategoryId d'une AUTRE agence (IDOR) — NotFoundError, avant toute ecriture", async () => {
+    const supplier = await createSupplier('MATERIALS', { name: 'Quincaillerie de Matam' });
+    const { siteId } = await createSiteAndCategory();
+    const { costCategoryId: categorieAutreAgence } = await createSiteAndCategory('autre-tenant');
+
+    await expect(
+      createDraftInvoice(supplier.id, {
+        amount: 120000,
+        allocations: [{ siteId, costCategoryId: categorieAutreAgence, amount: 120000 }]
+      })
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    expect(store.invoices).toHaveLength(0);
+    expect(store.costAllocations).toHaveLength(0);
+  });
+
+  it('refuse un siteId qui ne designe aucun chantier — meme erreur qu une reference d une autre agence', async () => {
+    const supplier = await createSupplier('MATERIALS', { name: 'Quincaillerie de Ratoma' });
+    const { costCategoryId } = await createSiteAndCategory();
+
+    await expect(
+      createDraftInvoice(supplier.id, {
+        amount: 120000,
+        allocations: [{ siteId: 'chantier-fantome', costCategoryId, amount: 120000 }]
+      })
+    ).rejects.toMatchObject({ statusCode: 404 });
   });
 });
 

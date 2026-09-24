@@ -394,7 +394,8 @@ export const attachPropertyToPartnershipTx: AttachPropertyToPartnershipTx = asyn
   if (partnershipId === null) {
     // Détache : aucune association à renvoyer, `null` est la réponse
     // elle-même (même convention qu'`attachSiteToLandLeaseTx`).
-    await tx.property.update({ where: { id: propertyId }, data: { partnershipId: null } });
+    // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+    await tx.property.update({ where: { id: propertyId, tenantId }, data: { partnershipId: null } });
     return null;
   }
 
@@ -407,7 +408,8 @@ export const attachPropertyToPartnershipTx: AttachPropertyToPartnershipTx = asyn
   // association : c'est une correction, pas un conflit (contrat, « au plus
   // une association »). Aucune ventilation passée n'est recalculée — cette
   // fonction ne touche à rien d'autre que la colonne `partnershipId`.
-  await tx.property.update({ where: { id: propertyId }, data: { partnershipId } });
+  // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+  await tx.property.update({ where: { id: propertyId, tenantId }, data: { partnershipId } });
 
   return loadPartnershipRecord(tx, tenantId, partnership.id);
 };

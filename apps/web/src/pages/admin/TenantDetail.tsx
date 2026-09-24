@@ -9,14 +9,19 @@ import {
   activateTenant
 } from '../../services/tenant-service';
 import { getTenantModules, updateTenantModules } from '../../services/module-service';
-import { getSubscription } from '../../services/subscription-service';
 import { listMembers, Member, disableMember, enableMember } from '../../services/membership-service';
+import type { TenantWithBranding } from '../../services/tenant-branding-service';
+import { SubscriptionTab } from '../../components/admin/tenant-detail/SubscriptionTab';
+import { InvoicesTab } from '../../components/admin/tenant-detail/InvoicesTab';
+import { ActivityTab } from '../../components/admin/tenant-detail/ActivityTab';
 import {
   Building2,
   ArrowLeft,
   Edit,
   Shield,
   CreditCard,
+  Receipt,
+  Activity,
   BarChart3,
   Settings,
   AlertTriangle,
@@ -41,9 +46,9 @@ export const TenantDetail: React.FC = () => {
   const [stats, setStats] = useState<TenantStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'modules' | 'subscription' | 'stats' | 'collaborators'>(
-    'overview'
-  );
+  const [activeTab, setActiveTab] = useState<
+    'overview' | 'modules' | 'subscription' | 'invoices' | 'activity' | 'stats' | 'collaborators'
+  >('overview');
 
   useEffect(() => {
     if (tenantId) {
@@ -198,6 +203,8 @@ export const TenantDetail: React.FC = () => {
               { id: 'collaborators', label: t('Collaborateurs'), icon: Users },
               { id: 'modules', label: t('Modules'), icon: Settings },
               { id: 'subscription', label: t('Abonnement'), icon: CreditCard },
+              { id: 'invoices', label: t('Factures'), icon: Receipt },
+              { id: 'activity', label: t('Activité'), icon: Activity },
               { id: 'stats', label: t('Statistiques'), icon: BarChart3 }
             ].map(tab => (
               <button
@@ -216,6 +223,37 @@ export const TenantDetail: React.FC = () => {
         <div className="bg-white rounded-lg shadow p-6">
           {activeTab === 'overview' && (
             <div className="space-y-6">
+              <div className="flex items-center gap-4">
+                {(tenant as TenantWithBranding).logoUrl ? (
+                  <img
+                    src={(tenant as TenantWithBranding).logoUrl ?? undefined}
+                    alt={t("Logo de l'agence")}
+                    style={{ width: 64, height: 64, objectFit: 'contain', borderRadius: 'var(--radius-sm)' }}
+                  />
+                ) : (
+                  <div className="h-16 w-16 rounded bg-gray-100 flex items-center justify-center">
+                    <Building2 className="h-8 w-8 text-gray-400" />
+                  </div>
+                )}
+                {tenant.brandingPrimaryColor && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">{t('Couleur de marque')}</label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          width: 20,
+                          height: 20,
+                          borderRadius: 'var(--radius-sm)',
+                          backgroundColor: tenant.brandingPrimaryColor,
+                          border: '1px solid var(--border-default)'
+                        }}
+                      />
+                      <span className="text-sm text-gray-900">{tenant.brandingPrimaryColor}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">{t('Nom')}</label>
@@ -241,6 +279,14 @@ export const TenantDetail: React.FC = () => {
                   <label className="block text-sm font-medium text-gray-700">{t('Pays')}</label>
                   <p className="mt-1 text-sm text-gray-900">{tenant.country || '-'}</p>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">{t('Site web')}</label>
+                  <p className="mt-1 text-sm text-gray-900">{tenant.website || '-'}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">{t('Statut')}</label>
+                  <p className="mt-1 text-sm text-gray-900">{getStatusBadge(tenant.status)}</p>
+                </div>
               </div>
             </div>
           )}
@@ -259,7 +305,19 @@ export const TenantDetail: React.FC = () => {
 
           {activeTab === 'subscription' && (
             <div>
-              <SubscriptionTab tenantId={tenantId!} />
+              <SubscriptionTab tenantId={tenantId!} tenantName={tenant.name} />
+            </div>
+          )}
+
+          {activeTab === 'invoices' && (
+            <div>
+              <InvoicesTab tenantId={tenantId!} />
+            </div>
+          )}
+
+          {activeTab === 'activity' && (
+            <div>
+              <ActivityTab tenantId={tenantId!} />
             </div>
           )}
 
@@ -551,50 +609,3 @@ const ModulesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   );
 };
 
-// Subscription Tab Component
-const SubscriptionTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
-  const [subscription, setSubscription] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadSubscription();
-  }, [tenantId]);
-
-  const loadSubscription = async () => {
-    try {
-      const response = await getSubscription(tenantId);
-      if (response.success) {
-        setSubscription(response.data);
-      }
-    } catch (err) {
-      console.error('Error loading subscription:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading) {
-    return <div className="text-center py-8">Chargement...</div>;
-  }
-
-  if (!subscription) {
-    return <div className="text-center py-8 text-gray-500">{t('Aucun abonnement')}</div>;
-  }
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700">{t('Plan')}</label>
-        <p className="mt-1 text-sm text-gray-900">{subscription.plan}</p>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700">{t('Cycle de facturation')}</label>
-        <p className="mt-1 text-sm text-gray-900">{subscription.billingCycle}</p>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700">{t('Statut')}</label>
-        <p className="mt-1 text-sm text-gray-900">{subscription.status}</p>
-      </div>
-    </div>
-  );
-};

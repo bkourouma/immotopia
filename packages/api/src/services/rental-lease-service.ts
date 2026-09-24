@@ -181,6 +181,20 @@ export async function createLease(
     throw new Error('Either primaryRenterClientId or primaryRenterContactId is required');
   }
 
+  // Validate CRM deal belongs to this tenant, if provided.
+  if (data.crmDealId) {
+    const deal = await prisma.crmDeal.findFirst({
+      where: {
+        id: data.crmDealId,
+        tenantId: tenantId
+      }
+    });
+
+    if (!deal) {
+      throw new Error('CRM deal not found or does not belong to this tenant');
+    }
+  }
+
   // Get or create owner client (if provided)
   let ownerClientId: string | null = null;
   let ownerResult: { isNewUser: boolean; passwordResetToken?: string; user: any } | null = null;
@@ -462,12 +476,12 @@ export async function createLease(
   try {
     const [primaryRenterClient, ownerClient, tenant] = await Promise.all([
       prisma.tenantClient.findUnique({
-        where: { id: primaryRenterClientId },
+        where: { id: primaryRenterClientId, tenantId },
         select: { details: true, user: { select: { email: true, fullName: true } } }
       }),
       ownerClientId
         ? prisma.tenantClient.findUnique({
-            where: { id: ownerClientId },
+            where: { id: ownerClientId, tenantId },
             select: { details: true, user: { select: { email: true, fullName: true } } }
           })
         : Promise.resolve(null),
@@ -916,7 +930,8 @@ export async function updateLease(
   // Update lease
   const lease = await prisma.rentalLease.update({
     where: {
-      id: leaseId
+      id: leaseId,
+      tenant_id: tenantId
     },
     data: {
       end_date: data.endDate !== undefined ? data.endDate : undefined,
@@ -1010,7 +1025,8 @@ export async function updateLeaseStatus(
   // Update status
   const lease = await prisma.rentalLease.update({
     where: {
-      id: leaseId
+      id: leaseId,
+      tenant_id: tenantId
     },
     data: {
       status: newStatus
@@ -1117,11 +1133,25 @@ export async function addCoRenter(
     throw new Error('Lease not found');
   }
 
+  // Validate co-renter client exists and belongs to this tenant (same error
+  // whether the id is unknown or belongs to another agency).
+  const renterClient = await prisma.tenantClient.findFirst({
+    where: {
+      id: renterClientId,
+      tenantId: tenantId
+    }
+  });
+
+  if (!renterClient) {
+    throw new Error('Co-renter client not found or does not belong to this tenant');
+  }
+
   // Check if co-renter already exists
   const existingCoRenter = await prisma.rentalLeaseCoRenter.findFirst({
     where: {
       lease_id: leaseId,
-      renter_client_id: renterClientId
+      renter_client_id: renterClientId,
+      tenant_id: tenantId
     }
   });
 
@@ -1300,7 +1330,8 @@ export async function deleteLease(tenantId: string, leaseId: string, actorUserId
   const propertyId = lease.property_id;
   await prisma.rentalLease.delete({
     where: {
-      id: leaseId
+      id: leaseId,
+      tenant_id: tenantId
     }
   });
 

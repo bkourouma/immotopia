@@ -226,3 +226,39 @@ A ──► B ──► C ──► D ──► E
   quittance, facture fournisseur) sans aucune donnée d'une autre agence.
 - `npm run typecheck`, `npm run lint`, `npm test`, `npm run test:web` verts ;
   aucune nouvelle erreur TypeScript dans les fichiers propres.
+
+---
+
+## Bilan d'exécution (24 septembre 2026)
+
+Branche `feat/multi-tenant-etanche`. Tous les lots A à H sont livrés.
+
+| Lot | Livré |
+|---|---|
+| A | Routes publiques d'agence restreintes, filtre global des secrets dans les réponses, biens `CLIENT` cloisonnés, agence suspendue bloquée (API, fichiers, portails). |
+| B | Références vérifiées dans finance, biens, patrimoine, syndic, locatif, ventes, maintenance, CRM, newsletter, documents ; `assertBelongsToTenant` ; utilisateur désigné = membre actif. Fuites supplémentaires trouvées et fermées : mandats et historique de statut d'un bien d'une autre agence, visites d'un bien en co-mandat. |
+| C | `RentalDocument` : `@@unique([tenant_id, document_number])` (migration `20260926090000_document_number_par_agence`, appliquée). Aucun `tenantId` rendu obligatoire : un bien `PUBLIC` de particulier n'a pas d'agence, ses enfants héritent de ce choix. |
+| D | Garde-fou déduit du schéma (122 modèles), id compris, résultat contrôlé ; contexte posé par `requireTenantAccess`, les portails et les jobs ; `TENANT_GUARD_MODE` dans `env.ts`. Mode par défaut : `warn`. |
+| E | `routes-inventory`, `schema-tenant-coverage`, `no-secret-in-responses` dans `npm test` ; `npm run test:isolation` sur la base `immotopia_isolation_test` (16 scénarios). |
+| F | `provisionTenant` (une transaction, ~2 s, idempotent), panneau « Nouvelle agence » et écran de confirmation, sélecteur d'agence, en-tête `X-Portal-Tenant-Id`. |
+| G | Onglets Abonnement, Factures, Activité ; logo et couleur (admin et agence) ; bandeau d'agence suspendue. |
+| H | Expéditeur « <Agence> via ImmoTopia » et `Reply-To` de l'agence. |
+
+### Reste à faire
+
+- **Passer `TENANT_GUARD_MODE` à `enforce`.** D'abord faire tourner l'application
+  en `warn` sur les scénarios E2E et corriger chaque alerte. Cas connu à traiter
+  avant : un bien `CLIENT` sous mandat porte le `tenantId` de son agence
+  d'origine, pas celui de l'agence mandataire — le contrôle du résultat le
+  signalera comme une fuite alors que l'accès est légitime.
+- `npm run test:isolation` couvre contact, bien et ticket ; ajouter bail,
+  échéance, copropriété, fournisseur, chantier, mandat de vente, document
+  (une ligne par ressource dans le tableau `RESOURCES`).
+- Écran des gabarits de documents : afficher aussi les gabarits globaux, en
+  lecture seule (le serveur refuse désormais de les modifier depuis une agence).
+- `services/subscription-service.ts` et `statistics-service.ts` (web) appellent
+  de mauvaises routes ; les nouveaux écrans ne s'en servent pas. À corriger ou
+  supprimer.
+- Hors plan, à décider : SMTP ou numéro WhatsApp propre à chaque agence,
+  suppression et export d'une agence, inscription en libre-service, quotas par
+  offre, rôles propres à une agence, devise par agence.

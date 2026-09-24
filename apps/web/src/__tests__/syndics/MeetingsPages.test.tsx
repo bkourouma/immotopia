@@ -127,7 +127,10 @@ const authValue: AuthContextType = {
   register: async () => undefined,
   refreshToken: async () => undefined,
   clearError: vi.fn(),
-  refreshMembership: async () => undefined
+  refreshMembership: async () => undefined,
+  availableTenants: [],
+  activeTenantId: null,
+  switchTenant: () => undefined
 };
 
 function renderWithRoute(route: string) {

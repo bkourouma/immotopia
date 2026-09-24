@@ -1,4 +1,4 @@
-import { prisma } from '../utils/database';
+import { prisma, PrismaTransactionClient } from '../utils/database';
 import { logger } from '../utils/logger';
 import { InvitationStatus, MembershipStatus } from '@prisma/client';
 import { emailService } from './email-service';
@@ -6,8 +6,13 @@ import { hashPassword, validatePasswordStrength } from '../utils/password-utils'
 import { logAuditEvent, AuditActionKey } from './audit-service';
 import crypto from 'crypto';
 
-function getFrontendBaseUrl(): string {
+export function getFrontendBaseUrl(): string {
   return (process.env.FRONTEND_URL || process.env.CLIENT_URL || 'http://localhost:3000').replace(/\/$/, '');
+}
+
+/** URL d'acceptation d'une invitation, a partir du jeton en clair. Format partage par l'email et l'API. */
+export function buildInvitationAcceptUrl(token: string): string {
+  return `${getFrontendBaseUrl()}/auth/accept-invite?token=${token}`;
 }
 
 /** Libelles francais des roles de scope TENANT, pour l'email d'invitation. */
@@ -42,7 +47,7 @@ async function assertTenantRoles(roleIds: string[]): Promise<void> {
  * Les noms stockes en base sont en anglais : on les traduit quand la cle est
  * connue, sinon on retombe sur le nom de la base.
  */
-async function resolveRoleLabels(roleIds: string[]): Promise<string[]> {
+export async function resolveRoleLabels(roleIds: string[]): Promise<string[]> {
   if (!roleIds || roleIds.length === 0) return [];
   try {
     const roles = await prisma.role.findMany({
@@ -75,7 +80,7 @@ async function sendInvitationWhatsapp(params: {
     }
 
     const { sendWhatsappNotification } = await import('./whatsapp-notification-send-service');
-    const inviteUrl = `${getFrontendBaseUrl()}/auth/accept-invite?token=${token}`;
+    const inviteUrl = buildInvitationAcceptUrl(token);
     await sendWhatsappNotification({
       tenantId,
       notificationKey: 'PORTAL_ACCOUNT_CREATED',
@@ -119,10 +124,53 @@ export interface AcceptInvitationRequest {
  * Generate invitation token and hash
  * @returns Object with token and hash
  */
-function generateInvitationToken(): { token: string; hash: string } {
+export function generateInvitationToken(): { token: string; hash: string } {
   const token = crypto.randomUUID();
   const hash = crypto.createHash('sha256').update(token).digest('hex');
   return { token, hash };
+}
+
+/** Duree de validite par defaut d'une invitation. */
+const INVITATION_VALIDITY_DAYS = 7;
+
+/**
+ * Partie ECRITURE, transactionnelle, de la creation d'une invitation : jeton +
+ * ligne `Invitation`. Aucune verification metier ici (tenant actif, invitation
+ * en attente deja existante, membre deja actif, roles valides) : ces controles
+ * restent la responsabilite de l'appelant, avant d'ouvrir la transaction —
+ * exactement comme `inviteCollaborator` ci-dessous, qui les fait puis delegue
+ * l'ecriture a cette fonction.
+ *
+ * Extraite pour `tenant-provisioning-service.ts` (lot F1) : provisionner une
+ * agence pose l'invitation de son administrateur DANS la meme transaction que
+ * le reste (agence, modules, abonnement...), pour rester tout-ou-rien. L'envoi
+ * de l'e-mail, lui, ne peut pas se faire ici : il doit arriver apres COMMIT,
+ * pour qu'un e-mail parti ne pointe jamais vers une transaction annulee.
+ *
+ * @returns L'invitation creee et son jeton EN CLAIR (a envoyer par e-mail/WhatsApp
+ * hors de cette fonction ; seul son hash est persiste).
+ */
+export async function createInvitationRecordTx(
+  tx: PrismaTransactionClient,
+  params: { tenantId: string; email: string; roleIds: string[]; invitedByUserId: string; validityDays?: number }
+): Promise<{ invitation: Awaited<ReturnType<typeof tx.invitation.create>>; token: string }> {
+  const { token, hash } = generateInvitationToken();
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + (params.validityDays ?? INVITATION_VALIDITY_DAYS));
+
+  const invitation = await tx.invitation.create({
+    data: {
+      tenantId: params.tenantId,
+      email: params.email,
+      tokenHash: hash,
+      expiresAt,
+      status: InvitationStatus.PENDING,
+      roleIds: params.roleIds ?? [],
+      invitedBy: params.invitedByUserId
+    }
+  });
+
+  return { invitation, token };
 }
 
 /**
@@ -180,23 +228,15 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
 
   await assertTenantRoles(data.roleIds);
 
-  // Generate token
-  const { token, hash } = generateInvitationToken();
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7); // 7 days
-
-  // Create invitation in database
-  const invitation = await prisma.invitation.create({
-    data: {
+  // Create invitation in database (write core shared with tenant-provisioning-service)
+  const { invitation, token } = await prisma.$transaction(tx =>
+    createInvitationRecordTx(tx, {
       tenantId: data.tenantId,
       email: data.email,
-      tokenHash: hash,
-      expiresAt,
-      status: InvitationStatus.PENDING,
-      roleIds: data.roleIds ?? [],
-      invitedBy: data.invitedByUserId
-    }
-  });
+      roleIds: data.roleIds,
+      invitedByUserId: data.invitedByUserId
+    })
+  );
 
   // Send invitation email (don't fail if email fails)
   const roleLabels = await resolveRoleLabels(data.roleIds);
@@ -206,7 +246,8 @@ export async function inviteCollaborator(data: InviteCollaboratorRequest) {
       token, // Send plain token, not hash
       tenant.name,
       roleLabels,
-      expiresAt
+      invitation.expiresAt,
+      data.tenantId
     );
     logger.info('Invitation email sent', {
       invitationId: invitation.id,
@@ -489,7 +530,14 @@ export async function resendInvitation(invitationId: string, actorUserId: string
   // Send email
   try {
     const roleLabels = await resolveRoleLabels(invitation.roleIds);
-    await emailService.sendInviteEmail(invitation.email, token, invitation.tenant.name, roleLabels, expiresAt);
+    await emailService.sendInviteEmail(
+      invitation.email,
+      token,
+      invitation.tenant.name,
+      roleLabels,
+      expiresAt,
+      invitation.tenantId
+    );
     logger.info('Invitation email resent', {
       invitationId,
       email: invitation.email,
@@ -512,7 +560,12 @@ export async function resendInvitation(invitationId: string, actorUserId: string
     token
   });
 
-  return { expiresAt };
+  // acceptUrl/emailSent : ajoutes pour F2 (le super-admin doit pouvoir copier
+  // le lien et voir l'etat de l'envoi sans deviner). On atteint ce point
+  // uniquement si l'e-mail est parti (sinon le catch ci-dessus a deja leve) :
+  // emailSent vaut donc toujours true ici. Champs ajoutes en fin de reponse,
+  // aucun appelant existant ne lisait plus que `expiresAt`.
+  return { expiresAt, acceptUrl: buildInvitationAcceptUrl(token), emailSent: true };
 }
 
 /**

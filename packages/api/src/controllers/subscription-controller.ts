@@ -13,7 +13,7 @@ import {
   markInvoiceAsPaid
 } from '../services/invoice-service';
 import { CreateSubscriptionRequest, UpdateSubscriptionRequest } from '../types/subscription-types';
-import { CreateInvoiceRequest, UpdateInvoiceRequest as UpdateInvoiceRequestType } from '../types/subscription-types';
+import { UpdateInvoiceRequest as UpdateInvoiceRequestType } from '../types/subscription-types';
 import { z } from 'zod';
 
 // Validation schemas
@@ -251,7 +251,7 @@ export async function createInvoiceHandler(req: Request, res: Response): Promise
       return;
     }
 
-    const data = validationResult.data as CreateInvoiceRequest;
+    const data = validationResult.data;
     const invoice = await createInvoice(
       {
         ...data,

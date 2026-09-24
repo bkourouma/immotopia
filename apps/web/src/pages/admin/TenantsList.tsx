@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Card, Space, Typography, Button, Input, Select, Alert, Spin, Empty, Table, Tag } from 'antd';
 import {
   PlusOutlined,
@@ -10,7 +10,8 @@ import {
   BankOutlined
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { listTenants, Tenant, TenantFilters } from '../../services/tenant-service';
+import { listTenants, Tenant, TenantFilters, type ProvisionTenantResult } from '../../services/tenant-service';
+import { CreateTenantDrawer } from '../../components/admin/CreateTenantDrawer';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -35,6 +36,7 @@ const getStatusTag = (status: string) => {
 
 export const TenantsList: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -49,10 +51,22 @@ export const TenantsList: React.FC = () => {
     totalPages: 0
   });
   const [searchTerm, setSearchTerm] = useState('');
+  // Ouvert directement à l'arrivée depuis /admin/tenants/new (TenantCreate.tsx
+  // redirige ici plutôt que de dupliquer le formulaire).
+  const [createOpen, setCreateOpen] = useState(Boolean((location.state as { openCreate?: boolean } | null)?.openCreate));
 
   useEffect(() => {
     loadTenants();
   }, [filters]);
+
+  // L'état de navigation ne doit servir qu'une fois : un retour arrière ou un
+  // rafraîchissement ne doit pas rouvrir le panneau tout seul.
+  useEffect(() => {
+    if ((location.state as { openCreate?: boolean } | null)?.openCreate) {
+      navigate(location.pathname, { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadTenants = async () => {
     setLoading(true);
@@ -185,8 +199,8 @@ export const TenantsList: React.FC = () => {
             </Title>
             <Text type="secondary">{t('Gérez toutes les agences de la plateforme')}</Text>
           </div>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => navigate('/admin/tenants/new')}>
-            {t('Nouveau Tenant')}
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+            {t('Nouvelle agence')}
           </Button>
         </div>
 
@@ -263,6 +277,14 @@ export const TenantsList: React.FC = () => {
           </Spin>
         </Card>
       </Space>
+
+      <CreateTenantDrawer
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(_result: ProvisionTenantResult) => {
+          loadTenants();
+        }}
+      />
     </>
   );
 };

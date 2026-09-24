@@ -156,7 +156,7 @@ export async function approvePaymentDeclaration(
 
             // Update installment
             await tx.rentalInstallment.update({
-              where: { id: installment.id },
+              where: { id: installment.id, tenant_id: tenantId },
               data: {
                 status: newStatus,
                 amount_paid: new Decimal(newTotalAllocated),
@@ -202,7 +202,7 @@ export async function approvePaymentDeclaration(
 
       // Update declaration status
       const updatedDeclaration = await tx.rentalPaymentDeclaration.update({
-        where: { id: declarationId },
+        where: { id: declarationId, tenant_id: tenantId },
         data: {
           status: PaymentDeclarationStatus.APPROVED,
           reviewed_by: actorUserId,
@@ -428,7 +428,7 @@ export async function rejectPaymentDeclaration(
 
     // Update declaration status
     const updatedDeclaration = await prisma.rentalPaymentDeclaration.update({
-      where: { id: declarationId },
+      where: { id: declarationId, tenant_id: tenantId },
       data: {
         status: PaymentDeclarationStatus.REJECTED,
         reviewed_by: actorUserId,

@@ -362,7 +362,7 @@ export async function createCommissionPayment(
         : newPaid > 0
           ? SaleCommissionStatus.PARTIALLY_PAID
           : SaleCommissionStatus.DUE;
-    await tx.saleCommission.update({ where: { id: commission.id }, data: { status: newStatus } });
+    await tx.saleCommission.update({ where: { id: commission.id, tenantId }, data: { status: newStatus } });
 
     return payment;
   });
@@ -410,7 +410,7 @@ export async function voidCommissionPayment(
     });
 
     const result = await tx.saleCommissionPayment.update({
-      where: { id: payment.id },
+      where: { id: payment.id, tenantId },
       data: {
         status: SaleCommissionPaymentStatus.VOIDED,
         voidReason: input.reason,
@@ -426,7 +426,7 @@ export async function voidCommissionPayment(
         : paidSoFar > 0
           ? SaleCommissionStatus.PARTIALLY_PAID
           : SaleCommissionStatus.DUE;
-    await tx.saleCommission.update({ where: { id: commission.id }, data: { status: newStatus } });
+    await tx.saleCommission.update({ where: { id: commission.id, tenantId }, data: { status: newStatus } });
 
     return result;
   });

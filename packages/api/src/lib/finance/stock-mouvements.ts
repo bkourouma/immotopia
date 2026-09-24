@@ -258,7 +258,8 @@ async function writeBalanceTx(
 ): Promise<void> {
   if (previous.id) {
     await tx.stockBalance.update({
-      where: { id: previous.id },
+      // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+      where: { id: previous.id, tenantId },
       data: { quantity, value }
     });
     return;
@@ -615,7 +616,8 @@ export const recordStockIssueTx: RecordStockIssueTx = async (tx, tenantId, param
   await writeBalanceTx(tx, tenantId, params.itemId, params.locationId, previous, quantityAfter, valueAfter);
 
   const updated = await tx.stockMovement.update({
-    where: { id: (movement as any).id },
+    // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+    where: { id: (movement as any).id, tenantId },
     data: { journalEntryId: entry.entryId },
     include: {
       item: { select: { reference: true, label: true, unit: true } },

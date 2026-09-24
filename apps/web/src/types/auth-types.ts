@@ -60,6 +60,28 @@ export interface TenantClient {
   id: string;
   tenantId: string;
   clientType: 'OWNER' | 'RENTER' | 'BUYER' | 'CO_OWNER';
+  /**
+   * Absent dans les tout premiers appelants (le nom/slug n'était pas requis) ;
+   * présent depuis le lot F, où le sélecteur d'agence doit afficher un nom.
+   */
+  tenant?: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+}
+
+/**
+ * Une agence sélectionnable dans `<TenantSwitcher>` : soit une agence où
+ * l'utilisateur collabore (membre ACTIVE), soit une agence dont il est client
+ * (propriétaire/locataire). Les deux ne se mélangent jamais dans une même
+ * liste — le persona (collaborateur vs. portail) ne change pas en cours de
+ * session, seule l'agence courante à l'intérieur du persona change.
+ */
+export interface AvailableTenant {
+  id: string;
+  name: string;
+  slug: string;
 }
 
 // Auth context state
@@ -71,6 +93,10 @@ export interface AuthState {
   tenantMembership: TenantMembership | null;
   tenantClient: TenantClient | null;
   isLoadingMembership: boolean;
+  /** Les agences éligibles au sélecteur — vide ou à un élément : aucun sélecteur. */
+  availableTenants: AvailableTenant[];
+  /** `tenantMembership?.tenantId ?? tenantClient?.tenantId ?? null`. */
+  activeTenantId: string | null;
 }
 
 // Auth context actions
@@ -81,4 +107,12 @@ export interface AuthContextType extends AuthState {
   refreshToken: () => Promise<void>;
   clearError: () => void;
   refreshMembership: () => Promise<void>;
+  /**
+   * Change l'agence courante parmi `availableTenants` : met à jour
+   * `tenantMembership`/`tenantClient` depuis la liste déjà chargée (pas de
+   * nouvel appel réseau) et mémorise le choix dans `localStorage`. N'appelle
+   * ni `queryClient.clear()` ni la navigation — c'est `<TenantSwitcher>` qui
+   * s'en charge, car `AuthContext` n'a pas connaissance de React Query.
+   */
+  switchTenant: (tenantId: string) => void;
 }

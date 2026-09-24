@@ -105,7 +105,8 @@ export const recordSiteProgressTx: RecordSiteProgressTx = async (tx, tenantId, p
 
   if (mostRecent?.id === created.id) {
     await tx.constructionSite.update({
-      where: { id: params.siteId },
+      // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+      where: { id: params.siteId, tenantId },
       data: { progressPercent: created.percent }
     });
   }

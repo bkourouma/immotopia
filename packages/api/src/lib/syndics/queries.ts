@@ -32,6 +32,22 @@ const SYNDICATE_DOCUMENT_TYPES = [
   'OTHER'
 ] as const;
 
+/**
+ * C3 — un profil proprietaire/locataire de lot pointe vers un CrmContact; sans
+ * ce controle, un contact d'une autre agence pouvait etre attache a un lot
+ * (IDOR silencieux: le contact n'a pas de lien direct avec la copropriete
+ * dans le schema, seul ce controle applicatif l'empeche).
+ */
+async function assertContactBelongsToTenant(tenantId: string, contactId: string) {
+  const contact = await prisma.crmContact.findFirst({
+    where: { id: contactId, tenantId },
+    select: { id: true }
+  });
+  if (!contact) {
+    throw notFound('Contact introuvable ou inaccessible');
+  }
+}
+
 async function ensureCrmRoleForContact(
   tx: PrismaTransactionClient,
   tenantId: string,
@@ -104,13 +120,13 @@ export async function assertSyndicateTenantOwnership(tenantId: string, syndicate
   }
 }
 
-async function syncSyndicateLotCount(tx: PrismaTransactionClient, syndicateId: string) {
+async function syncSyndicateLotCount(tx: PrismaTransactionClient, tenantId: string, syndicateId: string) {
   const totalLots = await tx.syndicateLot.count({
     where: { syndicateId }
   });
 
   await tx.syndicate.update({
-    where: { id: syndicateId },
+    where: { id: syndicateId, tenantId },
     data: { totalLots }
   });
 }
@@ -401,7 +417,7 @@ export async function updateSyndicateByTenant(
   }
 
   return prisma.syndicate.update({
-    where: { id: syndicateId },
+    where: { id: syndicateId, tenantId },
     data
   });
 }
@@ -420,7 +436,7 @@ export async function archiveSyndicateByTenant(tenantId: string, syndicateId: st
   }
 
   return prisma.syndicate.delete({
-    where: { id: syndicateId }
+    where: { id: syndicateId, tenantId }
   });
 }
 
@@ -490,7 +506,7 @@ export async function createSyndicateLot(
       }
     });
 
-    await syncSyndicateLotCount(tx, data.syndicateId);
+    await syncSyndicateLotCount(tx, tenantId, data.syndicateId);
 
     return lot;
   });
@@ -757,7 +773,7 @@ export async function importLotsFromPropertiesBySyndicate(
     });
   }
 
-  await syncSyndicateLotCount(prisma, syndicateId);
+  await syncSyndicateLotCount(prisma, tenantId, syndicateId);
 
   return {
     created,
@@ -2852,6 +2868,21 @@ export async function createJournalEntryBySyndicate(
     throw unprocessableEntity('Au moins un compte comptable est invalide pour cette copropriete');
   }
 
+  // Chaque ligne peut porter un lotId (IDOR sinon: un lot d'une autre
+  // copropriete/agence attache a une ecriture qui n'est pas la sienne).
+  const lotIds = Array.from(new Set(data.lines.map(line => line.lotId).filter((id): id is string => Boolean(id))));
+  if (lotIds.length > 0) {
+    const lotsCount = await prisma.syndicateLot.count({
+      where: {
+        syndicateId,
+        id: { in: lotIds }
+      }
+    });
+    if (lotsCount !== lotIds.length) {
+      throw unprocessableEntity('Au moins un lot est invalide pour cette copropriete');
+    }
+  }
+
   return prisma.$transaction(async tx => {
     const entry = await tx.journalEntry.create({
       data: {
@@ -2885,7 +2916,7 @@ export async function createJournalEntryBySyndicate(
     });
 
     return tx.journalEntry.findUnique({
-      where: { id: entry.id },
+      where: { id: entry.id, tenantId },
       include: {
         journal: true,
         lines: {
@@ -2906,6 +2937,7 @@ export async function lockJournalEntryBySyndicate(tenantId: string, syndicateId:
   const entry = await prisma.journalEntry.findFirst({
     where: {
       id: entryId,
+      tenantId,
       journal: { syndicateId }
     },
     select: { id: true, isLocked: true }
@@ -2916,11 +2948,11 @@ export async function lockJournalEntryBySyndicate(tenantId: string, syndicateId:
   }
 
   if (entry.isLocked) {
-    return prisma.journalEntry.findUnique({ where: { id: entryId } });
+    return prisma.journalEntry.findUnique({ where: { id: entryId, tenantId } });
   }
 
   return prisma.journalEntry.update({
-    where: { id: entryId },
+    where: { id: entryId, tenantId },
     data: { isLocked: true }
   });
 }
@@ -3182,6 +3214,19 @@ export async function updateBudgetBySyndicate(
 
   if (!budget) {
     throw notFound('Budget introuvable pour cette copropriete');
+  }
+
+  if (data.approvedByResolutionId) {
+    const resolution = await prisma.gMResolution.findFirst({
+      where: {
+        id: data.approvedByResolutionId,
+        meeting: { syndicateId, syndicate: { tenantId } }
+      },
+      select: { id: true }
+    });
+    if (!resolution) {
+      throw notFound('Resolution introuvable pour cette copropriete');
+    }
   }
 
   return prisma.syndicateBudget.update({
@@ -3504,6 +3549,7 @@ export async function createLotOwnerProfileBySyndicate(
   });
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
   await assertLotOwnershipForSyndicate(tenantId, syndicateId, data.lotId);
+  await assertContactBelongsToTenant(tenantId, data.contactId);
 
   return prisma.lotOwnerProfile.create({
     data: {
@@ -3608,6 +3654,7 @@ export async function createLotTenantProfileBySyndicate(
   });
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
   await assertLotOwnershipForSyndicate(tenantId, syndicateId, data.lotId);
+  await assertContactBelongsToTenant(tenantId, data.contactId);
 
   return prisma.lotTenantProfile.create({
     data: {
@@ -3712,6 +3759,16 @@ export async function createIncidentBySyndicate(
   if (data.lotId) {
     await assertLotOwnershipForSyndicate(tenantId, syndicateId, data.lotId);
   }
+  await assertContactBelongsToTenant(tenantId, data.reportedByContactId);
+  if (data.assetId) {
+    const asset = await prisma.commonAreaAsset.findFirst({
+      where: { id: data.assetId, syndicateId },
+      select: { id: true }
+    });
+    if (!asset) {
+      throw notFound('Actif commun introuvable pour cette copropriete');
+    }
+  }
 
   return prisma.syndicateIncident.create({
     data: {
@@ -3752,6 +3809,16 @@ export async function updateIncidentBySyndicate(
   });
   if (!incident) {
     throw notFound('Incident introuvable');
+  }
+
+  if (data.providerId) {
+    const provider = await prisma.serviceProvider.findFirst({
+      where: { id: data.providerId, tenantId },
+      select: { id: true }
+    });
+    if (!provider) {
+      throw notFound('Prestataire introuvable ou inaccessible');
+    }
   }
 
   return prisma.syndicateIncident.update({

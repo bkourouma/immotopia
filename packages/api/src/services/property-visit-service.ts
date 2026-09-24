@@ -94,6 +94,21 @@ export async function scheduleVisit(
     }
   }
 
+  // Validate assignee if provided: same rule as collaborators, an agent
+  // assigned to a visit must belong to the acting agency.
+  if (data.assignedToUserId) {
+    const assignee = await prisma.membership.findFirst({
+      where: {
+        tenantId: tenantId || undefined,
+        userId: data.assignedToUserId
+      }
+    });
+
+    if (!assignee) {
+      throw new Error('Assignee not found or access denied');
+    }
+  }
+
   // Create visit with collaborators
   const visit = await prisma.propertyVisit.create({
     data: {
@@ -322,6 +337,12 @@ export async function updateVisitStatus(
  * @returns List of visits
  */
 export async function getPropertyVisits(propertyId: string, tenantId?: string | null) {
+  // Without an agency, `tenantId: undefined` would drop the filter below and
+  // match any property: refuse instead.
+  if (!tenantId) {
+    throw new Error('Property not found or access denied');
+  }
+
   // Validate property access
   const property = await prisma.property.findFirst({
     where: {
@@ -337,9 +358,11 @@ export async function getPropertyVisits(propertyId: string, tenantId?: string | 
     throw new Error('Property not found or access denied');
   }
 
-  // Get visits
+  // Get visits — only this agency's. A CLIENT property can be under mandate
+  // with several agencies: each one sees its own visits (notes, contacts),
+  // never a competing agency's.
   const visits = await prisma.propertyVisit.findMany({
-    where: { propertyId },
+    where: { propertyId, tenantId },
     include: {
       contact: {
         select: {
@@ -404,15 +427,12 @@ export async function getCalendarVisits(
     }
   };
 
-  // Filter by tenant (through property)
-  if (tenantId) {
-    where.property = {
-      OR: [
-        { ownershipType: 'TENANT', tenantId },
-        { ownershipType: 'CLIENT', mandates: { some: { tenantId, isActive: true } } }
-      ]
-    };
+  // Only the visits scheduled by this agency. Without an agency there is
+  // nothing to show: the calendar never spans agencies.
+  if (!tenantId) {
+    return [];
   }
+  where.tenantId = tenantId;
 
   // Filter by assigned user
   if (assignedToUserId) {

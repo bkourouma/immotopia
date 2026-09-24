@@ -4,8 +4,22 @@ import * as subscriberService from '../services/newsletter-subscriber.service';
 import * as templateService from '../services/newsletter-template.service';
 import * as campaignService from '../services/newsletter-campaign.service';
 
-const getTenantId = (req: Request): string =>
-  req.tenantContext?.tenantId ?? (req.params as { tenantId?: string }).tenantId!;
+/**
+ * These routes are all mounted behind `requireTenantAccess`, which verifies
+ * `:tenantId` against the caller's membership and sets `req.tenantContext`.
+ * Reading `req.params.tenantId` directly as a fallback would trust an
+ * unverified URL segment if that middleware ever failed to run — a normal
+ * user could then manage another agency's newsletter lists/campaigns/
+ * templates by editing the tenantId in the URL. Only the verified context is
+ * trusted here.
+ */
+const getTenantId = (req: Request): string => {
+  const tenantId = req.tenantContext?.tenantId;
+  if (!tenantId) {
+    throw new Error('Contexte tenant requis pour la newsletter.');
+  }
+  return tenantId;
+};
 
 export async function listListsHandler(req: Request, res: Response) {
   try {

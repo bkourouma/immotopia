@@ -218,7 +218,9 @@ export async function patchAccount(tenantId: string, accountId: string, body: un
       });
     }
     return tx.treasuryAccount.update({
-      where: { id: account.id },
+      // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D
+      // du plan multi-tenant).
+      where: { id: account.id, tenantId },
       data: {
         ...(input.label !== undefined ? { label: input.label } : {}),
         ...(input.bankName !== undefined ? { bankName: input.bankName } : {}),
@@ -425,7 +427,8 @@ export async function voidTransfer(
       journalFor
     });
     return tx.treasuryTransfer.update({
-      where: { id: transfer.id },
+      // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+      where: { id: transfer.id, tenantId },
       data: {
         status: TreasuryDocumentStatus.VOIDED,
         voidReason: input.reason,
@@ -643,7 +646,8 @@ export async function voidTaxRemittance(
       journalFor
     });
     return tx.taxRemittance.update({
-      where: { id: remittance.id },
+      // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+      where: { id: remittance.id, tenantId },
       data: {
         status: TreasuryDocumentStatus.VOIDED,
         voidReason: input.reason,

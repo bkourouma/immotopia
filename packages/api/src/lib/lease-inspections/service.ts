@@ -500,7 +500,7 @@ export async function updateInspection(
   const input = updateInspectionSchema.parse(body);
 
   const row = await prisma.leaseInspection.update({
-    where: { id: inspectionId },
+    where: { id: inspectionId, tenantId },
     data: {
       inspectionDate: parseDateOnly(input.inspectionDate),
       rooms: input.rooms as unknown as Prisma.InputJsonValue,
@@ -550,7 +550,7 @@ export async function finalizeInspection(
   }
 
   const row = await prisma.leaseInspection.update({
-    where: { id: inspectionId },
+    where: { id: inspectionId, tenantId },
     data: { status: LeaseInspectionStatus.FINALIZED, finalizedAt: new Date(), finalizedByUserId: userId ?? null },
     include: INSPECTION_INCLUDE
   });
@@ -583,7 +583,7 @@ export async function deleteInspection(tenantId: string, leaseId: string, inspec
   await Promise.all(existing.photos.map(photo => safeUnlink(photo.filePath)));
   // `onDelete: Cascade` sur LeaseInspectionPhoto.inspection supprime les
   // lignes de photos ; seuls les fichiers sur disque doivent l'être à la main.
-  await prisma.leaseInspection.delete({ where: { id: inspectionId } });
+  await prisma.leaseInspection.delete({ where: { id: inspectionId, tenantId } });
 }
 
 // ---------------------------------------------------------------------------
@@ -732,6 +732,6 @@ export async function deleteInspectionPhoto(
   const photo = await prisma.leaseInspectionPhoto.findFirst({ where: { id: photoId, inspectionId, tenantId } });
   if (!photo) throw notFound('Photo introuvable.');
 
-  await prisma.leaseInspectionPhoto.delete({ where: { id: photoId } });
+  await prisma.leaseInspectionPhoto.delete({ where: { id: photoId, tenantId } });
   await safeUnlink(photo.filePath);
 }

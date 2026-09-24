@@ -17,6 +17,7 @@ const store = {
   allocations: [] as Row[],
   properties: [] as Row[],
   users: [] as Row[],
+  memberships: [] as Row[],
   invoices: [] as Row[],
   vouchers: [] as Row[],
   seq: 0
@@ -45,6 +46,13 @@ const mockPrisma: Row = {
 
   user: {
     findUnique: jest.fn(async ({ where }: Row) => store.users.find(u => u.id === where.id) ?? null)
+  },
+
+  membership: {
+    findUnique: jest.fn(async ({ where }: Row) => {
+      const { userId, tenantId } = where.userId_tenantId ?? {};
+      return store.memberships.find(m => m.userId === userId && m.tenantId === tenantId) ?? null;
+    })
   },
 
   constructionSite: {
@@ -249,6 +257,7 @@ beforeEach(() => {
   store.allocations = [];
   store.properties = [];
   store.users = [];
+  store.memberships = [];
   store.invoices = [];
   store.vouchers = [];
   store.seq = 0;
@@ -273,6 +282,50 @@ describe('createConstructionSite — chantier sans bien préexistant', () => {
     await expect(createConstructionSite(TENANT_ID, { name: 'Chantier X', propertyId: 'prop-x' })).rejects.toThrow(
       /bien introuvable/i
     );
+  });
+});
+
+// ===========================================================================
+// Audit multi-tenant du 24 septembre 2026 (lot B2) — le responsable d'un
+// chantier doit être membre ACTIF de CETTE agence, pas seulement un
+// utilisateur existant quelque part sur la plateforme.
+// ===========================================================================
+
+describe('createConstructionSite — responsable (managerId), lot B2', () => {
+  it('accepte un responsable membre ACTIF de l’agence', async () => {
+    store.users.push({ id: 'user-manager', fullName: 'Fatoumata Camara' });
+    store.memberships.push({ userId: 'user-manager', tenantId: TENANT_ID, status: 'ACTIVE' });
+
+    const site = await createConstructionSite(TENANT_ID, { name: 'Chantier Kipé', managerId: 'user-manager' });
+
+    expect(site.managerId).toBe('user-manager');
+  });
+
+  it('refuse un responsable d’une AUTRE agence — même sans compte tiers, la référence ne doit pas traverser (IDOR)', async () => {
+    store.users.push({ id: 'user-manager', fullName: 'Fatoumata Camara' });
+    store.memberships.push({ userId: 'user-manager', tenantId: 'autre-tenant', status: 'ACTIVE' });
+
+    await expect(
+      createConstructionSite(TENANT_ID, { name: 'Chantier Kipé', managerId: 'user-manager' })
+    ).rejects.toThrow(/responsable introuvable/i);
+    expect(store.sites).toHaveLength(0);
+  });
+
+  it('refuse un responsable dont l’adhésion à l’agence n’est pas ACTIVE (invitation en attente, suspendue…)', async () => {
+    store.users.push({ id: 'user-manager', fullName: 'Fatoumata Camara' });
+    store.memberships.push({ userId: 'user-manager', tenantId: TENANT_ID, status: 'PENDING_INVITE' });
+
+    await expect(
+      createConstructionSite(TENANT_ID, { name: 'Chantier Kipé', managerId: 'user-manager' })
+    ).rejects.toThrow(/responsable introuvable/i);
+  });
+
+  it('refuse un utilisateur qui n’a jamais été membre de l’agence', async () => {
+    store.users.push({ id: 'user-manager', fullName: 'Fatoumata Camara' });
+
+    await expect(
+      createConstructionSite(TENANT_ID, { name: 'Chantier Kipé', managerId: 'user-manager' })
+    ).rejects.toThrow(/responsable introuvable/i);
   });
 });
 
