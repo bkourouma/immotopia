@@ -112,3 +112,7 @@ describe('computeExpected — filtrage par caisse (lot 10)', () => {
     expect(expected.amount).toBe(25000);
   });
 });
+
+// Module, pas script : sans cela ses declarations entrent en collision avec
+// celles des autres fichiers de test sous ts-jest.
+export {};
