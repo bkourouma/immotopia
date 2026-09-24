@@ -12,6 +12,7 @@ import {
   RentalPaymentMethod
 } from '../../services/rental-service';
 import { nomDuBien, nomDeLaPersonne, ABSENT } from '../../lib/rental-labels';
+import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -52,6 +53,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
   const [selectedDeclaration, setSelectedDeclaration] = useState<RentalPaymentDeclaration | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
+  const [treasuryAccountId, setTreasuryAccountId] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [proofImageVisible, setProofImageVisible] = useState(false);
   const [proofImageUrl, setProofImageUrl] = useState<string | null>(null);
@@ -87,6 +89,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
   const handleApprove = (declaration: RentalPaymentDeclaration) => {
     setSelectedDeclaration(declaration);
     setReviewNotes('');
+    setTreasuryAccountId(null);
     setApproveModalVisible(true);
   };
 
@@ -101,12 +104,14 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     setProcessing(true);
     try {
       await approvePaymentDeclaration(tenantId, selectedDeclaration.id, {
-        reviewNotes: reviewNotes || undefined
+        reviewNotes: reviewNotes || undefined,
+        treasuryAccountId: treasuryAccountId || undefined
       });
       message.success(t('Déclaration approuvée avec succès'));
       setApproveModalVisible(false);
       setSelectedDeclaration(null);
       setReviewNotes('');
+      setTreasuryAccountId(null);
       await loadDeclarations();
       onApproveSuccess?.();
     } catch (err: any) {
@@ -346,6 +351,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
           setApproveModalVisible(false);
           setSelectedDeclaration(null);
           setReviewNotes('');
+          setTreasuryAccountId(null);
         }}
         confirmLoading={processing}
         okText={t('Approuver')}
@@ -371,6 +377,17 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
                 <Text>{selectedDeclaration.declarer.user.fullName}</Text>
               </div>
             )}
+            <div>
+              <Text strong style={{ display: 'block', marginBottom: 4 }}>
+                {t('Compte de trésorerie')}
+              </Text>
+              <TreasuryAccountSelector
+                tenantId={tenantId}
+                paymentMethod={selectedDeclaration.payment_method}
+                value={treasuryAccountId}
+                onChange={setTreasuryAccountId}
+              />
+            </div>
             <div>
               <Text strong>{t('Notes de révision (optionnel) :')}</Text>
               <TextArea

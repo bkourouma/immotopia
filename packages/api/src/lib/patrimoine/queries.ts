@@ -4,6 +4,10 @@ import { prisma } from '../../utils/database';
 import type { YieldInput } from './yield';
 import { syncWorkProgramCostTx } from '../finance/cost-allocation';
 import { logger } from '../../utils/logger';
+import { materializeManagementFees } from '../rental-fees/materialize';
+import { ownerSharesByProperty } from '../ownership/service';
+import { computeOwnerStatement, OWNER_STATEMENT_COMPUTATION_VERSION } from './owner-statement-computation';
+import { assertTreasuryAccountUsableTx } from '../treasury/accounts';
 
 // `services/audit-service.ts` n'est PAS importe ici bien que la specification
 // (edge case US12) demande une trace d'audit du remplacement d'un cout saisi
@@ -170,23 +174,45 @@ export async function createPropertyExpense(
     isCapitalized: boolean;
     receiptUrl?: string;
     notes?: string;
+    /** Lot 10 : moyen de paiement reel. Absent a la creation : caisse par defaut. */
+    paymentMethod?: 'MOBILE_MONEY' | 'BANK_TRANSFER' | 'CASH' | 'CHECK' | 'CARD' | 'OTHER' | null;
+    treasuryAccountId?: string | null;
+    /** Vrai quand l'agence a elle-meme commande le travail et doit la facture. */
+    agencyIsBuyer?: boolean;
+    supplierName?: string | null;
   }
 ) {
   await ensureTenantProperty(tenantId, propertyId);
-  return prisma.propertyExpense.create({
-    data: {
-      tenantId,
-      propertyId,
-      category: data.category,
-      label: data.label,
-      amount: new Prisma.Decimal(data.amount),
-      currency: data.currency,
-      paidAt: data.paidAt,
-      isCapitalized: data.isCapitalized,
-      receiptUrl: data.receiptUrl,
-      notes: data.notes
-    },
-    include: { property: true }
+
+  const agencyIsBuyer = data.agencyIsBuyer ?? false;
+  if (agencyIsBuyer && !data.supplierName?.trim()) {
+    throw badRequest("Le nom du fournisseur est requis quand l'agence est elle-meme l'acheteuse");
+  }
+
+  const paymentMethod = data.paymentMethod ?? 'CASH';
+
+  return prisma.$transaction(async tx => {
+    await assertTreasuryAccountUsableTx(tx, tenantId, data.treasuryAccountId, paymentMethod);
+
+    return tx.propertyExpense.create({
+      data: {
+        tenantId,
+        propertyId,
+        category: data.category,
+        label: data.label,
+        amount: new Prisma.Decimal(data.amount),
+        currency: data.currency,
+        paidAt: data.paidAt,
+        isCapitalized: data.isCapitalized,
+        receiptUrl: data.receiptUrl,
+        notes: data.notes,
+        paymentMethod,
+        treasuryAccountId: data.treasuryAccountId || null,
+        agencyIsBuyer,
+        supplierName: data.supplierName ?? null
+      },
+      include: { property: true }
+    });
   });
 }
 
@@ -221,6 +247,11 @@ export async function updatePropertyExpense(
     isCapitalized: boolean;
     receiptUrl: string;
     notes: string;
+    /** Lot 10 : moyen de paiement reel. */
+    paymentMethod: 'MOBILE_MONEY' | 'BANK_TRANSFER' | 'CASH' | 'CHECK' | 'CARD' | 'OTHER' | null;
+    treasuryAccountId: string | null;
+    agencyIsBuyer: boolean;
+    supplierName: string | null;
   }>
 ) {
   await ensureTenantProperty(tenantId, propertyId);
@@ -229,19 +260,36 @@ export async function updatePropertyExpense(
   });
   if (!existing) throw notFound('Depense introuvable');
 
-  return prisma.propertyExpense.update({
-    where: { id: expenseId },
-    data: {
-      category: data.category,
-      label: data.label,
-      amount: typeof data.amount === 'number' ? new Prisma.Decimal(data.amount) : undefined,
-      currency: data.currency,
-      paidAt: data.paidAt,
-      isCapitalized: data.isCapitalized,
-      receiptUrl: data.receiptUrl,
-      notes: data.notes
-    },
-    include: { property: true }
+  const effectiveAgencyIsBuyer = data.agencyIsBuyer ?? existing.agencyIsBuyer;
+  const effectiveSupplierName = data.supplierName !== undefined ? data.supplierName : existing.supplierName;
+  if (effectiveAgencyIsBuyer && !effectiveSupplierName?.trim()) {
+    throw badRequest("Le nom du fournisseur est requis quand l'agence est elle-meme l'acheteuse");
+  }
+
+  const treasuryAccountId = data.treasuryAccountId !== undefined ? data.treasuryAccountId : existing.treasuryAccountId;
+  const methodForValidation = data.paymentMethod !== undefined ? data.paymentMethod : existing.paymentMethod;
+
+  return prisma.$transaction(async tx => {
+    await assertTreasuryAccountUsableTx(tx, tenantId, treasuryAccountId, methodForValidation ?? 'CASH');
+
+    return tx.propertyExpense.update({
+      where: { id: expenseId },
+      data: {
+        category: data.category,
+        label: data.label,
+        amount: typeof data.amount === 'number' ? new Prisma.Decimal(data.amount) : undefined,
+        currency: data.currency,
+        paidAt: data.paidAt,
+        isCapitalized: data.isCapitalized,
+        receiptUrl: data.receiptUrl,
+        notes: data.notes,
+        paymentMethod: data.paymentMethod,
+        treasuryAccountId: data.treasuryAccountId,
+        agencyIsBuyer: data.agencyIsBuyer,
+        supplierName: data.supplierName
+      },
+      include: { property: true }
+    });
   });
 }
 
@@ -758,6 +806,35 @@ export async function getOwnerStatementById(tenantId: string, statementId: strin
   return statement;
 }
 
+const STATEMENT_INCLUDE = {
+  owner: true,
+  items: { include: { property: true } }
+} as const;
+
+/** Premier et dernier instant du mois, en UTC (Abidjan vit à UTC+0). */
+function periodBounds(period: string): { periodStart: Date; periodEnd: Date } {
+  const [yearStr, monthStr] = period.split('-');
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  if (!year || !month || month < 1 || month > 12) {
+    throw badRequest('Periode invalide, format attendu YYYY-MM');
+  }
+  return {
+    periodStart: new Date(Date.UTC(year, month - 1, 1)),
+    periodEnd: new Date(Date.UTC(year, month, 0, 23, 59, 59, 999))
+  };
+}
+
+/**
+ * Génère — ou recalcule — le relevé d'un propriétaire pour un mois.
+ *
+ * Un relevé existant pour le même propriétaire et le même mois est recalculé
+ * en place s'il est encore en brouillon, ou s'il date de l'ancien calcul
+ * (`computationVersion` 1) sans avoir été réglé : il repasse alors en
+ * brouillon, à renvoyer. Un relevé du nouveau calcul déjà envoyé, ou un relevé
+ * déjà réglé, ne se recalcule pas : ce que le propriétaire a reçu ou touché ne
+ * se réécrit pas en silence.
+ */
 export async function generateOwnerStatement(
   tenantId: string,
   params: {
@@ -771,108 +848,284 @@ export async function generateOwnerStatement(
   });
   if (!owner) throw notFound('Contact proprietaire introuvable');
 
-  const [yearStr, monthStr] = params.period.split('-');
-  const year = Number(yearStr);
-  const month = Number(monthStr);
-  if (!year || !month || month < 1 || month > 12) {
-    throw badRequest('Periode invalide, format attendu YYYY-MM');
-  }
-
-  const periodStart = new Date(year, month - 1, 1);
-  const periodEnd = new Date(year, month, 0, 23, 59, 59, 999);
+  const { periodStart, periodEnd } = periodBounds(params.period);
+  const propertyIds = Array.from(new Set(params.propertyIds));
 
   const properties = await prisma.property.findMany({
-    where: { tenantId, id: { in: params.propertyIds } },
-    select: { id: true, title: true, internalReference: true }
+    where: { tenantId, id: { in: propertyIds } },
+    select: { id: true }
   });
-  if (properties.length !== params.propertyIds.length) {
+  if (properties.length !== propertyIds.length) {
     throw badRequest('Un ou plusieurs biens sont introuvables ou hors tenant');
   }
 
-  const [leases, expenses] = await Promise.all([
-    prisma.rentalLease.findMany({
-      where: {
-        tenant_id: tenantId,
-        property_id: { in: params.propertyIds },
-        status: 'ACTIVE'
-      },
-      select: { property_id: true, rent_amount: true }
-    }),
+  const existing = await prisma.ownerStatement.findUnique({
+    where: {
+      tenantId_ownerContactId_period: {
+        tenantId,
+        ownerContactId: params.ownerContactId,
+        period: params.period
+      }
+    }
+  });
+  if (existing) {
+    if (existing.status === StatementStatus.PAID) {
+      throw conflict(
+        'Ce releve est deja regle : il ne peut plus etre recalcule. Un ecart eventuel se regularise sur le releve suivant.'
+      );
+    }
+    if (
+      existing.status === StatementStatus.SENT &&
+      existing.computationVersion >= OWNER_STATEMENT_COMPUTATION_VERSION
+    ) {
+      throw conflict('Ce releve a deja ete envoye au proprietaire : il ne peut plus etre recalcule.');
+    }
+  }
+
+  // Tous les baux des biens, quel que soit leur statut : un bail resilie en
+  // aout peut encore encaisser un arriere en septembre.
+  const leases = await prisma.rentalLease.findMany({
+    where: { tenant_id: tenantId, property_id: { in: propertyIds } },
+    select: { id: true }
+  });
+  const leaseIds = leases.map(lease => lease.id);
+
+  const paidInPeriod: Prisma.RentalPaymentWhereInput = {
+    status: 'SUCCESS',
+    OR: [
+      { succeeded_at: { gte: periodStart, lte: periodEnd } },
+      { succeeded_at: null, initiated_at: { gte: periodStart, lte: periodEnd } }
+    ]
+  };
+
+  // Indivision (lot 4) : le relevé désigne son propriétaire par un contact
+  // CRM ; sa quote-part est portée par son TenantClient, relié au contact par
+  // `details.crmContactId`. Sans ce lien, le relevé garde les montants entiers.
+  const ownerClient = await prisma.tenantClient.findFirst({
+    where: { tenantId, details: { path: ['crmContactId'], equals: params.ownerContactId } },
+    select: { id: true }
+  });
+  const shareByProperty = ownerClient ? await ownerSharesByProperty(tenantId, ownerClient.id, propertyIds) : undefined;
+
+  // Les honoraires des encaissements du mois, figés s'ils ne l'étaient pas
+  // encore : le relevé et l'état des commissions lisent les mêmes chiffres.
+  await materializeManagementFees(tenantId, { from: periodStart, to: periodEnd, propertyIds });
+
+  const [installments, expenses, fees, withholdings, depositMovements] = await Promise.all([
+    leaseIds.length === 0
+      ? Promise.resolve([])
+      : prisma.rentalInstallment.findMany({
+          where: {
+            tenant_id: tenantId,
+            lease_id: { in: leaseIds },
+            status: { not: 'CANCELED' },
+            OR: [{ due_date: { lte: periodEnd } }, { payments: { some: { payment: paidInPeriod } } }]
+          },
+          select: {
+            status: true,
+            due_date: true,
+            amount_rent: true,
+            amount_service: true,
+            amount_other_fees: true,
+            penalty_amount: true,
+            lease: { select: { property_id: true } },
+            payments: {
+              where: { payment: { status: 'SUCCESS' } },
+              select: {
+                amount: true,
+                payment: { select: { succeeded_at: true, initiated_at: true } }
+              }
+            }
+          }
+        }),
     prisma.propertyExpense.findMany({
       where: {
         tenantId,
-        propertyId: { in: params.propertyIds },
+        propertyId: { in: propertyIds },
         paidAt: { gte: periodStart, lte: periodEnd }
       },
-      select: { propertyId: true, label: true, amount: true }
-    })
+      select: { propertyId: true, label: true, amount: true, category: true }
+    }),
+    prisma.managementFee.findMany({
+      where: { tenantId, propertyId: { in: propertyIds }, collectedAt: { gte: periodStart, lte: periodEnd } },
+      select: {
+        propertyId: true,
+        feeAmount: true,
+        vatAmount: true,
+        mode: true,
+        rate: true,
+        feeBase: true,
+        vatRate: true
+      }
+    }),
+    // Lot 10 : retenue à la source sur loyers, sur les biens du relevé, dans le mois.
+    ownerClient
+      ? prisma.rentWithholding.findMany({
+          where: {
+            tenantId,
+            ownerClientId: ownerClient.id,
+            propertyId: { in: propertyIds },
+            collectedAt: { gte: periodStart, lte: periodEnd }
+          },
+          select: { propertyId: true, amount: true }
+        })
+      : Promise.resolve([]),
+    // Lot 10 : dépôts de garantie conservés dans le mois, sur le compte de
+    // tiers OWNER du propriétaire. Rattachés à un bien via leur bail — un
+    // mouvement sans bail resolu n'entre dans aucun relevé.
+    ownerClient
+      ? prisma.thirdPartyMovement.findMany({
+          where: {
+            tenantId,
+            type: 'DEPOSIT_RETAINED',
+            movementDate: { gte: periodStart, lte: periodEnd },
+            account: { tenantId, kind: 'OWNER', tenantClientId: ownerClient.id }
+          },
+          select: {
+            debit: true,
+            credit: true,
+            lease: { select: { property_id: true } }
+          }
+        })
+      : Promise.resolve([])
   ]);
 
-  const statementItemsData: Array<{
-    propertyId: string;
-    label: string;
-    type: 'RENT_COLLECTED' | 'EXPENSE_DEDUCTED';
-    amount: Prisma.Decimal;
-  }> = [];
+  const withholdingsByProperty = withholdings
+    .filter(w => propertyIds.includes(w.propertyId))
+    .map(w => ({ propertyId: w.propertyId, amount: Number(w.amount) }));
 
-  for (const lease of leases) {
-    statementItemsData.push({
-      propertyId: lease.property_id,
-      label: 'Loyer collecte',
-      type: 'RENT_COLLECTED',
-      amount: new Prisma.Decimal(lease.rent_amount)
-    });
-  }
+  const depositsRetainedByProperty = depositMovements
+    .filter(m => m.lease?.property_id && propertyIds.includes(m.lease.property_id))
+    .map(m => ({
+      propertyId: m.lease!.property_id,
+      // Le sens debit/credit du mouvement n'importe pas ici : une seule des
+      // deux colonnes est renseignée par mouvement (voir `appendThirdPartyMovementTx`).
+      amount: Number(m.debit ?? 0) + Number(m.credit ?? 0)
+    }));
 
-  for (const expense of expenses) {
-    statementItemsData.push({
+  const computed = computeOwnerStatement({
+    periodStart,
+    periodEnd,
+    propertyIds,
+    withholdings: withholdingsByProperty,
+    depositsRetained: depositsRetainedByProperty,
+    installments: installments.map(inst => ({
+      propertyId: inst.lease.property_id,
+      dueDate: inst.due_date,
+      // Une echeance en brouillon n'est pas encore appelee : elle ne compte ni
+      // dans l'appele ni dans l'impaye, mais un reglement qui la solde reste un
+      // encaissement.
+      countsAsDue: inst.status !== 'DRAFT',
+      amountRent: Number(inst.amount_rent),
+      amountService: Number(inst.amount_service),
+      amountOtherFees: Number(inst.amount_other_fees),
+      penaltyAmount: Number(inst.penalty_amount),
+      allocations: inst.payments.map(allocation => ({
+        amount: Number(allocation.amount),
+        paidAt: allocation.payment.succeeded_at ?? allocation.payment.initiated_at
+      }))
+    })),
+    expenses: expenses.map(expense => ({
       propertyId: expense.propertyId,
       label: expense.label,
-      type: 'EXPENSE_DEDUCTED',
-      amount: new Prisma.Decimal(expense.amount)
-    });
-  }
+      amount: Number(expense.amount),
+      category: expense.category
+    })),
+    fees: fees.map(fee => ({
+      propertyId: fee.propertyId,
+      feeAmount: Number(fee.feeAmount),
+      vatAmount: Number(fee.vatAmount),
+      mode: fee.mode,
+      rate: fee.rate === null ? null : Number(fee.rate),
+      feeBase: fee.feeBase,
+      vatRate: fee.vatRate === null ? null : Number(fee.vatRate)
+    })),
+    shareByProperty
+  });
 
-  const totalRevenue = statementItemsData
-    .filter(item => item.type === 'RENT_COLLECTED')
-    .reduce((sum, item) => sum + Number(item.amount), 0);
-  const totalExpenses = statementItemsData
-    .filter(item => item.type === 'EXPENSE_DEDUCTED')
-    .reduce((sum, item) => sum + Number(item.amount), 0);
-  const netAmount = totalRevenue - totalExpenses;
+  const decimal = (value: number) => new Prisma.Decimal(value);
+  const statementData = {
+    totalRevenue: decimal(computed.totalRevenue),
+    totalExpenses: decimal(computed.totalExpenses),
+    netAmount: decimal(computed.netAmount),
+    totalRentDue: decimal(computed.totalRentDue),
+    totalArrears: decimal(computed.totalArrears),
+    totalManagementFees: decimal(computed.totalManagementFees),
+    totalManagementFeesVat: decimal(computed.totalManagementFeesVat),
+    managementFeeRate: computed.appliedFeeRate === null ? null : decimal(computed.appliedFeeRate),
+    managementFeeBase: computed.appliedFeeBase,
+    vatRate: computed.appliedVatRate === null ? null : decimal(computed.appliedVatRate),
+    propertyIds,
+    computationVersion: OWNER_STATEMENT_COMPUTATION_VERSION
+  };
 
   return prisma.$transaction(async tx => {
-    const statement = await tx.ownerStatement.create({
-      data: {
-        tenantId,
-        ownerContactId: params.ownerContactId,
-        period: params.period,
-        totalRevenue: new Prisma.Decimal(totalRevenue),
-        totalExpenses: new Prisma.Decimal(totalExpenses),
-        netAmount: new Prisma.Decimal(netAmount),
-        status: StatementStatus.DRAFT
-      }
-    });
+    let statementId: string;
+    if (existing) {
+      await tx.ownerStatementItem.deleteMany({ where: { statementId: existing.id } });
+      await tx.ownerStatement.update({
+        where: { id: existing.id },
+        data: { ...statementData, status: StatementStatus.DRAFT }
+      });
+      statementId = existing.id;
+    } else {
+      const created = await tx.ownerStatement.create({
+        data: {
+          tenantId,
+          ownerContactId: params.ownerContactId,
+          period: params.period,
+          status: StatementStatus.DRAFT,
+          ...statementData
+        }
+      });
+      statementId = created.id;
+    }
 
-    if (statementItemsData.length > 0) {
+    if (computed.items.length > 0) {
       await tx.ownerStatementItem.createMany({
-        data: statementItemsData.map(item => ({
-          statementId: statement.id,
+        data: computed.items.map(item => ({
+          statementId,
           propertyId: item.propertyId,
           label: item.label,
           type: item.type,
-          amount: item.amount
+          amount: decimal(item.amount)
         }))
       });
     }
 
     return tx.ownerStatement.findUnique({
-      where: { id: statement.id },
-      include: {
-        owner: true,
-        items: { include: { property: true } }
-      }
+      where: { id: statementId },
+      include: STATEMENT_INCLUDE
     });
+  });
+}
+
+/**
+ * Recalcule un relevé existant avec ses propres paramètres : même
+ * propriétaire, même mois, mêmes biens.
+ *
+ * Les relevés de l'ancien calcul n'ont pas mémorisé leurs biens ; on reprend
+ * alors ceux qui figurent sur leurs lignes.
+ */
+export async function recomputeOwnerStatement(tenantId: string, statementId: string) {
+  const statement = await prisma.ownerStatement.findFirst({
+    where: { tenantId, id: statementId },
+    include: { items: { select: { propertyId: true } } }
+  });
+  if (!statement) throw notFound('Releve introuvable');
+
+  const propertyIds =
+    statement.propertyIds.length > 0
+      ? statement.propertyIds
+      : Array.from(new Set(statement.items.map(item => item.propertyId)));
+  if (propertyIds.length === 0) {
+    throw badRequest('Ce releve ne porte sur aucun bien : generez-en un nouveau en choisissant les biens.');
+  }
+
+  return generateOwnerStatement(tenantId, {
+    ownerContactId: statement.ownerContactId,
+    period: statement.period,
+    propertyIds
   });
 }
 

@@ -64,6 +64,14 @@ export function buildCrumbs(pathname: string): Crumb[] {
 
     if (isIdSegment(segment)) return;
 
+    // « commissions » désigne déjà les commissions des agents
+    // (`/finance/commissions`, lot 2) : sous `/sales`, c'est le lot 9 des
+    // commissions de vente, un libellé différent pour le même segment.
+    if (segment === 'commissions' && segments[index - 1] === 'sales') {
+      crumbs.push({ label: t('Commissions de vente'), to: isLast ? undefined : acc });
+      return;
+    }
+
     crumbs.push({ label: labelForSegment(segment), to: isLast ? undefined : acc });
   });
 

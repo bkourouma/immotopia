@@ -104,8 +104,51 @@ const BalanceClients = lazy(() =>
 const BalanceAgee = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/BalanceAgee').then(m => ({ default: m.BalanceAgee }))
 );
+const CommissionsAgents = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/CommissionsAgents').then(m => ({
+    default: m.CommissionsAgents
+  }))
+);
+const ComptesProprietaires = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/ComptesProprietaires').then(m => ({
+    default: m.ComptesProprietaires
+  }))
+);
+const CompteProprietaire = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/CompteProprietaire').then(m => ({
+    default: m.CompteProprietaire
+  }))
+);
 const Releve = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/Releve').then(m => ({ default: m.Releve }))
+);
+const SalesDashboard = lazy(() =>
+  import(/* webpackChunkName: "sales" */ './pages/sales/SalesDashboard').then(m => ({ default: m.SalesDashboard }))
+);
+const SaleMandates = lazy(() =>
+  import(/* webpackChunkName: "sales" */ './pages/sales/SaleMandates').then(m => ({ default: m.SaleMandates }))
+);
+const SaleMandateDetail = lazy(() =>
+  import(/* webpackChunkName: "sales" */ './pages/sales/SaleMandateDetail').then(m => ({
+    default: m.SaleMandateDetail
+  }))
+);
+const SaleAgreementDetail = lazy(() =>
+  import(/* webpackChunkName: "sales" */ './pages/sales/SaleAgreementDetail').then(m => ({
+    default: m.SaleAgreementDetail
+  }))
+);
+const SaleCommissions = lazy(() =>
+  import(/* webpackChunkName: "sales" */ './pages/sales/SaleCommissions').then(m => ({ default: m.SaleCommissions }))
+);
+const Comptabilite = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Comptabilite').then(m => ({ default: m.Comptabilite }))
+);
+const Caisse = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Caisse').then(m => ({ default: m.Caisse }))
+);
+const Tresorerie = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './pages/finance/Tresorerie').then(m => ({ default: m.Tresorerie }))
 );
 const Facturation = lazy(() =>
   import(/* webpackChunkName: "finance" */ './pages/finance/Facturation').then(m => ({ default: m.Facturation }))
@@ -361,6 +404,11 @@ const InvitationsList = lazy(() =>
 const TenantSettings = lazy(() =>
   import(/* webpackChunkName: "tenant" */ './pages/tenant/TenantSettings').then(m => ({ default: m.TenantSettings }))
 );
+const AgencyFinanceSettings = lazy(() =>
+  import(/* webpackChunkName: "tenant" */ './pages/tenant/AgencyFinanceSettings').then(m => ({
+    default: m.AgencyFinanceSettings
+  }))
+);
 // CRM pages
 const Contacts = lazy(() =>
   import(/* webpackChunkName: "crm" */ './pages/crm/Contacts').then(m => ({ default: m.Contacts }))
@@ -527,6 +575,7 @@ const OwnerLeaseDetails = lazy(() => import(/* webpackChunkName: "owner-portal" 
 const OwnerRevenues = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Revenues'));
 const OwnerInstallments = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Installments'));
 const OwnerPayments = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Payments'));
+const OwnerAccount = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Account'));
 const OwnerDeposits = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Deposits'));
 const OwnerMaintenance = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Maintenance'));
 const OwnerDocuments = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Documents'));
@@ -751,6 +800,7 @@ function App() {
                           <Route path="/tenant/:tenantId/invite" element={<InviteCollaborator />} />
                           <Route path="/tenant/:tenantId/invitations" element={<InvitationsList />} />
                           <Route path="/tenant/:tenantId/settings" element={<TenantSettings />} />
+                          <Route path="/tenant/:tenantId/settings/finance" element={<AgencyFinanceSettings />} />
                           <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
                           <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
                           <Route path="/tenant/:tenantId/crm/contacts/new" element={<ContactFormPage />} />
@@ -776,7 +826,21 @@ function App() {
                           <Route path="/tenant/:tenantId/rental/payments/:paymentId" element={<PaymentDetailPage />} />
                           <Route path="/tenant/:tenantId/finance/balance-clients" element={<BalanceClients />} />
                           <Route path="/tenant/:tenantId/finance/balance-agee" element={<BalanceAgee />} />
+                          <Route path="/tenant/:tenantId/finance/commissions" element={<CommissionsAgents />} />
+                          <Route path="/tenant/:tenantId/finance/comptabilite" element={<Comptabilite />} />
+                          <Route path="/tenant/:tenantId/finance/caisse" element={<Caisse />} />
+                          <Route path="/tenant/:tenantId/finance/tresorerie" element={<Tresorerie />} />
+                          <Route path="/tenant/:tenantId/finance/owner-accounts" element={<ComptesProprietaires />} />
+                          <Route
+                            path="/tenant/:tenantId/finance/owner-accounts/:ownerClientId"
+                            element={<CompteProprietaire />}
+                          />
                           <Route path="/tenant/:tenantId/finance/comptes/:accountId" element={<Releve />} />
+                          <Route path="/tenant/:tenantId/sales" element={<SalesDashboard />} />
+                          <Route path="/tenant/:tenantId/sales/mandates" element={<SaleMandates />} />
+                          <Route path="/tenant/:tenantId/sales/mandates/:id" element={<SaleMandateDetail />} />
+                          <Route path="/tenant/:tenantId/sales/agreements/:id" element={<SaleAgreementDetail />} />
+                          <Route path="/tenant/:tenantId/sales/commissions" element={<SaleCommissions />} />
                           <Route path="/tenant/:tenantId/finance/facturation" element={<Facturation />} />
                           <Route path="/tenant/:tenantId/finance/fournisseurs" element={<Fournisseurs />} />
                           <Route
@@ -981,6 +1045,7 @@ function App() {
                           <Route path="revenues" element={<OwnerRevenues />} />
                           <Route path="installments" element={<OwnerInstallments />} />
                           <Route path="payments" element={<OwnerPayments />} />
+                          <Route path="account" element={<OwnerAccount />} />
                           <Route path="deposits" element={<OwnerDeposits />} />
                           <Route path="maintenance" element={<OwnerMaintenance />} />
                           <Route path="documents" element={<OwnerDocuments />} />

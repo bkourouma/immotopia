@@ -12,6 +12,7 @@ import {
   MenuOutlined,
   RiseOutlined,
   SafetyOutlined,
+  ShopOutlined,
   TeamOutlined,
   ToolOutlined,
   WalletOutlined
@@ -104,6 +105,7 @@ export type SectionId =
   | 'parc'
   | 'locatif'
   | 'finance'
+  | 'ventes'
   | 'patrimoine'
   | 'commercial'
   | 'copropriete'
@@ -116,6 +118,7 @@ export const SECTION_LABELS: Record<SectionId, string> = {
   parc: t('Parc immobilier'),
   locatif: t('Gestion locative'),
   finance: 'Finance',
+  ventes: t('Ventes'),
   patrimoine: t('Patrimoine et entretien'),
   commercial: t('Commercial et communication'),
   copropriete: t('Copropriété'),
@@ -255,8 +258,25 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         section: 'finance',
         href: '/tenant/:tenantId/finance/balance-clients',
         children: [
+          {
+            key: 'finance-comptabilite',
+            label: t('Comptabilité'),
+            href: '/tenant/:tenantId/finance/comptabilite'
+          },
+          { key: 'finance-caisse', label: t('Caisse'), href: '/tenant/:tenantId/finance/caisse' },
+          { key: 'finance-tresorerie', label: t('Trésorerie'), href: '/tenant/:tenantId/finance/tresorerie' },
           { key: 'finance-clients', label: t('Balance clients'), href: '/tenant/:tenantId/finance/balance-clients' },
           { key: 'finance-clients-agee', label: t('Balance âgée'), href: '/tenant/:tenantId/finance/balance-agee' },
+          {
+            key: 'finance-agent-commissions',
+            label: t('Commissions des agents'),
+            href: '/tenant/:tenantId/finance/commissions'
+          },
+          {
+            key: 'finance-owner-accounts',
+            label: t('Comptes propriétaires'),
+            href: '/tenant/:tenantId/finance/owner-accounts'
+          },
           {
             key: 'finance-facturation',
             label: t('Facturation du mois'),
@@ -364,6 +384,22 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
             label: t('Prestataires'),
             href: '/tenant/:tenantId/admin/maintenance/vendors'
           }
+        ]
+      },
+      {
+        // Ventes immobilières (lot 9) : mandats, offres, compromis, actes,
+        // commissions. Posée juste avant CRM — l'affaire CRM gagnée est le
+        // point d'entrée d'où naît un mandat de vente.
+        key: 'ventes',
+        label: t('Ventes'),
+        icon: <ShopOutlined />,
+        zone: 'more',
+        section: 'ventes',
+        href: '/tenant/:tenantId/sales',
+        children: [
+          { key: 'sales-dashboard', label: t('Tableau des ventes'), href: '/tenant/:tenantId/sales' },
+          { key: 'sales-mandates', label: t('Mandats de vente'), href: '/tenant/:tenantId/sales/mandates' },
+          { key: 'sales-commissions', label: t('Commissions de vente'), href: '/tenant/:tenantId/sales/commissions' }
         ]
       },
       {
@@ -492,7 +528,12 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         children: [
           { key: 'agence-collaborators', label: t('Collaborateurs'), href: '/tenant/:tenantId/collaborators' },
           { key: 'agence-invitations', label: t('Invitations'), href: '/tenant/:tenantId/invitations' },
-          { key: 'agence-settings', label: t("Paramètres de l'agence"), href: '/tenant/:tenantId/settings' }
+          { key: 'agence-settings', label: t("Paramètres de l'agence"), href: '/tenant/:tenantId/settings' },
+          {
+            key: 'agence-finance-settings',
+            label: t('Paramètres financiers'),
+            href: '/tenant/:tenantId/settings/finance'
+          }
         ]
       }
     ]
@@ -525,6 +566,16 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         zone: 'primary',
         section: 'portefeuille',
         href: '/owner/revenues'
+      },
+      {
+        // Le compte courant tenu par l'agence : ce qu'elle doit au
+        // propriétaire, et ce qu'elle lui a déjà reversé.
+        key: 'compte',
+        label: t('Mon compte'),
+        icon: <WalletOutlined />,
+        zone: 'primary',
+        section: 'portefeuille',
+        href: '/owner/account'
       },
       {
         key: 'incidents',

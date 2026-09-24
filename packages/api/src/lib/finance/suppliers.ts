@@ -59,6 +59,7 @@ import { raiseBudgetAlertIfNeededTx } from './budget-alerts';
 import { roundLineQuantity, roundMoneyXof } from './money';
 import type { FinanceSourceType } from './types';
 import { toAmountOrZero } from './types';
+import { ensureDefaultTreasuryAccountTx } from '../treasury/accounts';
 import type {
   CreateSupplierInvoiceTx,
   CreateSupplierPaymentTx,
@@ -148,9 +149,10 @@ async function resolveOperationalAccounts(
   tenantId: string,
   entryDate: Date
 ): Promise<OperationalAccounts> {
-  const [journalId, comptes] = await Promise.all([
+  const [journalId, comptes, cashTreasury] = await Promise.all([
     ensureOperationalJournalTx(tx, tenantId, entryDate.getFullYear()),
-    ensureOperationalChartOfAccountsTx(tx, tenantId)
+    ensureOperationalChartOfAccountsTx(tx, tenantId),
+    ensureDefaultTreasuryAccountTx(tx, tenantId, 'CASH')
   ]);
 
   const exiger = (numero: string): string => {
@@ -165,9 +167,10 @@ async function resolveOperationalAccounts(
     journalId,
     fournisseursAccountId: exiger('401'),
     achatsAccountId: exiger('601'),
-    // La tresorerie est le compte 571, comme pour la caisse. C'est le meme
-    // argent, et il ne sort pas par deux portes.
-    banqueAccountId: exiger('571'),
+    // La tresorerie est resolue par `treasury/accounts.ts` : la caisse par
+    // defaut de l'agence, reprise si un compte 571 heberge deja des
+    // ecritures (voir la doc de `ensureDefaultTreasuryAccountTx`).
+    banqueAccountId: cashTreasury.chartOfAccountId,
     stocksAccountId: comptes.get('311') ?? null
   };
 }

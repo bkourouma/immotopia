@@ -8,7 +8,9 @@ import {
   CalendarOutlined,
   DollarOutlined,
   CreditCardOutlined,
-  SafetyOutlined
+  SafetyOutlined,
+  HistoryOutlined,
+  FileSearchOutlined
 } from '@ant-design/icons';
 import { getLease, RentalLease, RentalLeaseStatus, updateLeaseStatus } from '../../services/rental-service';
 import { getContact } from '../../services/crm-service';
@@ -18,6 +20,9 @@ import { Payments } from './Payments';
 import { Penalties } from './Penalties';
 import { Deposits } from './Deposits';
 import { Documents } from './Documents';
+import { LeaseManagementTermsCard } from '../../components/rental/LeaseManagementTermsCard';
+import { LeaseLifecyclePanel } from '../../components/rental/LeaseLifecyclePanel';
+import { LeaseInspectionsPanel } from '../../components/rental/inspections/LeaseInspectionsPanel';
 import { t as translate } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -73,6 +78,22 @@ export const LeaseDetailPage: React.FC = () => {
 
     loadMissingContactNames();
   }, [tenantId, lease, contactNameById]);
+
+  /**
+   * Relit le bail sans passer par l'état de chargement : après une révision
+   * ou une résiliation, l'en-tête doit refléter le nouveau loyer ou la
+   * nouvelle fin, sans que la page se vide et renvoie au premier onglet.
+   */
+  const refreshLease = async () => {
+    if (!tenantId || !leaseId) return;
+    try {
+      const response = await getLease(tenantId, leaseId);
+      if (response.success) setLease(response.data);
+    } catch {
+      // L'onglet a déjà affiché son propre résultat : un échec de relecture
+      // laisse simplement l'en-tête tel qu'il était.
+    }
+  };
 
   const loadLease = async () => {
     if (!tenantId || !leaseId) return;
@@ -348,6 +369,12 @@ export const LeaseDetailPage: React.FC = () => {
             </Col>
           )}
 
+          {!isSaleOnly && tenantId && leaseId && (
+            <Col xs={24} md={12}>
+              <LeaseManagementTermsCard tenantId={tenantId} leaseId={leaseId} />
+            </Col>
+          )}
+
           {!isSaleOnly && (
             <Col xs={24} md={12}>
               <Card
@@ -479,6 +506,29 @@ export const LeaseDetailPage: React.FC = () => {
                   </span>
                 ),
                 children: <Deposits leaseId={leaseId} />
+              },
+              {
+                key: 'lifecycle',
+                label: (
+                  <span>
+                    <HistoryOutlined />
+                    {translate('Vie du bail')}
+                  </span>
+                ),
+                children:
+                  tenantId && leaseId ? (
+                    <LeaseLifecyclePanel tenantId={tenantId} leaseId={leaseId} onLeaseChanged={refreshLease} />
+                  ) : null
+              },
+              {
+                key: 'inspections',
+                label: (
+                  <span>
+                    <FileSearchOutlined />
+                    {translate('États des lieux')}
+                  </span>
+                ),
+                children: tenantId && leaseId ? <LeaseInspectionsPanel tenantId={tenantId} leaseId={leaseId} /> : null
               },
               {
                 key: 'documents',

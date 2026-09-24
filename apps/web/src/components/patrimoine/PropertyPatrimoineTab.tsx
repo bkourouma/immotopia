@@ -47,6 +47,7 @@ import {
 import type {
   AssetValuation,
   PatrimonyDocument,
+  PaymentMethod,
   PropertyExpense,
   PropertyLoan,
   PropertyYieldData,
@@ -61,6 +62,7 @@ import { YieldProjectionChart } from './YieldProjectionChart';
 import { WorkProgramTimeline } from './WorkProgramTimeline';
 import { uploadDocument as uploadPropertyDocument } from '../../services/property-service';
 import { listContacts } from '../../services/crm-service';
+import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -117,6 +119,34 @@ function expenseCategoryLabel(category: PropertyExpense['category']): string {
   if (category === 'OTHER') return 'Autre';
   return category;
 }
+
+function paymentMethodLabel(method: PaymentMethod): string {
+  if (method === 'CASH') return t('Espèces');
+  if (method === 'BANK_TRANSFER') return t('Virement bancaire');
+  if (method === 'CHECK') return t('Chèque');
+  if (method === 'MOBILE_MONEY') return t('Mobile Money');
+  if (method === 'CARD') return t('Carte bancaire');
+  if (method === 'OTHER') return t('Autre');
+  return method;
+}
+
+/**
+ * Adaptateur Form.Item : `value` et `onChange` sont injectés par le formulaire,
+ * alors que `TreasuryAccountSelector` les exige explicitement.
+ */
+const ExpenseTreasuryAccountField: React.FC<{
+  tenantId: string;
+  paymentMethod?: PaymentMethod;
+  value?: string | null;
+  onChange?: (id: string | null) => void;
+}> = ({ tenantId, paymentMethod, value, onChange }) => (
+  <TreasuryAccountSelector
+    tenantId={tenantId}
+    paymentMethod={paymentMethod}
+    value={value}
+    onChange={id => onChange?.(id)}
+  />
+);
 
 function documentTypeLabel(type: PatrimonyDocument['type']): string {
   if (type === 'TITLE_DEED') return t('Titre de propriété');
@@ -179,6 +209,11 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
   const [loanForm] = Form.useForm();
   const [workForm] = Form.useForm();
   const [documentForm] = Form.useForm();
+
+  // Moyen de paiement et « agence acheteuse » de la dépense en cours de saisie,
+  // pour filtrer le compte de trésorerie proposé et rendre le fournisseur requis.
+  const expensePaymentMethod = Form.useWatch('paymentMethod', expenseForm) as PaymentMethod | undefined;
+  const expenseAgencyIsBuyer = Form.useWatch('agencyIsBuyer', expenseForm) as boolean | undefined;
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -321,7 +356,11 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       paidAt: toDateTimeLocal(item.paidAt),
       isCapitalized: item.isCapitalized,
       receiptUrl: item.receiptUrl || undefined,
-      notes: item.notes || undefined
+      notes: item.notes || undefined,
+      paymentMethod: item.paymentMethod || undefined,
+      treasuryAccountId: item.treasuryAccountId || undefined,
+      agencyIsBuyer: item.agencyIsBuyer || false,
+      supplierName: item.supplierName || undefined
     });
     setExpenseModalOpen(true);
   };
@@ -337,7 +376,11 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
         paidAt: toIso(values.paidAt),
         isCapitalized: values.isCapitalized,
         receiptUrl: values.receiptUrl,
-        notes: values.notes
+        notes: values.notes,
+        paymentMethod: values.paymentMethod,
+        treasuryAccountId: values.treasuryAccountId,
+        agencyIsBuyer: values.agencyIsBuyer,
+        supplierName: values.supplierName
       };
       setSubmitting(true);
       if (editingExpenseId) {
@@ -903,6 +946,36 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
           <Form.Item name="receiptUrl" label={t('URL justificatif')}>
             <Input />
           </Form.Item>
+          <Form.Item name="paymentMethod" label={t('Moyen de paiement')}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              onChange={() => expenseForm.setFieldsValue({ treasuryAccountId: undefined })}
+              options={[
+                { value: 'CASH', label: paymentMethodLabel('CASH') },
+                { value: 'BANK_TRANSFER', label: paymentMethodLabel('BANK_TRANSFER') },
+                { value: 'CHECK', label: paymentMethodLabel('CHECK') },
+                { value: 'MOBILE_MONEY', label: paymentMethodLabel('MOBILE_MONEY') },
+                { value: 'CARD', label: paymentMethodLabel('CARD') },
+                { value: 'OTHER', label: paymentMethodLabel('OTHER') }
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="treasuryAccountId" label={t('Compte de trésorerie')}>
+            <ExpenseTreasuryAccountField tenantId={tenantId} paymentMethod={expensePaymentMethod} />
+          </Form.Item>
+          <Form.Item name="agencyIsBuyer" label={t("L'agence a commandé et doit la facture")} valuePropName="checked">
+            <Switch />
+          </Form.Item>
+          {expenseAgencyIsBuyer ? (
+            <Form.Item
+              name="supplierName"
+              label={t('Fournisseur')}
+              rules={[{ required: true, message: t('Le fournisseur est requis quand l’agence a commandé') }]}
+            >
+              <Input />
+            </Form.Item>
+          ) : null}
           <Form.Item name="notes" label={t('Notes')}>
             <Input.TextArea rows={3} />
           </Form.Item>

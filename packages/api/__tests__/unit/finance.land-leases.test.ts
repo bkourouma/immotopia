@@ -28,10 +28,25 @@
 const postDocumentEntryTx = jest.fn();
 
 const COMPTES_OPERATIONNELS = new Map<string, string>([
-  ['486', 'compte-486'],
+  // Lot 10 : 476 remplace 486 (numero corrige, consolidation SYSCOHADA).
+  ['476', 'compte-476'],
   ['613', 'compte-613'],
   ['571', 'compte-571']
 ]);
+
+// Lot 10 : la caisse ne se lit plus dans `accounting.ts` mais se resout par
+// `treasury/accounts.ts`. On la mocke pour renvoyer le meme compte 571 qu'avant,
+// afin que ce fichier continue de verifier les memes ecritures.
+jest.mock('../../src/lib/treasury/accounts', () => ({
+  ensureDefaultTreasuryAccountTx: async () => ({
+    treasuryAccountId: 'tresorerie-571',
+    chartOfAccountId: 'compte-571',
+    accountNumber: '571',
+    label: 'Caisse',
+    kind: 'CASH',
+    journal: 'CASH'
+  })
+}));
 
 jest.mock('../../src/lib/finance/accounting', () => ({
   postDocumentEntryTx: (...args: any[]) => postDocumentEntryTx(...args),
@@ -78,6 +93,14 @@ function withCostCategory(row: Row): Row {
 }
 
 const mockPrisma: Row = {
+  // Lot 10 : `legacyPrepaidAccountTx` (land-leases.ts) lit ce modele pour
+  // savoir si un compte '486' herite porte deja des ecritures. Aucune agence
+  // de ces tests n'en a : la reprise ne joue jamais, et le compte 476 du mock
+  // ci-dessous (COMPTES_OPERATIONNELS) est utilise a la place.
+  chartOfAccount: {
+    findFirst: jest.fn(async () => null)
+  },
+
   thirdPartyAccount: {
     create: jest.fn(async ({ data }: Row) => {
       const created = { id: nextId('acc'), ...data };
@@ -533,7 +556,7 @@ describe('validateLandLeasePaymentTx — écriture et mouvement', () => {
     const [, params] = postDocumentEntryTx.mock.calls[0];
     expect(params.documentType).toBe('LAND_LEASE_PAYMENT');
     expect(params.lines).toEqual([
-      expect.objectContaining({ accountId: 'compte-486', debit: 1_000_000 }),
+      expect.objectContaining({ accountId: 'compte-476', debit: 1_000_000 }),
       expect.objectContaining({ accountId: 'compte-571', credit: 1_000_000 })
     ]);
     for (const line of params.lines) {

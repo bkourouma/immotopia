@@ -135,6 +135,12 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'rental-installments': ['RENTAL_INSTALLMENTS_VIEW'],
   'rental-payments': ['RENTAL_PAYMENTS_VIEW'],
 
+  // Finance.
+  'finance-comptabilite': ['FINANCE_REPORTS_READ'],
+  'finance-caisse': ['FINANCE_DOCUMENTS_CREATE'],
+  'finance-agent-commissions': ['FINANCE_REPORTS_READ'],
+  'finance-owner-accounts': ['FINANCE_ACCOUNTS_READ'],
+
   // Patrimoine et entretien.
   patrimoine: ['PROPERTIES_VIEW'],
   'patrimoine-overview': ['PROPERTIES_VIEW'],
@@ -145,6 +151,12 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   'maintenance-agence-tickets': ['MAINTENANCE_ADMIN'],
   'maintenance-mes-demandes': ['MAINTENANCE_TENANT', 'MAINTENANCE_ADMIN'],
   'maintenance-agence-vendors': ['MAINTENANCE_ADMIN'],
+
+  // Ventes immobilières (lot 9).
+  ventes: ['CRM_DEALS_VIEW', 'FINANCE_ACCOUNTS_READ'],
+  'sales-dashboard': ['CRM_DEALS_VIEW'],
+  'sales-mandates': ['CRM_DEALS_VIEW'],
+  'sales-commissions': ['CRM_DEALS_VIEW', 'FINANCE_ACCOUNTS_READ'],
 
   // Commercial et communication.
   crm: ['CRM_CONTACTS_VIEW', 'CRM_DEALS_VIEW', 'CRM_ACTIVITIES_VIEW'],
@@ -167,7 +179,8 @@ const MENU_REQUIREMENTS: Record<string, string[]> = {
   agence: ['USERS_VIEW', 'TENANT_SETTINGS_VIEW'],
   'agence-collaborators': ['USERS_VIEW'],
   'agence-invitations': ['USERS_CREATE'],
-  'agence-settings': ['TENANT_SETTINGS_VIEW']
+  'agence-settings': ['TENANT_SETTINGS_VIEW'],
+  'agence-finance-settings': ['TENANT_SETTINGS_VIEW']
 };
 
 function requirementsFor(navKey: string): string[] {

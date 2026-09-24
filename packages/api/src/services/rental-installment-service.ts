@@ -151,6 +151,18 @@ export async function soldePieceTx(
     select: { debit: true, credit: true }
   });
 
+  // Une échéance révisée porte, en plus de ses propres mouvements, les
+  // ajustements écrits par chaque révision de loyer (`LEASE_REVISION`, pièce
+  // `<échéance>:<révision>`, voir `lib/lease-lifecycle`). Les oublier ici
+  // ferait annuler l'ancien montant d'une échéance et laisser l'écart au compte.
+  if (sourceType === 'RENTAL_INSTALLMENT') {
+    const ajustements = await tx.thirdPartyMovement.findMany({
+      where: { tenantId, sourceType: 'LEASE_REVISION', sourceId: { startsWith: `${sourceId}:` } },
+      select: { debit: true, credit: true }
+    });
+    mouvements.push(...ajustements);
+  }
+
   return roundMoney(mouvements.reduce((somme, m) => somme + Number(m.debit ?? 0) - Number(m.credit ?? 0), 0));
 }
 

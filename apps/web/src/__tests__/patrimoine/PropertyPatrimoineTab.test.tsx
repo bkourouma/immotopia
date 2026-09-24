@@ -39,6 +39,10 @@ vi.mock('antd', async () => {
       setFieldsValue: jestObject.fn()
     }
   ];
+  // Le composant surveille paymentMethod/agencyIsBuyer de la dépense via
+  // Form.useWatch (lot 10) : le mock antd doit couvrir cet export comme les
+  // autres, sous peine d'un TypeError au montage.
+  FormComp.useWatch = () => undefined;
   const InputComp: any = passthrough('input');
   InputComp.TextArea = passthrough('textarea');
   const Modal = ({ open, children }: any) => (open ? <div>{children}</div> : null);

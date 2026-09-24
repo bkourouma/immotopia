@@ -56,6 +56,7 @@ import { ensureOperationalChartOfAccountsTx, ensureOperationalJournalTx, postDoc
 import { syncWorkProgramCostTx } from './cost-allocation';
 import { appendThirdPartyMovementTx } from './ledger';
 import { roundMoneyXof } from './money';
+import { ensureDefaultTreasuryAccountTx } from '../treasury/accounts';
 import type { FinanceSourceType } from './types';
 import { toAmountOrZero } from './types';
 import type {
@@ -127,12 +128,36 @@ const ACTIVE_SITE_STATUSES = ['PLANNED', 'IN_PROGRESS', 'SUSPENDED'] as const;
 
 interface OperationalAccounts {
   journalId: string;
-  /** 486 — Charges constatées d'avance : le loyer payé, pas encore consommé. */
+  /**
+   * 476 — Charges constatées d'avance : le loyer payé, pas encore consommé.
+   *
+   * Numéro corrigé le 23 septembre 2026 (consolidation SYSCOHADA, point 6) :
+   * le 486 n'existe pas dans ce plan, 476 est le bon compte de cette nature.
+   * Une agence dont le 486 porte déjà des écritures garde ce compte — voir
+   * `legacyPrepaidAccountTx` ci-dessous, même logique de reprise que
+   * `legacyAccountWithLinesTx` dans `treasury/accounts.ts`.
+   */
   prepaidExpenseAccountId: string;
   /** 613 — Locations : la part du loyer consommée le mois constaté. */
   rentExpenseAccountId: string;
-  /** 571 — Caisse : la même trésorerie que partout ailleurs dans le module. */
+  /** Caisse : la même trésorerie que partout ailleurs, résolue par `treasury/accounts.ts`. */
   cashAccountId: string;
+}
+
+/**
+ * Un compte '486' hérité qui porte déjà des écritures, pour une agence déjà
+ * en production avant la correction du 23 septembre 2026. On ne migre pas
+ * une trésorerie ou un compte de charges constatées d'avance en changeant
+ * simplement son numéro : une agence qui a déjà compté dessus le garde.
+ */
+async function legacyPrepaidAccountTx(tx: PrismaTransactionClient, tenantId: string): Promise<string | null> {
+  const account = await tx.chartOfAccount.findFirst({
+    where: { tenantId, scope: 'OPERATIONS', accountNumber: '486' },
+    select: { id: true }
+  });
+  if (!account) return null;
+  const line = await tx.journalEntryLine.findFirst({ where: { accountId: account.id }, select: { id: true } });
+  return line ? account.id : null;
 }
 
 /**
@@ -145,9 +170,11 @@ async function resolveOperationalAccounts(
   tenantId: string,
   entryDate: Date
 ): Promise<OperationalAccounts> {
-  const [journalId, comptes] = await Promise.all([
+  const [journalId, comptes, cashTreasury, legacyPrepaidAccountId] = await Promise.all([
     ensureOperationalJournalTx(tx, tenantId, entryDate.getUTCFullYear()),
-    ensureOperationalChartOfAccountsTx(tx, tenantId)
+    ensureOperationalChartOfAccountsTx(tx, tenantId),
+    ensureDefaultTreasuryAccountTx(tx, tenantId, 'CASH'),
+    legacyPrepaidAccountTx(tx, tenantId)
   ]);
 
   const exiger = (numero: string): string => {
@@ -160,9 +187,9 @@ async function resolveOperationalAccounts(
 
   return {
     journalId,
-    prepaidExpenseAccountId: exiger('486'),
+    prepaidExpenseAccountId: legacyPrepaidAccountId ?? exiger('476'),
     rentExpenseAccountId: exiger('613'),
-    cashAccountId: exiger('571')
+    cashAccountId: cashTreasury.chartOfAccountId
   };
 }
 
@@ -505,8 +532,8 @@ export const validateLandLeasePaymentTx: ValidateLandLeasePaymentTx = async (
   const amount = roundMoneyXof(toAmountOrZero(payment.amount));
   const accounts = await resolveOperationalAccounts(tx, tenantId, payment.paymentDate);
 
-  // Journal : débit des charges constatées d'avance (486), crédit de la
-  // caisse (571). C'est le paiement lui-même, pas encore sa consommation.
+  // Journal : débit des charges constatées d'avance (476, ou 486 hérité),
+  // crédit de la caisse. C'est le paiement lui-même, pas encore sa consommation.
   const entry = await postDocumentEntryTx(tx, {
     tenantId,
     journalId: accounts.journalId,
@@ -807,8 +834,8 @@ async function recordLandLeaseAccrualInternalTx(
   const accounts = await resolveOperationalAccounts(tx, tenantId, entryDate);
 
   // Journal : débit des locations (613), crédit des charges constatées
-  // d'avance (486) — la consommation du mois, prélevée sur l'avance déjà
-  // payée.
+  // d'avance (476, ou 486 hérité) — la consommation du mois, prélevée sur
+  // l'avance déjà payée.
   const entry = await postDocumentEntryTx(tx, {
     tenantId,
     journalId: accounts.journalId,

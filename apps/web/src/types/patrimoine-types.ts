@@ -3,6 +3,13 @@ export type LoanStatus = 'ACTIVE' | 'CLOSED' | 'DEFAULTED';
 export type WorkProgramStatus = 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
 export type StatementStatus = 'DRAFT' | 'SENT' | 'PAID';
 
+/**
+ * Moyen de paiement d'une dépense (lot 10, conformité SYSCOHADA —
+ * `LOT10-CONTRAT.md`). Mêmes valeurs que `RentalPaymentMethod` côté
+ * encaissement locataire.
+ */
+export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'MOBILE_MONEY' | 'CHECK' | 'CARD' | 'OTHER';
+
 export type ExpenseCategory =
   | 'PROPERTY_TAX'
   | 'CONDO_FEES'
@@ -81,6 +88,14 @@ export interface PropertyExpense {
   isCapitalized: boolean;
   receiptUrl?: string | null;
   notes?: string | null;
+  /** Moyen de paiement de la dépense (lot 10, SYSCOHADA). */
+  paymentMethod?: PaymentMethod | null;
+  /** Compte de trésorerie débité. */
+  treasuryAccountId?: string | null;
+  /** L'agence a commandé et doit la facture (dépense refacturée au propriétaire). */
+  agencyIsBuyer?: boolean;
+  /** Fournisseur, requis dès que `agencyIsBuyer` est coché. */
+  supplierName?: string | null;
 }
 
 export interface PropertyLoan {
@@ -132,7 +147,7 @@ export interface OwnerStatementItem {
     internalReference?: string;
   };
   label: string;
-  type: 'RENT_COLLECTED' | 'EXPENSE_DEDUCTED' | 'MANAGEMENT_FEE' | 'ADVANCE' | 'OTHER';
+  type: 'RENT_COLLECTED' | 'EXPENSE_DEDUCTED' | 'MANAGEMENT_FEE' | 'MANAGEMENT_FEE_VAT' | 'ADVANCE' | 'OTHER';
   amount: number;
 }
 
@@ -147,9 +162,25 @@ export interface OwnerStatement {
     email?: string;
   };
   period: string;
+  /** Loyers réellement encaissés dans le mois. */
   totalRevenue: number;
+  /** Dépenses des biens payées dans le mois. */
   totalExpenses: number;
+  /** Encaissé − honoraires − TVA − dépenses. */
   netAmount: number;
+  /** Montant appelé sur les échéances du mois. */
+  totalRentDue: number;
+  /** Restant dû par les locataires à la fin du mois. */
+  totalArrears: number;
+  totalManagementFees: number;
+  totalManagementFeesVat: number;
+  /** Taux appliqués, figés avec le relevé ; `null` si non appliqués. */
+  managementFeeRate: number | null;
+  managementFeeBase: 'RENT_ONLY' | 'ALL_COLLECTED' | null;
+  vatRate: number | null;
+  propertyIds: string[];
+  /** 1 : ancien calcul (loyer du contrat pris pour un loyer encaissé). */
+  computationVersion: number;
   currency: string;
   status: StatementStatus;
   sentAt?: string | null;

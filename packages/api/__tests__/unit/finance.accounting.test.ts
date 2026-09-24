@@ -468,15 +468,19 @@ describe('Plan de comptes operationnel', () => {
     const comptes = await ensureOperationalChartOfAccountsTx(tx, TENANT_ID);
 
     // Le jeu est epingle a dessein : ce test tombe des qu'on y touche, et
-    // c'est ce qu'on lui demande. Les comptes 486 et 613 ont ete ajoutes au
+    // c'est ce qu'on lui demande. Les comptes 476 et 613 ont ete ajoutes au
     // lot 4 pour les baux de terrain — un loyer paye d'avance est une creance
-    // de jouissance (486) qui se consomme mois apres mois en location (613),
-    // et non une charge le jour du paiement.
+    // de jouissance (476, corrige le 23 septembre 2026 : ce n'etait pas 486,
+    // absent du plan SYSCOHADA) qui se consomme mois apres mois en location
+    // (613), et non une charge le jour du paiement.
     //
     // Le 4047 est arrive avec les retenues de garantie : ce qu'on retient a un
     // fournisseur ou a un tacheron reste du, mais n'est plus exigible, et le
     // laisser sur le 401 ou le 402 ferait croire a une campagne de reglement
     // qu'il faut le payer maintenant.
+    //
+    // Le 571 (caisse) est sorti du jeu au lot 10 : la tresorerie operationnelle
+    // se resout desormais par `treasury/accounts.ts`, pas par ce seed.
     expect(Array.from(comptes.keys()).sort()).toEqual([
       '311',
       '401',
@@ -484,8 +488,7 @@ describe('Plan de comptes operationnel', () => {
       '4047',
       '411',
       '422',
-      '486',
-      '571',
+      '476',
       '601',
       '603',
       '605',
@@ -855,6 +858,19 @@ describe('voidDocumentTx', () => {
     store.supplierInvoices.push({ id: 'bon-1', tenantId: TENANT_ID, status: 'VALIDATED' });
     const comptes = await ensureOperationalChartOfAccountsTx(tx, TENANT_ID);
     const journalId = await ensureOperationalJournalTx(tx, TENANT_ID, 2026);
+    // Lot 10 : la caisse (571) n'est plus dans ce seed, sa tresorerie se
+    // resolvant par `treasury/accounts.ts`. Ce test verifie le statut de la
+    // piece, pas ce compte : un compte de caisse independant, pose comme le
+    // ferait `ensureDefaultTreasuryAccountTx`, suffit.
+    const caisseId = 'compte-caisse-independant';
+    store.accounts.push({
+      id: caisseId,
+      tenantId: TENANT_ID,
+      syndicateId: null,
+      scope: 'OPERATIONS',
+      accountNumber: '5711',
+      accountName: 'Caisse principale'
+    });
     await postDocumentEntryTx(tx, {
       tenantId: TENANT_ID,
       journalId,
@@ -865,7 +881,7 @@ describe('voidDocumentTx', () => {
       documentId: 'bon-1',
       lines: [
         { accountId: comptes.get('605')!, debit: 50000, label: 'Depense de chantier' },
-        { accountId: comptes.get('571')!, credit: 50000, label: 'Sortie de caisse' }
+        { accountId: caisseId, credit: 50000, label: 'Sortie de caisse' }
       ]
     });
 

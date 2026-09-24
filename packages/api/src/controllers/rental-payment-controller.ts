@@ -24,7 +24,14 @@ const createPaymentSchema = z.object({
   pspName: z.string().optional(),
   pspTransactionId: z.string().optional(),
   pspReference: z.string().optional(),
-  idempotencyKey: z.string().optional() // Auto-generated if not provided
+  /** Date à laquelle le locataire a payé, `YYYY-MM-DD`. Absente : maintenant. */
+  paidAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date du règlement attendue au format AAAA-MM-JJ')
+    .optional(),
+  idempotencyKey: z.string().optional(), // Auto-generated if not provided
+  /** Lot 10 : compte de trésorerie réellement crédité. Absent : celui par défaut du moyen de paiement. */
+  treasuryAccountId: z.string().uuid().optional().nullable()
 });
 
 const allocatePaymentSchema = z.object({

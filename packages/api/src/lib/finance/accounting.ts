@@ -94,7 +94,23 @@ const SOURCE_TYPE_BY_DOCUMENT: Record<string, string> = {
   // silence : le grand livre reste equilibre et devient illisible.
   STOCK_RECEIPT: 'STOCK_RECEIPT',
   STOCK_ISSUE: 'STOCK_ISSUE',
-  STOCK_ADJUSTMENT: 'STOCK_ADJUSTMENT'
+  STOCK_ADJUSTMENT: 'STOCK_ADJUSTMENT',
+  // Gestion locative, lot 3. La contre-passation d'un mouvement du compte
+  // proprietaire porte la nature VOID, comme toute annulation du module.
+  OWNER_RENT_COLLECTED: 'OWNER_RENT_COLLECTED',
+  OWNER_MANAGEMENT_FEE: 'OWNER_MANAGEMENT_FEE',
+  OWNER_EXPENSE: 'OWNER_EXPENSE',
+  OWNER_PAYOUT: 'OWNER_PAYOUT',
+  OWNER_VOID: 'VOID',
+  CASH_SESSION_DIFFERENCE: 'CASH_SESSION_DIFFERENCE',
+  OWNER_UNALLOCATED: 'OWNER_UNALLOCATED',
+  OWNER_AUX_REALLOC: 'OWNER_AUX_REALLOC',
+  OWNER_WITHHOLDING: 'OWNER_WITHHOLDING',
+  OWNER_DEPOSIT: 'OWNER_DEPOSIT',
+  TREASURY_TRANSFER: 'TREASURY_TRANSFER',
+  TAX_REMITTANCE: 'TAX_REMITTANCE',
+  // Lot 9 : ventes immobilieres.
+  SALE_COMMISSION_PAYMENT: 'SALE_COMMISSION_PAYMENT'
 };
 
 /**
@@ -123,6 +139,8 @@ export interface BalancedEntryLine {
   debit: number;
   credit: number;
   label: string;
+  thirdPartyAccountId: string | null;
+  fundsNature: 'CURRENT' | 'DEPOSIT' | 'UNALLOCATED' | null;
 }
 
 export interface BalancedEntry {
@@ -168,7 +186,14 @@ export function buildBalancedEntryLines(lines: JournalLineInput[]): BalancedEntr
       throw unprocessableEntity(`Ligne ${index + 1} : le compte comptable est obligatoire`);
     }
 
-    return { accountId: line.accountId, debit, credit, label: line.label };
+    return {
+      accountId: line.accountId,
+      debit,
+      credit,
+      label: line.label,
+      thirdPartyAccountId: line.thirdPartyAccountId ?? null,
+      fundsNature: line.fundsNature ?? null
+    };
   });
 
   const totalDebit = roundMoneyXof(rounded.reduce((somme, line) => somme + line.debit, 0));
@@ -255,17 +280,24 @@ export interface OperationalAccountSeed {
 export const OPERATIONAL_ACCOUNT_SEEDS: OperationalAccountSeed[] = [
   { accountNumber: '401', accountName: 'Fournisseurs', accountClass: 4, accountType: 'LIABILITY' },
   { accountNumber: '411', accountName: 'Clients', accountClass: 4, accountType: 'ASSET' },
-  { accountNumber: '571', accountName: 'Caisse', accountClass: 5, accountType: 'ASSET' },
+  // Lot 10 : la caisse (571) ne se seme plus ici. La tresorerie operationnelle
+  // (caisses, banques, Mobile Money) se resout desormais par
+  // `treasury/accounts.ts::ensureDefaultTreasuryAccountTx`, qui reprend un 571
+  // deja porteur d'ecritures ou pose 5711 pour une agence neuve. Plus aucun
+  // fichier de ce dossier n'appelle `comptes.get('571')` (verifie le
+  // 23 septembre 2026, lot 10) : retirer cette entree ne prive aucun appelant.
   { accountNumber: '601', accountName: 'Achats', accountClass: 6, accountType: 'EXPENSE' },
   { accountNumber: '605', accountName: 'Charges de chantier', accountClass: 6, accountType: 'EXPENSE' },
   // Lot 4, baux de terrain. Un loyer paye d'avance n'est pas une charge le
   // jour ou on le paie : c'est une creance de jouissance, qui se consomme mois
-  // apres mois. Le 486 la porte, le 613 recoit la consommation. Sans ces deux
-  // comptes, un chantier sur terrain loue porterait la totalite du loyer le
-  // mois du paiement et rien les onze suivants — son cout deviendrait
-  // illisible, ce que le PRD demande precisement d'eviter.
+  // apres mois. Le 476 la porte (corrige le 23 septembre 2026 : ce n'etait pas
+  // 486, absent du plan SYSCOHADA — voir consolidation, point 6), le 613
+  // recoit la consommation. Sans ces deux comptes, un chantier sur terrain
+  // loue porterait la totalite du loyer le mois du paiement et rien les onze
+  // suivants — son cout deviendrait illisible, ce que le PRD demande
+  // precisement d'eviter.
   {
-    accountNumber: '486',
+    accountNumber: '476',
     accountName: "Charges constatees d'avance",
     accountClass: 4,
     accountType: 'ASSET'
@@ -610,7 +642,9 @@ export const postDocumentEntryTx: PostDocumentEntryTx = async (tx, params) => {
       accountId: line.accountId,
       debit: line.debit,
       credit: line.credit,
-      label: line.label
+      label: line.label,
+      thirdPartyAccountId: line.thirdPartyAccountId,
+      fundsNature: line.fundsNature
     }))
   });
 
@@ -771,7 +805,16 @@ export const voidDocumentTx: VoidDocumentTx = async (tx, params) => {
       journalId: true,
       reference: true,
       isLocked: true,
-      lines: { select: { accountId: true, debit: true, credit: true, label: true } }
+      lines: {
+        select: {
+          accountId: true,
+          debit: true,
+          credit: true,
+          label: true,
+          thirdPartyAccountId: true,
+          fundsNature: true
+        }
+      }
     }
   });
 
@@ -824,7 +867,9 @@ export const voidDocumentTx: VoidDocumentTx = async (tx, params) => {
       accountId: line.accountId,
       debit: roundMoneyXof(Number(line.credit ?? 0)),
       credit: roundMoneyXof(Number(line.debit ?? 0)),
-      label: `Annulation : ${line.label}`
+      label: `Annulation : ${line.label}`,
+      thirdPartyAccountId: line.thirdPartyAccountId,
+      fundsNature: line.fundsNature
     }))
   });
 

@@ -1,17 +1,17 @@
 import { Request, Response } from 'express';
 import { logger } from '../utils/logger';
-import {
-  generateStatementSchema,
-  updateStatementSchema
-} from '../lib/patrimoine/schemas';
+import { generateStatementSchema, updateStatementSchema } from '../lib/patrimoine/schemas';
 import {
   generateOwnerStatement,
   getOwnerStatementById,
   listOwnerStatements,
+  recomputeOwnerStatement,
   updateOwnerStatement
 } from '../lib/patrimoine/queries';
+import { asyncHandler } from '../middleware/error-middleware';
 import { sendOwnerStatement } from '../lib/patrimoine/notifications';
-import { badRequest } from '../lib/errors';
+import { badRequest, conflict } from '../lib/errors';
+import { OWNER_STATEMENT_COMPUTATION_VERSION } from '../lib/patrimoine/owner-statement-computation';
 
 function resolveTenantId(req: Request): string {
   const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
@@ -82,6 +82,11 @@ export async function sendOwnerStatementHandler(req: Request, res: Response): Pr
     if (!statementId) throw badRequest('StatementId manquant');
 
     const statement = await getOwnerStatementById(tenantId, statementId);
+    // Un releve de l'ancien calcul porte le loyer du contrat pour un loyer
+    // encaisse : l'envoyer tel quel repeterait l'erreur.
+    if (statement.computationVersion < OWNER_STATEMENT_COMPUTATION_VERSION) {
+      throw conflict("Ce releve a ete calcule selon l'ancienne methode : recalculez-le avant de l'envoyer.");
+    }
     const result = await sendOwnerStatement(statement.id);
     res.status(result.sent ? 202 : 200).json({ success: true, data: result });
   } catch (error: unknown) {
@@ -91,3 +96,14 @@ export async function sendOwnerStatementHandler(req: Request, res: Response): Pr
   }
 }
 
+/**
+ * Recalcule un relevé avec ses propres biens et son propre mois — le moyen de
+ * corriger un relevé produit par l'ancien calcul.
+ */
+export const recomputeOwnerStatementHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = resolveTenantId(req);
+  const statementId = req.params.statementId;
+  if (!statementId) throw badRequest('StatementId manquant');
+  const data = await recomputeOwnerStatement(tenantId, statementId);
+  res.json({ success: true, data });
+});

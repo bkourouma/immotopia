@@ -281,6 +281,14 @@ export async function getOwnerStatementById(tenantId: string, statementId: strin
   return response.data.data;
 }
 
+/** Recalcule un relevé avec ses propres biens et son propre mois. */
+export async function recomputeOwnerStatement(tenantId: string, statementId: string): Promise<OwnerStatement> {
+  const response = await apiClient.post<ApiResponse<OwnerStatement>>(
+    `/tenants/${tenantId}/owner-statements/${statementId}/recompute`
+  );
+  return response.data.data;
+}
+
 export async function sendOwnerStatement(tenantId: string, statementId: string) {
   const response = await apiClient.post<ApiResponse<{ sent: boolean; reason?: string; whatsappSent?: boolean }>>(
     `/tenants/${tenantId}/owner-statements/${statementId}/send`

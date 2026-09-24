@@ -9,6 +9,7 @@ import { PaymentDeclarationStatus, RentalPaymentStatus, RentalInstallmentStatus 
 import { Decimal } from '@prisma/client/runtime/library';
 import { compteLocataireTx, libellePeriodeEcheance } from './rental-installment-service';
 import { inscrireAllocationTx, inscrireReliquatTx, libelleMoyen } from './rental-payment-service';
+import { assertTreasuryAccountUsableTx } from '../lib/treasury/accounts';
 
 interface PaymentDeclarationFilters {
   status?: PaymentDeclarationStatus;
@@ -35,7 +36,9 @@ export async function approvePaymentDeclaration(
   tenantId: string,
   declarationId: string,
   actorUserId: string,
-  reviewNotes?: string
+  reviewNotes?: string,
+  /** Lot 10 : compte de trésorerie réellement crédité. Nul : celui par défaut du moyen de paiement. */
+  treasuryAccountId?: string | null
 ): Promise<{ declaration: any; payment: any }> {
   try {
     // Get declaration with relations
@@ -58,6 +61,8 @@ export async function approvePaymentDeclaration(
 
     // Use transaction to ensure consistency
     const result = await prisma.$transaction(async tx => {
+      await assertTreasuryAccountUsableTx(tx, tenantId, treasuryAccountId, declaration.payment_method);
+
       // Create payment from declaration
       const payment = await tx.rentalPayment.create({
         data: {
@@ -68,6 +73,7 @@ export async function approvePaymentDeclaration(
           amount: declaration.amount,
           currency: 'FCFA',
           mm_operator: declaration.mobile_operator as any,
+          treasury_account_id: treasuryAccountId || null,
           psp_reference: declaration.reference || null,
           idempotency_key: `declaration-${declaration.id}-${Date.now()}`,
           status: RentalPaymentStatus.SUCCESS,

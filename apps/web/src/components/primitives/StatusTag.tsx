@@ -123,7 +123,17 @@ const STATUS_MAP: Record<string, { tone: StatusTone; label: string }> = {
   VOIDED: { tone: 'danger', label: t('Annulée') },
   ISSUED: { tone: 'info', label: t('Émis') },
   HELD: { tone: 'warning', label: t('Détenue') },
-  RELEASED: { tone: 'success', label: t('Libérée') }
+  RELEASED: { tone: 'success', label: t('Libérée') },
+
+  // Ventes immobilières (lot 9) : mandats, offres, compromis, commissions.
+  SUBMITTED: { tone: 'info', label: t('Soumise') },
+  COUNTERED: { tone: 'warning', label: t('Contre-offre') },
+  WITHDRAWN: { tone: 'neutral', label: t('Retirée') },
+  SIGNED: { tone: 'info', label: t('Signé') },
+  MET: { tone: 'success', label: t('Remplie') },
+  WAIVED: { tone: 'neutral', label: t('Levée') },
+  PARTIALLY_PAID: { tone: 'warning', label: t('Partiellement réglée') },
+  POSTED: { tone: 'success', label: t('Enregistré') }
 };
 
 export interface StatusTagProps {

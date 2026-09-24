@@ -384,8 +384,8 @@ model User {
   /// `DEFAULT 'fr'` aurait rendu ce cas indistinguable d'un choix explicite du
   /// francais, et impose le francais a un utilisateur arabophone.
   preferredLanguage String?  @map("preferred_language")
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
   // Relationships
   clientProfiles TenantClient[]
@@ -432,40 +432,50 @@ model User {
   maintenanceCommentsAuthored     MaintenanceTicketComment[]       @relation("MaintenanceCommentAuthorUser")
   maintenanceStatusHistoryChanged MaintenanceTicketStatusHistory[] @relation("MaintenanceStatusHistoryChangedBy")
 
-  newsletterCampaignsCreated  NewsletterCampaign[]
-  savedContactSearches        SavedContactSearch[]
-  rentBillingRuns             RentBillingRun[]
-  supplierInvoicesCreated     SupplierInvoice[]    @relation("SupplierInvoiceCreatedBy")
-  supplierInvoicesValidated   SupplierInvoice[]    @relation("SupplierInvoiceValidatedBy")
-  supplierPaymentsCreated     SupplierPayment[]    @relation("SupplierPaymentCreatedBy")
-  supplierPaymentsValidated   SupplierPayment[]    @relation("SupplierPaymentValidatedBy")
-  cashVouchersCreated         CashVoucher[]        @relation("CashVoucherCreatedBy")
-  cashVouchersValidated       CashVoucher[]        @relation("CashVoucherValidatedBy")
-  managedConstructionSites    ConstructionSite[]   @relation("ConstructionSiteManager")
-  siteBudgetsValidated        SiteBudget[]         @relation("SiteBudgetValidatedBy")
-  budgetAmendmentsCreated     BudgetAmendment[]    @relation("BudgetAmendmentCreatedBy")
-  budgetAmendmentsValidated   BudgetAmendment[]    @relation("BudgetAmendmentValidatedBy")
-  purchaseOrdersCreated       PurchaseOrder[]      @relation("PurchaseOrderCreatedBy")
-  purchaseOrdersIssued        PurchaseOrder[]      @relation("PurchaseOrderIssuedBy")
-  siteProgressEntriesLogged   SiteProgressEntry[]  @relation("SiteProgressEntryCreatedBy")
-  siteBudgetAlertsSeen        SiteBudgetAlert[]    @relation("SiteBudgetAlertAcknowledgedBy")
-  landLeasePaymentsCreated    LandLeasePayment[]   @relation("LandLeasePaymentCreatedBy")
-  landLeasePaymentsValidated  LandLeasePayment[]   @relation("LandLeasePaymentValidatedBy")
-  salaryNotesCreated          SalaryNote[]         @relation("SalaryNoteCreatedBy")
-  salaryNotesValidated        SalaryNote[]         @relation("SalaryNoteValidatedBy")
-  salaryPaymentsCreated       SalaryPayment[]      @relation("SalaryPaymentCreatedBy")
-  salaryPaymentsValidated     SalaryPayment[]      @relation("SalaryPaymentValidatedBy")
-  progressStatementsCreated   ProgressStatement[]  @relation("ProgressStatementCreatedBy")
-  progressStatementsValidated ProgressStatement[]  @relation("ProgressStatementValidatedBy")
-  contractorPaymentsCreated   ContractorPayment[]  @relation("ContractorPaymentCreatedBy")
-  contractorPaymentsValidated ContractorPayment[]  @relation("ContractorPaymentValidatedBy")
-  retentionsCreated           RetentionGuarantee[] @relation("RetentionCreatedBy")
-  retentionsReleased          RetentionGuarantee[] @relation("RetentionReleasedBy")
-  sitesClosed                 ConstructionSite[]   @relation("ConstructionSiteClosedBy")
-  stockMovementsCreated       StockMovement[]      @relation("StockMovementCreatedBy")
-  stockCountsCreated          StockCount[]         @relation("StockCountCreatedBy")
-  stockCountsValidated        StockCount[]         @relation("StockCountValidatedBy")
-  voidedDocuments             VoidDocument[]
+  newsletterCampaignsCreated    NewsletterCampaign[]
+  savedContactSearches          SavedContactSearch[]
+  rentBillingRuns               RentBillingRun[]
+  supplierInvoicesCreated       SupplierInvoice[]       @relation("SupplierInvoiceCreatedBy")
+  supplierInvoicesValidated     SupplierInvoice[]       @relation("SupplierInvoiceValidatedBy")
+  supplierPaymentsCreated       SupplierPayment[]       @relation("SupplierPaymentCreatedBy")
+  supplierPaymentsValidated     SupplierPayment[]       @relation("SupplierPaymentValidatedBy")
+  cashVouchersCreated           CashVoucher[]           @relation("CashVoucherCreatedBy")
+  cashVouchersValidated         CashVoucher[]           @relation("CashVoucherValidatedBy")
+  managedConstructionSites      ConstructionSite[]      @relation("ConstructionSiteManager")
+  siteBudgetsValidated          SiteBudget[]            @relation("SiteBudgetValidatedBy")
+  budgetAmendmentsCreated       BudgetAmendment[]       @relation("BudgetAmendmentCreatedBy")
+  budgetAmendmentsValidated     BudgetAmendment[]       @relation("BudgetAmendmentValidatedBy")
+  purchaseOrdersCreated         PurchaseOrder[]         @relation("PurchaseOrderCreatedBy")
+  purchaseOrdersIssued          PurchaseOrder[]         @relation("PurchaseOrderIssuedBy")
+  siteProgressEntriesLogged     SiteProgressEntry[]     @relation("SiteProgressEntryCreatedBy")
+  siteBudgetAlertsSeen          SiteBudgetAlert[]       @relation("SiteBudgetAlertAcknowledgedBy")
+  landLeasePaymentsCreated      LandLeasePayment[]      @relation("LandLeasePaymentCreatedBy")
+  landLeasePaymentsValidated    LandLeasePayment[]      @relation("LandLeasePaymentValidatedBy")
+  salaryNotesCreated            SalaryNote[]            @relation("SalaryNoteCreatedBy")
+  salaryNotesValidated          SalaryNote[]            @relation("SalaryNoteValidatedBy")
+  salaryPaymentsCreated         SalaryPayment[]         @relation("SalaryPaymentCreatedBy")
+  salaryPaymentsValidated       SalaryPayment[]         @relation("SalaryPaymentValidatedBy")
+  progressStatementsCreated     ProgressStatement[]     @relation("ProgressStatementCreatedBy")
+  progressStatementsValidated   ProgressStatement[]     @relation("ProgressStatementValidatedBy")
+  contractorPaymentsCreated     ContractorPayment[]     @relation("ContractorPaymentCreatedBy")
+  contractorPaymentsValidated   ContractorPayment[]     @relation("ContractorPaymentValidatedBy")
+  retentionsCreated             RetentionGuarantee[]    @relation("RetentionCreatedBy")
+  retentionsReleased            RetentionGuarantee[]    @relation("RetentionReleasedBy")
+  sitesClosed                   ConstructionSite[]      @relation("ConstructionSiteClosedBy")
+  stockMovementsCreated         StockMovement[]         @relation("StockMovementCreatedBy")
+  stockCountsCreated            StockCount[]            @relation("StockCountCreatedBy")
+  stockCountsValidated          StockCount[]            @relation("StockCountValidatedBy")
+  voidedDocuments               VoidDocument[]
+  leasesManaged                 LeaseManagementTerms[]  @relation("LeaseManagementAgent")
+  agentCommissionRates          AgentCommissionRate[]
+  // Lot 9 : ventes immobilieres.
+  saleMandatesAsAgent           SaleMandate[]           @relation("SaleMandateAgent")
+  saleMandatesRevoked           SaleMandate[]           @relation("SaleMandateRevokedBy")
+  saleOffersDecided             SaleOffer[]             @relation("SaleOfferDecidedBy")
+  saleAgreementsCancelled       SaleAgreement[]         @relation("SaleAgreementCancelledBy")
+  saleCommissionsAsAgent        SaleCommission[]        @relation("SaleCommissionAgent")
+  saleCommissionPaymentsCreated SaleCommissionPayment[] @relation("SaleCommissionPaymentCreatedBy")
+  saleCommissionPaymentsVoided  SaleCommissionPayment[] @relation("SaleCommissionPaymentVoidedBy")
 
   @@index([email])
   @@map("users")
@@ -601,6 +611,21 @@ model Tenant {
   retentionGuarantees      RetentionGuarantee[]
   siteLots                 SiteLot[]
   stockSettings            StockSettings?
+  financeSettings          AgencyFinanceSettings?
+  ownerManagementTerms     OwnerManagementTerms[]
+  leaseManagementTerms     LeaseManagementTerms[]
+  agentCommissionRates     AgentCommissionRate[]
+  managementFees           ManagementFee[]
+  ownerPayouts             OwnerPayout[]
+  leaseEvents              LeaseEvent[]
+  leaseInspections         LeaseInspection[]
+  leaseInspectionPhotos    LeaseInspectionPhoto[]
+  propertyOwnershipShares  PropertyOwnershipShare[]
+  cashSessions             CashSession[]
+  treasuryAccounts         TreasuryAccount[]
+  treasuryTransfers        TreasuryTransfer[]
+  rentWithholdings         RentWithholding[]
+  taxRemittances           TaxRemittance[]
   stockItems               StockItem[]
   stockLocations           StockLocation[]
   stockBalances            StockBalance[]
@@ -611,6 +636,14 @@ model Tenant {
   chartOfAccounts          ChartOfAccount[]
   accountingJournals       AccountingJournal[]
   journalEntries           JournalEntry[]
+  // Lot 9 : ventes immobilieres.
+  saleMandates             SaleMandate[]
+  saleOffers               SaleOffer[]
+  saleAgreements           SaleAgreement[]
+  saleAgreementConditions  SaleAgreementCondition[]
+  salePaymentMilestones    SalePaymentMilestone[]
+  saleCommissions          SaleCommission[]
+  saleCommissionPayments   SaleCommissionPayment[]
 
   @@index([slug])
   @@index([status])
@@ -620,16 +653,19 @@ model Tenant {
 
 // Tenant Client (Customer)
 model TenantClient {
-  id                    String     @id @default(uuid())
-  userId                String     @map("user_id")
-  tenantId              String     @map("tenant_id")
-  clientType            ClientType @map("client_type")
+  id                    String          @id @default(uuid())
+  userId                String          @map("user_id")
+  tenantId              String          @map("tenant_id")
+  clientType            ClientType      @map("client_type")
   details               Json? // JSONB for flexible client attributes
-  ownerPortalEnabled    Boolean    @default(false) @map("owner_portal_enabled")
-  ownerPortalLastAccess DateTime?  @map("owner_portal_last_access")
-  newsletterConsent     Boolean    @default(false) @map("newsletter_consent")
-  createdAt             DateTime   @default(now()) @map("created_at")
-  updatedAt             DateTime   @updatedAt @map("updated_at")
+  ownerPortalEnabled    Boolean         @default(false) @map("owner_portal_enabled")
+  ownerPortalLastAccess DateTime?       @map("owner_portal_last_access")
+  newsletterConsent     Boolean         @default(false) @map("newsletter_consent")
+  /// Lot 10 : statut fiscal du proprietaire, pour la retenue a la source sur
+  /// loyers. Nul : non renseigne, aucune retenue n'est calculee.
+  ownerTaxStatus        OwnerTaxStatus? @map("owner_tax_status")
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -645,6 +681,10 @@ model TenantClient {
   communicationsAsRecipient Communication[]           @relation("CommRecipientClient")
   communicationPreferences  CommunicationPreference[]
   thirdPartyAccounts        ThirdPartyAccount[]
+  managementTerms           OwnerManagementTerms?
+  ownerPayouts              OwnerPayout[]
+  ownershipShares           PropertyOwnershipShare[]
+  saleMandatesAsSeller      SaleMandate[]
 
   @@unique([userId, tenantId])
   @@index([userId])
@@ -1050,6 +1090,7 @@ model CrmContact {
   reportedSyndicateIncidents SyndicateIncident[]
   ownerStatements            OwnerStatement[]
   patrimonyDocuments         PatrimonyDocument[]   @relation("PatrimonyDocumentOwner")
+  saleOffersAsBuyer          SaleOffer[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -1118,6 +1159,7 @@ model CrmDeal {
   propertyMatches CrmDealProperty[]
   notes           CrmNote[]
   propertyVisits  PropertyVisit[]
+  saleOffers      SaleOffer[]
 
   @@index([tenantId])
   @@index([tenantId, contactId])
@@ -1366,10 +1408,15 @@ model Property {
   constructionSites   ConstructionSite[]
   patrimonyDocuments  PatrimonyDocument[]
   ownerStatementItems OwnerStatementItem[]
+  ownershipShares     PropertyOwnershipShare[]
 
   // Agency A's "REF-001" must not block agency B's.
   partnership Partnership? @relation(fields: [partnershipId], references: [id], onDelete: SetNull)
   siteLot     SiteLot?
+
+  // Lot 9 : ventes immobilieres.
+  saleMandates   SaleMandate[]
+  saleAgreements SaleAgreement[]
 
   @@unique([tenantId, internalReference])
   @@index([tenantId])
@@ -1816,6 +1863,9 @@ model RentalLease {
   paymentDeclarations RentalPaymentDeclaration[] @relation("RentalPaymentDeclarationLease")
   maintenanceTickets  MaintenanceTicket[]
   thirdPartyMovements ThirdPartyMovement[]
+  managementTerms     LeaseManagementTerms?
+  events              LeaseEvent[]
+  inspections         LeaseInspection[]
 
   @@unique([tenant_id, lease_number])
   @@index([tenant_id])
@@ -1911,29 +1961,32 @@ model RentalInstallmentItem {
 
 // Rental Payment
 model RentalPayment {
-  id                 String               @id @default(uuid()) @db.Uuid
-  tenant_id          String
-  lease_id           String?              @db.Uuid
-  renter_client_id   String?
-  invoice_id         String?
-  method             RentalPaymentMethod
-  status             RentalPaymentStatus  @default(PENDING)
-  currency           String               @default("FCFA")
-  amount             Decimal              @db.Decimal(12, 2)
-  mm_operator        MobileMoneyOperator? @map("mm_operator")
-  mm_phone           String?              @map("mm_phone")
-  idempotency_key    String               @map("idempotency_key")
-  psp_name           String?              @map("psp_name")
-  psp_transaction_id String?              @unique @map("psp_transaction_id")
-  psp_reference      String?              @map("psp_reference")
-  initiated_at       DateTime             @default(now()) @map("initiated_at")
-  succeeded_at       DateTime?            @map("succeeded_at")
-  failed_at          DateTime?            @map("failed_at")
-  canceled_at        DateTime?            @map("canceled_at")
-  raw_event_payload  Json?                @map("raw_event_payload")
-  created_by_user_id String?              @map("created_by_user_id")
-  created_at         DateTime             @default(now()) @map("created_at")
-  updated_at         DateTime             @updatedAt @map("updated_at")
+  id                  String               @id @default(uuid()) @db.Uuid
+  tenant_id           String
+  lease_id            String?              @db.Uuid
+  renter_client_id    String?
+  invoice_id          String?
+  method              RentalPaymentMethod
+  status              RentalPaymentStatus  @default(PENDING)
+  currency            String               @default("FCFA")
+  amount              Decimal              @db.Decimal(12, 2)
+  mm_operator         MobileMoneyOperator? @map("mm_operator")
+  mm_phone            String?              @map("mm_phone")
+  /// Lot 10 : compte de tresorerie reellement credite. Nul : celui par defaut
+  /// du moyen de paiement.
+  treasury_account_id String?              @map("treasury_account_id") @db.Uuid
+  idempotency_key     String               @map("idempotency_key")
+  psp_name            String?              @map("psp_name")
+  psp_transaction_id  String?              @unique @map("psp_transaction_id")
+  psp_reference       String?              @map("psp_reference")
+  initiated_at        DateTime             @default(now()) @map("initiated_at")
+  succeeded_at        DateTime?            @map("succeeded_at")
+  failed_at           DateTime?            @map("failed_at")
+  canceled_at         DateTime?            @map("canceled_at")
+  raw_event_payload   Json?                @map("raw_event_payload")
+  created_by_user_id  String?              @map("created_by_user_id")
+  created_at          DateTime             @default(now()) @map("created_at")
+  updated_at          DateTime             @updatedAt @map("updated_at")
 
   tenant           Tenant                    @relation(fields: [tenant_id], references: [id])
   lease            RentalLease?              @relation(fields: [lease_id], references: [id])
@@ -1967,9 +2020,10 @@ model RentalPaymentAllocation {
   currency       String   @default("FCFA")
   created_at     DateTime @default(now()) @map("created_at")
 
-  tenant      Tenant            @relation(fields: [tenant_id], references: [id])
-  payment     RentalPayment     @relation(fields: [payment_id], references: [id], onDelete: Cascade)
-  installment RentalInstallment @relation(fields: [installment_id], references: [id], onDelete: Cascade)
+  tenant        Tenant            @relation(fields: [tenant_id], references: [id])
+  payment       RentalPayment     @relation(fields: [payment_id], references: [id], onDelete: Cascade)
+  installment   RentalInstallment @relation(fields: [installment_id], references: [id], onDelete: Cascade)
+  managementFee ManagementFee?
 
   @@unique([payment_id, installment_id])
   @@index([tenant_id])
@@ -2074,18 +2128,20 @@ model RentalSecurityDeposit {
 
 // Rental Deposit Movement
 model RentalDepositMovement {
-  id                 String                    @id @default(uuid()) @db.Uuid
-  tenant_id          String
-  deposit_id         String                    @db.Uuid
-  type               RentalDepositMovementType
-  currency           String                    @default("FCFA")
-  amount             Decimal                   @db.Decimal(12, 2)
-  payment_id         String?                   @db.Uuid
-  installment_id     String?                   @db.Uuid
-  note               String?                   @db.Text
-  metadata           Json?
-  created_by_user_id String?                   @map("created_by_user_id")
-  created_at         DateTime                  @default(now()) @map("created_at")
+  id                  String                    @id @default(uuid()) @db.Uuid
+  tenant_id           String
+  deposit_id          String                    @db.Uuid
+  type                RentalDepositMovementType
+  currency            String                    @default("FCFA")
+  amount              Decimal                   @db.Decimal(12, 2)
+  payment_id          String?                   @db.Uuid
+  installment_id      String?                   @db.Uuid
+  /// Lot 10 : compte de tresorerie d'un remboursement. Nul : caisse par defaut.
+  treasury_account_id String?                   @map("treasury_account_id") @db.Uuid
+  note                String?                   @db.Text
+  metadata            Json?
+  created_by_user_id  String?                   @map("created_by_user_id")
+  created_at          DateTime                  @default(now()) @map("created_at")
 
   tenant      Tenant                @relation(fields: [tenant_id], references: [id])
   deposit     RentalSecurityDeposit @relation(fields: [deposit_id], references: [id], onDelete: Cascade)
@@ -2852,6 +2908,22 @@ enum SourceType {
   STOCK_RECEIPT
   STOCK_ISSUE
   STOCK_ADJUSTMENT
+  // Gestion locative, lot 3 : le compte des proprietaires mandants.
+  OWNER_RENT_COLLECTED
+  OWNER_MANAGEMENT_FEE
+  OWNER_EXPENSE
+  OWNER_PAYOUT
+  // Lot 6 : l'ecart constate a la cloture d'une session de caisse.
+  CASH_SESSION_DIFFERENCE
+  // Lot 10, conformite SYSCOHADA.
+  OWNER_UNALLOCATED
+  OWNER_AUX_REALLOC
+  OWNER_WITHHOLDING
+  OWNER_DEPOSIT
+  TREASURY_TRANSFER
+  TAX_REMITTANCE
+  // Lot 9 : ventes immobilieres. Le versement d'une commission de transaction.
+  SALE_COMMISSION_PAYMENT
 }
 
 /// Portee d'un plan de comptes, d'un journal ou d'une ecriture.
@@ -3572,12 +3644,13 @@ model ChartOfAccount {
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
 
-  syndicate    Syndicate?         @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
-  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  parent       ChartOfAccount?    @relation("AccountHierarchy", fields: [parentAccountId], references: [id], onDelete: SetNull)
-  children     ChartOfAccount[]   @relation("AccountHierarchy")
-  journalLines JournalEntryLine[]
-  budgetLines  BudgetLineItem[]
+  syndicate       Syndicate?         @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent          ChartOfAccount?    @relation("AccountHierarchy", fields: [parentAccountId], references: [id], onDelete: SetNull)
+  children        ChartOfAccount[]   @relation("AccountHierarchy")
+  journalLines    JournalEntryLine[]
+  budgetLines     BudgetLineItem[]
+  treasuryAccount TreasuryAccount?
 
   costCategories CostCategory[]
 
@@ -3670,28 +3743,34 @@ model JournalEntry {
 }
 
 model JournalEntryLine {
-  id         String   @id @default(uuid()) @db.Uuid
-  entryId    String   @map("entry_id") @db.Uuid
-  accountId  String   @map("account_id") @db.Uuid
-  lotId      String?  @map("lot_id") @db.Uuid
+  id                  String              @id @default(uuid()) @db.Uuid
+  entryId             String              @map("entry_id") @db.Uuid
+  accountId           String              @map("account_id") @db.Uuid
+  lotId               String?             @map("lot_id") @db.Uuid
   // Elargies de (12,2) a (14,2) au lot 2, pour s'aligner sur les tables
   // financieres. Un elargissement de precision ne perd aucune valeur : 12,2
   // est un sous-ensemble strict de 14,2.
-  debit      Decimal  @default(0) @db.Decimal(14, 2)
-  credit     Decimal  @default(0) @db.Decimal(14, 2)
-  label      String
-  isLettered Boolean  @default(false) @map("is_lettered")
-  letterRef  String?  @map("letter_ref")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  debit               Decimal             @default(0) @db.Decimal(14, 2)
+  credit              Decimal             @default(0) @db.Decimal(14, 2)
+  label               String
+  isLettered          Boolean             @default(false) @map("is_lettered")
+  letterRef           String?             @map("letter_ref")
+  /// Lot 10 : compte auxiliaire (le proprietaire mandant pour le 4731).
+  thirdPartyAccountId String?             @map("third_party_account_id") @db.Uuid
+  /// Lot 10 : nature des fonds de mandant portes par la ligne.
+  fundsNature         MandantFundsNature? @map("funds_nature")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
 
-  entry   JournalEntry   @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  account ChartOfAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  lot     SyndicateLot?  @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  entry      JournalEntry       @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account    ChartOfAccount     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  lot        SyndicateLot?      @relation(fields: [lotId], references: [id], onDelete: SetNull)
+  thirdParty ThirdPartyAccount? @relation(fields: [thirdPartyAccountId], references: [id], onDelete: SetNull)
 
   @@index([entryId])
   @@index([accountId])
   @@index([lotId])
+  @@index([thirdPartyAccountId])
   @@map("journal_entry_lines")
 }
 
@@ -3827,8 +3906,144 @@ enum StatementItemType {
   RENT_COLLECTED
   EXPENSE_DEDUCTED
   MANAGEMENT_FEE
+  /// TVA facturee sur les honoraires, quand l'agence y est assujettie.
+  MANAGEMENT_FEE_VAT
   ADVANCE
   OTHER
+}
+
+/// Assiette des honoraires de gestion.
+///
+/// RENT_ONLY : la seule part « loyer » de chaque encaissement, au prorata de
+/// l'echeance qu'il solde — les charges et les penalites n'en portent pas.
+/// ALL_COLLECTED : tout ce qui est encaisse.
+enum ManagementFeeBase {
+  RENT_ONLY
+  ALL_COLLECTED
+}
+
+/// PERCENT : un taux sur l'assiette. FIXED : un forfait par echeance, au
+/// prorata de ce qui en est encaisse.
+enum ManagementFeeMode {
+  PERCENT
+  FIXED
+}
+
+/// D'ou vient le taux applique a un encaissement : le bail l'emporte sur le
+/// proprietaire, qui l'emporte sur l'agence.
+enum ManagementFeeSource {
+  LEASE
+  OWNER
+  AGENCY
+}
+
+/// Conditions d'honoraires negociees avec un proprietaire. Remplacent celles
+/// de l'agence pour tous ses baux, sauf ceux qui ont les leurs.
+model OwnerManagementTerms {
+  id                       String            @id @default(uuid()) @db.Uuid
+  tenantId                 String            @map("tenant_id")
+  ownerClientId            String            @unique @map("owner_client_id")
+  managementFeeMode        ManagementFeeMode @default(PERCENT) @map("management_fee_mode")
+  managementFeeRate        Decimal?          @map("management_fee_rate") @db.Decimal(5, 2)
+  managementFeeFixedAmount Decimal?          @map("management_fee_fixed_amount") @db.Decimal(14, 2)
+  managementFeeBase        ManagementFeeBase @default(RENT_ONLY) @map("management_fee_base")
+  updatedByUserId          String?           @map("updated_by_user_id")
+  createdAt                DateTime          @default(now()) @map("created_at")
+  updatedAt                DateTime          @updatedAt @map("updated_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownerClient TenantClient @relation(fields: [ownerClientId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("owner_management_terms")
+}
+
+/// Conditions propres a un bail, et son gestionnaire.
+///
+/// `managementFeeMode` nul : le bail n'a pas de conditions propres et suit
+/// son proprietaire, puis l'agence. Le gestionnaire, lui, peut exister sans
+/// conditions propres.
+model LeaseManagementTerms {
+  id                       String             @id @default(uuid()) @db.Uuid
+  tenantId                 String             @map("tenant_id")
+  leaseId                  String             @unique @map("lease_id") @db.Uuid
+  managementFeeMode        ManagementFeeMode? @map("management_fee_mode")
+  managementFeeRate        Decimal?           @map("management_fee_rate") @db.Decimal(5, 2)
+  managementFeeFixedAmount Decimal?           @map("management_fee_fixed_amount") @db.Decimal(14, 2)
+  managementFeeBase        ManagementFeeBase? @map("management_fee_base")
+  agentUserId              String?            @map("agent_user_id")
+  updatedByUserId          String?            @map("updated_by_user_id")
+  createdAt                DateTime           @default(now()) @map("created_at")
+  updatedAt                DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lease  RentalLease @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  agent  User?       @relation("LeaseManagementAgent", fields: [agentUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([agentUserId])
+  @@map("lease_management_terms")
+}
+
+/// Part des honoraires HT reversee a un collaborateur sur les baux dont il
+/// est le gestionnaire.
+model AgentCommissionRate {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id")
+  userId       String   @map("user_id")
+  sharePercent Decimal  @map("share_percent") @db.Decimal(5, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId])
+  @@map("agent_commission_rates")
+}
+
+/// Honoraires de gestion d'un encaissement : un par affectation de reglement.
+///
+/// FIGES a leur creation : taux, TVA, gestionnaire et part de l'agent sont
+/// ceux en vigueur ce jour-la. Changer un taux ne reecrit pas des honoraires
+/// deja comptes, ni la commission due a un agent.
+///
+/// Crees a la demande (`lib/rental-fees/materialize.ts`) pour toute
+/// affectation qui n'en a pas encore, ce qui couvre toutes les voies
+/// d'affectation (saisie, campagne de facturation, declaration validee) sans
+/// en modifier aucune. Disparaissent avec leur affectation : un reglement
+/// annule ne laisse pas d'honoraires derriere lui.
+model ManagementFee {
+  id                String              @id @default(uuid()) @db.Uuid
+  tenantId          String              @map("tenant_id")
+  allocationId      String              @unique @map("allocation_id") @db.Uuid
+  paymentId         String              @map("payment_id") @db.Uuid
+  leaseId           String              @map("lease_id") @db.Uuid
+  propertyId        String              @map("property_id")
+  ownerClientId     String?             @map("owner_client_id")
+  collectedAt       DateTime            @map("collected_at")
+  collectedAmount   Decimal             @map("collected_amount") @db.Decimal(14, 2)
+  baseAmount        Decimal             @map("base_amount") @db.Decimal(14, 2)
+  source            ManagementFeeSource
+  mode              ManagementFeeMode
+  rate              Decimal?            @db.Decimal(5, 2)
+  fixedAmount       Decimal?            @map("fixed_amount") @db.Decimal(14, 2)
+  feeBase           ManagementFeeBase?  @map("fee_base")
+  feeAmount         Decimal             @map("fee_amount") @db.Decimal(14, 2)
+  vatRate           Decimal?            @map("vat_rate") @db.Decimal(5, 2)
+  vatAmount         Decimal             @default(0) @map("vat_amount") @db.Decimal(14, 2)
+  agentUserId       String?             @map("agent_user_id")
+  agentSharePercent Decimal?            @map("agent_share_percent") @db.Decimal(5, 2)
+  agentShareAmount  Decimal             @default(0) @map("agent_share_amount") @db.Decimal(14, 2)
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  tenant     Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  allocation RentalPaymentAllocation @relation(fields: [allocationId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, collectedAt])
+  @@index([tenantId, propertyId, collectedAt])
+  @@index([agentUserId])
+  @@map("management_fees")
 }
 
 enum WorkProgramStatus {
@@ -3898,19 +4113,27 @@ model PropertyLoan {
 }
 
 model PropertyExpense {
-  id            String          @id @default(uuid()) @db.Uuid
-  tenantId      String          @map("tenant_id")
-  propertyId    String          @map("property_id")
-  category      ExpenseCategory
-  label         String
-  amount        Decimal         @db.Decimal(14, 2)
-  currency      String          @default("XOF")
-  paidAt        DateTime        @map("paid_at")
-  isCapitalized Boolean         @default(false) @map("is_capitalized")
-  receiptUrl    String?         @map("receipt_url")
-  notes         String?
-  createdAt     DateTime        @default(now()) @map("created_at")
-  updatedAt     DateTime        @updatedAt @map("updated_at")
+  id                String          @id @default(uuid()) @db.Uuid
+  tenantId          String          @map("tenant_id")
+  propertyId        String          @map("property_id")
+  category          ExpenseCategory
+  label             String
+  amount            Decimal         @db.Decimal(14, 2)
+  currency          String          @default("XOF")
+  paidAt            DateTime        @map("paid_at")
+  isCapitalized     Boolean         @default(false) @map("is_capitalized")
+  /// Lot 10 : moyen et compte de paiement reels. Nuls : caisse par defaut,
+  /// comme avant.
+  paymentMethod     PaymentMethod?  @map("payment_method")
+  treasuryAccountId String?         @map("treasury_account_id") @db.Uuid
+  /// Vrai quand l'agence a elle-meme commande le travail et doit la facture :
+  /// la contrepartie est alors le 401, pas la tresorerie.
+  agencyIsBuyer     Boolean         @default(false) @map("agency_is_buyer")
+  supplierName      String?         @map("supplier_name")
+  receiptUrl        String?         @map("receipt_url")
+  notes             String?
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
@@ -3921,20 +4144,97 @@ model PropertyExpense {
   @@map("property_expenses")
 }
 
+/// Parametres financiers d'une agence : fiscalite, honoraires de gestion,
+/// comptes comptables de la gestion locative.
+///
+/// Un par agence au plus. Tant qu'il n'existe pas, l'API renvoie les valeurs
+/// par defaut de `lib/settings/finance-settings.ts` sans rien ecrire.
+///
+/// `managementFeeRate` nul veut dire « non parametre », pas « zero » : un
+/// releve calcule sans taux le signale au lieu de laisser croire que l'agence
+/// travaille gratuitement.
+model AgencyFinanceSettings {
+  id                         String             @id @default(uuid()) @db.Uuid
+  tenantId                   String             @unique @map("tenant_id")
+  vatRegistered              Boolean            @default(false) @map("vat_registered")
+  /// En pourcentage : 18 pour 18 %.
+  vatRate                    Decimal            @default(18) @map("vat_rate") @db.Decimal(5, 2)
+  /// Numero de compte contribuable (NCC).
+  taxpayerNumber             String?            @map("taxpayer_number")
+  /// En pourcentage du montant de l'assiette : 10 pour 10 %.
+  managementFeeRate          Decimal?           @map("management_fee_rate") @db.Decimal(5, 2)
+  managementFeeBase          ManagementFeeBase  @default(RENT_ONLY) @map("management_fee_base")
+  managementFeeMode          ManagementFeeMode  @default(PERCENT) @map("management_fee_mode")
+  /// Forfait par echeance mensuelle, en mode FIXED.
+  managementFeeFixedAmount   Decimal?           @map("management_fee_fixed_amount") @db.Decimal(14, 2)
+  /// Comptes de la gestion locative. Lus par les ecritures a partir du lot 3
+  /// (compte proprietaire) ; poses ici pour que le comptable les fixe avant.
+  ownerFundsAccountNumber    String?            @map("owner_funds_account_number")
+  managementFeeAccountNumber String?            @map("management_fee_account_number")
+  vatCollectedAccountNumber  String?            @map("vat_collected_account_number")
+  /// Lot 10 : ecarts de caisse (6588 / 7588 par defaut).
+  cashShortageAccountNumber  String?            @map("cash_shortage_account_number")
+  cashSurplusAccountNumber   String?            @map("cash_surplus_account_number")
+  /// Lot 10 : a qui reviennent les penalites de retard encaissees.
+  penaltyBeneficiary         PenaltyBeneficiary @default(OWNER) @map("penalty_beneficiary")
+  penaltyIncomeAccountNumber String?            @map("penalty_income_account_number")
+  /// Lot 10 : retenue a la source sur loyers. Desactivee par defaut, en
+  /// attente de la confirmation du cabinet.
+  withholdingEnabled         Boolean            @default(false) @map("withholding_enabled")
+  /// Premier jour d'encaissement soumis a la retenue : l'activer ne retient
+  /// jamais sur les loyers deja encaisses.
+  withholdingStartsOn        DateTime?          @map("withholding_starts_on") @db.Date
+  withholdingRateIndividual  Decimal            @default(12) @map("withholding_rate_individual") @db.Decimal(5, 2)
+  withholdingRateCompany     Decimal            @default(15) @map("withholding_rate_company") @db.Decimal(5, 2)
+  withholdingAccountNumber   String?            @map("withholding_account_number")
+  updatedByUserId            String?            @map("updated_by_user_id")
+  createdAt                  DateTime           @default(now()) @map("created_at")
+  updatedAt                  DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("agency_finance_settings")
+}
+
+/// Releve de gerance d'un proprietaire pour un mois.
+///
+/// Un releve est un INSTANTANE : ses totaux sont stockes parce qu'un releve
+/// envoye ne doit pas changer apres coup si un paiement est saisi en retard.
+///
+/// - `totalRevenue`  : loyers reellement ENCAISSES dans le mois (date du
+///   reglement), arrieres compris. Pas le loyer du contrat.
+/// - `totalRentDue`  : ce qui etait appele sur les echeances du mois.
+/// - `totalArrears`  : reste du a la fin du mois, toutes echeances echues.
+/// - `netAmount`     : encaisse - honoraires - TVA - depenses.
+///
+/// `computationVersion` 1 designe les releves calcules avant le 22 septembre
+/// 2026, qui prenaient le loyer du contrat de chaque bail actif pour un loyer
+/// encaisse. Ils restent lisibles et peuvent etre recalcules.
 model OwnerStatement {
-  id             String          @id @default(uuid()) @db.Uuid
-  tenantId       String          @map("tenant_id")
-  ownerContactId String          @map("owner_contact_id")
-  period         String
-  totalRevenue   Decimal         @map("total_revenue") @db.Decimal(14, 2)
-  totalExpenses  Decimal         @map("total_expenses") @db.Decimal(14, 2)
-  netAmount      Decimal         @map("net_amount") @db.Decimal(14, 2)
-  currency       String          @default("XOF")
-  status         StatementStatus @default(DRAFT)
-  sentAt         DateTime?       @map("sent_at")
-  paidAt         DateTime?       @map("paid_at")
-  createdAt      DateTime        @default(now()) @map("created_at")
-  updatedAt      DateTime        @updatedAt @map("updated_at")
+  id                     String             @id @default(uuid()) @db.Uuid
+  tenantId               String             @map("tenant_id")
+  ownerContactId         String             @map("owner_contact_id")
+  period                 String
+  totalRevenue           Decimal            @map("total_revenue") @db.Decimal(14, 2)
+  totalExpenses          Decimal            @map("total_expenses") @db.Decimal(14, 2)
+  netAmount              Decimal            @map("net_amount") @db.Decimal(14, 2)
+  totalRentDue           Decimal            @default(0) @map("total_rent_due") @db.Decimal(14, 2)
+  totalArrears           Decimal            @default(0) @map("total_arrears") @db.Decimal(14, 2)
+  totalManagementFees    Decimal            @default(0) @map("total_management_fees") @db.Decimal(14, 2)
+  totalManagementFeesVat Decimal            @default(0) @map("total_management_fees_vat") @db.Decimal(14, 2)
+  /// Parametres appliques au calcul, figes avec le releve.
+  managementFeeRate      Decimal?           @map("management_fee_rate") @db.Decimal(5, 2)
+  managementFeeBase      ManagementFeeBase? @map("management_fee_base")
+  vatRate                Decimal?           @map("vat_rate") @db.Decimal(5, 2)
+  /// Biens retenus a la generation, pour pouvoir recalculer a l'identique.
+  propertyIds            String[]           @default([]) @map("property_ids")
+  computationVersion     Int                @default(1) @map("computation_version")
+  currency               String             @default("XOF")
+  status                 StatementStatus    @default(DRAFT)
+  sentAt                 DateTime?          @map("sent_at")
+  paidAt                 DateTime?          @map("paid_at")
+  createdAt              DateTime           @default(now()) @map("created_at")
+  updatedAt              DateTime           @updatedAt @map("updated_at")
 
   tenant Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   owner  CrmContact           @relation(fields: [ownerContactId], references: [id], onDelete: Cascade)
@@ -4078,6 +4378,9 @@ enum ThirdPartyKind {
   CONTRACTOR
   PARTNER
   EMPLOYEE
+  /// Lot 3 de la gestion locative : le proprietaire d'un bien gere. A ne pas
+  /// confondre avec LANDLORD, le bailleur d'un terrain de chantier.
+  OWNER
 }
 
 /// Nature d'un mouvement de compte de tiers.
@@ -4097,6 +4400,15 @@ enum ThirdPartyMovementType {
   ADJUSTMENT
   OPENING_BALANCE
   VOID
+  // Gestion locative, lot 3 : le compte courant d'un proprietaire.
+  RENT_COLLECTED
+  MANAGEMENT_FEE
+  MANAGEMENT_FEE_VAT
+  EXPENSE
+  PAYOUT
+  // Lot 10 : retenue a la source sur loyers, depot de garantie conserve.
+  WITHHOLDING_TAX
+  DEPOSIT_RETAINED
 }
 
 enum RentBillingRunStatus {
@@ -4124,6 +4436,7 @@ model ThirdPartyAccount {
   tenant       Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tenantClient TenantClient?        @relation(fields: [tenantClientId], references: [id], onDelete: Cascade)
   movements    ThirdPartyMovement[]
+  journalLines JournalEntryLine[]
   // Un pour un : `Supplier.thirdPartyAccountId` est unique. Un compte de
   // tiers de nature SUPPLIER a donc au plus un fournisseur.
   supplier     Supplier?
@@ -5913,4 +6226,754 @@ model StockCountLine {
   @@unique([countId, itemId])
   @@index([countId])
   @@map("stock_count_lines")
+}
+
+// =============================================================
+// GESTION LOCATIVE — Lot 3, compte proprietaire et reversements
+// =============================================================
+
+enum OwnerPayoutStatus {
+  VALIDATED
+  VOIDED
+}
+
+/// Reversement fait par l'agence a un proprietaire.
+///
+/// Valide des son enregistrement et numerote `REV-AAAA-NNNN` : c'est une
+/// sortie d'argent reelle, elle ne passe pas par un brouillon. Elle ne se
+/// modifie pas et ne se supprime pas ; une erreur s'annule, avec un motif, par
+/// une contre-passation qui reste visible dans le compte et au grand livre.
+model OwnerPayout {
+  id                String            @id @default(uuid()) @db.Uuid
+  tenantId          String            @map("tenant_id")
+  ownerClientId     String            @map("owner_client_id")
+  accountId         String            @map("account_id") @db.Uuid
+  year              Int
+  sequence          Int
+  amount            Decimal           @db.Decimal(14, 2)
+  paidAt            DateTime          @map("paid_at")
+  method            PaymentMethod
+  /// Lot 10 : compte de tresorerie debite. Nul : celui par defaut du moyen.
+  treasuryAccountId String?           @map("treasury_account_id") @db.Uuid
+  reference         String?
+  notes             String?
+  /// Releve de gerance regle par ce reversement, s'il y en a un.
+  statementId       String?           @map("statement_id") @db.Uuid
+  status            OwnerPayoutStatus @default(VALIDATED)
+  voidReason        String?           @map("void_reason")
+  voidedAt          DateTime?         @map("voided_at")
+  voidedByUserId    String?           @map("voided_by_user_id")
+  createdByUserId   String?           @map("created_by_user_id")
+  createdAt         DateTime          @default(now()) @map("created_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ownerClient TenantClient @relation(fields: [ownerClientId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, ownerClientId])
+  @@map("owner_payouts")
+}
+
+// =============================================================
+// GESTION LOCATIVE — Lot 5, vie du bail et etats des lieux
+// =============================================================
+
+enum LeaseEventType {
+  REVISION
+  RENEWAL
+  AMENDMENT
+  TERMINATION
+}
+
+enum LeaseTerminationInitiator {
+  TENANT
+  LANDLORD
+  MUTUAL
+}
+
+/// Historique d'un bail : revisions de loyer, renouvellements, avenants,
+/// resiliation.
+///
+/// Un evenement ne se modifie pas et ne se supprime pas : il raconte ce qui a
+/// ete decide, a quelle date, et ce que le bail etait avant. Les colonnes
+/// `previous*` gardent l'etat anterieur, pour qu'on puisse relire l'histoire
+/// d'un loyer sans la reconstituer.
+model LeaseEvent {
+  id              String                     @id @default(uuid()) @db.Uuid
+  tenantId        String                     @map("tenant_id")
+  leaseId         String                     @map("lease_id") @db.Uuid
+  type            LeaseEventType
+  effectiveDate   DateTime                   @map("effective_date")
+  // Revision (et renouvellement avec nouveau loyer)
+  previousRent    Decimal?                   @map("previous_rent") @db.Decimal(12, 2)
+  newRent         Decimal?                   @map("new_rent") @db.Decimal(12, 2)
+  previousCharges Decimal?                   @map("previous_charges") @db.Decimal(12, 2)
+  newCharges      Decimal?                   @map("new_charges") @db.Decimal(12, 2)
+  /// Taux de revision annonce, en pourcentage ; informatif.
+  revisionRate    Decimal?                   @map("revision_rate") @db.Decimal(6, 3)
+  // Renouvellement et resiliation
+  previousEndDate DateTime?                  @map("previous_end_date")
+  newEndDate      DateTime?                  @map("new_end_date")
+  // Resiliation
+  noticeDate      DateTime?                  @map("notice_date")
+  initiatedBy     LeaseTerminationInitiator? @map("initiated_by")
+  moveOutDate     DateTime?                  @map("move_out_date")
+  /// Motif, objet de l'avenant, observations.
+  summary         String?                    @db.Text
+  /// Effets constates : echeances recalculees, creees ou annulees.
+  details         Json?
+  createdByUserId String?                    @map("created_by_user_id")
+  createdAt       DateTime                   @default(now()) @map("created_at")
+
+  tenant Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lease  RentalLease @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([leaseId, effectiveDate])
+  @@map("lease_events")
+}
+
+enum LeaseInspectionType {
+  ENTRY
+  EXIT
+}
+
+enum LeaseInspectionStatus {
+  DRAFT
+  FINALIZED
+}
+
+/// Etat des lieux d'entree ou de sortie.
+///
+/// Brouillon tant qu'on le remplit ; fige une fois finalise, parce qu'il fait
+/// foi entre le bailleur et le locataire. Un par type et par bail.
+///
+/// `rooms` : `[{ id, name, items: [{ id, label, condition, comment }] }]`,
+/// `condition` parmi NEW, GOOD, FAIR, POOR, BROKEN. Les identifiants de piece
+/// et d'element sont stables : la comparaison entree/sortie et les photos s'y
+/// accrochent. `deductions` (sortie seulement) :
+/// `[{ id, label, amount, roomId?, itemId? }]`, les retenues proposees sur le
+/// depot de garantie.
+model LeaseInspection {
+  id                  String                @id @default(uuid()) @db.Uuid
+  tenantId            String                @map("tenant_id")
+  leaseId             String                @map("lease_id") @db.Uuid
+  type                LeaseInspectionType
+  status              LeaseInspectionStatus @default(DRAFT)
+  inspectionDate      DateTime              @map("inspection_date")
+  rooms               Json                  @default("[]")
+  /// Index des compteurs : `{ electricity?, water?, gas? }`, en texte.
+  meters              Json?
+  keysCount           Int?                  @map("keys_count")
+  generalComment      String?               @map("general_comment") @db.Text
+  tenantPresent       Boolean               @default(true) @map("tenant_present")
+  tenantSignatoryName String?               @map("tenant_signatory_name")
+  agentSignatoryName  String?               @map("agent_signatory_name")
+  deductions          Json?
+  finalizedAt         DateTime?             @map("finalized_at")
+  finalizedByUserId   String?               @map("finalized_by_user_id")
+  createdByUserId     String?               @map("created_by_user_id")
+  createdAt           DateTime              @default(now()) @map("created_at")
+  updatedAt           DateTime              @updatedAt @map("updated_at")
+
+  tenant Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lease  RentalLease            @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  photos LeaseInspectionPhoto[]
+
+  @@unique([leaseId, type])
+  @@index([tenantId])
+  @@map("lease_inspections")
+}
+
+/// Photo d'un etat des lieux, rattachee a une piece ou a un element.
+/// Fichier prive : jamais servi en statique, toujours par une route qui
+/// verifie l'agence.
+model LeaseInspectionPhoto {
+  id               String   @id @default(uuid()) @db.Uuid
+  tenantId         String   @map("tenant_id")
+  inspectionId     String   @map("inspection_id") @db.Uuid
+  roomId           String?  @map("room_id")
+  itemId           String?  @map("item_id")
+  fileName         String   @map("file_name")
+  filePath         String   @map("file_path")
+  mimeType         String   @map("mime_type")
+  sizeBytes        Int      @map("size_bytes")
+  caption          String?
+  uploadedByUserId String?  @map("uploaded_by_user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inspection LeaseInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([inspectionId])
+  @@map("lease_inspection_photos")
+}
+
+// =============================================================
+// GESTION LOCATIVE — Lot 4, indivision
+// =============================================================
+
+/// Quote-part d'un indivisaire dans un bien.
+///
+/// Un bien sans quote-part appartient en entier au proprietaire designe sur
+/// ses baux, comme avant ce lot. Un bien qui en a est reparti entre ses
+/// indivisaires, et les parts somment a 100 : loyers encaisses, honoraires,
+/// TVA et depenses du bien se partagent au prorata dans les comptes des
+/// proprietaires et sur leurs releves.
+model PropertyOwnershipShare {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id")
+  propertyId      String   @map("property_id")
+  ownerClientId   String   @map("owner_client_id")
+  /// En pourcentage : 50 pour 50 %. Quatre decimales pour les tiers.
+  sharePercent    Decimal  @map("share_percent") @db.Decimal(7, 4)
+  updatedByUserId String?  @map("updated_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property    Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  ownerClient TenantClient @relation(fields: [ownerClientId], references: [id], onDelete: Cascade)
+
+  @@unique([propertyId, ownerClientId])
+  @@index([tenantId])
+  @@index([ownerClientId])
+  @@map("property_ownership_shares")
+}
+
+// =============================================================
+// GESTION LOCATIVE — Lot 6, caisse d'agence
+// =============================================================
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+  VALIDATED
+}
+
+/// Session de caisse d'un caissier : ouverte avec un fond de caisse, close
+/// par un comptage, validee par un responsable.
+///
+/// Le montant ATTENDU n'est jamais saisi : il se deduit des encaissements et
+/// decaissements en especes enregistres par le caissier pendant la session
+/// (`lib/cash-sessions`). Il est fige a la cloture, avec son detail, pour que
+/// la session relue plus tard dise ce qu'on attendait ce jour-la.
+///
+/// Un ecart non nul exige un motif. A la validation, il passe en comptabilite :
+/// un manquant en charge, un excedent en produit.
+model CashSession {
+  id                String            @id @default(uuid()) @db.Uuid
+  tenantId          String            @map("tenant_id")
+  year              Int
+  sequence          Int
+  cashierUserId     String            @map("cashier_user_id")
+  /// Lot 10 : la caisse physique tenue. Nulle : caisse par defaut.
+  treasuryAccountId String?           @map("treasury_account_id") @db.Uuid
+  status            CashSessionStatus @default(OPEN)
+  openedAt          DateTime          @default(now()) @map("opened_at")
+  openingFloat      Decimal           @map("opening_float") @db.Decimal(14, 2)
+  openingNote       String?           @map("opening_note")
+  closedAt          DateTime?         @map("closed_at")
+  /// Detail fige a la cloture : `{ receipts, disbursements, lines: [...] }`.
+  expectedBreakdown Json?             @map("expected_breakdown")
+  expectedAmount    Decimal?          @map("expected_amount") @db.Decimal(14, 2)
+  countedAmount     Decimal?          @map("counted_amount") @db.Decimal(14, 2)
+  /// Billetage : `{ "10000": 3, "5000": 2, ... }`, nombre de billets et pieces.
+  denominations     Json?
+  difference        Decimal?          @db.Decimal(14, 2)
+  differenceReason  String?           @map("difference_reason")
+  validatedAt       DateTime?         @map("validated_at")
+  validatedByUserId String?           @map("validated_by_user_id")
+  validationComment String?           @map("validation_comment")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, cashierUserId, status])
+  @@map("cash_sessions")
+}
+
+// =============================================================
+// GESTION LOCATIVE — Lot 10, conformite SYSCOHADA
+// =============================================================
+
+/// Nature des fonds d'un mandant portes par une ligne du compte 4731.
+enum MandantFundsNature {
+  /// Compte courant : ce qui sera reverse au proprietaire.
+  CURRENT
+  /// Depot de garantie detenu pour le compte du proprietaire.
+  DEPOSIT
+  /// Encaissement recu, pas encore affecte a une echeance.
+  UNALLOCATED
+}
+
+enum PenaltyBeneficiary {
+  OWNER
+  AGENCY
+}
+
+enum OwnerTaxStatus {
+  INDIVIDUAL
+  COMPANY
+  EXEMPT
+}
+
+enum TreasuryAccountKind {
+  CASH
+  BANK
+  MOBILE_MONEY
+  CHECKS_TO_CASH
+  CARDS_TO_CASH
+}
+
+enum TreasuryDocumentStatus {
+  VALIDATED
+  VOIDED
+}
+
+/// Compte de tresorerie de l'agence : une caisse (5711x), une banque (5211x),
+/// un portefeuille Mobile Money (552x), les cheques (513) ou cartes (515) a
+/// encaisser. Chaque encaissement et decaissement dit lequel il a touche.
+///
+/// Un seul compte par defaut par nature (et par operateur pour le Mobile
+/// Money) : c'est celui qu'on prend quand la piece n'en precise pas.
+model TreasuryAccount {
+  id               String               @id @default(uuid()) @db.Uuid
+  tenantId         String               @map("tenant_id")
+  kind             TreasuryAccountKind
+  label            String
+  chartOfAccountId String               @unique @map("chart_of_account_id") @db.Uuid
+  accountNumber    String               @map("account_number")
+  mmOperator       MobileMoneyOperator? @map("mm_operator")
+  bankName         String?              @map("bank_name")
+  bankAccountRef   String?              @map("bank_account_ref")
+  isDefault        Boolean              @default(false) @map("is_default")
+  isActive         Boolean              @default(true) @map("is_active")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  chartOfAccount ChartOfAccount @relation(fields: [chartOfAccountId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, accountNumber])
+  @@index([tenantId, kind])
+  @@map("treasury_accounts")
+}
+
+/// Virement interne entre deux comptes de tresorerie : remise de cheques ou
+/// de cartes en banque, depot d'especes, approvisionnement d'une caisse.
+/// Numerote VIR-AAAA-NNNN.
+model TreasuryTransfer {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  tenantId              String                 @map("tenant_id")
+  year                  Int
+  sequence              Int
+  fromTreasuryAccountId String                 @map("from_treasury_account_id") @db.Uuid
+  toTreasuryAccountId   String                 @map("to_treasury_account_id") @db.Uuid
+  amount                Decimal                @db.Decimal(14, 2)
+  transferredAt         DateTime               @map("transferred_at")
+  reference             String?
+  notes                 String?
+  status                TreasuryDocumentStatus @default(VALIDATED)
+  voidReason            String?                @map("void_reason")
+  voidedAt              DateTime?              @map("voided_at")
+  voidedByUserId        String?                @map("voided_by_user_id")
+  createdByUserId       String?                @map("created_by_user_id")
+  createdAt             DateTime               @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, transferredAt])
+  @@map("treasury_transfers")
+}
+
+/// Retenue a la source sur un loyer encaisse, pour UN proprietaire.
+///
+/// Figee a sa creation comme les honoraires : statut fiscal, taux et assiette
+/// du jour. Une par (affectation, proprietaire), parce qu'en indivision chaque
+/// indivisaire a son propre statut.
+model RentWithholding {
+  id            String         @id @default(uuid()) @db.Uuid
+  tenantId      String         @map("tenant_id")
+  allocationId  String         @map("allocation_id") @db.Uuid
+  ownerClientId String         @map("owner_client_id")
+  leaseId       String         @map("lease_id") @db.Uuid
+  propertyId    String         @map("property_id")
+  collectedAt   DateTime       @map("collected_at")
+  taxStatus     OwnerTaxStatus @map("tax_status")
+  baseAmount    Decimal        @map("base_amount") @db.Decimal(14, 2)
+  rate          Decimal        @db.Decimal(5, 2)
+  amount        Decimal        @db.Decimal(14, 2)
+  createdAt     DateTime       @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([allocationId, ownerClientId])
+  @@index([tenantId, ownerClientId, collectedAt])
+  @@map("rent_withholdings")
+}
+
+/// Versement a la DGI des retenues collectees : debit 4478, credit tresorerie.
+/// Numerote DGI-AAAA-NNNN.
+model TaxRemittance {
+  id                String                 @id @default(uuid()) @db.Uuid
+  tenantId          String                 @map("tenant_id")
+  year              Int
+  sequence          Int
+  amount            Decimal                @db.Decimal(14, 2)
+  paidAt            DateTime               @map("paid_at")
+  periodLabel       String                 @map("period_label")
+  treasuryAccountId String                 @map("treasury_account_id") @db.Uuid
+  reference         String?
+  status            TreasuryDocumentStatus @default(VALIDATED)
+  voidReason        String?                @map("void_reason")
+  voidedAt          DateTime?              @map("voided_at")
+  voidedByUserId    String?                @map("voided_by_user_id")
+  createdByUserId   String?                @map("created_by_user_id")
+  createdAt         DateTime               @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, year, sequence])
+  @@map("tax_remittances")
+}
+
+// =============================================================
+// VENTES IMMOBILIERES — Lot 9
+// =============================================================
+//
+// Chaine complete d'une vente ou l'agence est intermediaire : mandat de vente,
+// offres d'achat, compromis, acte authentique, commission de transaction.
+// Voir docs/ventes/PRD-lot-9-ventes.md, section 3, qui fait foi.
+//
+// P3 : l'agence ne detient aucun fonds de la vente. Seule la commission entre
+// en comptabilite (P4 : nee a l'acte ; P5 : comptabilisee a l'encaissement,
+// comme la gestion locative du lot 10).
+//
+// Numerotation annuelle par agence (colonnes year + sequence, comme
+// `TreasuryTransfer` et `TaxRemittance` du lot 10) : MV, OA, CV, HT, RC.
+
+enum SaleMandateType {
+  SIMPLE
+  EXCLUSIVE
+}
+
+enum SaleMandateStatus {
+  ACTIVE
+  REVOKED
+  COMPLETED
+}
+
+enum SaleCommissionMode {
+  PERCENT
+  FIXED
+}
+
+enum SaleCommissionPayer {
+  SELLER
+  BUYER
+}
+
+enum SaleFinancing {
+  CASH
+  LOAN
+  MIXED
+}
+
+enum SaleOfferStatus {
+  SUBMITTED
+  COUNTERED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum SaleDepositHolder {
+  NOTARY
+  SELLER
+}
+
+enum SaleAgreementStatus {
+  DRAFT
+  SIGNED
+  COMPLETED
+  CANCELLED
+}
+
+enum SaleConditionStatus {
+  PENDING
+  MET
+  FAILED
+  WAIVED
+}
+
+enum SaleCommissionStatus {
+  DUE
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum SaleCommissionPaymentStatus {
+  POSTED
+  VOIDED
+}
+
+/// Mandat de vente d'un bien : vendeur (`TenantClient`, decision du 22/09),
+/// prix demande et honoraires convenus. Numerote MV-AAAA-NNNN.
+///
+/// UN SEUL MANDAT ACTIVE PAR BIEN ET PAR AGENCE : controle applicatif (le
+/// service verifie avant de creer), pas de contrainte SQL — un index simple
+/// suffit a la lecture, une contrainte d'unicite partielle sur (propertyId)
+/// filtree par statut n'a pas de syntaxe Prisma native et aurait exige du SQL
+/// brut dans la migration pour un gain modeste face au controle applicatif
+/// deja necessaire pour le message d'erreur en francais.
+model SaleMandate {
+  id                    String              @id @default(uuid()) @db.Uuid
+  tenantId              String              @map("tenant_id")
+  year                  Int
+  sequence              Int
+  propertyId            String              @map("property_id")
+  sellerClientId        String              @map("seller_client_id")
+  mandateType           SaleMandateType     @map("mandate_type")
+  askingPrice           Decimal             @map("asking_price") @db.Decimal(14, 2)
+  /// Prix plancher confidentiel : jamais restitue a l'acquereur.
+  minimumPrice          Decimal?            @map("minimum_price") @db.Decimal(14, 2)
+  commissionMode        SaleCommissionMode  @map("commission_mode")
+  commissionRate        Decimal?            @map("commission_rate") @db.Decimal(7, 4)
+  commissionFixedAmount Decimal?            @map("commission_fixed_amount") @db.Decimal(14, 2)
+  commissionPayer       SaleCommissionPayer @map("commission_payer")
+  agentUserId           String?             @map("agent_user_id")
+  /// Part du negociateur sur la commission HT encaissee, en pourcentage.
+  agentSharePercent     Decimal?            @map("agent_share_percent") @db.Decimal(7, 4)
+  startDate             DateTime            @map("start_date") @db.Date
+  endDate               DateTime?           @map("end_date") @db.Date
+  status                SaleMandateStatus   @default(ACTIVE)
+  revokedAt             DateTime?           @map("revoked_at")
+  revokedByUserId       String?             @map("revoked_by_user_id")
+  revokeReason          String?             @map("revoke_reason") @db.Text
+  notes                 String?             @db.Text
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property     Property         @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  sellerClient TenantClient     @relation(fields: [sellerClientId], references: [id], onDelete: Restrict)
+  agentUser    User?            @relation("SaleMandateAgent", fields: [agentUserId], references: [id], onDelete: SetNull)
+  revokedBy    User?            @relation("SaleMandateRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+  offers       SaleOffer[]
+  agreements   SaleAgreement[]
+  commissions  SaleCommission[]
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, status])
+  @@index([tenantId, propertyId])
+  @@index([sellerClientId])
+  @@index([agentUserId])
+  @@map("sale_mandates")
+}
+
+/// Offre d'achat sur un mandat, portee par un acquereur (`CrmContact`, P2).
+/// Numerotee OA-AAAA-NNNN.
+model SaleOffer {
+  id              String          @id @default(uuid()) @db.Uuid
+  tenantId        String          @map("tenant_id")
+  year            Int
+  sequence        Int
+  mandateId       String          @map("mandate_id") @db.Uuid
+  buyerContactId  String          @map("buyer_contact_id")
+  /// Affaire CRM d'origine, si l'offre en vient.
+  dealId          String?         @map("deal_id")
+  amount          Decimal         @db.Decimal(14, 2)
+  financing       SaleFinancing
+  conditions      String?         @db.Text
+  validUntil      DateTime?       @map("valid_until") @db.Date
+  status          SaleOfferStatus @default(SUBMITTED)
+  /// Contre-offre du vendeur, posee par l'action COUNTER.
+  counterAmount   Decimal?        @map("counter_amount") @db.Decimal(14, 2)
+  decidedAt       DateTime?       @map("decided_at")
+  decidedByUserId String?         @map("decided_by_user_id")
+  decisionReason  String?         @map("decision_reason") @db.Text
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  mandate      SaleMandate    @relation(fields: [mandateId], references: [id], onDelete: Cascade)
+  buyerContact CrmContact     @relation(fields: [buyerContactId], references: [id], onDelete: Restrict)
+  deal         CrmDeal?       @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  decidedBy    User?          @relation("SaleOfferDecidedBy", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  agreement    SaleAgreement?
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, status])
+  @@index([mandateId])
+  @@index([buyerContactId])
+  @@index([dealId])
+  @@map("sale_offers")
+}
+
+/// Compromis de vente ne d'une offre ACCEPTED. Numerote CV-AAAA-NNNN.
+/// Un seul compromis par offre : `@unique` sur `offerId` (PRD §3).
+model SaleAgreement {
+  id                String              @id @default(uuid()) @db.Uuid
+  tenantId          String              @map("tenant_id")
+  year              Int
+  sequence          Int
+  offerId           String              @unique @map("offer_id") @db.Uuid
+  /// Recopies de l'offre/du mandat pour les requetes, jamais divergents en
+  /// dehors de la creation.
+  mandateId         String              @map("mandate_id") @db.Uuid
+  propertyId        String              @map("property_id")
+  price             Decimal             @db.Decimal(14, 2)
+  depositAmount     Decimal?            @map("deposit_amount") @db.Decimal(14, 2)
+  depositHolder     SaleDepositHolder?  @map("deposit_holder")
+  notaryName        String?             @map("notary_name")
+  signedAt          DateTime?           @map("signed_at") @db.Date
+  expectedDeedDate  DateTime?           @map("expected_deed_date") @db.Date
+  deedDate          DateTime?           @map("deed_date") @db.Date
+  status            SaleAgreementStatus @default(DRAFT)
+  cancelledAt       DateTime?           @map("cancelled_at")
+  cancelReason      String?             @map("cancel_reason") @db.Text
+  cancelledByUserId String?             @map("cancelled_by_user_id")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant      Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  offer       SaleOffer                @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  mandate     SaleMandate              @relation(fields: [mandateId], references: [id], onDelete: Restrict)
+  property    Property                 @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  cancelledBy User?                    @relation("SaleAgreementCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+  conditions  SaleAgreementCondition[]
+  milestones  SalePaymentMilestone[]
+  commission  SaleCommission?
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, status])
+  @@index([mandateId])
+  @@index([propertyId])
+  @@map("sale_agreements")
+}
+
+/// Condition suspensive d'un compromis. Une condition FAILED n'annule pas
+/// seule le compromis : l'agent decide (PRD §3).
+model SaleAgreementCondition {
+  id          String              @id @default(uuid()) @db.Uuid
+  tenantId    String              @map("tenant_id")
+  agreementId String              @map("agreement_id") @db.Uuid
+  label       String
+  dueDate     DateTime?           @map("due_date") @db.Date
+  status      SaleConditionStatus @default(PENDING)
+  resolvedAt  DateTime?           @map("resolved_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agreement SaleAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([agreementId])
+  @@map("sale_agreement_conditions")
+}
+
+/// Echeancier de paiement de l'acquereur : suivi, sans ecriture comptable
+/// (P3 — l'agence ne detient pas ces fonds).
+model SalePaymentMilestone {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id")
+  agreementId String    @map("agreement_id") @db.Uuid
+  label       String
+  dueDate     DateTime? @map("due_date") @db.Date
+  amount      Decimal   @db.Decimal(14, 2)
+  paidAt      DateTime? @map("paid_at") @db.Date
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agreement SaleAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([agreementId])
+  @@map("sale_payment_milestones")
+}
+
+/// Commission de transaction, creee automatiquement au passage du compromis
+/// a COMPLETED (P4). Figee a sa creation : taux de TVA et part du negociateur
+/// ne suivent plus les parametres ou le mandat apres coup. Numerotee
+/// HT-AAAA-NNNN. `paidAmount` et `status` sont calcules a la lecture depuis
+/// les reglements POSTED — jamais stockes, pour ne jamais diverger d'eux.
+model SaleCommission {
+  id                String               @id @default(uuid()) @db.Uuid
+  tenantId          String               @map("tenant_id")
+  year              Int
+  sequence          Int
+  agreementId       String               @unique @map("agreement_id") @db.Uuid
+  mandateId         String               @map("mandate_id") @db.Uuid
+  /// Recopie du mandat.
+  payer             SaleCommissionPayer
+  /// Prix de vente du compromis complete.
+  baseAmount        Decimal              @map("base_amount") @db.Decimal(14, 2)
+  amountExclTax     Decimal              @map("amount_excl_tax") @db.Decimal(14, 2)
+  /// Taux des parametres financiers si l'agence est assujettie, sinon 0 —
+  /// fige au moment de la creation (P5).
+  vatRate           Decimal              @map("vat_rate") @db.Decimal(5, 2)
+  vatAmount         Decimal              @map("vat_amount") @db.Decimal(14, 2)
+  amountInclTax     Decimal              @map("amount_incl_tax") @db.Decimal(14, 2)
+  /// Recopies (figees) du mandat.
+  agentUserId       String?              @map("agent_user_id")
+  agentSharePercent Decimal?             @map("agent_share_percent") @db.Decimal(7, 4)
+  status            SaleCommissionStatus @default(DUE)
+  /// = deedDate du compromis.
+  issuedAt          DateTime             @map("issued_at") @db.Date
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+
+  tenant    Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  agreement SaleAgreement           @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  mandate   SaleMandate             @relation(fields: [mandateId], references: [id], onDelete: Restrict)
+  agentUser User?                   @relation("SaleCommissionAgent", fields: [agentUserId], references: [id], onDelete: SetNull)
+  payments  SaleCommissionPayment[]
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, status])
+  @@index([mandateId])
+  @@map("sale_commissions")
+}
+
+/// Reglement (encaissement) d'une commission de vente. Numerote RC-AAAA-NNNN.
+/// `treasuryAccountId` designe librement un `TreasuryAccount` (pas de
+/// relation Prisma), comme `TaxRemittance.treasuryAccountId` au lot 10 : le
+/// compte est verifie par `assertTreasuryAccountUsableTx` au moment d'ecrire,
+/// pas par une contrainte de cle etrangere supplementaire.
+model SaleCommissionPayment {
+  id                String                      @id @default(uuid()) @db.Uuid
+  tenantId          String                      @map("tenant_id")
+  year              Int
+  sequence          Int
+  commissionId      String                      @map("commission_id") @db.Uuid
+  amount            Decimal                     @db.Decimal(14, 2)
+  paidAt            DateTime                    @map("paid_at")
+  paymentMethod     RentalPaymentMethod         @map("payment_method")
+  treasuryAccountId String                      @map("treasury_account_id") @db.Uuid
+  reference         String?
+  status            SaleCommissionPaymentStatus @default(POSTED)
+  voidReason        String?                     @map("void_reason")
+  voidedAt          DateTime?                   @map("voided_at")
+  voidedByUserId    String?                     @map("voided_by_user_id")
+  createdByUserId   String?                     @map("created_by_user_id")
+  createdAt         DateTime                    @default(now()) @map("created_at")
+
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  commission SaleCommission @relation(fields: [commissionId], references: [id], onDelete: Restrict)
+  voidedBy   User?          @relation("SaleCommissionPaymentVoidedBy", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+  createdBy  User?          @relation("SaleCommissionPaymentCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, year, sequence])
+  @@index([tenantId, status])
+  @@index([commissionId])
+  @@map("sale_commission_payments")
 }

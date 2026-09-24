@@ -49,9 +49,17 @@ export const ROUTE_LABELS: Record<string, string> = {
   finances: 'Finances',
   recouvrement: 'Recouvrement',
   comptabilite: t('Comptabilité'),
+  caisse: t('Caisse'),
+  tresorerie: t('Trésorerie'),
   budgets: 'Budgets',
   'profils-incidents': t('Profils et incidents'),
   compte: t('Compte propriétaire'),
+
+  // Gestion locative, lots 2 et 3 : sans ces entrées, le fil d'Ariane
+  // affichait « Owner accounts » et « Account », tels que dans l'adresse.
+  'owner-accounts': t('Comptes propriétaires'),
+  commissions: t('Commissions des agents'),
+  account: t('Mon compte'),
 
   // CRM
   crm: 'CRM',
@@ -102,7 +110,11 @@ export const ROUTE_LABELS: Record<string, string> = {
   groups: 'Groupes',
   transactions: 'Transactions',
   sales: 'Ventes',
-  rentals: 'Locations'
+  rentals: 'Locations',
+
+  // Ventes immobilières (lot 9).
+  mandates: t('Mandats de vente'),
+  agreements: t('Compromis de vente')
 };
 
 /** Vrai pour un segment d'identifiant : UUID, ObjectId ou entier. */

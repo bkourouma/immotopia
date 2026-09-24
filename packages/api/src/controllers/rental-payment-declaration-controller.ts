@@ -16,7 +16,9 @@ import { PaymentDeclarationStatus } from '@prisma/client';
 
 // Validation schemas
 const approvePaymentDeclarationSchema = z.object({
-  reviewNotes: z.string().optional()
+  reviewNotes: z.string().optional(),
+  /** Lot 10 : compte de trésorerie réellement crédité. Absent : celui par défaut du moyen de paiement. */
+  treasuryAccountId: z.string().uuid().optional().nullable()
 });
 
 const rejectPaymentDeclarationSchema = z.object({
@@ -44,7 +46,13 @@ export async function approvePaymentDeclarationHandler(req: Request, res: Respon
     // Validate request body
     const validatedData = approvePaymentDeclarationSchema.parse(req.body);
 
-    const result = await approvePaymentDeclaration(tenantId, declarationId, actorUserId, validatedData.reviewNotes);
+    const result = await approvePaymentDeclaration(
+      tenantId,
+      declarationId,
+      actorUserId,
+      validatedData.reviewNotes,
+      validatedData.treasuryAccountId
+    );
 
     res.json({
       success: true,

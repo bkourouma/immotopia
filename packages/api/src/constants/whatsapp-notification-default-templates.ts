@@ -37,7 +37,7 @@ export const WHATSAPP_NOTIFICATION_DEFAULT_TEMPLATES: Record<WhatsappNotificatio
   PORTAL_ACCOUNT_CREATED:
     'Bonjour {{userName}}, votre compte ImmoTopia a ete cree pour {{tenantName}}. Definissez votre mot de passe ici :\n{{resetUrl}}',
   OWNER_STATEMENT_SENT:
-    'Bonjour {{ownerName}}, votre relevé de gérance pour la période {{period}} est disponible. Revenus : {{totalRevenue}} {{currency}}, charges : {{totalExpenses}} {{currency}}, net : {{netAmount}} {{currency}}.',
+    'Bonjour {{ownerName}}, votre relevé de gérance pour la période {{period}} est disponible. Loyers encaissés : {{totalRevenue}} {{currency}}, honoraires : {{managementFees}} {{currency}}, TVA : {{managementFeesVat}} {{currency}}, dépenses : {{totalExpenses}} {{currency}}. Net à vous reverser : {{netAmount}} {{currency}}.',
   CHARGE_CALL_ISSUED:
     'Bonjour {{ownerName}}, un nouvel appel de charges a été émis pour votre lot {{lotLabel}} dans la copropriété {{syndicateName}}. Montant : {{amount}} {{currency}}. Échéance : {{dueDate}}.',
   CHARGE_CALL_REMINDER:

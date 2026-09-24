@@ -92,6 +92,7 @@ import { assertSiteOpenTx } from './site-closing';
 import { appendThirdPartyMovementTx } from './ledger';
 import { roundMoneyXof } from './money';
 import { toAmountOrZero } from './types';
+import { ensureDefaultTreasuryAccountTx } from '../treasury/accounts';
 import type {
   ContractorContractRecord,
   ContractorPaymentRecord,
@@ -123,7 +124,7 @@ interface OperationalAccounts {
   contractorsAccountId: string;
   /** 605 — Charges de chantier : repli quand le poste du marché n'a pas son propre compte. */
   siteExpenseAccountId: string;
-  /** 571 — Caisse : la même trésorerie que partout ailleurs dans le module. */
+  /** Caisse : la même trésorerie que partout ailleurs, résolue par `treasury/accounts.ts`. */
   cashAccountId: string;
 }
 
@@ -137,9 +138,10 @@ async function resolveOperationalAccounts(
   tenantId: string,
   entryDate: Date
 ): Promise<OperationalAccounts> {
-  const [journalId, comptes] = await Promise.all([
+  const [journalId, comptes, cashTreasury] = await Promise.all([
     ensureOperationalJournalTx(tx, tenantId, entryDate.getUTCFullYear()),
-    ensureOperationalChartOfAccountsTx(tx, tenantId)
+    ensureOperationalChartOfAccountsTx(tx, tenantId),
+    ensureDefaultTreasuryAccountTx(tx, tenantId, 'CASH')
   ]);
 
   const exiger = (numero: string): string => {
@@ -154,7 +156,7 @@ async function resolveOperationalAccounts(
     journalId,
     contractorsAccountId: exiger('402'),
     siteExpenseAccountId: exiger('605'),
-    cashAccountId: exiger('571')
+    cashAccountId: cashTreasury.chartOfAccountId
   };
 }
 

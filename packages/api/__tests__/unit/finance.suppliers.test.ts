@@ -64,6 +64,20 @@ jest.mock('../../src/lib/finance/cost-allocation', () => ({
   syncWorkProgramCostTx: (...args: any[]) => syncWorkProgramCostTx(...args)
 }));
 
+// Lot 10 : la caisse ne se lit plus dans `accounting.ts` mais se resout par
+// `treasury/accounts.ts`. On la mocke pour renvoyer le meme compte 571 qu'avant,
+// afin que ce fichier continue de verifier les memes ecritures.
+jest.mock('../../src/lib/treasury/accounts', () => ({
+  ensureDefaultTreasuryAccountTx: async () => ({
+    treasuryAccountId: 'tresorerie-571',
+    chartOfAccountId: 'compte-571',
+    accountNumber: '571',
+    label: 'Caisse',
+    kind: 'CASH',
+    journal: 'CASH'
+  })
+}));
+
 jest.mock('../../src/lib/finance/accounting', () => ({
   postDocumentEntryTx: (...args: any[]) => postDocumentEntryTx(...args),
   ensureOperationalJournalTx: async () => 'journal-operationnel',

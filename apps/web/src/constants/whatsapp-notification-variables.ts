@@ -56,7 +56,18 @@ export const WHATSAPP_VARIABLES_BY_KEY: Record<string, string[]> = {
     'publishedAtLabel',
     'propertyPublicUrl'
   ],
-  OWNER_STATEMENT_SENT: ['ownerName', 'period', 'totalRevenue', 'totalExpenses', 'netAmount', 'currency']
+  OWNER_STATEMENT_SENT: [
+    'ownerName',
+    'period',
+    'totalRentDue',
+    'totalRevenue',
+    'totalArrears',
+    'managementFees',
+    'managementFeesVat',
+    'totalExpenses',
+    'netAmount',
+    'currency'
+  ]
 };
 
 export function getVariablePlaceholder(name: string): string {

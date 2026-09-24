@@ -4,8 +4,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { App as AntApp } from 'antd';
+import dayjs from 'dayjs';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Payments } from '../../pages/rental/Payments';
+import type { PaymentForm as PaymentFormComponent } from '../../components/rental/PaymentForm';
 
 /**
  * Paiements — les garanties de l'écran.
@@ -22,14 +24,19 @@ const allocatePayment = vi.fn();
 
 const listLeases = vi.fn();
 
-vi.mock('../../services/rental-service', () => ({
-  listPayments: (...a: unknown[]) => listPayments(...a),
-  listLeases: (...a: unknown[]) => listLeases(...a),
-  createPayment: (...a: unknown[]) => createPayment(...a),
-  allocatePayment: (...a: unknown[]) => allocatePayment(...a),
-  RentalPaymentStatus: {},
-  RentalPaymentMethod: {}
-}));
+vi.mock('../../services/rental-service', async importOriginal => {
+  // Les enums restent réels : le test du vrai `PaymentForm` (plus bas, via
+  // `vi.importActual`) en a besoin pour que son `<Select>` de méthode de
+  // paiement ait des valeurs, et {} les vidait silencieusement.
+  const actual = await importOriginal<typeof import('../../services/rental-service')>();
+  return {
+    ...actual,
+    listPayments: (...a: unknown[]) => listPayments(...a),
+    listLeases: (...a: unknown[]) => listLeases(...a),
+    createPayment: (...a: unknown[]) => createPayment(...a),
+    allocatePayment: (...a: unknown[]) => allocatePayment(...a)
+  };
+});
 
 vi.mock('../../components/rental/PaymentForm', () => ({ PaymentForm: () => <div>formulaire de saisie</div> }));
 vi.mock('../../components/rental/AllocatePaymentForm', () => ({
@@ -43,6 +50,14 @@ vi.mock('../../components/rental/PaymentDeclarationsList', () => ({
 
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
+}));
+
+// Le vrai `PaymentForm` (rendu plus bas via `vi.importActual`) embarque
+// désormais `TreasuryAccountSelector` (lot 10), qui appelle
+// `listTreasuryAccounts` : sans ce mock, Vitest laisserait partir une vraie
+// requête réseau.
+vi.mock('../../services/treasury-service', () => ({
+  listTreasuryAccounts: vi.fn().mockResolvedValue([])
 }));
 
 function paiement(overrides: Record<string, unknown> = {}) {
@@ -209,5 +224,33 @@ describe('Paiements — filtre par locataire', () => {
     expect(await screen.findByText('BAIL-2026-0002', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getByText('Entrepôt Treichville')).toBeInTheDocument();
     expect(screen.getByText('Seydou Traoré')).toBeInTheDocument();
+  });
+});
+
+describe('Paiements — date du règlement', () => {
+  // Le formulaire est mocké plus haut pour les tests de l'écran Paiements :
+  // `vi.importActual` récupère ici le vrai composant, pour vérifier ce qu'il
+  // envoie réellement à l'API.
+  it('envoie la date du règlement au format YYYY-MM-DD, avec aujourd’hui par défaut', async () => {
+    const { PaymentForm } = await vi.importActual<{ PaymentForm: typeof PaymentFormComponent }>(
+      '../../components/rental/PaymentForm'
+    );
+    const user = userEvent.setup({ delay: null });
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AntApp>
+          <PaymentForm tenantId="agence-1" leaseId="bail-1" onSubmit={onSubmit} />
+        </AntApp>
+      </QueryClientProvider>
+    );
+
+    await user.type(await screen.findByPlaceholderText('Ex: 150000'), '150000');
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le paiement' }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({ paidAt: dayjs().format('YYYY-MM-DD') });
   });
 });

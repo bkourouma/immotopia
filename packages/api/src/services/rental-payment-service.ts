@@ -10,6 +10,7 @@ import {
 import { Decimal } from '@prisma/client/runtime/library';
 import { appendThirdPartyMovementTx } from '../lib/finance/ledger';
 import { roundMoney } from '../lib/finance/money';
+import { assertTreasuryAccountUsableTx } from '../lib/treasury/accounts';
 import {
   annulerPieceTx,
   compteLocataireDuBailTx,
@@ -191,7 +192,44 @@ async function totalAffecteTx(tx: PrismaTransactionClient, paymentId: string): P
   return roundMoney(allocations.reduce((somme, a) => somme + Number(a.amount), 0));
 }
 
+/**
+ * Date du règlement d'un paiement saisi à la main.
+ *
+ * `succeeded_at` est, partout dans l'application, la date où l'argent est
+ * arrivé : relevé propriétaire, tableau de bord, quittance, compte du
+ * locataire. La fixer au jour de la SAISIE rangeait un loyer reçu le 30 août et
+ * saisi le 2 septembre dans le relevé de septembre.
+ *
+ * - Absente : maintenant, comme avant.
+ * - Aujourd'hui : maintenant, pour garder l'heure réelle.
+ * - Un jour passé : ce jour à midi UTC. Midi et pas minuit : la date reste la
+ *   même quel que soit le fuseau dans lequel on la relit.
+ * - Un jour futur, ou une date qui n'existe pas (31 février) : refus.
+ */
+export function resolvePaymentDate(paidAt: string | undefined, now: Date = new Date()): Date {
+  if (!paidAt) return now;
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(paidAt);
+  if (!match) {
+    throw new Error('Date du règlement attendue au format AAAA-MM-JJ');
+  }
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(Date.UTC(year, month - 1, day, 12));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    throw new Error("La date du règlement n'existe pas");
+  }
+
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const chosen = Date.UTC(year, month - 1, day);
+  if (chosen > today) {
+    throw new Error('La date du règlement ne peut pas être dans le futur');
+  }
+  return chosen === today ? now : date;
+}
+
 interface CreatePaymentData {
+  /** Date du règlement, `YYYY-MM-DD` — voir `resolvePaymentDate`. */
+  paidAt?: string;
   leaseId?: string;
   renterClientId?: string;
   invoiceId?: string;
@@ -204,6 +242,8 @@ interface CreatePaymentData {
   pspTransactionId?: string;
   pspReference?: string;
   idempotencyKey: string;
+  /** Lot 10 : compte de trésorerie réellement crédité. Nul : celui par défaut du moyen de paiement. */
+  treasuryAccountId?: string | null;
 }
 
 interface AllocatePaymentData {
@@ -234,6 +274,9 @@ interface PaginationOptions {
  */
 export async function createPayment(tenantId: string, data: CreatePaymentData, actorUserId?: string): Promise<any> {
   try {
+    // Avant tout accès à la base : une date refusée ne doit rien laisser derrière elle.
+    const paidAt = resolvePaymentDate(data.paidAt);
+
     // Check for idempotency - if payment with this key exists, return it
     const existingPayment = await prisma.rentalPayment.findFirst({
       where: {
@@ -274,6 +317,8 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
     // règlement enregistré dont le compte du locataire ne saurait rien ferait
     // apparaître le locataire débiteur d'un loyer qu'il a payé.
     const payment = await prisma.$transaction(async tx => {
+      await assertTreasuryAccountUsableTx(tx, tenantId, data.treasuryAccountId, data.method);
+
       const created = await tx.rentalPayment.create({
         data: {
           tenant_id: tenantId,
@@ -285,12 +330,13 @@ export async function createPayment(tenantId: string, data: CreatePaymentData, a
           currency: data.currency || 'FCFA',
           mm_operator: data.mmOperator as any,
           mm_phone: data.mmPhone,
+          treasury_account_id: data.treasuryAccountId || null,
           psp_name: data.pspName,
           psp_transaction_id: data.pspTransactionId,
           psp_reference: data.pspReference,
           idempotency_key: data.idempotencyKey,
           status: RentalPaymentStatus.SUCCESS, // Auto-mark as success for manual payments
-          succeeded_at: new Date(),
+          succeeded_at: paidAt,
           created_by_user_id: actorUserId
         },
         include: {
