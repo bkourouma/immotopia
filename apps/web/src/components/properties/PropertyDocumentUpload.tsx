@@ -172,7 +172,7 @@ export const PropertyDocumentUpload: React.FC<PropertyDocumentUploadProps> = ({
           id="isRequired"
           checked={formData.isRequired}
           onChange={e => setFormData(prev => ({ ...prev, isRequired: e.target.checked }))}
-          className="h-4 w-4 rounded border-gray-300 text-blue-600"
+          className="h-4 w-4 rounded border-gray-300 text-primary"
         />
         <label htmlFor="isRequired" className="text-sm text-gray-700">
           {t('Document requis')}

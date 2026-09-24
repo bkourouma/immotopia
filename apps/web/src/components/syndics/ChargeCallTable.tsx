@@ -2,10 +2,10 @@
 import { Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
+import { MoneyValue } from '../primitives/MoneyValue';
 import { ChargeCall, ChargeCallStatus } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
 const { Text } = Typography;
 
 const statusConfig: Record<ChargeCallStatus, { color: string; label: string }> = {
@@ -61,7 +61,8 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({ items, loading
     {
       title: t('Montant'),
       key: 'amount',
-      render: (_: unknown, item: ChargeCall) => `${Number(item.amount).toLocaleString(activeLocale())} ${item.currency}`
+      align: 'end',
+      render: (_: unknown, item: ChargeCall) => <MoneyValue value={item.amount} />
     },
     {
       title: t('Echeance'),

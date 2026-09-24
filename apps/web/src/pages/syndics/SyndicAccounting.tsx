@@ -1,5 +1,4 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   App,
   Alert,
@@ -14,13 +13,13 @@ import {
   Select,
   Space,
   Spin,
-  Statistic,
   Table,
   Tag,
   Typography
 } from 'antd';
-import { ArrowLeftOutlined, LockOutlined, PlusOutlined } from '@ant-design/icons';
+import { LockOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { MoneyValue, StatCard } from '../../components/primitives';
 import {
   createAccountingEntry,
   createAccountingJournal,
@@ -36,7 +35,6 @@ import { AccountingJournal, ChartOfAccount, JournalEntry, SourceType, TrialBalan
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
 const { Paragraph, Title } = Typography;
 
 const sourceTypeOptions: Array<{ value: SourceType; label: string }> = [
@@ -58,7 +56,6 @@ export const SyndicAccounting: React.FC = () => {
   const { message } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
-  const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -226,12 +223,6 @@ export const SyndicAccounting: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
-            >
-              {t('Retour à la fiche syndic')}
-            </Button>
             <Title level={2} style={{ margin: 0 }}>
               {t('Comptabilité syndic')}
             </Title>
@@ -267,19 +258,17 @@ export const SyndicAccounting: React.FC = () => {
           <>
             <Row gutter={[16, 16]}>
               <Col xs={24} md={8}>
-                <Card>
-                  <Statistic title={t('Comptes')} value={accounts.length} />
-                </Card>
+                <StatCard label={t('Comptes')} value={accounts.length} />
               </Col>
               <Col xs={24} md={8}>
-                <Card>
-                  <Statistic title={t('Journaux')} value={journals.length} />
-                </Card>
+                <StatCard label={t('Journaux')} value={journals.length} />
               </Col>
               <Col xs={24} md={8}>
-                <Card>
-                  <Statistic title={t('Balance équilibrée')} value={trialBalance.totals.isBalanced ? 'OUI' : 'NON'} />
-                </Card>
+                <StatCard
+                  label={t('Balance équilibrée')}
+                  value={trialBalance.totals.isBalanced ? t('Oui') : t('Non')}
+                  tone={trialBalance.totals.isBalanced ? 'positive' : 'danger'}
+                />
               </Col>
             </Row>
 
@@ -383,17 +372,20 @@ export const SyndicAccounting: React.FC = () => {
                       {
                         title: t('Débit'),
                         dataIndex: 'totalDebit',
-                        render: (value: number) => value.toLocaleString(activeLocale())
+                        align: 'end',
+                        render: (value: number) => <MoneyValue value={value} />
                       },
                       {
                         title: t('Crédit'),
                         dataIndex: 'totalCredit',
-                        render: (value: number) => value.toLocaleString(activeLocale())
+                        align: 'end',
+                        render: (value: number) => <MoneyValue value={value} />
                       },
                       {
                         title: 'Solde',
                         dataIndex: 'balance',
-                        render: (value: number) => value.toLocaleString(activeLocale())
+                        align: 'end',
+                        render: (value: number) => <MoneyValue value={value} />
                       }
                     ]}
                   />
@@ -413,12 +405,14 @@ export const SyndicAccounting: React.FC = () => {
                       {
                         title: t('Débit'),
                         dataIndex: 'debit',
-                        render: (value: number | string) => Number(value).toLocaleString(activeLocale())
+                        align: 'end',
+                        render: (value: number | string) => <MoneyValue value={value} />
                       },
                       {
                         title: t('Crédit'),
                         dataIndex: 'credit',
-                        render: (value: number | string) => Number(value).toLocaleString(activeLocale())
+                        align: 'end',
+                        render: (value: number | string) => <MoneyValue value={value} />
                       }
                     ]}
                   />

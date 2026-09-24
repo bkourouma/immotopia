@@ -4,6 +4,8 @@ import type { PersonaId } from '../../navigation/model';
 import {
   catalogForPersona,
   defaultMenuMap,
+  isMenuKeyDisabled,
+  legacyMenuKeysFor,
   menuKeyFor,
   menuKeysForPersona,
   personaForRoleKey,
@@ -112,6 +114,116 @@ describe('états par défaut — déduits des permissions du rôle', () => {
     // pas réapparaître dans l'écran sous forme d'entrée fantôme.
     const map = resolveMenuMap('locataire', null, { 'locataire.menu-disparu': false });
     expect(map['locataire.menu-disparu']).toBeUndefined();
+  });
+});
+
+describe('finance réorganisée — reprise des réglages enregistrés sur les anciennes clés', () => {
+  const persona: PersonaId = 'collaborateur';
+  const ancienne = (leaf?: string) => menuKeyFor(persona, 'finance', leaf);
+  const financeGroups = NAVIGATION.collaborateur.tree.filter(g => g.section === 'finance');
+  const groupKey = (label: string) => financeGroups.find(g => g.label === label)?.key ?? '';
+  const caisseTresorerie = menuKeyFor(persona, groupKey('Caisse et comptabilité'), 'finance-tresorerie');
+  const reversements = menuKeyFor(persona, groupKey('Clients et propriétaires'), 'finance-owner-accounts');
+
+  /** Les vingt-trois feuilles de l'ancien groupe « Finance ». */
+  const ANCIENNES_FEUILLES = [
+    'finance-comptabilite',
+    'finance-caisse',
+    'finance-tresorerie',
+    'finance-clients',
+    'finance-clients-agee',
+    'finance-agent-commissions',
+    'finance-owner-accounts',
+    'finance-facturation',
+    'finance-tableau-de-bord-chantiers',
+    'finance-bons-de-commande',
+    'finance-baux-terrain',
+    'finance-associations',
+    'finance-salaires',
+    'finance-tacherons',
+    'finance-retenues',
+    'finance-stock',
+    'finance-stock-inventaire',
+    'finance-stock-parametrage',
+    'finance-fournisseurs',
+    'finance-fournisseurs-balance',
+    'finance-chantiers',
+    'finance-validation',
+    'finance-importation'
+  ];
+
+  it('fait reprendre chaque ancienne feuille par exactement une entrée actuelle', () => {
+    const live = new Set(menuKeysForPersona(persona));
+    const reprises = [...live].flatMap(key => legacyMenuKeysFor(key));
+
+    for (const feuille of ANCIENNES_FEUILLES) {
+      const cle = ancienne(feuille);
+      expect({ cle, reprises: reprises.filter(k => k === cle).length }).toEqual({ cle, reprises: 1 });
+    }
+    // Chacun des cinq groupes reprend l'ancien groupe.
+    for (const group of financeGroups) {
+      expect(legacyMenuKeysFor(menuKeyFor(persona, group.key))).toEqual([ancienne()]);
+    }
+    // Une ancienne clé n'est plus une clé vivante : sinon deux entrées se
+    // disputeraient la même décision.
+    for (const cle of reprises) expect(live.has(cle)).toBe(false);
+  });
+
+  it('garde visible une entrée dont un seul des anciens écrans l’était', () => {
+    const map = resolveMenuMap(persona, null, {
+      [ancienne()]: true,
+      [ancienne('finance-caisse')]: false,
+      [ancienne('finance-tresorerie')]: true
+    });
+    expect(map[caisseTresorerie]).toBe(true);
+  });
+
+  it('ferme une entrée dont tous les anciens écrans étaient coupés', () => {
+    const map = resolveMenuMap(persona, null, {
+      [ancienne()]: true,
+      [ancienne('finance-caisse')]: false,
+      [ancienne('finance-tresorerie')]: false
+    });
+    expect(map[caisseTresorerie]).toBe(false);
+  });
+
+  it('ferme les cinq groupes quand l’ancien groupe « Finance » était coupé', () => {
+    const map = resolveMenuMap(persona, null, { [ancienne()]: false });
+    for (const group of financeGroups) expect(map[menuKeyFor(persona, group.key)]).toBe(false);
+  });
+
+  it('fait gagner une décision prise sur la clé actuelle', () => {
+    const map = resolveMenuMap(persona, null, {
+      [ancienne('finance-caisse')]: true,
+      [caisseTresorerie]: false
+    });
+    expect(map[caisseTresorerie]).toBe(false);
+  });
+
+  it('n’enlève par défaut aucun écran qu’un rôle voyait', () => {
+    // Sans FINANCE_ACCOUNTS_READ, « Associations » restait visible : l'entrée
+    // qui l'ouvre désormais doit l'être aussi. Idem pour « Trésorerie » sans
+    // FINANCE_DOCUMENTS_CREATE (exigé par la seule Caisse).
+    const map = defaultMenuMap(persona, new Set(['RENTAL_LEASES_VIEW']));
+    expect(map[reversements]).toBe(true);
+    expect(map[caisseTresorerie]).toBe(true);
+    // Comptabilité, seule dans son entrée, garde son exigence.
+    expect(map[menuKeyFor(persona, groupKey('Caisse et comptabilité'), 'finance-comptabilite')]).toBe(false);
+  });
+
+  it('masque dans la coquille ce que les anciennes clés coupaient', () => {
+    const tout = [ancienne(), ...ANCIENNES_FEUILLES.map(ancienne)];
+    const sansFinance = renderHook(() => useFilteredNavigation(NAVIGATION.collaborateur, new Set(tout))).result.current;
+    expect(sansFinance?.tree.some(g => g.section === 'finance')).toBe(false);
+
+    // Couper la seule Caisse laisse « Caisse et trésorerie » : la Trésorerie
+    // restait visible.
+    const sansCaisse = renderHook(() =>
+      useFilteredNavigation(NAVIGATION.collaborateur, new Set([ancienne('finance-caisse')]))
+    ).result.current;
+    expect(isMenuKeyDisabled(caisseTresorerie, new Set([ancienne('finance-caisse')]))).toBe(false);
+    const tresorerie = sansCaisse?.tree.find(g => g.key === groupKey('Caisse et comptabilité'));
+    expect(tresorerie?.children?.some(c => c.key === 'finance-tresorerie')).toBe(true);
   });
 });
 

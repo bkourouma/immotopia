@@ -77,6 +77,126 @@ describe('modèle de navigation — intégrité', () => {
     expect(more.map(g => g.label)).toContain('Syndic');
   });
 
+  it('ramène le syndic à quatre entrées qui couvrent chacune leurs onglets', () => {
+    const syndic = NAVIGATION.collaborateur.tree.find(g => g.key === 'syndic');
+    expect(syndic?.children?.map(c => c.label)).toEqual([
+      'Copropriétés',
+      'Copropriété',
+      'Finances',
+      'Assemblées et documents'
+    ]);
+
+    // Chaque écran de la copropriété allume exactement une entrée.
+    const screens = [
+      'lots',
+      'prestataires',
+      'profils-incidents',
+      'budgets',
+      'charges',
+      'recouvrement',
+      'finances',
+      'comptabilite',
+      'assemblees',
+      'documents'
+    ];
+    for (const screen of screens) {
+      const path = `/tenant/:tenantId/syndics/:syndicId/${screen}`;
+      const owners = (syndic?.children ?? []).filter(c => c.href === path || c.activeFor?.includes(path));
+      expect({ screen, owners: owners.length }).toEqual({ screen, owners: 1 });
+    }
+  });
+
+  it('découpe la finance en cinq groupes courts dont chaque écran allume exactement une entrée', () => {
+    const finance = NAVIGATION.collaborateur.tree.filter(g => g.section === 'finance');
+    expect(finance.map(g => g.label)).toEqual([
+      'Caisse et comptabilité',
+      'Clients et propriétaires',
+      'Achats et fournisseurs',
+      'Chantiers et stock',
+      "Main-d'œuvre"
+    ]);
+    expect(finance.map(g => g.children?.map(c => c.label))).toEqual([
+      ['Caisse et trésorerie', 'Saisie et validation', 'Comptabilité'],
+      ['Facturation et balances', 'Reversements et commissions'],
+      ['Fournisseurs et commandes', 'Retenues de garantie'],
+      ['Suivi des chantiers', 'Gestion du stock'],
+      ['Salaires', 'Tâcherons']
+    ]);
+
+    // Chaque écran de liste de la finance — les vingt-trois de l'ancien
+    // accordéon, plus les factures fournisseurs — allume exactement une
+    // entrée, dans quelque groupe que ce soit.
+    const leaves = NAVIGATION.collaborateur.tree.flatMap(g => g.children ?? []);
+    const screens = [
+      'caisse',
+      'pieces-de-caisse',
+      'tresorerie',
+      'validation',
+      'importation',
+      'comptabilite',
+      'facturation',
+      'balance-clients',
+      'balance-agee',
+      'owner-accounts',
+      'associations',
+      'commissions',
+      'fournisseurs',
+      'factures-fournisseurs',
+      'bons-de-commande',
+      'fournisseurs/balance',
+      'retenues',
+      'chantiers',
+      'tableau-de-bord-chantiers',
+      'baux-terrain',
+      'stock',
+      'stock/inventaire',
+      'stock/parametrage',
+      'salaires',
+      'tacherons'
+    ];
+    for (const screen of screens) {
+      const path = `/tenant/:tenantId/finance/${screen}`;
+      const owners = leaves.filter(c => c.href === path || c.activeFor?.includes(path));
+      expect({ screen, owners: owners.length }).toEqual({ screen, owners: 1 });
+    }
+  });
+
+  it('rattache les fiches de détail de la finance à l’entrée de leur liste', () => {
+    // Même règle que la sidebar : la destination la plus longue qui préfixe
+    // le chemin courant gagne.
+    const flat = NAVIGATION.collaborateur.tree.flatMap(g =>
+      (g.children ?? []).flatMap(c => [c.href, ...(c.activeFor ?? [])].map(href => ({ key: c.key, href })))
+    );
+    const activeKey = (pathname: string) => {
+      let best: { key: string; length: number } | null = null;
+      for (const entry of flat) {
+        const path = resolveHref(entry.href, { tenantId: TENANT })?.split('?')[0];
+        if (!path) continue;
+        const matches = pathname === path || pathname.startsWith(`${path}/`);
+        if (matches && (!best || path.length > best.length)) best = { key: entry.key, length: path.length };
+      }
+      return best?.key;
+    };
+    const base = `/tenant/${TENANT}/finance`;
+
+    expect(activeKey(`${base}/chantiers/42`)).toBe('finance-chantiers');
+    expect(activeKey(`${base}/chantiers/42/budget`)).toBe('finance-chantiers');
+    expect(activeKey(`${base}/chantiers/42/stock`)).toBe('finance-chantiers');
+    expect(activeKey(`${base}/chantiers/42/cloture`)).toBe('finance-chantiers');
+    expect(activeKey(`${base}/baux-terrain/7`)).toBe('finance-chantiers');
+    expect(activeKey(`${base}/stock/inventaire`)).toBe('finance-stock');
+    expect(activeKey(`${base}/bons-de-commande/nouveau`)).toBe('finance-fournisseurs');
+    expect(activeKey(`${base}/fournisseurs/balance`)).toBe('finance-fournisseurs');
+    // La pièce de caisse s'ouvre sous sa propre adresse (`pieces-de-caisse`),
+    // mais reste un document de caisse : elle allume l'entrée de l'onglet
+    // Caisse, pas celle des chantiers d'où elle est parfois ouverte.
+    expect(activeKey(`${base}/pieces-de-caisse`)).toBe('finance-tresorerie');
+    expect(activeKey(`${base}/owner-accounts/9`)).toBe('finance-owner-accounts');
+    expect(activeKey(`${base}/associations/3`)).toBe('finance-owner-accounts');
+    expect(activeKey(`${base}/salaires/5`)).toBe('finance-salaires');
+    expect(activeKey(`${base}/tacherons/5`)).toBe('finance-tacherons');
+  });
+
   it('coiffe chaque entrée d’un domaine, sauf l’accueil', () => {
     // L'accueil n'a pas de domaine : un intertitre au-dessus d'une entrée
     // unique qui s'appelle déjà « Tableau de bord » ne dirait rien de plus.
@@ -233,6 +353,27 @@ describe('fil d’Ariane', () => {
     const labels = buildCrumbs(`/tenant/${TENANT}/rental/installments`).map(c => c.label);
     expect(labels).toContain('Encaisser');
     expect(labels).not.toContain('Échéances');
+  });
+
+  it('nomme les écrans de la finance comme leurs onglets, accents compris', () => {
+    expect(buildCrumbs(`/tenant/${TENANT}/finance/balance-agee`).map(c => c.label)).toEqual([
+      'Finance',
+      'Balance âgée'
+    ]);
+    expect(buildCrumbs(`/tenant/${TENANT}/finance/pieces-de-caisse`).map(c => c.label)).toEqual([
+      'Finance',
+      'Pièce de caisse'
+    ]);
+    expect(buildCrumbs(`/tenant/${TENANT}/finance/chantiers/42/cloture`).map(c => c.label)).toEqual([
+      'Finance',
+      'Chantiers',
+      'Lots et clôture'
+    ]);
+    expect(buildCrumbs(`/tenant/${TENANT}/finance/stock/parametrage`).map(c => c.label)).toEqual([
+      'Finance',
+      'Stock',
+      'Articles et lieux'
+    ]);
   });
 
   it('ne rend rien pour un seul niveau', () => {

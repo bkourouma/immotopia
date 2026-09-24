@@ -60,13 +60,45 @@ const PAIRS = [
   ['--text-primary', '--surface-sunken', 'text'],
   ['--text-secondary', '--surface-sunken', 'text'],
 
-  // Navigation : sidebar, rail et drawer, sur --surface-nav
-  ['--text-primary', '--surface-nav', 'text'],
-  ['--text-secondary', '--surface-nav', 'text'],
-  ['--text-tertiary', '--surface-nav', 'text'],
-  // Filet qui separe la navigation de la page : decoratif, ni texte ni
-  // delimitation de controle — verifie pour memoire, pas bloquant.
+  // Navigation : sidebar, rail et drawer, sur --surface-nav.
+  // Depuis que ce fond porte le navy du logo, les roles de texte ordinaires n'y
+  // ont plus cours : --text-primary y tombe a 1,3:1. Ce sont --text-on-nav et
+  // --text-on-nav-muted qui sont mesures, comme --text-on-inverse l'est sur
+  // --surface-inverse.
+  ['--text-on-nav', '--surface-nav', 'text'],
+  ['--text-on-nav-muted', '--surface-nav', 'text'],
+  // Le filet de la destination courante, seul pixel orange de la navigation.
+  // Non-texte : c'est une marque de position, jamais un libelle.
+  ['--color-accent', '--surface-nav', 'non-text'],
+  // Filets DANS la navigation et ascenseur du menu : decoratifs, ni texte ni
+  // delimitation de controle — verifies pour memoire, pas bloquants.
   ['--border-nav', '--surface-nav', 'info'],
+  ['--border-nav-strong', '--surface-nav', 'info'],
+  // Fonds de la destination courante et du survol : ils ne portent pas l'etat a
+  // eux seuls (filet orange + graisse), d'ou `info`. Mesures pour qu'une
+  // derive les rende au moins perceptibles.
+  ['--nav-item-active-bg', '--surface-nav', 'info'],
+
+  // ACCENT — l'orange de la marque. Aucun couple `text` sur --color-accent
+  // lui-meme : le systeme lui interdit de porter du texte, et c'est
+  // --color-accent-strong qui prend le relais des qu'un pixel orange doit se
+  // lire. Le dernier couple verifie le seul texte pose SUR un aplat orange.
+  // Sur --surface-page, #fc5e00 mesure 2,98:1 : il manque DEUX CENTIEMES au
+  // seuil non-texte. Ce n'est pas un choix de palette qu'on pourrait corriger,
+  // c'est la couleur du logo — la deplacer pour gagner 0,02 donnerait deux
+  // oranges de marque, celui du PNG et celui des tokens.
+  //
+  // Le couple reste donc mesure, non bloquant, et cela ne prive personne d'une
+  // information : le systeme interdit a l'accent d'etre seul porteur de sens
+  // (voir --color-accent dans tokens.css). Partout ou un pixel orange delimite
+  // vraiment quelque chose, il est pose sur une carte ou sur la navigation —
+  // les deux couples ci-dessous, eux, sont bloquants et passent.
+  ['--color-accent', '--surface-page', 'info'],
+  ['--color-accent', '--surface-card', 'non-text'],
+  ['--color-accent-strong', '--surface-page', 'text'],
+  ['--color-accent-strong', '--surface-card', 'text'],
+  ['--color-accent-strong', '--color-accent-bg', 'text'],
+  ['--color-accent-text-on', '--color-accent', 'text'],
 
   // Fond sombre : pastilles d'evenement du calendrier
   ['--text-on-inverse', '--surface-inverse', 'text'],

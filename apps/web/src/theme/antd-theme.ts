@@ -138,6 +138,60 @@ export function buildAntdTheme(): ThemeConfig {
         bodyBg: token('--surface-page'),
         siderBg: token('--surface-nav'),
         headerBg: token('--surface-card')
+      }),
+      /**
+       * `<Tabs>` — l'onglet courant est une POSITION, pas une action : seul
+       * l'indicateur (inkBar) passe à l'accent. Le texte de l'onglet
+       * sélectionné reste en `--text-primary` (navy/texte fort), pour ne pas
+       * dupliquer en orange ce que l'inkBar dit déjà — et pour ne pas se lire
+       * comme un lien cliquable, qui resterait bleu. Le survol est teinté en
+       * `--color-accent-strong` : un aperçu de la destination, pas une
+       * action en soi.
+       */
+      Tabs: defined({
+        inkBarColor: token('--color-accent'),
+        itemColor: token('--text-secondary'),
+        itemActiveColor: token('--text-primary'),
+        itemSelectedColor: token('--text-primary'),
+        itemHoverColor: token('--color-accent-strong')
+      }),
+      /**
+       * `<Pagination>` — la page courante marque où l'on est dans la liste.
+       * `colorPrimary`/`colorPrimaryHover` sont ici des tokens de PORTÉE
+       * `Pagination` uniquement (mécanisme `ComponentsToken` d'AntD, cf.
+       * `OverrideToken`) : ils ne touchent pas le `colorPrimary` global, qui
+       * reste le bleu de marque pour les boutons et les liens.
+       */
+      Pagination: defined({
+        colorPrimary: token('--color-accent-strong'),
+        colorPrimaryHover: token('--color-accent-strong'),
+        itemActiveColor: token('--color-accent-strong'),
+        itemActiveColorHover: token('--color-accent-strong')
+      }),
+      /**
+       * `<Segmented>` — la valeur choisie est la vue actuellement affichée :
+       * fond `--color-accent-bg` et texte `--color-accent-strong`, la même
+       * paire pastille déjà validée dans `tokens.css` (4,55:1) pour les
+       * badges de statut, réutilisée ici pour une position plutôt qu'un
+       * statut.
+       */
+      Segmented: defined({
+        itemSelectedBg: token('--color-accent-bg'),
+        itemSelectedColor: token('--color-accent-strong')
+      }),
+      /**
+       * `<Menu>` — GLOBAL, donc hors sidebar/drawer : ceux-ci imposent déjà
+       * leurs propres couleurs par sélecteur CSS scopé dans `index.css`
+       * (`.ant-layout-sider .ant-menu-item-selected`, etc.), qui l'emporte
+       * sur ce token de composant. Cette entrée cible les menus « position »
+       * restants, par ex. la langue active dans `LanguageSwitcher`
+       * (`Dropdown` s'appuie sur `Menu` en interne). Le survol n'est PAS
+       * touché : il reste la couleur d'action par défaut, un menu déroulant
+       * ordinaire (actions) ne doit pas se teinter en orange au survol.
+       */
+      Menu: defined({
+        itemSelectedBg: token('--color-accent-bg'),
+        itemSelectedColor: token('--color-accent-strong')
       })
     }
   };

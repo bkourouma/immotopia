@@ -1,5 +1,4 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   App,
   Alert,
@@ -15,12 +14,12 @@ import {
   Select,
   Space,
   Spin,
-  Statistic,
   Typography
 } from 'antd';
-import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { ChargeCallTable } from '../../components/syndics/ChargeCallTable';
+import { MoneyValue, StatCard } from '../../components/primitives';
 import { createChargeCall, getSyndicate, listChargeCalls, listSyndicateLots } from '../../services/syndic-service';
 import {
   ChargeCall,
@@ -77,7 +76,6 @@ export const SyndicCharges: React.FC = () => {
   const { message } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
-  const navigate = useNavigate();
 
   const [syndicate, setSyndicate] = useState<Syndicate | null>(null);
   const [lots, setLots] = useState<SyndicateLot[]>([]);
@@ -205,12 +203,6 @@ export const SyndicCharges: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
-            >
-              {t('Retour à la fiche syndic')}
-            </Button>
             <Title level={2} style={{ margin: 0 }}>
               {t('Charges de')} {syndicate?.name || t('la copropriété')}
             </Title>
@@ -234,19 +226,17 @@ export const SyndicCharges: React.FC = () => {
           <>
             <Row gutter={[16, 16]}>
               <Col xs={24} md={8}>
-                <Card>
-                  <Statistic title={t('Montant appele')} value={summary.total} suffix="XOF" precision={0} />
-                </Card>
+                <StatCard label={t('Montant appelé')} value={<MoneyValue value={summary.total} />} />
               </Col>
               <Col xs={24} md={8}>
-                <Card>
-                  <Statistic title={t('Dossiers en attente')} value={summary.pending} />
-                </Card>
+                <StatCard label={t('Dossiers en attente')} value={summary.pending} />
               </Col>
               <Col xs={24} md={8}>
-                <Card>
-                  <Statistic title={t('Dossiers en retard')} value={summary.overdue} />
-                </Card>
+                <StatCard
+                  label={t('Dossiers en retard')}
+                  value={summary.overdue}
+                  tone={summary.overdue > 0 ? 'danger' : 'neutral'}
+                />
               </Col>
             </Row>
 

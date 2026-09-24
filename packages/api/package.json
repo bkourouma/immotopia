@@ -42,6 +42,7 @@
     "db:seed:geographic": "ts-node prisma/seeds/geographic-seed.ts",
     "db:seed:property-templates": "ts-node prisma/seeds/property-templates-seed.ts",
     "db:seed:super-admin": "ts-node -T prisma/seeds/create-super-admin.ts",
+    "db:seed:syndic-demo": "ts-node -T prisma/seeds/syndic-demo-seed.ts",
     "lint": "eslint src --ext .ts",
     "lint:fix": "eslint src --ext .ts --fix",
     "format": "prettier --write \"src/**/*.ts\""

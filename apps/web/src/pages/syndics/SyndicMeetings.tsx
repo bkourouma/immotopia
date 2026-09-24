@@ -17,7 +17,7 @@ import {
   Tag,
   Typography
 } from 'antd';
-import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { meetingStatusLabels, meetingTypeLabels } from '../../components/syndics/labels';
 import { createMeeting, listMeetings } from '../../services/syndic-service';
@@ -110,12 +110,6 @@ export const SyndicMeetings: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
-            >
-              {t('Retour à la fiche syndic')}
-            </Button>
             <Title level={2} style={{ margin: 0 }}>
               {t('Assemblées générales')}
             </Title>

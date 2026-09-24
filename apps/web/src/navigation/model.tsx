@@ -1,7 +1,10 @@
 import React from 'react';
 import {
+  AccountBookOutlined,
   ApartmentOutlined,
   BankOutlined,
+  BuildOutlined,
+  ContactsOutlined,
   DashboardOutlined,
   DollarOutlined,
   EllipsisOutlined,
@@ -13,11 +16,15 @@ import {
   RiseOutlined,
   SafetyOutlined,
   ShopOutlined,
+  ShoppingCartOutlined,
+  SolutionOutlined,
   TeamOutlined,
   ToolOutlined,
   WalletOutlined
 } from '@ant-design/icons';
 import { t } from '../i18n/t';
+import { financeWorkspaceActiveFor, financeWorkspaceHref } from './finance-workspaces';
+import type { FinanceWorkspaceFamily } from './finance-workspaces';
 
 /**
  * Modèle de navigation — source unique (REFONTE_UI_UX.md §4.2, §4.3).
@@ -131,6 +138,13 @@ export interface NavLeaf {
   key: string;
   label: string;
   href: string;
+  /**
+   * Autres destinations qui allument cette entrée. Une entrée qui ouvre un
+   * espace à onglets (Syndic › Finances, Finance › Suivi des chantiers) doit
+   * rester active sur chaque onglet, pas seulement sur celui où son lien
+   * atterrit.
+   */
+  activeFor?: string[];
 }
 
 export interface NavGroup {
@@ -142,6 +156,15 @@ export interface NavGroup {
   section?: SectionId;
   href?: string;
   children?: NavLeaf[];
+}
+
+/**
+ * Entrée de menu qui ouvre un espace à onglets de la finance : elle atterrit
+ * sur le premier onglet et reste allumée sur tous les autres. Tirée de
+ * `finance-workspaces.tsx`, la même source que les onglets eux-mêmes.
+ */
+function financeLeaf(key: string, label: string, family: FinanceWorkspaceFamily): NavLeaf {
+  return { key, label, href: financeWorkspaceHref(family), activeFor: financeWorkspaceActiveFor(family) };
 }
 
 export interface BottomTab {
@@ -250,93 +273,74 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
       },
 
       // --- zone « Plus » : ce qui est rare ---------------------------------
+      //
+      // Finance : cinq groupes au lieu d'un accordéon de vingt-trois entrées.
+      // Une entrée à onglets (`financeLeaf`) ouvre un espace de
+      // `FinanceWorkspaceLayout` et reste allumée sur chacun de ses onglets ;
+      // les autres sont des écrans seuls. Les segments de clé réutilisent la
+      // feuille principale de chaque espace ; les anciennes clés de menu
+      // enregistrées sont reprises par `LEGACY_MENU_KEYS` (menu-catalog.ts).
       {
-        key: 'finance',
-        label: t('Finance'),
-        icon: <BankOutlined />,
+        key: 'finance-caisse-compta',
+        label: t('Caisse et comptabilité'),
+        icon: <AccountBookOutlined />,
         zone: 'more',
         section: 'finance',
-        href: '/tenant/:tenantId/finance/balance-clients',
+        href: financeWorkspaceHref('caisse-tresorerie'),
         children: [
-          {
-            key: 'finance-comptabilite',
-            label: t('Comptabilité'),
-            href: '/tenant/:tenantId/finance/comptabilite'
-          },
-          { key: 'finance-caisse', label: t('Caisse'), href: '/tenant/:tenantId/finance/caisse' },
-          { key: 'finance-tresorerie', label: t('Trésorerie'), href: '/tenant/:tenantId/finance/tresorerie' },
-          { key: 'finance-clients', label: t('Balance clients'), href: '/tenant/:tenantId/finance/balance-clients' },
-          { key: 'finance-clients-agee', label: t('Balance âgée'), href: '/tenant/:tenantId/finance/balance-agee' },
-          {
-            key: 'finance-agent-commissions',
-            label: t('Commissions des agents'),
-            href: '/tenant/:tenantId/finance/commissions'
-          },
-          {
-            key: 'finance-owner-accounts',
-            label: t('Comptes propriétaires'),
-            href: '/tenant/:tenantId/finance/owner-accounts'
-          },
-          {
-            key: 'finance-facturation',
-            label: t('Facturation du mois'),
-            href: '/tenant/:tenantId/finance/facturation'
-          },
-          {
-            key: 'finance-tableau-de-bord-chantiers',
-            label: t('Tableau de bord chantiers'),
-            href: '/tenant/:tenantId/finance/tableau-de-bord-chantiers'
-          },
-          {
-            key: 'finance-bons-de-commande',
-            label: t('Bons de commande'),
-            href: '/tenant/:tenantId/finance/bons-de-commande'
-          },
-          {
-            key: 'finance-baux-terrain',
-            label: t('Baux de terrain'),
-            href: '/tenant/:tenantId/finance/baux-terrain'
-          },
-          {
-            key: 'finance-associations',
-            label: t('Associations'),
-            href: '/tenant/:tenantId/finance/associations'
-          },
-          {
-            key: 'finance-salaires',
-            label: t('Salaires'),
-            href: '/tenant/:tenantId/finance/salaires'
-          },
-          {
-            key: 'finance-tacherons',
-            label: t('Tâcherons'),
-            href: '/tenant/:tenantId/finance/tacherons'
-          },
-          {
-            key: 'finance-retenues',
-            label: t('Retenues de garantie'),
-            href: '/tenant/:tenantId/finance/retenues'
-          },
-          { key: 'finance-stock', label: t('Stock'), href: '/tenant/:tenantId/finance/stock' },
-          {
-            key: 'finance-stock-inventaire',
-            label: t('Inventaire'),
-            href: '/tenant/:tenantId/finance/stock/inventaire'
-          },
-          {
-            key: 'finance-stock-parametrage',
-            label: t('Articles et lieux'),
-            href: '/tenant/:tenantId/finance/stock/parametrage'
-          },
-          { key: 'finance-fournisseurs', label: t('Fournisseurs'), href: '/tenant/:tenantId/finance/fournisseurs' },
-          {
-            key: 'finance-fournisseurs-balance',
-            label: t('Balance fournisseurs'),
-            href: '/tenant/:tenantId/finance/fournisseurs/balance'
-          },
-          { key: 'finance-chantiers', label: t('Chantiers'), href: '/tenant/:tenantId/finance/chantiers' },
-          { key: 'finance-validation', label: t('Pièces à valider'), href: '/tenant/:tenantId/finance/validation' },
-          { key: 'finance-importation', label: t('Importation'), href: '/tenant/:tenantId/finance/importation' }
+          financeLeaf('finance-tresorerie', t('Caisse et trésorerie'), 'caisse-tresorerie'),
+          financeLeaf('finance-validation', t('Saisie et validation'), 'saisie-validation'),
+          { key: 'finance-comptabilite', label: t('Comptabilité'), href: '/tenant/:tenantId/finance/comptabilite' }
+        ]
+      },
+      {
+        key: 'finance-clients-proprietaires',
+        label: t('Clients et propriétaires'),
+        icon: <ContactsOutlined />,
+        zone: 'more',
+        section: 'finance',
+        href: financeWorkspaceHref('facturation-balances'),
+        children: [
+          financeLeaf('finance-clients', t('Facturation et balances'), 'facturation-balances'),
+          financeLeaf('finance-owner-accounts', t('Reversements et commissions'), 'reversements-commissions')
+        ]
+      },
+      {
+        key: 'finance-achats',
+        label: t('Achats et fournisseurs'),
+        icon: <ShoppingCartOutlined />,
+        zone: 'more',
+        section: 'finance',
+        href: financeWorkspaceHref('fournisseurs-commandes'),
+        children: [
+          financeLeaf('finance-fournisseurs', t('Fournisseurs et commandes'), 'fournisseurs-commandes'),
+          // Hors de l'espace fournisseurs : une retenue naît aussi bien d'une
+          // facture fournisseur que d'une situation de tâcheron.
+          { key: 'finance-retenues', label: t('Retenues de garantie'), href: '/tenant/:tenantId/finance/retenues' }
+        ]
+      },
+      {
+        key: 'finance-chantiers-stock',
+        label: t('Chantiers et stock'),
+        icon: <BuildOutlined />,
+        zone: 'more',
+        section: 'finance',
+        href: financeWorkspaceHref('suivi-chantiers'),
+        children: [
+          financeLeaf('finance-chantiers', t('Suivi des chantiers'), 'suivi-chantiers'),
+          financeLeaf('finance-stock', t('Gestion du stock'), 'gestion-stock')
+        ]
+      },
+      {
+        key: 'finance-main-oeuvre',
+        label: t("Main-d'œuvre"),
+        icon: <SolutionOutlined />,
+        zone: 'more',
+        section: 'finance',
+        href: '/tenant/:tenantId/finance/salaires',
+        children: [
+          { key: 'finance-salaires', label: t('Salaires'), href: '/tenant/:tenantId/finance/salaires' },
+          { key: 'finance-tacherons', label: t('Tâcherons'), href: '/tenant/:tenantId/finance/tacherons' }
         ]
       },
       {
@@ -461,45 +465,37 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         section: 'copropriete',
         href: '/tenant/:tenantId/syndics',
         children: [
+          // Quatre entrées dans l'ordre du travail d'un syndic : choisir la
+          // copropriété, la décrire, gérer son argent, la faire voter. Le
+          // détail vit dans les onglets de SyndicWorkspaceLayout ; les clés
+          // réutilisent les anciennes pour garder les réglages de menu des rôles.
           { key: 'syndics-list', label: t('Copropriétés'), href: '/tenant/:tenantId/syndics' },
           {
             key: 'syndics-detail',
-            label: t('Fiche de la copropriété'),
-            href: '/tenant/:tenantId/syndics/:syndicId'
+            label: t('Copropriété'),
+            href: '/tenant/:tenantId/syndics/:syndicId',
+            activeFor: [
+              '/tenant/:tenantId/syndics/:syndicId/lots',
+              '/tenant/:tenantId/syndics/:syndicId/prestataires',
+              '/tenant/:tenantId/syndics/:syndicId/profils-incidents'
+            ]
           },
-          { key: 'syndics-lots', label: t('Lots'), href: '/tenant/:tenantId/syndics/:syndicId/lots' },
-          { key: 'syndics-charges', label: t('Charges'), href: '/tenant/:tenantId/syndics/:syndicId/charges' },
+          {
+            key: 'syndics-finances',
+            label: t('Finances'),
+            href: '/tenant/:tenantId/syndics/:syndicId/budgets',
+            activeFor: [
+              '/tenant/:tenantId/syndics/:syndicId/charges',
+              '/tenant/:tenantId/syndics/:syndicId/recouvrement',
+              '/tenant/:tenantId/syndics/:syndicId/finances',
+              '/tenant/:tenantId/syndics/:syndicId/comptabilite'
+            ]
+          },
           {
             key: 'syndics-assemblees',
-            label: t('Assemblées générales'),
-            href: '/tenant/:tenantId/syndics/:syndicId/assemblees'
-          },
-          {
-            key: 'syndics-prestataires',
-            label: t('Prestataires'),
-            href: '/tenant/:tenantId/syndics/:syndicId/prestataires'
-          },
-          {
-            key: 'syndics-documents',
-            label: t('Documents'),
-            href: '/tenant/:tenantId/syndics/:syndicId/documents'
-          },
-          { key: 'syndics-finances', label: t('Finances'), href: '/tenant/:tenantId/syndics/:syndicId/finances' },
-          {
-            key: 'syndics-recouvrement',
-            label: t('Recouvrement'),
-            href: '/tenant/:tenantId/syndics/:syndicId/recouvrement'
-          },
-          {
-            key: 'syndics-comptabilite',
-            label: t('Comptabilité'),
-            href: '/tenant/:tenantId/syndics/:syndicId/comptabilite'
-          },
-          { key: 'syndics-budgets', label: t('Budgets'), href: '/tenant/:tenantId/syndics/:syndicId/budgets' },
-          {
-            key: 'syndics-profils-incidents',
-            label: t('Profils et incidents'),
-            href: '/tenant/:tenantId/syndics/:syndicId/profils-incidents'
+            label: t('Assemblées et documents'),
+            href: '/tenant/:tenantId/syndics/:syndicId/assemblees',
+            activeFor: ['/tenant/:tenantId/syndics/:syndicId/documents']
           }
         ]
       },

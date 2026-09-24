@@ -429,7 +429,11 @@ export async function listChargeCallsHandler(req: Request, res: Response): Promi
 
     const chargeCalls = await listChargeCallsBySyndicate(tenantId, syndicateId, {
       period: req.query.period as string | undefined,
-      status: req.query.status as 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE' | undefined
+      status: req.query.status as 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE' | undefined,
+      pagination: {
+        page: req.query.page ? Number(req.query.page) : undefined,
+        limit: req.query.limit ? Number(req.query.limit) : undefined
+      }
     });
 
     res.json({
@@ -1358,13 +1362,7 @@ export async function listDocumentsHandler(req: Request, res: Response): Promise
 
     const documents = await listDocumentsBySyndicate(tenantId, syndicateId, {
       type: normalizedType as
-        | 'REGULATION'
-        | 'GENERAL_MEETING_MINUTES'
-        | 'DIAGNOSTIC'
-        | 'INSURANCE'
-        | 'BUDGET'
-        | 'OTHER'
-        | undefined
+        'REGULATION' | 'GENERAL_MEETING_MINUTES' | 'DIAGNOSTIC' | 'INSURANCE' | 'BUDGET' | 'OTHER' | undefined
     });
 
     res.json({
@@ -1712,7 +1710,7 @@ export async function listPaymentSchedulesHandler(req: Request, res: Response): 
     const syndicateId = req.params.syndicId;
 
     if (!tenantId) {
-      throw badRequest("TenantId manquant pour la liste des echeanciers");
+      throw badRequest('TenantId manquant pour la liste des echeanciers');
     }
 
     const schedules = await listPaymentSchedulesBySyndicate(tenantId, syndicateId, {
@@ -1728,7 +1726,7 @@ export async function listPaymentSchedulesHandler(req: Request, res: Response): 
     logger.error('Error listing payment schedules', { error, syndicId: req.params.syndicId });
     res.status(error.status || 500).json({
       success: false,
-      error: error.message || "Echec du listing des echeanciers"
+      error: error.message || 'Echec du listing des echeanciers'
     });
   }
 }

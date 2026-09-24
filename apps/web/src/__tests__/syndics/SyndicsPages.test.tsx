@@ -51,6 +51,10 @@ vi.mock('antd', async () => {
     Text: passthrough('span')
   };
 
+  const SkeletonComp: any = passthrough('div');
+  SkeletonComp.Input = passthrough('span');
+  SkeletonComp.Button = passthrough('span');
+
   const antdMock: Record<string, unknown> = {
     Alert: passthrough(),
     Button: passthrough('button'),
@@ -58,13 +62,20 @@ vi.mock('antd', async () => {
     Col: passthrough(),
     DatePicker: passthrough('input'),
     Descriptions: DescriptionsComp,
-    Empty: passthrough(),
+    Dropdown: passthrough(),
+    // La vraie `<Empty>` rend `description` (pas seulement `children`) : la
+    // recopier ici, sinon l'état vide de `<StateBlock>` (§ primitives) perd
+    // son texte « Aucune donnée » sous ce mock.
+    Empty: ({ description, children, ...props }: any) => React.createElement('div', props, description, children),
     Form: FormComp,
     Input: InputComp,
     InputNumber: passthrough('input'),
     Modal: passthrough(),
+    Pagination: passthrough(),
+    Result: passthrough(),
     Row: passthrough(),
     Select: passthrough('select'),
+    Skeleton: SkeletonComp,
     Space: passthrough(),
     Spin: passthrough(),
     Statistic: ({ title, value }: any) => (
@@ -182,49 +193,157 @@ describe('Syndics pages', () => {
     expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/syndics');
   });
 
-  it('renders syndicate detail with lots', async () => {
-    mockApiClient.get.mockResolvedValueOnce({
-      data: {
-        success: true,
-        data: {
-          id: 'syndic-1',
-          tenantId: 'tenant-1',
-          name: 'Résidence Les Palmiers',
-          address: 'Abidjan Cocody',
-          totalLots: 12,
-          totalBuildings: 2,
-          status: 'ACTIVE',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          lots: [
-            {
-              id: 'lot-1',
-              syndicateId: 'syndic-1',
-              lotNumber: 'A-101',
-              lotType: 'APARTMENT',
-              generalShares: 120,
-              specialShares: null,
-              ownerContactId: null,
-              propertyId: null,
-              ownerSince: null,
+  it('renders syndicate detail with lots, its building and its charge calls', async () => {
+    // `<SyndicDetail>` charge désormais la copropriété ET la liste complète des
+    // appels de charges (`listAllChargeCalls`, même service que la Trésorerie),
+    // en parallèle : deux appels HTTP distincts, routés par URL plutôt que par
+    // ordre pour ne pas dépendre de la façon dont `Promise.all` les déclenche.
+    mockApiClient.get.mockImplementation((url: string) => {
+      if (url === '/tenants/tenant-1/syndics/syndic-1') {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: {
+              id: 'syndic-1',
+              tenantId: 'tenant-1',
+              name: 'Résidence Les Palmiers',
+              address: 'Abidjan Cocody',
+              totalLots: 12,
+              totalBuildings: 1,
+              status: 'ACTIVE',
               createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
+              updatedAt: new Date().toISOString(),
+              // Le bien IMMEUBLE lié au syndic — vérifié par appel direct à
+              // l'API réelle, absent du type `Syndicate` avant ce lot.
+              property: {
+                id: 'prop-1',
+                title: 'Immeuble R+3 Les Palmiers',
+                address: 'Abidjan Cocody, rue des Palmiers',
+                typeSpecificData: { floors_count: 3, units_count: 12, parking_spaces: 6 }
+              },
+              lots: [
+                {
+                  id: 'lot-1',
+                  syndicateId: 'syndic-1',
+                  lotNumber: 'A-101',
+                  lotType: 'APARTMENT',
+                  generalShares: 120,
+                  specialShares: null,
+                  ownerContactId: null,
+                  propertyId: null,
+                  ownerSince: null,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString()
+                }
+              ],
+              chargeCalls: [{ id: 'charge-1' }],
+              funds: []
             }
-          ],
-          chargeCalls: [],
-          funds: []
-        }
+          }
+        } as never);
       }
-    } as never);
+      if (url === '/tenants/tenant-1/syndics/syndic-1/charges') {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: [
+              {
+                id: 'charge-aaaaaaaa1111',
+                syndicateId: 'syndic-1',
+                lotId: 'lot-1',
+                period: '2026-T1',
+                amount: 203450,
+                currency: 'XOF',
+                dueDate: '2026-03-15T00:00:00.000Z',
+                status: 'PAID',
+                createdAt: '2026-01-01T00:00:00.000Z',
+                updatedAt: '2026-01-01T00:00:00.000Z',
+                lot: {
+                  id: 'lot-1',
+                  lotNumber: 'A-101',
+                  property: null,
+                  owner: { id: 'owner-1', firstName: 'Fabrice', lastName: 'Aka' }
+                },
+                payments: [
+                  {
+                    id: 'pay-1',
+                    chargeCallId: 'charge-aaaaaaaa1111',
+                    amount: 203450,
+                    paidAt: '2026-03-10T00:00:00.000Z',
+                    method: 'Wave'
+                  }
+                ]
+              }
+            ]
+          }
+        } as never);
+      }
+      return Promise.reject(new Error(`Unhandled GET ${url}`));
+    });
 
-    renderWithAuthAndRoute('/tenant/tenant-1/syndics/syndic-1', <SyndicDetail />);
+    const { container } = renderWithAuthAndRoute('/tenant/tenant-1/syndics/syndic-1', <SyndicDetail />);
 
     const names = await screen.findAllByText('Résidence Les Palmiers');
     expect(names.length).toBeGreaterThan(0);
-    expect(await screen.findByText(/A-101/)).toBeTruthy();
+    // « A-101 » apparaît deux fois : dans le tableau des lots (LotTable) et
+    // dans la carte du tableau des appels de charges qui cite ce même lot.
+    expect((await screen.findAllByText(/A-101/)).length).toBeGreaterThan(0);
+
+    // Tableau « Détail des bâtiments » : le bien IMMEUBLE du syndic, avec ses
+    // caractéristiques déclarées (typeSpecificData).
+    expect(await screen.findByText('Immeuble R+3 Les Palmiers')).toBeTruthy();
+
+    // Tableau « Détail des appels de charges » : montant en FCFA, jamais XOF —
+    // `<MoneyValue>` est seul responsable de l'affichage de la devise.
+    expect(await screen.findByText(/Fabrice Aka/)).toBeTruthy();
+    expect(container.textContent).not.toMatch(/XOF/);
+    // Le montant appelé ET le payé valent 203 450 (charge soldée) : deux
+    // occurrences du même texte formaté.
+    expect((await screen.findAllByText(/203\s450\sFCFA/)).length).toBeGreaterThan(0);
+
+    // Les boutons de navigation vers les autres écrans Syndic ont disparu : la
+    // barre d'onglets de `<SyndicWorkspaceLayout>` les remplace.
+    expect(screen.queryByText('Retour à la liste')).not.toBeInTheDocument();
+    expect(screen.queryByText('Gérer les lots')).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/syndics/syndic-1');
     });
+  });
+
+  it('shows an empty state for the buildings table when the syndicate has no linked property', async () => {
+    mockApiClient.get.mockImplementation((url: string) => {
+      if (url === '/tenants/tenant-1/syndics/syndic-1') {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: {
+              id: 'syndic-1',
+              tenantId: 'tenant-1',
+              name: 'Résidence Les Rôniers',
+              address: 'Bingerville',
+              totalLots: 8,
+              totalBuildings: 1,
+              status: 'ACTIVE',
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              property: null,
+              lots: [],
+              chargeCalls: [],
+              funds: []
+            }
+          }
+        } as never);
+      }
+      if (url === '/tenants/tenant-1/syndics/syndic-1/charges') {
+        return Promise.resolve({ data: { success: true, data: [] } } as never);
+      }
+      return Promise.reject(new Error(`Unhandled GET ${url}`));
+    });
+
+    renderWithAuthAndRoute('/tenant/tenant-1/syndics/syndic-1', <SyndicDetail />);
+
+    expect(await screen.findAllByText('Résidence Les Rôniers')).toBeTruthy();
+    expect((await screen.findAllByText('Aucune donnée')).length).toBeGreaterThan(0);
   });
 });
