@@ -116,7 +116,7 @@ Identifiant d'agence utilisé dans toutes les adresses :
    403, les permissions Finance ne sont pas semées : relancer
    `prisma/seeds/finance-permissions-seed.ts` puis **redémarrer l'API** (le
    cache des permissions vit cinq minutes en mémoire).
-2. Ouvrir `BASE/finance/caisse` et dérouler « Poste de dépense » : les sept
+2. Ouvrir `BASE/finance/pieces-de-caisse` et dérouler « Poste de dépense » : les sept
    postes par défaut doivent exister : `Gros œuvre`, `Toiture`, `Plomberie`,
    `Électricité`, `Main-d'œuvre`, `Matériaux`, `Divers`. Ils se créent au
    premier affichage ; recharger une fois si la liste est vide.
@@ -566,7 +566,7 @@ ciment et du fer`, lignes `Matériaux` écart `12000000` et `Divers` écart
 
 ---
 
-### A.6 Page : `BASE/finance/caisse?chantierId=SITE` (via « Nouvelle pièce de caisse » du détail)
+### A.6 Page : `BASE/finance/pieces-de-caisse?chantierId=SITE` (via « Nouvelle pièce de caisse » du détail)
 
 #### Cette page permet de faire
 

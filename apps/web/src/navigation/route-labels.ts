@@ -74,6 +74,7 @@ export const ROUTE_LABELS: Record<string, string> = {
   importation: t('Importation'),
   fournisseurs: t('Fournisseurs'),
   'factures-fournisseurs': t('Factures fournisseurs'),
+  'pieces-de-caisse': t('Pièce de caisse'),
   balance: t('Balance fournisseurs'),
   'bons-de-commande': t('Bons de commande'),
   nouveau: t('Nouveau'),

@@ -129,6 +129,7 @@ describe('modèle de navigation — intégrité', () => {
     const leaves = NAVIGATION.collaborateur.tree.flatMap(g => g.children ?? []);
     const screens = [
       'caisse',
+      'pieces-de-caisse',
       'tresorerie',
       'validation',
       'importation',
@@ -186,6 +187,10 @@ describe('modèle de navigation — intégrité', () => {
     expect(activeKey(`${base}/stock/inventaire`)).toBe('finance-stock');
     expect(activeKey(`${base}/bons-de-commande/nouveau`)).toBe('finance-fournisseurs');
     expect(activeKey(`${base}/fournisseurs/balance`)).toBe('finance-fournisseurs');
+    // La pièce de caisse s'ouvre sous sa propre adresse (`pieces-de-caisse`),
+    // mais reste un document de caisse : elle allume l'entrée de l'onglet
+    // Caisse, pas celle des chantiers d'où elle est parfois ouverte.
+    expect(activeKey(`${base}/pieces-de-caisse`)).toBe('finance-tresorerie');
     expect(activeKey(`${base}/owner-accounts/9`)).toBe('finance-owner-accounts');
     expect(activeKey(`${base}/associations/3`)).toBe('finance-owner-accounts');
     expect(activeKey(`${base}/salaires/5`)).toBe('finance-salaires');
@@ -354,6 +359,10 @@ describe('fil d’Ariane', () => {
     expect(buildCrumbs(`/tenant/${TENANT}/finance/balance-agee`).map(c => c.label)).toEqual([
       'Finance',
       'Balance âgée'
+    ]);
+    expect(buildCrumbs(`/tenant/${TENANT}/finance/pieces-de-caisse`).map(c => c.label)).toEqual([
+      'Finance',
+      'Pièce de caisse'
     ]);
     expect(buildCrumbs(`/tenant/${TENANT}/finance/chantiers/42/cloture`).map(c => c.label)).toEqual([
       'Finance',

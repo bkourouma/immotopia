@@ -189,7 +189,7 @@ function mountDetail(url = '/tenant/agence-1/finance/chantiers/chantier-1') {
           <Routes>
             <Route path="/tenant/:tenantId/finance/chantiers/:siteId" element={<ChantierDetail />} />
             <Route path="/tenant/:tenantId/finance/chantiers/:siteId/stock" element={<span>stock du chantier</span>} />
-            <Route path="/tenant/:tenantId/finance/caisse" element={<span>pièce de caisse</span>} />
+            <Route path="/tenant/:tenantId/finance/pieces-de-caisse" element={<span>pièce de caisse</span>} />
           </Routes>
         </MemoryRouter>
       </AntApp>
@@ -197,14 +197,14 @@ function mountDetail(url = '/tenant/agence-1/finance/chantiers/chantier-1') {
   );
 }
 
-function mountCaisse(url = '/tenant/agence-1/finance/caisse') {
+function mountCaisse(url = '/tenant/agence-1/finance/pieces-de-caisse') {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <AntApp>
         <MemoryRouter initialEntries={[url]}>
           <Routes>
-            <Route path="/tenant/:tenantId/finance/caisse" element={<PieceDeCaisse />} />
+            <Route path="/tenant/:tenantId/finance/pieces-de-caisse" element={<PieceDeCaisse />} />
           </Routes>
         </MemoryRouter>
       </AntApp>
@@ -398,6 +398,22 @@ describe('Détail d’un chantier', () => {
 
     expect(screen.getByRole('button', { name: 'Nouvelle pièce de caisse' })).not.toBeDisabled();
   });
+
+  // Régression : la pièce de caisse a longtemps partagé son adresse avec
+  // l'écran Caisse (voir App.tsx) — ce bouton menait donc, selon l'ordre des
+  // routes, à un écran qui n'était jamais la pièce de caisse. Il pointe
+  // maintenant vers `/finance/pieces-de-caisse`, avec le chantier en
+  // paramètre de requête.
+  it('« Nouvelle pièce de caisse » mène à la pièce de caisse, chantier en paramètre de requête', async () => {
+    getSiteDetail.mockResolvedValue(detail());
+    const user = userEvent.setup({ delay: null });
+    mountDetail();
+
+    await screen.findByRole('heading', { name: 'Villa duplex — Angré Centre' }, { timeout: 8000 });
+    await user.click(screen.getByRole('button', { name: 'Nouvelle pièce de caisse' }));
+
+    expect(await screen.findByText('pièce de caisse', {}, { timeout: 8000 })).toBeInTheDocument();
+  });
 });
 
 describe('Pièce de caisse', () => {
@@ -504,7 +520,7 @@ describe('Pièce de caisse', () => {
       chantier(),
       chantier({ id: 'chantier-clos', name: 'Chantier clos — Marcory', status: 'CLOSED', closedAt: '2026-08-01' })
     ]);
-    mountCaisse('/tenant/agence-1/finance/caisse?chantierId=chantier-clos');
+    mountCaisse('/tenant/agence-1/finance/pieces-de-caisse?chantierId=chantier-clos');
 
     expect(
       await screen.findByText(/Ce chantier est clôturé .* Choisissez-en un autre/i, {}, { timeout: 8000 })
@@ -517,7 +533,7 @@ describe('Pièce de caisse', () => {
   });
 
   it('ne dit rien de tel quand le chantier passé en adresse est ouvert', async () => {
-    mountCaisse('/tenant/agence-1/finance/caisse?chantierId=chantier-1');
+    mountCaisse('/tenant/agence-1/finance/pieces-de-caisse?chantierId=chantier-1');
 
     await screen.findAllByRole('combobox', {}, { timeout: 8000 });
     expect(screen.queryByText(/Ce chantier est clôturé/i)).not.toBeInTheDocument();

@@ -73,7 +73,17 @@ export const FINANCE_WORKSPACES: Record<FinanceWorkspaceFamily, FinanceWorkspace
   'caisse-tresorerie': {
     label: () => t('Caisse et trésorerie'),
     tabs: [
-      { key: 'caisse', label: () => t('Caisse'), href: `${FINANCE}/caisse`, icon: <WalletOutlined /> },
+      {
+        key: 'caisse',
+        label: () => t('Caisse'),
+        href: `${FINANCE}/caisse`,
+        icon: <WalletOutlined />,
+        // La pièce de caisse s'ouvre depuis cette adresse ou depuis un
+        // chantier, mais sous une autre adresse (`?chantierId=` en paramètre
+        // de requête, comme les factures fournisseurs) : c'est un document
+        // de la caisse, pas une fiche de chantier.
+        activeFor: [`${FINANCE}/pieces-de-caisse`]
+      },
       { key: 'tresorerie', label: () => t('Trésorerie'), href: `${FINANCE}/tresorerie`, icon: <BankOutlined /> }
     ]
   },
