@@ -14,12 +14,12 @@ import {
   Select,
   Space,
   Spin,
-  Statistic,
   Table,
   Typography
 } from 'antd';
 import { ArrowLeftOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { MoneyValue, StatCard } from '../../components/primitives';
 import {
   createLotOwnerAccountAdjustment,
   downloadLotOwnerAccountStatement,
@@ -30,7 +30,6 @@ import { OwnerAccount, OwnerAccountTransaction } from '../../types/syndic-types'
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
 const { Paragraph, Title } = Typography;
 
 const transactionTypeLabels: Record<OwnerAccountTransaction['type'], string> = {
@@ -166,23 +165,13 @@ export const SyndicOwnerAccount: React.FC = () => {
           <>
             <Row gutter={[16, 16]}>
               <Col xs={24} md={8}>
-                <Card>
-                  <Statistic
-                    title={t('Solde courant')}
-                    value={Number(account?.balance ?? 0)}
-                    suffix={account?.currency || 'XOF'}
-                  />
-                </Card>
+                <StatCard label={t('Solde courant')} value={<MoneyValue value={account?.balance ?? 0} />} />
               </Col>
               <Col xs={24} md={8}>
-                <Card>
-                  <Statistic title={t('Transactions')} value={transactions.length} />
-                </Card>
+                <StatCard label={t('Transactions')} value={transactions.length} />
               </Col>
               <Col xs={24} md={8}>
-                <Card>
-                  <Statistic title={t('Propriétaire')} value={ownerName} />
-                </Card>
+                <StatCard label={t('Propriétaire')} value={ownerName} />
               </Col>
             </Row>
 
@@ -207,19 +196,20 @@ export const SyndicOwnerAccount: React.FC = () => {
                   {
                     title: t('Débit'),
                     dataIndex: 'debit',
-                    render: (value: number | string | null) =>
-                      value ? Number(value).toLocaleString(activeLocale()) : '-'
+                    align: 'end',
+                    render: (value: number | string | null) => (value ? <MoneyValue value={value} /> : '-')
                   },
                   {
                     title: t('Crédit'),
                     dataIndex: 'credit',
-                    render: (value: number | string | null) =>
-                      value ? Number(value).toLocaleString(activeLocale()) : '-'
+                    align: 'end',
+                    render: (value: number | string | null) => (value ? <MoneyValue value={value} /> : '-')
                   },
                   {
                     title: 'Solde',
                     dataIndex: 'balanceAfter',
-                    render: (value: number | string) => Number(value).toLocaleString(activeLocale())
+                    align: 'end',
+                    render: (value: number | string) => <MoneyValue value={value} />
                   }
                 ]}
               />

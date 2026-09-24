@@ -1,5 +1,4 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   App,
   Alert,
@@ -16,8 +15,9 @@ import {
   Tag,
   Typography
 } from 'antd';
-import { ArrowLeftOutlined, CheckOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { CheckOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { formatMoney, MoneyValue } from '../../components/primitives';
 import {
   createBudget,
   createChargeCallBatch,
@@ -32,7 +32,6 @@ import { BudgetAllocation, ChargeCallBatch, SyndicateBudget, SyndicateLot } from
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
 const { Paragraph, Title } = Typography;
 
 const batchTypeLabels: Record<ChargeCallBatch['batchType'], string> = {
@@ -74,7 +73,6 @@ export const SyndicBudgets: React.FC = () => {
   const { message } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
-  const navigate = useNavigate();
 
   const [budgets, setBudgets] = useState<SyndicateBudget[]>([]);
   const [batches, setBatches] = useState<ChargeCallBatch[]>([]);
@@ -217,7 +215,7 @@ export const SyndicBudgets: React.FC = () => {
         batchType: values.batchType,
         currency: values.currency || 'XOF'
       });
-      message.success(t("Batch d'appels généré"));
+      message.success(t("Campagne d'appels générée"));
       setOpenGenerateModal(false);
       setSelectedBudget(null);
       generateForm.resetFields();
@@ -248,12 +246,12 @@ export const SyndicBudgets: React.FC = () => {
         totalAmount: values.totalAmount,
         currency: values.currency || 'XOF'
       });
-      message.success(t('Batch créé'));
+      message.success(t('Campagne créée'));
       setOpenBatchModal(false);
       batchForm.resetFields();
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || t('Création batch impossible'));
+      message.error(err.response?.data?.error || t('Création de campagne impossible'));
     } finally {
       setSubmitting(false);
     }
@@ -264,14 +262,8 @@ export const SyndicBudgets: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
-            >
-              {t('Retour à la fiche syndic')}
-            </Button>
             <Title level={2} style={{ margin: 0 }}>
-              {t("Budgets et batches d'appels")}
+              {t("Budgets et campagnes d'appels")}
             </Title>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
               {t('Budget prévisionnel, répartitions et génération des appels de charges.')}
@@ -282,7 +274,7 @@ export const SyndicBudgets: React.FC = () => {
               {t('Nouveau budget')}
             </Button>
             <Button icon={<PlusOutlined />} onClick={() => setOpenBatchModal(true)}>
-              {t('Nouveau batch')}
+              {t('Nouvelle campagne')}
             </Button>
             <Button icon={<ReloadOutlined />} onClick={() => void loadData()}>
               {t('Actualiser')}
@@ -310,7 +302,8 @@ export const SyndicBudgets: React.FC = () => {
                   {
                     title: 'Montant',
                     dataIndex: 'totalAmount',
-                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} XOF`
+                    align: 'end',
+                    render: (value: number | string) => <MoneyValue value={value} />
                   },
                   { title: 'Allocations', render: (_, budget) => budget.allocations?.length || 0 },
                   {
@@ -350,7 +343,7 @@ export const SyndicBudgets: React.FC = () => {
                             setSelectedBudget(budget);
                             setOpenGenerateModal(true);
                             generateForm.setFieldsValue({
-                              label: t('Batch {{fiscalYear}}', { fiscalYear: budget.fiscalYear }),
+                              label: t('Campagne {{fiscalYear}}', { fiscalYear: budget.fiscalYear }),
                               period: `${budget.fiscalYear}-01`,
                               batchType: 'REGULAR',
                               currency: budget.currency || 'XOF'
@@ -389,20 +382,21 @@ export const SyndicBudgets: React.FC = () => {
                   {
                     title: t('Total alloué'),
                     dataIndex: 'totalAllocated',
-                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} XOF`
+                    align: 'end',
+                    render: (value: number | string) => <MoneyValue value={value} />
                   },
                   {
                     title: t('Détail lignes'),
                     render: (_, row) =>
                       (row.breakdown || [])
-                        .map(line => `${line.category}: ${Number(line.allocated).toLocaleString(activeLocale())} XOF`)
+                        .map(line => `${line.category}: ${formatMoney(line.allocated)}`)
                         .join(' | ') || '-'
                   }
                 ]}
               />
             </Card>
 
-            <Card title={t("Batches d'appels")}>
+            <Card title={t("Campagnes d'appels")}>
               <Table
                 scroll={{ x: 'max-content' }}
                 rowKey="id"
@@ -424,7 +418,8 @@ export const SyndicBudgets: React.FC = () => {
                   {
                     title: 'Montant',
                     dataIndex: 'totalAmount',
-                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} XOF`
+                    align: 'end',
+                    render: (value: number | string) => <MoneyValue value={value} />
                   },
                   { title: 'Charges', render: (_, batch) => batch.chargeCalls?.length || 0 },
                   {
@@ -511,7 +506,7 @@ export const SyndicBudgets: React.FC = () => {
         confirmLoading={submitting}
       >
         <Form form={generateForm} layout="vertical">
-          <Form.Item label={t('Libellé batch')} name="label" rules={[{ required: true }]}>
+          <Form.Item label={t('Libellé de la campagne')} name="label" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Form.Item label={t('Période')} name="period" rules={[{ required: true }]}>
@@ -520,7 +515,7 @@ export const SyndicBudgets: React.FC = () => {
           <Form.Item label={t('Date échéance')} name="dueDate" rules={[{ required: true }]}>
             <Input type="date" />
           </Form.Item>
-          <Form.Item label={t('Type batch')} name="batchType" rules={[{ required: true }]}>
+          <Form.Item label={t('Type de campagne')} name="batchType" rules={[{ required: true }]}>
             <Select
               showSearch
               optionFilterProp="label"
@@ -537,7 +532,7 @@ export const SyndicBudgets: React.FC = () => {
       </Modal>
 
       <Modal
-        title={t("Nouveau batch d'appels")}
+        title={t("Nouvelle campagne d'appels")}
         open={openBatchModal}
         onCancel={() => setOpenBatchModal(false)}
         onOk={() => void handleCreateBatch()}
@@ -558,7 +553,7 @@ export const SyndicBudgets: React.FC = () => {
           <Form.Item label={t('Montant total')} name="totalAmount" rules={[{ required: true }]}>
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item label={t('Type batch')} name="batchType" rules={[{ required: true }]}>
+          <Form.Item label={t('Type de campagne')} name="batchType" rules={[{ required: true }]}>
             <Select
               showSearch
               optionFilterProp="label"
