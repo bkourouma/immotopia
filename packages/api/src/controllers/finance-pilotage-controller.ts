@@ -182,5 +182,8 @@ export const getSitesDashboardHandler = asyncHandler(async (req: Request, res: R
 
   const result = await getSitesDashboard(tenantId, { status: query.status, onlyOverBudget: query.onlyOverBudget });
 
-  res.status(200).json({ success: true, data: result.rows.map(toDashboardRowResponse), currency: result.currency });
+  res.status(200).json({
+    success: true,
+    data: { rows: result.rows.map(toDashboardRowResponse), currency: result.currency }
+  });
 });
