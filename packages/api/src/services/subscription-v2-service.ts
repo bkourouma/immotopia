@@ -311,7 +311,9 @@ export async function getEntitlements(
           canceledAt: sub.canceledAt,
           graceDays: sub.graceDays,
           billingCycle: sub.billingCycle,
-          quotaPolicy: sub.quotaPolicy
+          quotaPolicy: sub.quotaPolicy,
+          manualReadOnlyAt: sub.manualReadOnlyAt,
+          manualReadOnlyReason: sub.manualReadOnlyReason
         }
       : null,
     items: state.items,
@@ -1081,6 +1083,65 @@ export async function updateSubscriptionSettings(tenantId: string, input: Subscr
       comboDiscountPercent: toNumber(updated.comboDiscountPercent),
       trialEndsAt: updated.trialEndsAt?.toISOString() ?? null
     }
+  });
+  return updated;
+}
+
+// =============================================================== lecture seule manuelle
+
+/**
+ * Lecture seule manuelle (Baba, 25/09) : action super-admin, motif
+ * obligatoire, independante de la lecture seule d'impaye — jamais posee ni
+ * levee par un paiement ou la tache planifiee (`resolveSubscriptionPhase`,
+ * `manualReadOnlyAt`). Portails, paiements et factures restent accessibles
+ * (route-features existantes, non concernees par `assertSubscriptionWritable`).
+ */
+export async function setSubscriptionManualReadOnly(tenantId: string, reason: string, actorUserId: string) {
+  const subscription = await requireSubscription(prisma, tenantId);
+  const trimmed = reason.trim();
+  if (trimmed.length < 3) {
+    throw new BadRequestError('Le motif de la lecture seule manuelle doit compter au moins 3 caractères.');
+  }
+  // Capture avant l'ecriture : le faux client Prisma des tests mute la meme
+  // ligne en place, contrairement au vrai client qui renvoie un objet neuf.
+  const previousManualReadOnlyAt = subscription.manualReadOnlyAt?.toISOString() ?? null;
+  const updated = await prisma.subscription.update({
+    where: { tenantId },
+    data: { manualReadOnlyAt: new Date(), manualReadOnlyReason: trimmed }
+  });
+  invalidateEntitlements(tenantId);
+  logAuditEvent({
+    actorUserId,
+    tenantId,
+    actionKey: AuditActionKey.SUBSCRIPTION_MANUAL_READ_ONLY_SET,
+    entityType: 'Subscription',
+    entityId: updated.id,
+    payload: { reason: trimmed, previousManualReadOnlyAt }
+  });
+  return updated;
+}
+
+/** Leve la lecture seule manuelle : seul le super-admin peut le faire. */
+export async function clearSubscriptionManualReadOnly(tenantId: string, actorUserId: string) {
+  const subscription = await requireSubscription(prisma, tenantId);
+  if (!subscription.manualReadOnlyAt) {
+    throw new BadRequestError("L'abonnement n'est pas en lecture seule manuelle.");
+  }
+  // Capture avant l'ecriture : le faux client Prisma des tests mute la meme
+  // ligne en place, contrairement au vrai client qui renvoie un objet neuf.
+  const previousReason = subscription.manualReadOnlyReason;
+  const updated = await prisma.subscription.update({
+    where: { tenantId },
+    data: { manualReadOnlyAt: null, manualReadOnlyReason: null }
+  });
+  invalidateEntitlements(tenantId);
+  logAuditEvent({
+    actorUserId,
+    tenantId,
+    actionKey: AuditActionKey.SUBSCRIPTION_MANUAL_READ_ONLY_CLEARED,
+    entityType: 'Subscription',
+    entityId: updated.id,
+    payload: { previousReason }
   });
   return updated;
 }

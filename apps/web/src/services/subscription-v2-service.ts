@@ -151,6 +151,9 @@ export interface TenantEntitlements {
   phase: SubscriptionPhase;
   readOnly: boolean;
   readOnlyReason: string | null;
+  /** Lecture seule manuelle (super-admin), independante de la lecture seule d'impaye. */
+  manualReadOnlyAt: string | null;
+  manualReadOnlyReason: string | null;
   trialEndsAt: string | null;
   graceEndsAt: string | null;
   billingCycle: 'MONTHLY' | 'ANNUAL' | null;
@@ -184,6 +187,9 @@ export interface SubscriptionRow {
   quotaPolicy: QuotaPolicyCode;
   comboDiscountPercent: number;
   nextBillingAt: string | null;
+  /** Lecture seule manuelle (super-admin), independante de la lecture seule d'impaye. */
+  manualReadOnlyAt: string | null;
+  manualReadOnlyReason: string | null;
 }
 
 /** `getSubscriptionOverview`. */
@@ -326,6 +332,25 @@ export interface UpdateSettingsInput {
 
 export async function updateSubscriptionSettings(tenantId: string, input: UpdateSettingsInput): Promise<SubscriptionRow> {
   const response = await apiClient.patch<Envelope<SubscriptionRow>>(`/admin/tenants/${tenantId}/subscription/settings`, input);
+  return response.data.data;
+}
+
+// ------------------------------------------------------------------ lecture seule manuelle
+
+/**
+ * Lecture seule manuelle (Baba, 25/09) : action super-admin, motif
+ * obligatoire, independante de la lecture seule d'impaye. Jamais levee par un
+ * paiement ni par la tâche planifiée — seulement par cette action.
+ */
+export async function setSubscriptionManualReadOnly(tenantId: string, reason: string): Promise<SubscriptionRow> {
+  const response = await apiClient.post<Envelope<SubscriptionRow>>(`/admin/tenants/${tenantId}/subscription/manual-read-only`, {
+    reason
+  });
+  return response.data.data;
+}
+
+export async function clearSubscriptionManualReadOnly(tenantId: string): Promise<SubscriptionRow> {
+  const response = await apiClient.delete<Envelope<SubscriptionRow>>(`/admin/tenants/${tenantId}/subscription/manual-read-only`);
   return response.data.data;
 }
 

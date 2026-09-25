@@ -372,7 +372,9 @@ export async function listSubscriptionSummaries(tenantIds: readonly string[]): P
             canceledAt: sub.canceledAt,
             graceDays: sub.graceDays,
             billingCycle: sub.billingCycle,
-            quotaPolicy: sub.quotaPolicy
+            quotaPolicy: sub.quotaPolicy,
+            manualReadOnlyAt: sub.manualReadOnlyAt,
+            manualReadOnlyReason: sub.manualReadOnlyReason
           }
         : null,
       items: items

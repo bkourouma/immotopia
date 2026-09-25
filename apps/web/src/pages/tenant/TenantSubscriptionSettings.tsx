@@ -157,13 +157,22 @@ export const TenantSubscriptionSettings: React.FC = () => {
         <Text type="secondary">{t('Les modifications de la formule passent par l’équipe ImmoTopia.')}</Text>
       </div>
 
-      {entitlements.readOnly && (
+      {entitlements.manualReadOnlyReason ? (
         <Alert
-          type="warning"
+          type="error"
           showIcon
           message={t('Compte en lecture seule')}
-          description={t('Réglez la facture en attente ci-dessous pour retrouver l’accès complet.')}
+          description={t('Décidée par ImmoTopia. Motif : {{value}}', { value: entitlements.manualReadOnlyReason })}
         />
+      ) : (
+        entitlements.readOnly && (
+          <Alert
+            type="warning"
+            showIcon
+            message={t('Compte en lecture seule')}
+            description={t('Réglez la facture en attente ci-dessous pour retrouver l’accès complet.')}
+          />
+        )
       )}
 
       <Card title={t('Formule')}>

@@ -34,6 +34,7 @@ import {
   type PlatformInvoice,
   type PlatformInvoicePayment
 } from '../../../services/platform-billing-service';
+import { setSubscriptionManualReadOnly } from '../../../services/subscription-v2-service';
 import { formatMoney, StatusTag, useConfirmAction } from '../../primitives';
 import {
   INVOICE_NATURE_LABEL,
@@ -110,6 +111,10 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
   const [crediting, setCrediting] = useState<PlatformInvoice | null>(null);
   const [creditSaving, setCreditSaving] = useState(false);
   const [creditForm] = Form.useForm<CreditValues>();
+
+  const [lockingInvoice, setLockingInvoice] = useState<PlatformInvoice | null>(null);
+  const [lockSaving, setLockSaving] = useState(false);
+  const [lockForm] = Form.useForm<{ reason: string }>();
 
   const [detail, setDetail] = useState<{
     invoice: PlatformInvoice;
@@ -229,6 +234,20 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
     }
   };
 
+  const handleManualReadOnly = async (values: { reason: string }) => {
+    if (!lockingInvoice) return;
+    setLockSaving(true);
+    try {
+      await setSubscriptionManualReadOnly(tenantId, values.reason);
+      message.success(t('Agence passée en lecture seule'));
+      setLockingInvoice(null);
+    } catch (err: any) {
+      message.error(errorMessage(err, t('Erreur lors du passage en lecture seule')));
+    } finally {
+      setLockSaving(false);
+    }
+  };
+
   const handlePdf = async (invoice: PlatformInvoice) => {
     try {
       await downloadAdminInvoicePdf(tenantId, invoice);
@@ -296,6 +315,18 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
               }}
             >
               {t('Avoir')}
+            </Button>
+          )}
+          {r.status === 'OVERDUE' && r.nature === 'OVERAGE' && (
+            <Button
+              size="small"
+              danger
+              onClick={() => {
+                setLockingInvoice(r);
+                lockForm.setFieldsValue({ reason: '' });
+              }}
+            >
+              {t('Mettre en lecture seule')}
             </Button>
           )}
         </Space>
@@ -410,6 +441,32 @@ export const InvoicesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           </Form.Item>
           <Form.Item name="reissuePending" valuePropName="checked">
             <Checkbox>{t('Remettre les lignes en attente pour une facture corrigée')}</Checkbox>
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={
+          lockingInvoice
+            ? t('Mettre l’agence en lecture seule (facture {{value}})', { value: lockingInvoice.invoiceNumber ?? '' })
+            : ''
+        }
+        open={Boolean(lockingInvoice)}
+        onCancel={() => setLockingInvoice(null)}
+        onOk={() => lockForm.submit()}
+        confirmLoading={lockSaving}
+        okText={t('Passer en lecture seule')}
+        okButtonProps={{ danger: true }}
+        cancelText={t('Annuler')}
+      >
+        <Text type="secondary">
+          {t(
+            "Ce dépassement impayé reste « en retard » sans effet automatique sur l'abonnement. Cette action bloque manuellement les écritures de l'agence, jusqu'à ce que vous la leviez vous-même depuis l'onglet Abonnement."
+          )}
+        </Text>
+        <Form form={lockForm} layout="vertical" onFinish={handleManualReadOnly} style={{ marginBlockStart: 'var(--space-3)' }}>
+          <Form.Item label={t('Motif')} name="reason" rules={[{ required: true, message: t('Le motif est requis') }]}>
+            <Input.TextArea rows={3} maxLength={500} />
           </Form.Item>
         </Form>
       </Modal>

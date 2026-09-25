@@ -22,6 +22,8 @@ const updateSubscriptionSettings = vi.fn();
 const updateSubscriptionItem = vi.fn();
 const listExtensionRequests = vi.fn();
 const handleExtensionRequest = vi.fn();
+const setSubscriptionManualReadOnly = vi.fn();
+const clearSubscriptionManualReadOnly = vi.fn();
 
 vi.mock('../../services/subscription-v2-service', () => ({
   getSubscriptionOverview: (...a: unknown[]) => getSubscriptionOverview(...a),
@@ -31,7 +33,9 @@ vi.mock('../../services/subscription-v2-service', () => ({
   removeSubscriptionItem: (...a: unknown[]) => removeSubscriptionItem(...a),
   grantCapacityOverride: (...a: unknown[]) => grantCapacityOverride(...a),
   revokeCapacityOverride: (...a: unknown[]) => revokeCapacityOverride(...a),
-  updateSubscriptionSettings: (...a: unknown[]) => updateSubscriptionSettings(...a)
+  updateSubscriptionSettings: (...a: unknown[]) => updateSubscriptionSettings(...a),
+  setSubscriptionManualReadOnly: (...a: unknown[]) => setSubscriptionManualReadOnly(...a),
+  clearSubscriptionManualReadOnly: (...a: unknown[]) => clearSubscriptionManualReadOnly(...a)
 }));
 
 vi.mock('../../services/subscription-extras-service', () => ({
@@ -57,7 +61,9 @@ const OVERVIEW = {
     graceDays: 7,
     quotaPolicy: 'BILL_OVERAGE' as const,
     comboDiscountPercent: 10,
-    nextBillingAt: '2026-02-01T00:00:00.000Z'
+    nextBillingAt: '2026-02-01T00:00:00.000Z',
+    manualReadOnlyAt: null,
+    manualReadOnlyReason: null
   },
   items: [
     {
@@ -87,6 +93,8 @@ const OVERVIEW = {
     phase: 'ACTIVE' as const,
     readOnly: false,
     readOnlyReason: null,
+    manualReadOnlyAt: null,
+    manualReadOnlyReason: null,
     trialEndsAt: null,
     graceEndsAt: null,
     billingCycle: 'MONTHLY' as const,
@@ -252,6 +260,61 @@ describe('SubscriptionTab — vague 3 : modification d’un élément et demande
     expect(await screen.findByText('Il nous faut 50 lots de plus')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Marquer traitée' }));
     await waitFor(() => expect(handleExtensionRequest).toHaveBeenCalledWith('tenant-1', 'req-1', { status: 'HANDLED' }));
+  });
+});
+
+describe('SubscriptionTab — lecture seule manuelle (Baba, 25/09)', () => {
+  it('passe l’agence en lecture seule avec un motif obligatoire', async () => {
+    setSubscriptionManualReadOnly.mockResolvedValue({ manualReadOnlyAt: '2026-01-20T00:00:00.000Z' });
+    const user = userEvent.setup();
+    mount();
+
+    await screen.findByText('Abonnement');
+    await user.click(screen.getByRole('button', { name: 'Passer en lecture seule' }));
+    const dialogue = await screen.findByRole('dialog');
+    await user.type(within(dialogue).getByPlaceholderText('Motif (obligatoire)'), 'Abus signalé');
+    await user.click(within(dialogue).getByRole('button', { name: 'Passer en lecture seule' }));
+
+    await waitFor(() => expect(setSubscriptionManualReadOnly).toHaveBeenCalledWith('tenant-1', 'Abus signalé'));
+  });
+
+  it('refuse de valider sans motif', async () => {
+    const user = userEvent.setup();
+    mount();
+
+    await screen.findByText('Abonnement');
+    await user.click(screen.getByRole('button', { name: 'Passer en lecture seule' }));
+    const dialogue = await screen.findByRole('dialog');
+    await user.click(within(dialogue).getByRole('button', { name: 'Passer en lecture seule' }));
+
+    expect(setSubscriptionManualReadOnly).not.toHaveBeenCalled();
+  });
+
+  it('affiche le badge et le motif quand la lecture seule manuelle est active, et permet de la lever', async () => {
+    getSubscriptionOverview.mockResolvedValue({
+      ...OVERVIEW,
+      entitlements: {
+        ...OVERVIEW.entitlements,
+        phase: 'READ_ONLY',
+        readOnly: true,
+        readOnlyReason: 'MANUAL',
+        manualReadOnlyAt: '2026-01-20T00:00:00.000Z',
+        manualReadOnlyReason: 'Abus signalé'
+      }
+    });
+    clearSubscriptionManualReadOnly.mockResolvedValue({ manualReadOnlyAt: null });
+    const user = userEvent.setup();
+    mount();
+
+    expect(await screen.findByText('Lecture seule (manuelle)')).toBeInTheDocument();
+    expect(screen.getByText('Motif : Abus signalé')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Passer en lecture seule' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Lever la lecture seule' }));
+    const dialogue = await screen.findByRole('dialog');
+    fireEvent.click(within(dialogue).getByRole('button', { name: 'Lever la lecture seule' }));
+
+    await waitFor(() => expect(clearSubscriptionManualReadOnly).toHaveBeenCalledWith('tenant-1'));
   });
 });
 

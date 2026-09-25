@@ -229,7 +229,8 @@ export type ReadOnlyReason =
   | 'PAST_DUE'
   | 'PERIOD_EXPIRED'
   | 'CANCELED'
-  | 'SUSPENDED';
+  | 'SUSPENDED'
+  | 'MANUAL';
 
 export interface PhaseInput {
   status: SubscriptionStatusCode;
@@ -239,6 +240,13 @@ export interface PhaseInput {
   cancelAt: Date | null;
   canceledAt: Date | null;
   graceDays: number;
+  /**
+   * Lecture seule manuelle (Baba, 25/09) : posee par le super-admin, motif
+   * obligatoire, JAMAIS levee par un paiement ni par la tache planifiee —
+   * seulement par le super-admin (`manualReadOnlyAt = null`). Prend le pas
+   * sur toute autre phase tant qu'elle est posee.
+   */
+  manualReadOnlyAt: Date | null;
 }
 
 export interface PhaseResult {
@@ -271,6 +279,11 @@ function afterGrace(from: Date, graceDays: number, now: Date, reason: ReadOnlyRe
 export function resolveSubscriptionPhase(sub: PhaseInput | null, now: Date): PhaseResult {
   if (!sub) {
     return { phase: 'NONE', readOnly: true, reason: 'NO_SUBSCRIPTION', trialEndsAt: null, graceEndsAt: null };
+  }
+  if (sub.manualReadOnlyAt && sub.manualReadOnlyAt.getTime() <= now.getTime()) {
+    // Lecture seule manuelle : prend le pas sur le statut/la periode, jamais
+    // de grace, jamais levee automatiquement (Baba, 25/09).
+    return { phase: 'READ_ONLY', readOnly: true, reason: 'MANUAL', trialEndsAt: sub.trialEndsAt, graceEndsAt: null };
   }
   const t = now.getTime();
 
@@ -371,6 +384,9 @@ export interface TenantEntitlements {
   phase: SubscriptionPhase;
   readOnly: boolean;
   readOnlyReason: ReadOnlyReason | null;
+  /** Lecture seule manuelle en vigueur (super-admin) : date de pose et motif saisi. */
+  manualReadOnlyAt: Date | null;
+  manualReadOnlyReason: string | null;
   trialEndsAt: Date | null;
   graceEndsAt: Date | null;
   billingCycle: 'MONTHLY' | 'ANNUAL' | null;
@@ -397,6 +413,7 @@ export interface BuildEntitlementsInput {
         billingCycle: 'MONTHLY' | 'ANNUAL';
         currentPeriodStart: Date;
         quotaPolicy: QuotaPolicyCode;
+        manualReadOnlyReason: string | null;
       })
     | null;
   items: readonly EntitlementItem[];
@@ -436,6 +453,8 @@ export function buildEntitlements(input: BuildEntitlementsInput): TenantEntitlem
     phase: phase.phase,
     readOnly: phase.readOnly,
     readOnlyReason: phase.reason,
+    manualReadOnlyAt: sub?.manualReadOnlyAt ?? null,
+    manualReadOnlyReason: phase.reason === 'MANUAL' ? sub?.manualReadOnlyReason ?? null : null,
     trialEndsAt: phase.trialEndsAt,
     graceEndsAt: phase.graceEndsAt,
     billingCycle: sub?.billingCycle ?? null,

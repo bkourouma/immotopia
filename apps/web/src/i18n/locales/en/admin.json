@@ -555,5 +555,20 @@
   "Message": "Message",
   "Marquer traitée": "Mark as handled",
   "Refuser": "Decline",
-  "Demandeur": "Requester"
+  "Demandeur": "Requester",
+  "Passer « {{value}} » en lecture seule ?": "Set « {{value}} » to read-only?",
+  "Bloque les écritures de l'agence jusqu'à ce que vous leviez cette mesure vous-même. Ni un paiement ni la tâche planifiée ne la lèvent. Portails, paiements et factures restent accessibles.": "Blocks the agency's writes until you lift this measure yourself. Neither a payment nor the scheduled task lifts it. Portals, payments and invoices remain accessible.",
+  "Motif (obligatoire)": "Reason (required)",
+  "Passer en lecture seule": "Set to read-only",
+  "Le motif est obligatoire.": "The reason is required.",
+  "Agence passée en lecture seule": "Agency set to read-only",
+  "Erreur lors du passage en lecture seule": "Error while setting read-only mode",
+  "Lever la lecture seule manuelle ?": "Lift manual read-only mode?",
+  "Lever la lecture seule": "Lift read-only mode",
+  "Erreur lors de la levée de la lecture seule": "Error while lifting read-only mode",
+  "Motif : {{value}}": "Reason: {{value}}",
+  "Lecture seule (manuelle)": "Read-only (manual)",
+  "Mettre en lecture seule": "Set to read-only",
+  "Mettre l’agence en lecture seule (facture {{value}})": "Set the agency to read-only (invoice {{value}})",
+  "Ce dépassement impayé reste « en retard » sans effet automatique sur l'abonnement. Cette action bloque manuellement les écritures de l'agence, jusqu'à ce que vous la leviez vous-même depuis l'onglet Abonnement.": "This unpaid overage stays « overdue » with no automatic effect on the subscription. This action manually blocks the agency's writes, until you lift it yourself from the Subscription tab."
 }

@@ -168,5 +168,6 @@
   "Remboursée": "مستردة",
   "Brouillon": "مسودة",
   "Période": "الفترة",
-  "Dépassement": "تجاوز"
+  "Dépassement": "تجاوز",
+  "Décidée par ImmoTopia. Motif : {{value}}": "قرار من ImmoTopia. السبب: {{value}}"
 }

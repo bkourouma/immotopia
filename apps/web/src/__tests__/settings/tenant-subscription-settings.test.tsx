@@ -47,6 +47,8 @@ const ENTITLEMENTS = {
   phase: 'TRIAL',
   readOnly: false,
   readOnlyReason: null,
+  manualReadOnlyAt: null,
+  manualReadOnlyReason: null,
   trialEndsAt: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
   graceEndsAt: null,
   billingCycle: 'MONTHLY',
@@ -165,6 +167,21 @@ describe('<TenantSubscriptionSettings> — formule', () => {
     mount();
 
     expect(await screen.findByText("Cette agence n'a pas encore d'abonnement.")).toBeInTheDocument();
+  });
+
+  it('affiche le motif quand la lecture seule manuelle est active (Baba, 25/09)', async () => {
+    getOwnEntitlements.mockResolvedValue({
+      ...ENTITLEMENTS,
+      phase: 'READ_ONLY',
+      readOnly: true,
+      readOnlyReason: 'MANUAL',
+      manualReadOnlyAt: '2026-01-20T00:00:00.000Z',
+      manualReadOnlyReason: 'Abus signalé'
+    });
+    mount();
+
+    expect(await screen.findByText('Compte en lecture seule')).toBeInTheDocument();
+    expect(screen.getByText('Décidée par ImmoTopia. Motif : Abus signalé')).toBeInTheDocument();
   });
 });
 

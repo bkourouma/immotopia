@@ -234,9 +234,18 @@ describe('<CreateTenantDrawer> — champs obligatoires', () => {
 });
 
 describe('<CreateTenantDrawer> — exclusivité de l’Intégré', () => {
-  it("désélectionne les autres packs quand l'Intégré est choisi, et inversement", async () => {
-    const user = userEvent.setup();
-    renderDrawer();
+  // Quatre clics, chacun suivi d'un waitFor(5000) : le budget de 40 s (global,
+  // `vite.config.ts`) est déjà consommé par le rendu seul dans cet
+  // environnement partagé (les autres tests du fichier, exécutés SEULS,
+  // prennent 20 à 38 s chacun pour un seul aller-retour). Un timeout ici n'est
+  // pas un bug de l'exclusivité (vérifiée pas à pas ci-dessous) : c'est cette
+  // suite qui a besoin de plus de marge, comme `installments.test.tsx` le
+  // documente pour les écrans qui montent une coquille lourde.
+  it(
+    "désélectionne les autres packs quand l'Intégré est choisi, et inversement",
+    async () => {
+      const user = userEvent.setup();
+      renderDrawer();
 
     // Clic par rôle, pas par texte : une fois un pack choisi, le récapitulatif
     // chiffré affiche une ligne portant le MÊME libellé que la carte (« Agence »,
@@ -280,7 +289,9 @@ describe('<CreateTenantDrawer> — exclusivité de l’Intégré', () => {
       },
       { timeout: 5000 }
     );
-  });
+    },
+    90000
+  );
 });
 
 describe('<CreateTenantDrawer> — récapitulatif chiffré en direct', () => {

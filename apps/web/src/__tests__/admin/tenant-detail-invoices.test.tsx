@@ -33,6 +33,12 @@ vi.mock('../../services/platform-billing-service', () => ({
   downloadPaymentProof: (...a: unknown[]) => downloadPaymentProof(...a)
 }));
 
+const setSubscriptionManualReadOnly = vi.fn();
+
+vi.mock('../../services/subscription-v2-service', () => ({
+  setSubscriptionManualReadOnly: (...a: unknown[]) => setSubscriptionManualReadOnly(...a)
+}));
+
 const BASE = {
   tenantId: 'tenant-1',
   nature: 'PERIOD' as const,
@@ -58,6 +64,13 @@ const BASE = {
 
 const ISSUED = { ...BASE, id: 'inv-1', invoiceNumber: 'IMT-2026-00001', status: 'ISSUED' as const };
 const DRAFT = { ...BASE, id: 'inv-2', invoiceNumber: null, status: 'DRAFT' as const };
+const OVERDUE_OVERAGE = {
+  ...BASE,
+  id: 'inv-3',
+  invoiceNumber: 'IMT-2026-00003',
+  nature: 'OVERAGE' as const,
+  status: 'OVERDUE' as const
+};
 
 function mount() {
   return render(
@@ -173,5 +186,28 @@ describe('InvoicesTab — factures d’abonnement', () => {
     expect(await screen.findByText('IMP-abc')).toBeInTheDocument();
     expect(screen.getByText('Montant reçu différent')).toBeInTheDocument();
     expect(screen.getByText('Aucun règlement enregistré.')).toBeInTheDocument();
+  });
+
+  it('propose la lecture seule manuelle sur une facture de dépassement en retard, et l’envoie avec un motif', async () => {
+    listAdminPlatformInvoices.mockResolvedValue({
+      invoices: [ISSUED, OVERDUE_OVERAGE],
+      pagination: { page: 1, limit: 20, total: 2, totalPages: 1 }
+    });
+    setSubscriptionManualReadOnly.mockResolvedValue({ manualReadOnlyAt: '2026-02-10T00:00:00.000Z' });
+    const user = userEvent.setup();
+    mount();
+
+    await screen.findByText('IMT-2026-00003');
+    // La facture ISSUED (nature PERIOD) ne propose pas ce raccourci.
+    expect(screen.getAllByRole('button', { name: 'Mettre en lecture seule' })).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: 'Mettre en lecture seule' }));
+    const dialogue = await screen.findByRole('dialog');
+    await user.type(within(dialogue).getByRole('textbox'), 'Dépassement impayé, abus répété');
+    await user.click(within(dialogue).getByRole('button', { name: 'Passer en lecture seule' }));
+
+    await waitFor(() =>
+      expect(setSubscriptionManualReadOnly).toHaveBeenCalledWith('tenant-1', 'Dépassement impayé, abus répété')
+    );
   });
 });

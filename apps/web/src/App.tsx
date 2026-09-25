@@ -1,6 +1,6 @@
 import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom';
-import { App as AntApp, ConfigProvider, Spin } from 'antd';
+import { App as AntApp, ConfigProvider } from 'antd';
 import { buildAntdTheme } from './theme/antd-theme';
 import './i18n';
 import { LanguageProvider } from './i18n/LanguageProvider';
@@ -603,15 +603,26 @@ const OwnerDocuments = lazy(() => import(/* webpackChunkName: "owner-portal" */ 
 const OwnerReports = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Reports'));
 const OwnerPreferences = lazy(() => import(/* webpackChunkName: "owner-portal" */ './pages/OwnerPortal/Preferences'));
 
-/** Shown while a route's chunk is being fetched. */
+/**
+ * Affiche pendant le telechargement d'un chunk de route.
+ *
+ * Volontairement sans `<Spin>` d'AntD : ce repli est sur le chemin critique de
+ * TOUTES les routes (App.tsx l'utilise au-dessus du `<Suspense>` racine), alors
+ * que `Spin` n'est utile qu'apres — le temps que le chunk de la route arrive.
+ * Importer `Spin` ici mettait son style et son moteur d'animation (~13 Ko brut)
+ * dans le chunk d'entree pour un anneau que la plupart des sessions ne voient
+ * jamais (chunk deja en cache). Meme raisonnement que le repli sans AntD de
+ * `ProtectedRoute` (components/ProtectedRoute.tsx).
+ */
 const RouteFallback: React.FC = () => (
   <div
     role="status"
     aria-live="polite"
     aria-label={t('Chargement de la page')}
+    aria-busy="true"
     style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}
   >
-    <Spin size="large" />
+    <div className="it-route-fallback-spinner" />
   </div>
 );
 

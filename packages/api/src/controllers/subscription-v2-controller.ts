@@ -6,6 +6,7 @@ import {
   addSubscriptionItem,
   changePack,
   clearModuleOverride,
+  clearSubscriptionManualReadOnly,
   getEntitlements,
   getSubscriptionOverview,
   grantCapacityOverride,
@@ -14,6 +15,7 @@ import {
   previewNextInvoice,
   removeSubscriptionItem,
   revokeCapacityOverride,
+  setSubscriptionManualReadOnly,
   updateCatalogItem,
   updateSubscriptionSettings
 } from '../services/subscription-v2-service';
@@ -179,6 +181,26 @@ const settingsSchema = z
 export const updateSettingsHandler = asyncHandler(async (req: Request, res: Response) => {
   const input = parse(settingsSchema, req.body);
   const data = await updateSubscriptionSettings(req.params.tenantId, input, actor(req));
+  res.json({ success: true, data });
+});
+
+const manualReadOnlySchema = z.object({
+  reason: z.string().trim().min(3).max(500)
+});
+
+/**
+ * POST /api/admin/tenants/:tenantId/subscription/manual-read-only — lecture
+ * seule manuelle (Baba, 25/09), independante de la lecture seule d'impaye.
+ */
+export const setManualReadOnlyHandler = asyncHandler(async (req: Request, res: Response) => {
+  const input = parse(manualReadOnlySchema, req.body);
+  const data = await setSubscriptionManualReadOnly(req.params.tenantId, input.reason, actor(req));
+  res.json({ success: true, data });
+});
+
+/** DELETE /api/admin/tenants/:tenantId/subscription/manual-read-only */
+export const clearManualReadOnlyHandler = asyncHandler(async (req: Request, res: Response) => {
+  const data = await clearSubscriptionManualReadOnly(req.params.tenantId, actor(req));
   res.json({ success: true, data });
 });
 

@@ -68,7 +68,12 @@ function matchStatus(row: Row, where: Row) {
 
 const fake: Row = {
   subscription: {
-    findUnique: jest.fn(async ({ where }: Row) => db.subscriptions.find(s => s.tenantId === where.tenantId) ?? null)
+    findUnique: jest.fn(async ({ where }: Row) => db.subscriptions.find(s => s.tenantId === where.tenantId) ?? null),
+    update: jest.fn(async ({ where, data }: Row) => {
+      const row = db.subscriptions.find(s => s.tenantId === where.tenantId)!;
+      Object.assign(row, data);
+      return row;
+    })
   },
   catalogItem: {
     findMany: jest.fn(async ({ where }: Row) => CATALOG.filter(c => where.code.in.includes(c.code)))
@@ -142,10 +147,12 @@ import {
   addSubscriptionItem,
   applyDueItemTransitionsTx,
   changePack,
+  clearSubscriptionManualReadOnly,
   monthlyOverageWindow,
   previewNextInvoice,
   registerUsageProvider,
   removeSubscriptionItem,
+  setSubscriptionManualReadOnly,
   syncTenantModulesTx
 } from '../../src/services/subscription-v2-service';
 import { unitKeyFor } from '../../src/services/lot-registry-service';
@@ -443,5 +450,42 @@ describe('depassement mensuel en abonnement ANNUEL (regle de Baba du 25/09)', ()
     expect(preview.overageBilling).toBe('IN_PERIOD_INVOICE');
     expect(preview.overageInvoice).toBeNull();
     expect(preview.lines.filter(l => l.kind === 'OVERAGE').reduce((sum, l) => sum + l.amount, 0)).toBe(12 * 150);
+  });
+});
+
+describe('lecture seule manuelle (Baba, 25/09) : hors impaye, seul le super-admin la leve', () => {
+  beforeEach(() => seed('ACTIVE', ['AGENCE']));
+
+  it('pose la lecture seule manuelle avec un motif, audite, invalide le cache', async () => {
+    const updated = await setSubscriptionManualReadOnly(T, '  Abus signalé par un client  ', 'admin-1');
+    expect(updated.manualReadOnlyAt).toBeInstanceOf(Date);
+    expect(updated.manualReadOnlyReason).toBe('Abus signalé par un client');
+    expect(auditEvents.at(-1)).toMatchObject({
+      actorUserId: 'admin-1',
+      tenantId: T,
+      actionKey: 'SUBSCRIPTION_MANUAL_READ_ONLY_SET',
+      payload: { reason: 'Abus signalé par un client' }
+    });
+  });
+
+  it('refuse un motif trop court', async () => {
+    await expect(setSubscriptionManualReadOnly(T, 'ab', 'admin-1')).rejects.toThrow();
+  });
+
+  it('leve la lecture seule manuelle, audite', async () => {
+    await setSubscriptionManualReadOnly(T, 'Litige en cours', 'admin-1');
+    const updated = await clearSubscriptionManualReadOnly(T, 'admin-2');
+    expect(updated.manualReadOnlyAt).toBeNull();
+    expect(updated.manualReadOnlyReason).toBeNull();
+    expect(auditEvents.at(-1)).toMatchObject({
+      actorUserId: 'admin-2',
+      tenantId: T,
+      actionKey: 'SUBSCRIPTION_MANUAL_READ_ONLY_CLEARED',
+      payload: { previousReason: 'Litige en cours' }
+    });
+  });
+
+  it('refuse de lever une lecture seule qui n’est pas posee', async () => {
+    await expect(clearSubscriptionManualReadOnly(T, 'admin-1')).rejects.toThrow();
   });
 });

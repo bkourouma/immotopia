@@ -192,7 +192,8 @@ describe('Phase de l’abonnement (D8)', () => {
     currentPeriodEnd: days(10),
     cancelAt: null,
     canceledAt: null,
-    graceDays: 7
+    graceDays: 7,
+    manualReadOnlyAt: null
   };
 
   it('sans abonnement : lecture seule', () => {
@@ -241,6 +242,24 @@ describe('Phase de l’abonnement (D8)', () => {
     expect(resolveSubscriptionPhase({ ...base, status: 'CANCELED', cancelAt: days(-1) }, NOW).readOnly).toBe(true);
     expect(resolveSubscriptionPhase({ ...base, status: 'SUSPENDED' }, NOW)).toMatchObject({ readOnly: true, reason: 'SUSPENDED' });
   });
+
+  it('lecture seule manuelle : prend le pas sur un abonnement ACTIVE ou en essai, jamais de grace', () => {
+    expect(resolveSubscriptionPhase({ ...base, manualReadOnlyAt: days(-1) }, NOW)).toMatchObject({
+      phase: 'READ_ONLY',
+      readOnly: true,
+      reason: 'MANUAL',
+      graceEndsAt: null
+    });
+    const trial = { ...base, status: 'TRIALING' as const, trialEndsAt: days(5), manualReadOnlyAt: days(-1) };
+    expect(resolveSubscriptionPhase(trial, NOW)).toMatchObject({ phase: 'READ_ONLY', readOnly: true, reason: 'MANUAL' });
+  });
+
+  it('lecture seule manuelle future (pas encore effective) : ignoree', () => {
+    expect(resolveSubscriptionPhase({ ...base, manualReadOnlyAt: days(1) }, NOW)).toMatchObject({
+      phase: 'ACTIVE',
+      readOnly: false
+    });
+  });
 });
 
 describe('Quota (D4)', () => {
@@ -272,7 +291,9 @@ describe('Synthese des droits', () => {
         canceledAt: null,
         graceDays: 7,
         billingCycle: 'MONTHLY',
-        quotaPolicy: 'BILL_OVERAGE'
+        quotaPolicy: 'BILL_OVERAGE',
+        manualReadOnlyAt: null,
+        manualReadOnlyReason: null
       },
       items: [
         item(PACK.AGENCE),

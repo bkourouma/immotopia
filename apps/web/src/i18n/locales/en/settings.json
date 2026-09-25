@@ -168,5 +168,6 @@
   "Remboursée": "Refunded",
   "Brouillon": "Draft",
   "Période": "Period",
-  "Dépassement": "Overage"
+  "Dépassement": "Overage",
+  "Décidée par ImmoTopia. Motif : {{value}}": "Decided by ImmoTopia. Reason: {{value}}"
 }

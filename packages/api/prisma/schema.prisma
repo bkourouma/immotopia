@@ -994,6 +994,11 @@ model Subscription {
   comboDiscountPercent Decimal            @default(10) @map("combo_discount_percent") @db.Decimal(5, 2)
   /// Prochaine emission de facture (vague 3).
   nextBillingAt        DateTime?          @map("next_billing_at")
+  /// Lecture seule manuelle (Baba, 25/09) : posee et levee UNIQUEMENT par le
+  /// super-admin, jamais par un paiement ni par la tache planifiee. Motif
+  /// obligatoire. Independante de la lecture seule d'impaye (readOnly/phase).
+  manualReadOnlyAt     DateTime?          @map("manual_read_only_at")
+  manualReadOnlyReason String?            @map("manual_read_only_reason")
   metadata             Json?
   createdAt            DateTime           @default(now()) @map("created_at")
   updatedAt            DateTime           @updatedAt @map("updated_at")

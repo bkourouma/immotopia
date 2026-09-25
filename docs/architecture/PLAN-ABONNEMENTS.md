@@ -203,8 +203,51 @@ Passage complet chaque jour à 02:30 UTC, alertes seules chaque heure à :15.
 - **PDF** : `lib/subscription/platform-invoice-pdf.ts` (pdf-lib, texte passé
   par `sanitizeForPdf`), en français. **E-mail** : PDF joint, au nom de la
   plateforme, aux TENANT_ADMIN actifs (sinon e-mail de contact).
-- Non traité : une facture de dépassement impayée ne fait pas passer
-  PAST_DUE (elle passe OVERDUE) — à trancher.
+- **Tranché** (Baba, 25/09, D15) : une facture de dépassement (nature
+  `OVERAGE`) impayée reste `OVERDUE` **sans aucun effet automatique** sur
+  l'abonnement — comportement gardé tel quel, jamais `PAST_DUE` pour ce seul
+  motif. Le super-admin peut en revanche mettre l'agence en **lecture seule
+  manuelle** (§6 quinquies) ; `InvoicesTab.tsx` propose ce raccourci sur une
+  facture `OVERDUE` de nature `OVERAGE`.
+- **Tranché** (Baba, 25/09, D16) : quand plusieurs périodes sont impayées, un
+  paiement n'avance l'abonnement que d'**une seule période** — comportement
+  gardé tel quel. `applyPaymentToSubscriptionTx`
+  (`services/platform-payment-service.ts`) n'appelle `addBillingPeriod`
+  qu'une fois par paiement, quel que soit le nombre de périodes en retard ; un
+  paiement supplémentaire (ou la tâche planifiée à la prochaine échéance)
+  avance la période suivante.
+
+### 6 quinquies. Lecture seule manuelle (vague 3, lot C — Baba, 25/09, D15)
+
+Indépendante de la lecture seule d'impayé (`resolveSubscriptionPhase`,
+`readOnly`/`phase`, jamais posée par une facture de dépassement impayée, D15).
+Posée et levée **uniquement** par le super-admin, jamais par un paiement ni
+par la tâche planifiée.
+
+- **Migration** `20260928130000_abonnements_lecture_seule_manuelle`,
+  additive : `Subscription.manualReadOnlyAt` / `manualReadOnlyReason`.
+- `lib/subscription/entitlements.ts` : `resolveSubscriptionPhase` renvoie
+  `{ phase: 'READ_ONLY', readOnly: true, reason: 'MANUAL' }` dès que
+  `manualReadOnlyAt` est posée et passée, **avant** toute autre règle de phase
+  (essai, grâce, période échue) et sans jamais accorder de grâce.
+  `TenantEntitlements` expose `manualReadOnlyAt` et `manualReadOnlyReason`
+  (motif saisi, `null` si la lecture seule en vigueur n'est pas manuelle).
+  Bloque les écritures via le même mécanisme que la lecture seule d'impayé
+  (`assertSubscriptionWritable`, `SUBSCRIPTION_READ_ONLY`) ; portails,
+  paiements et factures restent accessibles (`route-features.ts`, inchangé).
+- `services/subscription-v2-service.ts` : `setSubscriptionManualReadOnly(
+  tenantId, reason, actorUserId)` (motif ≥ 3 caractères) et
+  `clearSubscriptionManualReadOnly(tenantId, actorUserId)`, chacune auditée
+  (`SUBSCRIPTION_MANUAL_READ_ONLY_SET` / `_CLEARED`) et invalidant le cache
+  des droits.
+- **Routes** super-admin : `POST` et `DELETE
+  /api/admin/tenants/:tenantId/subscription/manual-read-only` (permission
+  `PLATFORM_SUBSCRIPTIONS_EDIT`).
+- **Web** : `SubscriptionTab.tsx` — bouton « Passer en lecture seule » (motif
+  obligatoire, confirmation) et badge « Lecture seule (manuelle) » avec le
+  motif et un bouton « Lever la lecture seule » ; `InvoicesTab.tsx` — raccourci
+  sur une facture `OVERDUE` de nature `OVERAGE` ; `TenantSubscriptionSettings.tsx`
+  (agence) — motif affiché quand la lecture seule manuelle est active.
 
 ## 7. Décisions (Baba, 25/09)
 
@@ -218,7 +261,10 @@ automatique, TVA 18 %, émetteur Alliance Consultants · D10 paiement
 PaySecureHub d'ImmoTopia et constat manuel · D11 module retiré en lecture
 seule · D12 catalogue en base, prix figé · D13 dérogation « Reprise » de 3 mois
 · D14 copropriété active = ACTIVE, IN_DISPUTE ; chantier actif = PLANNED,
-IN_PROGRESS, SUSPENDED.
+IN_PROGRESS, SUSPENDED · D15 dépassement impayé reste OVERDUE sans effet
+automatique, lecture seule manuelle du super-admin en recours (§6 quinquies)
+· D16 un paiement n'avance l'abonnement que d'une période, même si plusieurs
+sont impayées.
 
 ## 8. Vagues
 

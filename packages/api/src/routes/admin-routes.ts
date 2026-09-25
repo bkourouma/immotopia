@@ -38,7 +38,9 @@ import {
   revokeOverrideHandler,
   invoicePreviewHandler,
   reconcileLotsHandler,
-  clearModuleOverrideHandler
+  clearModuleOverrideHandler,
+  setManualReadOnlyHandler,
+  clearManualReadOnlyHandler
 } from '../controllers/subscription-v2-controller';
 import {
   adminGetInvoicePaymentHandler,
@@ -169,6 +171,18 @@ router.patch(
   '/tenants/:tenantId/subscription/settings',
   requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'),
   updateSettingsHandler
+);
+// Lecture seule manuelle (Baba, 25/09) : hors impaye, motif obligatoire, seul
+// le super-admin la leve (jamais un paiement ni la tache planifiee).
+router.post(
+  '/tenants/:tenantId/subscription/manual-read-only',
+  requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'),
+  setManualReadOnlyHandler
+);
+router.delete(
+  '/tenants/:tenantId/subscription/manual-read-only',
+  requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'),
+  clearManualReadOnlyHandler
 );
 router.get(
   '/tenants/:tenantId/subscription/overrides',

@@ -555,5 +555,20 @@
   "Message": "الرسالة",
   "Marquer traitée": "وضع علامة كمعالَج",
   "Refuser": "رفض",
-  "Demandeur": "مقدّم الطلب"
+  "Demandeur": "مقدّم الطلب",
+  "Passer « {{value}} » en lecture seule ?": "هل تريد وضع « {{value}} » في وضع القراءة فقط؟",
+  "Bloque les écritures de l'agence jusqu'à ce que vous leviez cette mesure vous-même. Ni un paiement ni la tâche planifiée ne la lèvent. Portails, paiements et factures restent accessibles.": "يمنع كتابات الوكالة إلى أن ترفع هذا الإجراء بنفسك. لا يرفعه أي دفع ولا المهمة المجدولة. تبقى البوابات والمدفوعات والفواتير متاحة.",
+  "Motif (obligatoire)": "السبب (إلزامي)",
+  "Passer en lecture seule": "التحويل إلى وضع القراءة فقط",
+  "Le motif est obligatoire.": "السبب إلزامي.",
+  "Agence passée en lecture seule": "تم تحويل الوكالة إلى وضع القراءة فقط",
+  "Erreur lors du passage en lecture seule": "خطأ أثناء التحويل إلى وضع القراءة فقط",
+  "Lever la lecture seule manuelle ?": "هل تريد رفع وضع القراءة فقط اليدوي؟",
+  "Lever la lecture seule": "رفع وضع القراءة فقط",
+  "Erreur lors de la levée de la lecture seule": "خطأ أثناء رفع وضع القراءة فقط",
+  "Motif : {{value}}": "السبب: {{value}}",
+  "Lecture seule (manuelle)": "قراءة فقط (يدوي)",
+  "Mettre en lecture seule": "التحويل إلى وضع القراءة فقط",
+  "Mettre l’agence en lecture seule (facture {{value}})": "تحويل الوكالة إلى وضع القراءة فقط (الفاتورة {{value}})",
+  "Ce dépassement impayé reste « en retard » sans effet automatique sur l'abonnement. Cette action bloque manuellement les écritures de l'agence, jusqu'à ce que vous la leviez vous-même depuis l'onglet Abonnement.": "يبقى هذا التجاوز غير المسدد \"متأخرًا\" دون أي أثر تلقائي على الاشتراك. يمنع هذا الإجراء كتابات الوكالة يدويًا، إلى أن ترفعه بنفسك من علامة التبويب الاشتراك."
 }

@@ -4,12 +4,14 @@ import { PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
   addSubscriptionItem,
+  clearSubscriptionManualReadOnly,
   getSubscriptionOverview,
   grantCapacityOverride,
   listCatalog,
   previewNextInvoice,
   removeSubscriptionItem,
   revokeCapacityOverride,
+  setSubscriptionManualReadOnly,
   updateSubscriptionSettings,
   type CapacityKeyCode,
   type CapacityOverrideDTO,
@@ -233,7 +235,7 @@ const OverrideModal: React.FC<OverrideModalProps> = ({ open, onClose, onSubmit }
 };
 
 export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }> = ({ tenantId, tenantName }) => {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const confirmAction = useConfirmAction();
   const [overview, setOverview] = useState<SubscriptionOverview | null>(null);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
@@ -244,6 +246,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
   const [addOpen, setAddOpen] = useState(false);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  const [manualReadOnlySaving, setManualReadOnlySaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -304,7 +307,11 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
 
   const handleRemoveNow = (item: SubscriptionItemDTO) => {
     let reason = '';
-    Modal.confirm({
+    // `modal.confirm` (contextuel) plutot que l'API statique `Modal.confirm` :
+    // cette derniere echappe au demontage React et laisse trainer sa boite de
+    // dialogue d'un test a l'autre (Vitest), au lieu d'etre nettoyee avec le
+    // reste de l'arbre.
+    modal.confirm({
       title: t('Retirer « {{value}} » immédiatement ?', { value: item.name }),
       content: (
         <Input.TextArea
@@ -340,7 +347,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
     let discountPercent = item.discountPercent;
     let unitMonthlyPrice = item.unitMonthlyPrice;
     let reason = '';
-    Modal.confirm({
+    modal.confirm({
       title: t('Modifier « {{value}} »', { value: item.name }),
       content: (
         <Space direction="vertical" style={{ width: '100%' }}>
@@ -450,7 +457,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
   const handleExtendTrial = () => {
     if (!overview) return;
     let days = 15;
-    Modal.confirm({
+    modal.confirm({
       title: t("Prolonger l'essai"),
       content: (
         <InputNumber
@@ -476,6 +483,78 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
         } catch (err: any) {
           message.error(err.response?.data?.message || t("Erreur lors de la prolongation de l'essai"));
           throw err;
+        }
+      }
+    });
+  };
+
+  /**
+   * Lecture seule manuelle (Baba, 25/09) : action super-admin, motif
+   * obligatoire, independante de la lecture seule d'impaye — jamais levee par
+   * un paiement ni par la tâche planifiée, seulement par cette action.
+   */
+  const handleSetManualReadOnly = () => {
+    let reason = '';
+    // `modal.confirm` (contextuel, App.useApp()) plutot que l'API statique
+    // `Modal.confirm` : cette derniere echappe au demontage React et laisse
+    // trainer sa boite de dialogue d'un test a l'autre (composants/primitives/
+    // ConfirmAction.tsx, useConfirmAction, l'explique pour handleRemoveNow).
+    modal.confirm({
+      title: t('Passer « {{value}} » en lecture seule ?', { value: tenantName ?? '' }),
+      content: (
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Text type="secondary">
+            {t(
+              "Bloque les écritures de l'agence jusqu'à ce que vous leviez cette mesure vous-même. Ni un paiement ni la tâche planifiée ne la lèvent. Portails, paiements et factures restent accessibles."
+            )}
+          </Text>
+          <Input.TextArea
+            rows={2}
+            placeholder={t('Motif (obligatoire)')}
+            onChange={e => {
+              reason = e.target.value;
+            }}
+          />
+        </Space>
+      ),
+      okText: t('Passer en lecture seule'),
+      okButtonProps: { danger: true },
+      cancelText: t('Annuler'),
+      onOk: async () => {
+        if (!reason.trim()) {
+          message.error(t('Le motif est obligatoire.'));
+          throw new Error('reason required');
+        }
+        setManualReadOnlySaving(true);
+        try {
+          await setSubscriptionManualReadOnly(tenantId, reason.trim());
+          message.success(t('Agence passée en lecture seule'));
+          await load();
+        } catch (err: any) {
+          message.error(err.response?.data?.message || t('Erreur lors du passage en lecture seule'));
+          throw err;
+        } finally {
+          setManualReadOnlySaving(false);
+        }
+      }
+    });
+  };
+
+  const handleClearManualReadOnly = () => {
+    confirmAction({
+      title: t('Lever la lecture seule manuelle ?'),
+      description: overview?.entitlements.manualReadOnlyReason ?? undefined,
+      okText: t('Lever la lecture seule'),
+      onConfirm: async () => {
+        setManualReadOnlySaving(true);
+        try {
+          await clearSubscriptionManualReadOnly(tenantId);
+          message.success(t('Lecture seule manuelle levée'));
+          await load();
+        } catch (err: any) {
+          message.error(err.response?.data?.message || t('Erreur lors de la levée de la lecture seule'));
+        } finally {
+          setManualReadOnlySaving(false);
         }
       }
     });
@@ -653,15 +732,39 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
               : '—'}
           </Descriptions.Item>
         </Descriptions>
-        {entitlements.readOnly && (
+        {entitlements.manualReadOnlyReason ? (
           <Alert
             style={{ marginTop: 'var(--space-3)' }}
-            type="warning"
+            type="error"
             showIcon
-            message={t('Agence en lecture seule')}
-            description={entitlements.readOnlyReason ?? undefined}
+            message={
+              <Space wrap>
+                <span>{t('Lecture seule (manuelle)')}</span>
+                <Button size="small" loading={manualReadOnlySaving} onClick={handleClearManualReadOnly}>
+                  {t('Lever la lecture seule')}
+                </Button>
+              </Space>
+            }
+            description={t('Motif : {{value}}', { value: entitlements.manualReadOnlyReason })}
           />
+        ) : (
+          entitlements.readOnly && (
+            <Alert
+              style={{ marginTop: 'var(--space-3)' }}
+              type="warning"
+              showIcon
+              message={t('Agence en lecture seule')}
+              description={entitlements.readOnlyReason ?? undefined}
+            />
+          )
         )}
+        <div style={{ marginTop: 'var(--space-3)' }}>
+          {!entitlements.manualReadOnlyReason && (
+            <Button size="small" danger loading={manualReadOnlySaving} onClick={handleSetManualReadOnly}>
+              {t('Passer en lecture seule')}
+            </Button>
+          )}
+        </div>
       </Card>
 
       <Card
