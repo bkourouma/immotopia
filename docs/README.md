@@ -26,6 +26,8 @@ La référence à jour du schéma est `packages/api/prisma/schema.prisma`.
 
 - [Multilingue — français, anglais, arabe](architecture/i18n.md) — le texte
   français **est** la clé de traduction ; à lire avant de toucher à un libellé.
+- [Abonnements des agences par packs](architecture/PLAN-ABONNEMENTS.md) — packs,
+  réserve de lots, prix, droits et contrats exposés aux vagues 2 et 3.
 
 ## Intégrations
 

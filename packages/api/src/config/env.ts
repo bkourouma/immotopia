@@ -94,7 +94,12 @@ const envSchema = z
     // Prisma tenant guard (utils/prisma-tenant-guard-extension.ts).
     // `warn` logs unscoped queries on tenant-owned models without blocking
     // them; `enforce` throws. See env.example for the warn → enforce sequence.
-    TENANT_GUARD_MODE: z.enum(['off', 'warn', 'enforce']).default('warn')
+    TENANT_GUARD_MODE: z.enum(['off', 'warn', 'enforce']).default('warn'),
+
+    // Abonnements par packs (lib/subscription, docs/architecture/PLAN-ABONNEMENTS.md).
+    // `off` : droits calcules mais jamais appliques ; `warn` : modules,
+    // lecture seule et quotas journalises sans bloquer ; `enforce` : appliques.
+    SUBSCRIPTION_ENFORCEMENT: z.enum(['off', 'warn', 'enforce']).default('warn')
   })
   // Unknown keys are preserved: many optional integrations still read
   // process.env directly (WhatsApp, SMTP, Twilio).

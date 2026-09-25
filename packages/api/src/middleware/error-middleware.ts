@@ -37,7 +37,12 @@ export const ErrorCode = {
   NOT_FOUND: 'NOT_FOUND',
   CONFLICT: 'CONFLICT',
   VALIDATION_ERROR: 'VALIDATION_ERROR',
-  INTERNAL: 'INTERNAL'
+  INTERNAL: 'INTERNAL',
+  // Abonnements par packs (docs/architecture/PLAN-ABONNEMENTS.md).
+  MODULE_NOT_INCLUDED: 'MODULE_NOT_INCLUDED',
+  MODULE_READ_ONLY: 'MODULE_READ_ONLY',
+  SUBSCRIPTION_READ_ONLY: 'SUBSCRIPTION_READ_ONLY',
+  QUOTA_EXCEEDED: 'QUOTA_EXCEEDED'
 } as const;
 
 /**
@@ -103,6 +108,46 @@ export class ConflictError extends AppError {
 export class ValidationError extends AppError {
   constructor(message = 'Les données fournies sont invalides.', errors?: Array<{ field: string; message: string }>) {
     super(message, 422, ErrorCode.VALIDATION_ERROR, errors);
+  }
+}
+
+/**
+ * Le module demande n'est pas compris dans l'abonnement de l'agence (403).
+ * `data.moduleKey` porte le module, pour que le front propose le bon pack.
+ */
+export class ModuleNotIncludedError extends AppError {
+  constructor(moduleKey: string, message = "Ce module n'est pas compris dans l'abonnement de votre agence.") {
+    super(message, 403, ErrorCode.MODULE_NOT_INCLUDED, undefined, { moduleKey });
+  }
+}
+
+/** Module retire de l'abonnement : ses donnees restent consultables et exportables, pas modifiables (D11, 403). */
+export class ModuleReadOnlyError extends AppError {
+  constructor(
+    moduleKey: string,
+    message = "Ce module a été retiré de l'abonnement : ses données restent consultables, mais ne peuvent plus être modifiées."
+  ) {
+    super(message, 403, ErrorCode.MODULE_READ_ONLY, undefined, { moduleKey });
+  }
+}
+
+/** Abonnement echu (fin d'essai ou impaye au-dela de la grace, D8) : lecture seule (403). */
+export class SubscriptionReadOnlyError extends AppError {
+  constructor(
+    reason: string | null,
+    message = "L'abonnement de votre agence est en lecture seule : régularisez-le pour enregistrer des modifications."
+  ) {
+    super(message, 403, ErrorCode.SUBSCRIPTION_READ_ONLY, undefined, { reason });
+  }
+}
+
+/** Capacite depassee sous la politique BLOCK (D4, 409). */
+export class QuotaExceededError extends AppError {
+  constructor(
+    detail: { capacityKey: string; limit: number; used: number; requested: number },
+    message = "La capacité de votre abonnement est atteinte : ajoutez une extension pour continuer."
+  ) {
+    super(message, 409, ErrorCode.QUOTA_EXCEEDED, undefined, detail);
   }
 }
 

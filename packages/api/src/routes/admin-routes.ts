@@ -23,6 +23,23 @@ import {
 } from '../controllers/subscription-controller';
 import { getGlobalStatisticsHandler, getTenantActivityStatsHandler } from '../controllers/statistics-controller';
 import { getAuditLogsHandler } from '../controllers/audit-controller';
+import {
+  listCatalogHandler,
+  updateCatalogItemHandler,
+  quoteHandler,
+  getOverviewHandler,
+  getEntitlementsHandler,
+  addItemHandler,
+  removeItemHandler,
+  changePackHandler,
+  updateSettingsHandler,
+  listOverridesHandler,
+  grantOverrideHandler,
+  revokeOverrideHandler,
+  invoicePreviewHandler,
+  reconcileLotsHandler,
+  clearModuleOverrideHandler
+} from '../controllers/subscription-v2-controller';
 import { authenticate } from '../middleware/auth-middleware';
 import { requirePermission } from '../middleware/rbac-middleware';
 
@@ -74,6 +91,66 @@ router.post(
   '/tenants/:tenantId/subscription/cancel',
   requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'),
   cancelSubscriptionHandler
+);
+
+// Abonnements par packs (docs/architecture/PLAN-ABONNEMENTS.md) : catalogue
+// global, elements souscrits, derogations, apercu de facture. Routes
+// plateforme, sans contexte d'agence (lecture volontaire hors agence).
+router.get('/catalog', requirePermission('PLATFORM_SUBSCRIPTIONS_VIEW'), listCatalogHandler);
+router.post('/catalog/quote', requirePermission('PLATFORM_SUBSCRIPTIONS_VIEW'), quoteHandler);
+router.patch('/catalog/:code', requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'), updateCatalogItemHandler);
+
+router.get('/tenants/:tenantId/entitlements', requirePermission('PLATFORM_SUBSCRIPTIONS_VIEW'), getEntitlementsHandler);
+router.get(
+  '/tenants/:tenantId/subscription/overview',
+  requirePermission('PLATFORM_SUBSCRIPTIONS_VIEW'),
+  getOverviewHandler
+);
+router.post('/tenants/:tenantId/subscription/items', requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'), addItemHandler);
+router.delete(
+  '/tenants/:tenantId/subscription/items/:itemId',
+  requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'),
+  removeItemHandler
+);
+router.post(
+  '/tenants/:tenantId/subscription/change-pack',
+  requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'),
+  changePackHandler
+);
+router.patch(
+  '/tenants/:tenantId/subscription/settings',
+  requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'),
+  updateSettingsHandler
+);
+router.get(
+  '/tenants/:tenantId/subscription/overrides',
+  requirePermission('PLATFORM_SUBSCRIPTIONS_VIEW'),
+  listOverridesHandler
+);
+router.post(
+  '/tenants/:tenantId/subscription/overrides',
+  requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'),
+  grantOverrideHandler
+);
+router.delete(
+  '/tenants/:tenantId/subscription/overrides/:overrideId',
+  requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'),
+  revokeOverrideHandler
+);
+router.get(
+  '/tenants/:tenantId/subscription/invoice-preview',
+  requirePermission('PLATFORM_SUBSCRIPTIONS_VIEW'),
+  invoicePreviewHandler
+);
+router.post(
+  '/tenants/:tenantId/subscription/lots/reconcile',
+  requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'),
+  reconcileLotsHandler
+);
+router.delete(
+  '/tenants/:tenantId/modules/:moduleKey/override',
+  requirePermission('PLATFORM_MODULES_EDIT'),
+  clearModuleOverrideHandler
 );
 
 // Invoice management routes

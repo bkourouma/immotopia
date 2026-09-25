@@ -74,7 +74,8 @@ export interface TenantStats {
   disabledCollaborators: number;
   enabledModules: string[];
   subscription?: {
-    plan: string;
+    /** Deprecie : nul pour une agence creee avec des packs. */
+    plan: string | null;
     status: string;
     billingCycle: string;
   } | null;
@@ -96,9 +97,19 @@ export interface ProvisionTenantRequest {
   name: string;
   adminFullName: string;
   adminEmail: string;
+  /**
+   * Packs et extensions souscrits (codes du catalogue, ex.
+   * `[{ code: 'AGENCE' }, { code: 'EXT_LOTS_10', quantity: 3 }]`). Format
+   * de reference depuis les abonnements par packs
+   * (docs/architecture/PLAN-ABONNEMENTS.md). Absent : ancien format
+   * `modules`/`planKey`, converti en packs.
+   */
+  items?: Array<{ code: string; quantity?: number }>;
+  /** DEPRECIE : etiquette sans contenu, conservee si fournie. */
   planKey?: 'BASIC' | 'PRO' | 'ELITE';
   billingCycle?: 'MONTHLY' | 'ANNUAL';
   type?: TenantType;
+  /** DEPRECIE : ancien format, converti en packs quand `items` est absent. */
   modules?: Array<'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER'>;
   legalName?: string;
   contactEmail?: string;
@@ -118,7 +129,16 @@ export interface ProvisionTenantResult {
   // l'autre sans cast, et cette interface n'est qu'un DTO JSON.
   tenant: { id: string; name: string; slug: string; type: TenantType; status: string };
   modules: string[];
-  subscription: { planKey: string; billingCycle: string; status: string; currentPeriodEnd: string };
+  subscription: {
+    /** Deprecie : nul quand l'agence est creee avec `items`. */
+    planKey: string | null;
+    billingCycle: string;
+    status: string;
+    currentPeriodEnd: string;
+    trialEndsAt: string | null;
+    /** Elements souscrits, prix mensuels HT figes (FCFA). */
+    items: Array<{ code: string; kind: string; quantity: number; unitMonthlyPrice: number; unitSetupPrice: number }>;
+  };
   admin: { userId: string; email: string; fullName: string; existingUser: boolean };
   invitation: { id: string; expiresAt: string; acceptUrl: string };
   emailSent: boolean;

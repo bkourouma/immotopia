@@ -79,6 +79,66 @@ enum InvoiceStatus {
   REFUNDED
 }
 
+// --- Abonnements par packs (docs/architecture/PLAN-ABONNEMENTS.md) --------
+
+/// Nature d'une ligne du catalogue des offres.
+enum CatalogItemKind {
+  PACK // Agence, Syndic, Promoteur, Integre : modules + capacites incluses
+  EXTENSION // Bloc de 10 lots, copropriete ou chantier supplementaire
+  SETUP // Mise en route accompagnee, facturee une fois
+}
+
+/// Capacite mesuree et plafonnee par l'abonnement.
+enum CapacityKey {
+  LOTS // Reserve UNIQUE de lots : logements, lots de copropriete, lots de programme
+  COPROPRIETES // Coproprietes actives (ACTIVE, IN_DISPUTE)
+  CHANTIERS // Chantiers actifs (PLANNED, IN_PROGRESS, SUSPENDED)
+}
+
+enum SubscriptionItemStatus {
+  SCHEDULED // Prendra effet a startsAt (descente de gamme a l'echeance)
+  ACTIVE
+  ENDED
+}
+
+/// Conduite a tenir quand une capacite est depassee (D4).
+enum QuotaPolicy {
+  BLOCK
+  BILL_OVERAGE
+  WARN_ONLY
+}
+
+/// Nature d'un lot compte dans la reserve (D1, D2).
+enum LotKind {
+  RENTAL_UNIT
+  COPRO_LOT
+  PROGRAM_LOT
+}
+
+enum InvoiceLineKind {
+  PACK
+  EXTENSION
+  PRORATA
+  DISCOUNT
+  SETUP
+  OVERAGE
+  CREDIT
+  USAGE
+  TAX
+}
+
+/// Origine de l'etat d'un module : deduit des packs, ou force par le super-admin.
+enum ModuleSource {
+  PACK
+  OVERRIDE
+}
+
+/// Facture de la plateforme (abonnement ImmoTopia) ou rattachee aux loyers.
+enum InvoiceKind {
+  PLATFORM
+  RENTAL
+}
+
 enum InvitationStatus {
   PENDING
   ACCEPTED
@@ -516,6 +576,14 @@ model Tenant {
   invoices     Invoice[]
   invitations  Invitation[]
 
+  // Abonnements par packs (PLAN-ABONNEMENTS.md)
+  subscriptionItems SubscriptionItem[]
+  capacityOverrides CapacityOverride[]
+  lotActivations    LotActivation[]
+  invoiceLines      InvoiceLine[]
+  usageSnapshots    UsageSnapshot[]
+  quotaAlerts       QuotaAlert[]
+
   // CRM relationships
   crmContacts           CrmContact[]
   crmDeals              CrmDeal[]
@@ -748,14 +816,23 @@ model EmailVerificationToken {
 
 // Tenant Module
 model TenantModule {
-  id        String    @id @default(uuid())
-  tenantId  String    @map("tenant_id")
-  moduleKey ModuleKey @map("module_key")
-  enabled   Boolean   @default(false)
-  enabledAt DateTime? @map("enabled_at")
-  enabledBy String?   @map("enabled_by")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  id         String       @id @default(uuid())
+  tenantId   String       @map("tenant_id")
+  moduleKey  ModuleKey    @map("module_key")
+  enabled    Boolean      @default(false)
+  enabledAt  DateTime?    @map("enabled_at")
+  enabledBy  String?      @map("enabled_by")
+  /// PACK : deduit des packs actifs par syncTenantModulesTx, qui le recalcule.
+  /// OVERRIDE : force par le super-admin ; la synchronisation n'y touche pas.
+  source     ModuleSource @default(PACK)
+  /// Fin d'un OVERRIDE temporaire (nul : sans limite). Au-dela, le module
+  /// revient a ce que disent les packs.
+  expiresAt  DateTime?    @map("expires_at")
+  /// Date du dernier retrait. Un module retire garde ses donnees et passe en
+  /// lecture seule (D11) ; nul si le module n'a jamais ete retire.
+  disabledAt DateTime?    @map("disabled_at")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -884,25 +961,41 @@ model Invitation {
 
 // Subscription
 model Subscription {
-  id                 String             @id @default(uuid())
-  tenantId           String             @unique @map("tenant_id")
-  planKey            SubscriptionPlan   @map("plan_key")
-  billingCycle       BillingCycle
-  status             SubscriptionStatus @default(TRIALING)
-  startAt            DateTime           @map("start_at")
-  currentPeriodStart DateTime           @map("current_period_start")
-  currentPeriodEnd   DateTime           @map("current_period_end")
-  cancelAt           DateTime?          @map("cancel_at")
-  canceledAt         DateTime?          @map("canceled_at")
-  metadata           Json?
-  createdAt          DateTime           @default(now()) @map("created_at")
-  updatedAt          DateTime           @updatedAt @map("updated_at")
+  id                   String             @id @default(uuid())
+  tenantId             String             @unique @map("tenant_id")
+  /// DEPRECIE : etiquette BASIC/PRO/ELITE sans contenu, remplacee par les
+  /// packs (items). Conservee pour l'historique et les anciens ecrans.
+  planKey              SubscriptionPlan?  @map("plan_key")
+  billingCycle         BillingCycle
+  status               SubscriptionStatus @default(TRIALING)
+  startAt              DateTime           @map("start_at")
+  currentPeriodStart   DateTime           @map("current_period_start")
+  currentPeriodEnd     DateTime           @map("current_period_end")
+  cancelAt             DateTime?          @map("cancel_at")
+  canceledAt           DateTime?          @map("canceled_at")
+  /// Fin de l'essai (D8), prolongeable par le super-admin.
+  trialEndsAt          DateTime?          @map("trial_ends_at")
+  /// Passage en PAST_DUE : point de depart des jours de grace (D8).
+  pastDueAt            DateTime?          @map("past_due_at")
+  /// Jours de grace apres PAST_DUE, avant la lecture seule (D8).
+  graceDays            Int                @default(7) @map("grace_days")
+  /// Depassement de capacite : bloquer, facturer ou avertir (D4).
+  quotaPolicy          QuotaPolicy        @default(BILL_OVERAGE) @map("quota_policy")
+  /// Remise de combinaison sur le prix de base du pack le moins cher, des 2 packs (D6).
+  comboDiscountPercent Decimal            @default(10) @map("combo_discount_percent") @db.Decimal(5, 2)
+  /// Prochaine emission de facture (vague 3).
+  nextBillingAt        DateTime?          @map("next_billing_at")
+  metadata             Json?
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
 
-  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   invoices Invoice[]
+  items    SubscriptionItem[]
 
   @@index([status])
   @@index([planKey])
+  @@index([nextBillingAt])
   @@map("subscriptions")
 }
 
@@ -919,11 +1012,22 @@ model Invoice {
   status         InvoiceStatus @default(DRAFT)
   paidAt         DateTime?     @map("paid_at")
   notes          String?       @db.Text
+  /// PLATFORM : facture de l'abonnement ImmoTopia a l'agence. RENTAL : facture
+  /// rattachee aux loyers (RentalInstallment.invoice_id,
+  /// RentalPayment.invoice_id) ; ce lien historique est conserve tel quel.
+  kind           InvoiceKind   @default(PLATFORM)
+  periodStart    DateTime?     @map("period_start")
+  periodEnd      DateTime?     @map("period_end")
+  /// Total hors taxes ; amountTotal reste le TTC. Nuls avant les packs.
+  amountExclTax  Decimal?      @map("amount_excl_tax") @db.Decimal(14, 2)
+  taxAmount      Decimal?      @map("tax_amount") @db.Decimal(14, 2)
+  taxRate        Decimal?      @map("tax_rate") @db.Decimal(5, 2)
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  lines        InvoiceLine[]
 
   // Rental relationships
   rentalInstallments RentalInstallment[]
@@ -934,7 +1038,230 @@ model Invoice {
   @@index([invoiceNumber])
   @@index([status])
   @@index([dueDate])
+  @@index([tenantId, kind])
   @@map("invoices")
+}
+
+// =============================================================
+// ABONNEMENTS PAR PACKS (docs/architecture/PLAN-ABONNEMENTS.md)
+// =============================================================
+
+/// Catalogue des offres, GLOBAL (commun a toutes les agences) et editable par
+/// le super-admin (D12). Le prix est fige dans SubscriptionItem au moment de
+/// la souscription : modifier le catalogue ne change aucun abonnement en cours.
+model CatalogItem {
+  id             String          @id @default(uuid())
+  code           String          @unique
+  kind           CatalogItemKind
+  name           String
+  description    String?         @db.Text
+  /// Prix mensuel HT en FCFA d'UNE unite (pour EXT_LOTS_10 : un bloc de 10 lots).
+  monthlyPrice   Decimal         @map("monthly_price") @db.Decimal(14, 2)
+  /// Frais uniques HT (mise en route) ; 0 si sans objet.
+  setupPrice     Decimal         @default(0) @map("setup_price") @db.Decimal(14, 2)
+  /// Modules ouverts par ce pack.
+  modules        ModuleKey[]
+  /// Un element portant un groupe exclut tout autre PACK hors de ce groupe :
+  /// l'Integre n'est pas cumulable avec Agence, Syndic, Promoteur.
+  exclusiveGroup String?         @map("exclusive_group")
+  /// Regles (CatalogRules, lib/subscription/catalog.ts) : prix selon les packs
+  /// detenus, palier selon le rang du lot, packs requis pour une extension.
+  rules          Json?
+  isSellable     Boolean         @default(true) @map("is_sellable")
+  sortOrder      Int             @default(0) @map("sort_order")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  capacities        CatalogCapacity[]
+  subscriptionItems SubscriptionItem[]
+
+  @@index([kind])
+  @@map("catalog_items")
+}
+
+/// Capacite apportee par UNE unite d'un element du catalogue.
+model CatalogCapacity {
+  id            String      @id @default(uuid())
+  catalogItemId String      @map("catalog_item_id")
+  capacityKey   CapacityKey @map("capacity_key")
+  amount        Int
+
+  catalogItem CatalogItem @relation(fields: [catalogItemId], references: [id], onDelete: Cascade)
+
+  @@unique([catalogItemId, capacityKey])
+  @@map("catalog_capacities")
+}
+
+/// Pack, extension ou mise en route souscrit par une agence, au prix FIGE a la
+/// souscription (D12).
+model SubscriptionItem {
+  id               String                 @id @default(uuid())
+  subscriptionId   String                 @map("subscription_id")
+  tenantId         String                 @map("tenant_id")
+  catalogItemId    String                 @map("catalog_item_id")
+  quantity         Int                    @default(1)
+  /// Prix mensuel HT d'une unite, fige.
+  unitMonthlyPrice Decimal                @map("unit_monthly_price") @db.Decimal(14, 2)
+  /// Frais uniques HT d'une unite, figes (elements SETUP).
+  unitSetupPrice   Decimal                @default(0) @map("unit_setup_price") @db.Decimal(14, 2)
+  /// Remise commerciale propre a cet element, en plus de la remise de combinaison.
+  discountPercent  Decimal                @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  status           SubscriptionItemStatus @default(ACTIVE)
+  startsAt         DateTime               @map("starts_at")
+  /// Fin programmee ou effective. ACTIVE avec endsAt futur : retrait a l'echeance (D7).
+  endsAt           DateTime?              @map("ends_at")
+  endReason        String?                @map("end_reason")
+  addedByUserId    String?                @map("added_by_user_id")
+  endedByUserId    String?                @map("ended_by_user_id")
+  /// Element remplace par une montee de gamme.
+  replacesItemId   String?                @map("replaces_item_id")
+  /// Facture jusqu'a cette date (renseigne par la facturation, vague 3).
+  billedThrough    DateTime?              @map("billed_through")
+  note             String?                @db.Text
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+
+  subscription Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  catalogItem  CatalogItem   @relation(fields: [catalogItemId], references: [id], onDelete: Restrict)
+  invoiceLines InvoiceLine[]
+
+  @@index([tenantId])
+  @@index([subscriptionId])
+  @@index([tenantId, status])
+  @@index([catalogItemId])
+  @@map("subscription_items")
+}
+
+/// Derogation de capacite accordee par le super-admin, par exemple la
+/// « Reprise » de 3 mois d'une agence deja en depassement (D13).
+model CapacityOverride {
+  id              String      @id @default(uuid())
+  tenantId        String      @map("tenant_id")
+  capacityKey     CapacityKey @map("capacity_key")
+  /// Capacite ajoutee (negative pour en retirer).
+  delta           Int
+  reason          String      @db.Text
+  startsAt        DateTime    @default(now()) @map("starts_at")
+  /// Nul : sans limite de duree.
+  expiresAt       DateTime?   @map("expires_at")
+  grantedByUserId String?     @map("granted_by_user_id")
+  revokedAt       DateTime?   @map("revoked_at")
+  revokedByUserId String?     @map("revoked_by_user_id")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, capacityKey])
+  @@map("capacity_overrides")
+}
+
+/// Registre des lots comptes dans la reserve (D1, D2). Une unite physique est
+/// comptee une seule fois par agence grace a sa cle `unitKey` :
+/// `P:<propertyId>` (bien), `SL:<syndicateLotId>` (lot de copropriete sans
+/// bien), `PL:<siteLotId>` (lot de programme pas encore bascule).
+/// Unicite PARTIELLE posee en SQL (migration 20260928090000) : une seule
+/// activation ouverte (deactivated_at IS NULL) par (tenant_id, unit_key).
+/// Ids gardes tels quels, sans cle etrangere : l'historique survit a la
+/// suppression du bien ou du lot, comme AuditLog.
+model LotActivation {
+  id                 String    @id @default(uuid())
+  tenantId           String    @map("tenant_id")
+  kind               LotKind
+  unitKey            String    @map("unit_key")
+  propertyId         String?   @map("property_id")
+  syndicateLotId     String?   @map("syndicate_lot_id")
+  siteLotId          String?   @map("site_lot_id")
+  activatedAt        DateTime  @default(now()) @map("activated_at")
+  activatedByUserId  String?   @map("activated_by_user_id")
+  deactivatedAt      DateTime? @map("deactivated_at")
+  deactivationReason String?   @map("deactivation_reason")
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, deactivatedAt])
+  @@index([tenantId, unitKey])
+  @@index([propertyId])
+  @@index([syndicateLotId])
+  @@index([siteLotId])
+  @@map("lot_activations")
+}
+
+/// Ligne de facture de la plateforme. `invoiceId` nul : ligne EN ATTENTE
+/// (prorata d'un ajout, avoir d'une montee de gamme) que la prochaine facture
+/// reprendra (vague 3).
+model InvoiceLine {
+  id                 String          @id @default(uuid())
+  invoiceId          String?         @map("invoice_id")
+  tenantId           String          @map("tenant_id")
+  kind               InvoiceLineKind
+  label              String
+  catalogItemId      String?         @map("catalog_item_id")
+  subscriptionItemId String?         @map("subscription_item_id")
+  capacityKey        CapacityKey?    @map("capacity_key")
+  quantity           Decimal         @default(1) @db.Decimal(12, 2)
+  unitPrice          Decimal         @map("unit_price") @db.Decimal(14, 2)
+  /// Montant HT de la ligne ; negatif pour DISCOUNT et CREDIT.
+  amount             Decimal         @db.Decimal(14, 2)
+  periodStart        DateTime?       @map("period_start")
+  periodEnd          DateTime?       @map("period_end")
+  sortOrder          Int             @default(0) @map("sort_order")
+  metadata           Json?
+  createdAt          DateTime        @default(now()) @map("created_at")
+
+  invoice          Invoice?          @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscriptionItem SubscriptionItem? @relation(fields: [subscriptionItemId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([tenantId, invoiceId])
+  @@index([subscriptionItemId])
+  @@map("invoice_lines")
+}
+
+/// Releve de consommation d'une capacite, un par jour et par capacite : base
+/// du depassement facture (vague 3) et des courbes d'usage.
+model UsageSnapshot {
+  id           String      @id @default(uuid())
+  tenantId     String      @map("tenant_id")
+  capacityKey  CapacityKey @map("capacity_key")
+  snapshotDate DateTime    @map("snapshot_date") @db.Date
+  periodStart  DateTime    @map("period_start")
+  used         Int
+  limit        Int
+  overage      Int         @default(0)
+  details      Json?
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, capacityKey, snapshotDate])
+  @@index([tenantId, periodStart])
+  @@map("usage_snapshots")
+}
+
+/// Alerte de seuil deja envoyee (80 %, 100 %...) : une seule par capacite,
+/// seuil et periode.
+model QuotaAlert {
+  id          String      @id @default(uuid())
+  tenantId    String      @map("tenant_id")
+  capacityKey CapacityKey @map("capacity_key")
+  /// Seuil en pourcentage de la capacite (80, 100, 120...).
+  threshold   Int
+  periodStart DateTime    @map("period_start")
+  used        Int
+  limit       Int
+  notifiedAt  DateTime?   @map("notified_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, capacityKey, threshold, periodStart])
+  @@index([tenantId])
+  @@map("quota_alerts")
 }
 
 // Audit Log

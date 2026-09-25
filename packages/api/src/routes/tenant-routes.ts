@@ -30,6 +30,7 @@ import {
 import { authenticate } from '../middleware/auth-middleware';
 import { requirePermission } from '../middleware/rbac-middleware';
 import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
+import { getEntitlementsHandler } from '../controllers/subscription-v2-controller';
 
 const router = Router();
 
@@ -66,6 +67,11 @@ router.post(
 // membres et au super-admin. Elle etait publique et renvoyait des `User`
 // complets, empreinte du mot de passe comprise.
 router.get('/:tenantId', authenticate, requireTenantAccess, getTenant);
+
+// Droits de l'agence (abonnement par packs) : modules, lecture seule,
+// capacites et consommation. Lu par le menu et les gardes de la vague 2
+// (docs/architecture/PLAN-ABONNEMENTS.md).
+router.get('/:tenantId/entitlements', authenticate, requireTenantAccess, getEntitlementsHandler);
 router.post('/:tenantId/register', authenticate, registerAsTenantClient);
 
 // Client directory exposes e-mails and names: restricted to collaborators of

@@ -164,6 +164,19 @@ const provisionTenantSchema = z.object({
   name: z.string().trim().min(2).max(120),
   adminFullName: z.string().trim().min(2).max(120),
   adminEmail: z.string().trim().email(),
+  // Packs et extensions (codes du catalogue) : format de reference depuis les
+  // abonnements par packs. Sans `items`, l'ancien format modules/planKey est
+  // converti en packs (services/tenant-provisioning-service.ts).
+  items: z
+    .array(
+      z.object({
+        code: z.string().trim().min(1).max(40),
+        quantity: z.number().int().min(1).max(1000).optional()
+      })
+    )
+    .min(1)
+    .max(20)
+    .optional(),
   planKey: z.enum(['BASIC', 'PRO', 'ELITE']).optional(),
   billingCycle: z.enum(['MONTHLY', 'ANNUAL']).optional(),
   type: z.nativeEnum(TenantType).optional(),
