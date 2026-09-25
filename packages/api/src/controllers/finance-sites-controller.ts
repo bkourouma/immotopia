@@ -203,6 +203,17 @@ function toCashVoucherResponse(voucher: CashVoucherRecord) {
   };
 }
 
+/**
+ * Ce sérialiseur est une liste BLANCHE : un champ ajouté au domaine et oublié
+ * ici ne parvient jamais à l'écran, sans que rien ne le signale — c'est la
+ * panne déjà constatée le 19 septembre 2026 sur `toSupplierPaymentResponse`,
+ * qui taisait `status` et les références de facture.
+ *
+ * `supplierId` et `allocations` (ajout additif du 20 septembre 2026) n'ont de
+ * valeur que sur un `SUPPLIER_PAYMENT` ; ailleurs ils sont `undefined` et
+ * `JSON.stringify` les retire de la réponse, ce qui est exactement voulu :
+ * une pièce de caisse ne doit pas porter un fournisseur nul.
+ */
 function toValidationQueueItemResponse(item: PendingDocument) {
   return {
     documentType: item.documentType,
@@ -212,7 +223,9 @@ function toValidationQueueItemResponse(item: PendingDocument) {
     currency: item.currency,
     createdAt: item.createdAt,
     createdByUserId: item.createdByUserId,
-    createdByLabel: item.createdByLabel
+    createdByLabel: item.createdByLabel,
+    supplierId: item.supplierId,
+    allocations: item.allocations
   };
 }
 

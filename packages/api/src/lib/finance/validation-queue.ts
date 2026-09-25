@@ -25,7 +25,7 @@
 import { prisma } from '../../utils/database';
 import { toAmountOrZero } from './types';
 import { formatCashVoucherNumber } from './cash';
-import type { GetValidationQueue, PendingDocument } from './types-lot2';
+import type { GetValidationQueue, PendingDocument, PendingPaymentAllocation } from './types-lot2';
 
 interface CreatorLike {
   fullName: string | null;
@@ -38,6 +38,38 @@ function labelCreator(user: CreatorLike | null | undefined, userId: string): str
 }
 
 const CREATOR_SELECT = { select: { fullName: true, email: true } } as const;
+
+/**
+ * Les affectations des règlements en attente, groupées par règlement, en UNE
+ * requête pour tout le lot — jamais une par ligne (même discipline que
+ * `nomParChantier` et `resolveRemainingPayableByInvoice` dans
+ * `controllers/finance-suppliers-controller.ts`).
+ *
+ * Chaque règlement présent dans la file reçoit une entrée, fût-elle vide : un
+ * acompte sans facture doit se distinguer d'un règlement dont on n'aurait pas
+ * lu les affectations. Voir `PendingDocument.allocations` (`./types-lot2.ts`).
+ */
+async function affectationsParReglement(paymentIds: string[]): Promise<Map<string, PendingPaymentAllocation[]>> {
+  const result = new Map<string, PendingPaymentAllocation[]>(paymentIds.map(id => [id, []]));
+  if (paymentIds.length === 0) {
+    return result;
+  }
+
+  const rows = await prisma.supplierPaymentAllocation.findMany({
+    where: { paymentId: { in: paymentIds } },
+    select: { paymentId: true, invoiceId: true, amount: true, invoice: { select: { reference: true } } }
+  });
+
+  for (const row of rows as Array<Record<string, any>>) {
+    result.get(row.paymentId)?.push({
+      invoiceId: row.invoiceId,
+      invoiceReference: row.invoice?.reference ?? row.invoiceId,
+      amount: toAmountOrZero(row.amount)
+    });
+  }
+
+  return result;
+}
 
 /** Voir `GetValidationQueue` dans `./types-lot2.ts`. */
 export const getValidationQueue: GetValidationQueue = async (tenantId, filters) => {
@@ -59,6 +91,10 @@ export const getValidationQueue: GetValidationQueue = async (tenantId, filters) 
     })
   ]);
 
+  // Après les trois lectures, parce que la liste des règlements en attente
+  // n'est connue qu'à ce moment — et en une seule requête pour tout le lot.
+  const affectations = await affectationsParReglement((payments as Array<Record<string, any>>).map(p => p.id));
+
   const items: PendingDocument[] = [
     ...(invoices as Array<Record<string, any>>).map(invoice => ({
       documentType: 'SUPPLIER_INVOICE' as const,
@@ -78,7 +114,11 @@ export const getValidationQueue: GetValidationQueue = async (tenantId, filters) 
       currency: payment.currency,
       createdAt: payment.createdAt,
       createdByUserId: payment.createdByUserId,
-      createdByLabel: labelCreator(payment.createdBy, payment.createdByUserId)
+      createdByLabel: labelCreator(payment.createdBy, payment.createdByUserId),
+      // Les deux seuls champs que l'écran du validateur ne pouvait pas
+      // deviner : quel fournisseur relire, et à quoi comparer son reste dû.
+      supplierId: payment.supplierId,
+      allocations: affectations.get(payment.id) ?? []
     })),
     ...(vouchers as Array<Record<string, any>>).map(voucher => {
       // Cette file ne montre QUE des brouillons, et un brouillon n'a pas encore

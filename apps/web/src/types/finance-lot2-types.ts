@@ -124,6 +124,17 @@ export interface SupplierInvoice {
   currency: string;
   status: DocumentStatus;
   validatedAt: string | null;
+  /**
+   * Ce qui reste à payer sur la facture — `amount` diminué des règlements
+   * VALIDÉS non annulés et des retenues de garantie encore DÉTENUES (une
+   * retenue peut solder le reste dû sans aucun versement). `null` quand la
+   * facture n'est pas `VALIDATED` (aucune dette constatée) ou que l'appel
+   * qui a rendu cette facture ne le calcule pas (seule la LISTE
+   * — `listSupplierInvoices` — le fait ; ajout additif du 20 septembre
+   * 2026). Champ optionnel exprès : un ancien cache ou un mock qui ne le
+   * porte pas ne doit pas être lu comme « soldée ».
+   */
+  remainingPayable?: number | null;
 }
 
 /**
@@ -311,6 +322,22 @@ export interface PendingDocument {
    */
   createdByUserId: string;
   createdByLabel: string;
+  /**
+   * Le fournisseur visé par un RÈGLEMENT en attente, et ce qu'il affecte à
+   * chacune de ses factures. Ajout additif du 20 septembre 2026, côté
+   * serveur `PendingDocument` (`lib/finance/types-lot2.ts`).
+   *
+   * Optionnels, et pas seulement parce que les deux autres natures n'en ont
+   * pas : un cache déjà chargé, ou un mock de test écrit avant cet ajout, ne
+   * les porte pas non plus. L'écran doit donc traiter leur absence comme
+   * « je ne sais pas », jamais comme « il n'y en a pas » — un avertissement
+   * qui se tait faute de donnée vaut mieux qu'un avertissement inventé.
+   *
+   * Un acompte sans facture porte un tableau VIDE, ce qui est une
+   * information ; `undefined` n'en est pas une.
+   */
+  supplierId?: string;
+  allocations?: Array<{ invoiceId: string; invoiceReference: string; amount: number }>;
 }
 
 // ---------------------------------------------------------------------------

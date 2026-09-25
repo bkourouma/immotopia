@@ -580,6 +580,20 @@ export type DeleteDraftCashVoucherTx = (
 // File de validation
 // ---------------------------------------------------------------------------
 
+/**
+ * Une affectation du règlement en attente, telle que la FILE la rend.
+ *
+ * Porte la RÉFÉRENCE de la facture en plus de son identifiant — même
+ * convention que `toSupplierPaymentResponse`
+ * (`controllers/finance-suppliers-controller.ts`) : un libellé lisible pour
+ * l'écran, l'identifiant pour la comparaison.
+ */
+export interface PendingPaymentAllocation {
+  invoiceId: string;
+  invoiceReference: string;
+  amount: number;
+}
+
 export interface PendingDocument {
   documentType: VoidableDocumentType;
   documentId: string;
@@ -590,6 +604,32 @@ export interface PendingDocument {
   createdAt: Date;
   createdByUserId: string;
   createdByLabel: string;
+  /**
+   * Le fournisseur visé, et ce que le règlement affecte à chacune de ses
+   * factures. **Ajout strictement additif du 20 septembre 2026**, du même
+   * ordre que `remainingPayable` sur `SupplierInvoice` et que `lines` /
+   * `allocations` sur le détail d'une facture : les champs déjà émis ne
+   * bougent pas.
+   *
+   * Renseignés pour les seuls `SUPPLIER_PAYMENT`, `undefined` partout
+   * ailleurs — une facture en brouillon n'affecte rien, une pièce de caisse
+   * n'a pas de fournisseur.
+   *
+   * **Pourquoi la file en a besoin.** L'écran du validateur doit pouvoir
+   * avertir qu'un règlement en attente solderait une facture DÉJÀ soldée
+   * entre-temps (recette du 20 septembre 2026 : un doublon de 28 000 000 sur
+   * `FRS-QA-001`). Sans le fournisseur il ne sait pas quelles factures relire
+   * (`GET suppliers/:supplierId/invoices`, qui seul rend `remainingPayable`),
+   * et sans les affectations il ne sait pas à quoi les comparer. La file
+   * n'émet PAS le reste dû elle-même : ce chiffre appartient à la liste des
+   * factures, et le dupliquer ici ferait deux calculs à tenir d'accord.
+   *
+   * Un règlement d'acompte, sans facture, porte un tableau VIDE — ce qui se
+   * distingue d'`undefined` : « aucune affectation » est une information,
+   * « nature qui n'en a pas » n'en est pas une.
+   */
+  supplierId?: string;
+  allocations?: PendingPaymentAllocation[];
 }
 
 /**

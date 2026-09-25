@@ -90,6 +90,9 @@ const store = {
   accounts: [] as Row[],
   invoices: [] as Row[],
   payments: [] as Row[],
+  /** Affectations d'un RÈGLEMENT à une facture — à ne pas confondre avec
+   *  `allocations` ci-dessus, qui sont les imputations analytiques. */
+  paymentAllocations: [] as Row[],
   users: [] as Row[],
   seq: 0
 };
@@ -295,6 +298,23 @@ const mockPrisma: Row = {
       if (where.createdByUserId) rows = rows.filter(p => p.createdByUserId === where.createdByUserId);
       return rows.map(p => ({ ...p, createdBy: store.users.find(u => u.id === p.createdByUserId) ?? null }));
     })
+  },
+
+  // Lu par `affectationsParReglement` (`lib/finance/validation-queue.ts`) :
+  // la file doit dire QUELLES factures un règlement en attente solderait,
+  // sans quoi l'écran du validateur ne peut pas avertir d'un doublon.
+  supplierPaymentAllocation: {
+    findMany: jest.fn(async ({ where }: Row) => {
+      const ids: string[] = where?.paymentId?.in ?? [];
+      return store.paymentAllocations
+        .filter(a => ids.includes(a.paymentId))
+        .map(a => ({
+          paymentId: a.paymentId,
+          invoiceId: a.invoiceId,
+          amount: a.amount,
+          invoice: store.invoices.find(i => i.id === a.invoiceId) ?? null
+        }));
+    })
   }
 };
 
@@ -400,6 +420,7 @@ beforeEach(() => {
   store.accounts = [];
   store.invoices = [];
   store.payments = [];
+  store.paymentAllocations = [];
   store.users = [
     { id: GESTIONNAIRE_ID, fullName: 'Fatoumata Camara', email: 'f.camara@example.gn' },
     { id: DIRIGEANT_ID, fullName: 'Ibrahima Sory', email: 'i.sory@example.gn' }
@@ -659,6 +680,74 @@ describe('getValidationQueue — nomme la saisisseuse', () => {
     ]);
     const voucherItem = queue.find(item => item.documentId === voucher.id);
     expect(voucherItem?.label).toContain('Ouvrier Doumbia');
+  });
+
+  it('dit quelles factures un règlement en attente solderait, et pour combien', async () => {
+    // Sans ces deux champs, l'écran du validateur (`FileDeValidation.tsx`) ne
+    // peut ni savoir quel fournisseur relire pour connaître son reste dû, ni
+    // à quoi le comparer — c'est ce qui avait laissé passer, en recette le
+    // 20 septembre 2026, un doublon de règlement sur une facture déjà soldée.
+    const invoiceId = nextId('inv');
+    store.invoices.push({
+      id: invoiceId,
+      tenantId: TENANT_ID,
+      reference: 'FRS-QA-001',
+      amount: 28000000,
+      currency: 'XOF',
+      status: 'VALIDATED',
+      createdAt: new Date('2026-03-04T00:00:00.000Z'),
+      createdByUserId: GESTIONNAIRE_ID,
+      supplier: { name: 'QA Matériaux du Sud SARL' }
+    });
+
+    const paymentId = nextId('pay');
+    store.payments.push({
+      id: paymentId,
+      tenantId: TENANT_ID,
+      supplierId: 'fournisseur-qa',
+      amount: 28000000,
+      currency: 'XOF',
+      validatedAt: null,
+      createdAt: new Date('2026-09-18T00:00:00.000Z'),
+      createdByUserId: GESTIONNAIRE_ID,
+      supplier: { name: 'QA Matériaux du Sud SARL' }
+    });
+    store.paymentAllocations.push({ paymentId, invoiceId, amount: 28000000 });
+
+    const queue = await getValidationQueue(TENANT_ID);
+    const reglement = queue.find(item => item.documentId === paymentId);
+
+    expect(reglement?.supplierId).toBe('fournisseur-qa');
+    // La RÉFÉRENCE lisible, jamais le seul identifiant : c'est elle que
+    // l'avertissement nomme au validateur.
+    expect(reglement?.allocations).toEqual([{ invoiceId, invoiceReference: 'FRS-QA-001', amount: 28000000 }]);
+
+    // Les deux autres natures n'en portent pas : une pièce de caisse n'a pas
+    // de fournisseur, une facture en brouillon n'affecte rien.
+    const facture = queue.find(item => item.documentType === 'SUPPLIER_INVOICE');
+    expect(facture?.supplierId).toBeUndefined();
+    expect(facture?.allocations).toBeUndefined();
+  });
+
+  it('un acompte sans facture porte un tableau VIDE, jamais rien du tout', async () => {
+    // « Aucune affectation » est une information ; `undefined` n'en est pas
+    // une, et l'écran distingue les deux pour ne pas se taire par erreur.
+    const paymentId = nextId('pay');
+    store.payments.push({
+      id: paymentId,
+      tenantId: TENANT_ID,
+      supplierId: 'fournisseur-acompte',
+      amount: 500000,
+      currency: 'XOF',
+      validatedAt: null,
+      createdAt: new Date('2026-09-19T00:00:00.000Z'),
+      createdByUserId: GESTIONNAIRE_ID,
+      supplier: { name: 'Transport Riviera' }
+    });
+
+    const queue = await getValidationQueue(TENANT_ID);
+
+    expect(queue.find(item => item.documentId === paymentId)?.allocations).toEqual([]);
   });
 
   it('filtre par saisisseuse', async () => {

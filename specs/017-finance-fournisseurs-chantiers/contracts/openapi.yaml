@@ -1369,6 +1369,40 @@ components:
         currency: { type: string, example: XOF }
         createdByUserId: { type: string, format: uuid }
         createdAt: { type: string, format: date-time }
+        # Ajout additif du 20 septembre 2026, pour les seuls SUPPLIER_PAYMENT :
+        # absents des deux autres natures. Sans eux, l'ecran du validateur ne
+        # pouvait ni savoir quel fournisseur relire, ni a quoi comparer son
+        # reste du — la recette avait laisse passer un doublon de reglement
+        # visible dans cette file seule.
+        supplierId:
+          type: string
+          format: uuid
+          description: >
+            Le fournisseur regle. Emis pour les seuls SUPPLIER_PAYMENT, absent
+            des factures en brouillon et des pieces de caisse. Permet de
+            relire les factures du fournisseur
+            (`GET suppliers/{supplierId}/invoices`), seule reponse a porter
+            `remainingPayable`.
+        allocations:
+          type: array
+          description: >
+            Ce que le reglement affecte a chaque facture. Emis pour les seuls
+            SUPPLIER_PAYMENT. Tableau VIDE pour un acompte sans facture, ce
+            qui se distingue de l'absence du champ. La file n'emet PAS le
+            reste du des factures visees : ce chiffre appartient a la liste
+            des factures, et le dupliquer ici ferait deux calculs a tenir
+            d'accord.
+          items:
+            type: object
+            required: [invoiceId, invoiceReference, amount]
+            properties:
+              invoiceId: { type: string, format: uuid }
+              invoiceReference:
+                {
+                  type: string,
+                  description: "La reference lisible de la facture, jamais son seul identifiant — meme convention que SupplierPayment.allocations",
+                }
+              amount: { type: number }
 
     ValidationQueueResponseWrapper:
       type: object

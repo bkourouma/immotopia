@@ -6,7 +6,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { FileDeValidation } from '../../pages/finance/FileDeValidation';
-import type { PendingDocument } from '../../types/finance-lot2-types';
+import type { PendingDocument, SupplierInvoice } from '../../types/finance-lot2-types';
 
 /**
  * File de validation — les garanties de l'écran du validateur (récit 11,
@@ -30,9 +30,11 @@ const validateSupplierInvoice = vi.fn();
 const validateSupplierPayment = vi.fn();
 const validateCashVoucher = vi.fn();
 const deleteDraftCashVoucher = vi.fn();
+const listSupplierInvoices = vi.fn();
 
 vi.mock('../../services/finance-lot2-service', () => ({
   getValidationQueue: (...a: unknown[]) => getValidationQueue(...a),
+  listSupplierInvoices: (...a: unknown[]) => listSupplierInvoices(...a),
   validateSupplierInvoice: (...a: unknown[]) => validateSupplierInvoice(...a),
   validateSupplierPayment: (...a: unknown[]) => validateSupplierPayment(...a),
   validateCashVoucher: (...a: unknown[]) => validateCashVoucher(...a),
@@ -103,6 +105,7 @@ beforeEach(() => {
   validateSupplierPayment.mockResolvedValue({ id: 'reglement-1', status: 'VALIDATED' });
   validateCashVoucher.mockResolvedValue({ id: 'caisse-1', status: 'VALIDATED' });
   deleteDraftCashVoucher.mockResolvedValue(undefined);
+  listSupplierInvoices.mockResolvedValue([]);
 });
 
 describe('File de validation — les trois natures', () => {
@@ -341,5 +344,162 @@ describe('File de validation — jeter un brouillon de pièce de caisse', () => 
     await user.click(apres[apres.length - 1]);
 
     expect(await screen.findByText(/elle ne se supprime pas/i, {}, { timeout: 8000 })).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Régler deux fois la même facture — recette du 20 septembre 2026
+//
+// Le cas réel : un règlement fournisseur en brouillon de 28 000 000, saisi une
+// AUTRE session, qui solderait une seconde fois `FRS-QA-001` déjà réglée.
+// `FactureFournisseur.tsx` avertissait déjà, mais sur les seuls règlements de
+// la session en cours — le contrat gelé n'ayant pas de `listSupplierPayments`.
+// Ce doublon-là n'était donc visible QUE dans cette file globale, et elle n'y
+// offrait qu'un bouton « Valider » muet.
+// ---------------------------------------------------------------------------
+
+function reglementDouble(overrides: Partial<PendingDocument> = {}): PendingDocument {
+  return piece({
+    documentType: 'SUPPLIER_PAYMENT',
+    documentId: 'reglement-doublon',
+    label: 'Règlement fournisseur — QA Matériaux du Sud SARL',
+    amount: 28_000_000,
+    createdAt: '2026-09-18T10:00:00.000Z',
+    createdByUserId: 'user-autre-session',
+    createdByLabel: 'Fatou Camara',
+    supplierId: 'fournisseur-qa',
+    allocations: [{ invoiceId: 'facture-frs-qa-001', invoiceReference: 'FRS-QA-001', amount: 28_000_000 }],
+    ...overrides
+  });
+}
+
+function factureQa(remainingPayable: number | null): SupplierInvoice {
+  return {
+    id: 'facture-frs-qa-001',
+    supplierId: 'fournisseur-qa',
+    supplierLabel: 'QA Matériaux du Sud SARL',
+    siteId: null,
+    siteLabel: null,
+    invoiceDate: '2026-03-04',
+    reference: 'FRS-QA-001',
+    amount: 28_000_000,
+    currency: 'XOF',
+    status: 'VALIDATED',
+    validatedAt: '2026-03-05T08:00:00.000Z',
+    remainingPayable
+  };
+}
+
+describe('File de validation — un règlement qui solderait deux fois la même facture', () => {
+  it('AVERTIT sur la ligne, en relisant les factures du fournisseur visé', async () => {
+    getValidationQueue.mockResolvedValue([reglementDouble()]);
+    listSupplierInvoices.mockResolvedValue([factureQa(0)]);
+    mount();
+
+    expect(
+      await screen.findByText('Déjà réglée(s) ou dépassée(s) : FRS-QA-001', {}, { timeout: 8000 })
+    ).toBeInTheDocument();
+
+    // Le reste dû vient bien de la LISTE des factures du fournisseur — seule
+    // réponse à porter `remainingPayable` —, et le fournisseur vient du
+    // règlement lui-même, jamais d'un nom lu dans son libellé.
+    await waitFor(() => expect(listSupplierInvoices).toHaveBeenCalledWith('agence-1', 'fournisseur-qa'));
+  });
+
+  it("N'EMPÊCHE PAS de valider : c'est un avertissement, pas un blocage", async () => {
+    // Saisir un règlement avant qu'un autre ne solde la même facture est
+    // légitime. Désactiver le bouton retirerait au validateur la décision
+    // qu'on cherche justement à éclairer.
+    const user = userEvent.setup({ delay: null });
+    getValidationQueue.mockResolvedValue([reglementDouble()]);
+    listSupplierInvoices.mockResolvedValue([factureQa(0)]);
+    mount();
+
+    await screen.findByText('Déjà réglée(s) ou dépassée(s) : FRS-QA-001', {}, { timeout: 8000 });
+
+    const valider = screen.getByRole('button', { name: 'Valider' });
+    expect(valider).toBeEnabled();
+    await user.click(valider);
+
+    // La confirmation redit le risque au moment décisif : le validateur qui
+    // clique vite est celui à qui l'alerte de la ligne aura échappé.
+    expect(
+      await screen.findByText(/risque de payer deux fois la même facture/i, {}, { timeout: 8000 })
+    ).toBeInTheDocument();
+
+    const boutons = await waitFor(() => {
+      const trouves = screen.getAllByRole('button', { name: 'Valider' });
+      expect(trouves.length).toBeGreaterThan(1);
+      return trouves;
+    });
+    await user.click(boutons[boutons.length - 1]);
+
+    await waitFor(() => expect(validateSupplierPayment).toHaveBeenCalledWith('agence-1', 'reglement-doublon'));
+  });
+
+  it('AVERTIT aussi quand l’affectation dépasse le reste dû sans le solder', async () => {
+    getValidationQueue.mockResolvedValue([reglementDouble()]);
+    listSupplierInvoices.mockResolvedValue([factureQa(5_000_000)]);
+    mount();
+
+    expect(
+      await screen.findByText('Déjà réglée(s) ou dépassée(s) : FRS-QA-001', {}, { timeout: 8000 })
+    ).toBeInTheDocument();
+  });
+
+  it('SE TAIT quand le reste dû couvre l’affectation — aucune fausse alerte', async () => {
+    getValidationQueue.mockResolvedValue([reglementDouble()]);
+    listSupplierInvoices.mockResolvedValue([factureQa(28_000_000)]);
+    mount();
+
+    await screen.findByText('Règlement fournisseur — QA Matériaux du Sud SARL', {}, { timeout: 8000 });
+    await waitFor(() => expect(listSupplierInvoices).toHaveBeenCalled());
+
+    expect(screen.queryByText(/Déjà réglée/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Valider' })).toBeEnabled();
+  });
+
+  it('SE TAIT quand le reste dû est inconnu, plutôt que de le supposer', async () => {
+    // Lecture en échec (droit manquant, réseau) : la file reste utilisable et
+    // n'invente aucune alerte. Une fausse alerte apprendrait au validateur à
+    // passer outre, et la vraie ne servirait plus à rien.
+    getValidationQueue.mockResolvedValue([reglementDouble()]);
+    listSupplierInvoices.mockRejectedValue(new Error('403'));
+    mount();
+
+    await screen.findByText('Règlement fournisseur — QA Matériaux du Sud SARL', {}, { timeout: 8000 });
+    await waitFor(() => expect(listSupplierInvoices).toHaveBeenCalled());
+
+    expect(screen.queryByText(/Déjà réglée/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Valider' })).toBeEnabled();
+    expect(screen.queryByText('Impossible de charger la file de validation.')).not.toBeInTheDocument();
+  });
+
+  it('NE RELIT AUCUNE facture pour un acompte sans affectation', async () => {
+    getValidationQueue.mockResolvedValue([reglementDouble({ allocations: [] })]);
+    mount();
+
+    await screen.findByText('Règlement fournisseur — QA Matériaux du Sud SARL', {}, { timeout: 8000 });
+
+    expect(listSupplierInvoices).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Déjà réglée/)).not.toBeInTheDocument();
+  });
+
+  it('rassemble les références risquées dans la confirmation de la validation EN LOT', async () => {
+    // C'est le geste où l'on ne relit pas chaque ligne : l'alerte doit y être.
+    const user = userEvent.setup({ delay: null });
+    getValidationQueue.mockResolvedValue([reglementDouble()]);
+    listSupplierInvoices.mockResolvedValue([factureQa(0)]);
+    mount();
+
+    await screen.findByText('Déjà réglée(s) ou dépassée(s) : FRS-QA-001', {}, { timeout: 8000 });
+
+    const cases = screen.getAllByRole('checkbox').filter(c => c.getAttribute('aria-label')?.startsWith('Sélectionner'));
+    await user.click(cases[0]);
+    await user.click(await screen.findByRole('button', { name: 'Valider la sélection' }, { timeout: 8000 }));
+
+    expect(
+      await screen.findByText(/FRS-QA-001 déjà réglée\(s\) ou dépassée\(s\)/i, {}, { timeout: 8000 })
+    ).toBeInTheDocument();
   });
 });

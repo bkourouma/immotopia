@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { App, Button, Card, Checkbox, Select, Space, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   deleteDraftCashVoucher,
   getValidationQueue,
+  listSupplierInvoices,
   validateSupplierInvoice,
   validateSupplierPayment,
   validateCashVoucher
@@ -13,7 +14,7 @@ import {
 import { DOCUMENT_TYPE_LABELS } from '../../types/finance-lot2-types';
 import type { PendingDocument, VoidableDocumentType } from '../../types/finance-lot2-types';
 import { useListParams } from '../../hooks/useListParams';
-import { queryKey, entityKeyPrefix, STALE_TIME } from '../../lib/query-keys';
+import { queryKey, detailKey, entityKeyPrefix, STALE_TIME } from '../../lib/query-keys';
 import {
   PageHeader,
   StateBlock,
@@ -63,6 +64,22 @@ const { Text, Title } = Typography;
  * natures (facture, règlement, pièce de caisse) après réception, ce que
  * l'Acceptance Scenario 3 du récit demande aussi bien que le filtre par
  * auteur, sans que cela contredise le contrat gelé.
+ *
+ * **Un règlement qui solderait deux fois la même facture est ANNONCÉ, jamais
+ * refusé** (ajout du 20 septembre 2026). `FactureFournisseur.tsx` portait
+ * déjà cet avertissement, mais seulement sur les règlements saisis pendant la
+ * session en cours — le contrat gelé n'ayant pas de `listSupplierPayments`,
+ * cet écran-là ne connaît pas les brouillons des autres sessions. Or c'est
+ * précisément ici, dans la file globale, que le doublon observé en recette
+ * (28 000 000 sur `FRS-QA-001`, saisi une autre session) devient visible, et
+ * il s'y présentait avec un simple bouton « Valider » et aucune alerte.
+ *
+ * La règle est celle de `FactureFournisseur.tsx`, au mot près : on avertit,
+ * on ne bloque pas. Saisir un règlement avant qu'un autre ne solde la même
+ * facture est un cas LÉGITIME — deux gestionnaires peuvent régler la même
+ * facture sans se concerter — et la façon d'en sortir est justement de ne pas
+ * valider celui-ci, décision qu'un bouton désactivé retirerait au validateur
+ * au lieu de l'éclairer.
  *
  * **L'irréversibilité est dite, pas dramatisée.** Valider verrouille la pièce
  * (principe P-6 du PRD, contrairement à la relance de campagne du lot 1, qui
@@ -182,6 +199,105 @@ export const FileDeValidation: React.FC = () => {
     ? donneesBrutes.filter(doc => doc.documentType === list.filters.nature)
     : donneesBrutes;
 
+  // -------------------------------------------------------------------------
+  // Règlements qui solderaient une facture déjà soldée — avertir, pas bloquer
+  // -------------------------------------------------------------------------
+
+  /**
+   * Les fournisseurs visés par les règlements en attente, DÉDOUBLONNÉS.
+   *
+   * Trois règlements pour le même fournisseur ne font qu'une lecture : la clé
+   * de cache est la même que celle de `FactureFournisseur.tsx`
+   * (`detailKey('supplier-invoices', …)`), si bien qu'arriver ici depuis la
+   * fiche d'un fournisseur ne relit rien du tout.
+   *
+   * Calculé sur `donneesBrutes` et non sur `items` : filtrer la file par
+   * nature ne doit pas décider quelles factures sont relues.
+   */
+  const fournisseursAVerifier = React.useMemo(() => {
+    const ids = new Set<string>();
+    for (const doc of donneesBrutes) {
+      // Un règlement sans affectation est un acompte : il ne vise aucune
+      // facture, donc rien à comparer et aucune lecture à déclencher.
+      if (doc.documentType !== 'SUPPLIER_PAYMENT') continue;
+      if (!doc.supplierId || !doc.allocations?.length) continue;
+      ids.add(doc.supplierId);
+    }
+    return Array.from(ids).sort();
+  }, [donneesBrutes]);
+
+  const facturesParFournisseur = useQueries({
+    queries: fournisseursAVerifier.map(supplierId => ({
+      queryKey: detailKey('supplier-invoices', tenantId, supplierId),
+      queryFn: () => listSupplierInvoices(tenantId as string, supplierId),
+      enabled: Boolean(tenantId),
+      staleTime: STALE_TIME.list
+    }))
+  });
+
+  /**
+   * Le reste dû COURANT de chaque facture, toutes lectures confondues.
+   *
+   * « Courant », et non celui qu'elle avait quand le règlement a été saisi :
+   * c'est justement un changement survenu depuis — un autre règlement validé
+   * entre-temps — qui rend celui-ci dangereux.
+   *
+   * Une lecture en échec (droit manquant, réseau) n'entre simplement pas dans
+   * la carte : l'avertissement se tait, la file reste utilisable, et aucune
+   * validation n'est empêchée. Une alerte est un service rendu au validateur,
+   * jamais une condition pour qu'il travaille.
+   *
+   * Reconstruite à chaque rendu, sans `useMemo` : `useQueries` rend un tableau
+   * neuf à chaque fois, et toute clé de mémoïsation qu'on dériverait de lui
+   * (les `dataUpdatedAt` concaténés, par exemple) risquerait de ne pas changer
+   * là où le contenu, lui, a changé — une alerte périmée vaudrait ici bien
+   * plus cher que la poignée d'entrées que cette boucle recrée.
+   */
+  const resteDuParFacture = new Map<string, number>();
+  for (const resultat of facturesParFournisseur) {
+    for (const facture of resultat.data ?? []) {
+      if (facture.remainingPayable == null) continue;
+      resteDuParFacture.set(facture.id, facture.remainingPayable);
+    }
+  }
+
+  /**
+   * Références des factures que ce règlement en attente solderait une seconde
+   * fois, ou au-delà de leur reste dû.
+   *
+   * Même règle que `referencesRisqueesDuReglement` dans
+   * `FactureFournisseur.tsx`, et même prudence : une facture dont le reste dû
+   * est inconnu (pas encore lu, lecture en échec, facture non retrouvée) ne
+   * déclenche RIEN. On n'avertit que sur ce qu'on sait, jamais sur une
+   * supposition — une fausse alerte sur cet écran apprendrait au validateur à
+   * passer outre, et la vraie alerte ne servirait plus à rien.
+   */
+  const referencesRisqueesDuReglement = (doc: PendingDocument): string[] => {
+    if (doc.documentType !== 'SUPPLIER_PAYMENT') return [];
+    const references: string[] = [];
+    for (const affectation of doc.allocations ?? []) {
+      const reste = resteDuParFacture.get(affectation.invoiceId);
+      if (reste == null) continue;
+      const dejaSoldee = reste <= 0;
+      const depasseLeReste = affectation.amount > reste;
+      if (dejaSoldee || depasseLeReste) {
+        references.push(affectation.invoiceReference);
+      }
+    }
+    return references;
+  };
+
+  /** Le même message, qu'il apparaisse dans la ligne ou dans la confirmation. */
+  const messageRisqueReglement = (references: string[]): string =>
+    t(
+      'Attention : {{references}} déjà réglée(s) ou dépassée(s) par ce règlement — le valider risque de payer deux fois la même facture.',
+      { references: references.join(', ') }
+    );
+
+  /** Le libellé court, celui qui tient sur une ligne de tableau ou une carte. */
+  const alerteCourte = (references: string[]): string =>
+    t('Déjà réglée(s) ou dépassée(s) : {{references}}', { references: references.join(', ') });
+
   const piecesSelectionnees = donneesBrutes.filter(doc => selection.has(cle(doc)));
 
   const clesVisibles = items.map(cle);
@@ -276,11 +392,18 @@ export const FileDeValidation: React.FC = () => {
   };
 
   const demanderValidation = (doc: PendingDocument) => {
+    const irreversible = t(
+      "Cette validation est irréversible : la pièce ne sera plus modifiable ensuite. Pour la corriger, il faudra l'annuler par une pièce liée."
+    );
+    // Le risque de double règlement est redit AU MOMENT DÉCISIF, en plus de
+    // l'alerte déjà visible sur la ligne : le validateur qui clique vite est
+    // exactement celui à qui l'alerte de la ligne aura échappé. Le bouton de
+    // confirmation, lui, ne change pas — c'est un avertissement, pas un
+    // rempart.
+    const risques = referencesRisqueesDuReglement(doc);
     confirmAction({
       title: t('Valider « {{label}} » ?', { label: doc.label }),
-      description: t(
-        "Cette validation est irréversible : la pièce ne sera plus modifiable ensuite. Pour la corriger, il faudra l'annuler par une pièce liée."
-      ),
+      description: risques.length > 0 ? `${irreversible} ${messageRisqueReglement(risques)}` : irreversible,
       okText: t('Valider'),
       onConfirm: () => validerUnePiece(doc)
     });
@@ -318,14 +441,19 @@ export const FileDeValidation: React.FC = () => {
 
   const demanderValidationLot = () => {
     if (piecesSelectionnees.length === 0) return;
+    const irreversible = t(
+      'Cette validation est irréversible : les pièces validées ne seront plus modifiables ensuite. Pour les corriger, il faudra les annuler une à une.'
+    );
+    // La validation en lot est justement le geste où l'on ne relit pas chaque
+    // ligne : les références risquées de TOUTES les pièces cochées sont donc
+    // rassemblées en une seule phrase, dédoublonnées.
+    const risques = Array.from(new Set(piecesSelectionnees.flatMap(referencesRisqueesDuReglement)));
     confirmAction({
       title:
         piecesSelectionnees.length > 1
           ? t('Valider les {{length}} pièces sélectionnées ?', { length: piecesSelectionnees.length })
           : t('Valider la pièce sélectionnée ?'),
-      description: t(
-        'Cette validation est irréversible : les pièces validées ne seront plus modifiables ensuite. Pour les corriger, il faudra les annuler une à une.'
-      ),
+      description: risques.length > 0 ? `${irreversible} ${messageRisqueReglement(risques)}` : irreversible,
       okText: t('Valider'),
       onConfirm: validerLot
     });
@@ -356,7 +484,26 @@ export const FileDeValidation: React.FC = () => {
       )
     },
     { title: t('Nature'), key: 'nature', render: (_, doc) => libelleNature(doc.documentType) },
-    { title: t('Pièce'), key: 'piece', render: (_, doc) => doc.label },
+    {
+      title: t('Pièce'),
+      key: 'piece',
+      // L'alerte se pose sous le libellé de la pièce, pas dans une colonne à
+      // elle : une colonne vide sur presque toutes les lignes coûterait de la
+      // largeur à chaque ligne pour ne servir qu'à la rare.
+      render: (_, doc) => {
+        const risques = referencesRisqueesDuReglement(doc);
+        return (
+          <Space orientation="vertical" size={2}>
+            <span>{doc.label}</span>
+            {risques.length > 0 && (
+              <Text type="warning" style={{ fontSize: 12 }}>
+                {alerteCourte(risques)}
+              </Text>
+            )}
+          </Space>
+        );
+      }
+    },
     {
       title: t('Montant'),
       key: 'montant',
@@ -559,6 +706,14 @@ export const FileDeValidation: React.FC = () => {
               date: dateCourte(doc.createdAt)
             })}
             highlight={<MoneyValue value={doc.amount} />}
+            // Au palier mobile l'alerte devient un champ nommé de la carte :
+            // la même phrase qu'en table, à l'endroit où la carte range ce
+            // qui n'est ni le titre ni le montant.
+            fields={
+              referencesRisqueesDuReglement(doc).length > 0
+                ? [{ label: t('Alerte'), value: alerteCourte(referencesRisqueesDuReglement(doc)) }]
+                : undefined
+            }
             primaryAction={{
               label: 'Valider',
               loading: enCours === cle(doc),
