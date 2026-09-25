@@ -34,4 +34,21 @@ export function t(text: string, values?: TranslationValues): string {
   return i18next.t(text, { defaultValue: text, replace: values }) as string;
 }
 
+/**
+ * Déclare un texte français à traduire **plus tard, à l'affichage** — et le
+ * renvoie tel quel.
+ *
+ * Pour les constantes de module : un `t()` y serait appelé une seule fois, à
+ * l'import, dans la langue du moment, et ne suivrait pas un changement de
+ * langue. Le texte reste donc en français dans la donnée, et l'écran appelle
+ * `t(descripteur.libelle)` au rendu.
+ *
+ * Sans ce marqueur, `scripts/i18n-migrate.mjs` ne verrait pas la clé — ou
+ * l'envelopperait dans un `t()` au chargement du module. Il recense l'argument
+ * de `aTraduire()` dans les catalogues, sans jamais le réécrire.
+ */
+export function aTraduire(text: string): string {
+  return text;
+}
+
 export default t;

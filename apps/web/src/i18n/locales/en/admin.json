@@ -40,6 +40,7 @@
   "Audit Logs": "Audit logs",
   "Catégorie": "Category",
   "Catégorie:": "Category:",
+  "Ce ticket est arrivé au bout de son parcours : son statut ne change plus.": "This ticket has reached the end of its lifecycle: its status no longer changes.",
   "Cette action est irréversible. Le prestataire sera supprimé de manière permanente.": "This cannot be undone. The contractor will be permanently deleted.",
   "Chambres": "Bedrooms",
   "Chargement des roles...": "Loading roles…",

@@ -156,8 +156,8 @@ export interface RetentionGuaranteeRecord {
  *   cent pour cent n'est pas une garantie, c'est un non-paiement ;
  * - le montant retenu tombe à zéro après arrondi — une retenue de zéro franc
  *   n'est pas une retenue, et la laisser passer créerait une écriture vide ;
- * - **pour une facture seulement**, un règlement lui a déjà été affecté. Voir
- *   l'en-tête sur la fenêtre qu'on ne sait pas fermer côté situations.
+ * - **pour une facture seulement**, le montant retenu dépasse ce qui reste à
+ *   payer, déduction faite des règlements validés et non annulés.
  *
  * `plannedReleaseDate` est exigée. Une retenue sans échéance prévue est une
  * retenue qu'on oublie, et c'est précisément ce que la cliente veut éviter.

@@ -8,7 +8,7 @@ import {
   recordStockReceipt
 } from '../../services/finance-stock-mouvements-service';
 import { listLandLeaseAccruals, recordLandLeaseAccrual } from '../../services/finance-lot4-service';
-import { t } from '../../i18n/t';
+import { aTraduire, t } from '../../i18n/t';
 import { decouperPeriode } from './valeurs';
 import type { ContexteImportation, DescripteurNature, ValeursLigne } from './types';
 
@@ -48,6 +48,16 @@ import type { ContexteImportation, DescripteurNature, ValeursLigne } from './typ
  * UN article. Regrouper sur un numéro de pièce commun serait une seconde
  * fonctionnalité, avec ses propres pièges ; elle n'est pas faite, et c'est
  * dit au rapport.
+ *
+ * ---------------------------------------------------------------------------
+ * Les textes restent en français ici
+ * ---------------------------------------------------------------------------
+ *
+ * Libellés, descriptions et aides sont marqués `aTraduire()` et traduits par
+ * l'écran au rendu : un `t()` au niveau du module serait appelé à l'import,
+ * avant le choix de la langue. Le libellé sert d'ailleurs aussi à reconnaître
+ * une colonne, tout comme `entetes`, qui ne se traduit jamais — ce sont les
+ * en-têtes d'un fichier réel, et `scripts/i18n-migrate.mjs` les ignore.
  */
 
 // ---------------------------------------------------------------------------
@@ -88,14 +98,16 @@ function empreinteDe(parties: Array<string | number | null>): string | null {
 
 const PIECE_DE_CAISSE: DescripteurNature = {
   cle: 'piece-de-caisse',
-  libelle: 'Pièce de caisse',
-  description: 'Une dépense réglée en espèces, imputée à un chantier et à un poste. Créée à l’état brouillon.',
+  libelle: aTraduire('Pièce de caisse'),
+  description: aTraduire(
+    'Une dépense réglée en espèces, imputée à un chantier et à un poste. Créée à l’état brouillon.'
+  ),
   chantier: 'exige',
   referentiels: ['postes'],
   champs: [
     {
       cle: 'costCategoryId',
-      libelle: 'Poste de dépense',
+      libelle: aTraduire('Poste de dépense'),
       obligatoire: true,
       type: 'reference',
       referentiel: 'postes',
@@ -103,15 +115,21 @@ const PIECE_DE_CAISSE: DescripteurNature = {
     },
     {
       cle: 'beneficiary',
-      libelle: 'Bénéficiaire',
+      libelle: aTraduire('Bénéficiaire'),
       obligatoire: true,
       type: 'texte',
       entetes: ['bénéficiaire', 'payé à', 'destinataire', 'nom']
     },
-    { cle: 'amount', libelle: 'Montant', obligatoire: true, type: 'montant', entetes: ['somme', 'total', 'valeur'] },
+    {
+      cle: 'amount',
+      libelle: aTraduire('Montant'),
+      obligatoire: true,
+      type: 'montant',
+      entetes: ['somme', 'total', 'valeur']
+    },
     {
       cle: 'voucherDate',
-      libelle: 'Date de la pièce',
+      libelle: aTraduire('Date de la pièce'),
       obligatoire: true,
       type: 'date',
       entetes: ['date', 'date de dépense', 'jour'],
@@ -119,7 +137,7 @@ const PIECE_DE_CAISSE: DescripteurNature = {
     },
     {
       cle: 'reason',
-      libelle: 'Motif',
+      libelle: aTraduire('Motif'),
       obligatoire: true,
       type: 'texte',
       entetes: ['objet', 'libellé', 'description', 'raison', 'désignation']
@@ -136,8 +154,9 @@ const PIECE_DE_CAISSE: DescripteurNature = {
     });
   },
   // Pas d'`empreinte`, pas de `chargerEmpreintes` : voir ci-dessous.
-  doublonImpossible:
+  doublonImpossible: aTraduire(
     'Aucune liste des pièces de caisse n’est lisible depuis l’application : la file de validation ne montre que les pièces en attente, sans leur chantier ni leur date. Les doublons ne peuvent donc pas être signalés pour cette nature.'
+  )
 };
 
 // ---------------------------------------------------------------------------
@@ -146,15 +165,16 @@ const PIECE_DE_CAISSE: DescripteurNature = {
 
 const FACTURE_FOURNISSEUR: DescripteurNature = {
   cle: 'facture-fournisseur',
-  libelle: 'Facture fournisseur',
-  description:
-    'Une facture reçue, d’une seule ligne, imputée au chantier choisi. Créée à l’état brouillon : rien ne bouge au compte du fournisseur avant validation.',
+  libelle: aTraduire('Facture fournisseur'),
+  description: aTraduire(
+    'Une facture reçue, d’une seule ligne, imputée au chantier choisi. Créée à l’état brouillon : rien ne bouge au compte du fournisseur avant validation.'
+  ),
   chantier: 'exige',
   referentiels: ['postes', 'fournisseurs'],
   champs: [
     {
       cle: 'supplierId',
-      libelle: 'Fournisseur',
+      libelle: aTraduire('Fournisseur'),
       obligatoire: true,
       type: 'reference',
       referentiel: 'fournisseurs',
@@ -162,14 +182,14 @@ const FACTURE_FOURNISSEUR: DescripteurNature = {
     },
     {
       cle: 'reference',
-      libelle: 'Référence de la facture',
+      libelle: aTraduire('Référence de la facture'),
       obligatoire: true,
       type: 'texte',
       entetes: ['référence', 'numéro', 'n° facture', 'facture', 'pièce']
     },
     {
       cle: 'invoiceDate',
-      libelle: 'Date de la facture',
+      libelle: aTraduire('Date de la facture'),
       obligatoire: true,
       type: 'date',
       entetes: ['date', 'date facture'],
@@ -177,7 +197,7 @@ const FACTURE_FOURNISSEUR: DescripteurNature = {
     },
     {
       cle: 'costCategoryId',
-      libelle: 'Poste de dépense',
+      libelle: aTraduire('Poste de dépense'),
       obligatoire: true,
       type: 'reference',
       referentiel: 'postes',
@@ -185,29 +205,29 @@ const FACTURE_FOURNISSEUR: DescripteurNature = {
     },
     {
       cle: 'label',
-      libelle: 'Désignation',
+      libelle: aTraduire('Désignation'),
       obligatoire: true,
       type: 'texte',
       entetes: ['libellé', 'objet', 'description', 'article', 'prestation']
     },
     {
       cle: 'amount',
-      libelle: 'Montant',
+      libelle: aTraduire('Montant'),
       obligatoire: true,
       type: 'montant',
       entetes: ['total', 'somme', 'montant ttc']
     },
     {
       cle: 'quantity',
-      libelle: 'Quantité',
+      libelle: aTraduire('Quantité'),
       obligatoire: false,
       type: 'quantite',
       entetes: ['qté', 'qte', 'nombre', 'nb'],
-      aide: 'Facultative. Beaucoup de dépenses n’en ont pas : une prestation, un forfait.'
+      aide: aTraduire('Facultative. Beaucoup de dépenses n’en ont pas : une prestation, un forfait.')
     },
     {
       cle: 'unitPrice',
-      libelle: 'Prix unitaire',
+      libelle: aTraduire('Prix unitaire'),
       obligatoire: false,
       type: 'montant',
       entetes: ['pu', 'p.u.', 'prix', 'coût unitaire']
@@ -266,14 +286,16 @@ const FACTURE_FOURNISSEUR: DescripteurNature = {
 
 const BON_DE_COMMANDE: DescripteurNature = {
   cle: 'bon-de-commande',
-  libelle: 'Bon de commande',
-  description: 'Une commande d’une seule ligne, passée sur le chantier choisi. Créée à l’état brouillon, non émise.',
+  libelle: aTraduire('Bon de commande'),
+  description: aTraduire(
+    'Une commande d’une seule ligne, passée sur le chantier choisi. Créée à l’état brouillon, non émise.'
+  ),
   chantier: 'exige',
   referentiels: ['postes', 'fournisseurs'],
   champs: [
     {
       cle: 'supplierId',
-      libelle: 'Fournisseur',
+      libelle: aTraduire('Fournisseur'),
       obligatoire: true,
       type: 'reference',
       referentiel: 'fournisseurs',
@@ -281,14 +303,14 @@ const BON_DE_COMMANDE: DescripteurNature = {
     },
     {
       cle: 'reference',
-      libelle: 'Référence du bon',
+      libelle: aTraduire('Référence du bon'),
       obligatoire: true,
       type: 'texte',
       entetes: ['référence', 'numéro', 'n° bon', 'bon de commande', 'commande']
     },
     {
       cle: 'orderDate',
-      libelle: 'Date de la commande',
+      libelle: aTraduire('Date de la commande'),
       obligatoire: true,
       type: 'date',
       entetes: ['date', 'date de commande'],
@@ -296,7 +318,7 @@ const BON_DE_COMMANDE: DescripteurNature = {
     },
     {
       cle: 'costCategoryId',
-      libelle: 'Poste de dépense',
+      libelle: aTraduire('Poste de dépense'),
       obligatoire: true,
       type: 'reference',
       referentiel: 'postes',
@@ -304,16 +326,22 @@ const BON_DE_COMMANDE: DescripteurNature = {
     },
     {
       cle: 'label',
-      libelle: 'Désignation',
+      libelle: aTraduire('Désignation'),
       obligatoire: true,
       type: 'texte',
       entetes: ['libellé', 'objet', 'description', 'article']
     },
-    { cle: 'amount', libelle: 'Montant', obligatoire: true, type: 'montant', entetes: ['total', 'somme'] },
-    { cle: 'quantity', libelle: 'Quantité', obligatoire: false, type: 'quantite', entetes: ['qté', 'qte', 'nombre'] },
+    { cle: 'amount', libelle: aTraduire('Montant'), obligatoire: true, type: 'montant', entetes: ['total', 'somme'] },
+    {
+      cle: 'quantity',
+      libelle: aTraduire('Quantité'),
+      obligatoire: false,
+      type: 'quantite',
+      entetes: ['qté', 'qte', 'nombre']
+    },
     {
       cle: 'unitPrice',
-      libelle: 'Prix unitaire',
+      libelle: aTraduire('Prix unitaire'),
       obligatoire: false,
       type: 'montant',
       entetes: ['pu', 'p.u.', 'prix', 'coût unitaire']
@@ -360,15 +388,16 @@ const BON_DE_COMMANDE: DescripteurNature = {
 
 const NOTE_DE_SALAIRE: DescripteurNature = {
   cle: 'note-de-salaire',
-  libelle: 'Note de salaire',
-  description:
-    'Le salaire d’un mois pour un salarié. Le chantier est facultatif ; quand il est choisi, le poste de dépense devient exigé — le serveur refuse l’un sans l’autre.',
+  libelle: aTraduire('Note de salaire'),
+  description: aTraduire(
+    'Le salaire d’un mois pour un salarié. Le chantier est facultatif ; quand il est choisi, le poste de dépense devient exigé — le serveur refuse l’un sans l’autre.'
+  ),
   chantier: 'facultatif',
   referentiels: ['postes', 'salaries'],
   champs: [
     {
       cle: 'employeeId',
-      libelle: 'Salarié',
+      libelle: aTraduire('Salarié'),
       obligatoire: true,
       type: 'reference',
       referentiel: 'salaries',
@@ -376,28 +405,28 @@ const NOTE_DE_SALAIRE: DescripteurNature = {
     },
     {
       cle: 'periode',
-      libelle: 'Mois',
+      libelle: aTraduire('Mois'),
       obligatoire: true,
       type: 'periode',
       entetes: ['période', 'periode', 'mois', 'date'],
       valeurParDefaut: contexte => contexte.dateParDefaut,
-      aide: 'Un mois, pas un jour : « 03/2026 » ou « 2026-03 ». Une date complète est ramenée à son mois.'
+      aide: aTraduire('Un mois, pas un jour : « 03/2026 » ou « 2026-03 ». Une date complète est ramenée à son mois.')
     },
     {
       cle: 'amount',
-      libelle: 'Montant',
+      libelle: aTraduire('Montant'),
       obligatoire: true,
       type: 'montant',
       entetes: ['salaire', 'net', 'net à payer', 'total', 'somme']
     },
     {
       cle: 'costCategoryId',
-      libelle: 'Poste de dépense',
+      libelle: aTraduire('Poste de dépense'),
       obligatoire: false,
       type: 'reference',
       referentiel: 'postes',
       entetes: ['poste', 'catégorie', 'imputation'],
-      aide: 'Exigé seulement si un chantier est choisi à l’étape 1.'
+      aide: aTraduire('Exigé seulement si un chantier est choisi à l’étape 1.')
     }
   ],
   valider: (valeurs, contexte) => {
@@ -447,33 +476,40 @@ const NOTE_DE_SALAIRE: DescripteurNature = {
 
 const SITUATION_DE_TACHERON: DescripteurNature = {
   cle: 'situation-de-tacheron',
-  libelle: 'Situation de tâcheron',
-  description:
-    'Un avancement constaté sur un marché de tâcheron. Le chantier et le poste viennent du marché : il n’y a rien à choisir à l’étape 1.',
+  libelle: aTraduire('Situation de tâcheron'),
+  description: aTraduire(
+    'Un avancement constaté sur un marché de tâcheron. Le chantier et le poste viennent du marché : il n’y a rien à choisir à l’étape 1.'
+  ),
   chantier: 'sans',
   referentiels: ['contrats', 'tacherons'],
   champs: [
     {
       cle: 'contractId',
-      libelle: 'Marché',
+      libelle: aTraduire('Marché'),
       obligatoire: true,
       type: 'reference',
       referentiel: 'contrats',
       entetes: ['contrat', 'référence', 'n° marché', 'tâcheron', 'tacheron'],
-      aide: 'Reconnu par la référence du marché, ou par « Nom du tâcheron + référence ».'
+      aide: aTraduire('Reconnu par la référence du marché, ou par « Nom du tâcheron + référence ».')
     },
     {
       cle: 'statementDate',
-      libelle: 'Date de la situation',
+      libelle: aTraduire('Date de la situation'),
       obligatoire: true,
       type: 'date',
       entetes: ['date', 'date de situation'],
       valeurParDefaut: contexte => contexte.dateParDefaut
     },
-    { cle: 'amount', libelle: 'Montant', obligatoire: true, type: 'montant', entetes: ['total', 'somme', 'valeur'] },
+    {
+      cle: 'amount',
+      libelle: aTraduire('Montant'),
+      obligatoire: true,
+      type: 'montant',
+      entetes: ['total', 'somme', 'valeur']
+    },
     {
       cle: 'description',
-      libelle: 'Description',
+      libelle: aTraduire('Description'),
       obligatoire: true,
       type: 'texte',
       entetes: ['libellé', 'objet', 'avancement', 'travaux', 'désignation']
@@ -519,15 +555,16 @@ const SITUATION_DE_TACHERON: DescripteurNature = {
 
 const RECEPTION_DE_STOCK: DescripteurNature = {
   cle: 'reception-de-stock',
-  libelle: 'Réception de stock',
-  description:
-    'Une entrée d’article dans un lieu, adossée à une facture fournisseur validée. Une ligne du fichier = une réception d’un article.',
+  libelle: aTraduire('Réception de stock'),
+  description: aTraduire(
+    'Une entrée d’article dans un lieu, adossée à une facture fournisseur validée. Une ligne du fichier = une réception d’un article.'
+  ),
   chantier: 'sans',
   referentiels: ['articles', 'lieux', 'facturesFournisseur'],
   champs: [
     {
       cle: 'locationId',
-      libelle: 'Lieu de stockage',
+      libelle: aTraduire('Lieu de stockage'),
       obligatoire: true,
       type: 'reference',
       referentiel: 'lieux',
@@ -535,16 +572,16 @@ const RECEPTION_DE_STOCK: DescripteurNature = {
     },
     {
       cle: 'supplierInvoiceId',
-      libelle: 'Facture fournisseur',
+      libelle: aTraduire('Facture fournisseur'),
       obligatoire: true,
       type: 'reference',
       referentiel: 'facturesFournisseur',
       entetes: ['facture', 'référence facture', 'n° facture', 'pièce'],
-      aide: 'Seules les factures validées peuvent porter une réception.'
+      aide: aTraduire('Seules les factures validées peuvent porter une réception.')
     },
     {
       cle: 'receiptDate',
-      libelle: 'Date de réception',
+      libelle: aTraduire('Date de réception'),
       obligatoire: true,
       type: 'date',
       entetes: ['date', 'date de livraison', 'livraison'],
@@ -552,20 +589,26 @@ const RECEPTION_DE_STOCK: DescripteurNature = {
     },
     {
       cle: 'itemId',
-      libelle: 'Article',
+      libelle: aTraduire('Article'),
       obligatoire: true,
       type: 'reference',
       referentiel: 'articles',
       entetes: ['matériau', 'désignation', 'référence article', 'produit', 'libellé']
     },
-    { cle: 'quantity', libelle: 'Quantité', obligatoire: true, type: 'quantite', entetes: ['qté', 'qte', 'nombre'] },
+    {
+      cle: 'quantity',
+      libelle: aTraduire('Quantité'),
+      obligatoire: true,
+      type: 'quantite',
+      entetes: ['qté', 'qte', 'nombre']
+    },
     {
       cle: 'unitCost',
-      libelle: 'Prix unitaire',
+      libelle: aTraduire('Prix unitaire'),
       obligatoire: true,
       type: 'montant',
       entetes: ['pu', 'p.u.', 'coût unitaire', 'prix'],
-      aide: 'Le zéro est accepté : un don, une chute récupérée entrent à valeur nulle.'
+      aide: aTraduire('Le zéro est accepté : un don, une chute récupérée entrent à valeur nulle.')
     }
   ],
   enregistrer: async (valeurs, contexte) => {
@@ -612,15 +655,16 @@ const RECEPTION_DE_STOCK: DescripteurNature = {
 
 const SORTIE_DE_STOCK: DescripteurNature = {
   cle: 'sortie-de-stock',
-  libelle: 'Sortie de stock',
-  description:
-    'Un article sort d’un lieu vers le chantier choisi, et s’y impute. Aucun prix n’est saisi : la valeur vient du coût moyen du lieu.',
+  libelle: aTraduire('Sortie de stock'),
+  description: aTraduire(
+    'Un article sort d’un lieu vers le chantier choisi, et s’y impute. Aucun prix n’est saisi : la valeur vient du coût moyen du lieu.'
+  ),
   chantier: 'exige',
   referentiels: ['articles', 'lieux', 'postes'],
   champs: [
     {
       cle: 'locationId',
-      libelle: 'Lieu de stockage',
+      libelle: aTraduire('Lieu de stockage'),
       obligatoire: true,
       type: 'reference',
       referentiel: 'lieux',
@@ -628,32 +672,38 @@ const SORTIE_DE_STOCK: DescripteurNature = {
     },
     {
       cle: 'itemId',
-      libelle: 'Article',
+      libelle: aTraduire('Article'),
       obligatoire: true,
       type: 'reference',
       referentiel: 'articles',
       entetes: ['matériau', 'désignation', 'référence article', 'produit', 'libellé']
     },
-    { cle: 'quantity', libelle: 'Quantité', obligatoire: true, type: 'quantite', entetes: ['qté', 'qte', 'nombre'] },
+    {
+      cle: 'quantity',
+      libelle: aTraduire('Quantité'),
+      obligatoire: true,
+      type: 'quantite',
+      entetes: ['qté', 'qte', 'nombre']
+    },
     {
       cle: 'costCategoryId',
-      libelle: 'Poste de dépense',
+      libelle: aTraduire('Poste de dépense'),
       obligatoire: true,
       type: 'reference',
       referentiel: 'postes',
       entetes: ['poste', 'catégorie', 'imputation'],
-      aide: 'Exigé, jamais deviné depuis l’article : son poste par défaut n’est qu’une proposition.'
+      aide: aTraduire('Exigé, jamais deviné depuis l’article : son poste par défaut n’est qu’une proposition.')
     },
     {
       cle: 'requestedBy',
-      libelle: 'Demandeur',
+      libelle: aTraduire('Demandeur'),
       obligatoire: true,
       type: 'texte',
       entetes: ['demandé par', 'demande par', 'responsable', 'chef de chantier', 'bénéficiaire']
     },
     {
       cle: 'issueDate',
-      libelle: 'Date de sortie',
+      libelle: aTraduire('Date de sortie'),
       obligatoire: true,
       type: 'date',
       entetes: ['date', 'date de sortie'],
@@ -706,15 +756,16 @@ const SORTIE_DE_STOCK: DescripteurNature = {
 
 const CONSTATATION_DE_LOYER: DescripteurNature = {
   cle: 'constatation-de-loyer',
-  libelle: 'Constatation de loyer de terrain',
-  description:
-    'Le douzième mensuel d’un bail de terrain, constaté à la main pour un mois. Le montant vient du bail : il n’y a rien à saisir.',
+  libelle: aTraduire('Constatation de loyer de terrain'),
+  description: aTraduire(
+    'Le douzième mensuel d’un bail de terrain, constaté à la main pour un mois. Le montant vient du bail : il n’y a rien à saisir.'
+  ),
   chantier: 'sans',
   referentiels: ['baux'],
   champs: [
     {
       cle: 'landLeaseId',
-      libelle: 'Bail de terrain',
+      libelle: aTraduire('Bail de terrain'),
       obligatoire: true,
       type: 'reference',
       referentiel: 'baux',
@@ -722,12 +773,12 @@ const CONSTATATION_DE_LOYER: DescripteurNature = {
     },
     {
       cle: 'periode',
-      libelle: 'Mois',
+      libelle: aTraduire('Mois'),
       obligatoire: true,
       type: 'periode',
       entetes: ['période', 'periode', 'mois', 'date'],
       valeurParDefaut: contexte => contexte.dateParDefaut,
-      aide: 'Le montant n’est pas importé : le serveur constate le douzième du bail.'
+      aide: aTraduire('Le montant n’est pas importé : le serveur constate le douzième du bail.')
     }
   ],
   enregistrer: async (valeurs, contexte) => {

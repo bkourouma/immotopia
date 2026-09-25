@@ -54,7 +54,9 @@ du message. Modèle : `src/controllers/property-media-controller.ts`.
 français est la clé de traduction** : `t('Ajouter un bien')`, jamais
 `t('properties.add')`. Tout libellé visible passe par `t()` — `i18n/t.ts` côté
 web, `i18n/index.ts` côté API. `npm run i18n:extract` dans le paquet concerné
-enveloppe les nouveaux textes et met les catalogues à jour. Écrire une marge en
+enveloppe les nouveaux textes et met les catalogues à jour. Dans une constante
+de module traduite au rendu, marquer le texte `aTraduire('...')` plutôt que
+`t('...')`, qui s'exécuterait à l'import. Écrire une marge en
 propriété logique (`ms-4`, `margin-inline-start`, `align: 'end'`), jamais
 `ml-4` : l'arabe retourne toute la mise en page. Détails :
 [docs/architecture/i18n.md](docs/architecture/i18n.md).

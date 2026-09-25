@@ -134,6 +134,19 @@ for (const language of TARGET_LANGUAGES) {
     merged[key] = existing[key] ?? '';
   }
   fs.writeFileSync(target, JSON.stringify(merged, null, 2) + '\n', 'utf8');
+
+  // Une cle qui n'est plus levee nulle part sort du catalogue, mais sa
+  // traduction n'est pas perdue en silence : si le message n'a ete que
+  // retouche, elle se reporte a la main depuis ce fichier. Meme regle que le
+  // codemod du frontend.
+  const orphans = Object.entries(existing).filter(([key, value]) => !(key in merged) && value);
+  const orphanFile = path.join(LOCALES, `${language}.orphans.json`);
+  if (orphans.length) {
+    fs.writeFileSync(orphanFile, JSON.stringify(Object.fromEntries(orphans), null, 2) + '\n', 'utf8');
+    console.log(`${language} : ${orphans.length} traduction(s) orpheline(s) dans ${path.relative(ROOT, orphanFile)}`);
+  } else if (fs.existsSync(orphanFile)) {
+    fs.rmSync(orphanFile);
+  }
 }
 
 const translated = Object.values(

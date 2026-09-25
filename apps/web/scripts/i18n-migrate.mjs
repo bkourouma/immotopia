@@ -69,7 +69,11 @@ const MODULE_BY_SEGMENT = {
   shell: 'common',
   home: 'common',
   primitives: 'common',
-  ui: 'common'
+  ui: 'common',
+  // `lib/importation` ne sert que `pages/finance/Importation.tsx`, et ses
+  // traductions vivent dans `finance.json`. Sans cette entree, le script les
+  // rangeait dans `common` et vidait leurs traductions dans un `.orphans.json`.
+  importation: 'finance'
 };
 
 function moduleOf(file) {
@@ -116,6 +120,17 @@ const TEXT_PROPERTIES = new Set([
   'errorMessage', 'successMessage', 'warningMessage', 'confirmText', 'buttonText', 'legend',
   'headerTitle', 'subtitle', 'heading', 'reason', 'note', 'unit'
 ]);
+
+/**
+ * Proprietes d'objet portant des donnees, jamais affichees — y compris les
+ * elements d'un tableau.
+ *
+ * `entetes` et `alias` de `lib/importation` sont les ecritures qu'on s'attend a
+ * trouver dans un fichier importe (« catégorie », « nature de la dépense ») :
+ * traduits, ils ne reconnaitraient plus les colonnes d'un fichier francais des
+ * que l'interface passe en anglais.
+ */
+const DATA_PROPERTIES = new Set(['entetes', 'alias']);
 
 /** Appels dont les arguments textuels ne sont jamais du contenu. */
 const CODE_CALLEES = [
@@ -256,6 +271,12 @@ function positionVerdict(node) {
 
   // Cle d'objet, et non valeur.
   if (ts.isPropertyAssignment(parent) && parent.name === node) return 'no';
+
+  // Donnee : `entetes: ['catégorie', ...]`.
+  const owner = ts.isArrayLiteralExpression(parent) ? parent.parent : parent;
+  if (owner && ts.isPropertyAssignment(owner) && DATA_PROPERTIES.has(owner.name.getText().replace(/['"]/g, ''))) {
+    return 'no';
+  }
   if (ts.isComputedPropertyName(parent)) return 'no';
   if (ts.isPropertySignature(parent) || ts.isMethodSignature(parent)) return 'no';
 
@@ -392,6 +413,17 @@ function processFile(file) {
       return;
     }
 
+    // `aTraduire('...')` (`i18n/t`) : un texte de constante de module, traduit
+    // par l'ecran au rendu. Recense, mais jamais enveloppe — un `t()` ici
+    // serait appele a l'import, avant le choix de la langue.
+    if (ts.isCallExpression(node) && calleeName(node) === 'aTraduire') {
+      const [first] = node.arguments;
+      if (first && (ts.isStringLiteral(first) || ts.isNoSubstitutionTemplateLiteral(first))) {
+        record(moduleName, first.text);
+      }
+      return;
+    }
+
     if (ts.isJsxText(node)) {
       const raw = source.slice(node.pos, node.end);
       const [, lead, body, trail] = raw.match(/^(\s*)([\s\S]*?)(\s*)$/);
@@ -489,10 +521,29 @@ function processFile(file) {
 
 /* ------------------------------------------------------------------ catalogues */
 
+/** Toutes les traductions deja faites d'une langue, tous catalogues confondus. */
+function knownTranslations(dir) {
+  const known = {};
+  if (!fs.existsSync(dir)) return known;
+  for (const file of fs.readdirSync(dir)) {
+    if (!file.endsWith('.json') || file.endsWith('.orphans.json')) continue;
+    for (const [key, value] of Object.entries(JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')))) {
+      if (value && !known[key]) known[key] = value;
+    }
+  }
+  return known;
+}
+
 function writeCatalogs() {
+  const recorded = new Set([...catalogs.values()].flatMap(keys => [...keys]));
   for (const language of TARGET_LANGUAGES) {
     const dir = path.join(LOCALES, language);
     if (!DRY) fs.mkdirSync(dir, { recursive: true });
+    // Lu AVANT toute ecriture : une cle qui change de catalogue — son fichier a
+    // demenage, ou un texte partage entre deux modules — garde sa traduction.
+    // A l'execution, tous les catalogues fusionnent dans un seul espace de noms
+    // (`i18n/index.ts`) : le catalogue d'accueil n'est qu'un rangement.
+    const known = knownTranslations(dir);
     for (const [moduleName, keys] of catalogs) {
       const target = path.join(dir, `${moduleName}.json`);
       const existing = fs.existsSync(target) ? JSON.parse(fs.readFileSync(target, 'utf8')) : {};
@@ -500,9 +551,11 @@ function writeCatalogs() {
       for (const key of [...keys].sort((a, b) => a.localeCompare(b, 'fr'))) {
         // Une valeur vide vaut « a traduire » : `returnEmptyString: false`
         // renvoie alors la cle, c'est-a-dire le texte francais.
-        merged[key] = existing[key] ?? '';
+        merged[key] = existing[key] || known[key] || '';
       }
-      const orphans = Object.entries(existing).filter(([key, value]) => !(key in merged) && value);
+      // Orpheline : plus aucun module ne l'emploie. Une cle qui a seulement
+      // change de catalogue n'en est pas une.
+      const orphans = Object.entries(existing).filter(([key, value]) => !recorded.has(key) && value);
       if (!DRY) {
         fs.writeFileSync(target, JSON.stringify(merged, null, 2) + '\n', 'utf8');
         const orphanFile = path.join(dir, `${moduleName}.orphans.json`);

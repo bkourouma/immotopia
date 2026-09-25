@@ -44,7 +44,7 @@ import type {
   FeuilleLue,
   LigneEvaluee
 } from '../../lib/importation';
-import { t } from '../../i18n/t';
+import { aTraduire, t } from '../../i18n/t';
 
 const { Text, Paragraph } = Typography;
 
@@ -88,7 +88,13 @@ const { Text, Paragraph } = Typography;
  */
 
 /** Les cinq étapes, dans l'ordre. L'écran ne recule que par les boutons. */
-const ETAPES = ['Le document', 'Le fichier', 'Les colonnes', "L'aperçu", "L'import"];
+const ETAPES = [
+  aTraduire('Le document'),
+  aTraduire('Le fichier'),
+  aTraduire('Les colonnes'),
+  aTraduire("L'aperçu"),
+  aTraduire("L'import")
+];
 
 /** Une ligne telle que la personne la modifie : du texte, et rien d'autre. */
 interface BrouillonLigne {
