@@ -1,6 +1,6 @@
 import type React from 'react';
 import { NAVIGATION, SECTION_LABELS } from './model';
-import type { NavGroup, PersonaId, SectionId } from './model';
+import type { NavFeature, NavGroup, PersonaId, SectionId } from './model';
 import { t } from '../i18n/t';
 
 /**
@@ -86,6 +86,8 @@ export interface MenuCatalogLeaf {
   href: string;
   /** Permissions RBAC dont une seule suffit à ouvrir l'entrée par défaut. */
   requires: string[];
+  /** Fonctionnalité d'abonnement requise (héritée du groupe, `CORE` à défaut). */
+  feature: NavFeature;
 }
 
 export interface MenuCatalogEntry {
@@ -94,6 +96,8 @@ export interface MenuCatalogEntry {
   icon: React.ReactNode;
   href?: string;
   requires: string[];
+  /** Fonctionnalité d'abonnement du groupe ; `CORE` quand il n'en déclare pas. */
+  feature: NavFeature;
   children: MenuCatalogLeaf[];
 }
 
@@ -274,11 +278,13 @@ function toEntry(persona: PersonaId, group: NavGroup): MenuCatalogEntry {
     icon: group.icon,
     href: group.href,
     requires: requirementsFor(group.key),
+    feature: group.feature ?? 'CORE',
     children: (group.children ?? []).map(leaf => ({
       menuKey: menuKeyFor(persona, group.key, leaf.key),
       label: leaf.label,
       href: leaf.href,
-      requires: requirementsFor(leaf.key)
+      requires: requirementsFor(leaf.key),
+      feature: leaf.feature ?? group.feature ?? 'CORE'
     }))
   };
 }

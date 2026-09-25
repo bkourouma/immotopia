@@ -4,6 +4,8 @@ import type { NavGroup, PersonaNav } from '../navigation/model';
 import { isMenuKeyDisabled, menuKeyFor } from '../navigation/menu-catalog';
 import type { PersonaId } from '../navigation/model';
 import { getMyDisabledMenus } from '../services/role-menu-service';
+import { applyFeatureAccess, featureAccessFromModules } from '../navigation/feature-access';
+import type { FeatureAccessMap } from '../navigation/feature-access';
 
 /**
  * Menus coupés pour la personne connectée, et navigation filtrée.
@@ -44,6 +46,47 @@ export function useDisabledMenuKeys(tenantId?: string | null): Set<string> {
 }
 
 /**
+ * Accès aux fonctionnalités d'abonnement de l'agence (vague 2 des
+ * abonnements), ou `null` quand le menu ne doit pas en tenir compte.
+ *
+ * Mêmes garde-fous que les menus coupés : rien n'est masqué avant la réponse,
+ * et un échec réseau ne restreint pas. En plus :
+ *
+ *   - le menu ne suit l'abonnement que si le serveur l'applique
+ *     (`SUBSCRIPTION_ENFORCEMENT=enforce`). En `warn`, l'API laisse tout
+ *     passer : masquer une entrée qui fonctionne serait mentir ;
+ *   - `enabled` à faux (super-admin, portails) : aucun appel.
+ *
+ * Le service est chargé à la demande : la coquille est déjà un chunk à part,
+ * mais rien ne justifie que l'appel pèse sur son premier rendu.
+ */
+export function useFeatureAccess(tenantId: string | null | undefined, enabled: boolean): FeatureAccessMap | null {
+  const [access, setAccess] = useState<FeatureAccessMap | null>(null);
+
+  useEffect(() => {
+    setAccess(null);
+    if (!enabled || !tenantId) return;
+    let cancelled = false;
+
+    import('../services/entitlements-service')
+      .then(({ getMenuEntitlements }) => getMenuEntitlements(tenantId))
+      .then(entitlements => {
+        if (cancelled) return;
+        setAccess(entitlements?.enforcement === 'enforce' ? featureAccessFromModules(entitlements.moduleAccess) : null);
+      })
+      .catch(() => {
+        if (!cancelled) setAccess(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId, enabled]);
+
+  return access;
+}
+
+/**
  * Élague un groupe de navigation.
  *
  * Renvoie `null` quand le groupe entier disparaît — soit qu'il ait été coupé
@@ -74,12 +117,20 @@ function pruneGroup(persona: PersonaId, group: NavGroup, disabled: Set<string>):
  * (`tab-biens`) qui ne sont pas des menus réglables. « Plus » survit toujours,
  * c'est un déclencheur d'interface, pas une destination.
  */
-export function useFilteredNavigation(nav: PersonaNav | null, disabled: Set<string>): PersonaNav | null {
+export function useFilteredNavigation(
+  nav: PersonaNav | null,
+  disabled: Set<string>,
+  featureAccess: FeatureAccessMap | null = null
+): PersonaNav | null {
   return useMemo(() => {
     if (!nav) return null;
-    if (disabled.size === 0) return nav;
+    if (disabled.size === 0 && !featureAccess) return nav;
 
+    // Abonnement puis rôle : une entrée non comprise disparaît, une entrée
+    // d'un module retiré est marquée « Lecture seule » (voir feature-access).
     const tree = nav.tree
+      .map(group => (featureAccess ? applyFeatureAccess(group, featureAccess) : group))
+      .filter((group): group is NavGroup => group !== null)
       .map(group => pruneGroup(nav.id, group, disabled))
       .filter((group): group is NavGroup => group !== null);
 
@@ -92,5 +143,5 @@ export function useFilteredNavigation(nav: PersonaNav | null, disabled: Set<stri
     const tabs = nav.tabs.filter(tab => tab.href === MORE_TAB_HREF || remainingHrefs.has(tab.href));
 
     return { ...nav, tree, tabs };
-  }, [nav, disabled]);
+  }, [nav, disabled, featureAccess]);
 }

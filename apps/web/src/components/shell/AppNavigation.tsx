@@ -43,6 +43,23 @@ export interface AppNavigationProps {
   onNavigate?: () => void;
 }
 
+/**
+ * Libellé d'une entrée dont le module a été retiré de l'abonnement (D11) :
+ * grisée, suivie de « Lecture seule ». Elle reste cliquable — consulter et
+ * exporter sont permis, seules les écritures sont refusées par le serveur.
+ */
+function menuLabel(label: string, readOnly?: boolean): React.ReactNode {
+  if (!readOnly) return label;
+  return (
+    <span style={{ opacity: 0.6 }} title={t("Module retiré de l'abonnement : consultation seulement")}>
+      {label}
+      <span style={{ marginInlineStart: 'var(--space-2)', fontSize: 'var(--font-size-caption)' }}>
+        {t('Lecture seule')}
+      </span>
+    </span>
+  );
+}
+
 /** Aplatit l'arbre en couples (libellé, href) : destination active et clics. */
 function flatten(tree: NavGroup[], context: NavContext) {
   const out: { key: string; label: string; parent?: string; href: string }[] = [];
@@ -105,17 +122,23 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
           const children = group.children
             .map(child => {
               const href = resolveHref(child.href, context);
-              return href ? { key: child.key, label: child.label } : null;
+              return href ? { key: child.key, label: menuLabel(child.label, child.readOnly) } : null;
             })
-            .filter(Boolean) as { key: string; label: string }[];
+            .filter(Boolean) as { key: string; label: React.ReactNode }[];
           // Un groupe dont aucune destination n'est résolue est masqué plutôt
           // que rendu vide.
           if (children.length === 0) return null;
-          return { section: group.section, item: { key: group.key, icon: group.icon, label: group.label, children } };
+          return {
+            section: group.section,
+            item: { key: group.key, icon: group.icon, label: menuLabel(group.label, group.readOnly), children }
+          };
         }
         const href = group.href ? resolveHref(group.href, context) : null;
         if (!href) return null;
-        return { section: group.section, item: { key: group.key, icon: group.icon, label: group.label } };
+        return {
+          section: group.section,
+          item: { key: group.key, icon: group.icon, label: menuLabel(group.label, group.readOnly) }
+        };
       })
       .filter(Boolean) as { section?: SectionId; item: NonNullable<MenuProps['items']>[number] }[];
 

@@ -3,7 +3,7 @@ import { Button, Drawer, Layout } from 'antd';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
-import { useDisabledMenuKeys, useFilteredNavigation } from '../../hooks/useMenuAccess';
+import { useDisabledMenuKeys, useFeatureAccess, useFilteredNavigation } from '../../hooks/useMenuAccess';
 import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { actionForPath } from '../../navigation/actions';
 import { NAVIGATION } from '../../navigation/model';
@@ -121,7 +121,9 @@ export const AppShell: React.FC = () => {
    * serait qu'une declaration d'intention.
    */
   const disabledMenuKeys = useDisabledMenuKeys(navContext.tenantId);
-  const nav = useFilteredNavigation(personaNav, disabledMenuKeys);
+  // Abonnement de l'agence : seul le collaborateur a un menu d'agence.
+  const featureAccess = useFeatureAccess(navContext.tenantId, persona === 'collaborateur');
+  const nav = useFilteredNavigation(personaNav, disabledMenuKeys, featureAccess);
 
   // Tant que le persona n'est pas tranché, on rend la coquille sans menu
   // plutôt qu'un menu faux : afficher le menu public à un collaborateur, même
