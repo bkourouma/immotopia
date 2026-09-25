@@ -4,6 +4,7 @@ import { logAuditEvent } from './audit-service';
 import { RentalPenaltyMode } from '@prisma/client';
 import { updateInstallmentStatus } from './rental-installment-service';
 import * as path from 'path';
+import { getProjectRoot } from '../utils/project-root';
 import * as fs from 'fs/promises';
 
 /**
@@ -591,9 +592,7 @@ export async function uploadPenaltyJustification(
   }
 
   // Generate file path
-  const cwd = process.cwd();
-  const projectRoot =
-    path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages' ? path.resolve(cwd, '..') : cwd;
+  const projectRoot = getProjectRoot();
   const uploadDir = path.join(projectRoot, 'uploads', 'rental', 'penalties', penaltyId);
   await fs.mkdir(uploadDir, { recursive: true });
 

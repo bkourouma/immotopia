@@ -1,5 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { getProjectRoot } from '../../utils/project-root';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import { logger } from '../../utils/logger';
@@ -80,13 +81,6 @@ function escapeXml(text: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
-}
-
-function getProjectRoot(): string {
-  const cwd = process.cwd();
-  return path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-    ? path.resolve(cwd, '..', '..')
-    : cwd;
 }
 
 function fallbackMinutes(meeting: MeetingInput): string {
@@ -215,12 +209,22 @@ function buildTemplateContext(meeting: MeetingInput): Record<string, unknown> {
   };
 }
 
-async function resolveSyndicMinutesTemplatePath(meeting: MeetingInput, tenantIdOverride?: string): Promise<string | null> {
+async function resolveSyndicMinutesTemplatePath(
+  meeting: MeetingInput,
+  tenantIdOverride?: string
+): Promise<string | null> {
   const tenantId = tenantIdOverride || meeting.syndicate?.tenantId;
   if (!tenantId) return null;
 
   const projectRoot = getProjectRoot();
-  const templatePath = path.join(projectRoot, 'assets', 'modeles_documents', 'tenants', tenantId, 'compte-rendu-TEMPLATE.docx');
+  const templatePath = path.join(
+    projectRoot,
+    'assets',
+    'modeles_documents',
+    'tenants',
+    tenantId,
+    'compte-rendu-TEMPLATE.docx'
+  );
 
   try {
     await fs.access(templatePath);

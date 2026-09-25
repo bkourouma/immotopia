@@ -5,6 +5,7 @@ import { PROPERTY_ENTITY_TYPES } from '../types/audit-types';
 import { AuditActionKey } from '../types/audit-types';
 import { PropertyDocumentType } from '@prisma/client';
 import * as path from 'path';
+import { getProjectRoot } from '../utils/project-root';
 import * as fs from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { getPropertyForTenant } from '../utils/property-tenant-guard';
@@ -76,11 +77,7 @@ export async function uploadDocument(
   }
 
   // Generate file path
-  // When running from packages/api, process.cwd() is packages/api, so go up one level
-  // When running from project root, process.cwd() is already the project root
-  const cwd = process.cwd();
-  const projectRoot =
-    path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages' ? path.resolve(cwd, '..') : cwd;
+  const projectRoot = getProjectRoot();
   const uploadDir = path.join(projectRoot, 'uploads', 'properties', propertyId, 'documents');
   await fs.mkdir(uploadDir, { recursive: true });
 
@@ -172,12 +169,7 @@ export async function getDocuments(propertyId: string, tenantId: string, include
  * @param documentId - Document ID to delete
  * @param actorUserId - User deleting the document (for audit)
  */
-export async function deleteDocument(
-  propertyId: string,
-  tenantId: string,
-  documentId: string,
-  _actorUserId?: string
-) {
+export async function deleteDocument(propertyId: string, tenantId: string, documentId: string, _actorUserId?: string) {
   // Verify the property belongs to the caller's tenant before touching documents
   await getPropertyForTenant(propertyId, tenantId);
 

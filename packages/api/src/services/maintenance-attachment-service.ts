@@ -2,6 +2,7 @@ import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { validateFileUpload, sanitizeFilename } from '../utils/maintenance-validators';
 import * as path from 'path';
+import { getProjectRoot } from '../utils/project-root';
 import * as fs from 'fs/promises';
 import { createReadStream } from 'fs';
 
@@ -47,12 +48,7 @@ export async function uploadAttachment(
     throw new Error(validation.error || 'Fichier invalide');
   }
 
-  // Determine project root (similar to property-media-service)
-  const cwd = process.cwd();
-  const projectRoot =
-    path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-      ? path.resolve(cwd, '..', '..')
-      : cwd;
+  const projectRoot = getProjectRoot();
 
   // Create directory structure: uploads/maintenance/<tenantId>/<ticketId>/
   const uploadDir = path.join(projectRoot, 'uploads', 'maintenance', tenantId, ticketId);
@@ -141,12 +137,7 @@ export async function getAttachmentById(tenantId: string, attachmentId: string, 
 export async function downloadAttachment(tenantId: string, attachmentId: string, tenantContactId?: string) {
   const attachment = await getAttachmentById(tenantId, attachmentId, tenantContactId);
 
-  // Determine project root
-  const cwd = process.cwd();
-  const projectRoot =
-    path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-      ? path.resolve(cwd, '..', '..')
-      : cwd;
+  const projectRoot = getProjectRoot();
 
   // Construct full file path
   const filePath = path.join(projectRoot, attachment.file_url);
@@ -186,12 +177,7 @@ export async function cleanupOrphanedFiles(tenantId?: string): Promise<number> {
   let cleanedCount = 0;
 
   try {
-    // Determine project root
-    const cwd = process.cwd();
-    const projectRoot =
-      path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-        ? path.resolve(cwd, '..', '..')
-        : cwd;
+    const projectRoot = getProjectRoot();
 
     const baseUploadDir = path.join(projectRoot, 'uploads', 'maintenance');
 

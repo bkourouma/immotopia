@@ -7,6 +7,7 @@ import { buildDocumentContext, validateContext } from './document-context-builde
 import { renderDocx, calculateHash, saveGeneratedDocument } from './docx-renderer';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { getProjectRoot } from '../utils/project-root';
 
 /**
  * Generate document number based on type and period
@@ -535,12 +536,7 @@ export async function getDocumentFile(tenantId: string, documentId: string): Pro
   }
 
   // Verify path is within allowed directory (security)
-  // Use same project root detection as in index.ts
-  const cwd = process.cwd();
-  const projectRoot =
-    path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-      ? path.resolve(cwd, '..', '..')
-      : cwd;
+  const projectRoot = getProjectRoot();
   const allowedBase = path.join(projectRoot, 'assets', 'generated_documents');
   const resolvedPath = path.resolve(document.file_path);
   const resolvedBase = path.resolve(allowedBase);

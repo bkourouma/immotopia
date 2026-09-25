@@ -4,18 +4,9 @@ import { logAuditEvent } from './audit-service';
 import { DocumentTemplateStatus, DocumentType } from '@prisma/client';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { getProjectRoot } from '../utils/project-root';
 import { createHash } from 'crypto';
 import PizZip from 'pizzip';
-
-/**
- * Get project root directory
- */
-function getProjectRoot(): string {
-  const cwd = process.cwd();
-  return path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-    ? path.resolve(cwd, '..', '..')
-    : cwd;
-}
 
 /**
  * Get templates base path

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as path from 'path';
+import { getProjectRoot } from '../utils/project-root';
 import * as fs from 'fs/promises';
 import {
   listSyndicatesByTenant,
@@ -1358,13 +1359,7 @@ export async function listDocumentsHandler(req: Request, res: Response): Promise
 
     const documents = await listDocumentsBySyndicate(tenantId, syndicateId, {
       type: normalizedType as
-        | 'REGULATION'
-        | 'GENERAL_MEETING_MINUTES'
-        | 'DIAGNOSTIC'
-        | 'INSURANCE'
-        | 'BUDGET'
-        | 'OTHER'
-        | undefined
+        'REGULATION' | 'GENERAL_MEETING_MINUTES' | 'DIAGNOSTIC' | 'INSURANCE' | 'BUDGET' | 'OTHER' | undefined
     });
 
     res.json({
@@ -1396,9 +1391,7 @@ export async function createDocumentHandler(req: Request, res: Response): Promis
 
     let fileUrl = parsed.fileUrl;
     if (req.file) {
-      const cwd = process.cwd();
-      const projectRoot =
-        path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages' ? path.resolve(cwd, '..') : cwd;
+      const projectRoot = getProjectRoot();
       const uploadDir = path.join(projectRoot, 'uploads', 'syndics', syndicateId, 'documents');
       await fs.mkdir(uploadDir, { recursive: true });
 
@@ -1712,7 +1705,7 @@ export async function listPaymentSchedulesHandler(req: Request, res: Response): 
     const syndicateId = req.params.syndicId;
 
     if (!tenantId) {
-      throw badRequest("TenantId manquant pour la liste des echeanciers");
+      throw badRequest('TenantId manquant pour la liste des echeanciers');
     }
 
     const schedules = await listPaymentSchedulesBySyndicate(tenantId, syndicateId, {
@@ -1728,7 +1721,7 @@ export async function listPaymentSchedulesHandler(req: Request, res: Response): 
     logger.error('Error listing payment schedules', { error, syndicId: req.params.syndicId });
     res.status(error.status || 500).json({
       success: false,
-      error: error.message || "Echec du listing des echeanciers"
+      error: error.message || 'Echec du listing des echeanciers'
     });
   }
 }

@@ -5,6 +5,7 @@ import { PROPERTY_ENTITY_TYPES } from '../types/audit-types';
 import { AuditActionKey } from '../types/audit-types';
 import { PropertyMediaType } from '@prisma/client';
 import * as path from 'path';
+import { getProjectRoot } from '../utils/project-root';
 import * as fs from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { getPropertyForTenant } from '../utils/property-tenant-guard';
@@ -54,11 +55,7 @@ export async function uploadMedia(
   }
 
   // Generate file path (store in property-specific directory)
-  // When running from packages/api, process.cwd() is packages/api, so go up one level
-  // When running from project root, process.cwd() is already the project root
-  const cwd = process.cwd();
-  const projectRoot =
-    path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages' ? path.resolve(cwd, '..') : cwd;
+  const projectRoot = getProjectRoot();
   const uploadDir = path.join(projectRoot, 'uploads', 'properties', propertyId);
   await fs.mkdir(uploadDir, { recursive: true });
 

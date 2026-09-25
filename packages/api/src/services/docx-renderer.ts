@@ -1,5 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { getProjectRoot } from '../utils/project-root';
 import { createHash } from 'crypto';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
@@ -33,16 +34,6 @@ function sanitizeContext(context: Record<string, any>): Record<string, any> {
   }
 
   return sanitized;
-}
-
-/**
- * Get project root directory
- */
-function getProjectRoot(): string {
-  const cwd = process.cwd();
-  return path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-    ? path.resolve(cwd, '..', '..')
-    : cwd;
 }
 
 /**
@@ -173,12 +164,7 @@ export async function saveGeneratedDocument(
   const month = String(now.getMonth() + 1).padStart(2, '0');
 
   // Build path: assets/generated_documents/{tenantId}/{docType}/{YYYY}/{MM}/
-  // Use same project root detection as in index.ts
-  const cwd = process.cwd();
-  const projectRoot =
-    path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-      ? path.resolve(cwd, '..', '..')
-      : cwd;
+  const projectRoot = getProjectRoot();
   const basePath = path.join(projectRoot, 'assets', 'generated_documents');
   const dirPath = path.join(basePath, tenantId, docType, String(year), month);
 

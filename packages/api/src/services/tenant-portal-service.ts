@@ -6,6 +6,7 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import * as path from 'path';
+import { getProjectRoot } from '../utils/project-root';
 import * as fs from 'fs/promises';
 import {
   DashboardData,
@@ -838,11 +839,7 @@ export class TenantPortalService {
       // Handle file upload if provided (T061)
       let proofFileUrl: string | null = null;
       if (file) {
-        const cwd = process.cwd();
-        const projectRoot =
-          path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-            ? path.resolve(cwd, '..', '..')
-            : cwd;
+        const projectRoot = getProjectRoot();
         const uploadDir = path.join(projectRoot, 'uploads', 'portal', 'payments', tenantId);
         await fs.mkdir(uploadDir, { recursive: true });
 

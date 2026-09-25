@@ -4,7 +4,7 @@ import { env, frontendUrl } from './config/env';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import passport from 'passport';
-import * as path from 'path';
+import { getUploadsRoot } from './utils/project-root';
 import { existsSync, mkdirSync } from 'fs';
 import { configurePassport } from './config/passport';
 import authRoutes from './routes/auth-routes';
@@ -75,12 +75,7 @@ app.use(passport.initialize());
 
 // Static file serving for uploads
 // Use absolute path to match where files are saved
-// When running from packages/api, process.cwd() is packages/api, so go up one level
-// When running from project root, process.cwd() is already the project root
-const cwd = process.cwd();
-const projectRoot =
-  path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages' ? path.resolve(cwd, '..') : cwd;
-const uploadsPath = env.UPLOADS_DIR ? path.resolve(env.UPLOADS_DIR) : path.join(projectRoot, 'uploads');
+const uploadsPath = getUploadsRoot(env.UPLOADS_DIR);
 console.log('Serving static files from:', uploadsPath);
 // Ensure uploads directory exists
 if (!existsSync(uploadsPath)) {

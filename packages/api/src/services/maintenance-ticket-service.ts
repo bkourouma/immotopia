@@ -1,5 +1,6 @@
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
+import { getProjectRoot } from '../utils/project-root';
 import { logAuditEvent } from './audit-service';
 import { CreateTicketRequest, UpdateTicketRequest, UpdateTenantTicketRequest } from '../types/maintenance-types';
 import {
@@ -584,12 +585,7 @@ export async function deleteTicket(
     const fs = await import('fs/promises');
     const path = await import('path');
 
-    // Determine project root (similar to maintenance-attachment-service)
-    const cwd = process.cwd();
-    const projectRoot =
-      path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages'
-        ? path.resolve(cwd, '..', '..')
-        : cwd;
+    const projectRoot = getProjectRoot();
 
     for (const attachment of existingTicket.attachments) {
       try {
