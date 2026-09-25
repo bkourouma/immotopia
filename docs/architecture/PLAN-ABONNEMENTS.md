@@ -167,6 +167,45 @@ Passage complet chaque jour à 02:30 UTC, alertes seules chaque heure à :15.
   HT, TVA, TTC, fenêtre, consommation retenue). La vague 3 émet cette facture
   à la fin de chaque fenêtre ; en mensuel, rien ne change.
 
+### 6 quater. Facturation automatique (vague 3, lot A — `services/platform-invoice-service.ts`)
+
+- **Migration** `20260928110000_abonnements_facturation` : `InvoiceStatus` +
+  `OVERDUE` ; `Invoice.billingNature` (PERIOD | OVERAGE | CREDIT_NOTE),
+  `issuedAt`, `sentAt`, `paymentMethod`, `paymentReference`, `canceledAt`,
+  `cancelReason`, `creditedInvoiceId` (avoir), `issuerSnapshot`,
+  `customerSnapshot` ; index unique partiel `invoices_platform_period_key`
+  (agence, nature, début de période, hors CANCELED) et `invoices_credit_note_key`
+  (un avoir par facture) ; table globale `platform_invoice_sequences`.
+- **Numérotation** `IMT-AAAA-NNNNN`, attribuée à l'**émission** dans la
+  transaction (upsert du compteur de l'année = verrou de ligne) : continue,
+  sans trou (un rollback rend son numéro), avoirs compris. Un brouillon porte
+  `BROUILLON-<uuid>` (exposé `invoiceNumber: null`).
+- **Génération** (`generateInvoiceForPeriod` → `buildPlatformInvoiceDraft` à
+  partir de `previewNextInvoice` → `generateInvoiceForPeriodTx`, verrou
+  consultatif par agence) : idempotente ; lignes en attente **rattachées**
+  (jamais recopiées) ; mise en route `SETUP_<PACK>` ajoutée d'office sur la
+  **première** facture de période (sauf `metadata.setupWaived`) ; crédits
+  supérieurs au dû → facture à zéro + ligne CREDIT reportée. Refus pendant
+  l'essai. Échéance : début de période + `graceDays` ; dépassement annuel :
+  émission + `PLATFORM_INVOICE_DUE_DAYS` (7).
+- **Tâche planifiée** : `runPlatformBillingStep` tourne **avant**
+  `processBillingBoundary` — factures de dépassement des fenêtres mensuelles
+  closes (annuel, rattrapage 35 jours, `metadata.overageCheckedThrough`),
+  facture de la période suivante à l'échéance (émise, envoyée ; à zéro =
+  PAYÉE d'office), puis ISSUED échues → OVERDUE. L'échéance renouvelle sur
+  facture PAYÉE, sinon PAST_DUE ; le règlement (lot B,
+  `settlePlatformInvoiceTx`) repasse ACTIVE.
+- **Avoir** : lignes et totaux opposés ; facture annulée → CANCELED (sa période
+  peut être refacturée manuellement) ; avoir PAID par `COMPENSATION`, ou
+  `REFUND_DUE` si la facture était payée (remboursement hors ligne) — jamais
+  payable ; prorata et avoirs repris remis en attente.
+- **Émetteur** : `PLATFORM_ISSUER_*` (`config/env.ts`), figé dans la facture.
+- **PDF** : `lib/subscription/platform-invoice-pdf.ts` (pdf-lib, texte passé
+  par `sanitizeForPdf`), en français. **E-mail** : PDF joint, au nom de la
+  plateforme, aux TENANT_ADMIN actifs (sinon e-mail de contact).
+- Non traité : une facture de dépassement impayée ne fait pas passer
+  PAST_DUE (elle passe OVERDUE) — à trancher.
+
 ## 7. Décisions (Baba, 25/09)
 
 D1 logement compté (définition §4) · D2 lot de copropriété principal · D3

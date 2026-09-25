@@ -698,5 +698,21 @@
   "Vous utilisez {{used}} {{label}} sur {{limit}} inclus. {{policy}} Ajoutez une extension depuis {{url}}.": "You are using {{used}} {{label}} out of {{limit}} included. {{policy}} Add an extension at {{url}}.",
   "Votre essai ImmoTopia se termine demain": "Your ImmoTopia trial ends tomorrow",
   "Votre essai ImmoTopia se termine dans 7 jours": "Your ImmoTopia trial ends in 7 days",
-  "Votre période d'essai se termine le {{date}}. Pour continuer sans interruption, choisissez vos packs et réglez votre abonnement depuis {{url}}.": "Your trial period ends on {{date}}. To continue without interruption, choose your packs and pay your subscription at {{url}}."
+  "Votre période d'essai se termine le {{date}}. Pour continuer sans interruption, choisissez vos packs et réglez votre abonnement depuis {{url}}.": "Your trial period ends on {{date}}. To continue without interruption, choose your packs and pay your subscription at {{url}}.",
+  "Le dépassement d'un abonnement mensuel figure dans la facture de la période.": "Overage on a monthly subscription is included in the period invoice.",
+  "Facture introuvable.": "Invoice not found.",
+  "Des lignes en attente ont changé pendant la génération : relancez-la.": "Pending lines changed during generation: please run it again.",
+  "Aucune facture pendant l'essai : elle sera émise à la fin de l'essai.": "No invoice during the trial: it will be issued when the trial ends.",
+  "Abonnement résilié : aucune facture à émettre.": "Subscription canceled: no invoice to issue.",
+  "Cette facture est déjà émise.": "This invoice has already been issued.",
+  "La raison de l'avoir est obligatoire.": "A reason is required for the credit note.",
+  "Seule une facture d'abonnement peut être annulée par un avoir.": "Only a subscription invoice can be canceled by a credit note.",
+  "Seule une facture émise peut être annulée par un avoir.": "Only an issued invoice can be canceled by a credit note.",
+  "Cette facture a déjà un avoir.": "This invoice already has a credit note.",
+  "Un avoir ne se règle pas.": "A credit note cannot be paid.",
+  "Avoir ImmoTopia {{number}}": "ImmoTopia credit note {{number}}",
+  "Facture ImmoTopia {{number}}": "ImmoTopia invoice {{number}}",
+  "Votre facture {{credited}} est annulée par l'avoir {{number}} ({{amount}}). Le document est joint.": "Your invoice {{credited}} is canceled by credit note {{number}} ({{amount}}). The document is attached.",
+  "Votre facture {{number}} ({{amount}}) est jointe. Elle est déjà réglée.": "Your invoice {{number}} ({{amount}}) is attached. It has already been paid.",
+  "Votre facture {{number}} d'un montant de {{amount}} TTC est jointe. Elle est à régler avant le {{date}} depuis {{url}}.": "Your invoice {{number}} for {{amount}} including VAT is attached. Please pay it before {{date}} from {{url}}."
 }

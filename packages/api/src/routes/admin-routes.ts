@@ -40,6 +40,17 @@ import {
   reconcileLotsHandler,
   clearModuleOverrideHandler
 } from '../controllers/subscription-v2-controller';
+import {
+  adminGetInvoicePaymentHandler,
+  adminListExtensionRequestsHandler,
+  downloadPaymentProofHandler,
+  handleExtensionRequestHandler,
+  paymentProofUpload,
+  recordManualPaymentHandler,
+  summariesHandler,
+  updateItemHandler
+} from '../controllers/platform-billing-controller';
+import { platformInvoiceAdminRouter } from './platform-invoice-routes';
 import { authenticate } from '../middleware/auth-middleware';
 import { requirePermission } from '../middleware/rbac-middleware';
 
@@ -107,6 +118,43 @@ router.get(
   getOverviewHandler
 );
 router.post('/tenants/:tenantId/subscription/items', requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'), addItemHandler);
+// Vague 3, lot B : remise ou prix d'un element (audit), sans retrait + re-ajout.
+router.patch(
+  '/tenants/:tenantId/subscription/items/:itemId',
+  requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'),
+  updateItemHandler
+);
+// Resume de l'abonnement de plusieurs agences (liste des agences, sans N+1).
+router.get('/subscriptions/summaries', requirePermission('PLATFORM_SUBSCRIPTIONS_VIEW'), summariesHandler);
+// Demandes d'extension envoyees par l'agence.
+router.get(
+  '/tenants/:tenantId/subscription/extension-requests',
+  requirePermission('PLATFORM_SUBSCRIPTIONS_VIEW'),
+  adminListExtensionRequestsHandler
+);
+router.patch(
+  '/tenants/:tenantId/subscription/extension-requests/:requestId',
+  requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'),
+  handleExtensionRequestHandler
+);
+// Reglement d'une facture PLATFORM : constat manuel (justificatif prive
+// facultatif), lecture du reglement et des tentatives en ligne.
+router.post(
+  '/tenants/:tenantId/platform-invoices/:invoiceId/payment',
+  requirePermission('PLATFORM_INVOICES_EDIT'),
+  paymentProofUpload.single('proof'),
+  recordManualPaymentHandler
+);
+router.get(
+  '/tenants/:tenantId/platform-invoices/:invoiceId/payment',
+  requirePermission('PLATFORM_INVOICES_VIEW'),
+  adminGetInvoicePaymentHandler
+);
+router.get(
+  '/tenants/:tenantId/platform-invoices/:invoiceId/payment/proof',
+  requirePermission('PLATFORM_INVOICES_VIEW'),
+  downloadPaymentProofHandler
+);
 router.delete(
   '/tenants/:tenantId/subscription/items/:itemId',
   requirePermission('PLATFORM_SUBSCRIPTIONS_EDIT'),
@@ -163,6 +211,10 @@ router.get('/invoices/:invoiceId', requirePermission('PLATFORM_INVOICES_VIEW'), 
 router.patch('/invoices/:invoiceId', requirePermission('PLATFORM_INVOICES_EDIT'), updateInvoiceHandler);
 
 router.post('/invoices/:invoiceId/mark-paid', requirePermission('PLATFORM_INVOICES_EDIT'), markInvoicePaidHandler);
+
+// Factures PLATFORM des abonnements (vague 3, lot A) : liste, generation,
+// emission, constat de paiement, avoir, PDF.
+router.use(platformInvoiceAdminRouter);
 
 // Statistics routes
 router.get('/statistics', requirePermission('PLATFORM_TENANTS_VIEW'), getGlobalStatisticsHandler);

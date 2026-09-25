@@ -41,6 +41,11 @@ export const TENANT_ROUTE_FEATURES: readonly RouteFeatureRule[] = [
   // ------------------------------------------------------------ exceptions
   { prefix: '/entitlements', feature: 'EXEMPT', note: 'Le menu web lit les droits : toujours lisible.' },
   { prefix: '/subscription', feature: 'EXEMPT', note: "L'agence consulte et regle son abonnement meme en lecture seule." },
+  {
+    prefix: '/subscription/invoices',
+    feature: 'EXEMPT',
+    note: 'Factures PLATFORM (vague 3) : une agence en lecture seule doit voir, telecharger et payer ses factures.'
+  },
   { prefix: '/register', feature: 'EXEMPT', note: "Auto-inscription d'un client, pas une action de l'agence." },
   { prefix: '/unregister', feature: 'EXEMPT', note: "Desinscription d'un client." },
   { prefix: '/client-details', feature: 'EXEMPT', note: "Un client met a jour sa propre fiche." },

@@ -100,6 +100,7 @@ export interface SubscriptionItemDTO {
   endsAt: string | null;
   endReason: string | null;
   replacesItemId: string | null;
+  parentItemId: string | null;
   billedThrough: string | null;
   note: string | null;
 }

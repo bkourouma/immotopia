@@ -91,6 +91,26 @@ const envSchema = z
     // production il est toujours disponible, quelle que soit cette valeur.
     PAYMENT_GATEWAY_SIMULATOR: z.string().optional(),
 
+    // Paiement de l'abonnement des agences (vague 3) : compte PaySecureHub
+    // PROPRE A IMMOTOPIA, distinct des comptes des agences. En LIVE, la cle et
+    // l'identifiant marchand sont exiges ; sans eux le paiement en ligne des
+    // factures est simplement indisponible (le constat manuel reste possible).
+    PLATFORM_PAYSECUREHUB_MODE: z.enum(['SIMULATOR', 'LIVE']).default('SIMULATOR'),
+    PLATFORM_PAYSECUREHUB_API_KEY: z.string().optional(),
+    PLATFORM_PAYSECUREHUB_MERCHANT_ID: z.string().optional(),
+
+    // Emetteur des factures d'abonnement (vague 3, lot A) : mentions legales
+    // d'Alliance Consultants imprimees sur chaque facture PLATFORM et figees
+    // dans la facture a son emission. Aucune n'est un secret.
+    PLATFORM_ISSUER_NAME: z.string().min(1).default('Alliance Consultants'),
+    PLATFORM_ISSUER_ADDRESS: z.string().optional(),
+    PLATFORM_ISSUER_RCCM: z.string().optional(),
+    PLATFORM_ISSUER_TAX_ID: z.string().optional(),
+    PLATFORM_ISSUER_EMAIL: z.string().optional(),
+    PLATFORM_ISSUER_PHONE: z.string().optional(),
+    // Jours laisses pour regler une facture de depassement mensuel (annuel).
+    PLATFORM_INVOICE_DUE_DAYS: z.coerce.number().int().min(0).max(90).default(7),
+
     // Prisma tenant guard (utils/prisma-tenant-guard-extension.ts).
     // `warn` logs unscoped queries on tenant-owned models without blocking
     // them; `enforce` throws. See env.example for the warn → enforce sequence.

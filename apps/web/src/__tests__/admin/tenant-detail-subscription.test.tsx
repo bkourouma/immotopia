@@ -19,6 +19,9 @@ const removeSubscriptionItem = vi.fn();
 const grantCapacityOverride = vi.fn();
 const revokeCapacityOverride = vi.fn();
 const updateSubscriptionSettings = vi.fn();
+const updateSubscriptionItem = vi.fn();
+const listExtensionRequests = vi.fn();
+const handleExtensionRequest = vi.fn();
 
 vi.mock('../../services/subscription-v2-service', () => ({
   getSubscriptionOverview: (...a: unknown[]) => getSubscriptionOverview(...a),
@@ -29,6 +32,12 @@ vi.mock('../../services/subscription-v2-service', () => ({
   grantCapacityOverride: (...a: unknown[]) => grantCapacityOverride(...a),
   revokeCapacityOverride: (...a: unknown[]) => revokeCapacityOverride(...a),
   updateSubscriptionSettings: (...a: unknown[]) => updateSubscriptionSettings(...a)
+}));
+
+vi.mock('../../services/subscription-extras-service', () => ({
+  updateSubscriptionItem: (...a: unknown[]) => updateSubscriptionItem(...a),
+  listExtensionRequests: (...a: unknown[]) => listExtensionRequests(...a),
+  handleExtensionRequest: (...a: unknown[]) => handleExtensionRequest(...a)
 }));
 
 const OVERVIEW = {
@@ -130,6 +139,23 @@ beforeEach(() => {
   getSubscriptionOverview.mockResolvedValue(OVERVIEW);
   listCatalog.mockResolvedValue(CATALOG);
   previewNextInvoice.mockResolvedValue(INVOICE_PREVIEW);
+  listExtensionRequests.mockResolvedValue([
+    {
+      id: 'req-1',
+      tenantId: 'tenant-1',
+      requestedByUserId: 'user-1',
+      requestedByName: 'Awa Koné',
+      catalogCode: null,
+      catalogName: null,
+      quantity: null,
+      message: 'Il nous faut 50 lots de plus',
+      status: 'OPEN',
+      handledAt: null,
+      handledByUserId: null,
+      handledNote: null,
+      createdAt: '2026-01-10T00:00:00.000Z'
+    }
+  ]);
 });
 
 describe('SubscriptionTab — abonnement par packs', () => {
@@ -197,6 +223,35 @@ describe('SubscriptionTab — abonnement par packs', () => {
       delta: 30,
       reason: 'Reprise après dépassement'
     });
+  });
+});
+
+describe('SubscriptionTab — vague 3 : modification d’un élément et demandes d’extension', () => {
+  it('modifie la remise en un seul appel PATCH, sans retrait ni ré-ajout', async () => {
+    updateSubscriptionItem.mockResolvedValue({ ...OVERVIEW.items[0], discountPercent: 15 });
+    const user = userEvent.setup();
+    mount();
+
+    await screen.findByText('Abonnement');
+    await user.click(screen.getByRole('button', { name: 'Modifier' }));
+    const dialogue = await screen.findByRole('dialog');
+    const remise = within(dialogue).getByRole('spinbutton', { name: 'Remise (%)' });
+    await user.clear(remise);
+    await user.type(remise, '15');
+    await user.click(within(dialogue).getByRole('button', { name: 'Enregistrer' }));
+
+    await waitFor(() => expect(updateSubscriptionItem).toHaveBeenCalledWith('tenant-1', 'item-1', { discountPercent: 15 }));
+    expect(removeSubscriptionItem).not.toHaveBeenCalled();
+    expect(addSubscriptionItem).not.toHaveBeenCalled();
+  });
+
+  it('affiche les demandes d’extension et marque une demande traitée', async () => {
+    handleExtensionRequest.mockResolvedValue({});
+    mount();
+
+    expect(await screen.findByText('Il nous faut 50 lots de plus')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Marquer traitée' }));
+    await waitFor(() => expect(handleExtensionRequest).toHaveBeenCalledWith('tenant-1', 'req-1', { status: 'HANDLED' }));
   });
 });
 

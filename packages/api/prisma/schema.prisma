@@ -77,6 +77,15 @@ enum InvoiceStatus {
   FAILED
   CANCELED
   REFUNDED
+  /// Facture PLATFORM emise dont l'echeance est passee sans paiement (vague 3).
+  OVERDUE
+}
+
+/// Nature d'une facture PLATFORM (vague 3, PLAN-ABONNEMENTS.md §6 quater).
+enum PlatformInvoiceNature {
+  PERIOD // Periode suivante : packs, extensions, prorata, mise en route, depassement mensuel
+  OVERAGE // Depassement mensuel d'un abonnement ANNUEL (§6 ter)
+  CREDIT_NOTE // Avoir annulant une facture emise
 }
 
 // --- Abonnements par packs (docs/architecture/PLAN-ABONNEMENTS.md) --------
@@ -1001,33 +1010,50 @@ model Subscription {
 
 // Invoice
 model Invoice {
-  id             String        @id @default(uuid())
-  tenantId       String        @map("tenant_id")
-  subscriptionId String?       @map("subscription_id")
-  invoiceNumber  String        @unique @map("invoice_number")
-  issueDate      DateTime      @map("issue_date")
-  dueDate        DateTime      @map("due_date")
-  currency       String        @default("FCFA")
-  amountTotal    Decimal       @map("amount_total") @db.Decimal(14, 2)
-  status         InvoiceStatus @default(DRAFT)
-  paidAt         DateTime?     @map("paid_at")
-  notes          String?       @db.Text
+  id                String                 @id @default(uuid())
+  tenantId          String                 @map("tenant_id")
+  subscriptionId    String?                @map("subscription_id")
+  invoiceNumber     String                 @unique @map("invoice_number")
+  issueDate         DateTime               @map("issue_date")
+  dueDate           DateTime               @map("due_date")
+  currency          String                 @default("FCFA")
+  amountTotal       Decimal                @map("amount_total") @db.Decimal(14, 2)
+  status            InvoiceStatus          @default(DRAFT)
+  paidAt            DateTime?              @map("paid_at")
+  notes             String?                @db.Text
   /// PLATFORM : facture de l'abonnement ImmoTopia a l'agence. RENTAL : facture
   /// rattachee aux loyers (RentalInstallment.invoice_id,
   /// RentalPayment.invoice_id) ; ce lien historique est conserve tel quel.
-  kind           InvoiceKind   @default(PLATFORM)
-  periodStart    DateTime?     @map("period_start")
-  periodEnd      DateTime?     @map("period_end")
+  kind              InvoiceKind            @default(PLATFORM)
+  periodStart       DateTime?              @map("period_start")
+  periodEnd         DateTime?              @map("period_end")
   /// Total hors taxes ; amountTotal reste le TTC. Nuls avant les packs.
-  amountExclTax  Decimal?      @map("amount_excl_tax") @db.Decimal(14, 2)
-  taxAmount      Decimal?      @map("tax_amount") @db.Decimal(14, 2)
-  taxRate        Decimal?      @map("tax_rate") @db.Decimal(5, 2)
-  createdAt      DateTime      @default(now()) @map("created_at")
-  updatedAt      DateTime      @updatedAt @map("updated_at")
+  amountExclTax     Decimal?               @map("amount_excl_tax") @db.Decimal(14, 2)
+  taxAmount         Decimal?               @map("tax_amount") @db.Decimal(14, 2)
+  taxRate           Decimal?               @map("tax_rate") @db.Decimal(5, 2)
+  /// Vague 3 (PLATFORM seulement) : nature, emission, reglement, avoir.
+  /// Unicite (agence, nature, debut de periode) hors factures annulees :
+  /// index partiel `invoices_platform_period_key` (migration SQL).
+  billingNature     PlatformInvoiceNature? @map("billing_nature")
+  issuedAt          DateTime?              @map("issued_at")
+  sentAt            DateTime?              @map("sent_at")
+  paymentMethod     String?                @map("payment_method")
+  paymentReference  String?                @map("payment_reference")
+  canceledAt        DateTime?              @map("canceled_at")
+  cancelReason      String?                @map("cancel_reason") @db.Text
+  /// Avoir : facture qu'il annule (un avoir au plus par facture).
+  creditedInvoiceId String?                @map("credited_invoice_id")
+  /// Mentions figees a l'emission : emetteur (Alliance Consultants) et client.
+  issuerSnapshot    Json?                  @map("issuer_snapshot")
+  customerSnapshot  Json?                  @map("customer_snapshot")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
-  lines        InvoiceLine[]
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscription    Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  lines           InvoiceLine[]
+  creditedInvoice Invoice?      @relation("InvoiceCreditNote", fields: [creditedInvoiceId], references: [id], onDelete: SetNull)
+  creditNotes     Invoice[]     @relation("InvoiceCreditNote")
 
   // Rental relationships
   rentalInstallments RentalInstallment[]
@@ -1039,7 +1065,20 @@ model Invoice {
   @@index([status])
   @@index([dueDate])
   @@index([tenantId, kind])
+  @@index([creditedInvoiceId])
   @@map("invoices")
+}
+
+/// Compteur de la numerotation continue des factures PLATFORM
+/// (IMT-AAAA-NNNNN), un par annee. GLOBAL : la serie est celle de l'emetteur
+/// (Alliance Consultants), commune a toutes les agences. Incremente dans la
+/// transaction d'emission (verrou de ligne) : ni trou ni doublon.
+model PlatformInvoiceSequence {
+  year       Int      @id
+  lastNumber Int      @default(0) @map("last_number")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("platform_invoice_sequences")
 }
 
 // =============================================================
@@ -7421,4 +7460,107 @@ model SaleCommissionPayment {
   @@index([tenantId, status])
   @@index([commissionId])
   @@map("sale_commission_payments")
+}
+
+// =============================================================
+// PAIEMENT DE L'ABONNEMENT (vague 3, lot B — PLAN-ABONNEMENTS.md)
+// Migration 20260928120000_abonnements_paiement. Aucune relation Prisma
+// formelle (comme AuditLog) : ces tables ne touchent ni Tenant ni Invoice,
+// que d'autres lots modifient.
+// =============================================================
+
+/// Mode de reglement d'une facture PLATFORM.
+enum PlatformPaymentMethod {
+  ONLINE // PaySecureHub, compte ImmoTopia
+  BANK_TRANSFER
+  MOBILE_MONEY
+  CHECK
+  CASH
+}
+
+/// Reglement d'une facture PLATFORM : un seul par facture (index unique).
+/// Ecrit par le rapprochement en ligne ou par le constat du super-admin ;
+/// jamais supprime ni defait par un statut ulterieur de l'agregateur.
+model PlatformInvoicePayment {
+  id               String                @id @default(uuid()) @db.Uuid
+  tenantId         String                @map("tenant_id")
+  invoiceId        String                @unique @map("invoice_id")
+  method           PlatformPaymentMethod
+  amount           Decimal               @db.Decimal(14, 2)
+  currency         String                @default("FCFA")
+  paidAt           DateTime              @map("paid_at")
+  reference        String?
+  note             String?               @db.Text
+  /// Justificatif prive : chemin relatif a la racine des depots, jamais servi en statique.
+  proofPath        String?               @map("proof_path")
+  proofName        String?               @map("proof_name")
+  proofMimeType    String?               @map("proof_mime_type")
+  checkoutId       String?               @map("checkout_id") @db.Uuid
+  recordedByUserId String?               @map("recorded_by_user_id")
+  createdAt        DateTime              @default(now()) @map("created_at")
+
+  @@index([tenantId])
+  @@map("platform_invoice_payments")
+}
+
+/// Tentative de paiement en ligne d'une facture PLATFORM sur le compte
+/// PaySecureHub d'ImmoTopia (distinct des comptes des agences, lot 7).
+/// Code "IMP-" + 20 caracteres : discrimine l'IPN des loyers ("IMT-").
+model PlatformPaymentCheckout {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  tenantId              String                 @map("tenant_id")
+  invoiceId             String                 @map("invoice_id")
+  provider              PaymentGatewayProvider @default(PAYSECUREHUB)
+  mode                  PaymentGatewayMode
+  codePaiement          String                 @unique @map("code_paiement")
+  amount                Decimal                @db.Decimal(14, 2)
+  currency              String                 @default("FCFA")
+  checkoutUrl           String?                @map("checkout_url")
+  providerToken         String?                @map("provider_token")
+  providerTransactionId String?                @map("provider_transaction_id")
+  providerServiceName   String?                @map("provider_service_name")
+  providerFees          Decimal?               @map("provider_fees") @db.Decimal(12, 2)
+  status                OnlineCheckoutStatus   @default(PENDING)
+  lastProviderState     String?                @map("last_provider_state")
+  lastProviderPayload   Json?                  @map("last_provider_payload")
+  lastCheckedAt         DateTime?              @map("last_checked_at")
+  checkAttempts         Int                    @default(0) @map("check_attempts")
+  failureMessage        String?                @map("failure_message")
+  reviewReason          String?                @map("review_reason")
+  /// SUCCESS | FAILED | CANCELED — mode simulateur seulement.
+  simulatedOutcome      String?                @map("simulated_outcome")
+  createdByUserId       String?                @map("created_by_user_id")
+  completedAt           DateTime?              @map("completed_at")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+
+  @@index([tenantId, status])
+  @@index([invoiceId])
+  @@map("platform_payment_checkouts")
+}
+
+enum SubscriptionExtensionRequestStatus {
+  OPEN
+  HANDLED
+  DECLINED
+}
+
+/// Demande d'extension de l'abonnement envoyee par l'agence (lots,
+/// coproprietes, chantiers, pack) ; notifiee par e-mail au super-admin.
+model SubscriptionExtensionRequest {
+  id                String                             @id @default(uuid()) @db.Uuid
+  tenantId          String                             @map("tenant_id")
+  requestedByUserId String?                            @map("requested_by_user_id")
+  catalogCode       String?                            @map("catalog_code")
+  quantity          Int?
+  message           String                             @db.Text
+  status            SubscriptionExtensionRequestStatus @default(OPEN)
+  handledAt         DateTime?                          @map("handled_at")
+  handledByUserId   String?                            @map("handled_by_user_id")
+  handledNote       String?                            @map("handled_note") @db.Text
+  createdAt         DateTime                           @default(now()) @map("created_at")
+  updatedAt         DateTime                           @updatedAt @map("updated_at")
+
+  @@index([tenantId, status])
+  @@map("subscription_extension_requests")
 }

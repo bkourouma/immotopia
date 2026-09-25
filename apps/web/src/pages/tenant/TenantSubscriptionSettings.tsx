@@ -1,12 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Alert, Button, Card, Descriptions, Progress, Space, Spin, Typography } from 'antd';
-import { MailOutlined } from '@ant-design/icons';
+import { Alert, App, Button, Card, Descriptions, Form, Input, InputNumber, Progress, Select, Space, Spin, Table, Typography } from 'antd';
+import { SendOutlined } from '@ant-design/icons';
+import { getOwnEntitlements, type CapacityKeyCode, type TenantEntitlements } from '../../services/subscription-v2-service';
 import {
-  getOwnEntitlements,
-  type CapacityKeyCode,
-  type TenantEntitlements
-} from '../../services/subscription-v2-service';
+  createExtensionRequest,
+  listOwnExtensionRequests,
+  type ExtensionRequest
+} from '../../services/subscription-extras-service';
+import { TenantInvoicesSection } from '../../components/subscription/TenantInvoicesSection';
 import { StatusTag } from '../../components/primitives';
 import { activeLocale } from '../../i18n/format';
 import { t } from '../../i18n/t';
@@ -44,47 +46,80 @@ function daysRemaining(value: string | null | undefined): number | null {
   return Math.max(0, Math.ceil(diff / (24 * 60 * 60 * 1000)));
 }
 
+/** Offres d'extension proposées à la demande (codes du catalogue, PLAN-ABONNEMENTS.md §2). */
+const EXTENSION_OPTIONS = [
+  { value: 'EXT_LOTS_10', label: t('Bloc de 10 lots') },
+  { value: 'EXT_COPRO', label: t('Copropriété supplémentaire') },
+  { value: 'EXT_CHANTIER', label: t('Chantier supplémentaire') }
+];
+
+const REQUEST_STATUS_LABEL: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
+  OPEN: { label: t('En attente'), tone: 'warning' },
+  HANDLED: { label: t('Traitée'), tone: 'success' },
+  DECLINED: { label: t('Refusée'), tone: 'neutral' }
+};
+
+interface RequestValues {
+  catalogCode?: string;
+  quantity?: number;
+  message: string;
+}
+
 /**
- * `/tenant/:tenantId/settings/abonnement` — abonnement de l'agence vu par
- * elle-même (vague 2, lot C). ÉCRAN EN LECTURE SEULE : aucune écriture,
- * conformément à la consigne (« réservée à TENANT_ADMIN, en lecture seule »).
+ * `/tenant/:tenantId/settings/abonnement` — abonnement vu par l'agence.
  *
- * Le contrôle d'accès par rôle (TENANT_ADMIN) reste à poser au niveau du menu
- * — `hooks/useMenuAccess.ts` et `navigation/*` appartiennent au lot A
- * (COHABITATION du plan) — cette page lit `GET /api/tenants/:tenantId
- * /entitlements`, déjà protégée par `requireTenantAccess` côté API.
- *
- * « Demander une extension » : aucune route API dédiée n'existe dans la
- * vague 1 (docs/architecture/PLAN-ABONNEMENTS.md §9 ne liste rien de tel).
- * Le bouton ouvre un e-mail pré-rempli plutôt que d'inventer un appel API.
- * Une route `POST /api/tenants/:tenantId/subscription/extension-requests`
- * (ou équivalent) manque pour faire ça proprement — signalé au rendu.
+ * Formule et consommation en consultation (les modifications passent par le
+ * super-admin) ; vague 3 : factures (PDF, paiement en ligne sur le compte
+ * ImmoTopia, suivi du retour `?paiement=`) et demande d'extension envoyée à
+ * ImmoTopia (`POST /api/tenants/:tenantId/subscription/extension-requests`,
+ * notifiée par e-mail au super-admin et visible dans la fiche agence).
+ * Toutes ces routes restent ouvertes à une agence en lecture seule.
  */
 export const TenantSubscriptionSettings: React.FC = () => {
   const { tenantId } = useParams<{ tenantId: string }>();
   const [entitlements, setEntitlements] = useState<TenantEntitlements | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { message } = App.useApp();
+  const [requests, setRequests] = useState<ExtensionRequest[]>([]);
+  const [sending, setSending] = useState(false);
+  const [requestForm] = Form.useForm<RequestValues>();
+
+  const loadEntitlements = useCallback(
+    (fresh = false) => {
+      if (!tenantId) return Promise.resolve();
+      if (!fresh) setLoading(true);
+      setError(null);
+      return getOwnEntitlements(tenantId)
+        .then(setEntitlements)
+        .catch((err: any) => setError(err.response?.data?.message || t("Erreur lors du chargement de l'abonnement")))
+        .finally(() => setLoading(false));
+    },
+    [tenantId]
+  );
 
   useEffect(() => {
-    if (!tenantId) return;
-    setLoading(true);
-    setError(null);
-    getOwnEntitlements(tenantId)
-      .then(setEntitlements)
-      .catch((err: any) => setError(err.response?.data?.message || t("Erreur lors du chargement de l'abonnement")))
-      .finally(() => setLoading(false));
-  }, [tenantId]);
+    loadEntitlements();
+    if (tenantId) listOwnExtensionRequests(tenantId).then(setRequests).catch(() => setRequests([]));
+  }, [tenantId, loadEntitlements]);
 
-  const handleRequestExtension = () => {
-    const subject = encodeURIComponent(t("Demande d'extension d'abonnement"));
-    const body = encodeURIComponent(
-      t('Agence : {{tenant}}\nPacks actuels : {{packs}}\n\nDécrivez ici l’extension souhaitée (lots, copropriétés, chantiers…).', {
-        tenant: tenantId ?? '',
-        packs: entitlements?.packs.join(', ') || t('aucun')
-      })
-    );
-    window.location.href = `mailto:support@immotopia.app?subject=${subject}&body=${body}`;
+  const handleRequestExtension = async (values: RequestValues) => {
+    if (!tenantId) return;
+    setSending(true);
+    try {
+      const created = await createExtensionRequest(tenantId, {
+        catalogCode: values.catalogCode ?? null,
+        quantity: values.catalogCode ? values.quantity ?? 1 : null,
+        message: values.message
+      });
+      setRequests(previous => [created, ...previous]);
+      requestForm.resetFields();
+      message.success(t("Demande envoyée à l'équipe ImmoTopia"));
+    } catch (err: any) {
+      message.error(err.response?.data?.message || t("Erreur lors de l'envoi de la demande"));
+    } finally {
+      setSending(false);
+    }
   };
 
   if (loading) {
@@ -119,7 +154,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
         <Title level={2} style={{ margin: 0 }}>
           {t('Abonnement')}
         </Title>
-        <Text type="secondary">{t('Consultation seule : les modifications passent par le support ImmoTopia.')}</Text>
+        <Text type="secondary">{t('Les modifications de la formule passent par l’équipe ImmoTopia.')}</Text>
       </div>
 
       {entitlements.readOnly && (
@@ -127,7 +162,7 @@ export const TenantSubscriptionSettings: React.FC = () => {
           type="warning"
           showIcon
           message={t('Compte en lecture seule')}
-          description={entitlements.readOnlyReason ?? undefined}
+          description={t('Réglez la facture en attente ci-dessous pour retrouver l’accès complet.')}
         />
       )}
 
@@ -184,13 +219,53 @@ export const TenantSubscriptionSettings: React.FC = () => {
         </Space>
       </Card>
 
-      <Card>
+      {tenantId && <TenantInvoicesSection tenantId={tenantId} onPaid={() => loadEntitlements(true)} />}
+
+      <Card title={t('Demander une extension')}>
         <Paragraph type="secondary">
           {t("Besoin de plus de lots, de copropriétés ou de chantiers ? Envoyez une demande à l'équipe ImmoTopia.")}
         </Paragraph>
-        <Button type="primary" icon={<MailOutlined />} onClick={handleRequestExtension}>
-          {t('Demander une extension')}
-        </Button>
+        <Form form={requestForm} layout="vertical" onFinish={handleRequestExtension} style={{ maxWidth: 560 }}>
+          <Form.Item label={t('Offre souhaitée')} name="catalogCode">
+            <Select allowClear placeholder={t('Autre demande')} options={EXTENSION_OPTIONS} />
+          </Form.Item>
+          <Form.Item label={t('Quantité')} name="quantity">
+            <InputNumber<number> min={1} max={1000} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item
+            label={t('Votre demande')}
+            name="message"
+            rules={[{ required: true, min: 3, message: t('Décrivez votre demande.') }]}
+          >
+            <Input.TextArea rows={3} maxLength={2000} />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" icon={<SendOutlined />} loading={sending}>
+            {t('Envoyer la demande')}
+          </Button>
+        </Form>
+        {requests.length > 0 && (
+          <Table<ExtensionRequest>
+            style={{ marginBlockStart: 'var(--space-4)' }}
+            rowKey="id"
+            size="small"
+            pagination={false}
+            dataSource={requests}
+            aria-label={t('Mes demandes')}
+            columns={[
+              { title: t('Date'), dataIndex: 'createdAt', key: 'createdAt', render: (v: string) => formatDate(v) },
+              { title: t('Demande'), dataIndex: 'message', key: 'message' },
+              {
+                title: t('Statut'),
+                dataIndex: 'status',
+                key: 'status',
+                render: (status: string) => {
+                  const info = REQUEST_STATUS_LABEL[status];
+                  return <StatusTag status={status} tone={info?.tone} label={info?.label} />;
+                }
+              }
+            ]}
+          />
+        )}
       </Card>
     </Space>
   );

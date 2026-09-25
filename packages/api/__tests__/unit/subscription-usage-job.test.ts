@@ -105,6 +105,12 @@ jest.mock('../../src/utils/database', () => ({
 
 jest.mock('../../src/services/email-service', () => ({ emailService: { sendEmail: jest.fn(async () => undefined) } }));
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn() }));
+// Facturation (vague 3, lot A) : testee a part (platform-invoice.test.ts) ;
+// ici l'etape est neutre, l'echeance juge sur les factures du faux client.
+const mockBillingStep = jest.fn(async () => ({ periodInvoice: 'NONE', overageInvoices: 0, overdue: 0 }));
+jest.mock('../../src/services/platform-invoice-service', () => ({
+  runPlatformBillingStep: (...args: unknown[]) => mockBillingStep(...(args as []))
+}));
 jest.mock('../../src/services/subscription-v2-service', () => {
   const actual = jest.requireActual('../../src/services/subscription-v2-service');
   return {
@@ -316,6 +322,29 @@ describe('passage complet', () => {
     mockState.entitlements.capacities = capacities({ used: 100, limit: 100 });
     const report = await runSubscriptionUsageCycle({ now: new Date(END.getTime() + DAY) });
     expect(report).toMatchObject({ tenants: 1, pastDue: 1, renewed: 0, snapshots: 3, alerts: 2, errors: [] });
+  });
+
+  it("facture (vague 3) AVANT l'echeance ; un echec de facturation n'arrete pas le passage", async () => {
+    const END = new Date('2026-10-01T00:00:00Z');
+    seedSubscription({});
+    const now = new Date(END.getTime() + DAY);
+    mockBillingStep.mockImplementationOnce(async () => {
+      // L'echeance n'a pas encore ete jugee quand la facture est emise.
+      expect(mockState.subscriptions[0].status).toBe('ACTIVE');
+      return { periodInvoice: 'CREATED', overageInvoices: 1, overdue: 0 };
+    });
+    const report = await runSubscriptionUsageCycle({ now });
+    expect(mockBillingStep).toHaveBeenCalledWith('sub-1', now);
+    expect(report).toMatchObject({ periodInvoices: 1, overageInvoices: 1, pastDue: 1 });
+
+    mockState.subscriptions = [];
+    seedSubscription({});
+    mockBillingStep.mockImplementationOnce(async () => {
+      throw new Error('panne');
+    });
+    const failed = await runSubscriptionUsageCycle({ now });
+    expect(failed.errors).toEqual([{ tenantId: T, error: 'billing: panne' }]);
+    expect(failed.snapshots).toBe(3);
   });
 
   it('alertes seules (passage horaire) : ni echeance ni releve', async () => {

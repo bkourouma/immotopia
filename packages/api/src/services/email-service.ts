@@ -13,6 +13,13 @@ interface EmailOptions {
    * l'autre, l'e-mail part au nom de la plateforme, comme avant ce lot.
    */
   tenantId?: string;
+  /**
+   * E-mail de la PLATEFORME a une agence (facture d'abonnement, vague 3) :
+   * jamais au nom de l'agence, meme dans son contexte.
+   */
+  asPlatform?: boolean;
+  /** Pieces jointes (facture PDF). */
+  attachments?: Array<{ filename: string; content: Buffer; contentType?: string }>;
 }
 
 /** Nom d'expediteur + Reply-To resolus pour une agence. */
@@ -144,7 +151,7 @@ export class EmailService {
     // Lot H : l'e-mail part au nom de l'agence (adresse From inchangee, celle
     // de la plateforme — seuls le nom affiche et le Reply-To changent) quand
     // une agence est identifiable, explicitement ou via le contexte ambiant.
-    const effectiveTenantId = options.tenantId ?? getCurrentTenantId();
+    const effectiveTenantId = options.asPlatform ? undefined : options.tenantId ?? getCurrentTenantId();
     const identity = await getAgencySenderIdentity(effectiveTenantId);
     // "via ImmoTopia" : la delivrabilite (SPF/DKIM sur le domaine plateforme)
     // exige de garder l'adresse From de la plateforme, donc afficher le nom de
@@ -159,6 +166,7 @@ export class EmailService {
         subject: options.subject,
         text: options.text,
         html: options.html,
+        ...(options.attachments?.length ? { attachments: options.attachments } : {}),
         ...(identity?.contactEmail ? { replyTo: identity.contactEmail } : {})
       });
       console.log('Email sent successfully:', {

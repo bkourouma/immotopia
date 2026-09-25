@@ -3,6 +3,13 @@
  * docs/architecture/PLAN-ABONNEMENTS.md.
  *
  * Pour chaque abonnement vivant (essai, actif, impaye), a chaque passage :
+ * 0. Facturation (vague 3, lot A, services/platform-invoice-service.ts,
+ *    `runPlatformBillingStep`) : en annuel, facture du depassement de chaque
+ *    fenetre mensuelle ecoulee ; a l'echeance d'essai ou de periode, facture
+ *    PLATFORM de la periode suivante generee, emise et envoyee a l'agence
+ *    (une facture a zero est reglee d'office) ; factures echues -> OVERDUE.
+ *    L'echeance ci-dessous s'appuie ensuite sur CES factures : payee ->
+ *    renouvellement, sinon PAST_DUE ; le paiement (lot B) repasse ACTIVE.
  * 1. Echeance (D7, D8) : a la fin de l'essai ou de la periode, les retraits
  *    programmes et les extensions liees a un pack retire s'appliquent
  *    (`applyDueItemTransitionsTx`) ; puis, si une facture PLATFORM PAYEE
@@ -33,6 +40,7 @@ import { frontendUrl } from '../config/env';
 import { logAuditEvent } from '../services/audit-service';
 import { AuditActionKey } from '../types/audit-types';
 import { addBillingPeriod, CAPACITY_KEYS, CapacityKeyCode } from '../lib/subscription';
+import { runPlatformBillingStep } from '../services/platform-invoice-service';
 import {
   applyDueItemTransitionsTx,
   getEntitlements,
@@ -428,6 +436,12 @@ export interface UsageCycleReport {
   snapshots: number;
   alerts: number;
   trialReminders: number;
+  /** Factures PLATFORM de periode creees (vague 3). */
+  periodInvoices: number;
+  /** Factures mensuelles de depassement creees (annuel, vague 3). */
+  overageInvoices: number;
+  /** Factures passees OVERDUE. */
+  overdueInvoices: number;
   errors: Array<{ tenantId: string; error: string }>;
 }
 
@@ -447,11 +461,28 @@ export async function runSubscriptionUsageCycle(
     snapshots: 0,
     alerts: 0,
     trialReminders: 0,
+    periodInvoices: 0,
+    overageInvoices: 0,
+    overdueInvoices: 0,
     errors: []
   };
   for (const sub of subscriptions) {
     try {
       if (!options.alertsOnly) {
+        // Facturation d'abord : l'echeance juge sur la facture de la periode.
+        // Un echec de facturation n'empeche ni l'echeance ni les releves.
+        try {
+          // eslint-disable-next-line no-await-in-loop -- agences traitees une a une.
+          const billing = await runPlatformBillingStep(sub.id, now);
+          if (billing.periodInvoice === 'CREATED') report.periodInvoices += 1;
+          report.overageInvoices += billing.overageInvoices;
+          report.overdueInvoices += billing.overdue;
+        } catch (error) {
+          report.errors.push({
+            tenantId: sub.tenantId,
+            error: `billing: ${error instanceof Error ? error.message : String(error)}`
+          });
+        }
         // eslint-disable-next-line no-await-in-loop -- agences traitees une a une.
         const boundary = await processBillingBoundary(sub.id, now);
         if (boundary.action === 'RENEWED') report.renewed += 1;

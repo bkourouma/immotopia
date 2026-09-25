@@ -9,7 +9,7 @@ import { TenantsList } from '../../pages/admin/TenantsList';
  * `<TenantsList>` — colonnes packs / % de lots utilisés / prochaine échéance
  * et filtre « proche de la limite » (vague 2, lot C). `apiClient` est simulé
  * au plus près de la frontière réseau : `listTenants`, `listCatalog` et
- * `getTenantEntitlements` (le vrai service) tournent par-dessus.
+ * `getSubscriptionSummaries` (le vrai service) tournent par-dessus.
  */
 
 vi.mock('../../utils/api-client', () => ({
@@ -46,32 +46,23 @@ const TENANTS = [
   }
 ];
 
-function entitlementsFor(tenantId: string) {
+function summaryFor(tenantId: string) {
   const used = tenantId === 'tenant-proche' ? 95 : 10;
   return {
     tenantId,
-    subscriptionId: 'sub-1',
     status: 'ACTIVE',
     phase: 'ACTIVE',
     readOnly: false,
-    readOnlyReason: null,
-    trialEndsAt: null,
-    graceEndsAt: null,
-    billingCycle: 'MONTHLY',
-    currentPeriodStart: '2026-01-01T00:00:00.000Z',
-    currentPeriodEnd: '2026-02-01T00:00:00.000Z',
     packs: ['AGENCE'],
-    modules: ['MODULE_AGENCY'],
-    moduleAccess: { MODULE_AGENCY: 'FULL', MODULE_SYNDIC: 'NONE', MODULE_PROMOTER: 'NONE' },
-    features: [],
     capacities: {
-      LOTS: { included: 100, extensions: 0, overrides: 0, limit: 100, used, remaining: 100 - used, overBy: 0 },
-      COPROPRIETES: { included: 0, extensions: 0, overrides: 0, limit: 0, used: 0, remaining: 0, overBy: 0 },
-      CHANTIERS: { included: 0, extensions: 0, overrides: 0, limit: 0, used: 0, remaining: 0, overBy: 0 }
+      LOTS: { limit: 100, used },
+      COPROPRIETES: { limit: 0, used: 0 },
+      CHANTIERS: { limit: 0, used: 0 }
     },
-    quotaPolicy: 'BILL_OVERAGE',
-    enforcement: 'enforce',
-    computedAt: '2026-01-15T00:00:00.000Z'
+    lotsUsagePercent: used,
+    nearLimit: used >= 80,
+    nextDueAt: '2026-02-01T00:00:00.000Z',
+    openExtensionRequests: 0
   };
 }
 
@@ -96,11 +87,10 @@ beforeEach(() => {
       });
     }
     if (url === '/admin/catalog') return Promise.resolve({ data: { success: true, data: CATALOG } });
-    if (url === '/admin/tenants/tenant-proche/entitlements') {
-      return Promise.resolve({ data: { success: true, data: entitlementsFor('tenant-proche') } });
-    }
-    if (url === '/admin/tenants/tenant-large/entitlements') {
-      return Promise.resolve({ data: { success: true, data: entitlementsFor('tenant-large') } });
+    if (url === '/admin/subscriptions/summaries') {
+      return Promise.resolve({
+        data: { success: true, data: { 'tenant-proche': summaryFor('tenant-proche'), 'tenant-large': summaryFor('tenant-large') } }
+      });
     }
     return Promise.reject(new Error(`GET non simulé : ${url}`));
   });
@@ -114,6 +104,15 @@ describe('<TenantsList> — abonnements par packs', () => {
     await waitFor(() => expect(screen.getAllByText('Agence').length).toBeGreaterThan(0));
     expect(await screen.findByText('95%')).toBeInTheDocument();
     expect(await screen.findByText('10%')).toBeInTheDocument();
+  });
+
+  it('charge le résumé de toute la page en une seule requête (plus de N+1)', async () => {
+    mount();
+    await screen.findByText('95%');
+    const summaryCalls = get.mock.calls.filter(([url]) => url === '/admin/subscriptions/summaries');
+    expect(summaryCalls).toHaveLength(1);
+    expect(summaryCalls[0][1]).toEqual({ params: { tenantIds: 'tenant-proche,tenant-large' } });
+    expect(get.mock.calls.some(([url]) => String(url).endsWith('/entitlements'))).toBe(false);
   });
 
   it('le filtre « proche de la limite » ne garde que les agences à 80 % ou plus', async () => {

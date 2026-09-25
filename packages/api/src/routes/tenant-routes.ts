@@ -31,6 +31,15 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requirePermission } from '../middleware/rbac-middleware';
 import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
 import { getEntitlementsHandler } from '../controllers/subscription-v2-controller';
+import {
+  createExtensionRequestHandler,
+  getCheckoutHandler,
+  paymentAvailabilityHandler,
+  startCheckoutHandler,
+  tenantGetInvoicePaymentHandler,
+  tenantListExtensionRequestsHandler
+} from '../controllers/platform-billing-controller';
+import { platformInvoiceTenantRouter } from './platform-invoice-routes';
 
 const router = Router();
 
@@ -72,6 +81,54 @@ router.get('/:tenantId', authenticate, requireTenantAccess, getTenant);
 // capacites et consommation. Lu par le menu et les gardes de la vague 2
 // (docs/architecture/PLAN-ABONNEMENTS.md).
 router.get('/:tenantId/entitlements', authenticate, requireTenantAccess, getEntitlementsHandler);
+// Factures PLATFORM de l'agence (vague 3, lot A) : liste, detail, PDF.
+router.use(platformInvoiceTenantRouter);
+// Abonnement vu par l'agence (vague 3, lot B) : paiement en ligne des
+// factures sur le compte ImmoTopia et demandes d'extension. `/subscription`
+// est EXEMPT dans lib/subscription/route-features.ts : une agence en lecture
+// seule doit pouvoir payer pour en sortir.
+router.get(
+  '/:tenantId/subscription/payment-availability',
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_VIEW'),
+  paymentAvailabilityHandler
+);
+router.post(
+  '/:tenantId/subscription/invoices/:invoiceId/checkout',
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_EDIT'),
+  startCheckoutHandler
+);
+router.get(
+  '/:tenantId/subscription/invoices/:invoiceId/payment',
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_VIEW'),
+  tenantGetInvoicePaymentHandler
+);
+router.get(
+  '/:tenantId/subscription/checkouts/:codePaiement',
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_VIEW'),
+  getCheckoutHandler
+);
+router.get(
+  '/:tenantId/subscription/extension-requests',
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_VIEW'),
+  tenantListExtensionRequestsHandler
+);
+router.post(
+  '/:tenantId/subscription/extension-requests',
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_EDIT'),
+  createExtensionRequestHandler
+);
 router.post('/:tenantId/register', authenticate, registerAsTenantClient);
 
 // Client directory exposes e-mails and names: restricted to collaborators of

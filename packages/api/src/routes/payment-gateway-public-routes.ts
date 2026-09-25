@@ -3,6 +3,7 @@ import { webhookRateLimiter } from '../middleware/rate-limit-middleware';
 import { paymentGatewaySimulatorAvailable } from '../config/env';
 import {
   paysecurehubIpnHandler,
+  paysecurehubPlatformIpnHandler,
   simulatorPageHandler,
   simulatorActionHandler
 } from '../controllers/payment-gateway-public-controller';
@@ -15,6 +16,9 @@ import {
 const router = Router();
 
 router.post('/payment-gateway/paysecurehub/ipn', webhookRateLimiter, paysecurehubIpnHandler);
+// Compte ImmoTopia : factures d'abonnement des agences (vague 3). Adresse
+// distincte de celle des loyers, communiquee a BMI pour ce seul compte.
+router.post('/payment-gateway/paysecurehub/platform-ipn', webhookRateLimiter, paysecurehubPlatformIpnHandler);
 
 // Simulateur : monté seulement si disponible sur ce serveur (toujours hors
 // production ; en production seulement avec PAYMENT_GATEWAY_SIMULATOR=1).

@@ -698,5 +698,21 @@
   "Vous utilisez {{used}} {{label}} sur {{limit}} inclus. {{policy}} Ajoutez une extension depuis {{url}}.": "أنت تستخدم {{used}} {{label}} من أصل {{limit}} مشمولة. {{policy}} أضف امتدادًا من {{url}}.",
   "Votre essai ImmoTopia se termine demain": "تنتهي الفترة التجريبية لـ ImmoTopia غدًا",
   "Votre essai ImmoTopia se termine dans 7 jours": "تنتهي الفترة التجريبية لـ ImmoTopia خلال 7 أيام",
-  "Votre période d'essai se termine le {{date}}. Pour continuer sans interruption, choisissez vos packs et réglez votre abonnement depuis {{url}}.": "تنتهي فترتك التجريبية في {{date}}. للاستمرار دون انقطاع، اختر باقاتك وادفع اشتراكك من {{url}}."
+  "Votre période d'essai se termine le {{date}}. Pour continuer sans interruption, choisissez vos packs et réglez votre abonnement depuis {{url}}.": "تنتهي فترتك التجريبية في {{date}}. للاستمرار دون انقطاع، اختر باقاتك وادفع اشتراكك من {{url}}.",
+  "Le dépassement d'un abonnement mensuel figure dans la facture de la période.": "يُدرج تجاوز الاشتراك الشهري في فاتورة الفترة.",
+  "Facture introuvable.": "الفاتورة غير موجودة.",
+  "Des lignes en attente ont changé pendant la génération : relancez-la.": "تغيّرت البنود المعلّقة أثناء الإنشاء: يرجى إعادة المحاولة.",
+  "Aucune facture pendant l'essai : elle sera émise à la fin de l'essai.": "لا توجد فاتورة خلال الفترة التجريبية: ستصدر عند انتهائها.",
+  "Abonnement résilié : aucune facture à émettre.": "الاشتراك ملغى: لا توجد فاتورة لإصدارها.",
+  "Cette facture est déjà émise.": "تم إصدار هذه الفاتورة مسبقًا.",
+  "La raison de l'avoir est obligatoire.": "سبب الإشعار الدائن إلزامي.",
+  "Seule une facture d'abonnement peut être annulée par un avoir.": "لا يمكن إلغاء إلا فاتورة اشتراك بإشعار دائن.",
+  "Seule une facture émise peut être annulée par un avoir.": "لا يمكن إلغاء إلا فاتورة صادرة بإشعار دائن.",
+  "Cette facture a déjà un avoir.": "لهذه الفاتورة إشعار دائن مسبقًا.",
+  "Un avoir ne se règle pas.": "لا يُدفع الإشعار الدائن.",
+  "Avoir ImmoTopia {{number}}": "إشعار دائن ImmoTopia {{number}}",
+  "Facture ImmoTopia {{number}}": "فاتورة ImmoTopia {{number}}",
+  "Votre facture {{credited}} est annulée par l'avoir {{number}} ({{amount}}). Le document est joint.": "تم إلغاء فاتورتك {{credited}} بالإشعار الدائن {{number}} ({{amount}}). المستند مرفق.",
+  "Votre facture {{number}} ({{amount}}) est jointe. Elle est déjà réglée.": "فاتورتك {{number}} ({{amount}}) مرفقة. وقد تم سدادها.",
+  "Votre facture {{number}} d'un montant de {{amount}} TTC est jointe. Elle est à régler avant le {{date}} depuis {{url}}.": "فاتورتك {{number}} بمبلغ {{amount}} شاملة الضريبة مرفقة. يرجى سدادها قبل {{date}} من {{url}}."
 }

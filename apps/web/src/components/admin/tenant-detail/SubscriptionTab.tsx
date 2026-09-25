@@ -20,11 +20,23 @@ import {
   type SubscriptionItemDTO,
   type SubscriptionOverview
 } from '../../../services/subscription-v2-service';
+import {
+  handleExtensionRequest,
+  listExtensionRequests,
+  updateSubscriptionItem,
+  type ExtensionRequest
+} from '../../../services/subscription-extras-service';
 import { StatusTag, MoneyValue, useConfirmAction } from '../../primitives';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 
 const { Text, Title } = Typography;
+
+const REQUEST_STATUS_LABEL: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
+  OPEN: { label: t('Ouverte'), tone: 'warning' },
+  HANDLED: { label: t('Traitée'), tone: 'success' },
+  DECLINED: { label: t('Refusée'), tone: 'neutral' }
+};
 
 /**
  * Onglet Abonnement de la fiche agence (vague 2, lot C) — abonnements par
@@ -226,6 +238,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
   const [overview, setOverview] = useState<SubscriptionOverview | null>(null);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [invoicePreview, setInvoicePreview] = useState<InvoicePreview | null>(null);
+  const [requests, setRequests] = useState<ExtensionRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -236,14 +249,16 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
     setLoading(true);
     setError(null);
     try {
-      const [overviewData, catalogData, preview] = await Promise.all([
+      const [overviewData, catalogData, preview, requestData] = await Promise.all([
         getSubscriptionOverview(tenantId),
         listCatalog(true).catch(() => []),
-        previewNextInvoice(tenantId).catch(() => null)
+        previewNextInvoice(tenantId).catch(() => null),
+        listExtensionRequests(tenantId).catch(() => [] as ExtensionRequest[])
       ]);
       setOverview(overviewData);
       setCatalog(catalogData);
       setInvoicePreview(preview);
+      setRequests(requestData);
     } catch (err: any) {
       if (err?.response?.status === 404) {
         setOverview(null);
@@ -320,38 +335,57 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
     });
   };
 
-  /**
-   * Modifier le prix ou la remise d'un élément déjà souscrit : la vague 1 ne
-   * fournit pas de route dédiée (le prix se fige à l'ajout, `SubscriptionItem
-   * .unitMonthlyPrice`, D12). Le seul chemin disponible aujourd'hui compose
-   * un retrait immédiat puis un ajout au nouveau taux — deux écritures
-   * d'audit au lieu d'une. Signalé au rendu : une route
-   * `PATCH .../subscription/items/:itemId` (discountPercent) manque pour
-   * faire ça proprement.
-   */
+  /** Remise ou prix figé d'un élément : une seule écriture auditée (`PATCH …/items/:itemId`). */
   const handleEditDiscount = (item: SubscriptionItemDTO) => {
     let discountPercent = item.discountPercent;
+    let unitMonthlyPrice = item.unitMonthlyPrice;
+    let reason = '';
     Modal.confirm({
-      title: t('Modifier la remise de « {{value}} »', { value: item.name }),
+      title: t('Modifier « {{value}} »', { value: item.name }),
       content: (
-        <InputNumber
-          min={0}
-          max={100}
-          defaultValue={item.discountPercent}
-          style={{ width: '100%' }}
-          addonAfter="%"
-          onChange={value => {
-            discountPercent = Number(value) || 0;
-          }}
-        />
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Text>{t('Remise (%)')}</Text>
+          <InputNumber
+            aria-label={t('Remise (%)')}
+            min={0}
+            max={100}
+            defaultValue={item.discountPercent}
+            style={{ width: '100%' }}
+            onChange={value => {
+              discountPercent = Number(value) || 0;
+            }}
+          />
+          <Text>{t('Prix mensuel figé (HT, par unité)')}</Text>
+          <InputNumber
+            aria-label={t('Prix mensuel figé (HT, par unité)')}
+            min={0}
+            step={100}
+            defaultValue={item.unitMonthlyPrice}
+            style={{ width: '100%' }}
+            onChange={value => {
+              unitMonthlyPrice = Number(value) || 0;
+            }}
+          />
+          <Input.TextArea
+            rows={2}
+            placeholder={t('Raison de la modification')}
+            onChange={e => {
+              reason = e.target.value;
+            }}
+          />
+          <Text type="secondary">{t('Prend effet sur la prochaine facture, sans prorata.')}</Text>
+        </Space>
       ),
       okText: t('Enregistrer'),
       cancelText: t('Annuler'),
       onOk: async () => {
         try {
-          await removeSubscriptionItem(tenantId, item.id, { immediate: true, reason: t('Remise ajustée par le super-admin') });
-          await addSubscriptionItem(tenantId, { code: item.code, quantity: item.quantity, discountPercent, note: item.note ?? undefined });
-          message.success(t('Remise mise à jour'));
+          await updateSubscriptionItem(tenantId, item.id, {
+            discountPercent,
+            ...(unitMonthlyPrice !== item.unitMonthlyPrice ? { unitMonthlyPrice } : {}),
+            ...(reason.trim() ? { reason: reason.trim() } : {})
+          });
+          message.success(t('Élément mis à jour'));
           await load();
         } catch (err: any) {
           message.error(err.response?.data?.message || t('Erreur lors de la mise à jour'));
@@ -359,6 +393,16 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
         }
       }
     });
+  };
+
+  const handleCloseRequest = async (request: ExtensionRequest, status: 'HANDLED' | 'DECLINED') => {
+    try {
+      await handleExtensionRequest(tenantId, request.id, { status });
+      message.success(status === 'HANDLED' ? t('Demande marquée traitée') : t('Demande refusée'));
+      await load();
+    } catch (err: any) {
+      message.error(err.response?.data?.message || t('Erreur lors de la mise à jour'));
+    }
   };
 
   const handleGrantOverride = async (input: { capacityKey: CapacityKeyCode; delta: number; reason: string; expiresAt?: string | null }) => {
@@ -520,7 +564,7 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
         ) : (
           <Space wrap>
             <Button size="small" onClick={() => handleEditDiscount(item)}>
-              {t('Remise')}
+              {t('Modifier')}
             </Button>
             {!item.endsAt && (
               <Button size="small" onClick={() => handleRemoveAtEnd(item)}>
@@ -731,6 +775,53 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
         ) : (
           <Text type="secondary">{t('Aperçu indisponible.')}</Text>
         )}
+      </Card>
+
+      <Card title={t("Demandes d'extension")}>
+        <Table<ExtensionRequest>
+          dataSource={requests}
+          rowKey="id"
+          pagination={false}
+          size="small"
+          aria-label={t("Demandes d'extension")}
+          locale={{ emptyText: t('Aucune demande') }}
+          columns={[
+            { title: t('Date'), dataIndex: 'createdAt', key: 'createdAt', render: (v: string) => formatDateTime(v) },
+            { title: t('Demandeur'), dataIndex: 'requestedByName', key: 'by', render: (v: string | null) => v ?? '—' },
+            {
+              title: t('Offre'),
+              key: 'offer',
+              render: (_, r) => (r.catalogName ? `${r.catalogName}${r.quantity ? ` × ${r.quantity}` : ''}` : '—')
+            },
+            { title: t('Message'), dataIndex: 'message', key: 'message' },
+            {
+              title: t('Statut'),
+              dataIndex: 'status',
+              key: 'status',
+              render: (status: string) => {
+                const info = REQUEST_STATUS_LABEL[status];
+                return <StatusTag status={status} tone={info?.tone} label={info?.label} />;
+              }
+            },
+            {
+              title: t('Actions'),
+              key: 'actions',
+              render: (_, r) =>
+                r.status === 'OPEN' ? (
+                  <Space wrap>
+                    <Button size="small" type="primary" onClick={() => handleCloseRequest(r, 'HANDLED')}>
+                      {t('Marquer traitée')}
+                    </Button>
+                    <Button size="small" onClick={() => handleCloseRequest(r, 'DECLINED')}>
+                      {t('Refuser')}
+                    </Button>
+                  </Space>
+                ) : (
+                  <Text type="secondary">—</Text>
+                )
+            }
+          ]}
+        />
       </Card>
 
       <AddItemModal open={addOpen} onClose={() => setAddOpen(false)} catalog={catalog} heldPacks={heldPacks} onSubmit={handleAddItem} />

@@ -46,7 +46,7 @@ const WINANSI_SAFE_PATTERN = new RegExp(`[^\\u0000-\\u00FF${WINANSI_EXTRA_CHARS}
  * la génération du relevé. Cette fonction est appliquée à chaque appel de
  * `drawText` de ce fichier via le petit wrapper `draw()` ci-dessous.
  */
-function sanitizeForPdf(text: string): string {
+export function sanitizeForPdf(text: string): string {
   return text.replace(/[\u00A0\u202F]/g, ' ').replace(WINANSI_SAFE_PATTERN, '?');
 }
 
