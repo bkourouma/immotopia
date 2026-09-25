@@ -383,7 +383,27 @@ export interface ConstructionSiteRecord {
   zone: string | null;
   /** Facultatif : un chantier peut n'avoir aucun bien au patrimoine. */
   propertyId: string | null;
+  /**
+   * Titre du bien rattaché, résolu à la lecture. Nul quand il n'y a pas de bien.
+   *
+   * Ajouté le 20 septembre 2026. Les deux écrans des chantiers lisaient déjà
+   * `propertyLabel`, mais rien ne le produisait : la colonne « Bien » affichait
+   * « Sans bien (terrain loué) » pour *tous* les chantiers, y compris ceux qui
+   * en avaient un. Même leçon que `sourceLabel` au détail d'un chantier — un
+   * écran n'affiche jamais un identifiant, donc le serveur doit livrer le
+   * libellé avec la ligne, pas l'identifiant seul.
+   */
+  propertyLabel: string | null;
   managerId: string | null;
+  /**
+   * Nom du responsable, à défaut son e-mail. Nul quand personne n'est désigné.
+   *
+   * Même correction, même date que `propertyLabel` : la colonne
+   * « Responsable » restait bloquée sur « — ». La règle de repli
+   * (`fullName || email`) est celle que tout ce module applique déjà
+   * (`salaries.ts`, `land-leases.ts`, `site-closing.ts`).
+   */
+  managerLabel: string | null;
   /**
    * Bail de terrain dont dépend le chantier, s'il y en a un.
    *

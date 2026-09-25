@@ -1096,8 +1096,20 @@ components:
         name: { type: string }
         zone: { type: string }
         propertyId: { type: string, format: uuid, nullable: true }
+        propertyLabel:
+          {
+            type: string,
+            nullable: true,
+            description: "Titre du bien rattache, resolu par le serveur ; nul quand le chantier n'a aucun bien (terrain loue). L'ecran n'affiche jamais propertyId. Ajoute le 20 septembre 2026 : les deux ecrans des chantiers le lisaient deja, le serveur ne l'a jamais emis, et la colonne « Bien » tombait toujours sur « Sans bien (terrain loue) », meme pour un chantier qui en avait un.",
+          }
         landLeaseId: { type: string, format: uuid, nullable: true }
         managerId: { type: string, format: uuid, nullable: true }
+        managerLabel:
+          {
+            type: string,
+            nullable: true,
+            description: "Nom du responsable (a defaut son e-mail), resolu par le serveur ; nul quand aucun responsable n'est designe. Meme correction, meme date que propertyLabel : la colonne « Responsable » tombait toujours sur « — ».",
+          }
         status:
           { type: string, enum: [PLANNED, IN_PROGRESS, SUSPENDED, CLOSED] }
         startDate: { type: string, format: date }

@@ -70,6 +70,34 @@ const DEFAULT_COST_CATEGORY_LABELS = [
 // Conversions
 // ---------------------------------------------------------------------------
 
+/**
+ * Jointure commune a toutes les lectures de chantiers : le bien et le
+ * responsable, quand il y en a un.
+ *
+ * Meme forme que `COST_CATEGORY_INCLUDE` plus bas, et pour la meme raison :
+ * le libelle part avec la ligne, en une requete, jamais en une requete de plus
+ * par chantier. La liste en affiche vingt d'un coup — une resolution ligne a
+ * ligne y aurait coute vingt allers-retours.
+ */
+const SITE_INCLUDE = {
+  property: { select: { id: true, title: true } },
+  manager: { select: { id: true, fullName: true, email: true } }
+} as const;
+
+/**
+ * Le nom lisible d'un responsable : son nom, a defaut son e-mail.
+ *
+ * Repli identique a `salaries.ts`, `land-leases.ts` et `site-closing.ts`. Pas
+ * de « Utilisateur inconnu » ici, contrairement a eux : l'absence de
+ * responsable est le cas *normal* d'un chantier, pas une anomalie, et l'ecran
+ * la rend deja par un tiret. Inventer un nom pour un poste vacant serait pire
+ * que le vide, parce que ca se lirait comme un vrai nom.
+ */
+function toManagerLabel(manager: Record<string, any> | null | undefined): string | null {
+  if (!manager) return null;
+  return manager.fullName || manager.email || null;
+}
+
 function toSiteRecord(row: Record<string, any>, actualCost: number): ConstructionSiteRecord {
   return {
     id: row.id,
@@ -77,7 +105,9 @@ function toSiteRecord(row: Record<string, any>, actualCost: number): Constructio
     name: row.name,
     zone: row.zone ?? null,
     propertyId: row.propertyId ?? null,
+    propertyLabel: row.property?.title ?? null,
     managerId: row.managerId ?? null,
+    managerLabel: toManagerLabel(row.manager),
     landLeaseId: row.landLeaseId ?? null,
     status: row.status,
     startDate: row.startDate ?? null,
@@ -331,7 +361,8 @@ export const createConstructionSite: CreateConstructionSite = async (tenantId, p
       managerId: params.managerId ?? null,
       startDate: params.startDate ?? new Date(),
       plannedEndDate: params.plannedEndDate ?? null
-    }
+    },
+    include: SITE_INCLUDE
   });
 
   // Un chantier qui vient de naître n'a encore aucune imputation : inutile
@@ -351,7 +382,8 @@ export const listConstructionSites: ListConstructionSites = async (tenantId, fil
       where,
       orderBy: [{ createdAt: 'desc' }],
       skip: filters?.skip,
-      take: filters?.take
+      take: filters?.take,
+      include: SITE_INCLUDE
     }),
     prisma.constructionSite.count({ where })
   ]);
@@ -531,7 +563,10 @@ async function resolveAllocationSources(
 
 /** Voir `GetSiteDetail` dans `./types-lot2.ts`. */
 export const getSiteDetail: GetSiteDetail = async (tenantId, siteId) => {
-  const siteRow = await prisma.constructionSite.findFirst({ where: { id: siteId, tenantId } });
+  const siteRow = await prisma.constructionSite.findFirst({
+    where: { id: siteId, tenantId },
+    include: SITE_INCLUDE
+  });
   if (!siteRow) {
     throw new NotFoundError('Chantier introuvable.');
   }

@@ -36,6 +36,23 @@ function uniqueConstraintError(target: string[]): any {
 
 const TENANT_ID = 'tenant-1';
 
+/**
+ * Emule la jointure `SITE_INCLUDE` de `sites.ts` (le bien, le responsable).
+ *
+ * Meme procede que le mock de `costAllocation.findMany` juste en dessous, qui
+ * rattache deja `costCategory` a chaque imputation : sans ca, le magasin en
+ * memoire rend des lignes nues et `propertyLabel`/`managerLabel` sortiraient
+ * toujours nuls — le test passerait au vert sur le bug qu'il doit attraper.
+ */
+function withSiteJoins(site: Row | null, include?: Row): Row | null {
+  if (!site || !include) return site;
+  return {
+    ...site,
+    ...(include.property ? { property: store.properties.find(p => p.id === site.propertyId) ?? null } : {}),
+    ...(include.manager ? { manager: store.users.find(u => u.id === site.managerId) ?? null } : {})
+  };
+}
+
 const mockPrisma: Row = {
   property: {
     findFirst: jest.fn(
@@ -48,7 +65,7 @@ const mockPrisma: Row = {
   },
 
   constructionSite: {
-    create: jest.fn(async ({ data }: Row) => {
+    create: jest.fn(async ({ data, include }: Row) => {
       const created = {
         id: nextId('site'),
         status: 'PLANNED',
@@ -59,19 +76,19 @@ const mockPrisma: Row = {
         ...data
       };
       store.sites.push(created);
-      return created;
+      return withSiteJoins(created, include);
     }),
-    findFirst: jest.fn(
-      async ({ where }: Row) => store.sites.find(s => s.id === where.id && s.tenantId === where.tenantId) ?? null
+    findFirst: jest.fn(async ({ where, include }: Row) =>
+      withSiteJoins(store.sites.find(s => s.id === where.id && s.tenantId === where.tenantId) ?? null, include)
     ),
-    findMany: jest.fn(async ({ where, orderBy, skip, take }: Row) => {
+    findMany: jest.fn(async ({ where, orderBy, skip, take, include }: Row) => {
       let rows = store.sites.filter(s => s.tenantId === where.tenantId && (!where.status || s.status === where.status));
       if (orderBy?.[0]?.createdAt === 'desc') {
         rows = [...rows].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
       }
       if (typeof skip === 'number') rows = rows.slice(skip);
       if (typeof take === 'number') rows = rows.slice(0, take);
-      return rows;
+      return rows.map(row => withSiteJoins(row, include));
     }),
     count: jest.fn(
       async ({ where }: Row) =>
@@ -273,6 +290,77 @@ describe('createConstructionSite — chantier sans bien préexistant', () => {
     await expect(createConstructionSite(TENANT_ID, { name: 'Chantier X', propertyId: 'prop-x' })).rejects.toThrow(
       /bien introuvable/i
     );
+  });
+});
+
+describe('libellés du bien et du responsable — résolus, jamais des identifiants', () => {
+  // Régression du 20 septembre 2026. Les deux écrans des chantiers lisent
+  // `propertyLabel` et `managerLabel` ; rien ne les produisait. Ils arrivaient
+  // donc `undefined`, et le repli de l'écran s'appliquait *toujours* : « Sans
+  // bien (terrain loué) » sur un chantier qui avait bel et bien un bien,
+  // « — » sur un chantier qui avait un responsable. Les trois lectures sont
+  // couvertes ici, parce que les trois passaient à côté.
+
+  function seedBienEtResponsable() {
+    store.properties.push({ id: 'prop-1', tenantId: TENANT_ID, title: 'Villa Kipé — lot 12' });
+    store.users.push({ id: 'user-1', fullName: 'Mariama Diallo', email: 'mariama@example.com' });
+  }
+
+  it('les résout à la création', async () => {
+    seedBienEtResponsable();
+
+    const site = await createConstructionSite(TENANT_ID, {
+      name: 'Chantier Kipé',
+      propertyId: 'prop-1',
+      managerId: 'user-1'
+    });
+
+    expect(site.propertyLabel).toBe('Villa Kipé — lot 12');
+    expect(site.managerLabel).toBe('Mariama Diallo');
+  });
+
+  it('les résout à la liste', async () => {
+    seedBienEtResponsable();
+    seedSite({ propertyId: 'prop-1', managerId: 'user-1' });
+
+    const { sites } = await listConstructionSites(TENANT_ID);
+
+    expect(sites[0].propertyLabel).toBe('Villa Kipé — lot 12');
+    expect(sites[0].managerLabel).toBe('Mariama Diallo');
+  });
+
+  it('les résout au détail', async () => {
+    seedBienEtResponsable();
+    const seeded = seedSite({ propertyId: 'prop-1', managerId: 'user-1' });
+
+    const detail = await getSiteDetail(TENANT_ID, seeded.id);
+
+    expect(detail.site.propertyLabel).toBe('Villa Kipé — lot 12');
+    expect(detail.site.managerLabel).toBe('Mariama Diallo');
+  });
+
+  it('rend le nom nul quand il n’y a ni bien ni responsable, et non une valeur inventée', async () => {
+    const seeded = seedSite();
+
+    const { sites } = await listConstructionSites(TENANT_ID);
+    const detail = await getSiteDetail(TENANT_ID, seeded.id);
+
+    // Nul, jamais « Utilisateur inconnu » : un chantier sur terrain loué sans
+    // responsable désigné est le cas *normal*, pas une anomalie, et c'est
+    // l'écran qui choisit comment rendre le vide.
+    expect(sites[0].propertyLabel).toBeNull();
+    expect(sites[0].managerLabel).toBeNull();
+    expect(detail.site.propertyLabel).toBeNull();
+    expect(detail.site.managerLabel).toBeNull();
+  });
+
+  it('se rabat sur l’e-mail quand le responsable n’a pas de nom', async () => {
+    store.users.push({ id: 'user-2', fullName: null, email: 'sans.nom@example.com' });
+    seedSite({ managerId: 'user-2' });
+
+    const { sites } = await listConstructionSites(TENANT_ID);
+
+    expect(sites[0].managerLabel).toBe('sans.nom@example.com');
   });
 });
 

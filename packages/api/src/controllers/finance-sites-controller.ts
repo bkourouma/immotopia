@@ -85,6 +85,16 @@ function toConstructionSiteResponse(site: ConstructionSiteRecord) {
     name: site.name,
     zone: site.zone,
     propertyId: site.propertyId,
+    // Le libellé du bien ET celui du responsable, pas seulement leurs
+    // identifiants. Les deux écrans des chantiers lisent `propertyLabel` et
+    // `managerLabel` depuis toujours ; rien ne les émettait, donc ils
+    // arrivaient `undefined` et le repli s'appliquait partout : « Sans bien
+    // (terrain loué) » sur un chantier qui avait un bien, « — » sur un
+    // chantier qui avait un responsable. Champs **additifs** au contrat gelé,
+    // ajoutés au schéma `ConstructionSite` le 20 septembre 2026 ;
+    // `propertyId` et `managerId` restent à leur place, sous leur nom.
+    propertyLabel: site.propertyLabel,
+    managerLabel: site.managerLabel,
     // Le contrat gelé porte `landLeaseId` (`ConstructionSite`, openapi.yaml) et
     // l'écran d'un bail de terrain s'en sert pour prévenir qu'un chantier
     // appartient déjà à un autre bail. L'omettre ici le rendait toujours nul :
