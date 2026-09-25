@@ -3,6 +3,7 @@
 import { env } from './config/env';
 import app from './app';
 import { startPenaltyCalculationJob } from './jobs/penalty-calculation-job';
+import { startOnlinePaymentReconciliationJob } from './jobs/online-payment-reconciliation-job';
 import { startLandLeaseAccrualJob } from './jobs/land-lease-accrual-job';
 import { startReminderSchedulerJob } from './jobs/reminder-scheduler.job';
 import { startNewsletterCampaignSchedulerJob } from './jobs/newsletter-campaign-scheduler.job';
@@ -40,6 +41,7 @@ app.listen(PORT, () => {
   // Start scheduled jobs
   if (env.NODE_ENV !== 'test') {
     startPenaltyCalculationJob();
+    startOnlinePaymentReconciliationJob();
     // Lot 4 : le 2 de chaque mois, un douzieme du loyer de chaque bail de
     // terrain est constate. Idempotent : le rejouer ne double rien.
     startLandLeaseAccrualJob();

@@ -194,6 +194,10 @@ export const appendThirdPartyMovementTx: AppendThirdPartyMovementTx = async (tx,
   // toucher au solde, deja a jour depuis sa premiere ecriture.
   const existant = await tx.thirdPartyMovement.findUnique({
     where: {
+      // Redondant avec l'unicité du triplet, mais nommé à plat pour le
+      // garde-fou multi-tenant (utils/prisma-tenant-guard-extension.ts), qui
+      // ne lit pas l'intérieur d'une clé composée.
+      tenantId: params.tenantId,
       sourceType_sourceId_type: {
         sourceType: params.sourceType,
         sourceId: params.sourceId,
@@ -249,6 +253,9 @@ export const appendThirdPartyMovementTx: AppendThirdPartyMovementTx = async (tx,
 export const getOrCreateTenantAccountTx: GetOrCreateTenantAccountTx = async (tx, tenantId, tenantClientId) => {
   const existing = await tx.thirdPartyAccount.findUnique({
     where: {
+      // Même remarque : l'agence est dans la clé composée, mais le garde-fou
+      // ne la voit qu'à plat.
+      tenantId,
       tenantId_kind_tenantClientId: {
         tenantId,
         kind: 'TENANT' as any,

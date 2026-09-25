@@ -20,6 +20,13 @@ export interface ErrorResponse {
   message: string;
   code?: string;
   errors?: Array<{ field: string; message: string }>;
+  /**
+   * Charge additionnelle, propre à un site d'erreur précis — par exemple
+   * `{ codePaiement, checkoutUrl }` sur le 409 « paiement en ligne déjà en
+   * cours » (lot 7). Volontairement rare : la plupart des erreurs n'en ont
+   * pas besoin, `errors` suffit pour la validation de formulaire.
+   */
+  data?: unknown;
 }
 
 /** Machine-readable codes clients can branch on. */
@@ -44,18 +51,21 @@ export class AppError extends Error {
   statusCode: number;
   code?: string;
   errors?: Array<{ field: string; message: string }>;
+  data?: unknown;
 
   constructor(
     message: string,
     statusCode: number = 500,
     code?: string,
-    errors?: Array<{ field: string; message: string }>
+    errors?: Array<{ field: string; message: string }>,
+    data?: unknown
   ) {
     super(message);
     this.name = new.target.name;
     this.statusCode = statusCode;
     this.code = code;
     this.errors = errors;
+    this.data = data;
     Error.captureStackTrace(this, this.constructor);
   }
 }
@@ -121,7 +131,8 @@ function toErrorResponse(err: unknown): { status: number; body: ErrorResponse } 
         success: false,
         message: err.message,
         ...(err.code ? { code: err.code } : {}),
-        ...(err.errors ? { errors: err.errors } : {})
+        ...(err.errors ? { errors: err.errors } : {}),
+        ...(err.data !== undefined ? { data: err.data } : {})
       }
     };
   }

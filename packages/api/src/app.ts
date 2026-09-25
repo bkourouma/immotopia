@@ -42,6 +42,7 @@ import whatsappNotificationConfigRoutes from './routes/whatsapp-notification-con
 import newsletterRoutes from './routes/newsletter-routes';
 import newsletterPublicRoutes from './routes/newsletter-public-routes';
 import whatsappWebhookRoutes from './routes/whatsapp.webhook.route';
+import paymentGatewayPublicRoutes from './routes/payment-gateway-public-routes';
 import tenantPortalRoutes from './routes/tenant-portal-routes';
 import ownerPortalRoutes from './routes/owner-portal-routes';
 import patrimoineRoutes from './routes/patrimoine-routes';
@@ -183,6 +184,9 @@ app.get('/health', (_req, res) => {
 // WhatsApp incoming webhook must be mounted before any /api router
 // that applies auth middleware globally (router.use(authenticate)).
 app.use('/api', whatsappWebhookRoutes);
+// Lot 7 : IPN PaySecureHub + simulateur, publics par nécessité — mêmes
+// raisons que le webhook WhatsApp ci-dessus.
+app.use('/api', paymentGatewayPublicRoutes);
 app.use('/api/auth', authRoutes);
 // Keep non-tenant endpoints before broad tenant-scoped routers mounted on /api.
 // The syndic/patrimoine/owner-statements routers below call requireTenantAccess

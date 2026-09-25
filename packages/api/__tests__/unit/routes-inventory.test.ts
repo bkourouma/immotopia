@@ -56,7 +56,7 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
   {
     method: '*',
     test: withPrefix('/api/auth'),
-    reason: "Authentification : login/register/refresh/verification email sont necessairement accessibles sans session."
+    reason: 'Authentification : login/register/refresh/verification email sont necessairement accessibles sans session.'
   },
   {
     method: 'GET',
@@ -78,7 +78,31 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
   {
     method: 'POST',
     test: exact('/api/whatsapp/webhook'),
-    reason: 'Webhook entrant WhatsApp (Twilio/WaSender) : verifie par signature applicative, pas par session utilisateur.'
+    reason:
+      'Webhook entrant WhatsApp (Twilio/WaSender) : verifie par signature applicative, pas par session utilisateur.'
+  },
+  {
+    method: 'POST',
+    test: exact('/api/payment-gateway/paysecurehub/ipn'),
+    reason:
+      'IPN PaySecureHub (lot 7) : notification serveur-a-serveur, sans session par nature. Jamais crue sur parole : ' +
+      "elle ne fait que relancer le rapprochement, qui redemande le statut a l'agregateur avec la cle de l'agence, " +
+      'dans le contexte de cette agence (checkout.ts, reconcileCheckoutPublic). Repond toujours 200 { received: true }.'
+  },
+  {
+    method: 'GET',
+    test: exact('/api/payment-gateway/simulator/:codePaiement'),
+    reason:
+      'Page du simulateur PaySecureHub (lot 7), ouverte par le navigateur du locataire comme la vraie page hebergee : ' +
+      'le code de paiement (IMT- + 20 caracteres aleatoires) sert de jeton. Montee seulement hors production ou avec ' +
+      'PAYMENT_GATEWAY_SIMULATOR=1 ; 404 pour une agence suspendue ou un checkout reel.'
+  },
+  {
+    method: 'POST',
+    test: exact('/api/payment-gateway/simulator/:codePaiement/:outcome'),
+    reason:
+      'Boutons du simulateur PaySecureHub (lot 7) : meme justification que la page. Enregistre seulement l’issue ' +
+      'simulee puis relance le rapprochement, qui reste la seule porte qui change un statut.'
   },
   {
     method: 'GET',
@@ -93,7 +117,8 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
   {
     method: 'GET',
     test: candidate => candidate === '/api/property-templates' || candidate === '/api/property-templates/:type',
-    reason: 'Catalogue de gabarits de biens : authentifie mais pas cloisonne par agence par nature (referentiel commun).'
+    reason:
+      'Catalogue de gabarits de biens : authentifie mais pas cloisonne par agence par nature (referentiel commun).'
   },
   {
     method: 'GET',
@@ -111,7 +136,8 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
   {
     method: 'GET',
     test: exact('/api/roles/menu-access/me'),
-    reason: "Menus coupes pour l'utilisateur COURANT, resolus depuis req.user (le jeton), pas depuis un tenantId de l'URL."
+    reason:
+      "Menus coupes pour l'utilisateur COURANT, resolus depuis req.user (le jeton), pas depuis un tenantId de l'URL."
   },
   {
     method: 'GET',
@@ -121,12 +147,14 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
   {
     method: 'POST',
     test: exact('/api/tenants/:tenantId/register'),
-    reason: "S'enregistrer comme client d'une agence : c'est cette action qui CREE l'acces, elle ne peut pas le presupposer."
+    reason:
+      "S'enregistrer comme client d'une agence : c'est cette action qui CREE l'acces, elle ne peut pas le presupposer."
   },
   {
     method: 'DELETE',
     test: exact('/api/tenants/:tenantId/unregister'),
-    reason: "Se desinscrire d'une agence : agit sur le TenantClient de l'utilisateur courant (userId + tenantId de l'URL)."
+    reason:
+      "Se desinscrire d'une agence : agit sur le TenantClient de l'utilisateur courant (userId + tenantId de l'URL)."
   }
 ];
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Typography, Spin, Alert, Space, Tag, List, Empty } from 'antd';
+import { useNavigate } from 'react-router-dom';
+import { Card, Row, Col, Statistic, Typography, Spin, Alert, Space, Tag, List, Empty, Button } from 'antd';
 import {
   HomeOutlined,
   DollarOutlined,
@@ -7,9 +8,12 @@ import {
   SafetyOutlined,
   WalletOutlined,
   ToolOutlined,
-  WarningOutlined
+  WarningOutlined,
+  CreditCardOutlined
 } from '@ant-design/icons';
+import { useQuery } from '@tanstack/react-query';
 import { tenantPortalService } from '../../services/tenantPortalService';
+import { getOnlinePaymentAvailability } from '../../services/payment-gateway-service';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
@@ -55,9 +59,19 @@ interface DashboardData {
 }
 
 export default function TenantDashboard() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DashboardData | null>(null);
+
+  // Paiement en ligne (Lot 7) : le bouton n'apparaît que si l'agence a activé
+  // PaySecureHub et qu'il reste effectivement un montant dû.
+  const { data: onlinePaymentAvailability } = useQuery({
+    queryKey: ['online-payment-availability'],
+    queryFn: () => getOnlinePaymentAvailability(),
+    staleTime: 60_000,
+    retry: false
+  });
 
   useEffect(() => {
     loadDashboard();
@@ -140,9 +154,18 @@ export default function TenantDashboard() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
       {/* Page Header */}
-      <div>
-        <Title level={2}>{t('Tableau de bord')}</Title>
-        <Text type="secondary">{t("Vue d'ensemble de votre situation locative")}</Text>
+      <div
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}
+      >
+        <div>
+          <Title level={2}>{t('Tableau de bord')}</Title>
+          <Text type="secondary">{t("Vue d'ensemble de votre situation locative")}</Text>
+        </div>
+        {onlinePaymentAvailability?.available && data.currentBalance > 0 ? (
+          <Button type="primary" icon={<CreditCardOutlined aria-hidden />} onClick={() => navigate('/tenant/payments')}>
+            {t('Payer en ligne')}
+          </Button>
+        ) : null}
       </div>
 
       {/* Lease Overview Card (T028) */}
