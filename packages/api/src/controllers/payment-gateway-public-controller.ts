@@ -8,6 +8,13 @@ import {
   reconcileCheckoutPublic,
   recordSimulatedOutcome
 } from '../lib/payment-gateway/checkout';
+import { isPlatformCodePaiement } from '../lib/payment-gateway/codes';
+import { platformReturnUrl } from '../lib/payment-gateway/platform-account';
+import {
+  findPlatformSimulatorCheckout,
+  reconcilePlatformCheckoutPublic,
+  recordPlatformSimulatedOutcome
+} from '../services/platform-payment-service';
 
 /**
  * Points d'entrée publics du paiement en ligne — contrat §3.4. Montés dans
@@ -49,6 +56,38 @@ export const paysecurehubIpnHandler = asyncHandler(async (req: Request, res: Res
   res.status(200).json({ received: true });
 });
 
+/**
+ * IPN du compte PaySecureHub d'ImmoTopia (factures d'abonnement des agences,
+ * codes « IMP- »). Adresse distincte de celle des loyers ; memes regles :
+ * jamais crue, toujours 200, code inconnu tu.
+ */
+export const paysecurehubPlatformIpnHandler = asyncHandler(async (req: Request, res: Response) => {
+  const codePaiement = readCodePaiement(req.body);
+  if (!codePaiement || !isPlatformCodePaiement(codePaiement)) {
+    logger.warn('IPN PaySecureHub (abonnement) reçu sans code de facture valable');
+    res.status(200).json({ received: true });
+    return;
+  }
+  try {
+    await reconcilePlatformCheckoutPublic(codePaiement);
+  } catch (error) {
+    logger.warn('IPN PaySecureHub (abonnement) : rapprochement en échec', { error: (error as Error)?.message });
+  }
+  res.status(200).json({ received: true });
+});
+
+/** Checkout du simulateur, loyer ou facture d'abonnement selon le prefixe du code. */
+async function findAnySimulatorCheckout(
+  codePaiement: string
+): Promise<{ codePaiement: string; amount: unknown; platformTenantId: string | null } | null> {
+  if (isPlatformCodePaiement(codePaiement)) {
+    const platform = await findPlatformSimulatorCheckout(codePaiement);
+    return platform ? { codePaiement: platform.codePaiement, amount: platform.amount, platformTenantId: platform.tenantId } : null;
+  }
+  const rental = await findSimulatorCheckout(codePaiement);
+  return rental ? { codePaiement: rental.codePaiement, amount: rental.amount, platformTenantId: null } : null;
+}
+
 // Map plutôt qu'objet littéral : 'constructor' ou '__proto__' dans l'URL ne
 // doivent pas tomber sur une propriété héritée d'Object.prototype.
 const OUTCOME_LABELS = new Map<string, 'SUCCESS' | 'FAILED' | 'CANCELED'>([
@@ -78,7 +117,7 @@ function escapeHtml(value: string): string {
  */
 export const simulatorPageHandler = asyncHandler(async (req: Request, res: Response) => {
   const { codePaiement } = req.params;
-  const checkout = await findSimulatorCheckout(codePaiement);
+  const checkout = await findAnySimulatorCheckout(codePaiement);
   if (!checkout) {
     throw new NotFoundError('Paiement introuvable.');
   }
@@ -130,6 +169,22 @@ export const simulatorActionHandler = asyncHandler(async (req: Request, res: Res
   const mapped = OUTCOME_LABELS.get(outcome);
   if (!mapped) {
     throw new BadRequestError('Issue de simulation inconnue.');
+  }
+
+  if (isPlatformCodePaiement(codePaiement)) {
+    // Facture d'abonnement : retour sur la page Abonnement de l'agence.
+    const platform = await findPlatformSimulatorCheckout(codePaiement);
+    if (!platform) {
+      throw new NotFoundError('Paiement introuvable.');
+    }
+    await recordPlatformSimulatedOutcome(platform, mapped);
+    try {
+      await reconcilePlatformCheckoutPublic(codePaiement);
+    } catch (error) {
+      logger.warn('Simulateur PaySecureHub (abonnement) : rapprochement en échec', { error: (error as Error)?.message });
+    }
+    res.redirect(303, platformReturnUrl(platform.tenantId, codePaiement));
+    return;
   }
 
   const checkout = await findSimulatorCheckout(codePaiement);

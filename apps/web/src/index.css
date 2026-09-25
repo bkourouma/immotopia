@@ -521,3 +521,25 @@ code {
   width: 100% !important;
   min-width: 0 !important;
 }
+
+/*
+ * Repli du chemin critique pour <RouteFallback> (App.tsx) : la roue Spin
+ * d'AntD tire son propre style et son moteur d'animation dans le chunk
+ * d'entree — ~13 Ko brut pour un anneau que le navigateur affiche pendant le
+ * telechargement d'un CHUNK DE ROUTE, donc bien apres le premier rendu. Meme
+ * raisonnement que le repli sans AntD de ProtectedRoute (components/ProtectedRoute.tsx).
+ */
+@keyframes it-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.it-route-fallback-spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 3px solid var(--border-subtle);
+  border-top-color: var(--color-primary);
+  animation: it-spin 0.8s linear infinite;
+}

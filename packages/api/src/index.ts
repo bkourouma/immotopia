@@ -7,6 +7,7 @@ import { startOnlinePaymentReconciliationJob } from './jobs/online-payment-recon
 import { startLandLeaseAccrualJob } from './jobs/land-lease-accrual-job';
 import { startReminderSchedulerJob } from './jobs/reminder-scheduler.job';
 import { startNewsletterCampaignSchedulerJob } from './jobs/newsletter-campaign-scheduler.job';
+import { startSubscriptionUsageJob } from './jobs/subscription-usage-job';
 import { logger } from './utils/logger';
 
 /**
@@ -47,5 +48,8 @@ app.listen(PORT, () => {
     startLandLeaseAccrualJob();
     startReminderSchedulerJob();
     startNewsletterCampaignSchedulerJob();
+    // Abonnements par packs : echeances (PAST_DUE, retraits programmes),
+    // releves de consommation, alertes de seuil, rappels de fin d essai.
+    startSubscriptionUsageJob();
   }
 });

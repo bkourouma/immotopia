@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { App, Form, Input, Card, Button, Space, Alert, Spin, Typography, Row, Col, Upload } from 'antd';
 import {
   SaveOutlined,
@@ -24,6 +24,7 @@ const HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 
 export const TenantSettings: React.FC = () => {
   const { message } = App.useApp();
+  const navigate = useNavigate();
 
   const { tenantId } = useParams<{ tenantId: string }>();
   const [form] = Form.useForm();
@@ -193,6 +194,19 @@ export const TenantSettings: React.FC = () => {
             {t('Gérez les informations de votre agence. Ces informations seront utilisées dans les documents générés.')}
           </Text>
         </div>
+
+        {/* Abonnement — consultation seule, vague 2 (lot C) : packs, période,
+            jauges de consommation. */}
+        <Card title={t('Abonnement')}>
+          <Space direction="vertical" size="small">
+            <Text type="secondary">
+              {t('Packs souscrits, période en cours et consommation de lots, copropriétés et chantiers.')}
+            </Text>
+            <Button onClick={() => navigate(`/tenant/${tenantId}/settings/abonnement`)}>
+              {t('Voir mon abonnement')}
+            </Button>
+          </Space>
+        </Card>
 
         {/* Success Message */}
         {success && (

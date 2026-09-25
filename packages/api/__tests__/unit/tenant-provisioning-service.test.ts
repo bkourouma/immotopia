@@ -13,6 +13,26 @@
 
 type Row = Record<string, any>;
 
+// Catalogue des offres (abonnements par packs) : la grille par defaut, sous la
+// forme des lignes Prisma que lit `loadCatalogByCodes`.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { DEFAULT_CATALOG } = require('../../src/lib/subscription/catalog');
+const CATALOG_ROWS: Row[] = DEFAULT_CATALOG.map((d: Row, i: number) => ({
+  id: `catalog-${i + 1}`,
+  code: d.code,
+  kind: d.kind,
+  name: d.name,
+  description: d.description,
+  monthlyPrice: d.monthlyPrice,
+  setupPrice: d.setupPrice,
+  modules: d.modules,
+  exclusiveGroup: d.exclusiveGroup,
+  rules: d.rules,
+  isSellable: d.isSellable,
+  sortOrder: d.sortOrder,
+  capacities: Object.entries(d.capacities).map(([capacityKey, amount]) => ({ capacityKey, amount }))
+}));
+
 function nextId(prefix: string, store: { seq: number }): string {
   store.seq += 1;
   return `${prefix}-${store.seq}`;
@@ -23,6 +43,7 @@ function freshStore() {
     tenants: [] as Row[],
     tenantModules: [] as Row[],
     subscriptions: [] as Row[],
+    subscriptionItems: [] as Row[],
     financeSettings: [] as Row[],
     roles: [{ id: 'role-tenant-admin', key: 'TENANT_ADMIN', name: "Administrateur de l'agence", scope: 'TENANT' }] as Row[],
     users: [] as Row[],
@@ -75,6 +96,29 @@ function buildFakePrisma() {
         return row;
       }),
       findUnique: jest.fn(async ({ where }: Row) => store.subscriptions.find(s => s.tenantId === where.tenantId) ?? null)
+    },
+    catalogItem: {
+      findMany: jest.fn(async ({ where }: Row) => CATALOG_ROWS.filter(r => where.code.in.includes(r.code)))
+    },
+    subscriptionItem: {
+      createMany: jest.fn(async ({ data }: Row) => {
+        for (const d of data) store.subscriptionItems.push({ id: nextId('si', store), createdAt: new Date(), ...d });
+        return { count: data.length };
+      }),
+      findMany: jest.fn(async ({ where }: Row) =>
+        store.subscriptionItems
+          .filter(i => i.tenantId === where.tenantId && i.status !== 'ENDED')
+          .map(i => {
+            const c = CATALOG_ROWS.find(r => r.id === i.catalogItemId)!;
+            return { ...i, catalogItem: { code: c.code, kind: c.kind, capacities: [], rules: c.rules ?? null } };
+          })
+      ),
+      // Rattachement des extensions a leur pack (linkExtensionsToPacksTx).
+      update: jest.fn(async ({ where, data }: Row) => {
+        const row = store.subscriptionItems.find(i => i.id === where.id)!;
+        Object.assign(row, data);
+        return row;
+      })
     },
     agencyFinanceSettings: {
       create: jest.fn(async ({ data }: Row) => {
@@ -297,9 +341,10 @@ describe('provisionTenant — chemin nominal', () => {
     expect(actionKeys).toEqual(expect.arrayContaining(['TENANT_CREATED', 'TENANT_PROVISIONED']));
   });
 
-  it("modules par defaut d'une agence OPERATOR : AGENCE + SYNDIC + PROMOTEUR", async () => {
+  it("modules par defaut d'une agence OPERATOR : AGENCE + SYNDIC + PROMOTEUR (pack Integre)", async () => {
     const { result } = await provisionTenant({ ...baseInput, adminEmail: 'op@example.com', type: 'OPERATOR' }, 'super-admin-1');
     expect(result.modules.sort()).toEqual(['MODULE_AGENCY', 'MODULE_PROMOTER', 'MODULE_SYNDIC'].sort());
+    expect(result.subscription.items.map(i => i.code)).toEqual(['INTEGRE']);
   });
 
   it('genere un slug unique en ajoutant -2, -3... quand le nom collide', async () => {
@@ -395,5 +440,84 @@ describe('provisionTenant — idempotence (F1.9)', () => {
     // Le rejeu en base regenere un jeton d'invitation utilisable (le jeton en
     // clair d'origine n'est jamais persiste) : un nouvel e-mail est tente.
     expect(sendInviteEmailMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('provisionTenant — abonnement par packs (PLAN-ABONNEMENTS.md)', () => {
+  it('ancien format sans items : module par defaut -> pack AGENCE au prix du catalogue, planKey PRO conserve', async () => {
+    const { result } = await provisionTenant(baseInput, 'super-admin-1');
+    expect(result.subscription.planKey).toBe('PRO');
+    expect(result.subscription.items).toEqual([
+      { code: 'AGENCE', kind: 'PACK', quantity: 1, unitMonthlyPrice: 29_900, unitSetupPrice: 0 }
+    ]);
+    expect(store.subscriptionItems).toHaveLength(1);
+    expect(store.subscriptionItems[0]).toMatchObject({ tenantId: result.tenant.id, status: 'ACTIVE', unitMonthlyPrice: 29_900 });
+    expect(store.tenantModules.map(m => [m.moduleKey, m.source])).toEqual([['MODULE_AGENCY', 'PACK']]);
+    expect(result.subscription.trialEndsAt).toBe(result.subscription.currentPeriodEnd);
+  });
+
+  it('ancien format : modules explicites AGENCY + SYNDIC -> packs AGENCE + SYNDIC', async () => {
+    const { result } = await provisionTenant({ ...baseInput, modules: ['MODULE_SYNDIC', 'MODULE_AGENCY'] }, 'super-admin-1');
+    expect(result.subscription.items.map(i => i.code).sort()).toEqual(['AGENCE', 'SYNDIC']);
+    expect(result.modules.sort()).toEqual(['MODULE_AGENCY', 'MODULE_SYNDIC']);
+  });
+
+  it('items : packs + extensions, prix figes, modules deduits, planKey nul', async () => {
+    const { result } = await provisionTenant(
+      {
+        ...baseInput,
+        items: [{ code: 'SYNDIC' }, { code: 'PROMOTEUR' }, { code: 'EXT_LOTS_10', quantity: 3 }, { code: 'EXT_CHANTIER' }]
+      },
+      'super-admin-1'
+    );
+    expect(result.subscription.planKey).toBeNull();
+    expect(result.modules.sort()).toEqual(['MODULE_PROMOTER', 'MODULE_SYNDIC']);
+    expect(result.subscription.items).toEqual([
+      { code: 'SYNDIC', kind: 'PACK', quantity: 1, unitMonthlyPrice: 49_900, unitSetupPrice: 0 },
+      { code: 'PROMOTEUR', kind: 'PACK', quantity: 1, unitMonthlyPrice: 149_900, unitSetupPrice: 0 },
+      // Promoteur detenu : le bloc de 10 lots passe a 1 000 (100 FCFA le lot, D5).
+      { code: 'EXT_LOTS_10', kind: 'EXTENSION', quantity: 3, unitMonthlyPrice: 1_000, unitSetupPrice: 0 },
+      { code: 'EXT_CHANTIER', kind: 'EXTENSION', quantity: 1, unitMonthlyPrice: 40_000, unitSetupPrice: 0 }
+    ]);
+  });
+
+  it("items : l'Integre n'est pas cumulable avec un autre pack -> 400, rien n'est cree", async () => {
+    await expect(
+      provisionTenant({ ...baseInput, items: [{ code: 'INTEGRE' }, { code: 'AGENCE' }] }, 'super-admin-1')
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(store.tenants).toHaveLength(0);
+    expect(store.subscriptionItems).toHaveLength(0);
+  });
+
+  it("items : au moins un pack ; extension sans son pack refusee ; code inconnu -> 404", async () => {
+    await expect(provisionTenant({ ...baseInput, items: [{ code: 'EXT_LOTS_10' }] }, 'super-admin-1')).rejects.toMatchObject({
+      statusCode: 400
+    });
+    await expect(
+      provisionTenant({ ...baseInput, items: [{ code: 'AGENCE' }, { code: 'EXT_COPRO' }] }, 'super-admin-1')
+    ).rejects.toMatchObject({ statusCode: 400 });
+    await expect(provisionTenant({ ...baseInput, items: [{ code: 'PLATINE' }] }, 'super-admin-1')).rejects.toMatchObject({
+      statusCode: 404
+    });
+    expect(store.tenants).toHaveLength(0);
+  });
+
+  it('items : Agence seule, 25 blocs -> 20 a 1 500 puis 5 a 750 (au-dela du 300e lot)', async () => {
+    const { result } = await provisionTenant(
+      { ...baseInput, items: [{ code: 'AGENCE' }, { code: 'EXT_LOTS_10', quantity: 25 }] },
+      'super-admin-1'
+    );
+    expect(result.subscription.items.filter(i => i.code === 'EXT_LOTS_10').map(i => [i.quantity, i.unitMonthlyPrice])).toEqual([
+      [20, 1_500],
+      [5, 750]
+    ]);
+  });
+
+  it('le rejeu idempotent renvoie aussi les elements souscrits', async () => {
+    const first = await provisionTenant({ ...baseInput, items: [{ code: 'AGENCE' }, { code: 'SETUP_AGENCE' }] }, 'super-admin-1');
+    const replay = await provisionTenant({ ...baseInput, items: [{ code: 'AGENCE' }, { code: 'SETUP_AGENCE' }] }, 'super-admin-1');
+    expect(replay.replay).toBe(true);
+    expect(replay.result.subscription.items).toEqual(first.result.subscription.items);
+    expect(first.result.subscription.items.find(i => i.code === 'SETUP_AGENCE')).toMatchObject({ unitSetupPrice: 100_000 });
   });
 });

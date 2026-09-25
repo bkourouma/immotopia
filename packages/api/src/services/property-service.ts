@@ -3,6 +3,7 @@ import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
 import { PROPERTY_ENTITY_TYPES } from '../types/audit-types';
 import { AuditActionKey } from '../types/audit-types';
+import { syncLotActivationsTx } from './lot-registry-service';
 import { generatePropertyReference } from '../utils/property-reference-generator';
 import { validatePropertyData } from './property-template-service';
 import { CreatePropertyRequest, UpdatePropertyRequest, PropertyDetail } from '../types/property-types';
@@ -116,8 +117,10 @@ export async function createProperty(
       // Generate unique reference
       const internalReference = await generatePropertyReference(tenantId, finalOwnerUserId);
 
-      // Create property
-      property = await prisma.property.create({
+      // Create property — et, dans la meme transaction, son entree au registre
+      // des lots de l'abonnement (D1 ; QuotaExceededError en BLOCK annule tout).
+      property = await prisma.$transaction(async tx => {
+        const created = await tx.property.create({
         data: {
           internalReference,
           propertyType: data.propertyType,
@@ -164,6 +167,11 @@ export async function createProperty(
             }
           }
         }
+        });
+        if (tenantId) {
+          await syncLotActivationsTx(tx, tenantId, { propertyIds: [created.id, created.containerParentId] }, { actorUserId });
+        }
+        return created;
       });
     } catch (error: any) {
       // Check if it's a unique constraint violation on internal_reference
@@ -444,8 +452,11 @@ export async function updateProperty(
 
   updateData.version = { increment: 1 };
 
-  // Update property with optimistic locking
-  const updated = await prisma.property.update({
+  // Update property with optimistic locking ; statut ou modes changent le
+  // decompte des lots de l'abonnement (D1), recalcule dans la meme transaction.
+  const lotTenantId = tenantId || existing.tenantId || null;
+  const updated = await prisma.$transaction(async tx => {
+  const row = await tx.property.update({
     where: {
       id: propertyId,
       version: existing.version // Optimistic locking
@@ -466,6 +477,14 @@ export async function updateProperty(
         }
       }
     }
+  });
+  if (lotTenantId && (data.status !== undefined || data.transactionModes !== undefined)) {
+    await syncLotActivationsTx(tx, lotTenantId, { propertyIds: [row.id] }, {
+      actorUserId: actorUserId ?? userId ?? null,
+      reason: `PROPERTY_${row.status}`
+    });
+  }
+  return row;
   });
 
   logger.info('Property updated', {
@@ -867,9 +886,36 @@ export async function deleteProperty(
   }
 
   // Hard delete - Prisma will cascade delete related records (media, documents, etc.)
-  // based on the schema's onDelete: Cascade relationships
-  await prisma.property.delete({
-    where: { id: propertyId }
+  // based on the schema's onDelete: Cascade relationships. Le lot compte dans
+  // l'abonnement est ferme dans la meme transaction (l'historique du registre
+  // survit : pas de cle etrangere).
+  const lotTenantId = tenantId || property.tenantId || null;
+  await prisma.$transaction(async tx => {
+    const related = lotTenantId
+      ? await tx.property.findUnique({
+          where: { id: propertyId },
+          select: {
+            containerParentId: true,
+            syndicateLots: { select: { id: true } },
+            siteLot: { select: { id: true } }
+          }
+        })
+      : null;
+    await tx.property.delete({
+      where: { id: propertyId }
+    });
+    if (lotTenantId) {
+      await syncLotActivationsTx(
+        tx,
+        lotTenantId,
+        {
+          propertyIds: [propertyId, related?.containerParentId],
+          syndicateLotIds: related?.syndicateLots.map(l => l.id) ?? [],
+          siteLotIds: related?.siteLot ? [related.siteLot.id] : []
+        },
+        { actorUserId, reason: 'PROPERTY_DELETED' }
+      );
+    }
   });
 
   logger.info('Property deleted successfully', {

@@ -68,6 +68,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { badRequest, conflict, notFound } from '../errors';
+import { assertCapacityTx, syncLotActivationsTx } from '../../services/lot-registry-service';
 import { roundMoneyXof, roundPercent } from './money';
 import type { FinanceReadClient } from './site-cost';
 import { sumSiteActualCost } from './site-cost';
@@ -510,6 +511,8 @@ export const createSiteLotTx: CreateSiteLotTx = async (tx, tenantId, params) => 
     data: { tenantId, siteId: params.siteId, name, surfaceArea, manualSharePercent },
     select: { id: true }
   });
+  // Lot d'un chantier ouvert : compte dans la reserve de lots (PL:<id>).
+  await syncLotActivationsTx(tx, tenantId, { siteLotIds: [created.id] });
 
   return readLotRecordTx(tx, tenantId, params.siteId, created.id);
 };
@@ -580,6 +583,7 @@ export const deleteSiteLotTx: DeleteSiteLotTx = async (tx, tenantId, lotId) => {
   await assertNoCapitalizedLotTx(tx, tenantId, lot.siteId);
 
   await tx.siteLot.deleteMany({ where: { id: lotId, tenantId } });
+  await syncLotActivationsTx(tx, tenantId, { siteLotIds: [lotId] }, { reason: 'SITE_LOT_DELETED' });
 };
 
 /** Voir `SetLotAllocationMethodTx` dans `./types-lot4-closing.ts`. */
@@ -797,6 +801,11 @@ export const closeSiteTx: CloseSiteTx = async (tx, tenantId, siteId, params) => 
   if (updated.count !== 1) {
     throw conflict("Ce chantier vient d'être clôturé par ailleurs");
   }
+  // Chantier CLOSED : ses lots de programme sortent de la reserve (D14).
+  await syncLotActivationsTx(tx, tenantId, { siteIds: [siteId] }, {
+    actorUserId: params.closedByUserId,
+    reason: 'SITE_CLOSED'
+  });
 
   const closedBy = await tx.user.findFirst({
     where: { id: params.closedByUserId },
@@ -838,6 +847,9 @@ export const reopenSiteTx: ReopenSiteTx = async (tx, tenantId, siteId) => {
     ? await tx.user.findFirst({ where: { id: site.closedByUserId }, select: { fullName: true, email: true } })
     : null;
 
+  // Rouvert, le chantier redevient actif (D14) : capacite CHANTIERS controlee
+  // sous le verrou d'agence, puis ses lots recomptes.
+  await assertCapacityTx(tx, tenantId, 'CHANTIERS');
   const updated = await tx.constructionSite.updateMany({
     where: { id: siteId, tenantId, closedAt: { not: null } },
     data: { status: 'IN_PROGRESS', closedAt: null, finalCost: null, closedByUserId: null }
@@ -845,6 +857,7 @@ export const reopenSiteTx: ReopenSiteTx = async (tx, tenantId, siteId) => {
   if (updated.count !== 1) {
     throw conflict("Ce chantier vient d'être rouvert par ailleurs");
   }
+  await syncLotActivationsTx(tx, tenantId, { siteIds: [siteId] }, { reason: 'SITE_REOPENED' });
 
   return buildClosureRecord(tx, tenantId, siteId, {
     closedAt: previousClosedAt,
@@ -978,6 +991,11 @@ export const capitalizeSiteLotTx: CapitalizeSiteLotTx = async (tx, tenantId, lot
   if (attached.count !== 1) {
     throw conflict("Ce lot vient d'être basculé au patrimoine par ailleurs");
   }
+  // Bascule = transfert : PL:<lot> ferme, P:<bien> ouvert s'il compte encore
+  // (chantier ouvert, ou bien propose a la location), meme transaction.
+  await syncLotActivationsTx(tx, tenantId, { siteLotIds: [lotId], propertyIds: [property.id] }, {
+    reason: 'TRANSFERRED_TO_PROPERTY'
+  });
 
   const capitalized: CapitalizedLotRecord = {
     lotId: lot.id,

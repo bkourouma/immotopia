@@ -1,9 +1,9 @@
 import React, { Suspense, useEffect, useMemo, useState } from 'react';
-import { Button, Drawer, Layout } from 'antd';
+import { App as AntApp, Button, Drawer, Layout } from 'antd';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
-import { useDisabledMenuKeys, useFilteredNavigation } from '../../hooks/useMenuAccess';
+import { useDisabledMenuKeys, useFeatureAccess, useFilteredNavigation } from '../../hooks/useMenuAccess';
 import { useScrollRestoration } from '../../hooks/useScrollRestoration';
 import { actionForPath } from '../../navigation/actions';
 import { NAVIGATION } from '../../navigation/model';
@@ -16,6 +16,8 @@ import { AppNavigation } from './AppNavigation';
 import { BottomTabBar } from './BottomTabBar';
 import { TenantSuspendedBanner } from '../TenantSuspendedBanner';
 import { t } from '../../i18n/t';
+import apiClient from '../../utils/api-client';
+import { installSubscriptionDenialInterceptor } from '../../utils/subscription-denial-notice';
 
 /**
  * `<AppShell>` — coquille unique, montée AU NIVEAU ROUTE (REFONTE_UI_UX.md §4.1).
@@ -121,7 +123,18 @@ export const AppShell: React.FC = () => {
    * serait qu'une declaration d'intention.
    */
   const disabledMenuKeys = useDisabledMenuKeys(navContext.tenantId);
-  const nav = useFilteredNavigation(personaNav, disabledMenuKeys);
+  // Abonnement de l'agence : seul le collaborateur a un menu d'agence.
+  const featureAccess = useFeatureAccess(navContext.tenantId, persona === 'collaborateur');
+  const nav = useFilteredNavigation(personaNav, disabledMenuKeys, featureAccess);
+
+  // Refus d'abonnement (403 MODULE_NOT_INCLUDED / MODULE_READ_ONLY /
+  // SUBSCRIPTION_READ_ONLY) traduits en message clair, sur l'instance
+  // centrale d'api-client, depuis ce chunk paresseux — voir
+  // utils/subscription-denial-notice.ts (budget du chunk d'entrée).
+  const { notification } = AntApp.useApp();
+  useEffect(() => installSubscriptionDenialInterceptor(apiClient, notification), [notification]);
+
+
 
   // Tant que le persona n'est pas tranché, on rend la coquille sans menu
   // plutôt qu'un menu faux : afficher le menu public à un collaborateur, même

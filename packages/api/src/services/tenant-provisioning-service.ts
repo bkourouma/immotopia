@@ -28,6 +28,8 @@ import { ensureRentalAccountsTx } from '../lib/owner-account/accounts';
 import { DEFAULT_FINANCE_SETTINGS } from '../lib/settings/finance-settings';
 import { ProvisionTenantRequest, ProvisionTenantResult } from '../types/tenant-types';
 import { tenantProvisioningIdempotencyStore } from '../utils/idempotency';
+import { TRIAL_DAYS, packModules, packsForModules } from '../lib/subscription';
+import { linkExtensionsToPacksTx, loadCatalogByCodes, planInitialItems, RequestedItem } from './subscription-v2-service';
 
 /**
  * Provisioning d'une agence en un clic (lot F1, docs/architecture/PLAN-MULTI-TENANT.md).
@@ -42,16 +44,17 @@ import { tenantProvisioningIdempotencyStore } from '../utils/idempotency';
  * reseau externe.
  */
 
-/** Duree d'essai par defaut d'un abonnement fraichement cree (lot F1.3). */
-const TRIAL_DAYS = 30;
-
 /** Delais de la transaction de creation (attente d'une connexion, duree totale). */
 const PROVISIONING_TX_OPTIONS = { maxWait: 10_000, timeout: 30_000 };
 
 /** Fenetre du controle d'idempotence cote base (lot F1.9). */
 const IDEMPOTENCY_DB_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-/** Modules par defaut, par type d'agence (decision [D] du plan). */
+/**
+ * Modules par defaut, par type d'agence (decision [D] du plan). Ne sert plus
+ * qu'a l'ANCIEN format (sans `items`), converti en packs par
+ * `packsForModules` : AGENCY -> AGENCE, OPERATOR -> INTEGRE.
+ */
 const DEFAULT_MODULES_BY_TYPE: Record<TenantType, ModuleKey[]> = {
   [TenantType.AGENCY]: [ModuleKey.MODULE_AGENCY],
   [TenantType.OPERATOR]: [ModuleKey.MODULE_AGENCY, ModuleKey.MODULE_SYNDIC, ModuleKey.MODULE_PROMOTER]
@@ -84,11 +87,29 @@ interface ProvisioningOutcome {
 async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: string): Promise<ProvisioningOutcome> {
   return prisma.$transaction(async tx => {
     const type = input.type ?? TenantType.AGENCY;
-    const modules = input.modules?.length
-      ? ([...new Set(input.modules)] as ModuleKey[])
-      : DEFAULT_MODULES_BY_TYPE[type];
-    const planKey = (input.planKey ?? 'PRO') as SubscriptionPlan;
     const billingCycle = (input.billingCycle ?? 'MONTHLY') as BillingCycle;
+
+    // Composition de l'abonnement (docs/architecture/PLAN-ABONNEMENTS.md) :
+    // `items` (packs + extensions) est le format de reference. L'ancien
+    // format (`modules`, `planKey`) reste accepte et converti en packs ; il
+    // garde alors l'etiquette `planKey` (PRO par defaut) des anciens ecrans.
+    // Validation et prix AVANT toute ecriture.
+    let requested: RequestedItem[];
+    let planKey: SubscriptionPlan | null;
+    if (input.items?.length) {
+      requested = input.items;
+      planKey = (input.planKey ?? null) as SubscriptionPlan | null;
+    } else {
+      const legacyModules = input.modules?.length ? [...new Set(input.modules)] : DEFAULT_MODULES_BY_TYPE[type];
+      requested = packsForModules(legacyModules).packs.map(code => ({ code, quantity: 1 }));
+      planKey = (input.planKey ?? 'PRO') as SubscriptionPlan;
+    }
+    const catalog = await loadCatalogByCodes(
+      tx,
+      requested.map(r => r.code)
+    );
+    const plannedItems = planInitialItems(requested, catalog);
+    const modules = packModules(plannedItems.map(p => ({ kind: p.catalog.kind, modules: p.catalog.modules }))) as ModuleKey[];
 
     // 1. Tenant ACTIF, slug unique.
     const slug = await generateUniqueSlugTx(tx, input.name);
@@ -110,18 +131,21 @@ async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: str
       }
     });
 
-    // 2. Modules.
+    // 2. Modules, deduits des packs (source PACK : `syncTenantModulesTx`
+    // les recalcule a chaque changement de pack).
     await tx.tenantModule.createMany({
       data: modules.map(moduleKey => ({
         tenantId: tenant.id,
         moduleKey,
         enabled: true,
         enabledAt: new Date(),
-        enabledBy: actorUserId
+        enabledBy: actorUserId,
+        source: 'PACK' as const
       }))
     });
 
-    // 3. Abonnement d'essai.
+    // 3. Abonnement d'essai (D8 : 30 jours, prolongeable) et elements
+    // souscrits au prix du catalogue, FIGE (D12).
     const now = new Date();
     const currentPeriodEnd = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
     const subscription = await tx.subscription.create({
@@ -132,9 +156,33 @@ async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: str
         status: SubscriptionStatus.TRIALING,
         startAt: now,
         currentPeriodStart: now,
-        currentPeriodEnd
+        currentPeriodEnd,
+        trialEndsAt: currentPeriodEnd,
+        nextBillingAt: currentPeriodEnd
       }
     });
+    await tx.subscriptionItem.createMany({
+      data: plannedItems.map(p => ({
+        subscriptionId: subscription.id,
+        tenantId: tenant.id,
+        catalogItemId: p.catalog.id,
+        quantity: p.quantity,
+        unitMonthlyPrice: p.unitMonthlyPrice,
+        unitSetupPrice: p.unitSetupPrice,
+        status: 'ACTIVE' as const,
+        startsAt: now,
+        addedByUserId: actorUserId
+      }))
+    });
+    // Extensions souscrites d'emblee : liees a leur pack (retirees avec lui).
+    await linkExtensionsToPacksTx(tx, tenant.id);
+    const itemsSummary = plannedItems.map(p => ({
+      code: p.catalog.code,
+      kind: p.catalog.kind,
+      quantity: p.quantity,
+      unitMonthlyPrice: p.unitMonthlyPrice,
+      unitSetupPrice: p.unitSetupPrice
+    }));
 
     // 4. Parametres financiers par defaut : un `create` sans donnees suffit,
     // toutes les colonnes ont un defaut Prisma qui reprend exactement
@@ -209,10 +257,12 @@ async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: str
         tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, type: tenant.type, status: tenant.status },
         modules,
         subscription: {
-          planKey: subscription.planKey,
+          planKey: subscription.planKey ?? null,
           billingCycle: subscription.billingCycle,
           status: subscription.status,
-          currentPeriodEnd: subscription.currentPeriodEnd.toISOString()
+          currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
+          trialEndsAt: subscription.trialEndsAt?.toISOString() ?? null,
+          items: itemsSummary
         },
         admin: {
           userId: adminUser.id,
@@ -309,13 +359,23 @@ async function buildReplayResult(tenantId: string, input: ProvisionTenantRequest
     throw new Error("Rejeu idempotent : l'agence déjà créée est introuvable.");
   }
 
-  const [modules, subscription, invitation, membership] = await Promise.all([
+  const [modules, subscription, invitation, membership, items] = await Promise.all([
     prisma.tenantModule.findMany({ where: { tenantId, enabled: true }, select: { moduleKey: true } }),
     prisma.subscription.findUnique({ where: { tenantId } }),
     prisma.invitation.findFirst({ where: { tenantId, email: input.adminEmail }, orderBy: { createdAt: 'desc' } }),
     prisma.membership.findFirst({
       where: { tenantId, user: { email: { equals: input.adminEmail, mode: 'insensitive' } } },
       include: { user: { select: { id: true, email: true, fullName: true } } }
+    }),
+    prisma.subscriptionItem.findMany({
+      where: { tenantId, status: { not: 'ENDED' } },
+      select: {
+        quantity: true,
+        unitMonthlyPrice: true,
+        unitSetupPrice: true,
+        catalogItem: { select: { code: true, kind: true } }
+      },
+      orderBy: { createdAt: 'asc' }
     })
   ]);
 
@@ -344,10 +404,18 @@ async function buildReplayResult(tenantId: string, input: ProvisionTenantRequest
     tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, type: tenant.type, status: tenant.status },
     modules: modules.map(m => m.moduleKey),
     subscription: {
-      planKey: subscription.planKey,
+      planKey: subscription.planKey ?? null,
       billingCycle: subscription.billingCycle,
       status: subscription.status,
-      currentPeriodEnd: subscription.currentPeriodEnd.toISOString()
+      currentPeriodEnd: subscription.currentPeriodEnd.toISOString(),
+      trialEndsAt: subscription.trialEndsAt?.toISOString() ?? null,
+      items: (items ?? []).map(i => ({
+        code: i.catalogItem.code,
+        kind: i.catalogItem.kind,
+        quantity: i.quantity,
+        unitMonthlyPrice: Number(i.unitMonthlyPrice),
+        unitSetupPrice: Number(i.unitSetupPrice)
+      }))
     },
     admin: {
       userId: membership.user.id,
@@ -420,7 +488,12 @@ export async function provisionTenant(
     actionKey: AuditActionKey.TENANT_CREATED,
     entityType: 'Tenant',
     entityId: outcome.tenantId,
-    payload: { provisioned: true, modules: outcome.result.modules, planKey: outcome.result.subscription.planKey }
+    payload: {
+      provisioned: true,
+      modules: outcome.result.modules,
+      planKey: outcome.result.subscription.planKey,
+      items: outcome.result.subscription.items.map(i => ({ code: i.code, quantity: i.quantity }))
+    }
   });
   logAuditEvent({
     actorUserId,
@@ -434,7 +507,8 @@ export async function provisionTenant(
       adminEmail: input.adminEmail,
       idempotencyKey: idempotencyKey ?? null,
       modules: outcome.result.modules,
-      planKey: outcome.result.subscription.planKey
+      planKey: outcome.result.subscription.planKey,
+      items: outcome.result.subscription.items.map(i => ({ code: i.code, quantity: i.quantity }))
     }
   });
 

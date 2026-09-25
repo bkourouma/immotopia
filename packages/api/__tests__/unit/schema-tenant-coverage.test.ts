@@ -71,7 +71,16 @@ const GLOBAL_MODELS = new Set([
   'Country', // Referentiel geographique public.
   'Region', // Referentiel geographique public.
   'Commune', // Referentiel geographique public.
-  'PropertyTypeTemplate' // Catalogue de gabarits de biens, partage entre agences.
+  'PropertyTypeTemplate', // Catalogue de gabarits de biens, partage entre agences.
+  // Abonnements par packs (docs/architecture/PLAN-ABONNEMENTS.md) : le
+  // catalogue des offres est commun a toutes les agences et edite par le
+  // super-admin ; chaque agence en fige les prix dans SubscriptionItem (cloisonne).
+  'CatalogItem',
+  'CatalogCapacity', // Capacite d'une offre du catalogue (enfant de CatalogItem, global lui aussi).
+  // Vague 3, lot A : compteur de la serie continue IMT-AAAA-NNNNN des factures
+  // PLATFORM. Une seule serie pour l'emetteur (Alliance Consultants), commune
+  // a toutes les agences ; ne porte aucune donnee d'agence (annee, dernier numero).
+  'PlatformInvoiceSequence'
 ]);
 
 /**

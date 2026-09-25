@@ -134,10 +134,26 @@ export const SECTION_LABELS: Record<SectionId, string> = {
   batiments: t('Suivi des bâtiments')
 };
 
+/**
+ * Fonctionnalité d'abonnement qui ouvre une entrée (vague 2 des abonnements,
+ * docs/architecture/PLAN-ABONNEMENTS.md). Même vocabulaire que
+ * `packages/api/src/lib/subscription/features.ts`. Absente = `CORE`, compris
+ * dans tous les packs.
+ */
+export type NavFeature = 'CORE' | 'CRM' | 'SALES' | 'RENTAL' | 'PATRIMOINE' | 'SYNDIC' | 'CONSTRUCTION';
+
 export interface NavLeaf {
   key: string;
   label: string;
   href: string;
+  /** Fonctionnalité requise ; hérite de celle du groupe, `CORE` à défaut. */
+  feature?: NavFeature;
+  /**
+   * Posé par `useFilteredNavigation`, jamais dans l'arbre : le module qui
+   * ouvre l'entrée a été retiré de l'abonnement (D11). L'entrée reste
+   * cliquable — la lecture est permise — mais grisée, « Lecture seule ».
+   */
+  readOnly?: boolean;
   /**
    * Autres destinations qui allument cette entrée. Une entrée qui ouvre un
    * espace à onglets (Syndic › Finances, Finance › Suivi des chantiers) doit
@@ -155,6 +171,10 @@ export interface NavGroup {
   /** Domaine métier coiffant l'entrée. Absent = pas d'intertitre (l'accueil). */
   section?: SectionId;
   href?: string;
+  /** Fonctionnalité requise par l'entrée et, par défaut, par ses enfants. */
+  feature?: NavFeature;
+  /** Voir `NavLeaf.readOnly`. */
+  readOnly?: boolean;
   children?: NavLeaf[];
 }
 
@@ -257,6 +277,7 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         icon: <FileTextOutlined />,
         zone: 'primary',
         section: 'locatif',
+        feature: 'RENTAL',
         href: '/tenant/:tenantId/rental/leases'
       },
       {
@@ -265,6 +286,7 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         icon: <WalletOutlined />,
         zone: 'primary',
         section: 'locatif',
+        feature: 'RENTAL',
         href: '/tenant/:tenantId/rental/installments',
         children: [
           { key: 'rental-installments', label: t('Échéances'), href: '/tenant/:tenantId/rental/installments' },
@@ -302,7 +324,7 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         href: financeWorkspaceHref('facturation-balances'),
         children: [
           financeLeaf('finance-clients', t('Facturation et balances'), 'facturation-balances'),
-          financeLeaf('finance-owner-accounts', t('Reversements et commissions'), 'reversements-commissions')
+          { ...financeLeaf('finance-owner-accounts', t('Reversements et commissions'), 'reversements-commissions'), feature: 'RENTAL' }
         ]
       },
       {
@@ -316,7 +338,12 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
           financeLeaf('finance-fournisseurs', t('Fournisseurs et commandes'), 'fournisseurs-commandes'),
           // Hors de l'espace fournisseurs : une retenue naît aussi bien d'une
           // facture fournisseur que d'une situation de tâcheron.
-          { key: 'finance-retenues', label: t('Retenues de garantie'), href: '/tenant/:tenantId/finance/retenues' }
+          {
+            key: 'finance-retenues',
+            label: t('Retenues de garantie'),
+            href: '/tenant/:tenantId/finance/retenues',
+            feature: 'CONSTRUCTION'
+          }
         ]
       },
       {
@@ -325,6 +352,7 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         icon: <BuildOutlined />,
         zone: 'more',
         section: 'finance',
+        feature: 'CONSTRUCTION',
         href: financeWorkspaceHref('suivi-chantiers'),
         children: [
           financeLeaf('finance-chantiers', t('Suivi des chantiers'), 'suivi-chantiers'),
@@ -337,6 +365,7 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         icon: <SolutionOutlined />,
         zone: 'more',
         section: 'finance',
+        feature: 'CONSTRUCTION',
         href: '/tenant/:tenantId/finance/salaires',
         children: [
           { key: 'finance-salaires', label: t('Salaires'), href: '/tenant/:tenantId/finance/salaires' },
@@ -349,6 +378,7 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         icon: <GoldOutlined />,
         zone: 'more',
         section: 'patrimoine',
+        feature: 'PATRIMOINE',
         href: '/tenant/:tenantId/patrimoine',
         children: [
           { key: 'patrimoine-overview', label: t('Vue consolidée'), href: '/tenant/:tenantId/patrimoine' },
@@ -365,7 +395,9 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
           {
             key: 'patrimoine-statements',
             label: t('Relevés'),
-            href: '/tenant/:tenantId/patrimoine/statements'
+            href: '/tenant/:tenantId/patrimoine/statements',
+            // Relevés de gérance des mandants : gestion locative.
+            feature: 'RENTAL'
           }
         ]
       },
@@ -399,6 +431,7 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         icon: <ShopOutlined />,
         zone: 'more',
         section: 'ventes',
+        feature: 'SALES',
         href: '/tenant/:tenantId/sales',
         children: [
           { key: 'sales-dashboard', label: t('Tableau des ventes'), href: '/tenant/:tenantId/sales' },
@@ -414,11 +447,17 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         section: 'commercial',
         href: '/tenant/:tenantId/crm/dashboard',
         children: [
-          { key: 'crm-dashboard', label: t('Tableau de bord CRM'), href: '/tenant/:tenantId/crm/dashboard' },
-          { key: 'crm-calendar', label: t('Calendrier'), href: '/tenant/:tenantId/crm/calendar' },
+          // Les contacts sont du socle (tous les packs) ; le pipeline est CRM.
+          {
+            key: 'crm-dashboard',
+            label: t('Tableau de bord CRM'),
+            href: '/tenant/:tenantId/crm/dashboard',
+            feature: 'CRM'
+          },
+          { key: 'crm-calendar', label: t('Calendrier'), href: '/tenant/:tenantId/crm/calendar', feature: 'CRM' },
           { key: 'crm-contacts', label: t('Contacts'), href: '/tenant/:tenantId/crm/contacts' },
-          { key: 'crm-deals', label: t('Affaires'), href: '/tenant/:tenantId/crm/deals' },
-          { key: 'crm-activities', label: t('Activités'), href: '/tenant/:tenantId/crm/activities' }
+          { key: 'crm-deals', label: t('Affaires'), href: '/tenant/:tenantId/crm/deals', feature: 'CRM' },
+          { key: 'crm-activities', label: t('Activités'), href: '/tenant/:tenantId/crm/activities', feature: 'CRM' }
         ]
       },
       {
@@ -463,6 +502,7 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         icon: <BankOutlined />,
         zone: 'more',
         section: 'copropriete',
+        feature: 'SYNDIC',
         href: '/tenant/:tenantId/syndics',
         children: [
           // Quatre entrées dans l'ordre du travail d'un syndic : choisir la

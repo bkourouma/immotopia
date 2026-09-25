@@ -14,6 +14,7 @@
 
 const APP_LEVEL_TESTS = [
   '<rootDir>/__tests__/unit/routes-inventory.test.ts',
+  '<rootDir>/__tests__/unit/route-features.test.ts',
   '<rootDir>/__tests__/unit/no-secret-in-responses.test.ts',
   '<rootDir>/__tests__/integration/isolation.test.ts'
 ];

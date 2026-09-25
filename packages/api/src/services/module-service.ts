@@ -77,17 +77,24 @@ export async function updateTenantModules(tenantId: string, data: UpdateTenantMo
             moduleKey: module.moduleKey as ModuleKey
           }
         },
+        // Un basculement manuel par le super-admin est une DEROGATION
+        // (source OVERRIDE) : la synchronisation depuis les packs
+        // (syncTenantModulesTx) ne l'ecrase plus. Retirer un module garde ses
+        // donnees, en lecture seule (disabledAt, D11 du plan des abonnements).
         update: {
           enabled: module.enabled,
           enabledAt: module.enabled ? new Date() : null,
-          enabledBy: module.enabled ? actorUserId || null : null
+          enabledBy: module.enabled ? actorUserId || null : null,
+          source: 'OVERRIDE',
+          ...(module.enabled ? {} : { disabledAt: new Date() })
         },
         create: {
           tenantId,
           moduleKey: module.moduleKey as ModuleKey,
           enabled: module.enabled,
           enabledAt: module.enabled ? new Date() : null,
-          enabledBy: module.enabled ? actorUserId || null : null
+          enabledBy: module.enabled ? actorUserId || null : null,
+          source: 'OVERRIDE'
         }
       })
     )

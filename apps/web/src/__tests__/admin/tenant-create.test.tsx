@@ -7,12 +7,16 @@ import { CreateTenantDrawer } from '../../components/admin/CreateTenantDrawer';
 import type { ProvisionTenantResult } from '../../services/tenant-service';
 
 /**
- * `<CreateTenantDrawer>` — panneau « Nouvelle agence » (lot F, plan §F3).
+ * `<CreateTenantDrawer>` — panneau « Nouvelle agence » (vague 2, lot C :
+ * abonnements par packs, docs/architecture/PLAN-ABONNEMENTS.md).
  *
  * Comme `associations.test.tsx` : seul `apiClient` est simulé, au plus près de
- * la frontière réseau — `provisionTenant`/`resendInvitation` (le service
- * réel) tournent par-dessus, pour que le corps et l'en-tête vérifiés ici
- * soient ceux réellement envoyés par l'écran.
+ * la frontière réseau — `provisionTenant`/`resendInvitation` et le service
+ * `subscription-v2-service` (catalogue, aperçu chiffré) tournent par-dessus,
+ * pour que le corps et l'en-tête vérifiés ici soient ceux réellement envoyés
+ * par l'écran. Le calcul de prix n'est PAS recopié côté web : ces tests
+ * vérifient que l'écran affiche fidèlement ce que `POST /admin/catalog/quote`
+ * renvoie, jamais un calcul local.
  */
 
 vi.mock('../../utils/api-client', () => ({
@@ -26,16 +30,127 @@ vi.mock('../../utils/api-client', () => ({
 
 import apiClient from '../../utils/api-client';
 
+const get = apiClient.get as unknown as ReturnType<typeof vi.fn>;
 const post = apiClient.post as unknown as ReturnType<typeof vi.fn>;
+
+const CATALOG = [
+  {
+    id: 'cat-agence',
+    code: 'AGENCE',
+    kind: 'PACK',
+    name: 'Agence',
+    description: 'Transaction et gestion locative',
+    monthlyPrice: 29_900,
+    setupPrice: 100_000,
+    modules: ['MODULE_AGENCY'],
+    exclusiveGroup: null,
+    rules: null,
+    isSellable: true,
+    sortOrder: 10,
+    capacities: { LOTS: 100 }
+  },
+  {
+    id: 'cat-syndic',
+    code: 'SYNDIC',
+    kind: 'PACK',
+    name: 'Syndic',
+    description: 'Cabinets de copropriété',
+    monthlyPrice: 49_900,
+    setupPrice: 150_000,
+    modules: ['MODULE_SYNDIC'],
+    exclusiveGroup: null,
+    rules: null,
+    isSellable: true,
+    sortOrder: 20,
+    capacities: { COPROPRIETES: 2, LOTS: 100 }
+  },
+  {
+    id: 'cat-promoteur',
+    code: 'PROMOTEUR',
+    kind: 'PACK',
+    name: 'Promoteur',
+    description: 'Promoteurs qui construisent',
+    monthlyPrice: 149_900,
+    setupPrice: 450_000,
+    modules: ['MODULE_PROMOTER'],
+    exclusiveGroup: null,
+    rules: null,
+    isSellable: true,
+    sortOrder: 30,
+    capacities: { CHANTIERS: 2, LOTS: 150 }
+  },
+  {
+    id: 'cat-integre',
+    code: 'INTEGRE',
+    kind: 'PACK',
+    name: 'Opérateur intégré',
+    description: 'Groupes qui construisent, vendent, louent et gèrent',
+    monthlyPrice: 249_900,
+    setupPrice: 650_000,
+    modules: ['MODULE_AGENCY', 'MODULE_SYNDIC', 'MODULE_PROMOTER'],
+    exclusiveGroup: 'INTEGRE',
+    rules: null,
+    isSellable: true,
+    sortOrder: 40,
+    capacities: { CHANTIERS: 3, COPROPRIETES: 3, LOTS: 300 }
+  },
+  {
+    id: 'cat-ext-lots',
+    code: 'EXT_LOTS_10',
+    kind: 'EXTENSION',
+    name: 'Bloc de 10 lots',
+    description: null,
+    monthlyPrice: 1_500,
+    setupPrice: 0,
+    modules: [],
+    exclusiveGroup: null,
+    rules: { requiresAnyOf: ['AGENCE', 'SYNDIC', 'PROMOTEUR', 'INTEGRE'] },
+    isSellable: true,
+    sortOrder: 110,
+    capacities: { LOTS: 10 }
+  },
+  {
+    id: 'cat-ext-copro',
+    code: 'EXT_COPRO',
+    kind: 'EXTENSION',
+    name: 'Copropriété supplémentaire',
+    description: null,
+    monthlyPrice: 10_000,
+    setupPrice: 0,
+    modules: [],
+    exclusiveGroup: null,
+    rules: { requiresAnyOf: ['SYNDIC', 'INTEGRE'] },
+    isSellable: true,
+    sortOrder: 120,
+    capacities: { COPROPRIETES: 1 }
+  },
+  {
+    id: 'cat-ext-chantier',
+    code: 'EXT_CHANTIER',
+    kind: 'EXTENSION',
+    name: 'Chantier supplémentaire',
+    description: null,
+    monthlyPrice: 40_000,
+    setupPrice: 0,
+    modules: [],
+    exclusiveGroup: null,
+    rules: { requiresAnyOf: ['PROMOTEUR', 'INTEGRE'] },
+    isSellable: true,
+    sortOrder: 130,
+    capacities: { CHANTIERS: 1 }
+  }
+];
 
 const RESULT: ProvisionTenantResult = {
   tenant: { id: 'tenant-1', name: 'Agence Test', slug: 'agence-test', type: 'AGENCY', status: 'ACTIVE' },
   modules: ['MODULE_AGENCY'],
   subscription: {
-    planKey: 'PRO',
+    planKey: null,
     billingCycle: 'MONTHLY',
     status: 'TRIALING',
-    currentPeriodEnd: '2026-10-24T00:00:00.000Z'
+    currentPeriodEnd: '2026-10-24T00:00:00.000Z',
+    trialEndsAt: '2026-10-24T00:00:00.000Z',
+    items: [{ code: 'AGENCE', quantity: 1 }]
   },
   admin: { userId: 'user-1', email: 'admin@test.ci', fullName: 'Awa Koné', existingUser: false },
   invitation: { id: 'invit-1', expiresAt: '2026-10-01T00:00:00.000Z', acceptUrl: 'https://immotopia.test/accept/invit-1' },
@@ -58,6 +173,39 @@ async function remplirChampsObligatoires(user: ReturnType<typeof userEvent.setup
 
 beforeEach(() => {
   post.mockReset();
+  get.mockReset();
+  get.mockImplementation((url: string) => {
+    if (url === '/admin/catalog') return Promise.resolve({ data: { success: true, data: CATALOG } });
+    return Promise.reject(new Error(`GET non simulé : ${url}`));
+  });
+  post.mockImplementation((url: string, body: any) => {
+    if (url === '/admin/catalog/quote') {
+      const packs: string[] = body.packs ?? [];
+      const monthly = packs.includes('INTEGRE') ? 249_900 : packs.reduce((sum, code) => sum + (CATALOG.find(c => c.code === code)?.monthlyPrice ?? 0), 0);
+      return Promise.resolve({
+        data: {
+          success: true,
+          data: {
+            lines: packs.map(code => ({
+              kind: 'PACK',
+              label: CATALOG.find(c => c.code === code)?.name ?? code,
+              code,
+              quantity: 1,
+              unitPrice: CATALOG.find(c => c.code === code)?.monthlyPrice ?? 0,
+              amount: CATALOG.find(c => c.code === code)?.monthlyPrice ?? 0
+            })),
+            subtotal: monthly,
+            comboDiscount: 0,
+            extensions: {},
+            monthly,
+            annual: monthly * 11
+          }
+        }
+      });
+    }
+    if (url === '/admin/tenants') return Promise.resolve({ data: { success: true, data: RESULT } });
+    return Promise.reject(new Error(`POST non simulé : ${url}`));
+  });
 });
 
 describe('<CreateTenantDrawer> — champs obligatoires', () => {
@@ -65,129 +213,155 @@ describe('<CreateTenantDrawer> — champs obligatoires', () => {
     const user = userEvent.setup();
     renderDrawer();
 
+    // Aucun pack n'est choisi non plus : le bouton reste désactivé, la
+    // validation Ant Design ne se déclenche donc que sur les autres champs
+    // une fois qu'au moins un pack est sélectionné pour l'atteindre.
+    await screen.findByText('Agence');
+    await user.click(screen.getByText('Agence'));
     await user.click(screen.getByRole('button', { name: "Créer l'agence" }));
 
     expect(await screen.findByText("Le nom de l'agence est requis")).toBeInTheDocument();
     expect(screen.getByText("Le nom de l'administrateur est requis")).toBeInTheDocument();
     expect(screen.getByText("L'e-mail de l'administrateur est requis")).toBeInTheDocument();
-    expect(post).not.toHaveBeenCalled();
+    expect(post).not.toHaveBeenCalledWith('/admin/tenants', expect.anything(), expect.anything());
   });
 
-  it('affiche « Pro » présélectionnée pour l’offre', () => {
+  it('désactive la création tant qu’aucun pack n’est choisi', async () => {
     renderDrawer();
-    expect(screen.getByText('Pro')).toBeInTheDocument();
+    await screen.findByText('Agence');
+    expect(screen.getByRole('button', { name: "Créer l'agence" })).toBeDisabled();
   });
 });
 
-describe('<CreateTenantDrawer> — modules par défaut selon le type', () => {
-  it('ne coche que « Agence » pour une agence, et les trois modules pour un opérateur', async () => {
+describe('<CreateTenantDrawer> — exclusivité de l’Intégré', () => {
+  // Quatre clics, chacun suivi d'un waitFor(5000) : le budget de 40 s (global,
+  // `vite.config.ts`) est déjà consommé par le rendu seul dans cet
+  // environnement partagé (les autres tests du fichier, exécutés SEULS,
+  // prennent 20 à 38 s chacun pour un seul aller-retour). Un timeout ici n'est
+  // pas un bug de l'exclusivité (vérifiée pas à pas ci-dessous) : c'est cette
+  // suite qui a besoin de plus de marge, comme `installments.test.tsx` le
+  // documente pour les écrans qui montent une coquille lourde.
+  it(
+    "désélectionne les autres packs quand l'Intégré est choisi, et inversement",
+    async () => {
+      const user = userEvent.setup();
+      renderDrawer();
+
+      // Clic par rôle, pas par texte : une fois un pack choisi, le récapitulatif
+      // chiffré affiche une ligne portant le MÊME libellé que la carte (« Agence »,
+      // « Opérateur intégré »…), ce qui rendrait `getByText` ambigu.
+      await screen.findByText('Agence');
+      // Le clic déclenche l'appel au devis (`/admin/catalog/quote`) qui peut
+      // légèrement retarder le rendu sous charge : le délai par défaut de
+      // `waitFor` (1 s) est parfois trop court dans cet environnement partagé.
+      await user.click(screen.getByRole('checkbox', { name: /^Agence/ }));
+      await waitFor(() => expect(screen.getByRole('checkbox', { name: /^Agence/ })).toHaveAttribute('aria-checked', 'true'), {
+        timeout: 5000
+      });
+
+      await user.click(screen.getByRole('checkbox', { name: /Opérateur intégré/ }));
+      await waitFor(
+        () => {
+          expect(screen.getByRole('checkbox', { name: /Opérateur intégré/ })).toHaveAttribute('aria-checked', 'true');
+          expect(screen.getByRole('checkbox', { name: /^Agence/ })).toHaveAttribute('aria-checked', 'false');
+        },
+        { timeout: 5000 }
+      );
+
+      // Les trois autres packs sont désactivés tant que l'Intégré est choisi.
+      expect(screen.getByRole('checkbox', { name: /^Agence/ })).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByRole('checkbox', { name: /Syndic/ })).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByRole('checkbox', { name: /Promoteur/ })).toHaveAttribute('aria-disabled', 'true');
+
+      // Les cartes des trois autres packs sont désactivées tant que l'Intégré
+      // reste choisi (exclusivité stricte) : il faut d'abord le décocher lui-même.
+      await user.click(screen.getByRole('checkbox', { name: /Opérateur intégré/ }));
+      await waitFor(
+        () => expect(screen.getByRole('checkbox', { name: /Opérateur intégré/ })).toHaveAttribute('aria-checked', 'false'),
+        { timeout: 5000 }
+      );
+
+      await user.click(screen.getByRole('checkbox', { name: /Syndic/ }));
+      await waitFor(
+        () => {
+          expect(screen.getByRole('checkbox', { name: /Opérateur intégré/ })).toHaveAttribute('aria-checked', 'false');
+          expect(screen.getByRole('checkbox', { name: /Syndic/ })).toHaveAttribute('aria-checked', 'true');
+        },
+        { timeout: 5000 }
+      );
+    },
+    90000
+  );
+});
+
+describe('<CreateTenantDrawer> — récapitulatif chiffré en direct', () => {
+  it('affiche le total mensuel et annuel renvoyés par l’API, pas un calcul local', async () => {
     const user = userEvent.setup();
     renderDrawer();
 
-    await user.click(screen.getByText("Plus d'options"));
+    await screen.findByText('Agence');
+    await user.click(screen.getByText('Agence'));
 
-    const agencyBox = await screen.findByRole('checkbox', { name: 'Agence' });
-    const syndicBox = screen.getByRole('checkbox', { name: 'Syndic' });
-    const promoterBox = screen.getByRole('checkbox', { name: 'Promoteur' });
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/admin/catalog/quote', expect.objectContaining({ packs: ['AGENCE'] })), {
+      timeout: 2000
+    });
 
-    expect(agencyBox).toBeChecked();
-    expect(syndicBox).not.toBeChecked();
-    expect(promoterBox).not.toBeChecked();
-
-    // AntD masque le vrai `<input type="radio">` (`pointer-events: none`,
-    // `opacity: 0`, en dessous du bouton stylé) : dans un vrai navigateur, le
-    // clic arrive sur le `<label>` visible, qui délègue nativement à l'input
-    // qu'il enveloppe. `userEvent` respecte `pointer-events`, donc cliquer la
-    // cible ARIA (l'input) échoue là où cliquer son libellé visible réussit —
-    // exactement le geste d'un utilisateur réel.
-    await user.click(screen.getByText('Opérateur'));
-
-    expect(agencyBox).toBeChecked();
-    expect(syndicBox).toBeChecked();
-    expect(promoterBox).toBeChecked();
+    const totalLabel = await screen.findByText('Total HT mensuel');
+    // La ligne « Agence » ET le total affichent le même montant (un seul
+    // pack sélectionné) : on vérifie le total via la ligne qui le porte
+    // plutôt qu'un texte global, ambigu ici. Le séparateur de milliers de
+    // <MoneyValue> est une espace insécable étroite (U+202F) : on la ramène
+    // à une espace normale avant de comparer.
+    const totalRow = totalLabel.closest('div');
+    const totalText = (totalRow?.textContent ?? '').replace(/\u202f/g, ' ');
+    expect(totalText).toMatch(/29\s900\sFCFA/);
   });
 });
 
 describe('<CreateTenantDrawer> — création', () => {
-  it("envoie l'en-tête Idempotency-Key et le corps attendu, puis affiche la confirmation", async () => {
-    post.mockResolvedValue({ data: { success: true, data: RESULT } });
+  it("envoie l'en-tête Idempotency-Key et les packs choisis, puis affiche la confirmation", async () => {
     const onCreated = vi.fn();
     const user = userEvent.setup();
     renderDrawer(onCreated);
 
     await remplirChampsObligatoires(user);
-    // Ouvre « Plus d'options » : un `Form.Item` sous un panneau replié ne
-    // s'enregistre qu'à son montage (comportement AntD), donc `billingCycle`
-    // ne porterait sa valeur par défaut que si le panneau a été ouvert au
-    // moins une fois avant l'envoi.
-    await user.click(screen.getByText("Plus d'options"));
+    await screen.findByText('Agence');
+    await user.click(screen.getByText('Agence'));
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/admin/catalog/quote', expect.anything()), { timeout: 2000 });
+
     await user.click(screen.getByRole('button', { name: "Créer l'agence" }));
 
-    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
-    const [url, body, config] = post.mock.calls[0];
-    expect(url).toBe('/admin/tenants');
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/admin/tenants', expect.anything(), expect.anything()));
+    const call = post.mock.calls.find(([url]) => url === '/admin/tenants')!;
+    const [, body, config] = call;
     expect(body).toMatchObject({
       name: 'Agence Test',
       adminFullName: 'Awa Koné',
       adminEmail: 'admin@test.ci',
-      planKey: 'PRO',
       billingCycle: 'MONTHLY',
-      type: 'AGENCY',
-      modules: ['MODULE_AGENCY']
+      items: expect.arrayContaining([{ code: 'AGENCE', quantity: 1 }])
     });
     expect(config.headers['Idempotency-Key']).toEqual(expect.any(String));
     expect(config.headers['Idempotency-Key'].length).toBeGreaterThan(0);
 
-    // Le titre du panneau ET le message de l'alerte affichent tous deux
-    // « Agence créée » : la description, elle, est unique.
     expect(await screen.findByText(/Agence Test \(agence-test\)/, {}, { timeout: 5000 })).toBeInTheDocument();
     expect(onCreated).toHaveBeenCalledWith(RESULT);
   });
 
-  it("copie le lien d'invitation dans le presse-papiers", async () => {
-    post.mockResolvedValue({ data: { success: true, data: RESULT } });
-
-    const user = userEvent.setup();
-    renderDrawer();
-    await remplirChampsObligatoires(user);
-    await user.click(screen.getByRole('button', { name: "Créer l'agence" }));
-
-    // `{ name: /Copier/ }`, pas le texte exact : l'icône du bouton porte son
-    // propre `aria-label="copy"`, et le nom accessible du bouton concatène
-    // les deux (« copy Copier »).
-    const copyButton = await screen.findByRole('button', { name: /Copier/ });
-
-    // Le presse-papiers n'est simulé qu'ICI, après le rendu de la
-    // confirmation : le défini plus tôt (avant la saisie du formulaire)
-    // perturbait `userEvent.type`, qui consulte `navigator.clipboard` pour
-    // son propre fonctionnement interne.
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-
-    await user.click(copyButton);
-
-    expect(writeText).toHaveBeenCalledWith(RESULT.invitation.acceptUrl);
-  });
-
-  it("affiche un message clair quand l'e-mail n'est pas parti", async () => {
-    post.mockResolvedValue({ data: { success: true, data: { ...RESULT, emailSent: false } } });
-
-    const user = userEvent.setup();
-    renderDrawer();
-    await remplirChampsObligatoires(user);
-    await user.click(screen.getByRole('button', { name: "Créer l'agence" }));
-
-    expect(
-      await screen.findByText("L'e-mail n'a pas pu être envoyé — copiez le lien et transmettez-le vous-même.")
-    ).toBeInTheDocument();
-  });
-
   it('affiche le message du serveur en cas de refus', async () => {
-    post.mockRejectedValue({ response: { data: { message: 'Cette agence existe déjà.' } } });
+    post.mockImplementation((url: string) => {
+      if (url === '/admin/catalog/quote') {
+        return Promise.resolve({ data: { success: true, data: { lines: [], subtotal: 0, comboDiscount: 0, extensions: {}, monthly: 29_900, annual: 328_900 } } });
+      }
+      if (url === '/admin/tenants') return Promise.reject({ response: { data: { message: 'Cette agence existe déjà.' } } });
+      return Promise.reject(new Error(`POST non simulé : ${url}`));
+    });
 
     const user = userEvent.setup();
     renderDrawer();
     await remplirChampsObligatoires(user);
+    await screen.findByText('Agence');
+    await user.click(screen.getByText('Agence'));
     await user.click(screen.getByRole('button', { name: "Créer l'agence" }));
 
     expect(await screen.findByText('Cette agence existe déjà.')).toBeInTheDocument();

@@ -8,7 +8,6 @@ import {
   suspendTenant,
   activateTenant
 } from '../../services/tenant-service';
-import { getTenantModules, updateTenantModules } from '../../services/module-service';
 import { listMembers, Member, disableMember, enableMember } from '../../services/membership-service';
 import type { TenantWithBranding } from '../../services/tenant-branding-service';
 import { SubscriptionTab } from '../../components/admin/tenant-detail/SubscriptionTab';
@@ -23,7 +22,6 @@ import {
   Receipt,
   Activity,
   BarChart3,
-  Settings,
   AlertTriangle,
   CheckCircle,
   Users,
@@ -46,8 +44,12 @@ export const TenantDetail: React.FC = () => {
   const [stats, setStats] = useState<TenantStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // L'ancien onglet « Modules » est absorbé par « Abonnement » (vague 2,
+  // lot C, docs/architecture/PLAN-ABONNEMENTS.md §2) : les modules ouverts
+  // sont désormais déduits des packs et affichés en lecture seule dans
+  // <SubscriptionTab>.
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'modules' | 'subscription' | 'invoices' | 'activity' | 'stats' | 'collaborators'
+    'overview' | 'subscription' | 'invoices' | 'activity' | 'stats' | 'collaborators'
   >('overview');
 
   useEffect(() => {
@@ -201,7 +203,6 @@ export const TenantDetail: React.FC = () => {
             {[
               { id: 'overview', label: t("Vue d'ensemble"), icon: Building2 },
               { id: 'collaborators', label: t('Collaborateurs'), icon: Users },
-              { id: 'modules', label: t('Modules'), icon: Settings },
               { id: 'subscription', label: t('Abonnement'), icon: CreditCard },
               { id: 'invoices', label: t('Factures'), icon: Receipt },
               { id: 'activity', label: t('Activité'), icon: Activity },
@@ -294,12 +295,6 @@ export const TenantDetail: React.FC = () => {
           {activeTab === 'collaborators' && (
             <div>
               <CollaboratorsTab tenantId={tenantId!} />
-            </div>
-          )}
-
-          {activeTab === 'modules' && (
-            <div>
-              <ModulesTab tenantId={tenantId!} />
             </div>
           )}
 
@@ -531,80 +526,6 @@ const CollaboratorsTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
           </table>
         </div>
       )}
-    </div>
-  );
-};
-
-// Modules Tab Component
-const ModulesTab: React.FC<{ tenantId: string }> = ({ tenantId }) => {
-  const { message } = App.useApp();
-  const [modules, setModules] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadModules();
-  }, [tenantId]);
-
-  const loadModules = async () => {
-    try {
-      const response = await getTenantModules(tenantId);
-      if (response.success && response.data) {
-        setModules(response.data.modules || []);
-      } else {
-        setModules([]);
-      }
-    } catch (err) {
-      console.error('Error loading modules:', err);
-      setModules([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const toggleModule = async (moduleKey: string, enabled: boolean) => {
-    try {
-      await updateTenantModules(tenantId, {
-        modules: [{ moduleKey, enabled: !enabled }]
-      });
-      await loadModules();
-    } catch (err) {
-      message.error(t('Erreur lors de la mise à jour du module'));
-    }
-  };
-
-  if (loading) {
-    return <div className="text-center py-8">Chargement...</div>;
-  }
-
-  if (!modules || modules.length === 0) {
-    return <div className="text-center py-8 text-gray-500">{t('Aucun module disponible')}</div>;
-  }
-
-  return (
-    <div className="space-y-4">
-      {modules.map((module, index) => (
-        <div
-          key={module.id || module.moduleKey || `module-${index}`}
-          className="flex items-center justify-between p-4 border border-gray-200 rounded-lg"
-        >
-          <div>
-            <h3 className="font-medium text-gray-900">{module.moduleKey}</h3>
-            <p className="text-sm text-gray-500">{module.enabled ? t('Active') : t('Desactive')}</p>
-          </div>
-          <button
-            onClick={() => toggleModule(module.moduleKey, module.enabled)}
-            className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
-              module.enabled ? 'bg-primary' : 'bg-gray-200'
-            }`}
-          >
-            <span
-              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                module.enabled ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
-        </div>
-      ))}
     </div>
   );
 };

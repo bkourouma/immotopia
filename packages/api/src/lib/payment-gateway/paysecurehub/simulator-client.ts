@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { prisma } from '../../../utils/database';
 import { env } from '../../../config/env';
 import { mapProviderState } from '../status-mapping';
+import { isPlatformCodePaiement } from '../codes';
 import type {
   BalanceResult,
   BuildAwayRequest,
@@ -30,10 +31,16 @@ export const simulatorClient: GatewayClient = {
   },
 
   async getStatus(credentials: GatewayCredentials, codePaiement: string): Promise<ProviderStatus> {
-    const checkout = await prisma.onlinePaymentCheckout.findFirst({
-      where: { codePaiement, tenantId: credentials.tenantId },
-      select: { simulatedOutcome: true, amount: true }
-    });
+    // Facture d'abonnement (compte ImmoTopia, code « IMP- ») ou loyer (lot 7).
+    const checkout = isPlatformCodePaiement(codePaiement)
+      ? await prisma.platformPaymentCheckout.findFirst({
+          where: { codePaiement, tenantId: credentials.tenantId },
+          select: { simulatedOutcome: true, amount: true }
+        })
+      : await prisma.onlinePaymentCheckout.findFirst({
+          where: { codePaiement, tenantId: credentials.tenantId },
+          select: { simulatedOutcome: true, amount: true }
+        });
 
     // Absence de choix du locataire : « en attente », comme un agrégateur
     // réel qui n'a encore rien à rapporter.

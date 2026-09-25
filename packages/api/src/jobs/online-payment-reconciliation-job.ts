@@ -1,6 +1,7 @@
 import * as cron from 'node-cron';
 import { logger } from '../utils/logger';
 import { reconcilePendingCheckouts } from '../lib/payment-gateway/checkout';
+import { reconcilePendingPlatformCheckouts } from '../services/platform-payment-service';
 
 /**
  * Rapprochement planifié des paiements en ligne (lot 7) — contrat §2.7.
@@ -26,6 +27,16 @@ export function startOnlinePaymentReconciliationJob() {
         logger.info('Online payment reconciliation job completed', result);
       } catch (error) {
         logger.error('Error in online payment reconciliation job', {
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+      // Factures d'abonnement payees sur le compte ImmoTopia (vague 3) : memes
+      // regles, table distincte (platform_payment_checkouts).
+      try {
+        const platform = await reconcilePendingPlatformCheckouts();
+        logger.info('Platform invoice payment reconciliation completed', platform);
+      } catch (error) {
+        logger.error('Error in platform invoice payment reconciliation', {
           error: error instanceof Error ? error.message : 'Unknown error'
         });
       }

@@ -101,7 +101,8 @@ export async function getGlobalStatistics(): Promise<GlobalStatistics> {
   // Format subscription by plan
   const subscriptionsByPlanMap = subscriptionsByPlan.reduce(
     (acc, item) => {
-      acc[item.planKey] = item._count;
+      // planKey est deprecie (packs) : nul pour les agences creees avec des packs.
+      if (item.planKey) acc[item.planKey] = item._count;
       return acc;
     },
     { BASIC: 0, PRO: 0, ELITE: 0 } as Record<string, number>

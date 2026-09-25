@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Card, Space, Typography, Button, Input, Select, Alert, Spin, Empty, Table, Tag } from 'antd';
+import { Card, Space, Typography, Button, Input, Select, Alert, Spin, Empty, Table, Tag, Checkbox, Progress } from 'antd';
 import {
   PlusOutlined,
   SearchOutlined,
@@ -11,6 +11,8 @@ import {
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { listTenants, Tenant, TenantFilters, type ProvisionTenantResult } from '../../services/tenant-service';
+import { listCatalog, type CatalogEntry } from '../../services/subscription-v2-service';
+import { getSubscriptionSummaries, type SubscriptionSummary } from '../../services/subscription-extras-service';
 import { CreateTenantDrawer } from '../../components/admin/CreateTenantDrawer';
 import { t } from '../../i18n/t';
 
@@ -55,6 +57,17 @@ export const TenantsList: React.FC = () => {
   // redirige ici plutôt que de dupliquer le formulaire).
   const [createOpen, setCreateOpen] = useState(Boolean((location.state as { openCreate?: boolean } | null)?.openCreate));
 
+  // Packs, % de lots utilisés et prochaine échéance : le catalogue est global
+  // (chargé une fois), le résumé de toute la page arrive en UNE requête
+  // (`GET /admin/subscriptions/summaries`, vague 3) — plus de N+1.
+  const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
+  const [summaries, setSummaries] = useState<Record<string, SubscriptionSummary>>({});
+  const [nearLimitOnly, setNearLimitOnly] = useState(false);
+
+  useEffect(() => {
+    listCatalog().then(setCatalog).catch(() => setCatalog([]));
+  }, []);
+
   useEffect(() => {
     loadTenants();
   }, [filters]);
@@ -77,7 +90,8 @@ export const TenantsList: React.FC = () => {
         search: searchTerm || undefined
       });
       if (response.success && response.data) {
-        setTenants(response.data.tenants || []);
+        const list = response.data.tenants || [];
+        setTenants(list);
         setPagination(
           response.data.pagination || {
             page: 1,
@@ -86,6 +100,8 @@ export const TenantsList: React.FC = () => {
             totalPages: 0
           }
         );
+        // Un résumé indisponible n'empêche pas d'afficher la liste.
+        setSummaries(await getSubscriptionSummaries(list.map(tenant => tenant.id)).catch(() => ({})));
       } else {
         setError(t('Erreur lors du chargement des tenants'));
         setTenants([]);
@@ -109,6 +125,8 @@ export const TenantsList: React.FC = () => {
     setFilters({ ...filters, page: 1, status });
   };
 
+  const filteredTenants = nearLimitOnly ? tenants.filter(tenant => summaries[tenant.id]?.nearLimit) : tenants;
+
   const columns: ColumnsType<Tenant> = [
     {
       title: t('Nom'),
@@ -121,13 +139,13 @@ export const TenantsList: React.FC = () => {
               width: 40,
               height: 40,
               borderRadius: '50%',
-              background: '#e6f4ff',
+              background: 'var(--color-primary-bg)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
             }}
           >
-            <BankOutlined style={{ fontSize: 20, color: '#1677ff' }} />
+            <BankOutlined style={{ fontSize: 20, color: 'var(--color-primary)' }} />
           </div>
           <div>
             <Text strong>{record.name}</Text>
@@ -144,6 +162,47 @@ export const TenantsList: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => getStatusTag(status)
+    },
+    {
+      title: t('Packs'),
+      key: 'packs',
+      render: (_, record) => {
+        const summary = summaries[record.id];
+        if (!summary) return <Text type="secondary">—</Text>;
+        if (summary.packs.length === 0) return <Text type="secondary">{t('Aucun')}</Text>;
+        return (
+          <Space size={4} wrap>
+            {summary.packs.map(code => (
+              <Tag key={code}>{catalog.find(c => c.code === code)?.name ?? code}</Tag>
+            ))}
+          </Space>
+        );
+      }
+    },
+    {
+      title: t('% de lots utilisés'),
+      key: 'lotsUsage',
+      render: (_, record) => {
+        const percent = summaries[record.id]?.lotsUsagePercent ?? null;
+        if (percent === null) return <Text type="secondary">—</Text>;
+        return (
+          <Progress
+            percent={Math.min(100, percent)}
+            size="small"
+            status={percent >= 100 ? 'exception' : 'normal'}
+            strokeColor={percent >= 100 ? 'var(--color-error-text)' : percent >= 80 ? 'var(--color-warning-text)' : 'var(--color-success-text)'}
+            style={{ minWidth: 120 }}
+          />
+        );
+      }
+    },
+    {
+      title: t('Prochaine échéance'),
+      key: 'nextDue',
+      render: (_, record) => {
+        const date = summaries[record.id]?.nextDueAt;
+        return date ? new Date(date).toLocaleDateString(activeLocale()) : '—';
+      }
     },
     {
       title: t('Email'),
@@ -229,6 +288,9 @@ export const TenantsList: React.FC = () => {
               <Button type="primary" htmlType="submit" icon={<FilterOutlined />}>
                 {t('Filtrer')}
               </Button>
+              <Checkbox checked={nearLimitOnly} onChange={e => setNearLimitOnly(e.target.checked)}>
+                {t('Proche de la limite')}
+              </Checkbox>
             </Space>
           </form>
         </Card>
@@ -248,13 +310,16 @@ export const TenantsList: React.FC = () => {
         {/* Table */}
         <Card>
           <Spin spinning={loading}>
-            {!loading && (!tenants || tenants.length === 0) ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('Aucune agence trouvée')} />
+            {!loading && (!filteredTenants || filteredTenants.length === 0) ? (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={nearLimitOnly ? t('Aucune agence proche de la limite sur cette page') : t('Aucune agence trouvée')}
+              />
             ) : (
               <Table
                 rowKey="id"
                 columns={columns}
-                dataSource={tenants}
+                dataSource={filteredTenants}
                 scroll={{ x: 'max-content' }}
                 pagination={{
                   current: pagination.page,

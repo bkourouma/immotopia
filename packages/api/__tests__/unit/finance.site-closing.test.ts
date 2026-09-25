@@ -201,6 +201,21 @@ const mockPrisma: Row = {
   }
 };
 
+// Registre des lots de l'abonnement (vague 2, lot B) : remplace par des
+// espions. Son comportement est couvert par lot-registry.sync.test.ts ; ici,
+// on verifie seulement que chaque operation l'appelle dans sa transaction.
+jest.mock('../../src/services/lot-registry-service', () => ({
+  syncLotActivationsTx: jest.fn(async () => ({ activated: [], deactivated: [], quota: null })),
+  assertCapacityTx: jest.fn(async () => ({ decision: 'ALLOW' })),
+  resolveLotScope: jest.fn(async (_tx: unknown, _tenantId: string, scope: unknown) => scope),
+  ACTIVE_SYNDICATE_STATUSES: ['ACTIVE', 'IN_DISPUTE'],
+  LOT_QUOTA_REACHED_REASON: 'Quota de lots atteint'
+}));
+const mockLotRegistry = jest.requireMock('../../src/services/lot-registry-service') as {
+  syncLotActivationsTx: jest.Mock;
+  assertCapacityTx: jest.Mock;
+};
+
 jest.mock('../../src/utils/database', () => ({
   prisma: mockPrisma,
   get default() {
@@ -1058,5 +1073,61 @@ describe('capitalizeSiteLotTx', () => {
     const c = await capitalizeSiteLotTx(tx, TENANT, lots[2].id, { ...BASCULE, internalReference: 'REF-C' });
 
     expect(a.acquisitionCost + b.acquisitionCost + c.acquisitionCost).toBe(1_000_000);
+  });
+});
+
+
+describe('registre des lots de l’abonnement (vague 2, lot B)', () => {
+  beforeEach(() => {
+    mockLotRegistry.syncLotActivationsTx.mockClear();
+    mockLotRegistry.assertCapacityTx.mockClear();
+  });
+
+  it('un lot créé entre au registre, dans la transaction de la création', async () => {
+    const site = seedSite();
+    const lot = await createSiteLotTx(tx, TENANT, { siteId: site.id, name: 'Villa A' });
+    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenCalledWith(tx, TENANT, { siteLotIds: [lot.id] });
+  });
+
+  it('un lot supprimé sort du registre', async () => {
+    const site = seedSite();
+    const [lot] = await seedLots(site.id, [{ name: 'Villa A' }]);
+    await deleteSiteLotTx(tx, TENANT, lot.id);
+    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenCalledWith(tx, TENANT, { siteLotIds: [lot.id] }, { reason: 'SITE_LOT_DELETED' });
+  });
+
+  it('la clôture fait sortir les lots du chantier ; la réouverture contrôle la capacité CHANTIERS puis les recompte', async () => {
+    const site = seedSite();
+    await closeSiteTx(tx, TENANT, site.id, { closedByUserId: USER });
+    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenLastCalledWith(tx, TENANT, { siteIds: [site.id] }, {
+      actorUserId: USER,
+      reason: 'SITE_CLOSED'
+    });
+
+    await reopenSiteTx(tx, TENANT, site.id);
+    expect(mockLotRegistry.assertCapacityTx).toHaveBeenCalledWith(tx, TENANT, 'CHANTIERS');
+    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenLastCalledWith(tx, TENANT, { siteIds: [site.id] }, { reason: 'SITE_REOPENED' });
+  });
+
+  it('une réouverture refusée par le quota (BLOCK) ne rouvre rien', async () => {
+    const site = seedSite();
+    await closeSiteTx(tx, TENANT, site.id, { closedByUserId: USER });
+    const { QuotaExceededError } = jest.requireActual('../../src/middleware/error-middleware');
+    mockLotRegistry.assertCapacityTx.mockRejectedValueOnce(
+      new QuotaExceededError({ capacityKey: 'CHANTIERS', limit: 2, used: 2, requested: 1 })
+    );
+    await expect(reopenSiteTx(tx, TENANT, site.id)).rejects.toMatchObject({ statusCode: 409 });
+    expect(store.sites.find(row => row.id === site.id)!.status).toBe('CLOSED');
+  });
+
+  it('la bascule au patrimoine est un transfert : PL:<lot> et P:<bien> dans le même appel', async () => {
+    const { lots } = await seedClosedSiteWithLots();
+    const capitalized = await capitalizeSiteLotTx(tx, TENANT, lots[0].id, BASCULE);
+    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenLastCalledWith(
+      tx,
+      TENANT,
+      { siteLotIds: [lots[0].id], propertyIds: [capitalized.propertyId] },
+      { reason: 'TRANSFERRED_TO_PROPERTY' }
+    );
   });
 });

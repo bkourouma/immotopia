@@ -90,6 +90,14 @@ const PUBLIC_ROUTES_WHITELIST: WhitelistEntry[] = [
       'dans le contexte de cette agence (checkout.ts, reconcileCheckoutPublic). Repond toujours 200 { received: true }.'
   },
   {
+    method: 'POST',
+    test: exact('/api/payment-gateway/paysecurehub/platform-ipn'),
+    reason:
+      "IPN du compte PaySecureHub d'ImmoTopia (factures d'abonnement, codes IMP-) : meme justification que l'IPN des " +
+      'loyers. Jamais crue : relance le rapprochement (platform-payment-service.ts, reconcilePlatformCheckoutPublic), ' +
+      "qui redemande le statut avec les identifiants d'ImmoTopia. Repond toujours 200 { received: true }."
+  },
+  {
     method: 'GET',
     test: exact('/api/payment-gateway/simulator/:codePaiement'),
     reason:
@@ -203,6 +211,27 @@ describe('Inventaire des routes — chaque route est cloisonnee ou explicitement
       );
     }
     expect(true).toBe(true);
+  });
+
+  it('declare les routes des factures PLATFORM (vague 3, lot A) avec leurs gardes', () => {
+    const expected: Array<[string, string, string | 'TENANT']> = [
+      ['GET', '/api/admin/tenants/:tenantId/platform-invoices', 'PLATFORM_INVOICES_VIEW'],
+      ['POST', '/api/admin/tenants/:tenantId/platform-invoices/generate', 'PLATFORM_INVOICES_CREATE'],
+      ['GET', '/api/admin/tenants/:tenantId/platform-invoices/:invoiceId', 'PLATFORM_INVOICES_VIEW'],
+      ['GET', '/api/admin/tenants/:tenantId/platform-invoices/:invoiceId/pdf', 'PLATFORM_INVOICES_VIEW'],
+      ['POST', '/api/admin/tenants/:tenantId/platform-invoices/:invoiceId/issue', 'PLATFORM_INVOICES_EDIT'],
+      ['POST', '/api/admin/tenants/:tenantId/platform-invoices/:invoiceId/mark-paid', 'PLATFORM_INVOICES_EDIT'],
+      ['POST', '/api/admin/tenants/:tenantId/platform-invoices/:invoiceId/credit-note', 'PLATFORM_INVOICES_EDIT'],
+      ['GET', '/api/tenants/:tenantId/subscription/invoices', 'TENANT'],
+      ['GET', '/api/tenants/:tenantId/subscription/invoices/:invoiceId', 'TENANT'],
+      ['GET', '/api/tenants/:tenantId/subscription/invoices/:invoiceId/pdf', 'TENANT']
+    ];
+    for (const [method, path, guard] of expected) {
+      const route = routes.find(r => r.method === method && r.path === path);
+      expect(route ? `${method} ${path}` : `ABSENTE : ${method} ${path}`).toBe(`${method} ${path}`);
+      if (guard === 'TENANT') expect(hasTenantOrPortalGuard(route!)).toBe(true);
+      else expect(hasPlatformPermission(route!)).toBe(guard);
+    }
   });
 
   it('chaque route hors liste blanche porte une garde d’agence ou une permission plateforme', () => {

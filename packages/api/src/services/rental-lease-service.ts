@@ -12,6 +12,7 @@ import {
 import { emailService } from './email-service';
 import { getEmailNotificationConfig } from './email-notification-config-service';
 import { updatePropertyStatus } from './property-status-service';
+import { syncLotActivationsTx } from './lot-registry-service';
 import { getTenantById } from './tenant-service';
 
 /**
@@ -225,8 +226,10 @@ export async function createLease(
     };
   }
 
-  // Create lease
-  const lease = await prisma.rentalLease.create({
+  // Create lease — un bail ACTIVE fait compter le logement (D1) : entree au
+  // registre des lots dans la meme transaction.
+  const lease = await prisma.$transaction(async tx => {
+  const createdLease = await tx.rentalLease.create({
     data: {
       tenant_id: tenantId,
       property_id: data.propertyId,
@@ -273,6 +276,9 @@ export async function createLease(
       deposit: true,
       documents: true
     }
+  });
+  await syncLotActivationsTx(tx, tenantId, { propertyIds: [data.propertyId] }, { actorUserId });
+  return createdLease;
   });
 
   logger.info('Rental lease created', {
@@ -1022,8 +1028,10 @@ export async function updateLeaseStatus(
     throw new Error(`Invalid status transition from ${existingLease.status} to ${newStatus}`);
   }
 
-  // Update status
-  const lease = await prisma.rentalLease.update({
+  // Update status — activation ou fin du bail : decompte du logement (D1)
+  // recalcule dans la meme transaction.
+  const lease = await prisma.$transaction(async tx => {
+  const updatedLease = await tx.rentalLease.update({
     where: {
       id: leaseId,
       tenant_id: tenantId
@@ -1050,6 +1058,12 @@ export async function updateLeaseStatus(
       deposit: true,
       documents: true
     }
+  });
+  await syncLotActivationsTx(tx, tenantId, { propertyIds: [existingLease.property_id] }, {
+    actorUserId,
+    reason: `LEASE_${newStatus}`
+  });
+  return updatedLease;
   });
 
   logger.info('Rental lease status updated', {
@@ -1328,11 +1342,16 @@ export async function deleteLease(tenantId: string, leaseId: string, actorUserId
 
   // Delete the lease (cascade will handle related items like co-renters, installments without payments, etc.)
   const propertyId = lease.property_id;
-  await prisma.rentalLease.delete({
-    where: {
-      id: leaseId,
-      tenant_id: tenantId
-    }
+  // Un bail ACTIVE supprime peut faire sortir le logement de la reserve de
+  // lots (D1) : recalcul dans la meme transaction.
+  await prisma.$transaction(async tx => {
+    await tx.rentalLease.delete({
+      where: {
+        id: leaseId,
+        tenant_id: tenantId
+      }
+    });
+    await syncLotActivationsTx(tx, tenantId, { propertyIds: [propertyId] }, { actorUserId, reason: 'LEASE_DELETED' });
   });
 
   logger.info('Rental lease deleted', {
