@@ -43,11 +43,26 @@ export type TenantPlanKey = 'BASIC' | 'PRO' | 'ELITE';
 export type TenantBillingCycle = 'MONTHLY' | 'ANNUAL';
 export type TenantModuleKey = 'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER';
 
-/** Corps de `POST /api/admin/tenants` — création d'agence en un clic (lot F). */
+/**
+ * Élément souscrit à la création (abonnements par packs, vague 2) : code du
+ * catalogue (`AGENCE`, `SYNDIC`, `PROMOTEUR`, `INTEGRE`, `EXT_LOTS_10`,
+ * `EXT_COPRO`, `EXT_CHANTIER`, `SETUP_<PACK>`) et quantité (1 par défaut côté API).
+ */
+export interface ProvisionTenantItem {
+  code: string;
+  quantity?: number;
+}
+
+/** Corps de `POST /api/admin/tenants` — création d'agence en un clic (lot F, puis packs en vague 2). */
 export interface ProvisionTenantPayload {
   name: string;
   adminFullName: string;
   adminEmail: string;
+  /**
+   * Format de référence (docs/architecture/PLAN-ABONNEMENTS.md §9) : packs et
+   * extensions du catalogue. Prioritaire sur `planKey`/`modules` quand fourni.
+   */
+  items?: ProvisionTenantItem[];
   planKey?: TenantPlanKey;
   billingCycle?: TenantBillingCycle;
   type?: 'AGENCY' | 'OPERATOR';
@@ -73,10 +88,14 @@ export interface ProvisionTenantResult {
   };
   modules: string[];
   subscription: {
-    planKey: string;
+    planKey: string | null;
     billingCycle: string;
     status: string;
     currentPeriodEnd: string;
+    /** Fin de l'essai d'un mois (D8), nul hors essai. */
+    trialEndsAt?: string | null;
+    /** Packs et extensions effectivement souscrits (vague 2). */
+    items?: ProvisionTenantItem[];
   };
   admin: {
     userId: string;

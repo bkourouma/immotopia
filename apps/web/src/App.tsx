@@ -424,6 +424,12 @@ const AgencyFinanceSettings = lazy(() =>
     default: m.AgencyFinanceSettings
   }))
 );
+// Abonnements par packs (vague 2, lot C) : consultation seule pour l'agence.
+const TenantSubscriptionSettings = lazy(() =>
+  import(/* webpackChunkName: "tenant" */ './pages/tenant/TenantSubscriptionSettings').then(m => ({
+    default: m.TenantSubscriptionSettings
+  }))
+);
 // CRM pages
 const Contacts = lazy(() =>
   import(/* webpackChunkName: "crm" */ './pages/crm/Contacts').then(m => ({ default: m.Contacts }))
@@ -855,6 +861,7 @@ function App() {
                           <Route path="/tenant/:tenantId/invitations" element={<InvitationsList />} />
                           <Route path="/tenant/:tenantId/settings" element={<TenantSettings />} />
                           <Route path="/tenant/:tenantId/settings/finance" element={<AgencyFinanceSettings />} />
+                          <Route path="/tenant/:tenantId/settings/abonnement" element={<TenantSubscriptionSettings />} />
                           <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
                           <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
                           <Route path="/tenant/:tenantId/crm/contacts/new" element={<ContactFormPage />} />

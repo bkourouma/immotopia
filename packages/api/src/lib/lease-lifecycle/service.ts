@@ -12,6 +12,7 @@ import {
   compteLocataireDuBailTx,
   recalculateInstallmentStatuses
 } from '../../services/rental-installment-service';
+import { syncLotActivationsTx } from '../../services/lot-registry-service';
 
 /**
  * Vie d'un bail : révision du loyer, renouvellement, avenant, résiliation, et
@@ -364,6 +365,13 @@ export async function renewLease(tenantId: string, leaseId: string, body: unknow
         service_charge_amount: new Prisma.Decimal(charges)
       }
     });
+    // Un bail termine qui repart redevient ACTIVE : le logement recompte (D1).
+    if (lease.status === RentalLeaseStatus.ENDED) {
+      await syncLotActivationsTx(tx, tenantId, { propertyIds: [updatedLease.property_id] }, {
+        actorUserId: actorUserId ?? null,
+        reason: 'LEASE_RENEWED'
+      });
+    }
 
     // Échéances de la nouvelle période, au loyer en vigueur, sans doublon.
     let created = 0;
@@ -552,6 +560,13 @@ export async function terminateLease(tenantId: string, leaseId: string, body: un
         status: endedNow ? RentalLeaseStatus.ENDED : undefined
       }
     });
+    // Fin de bail effective : le logement ne compte plus s'il n'est plus propose a la location (D1).
+    if (endedNow) {
+      await syncLotActivationsTx(tx, tenantId, { propertyIds: [lease.property_id] }, {
+        actorUserId: actorUserId ?? null,
+        reason: 'LEASE_ENDED'
+      });
+    }
 
     return tx.leaseEvent.create({
       data: {

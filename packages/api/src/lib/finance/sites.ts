@@ -48,6 +48,7 @@ import type {
   SiteAllocationLine,
   SiteDetail
 } from './types-lot2';
+import { assertCapacityTx } from '../../services/lot-registry-service';
 
 /** Devise unique de ce lot (`data-model.md`, Overview) : jamais stockée par chantier. */
 const CURRENCY = 'XOF';
@@ -336,16 +337,21 @@ export const createConstructionSite: CreateConstructionSite = async (tenantId, p
   // plutôt que de rejeter une création par ailleurs valide. Hypothèse prise
   // faute d'arbitrage disponible sur ce point précis — voir le rapport de fin
   // de tâche.
-  const row = await prisma.constructionSite.create({
-    data: {
-      tenantId,
-      name,
-      zone: params.zone?.trim() || '',
-      propertyId: params.propertyId ?? null,
-      managerId: params.managerId ?? null,
-      startDate: params.startDate ?? new Date(),
-      plannedEndDate: params.plannedEndDate ?? null
-    }
+  // Un chantier PLANNED est actif (D14) : il consomme la capacite CHANTIERS,
+  // controlee sous le verrou d'agence dans la transaction de la creation.
+  const row = await prisma.$transaction(async tx => {
+    await assertCapacityTx(tx, tenantId, 'CHANTIERS');
+    return tx.constructionSite.create({
+      data: {
+        tenantId,
+        name,
+        zone: params.zone?.trim() || '',
+        propertyId: params.propertyId ?? null,
+        managerId: params.managerId ?? null,
+        startDate: params.startDate ?? new Date(),
+        plannedEndDate: params.plannedEndDate ?? null
+      }
+    });
   });
 
   // Un chantier qui vient de naître n'a encore aucune imputation : inutile

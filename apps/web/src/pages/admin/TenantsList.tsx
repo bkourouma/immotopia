@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Card, Space, Typography, Button, Input, Select, Alert, Spin, Empty, Table, Tag } from 'antd';
+import { Card, Space, Typography, Button, Input, Select, Alert, Spin, Empty, Table, Tag, Checkbox, Progress } from 'antd';
 import {
   PlusOutlined,
   SearchOutlined,
@@ -11,11 +11,28 @@ import {
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { listTenants, Tenant, TenantFilters, type ProvisionTenantResult } from '../../services/tenant-service';
+import { listCatalog, getTenantEntitlements, type CatalogEntry, type TenantEntitlements } from '../../services/subscription-v2-service';
 import { CreateTenantDrawer } from '../../components/admin/CreateTenantDrawer';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
+
+/** Seuil « proche de la limite » (jauges de consommation, vague 2). */
+const NEAR_LIMIT_THRESHOLD = 0.8;
+
+function lotsUsagePercent(entitlements: TenantEntitlements | undefined): number | null {
+  const lots = entitlements?.capacities.LOTS;
+  if (!lots || lots.limit <= 0) return lots && lots.used > 0 ? 100 : null;
+  return Math.round((lots.used / lots.limit) * 100);
+}
+
+function isNearLimit(entitlements: TenantEntitlements | undefined): boolean {
+  if (!entitlements) return false;
+  return (Object.values(entitlements.capacities) as TenantEntitlements['capacities'][keyof TenantEntitlements['capacities']][]).some(
+    c => c.limit > 0 && c.used / c.limit >= NEAR_LIMIT_THRESHOLD
+  );
+}
 
 const statusOptions = [
   { value: '', label: t('Tous les statuts') },
@@ -55,6 +72,20 @@ export const TenantsList: React.FC = () => {
   // redirige ici plutôt que de dupliquer le formulaire).
   const [createOpen, setCreateOpen] = useState(Boolean((location.state as { openCreate?: boolean } | null)?.openCreate));
 
+  // Packs, % de lots utilisés et prochaine échéance (vague 2, lot C) : le
+  // catalogue est global (chargé une fois), les droits par agence n'ont pas
+  // de route de liste groupée dans la vague 1 — chargés agence par agence
+  // pour la page affichée (`Promise.allSettled`, une agence en échec
+  // n'empêche pas les autres). Une route `GET /admin/tenants` enrichie de
+  // ce résumé éviterait ce N+1 : à envisager pour une prochaine vague.
+  const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
+  const [entitlementsByTenant, setEntitlementsByTenant] = useState<Record<string, TenantEntitlements>>({});
+  const [nearLimitOnly, setNearLimitOnly] = useState(false);
+
+  useEffect(() => {
+    listCatalog().then(setCatalog).catch(() => setCatalog([]));
+  }, []);
+
   useEffect(() => {
     loadTenants();
   }, [filters]);
@@ -77,7 +108,8 @@ export const TenantsList: React.FC = () => {
         search: searchTerm || undefined
       });
       if (response.success && response.data) {
-        setTenants(response.data.tenants || []);
+        const list = response.data.tenants || [];
+        setTenants(list);
         setPagination(
           response.data.pagination || {
             page: 1,
@@ -86,6 +118,12 @@ export const TenantsList: React.FC = () => {
             totalPages: 0
           }
         );
+        const settled = await Promise.allSettled(list.map(tenant => getTenantEntitlements(tenant.id)));
+        const map: Record<string, TenantEntitlements> = {};
+        settled.forEach((outcome, index) => {
+          if (outcome.status === 'fulfilled') map[list[index].id] = outcome.value;
+        });
+        setEntitlementsByTenant(map);
       } else {
         setError(t('Erreur lors du chargement des tenants'));
         setTenants([]);
@@ -109,6 +147,8 @@ export const TenantsList: React.FC = () => {
     setFilters({ ...filters, page: 1, status });
   };
 
+  const filteredTenants = nearLimitOnly ? tenants.filter(tenant => isNearLimit(entitlementsByTenant[tenant.id])) : tenants;
+
   const columns: ColumnsType<Tenant> = [
     {
       title: t('Nom'),
@@ -121,13 +161,13 @@ export const TenantsList: React.FC = () => {
               width: 40,
               height: 40,
               borderRadius: '50%',
-              background: '#e6f4ff',
+              background: 'var(--color-primary-bg)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
             }}
           >
-            <BankOutlined style={{ fontSize: 20, color: '#1677ff' }} />
+            <BankOutlined style={{ fontSize: 20, color: 'var(--color-primary)' }} />
           </div>
           <div>
             <Text strong>{record.name}</Text>
@@ -144,6 +184,47 @@ export const TenantsList: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => getStatusTag(status)
+    },
+    {
+      title: t('Packs'),
+      key: 'packs',
+      render: (_, record) => {
+        const entitlements = entitlementsByTenant[record.id];
+        if (!entitlements) return <Text type="secondary">—</Text>;
+        if (entitlements.packs.length === 0) return <Text type="secondary">{t('Aucun')}</Text>;
+        return (
+          <Space size={4} wrap>
+            {entitlements.packs.map(code => (
+              <Tag key={code}>{catalog.find(c => c.code === code)?.name ?? code}</Tag>
+            ))}
+          </Space>
+        );
+      }
+    },
+    {
+      title: t('% de lots utilisés'),
+      key: 'lotsUsage',
+      render: (_, record) => {
+        const percent = lotsUsagePercent(entitlementsByTenant[record.id]);
+        if (percent === null) return <Text type="secondary">—</Text>;
+        return (
+          <Progress
+            percent={Math.min(100, percent)}
+            size="small"
+            status={percent >= 100 ? 'exception' : 'normal'}
+            strokeColor={percent >= 100 ? 'var(--color-error-text)' : percent >= 80 ? 'var(--color-warning-text)' : 'var(--color-success-text)'}
+            style={{ minWidth: 120 }}
+          />
+        );
+      }
+    },
+    {
+      title: t('Prochaine échéance'),
+      key: 'nextDue',
+      render: (_, record) => {
+        const date = entitlementsByTenant[record.id]?.currentPeriodEnd;
+        return date ? new Date(date).toLocaleDateString(activeLocale()) : '—';
+      }
     },
     {
       title: t('Email'),
@@ -229,6 +310,9 @@ export const TenantsList: React.FC = () => {
               <Button type="primary" htmlType="submit" icon={<FilterOutlined />}>
                 {t('Filtrer')}
               </Button>
+              <Checkbox checked={nearLimitOnly} onChange={e => setNearLimitOnly(e.target.checked)}>
+                {t('Proche de la limite')}
+              </Checkbox>
             </Space>
           </form>
         </Card>
@@ -248,13 +332,16 @@ export const TenantsList: React.FC = () => {
         {/* Table */}
         <Card>
           <Spin spinning={loading}>
-            {!loading && (!tenants || tenants.length === 0) ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('Aucune agence trouvée')} />
+            {!loading && (!filteredTenants || filteredTenants.length === 0) ? (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={nearLimitOnly ? t('Aucune agence proche de la limite sur cette page') : t('Aucune agence trouvée')}
+              />
             ) : (
               <Table
                 rowKey="id"
                 columns={columns}
-                dataSource={tenants}
+                dataSource={filteredTenants}
                 scroll={{ x: 'max-content' }}
                 pagination={{
                   current: pagination.page,

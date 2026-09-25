@@ -24,6 +24,7 @@
 import { LotKind, Prisma, PropertyStatus } from '@prisma/client';
 import { prisma, PrismaTransactionClient } from '../utils/database';
 import { BadRequestError } from '../middleware/error-middleware';
+import { checkQuota, QuotaEvaluation } from '../lib/subscription';
 
 type Db = PrismaTransactionClient | typeof prisma;
 
@@ -60,10 +61,16 @@ const KIND_PRIORITY: Record<LotKind, number> = { RENTAL_UNIT: 0, COPRO_LOT: 1, P
  * Unites qui DEVRAIENT compter aujourd'hui pour l'agence, calculees depuis les
  * tables metier (D1, D2, D14), dedoublonnees par cle d'unite.
  */
-export async function computeQualifyingUnits(db: Db, tenantId: string): Promise<LotUnitRef[]> {
+export async function computeQualifyingUnits(db: Db, tenantId: string, scope?: ResolvedLotScope): Promise<LotUnitRef[]> {
+  // Perimetre (appel au fil de l'eau) : seulement les unites touchees, mais
+  // TOUS les titres de chacune (un bien peut etre logement ET lot de copropriete).
+  const propertyScope = scope ? { id: { in: scope.propertyIds } } : {};
+  const coproScope = scope ? { OR: [{ id: { in: scope.syndicateLotIds } }, { propertyId: { in: scope.propertyIds } }] } : {};
+  const programScope = scope ? { OR: [{ id: { in: scope.siteLotIds } }, { propertyId: { in: scope.propertyIds } }] } : {};
   const [properties, coproLots, programLots] = await Promise.all([
     db.property.findMany({
       where: {
+        ...propertyScope,
         OR: [
           { tenantId },
           // Bien CLIENT (tenantId nul) gere par l'agence : mandat actif ou bail de l'agence.
@@ -82,13 +89,14 @@ export async function computeQualifyingUnits(db: Db, tenantId: string): Promise<
     }),
     db.syndicateLot.findMany({
       where: {
+        ...coproScope,
         syndicate: { tenantId, status: { in: [...ACTIVE_SYNDICATE_STATUSES] } },
         lotType: { in: [...MAIN_COPRO_LOT_TYPES] }
       },
       select: { id: true, propertyId: true }
     }),
     db.siteLot.findMany({
-      where: { tenantId, site: { tenantId, status: { in: [...ACTIVE_SITE_STATUSES] } } },
+      where: { ...programScope, tenantId, site: { tenantId, status: { in: [...ACTIVE_SITE_STATUSES] } } },
       select: { id: true, propertyId: true }
     })
   ]);
@@ -297,3 +305,198 @@ export async function reconcileLotActivations(
 
   return { tenantId, qualifying: qualifying.length, added, removed, byKind };
 }
+
+// ------------------------------------------------------------------ au fil de l'eau (vague 2)
+
+/**
+ * Unites touchees par une operation metier. Le registre recalcule ces seules
+ * unites (tous leurs titres) et ouvre ou ferme leurs activations.
+ */
+export interface LotScope {
+  propertyIds?: Array<string | null | undefined>;
+  syndicateIds?: string[];
+  syndicateLotIds?: string[];
+  siteIds?: string[];
+  siteLotIds?: string[];
+}
+
+export interface ResolvedLotScope {
+  propertyIds: string[];
+  syndicateLotIds: string[];
+  siteLotIds: string[];
+}
+
+const compact = (values: Array<string | null | undefined> | undefined): string[] =>
+  [...new Set((values ?? []).filter((v): v is string => typeof v === 'string' && v.length > 0))];
+
+/**
+ * Deplie un perimetre : lots des coproprietes et chantiers cites, biens de
+ * ces lots, lots rattaches aux biens, et immeuble parent (un immeuble cesse
+ * de compter des qu'il est decoupe, et recompte quand il ne l'est plus).
+ */
+export async function resolveLotScope(db: Db, tenantId: string, scope: LotScope): Promise<ResolvedLotScope> {
+  const propertyIds = new Set(compact(scope.propertyIds));
+  const syndicateLotIds = new Set(compact(scope.syndicateLotIds));
+  const siteLotIds = new Set(compact(scope.siteLotIds));
+  const syndicateIds = compact(scope.syndicateIds);
+  const siteIds = compact(scope.siteIds);
+
+  const [coproLots, programLots] = await Promise.all([
+    syndicateIds.length > 0 || syndicateLotIds.size > 0 || propertyIds.size > 0
+      ? db.syndicateLot.findMany({
+          where: {
+            syndicate: { tenantId },
+            OR: [
+              { syndicateId: { in: syndicateIds } },
+              { id: { in: [...syndicateLotIds] } },
+              { propertyId: { in: [...propertyIds] } }
+            ]
+          },
+          select: { id: true, propertyId: true }
+        })
+      : Promise.resolve([] as Array<{ id: string; propertyId: string | null }>),
+    siteIds.length > 0 || siteLotIds.size > 0 || propertyIds.size > 0
+      ? db.siteLot.findMany({
+          where: {
+            tenantId,
+            OR: [{ siteId: { in: siteIds } }, { id: { in: [...siteLotIds] } }, { propertyId: { in: [...propertyIds] } }]
+          },
+          select: { id: true, propertyId: true }
+        })
+      : Promise.resolve([] as Array<{ id: string; propertyId: string | null }>)
+  ]);
+  for (const lot of coproLots) {
+    syndicateLotIds.add(lot.id);
+    if (lot.propertyId) propertyIds.add(lot.propertyId);
+  }
+  for (const lot of programLots) {
+    siteLotIds.add(lot.id);
+    if (lot.propertyId) propertyIds.add(lot.propertyId);
+  }
+  if (propertyIds.size > 0) {
+    const parents = await db.property.findMany({
+      where: { id: { in: [...propertyIds] }, containerParentId: { not: null } },
+      select: { containerParentId: true }
+    });
+    for (const p of parents) if (p.containerParentId) propertyIds.add(p.containerParentId);
+  }
+  return { propertyIds: [...propertyIds], syndicateLotIds: [...syndicateLotIds], siteLotIds: [...siteLotIds] };
+}
+
+/**
+ * Verrou transactionnel PAR AGENCE contre les activations simultanees : deux
+ * operations qui ajoutent des lots en meme temps se serialisent, si bien que
+ * le controle de quota voit toujours la consommation a jour. Cle distincte
+ * du verrou de caisse (lib/finance/cash.ts), qui prend hashtext(tenantId).
+ */
+export async function lockTenantLotsTx(tx: Db, tenantId: string): Promise<void> {
+  const key = `lot-registry:${tenantId}`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
+}
+
+export interface LotSyncOptions {
+  actorUserId?: string | null;
+  /** Raison portee par les activations fermees (ex. PROPERTY_ARCHIVED). */
+  reason?: string;
+  /** Verrou deja pris par l'appelant (import par lots). */
+  alreadyLocked?: boolean;
+}
+
+export interface LotSyncResult {
+  activated: string[];
+  deactivated: string[];
+  /** Evaluation du quota LOTS (null quand rien n'est ajoute). */
+  quota: QuotaEvaluation | null;
+}
+
+/**
+ * Aligne le registre sur les tables metier pour les unites d'un perimetre,
+ * DANS la transaction de l'operation. Ordre : verrou d'agence, calcul,
+ * controle de quota sur l'ajout NET (une bascule PL: -> P: ne consomme rien),
+ * fermetures puis ouvertures.
+ *
+ * Le registre est TOUJOURS tenu, quel que soit SUBSCRIPTION_ENFORCEMENT ;
+ * seul le refus en depend (`checkQuota`) : en `enforce` avec la politique
+ * BLOCK, un depassement leve QuotaExceededError (409) et annule l'operation ;
+ * BILL_OVERAGE passe (le depassement sera facture), WARN_ONLY passe (alerte
+ * par la tache subscription-usage-job).
+ */
+export async function syncLotActivationsTx(
+  tx: Db,
+  tenantId: string,
+  scope: LotScope,
+  options: LotSyncOptions = {}
+): Promise<LotSyncResult> {
+  if (!options.alreadyLocked) await lockTenantLotsTx(tx, tenantId);
+  const resolved = await resolveLotScope(tx, tenantId, scope);
+  if (resolved.propertyIds.length + resolved.syndicateLotIds.length + resolved.siteLotIds.length === 0) {
+    return { activated: [], deactivated: [], quota: null };
+  }
+
+  const desired = await computeQualifyingUnits(tx, tenantId, resolved);
+  const scopeKeys = [
+    ...resolved.propertyIds.map(id => `P:${id}`),
+    ...resolved.syndicateLotIds.map(id => `SL:${id}`),
+    ...resolved.siteLotIds.map(id => `PL:${id}`)
+  ];
+  const open = await tx.lotActivation.findMany({
+    where: {
+      tenantId,
+      deactivatedAt: null,
+      OR: [
+        { unitKey: { in: scopeKeys } },
+        { propertyId: { in: resolved.propertyIds } },
+        { syndicateLotId: { in: resolved.syndicateLotIds } },
+        { siteLotId: { in: resolved.siteLotIds } }
+      ]
+    },
+    select: { unitKey: true }
+  });
+  const openKeys = new Set(open.map(a => a.unitKey));
+  const desiredKeys = new Set(desired.map(u => u.unitKey));
+  const toAdd = desired.filter(u => !openKeys.has(u.unitKey));
+  const toRemove = [...openKeys].filter(key => !desiredKeys.has(key));
+
+  let quota: QuotaEvaluation | null = null;
+  if (toAdd.length > 0) {
+    const { getEntitlements } = await import('./subscription-v2-service');
+    const entitlements = await getEntitlements(tenantId, { db: tx });
+    quota = checkQuota(entitlements, 'LOTS', toAdd.length - toRemove.length);
+  }
+
+  const at = new Date();
+  for (const unitKey of toRemove) {
+    // eslint-disable-next-line no-await-in-loop -- sequentiel dans la meme transaction.
+    await deactivateLotTx(tx, tenantId, unitKey, options.reason ?? 'NO_LONGER_QUALIFIES', at);
+  }
+  for (const unit of toAdd) {
+    // eslint-disable-next-line no-await-in-loop -- sequentiel dans la meme transaction.
+    await activateLotTx(tx, tenantId, unit, options.actorUserId ?? null);
+  }
+  if (toAdd.length > 0 || toRemove.length > 0) {
+    const { invalidateEntitlements } = await import('./subscription-v2-service');
+    invalidateEntitlements(tenantId);
+  }
+  return { activated: toAdd.map(u => u.unitKey), deactivated: toRemove, quota };
+}
+
+/**
+ * Controle de quota d'une copropriete ou d'un chantier qui devient actif
+ * (creation, reouverture, D14), sous le verrou d'agence. Memes politiques que
+ * les lots : BLOCK (enforce) leve QuotaExceededError, sinon passe.
+ */
+export async function assertCapacityTx(
+  tx: Db,
+  tenantId: string,
+  capacityKey: 'COPROPRIETES' | 'CHANTIERS',
+  increment = 1
+): Promise<QuotaEvaluation> {
+  await lockTenantLotsTx(tx, tenantId);
+  const { getEntitlements, invalidateEntitlements } = await import('./subscription-v2-service');
+  const evaluation = checkQuota(await getEntitlements(tenantId, { db: tx }), capacityKey, increment);
+  invalidateEntitlements(tenantId);
+  return evaluation;
+}
+
+/** Raison d'une ligne d'import ecartee faute de place (cle de traduction). */
+export const LOT_QUOTA_REACHED_REASON = 'Quota de lots atteint';

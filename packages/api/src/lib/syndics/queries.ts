@@ -9,6 +9,17 @@ import { prisma, type PrismaTransactionClient } from '../../utils/database';
 // Grand livre partage avec les futurs comptes de tiers (decision D1, lot 1) :
 // extrait de ce fichier vers lib/finance/ledger.ts, sans changement de comportement.
 import { appendOwnerAccountTransactionTx, supportsOwnerAccount, type OwnerAccountTxClient } from '../finance/ledger';
+import { QuotaExceededError } from '../../middleware/error-middleware';
+import { t } from '../../i18n';
+import {
+  ACTIVE_SYNDICATE_STATUSES,
+  assertCapacityTx,
+  LOT_QUOTA_REACHED_REASON,
+  resolveLotScope,
+  syncLotActivationsTx
+} from '../../services/lot-registry-service';
+
+const isCountedSyndicateStatus = (status: string) => (ACTIVE_SYNDICATE_STATUSES as readonly string[]).includes(status);
 
 export type PaginationInput = {
   page?: number;
@@ -348,7 +359,11 @@ export async function createSyndicateWithDefaults(
     }
   }
 
-  return prisma.syndicate.create({
+  // Une copropriete ACTIVE consomme la capacite COPROPRIETES (D14) : controle
+  // sous le verrou d'agence, dans la transaction de la creation.
+  return prisma.$transaction(async tx => {
+    await assertCapacityTx(tx, tenantId, 'COPROPRIETES');
+    return tx.syndicate.create({
     data: {
       propertyId: data.propertyId ?? undefined,
       name: data.name,
@@ -361,6 +376,7 @@ export async function createSyndicateWithDefaults(
       totalBuildings: data.totalBuildings ?? 1,
       tenantId
     }
+    });
   });
 }
 
@@ -386,7 +402,7 @@ export async function updateSyndicateByTenant(
       id: syndicateId,
       tenantId
     },
-    select: { id: true }
+    select: { id: true, status: true }
   });
 
   if (!existing) {
@@ -416,9 +432,26 @@ export async function updateSyndicateByTenant(
     }
   }
 
-  return prisma.syndicate.update({
-    where: { id: syndicateId, tenantId },
-    data
+  const statusChanges = data.status !== undefined && data.status !== existing.status;
+  if (!statusChanges) {
+    return prisma.syndicate.update({
+      where: { id: syndicateId, tenantId },
+      data
+    });
+  }
+
+  // Changement de statut : la copropriete et ses lots principaux entrent dans
+  // la reserve (ACTIVE, IN_DISPUTE) ou en sortent (IN_LIQUIDATION), D2/D14.
+  return prisma.$transaction(async tx => {
+    if (!isCountedSyndicateStatus(existing.status) && isCountedSyndicateStatus(data.status as string)) {
+      await assertCapacityTx(tx, tenantId, 'COPROPRIETES');
+    }
+    const updated = await tx.syndicate.update({
+      where: { id: syndicateId, tenantId },
+      data
+    });
+    await syncLotActivationsTx(tx, tenantId, { syndicateIds: [syndicateId] }, { reason: `SYNDICATE_${data.status}` });
+    return updated;
   });
 }
 
@@ -435,8 +468,15 @@ export async function archiveSyndicateByTenant(tenantId: string, syndicateId: st
     throw notFound('Copropriete introuvable ou inaccessible');
   }
 
-  return prisma.syndicate.delete({
-    where: { id: syndicateId, tenantId }
+  // Suppression : ses lots (supprimes en cascade) sortent du registre dans la
+  // meme transaction ; le perimetre est releve AVANT la suppression.
+  return prisma.$transaction(async tx => {
+    const scope = await resolveLotScope(tx, tenantId, { syndicateIds: [syndicateId] });
+    const deleted = await tx.syndicate.delete({
+      where: { id: syndicateId, tenantId }
+    });
+    await syncLotActivationsTx(tx, tenantId, scope, { reason: 'SYNDICATE_DELETED' });
+    return deleted;
   });
 }
 
@@ -507,6 +547,8 @@ export async function createSyndicateLot(
     });
 
     await syncSyndicateLotCount(tx, tenantId, data.syndicateId);
+    // Lot principal d'une copropriete active : compte dans la reserve (D2).
+    await syncLotActivationsTx(tx, tenantId, { syndicateLotIds: [lot.id] });
 
     return lot;
   });
@@ -743,12 +785,19 @@ export async function importLotsFromPropertiesBySyndicate(
       ? ownerContactByEmail.get(property.owner.email.trim().toLowerCase()) || null
       : null;
 
-    const lot = await prisma.$transaction(async tx => {
+    // Une transaction par ligne : en `enforce` avec la politique BLOCK, la
+    // ligne qui depasserait la reserve de lots est annulee et ecartee
+    // (« Quota de lots atteint ») ; les suivantes qui ne consomment rien
+    // (parking, bien deja compte) passent encore. BILL_OVERAGE / WARN_ONLY :
+    // tout passe.
+    let lot: { id: string };
+    try {
+    lot = await prisma.$transaction(async tx => {
       if (ownerContactId) {
         await ensureCrmRoleForContact(tx, tenantId, ownerContactId, 'COOWNER');
       }
 
-      return tx.syndicateLot.create({
+      const createdLot = await tx.syndicateLot.create({
         data: {
           syndicateId,
           propertyId: property.id,
@@ -763,7 +812,14 @@ export async function importLotsFromPropertiesBySyndicate(
           id: true
         }
       });
+      await syncLotActivationsTx(tx, tenantId, { syndicateLotIds: [createdLot.id] });
+      return createdLot;
     });
+    } catch (error) {
+      if (!(error instanceof QuotaExceededError)) throw error;
+      skipped.push({ propertyId: property.id, reason: t(LOT_QUOTA_REACHED_REASON) });
+      continue;
+    }
 
     created.push({
       lotId: lot.id,
@@ -805,7 +861,7 @@ export async function updateSyndicateLotByTenant(
 ) {
   const existing = await prisma.syndicateLot.findFirst({
     where: { id: lotId, syndicateId, syndicate: { tenantId } },
-    select: { id: true }
+    select: { id: true, propertyId: true }
   });
 
   if (!existing) {
@@ -827,7 +883,7 @@ export async function updateSyndicateLotByTenant(
       await ensureCrmRoleForContact(tx, tenantId, data.coownerId, 'COOWNER');
     }
 
-    return tx.syndicateLot.update({
+    const updatedLot = await tx.syndicateLot.update({
       where: { id: lotId },
       data: {
         ...(Object.prototype.hasOwnProperty.call(data, 'propertyId') ? { propertyId: data.propertyId ?? null } : {}),
@@ -844,6 +900,14 @@ export async function updateSyndicateLotByTenant(
           : {})
       }
     });
+    // Type de lot ou bien rattache modifies : le lot entre, sort ou change de cle (D2).
+    if (data.lotType !== undefined || Object.prototype.hasOwnProperty.call(data, 'propertyId')) {
+      await syncLotActivationsTx(tx, tenantId, {
+        syndicateLotIds: [lotId],
+        propertyIds: [existing.propertyId, updatedLot.propertyId]
+      });
+    }
+    return updatedLot;
   });
 }
 

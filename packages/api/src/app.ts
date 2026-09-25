@@ -66,6 +66,7 @@ import { errorHandler } from './middleware/error-middleware';
 import { compressionMiddleware } from './middleware/compression-middleware';
 import { uploadsAccessGuard } from './middleware/uploads-access-middleware';
 import { globalApiRateLimiter } from './middleware/rate-limit-middleware';
+import { subscriptionRouteGuard } from './middleware/subscription-feature-middleware';
 import helmet from 'helmet';
 
 /**
@@ -195,6 +196,11 @@ app.use('/api/auth', authRoutes);
 // so it has to be mounted before them or the whole back-office answers 400.
 app.use('/api/admin', adminRoutes);
 app.use('/api/roles', roleRoutes);
+// Abonnement (vague 2) : fonctionnalite requise par chaque route d'agence,
+// d'apres lib/subscription/route-features.ts. Monte AVEC son chemin et AVANT
+// tout routeur qui sert /api/tenants/:tenantId/... ; les webhooks, l'IPN,
+// les portails, l'auth et /api/admin ne passent pas par ce prefixe.
+app.use('/api/tenants/:tenantId', subscriptionRouteGuard);
 app.use('/api/tenants', tenantRoutes);
 app.use('/api/tenants', dashboardRoutes); // Generic tenant dashboard figures
 app.use('/api/tenants', crmRoutes); // CRM routes are tenant-scoped

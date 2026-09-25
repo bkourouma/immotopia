@@ -2,6 +2,7 @@ import { PropertyAvailability, PropertyStatus } from '@prisma/client';
 import type { PrismaTransactionClient } from '../../utils/database';
 import { validateStatusTransition } from '../../services/property-status-service';
 import { conflict } from '../errors';
+import { syncLotActivationsTx } from '../../services/lot-registry-service';
 
 /**
  * Variante transactionnelle de `updatePropertyStatus`
@@ -73,5 +74,11 @@ export async function setPropertyStatusTx(
       changedByUserId: params.actorUserId,
       notes: params.notes || null
     }
+  });
+
+  // Vente conclue (SOLD) ou retour en stock : decompte des lots (D1), meme transaction.
+  await syncLotActivationsTx(tx, params.tenantId, { propertyIds: [property.id] }, {
+    actorUserId: params.actorUserId,
+    reason: `PROPERTY_${params.newStatus}`
   });
 }

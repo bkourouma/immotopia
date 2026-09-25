@@ -5,6 +5,7 @@ import { PROPERTY_ENTITY_TYPES } from '../types/audit-types';
 import { AuditActionKey } from '../types/audit-types';
 import { PropertyStatus, PropertyOwnershipType, PropertyAvailability } from '@prisma/client';
 import { getPropertyById } from './property-service';
+import { syncLotActivationsTx } from './lot-registry-service';
 
 /**
  * Valid status transitions
@@ -131,9 +132,21 @@ export async function updatePropertyStatus(
     updateData.availability = PropertyAvailability.AVAILABLE;
   }
 
-  const updated = await prisma.property.update({
-    where: { id: propertyId },
-    data: updateData
+  // Sortie de brouillon, archivage, vente : le decompte des lots de
+  // l'abonnement (D1) suit dans la meme transaction.
+  const lotTenantId = tenantId || property.tenantId || null;
+  const updated = await prisma.$transaction(async tx => {
+    const row = await tx.property.update({
+      where: { id: propertyId },
+      data: updateData
+    });
+    if (lotTenantId) {
+      await syncLotActivationsTx(tx, lotTenantId, { propertyIds: [propertyId] }, {
+        actorUserId: actorUserId ?? userId ?? null,
+        reason: `PROPERTY_${newStatus}`
+      });
+    }
+    return row;
   });
 
   // Record status history (immutable)
