@@ -11,18 +11,6 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-/** Dédoublonne par agence, en gardant l'ordre d'apparition (le plus récent d'abord, `my-memberships` trie déjà ainsi). */
-function dedupeTenants(tenants: Array<{ id: string; name: string; slug: string } | undefined>): AvailableTenant[] {
-  const seen = new Set<string>();
-  const result: AvailableTenant[] = [];
-  for (const tenant of tenants) {
-    if (!tenant?.id || seen.has(tenant.id)) continue;
-    seen.add(tenant.id);
-    result.push({ id: tenant.id, name: tenant.name, slug: tenant.slug || tenant.id });
-  }
-  return result;
-}
-
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -40,6 +28,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
    * resynchronisation.
    */
   const rawMembershipsRef = useRef<{ asMember: any[]; asClient: any[] }>({ asMember: [], asClient: [] });
+
+  /**
+   * Référence vers `utils/tenant-selection.ts` une fois chargé — posée par
+   * `refreshMembership`, relue par `switchTenant` pour rester synchrone : pas
+   * de second `import()` à attendre. `switchTenant` n'est jamais proposé à
+   * l'utilisateur avant qu'un premier `refreshMembership` ait chargé ce
+   * module — sans lui, `availableTenants` resterait vide et `<TenantSwitcher>`
+   * ne rendrait rien.
+   */
+  const tenantSelectionRef = useRef<typeof import('../utils/tenant-selection') | null>(null);
 
   // Fetch tenant membership and client status
   const refreshMembership = async (): Promise<void> => {
@@ -66,63 +64,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // appartient toujours.
         const storedTenantId = getStoredActiveTenantId();
 
-        // Tenant clients: prioritize OWNER/RENTER profiles for portal routing.
-        const portalCandidates = asClient.filter(
-          (client: any) => client?.clientType === 'OWNER' || client?.clientType === 'RENTER'
-        );
-        const prioritizedClient =
-          (storedTenantId && portalCandidates.find((client: any) => client?.tenant?.id === storedTenantId)) ||
-          portalCandidates[0] ||
-          asClient[0];
-
-        if (prioritizedClient?.tenant?.id && prioritizedClient?.clientType) {
-          setTenantClient({
-            id: prioritizedClient.id,
-            tenantId: prioritizedClient.tenant.id,
-            clientType: prioritizedClient.clientType as 'OWNER' | 'RENTER' | 'BUYER' | 'CO_OWNER',
-            tenant: {
-              id: prioritizedClient.tenant.id,
-              name: prioritizedClient.tenant.name,
-              slug: prioritizedClient.tenant.slug || prioritizedClient.tenant.id
-            }
-          });
-        } else {
-          setTenantClient(null);
-        }
-
-        // Tenant collaborators: prefer ACTIVE membership first.
-        const activeMembers = asMember.filter((membership: any) => membership?.status === 'ACTIVE');
-        const prioritizedMembership =
-          (storedTenantId && activeMembers.find((membership: any) => membership?.tenant?.id === storedTenantId)) ||
-          activeMembers[0] ||
-          asMember[0];
-
-        if (prioritizedMembership?.tenant?.id) {
-          setTenantMembership({
-            id: prioritizedMembership.id,
-            tenantId: prioritizedMembership.tenant.id,
-            tenant: {
-              id: prioritizedMembership.tenant.id,
-              name: prioritizedMembership.tenant.name,
-              slug: prioritizedMembership.tenant.slug || prioritizedMembership.tenant.id
-            },
-            status: prioritizedMembership.status
-          });
-        } else {
-          setTenantMembership(null);
-        }
-
-        // Le sélecteur porte sur UNE seule liste à la fois — collaborateur ou
-        // client de portail, jamais les deux : le persona ne change pas en
-        // cours de session (voir `resolvePersona`), seule l'agence courante
-        // à l'intérieur du persona change.
-        if (prioritizedMembership?.tenant?.id) {
-          setAvailableTenants(dedupeTenants(activeMembers.map((membership: any) => membership?.tenant)));
-        } else if (prioritizedClient?.tenant?.id) {
-          setAvailableTenants(dedupeTenants(portalCandidates.map((client: any) => client?.tenant)));
-        } else {
-          setAvailableTenants([]);
-        }
+        // La sélection (agence courante, liste du sélecteur) est un module à
+        // part, chargé ici à la demande : elle ne sert qu'après cette réponse
+        // réseau déjà attendue, elle n'a donc rien à faire dans le chunk
+        // d'entrée (REFONTE_UI_UX.md §8.1) — voir `utils/tenant-selection.ts`.
+        const tenantSelection = await import('../utils/tenant-selection');
+        tenantSelectionRef.current = tenantSelection;
+        const selection = tenantSelection.selectTenants(asMember, asClient, storedTenantId);
+        setTenantClient(selection.tenantClient);
+        setTenantMembership(selection.tenantMembership);
+        setAvailableTenants(selection.availableTenants);
       } else {
         setTenantMembership(null);
         setTenantClient(null);
@@ -148,21 +99,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
    * Query et ne s'en charge pas.
    */
   const switchTenant = (tenantId: string): void => {
+    const tenantSelection = tenantSelectionRef.current;
+    if (!tenantSelection) return;
     const { asMember, asClient } = rawMembershipsRef.current;
 
     const membership = asMember.find((m: any) => m?.status === 'ACTIVE' && m?.tenant?.id === tenantId);
     if (membership) {
       setStoredActiveTenantId(tenantId);
-      setTenantMembership({
-        id: membership.id,
-        tenantId: membership.tenant.id,
-        tenant: {
-          id: membership.tenant.id,
-          name: membership.tenant.name,
-          slug: membership.tenant.slug || membership.tenant.id
-        },
-        status: membership.status
-      });
+      setTenantMembership(tenantSelection.buildTenantMembership(membership));
       return;
     }
 
@@ -172,16 +116,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     );
     if (client) {
       setStoredActiveTenantId(tenantId);
-      setTenantClient({
-        id: client.id,
-        tenantId: client.tenant.id,
-        clientType: client.clientType,
-        tenant: {
-          id: client.tenant.id,
-          name: client.tenant.name,
-          slug: client.tenant.slug || client.tenant.id
-        }
-      });
+      setTenantClient(tenantSelection.buildTenantClient(client));
     }
   };
 
