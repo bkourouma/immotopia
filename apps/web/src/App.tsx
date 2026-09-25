@@ -1,5 +1,5 @@
 import React, { lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { App as AntApp, ConfigProvider, Spin } from 'antd';
 import { buildAntdTheme } from './theme/antd-theme';
 import './i18n';
@@ -330,6 +330,21 @@ const SyndicProfilesIncidents = lazy(() =>
     default: m.SyndicProfilesIncidents
   }))
 );
+// Layout d'onglets commun aux trois familles d'écrans Syndic (Copropriété,
+// Finances, Assemblées et documents) — même découpe de chunk que les écrans
+// qu'il encadre : il ne sert jamais seul.
+const SyndicWorkspaceLayout = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './components/navigation/SyndicWorkspaceLayout').then(m => ({
+    default: m.SyndicWorkspaceLayout
+  }))
+);
+// Même principe pour les espaces à onglets de la finance (Caisse et
+// trésorerie, Facturation et balances, Suivi des chantiers…).
+const FinanceWorkspaceLayout = lazy(() =>
+  import(/* webpackChunkName: "finance" */ './components/navigation/FinanceWorkspaceLayout').then(m => ({
+    default: m.FinanceWorkspaceLayout
+  }))
+);
 const ForgotPassword = lazy(() =>
   import(/* webpackChunkName: "pages-root" */ './pages/ForgotPassword').then(m => ({ default: m.ForgotPassword }))
 );
@@ -649,6 +664,27 @@ function ThemedApp({ children }: { children: React.ReactNode }) {
  */
 const queryClient = createQueryClient();
 
+/**
+ * `/finance/caisse` a longtemps servi deux écrans en même temps — Caisse
+ * (sessions de caisse de l'agence) ET, avant le 24 septembre 2026, la pièce
+ * de caisse (voir le commentaire près de sa route, plus bas) — si bien qu'un
+ * signet ou un lien d'hier peut encore pointer vers
+ * `/finance/caisse?chantierId=…`. Un `chantierId` en paramètre de requête
+ * n'a de sens que pour la pièce de caisse — l'écran Caisse (sessions,
+ * billetage) n'a pas de notion de chantier — donc ce cas précis est renvoyé
+ * vers sa vraie destination, `/finance/pieces-de-caisse`, sans toucher à
+ * l'écran Caisse lui-même.
+ */
+function CaisseOuPieceDeCaisse() {
+  const { tenantId } = useParams<{ tenantId: string }>();
+  const [searchParams] = useSearchParams();
+  const chantierId = searchParams.get('chantierId');
+  if (chantierId) {
+    return <Navigate to={`/tenant/${tenantId}/finance/pieces-de-caisse?chantierId=${chantierId}`} replace />;
+  }
+  return <Caisse />;
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -767,34 +803,52 @@ function App() {
                             element={<OwnerStatementDetailPage />}
                           />
                           <Route path="/tenant/:tenantId/syndics" element={<SyndicsList />} />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId" element={<SyndicDetail />} />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId/lots" element={<SyndicLots />} />
-                          <Route
-                            path="/tenant/:tenantId/syndics/:syndicId/lots/:lotId/compte"
-                            element={<SyndicOwnerAccount />}
-                          />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId/assemblees" element={<SyndicMeetings />} />
-                          <Route
-                            path="/tenant/:tenantId/syndics/:syndicId/assemblees/:meetingId"
-                            element={<SyndicMeetingDetail />}
-                          />
-                          <Route
-                            path="/tenant/:tenantId/syndics/:syndicId/prestataires"
-                            element={<SyndicProviders />}
-                          />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId/documents" element={<SyndicDocuments />} />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId/finances" element={<SyndicFinances />} />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId/recouvrement" element={<SyndicRecovery />} />
-                          <Route
-                            path="/tenant/:tenantId/syndics/:syndicId/comptabilite"
-                            element={<SyndicAccounting />}
-                          />
-                          <Route path="/tenant/:tenantId/syndics/:syndicId/budgets" element={<SyndicBudgets />} />
-                          <Route
-                            path="/tenant/:tenantId/syndics/:syndicId/profils-incidents"
-                            element={<SyndicProfilesIncidents />}
-                          />
+                          {/* Famille « Copropriété » — fiche, lots (et le compte d'un lot,
+                        rattaché à l'onglet Lots), prestataires, profils et incidents.
+                        Même route de layout que les deux familles suivantes : elle ne
+                        change aucune URL, elle pose l'en-tête de la copropriété et la
+                        barre d'onglets au-dessus de <Outlet/>. */}
+                          <Route element={<SyndicWorkspaceLayout family="copropriete" />}>
+                            <Route path="/tenant/:tenantId/syndics/:syndicId" element={<SyndicDetail />} />
+                            <Route path="/tenant/:tenantId/syndics/:syndicId/lots" element={<SyndicLots />} />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/lots/:lotId/compte"
+                              element={<SyndicOwnerAccount />}
+                            />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/prestataires"
+                              element={<SyndicProviders />}
+                            />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/profils-incidents"
+                              element={<SyndicProfilesIncidents />}
+                            />
+                          </Route>
+                          {/* Famille « Finances » — dans l'ordre du flux : budgets, appels de
+                        charges, recouvrement, trésorerie, comptabilité. */}
+                          <Route element={<SyndicWorkspaceLayout family="finances" />}>
+                            <Route path="/tenant/:tenantId/syndics/:syndicId/budgets" element={<SyndicBudgets />} />
+                            <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/recouvrement"
+                              element={<SyndicRecovery />}
+                            />
+                            <Route path="/tenant/:tenantId/syndics/:syndicId/finances" element={<SyndicFinances />} />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/comptabilite"
+                              element={<SyndicAccounting />}
+                            />
+                          </Route>
+                          {/* Famille « Assemblées et documents » — la fiche d'une assemblée
+                        reste rattachée à l'onglet Assemblées générales. */}
+                          <Route element={<SyndicWorkspaceLayout family="assemblees-documents" />}>
+                            <Route path="/tenant/:tenantId/syndics/:syndicId/assemblees" element={<SyndicMeetings />} />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/assemblees/:meetingId"
+                              element={<SyndicMeetingDetail />}
+                            />
+                            <Route path="/tenant/:tenantId/syndics/:syndicId/documents" element={<SyndicDocuments />} />
+                          </Route>
                           <Route path="/tenant/:tenantId/collaborators" element={<CollaboratorsList />} />
                           <Route path="/tenant/:tenantId/collaborators/:userId" element={<CollaboratorDetail />} />
                           <Route path="/tenant/:tenantId/invite" element={<InviteCollaborator />} />
@@ -824,123 +878,154 @@ function App() {
                           />
                           <Route path="/tenant/:tenantId/rental/payments" element={<Payments />} />
                           <Route path="/tenant/:tenantId/rental/payments/:paymentId" element={<PaymentDetailPage />} />
-                          <Route path="/tenant/:tenantId/finance/balance-clients" element={<BalanceClients />} />
-                          <Route path="/tenant/:tenantId/finance/balance-agee" element={<BalanceAgee />} />
-                          <Route path="/tenant/:tenantId/finance/commissions" element={<CommissionsAgents />} />
+                          {/*
+                        Finance. Les écrans d'un même flux partagent une route
+                        de layout (FinanceWorkspaceLayout) qui pose l'en-tête
+                        de la famille et ses onglets au-dessus de <Outlet/> :
+                        aucune URL ne change. Les familles et leurs onglets
+                        sont décrits dans `navigation/finance-workspaces.tsx`.
+                        Les sous-routes de détail sont rangées avec leur liste,
+                        pour garder les onglets visibles et actifs.
+                      */}
+                          {/* Caisse et trésorerie. */}
+                          <Route element={<FinanceWorkspaceLayout family="caisse-tresorerie" />}>
+                            <Route path="/tenant/:tenantId/finance/caisse" element={<CaisseOuPieceDeCaisse />} />
+                            <Route path="/tenant/:tenantId/finance/tresorerie" element={<Tresorerie />} />
+                            {/*
+                          La pièce de caisse (dépense en espèces imputée à un
+                          chantier) a longtemps partagé `/finance/caisse` avec
+                          l'écran Caisse ci-dessus — à égalité de route, React
+                          Router garde la première déclarée, donc cet écran
+                          n'était jamais rendu. Adresse propre depuis le 24
+                          septembre 2026 : `/finance/pieces-de-caisse`, avec
+                          `?chantierId=` en préselection depuis
+                          `ChantierDetail.tsx`, comme les factures fournisseurs
+                          voyagent en paramètre de requête (`?fournisseur=`) et
+                          non dans le chemin. Rattachée à l'onglet Caisse par
+                          son `activeFor` : c'est un document de la caisse,
+                          pas une fiche de chantier.
+                        */}
+                            <Route path="/tenant/:tenantId/finance/pieces-de-caisse" element={<PieceDeCaisse />} />
+                          </Route>
+                          <Route element={<FinanceWorkspaceLayout family="saisie-validation" />}>
+                            <Route path="/tenant/:tenantId/finance/validation" element={<FileDeValidation />} />
+                            {/*
+                          Importation. Un seul menu, une seule adresse : la
+                          nature du document se choisit DANS l'ecran, pas dans
+                          l'URL. Rien n'y est propre a une nature, et la
+                          huitieme s'ajoutera par un descripteur de
+                          `lib/importation/natures.ts` sans toucher a cette
+                          route.
+                        */}
+                            <Route path="/tenant/:tenantId/finance/importation" element={<Importation />} />
+                          </Route>
                           <Route path="/tenant/:tenantId/finance/comptabilite" element={<Comptabilite />} />
-                          <Route path="/tenant/:tenantId/finance/caisse" element={<Caisse />} />
-                          <Route path="/tenant/:tenantId/finance/tresorerie" element={<Tresorerie />} />
-                          <Route path="/tenant/:tenantId/finance/owner-accounts" element={<ComptesProprietaires />} />
-                          <Route
-                            path="/tenant/:tenantId/finance/owner-accounts/:ownerClientId"
-                            element={<CompteProprietaire />}
-                          />
+                          <Route element={<FinanceWorkspaceLayout family="facturation-balances" />}>
+                            <Route path="/tenant/:tenantId/finance/facturation" element={<Facturation />} />
+                            <Route path="/tenant/:tenantId/finance/balance-clients" element={<BalanceClients />} />
+                            <Route path="/tenant/:tenantId/finance/balance-agee" element={<BalanceAgee />} />
+                          </Route>
+                          <Route element={<FinanceWorkspaceLayout family="reversements-commissions" />}>
+                            <Route path="/tenant/:tenantId/finance/owner-accounts" element={<ComptesProprietaires />} />
+                            <Route
+                              path="/tenant/:tenantId/finance/owner-accounts/:ownerClientId"
+                              element={<CompteProprietaire />}
+                            />
+                            <Route path="/tenant/:tenantId/finance/associations" element={<Associations />} />
+                            <Route
+                              path="/tenant/:tenantId/finance/associations/:partnershipId"
+                              element={<Association />}
+                            />
+                            <Route path="/tenant/:tenantId/finance/commissions" element={<CommissionsAgents />} />
+                          </Route>
+                          {/* Relevé d'un compte de tiers : ouvert depuis la balance
+                        clients, la balance âgée ET la balance fournisseurs, il
+                        n'appartient à aucune famille et reste hors onglets. */}
                           <Route path="/tenant/:tenantId/finance/comptes/:accountId" element={<Releve />} />
+                          <Route element={<FinanceWorkspaceLayout family="fournisseurs-commandes" />}>
+                            <Route path="/tenant/:tenantId/finance/fournisseurs" element={<Fournisseurs />} />
+                            {/*
+                          Le fournisseur voyage en PARAMETRE DE REQUETE
+                          (`?fournisseur=`), et non dans le chemin : cet ecran
+                          porte son propre selecteur et s'ouvre legitimement sans
+                          fournisseur choisi. La liste des fournisseurs pointe
+                          vers cette adresse depuis toujours ; c'est la route
+                          declaree ici qui avait une autre forme, si bien que
+                          cliquer un fournisseur ne menait nulle part. Corrige le
+                          19 septembre 2026. Rattachee a l'onglet Fournisseurs
+                          par son `activeFor`.
+                        */}
+                            <Route
+                              path="/tenant/:tenantId/finance/factures-fournisseurs"
+                              element={<FactureFournisseur />}
+                            />
+                            {/*
+                          Lot 3. L'ordre compte : « nouveau » AVANT
+                          « :orderId », sinon React Router rangerait le mot
+                          « nouveau » dans le parametre et l'ecran chercherait un
+                          bon de commande qui n'existe pas. Le classement de
+                          React Router par specificite ne departage pas un
+                          segment fixe d'un segment variable au meme rang.
+                        */}
+                            <Route path="/tenant/:tenantId/finance/bons-de-commande" element={<BonsDeCommande />} />
+                            <Route
+                              path="/tenant/:tenantId/finance/bons-de-commande/nouveau"
+                              element={<BonDeCommande />}
+                            />
+                            <Route
+                              path="/tenant/:tenantId/finance/bons-de-commande/:orderId"
+                              element={<BonDeCommande />}
+                            />
+                            <Route
+                              path="/tenant/:tenantId/finance/fournisseurs/balance"
+                              element={<BalanceFournisseurs />}
+                            />
+                          </Route>
+                          <Route path="/tenant/:tenantId/finance/retenues" element={<RetenuesDeGarantie />} />
+                          <Route element={<FinanceWorkspaceLayout family="suivi-chantiers" />}>
+                            <Route path="/tenant/:tenantId/finance/chantiers" element={<Chantiers />} />
+                            <Route path="/tenant/:tenantId/finance/chantiers/:siteId" element={<ChantierDetail />} />
+                            <Route
+                              path="/tenant/:tenantId/finance/chantiers/:siteId/budget"
+                              element={<BudgetChantier />}
+                            />
+                            <Route
+                              path="/tenant/:tenantId/finance/chantiers/:siteId/stock"
+                              element={<StockChantier />}
+                            />
+                            <Route
+                              path="/tenant/:tenantId/finance/chantiers/:siteId/cloture"
+                              element={<ClotureChantier />}
+                            />
+                            <Route
+                              path="/tenant/:tenantId/finance/tableau-de-bord-chantiers"
+                              element={<TableauDeBordChantiers />}
+                            />
+                            {/* Lot 4 : les baux de terrain. L'identifiant du bail
+                          voyage dans le CHEMIN, et c'est bien ce que l'ecran
+                          lit — verifie par un test de navigation dedie du cote
+                          de l'ecran, apres deux occurrences du defaut inverse
+                          aux lots 2 et 3. */}
+                            <Route path="/tenant/:tenantId/finance/baux-terrain" element={<BauxDeTerrain />} />
+                            <Route
+                              path="/tenant/:tenantId/finance/baux-terrain/:landLeaseId"
+                              element={<BailDeTerrain />}
+                            />
+                          </Route>
+                          <Route element={<FinanceWorkspaceLayout family="gestion-stock" />}>
+                            <Route path="/tenant/:tenantId/finance/stock" element={<Stock />} />
+                            <Route path="/tenant/:tenantId/finance/stock/inventaire" element={<StockInventaire />} />
+                            <Route path="/tenant/:tenantId/finance/stock/parametrage" element={<StockReferentiel />} />
+                          </Route>
+                          <Route path="/tenant/:tenantId/finance/salaires" element={<Salaires />} />
+                          <Route path="/tenant/:tenantId/finance/salaires/:employeeId" element={<Salarie />} />
+                          <Route path="/tenant/:tenantId/finance/tacherons" element={<Tacherons />} />
+                          <Route path="/tenant/:tenantId/finance/tacherons/:contractorId" element={<Tacheron />} />
                           <Route path="/tenant/:tenantId/sales" element={<SalesDashboard />} />
                           <Route path="/tenant/:tenantId/sales/mandates" element={<SaleMandates />} />
                           <Route path="/tenant/:tenantId/sales/mandates/:id" element={<SaleMandateDetail />} />
                           <Route path="/tenant/:tenantId/sales/agreements/:id" element={<SaleAgreementDetail />} />
                           <Route path="/tenant/:tenantId/sales/commissions" element={<SaleCommissions />} />
-                          <Route path="/tenant/:tenantId/finance/facturation" element={<Facturation />} />
-                          <Route path="/tenant/:tenantId/finance/fournisseurs" element={<Fournisseurs />} />
-                          <Route
-                            path="/tenant/:tenantId/finance/fournisseurs/balance"
-                            element={<BalanceFournisseurs />}
-                          />
-                          {/*
-                        Le fournisseur voyage en PARAMETRE DE REQUETE
-                        (`?fournisseur=`), et non dans le chemin : cet ecran
-                        porte son propre selecteur et s'ouvre legitimement sans
-                        fournisseur choisi. La liste des fournisseurs pointe
-                        vers cette adresse depuis toujours ; c'est la route
-                        declaree ici qui avait une autre forme, si bien que
-                        cliquer un fournisseur ne menait nulle part. Corrige le
-                        19 septembre 2026.
-                      */}
-                          <Route
-                            path="/tenant/:tenantId/finance/factures-fournisseurs"
-                            element={<FactureFournisseur />}
-                          />
-                          <Route path="/tenant/:tenantId/finance/chantiers" element={<Chantiers />} />
-                          <Route path="/tenant/:tenantId/finance/chantiers/:siteId" element={<ChantierDetail />} />
-                          {/*
-                        Le chantier voyage en PARAMETRE DE REQUETE
-                        (`?chantierId=`), comme l'ecran le lit : il porte son
-                        propre selecteur et s'ouvre legitimement sans chantier
-                        choisi. Le detail d'un chantier pointe vers cette
-                        adresse depuis toujours ; c'est la route qui portait
-                        l'identifiant dans le chemin, si bien que le bouton
-                        « Nouvelle piece de caisse » ne menait nulle part.
-                        Meme defaut que sur les factures fournisseurs, corrige
-                        la veille, et reste ici. Trouve par l'agent des ecrans
-                        du lot 3, hors de son territoire.
-                      */}
-                          <Route path="/tenant/:tenantId/finance/caisse" element={<PieceDeCaisse />} />
-                          <Route path="/tenant/:tenantId/finance/validation" element={<FileDeValidation />} />
-                          {/*
-                        Importation. Un seul menu, une seule adresse : la
-                        nature du document se choisit DANS l'ecran, pas dans
-                        l'URL. Rien n'y est propre a une nature, et la
-                        huitieme s'ajoutera par un descripteur de
-                        `lib/importation/natures.ts` sans toucher a cette
-                        route.
-                      */}
-                          <Route path="/tenant/:tenantId/finance/importation" element={<Importation />} />
-
-                          {/*
-                        Lot 3. L'ordre compte : « nouveau » AVANT
-                        « :orderId », sinon React Router rangerait le mot
-                        « nouveau » dans le parametre et l'ecran chercherait un
-                        bon de commande qui n'existe pas. Le classement de
-                        React Router par specificite ne departage pas un
-                        segment fixe d'un segment variable au meme rang.
-                      */}
-                          <Route
-                            path="/tenant/:tenantId/finance/chantiers/:siteId/budget"
-                            element={<BudgetChantier />}
-                          />
-                          <Route path="/tenant/:tenantId/finance/bons-de-commande" element={<BonsDeCommande />} />
-                          <Route
-                            path="/tenant/:tenantId/finance/bons-de-commande/nouveau"
-                            element={<BonDeCommande />}
-                          />
-                          <Route
-                            path="/tenant/:tenantId/finance/bons-de-commande/:orderId"
-                            element={<BonDeCommande />}
-                          />
-                          <Route
-                            path="/tenant/:tenantId/finance/tableau-de-bord-chantiers"
-                            element={<TableauDeBordChantiers />}
-                          />
-
-                          {/* Lot 4 : les baux de terrain. L'identifiant du bail
-                        voyage dans le CHEMIN, et c'est bien ce que l'ecran
-                        lit — verifie par un test de navigation dedie du cote
-                        de l'ecran, apres deux occurrences du defaut inverse
-                        aux lots 2 et 3. */}
-                          <Route path="/tenant/:tenantId/finance/baux-terrain" element={<BauxDeTerrain />} />
-                          <Route
-                            path="/tenant/:tenantId/finance/baux-terrain/:landLeaseId"
-                            element={<BailDeTerrain />}
-                          />
-                          <Route path="/tenant/:tenantId/finance/associations" element={<Associations />} />
-                          <Route
-                            path="/tenant/:tenantId/finance/associations/:partnershipId"
-                            element={<Association />}
-                          />
-                          <Route path="/tenant/:tenantId/finance/salaires" element={<Salaires />} />
-                          <Route path="/tenant/:tenantId/finance/salaires/:employeeId" element={<Salarie />} />
-                          <Route path="/tenant/:tenantId/finance/tacherons" element={<Tacherons />} />
-                          <Route path="/tenant/:tenantId/finance/tacherons/:contractorId" element={<Tacheron />} />
-                          <Route path="/tenant/:tenantId/finance/stock" element={<Stock />} />
-                          <Route path="/tenant/:tenantId/finance/stock/parametrage" element={<StockReferentiel />} />
-                          <Route path="/tenant/:tenantId/finance/stock/inventaire" element={<StockInventaire />} />
-                          <Route path="/tenant/:tenantId/finance/chantiers/:siteId/stock" element={<StockChantier />} />
-                          <Route path="/tenant/:tenantId/finance/retenues" element={<RetenuesDeGarantie />} />
-                          <Route
-                            path="/tenant/:tenantId/finance/chantiers/:siteId/cloture"
-                            element={<ClotureChantier />}
-                          />
                           <Route path="/tenant/:tenantId/maintenance" element={<TicketList />} />
                           <Route path="/tenant/:tenantId/maintenance/new" element={<CreateTicket />} />
                           <Route path="/tenant/:tenantId/maintenance/:ticketId/edit" element={<EditTicket />} />

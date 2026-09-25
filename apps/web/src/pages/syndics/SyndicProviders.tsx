@@ -1,5 +1,4 @@
 ﻿import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   App,
   Alert,
@@ -15,7 +14,7 @@ import {
   Spin,
   Typography
 } from 'antd';
-import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import { ContractList } from '../../components/syndics/ContractList';
 import { createContract, listProvidersContracts } from '../../services/syndic-service';
 import { SyndicProvidersPayload } from '../../types/syndic-types';
@@ -28,7 +27,6 @@ export const SyndicProviders: React.FC = () => {
   const { message } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
-  const navigate = useNavigate();
 
   const [payload, setPayload] = useState<SyndicProvidersPayload>({
     providers: [],
@@ -93,12 +91,6 @@ export const SyndicProviders: React.FC = () => {
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <Space direction="vertical" size={4}>
-          <Button
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
-          >
-            {t('Retour à la fiche syndic')}
-          </Button>
           <div className="it-toolbar">
             <Title level={2} className="it-toolbar__title" style={{ margin: 0 }}>
               {t('Prestataires et contrats')}

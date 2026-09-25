@@ -268,9 +268,9 @@ function monterCaisse() {
   return render(
     <QueryClientProvider client={nouveauClient()}>
       <AntApp>
-        <MemoryRouter initialEntries={['/tenant/agence-1/finance/caisse']}>
+        <MemoryRouter initialEntries={['/tenant/agence-1/finance/pieces-de-caisse']}>
           <Routes>
-            <Route path="/tenant/:tenantId/finance/caisse" element={<PieceDeCaisse />} />
+            <Route path="/tenant/:tenantId/finance/pieces-de-caisse" element={<PieceDeCaisse />} />
           </Routes>
         </MemoryRouter>
       </AntApp>

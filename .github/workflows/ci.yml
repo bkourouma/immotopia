@@ -69,6 +69,33 @@ jobs:
       # Blocking: the test suite must stay green.
       - run: npm test -w @immotopia/api
 
+  # Le runner GitHub n'a que 4 vCPU. Les 78 fichiers de test montent chacun un
+  # jsdom et de vrais composants Ant Design : sur une seule machine, avec
+  # 4 workers, la suite prenait 23 min et une vingtaine de tests expiraient
+  # (aucune assertion fausse, que des « Test timed out »), alors qu'ils passent
+  # en local. Quatre lots sur quatre runners, deux workers chacun : chaque test
+  # retrouve le temps processeur qu'il a en local.
+  web-tests:
+    name: Web — tests (lot ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      # `vitest run` is single-shot; no watch flag needed.
+      - run: npm run test -w @immotopia/web -- --shard=${{ matrix.shard }}/4 --maxWorkers=2 --minWorkers=1
+
   web:
     name: Web — typecheck, lint, build
     runs-on: ubuntu-latest
@@ -91,8 +118,7 @@ jobs:
       - run: npm run lint -w @immotopia/web
         continue-on-error: true
 
-      # `vitest run` is single-shot; no watch flag needed.
-      - run: npm run test -w @immotopia/web
+      # Les tests frontend tournent dans le job `web-tests`, découpé en lots.
 
       # `build` runs tsc --noEmit then vite build.
       - run: npm run build -w @immotopia/web

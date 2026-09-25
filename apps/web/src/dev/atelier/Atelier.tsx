@@ -110,7 +110,7 @@ const BALANCE_FOURNISSEURS = FOURNISSEURS + '/balance';
 const FACTURE_FOURNISSEUR = 'tenant/' + AGENCE + '/finance/factures-fournisseurs?fournisseur=frs-02';
 const CHANTIERS = 'tenant/' + AGENCE + '/finance/chantiers';
 const CHANTIER_DETAIL = CHANTIERS + '/chantier-01';
-const PIECE_DE_CAISSE = 'tenant/' + AGENCE + '/finance/caisse?chantierId=chantier-01';
+const PIECE_DE_CAISSE = 'tenant/' + AGENCE + '/finance/pieces-de-caisse?chantierId=chantier-01';
 const VALIDATION = 'tenant/' + AGENCE + '/finance/validation';
 // Lot 3. Le chantier « riche » de la maquette est celui qui porte un budget,
 // des avenants et une alerte : c'est lui qui montre quelque chose.
@@ -839,7 +839,7 @@ export const Atelier: React.FC = () => (
       }
     />
     <Route
-      path="tenant/:tenantId/finance/caisse"
+      path="tenant/:tenantId/finance/pieces-de-caisse"
       element={
         <Scene>
           <SessionSimulee>

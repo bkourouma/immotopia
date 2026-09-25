@@ -238,32 +238,23 @@ apiClient.interceptors.response.use(
   }
 );
 
-/**
- * Déduit l'agence d'une requête refusée, pour le bandeau d'agence suspendue.
- *
- * L'URL le dit directement sur les routes d'agence (`/tenants/:id/...`,
- * `/admin/tenants/:id/...`) ; sur une route de portail, l'URL ne porte pas
- * l'agence — on relit alors l'en-tête `X-Portal-Tenant-Id` posé par
- * l'intercepteur de requête ci-dessus.
- */
-function deduireTenantIdSuspendu(config?: InternalAxiosRequestConfig): string | null {
-  const url = config?.url ?? '';
-  const match = url.match(/\/(?:admin\/)?tenants\/([^/?]+)/);
-  if (match) return match[1];
-
-  const header = config?.headers?.get?.('X-Portal-Tenant-Id');
-  return typeof header === 'string' ? header : null;
-}
-
 // Agence suspendue : toute route d'agence ou de portail renvoie alors 403
 // avec `code: 'TENANT_SUSPENDED'`. On le transforme en évènement DOM plutôt
 // que de le traiter ici — cet intercepteur ne sait rien afficher, et
 // plusieurs écrans (agence, portails) ont besoin du même signal.
+//
+// La déduction de l'agence (`deduireTenantIdSuspendu`) vit dans un module à
+// part, chargé ici à la demande : un 403 `TENANT_SUSPENDED` est une réponse
+// d'erreur rare, elle n'a donc rien à faire dans le chunk d'entrée
+// (REFONTE_UI_UX.md §8.1). L'intercepteur reste `async` : axios attend la
+// promesse qu'il renvoie avant de considérer la requête réglée, l'évènement
+// part donc bien avant que l'appelant ne voie le rejet.
 apiClient.interceptors.response.use(
   response => response,
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
     const body = error.response?.data as { code?: string } | undefined;
     if (error.response?.status === 403 && body?.code === 'TENANT_SUSPENDED' && typeof window !== 'undefined') {
+      const { deduireTenantIdSuspendu } = await import('./tenant-suspended-detection');
       const tenantId = deduireTenantIdSuspendu(error.config as InternalAxiosRequestConfig | undefined);
       window.dispatchEvent(new CustomEvent(TENANT_SUSPENDED_EVENT, { detail: { tenantId } }));
     }

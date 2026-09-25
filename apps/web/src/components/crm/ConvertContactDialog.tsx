@@ -56,8 +56,8 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
         <div className="p-6">
           <div className="flex items-center gap-3 mb-4">
-            <div className="bg-blue-100 rounded-full p-2">
-              <UserCheck className="h-5 w-5 text-blue-600" />
+            <div className="bg-primary-bg rounded-full p-2">
+              <UserCheck className="h-5 w-5 text-primary" />
             </div>
             <h2 className="text-xl font-semibold">{t('Convert Lead to Client')}</h2>
           </div>
@@ -80,7 +80,7 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
                     type="checkbox"
                     checked={selectedRoles.includes(role.value)}
                     onChange={() => handleRoleToggle(role.value)}
-                    className="me-3 h-4 w-4 text-blue-600"
+                    className="me-3 h-4 w-4 text-primary"
                   />
                   <span className="text-sm font-medium text-gray-900">{role.label}</span>
                 </label>

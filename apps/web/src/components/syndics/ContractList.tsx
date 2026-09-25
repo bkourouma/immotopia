@@ -2,11 +2,11 @@ import React from 'react';
 import { Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
+import { MoneyValue } from '../primitives/MoneyValue';
 import { MaintenanceContract } from '../../types/syndic-types';
 import { contractStatusLabels } from './labels';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
 const { Text } = Typography;
 
 const statusColor: Record<MaintenanceContract['status'], string> = {
@@ -45,10 +45,8 @@ export const ContractList: React.FC<ContractListProps> = ({ contracts, loading =
     {
       title: t('Montant annuel'),
       key: 'annualAmount',
-      render: (_: unknown, item) =>
-        item.annualAmount
-          ? `${Number(item.annualAmount).toLocaleString(activeLocale())} ${item.currency}`
-          : t('Non renseigné')
+      align: 'end',
+      render: (_: unknown, item) => (item.annualAmount ? <MoneyValue value={item.annualAmount} /> : t('Non renseigné'))
     },
     {
       title: t('Statut'),

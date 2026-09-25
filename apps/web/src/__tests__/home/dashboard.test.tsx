@@ -129,12 +129,21 @@ function tableau(over: Partial<TenantDashboard> = {}): TenantDashboard {
         id: 'installment:e-1',
         kind: 'OVERDUE_INSTALLMENT',
         title: 'BAIL-2026-0184 · Villa Cocody',
-        description: '450 000 FCFA · 12 j de retard',
+        description: '12 j de retard',
         amount: 450_000,
-        currency: 'FCFA',
         occurredAt: '2026-09-03T00:00:00.000Z',
         severity: 'danger',
         href: `${base}/rental/installments/e-1`
+      },
+      {
+        id: 'declaration:d-1',
+        kind: 'PENDING_DECLARATION',
+        title: 'Déclaration à valider · BAIL-2026-0161',
+        description: 'MOBILE_MONEY',
+        amount: 840_000,
+        occurredAt: '2026-09-12T00:00:00.000Z',
+        severity: 'warning',
+        href: `${base}/rental/payments?onglet=declarations`
       }
     ],
     recentActivity: [
@@ -142,7 +151,8 @@ function tableau(over: Partial<TenantDashboard> = {}): TenantDashboard {
         id: 'payment:p-1',
         type: 'PAYMENT_SUCCEEDED',
         title: 'Paiement encaissé',
-        description: '300 000 FCFA - bail BAIL-2026-0183',
+        description: 'bail BAIL-2026-0183',
+        amount: 300_000,
         occurredAt: '2026-09-14T10:00:00.000Z',
         href: `${base}/rental/payments/p-1`
       }
@@ -239,6 +249,25 @@ describe('Tableau de bord — les chiffres mènent quelque part', () => {
     await waitFor(() =>
       expect(screen.getByTestId('url')).toHaveTextContent(`/tenant/${TENANT}/rental/installments/e-1`)
     );
+  });
+
+  it('écrit une seule devise dans la file, quelle que soit celle stockée', async () => {
+    // Le défaut corrigé : l'API composait la phrase de la ligne en recopiant le
+    // code devise STOCKÉ. Deux baux, deux codes (« XOF » pour ceux du jeu de
+    // démonstration, « FCFA » pour ceux nés du défaut de schéma), et la même
+    // liste affichait « 105 000 XOF » au-dessus de « 840 000 FCFA ». Le montant
+    // arrive désormais brut et c'est `formatMoney` qui écrit la devise.
+    monter();
+
+    // La carte affiche son squelette avant la réponse : on attend la première
+    // ligne, sinon le test juge le squelette.
+    // `\s` et non une espace ordinaire : `Intl` pose une espace insécable
+    // étroite comme séparateur de milliers en français.
+    await screen.findByText(/450\s000 FCFA · 12 j de retard/);
+    expect(screen.getByText(/840\s000 FCFA · MOBILE_MONEY/)).toBeInTheDocument();
+    // Le journal d'activité composait sa phrase de la même façon.
+    expect(screen.getByText(/300\s000 FCFA · bail BAIL-2026-0183/)).toBeInTheDocument();
+    expect(screen.queryByText(/XOF/)).not.toBeInTheDocument();
   });
 
   it('rend chaque tranche de camembert atteignable au clavier, par sa légende', async () => {

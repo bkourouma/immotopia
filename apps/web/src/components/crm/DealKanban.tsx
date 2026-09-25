@@ -138,7 +138,7 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
             <div
               key={stage}
               className={`flex-shrink-0 w-64 rounded border border-gray-200 bg-gray-50 flex flex-col ${
-                isDragOver ? 'border-blue-400 bg-blue-50' : ''
+                isDragOver ? 'border-primary bg-primary-bg' : ''
               }`}
               onDragOver={e => handleDragOver(e, stage)}
               onDragLeave={handleDragLeave}
@@ -151,7 +151,7 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="mt-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 w-full justify-start h-7 text-xs px-2"
+                    className="mt-1 text-primary hover:text-primary-hover hover:bg-primary-bg w-full justify-start h-7 text-xs px-2"
                     onClick={() => onAddDeal(stage)}
                   >
                     <Plus className="h-3 w-3 me-1" />

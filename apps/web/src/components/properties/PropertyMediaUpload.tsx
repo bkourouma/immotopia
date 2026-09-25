@@ -144,7 +144,7 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
 
       <div
         className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-          dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+          dragActive ? 'border-primary bg-primary-bg' : 'border-gray-300 hover:border-gray-400'
         } ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
         onDragEnter={handleDrag}
         onDragLeave={handleDrag}
@@ -168,7 +168,7 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
 
         {uploading ? (
           <div className="flex flex-col items-center gap-4">
-            <Loader2 className="h-12 w-12 animate-spin text-blue-600" />
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
             {uploadProgress && (
               <div className="w-full max-w-xs">
                 <div className="flex justify-between text-sm text-gray-600 mb-2">
@@ -179,7 +179,7 @@ export const PropertyMediaUpload: React.FC<PropertyMediaUploadProps> = ({
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
-                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    className="bg-primary h-2 rounded-full transition-all duration-300"
                     style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
                   />
                 </div>

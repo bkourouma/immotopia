@@ -60,6 +60,24 @@ module.exports = {
           // Texte posé sur un aplat primaire.
           foreground: 'var(--surface-card)'
         },
+        /**
+         * Accent de marque. Nomme `brand` et non `accent` : la cle `accent` est
+         * deja prise plus bas par l'alias de compatibilite shadcn, qui pointe
+         * sur `--surface-sunken`. La reutiliser aurait repeint en orange tous
+         * les `bg-accent` de `components/ui/`.
+         *
+         * Pas de `foreground` blanc ici, contrairement a
+         * `primary` : sur un aplat orange, le texte est navy
+         * (`--color-accent-text-on`, 4,87:1), le blanc n'y atteignant que
+         * 3,12:1. `accent-strong` est la seule teinte orange qui porte du texte.
+         */
+        brand: {
+          DEFAULT: 'var(--color-accent)',
+          strong: 'var(--color-accent-strong)',
+          bg: 'var(--color-accent-bg)',
+          border: 'var(--color-accent-border)',
+          foreground: 'var(--color-accent-text-on)'
+        },
         success: {
           DEFAULT: 'var(--color-success)',
           text: 'var(--color-success-text)',
@@ -83,12 +101,15 @@ module.exports = {
           raised: 'var(--surface-raised)',
           sunken: 'var(--surface-sunken)',
           inverse: 'var(--surface-inverse)',
-          // Sidebar, rail et drawer.
-          nav: 'var(--surface-nav)'
+          // Sidebar, rail et drawer — le navy du logo.
+          nav: 'var(--surface-nav)',
+          'nav-active': 'var(--nav-item-active-bg)',
+          'nav-hover': 'var(--nav-item-hover-bg)'
         },
         line: {
           subtle: 'var(--border-subtle)',
           nav: 'var(--border-nav)',
+          'nav-strong': 'var(--border-nav-strong)',
           DEFAULT: 'var(--border-default)',
           strong: 'var(--border-strong)',
           // Bordure d'un controle interactif — conforme a WCAG 1.4.11.
@@ -100,7 +121,11 @@ module.exports = {
           tertiary: 'var(--text-tertiary)',
           disabled: 'var(--text-disabled)',
           'on-inverse': 'var(--text-on-inverse)',
-          'on-inverse-muted': 'var(--text-on-inverse-muted)'
+          'on-inverse-muted': 'var(--text-on-inverse-muted)',
+          // Texte pose sur la navigation navy. Les roles ordinaires n'y ont pas
+          // cours : `content-primary` y tombe a 1,3:1.
+          'on-nav': 'var(--text-on-nav)',
+          'on-nav-muted': 'var(--text-on-nav-muted)'
         },
 
         /**

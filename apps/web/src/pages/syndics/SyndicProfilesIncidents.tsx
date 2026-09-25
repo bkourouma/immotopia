@@ -1,5 +1,4 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   App,
   Alert,
@@ -16,8 +15,9 @@ import {
   Tag,
   Typography
 } from 'antd';
-import { ArrowLeftOutlined, PlusOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { MoneyValue } from '../../components/primitives';
 import { listContacts } from '../../services/crm-service';
 import { listProperties } from '../../services/property-service';
 import {
@@ -36,7 +36,6 @@ import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { CrmContact } from '../../types/crm-types';
 import { t } from '../../i18n/t';
 
-import { activeLocale } from '../../i18n/format';
 const { Paragraph, Title } = Typography;
 
 const incidentTypeLabels: Record<string, string> = {
@@ -129,7 +128,6 @@ export const SyndicProfilesIncidents: React.FC = () => {
   const { message } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
-  const navigate = useNavigate();
 
   const [ownerProfiles, setOwnerProfiles] = useState<LotOwnerProfile[]>([]);
   const [tenantProfiles, setTenantProfiles] = useState<LotTenantProfile[]>([]);
@@ -306,12 +304,6 @@ export const SyndicProfilesIncidents: React.FC = () => {
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <Space direction="vertical" size={4}>
-            <Button
-              icon={<ArrowLeftOutlined />}
-              onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}`)}
-            >
-              {t('Retour à la fiche syndic')}
-            </Button>
             <Title level={2} style={{ margin: 0 }}>
               {t('Profils lot et incidents')}
             </Title>
@@ -442,9 +434,9 @@ export const SyndicProfilesIncidents: React.FC = () => {
                         {
                           title: 'Montant',
                           dataIndex: 'amount',
-                          render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} XOF`
+                          align: 'end',
+                          render: (value: number | string) => <MoneyValue value={value} />
                         },
-                        { title: 'Devise', dataIndex: 'currency' },
                         {
                           title: 'Lot',
                           render: (_, row) => {

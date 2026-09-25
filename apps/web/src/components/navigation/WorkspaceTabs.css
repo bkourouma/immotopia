@@ -1,0 +1,17 @@
+/**
+ * `<WorkspaceTabs>` — défilement horizontal sans ascenseur disgracieux.
+ *
+ * Un utilitaire Tailwind ne cible pas les pseudo-éléments `::-webkit-scrollbar` :
+ * seule une feuille de style le peut. `scrollbar-width`/`-ms-overflow-style`
+ * couvrent Firefox et l'ancien Edge, la règle `::-webkit-scrollbar` couvre
+ * Chrome/Safari — le défilement tactile reste actif, seule la piste disparaît.
+ */
+.workspace-tabs-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.workspace-tabs-scroll::-webkit-scrollbar {
+  display: none;
+  height: 0;
+}

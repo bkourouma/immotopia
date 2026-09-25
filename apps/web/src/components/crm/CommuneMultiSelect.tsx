@@ -85,14 +85,14 @@ export const CommuneMultiSelect: React.FC<CommuneMultiSelectProps> = ({
             selectedCommunes.map(commune => (
               <span
                 key={commune.communeId}
-                className="inline-flex items-center gap-1 rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-800"
+                className="inline-flex items-center gap-1 rounded bg-primary-bg px-2 py-0.5 text-xs text-primary-active"
               >
                 {commune.commune}
                 {!disabled && (
                   <button
                     type="button"
                     onClick={e => removeCommune(commune.communeId, e)}
-                    className="hover:text-blue-900"
+                    className="hover:text-primary-active"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -116,7 +116,7 @@ export const CommuneMultiSelect: React.FC<CommuneMultiSelectProps> = ({
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder={t('Rechercher une commune...')}
-                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                 autoFocus
               />
             </div>
@@ -137,14 +137,14 @@ export const CommuneMultiSelect: React.FC<CommuneMultiSelectProps> = ({
                       key={commune.communeId}
                       className={cn(
                         'flex cursor-pointer items-center gap-2 rounded px-3 py-2 text-sm hover:bg-gray-100',
-                        isSelected && 'bg-blue-50'
+                        isSelected && 'bg-primary-bg'
                       )}
                     >
                       <input
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleCommune(commune.communeId)}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                       />
                       <div className="flex-1">
                         <div className="font-medium">{commune.commune}</div>

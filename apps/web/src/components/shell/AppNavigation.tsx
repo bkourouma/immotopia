@@ -7,7 +7,7 @@ import type { NavGroup, PersonaNav, SectionId } from '../../navigation/model';
 import { SECTION_LABELS } from '../../navigation/model';
 import { resolveHref } from '../../navigation/resolve';
 import type { NavContext } from '../../navigation/resolve';
-import logoImmoTopia from '../../assets/logo-immotopia.png';
+import logoImmoTopia from '../../assets/logo-immotopia-inverse.png';
 import { t } from '../../i18n/t';
 
 const { Sider } = Layout;
@@ -50,7 +50,14 @@ function flatten(tree: NavGroup[], context: NavContext) {
     if (group.children?.length) {
       for (const child of group.children) {
         const href = resolveHref(child.href, context);
-        if (href) out.push({ key: child.key, label: child.label, parent: group.label, href });
+        if (!href) continue;
+        out.push({ key: child.key, label: child.label, parent: group.label, href });
+        // Placées après la destination principale : un clic suit toujours le
+        // premier couple de la clé, ceux-ci ne servent qu'à l'allumer.
+        for (const extra of child.activeFor ?? []) {
+          const extraHref = resolveHref(extra, context);
+          if (extraHref) out.push({ key: child.key, label: child.label, parent: group.label, href: extraHref });
+        }
       }
     } else if (group.href) {
       const href = resolveHref(group.href, context);
@@ -153,8 +160,12 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
 
   const menu = (
     <Menu
-      // Fond clair depuis que la navigation porte le logo de marque : le thème
-      // sombre d'AntD y rendrait les libellés en slate-100 sur blanc.
+      // Reste `light` bien que le fond soit navy : `theme="dark"` d'AntD
+      // applique sa propre palette sombre, calée sur son bleu de seed et non
+      // sur le navy du logo. Les couleurs du menu sont posées dans index.css,
+      // sur un sélecteur limité à la sidebar et au drawer — les tokens de
+      // composant `Menu` étant globaux, ils repeindraient aussi le menu
+      // déroulant du compte, dans l'en-tête clair.
       theme="light"
       mode="inline"
       items={items}
@@ -192,19 +203,24 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
             height: 40,
             flexShrink: 0,
             borderRadius: 'var(--radius-lg)',
-            backgroundColor: 'var(--color-primary)',
+            // L'accent, et non la primaire : un carre bleu sur une sidebar
+            // navy se perdrait dans son fond. L'orange est ici la marque
+            // reduite a son plus petit format lisible.
+            backgroundColor: 'var(--color-accent)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center'
           }}
         >
-          <HomeOutlined style={{ color: 'var(--surface-card)', fontSize: 20 }} />
+          <HomeOutlined style={{ color: 'var(--color-accent-text-on)', fontSize: 20 }} />
         </div>
       ) : (
         <div style={{ minWidth: 0 }}>
-          {/* Le logo est posé directement sur `--surface-nav`, sans cartouche ni
-              retouche : c'est pour lui que la navigation est passée sur fond
-              clair (voir `--surface-nav` dans tokens.css). */}
+          {/* Le logo est posé directement sur `--surface-nav`, sans cartouche.
+              La version inversée est le même lettrage que l'original — « Immo »
+              et le slogan recolorés en blanc, l'orange et l'antialiasing
+              d'origine intacts — et non une reconstitution typographique
+              (voir `--surface-nav` dans tokens.css). */}
           <img
             src={logoImmoTopia}
             alt={'ImmoTopia'}
@@ -214,7 +230,7 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
           />
           <div
             style={{
-              color: 'var(--text-secondary)',
+              color: 'var(--text-on-nav-muted)',
               fontSize: 'var(--font-size-caption)',
               lineHeight: 1.2,
               marginTop: 'var(--space-2)'
