@@ -1115,18 +1115,23 @@ model SubscriptionItem {
   endedByUserId    String?                @map("ended_by_user_id")
   /// Element remplace par une montee de gamme.
   replacesItemId   String?                @map("replaces_item_id")
+  /// Pack auquel cette extension est liee : retiree a la meme echeance que lui.
+  parentItemId     String?                @map("parent_item_id")
   /// Facture jusqu'a cette date (renseigne par la facturation, vague 3).
   billedThrough    DateTime?              @map("billed_through")
   note             String?                @db.Text
   createdAt        DateTime               @default(now()) @map("created_at")
   updatedAt        DateTime               @updatedAt @map("updated_at")
 
-  subscription Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  catalogItem  CatalogItem   @relation(fields: [catalogItemId], references: [id], onDelete: Restrict)
+  subscription Subscription       @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  catalogItem  CatalogItem        @relation(fields: [catalogItemId], references: [id], onDelete: Restrict)
   invoiceLines InvoiceLine[]
+  parentItem   SubscriptionItem?  @relation("SubscriptionItemExtensions", fields: [parentItemId], references: [id], onDelete: SetNull)
+  extensions   SubscriptionItem[] @relation("SubscriptionItemExtensions")
 
   @@index([tenantId])
+  @@index([parentItemId])
   @@index([subscriptionId])
   @@index([tenantId, status])
   @@index([catalogItemId])

@@ -101,5 +101,19 @@
   "Comptes Mobile Money et banque uniquement. Sans choix, un compte de collecte est créé automatiquement à l’activation.": "Mobile Money and bank accounts only. If none is chosen, a collection account is created automatically on activation.",
   "Connexion réussie": "Connection successful",
   "Dernier test": "Last test",
-  "Échoué": "Failed"
+  "Échoué": "Failed",
+  "Aucun module ouvert": "No module open",
+  "Besoin de plus de lots, de copropriétés ou de chantiers ? Envoyez une demande à l’équipe ImmoTopia.": "Need more lots, condominiums or construction sites? Send a request to the ImmoTopia team.",
+  "Cette agence n’a pas encore d’abonnement.": "This agency does not have a subscription yet.",
+  "Compte en lecture seule": "Read-only account",
+  "Consultation seule : les modifications passent par le support ImmoTopia.": "View only: changes go through ImmoTopia support.",
+  "Demande d’extension d’abonnement": "Subscription extension request",
+  "Demander une extension": "Request an extension",
+  "Formule": "Plan",
+  "Jours d’essai restants": "Trial days remaining",
+  "Packs souscrits, période en cours et consommation de lots, copropriétés et chantiers.": "Subscribed packs, current period and usage of lots, condominiums and construction sites.",
+  "Voir mon abonnement": "View my subscription",
+  "aucun": "none",
+  "{{value}} jour(s)": "{{value}} day(s)",
+  "Agence : {{tenant}}\nPacks actuels : {{packs}}\n\nDécrivez ici l’extension souhaitée (lots, copropriétés, chantiers…).": "Agency: {{tenant}}\nCurrent packs: {{packs}}\n\nDescribe the extension you need here (lots, condominiums, construction sites…)."
 }

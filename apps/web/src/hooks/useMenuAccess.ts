@@ -4,6 +4,7 @@ import type { NavGroup, PersonaNav } from '../navigation/model';
 import { isMenuKeyDisabled, menuKeyFor } from '../navigation/menu-catalog';
 import type { PersonaId } from '../navigation/model';
 import { getMyDisabledMenus } from '../services/role-menu-service';
+import { getMenuEntitlements } from '../services/entitlements-service';
 import { applyFeatureAccess, featureAccessFromModules } from '../navigation/feature-access';
 import type { FeatureAccessMap } from '../navigation/feature-access';
 
@@ -57,8 +58,8 @@ export function useDisabledMenuKeys(tenantId?: string | null): Set<string> {
  *     passer : masquer une entrée qui fonctionne serait mentir ;
  *   - `enabled` à faux (super-admin, portails) : aucun appel.
  *
- * Le service est chargé à la demande : la coquille est déjà un chunk à part,
- * mais rien ne justifie que l'appel pèse sur son premier rendu.
+ * Import statique : ce hook ne vit que dans la coquille, chunk paresseux ; un
+ * `import()` de plus alourdirait la table de préchargement du chunk d'entrée.
  */
 export function useFeatureAccess(tenantId: string | null | undefined, enabled: boolean): FeatureAccessMap | null {
   const [access, setAccess] = useState<FeatureAccessMap | null>(null);
@@ -68,8 +69,7 @@ export function useFeatureAccess(tenantId: string | null | undefined, enabled: b
     if (!enabled || !tenantId) return;
     let cancelled = false;
 
-    import('../services/entitlements-service')
-      .then(({ getMenuEntitlements }) => getMenuEntitlements(tenantId))
+    getMenuEntitlements(tenantId)
       .then(entitlements => {
         if (cancelled) return;
         setAccess(entitlements?.enforcement === 'enforce' ? featureAccessFromModules(entitlements.moduleAccess) : null);

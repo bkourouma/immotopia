@@ -58,7 +58,8 @@ export function applyFeatureAccess(group: NavGroup, access: FeatureAccessMap): N
   }
   if (children.length === 0) return null;
 
-  const unchanged = children.length === group.children.length && children.every((c, i) => c === group.children![i]);
+  const original = group.children;
+  const unchanged = children.length === original.length && children.every((c, i) => c === original[i]);
   if (unchanged && groupLevel === 'FULL') return group;
 
   const href = group.href && !children.some(c => c.href === group.href) ? children[0].href : group.href;

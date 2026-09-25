@@ -238,27 +238,48 @@ describe('<CreateTenantDrawer> — exclusivité de l’Intégré', () => {
     const user = userEvent.setup();
     renderDrawer();
 
+    // Clic par rôle, pas par texte : une fois un pack choisi, le récapitulatif
+    // chiffré affiche une ligne portant le MÊME libellé que la carte (« Agence »,
+    // « Opérateur intégré »…), ce qui rendrait `getByText` ambigu.
     await screen.findByText('Agence');
-    await user.click(screen.getByText('Agence'));
-    await waitFor(() => expect(screen.getByRole('checkbox', { name: /Agence/ })).toHaveAttribute('aria-checked', 'true'));
-
-    await user.click(screen.getByText('Opérateur intégré'));
-    await waitFor(() => {
-      expect(screen.getByRole('checkbox', { name: /Opérateur intégré/ })).toHaveAttribute('aria-checked', 'true');
-      expect(screen.getByRole('checkbox', { name: /^Agence/ })).toHaveAttribute('aria-checked', 'false');
+    // Le clic déclenche l'appel au devis (`/admin/catalog/quote`) qui peut
+    // légèrement retarder le rendu sous charge : le délai par défaut de
+    // `waitFor` (1 s) est parfois trop court dans cet environnement partagé.
+    await user.click(screen.getByRole('checkbox', { name: /^Agence/ }));
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: /^Agence/ })).toHaveAttribute('aria-checked', 'true'), {
+      timeout: 5000
     });
+
+    await user.click(screen.getByRole('checkbox', { name: /Opérateur intégré/ }));
+    await waitFor(
+      () => {
+        expect(screen.getByRole('checkbox', { name: /Opérateur intégré/ })).toHaveAttribute('aria-checked', 'true');
+        expect(screen.getByRole('checkbox', { name: /^Agence/ })).toHaveAttribute('aria-checked', 'false');
+      },
+      { timeout: 5000 }
+    );
 
     // Les trois autres packs sont désactivés tant que l'Intégré est choisi.
     expect(screen.getByRole('checkbox', { name: /^Agence/ })).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('checkbox', { name: /Syndic/ })).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByRole('checkbox', { name: /Promoteur/ })).toHaveAttribute('aria-disabled', 'true');
 
-    // Reprendre un pack simple désélectionne l'Intégré.
-    await user.click(screen.getByText('Syndic'));
-    await waitFor(() => {
-      expect(screen.getByRole('checkbox', { name: /Opérateur intégré/ })).toHaveAttribute('aria-checked', 'false');
-      expect(screen.getByRole('checkbox', { name: /Syndic/ })).toHaveAttribute('aria-checked', 'true');
-    });
+    // Les cartes des trois autres packs sont désactivées tant que l'Intégré
+    // reste choisi (exclusivité stricte) : il faut d'abord le décocher lui-même.
+    await user.click(screen.getByRole('checkbox', { name: /Opérateur intégré/ }));
+    await waitFor(
+      () => expect(screen.getByRole('checkbox', { name: /Opérateur intégré/ })).toHaveAttribute('aria-checked', 'false'),
+      { timeout: 5000 }
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: /Syndic/ }));
+    await waitFor(
+      () => {
+        expect(screen.getByRole('checkbox', { name: /Opérateur intégré/ })).toHaveAttribute('aria-checked', 'false');
+        expect(screen.getByRole('checkbox', { name: /Syndic/ })).toHaveAttribute('aria-checked', 'true');
+      },
+      { timeout: 5000 }
+    );
   });
 });
 
@@ -274,8 +295,15 @@ describe('<CreateTenantDrawer> — récapitulatif chiffré en direct', () => {
       timeout: 2000
     });
 
-    expect(await screen.findByText('Total HT mensuel')).toBeInTheDocument();
-    expect(await screen.findByText(/29(\s| )900(\s| )FCFA/)).toBeInTheDocument();
+    const totalLabel = await screen.findByText('Total HT mensuel');
+    // La ligne « Agence » ET le total affichent le même montant (un seul
+    // pack sélectionné) : on vérifie le total via la ligne qui le porte
+    // plutôt qu'un texte global, ambigu ici. Le séparateur de milliers de
+    // <MoneyValue> est une espace insécable étroite (U+202F) : on la ramène
+    // à une espace normale avant de comparer.
+    const totalRow = totalLabel.closest('div');
+    const totalText = (totalRow?.textContent ?? '').replace(/\u202f/g, ' ');
+    expect(totalText).toMatch(/29\s900\sFCFA/);
   });
 });
 

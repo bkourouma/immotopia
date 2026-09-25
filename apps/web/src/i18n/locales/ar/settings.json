@@ -101,5 +101,19 @@
   "Comptes Mobile Money et banque uniquement. Sans choix, un compte de collecte est créé automatiquement à l’activation.": "حسابات موبايل موني والحسابات البنكية فقط. في حال عدم الاختيار، يُنشأ حساب تحصيل تلقائيًا عند التفعيل.",
   "Connexion réussie": "تم الاتصال بنجاح",
   "Dernier test": "آخر اختبار",
-  "Échoué": "فشل"
+  "Échoué": "فشل",
+  "Aucun module ouvert": "لا توجد وحدة مفتوحة",
+  "Besoin de plus de lots, de copropriétés ou de chantiers ? Envoyez une demande à l’équipe ImmoTopia.": "بحاجة إلى مزيد من الوحدات أو الملكيات المشتركة أو مواقع البناء؟ أرسل طلبًا إلى فريق ImmoTopia.",
+  "Cette agence n’a pas encore d’abonnement.": "لا يوجد اشتراك لهذه الوكالة بعد.",
+  "Compte en lecture seule": "حساب للقراءة فقط",
+  "Consultation seule : les modifications passent par le support ImmoTopia.": "اطلاع فقط: التعديلات تمر عبر دعم ImmoTopia.",
+  "Demande d’extension d’abonnement": "طلب تمديد الاشتراك",
+  "Demander une extension": "طلب تمديد",
+  "Formule": "الباقة",
+  "Jours d’essai restants": "أيام الفترة التجريبية المتبقية",
+  "Packs souscrits, période en cours et consommation de lots, copropriétés et chantiers.": "الباقات المشترَك بها، الفترة الحالية واستهلاك الوحدات والملكيات المشتركة ومواقع البناء.",
+  "Voir mon abonnement": "عرض اشتراكي",
+  "aucun": "لا شيء",
+  "{{value}} jour(s)": "{{value}} يوم (أيام)",
+  "Agence : {{tenant}}\nPacks actuels : {{packs}}\n\nDécrivez ici l’extension souhaitée (lots, copropriétés, chantiers…).": "الوكالة: {{tenant}}\nالباقات الحالية: {{packs}}\n\nصف هنا التمديد المطلوب (وحدات، ملكيات مشتركة، مواقع بناء…)."
 }

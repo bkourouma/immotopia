@@ -172,8 +172,17 @@ describe('SubscriptionTab — abonnement par packs', () => {
     await user.click(screen.getByRole('button', { name: 'Accorder une dérogation' }));
 
     const dialogue = await screen.findByRole('dialog');
-    await user.click(within(dialogue).getByText('Capacité').closest('.ant-form-item')!.querySelector('.ant-select-selector')!);
-    await user.click(await screen.findByText('Lots', { selector: '.ant-select-item-option-content' }));
+    // Motif éprouvé du dépôt (voir l'ancienne version de ce test) : le
+    // `<Select>` d'AntD s'ouvre sur `mousedown`, pas sur `click`, et son
+    // option n'est reconnue par le lecteur d'écran qu'à travers
+    // `.ant-select-item`, pas `role="option"`.
+    fireEvent.mouseDown(within(dialogue).getByRole('combobox'));
+    const option = await waitFor(() => {
+      const candidat = screen.getAllByText('Lots').find(el => el.closest('.ant-select-item'));
+      if (!candidat) throw new Error('Option « Lots » introuvable');
+      return candidat;
+    });
+    fireEvent.click(option);
 
     const delta = within(dialogue).getByRole('spinbutton');
     await user.clear(delta);

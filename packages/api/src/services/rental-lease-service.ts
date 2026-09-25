@@ -1342,11 +1342,16 @@ export async function deleteLease(tenantId: string, leaseId: string, actorUserId
 
   // Delete the lease (cascade will handle related items like co-renters, installments without payments, etc.)
   const propertyId = lease.property_id;
-  await prisma.rentalLease.delete({
-    where: {
-      id: leaseId,
-      tenant_id: tenantId
-    }
+  // Un bail ACTIVE supprime peut faire sortir le logement de la reserve de
+  // lots (D1) : recalcul dans la meme transaction.
+  await prisma.$transaction(async tx => {
+    await tx.rentalLease.delete({
+      where: {
+        id: leaseId,
+        tenant_id: tenantId
+      }
+    });
+    await syncLotActivationsTx(tx, tenantId, { propertyIds: [propertyId] }, { actorUserId, reason: 'LEASE_DELETED' });
   });
 
   logger.info('Rental lease deleted', {

@@ -41,7 +41,9 @@ ne change aucun abonnement en cours.
 - `SubscriptionItem` (tenantId) : `quantity`, `unitMonthlyPrice`,
   `unitSetupPrice`, `discountPercent`, `status` SCHEDULED/ACTIVE/ENDED,
   `startsAt`, `endsAt` (ACTIVE avec `endsAt` futur = retrait à l'échéance),
-  `endReason`, `replacesItemId`, `billedThrough` (vague 3).
+  `endReason`, `replacesItemId`, `billedThrough` (vague 3), `parentItemId`
+  (migration `20260928100000_abonnements_extensions_pack`, vague 2 : pack
+  auquel une extension est liee).
 - `CapacityOverride` (tenantId) : `capacityKey`, `delta`, `reason`, `startsAt`,
   `expiresAt`, `revokedAt`.
 - `LotActivation` (tenantId) : registre des lots comptés. Index unique
@@ -50,9 +52,9 @@ ne change aucun abonnement en cours.
   étrangère vers les biens et lots : l'historique survit à leur suppression.
 - `InvoiceLine` (tenantId) : `invoiceId` **nul = ligne en attente** (prorata,
   avoir) que la prochaine facture reprendra.
-- `UsageSnapshot` (un relevé par agence, capacité et jour) et `QuotaAlert`
-  (unique par agence, capacité, seuil, période) : tables prêtes, écrites par la
-  vague 3.
+- `UsageSnapshot` (un relevé par agence, capacité et jour, pic de la journée)
+  et `QuotaAlert` (unique par agence, capacité, seuil, période) : écrites par
+  la tâche `jobs/subscription-usage-job.ts` (vague 2, §6 bis).
 - `Subscription` : + `trialEndsAt`, `pastDueAt`, `graceDays` (7),
   `quotaPolicy` (BILL_OVERAGE), `comboDiscountPercent` (10), `nextBillingAt`,
   `items`. Les essais existants ont reçu `trialEndsAt = currentPeriodEnd`.
@@ -121,6 +123,49 @@ Agence + Syndic 320 lots → 94 810 · Promoteur 3 chantiers / 120 lots → 189 
   `disabledAt`) → `READ_ONLY` : lecture et export, pas d'écriture.
 - **Reprise** : agence déjà au-delà de sa capacité → `CapacityOverride`
   « Reprise » de 3 mois, arrondi à la dizaine pour les lots.
+- **Extensions liées** (Baba, 25/09) : une extension est liée
+  (`parentItemId`) au plus ancien pack en vigueur qui l'autorise (Syndic ou
+  Intégré pour une copropriété, Promoteur ou Intégré pour un chantier, tout
+  pack pour des lots). Retirer le pack retire ses extensions **à la même
+  échéance** (immédiatement si le retrait est immédiat), `endReason =
+  PACK_REMOVED`. Un changement de pack rattache l'extension au nouveau pack
+  s'il l'autorise, sinon elle part à la date du changement.
+  `applyDueItemTransitionsTx` termine aussi, par sécurité, toute extension
+  dont le pack est déjà terminé.
+
+### 6 bis. Tâche planifiée (`jobs/subscription-usage-job.ts`, démarrée par `index.ts`)
+
+Passage complet chaque jour à 02:30 UTC, alertes seules chaque heure à :15.
+
+1. **Échéance** : `applyDueItemTransitionsTx` (retraits programmés, extensions
+   liées), puis, à la fin de l'essai ou de la période : facture PLATFORM
+   **PAYÉE** couvrant la période suivante → période avancée ; sinon
+   `PAST_DUE` (`pastDueAt` = échéance). La lecture seule tombe après
+   `graceDays` jours (calculée par `resolveSubscriptionPhase`) et n'est
+   annoncée qu'une fois (`metadata.readOnlyNotifiedFor`). **La vague 3** émet
+   les factures et repasse l'abonnement ACTIVE au paiement.
+2. **Relevé** `UsageSnapshot` par capacité et par jour (pic de la journée).
+3. **Alertes** 80 % et 100 % (capacité nulle entamée = 100 %), une fois par
+   capacité, seuil et période ; période = période de facturation, ou fenêtre
+   **mensuelle** de dépassement en annuel. La ligne `QuotaAlert` est l'alerte
+   in-app (`listQuotaAlerts`) ; e-mail aux administrateurs de l'agence
+   (TENANT_ADMIN, sinon e-mail de contact) et aux super-admins.
+4. **Fin d'essai** : rappels J-7 et J-1, une fois par date de fin d'essai
+   (`metadata.trialReminders`) ; une prolongation les relance.
+
+### 6 ter. Dépassement en abonnement ANNUEL (Baba, 25/09) — règle pour la vague 3
+
+- Le pack et les extensions restent payés **à l'année** (11 mensualités).
+- Le dépassement n'entre **jamais** dans la facture annuelle et n'est jamais
+  multiplié par 11 : il est facturé **chaque mois**, dans une facture PLATFORM
+  à part, pour la fenêtre mensuelle ancrée sur le début de la période annuelle
+  (`monthlyOverageWindow` : période du 15/01 → 15/01–15/02, 15/02–15/03…).
+- Consommation retenue : le **pic** des relevés `UsageSnapshot` de la
+  fenêtre, ou la consommation du jour si elle est plus haute.
+- `previewNextInvoice` expose `overageBilling` (`IN_PERIOD_INVOICE` en
+  mensuel, `MONTHLY_SEPARATE` en annuel) et `overageInvoice` (annuel : lignes,
+  HT, TVA, TTC, fenêtre, consommation retenue). La vague 3 émet cette facture
+  à la fin de chaque fenêtre ; en mensuel, rien ne change.
 
 ## 7. Décisions (Baba, 25/09)
 
@@ -141,8 +186,8 @@ IN_PROGRESS, SUSPENDED.
 | Vague | Contenu | État |
 |---|---|---|
 | 1 | Schéma, catalogue, bibliothèque pure, service, routes super-admin, provisioning par packs, reprise, `SUBSCRIPTION_ENFORCEMENT` | **livrée** |
-| 2 | Gardes de modules sur les routes et le menu web ; appels au registre des lots dans les services métier ; écrans super-admin et agence | à faire |
-| 3 | Émission automatique des factures, relevés d'usage, alertes de seuil, paiement PaySecureHub et constat manuel, passage PAST_DUE | à faire |
+| 2 | Gardes de modules sur les routes et le menu web ; registre des lots branché dans les services métier, quotas, extensions liées, tâche planifiée (relevés, alertes, fin d'essai, PAST_DUE) ; écrans super-admin et agence | lot B livré |
+| 3 | Émission automatique des factures (dont le dépassement mensuel en annuel, §6 ter), paiement PaySecureHub et constat manuel, retour ACTIVE au paiement | à faire |
 
 ## 9. Contrats exposés
 
@@ -209,11 +254,32 @@ interface TenantEntitlements {
   `unitKeyFor(ref)`.
 - `computeQualifyingUnits(db, tenantId)`, `reconcileLotActivations(tenantId, {
   dryRun })` : contrôle de cohérence.
-- Points d'appel attendus : création, changement de statut ou de mode et
-  suppression d'un bien ; activation et fin d'un bail ; création et suppression
-  d'un lot de copropriété, changement de statut d'une copropriété ; création
-  d'un lot de programme, bascule au patrimoine, clôture d'un chantier. Avant
-  une activation : `checkQuota(await getEntitlements(tenantId), 'LOTS')`.
+- **Au fil de l'eau (vague 2)** : `syncLotActivationsTx(tx, tenantId, scope,
+  { actorUserId, reason })` recalcule les unités d'un périmètre (`propertyIds`,
+  `syndicateIds`, `syndicateLotIds`, `siteIds`, `siteLotIds` ; lots,
+  biens liés et immeuble parent dépliés par `resolveLotScope`) dans la
+  transaction de l'opération : verrou `pg_advisory_xact_lock(hashtext(
+  'lot-registry:<tenantId>'))` (`lockTenantLotsTx`), puis `checkQuota` sur
+  l'ajout **net** (une bascule `PL:` → `P:` ne consomme rien), fermetures,
+  ouvertures. Le registre est **toujours** tenu ; seul le refus dépend de
+  `SUBSCRIPTION_ENFORCEMENT` (`enforce` + BLOCK → 409 `QUOTA_EXCEEDED`,
+  l'opération est annulée). `assertCapacityTx(tx, tenantId, 'COPROPRIETES' |
+  'CHANTIERS')` fait de même pour une copropriété ou un chantier qui devient
+  actif.
+- Points d'appel branchés : `createProperty`, `updateProperty` (statut,
+  modes), `deleteProperty`, `updatePropertyStatus`, `setPropertyStatusTx`
+  (vente) ; `createLease`, `updateLeaseStatus`, `deleteLease`, `renewLease`
+  (bail terminé qui repart), `terminateLease` (fin effective) ;
+  `createSyndicateWithDefaults` (capacité), `updateSyndicateByTenant`
+  (statut), `archiveSyndicateByTenant`, `createSyndicateLot`,
+  `updateSyndicateLotByTenant` (type, bien), `importLotsFromPropertiesBySyndicate`
+  (une transaction par ligne ; en BLOCK les lignes au-delà de la place sont
+  écartées avec la raison « Quota de lots atteint ») ; `createConstructionSite`
+  (capacité), `createSiteLotTx`, `deleteSiteLotTx`, `closeSiteTx`,
+  `reopenSiteTx` (capacité puis recomptage), `capitalizeSiteLotTx` (transfert).
+  Inventaire vérifié par `__tests__/unit/lot-registry.call-sites.test.ts`.
+- Non branchés (rattrapés par `reconcileLotActivations`) : création ou fin
+  d'un mandat sur un bien CLIENT, révision de loyer, avenant.
 
 ### Erreurs — `middleware/error-middleware.ts`
 
@@ -256,7 +322,7 @@ Idempotente. Résultat sur la base de développement le 25/09 :
 |---|---|---|---|---|
 | Agence Immobilière du Mali | aucun | AGENCE, **à revoir** | 9 (9 logements) | — |
 | Bamako Immobilier | aucun | AGENCE, **à revoir** | 0 | — |
-| Ivoire Résidences | AGENCY | AGENCE | 128 (72 logements, 56 lots de copropriété) ; 3 copropriétés | LOTS +30, COPROPRIETES +3, jusqu'au 25/12/2026 |
+| Ivoire Résidences | AGENCY | AGENCE, puis **AGENCE + SYNDIC** (vague 2, décision de Baba) | 128 (72 logements, 56 lots de copropriété) ; 3 copropriétés | vague 1 : LOTS +30, COPROPRIETES +3 ; vague 2 : les deux révoquées, **COPROPRIETES +1** jusqu'au 25/12/2026 (capacité 200 lots, 2 copropriétés) |
 | QA2 Agence jetable (suspendue) | aucun | AGENCE, **à revoir** | 0 | — |
 
 Aucune agence n'avait d'abonnement : un essai de 30 jours a été créé pour
@@ -264,19 +330,17 @@ chacune.
 
 ## 11. Points à trancher
 
-1. **Ivoire Résidences** gère 3 copropriétés sans le module Syndic (les gardes
-   n'étaient pas branchées). La reprise a suivi la règle « modules → packs » :
-   Agence seule, avec dérogation. Dès que la vague 2 branchera les gardes, le
-   syndic lui sera fermé. Proposition : lui attribuer AGENCE + SYNDIC.
+1. ~~Ivoire Résidences sans Syndic~~ : **tranché** (Baba, 25/09) — AGENCE +
+   SYNDIC, dérogation copropriétés ramenée à +1, dérogation lots révoquée.
 2. **75 FCFA au-delà du 300e lot** : appliqué quand l'agence ne détient que
    l'Agence (calque de `agencePrice`). Avec Agence + Syndic, tous les lots
    supplémentaires restent à 150 (c'est ce que donne l'exemple à 94 810).
-3. **Dépassement** facturé au lot (grille du site), pas par bloc de 10 ; en
-   annuel, l'aperçu chiffre un mois de dépassement : la vague 3 fixe la règle
-   (pic ou fin de période, depuis `UsageSnapshot`).
+3. **Dépassement** facturé au lot (grille du site), pas par bloc de 10. En
+   annuel : **tranché** (Baba, 25/09), facturé chaque mois sur le pic du
+   mois (§6 ter).
 4. D1 exclut aussi les biens **SOLD** et **ARCHIVED** sans bail actif, en plus
    des brouillons.
-5. Un retrait de pack laisse les extensions qui en dépendaient : à décider
-   (les retirer à la même échéance ?).
+5. ~~Extensions d'un pack retiré~~ : **tranché** (Baba, 25/09), retirées à
+   la même échéance (§6, extensions liées).
 6. Les messages d'erreur à valeur interpolée (codes d'offre) restent en
    français ; les messages fixes sont traduits en anglais et en arabe.

@@ -33,7 +33,12 @@ import {
   isOverrideActive,
   packsForModules
 } from '../src/lib/subscription';
-import { loadCatalogByCodes, planInitialItems, syncTenantModulesTx } from '../src/services/subscription-v2-service';
+import {
+  linkExtensionsToPacksTx,
+  loadCatalogByCodes,
+  planInitialItems,
+  syncTenantModulesTx
+} from '../src/services/subscription-v2-service';
 import {
   computeQualifyingUnits,
   countActiveCopros,
@@ -159,6 +164,7 @@ async function migrateTenant(tenant: { id: string; name: string; status: string 
             : `Reprise du ${now.toISOString().slice(0, 10)} depuis les modules ${modulesBefore.join(', ')}.`
         }))
       });
+      await linkExtensionsToPacksTx(tx, tenant.id);
       // --- 3. Modules
       await syncTenantModulesTx(tx, tenant.id, { now });
       await tx.auditLog.create({

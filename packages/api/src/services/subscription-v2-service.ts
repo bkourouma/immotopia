@@ -387,6 +387,42 @@ export async function syncTenantModulesTx(
 }
 
 /**
+ * Pack auquel rattacher une extension (decision de Baba du 25/09 : une
+ * extension achetee avec un pack est retiree a la meme echeance que lui) :
+ * le plus ancien pack en vigueur qui l'autorise (Syndic/Integre pour une
+ * copropriete, Promoteur/Integre pour un chantier, tout pack pour des lots).
+ */
+export function choosePackForExtension(
+  extension: Pick<CatalogEntry, 'rules'>,
+  packs: ReadonlyArray<{ id: string; code: string }>
+): string | null {
+  return packs.find(pack => isExtensionAllowed(extension, [pack.code]))?.id ?? null;
+}
+
+/**
+ * Rattache a un pack les extensions en vigueur qui n'en ont pas (souscription
+ * initiale en `createMany`, reprise). Idempotent.
+ */
+export async function linkExtensionsToPacksTx(tx: Db, tenantId: string): Promise<number> {
+  const rows = await tx.subscriptionItem.findMany({
+    where: { tenantId, status: { not: SubscriptionItemStatus.ENDED } },
+    include: itemInclude,
+    orderBy: { createdAt: 'asc' }
+  });
+  const packs = rows.filter(r => r.catalogItem.kind === CatalogItemKind.PACK).map(r => ({ id: r.id, code: r.catalogItem.code }));
+  let linked = 0;
+  for (const row of rows) {
+    if (row.catalogItem.kind !== CatalogItemKind.EXTENSION || row.parentItemId) continue;
+    const parentItemId = choosePackForExtension(toCatalogEntry(row.catalogItem), packs);
+    if (!parentItemId) continue;
+    // eslint-disable-next-line no-await-in-loop -- quelques extensions au plus.
+    await tx.subscriptionItem.update({ where: { id: row.id }, data: { parentItemId } });
+    linked += 1;
+  }
+  return linked;
+}
+
+/**
  * Transitions dues a `now` : elements dont la fin est passee -> ENDED,
  * elements SCHEDULED dont le debut est atteint -> ACTIVE, puis modules
  * resynchronises. Idempotent. A appeler au changement de periode (vague 3).
@@ -396,6 +432,17 @@ export async function applyDueItemTransitionsTx(
   tenantId: string,
   now: Date = new Date()
 ): Promise<{ ended: number; started: number }> {
+  // Filet : une extension dont le pack est termine s'arrete avec lui, meme
+  // si son echeance n'avait pas ete posee (retrait anterieur a la vague 2).
+  await tx.subscriptionItem.updateMany({
+    where: {
+      tenantId,
+      status: { not: SubscriptionItemStatus.ENDED },
+      endsAt: null,
+      parentItem: { status: SubscriptionItemStatus.ENDED }
+    },
+    data: { endsAt: now, endReason: 'PACK_REMOVED' }
+  });
   const ended = await tx.subscriptionItem.updateMany({
     where: { tenantId, status: { not: SubscriptionItemStatus.ENDED }, endsAt: { lte: now } },
     data: { status: SubscriptionItemStatus.ENDED }
@@ -473,6 +520,8 @@ export interface AddItemInput {
   quantity?: number;
   discountPercent?: number;
   note?: string;
+  /** Extension : pack auquel la lier (par defaut, le plus ancien pack qui l'autorise). */
+  parentItemId?: string;
 }
 
 /**
@@ -509,6 +558,21 @@ export async function addSubscriptionItem(tenantId: string, input: AddItemInput,
       throw new BadRequestError("Cette extension exige un pack qui n'est pas souscrit.");
     }
 
+    // Extension : liee au pack avec lequel elle est achetee (retiree avec lui).
+    let parentItemId: string | null = null;
+    if (catalog.kind === CatalogItemKind.EXTENSION) {
+      const packs = standing.filter(i => i.kind === 'PACK').map(i => ({ id: i.id, code: i.code }));
+      if (input.parentItemId) {
+        const chosen = packs.find(p => p.id === input.parentItemId);
+        if (!chosen || !isExtensionAllowed(catalog, [chosen.code])) {
+          throw new BadRequestError("Le pack indiqué n'autorise pas cette extension.");
+        }
+        parentItemId = chosen.id;
+      } else {
+        parentItemId = choosePackForExtension(catalog, packs);
+      }
+    }
+
     // Prix figes : un segment par palier de prix (blocs de lots).
     let segments: Array<{ quantity: number; unitMonthlyPrice: number }>;
     if (catalog.kind === CatalogItemKind.EXTENSION) {
@@ -532,6 +596,7 @@ export async function addSubscriptionItem(tenantId: string, input: AddItemInput,
           discountPercent: input.discountPercent ?? 0,
           status: SubscriptionItemStatus.ACTIVE,
           startsAt: now,
+          parentItemId,
           addedByUserId: actorUserId,
           note: input.note ?? null
         },
@@ -654,6 +719,28 @@ export async function removeSubscriptionItem(tenantId: string, itemId: string, i
       include: itemInclude
     });
 
+    // Retrait d'un pack : ses extensions partent a la meme echeance (decision
+    // de Baba du 25/09), sans remboursement, meme en retrait immediat.
+    let extensionsEnded: string[] = [];
+    if (row.catalogItem.kind === CatalogItemKind.PACK) {
+      const linked = await tx.subscriptionItem.findMany({
+        where: { tenantId, parentItemId: row.id, status: { not: SubscriptionItemStatus.ENDED } },
+        select: { id: true, endsAt: true }
+      });
+      extensionsEnded = linked.filter(e => !e.endsAt || e.endsAt.getTime() > endsAt.getTime()).map(e => e.id);
+      if (extensionsEnded.length > 0) {
+        await tx.subscriptionItem.updateMany({
+          where: { tenantId, id: { in: extensionsEnded } },
+          data: {
+            endsAt,
+            endReason: 'PACK_REMOVED',
+            endedByUserId: actorUserId,
+            ...(immediate ? { status: SubscriptionItemStatus.ENDED } : {})
+          }
+        });
+      }
+    }
+
     let remainder: ItemRow | null = null;
     if (removeQty < row.quantity) {
       remainder = await tx.subscriptionItem.create({
@@ -668,6 +755,7 @@ export async function removeSubscriptionItem(tenantId: string, itemId: string, i
           status: immediate || notStarted ? row.status : SubscriptionItemStatus.SCHEDULED,
           startsAt: immediate || notStarted ? row.startsAt : endsAt,
           replacesItemId: row.id,
+          parentItemId: row.parentItemId,
           addedByUserId: actorUserId,
           billedThrough: row.billedThrough,
           note: `Reste après retrait partiel de ${removeQty} unité(s)`
@@ -680,7 +768,7 @@ export async function removeSubscriptionItem(tenantId: string, itemId: string, i
       immediate && row.catalogItem.kind === CatalogItemKind.PACK
         ? await syncTenantModulesTx(tx, tenantId, { now, actorUserId })
         : null;
-    return { ended, remainder, immediate, removeQty, modules };
+    return { ended, remainder, immediate, removeQty, modules, extensionsEnded };
   });
 
   invalidateEntitlements(tenantId);
@@ -696,14 +784,17 @@ export async function removeSubscriptionItem(tenantId: string, itemId: string, i
       immediate: outcome.immediate,
       endsAt: outcome.ended.endsAt?.toISOString() ?? null,
       reason: outcome.ended.endReason,
-      remainderItemId: outcome.remainder?.id ?? null
+      remainderItemId: outcome.remainder?.id ?? null,
+      extensionsEnded: outcome.extensionsEnded
     }
   });
   return {
     item: serializeItem(outcome.ended),
     remainder: outcome.remainder ? serializeItem(outcome.remainder) : null,
     immediate: outcome.immediate,
-    modules: outcome.modules
+    modules: outcome.modules,
+    /** Extensions liees au pack, retirees a la meme echeance. */
+    extensionsEnded: outcome.extensionsEnded
   };
 }
 
@@ -773,6 +864,30 @@ export async function changePack(
       },
       include: itemInclude
     });
+
+    // Extensions des packs remplaces : suivent le nouveau pack (ou un pack
+    // restant) qui les autorise, sinon partent a la date du changement.
+    const remainingPacks = remaining.filter(i => i.kind === 'PACK').map(i => ({ id: i.id, code: i.code }));
+    const linkedExtensions = await tx.subscriptionItem.findMany({
+      where: { tenantId, parentItemId: { in: fromItems.map(i => i.id) }, status: { not: SubscriptionItemStatus.ENDED } },
+      include: itemInclude
+    });
+    for (const ext of linkedExtensions) {
+      const entry = toCatalogEntry(ext.catalogItem);
+      const newParent = choosePackForExtension(entry, [{ id: created.id, code: target.code }, ...remainingPacks]);
+      // eslint-disable-next-line no-await-in-loop -- quelques extensions au plus.
+      await tx.subscriptionItem.update({
+        where: { id: ext.id },
+        data: newParent
+          ? { parentItemId: newParent }
+          : {
+              endsAt: switchAt,
+              endReason: 'PACK_REMOVED',
+              endedByUserId: actorUserId,
+              ...(immediate ? { status: SubscriptionItemStatus.ENDED } : {})
+            }
+      });
+    }
 
     const pending: PendingLineInput[] = [];
     if (immediate && !isTrial(subscription)) {
@@ -987,6 +1102,7 @@ function serializeItem(row: ItemRow) {
     endsAt: row.endsAt,
     endReason: row.endReason,
     replacesItemId: row.replacesItemId,
+    parentItemId: row.parentItemId,
     billedThrough: row.billedThrough,
     note: row.note
   };
@@ -1047,13 +1163,92 @@ export interface InvoicePreview extends InvoiceTotals {
   pendingLineIds: string[];
   /** Politique de quota : le depassement n'est chiffre qu'en BILL_OVERAGE. */
   quotaPolicy: QuotaPolicy;
+  /**
+   * Rythme de facturation du depassement. MONTHLY-cycle : dans la facture de
+   * la periode (`IN_PERIOD_INVOICE`). ANNUAL : facture a part CHAQUE MOIS
+   * (`MONTHLY_SEPARATE`), jamais multiplie par 11 ; voir `overageInvoice`.
+   */
+  overageBilling: 'IN_PERIOD_INVOICE' | 'MONTHLY_SEPARATE';
+  /** Annuel seulement : la prochaine facture mensuelle de depassement (null sinon). */
+  overageInvoice: OverageInvoicePreview | null;
+}
+
+export interface OverageInvoicePreview extends InvoiceTotals {
+  /** Mois de depassement couvert : fenetre mensuelle ancree sur le debut de la periode annuelle. */
+  periodStart: Date;
+  periodEnd: Date;
+  /** Consommation retenue par capacite : pic du mois (UsageSnapshot) ou consommation du jour si plus haute. */
+  usage: Record<CapacityKeyCode, { used: number; limit: number }>;
+}
+
+/**
+ * Fenetre mensuelle de depassement d'un abonnement ANNUEL qui contient `now`,
+ * ancree sur `periodStart` (ex. periode du 15/01 : 15/01-15/02, 15/02-15/03...).
+ * Regle de Baba du 25/09 : en annuel, le pack reste paye a l'annee et le
+ * depassement est facture CHAQUE MOIS, a la fin de chaque fenetre.
+ */
+export function monthlyOverageWindow(periodStart: Date, now: Date): { start: Date; end: Date } {
+  let start = new Date(periodStart.getTime());
+  let end = addBillingPeriod(start, 'MONTHLY');
+  // 12 fenetres par an au plus ; la borne evite toute boucle sans fin.
+  for (let i = 0; i < 24 && end.getTime() <= now.getTime(); i += 1) {
+    start = end;
+    end = addBillingPeriod(start, 'MONTHLY');
+  }
+  return { start, end };
+}
+
+/** Lignes de depassement (BILL_OVERAGE) pour une consommation donnee, aux prix du catalogue. */
+async function computeOverageForUsage(
+  tenantId: string,
+  state: Awaited<ReturnType<typeof loadState>>,
+  usage: Record<CapacityKeyCode, number>,
+  at: Date
+): Promise<{ lines: ChargeLine[]; usage: Record<CapacityKeyCode, { used: number; limit: number }> }> {
+  const liveNow = effectiveItems(state.items, at);
+  const held = heldPackCodes(liveNow);
+  const entitlements = buildEntitlements({
+    tenantId,
+    subscription: null,
+    items: liveNow,
+    overrides: state.overrides,
+    moduleRows: [],
+    usage,
+    enforcement: 'off',
+    featuresFor: () => [],
+    now: at
+  });
+  const extensionCodes: Record<CapacityKeyCode, string> = {
+    LOTS: EXTENSION.LOTS_10,
+    COPROPRIETES: EXTENSION.COPRO,
+    CHANTIERS: EXTENSION.CHANTIER
+  };
+  const extensions = await loadCatalogByCodes(prisma, Object.values(extensionCodes));
+  const lines: ChargeLine[] = [];
+  const retained = {} as Record<CapacityKeyCode, { used: number; limit: number }>;
+  for (const key of CAPACITY_KEYS) {
+    const capacity = entitlements.capacities[key];
+    retained[key] = { used: capacity.used, limit: capacity.limit };
+    lines.push(
+      ...computeOverageLines({
+        capacityKey: key,
+        limit: capacity.limit,
+        used: capacity.used,
+        heldPacks: held,
+        extension: requireEntry(extensions, extensionCodes[key])
+      })
+    );
+  }
+  return { lines, usage: retained };
 }
 
 /**
  * Apercu de la PROCHAINE facture, calcule sans rien emettre : recurrent de
  * la periode suivante (packs, extensions, remise de combinaison, x11 en
  * annuel), mises en route non facturees, lignes en attente (prorata,
- * avoirs), depassement mensuel au jour de l'apercu (BILL_OVERAGE), TVA 18 %.
+ * avoirs), TVA 18 %. Depassement (BILL_OVERAGE) : en mensuel, dans cette
+ * facture au jour de l'apercu ; en ANNUEL, facture a part chaque mois
+ * (`overageInvoice`, regle de Baba du 25/09).
  * L'emission reelle (numero, echeance, paiement) est la vague 3.
  */
 export async function previewNextInvoice(tenantId: string, options: { now?: Date } = {}): Promise<InvoicePreview> {
@@ -1101,37 +1296,16 @@ export async function previewNextInvoice(tenantId: string, options: { now?: Date
     });
   }
 
+  // Depassement (BILL_OVERAGE seulement). Mensuel : dans la facture de la
+  // periode, au jour de l'apercu. Annuel : JAMAIS dans la facture annuelle ;
+  // facture a part chaque mois (`overageInvoice`), sans multiplicateur.
+  const annual = subscription.billingCycle === 'ANNUAL';
+  let overageInvoice: OverageInvoicePreview | null = null;
   if (subscription.quotaPolicy === QuotaPolicy.BILL_OVERAGE) {
-    const liveNow = effectiveItems(state.items, now);
-    const held = heldPackCodes(liveNow);
-    const entitlements = buildEntitlements({
-      tenantId,
-      subscription: null,
-      items: liveNow,
-      overrides: state.overrides,
-      moduleRows: [],
-      usage,
-      enforcement: 'off',
-      featuresFor: () => [],
-      now
-    });
-    const extensionCodes: Record<CapacityKeyCode, string> = {
-      LOTS: EXTENSION.LOTS_10,
-      COPROPRIETES: EXTENSION.COPRO,
-      CHANTIERS: EXTENSION.CHANTIER
-    };
-    const extensions = await loadCatalogByCodes(prisma, Object.values(extensionCodes));
-    for (const key of CAPACITY_KEYS) {
-      const capacity = entitlements.capacities[key];
-      lines.push(
-        ...computeOverageLines({
-          capacityKey: key,
-          limit: capacity.limit,
-          used: capacity.used,
-          heldPacks: held,
-          extension: requireEntry(extensions, extensionCodes[key])
-        })
-      );
+    if (!annual) {
+      lines.push(...(await computeOverageForUsage(tenantId, state, usage, now)).lines);
+    } else if (subscription.status !== SubscriptionStatus.TRIALING) {
+      overageInvoice = await previewMonthlyOverage(tenantId, state, usage, subscription.currentPeriodStart, now);
     }
   }
 
@@ -1143,6 +1317,42 @@ export async function previewNextInvoice(tenantId: string, options: { now?: Date
     periodEnd,
     pendingLineIds: pending.map(l => l.id),
     quotaPolicy: subscription.quotaPolicy,
+    overageBilling: annual ? 'MONTHLY_SEPARATE' : 'IN_PERIOD_INVOICE',
+    overageInvoice,
+    ...finalizeInvoice(lines, PLATFORM_TAX_RATE_PERCENT)
+  };
+}
+
+/**
+ * Facture mensuelle de depassement d'un abonnement ANNUEL (vague 3 : a
+ * emettre a la fin de chaque fenetre `monthlyOverageWindow`). Consommation
+ * retenue : le PIC des releves quotidiens (UsageSnapshot) de la fenetre, ou
+ * la consommation du jour si elle est plus haute.
+ */
+async function previewMonthlyOverage(
+  tenantId: string,
+  state: Awaited<ReturnType<typeof loadState>>,
+  usageNow: Record<CapacityKeyCode, number>,
+  annualPeriodStart: Date,
+  now: Date
+): Promise<OverageInvoicePreview> {
+  const window = monthlyOverageWindow(annualPeriodStart, now);
+  const peaks = await prisma.usageSnapshot.groupBy({
+    by: ['capacityKey'],
+    where: { tenantId, snapshotDate: { gte: window.start, lt: window.end } },
+    _max: { used: true }
+  });
+  const usage = { ...usageNow };
+  for (const peak of peaks) {
+    const key = peak.capacityKey as CapacityKeyCode;
+    usage[key] = Math.max(usage[key] ?? 0, peak._max.used ?? 0);
+  }
+  const overage = await computeOverageForUsage(tenantId, state, usage, now);
+  const lines = overage.lines.map(l => ({ ...l, periodStart: window.start, periodEnd: window.end }));
+  return {
+    periodStart: window.start,
+    periodEnd: window.end,
+    usage: overage.usage,
     ...finalizeInvoice(lines, PLATFORM_TAX_RATE_PERCENT)
   };
 }

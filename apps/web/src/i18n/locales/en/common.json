@@ -959,5 +959,13 @@
   "Votre rôle « {{currentRole}} » ne donne pas accès à cette section.": "Your \"{{currentRole}}\" role does not give access to this section.",
   "Votre rôle ne donne pas accès à cette section.": "Your role does not give access to this section.",
   "Votre session a expiré. Veuillez vous reconnecter.": "Your session has expired. Please sign in again.",
-  "Vue consolidée": "Consolidated view"
+  "Vue consolidée": "Consolidated view",
+  "Lecture seule": "Read-only",
+  "Module retiré de l'abonnement : consultation seulement": "Module removed from the subscription: view only",
+  "Fonction non comprise dans votre abonnement": "Feature not included in your subscription",
+  "Cette fonction relève d'un module que votre agence n'a pas souscrit. Pour l'ajouter, contactez l'administrateur de votre agence ou ImmoTopia.": "This feature belongs to a module your agency has not subscribed to. To add it, contact your agency administrator or ImmoTopia.",
+  "Module en lecture seule": "Read-only module",
+  "Ce module a été retiré de votre abonnement : vous pouvez consulter et exporter ses données, mais plus les modifier.": "This module has been removed from your subscription: you can still view and export its data, but no longer change it.",
+  "Abonnement en lecture seule": "Read-only subscription",
+  "L'abonnement de votre agence n'est plus actif : les données restent consultables, les modifications sont suspendues jusqu'à sa régularisation.": "Your agency's subscription is no longer active: data remains viewable, changes are suspended until it is settled."
 }

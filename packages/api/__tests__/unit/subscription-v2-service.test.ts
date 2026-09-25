@@ -21,6 +21,7 @@ let seq = 0;
 const id = (p: string) => `${p}-${++seq}`;
 
 let db: {
+  peaks?: Row[];
   subscriptions: Row[];
   items: Row[];
   modules: Row[];
@@ -30,6 +31,32 @@ let db: {
 
 function withCatalog(row: Row) {
   return { ...row, catalogItem: catalogById(row.catalogItemId) };
+}
+
+function matchIn(value: unknown, filter: unknown) {
+  if (filter === undefined) return true;
+  if (filter && typeof filter === 'object' && Array.isArray((filter as Row).in)) return (filter as Row).in.includes(value);
+  return value === filter;
+}
+
+function matchItem(row: Row, where: Row) {
+  return (
+    row.tenantId === where.tenantId &&
+    matchStatus(row, where) &&
+    matchIn(row.parentItemId ?? null, where.parentItemId) &&
+    matchIn(row.id, where.id) &&
+    matchDate(row.endsAt, where, 'endsAt') &&
+    matchDate(row.startsAt, where, 'startsAt') &&
+    (!where.parentItem || db.items.find(p => p.id === row.parentItemId)?.status === where.parentItem.status)
+  );
+}
+
+function matchDate(value: Date | null, where: Row, key: string) {
+  if (!(key in where)) return true;
+  const filter = where[key];
+  if (filter === null) return value === null || value === undefined;
+  if (filter?.lte) return !!value && value.getTime() <= filter.lte.getTime();
+  return true;
 }
 
 function matchStatus(row: Row, where: Row) {
@@ -47,15 +74,13 @@ const fake: Row = {
     findMany: jest.fn(async ({ where }: Row) => CATALOG.filter(c => where.code.in.includes(c.code)))
   },
   subscriptionItem: {
-    findMany: jest.fn(async ({ where }: Row) =>
-      db.items.filter(i => i.tenantId === where.tenantId && matchStatus(i, where)).map(withCatalog)
-    ),
+    findMany: jest.fn(async ({ where }: Row) => db.items.filter(i => matchItem(i, where)).map(withCatalog)),
     findFirst: jest.fn(async ({ where }: Row) => {
       const row = db.items.find(i => i.id === where.id && i.tenantId === where.tenantId);
       return row ? withCatalog(row) : null;
     }),
     create: jest.fn(async ({ data }: Row) => {
-      const row = { id: id('item'), createdAt: new Date(), discountPercent: 0, unitSetupPrice: 0, endsAt: null, billedThrough: null, replacesItemId: null, endReason: null, ...data };
+      const row = { id: id('item'), createdAt: new Date(), discountPercent: 0, unitSetupPrice: 0, endsAt: null, billedThrough: null, replacesItemId: null, parentItemId: null, endReason: null, ...data };
       db.items.push(row);
       return withCatalog(row);
     }),
@@ -64,7 +89,11 @@ const fake: Row = {
       Object.assign(row, data);
       return withCatalog(row);
     }),
-    updateMany: jest.fn(async () => ({ count: 0 }))
+    updateMany: jest.fn(async ({ where, data }: Row) => {
+      const rows = db.items.filter(i => matchItem(i, where));
+      for (const row of rows) Object.assign(row, data);
+      return { count: rows.length };
+    })
   },
   capacityOverride: {
     findMany: jest.fn(async ({ where }: Row) => db.overrides.filter(o => o.tenantId === where.tenantId))
@@ -88,7 +117,11 @@ const fake: Row = {
       const row = { id: id('line'), createdAt: new Date(), ...data };
       db.lines.push(row);
       return row;
-    })
+    }),
+    findMany: jest.fn(async ({ where }: Row) => db.lines.filter(l => l.tenantId === where.tenantId && l.invoiceId === null))
+  },
+  usageSnapshot: {
+    groupBy: jest.fn(async () => db.peaks ?? [])
   },
   $transaction: async (cb: (tx: Row) => Promise<any>) => cb(fake)
 };
@@ -107,7 +140,11 @@ jest.mock('../../src/services/audit-service', () => {
 
 import {
   addSubscriptionItem,
+  applyDueItemTransitionsTx,
   changePack,
+  monthlyOverageWindow,
+  previewNextInvoice,
+  registerUsageProvider,
   removeSubscriptionItem,
   syncTenantModulesTx
 } from '../../src/services/subscription-v2-service';
@@ -292,5 +329,119 @@ describe('Registre des lots : cle d’unite', () => {
     expect(unitKeyFor({ syndicateLotId: 's1' })).toBe('SL:s1');
     expect(unitKeyFor({ siteLotId: 'l1' })).toBe('PL:l1');
     expect(() => unitKeyFor({})).toThrow();
+  });
+});
+
+// ------------------------------------------------------------------ vague 2, lot B
+
+describe('extensions liees a leur pack (decision de Baba du 25/09)', () => {
+  it('une extension achetee est liee au pack qui l’autorise', async () => {
+    seed('ACTIVE', ['AGENCE', 'SYNDIC']);
+    const syndic = db.items.find(i => catalogById(i.catalogItemId).code === 'SYNDIC')!;
+    const agence = db.items.find(i => catalogById(i.catalogItemId).code === 'AGENCE')!;
+    await addSubscriptionItem(T, { code: 'EXT_COPRO' }, 'admin-1');
+    await addSubscriptionItem(T, { code: 'EXT_LOTS_10', quantity: 2 }, 'admin-1');
+    const copro = db.items.find(i => catalogById(i.catalogItemId).code === 'EXT_COPRO')!;
+    const lots = db.items.find(i => catalogById(i.catalogItemId).code === 'EXT_LOTS_10')!;
+    expect(copro.parentItemId).toBe(syndic.id); // seul le Syndic autorise une copropriete
+    expect(lots.parentItemId).toBe(agence.id); // le plus ancien pack pour des lots
+  });
+
+  it('retrait d’un pack a l’echeance : ses extensions partent a la MEME echeance, les autres restent', async () => {
+    seed('ACTIVE', ['AGENCE', 'SYNDIC']);
+    const syndic = db.items.find(i => catalogById(i.catalogItemId).code === 'SYNDIC')!;
+    await addSubscriptionItem(T, { code: 'EXT_COPRO' }, 'admin-1');
+    await addSubscriptionItem(T, { code: 'EXT_LOTS_10' }, 'admin-1');
+    const copro = db.items.find(i => catalogById(i.catalogItemId).code === 'EXT_COPRO')!;
+    const lots = db.items.find(i => catalogById(i.catalogItemId).code === 'EXT_LOTS_10')!;
+
+    const result = await removeSubscriptionItem(T, syndic.id, {}, 'admin-1');
+
+    expect(result.extensionsEnded).toEqual([copro.id]);
+    expect(copro).toMatchObject({ endsAt: PERIOD_END, endReason: 'PACK_REMOVED', status: 'ACTIVE' });
+    expect(lots.endsAt).toBeNull();
+
+    // A l'echeance, le pack ET son extension s'arretent ensemble.
+    await applyDueItemTransitionsTx(fake as any, T, PERIOD_END);
+    expect(syndic.status).toBe('ENDED');
+    expect(copro.status).toBe('ENDED');
+    expect(lots.status).toBe('ACTIVE');
+  });
+
+  it('retrait immediat (super-admin) : extensions liees terminees immediatement', async () => {
+    seed('ACTIVE', ['AGENCE', 'SYNDIC']);
+    const syndic = db.items.find(i => catalogById(i.catalogItemId).code === 'SYNDIC')!;
+    await addSubscriptionItem(T, { code: 'EXT_COPRO' }, 'admin-1');
+    const copro = db.items.find(i => catalogById(i.catalogItemId).code === 'EXT_COPRO')!;
+    await removeSubscriptionItem(T, syndic.id, { immediate: true, reason: 'Résiliation' }, 'admin-1');
+    expect(copro).toMatchObject({ status: 'ENDED', endReason: 'PACK_REMOVED', endsAt: ON_16TH });
+  });
+
+  it('montee Syndic -> Integre : l’extension copropriete suit le nouveau pack au lieu de partir', async () => {
+    seed('ACTIVE', ['SYNDIC']);
+    await addSubscriptionItem(T, { code: 'EXT_COPRO' }, 'admin-1');
+    const copro = db.items.find(i => catalogById(i.catalogItemId).code === 'EXT_COPRO')!;
+    const result = await changePack(T, { fromCodes: ['SYNDIC'], toCode: 'INTEGRE' }, 'admin-1');
+    expect(copro.parentItemId).toBe(result.item.id);
+    expect(copro.endsAt).toBeNull();
+  });
+});
+
+describe('depassement mensuel en abonnement ANNUEL (regle de Baba du 25/09)', () => {
+  const ANNUAL_START = new Date('2026-01-15T00:00:00Z');
+  const ANNUAL_END = new Date('2027-01-15T00:00:00Z');
+
+  function seedAnnual(lotsUsed: number) {
+    seed('ACTIVE', ['AGENCE']);
+    Object.assign(db.subscriptions[0], {
+      billingCycle: 'ANNUAL',
+      currentPeriodStart: ANNUAL_START,
+      currentPeriodEnd: ANNUAL_END,
+      quotaPolicy: 'BILL_OVERAGE'
+    });
+    registerUsageProvider('LOTS', async () => lotsUsed);
+    registerUsageProvider('COPROPRIETES', async () => 0);
+    registerUsageProvider('CHANTIERS', async () => 0);
+  }
+
+  it('fenetre mensuelle ancree sur le debut de la periode annuelle', () => {
+    expect(monthlyOverageWindow(ANNUAL_START, ON_16TH)).toEqual({
+      start: new Date('2026-09-15T00:00:00Z'),
+      end: new Date('2026-10-15T00:00:00Z')
+    });
+  });
+
+  it('le pack est facture a l’annee (x11) SANS depassement ; le depassement part dans une facture mensuelle a part', async () => {
+    seedAnnual(112); // Agence : 100 lots inclus, 12 de trop
+    const preview = await previewNextInvoice(T, { now: ON_16TH });
+
+    expect(preview.billingCycle).toBe('ANNUAL');
+    expect(preview.overageBilling).toBe('MONTHLY_SEPARATE');
+    expect(preview.lines.filter(l => l.kind === 'OVERAGE')).toHaveLength(0);
+    expect(preview.amountExclTax).toBe(29_900 * 11);
+
+    const overage = preview.overageInvoice!;
+    expect(overage.periodStart).toEqual(new Date('2026-09-15T00:00:00Z'));
+    expect(overage.periodEnd).toEqual(new Date('2026-10-15T00:00:00Z'));
+    // 12 lots au prix du lot (bloc de 1 500 / 10 = 150), une seule fois : jamais x11.
+    expect(overage.amountExclTax).toBe(12 * 150);
+    expect(overage.taxAmount).toBe(Math.round((12 * 150 * 18) / 100));
+  });
+
+  it('retient le PIC du mois (releves quotidiens) quand il depasse la consommation du jour', async () => {
+    seedAnnual(105);
+    db.peaks = [{ capacityKey: 'LOTS', _max: { used: 120 } }];
+    const preview = await previewNextInvoice(T, { now: ON_16TH });
+    expect(preview.overageInvoice!.usage.LOTS.used).toBe(120);
+    expect(preview.overageInvoice!.amountExclTax).toBe(20 * 150);
+  });
+
+  it('en MENSUEL, le depassement reste dans la facture de la periode', async () => {
+    seedAnnual(112);
+    Object.assign(db.subscriptions[0], { billingCycle: 'MONTHLY', currentPeriodStart: PERIOD_START, currentPeriodEnd: PERIOD_END });
+    const preview = await previewNextInvoice(T, { now: ON_16TH });
+    expect(preview.overageBilling).toBe('IN_PERIOD_INVOICE');
+    expect(preview.overageInvoice).toBeNull();
+    expect(preview.lines.filter(l => l.kind === 'OVERAGE').reduce((sum, l) => sum + l.amount, 0)).toBe(12 * 150);
   });
 });

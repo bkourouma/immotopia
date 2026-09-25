@@ -25,7 +25,13 @@ function moduleLabel(key: string): string {
   }
 }
 
-function planLabel(key: string): string {
+/**
+ * `planKey` est déprécié (docs/architecture/PLAN-ABONNEMENTS.md §1) : une
+ * création par packs (vague 2) ne l'envoie plus, `null`. Le libellé retombe
+ * alors sur les codes du catalogue (`result.subscription.items`), affichés
+ * tels quels — ce ne sont pas des textes français à traduire.
+ */
+function planLabel(key: string | null): string | null {
   switch (key) {
     case 'BASIC':
       return t('Basic');
@@ -118,10 +124,15 @@ export const TenantCreatedResult: React.FC<TenantCreatedResultProps> = ({
         </Space>
         <div style={{ marginTop: 8 }}>
           <Text type="secondary">
-            {t('Offre {{plan}}, cycle {{cycle}}', {
-              plan: planLabel(result.subscription.planKey),
-              cycle: cycleLabel(result.subscription.billingCycle)
-            })}
+            {result.subscription.items && result.subscription.items.length > 0
+              ? t('Packs {{packs}}, cycle {{cycle}}', {
+                  packs: result.subscription.items.map(i => i.code).join(', '),
+                  cycle: cycleLabel(result.subscription.billingCycle)
+                })
+              : t('Offre {{plan}}, cycle {{cycle}}', {
+                  plan: planLabel(result.subscription.planKey) ?? t('non définie'),
+                  cycle: cycleLabel(result.subscription.billingCycle)
+                })}
             {trialDate ? ` — ${t("fin d'essai le {{date}}", { date: trialDate })}` : null}
           </Text>
         </div>

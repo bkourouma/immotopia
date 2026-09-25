@@ -5,8 +5,8 @@ import type { ModuleAccessLevel } from '../navigation/feature-access';
  * Droits d'abonnement de l'agence, pour le menu (vague 2, lot A).
  *
  * Volontairement minimal — seuls les champs lus par la coquille — et séparé
- * de `subscription-v2-service.ts` (écrans d'abonnement) : ce module est chargé
- * à la demande par `hooks/useMenuAccess.ts`, il ne doit pas entraîner les
+ * de `subscription-v2-service.ts` (écrans d'abonnement) : lu par
+ * `hooks/useMenuAccess.ts` dans la coquille, il ne doit pas entraîner les
  * types et appels du back-office avec lui.
  *
  * `GET /api/tenants/:tenantId/entitlements` (requireTenantAccess).

@@ -959,5 +959,13 @@
   "Votre rôle « {{currentRole}} » ne donne pas accès à cette section.": "دورك «{{currentRole}}» لا يتيح الوصول إلى هذا القسم.",
   "Votre rôle ne donne pas accès à cette section.": "دورك لا يتيح الوصول إلى هذا القسم.",
   "Votre session a expiré. Veuillez vous reconnecter.": "انتهت صلاحية جلستك. يُرجى تسجيل الدخول مجددًا.",
-  "Vue consolidée": "عرض مجمَّع"
+  "Vue consolidée": "عرض مجمَّع",
+  "Lecture seule": "للقراءة فقط",
+  "Module retiré de l'abonnement : consultation seulement": "وحدة أُزيلت من الاشتراك: للاطلاع فقط",
+  "Fonction non comprise dans votre abonnement": "هذه الميزة غير مشمولة في اشتراككم",
+  "Cette fonction relève d'un module que votre agence n'a pas souscrit. Pour l'ajouter, contactez l'administrateur de votre agence ou ImmoTopia.": "تنتمي هذه الميزة إلى وحدة لم تشترك فيها وكالتكم. لإضافتها، تواصلوا مع مسؤول وكالتكم أو مع ImmoTopia.",
+  "Module en lecture seule": "وحدة للقراءة فقط",
+  "Ce module a été retiré de votre abonnement : vous pouvez consulter et exporter ses données, mais plus les modifier.": "أُزيلت هذه الوحدة من اشتراككم: يمكنكم الاطلاع على بياناتها وتصديرها، لكن لم يعد بإمكانكم تعديلها.",
+  "Abonnement en lecture seule": "اشتراك للقراءة فقط",
+  "L'abonnement de votre agence n'est plus actif : les données restent consultables, les modifications sont suspendues jusqu'à sa régularisation.": "لم يعد اشتراك وكالتكم نشطًا: تبقى البيانات متاحة للاطلاع، وتُعلَّق التعديلات إلى حين تسويته."
 }

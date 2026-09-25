@@ -110,9 +110,15 @@ function buildFakePrisma() {
           .filter(i => i.tenantId === where.tenantId && i.status !== 'ENDED')
           .map(i => {
             const c = CATALOG_ROWS.find(r => r.id === i.catalogItemId)!;
-            return { ...i, catalogItem: { code: c.code, kind: c.kind } };
+            return { ...i, catalogItem: { code: c.code, kind: c.kind, capacities: [], rules: c.rules ?? null } };
           })
-      )
+      ),
+      // Rattachement des extensions a leur pack (linkExtensionsToPacksTx).
+      update: jest.fn(async ({ where, data }: Row) => {
+        const row = store.subscriptionItems.find(i => i.id === where.id)!;
+        Object.assign(row, data);
+        return row;
+      })
     },
     agencyFinanceSettings: {
       create: jest.fn(async ({ data }: Row) => {

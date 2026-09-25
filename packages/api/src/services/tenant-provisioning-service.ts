@@ -29,7 +29,7 @@ import { DEFAULT_FINANCE_SETTINGS } from '../lib/settings/finance-settings';
 import { ProvisionTenantRequest, ProvisionTenantResult } from '../types/tenant-types';
 import { tenantProvisioningIdempotencyStore } from '../utils/idempotency';
 import { TRIAL_DAYS, packModules, packsForModules } from '../lib/subscription';
-import { loadCatalogByCodes, planInitialItems, RequestedItem } from './subscription-v2-service';
+import { linkExtensionsToPacksTx, loadCatalogByCodes, planInitialItems, RequestedItem } from './subscription-v2-service';
 
 /**
  * Provisioning d'une agence en un clic (lot F1, docs/architecture/PLAN-MULTI-TENANT.md).
@@ -174,6 +174,8 @@ async function runProvisioningTx(input: ProvisionTenantRequest, actorUserId: str
         addedByUserId: actorUserId
       }))
     });
+    // Extensions souscrites d'emblee : liees a leur pack (retirees avec lui).
+    await linkExtensionsToPacksTx(tx, tenant.id);
     const itemsSummary = plannedItems.map(p => ({
       code: p.catalog.code,
       kind: p.catalog.kind,

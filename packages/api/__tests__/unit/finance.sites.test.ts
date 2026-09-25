@@ -38,6 +38,9 @@ function uniqueConstraintError(target: string[]): any {
 const TENANT_ID = 'tenant-1';
 
 const mockPrisma: Row = {
+  // Creation d un chantier : transaction interactive (controle de capacite, vague 2).
+  $transaction: async (cb: (tx: Row) => Promise<unknown>) => cb(mockPrisma),
+
   property: {
     findFirst: jest.fn(
       async ({ where }: Row) => store.properties.find(p => p.id === where.id && p.tenantId === where.tenantId) ?? null
@@ -176,6 +179,21 @@ const mockPrisma: Row = {
       store.vouchers.filter(v => where.id.in.includes(v.id) && v.tenantId === where.tenantId)
     )
   }
+};
+
+// Registre des lots de l'abonnement (vague 2, lot B) : remplace par des
+// espions. Son comportement est couvert par lot-registry.sync.test.ts ; ici,
+// on verifie seulement que chaque operation l'appelle dans sa transaction.
+jest.mock('../../src/services/lot-registry-service', () => ({
+  syncLotActivationsTx: jest.fn(async () => ({ activated: [], deactivated: [], quota: null })),
+  assertCapacityTx: jest.fn(async () => ({ decision: 'ALLOW' })),
+  resolveLotScope: jest.fn(async (_tx: unknown, _tenantId: string, scope: unknown) => scope),
+  ACTIVE_SYNDICATE_STATUSES: ['ACTIVE', 'IN_DISPUTE'],
+  LOT_QUOTA_REACHED_REASON: 'Quota de lots atteint'
+}));
+const mockLotRegistry = jest.requireMock('../../src/services/lot-registry-service') as {
+  syncLotActivationsTx: jest.Mock;
+  assertCapacityTx: jest.Mock;
 };
 
 jest.mock('../../src/utils/database', () => ({
@@ -504,5 +522,25 @@ describe('poste de dépense — désactivable, jamais supprimable', () => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const siteModule = require('../../src/lib/finance/sites');
     expect(siteModule.deleteCostCategory).toBeUndefined();
+  });
+});
+
+
+describe('capacité CHANTIERS à la création (vague 2, lot B)', () => {
+  it('contrôle la capacité sous le verrou d’agence, dans la transaction de la création', async () => {
+    mockLotRegistry.assertCapacityTx.mockClear();
+    await createConstructionSite(TENANT_ID, { name: 'Résidence Test' });
+    expect(mockLotRegistry.assertCapacityTx).toHaveBeenCalledWith(expect.anything(), TENANT_ID, 'CHANTIERS');
+  });
+
+  it('BLOCK : un chantier au-delà de la capacité n’est pas créé (409 QUOTA_EXCEEDED)', async () => {
+    const { QuotaExceededError } = jest.requireActual('../../src/middleware/error-middleware');
+    mockLotRegistry.assertCapacityTx.mockRejectedValueOnce(
+      new QuotaExceededError({ capacityKey: 'CHANTIERS', limit: 2, used: 2, requested: 1 })
+    );
+    await expect(createConstructionSite(TENANT_ID, { name: 'Résidence Refusée' })).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'QUOTA_EXCEEDED'
+    });
   });
 });

@@ -31,7 +31,27 @@ jest.mock('@prisma/client', () => {
   };
 });
 
-import { createSyndicateLot, createSyndicateWithDefaults, listSyndicatesByTenant } from '../../src/lib/syndics/queries';
+// Registre des lots de l'abonnement (vague 2, lot B) : remplace par des
+// espions. Son comportement est couvert par lot-registry.sync.test.ts ; ici,
+// on verifie seulement que chaque operation l'appelle dans sa transaction.
+jest.mock('../../src/services/lot-registry-service', () => ({
+  syncLotActivationsTx: jest.fn(async () => ({ activated: [], deactivated: [], quota: null })),
+  assertCapacityTx: jest.fn(async () => ({ decision: 'ALLOW' })),
+  resolveLotScope: jest.fn(async (_tx: unknown, _tenantId: string, scope: unknown) => scope),
+  ACTIVE_SYNDICATE_STATUSES: ['ACTIVE', 'IN_DISPUTE'],
+  LOT_QUOTA_REACHED_REASON: 'Quota de lots atteint'
+}));
+const mockLotRegistry = jest.requireMock('../../src/services/lot-registry-service') as {
+  syncLotActivationsTx: jest.Mock;
+  assertCapacityTx: jest.Mock;
+};
+
+import {
+  createSyndicateLot,
+  createSyndicateWithDefaults,
+  importLotsFromPropertiesBySyndicate,
+  listSyndicatesByTenant
+} from '../../src/lib/syndics/queries';
 
 const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as {
   __mockPrisma: {
@@ -161,5 +181,88 @@ describe('Syndics queries - US1', () => {
     });
 
     expect(mockPrisma.syndicateLot.create).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('registre des lots et capacité COPROPRIETES (vague 2, lot B)', () => {
+  it('la création d’une copropriété contrôle la capacité COPROPRIETES dans sa transaction', async () => {
+    mockLotRegistry.assertCapacityTx.mockClear();
+    mockPrisma.syndicate.create.mockResolvedValueOnce({ id: 'syn-q', tenantId: 'tenant-1' });
+    await createSyndicateWithDefaults('tenant-1', { name: 'Résidence Q' });
+    expect(mockLotRegistry.assertCapacityTx).toHaveBeenCalledWith(expect.anything(), 'tenant-1', 'COPROPRIETES');
+  });
+
+  it('un lot de copropriété créé entre au registre dans la même transaction', async () => {
+    mockLotRegistry.syncLotActivationsTx.mockClear();
+    mockPrisma.syndicate.findFirst.mockResolvedValueOnce({ id: 'syn-1', propertyId: null });
+    mockPrisma.property.findFirst.mockResolvedValueOnce({ id: 'prop-9', containerParentId: null, propertyType: 'APPARTEMENT' });
+    mockPrisma.syndicateLot.create.mockResolvedValueOnce({ id: 'lot-9' });
+    await createSyndicateLot('tenant-1', {
+      syndicateId: 'syn-1',
+      propertyId: 'prop-9',
+      lotNumber: 'A9',
+      lotType: 'APARTMENT' as any,
+      tantiemes: 100
+    });
+    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenCalledWith(expect.anything(), 'tenant-1', { syndicateLotIds: ['lot-9'] });
+  });
+});
+
+describe('import de lots par lots et quota (vague 2, lot B)', () => {
+  function arrangeImport() {
+    const prisma = mockPrisma as any;
+    prisma.syndicate.findFirst.mockResolvedValueOnce({ id: 'syn-1' });
+    prisma.property.findMany = jest.fn(async () => [
+      { id: 'p1', propertyType: 'APPARTEMENT', internalReference: 'A1', title: 'A1', owner: null },
+      { id: 'p2', propertyType: 'PARKING_BOX', internalReference: 'P1', title: 'P1', owner: null },
+      { id: 'p3', propertyType: 'APPARTEMENT', internalReference: 'A2', title: 'A2', owner: null },
+      { id: 'p4', propertyType: 'BUREAU', internalReference: 'B1', title: 'B1', owner: null }
+    ]);
+    prisma.crmContact.findMany = jest.fn(async () => []);
+    prisma.syndicateLot.findMany = jest.fn(async () => []);
+    prisma.syndicateLot.create.mockImplementation(async ({ data }: any) => ({ id: `lot-${data.propertyId}` }));
+    prisma.syndicate.update.mockResolvedValue({});
+    return prisma;
+  }
+
+  it('BLOCK (enforce) : import jusqu’a la limite, lignes restantes ecartees « Quota de lots atteint »', async () => {
+    arrangeImport();
+    const { QuotaExceededError } = jest.requireActual('../../src/middleware/error-middleware');
+    // Il reste UNE place : le parking ne consomme rien (il passe), le deuxieme lot principal depasse.
+    let room = 1;
+    mockLotRegistry.syncLotActivationsTx.mockReset();
+    mockLotRegistry.syncLotActivationsTx.mockImplementation(async (_tx: unknown, _t: string, scope: { syndicateLotIds: string[] }) => {
+      if (scope.syndicateLotIds[0] === 'lot-p2') return { activated: [], deactivated: [], quota: null };
+      if (room === 0) throw new QuotaExceededError({ capacityKey: 'LOTS', limit: 10, used: 10, requested: 1 });
+      room -= 1;
+      return { activated: [`P:${scope.syndicateLotIds[0]}`], deactivated: [], quota: { decision: 'ALLOW' } };
+    });
+
+    const result = await importLotsFromPropertiesBySyndicate('tenant-1', 'syn-1', ['p1', 'p2', 'p3', 'p4']);
+
+    expect(result.created!.map(c => c.propertyId)).toEqual(['p1', 'p2']);
+    expect(result.skipped).toEqual([
+      { propertyId: 'p3', reason: 'Quota de lots atteint' },
+      { propertyId: 'p4', reason: 'Quota de lots atteint' }
+    ]);
+    // Chaque ligne a sa propre transaction : l'echec de p3 n'annule pas p1.
+    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenCalledTimes(4);
+  });
+
+  it('BILL_OVERAGE : tout passe', async () => {
+    arrangeImport();
+    mockLotRegistry.syncLotActivationsTx.mockReset();
+    mockLotRegistry.syncLotActivationsTx.mockResolvedValue({ activated: [], deactivated: [], quota: { decision: 'BILL' } });
+    const result = await importLotsFromPropertiesBySyndicate('tenant-1', 'syn-1', ['p1', 'p2', 'p3', 'p4']);
+    expect(result.created).toHaveLength(4);
+    expect(result.skipped).toEqual([]);
+  });
+
+  it('une autre erreur n’est pas maquillee en quota', async () => {
+    arrangeImport();
+    mockLotRegistry.syncLotActivationsTx.mockReset();
+    mockLotRegistry.syncLotActivationsTx.mockRejectedValueOnce(new Error('panne'));
+    await expect(importLotsFromPropertiesBySyndicate('tenant-1', 'syn-1', ['p1'])).rejects.toThrow('panne');
   });
 });
