@@ -115,7 +115,22 @@ export interface SuppliersBalance {
 export interface SupplierInvoice {
   id: string;
   supplierId: string;
-  supplierLabel: string;
+  /**
+   * Raison sociale du fournisseur. Comme `siteLabel` et `remainingPayable` :
+   * seule la LISTE (`GET .../suppliers/{supplierId}/invoices`) la résout et la
+   * pose. Les trois autres réponses qui portent ce type — création, validation,
+   * détail — ne rendent que des identifiants.
+   *
+   * Optionnel depuis le 22 septembre 2026, et pour une raison qui se voyait à
+   * l'écran : le type le promettait obligatoire alors qu'AUCUNE réponse ne
+   * l'émettait. Le référentiel d'import (`lib/importation/referentiel.ts`)
+   * construisait donc l'alias de recherche d'une facture avec la chaîne
+   * littérale « undefined », et chercher une facture par le nom de son
+   * fournisseur ne trouvait rien. Le serveur le pose désormais sur la liste ;
+   * le champ reste optionnel parce que les trois autres réponses, elles, ne le
+   * posent toujours pas.
+   */
+  supplierLabel?: string;
   siteId: string | null;
   siteLabel: string | null;
   invoiceDate: string;
@@ -184,6 +199,25 @@ export interface SupplierInvoiceDetail {
   lines: SupplierInvoiceLine[];
   /** Y compris celles d'une facture annulée : on annule justement pour ressaisir. */
   allocations: SupplierInvoiceAllocation[];
+}
+
+/**
+ * La pièce d'annulation rendue par une route `.../void`.
+ *
+ * Ce n'est PAS la pièce annulée : le serveur répond la trace d'annulation
+ * elle-même (`VoidDocument`), pas la facture remise à jour. `voidSupplierInvoice`
+ * annonçait une `SupplierInvoice` jusqu'au 22 septembre 2026 ; l'écran ignorait
+ * ce retour et rechargeait le cache, de sorte que rien ne se voyait — mais le
+ * premier appelant qui aurait cru lire `status` ou `reference` dessus aurait
+ * reçu `undefined`.
+ */
+export interface VoidDocument {
+  id: string;
+  documentType: string;
+  documentId: string;
+  reason: string;
+  voidedByUserId: string;
+  voidedAt: string;
 }
 
 export interface SupplierPayment {

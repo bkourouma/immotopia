@@ -933,6 +933,24 @@ components:
             solder le reste dû sans aucun versement). Ajouté après la
             recette du 20 septembre 2026 : une facture entièrement soldée
             restait proposée au règlement, faute de ce chiffre.
+        # Les deux LIBELLÉS, ajout additif du 22 septembre 2026 : absents de
+        # `required`, jamais retirés ni retypés. Même règle que
+        # `remainingPayable` juste au-dessus — seule la LISTE
+        # (`GET .../suppliers/{supplierId}/invoices`) les résout ; création,
+        # validation et détail ne rendent que des identifiants. `siteLabel`
+        # était déjà émis par la liste sans figurer ici ; `supplierLabel`,
+        # promis par le type de l'écran, ne l'était par personne.
+        supplierLabel:
+          type: string
+          description: >
+            Raison sociale du fournisseur. Toutes les factures de cette liste
+            sont les siennes — celles du fournisseur nommé dans le chemin.
+        siteLabel:
+          type: string
+          nullable: true
+          description: >
+            Nom du chantier visé par la facture, `null` quand elle n'en vise
+            aucun.
 
     SupplierInvoiceResponseWrapper:
       type: object

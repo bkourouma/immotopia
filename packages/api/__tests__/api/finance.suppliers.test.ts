@@ -432,6 +432,26 @@ describe('GET /tenants/:tenantId/finance/suppliers/:supplierId/invoices', () => 
     expect(supplierPaymentAllocationFindMany).not.toHaveBeenCalled();
   });
 
+  // Le fournisseur est NOMME, jamais reduit a son identifiant — meme lecon
+  // qu'au lot 1, et que pour `supplierLabel` sur un reglement. Le type de
+  // l'ecran (`SupplierInvoice`) promettait ce champ depuis le depart alors
+  // qu'aucune reponse ne l'emettait : le referentiel d'import construisait
+  // l'alias de recherche d'une facture avec la chaine litterale « undefined »,
+  // et chercher une facture par le nom de son fournisseur ne trouvait rien.
+  it('nomme le fournisseur sur chaque ligne, sans requete supplementaire', async () => {
+    supplierFindFirst.mockResolvedValue({ id: SUPPLIER_A, name: 'Ciments du Fouta' });
+    supplierInvoiceFindMany.mockResolvedValue([invoiceRow()]);
+
+    const response = await request(app).get(`/api/tenants/${TENANT_A}/finance/suppliers/${SUPPLIER_A}/invoices`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data[0].supplierLabel).toBe('Ciments du Fouta');
+    // Toutes les factures de cette liste sont celles du fournisseur du chemin :
+    // son nom vient de la requete qui verifiait deja son appartenance a
+    // l'agence, jamais d'une lecture de plus.
+    expect(supplierFindFirst).toHaveBeenCalledTimes(1);
+  });
+
   it('renvoie 404 quand le fournisseur est inexistant', async () => {
     supplierFindFirst.mockResolvedValue(null);
 

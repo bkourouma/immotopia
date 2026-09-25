@@ -477,7 +477,13 @@ export const listSupplierInvoicesHandler = asyncHandler(async (req: Request, res
   const tenantId = requireTenantId(req);
   const supplierId = requireUuidParam(req, 'supplierId');
 
-  const supplier = await prisma.supplier.findFirst({ where: { id: supplierId, tenantId }, select: { id: true } });
+  // `name` en plus de `id` : le nom sert le `supplierLabel` de chaque ligne,
+  // plus bas. Aucune requete supplementaire — celle-ci existait deja pour
+  // verifier que le fournisseur appartient au tenant.
+  const supplier = await prisma.supplier.findFirst({
+    where: { id: supplierId, tenantId },
+    select: { id: true, name: true }
+  });
   if (!supplier) {
     throw new NotFoundError('Fournisseur introuvable ou inaccessible.');
   }
@@ -507,10 +513,20 @@ export const listSupplierInvoicesHandler = asyncHandler(async (req: Request, res
     invoices.map((row: any) => ({ id: row.id, amount: row.amount, status: row.status }))
   );
 
+  // Ajout additif du 22 septembre 2026 : le NOM du fournisseur, a cote de celui
+  // du chantier. Le type de l'ecran (`SupplierInvoice`) le promettait depuis le
+  // depart, mais aucune reponse ne l'emettait : le referentiel d'import
+  // (`lib/importation/referentiel.ts`) construisait l'alias de recherche d'une
+  // facture avec la chaine litterale « undefined », et chercher une facture par
+  // le nom de son fournisseur ne trouvait rien. Meme lecon qu'au lot 1 : un
+  // libelle lisible, jamais un identifiant seul. Toutes les factures de cette
+  // liste appartiennent au meme fournisseur — celui du chemin — donc le nom est
+  // deja la, sans requete de plus.
   res.status(200).json({
     success: true,
     data: invoices.map((row: any) => ({
       ...toSupplierInvoiceResponseFromRow(row, resteParFacture.get(row.id) ?? null),
+      supplierLabel: supplier.name,
       siteLabel: row.siteId ? (nomParChantier.get(row.siteId) ?? null) : null
     }))
   });

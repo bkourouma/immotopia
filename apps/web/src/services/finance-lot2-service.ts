@@ -31,7 +31,8 @@ import type {
   SupplierInvoiceDetail,
   SupplierPayment,
   SuppliersBalance,
-  SuppliersBalanceFilters
+  SuppliersBalanceFilters,
+  VoidDocument
 } from '../types/finance-lot2-types';
 import { t } from '../i18n/t';
 
@@ -133,13 +134,18 @@ export async function validateSupplierInvoice(tenantId: string, invoiceId: strin
   return response.data.data;
 }
 
-/** Annule une facture validée par une pièce d'annulation. Le motif est exigé. */
-export async function voidSupplierInvoice(
-  tenantId: string,
-  invoiceId: string,
-  reason: string
-): Promise<SupplierInvoice> {
-  const response = await apiClient.post<ApiResponse<SupplierInvoice>>(
+/**
+ * Annule une facture validée par une pièce d'annulation. Le motif est exigé.
+ *
+ * Rend la pièce d'annulation (`VoidDocument`), **pas** la facture annulée : le
+ * serveur répond `{ id, documentType, documentId, reason, voidedByUserId,
+ * voidedAt }`. Cette fonction annonçait une `SupplierInvoice` jusqu'au
+ * 22 septembre 2026 ; pour relire la facture dans son nouvel état, il faut
+ * recharger la liste — ce que `FactureFournisseur.tsx` fait déjà en invalidant
+ * son cache.
+ */
+export async function voidSupplierInvoice(tenantId: string, invoiceId: string, reason: string): Promise<VoidDocument> {
+  const response = await apiClient.post<ApiResponse<VoidDocument>>(
     `${base(tenantId)}/supplier-invoices/${invoiceId}/void`,
     { reason }
   );
