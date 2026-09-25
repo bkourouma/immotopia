@@ -29,6 +29,7 @@ import {
   type ExtensionRequest
 } from '../../../services/subscription-extras-service';
 import { StatusTag, MoneyValue, useConfirmAction } from '../../primitives';
+import { ReasonPromptModal } from '../ReasonPromptModal';
 import { activeLocale } from '../../../i18n/format';
 import { t } from '../../../i18n/t';
 
@@ -247,6 +248,15 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [manualReadOnlySaving, setManualReadOnlySaving] = useState(false);
+  const [manualReadOnlyPromptOpen, setManualReadOnlyPromptOpen] = useState(false);
+  const [removeNowItem, setRemoveNowItem] = useState<SubscriptionItemDTO | null>(null);
+  const [removeNowSaving, setRemoveNowSaving] = useState(false);
+  const [discountItem, setDiscountItem] = useState<SubscriptionItemDTO | null>(null);
+  const [discountValues, setDiscountValues] = useState<{ discountPercent: number; unitMonthlyPrice: number }>({
+    discountPercent: 0,
+    unitMonthlyPrice: 0
+  });
+  const [discountSaving, setDiscountSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -306,100 +316,49 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
   };
 
   const handleRemoveNow = (item: SubscriptionItemDTO) => {
-    let reason = '';
-    // `modal.confirm` (contextuel) plutot que l'API statique `Modal.confirm` :
-    // cette derniere echappe au demontage React et laisse trainer sa boite de
-    // dialogue d'un test a l'autre (Vitest), au lieu d'etre nettoyee avec le
-    // reste de l'arbre.
-    modal.confirm({
-      title: t('Retirer « {{value}} » immédiatement ?', { value: item.name }),
-      content: (
-        <Input.TextArea
-          rows={2}
-          placeholder={t('Raison du retrait immédiat')}
-          onChange={e => {
-            reason = e.target.value;
-          }}
-        />
-      ),
-      okText: t('Retirer immédiatement'),
-      okButtonProps: { danger: true },
-      cancelText: t('Annuler'),
-      onOk: async () => {
-        if (!reason.trim()) {
-          message.error(t('Un retrait immédiat exige une raison.'));
-          throw new Error('reason required');
-        }
-        try {
-          await removeSubscriptionItem(tenantId, item.id, { immediate: true, reason });
-          message.success(t('Élément retiré immédiatement'));
-          await load();
-        } catch (err: any) {
-          message.error(err.response?.data?.message || t('Erreur lors du retrait'));
-          throw err;
-        }
-      }
-    });
+    setRemoveNowItem(item);
+  };
+
+  const confirmRemoveNow = async (reason: string) => {
+    if (!removeNowItem) return;
+    setRemoveNowSaving(true);
+    try {
+      await removeSubscriptionItem(tenantId, removeNowItem.id, { immediate: true, reason });
+      message.success(t('Élément retiré immédiatement'));
+      setRemoveNowItem(null);
+      await load();
+    } catch (err: any) {
+      message.error(err.response?.data?.message || t('Erreur lors du retrait'));
+    } finally {
+      setRemoveNowSaving(false);
+    }
   };
 
   /** Remise ou prix figé d'un élément : une seule écriture auditée (`PATCH …/items/:itemId`). */
   const handleEditDiscount = (item: SubscriptionItemDTO) => {
-    let discountPercent = item.discountPercent;
-    let unitMonthlyPrice = item.unitMonthlyPrice;
-    let reason = '';
-    modal.confirm({
-      title: t('Modifier « {{value}} »', { value: item.name }),
-      content: (
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Text>{t('Remise (%)')}</Text>
-          <InputNumber
-            aria-label={t('Remise (%)')}
-            min={0}
-            max={100}
-            defaultValue={item.discountPercent}
-            style={{ width: '100%' }}
-            onChange={value => {
-              discountPercent = Number(value) || 0;
-            }}
-          />
-          <Text>{t('Prix mensuel figé (HT, par unité)')}</Text>
-          <InputNumber
-            aria-label={t('Prix mensuel figé (HT, par unité)')}
-            min={0}
-            step={100}
-            defaultValue={item.unitMonthlyPrice}
-            style={{ width: '100%' }}
-            onChange={value => {
-              unitMonthlyPrice = Number(value) || 0;
-            }}
-          />
-          <Input.TextArea
-            rows={2}
-            placeholder={t('Raison de la modification')}
-            onChange={e => {
-              reason = e.target.value;
-            }}
-          />
-          <Text type="secondary">{t('Prend effet sur la prochaine facture, sans prorata.')}</Text>
-        </Space>
-      ),
-      okText: t('Enregistrer'),
-      cancelText: t('Annuler'),
-      onOk: async () => {
-        try {
-          await updateSubscriptionItem(tenantId, item.id, {
-            discountPercent,
-            ...(unitMonthlyPrice !== item.unitMonthlyPrice ? { unitMonthlyPrice } : {}),
-            ...(reason.trim() ? { reason: reason.trim() } : {})
-          });
-          message.success(t('Élément mis à jour'));
-          await load();
-        } catch (err: any) {
-          message.error(err.response?.data?.message || t('Erreur lors de la mise à jour'));
-          throw err;
-        }
-      }
-    });
+    setDiscountValues({ discountPercent: item.discountPercent, unitMonthlyPrice: item.unitMonthlyPrice });
+    setDiscountItem(item);
+  };
+
+  const confirmEditDiscount = async (reason: string) => {
+    if (!discountItem) return;
+    setDiscountSaving(true);
+    try {
+      await updateSubscriptionItem(tenantId, discountItem.id, {
+        discountPercent: discountValues.discountPercent,
+        ...(discountValues.unitMonthlyPrice !== discountItem.unitMonthlyPrice
+          ? { unitMonthlyPrice: discountValues.unitMonthlyPrice }
+          : {}),
+        ...(reason ? { reason } : {})
+      });
+      message.success(t('Élément mis à jour'));
+      setDiscountItem(null);
+      await load();
+    } catch (err: any) {
+      message.error(err.response?.data?.message || t('Erreur lors de la mise à jour'));
+    } finally {
+      setDiscountSaving(false);
+    }
   };
 
   const handleCloseRequest = async (request: ExtensionRequest, status: 'HANDLED' | 'DECLINED') => {
@@ -494,50 +453,21 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
    * un paiement ni par la tâche planifiée, seulement par cette action.
    */
   const handleSetManualReadOnly = () => {
-    let reason = '';
-    // `modal.confirm` (contextuel, App.useApp()) plutot que l'API statique
-    // `Modal.confirm` : cette derniere echappe au demontage React et laisse
-    // trainer sa boite de dialogue d'un test a l'autre (composants/primitives/
-    // ConfirmAction.tsx, useConfirmAction, l'explique pour handleRemoveNow).
-    modal.confirm({
-      title: t('Passer « {{value}} » en lecture seule ?', { value: tenantName ?? '' }),
-      content: (
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <Text type="secondary">
-            {t(
-              "Bloque les écritures de l'agence jusqu'à ce que vous leviez cette mesure vous-même. Ni un paiement ni la tâche planifiée ne la lèvent. Portails, paiements et factures restent accessibles."
-            )}
-          </Text>
-          <Input.TextArea
-            rows={2}
-            placeholder={t('Motif (obligatoire)')}
-            onChange={e => {
-              reason = e.target.value;
-            }}
-          />
-        </Space>
-      ),
-      okText: t('Passer en lecture seule'),
-      okButtonProps: { danger: true },
-      cancelText: t('Annuler'),
-      onOk: async () => {
-        if (!reason.trim()) {
-          message.error(t('Le motif est obligatoire.'));
-          throw new Error('reason required');
-        }
-        setManualReadOnlySaving(true);
-        try {
-          await setSubscriptionManualReadOnly(tenantId, reason.trim());
-          message.success(t('Agence passée en lecture seule'));
-          await load();
-        } catch (err: any) {
-          message.error(err.response?.data?.message || t('Erreur lors du passage en lecture seule'));
-          throw err;
-        } finally {
-          setManualReadOnlySaving(false);
-        }
-      }
-    });
+    setManualReadOnlyPromptOpen(true);
+  };
+
+  const confirmSetManualReadOnly = async (reason: string) => {
+    setManualReadOnlySaving(true);
+    try {
+      await setSubscriptionManualReadOnly(tenantId, reason);
+      message.success(t('Agence passée en lecture seule'));
+      setManualReadOnlyPromptOpen(false);
+      await load();
+    } catch (err: any) {
+      message.error(err.response?.data?.message || t('Erreur lors du passage en lecture seule'));
+    } finally {
+      setManualReadOnlySaving(false);
+    }
   };
 
   const handleClearManualReadOnly = () => {
@@ -929,6 +859,72 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
 
       <AddItemModal open={addOpen} onClose={() => setAddOpen(false)} catalog={catalog} heldPacks={heldPacks} onSubmit={handleAddItem} />
       <OverrideModal open={overrideOpen} onClose={() => setOverrideOpen(false)} onSubmit={handleGrantOverride} />
+
+      <ReasonPromptModal
+        open={!!removeNowItem}
+        title={t('Retirer « {{value}} » immédiatement ?', { value: removeNowItem?.name ?? '' })}
+        reasonPlaceholder={t('Raison du retrait immédiat')}
+        okText={t('Retirer immédiatement')}
+        cancelText={t('Annuler')}
+        danger
+        confirmLoading={removeNowSaving}
+        onCancel={() => setRemoveNowItem(null)}
+        onConfirm={confirmRemoveNow}
+      />
+
+      <ReasonPromptModal
+        open={!!discountItem}
+        title={t('Modifier « {{value}} »', { value: discountItem?.name ?? '' })}
+        reasonRequired={false}
+        reasonPlaceholder={t('Raison de la modification')}
+        okText={t('Enregistrer')}
+        cancelText={t('Annuler')}
+        confirmLoading={discountSaving}
+        onCancel={() => setDiscountItem(null)}
+        onConfirm={confirmEditDiscount}
+        extraContent={
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Text>{t('Remise (%)')}</Text>
+            <InputNumber
+              aria-label={t('Remise (%)')}
+              min={0}
+              max={100}
+              value={discountValues.discountPercent}
+              style={{ width: '100%' }}
+              onChange={value => setDiscountValues(v => ({ ...v, discountPercent: Number(value) || 0 }))}
+            />
+            <Text>{t('Prix mensuel figé (HT, par unité)')}</Text>
+            <InputNumber
+              aria-label={t('Prix mensuel figé (HT, par unité)')}
+              min={0}
+              step={100}
+              value={discountValues.unitMonthlyPrice}
+              style={{ width: '100%' }}
+              onChange={value => setDiscountValues(v => ({ ...v, unitMonthlyPrice: Number(value) || 0 }))}
+            />
+            <Text type="secondary">{t('Prend effet sur la prochaine facture, sans prorata.')}</Text>
+          </Space>
+        }
+      />
+
+      <ReasonPromptModal
+        open={manualReadOnlyPromptOpen}
+        title={t('Passer « {{value}} » en lecture seule ?', { value: tenantName ?? '' })}
+        reasonPlaceholder={t('Motif (obligatoire)')}
+        okText={t('Passer en lecture seule')}
+        cancelText={t('Annuler')}
+        danger
+        confirmLoading={manualReadOnlySaving}
+        onCancel={() => setManualReadOnlyPromptOpen(false)}
+        onConfirm={confirmSetManualReadOnly}
+        description={
+          <Text type="secondary">
+            {t(
+              "Bloque les écritures de l'agence jusqu'à ce que vous leviez cette mesure vous-même. Ni un paiement ni la tâche planifiée ne la lèvent. Portails, paiements et factures restent accessibles."
+            )}
+          </Text>
+        }
+      />
     </Space>
   );
 };
