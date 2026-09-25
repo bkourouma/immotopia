@@ -14,9 +14,14 @@ import {
 
 const router = Router();
 
-router.use(authenticate);
-router.use(requireTenantAccess);
-router.use(enforcePropertyTenantIsolation);
+/**
+ * Gardes posés avec leur chemin, jamais en `router.use` nu : ce routeur est
+ * monté sur `/api` tout entier. Posés sans chemin, ils traversaient toute
+ * requête `/api/*` qui atteignait ce routeur, y compris celles destinées aux
+ * routeurs montés après lui — `GET /api/portal/owner/account` répondait
+ * « Tenant ID requis. » (23 septembre 2026).
+ */
+router.use('/tenants/:tenantId/owner-statements', authenticate, requireTenantAccess, enforcePropertyTenantIsolation);
 
 router.get(
   '/tenants/:tenantId/owner-statements',

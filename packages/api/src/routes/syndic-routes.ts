@@ -84,9 +84,12 @@ import {
 
 const router = Router();
 
-router.use(authenticate);
-router.use(requireTenantAccess);
-router.use(enforcePropertyTenantIsolation);
+/**
+ * Gardes posés avec leur chemin, jamais en `router.use` nu : ce routeur est
+ * monté sur `/api` tout entier, et un garde sans chemin traverserait toute
+ * requête `/api/*` qui l'atteint, y compris une route publique montée après.
+ */
+router.use('/tenants/:tenantId/syndics', authenticate, requireTenantAccess, enforcePropertyTenantIsolation);
 
 router.get(
   '/tenants/:tenantId/syndics',

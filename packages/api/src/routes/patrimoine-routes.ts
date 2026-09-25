@@ -38,9 +38,31 @@ import {
 
 const router = Router();
 
-router.use(authenticate);
-router.use(requireTenantAccess);
-router.use(enforcePropertyTenantIsolation);
+/**
+ * Gardes posés avec leur chemin, jamais en `router.use` nu : ce routeur est
+ * monté sur `/api` tout entier, et un garde sans chemin traverserait toute
+ * requête `/api/*` qui l'atteint, y compris une route publique montée après.
+ *
+ * Les préfixes sous `/properties/:propertyId` sont énumérés un à un : ce
+ * routeur ne sert que ces sous-ressources du bien, pas `/properties` entier,
+ * qui appartient à `property-routes.ts`.
+ */
+const PROPERTY_CHILD = '/tenants/:tenantId/properties/:propertyId';
+router.use(
+  [
+    '/tenants/:tenantId/patrimoine',
+    '/tenants/:tenantId/work-programs',
+    `${PROPERTY_CHILD}/valuations`,
+    `${PROPERTY_CHILD}/expenses`,
+    `${PROPERTY_CHILD}/loans`,
+    `${PROPERTY_CHILD}/work-programs`,
+    `${PROPERTY_CHILD}/documents`,
+    `${PROPERTY_CHILD}/yield`
+  ],
+  authenticate,
+  requireTenantAccess,
+  enforcePropertyTenantIsolation
+);
 
 router.get(
   '/tenants/:tenantId/patrimoine/overview',

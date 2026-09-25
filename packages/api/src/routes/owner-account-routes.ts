@@ -38,9 +38,10 @@ export default router;
  * Portail : le compte du propriétaire connecté.
  *
  * Routeur à part, monté sur `/api/portal/owner` à côté des autres routes du
- * portail. Monté sur `/api` avec le reste, il passait derrière le routeur des
- * relevés, dont le `router.use(requireTenantAccess)` sans chemin intercepte
- * toute requête `/api/*` qui l'atteint — et répondait « Tenant ID requis. ».
+ * portail. Monté d'abord sur `/api` avec le reste, il passait derrière le
+ * routeur des relevés, dont le `router.use(requireTenantAccess)` sans chemin
+ * interceptait alors toute requête `/api/*` — « Tenant ID requis. ». Ce
+ * défaut est corrigé ; le montage sous `/api/portal/owner` reste le bon.
  */
 export const ownerAccountPortalRouter = Router();
 ownerAccountPortalRouter.get('/account', authenticate, requireOwnerPortalAccess, getMyOwnerAccountHandler);

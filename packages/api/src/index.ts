@@ -170,11 +170,12 @@ app.get('/health', (_req, res) => {
 // that applies auth middleware globally (router.use(authenticate)).
 app.use('/api', whatsappWebhookRoutes);
 app.use('/api/auth', authRoutes);
-// Keep non-tenant endpoints before broad tenant-scoped routers mounted on /api.
-// The syndic/patrimoine/owner-statements routers below call requireTenantAccess
-// at router level, so they run for EVERY /api/* request that reaches them and
-// reject anything without a tenant id in the path. /api/admin is platform-wide,
-// so it has to be mounted before them or the whole back-office answers 400.
+// Routers mounted on /api as a whole must attach their guards WITH a path
+// (router.use('/tenants/:tenantId/...', authenticate, ...)), never with a bare
+// router.use: a path-less guard runs for EVERY /api/* request that reaches the
+// router and rejects anything mounted after it. The syndic/patrimoine/
+// owner-statements routers did that until 23/09/2026 (the owner portal account
+// answered "Tenant ID requis."). Covered by __tests__/api/api-router-guards.test.ts.
 app.use('/api/admin', adminRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/tenants', tenantRoutes);

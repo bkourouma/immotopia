@@ -7,13 +7,13 @@ import { webhookRateLimiter } from '../middleware/rate-limit-middleware';
 
 const router: Router = Router();
 
-// Twilio sends x-www-form-urlencoded by default.
-router.use(
-  express.urlencoded({
-    extended: true,
-    limit: '1mb'
-  })
-);
+// Twilio sends x-www-form-urlencoded by default. Attached to the route rather
+// than with a bare router.use: this router is mounted on /api as a whole, and a
+// path-less middleware would run for every /api/* request that reaches it.
+const parseTwilioForm = express.urlencoded({
+  extended: true,
+  limit: '1mb'
+});
 
 /**
  * Verify the X-Twilio-Signature header on inbound Twilio payloads.
@@ -90,6 +90,7 @@ function buildTwiMLMessage(message: string): string {
 
 router.post(
   '/whatsapp/webhook',
+  parseTwilioForm,
   webhookRateLimiter,
   verifyTwilioSignature,
   async (req: Request<unknown, unknown, WhatsAppWebhookBody>, res: Response, _next: NextFunction): Promise<void> => {
