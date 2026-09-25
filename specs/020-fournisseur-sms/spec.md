@@ -150,19 +150,20 @@ prohibitif à l'échelle).
 ### 3.1 Vue d'ensemble
 
 Les déclencheurs métier (syndics, patrimoine, maintenance, gestion locative,
-CRM) et les écrans agence (`apps/web` : carte de réglages, règles de
-notification, historique) appellent tous deux, par des chemins différents
-(appel direct de service côté back, REST côté front), le nouveau
-`sms-notification-send-service.ts`. Ce service résout la config agence
-(`SmsGatewayConfig`, identifiants chiffrés), vérifie le consentement
-(`CrmContact`/`TenantClient`), normalise le numéro en E.164 `+225`, découpe
-le texte en segments et estime le coût, puis appelle l'interface
-`SmsProvider` et journalise le résultat dans `SmsMessage`. `SmsProvider` est
-implémentée d'abord par `OrangeSmsProvider` (OAuth2 `client_credentials`,
-file d'attente 5 req/s), et plus tard par un second fournisseur (ex.
-`SmsPartnerAfricaProvider`) derrière la même interface. Orange notifie les
-accusés de réception sur le webhook public
-`POST /api/sms/webhook/orange/:secret` (§3.9).
+CRM) et les écrans (`apps/web` : carte en lecture seule côté agence, onglet
+SMS de la fiche agence côté super-admin, règles de notification, historique)
+appellent tous deux, par des chemins différents (appel direct de service côté
+back, REST côté front), le nouveau `sms-notification-send-service.ts`. Ce
+service résout les réglages de l'agence (`TenantSmsSettings` : activé, nom
+d'expéditeur, quota — §5), vérifie le consentement (`CrmContact`/
+`TenantClient`), normalise le numéro en E.164 `+225`, puis appelle
+l'interface `SmsProvider` et journalise le résultat dans `SmsMessage` (le
+découpage en segments et l'estimation du coût arrivent au lot SMS-2, §5).
+`SmsProvider` est implémentée d'abord par `OrangeSmsProvider` — un compte
+Orange **unique pour toute la plateforme** (§4), OAuth2 `client_credentials`
+— et plus tard par un second fournisseur (ex. `SmsPartnerAfricaProvider`)
+derrière la même interface. Orange notifie les accusés de réception sur le
+webhook public `POST /api/sms/webhook/orange/:secret` (§3.9, lot SMS-3).
 
 ### 3.2 Interface `SmsProvider`
 
@@ -176,7 +177,7 @@ interface explicite — même style que les clients de passerelle du lot 7
 export interface SmsSendOptions {
   to: string; // E.164, ex. +2250102030405
   body: string;
-  senderId?: string; // nom d'expéditeur, défaut = celui de la config agence
+  senderId?: string; // nom d'expéditeur ; défaut = TenantSmsSettings.senderName sinon ORANGE_SMS_PLATFORM_SENDER_NAME (§6)
 }
 export interface SmsSendResult {
   providerMessageId: string;
@@ -194,7 +195,7 @@ export interface SmsBalance {
   expiresAt: string | null;
 }
 export interface SmsProvider {
-  readonly kind: "orange" | "sms_partner_africa" | "hsms" | "bulkgate";
+  readonly kind: "orange" | "log" | "sms_partner_africa" | "hsms" | "bulkgate"; // 'log' = fournisseur factice du lot SMS-1, §6
   sendText(options: SmsSendOptions): Promise<SmsSendResult>;
   getStatus(providerMessageId: string): Promise<SmsStatusResult>;
   testConnection(): Promise<{ ok: boolean; message: string }>;
@@ -213,8 +214,9 @@ la même interface, sélectionné par une variable d'environnement
 tous les pays Orange, renvoyée par la page CI — §13) :
 
 - **Envoi** : `POST https://api.orange.com/smsmessaging/v1/outbound/tel%3A%2B2250000/requests`
-  (le numéro court/l'expéditeur figure encodé dans l'URL), corps
-  `{"outboundSMSMessageRequest":{"address":"tel:+2250102030405","senderAddress":"tel:+2250000","senderName":"IMMOTOPIA","outboundSMSTextMessage":{"message":"..."}}}`.
+  (le numéro court/l'expéditeur — `ORANGE_SMS_SENDER_ADDRESS`, §6 — figure
+  encodé dans l'URL), corps
+  `{"outboundSMSMessageRequest":{"address":"tel:+2250102030405","senderAddress":"<ORANGE_SMS_SENDER_ADDRESS>","senderName":"<TenantSmsSettings.senderName ou ORANGE_SMS_PLATFORM_SENDER_NAME>","outboundSMSTextMessage":{"message":"..."}}}`.
   L'URL est en `v1` alors que la page produit s'intitule « SMS 2.0 » — à ne
   pas confondre.
 - **Administration** (implémente `getBalance()`, non optionnel pour Orange) :
@@ -244,10 +246,12 @@ notificationKey, variables, to?, contactId? }`, résolution du gabarit par
   on étend le contrôleur WhatsApp existant pour accepter un canal en
   paramètre. Ce document retient la première option (table séparée) pour ne
   pas complexifier un contrôleur qui fonctionne déjà.
-- Pour un envoi par `recipientTenantClientId` (locataire), `TenantClient` n'a
-  pas de colonne téléphone (§5) : le numéro se résout aujourd'hui dans
-  `document-context-builder.ts` (lignes 52-80, 164) dans l'ordre
-  `CrmContact.phonePrimary` → `phoneSecondary` → `whatsappNumber` →
+- Pour un envoi ciblant un locataire (`TenantClient`), le numéro n'est pas
+  stocké comme relation sur `SmsMessage` (§5) : `TenantClient` n'a pas de
+  colonne téléphone, donc le service résout le numéro *avant* l'envoi et ne
+  journalise que le résultat (`SmsMessage.to`). Cette résolution suit
+  aujourd'hui l'ordre défini par `document-context-builder.ts` (lignes 52-80,
+  164) : `CrmContact.phonePrimary` → `phoneSecondary` → `whatsappNumber` →
   `TenantClient.details.phone`/`telephone`/`mobile` (JSON). Le service SMS
   n'y ajoute pas une quatrième implémentation : cette résolution est extraite
   dans un utilitaire partagé (ex.
@@ -268,24 +272,23 @@ l'approche de celle-ci (marge de sécurité, ex. 60 s) — même idée que
 une expiration explicite au lieu d'un cache indéfini. Le jeton n'est jamais
 journalisé ni renvoyé au frontend.
 
-**Point multi-tenant (modèle hybride, §4)** : le cache de jeton est une
-`Map<'PLATFORM' | tenantId, { token, expiresAt }>` — une entrée unique pour
-le compte plateforme (partagée par toutes les agences en mode par défaut), et
-une entrée par agence qui a choisi ses propres identifiants (§4). Le jeton du
-compte plateforme ne sert jamais à envoyer au nom d'une agence en
-identifiants propres, et réciproquement.
+**Compte unique (§4)** : le compte Orange étant unique pour toute la
+plateforme — aucune agence n'a ses propres identifiants — le cache de jeton
+est une simple variable de module (un seul jeton, comme `twilioClient` dans
+`whatsapp.provider.ts`), pas une structure par agence.
 
 ### 3.5 Limitation à 5 SMS/s
 
-Orange impose 5 transactions/s **par compte**. Une file d'attente en mémoire
-process (FIFO, un `setInterval`/`p-queue`-like ou équivalent maison) sérialise
-les envois à un débit ≤ 5/s : une file globale pour le compte plateforme
-(partagée par toutes les agences en mode par défaut, §4), et une file séparée
-par agence qui a ses propres identifiants. Un envoi qui dépasse le débit
-attend en file plutôt que d'échouer immédiatement — cohérent avec le
-comportement transactionnel attendu (rappel de loyer, reçu de paiement) où un
-délai de quelques secondes est acceptable mais un échec silencieux ne l'est
-pas.
+Orange impose 5 transactions/s pour l'unique compte de la plateforme (§4).
+Une file d'attente en mémoire process (FIFO, un `setInterval`/`p-queue`-like
+ou équivalent maison) sérialise **tous** les envois, toutes agences
+confondues, à un débit ≤ 5/s — une seule file globale, pas de file par
+agence puisqu'il n'y a qu'un compte. Un envoi qui dépasse le débit attend en
+file plutôt que d'échouer immédiatement — cohérent avec le comportement
+transactionnel attendu (rappel de loyer, reçu de paiement) où un délai de
+quelques secondes est acceptable mais un échec silencieux ne l'est pas.
+Cette file d'attente arrive au lot SMS-2 (§10.2) ; le lot SMS-1 n'envoie que
+des SMS de test, à un rythme trop faible pour la nécessiter.
 
 **À vérifier** : sur plusieurs instances API (process Node multiples), une
 file en mémoire process ne suffit plus à respecter la limite globale de 5/s —
@@ -332,18 +335,21 @@ l'app, cf. §7) sera toujours en UCS-2, donc plus cher au caractère — à
 budgéter si des SMS en arabe sont envoyés.
 
 `sms-notification-send-service.ts` calcule le nombre de segments et
-l'encodage avant l'envoi (fonction pure, testable sans réseau), les stocke
-dans `SmsMessage` (§5) et les utilise pour l'estimation de coût.
+l'encodage avant l'envoi (fonction pure, testable sans réseau) et les utilise
+pour l'estimation de coût. **Leur persistance dans `SmsMessage` arrive au lot
+SMS-2** : le modèle du lot SMS-1 (§5) n'a pas encore de colonnes `segments`,
+`encoding` ni `estimatedCostFcfa`.
 
 ### 3.8 Journalisation
 
-Chaque tentative d'envoi crée une ligne `SmsMessage` (§5) avec statut,
-segments, coût estimé, identifiant fournisseur, avant même l'appel réseau
-(statut `QUEUED`), puis mise à jour après réponse (`SENT` / `FAILED`) et après
-accusé webhook (`DELIVERED` / `FAILED`). Ce flux journal-avant-envoi est
-important pour ne pas perdre trace d'un SMS parti mais dont la réponse HTTP a
-timeout (Orange dit avoir reçu la requête, l'agence ne le saurait jamais sans
-une ligne `QUEUED` déjà en base).
+Chaque tentative d'envoi crée une ligne `SmsMessage` (§5) avant même l'appel
+réseau (statut `QUEUED`), puis mise à jour après réponse (`SENT` / `FAILED`,
+avec `providerMessageId` si Orange en a renvoyé un) et après accusé webhook
+(`DELIVERED` / `FAILED`, lot SMS-3). Ce flux journal-avant-envoi est important
+pour ne pas perdre trace d'un SMS parti mais dont la réponse HTTP a timeout
+(Orange dit avoir reçu la requête, l'agence ne le saurait jamais sans une
+ligne `QUEUED` déjà en base). Segments, encodage et coût estimé s'ajoutent au
+journal à partir du lot SMS-2 (§3.7, §5).
 
 ### 3.9 Webhook d'accusés de réception
 
@@ -396,7 +402,7 @@ Contraintes :
 
 ---
 
-## 4. Décision à trancher : compte plateforme, identifiants par agence, ou hybride
+## 4. Décision prise (24/09/2026) : compte plateforme unique
 
 Point de départ différent du lot 7 : ouvrir un compte Orange Developer
 suppose une **SIM Orange** rattachée au compte, et les packs SMS s'achètent
@@ -413,117 +419,86 @@ donc pas ici. Enfin, l'URL de rappel des accusés se déclare une fois par
 compte Orange (§3.9) et l'enregistrement MTN prend 15 jours par nom
 d'expéditeur (§11) : multiplier les comptes multiplie ces démarches.
 
-|                         | Compte plateforme (retenu par défaut)                                                                                                                | Identifiants propres par agence (option, patron lot 7)                                                               |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Mise en place           | Un seul compte Orange Developer ImmoTopia, un seul enregistrement ARTCI/MTN, une seule URL de rappel                                                 | Chaque agence crée son propre compte Orange (SIM, packs), fait valider son propre nom d'expéditeur                   |
-| Facturation             | ImmoTopia achète les packs ; chaque agence reçoit un quota mensuel de SMS lié à son abonnement, décompté depuis `SmsMessage`                         | Chaque agence paie directement Orange ; ImmoTopia ne gère aucun flux d'argent SMS pour elle                          |
-| Nom d'expéditeur        | « IMMOTOPIA » par défaut ; nom propre à l'agence possible via l'option Orange « Multiple Sender Names », chaque nom soumis à validation Orange/ARTCI | Chaque agence enregistre directement son propre nom d'expéditeur                                                     |
-| Cohérence avec le lot 7 | S'écarte du patron `PaymentGatewayConfig` — justifié ci-dessus (pas de flux d'argent vers l'agence)                                                  | Suit exactement le patron `PaymentGatewayConfig` : `SmsGatewayConfig` chiffré, `tenantId @unique`, test de connexion |
-| Risque de dépassement   | Le plafond Orange (100 000 FCFA/jour/SIM) est partagé par la plateforme ; le quota par agence (ci-dessus) protège les autres agences d'un pic isolé  | Chaque agence a son propre plafond, ses propres packs                                                                |
-| Pour qui                | Le cas par défaut, quasi toutes les agences                                                                                                          | Grosses agences qui veulent leur propre marque SMS et sont prêtes à gérer leur compte Orange                         |
+Comparatif ayant mené à la décision :
 
-**Recommandation : modèle hybride, compte plateforme par défaut.** ImmoTopia
-ouvre et opère un unique compte Orange (identifiants dans `env.ts`, §6),
-avec le nom d'expéditeur « IMMOTOPIA » validé une fois pour toutes ; chaque
-agence reçoit un quota mensuel de SMS inclus dans son abonnement (compté
-depuis `SmsMessage`, alerte à l'approche du quota, blocage ou dépassement
-facturé au-delà — **à trancher commercialement**, §12), sans rien à
-configurer. Une agence qui veut son propre nom d'expéditeur peut le demander
-via l'option Orange « Multiple Sender Names » (validation Orange/ARTCI
-supplémentaire par nom, toujours sur le compte plateforme). Les grosses
-agences qui veulent gérer leur propre compte Orange (leurs propres SIM,
-packs, plafond) gardent l'option « identifiants propres », sur le patron
-exact du lot 7 (`SmsGatewayConfig` chiffré) — traitée comme un lot ultérieur
-(§10.2, lot SMS-4) plutôt que comme le chemin par défaut.
+|                         | Compte plateforme (retenu)                                                                                                                            | Identifiants propres par agence (écarté)                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Mise en place           | Un seul compte Orange Developer ImmoTopia, un seul enregistrement ARTCI/MTN, une seule URL de rappel                                                   | Chaque agence crée son propre compte Orange (SIM, packs), fait valider son propre nom d'expéditeur                     |
+| Facturation             | ImmoTopia achète les packs ; chaque agence reçoit un quota mensuel de SMS lié à son abonnement, décompté depuis `SmsMessage`                           | Chaque agence paie directement Orange ; ImmoTopia ne gère aucun flux d'argent SMS pour elle                            |
+| Nom d'expéditeur        | « IMMOTOPIA » par défaut ; nom propre à l'agence possible via l'option Orange « Multiple Sender Names », chaque nom soumis à validation Orange/ARTCI   | Chaque agence enregistre directement son propre nom d'expéditeur                                                       |
+| Cohérence avec le lot 7 | S'écarte du patron `PaymentGatewayConfig` — justifié ci-dessus (pas de flux d'argent vers l'agence)                                                     | Suivait le patron `PaymentGatewayConfig` : identifiants chiffrés, `tenantId @unique`, test de connexion               |
+| Risque de dépassement   | Le plafond Orange (100 000 FCFA/jour/SIM) est partagé par la plateforme ; le quota par agence (ci-dessus) protège les autres agences d'un pic isolé    | Chaque agence aurait eu son propre plafond, ses propres packs                                                          |
+| Pour qui                | Toutes les agences, sans exception                                                                                                                      | Aurait visé les grosses agences voulant leur propre marque SMS et prêtes à gérer leur compte Orange                    |
 
-Conséquence sur le modèle de données (§5) : `SmsGatewayConfig` devient
-**facultatif par agence** — son absence signifie « compte plateforme, quota
-par défaut » ; une ligne n'est créée que pour fixer un quota personnalisé,
-un nom d'expéditeur dédié, ou pour basculer une agence en identifiants
-propres.
+**Décision (Baba, 24/09/2026) : un seul compte Orange, au nom d'ImmoTopia.**
+L'option « identifiants propres par agence » est abandonnée : aucune agence
+ne configure ni ne paie son propre compte Orange, il n'y a pas de
+chiffrement d'identifiants à gérer par agence. ImmoTopia ouvre et opère
+l'unique compte Orange (identifiants dans `env.ts`, §6), avec le nom
+d'expéditeur « IMMOTOPIA » par défaut ; chaque agence reçoit un quota mensuel
+de SMS inclus dans son abonnement (compté depuis `SmsMessage`, quota par
+défaut `SMS_DEFAULT_MONTHLY_QUOTA` si non personnalisé — le tarif/quota exact
+par formule d'abonnement reste à trancher commercialement, §12). Une agence
+qui veut son propre nom d'expéditeur peut le demander via l'option Orange
+« Multiple Sender Names » (validation Orange/ARTCI supplémentaire par nom,
+toujours sur le compte plateforme, jamais un compte Orange séparé).
+
+Conséquence sur le modèle de données (§5) : le `SmsGatewayConfig` chiffré
+envisagé plus haut est remplacé par `TenantSmsSettings` — pas d'identifiants
+par agence, seulement activation, nom d'expéditeur et quota.
 
 ---
 
 ## 5. Modèle de données Prisma proposé
 
 ```prisma
-enum SmsProviderKind {
-  ORANGE
-  SMS_PARTNER_AFRICA
-  HSMS
-  BULKGATE
-}
-
-enum SmsGatewayMode {
-  PLATFORM         // compte Orange ImmoTopia, quota mensuel par agence (défaut, §4)
-  OWN_CREDENTIALS  // l'agence utilise son propre compte Orange (identifiants chiffrés ci-dessous)
-}
-
 enum SmsMessageStatus {
   QUEUED
   SENT
   DELIVERED
   FAILED
-  CANCELLED
 }
 
-enum SmsEncoding {
-  GSM_7
-  UCS_2
-}
-
-/// Réglages SMS d'une agence. Ligne absente = compte plateforme au quota par
-/// défaut (§4) ; une ligne n'est créée que pour un quota personnalisé, un nom
-/// d'expéditeur dédié (mode PLATFORM), ou des identifiants propres (mode
-/// OWN_CREDENTIALS, patron lot 7 : PaymentGatewayConfig).
-model SmsGatewayConfig {
-  id                String          @id @default(uuid()) @db.Uuid
-  tenantId          String          @unique @map("tenant_id")
-  mode              SmsGatewayMode  @default(PLATFORM)
-  provider          SmsProviderKind @default(ORANGE)
-  isActive          Boolean         @default(true) @map("is_active")   // surtout pertinent en OWN_CREDENTIALS
-  senderId          String?         @map("sender_id")            // nom d'expéditeur ; "IMMOTOPIA" si vide en mode PLATFORM
-  clientIdEncrypted String?         @map("client_id_encrypted")  // rempli seulement en mode OWN_CREDENTIALS ; AES-256-GCM (crypto.ts du lot 7)
-  clientSecretEncrypted String?     @map("client_secret_encrypted")
-  credentialsLast4  String?         @map("credentials_last4")
-  monthlyQuota      Int?            @map("monthly_quota")        // quota mensuel de l'agence en mode PLATFORM (lié à l'abonnement — source à trancher, §12)
-  lastTestAt        DateTime?       @map("last_test_at")
-  lastTestOk        Boolean?        @map("last_test_ok")
-  lastTestMessage   String?         @map("last_test_message")
-  createdAt         DateTime        @default(now()) @map("created_at")
-  updatedAt         DateTime        @updatedAt @map("updated_at")
+/// Réglages SMS d'une agence, dans le modèle à compte plateforme unique (§4).
+/// Une ligne par agence, créée à l'activation (pas d'identifiants ici : le
+/// compte Orange est celui de la plateforme, configuré une fois dans env.ts).
+model TenantSmsSettings {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @unique @map("tenant_id")
+  enabled      Boolean  @default(false)
+  senderName   String?  @map("sender_name")   // null = nom de la plateforme (ORANGE_SMS_PLATFORM_SENDER_NAME, §6)
+  monthlyQuota Int?     @map("monthly_quota") // null = quota par défaut (SMS_DEFAULT_MONTHLY_QUOTA, §6)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@map("sms_gateway_configs")
+  @@map("tenant_sms_settings")
 }
 
-/// Journal de chaque envoi SMS (transactionnel ou de masse). Isolé par tenant.
+/// Journal de chaque envoi SMS (déclenché par un événement métier ou un test
+/// manuel). Isolé par tenant. Lot SMS-1 : pas de colonnes segments/encodage/
+/// coût estimé — elles arrivent au lot SMS-2 (§3.7, §3.8, §10.2).
 model SmsMessage {
-  id                 String            @id @default(uuid()) @db.Uuid
-  tenantId           String            @map("tenant_id")
-  notificationKey    String?           @map("notification_key")   // clé WHATSAPP_NOTIFICATION_KEYS réutilisée, nullable pour un envoi manuel
-  recipientContactId String?           @map("recipient_contact_id")
-  recipientTenantClientId String?      @map("recipient_tenant_client_id")
-  toPhone            String            @map("to_phone")           // E.164, numéro effectivement utilisé
-  body               String            @db.Text
-  segments           Int
-  encoding           SmsEncoding
-  estimatedCostFcfa  Decimal?          @map("estimated_cost_fcfa") @db.Decimal(10, 2)
-  provider           SmsProviderKind
-  providerMessageId  String?           @map("provider_message_id")
-  status             SmsMessageStatus  @default(QUEUED)
-  failureReason      String?           @map("failure_reason")
-  sentAt             DateTime?         @map("sent_at")
-  deliveredAt        DateTime?         @map("delivered_at")
-  createdAt          DateTime          @default(now()) @map("created_at")
+  id                String           @id @default(uuid()) @db.Uuid
+  tenantId          String           @map("tenant_id")
+  to                String           // E.164, numéro effectivement utilisé (§3.6)
+  body              String           @db.Text
+  senderName        String?          @map("sender_name")
+  status            SmsMessageStatus @default(QUEUED)
+  provider          String           // 'orange' | 'log' (§6) — chaîne libre, pas un enum : la liste des fournisseurs bougera encore (secours, lot SMS-4)
+  providerMessageId String?          @map("provider_message_id")
+  notificationKey   String?          @map("notification_key") // clé WHATSAPP_NOTIFICATION_KEYS réutilisée ; null = envoi de test manuel
+  errorMessage      String?          @map("error_message")
+  createdByUserId   String?          @map("created_by_user_id") // utilisateur admin à l'origine d'un envoi de test
+  sentAt            DateTime?        @map("sent_at")
+  deliveredAt       DateTime?        @map("delivered_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
 
-  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contact      CrmContact?  @relation(fields: [recipientContactId], references: [id], onDelete: SetNull)
-  tenantClient TenantClient? @relation(fields: [recipientTenantClientId], references: [id], onDelete: SetNull)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@index([tenantId])
-  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
   @@index([providerMessageId])
   @@map("sms_messages")
 }
@@ -533,32 +508,35 @@ Notes :
 
 - `tenantId` est présent sur les deux modèles, conformément à la règle
   d'isolation multi-tenant d'`AGENTS.md` (§« Isolation multi-tenant »).
-  `SmsGatewayConfig.tenantId` est `@unique`, comme
-  `PaymentGatewayConfig.tenantId` (contrat lot 7 ligne 26) : au plus une
-  config par agence, et son absence est un état valide (§4).
-- Le quota d'une agence en mode `PLATFORM` sans ligne `SmsGatewayConfig` se
-  lit sur un quota par défaut de la plateforme (constante ou table
-  d'abonnement — non détaillée ici, §12), pas sur `monthlyQuota` qui n'existe
-  alors pas encore ; la consommation se calcule toujours par agrégation de
-  `SmsMessage` sur le mois en cours, avec ou sans ligne de config.
+  `TenantSmsSettings.tenantId` est `@unique` : au plus une ligne de réglages
+  par agence.
+- Une agence sans ligne `TenantSmsSettings` équivaut à ses valeurs par
+  défaut : `enabled=false`, `senderName=null` (nom de la plateforme),
+  `monthlyQuota=null` (quota par défaut `SMS_DEFAULT_MONTHLY_QUOTA`, §6). Une
+  ligne n'est créée qu'à l'activation du SMS pour l'agence, ou pour
+  personnaliser son nom d'expéditeur ou son quota. La consommation du mois se
+  calcule toujours par agrégation de `SmsMessage` sur le mois en cours, avec
+  ou sans ligne de réglages.
 - `providerMessageId` n'est pas `@unique` en base (un fournisseur peut ne pas
   en renvoyer un pour un envoi en échec immédiat), mais indexé pour la
-  résolution du webhook (§3.9) — la résolution utilise en pratique
-  `callbackData` (§3.9), qu'`OrangeSmsProvider` renseigne avec l'id de
-  `SmsMessage` à l'envoi ; `providerMessageId` reste utile pour `getStatus`
-  et l'affichage.
-- `clientIdEncrypted`/`clientSecretEncrypted` séparés (Orange utilise un
-  couple Client ID/Secret OAuth2, pas une clé API unique comme PaySecureHub),
-  même format versionné `pg1:iv:authTag:ciphertext` que `crypto.ts` du lot 7,
-  réutilisable tel quel.
+  résolution du webhook (§3.9, lot SMS-3) — la résolution utilise en pratique
+  `callbackData`, qu'`OrangeSmsProvider` renseigne avec l'id de `SmsMessage`
+  à l'envoi ; `providerMessageId` reste utile pour `getStatus` et
+  l'affichage.
+- Pas de relation `contact`/`tenantClient` sur `SmsMessage` : contrairement
+  au brouillon précédent, seul le numéro effectivement utilisé (`to`) est
+  journalisé, pas l'identité du destinataire — cohérent avec la résolution du
+  téléphone en amont de l'envoi (note suivante et §3.3), qui reste dans le
+  service d'envoi plutôt que dans le journal.
 - `TenantClient` existe bien, mais **n'a pas de colonne téléphone** (`User`
   non plus). Le numéro d'un locataire se résout aujourd'hui dans cet ordre :
   `CrmContact.phonePrimary` (via `details.crmContactId`), puis
   `phoneSecondary`, puis `whatsappNumber`, puis
   `TenantClient.details.phone`/`telephone`/`mobile` (JSON libre) —
-  `packages/api/src/services/document-context-builder.ts` lignes 52-80 et 164. `SmsMessage.toPhone` (le numéro effectivement utilisé) vient de cette
-  résolution, pas d'une colonne dédiée sur `TenantClient` ; voir §3.3 pour le
-  partage de cette logique et §12 pour la question d'une colonne dédiée.
+  `packages/api/src/services/document-context-builder.ts` lignes 52-80 et
+  164. `SmsMessage.to` (le numéro effectivement utilisé) vient de cette
+  résolution ; voir §3.3 pour le partage de cette logique et §12 pour la
+  question d'une colonne dédiée.
 - **Décision ouverte** (cf. §3.3) : si une table `SmsNotificationConfig`
   séparée est retenue pour activer/désactiver le SMS par notification
   (symétrique à la config WhatsApp), elle s'ajoute ici — non détaillée faute
@@ -583,61 +561,55 @@ propre `env.ts` (worktree lot7, lignes 87-88).
 
 ```ts
 // Ajouts proposés à envSchema dans packages/api/src/config/env.ts
-SMS_PROVIDER: z.enum(['orange', 'sms_partner_africa', 'hsms', 'bulkgate']).default('orange'),
 
-// Compte plateforme (mode PLATFORM par défaut, §4) — sans valeur par défaut,
-// non fournies : le SMS reste indisponible pour toutes les agences en mode PLATFORM.
+// 'log' n'envoie rien (écrit dans les logs) : défaut sûr pour dev/CI tant que
+// le compte Orange n'est pas configuré.
+SMS_PROVIDER: z.enum(['orange', 'log']).default('log'),
+
+// Compte Orange unique de la plateforme (§4) — sans valeur par défaut pour
+// les identifiants : non fournis, le SMS reste indisponible pour toutes les
+// agences (SMS_PROVIDER=orange échoue au démarrage ou au premier envoi).
 ORANGE_SMS_CLIENT_ID: z.string().optional(),
 ORANGE_SMS_CLIENT_SECRET: z.string().optional(),
-ORANGE_SMS_PLATFORM_SENDER_ID: z.string().default('IMMOTOPIA'),
+ORANGE_SMS_API_BASE_URL: z.string().url().default('https://api.orange.com'),
+ORANGE_SMS_SENDER_ADDRESS: z.string().default('tel:+2250000'), // numéro/short code expéditeur pour l'URL d'envoi (§3.2)
+ORANGE_SMS_PLATFORM_SENDER_NAME: z.string().default(''), // vide tant que le nom n'est pas validé par Orange/ARTCI (§11)
 
-// Chiffrement des identifiants propres d'une agence (mode OWN_CREDENTIALS uniquement)
-SMS_SECRETS_KEY: z.string().optional(), // 32 octets base64 ; séparée ou non de PAYMENT_SECRETS_KEY, à trancher (§12)
+// Quota mensuel d'une agence sans TenantSmsSettings.monthlyQuota (§5) —
+// valeur provisoire du lot SMS-1 ; le tarif/quota par formule d'abonnement
+// reste à définir commercialement (§12).
+SMS_DEFAULT_MONTHLY_QUOTA: z.coerce.number().int().positive().default(100),
 
-ORANGE_SMS_BASE_URL: z.string().url().default('https://api.orange.com'),
-ORANGE_SMS_OAUTH_URL: z.string().url().default('https://api.orange.com/oauth/v3/token'),
-ORANGE_SMS_TIMEOUT_MS: z.coerce.number().int().positive().default(15000),
-ORANGE_SMS_MAX_PER_SECOND: z.coerce.number().int().positive().default(5),
-SMS_DEFAULT_COUNTRY_CODE: z.string().regex(/^\d{1,4}$/).default('225'),
-
-// Secret dans le chemin de l'URL de rappel Orange (§3.9) — aucune signature
-// documentée par Orange pour ce mécanisme, ce secret en tient lieu.
-ORANGE_SMS_WEBHOOK_PATH_SECRET: secretSchema,
+// Secret dans le chemin de l'URL de rappel Orange (§3.9) — prévu pour le
+// webhook du lot SMS-3, déclaré dès maintenant pour ne pas rouvrir env.ts
+// plus tard. Optionnel tant que ce webhook n'existe pas.
+ORANGE_SMS_WEBHOOK_PATH_SECRET: z.string().optional(),
 ```
 
 ```bash
 # env.example — section à ajouter, sur le modèle de la section "WhatsApp Provider"
-SMS_PROVIDER="orange"
+# SMS_PROVIDER="orange" | "log" (log = n'envoie rien, pour dev/CI)
+SMS_PROVIDER="log"
 
-# Compte Orange de la plateforme (mode PLATFORM par défaut, toutes les agences)
+# Compte Orange unique de la plateforme (§4) — toutes les agences envoient
+# depuis ce compte, il n'y a pas d'identifiants par agence.
 ORANGE_SMS_CLIENT_ID=""
 ORANGE_SMS_CLIENT_SECRET=""
-ORANGE_SMS_PLATFORM_SENDER_ID="IMMOTOPIA"
+ORANGE_SMS_API_BASE_URL="https://api.orange.com"
+ORANGE_SMS_SENDER_ADDRESS="tel:+2250000"
+# Vide tant que le nom n'est pas validé par Orange/ARTCI (§11). Une agence
+# peut avoir son propre nom via TenantSmsSettings.senderName (§5), validé
+# séparément sur ce même compte (option Orange "Multiple Sender Names", §4).
+ORANGE_SMS_PLATFORM_SENDER_NAME=""
 
-# Chiffrement des identifiants propres d'une agence (mode OWN_CREDENTIALS).
-# 32 octets en base64. Générer avec: openssl rand -base64 32
-# Absente : aucune agence ne peut basculer en identifiants propres.
-SMS_SECRETS_KEY=""
+# Quota mensuel d'une agence sans quota personnalisé (TenantSmsSettings.monthlyQuota)
+SMS_DEFAULT_MONTHLY_QUOTA=100
 
-ORANGE_SMS_BASE_URL="https://api.orange.com"
-ORANGE_SMS_OAUTH_URL="https://api.orange.com/oauth/v3/token"
-ORANGE_SMS_TIMEOUT_MS=15000
-ORANGE_SMS_MAX_PER_SECOND=5
-SMS_DEFAULT_COUNTRY_CODE="225"
-
-# Secret inséré dans le chemin de l'URL de rappel Orange (/api/sms/webhook/orange/<secret>).
-# Générer avec: openssl rand -base64 48
+# Secret inséré dans le chemin de l'URL de rappel Orange
+# (/api/sms/webhook/orange/<secret>). Prévu pour le lot SMS-3 ; peut rester
+# vide jusque-là. Générer avec: openssl rand -base64 48
 ORANGE_SMS_WEBHOOK_PATH_SECRET=""
 ```
-
-**Décision à trancher** : `SMS_SECRETS_KEY` séparée de `PAYMENT_SECRETS_KEY`
-(isolation des secrets, rotation indépendante) ou clé de chiffrement unique
-pour toute la plateforme (plus simple à opérer). Ce document recommande une
-clé séparée : un module reste compromis indépendamment de l'autre en cas de
-fuite, et le format versionné `pg1:...` de `crypto.ts` gagnerait de toute
-façon un préfixe distinct (`sms1:...`). Avec le modèle hybride du §4, cette
-clé n'est nécessaire que pour les agences qui basculent en identifiants
-propres — la grande majorité des agences (mode plateforme) n'en dépend pas.
 
 ---
 
@@ -649,31 +621,33 @@ marge en propriété logique (`margin-inline-start`, jamais `ml-4`), et
 `npm run i18n:extract` dans `apps/web` après toute rédaction de texte pour
 mettre à jour les catalogues fr/en/ar.
 
-### 7.1 Carte de réglages SMS
+### 7.1 Réglages SMS
 
-`apps/web/src/components/settings/SmsGatewaySettingsCard.tsx` (nouveau
-fichier), calqué sur `PaymentGatewaySettingsCard.tsx` du lot 7. Vue par
-défaut (mode plateforme, aucune ligne `SmsGatewayConfig` requise) : quota
-mensuel restant (agrégation `SmsMessage` du mois vs `monthlyQuota` ou le
-quota par défaut, §5), nom d'expéditeur affiché (« IMMOTOPIA » ou le nom
-dédié validé via « Multiple Sender Names », §4), champ pour en demander un
-propre (texte informatif : validation Orange/ARTCI, délai). Section
-« Identifiants propres » repliée par défaut (`Switch`/`Collapse`) : bascule
-en mode `OWN_CREDENTIALS`, champ Client ID/Secret en écriture seule (jamais
-renvoyés par l'API, seulement `credentialsConfigured` et `credentialsLast4`,
-comme `apiKeyConfigured`/`apiKeyLast4` côté paiement), bouton « Remplacer les
-identifiants » qui déverrouille le champ (state `editingCredentials`,
-identique à `editingApiKey` du composant lot 7), nom d'expéditeur propre
-(`senderId`, validation 11 caractères alphanumériques sans espace ni
-caractère spécial), bouton « Tester la connexion »
-(`POST /api/tenants/:tenantId/settings/sms-gateway/test` — obtient un jeton
-et lit `contracts`, §3.2), alerte si `encryptionAvailable` est faux
-(`SMS_SECRETS_KEY` manquante, bascule impossible).
+Le compte Orange étant unique pour toute la plateforme (§4), il n'y a rien à
+configurer par agence côté identifiants — seulement l'activation, le nom
+d'expéditeur et le quota. Deux écrans, à deux niveaux d'accès :
 
-Section « Test d'envoi » : champ numéro + bouton « Envoyer un SMS de test »,
-sur le modèle de `testSendHandler` WhatsApp
-(`whatsapp-notification-config-controller.ts` lignes 230-287) —
-`POST /api/tenants/:tenantId/sms/test-send`.
+- **Carte SMS de la fiche agence (lecture seule)** : sur la page de réglages
+  existante de l'agence, une carte affiche le statut (activé/désactivé), le
+  nom d'expéditeur (`TenantSmsSettings.senderName` ou celui de la plateforme
+  si vide), le quota mensuel (`monthlyQuota` ou le quota par défaut, §5) et
+  la consommation du mois (agrégation `SmsMessage`). Rien n'est modifiable
+  ici : pas de compte Orange à saisir, un seul compte plateforme.
+  `GET /api/tenants/:tenantId/settings/sms`.
+- **Onglet « SMS » de la fiche agence du super-admin**
+  (`apps/web/.../TenantDetail.tsx`, nouvel onglet) : c'est là que tout se
+  configure — activer/désactiver le SMS pour l'agence, nom d'expéditeur,
+  quota mensuel (`GET`/`PATCH /api/admin/tenants/:tenantId/sms`), et un
+  bouton « Envoyer un SMS de test » (champ numéro + message,
+  `POST /api/admin/tenants/:tenantId/sms/test` — crée un `SmsMessage` avec
+  `notificationKey=null` et `createdByUserId` = l'admin connecté, sur le
+  modèle de `testSendHandler` WhatsApp,
+  `whatsapp-notification-config-controller.ts` lignes 230-287). Une section
+  « Compte Orange (plateforme) » du même onglet (ou un écran de config
+  plateforme séparé) affiche le solde/les packs du compte unique
+  (`GET /api/admin/sms/platform` — lit `contracts`, §3.2) et un bouton
+  « Tester la connexion » (`POST /api/admin/sms/platform/test` — obtient un
+  jeton et lit `contracts`, sans envoyer de SMS).
 
 ### 7.2 Choix du canal SMS dans les règles de notification existantes
 
@@ -688,10 +662,10 @@ pour avertir l'agence si son texte personnalisé dépasse 1 segment.
 ### 7.3 Historique des envois
 
 Nouvelle page (ou onglet de la page communication existante) listant
-`SmsMessage` avec filtres statut/date/destinataire, sur le modèle des User
+`SmsMessage` avec filtres statut/date/numéro (`to`), sur le modèle des User
 Story 3 de `specs/010-communication-module/spec.md` (§42-56) : liste paginée,
-statut par ligne, raison d'échec visible au clic, action « Renvoyer » pour un
-`FAILED` (limité par le taux 5/s, §3.5).
+statut par ligne, `errorMessage` visible au clic, action « Renvoyer » pour un
+`FAILED` (limité par le taux 5/s, §3.5, lot SMS-2).
 
 ---
 
@@ -718,16 +692,15 @@ Le module SMS ne le reproduit pas et lève des erreurs typées à la place
 Exemples d'erreurs typées attendues :
 
 - `BadRequestError` : numéro absent/invalide, texte vide ou trop long,
-  fournisseur non configuré, tentative d'enregistrer des identifiants sans
-  `SMS_SECRETS_KEY` (`encryptionAvailable` faux), nom d'expéditeur invalide
-  (>11 caractères ou caractères interdits).
-- `NotFoundError` : `SmsMessage` inexistant ou d'une autre agence (via
-  `assertBelongsToTenant`, §9), compte de trésorerie/quota référencé
-  inexistant.
+  fournisseur non configuré (`ORANGE_SMS_CLIENT_ID`/`SECRET` manquants côté
+  plateforme, §6), nom d'expéditeur invalide (>11 caractères ou caractères
+  interdits).
+- `NotFoundError` : `SmsMessage` ou `TenantSmsSettings` inexistant ou d'une
+  autre agence (isolation multi-tenant, `AGENTS.md`).
 - `ConflictError` : webhook reçu pour un `SmsMessage` déjà `DELIVERED` avec un
   statut contraire incohérent (à ignorer plutôt qu'à écraser, cf. §3.9
-  idempotence — ce cas ne lève probablement pas d'erreur visible côté client,
-  simplement un log).
+  idempotence, lot SMS-3 — ce cas ne lève probablement pas d'erreur visible
+  côté client, simplement un log).
 
 ---
 
@@ -762,10 +735,11 @@ Exemples d'erreurs typées attendues :
 - **Enregistrement du nom d'expéditeur (ARTCI)** : obligatoire, doit
   contenir la marque, sensible à la casse, délai ~5 jours ouvrés chez Orange,
   ~15 jours chez MTN avec pré-enregistrement obligatoire (d7networks, Telnyx,
-  §13) — à lancer tôt, voir §11. Dans le modèle hybride (§4), « IMMOTOPIA »
-  se valide une fois pour le compte plateforme ; chaque nom d'expéditeur
-  supplémentaire demandé par une agence via « Multiple Sender Names » suit
-  son propre délai de validation Orange/ARTCI, indépendamment des autres.
+  §13) — à lancer tôt, voir §11. Avec le compte plateforme unique (§4),
+  « IMMOTOPIA » se valide une fois pour toute la plateforme ; chaque nom
+  d'expéditeur supplémentaire demandé par une agence via « Multiple Sender
+  Names » suit son propre délai de validation Orange/ARTCI, indépendamment
+  des autres, mais reste sur ce même compte.
 
 ---
 
@@ -781,9 +755,9 @@ SmsProvider` (en mémoire, pas de réseau) pour tester
   segments/encodage (texte pur GSM-7, texte avec accents, texte arabe, texte
   à la limite de 160/153/70/67 caractères), résolution du gabarit par défaut
   vs `bodyOverride`, respect du consentement sur le chemin `contactId`.
-- **Isolation multi-tenant** : un test qui crée deux agences, une
-  `SmsGatewayConfig` par agence, vérifie qu'un `SmsMessage` de l'agence A
-  n'est ni lisible ni modifiable par un appel authentifié pour l'agence B
+- **Isolation multi-tenant** : un test qui crée deux agences, chacune avec sa
+  `TenantSmsSettings`, vérifie qu'un `SmsMessage` de l'agence A n'est ni
+  lisible ni modifiable par un appel authentifié pour l'agence B
   (mêmes fondations que `getPropertyForTenant`, `property-tenant-guard.ts`).
   Si `tenant-ownership.ts`/`assertBelongsToTenant` et les tests
   `schema-tenant-coverage.test.ts`/`routes-inventory.test.ts` du worktree
@@ -801,34 +775,40 @@ SmsProvider` (en mémoire, pas de réseau) pour tester
   français (bascule UCS-2 pour tout le message, pas seulement le caractère
   concerné).
 - **Erreurs typées** : vérifier qu'un numéro invalide lève `BadRequestError`
-  et non une 500, qu'un `SmsGatewayConfig` d'une autre agence référencé lève
+  et non une 500, qu'un `TenantSmsSettings` d'une autre agence référencé lève
   `NotFoundError`.
 
 ### 10.2 Découpage en lots de livraison
 
-1. **Lot SMS-1 — Fondations et compte plateforme.** Modèle Prisma
-   (`SmsGatewayConfig` facultatif, `SmsMessage`), migration, `env.ts`/
-   `env.example` (identifiants du compte plateforme), interface
-   `SmsProvider`, `OrangeSmsProvider` (OAuth2, envoi texte simple, lecture
-   `contracts` pour `getBalance()`/`testConnection()`, sans file d'attente ni
-   segments encore), carte de réglages frontend en lecture (quota, nom
-   d'expéditeur). Pas encore branché aux déclencheurs.
-2. **Lot SMS-2 — Envoi transactionnel et journal.** File d'attente 5/s,
-   normalisation E.164, calcul de segments/coût, décompte du quota mensuel
-   par agence, service d'envoi, branchement sur 2-3 déclencheurs à fort
-   impact (`INSTALLMENT_DUE_REMINDER`, `PAYMENT_APPROVED_TENANT`,
-   `CHARGE_CALL_ISSUED`), historique en lecture seule.
+1. **Lot SMS-1 — Fondations et compte plateforme.** Correspond exactement à
+   ce qui précède (§3–§9, moins ce qui est explicitement différé ci-dessous),
+   plus la normalisation des numéros `+225` (§3.6), nécessaire à l'envoi de
+   test : modèle Prisma (`TenantSmsSettings`, `SmsMessage` sans
+   segments/encodage/coût), migration, `env.ts`/`env.example` (identifiants
+   du compte plateforme unique, §6), interface `SmsProvider`,
+   `OrangeSmsProvider` (jeton OAuth2 unique, envoi texte simple, lecture
+   `contracts` pour `getBalance()`/`testConnection()`, sans file d'attente
+   formelle — un envoi de test isolé n'a pas besoin de la file 5/s), carte
+   agence en lecture seule et onglet SMS de la fiche agence super-admin
+   (§7.1, activer/désactiver, nom d'expéditeur, quota, envoi de test). Pas
+   encore branché aux déclencheurs métier automatiques.
+2. **Lot SMS-2 — Envoi transactionnel et journal enrichi.** File d'attente
+   5/s (§3.5), calcul et persistance des segments/encodage/coût estimé
+   (§3.7, §3.8, colonnes ajoutées à `SmsMessage`), décompte du quota mensuel
+   par agence, branchement sur 2-3 déclencheurs à fort impact
+   (`INSTALLMENT_DUE_REMINDER`, `PAYMENT_APPROVED_TENANT`,
+   `CHARGE_CALL_ISSUED`), historique en lecture seule (§7.3).
 3. **Lot SMS-3 — Webhook, statuts, reste des déclencheurs.** Webhook Orange
-   avec secret de chemin (accusés via `callbackData`, idempotence), mise à
-   jour de statut dans l'historique, extension aux déclencheurs restants
-   (maintenance, patrimoine, reste du syndic), choix du canal SMS dans
-   l'écran de règles de notification existant.
-4. **Lot SMS-4 — Identifiants propres, conformité, deuxième fournisseur
-   (optionnel).** Bascule `OWN_CREDENTIALS` pour les grosses agences
-   (chiffrement des identifiants, carte de réglages repliée, patron lot 7),
-   consentement SMS dédié si retenu (§9), heures d'envoi, gestion du STOP si
+   avec secret de chemin (accusés via `callbackData`, idempotence, §3.9),
+   mise à jour de statut dans l'historique, extension aux déclencheurs
+   restants (maintenance, patrimoine, reste du syndic), choix du canal SMS
+   dans l'écran de règles de notification existant (§7.2).
+4. **Lot SMS-4 — Conformité et deuxième fournisseur (optionnel).**
+   Consentement SMS dédié si retenu (§9), heures d'envoi, gestion du STOP si
    le besoin promotionnel se confirme, fournisseur de secours
-   (`SmsPartnerAfricaProvider`) derrière la même interface `SmsProvider`.
+   (`SmsPartnerAfricaProvider`) derrière la même interface `SmsProvider`. Ne
+   comporte plus d'option identifiants propres par agence : celle-ci est
+   abandonnée (§4).
 
 ---
 
@@ -836,25 +816,24 @@ SmsProvider` (en mémoire, pas de réseau) pour tester
 
 - **Créer le compte Orange Developer de la plateforme** (SIM Orange dédiée,
   souscription à l'API SMS CI, accès sandbox puis production) — préalable à
-  tout développement contre l'API réelle. C'est le seul compte à ouvrir dans
-  le modèle recommandé (§4) ; il porte le Client ID/Secret d'`env.ts`.
+  tout développement contre l'API réelle. C'est le seul compte Orange à
+  ouvrir : la décision du §4 exclut désormais toute ouverture de compte par
+  une agence.
 - **Demander la validation du nom d'expéditeur « IMMOTOPIA »** auprès
   d'Orange : ~5 jours ouvrés, 11 caractères alphanumériques max, sans espace
   ni caractère spécial, sensible à la casse (ARTCI). C'est le nom par défaut
-  de toutes les agences en mode plateforme.
+  de toutes les agences.
 - **Déclarer l'URL de rappel des accusés** via le formulaire Orange Developer
-  du compte plateforme (§3.9) — une seule fois, puisqu'un seul compte.
+  du compte plateforme (§3.9, lot SMS-3) — une seule fois, puisqu'un seul
+  compte.
 - **Lancer l'enregistrement MTN en parallèle**, dès que la couverture
   multi-opérateurs d'Orange SMS API CI est confirmée (§2) : ~15 jours ouvrés,
   pré-enregistrement obligatoire avant tout envoi vers des numéros MTN — une
   seule démarche pour toute la plateforme.
 - **Se renseigner sur l'option Orange « Multiple Sender Names »** (délai et
   coût par nom supplémentaire) avant de la proposer aux agences qui
-  voudraient leur propre nom d'expéditeur en mode plateforme.
-- **Si une agence bascule en identifiants propres (§4, lot SMS-4)** :
-  préparer un guide court expliquant comment créer son propre compte Orange
-  Developer et où trouver son Client ID/Secret — cette démarche n'est alors
-  pas au pouvoir d'ImmoTopia, l'agence la fait elle-même.
+  voudraient leur propre nom d'expéditeur (`TenantSmsSettings.senderName`,
+  §5) sur ce même compte plateforme.
 
 ---
 
@@ -863,33 +842,30 @@ SmsProvider` (en mémoire, pas de réseau) pour tester
 1. Orange confirme-t-il l'envoi effectif vers MTN et Moov via l'API SMS CI
    v2.0, ou seulement vers les numéros Orange ? Détermine si un deuxième
    fournisseur est nécessaire dès le lancement plutôt qu'en secours.
-2. **Tarif/quota SMS par formule d'abonnement** (modèle hybride, §4) :
-   `docs/PROPOSITION_MODELE_ECONOMIQUE_2026.md` a été consulté et ne mentionne
-   le SMS dans aucune formule — le quota mensuel par agence (nombre de SMS
-   inclus, comportement au dépassement : blocage ou facturation
-   supplémentaire) reste à définir commercialement avant le lot SMS-2.
-3. Quelle part des agences est susceptible de demander des identifiants
-   propres (§4, lot SMS-4) plutôt que le compte plateforme — dimensionne
-   l'effort à mettre sur cette option.
-4. `SMS_SECRETS_KEY` séparée de `PAYMENT_SECRETS_KEY` du lot 7, ou clé de
-   chiffrement unique pour tous les secrets de passerelle de la plateforme ?
-5. Un `consentSms` dédié sur `CrmContact`, ou réutilisation de
+2. **Tarif/quota SMS par formule d'abonnement** (reste ouverte après la
+   décision du §4) : `docs/PROPOSITION_MODELE_ECONOMIQUE_2026.md` a été
+   consulté et ne mentionne le SMS dans aucune formule — le quota mensuel par
+   agence (nombre de SMS inclus, comportement au dépassement : blocage ou
+   facturation supplémentaire) reste à définir commercialement ; le lot
+   SMS-1 démarre avec un quota par défaut provisoire
+   (`SMS_DEFAULT_MONTHLY_QUOTA=100`, §6).
+3. Un `consentSms` dédié sur `CrmContact`, ou réutilisation de
    `consentMarketing` pour le SMS promotionnel (§9) ?
-6. Le besoin OTP par SMS (connexion, vérification de numéro) existe-t-il
+4. Le besoin OTP par SMS (connexion, vérification de numéro) existe-t-il
    réellement à court terme ? Il mériterait son propre lot.
-7. Qui gère le mot-clé STOP entrant : la plateforme Orange nativement, ou
+5. Qui gère le mot-clé STOP entrant : la plateforme Orange nativement, ou
    ImmoTopia doit-il recevoir et traiter des SMS entrants (non couvert ici) ?
-8. La configuration SMS par notification (§3.3) : nouveau modèle Prisma
+6. La configuration SMS par notification (§3.3) : nouveau modèle Prisma
    dédié, ou extension du modèle de configuration WhatsApp existant (non lu
    en détail) pour porter plusieurs canaux ?
-9. Le champ `callbackData` (§3.9) est-il bien accepté dans le corps de la
+7. Le champ `callbackData` (§3.9) est-il bien accepté dans le corps de la
    requête d'envoi `smsmessaging/v1/outbound/.../requests` ? Non confirmé
    dans la documentation lue — à valider à l'essai avant le lot SMS-3, faute
    de quoi la corrélation des accusés repose uniquement sur `resourceURL`.
-10. Faut-il une vraie colonne téléphone (et un consentement SMS dédié) sur
-    `TenantClient`, plutôt que de continuer à résoudre le numéro via
-    `CrmContact`/`details` JSON (§3.3, §5) ? Simplifierait la résolution et
-    éviterait sa dépendance à un contact CRM lié.
+8. Faut-il une vraie colonne téléphone (et un consentement SMS dédié) sur
+   `TenantClient`, plutôt que de continuer à résoudre le numéro via
+   `CrmContact`/`details` JSON (§3.3, §5) ? Simplifierait la résolution et
+   éviterait sa dépendance à un contact CRM lié.
 
 ---
 

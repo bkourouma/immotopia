@@ -14,6 +14,7 @@ import type { TenantWithBranding } from '../../services/tenant-branding-service'
 import { SubscriptionTab } from '../../components/admin/tenant-detail/SubscriptionTab';
 import { InvoicesTab } from '../../components/admin/tenant-detail/InvoicesTab';
 import { ActivityTab } from '../../components/admin/tenant-detail/ActivityTab';
+import { TenantSmsPanel } from '../../components/admin/TenantSmsPanel';
 import {
   Building2,
   ArrowLeft,
@@ -30,7 +31,8 @@ import {
   Plus,
   Eye,
   UserX,
-  UserCheck
+  UserCheck,
+  MessageSquare
 } from 'lucide-react';
 import { App } from 'antd';
 import { useConfirmAction } from '../../components/primitives';
@@ -47,7 +49,7 @@ export const TenantDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'modules' | 'subscription' | 'invoices' | 'activity' | 'stats' | 'collaborators'
+    'overview' | 'modules' | 'subscription' | 'invoices' | 'activity' | 'stats' | 'collaborators' | 'sms'
   >('overview');
 
   useEffect(() => {
@@ -204,6 +206,7 @@ export const TenantDetail: React.FC = () => {
               { id: 'modules', label: t('Modules'), icon: Settings },
               { id: 'subscription', label: t('Abonnement'), icon: CreditCard },
               { id: 'invoices', label: t('Factures'), icon: Receipt },
+              { id: 'sms', label: t('SMS'), icon: MessageSquare },
               { id: 'activity', label: t('Activité'), icon: Activity },
               { id: 'stats', label: t('Statistiques'), icon: BarChart3 }
             ].map(tab => (
@@ -312,6 +315,12 @@ export const TenantDetail: React.FC = () => {
           {activeTab === 'invoices' && (
             <div>
               <InvoicesTab tenantId={tenantId!} />
+            </div>
+          )}
+
+          {activeTab === 'sms' && (
+            <div>
+              <TenantSmsPanel tenantId={tenantId!} />
             </div>
           )}
 

@@ -23,6 +23,13 @@ import {
 } from '../controllers/subscription-controller';
 import { getGlobalStatisticsHandler, getTenantActivityStatsHandler } from '../controllers/statistics-controller';
 import { getAuditLogsHandler } from '../controllers/audit-controller';
+import {
+  getPlatformSmsStatusHandler,
+  testPlatformSmsConnectionHandler,
+  getAdminTenantSmsHandler,
+  updateAdminTenantSmsHandler,
+  sendAdminTenantTestSmsHandler
+} from '../controllers/sms-settings-controller';
 import { authenticate } from '../middleware/auth-middleware';
 import { requirePermission } from '../middleware/rbac-middleware';
 
@@ -98,5 +105,14 @@ router.get(
   requirePermission('PLATFORM_TENANTS_VIEW'), // Using same permission as viewing tenants
   getAuditLogsHandler
 );
+
+// SMS (lot SMS-1) — décision produit : un seul compte Orange, au nom
+// d'ImmoTopia. Réglages par agence modifiables seulement ici (super-admin) ;
+// l'agence les voit en lecture seule sous /api/tenants/:tenantId/settings/sms.
+router.get('/sms/platform', requirePermission('PLATFORM_TENANTS_VIEW'), getPlatformSmsStatusHandler);
+router.post('/sms/platform/test', requirePermission('PLATFORM_TENANTS_EDIT'), testPlatformSmsConnectionHandler);
+router.get('/tenants/:tenantId/sms', requirePermission('PLATFORM_TENANTS_VIEW'), getAdminTenantSmsHandler);
+router.patch('/tenants/:tenantId/sms', requirePermission('PLATFORM_TENANTS_EDIT'), updateAdminTenantSmsHandler);
+router.post('/tenants/:tenantId/sms/test', requirePermission('PLATFORM_TENANTS_EDIT'), sendAdminTenantTestSmsHandler);
 
 export default router;

@@ -543,6 +543,10 @@ model Tenant {
   /// Lot 7 : paiement en ligne des loyers (PaySecureHub). Un compte marchand
   /// par agence, jamais rempli tant qu'elle n'a pas ouvert la page.
   paymentGatewayConfig     PaymentGatewayConfig?
+  /// Lot SMS-1 : réglages SMS de l'agence (compte plateforme unique).
+  tenantSmsSettings        TenantSmsSettings?
+  /// Lot SMS-1 : journal des SMS envoyés pour cette agence.
+  smsMessages              SmsMessage[]
   onlinePaymentCheckouts   OnlinePaymentCheckout[]
   rentalPenaltyRules       RentalPenaltyRule[]
   rentalPenalties          RentalPenalty[]
@@ -1761,6 +1765,14 @@ enum OnlineCheckoutStatus {
   REVIEW
 }
 
+/// Lot SMS-1 : statut d'un SMS envoyé via le compte plateforme (Orange).
+enum SmsMessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+}
+
 enum RentalPenaltyMode {
   FIXED_AMOUNT
   PERCENT_OF_RENT
@@ -2142,6 +2154,51 @@ model OnlinePaymentCheckout {
 
   @@index([tenantId, status])
   @@map("online_payment_checkouts")
+}
+
+/// Lot SMS-1 : réglages SMS d'une agence. Un seul compte Orange, au nom
+/// d'ImmoTopia (décision produit) — pas d'identifiants propres par agence.
+/// Ligne absente = SMS désactivé, nom d'expéditeur et quota par défaut de la
+/// plateforme. Modifiable seulement par le super-admin (PLATFORM_TENANTS_*) ;
+/// l'agence la voit en lecture seule.
+model TenantSmsSettings {
+  id           String   @id @default(uuid())
+  tenantId     String   @unique @map("tenant_id")
+  enabled      Boolean  @default(false)
+  senderName   String?  @map("sender_name") // null = nom de la plateforme
+  monthlyQuota Int?     @map("monthly_quota") // null = quota par défaut
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_sms_settings")
+}
+
+/// Lot SMS-1 : journal de chaque envoi SMS (test ou déclencheur métier des
+/// lots suivants). `notificationKey` nul = envoi de test.
+model SmsMessage {
+  id                String           @id @default(uuid())
+  tenantId          String           @map("tenant_id")
+  to                String // E.164, ex. +2250102030405
+  body              String
+  senderName        String?          @map("sender_name")
+  status            SmsMessageStatus @default(QUEUED)
+  provider          String // 'orange' | 'log'
+  providerMessageId String?          @map("provider_message_id")
+  notificationKey   String?          @map("notification_key") // null = envoi de test
+  errorMessage      String?          @map("error_message")
+  createdByUserId   String?          @map("created_by_user_id")
+  sentAt            DateTime?        @map("sent_at")
+  deliveredAt       DateTime?        @map("delivered_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([providerMessageId])
+  @@map("sms_messages")
 }
 
 // Rental Refund

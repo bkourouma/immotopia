@@ -31,6 +31,7 @@ import { FeeTermsFields } from '../../components/settings/FeeTermsFields';
 import { OwnerFeeTermsCard } from '../../components/settings/OwnerFeeTermsCard';
 import { AgentCommissionCard } from '../../components/settings/AgentCommissionCard';
 import { PaymentGatewaySettingsCard } from '../../components/settings/PaymentGatewaySettingsCard';
+import { SmsSettingsCard } from '../../components/settings/SmsSettingsCard';
 import { t } from '../../i18n/t';
 
 const { Title, Text, Paragraph } = Typography;
@@ -401,6 +402,7 @@ export const AgencyFinanceSettings: React.FC = () => {
       {/* Cartes indépendantes du formulaire ci-dessus : chacune gère son propre
           formulaire de modale, ce qu'un <form> HTML imbriqué n'autoriserait pas. */}
       {tenantId ? <PaymentGatewaySettingsCard tenantId={tenantId} /> : null}
+      {tenantId ? <SmsSettingsCard tenantId={tenantId} /> : null}
       {tenantId ? <OwnerFeeTermsCard tenantId={tenantId} /> : null}
       {tenantId ? <AgentCommissionCard tenantId={tenantId} /> : null}
     </Space>

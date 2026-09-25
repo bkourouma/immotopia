@@ -40,6 +40,13 @@ vi.mock('../../components/settings/PaymentGatewaySettingsCard', () => ({
   PaymentGatewaySettingsCard: () => <div>carte paiement en ligne</div>
 }));
 
+// La carte « SMS » (Lot SMS-1) a ses propres tests
+// (`sms-settings-card.test.tsx`) et interroge son propre service : remplacée
+// ici par un repère, pour que cette suite reste centrée sur les honoraires.
+vi.mock('../../components/settings/SmsSettingsCard', () => ({
+  SmsSettingsCard: () => <div>carte sms</div>
+}));
+
 const AGENCY_SETTINGS = {
   vatRegistered: true,
   vatRate: 18,

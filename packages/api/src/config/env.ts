@@ -94,7 +94,21 @@ const envSchema = z
     // Prisma tenant guard (utils/prisma-tenant-guard-extension.ts).
     // `warn` logs unscoped queries on tenant-owned models without blocking
     // them; `enforce` throws. See env.example for the warn → enforce sequence.
-    TENANT_GUARD_MODE: z.enum(['off', 'warn', 'enforce']).default('warn')
+    TENANT_GUARD_MODE: z.enum(['off', 'warn', 'enforce']).default('warn'),
+
+    // SMS (lot SMS-1) — un seul compte Orange, au nom d'ImmoTopia (décision
+    // produit : pas d'identifiants propres par agence). 'log' n'envoie rien :
+    // il journalise et renvoie un identifiant factice (dev, tests).
+    SMS_PROVIDER: z.enum(['orange', 'log']).default('log'),
+    // Secrets Orange : aucune valeur par défaut. Vérifiées au démarrage
+    // (voir plus bas) seulement quand SMS_PROVIDER=orange.
+    ORANGE_SMS_CLIENT_ID: z.string().optional(),
+    ORANGE_SMS_CLIENT_SECRET: z.string().optional(),
+    ORANGE_SMS_API_BASE_URL: z.string().url().default('https://api.orange.com'),
+    ORANGE_SMS_SENDER_ADDRESS: z.string().default('tel:+2250000'),
+    // Vide = pas de senderName envoyé à Orange tant qu'aucun nom n'est validé.
+    ORANGE_SMS_PLATFORM_SENDER_NAME: z.string().default(''),
+    SMS_DEFAULT_MONTHLY_QUOTA: z.coerce.number().int().nonnegative().default(100)
   })
   // Unknown keys are preserved: many optional integrations still read
   // process.env directly (WhatsApp, SMTP, Twilio).
@@ -125,6 +139,25 @@ function loadEnv(): Env {
   }
 
   const env = parsed.data;
+
+  // SMS (lot SMS-1) : un fournisseur 'orange' sans identifiants ne peut
+  // envoyer aucun SMS pour personne (compte plateforme unique, §« Décision
+  // produit ») — mieux vaut refuser de démarrer que de laisser croire que le
+  // SMS fonctionne. 'log' (défaut) n'a pas besoin de ces variables.
+  if (env.SMS_PROVIDER === 'orange' && (!env.ORANGE_SMS_CLIENT_ID || !env.ORANGE_SMS_CLIENT_SECRET)) {
+    // eslint-disable-next-line no-console
+    console.error(
+      [
+        '',
+        '❌ Configuration invalide : le serveur ne peut pas démarrer.',
+        "  - SMS_PROVIDER=orange nécessite ORANGE_SMS_CLIENT_ID et ORANGE_SMS_CLIENT_SECRET.",
+        '',
+        "Renseignez ces variables dans packages/api/.env, ou repassez SMS_PROVIDER à 'log' (voir env.example).",
+        ''
+      ].join('\n')
+    );
+    process.exit(1);
+  }
 
   if (env.NODE_ENV === 'production') {
     if (env.FRONTEND_URL.startsWith('http://localhost')) {

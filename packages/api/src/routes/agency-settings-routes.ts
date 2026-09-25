@@ -11,6 +11,7 @@ import {
   updatePaymentGatewaySettingsHandler,
   testPaymentGatewayConnectionHandler
 } from '../controllers/payment-gateway-settings-controller';
+import { getTenantSmsSettingsHandler } from '../controllers/sms-settings-controller';
 
 /**
  * Paramètres de l'agence qui ne relèvent pas de son identité (`PATCH
@@ -64,6 +65,17 @@ router.post(
   requireTenantAccess,
   requirePermission('TENANT_SETTINGS_EDIT'),
   testPaymentGatewayConnectionHandler
+);
+
+// Lot SMS-1 : réglages SMS de l'agence, lecture seule — modifiables
+// seulement par le super-admin (voir admin-routes.ts). Décision produit :
+// un seul compte Orange, au nom d'ImmoTopia.
+router.get(
+  '/tenants/:tenantId/settings/sms',
+  authenticate,
+  requireTenantAccess,
+  requirePermission('TENANT_SETTINGS_VIEW'),
+  getTenantSmsSettingsHandler
 );
 
 export default router;
