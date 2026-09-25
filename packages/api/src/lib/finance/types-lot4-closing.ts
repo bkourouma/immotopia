@@ -110,8 +110,17 @@ export type { SiteLotAllocationMethod };
  * Appelée par **tout** point d'écriture d'imputation, avant d'écrire. C'est ce
  * qui rend `finalCost` vrai : voir l'en-tête.
  *
- * Ne lève pas quand le chantier n'existe pas — ce n'est pas son travail, et
- * l'appelant a déjà lu le chantier pour d'autres raisons.
+ * **Lève aussi (`NotFoundError`) quand le chantier n'existe pas pour cette
+ * agence** — audit multi-tenant du 24 septembre 2026, lot B1 :
+ * `createSupplierInvoiceTx` (`suppliers.ts`) reçoit un `siteId` par
+ * imputation directement du corps de la requête, sans l'avoir vérifié avant
+ * d'appeler cette garde. La rendre silencieuse sur un chantier absent
+ * revenait à laisser une facture de l'agence A s'imputer sur un chantier de
+ * l'agence B sans qu'aucune erreur ne le dise. Les cinq autres appelants
+ * (`cash.ts`, `contractors.ts`, `salaries.ts`, `stock-mouvements.ts`,
+ * `stock-rapprochement.ts`) lisent déjà le chantier filtré par `tenantId`
+ * avant d'appeler cette fonction : pour eux ce cas ne se produit jamais, et
+ * ce changement ne change rien à leur comportement.
  */
 export type AssertSiteOpenTx = (tx: PrismaTransactionClient, tenantId: string, siteId: string) => Promise<void>;
 

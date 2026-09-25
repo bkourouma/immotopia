@@ -33,6 +33,20 @@ export async function uploadAttachment(
     throw new Error('Ticket introuvable');
   }
 
+  // Le contact qui dépose la pièce jointe (venant du corps de la requête) doit
+  // appartenir à cette agence : même erreur qu'un identifiant inexistant.
+  if (actorContactId) {
+    const contact = await prisma.crmContact.findFirst({
+      where: {
+        id: actorContactId,
+        tenantId: tenantId
+      }
+    });
+    if (!contact) {
+      throw new Error('Contact introuvable');
+    }
+  }
+
   // Count existing attachments for this ticket
   const existingCount = await prisma.maintenanceTicketAttachment.count({
     where: {

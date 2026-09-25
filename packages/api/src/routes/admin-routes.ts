@@ -1,6 +1,6 @@
 ﻿import { Router } from 'express';
 import {
-  createTenantHandler,
+  provisionTenantHandler,
   updateTenantHandler,
   listTenantsHandler,
   getTenantDetailHandler,
@@ -32,7 +32,11 @@ const router = Router();
 router.use(authenticate);
 
 // Tenant management routes (Platform Admin only)
-router.post('/tenants', requirePermission('PLATFORM_TENANTS_CREATE'), createTenantHandler);
+// Creation d'agence en un clic (lot F) : provisionne tenant + modules +
+// abonnement d'essai + socle comptable + administrateur invite, en une seule
+// transaction. Remplace l'ancien `createTenantHandler`, qui n'ecrivait qu'une
+// ligne Tenant PENDING (voir docs/architecture/PLAN-MULTI-TENANT.md, lot F1).
+router.post('/tenants', requirePermission('PLATFORM_TENANTS_CREATE'), provisionTenantHandler);
 
 router.get('/tenants', requirePermission('PLATFORM_TENANTS_VIEW'), listTenantsHandler);
 

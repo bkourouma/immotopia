@@ -212,12 +212,16 @@ export async function buildLeaseHabitationContext(tenantId: string, leaseId: str
       },
       primaryRenter: {
         include: {
-          user: true
+          user: {
+            select: { id: true, email: true, fullName: true }
+          }
         }
       },
       ownerClient: {
         include: {
-          user: true
+          user: {
+            select: { id: true, email: true, fullName: true }
+          }
         }
       },
       tenant: true,
@@ -225,7 +229,9 @@ export async function buildLeaseHabitationContext(tenantId: string, leaseId: str
         include: {
           renterClient: {
             include: {
-              user: true
+              user: {
+                select: { id: true, email: true, fullName: true }
+              }
             }
           }
         }
@@ -350,7 +356,9 @@ export async function buildRentReceiptContext(
           property: true,
           primaryRenter: {
             include: {
-              user: true
+              user: {
+                select: { id: true, email: true, fullName: true }
+              }
             }
           },
           tenant: true
@@ -358,7 +366,9 @@ export async function buildRentReceiptContext(
       },
       renterClient: {
         include: {
-          user: true
+          user: {
+            select: { id: true, email: true, fullName: true }
+          }
         }
       },
       allocations: {
@@ -454,7 +464,9 @@ export async function buildRentStatementContext(
       property: true,
       primaryRenter: {
         include: {
-          user: true
+          user: {
+            select: { id: true, email: true, fullName: true }
+          }
         }
       },
       tenant: true,

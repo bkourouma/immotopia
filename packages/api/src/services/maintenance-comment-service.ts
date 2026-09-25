@@ -42,6 +42,21 @@ export async function addComment(
     throw new Error('Un contact est requis pour les commentaires de type TENANT');
   }
 
+  // Le contact auteur (venant du corps de la requête ou de la résolution du
+  // contrôleur) doit appartenir à cette agence : même erreur qu'un identifiant
+  // inexistant.
+  if (authorContactId) {
+    const contact = await prisma.crmContact.findFirst({
+      where: {
+        id: authorContactId,
+        tenantId: tenantId
+      }
+    });
+    if (!contact) {
+      throw new Error('Contact introuvable');
+    }
+  }
+
   // Create comment
   const comment = await prisma.maintenanceTicketComment.create({
     data: {

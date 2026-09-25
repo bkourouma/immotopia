@@ -56,7 +56,7 @@ export async function setPropertyStatusTx(
         : undefined;
 
   await tx.property.update({
-    where: { id: property.id },
+    where: { id: property.id, tenantId: params.tenantId },
     data: {
       status: params.newStatus,
       version: { increment: 1 },

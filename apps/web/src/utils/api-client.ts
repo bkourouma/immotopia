@@ -2,6 +2,8 @@ import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'ax
 import { API_URL } from '../config/api';
 import i18next from '../i18n';
 import { t } from '../i18n/t';
+import { getStoredActiveTenantId } from './active-tenant';
+import { TENANT_SUSPENDED_EVENT } from './tenant-events';
 
 /**
  * Délai maximal d'une requête (REFONTE_UI_UX.md §8.4).
@@ -48,6 +50,19 @@ apiClient.interceptors.request.use(
     // valeur-la serait figee a la langue du premier rendu, et ne suivrait pas
     // un changement de langue en cours de session.
     config.headers.set('Accept-Language', i18next.resolvedLanguage ?? i18next.language);
+
+    // Portail (locataire/propriétaire) : un client rattaché à plusieurs
+    // agences dit laquelle. La clé n'existe en stockage que si
+    // `<TenantSwitcher>` a servi au moins une fois (voir `active-tenant.ts`) —
+    // un client d'une seule agence n'envoie donc jamais cet en-tête, ce que
+    // l'API n'exige d'ailleurs que pour trancher une ambiguïté.
+    if (config.url?.includes('/portal/')) {
+      const activeTenantId = getStoredActiveTenantId();
+      if (activeTenantId) {
+        config.headers.set('X-Portal-Tenant-Id', activeTenantId);
+      }
+    }
+
     return config;
   },
   (error: AxiosError) => {
@@ -220,6 +235,30 @@ apiClient.interceptors.response.use(
     config._retryCount = attempt + 1;
     await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
     return apiClient(config);
+  }
+);
+
+// Agence suspendue : toute route d'agence ou de portail renvoie alors 403
+// avec `code: 'TENANT_SUSPENDED'`. On le transforme en évènement DOM plutôt
+// que de le traiter ici — cet intercepteur ne sait rien afficher, et
+// plusieurs écrans (agence, portails) ont besoin du même signal.
+//
+// La déduction de l'agence (`deduireTenantIdSuspendu`) vit dans un module à
+// part, chargé ici à la demande : un 403 `TENANT_SUSPENDED` est une réponse
+// d'erreur rare, elle n'a donc rien à faire dans le chunk d'entrée
+// (REFONTE_UI_UX.md §8.1). L'intercepteur reste `async` : axios attend la
+// promesse qu'il renvoie avant de considérer la requête réglée, l'évènement
+// part donc bien avant que l'appelant ne voie le rejet.
+apiClient.interceptors.response.use(
+  response => response,
+  async (error: AxiosError) => {
+    const body = error.response?.data as { code?: string } | undefined;
+    if (error.response?.status === 403 && body?.code === 'TENANT_SUSPENDED' && typeof window !== 'undefined') {
+      const { deduireTenantIdSuspendu } = await import('./tenant-suspended-detection');
+      const tenantId = deduireTenantIdSuspendu(error.config as InternalAxiosRequestConfig | undefined);
+      window.dispatchEvent(new CustomEvent(TENANT_SUSPENDED_EVENT, { detail: { tenantId } }));
+    }
+    return Promise.reject(error);
   }
 );
 

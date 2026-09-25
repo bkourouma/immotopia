@@ -1,10 +1,57 @@
 import nodemailer, { Transporter } from 'nodemailer';
+import { getCurrentTenantId } from '../utils/tenant-context';
 
 interface EmailOptions {
   to: string;
   subject: string;
   text?: string;
   html?: string;
+  /**
+   * Agence au nom de laquelle l'e-mail part (lot H). Quand omis, retombe sur
+   * le contexte ambiant `getCurrentTenantId()` (pose par `requireTenantAccess`
+   * et les jobs planifies) ; sans agence identifiable dans un cas comme dans
+   * l'autre, l'e-mail part au nom de la plateforme, comme avant ce lot.
+   */
+  tenantId?: string;
+}
+
+/** Nom d'expediteur + Reply-To resolus pour une agence. */
+interface AgencySenderIdentity {
+  name: string;
+  contactEmail: string | null;
+}
+
+/** Cache court (5 min) : une agence n'a pas besoin d'etre relue a chaque e-mail envoye. */
+const AGENCY_IDENTITY_TTL_MS = 5 * 60 * 1000;
+const agencyIdentityCache = new Map<string, { value: AgencySenderIdentity | null; expiresAt: number }>();
+
+/**
+ * Identite d'envoi d'une agence (nom + e-mail de contact), en cache 5 minutes.
+ * Renvoie `null` sans lever si l'agence est introuvable ou si la lecture
+ * echoue : un probleme d'identite d'expediteur ne doit jamais empecher un
+ * e-mail de partir, il part juste au nom de la plateforme.
+ */
+async function getAgencySenderIdentity(tenantId: string | undefined): Promise<AgencySenderIdentity | null> {
+  if (!tenantId) return null;
+
+  const cached = agencyIdentityCache.get(tenantId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  try {
+    const { prisma } = await import('../utils/database');
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true, contactEmail: true }
+    });
+    const value = tenant ? { name: tenant.name, contactEmail: tenant.contactEmail } : null;
+    agencyIdentityCache.set(tenantId, { value, expiresAt: Date.now() + AGENCY_IDENTITY_TTL_MS });
+    return value;
+  } catch (error) {
+    console.error('Failed to resolve agency sender identity', { tenantId, error });
+    return null;
+  }
 }
 
 /**
@@ -94,14 +141,25 @@ export class EmailService {
 
     const EMAIL_FROM = process.env.EMAIL_FROM || process.env.EMAIL_SMTP_USER || 'noreply@localhost';
 
+    // Lot H : l'e-mail part au nom de l'agence (adresse From inchangee, celle
+    // de la plateforme — seuls le nom affiche et le Reply-To changent) quand
+    // une agence est identifiable, explicitement ou via le contexte ambiant.
+    const effectiveTenantId = options.tenantId ?? getCurrentTenantId();
+    const identity = await getAgencySenderIdentity(effectiveTenantId);
+    // "via ImmoTopia" : la delivrabilite (SPF/DKIM sur le domaine plateforme)
+    // exige de garder l'adresse From de la plateforme, donc afficher le nom de
+    // l'agence seul serait trompeur sur l'expediteur reel.
+    const fromDisplayName = identity ? `${identity.name} via ImmoTopia` : 'ImmoTopia';
+
     try {
       const toAddress = normalizeEmailForSmtp(options.to);
       const info = await this.transporter.sendMail({
-        from: `"ImmoTopia" <${EMAIL_FROM}>`,
+        from: `"${fromDisplayName.replace(/"/g, "'")}" <${EMAIL_FROM}>`,
         to: toAddress,
         subject: options.subject,
         text: options.text,
-        html: options.html
+        html: options.html,
+        ...(identity?.contactEmail ? { replyTo: identity.contactEmail } : {})
       });
       console.log('Email sent successfully:', {
         messageId: info.messageId,
@@ -147,14 +205,16 @@ export class EmailService {
     token: string,
     tenantName: string,
     roleLabels: string[],
-    expiresAt: Date
+    expiresAt: Date,
+    tenantId?: string
   ): Promise<void> {
     const { getInvitationTemplate } = await import('../utils/email-templates');
     const link = `${getBaseUrl()}/auth/accept-invite?token=${token}`;
     await this.sendEmail({
       to,
       subject: `Invitation à rejoindre ${tenantName} sur ImmoTopia`,
-      html: getInvitationTemplate(link, tenantName, roleLabels, expiresAt)
+      html: getInvitationTemplate(link, tenantName, roleLabels, expiresAt),
+      tenantId
     });
   }
 

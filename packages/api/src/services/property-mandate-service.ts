@@ -115,9 +115,11 @@ export async function createMandate(tenantId: string, data: CreateMandateRequest
  * @returns Revoked mandate
  */
 export async function revokeMandate(mandateId: string, tenantId: string, actorUserId?: string) {
-  // Get mandate with property
-  const mandate = await prisma.propertyMandate.findUnique({
-    where: { id: mandateId },
+  // Get mandate with property. Filtered by tenantId directly (rather than
+  // fetched broad then checked) so a mandate id from another agency reads as
+  // not-found, same as `getPropertyForTenant`.
+  const mandate = await prisma.propertyMandate.findFirst({
+    where: { id: mandateId, tenantId },
     include: {
       property: true
     }
@@ -127,17 +129,13 @@ export async function revokeMandate(mandateId: string, tenantId: string, actorUs
     throw new Error('Mandate not found');
   }
 
-  if (mandate.tenantId !== tenantId) {
-    throw new Error('Tenant does not have access to revoke this mandate');
-  }
-
   if (!mandate.isActive) {
     throw new Error('Mandate is already inactive');
   }
 
   // Revoke mandate (preserve historical data)
   const revoked = await prisma.propertyMandate.update({
-    where: { id: mandateId },
+    where: { id: mandateId, tenantId },
     data: {
       isActive: false,
       revokedAt: new Date(),
@@ -193,13 +191,41 @@ export async function revokeMandate(mandateId: string, tenantId: string, actorUs
 
 /**
  * Get active mandates for a property
+ *
+ * Mandates can only be created for CLIENT-ownership properties (see
+ * `createMandate`), which have no owning agency of their own: several
+ * agencies can each hold their own, separate mandate on the same privately
+ * owned property. Without a tenant check here, any authenticated user could
+ * read `/tenants/:tenantId/properties/:id/mandates` for a property id they
+ * found elsewhere and see which OTHER agencies hold a mandate on it, plus
+ * the mandate owner's contact details — a cross-tenant leak the route
+ * middleware (`enforcePropertyTenantIsolation`) does not catch, since it only
+ * checks that a tenant context exists, not that `propertyId` belongs to it.
  * @param propertyId - Property ID
- * @returns List of active mandates
+ * @param tenantId - Tenant asking (only their own mandate is returned, never
+ *   a competing agency's)
+ * @returns List of active mandates belonging to `tenantId`
  */
-export async function getPropertyMandates(propertyId: string) {
+export async function getPropertyMandates(propertyId: string, tenantId: string) {
+  const property = await prisma.property.findFirst({
+    where: {
+      id: propertyId,
+      OR: [
+        { ownershipType: PropertyOwnershipType.TENANT, tenantId },
+        { ownershipType: PropertyOwnershipType.CLIENT, mandates: { some: { tenantId, isActive: true } } }
+      ]
+    },
+    select: { id: true }
+  });
+
+  if (!property) {
+    throw new Error('Property not found or access denied');
+  }
+
   const mandates = await prisma.propertyMandate.findMany({
     where: {
       propertyId,
+      tenantId,
       isActive: true
     },
     include: {

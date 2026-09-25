@@ -596,7 +596,8 @@ export const createRetentionTx: CreateRetentionTx = async (tx, tenantId, params)
   }
 
   await tx.retentionGuarantee.update({
-    where: { id: retention.id },
+    // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+    where: { id: retention.id, tenantId },
     data: { heldJournalEntryId: entry.entryId }
   });
 

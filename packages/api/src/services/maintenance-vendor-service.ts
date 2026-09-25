@@ -68,7 +68,7 @@ async function upsertVendorMirrorFromProvider(
     options?.specialties !== undefined ? normalizeSpecialties(options.specialties) : specialtiesFromProvider(provider);
 
   return prisma.maintenanceVendor.upsert({
-    where: { id: provider.id },
+    where: { id: provider.id, tenant_id: provider.tenantId },
     create: {
       id: provider.id,
       tenant_id: provider.tenantId,
@@ -266,7 +266,7 @@ export async function updateVendor(
   if (data.specialties !== undefined) providerUpdateData.specialty = specialtyForProvider(data.specialties);
 
   const provider = (await prisma.serviceProvider.update({
-    where: { id: vendorId },
+    where: { id: vendorId, tenantId },
     data: providerUpdateData
   })) as ProviderRecord;
 
@@ -387,7 +387,7 @@ export async function deleteVendor(tenantId: string, vendorId: string, actorUser
     }
   });
   await prisma.serviceProvider.delete({
-    where: { id: vendorId }
+    where: { id: vendorId, tenantId }
   });
 
   if (actorUserId) {

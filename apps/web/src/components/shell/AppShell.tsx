@@ -14,6 +14,7 @@ import { SkeletonDetail } from '../primitives/Skeleton';
 import { AppHeader } from './AppHeader';
 import { AppNavigation } from './AppNavigation';
 import { BottomTabBar } from './BottomTabBar';
+import { TenantSuspendedBanner } from '../TenantSuspendedBanner';
 import { t } from '../../i18n/t';
 
 /**
@@ -165,6 +166,7 @@ export const AppShell: React.FC = () => {
           transitionTimingFunction: 'var(--ease-standard)'
         }}
       >
+        <TenantSuspendedBanner />
         <AppHeader
           onOpenNavigation={
             canOpenDrawer

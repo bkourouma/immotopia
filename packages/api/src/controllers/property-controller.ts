@@ -28,7 +28,6 @@ export async function createPropertyHandler(req: Request, res: Response): Promis
     const data: CreatePropertyRequest = {
       propertyType: req.body.propertyType,
       ownershipType: req.body.ownershipType,
-      tenantId: req.body.tenantId,
       ownerUserId: req.body.ownerUserId ?? (req.body.ownerEmail ? undefined : userId),
       ownerEmail: req.body.ownerEmail,
       title: req.body.title,
@@ -388,6 +387,14 @@ export async function getQualityScoreHandler(req: Request, res: Response): Promi
     const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
     const userId = req.user?.userId;
 
+    if (!tenantId) {
+      res.status(400).json({
+        success: false,
+        error: 'Contexte tenant requis'
+      });
+      return;
+    }
+
     // Verify property access
     const property = await getPropertyById(propertyId, tenantId, userId);
     if (!property) {
@@ -403,9 +410,9 @@ export async function getQualityScoreHandler(req: Request, res: Response): Promi
     let qualityScore;
 
     if (recalculate) {
-      qualityScore = await calculateQualityScore(propertyId);
+      qualityScore = await calculateQualityScore(propertyId, tenantId);
     } else {
-      const latest = await getLatestQualityScore(propertyId);
+      const latest = await getLatestQualityScore(propertyId, tenantId);
       if (latest) {
         qualityScore = {
           score: latest.score,
@@ -419,7 +426,7 @@ export async function getQualityScoreHandler(req: Request, res: Response): Promi
         };
       } else {
         // Calculate if no score exists
-        qualityScore = await calculateQualityScore(propertyId);
+        qualityScore = await calculateQualityScore(propertyId, tenantId);
       }
     }
 
@@ -484,7 +491,6 @@ export async function createSubPropertyHandler(req: Request, res: Response): Pro
     const data: CreatePropertyRequest = {
       propertyType: req.body.propertyType || PropertyType.APPARTEMENT,
       ownershipType: req.body.ownershipType || parent.ownershipType,
-      tenantId: req.body.tenantId || parent.tenantId || tenantId,
       ownerUserId: req.body.ownerUserId || parent.ownerUserId || userId,
       ownerEmail: req.body.ownerEmail,
       containerParentId: parentPropertyId, // Link to parent

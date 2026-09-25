@@ -228,7 +228,7 @@ export async function removeSubscriber(tenantId: string, subscriberId: string) {
   if (!sub) throw new Error('Abonné non trouvé.');
   if (sub.list.type !== 'MANUAL') throw new Error("Impossible de retirer un abonné d'une liste dérivée.");
 
-  await prisma.newsletterSubscriber.delete({ where: { id: subscriberId } });
+  await prisma.newsletterSubscriber.delete({ where: { id: subscriberId, tenantId } });
   return { success: true };
 }
 
@@ -391,7 +391,7 @@ export async function unsubscribeByToken(token: string, unsubscribeAll = false) 
       });
     } else {
       await prisma.newsletterSubscriber.update({
-        where: { id: recipient.subscriberId! },
+        where: { id: recipient.subscriberId!, tenantId: recipient.tenantId },
         data: { status: 'UNSUBSCRIBED', unsubscribedAt: new Date() }
       });
     }

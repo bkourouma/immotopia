@@ -187,7 +187,8 @@ async function writeBalanceTx(
 ): Promise<void> {
   if (previous.id) {
     await tx.stockBalance.update({
-      where: { id: previous.id },
+      // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+      where: { id: previous.id, tenantId },
       data: { quantity, value }
     });
     return;
@@ -815,7 +816,8 @@ export const validateStockCountTx: ValidateStockCountTx = async (tx, tenantId, c
       });
 
       await tx.stockMovement.update({
-        where: { id: (movement as any).id },
+        // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+        where: { id: (movement as any).id, tenantId },
         data: { journalEntryId: entry.entryId }
       });
 
@@ -828,7 +830,8 @@ export const validateStockCountTx: ValidateStockCountTx = async (tx, tenantId, c
   }
 
   await tx.stockCount.update({
-    where: { id: count.id },
+    // `tenantId` en plus de l'id : anticipe le futur garde-fou Prisma (lot D).
+    where: { id: count.id, tenantId },
     data: { status: 'VALIDATED', validatedAt: new Date(), validatedByUserId }
   });
 

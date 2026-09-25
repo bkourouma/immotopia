@@ -72,7 +72,7 @@ export async function uploadMedia(
   let finalDisplayOrder = displayOrder;
   if (finalDisplayOrder === undefined) {
     const maxOrder = await prisma.propertyMedia.findFirst({
-      where: { propertyId },
+      where: { propertyId, tenantId: property.tenantId },
       orderBy: { displayOrder: 'desc' },
       select: { displayOrder: true }
     });
@@ -84,6 +84,7 @@ export async function uploadMedia(
     await prisma.propertyMedia.updateMany({
       where: {
         propertyId,
+        tenantId: property.tenantId,
         isPrimary: true
       },
       data: {
@@ -156,7 +157,8 @@ export async function reorderMedia(
     await prisma.propertyMedia.updateMany({
       where: {
         id: order.mediaId,
-        propertyId // Ensure media belongs to property
+        propertyId, // Ensure media belongs to property
+        tenantId
       },
       data: {
         displayOrder: order.displayOrder
@@ -188,7 +190,8 @@ export async function setPrimaryMedia(propertyId: string, tenantId: string, medi
   const media = await prisma.propertyMedia.findFirst({
     where: {
       id: mediaId,
-      propertyId
+      propertyId,
+      tenantId
     },
     include: {
       property: true
@@ -208,6 +211,7 @@ export async function setPrimaryMedia(propertyId: string, tenantId: string, medi
   await prisma.propertyMedia.updateMany({
     where: {
       propertyId,
+      tenantId,
       isPrimary: true,
       id: { not: mediaId }
     },
@@ -218,7 +222,7 @@ export async function setPrimaryMedia(propertyId: string, tenantId: string, medi
 
   // Set this media as primary
   const updated = await prisma.propertyMedia.update({
-    where: { id: mediaId },
+    where: { id: mediaId, tenantId },
     data: { isPrimary: true }
   });
 
@@ -245,7 +249,8 @@ export async function deleteMedia(propertyId: string, tenantId: string, mediaId:
   const media = await prisma.propertyMedia.findFirst({
     where: {
       id: mediaId,
-      propertyId
+      propertyId,
+      tenantId
     },
     include: {
       property: true
@@ -268,7 +273,7 @@ export async function deleteMedia(propertyId: string, tenantId: string, mediaId:
 
   // Delete media record
   await prisma.propertyMedia.delete({
-    where: { id: mediaId }
+    where: { id: mediaId, tenantId }
   });
 
   logger.info('Property media deleted', {
@@ -304,7 +309,7 @@ export async function getPropertyMedia(propertyId: string, tenantId: string) {
   await getPropertyForTenant(propertyId, tenantId);
 
   const media = await prisma.propertyMedia.findMany({
-    where: { propertyId },
+    where: { propertyId, tenantId },
     orderBy: { displayOrder: 'asc' }
   });
 

@@ -2166,7 +2166,7 @@ model RentalDocument {
   lease_id           String?              @db.Uuid
   installment_id     String?              @db.Uuid
   payment_id         String?              @db.Uuid
-  document_number    String?              @unique @map("document_number")
+  document_number    String?              @map("document_number")
   file_url           String?              @map("file_url")
   file_key           String?              @map("file_key")
   file_path          String?              @map("file_path")
@@ -2194,6 +2194,7 @@ model RentalDocument {
   supersededBy RentalDocument?    @relation("DocumentSuperseded", fields: [superseded_by_id], references: [id])
   supersedes   RentalDocument[]   @relation("DocumentSuperseded")
 
+  @@unique([tenant_id, document_number])
   @@index([tenant_id])
   @@index([tenant_id, type])
   @@index([lease_id])

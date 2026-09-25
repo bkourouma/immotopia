@@ -368,7 +368,7 @@ export async function createOwnerPayout(
     });
 
     if (input.statementId) {
-      await tx.ownerStatement.update({ where: { id: input.statementId }, data: { status: 'PAID', paidAt } });
+      await tx.ownerStatement.update({ where: { id: input.statementId, tenantId }, data: { status: 'PAID', paidAt } });
     }
     return created;
   });
@@ -395,7 +395,7 @@ export async function voidOwnerPayout(
 
     const now = new Date();
     const updated = await tx.ownerPayout.update({
-      where: { id: existing.id },
+      where: { id: existing.id, tenantId },
       data: { status: 'VOIDED', voidReason: reason, voidedAt: now, voidedByUserId: userId ?? null }
     });
     const number = payoutNumber(existing.year, existing.sequence);

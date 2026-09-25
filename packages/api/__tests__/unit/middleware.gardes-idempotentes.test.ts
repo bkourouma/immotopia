@@ -29,12 +29,14 @@
 const findUnique = jest.fn();
 const findMany = jest.fn();
 const tenantClientFindUnique = jest.fn();
+const tenantFindUnique = jest.fn();
 
 jest.mock('../../src/utils/database', () => ({
   prisma: {
     membership: { findUnique: (...a: any[]) => findUnique(...a) },
     userRole: { findMany: (...a: any[]) => findMany(...a) },
-    tenantClient: { findUnique: (...a: any[]) => tenantClientFindUnique(...a) }
+    tenantClient: { findUnique: (...a: any[]) => tenantClientFindUnique(...a) },
+    tenant: { findUnique: (...a: any[]) => tenantFindUnique(...a) }
   }
 }));
 
@@ -62,6 +64,7 @@ beforeEach(() => {
   findUnique.mockResolvedValue({ status: 'ACTIVE' });
   findMany.mockResolvedValue([{ role: { scope: 'TENANT' } }]);
   tenantClientFindUnique.mockResolvedValue(null);
+  tenantFindUnique.mockResolvedValue({ status: 'ACTIVE' });
 });
 
 describe('authenticate — une seule fois par requête', () => {
@@ -182,5 +185,51 @@ describe('requireTenantAccess — une seule fois par requête et par tenant', ()
     // Le contexte n'a jamais ete pose, donc le court-circuit ne s'applique
     // pas : le refus est reevalue, et il refuse encore.
     expect(findUnique).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('requireTenantAccess — agence suspendue', () => {
+  function requete(): Row {
+    return {
+      user: { userId: 'user-1', globalRole: 'USER' },
+      params: { tenantId: 'tenant-A' },
+      body: {},
+      query: {},
+      originalUrl: '/api/tenants/tenant-A/properties'
+    };
+  }
+
+  it("refuse l'acces a une agence suspendue, meme a un membre actif", async () => {
+    tenantFindUnique.mockResolvedValue({ status: 'SUSPENDED' });
+    const res = reponseFactice();
+    const next = jest.fn();
+
+    await requireTenantAccess(requete() as any, res as any, next);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'TENANT_SUSPENDED' }));
+    expect(next).not.toHaveBeenCalled();
+    expect(findUnique).not.toHaveBeenCalled();
+  });
+
+  it('renvoie 404 pour une agence inexistante', async () => {
+    tenantFindUnique.mockResolvedValue(null);
+    const res = reponseFactice();
+    const next = jest.fn();
+
+    await requireTenantAccess(requete() as any, res as any, next);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('laisse passer le super-admin sur une agence suspendue, pour la reactiver', async () => {
+    tenantFindUnique.mockResolvedValue({ status: 'SUSPENDED' });
+    const req = { ...requete(), user: { userId: 'admin', globalRole: 'SUPER_ADMIN' } };
+    const next = jest.fn();
+
+    await requireTenantAccess(req as any, reponseFactice() as any, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
   });
 });

@@ -46,7 +46,7 @@ export async function updateTemplate(tenantId: string, templateId: string, data:
   }
 
   return prisma.newsletterTemplate.update({
-    where: { id: templateId },
+    where: { id: templateId, tenantId },
     data: {
       ...(data.name != null && { name: data.name }),
       ...(data.html != null && { html: data.html })
@@ -59,10 +59,10 @@ export async function deleteTemplate(tenantId: string, templateId: string) {
   if (!tpl) throw new Error('Template non trouvé.');
 
   const scheduledUse = await prisma.newsletterCampaign.findFirst({
-    where: { templateId, status: 'SCHEDULED' }
+    where: { templateId, status: 'SCHEDULED', tenantId }
   });
   if (scheduledUse) throw new Error('Ce template est utilisé par une campagne planifiée.');
 
-  await prisma.newsletterTemplate.delete({ where: { id: templateId } });
+  await prisma.newsletterTemplate.delete({ where: { id: templateId, tenantId } });
   return { success: true };
 }

@@ -56,7 +56,12 @@ const envSchema = z
     // Google OAuth (optional: the strategy is skipped when unset)
     GOOGLE_CLIENT_ID: z.string().optional(),
     GOOGLE_CLIENT_SECRET: z.string().optional(),
-    GOOGLE_CALLBACK_URL: optionalUrl
+    GOOGLE_CALLBACK_URL: optionalUrl,
+
+    // Prisma tenant guard (utils/prisma-tenant-guard-extension.ts).
+    // `warn` logs unscoped queries on tenant-owned models without blocking
+    // them; `enforce` throws. See env.example for the warn → enforce sequence.
+    TENANT_GUARD_MODE: z.enum(['off', 'warn', 'enforce']).default('warn')
   })
   // Unknown keys are preserved: many optional integrations still read
   // process.env directly (WhatsApp, SMTP, Twilio).

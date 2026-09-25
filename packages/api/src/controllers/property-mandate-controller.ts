@@ -71,8 +71,9 @@ export async function revokeMandateHandler(req: Request, res: Response): Promise
 export async function getPropertyMandatesHandler(req: Request, res: Response): Promise<void> {
   try {
     const propertyId = req.params.propertyId || req.params.id;
+    const tenantId = req.params.tenantId || getTenantIdFromRequest(req);
 
-    const mandates = await getPropertyMandates(propertyId);
+    const mandates = await getPropertyMandates(propertyId, tenantId);
 
     res.json({
       success: true,

@@ -477,7 +477,7 @@ async function exportDataCSV(
             property: true,
             primaryRenter: {
               include: {
-                user: true
+                user: { select: { id: true, fullName: true } }
               }
             }
           }
@@ -519,7 +519,7 @@ async function exportDataCSV(
             property: true,
             primaryRenter: {
               include: {
-                user: true
+                user: { select: { id: true, fullName: true } }
               }
             }
           }
@@ -556,7 +556,7 @@ async function exportDataCSV(
         property: true,
         primaryRenter: {
           include: {
-            user: true
+            user: { select: { id: true, fullName: true } }
           }
         }
       }
@@ -621,7 +621,7 @@ async function exportDataExcel(
             property: true,
             primaryRenter: {
               include: {
-                user: true
+                user: { select: { id: true, fullName: true } }
               }
             }
           }
@@ -673,7 +673,7 @@ async function exportDataExcel(
             property: true,
             primaryRenter: {
               include: {
-                user: true
+                user: { select: { id: true, fullName: true } }
               }
             }
           }
@@ -719,7 +719,7 @@ async function exportDataExcel(
         property: true,
         primaryRenter: {
           include: {
-            user: true
+            user: { select: { id: true, fullName: true } }
           }
         }
       }

@@ -38,18 +38,77 @@ export interface TenantStats {
   lastActivity: string;
 }
 
-export interface CreateTenantRequest {
+/** Offre d'abonnement proposée à la création d'une agence. */
+export type TenantPlanKey = 'BASIC' | 'PRO' | 'ELITE';
+export type TenantBillingCycle = 'MONTHLY' | 'ANNUAL';
+export type TenantModuleKey = 'MODULE_AGENCY' | 'MODULE_SYNDIC' | 'MODULE_PROMOTER';
+
+/** Corps de `POST /api/admin/tenants` — création d'agence en un clic (lot F). */
+export interface ProvisionTenantPayload {
   name: string;
-  type: 'AGENCY' | 'OPERATOR';
+  adminFullName: string;
+  adminEmail: string;
+  planKey?: TenantPlanKey;
+  billingCycle?: TenantBillingCycle;
+  type?: 'AGENCY' | 'OPERATOR';
+  modules?: TenantModuleKey[];
   legalName?: string;
   contactEmail?: string;
   contactPhone?: string;
   country?: string;
   city?: string;
   address?: string;
+  website?: string;
+  /** Couleur `#RRGGBB`. */
   brandingPrimaryColor?: string;
-  subdomain?: string;
-  customDomain?: string;
+}
+
+export interface ProvisionTenantResult {
+  tenant: {
+    id: string;
+    name: string;
+    slug: string;
+    type: string;
+    status: string;
+  };
+  modules: string[];
+  subscription: {
+    planKey: string;
+    billingCycle: string;
+    status: string;
+    currentPeriodEnd: string;
+  };
+  admin: {
+    userId: string;
+    email: string;
+    fullName: string;
+    /** `true` si l'e-mail correspondait déjà à un compte (rattaché à cette agence en plus des autres). */
+    existingUser: boolean;
+  };
+  invitation: {
+    id: string;
+    expiresAt: string;
+    acceptUrl: string;
+  };
+  emailSent: boolean;
+}
+
+export interface ProvisionTenantResponse {
+  success: boolean;
+  data: ProvisionTenantResult;
+  message?: string;
+  errors?: Array<{ field?: string; message?: string }>;
+}
+
+export interface ResendInvitationResult {
+  acceptUrl?: string;
+  emailSent?: boolean;
+}
+
+export interface ResendInvitationResponse {
+  success: boolean;
+  data: ResendInvitationResult;
+  message?: string;
 }
 
 export interface UpdateTenantRequest {
@@ -108,9 +167,32 @@ export async function getTenantAdmin(tenantId: string): Promise<TenantResponse> 
   return response.data;
 }
 
-// Create tenant (admin only)
-export async function createTenant(data: CreateTenantRequest): Promise<TenantResponse> {
-  const response = await apiClient.post('/admin/tenants', data);
+/**
+ * Crée une agence prête à l'emploi en une seule opération : agence active,
+ * modules, abonnement, socle comptable et administrateur invité (lot F,
+ * `POST /api/admin/tenants`).
+ *
+ * `idempotencyKey` doit être générée UNE FOIS par ouverture du formulaire de
+ * création (pas à chaque envoi) : un double clic pendant que la première
+ * requête est en vol renvoie alors le même résultat au lieu de créer une
+ * seconde agence.
+ */
+export async function provisionTenant(
+  payload: ProvisionTenantPayload,
+  idempotencyKey: string
+): Promise<ProvisionTenantResponse> {
+  const response = await apiClient.post('/admin/tenants', payload, {
+    headers: { 'Idempotency-Key': idempotencyKey }
+  });
+  return response.data;
+}
+
+/** Renvoie l'invitation de l'administrateur d'une agence tout juste créée. */
+export async function resendInvitation(
+  tenantId: string,
+  invitationId: string
+): Promise<ResendInvitationResponse> {
+  const response = await apiClient.post(`/tenants/${tenantId}/users/invitations/${invitationId}/resend`);
   return response.data;
 }
 

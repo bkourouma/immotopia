@@ -44,11 +44,11 @@ export async function generateDocumentNumber(tenantId: string, year?: number): P
 export async function generateDocument(
   tenantId: string,
   type: RentalDocumentType,
-  leaseId?: string,
-  installmentId?: string,
-  paymentId?: string,
-  title?: string,
-  description?: string,
+  leaseId: string | undefined,
+  installmentId: string | undefined,
+  paymentId: string | undefined,
+  title: string | undefined,
+  description: string | undefined,
   actorUserId: string
 ) {
   // Validate relationships
@@ -189,7 +189,8 @@ export async function updateDocumentStatus(
 
   const updatedDocument = await prisma.rentalDocument.update({
     where: {
-      id: documentId
+      id: documentId,
+      tenant_id: tenantId
     },
     data: {
       status: status

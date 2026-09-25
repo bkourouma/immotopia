@@ -6,24 +6,22 @@ import {
   getTenantClients,
   getUserTenantMemberships,
   listActiveTenants,
-  createTenant,
   updateTenantClientDetails,
   removeTenantClient,
   updateTenant,
   listTenants as listTenantsService,
   getTenantStats,
   suspendTenant,
-  activateTenant
+  activateTenant,
+  uploadTenantLogo
 } from '../services/tenant-service';
 import { ClientType, TenantType } from '@prisma/client';
-import {
-  CreateTenantRequest,
-  UpdateTenantRequest,
-  TenantFilters,
-  UpdateTenantModulesRequest
-} from '../types/tenant-types';
+import { UpdateTenantRequest, TenantFilters, UpdateTenantModulesRequest, ProvisionTenantRequest } from '../types/tenant-types';
 import { z } from 'zod';
 import { getTenantModules, updateTenantModules } from '../services/module-service';
+import { provisionTenant } from '../services/tenant-provisioning-service';
+import { IDEMPOTENCY_KEY_MAX_LENGTH } from '../utils/idempotency';
+import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
 
 /**
  * Register as a client of a tenant
@@ -123,22 +121,12 @@ export async function listTenants(_req: Request, res: Response): Promise<void> {
 }
 
 // Validation schemas
-const createTenantSchema = z.object({
-  name: z.string().min(1),
-  legalName: z.string().optional(),
-  type: z.nativeEnum(TenantType),
-  contactEmail: z.string().email(),
-  contactPhone: z.string().optional(),
-  country: z.string().optional(),
-  city: z.string().optional(),
-  address: z.string().optional(),
-  brandingPrimaryColor: z.string().optional(),
-  subdomain: z.string().optional(),
-  customDomain: z.string().optional(),
-  status: z.enum(['PENDING', 'ACTIVE', 'SUSPENDED']).optional(),
-  logoUrl: z.string().url().optional(),
-  website: z.string().url().optional()
-});
+// `#RRGGBB` : la meme regle vaut pour l'auto-edition et l'admin (lot G3).
+const hexColor = z.string().trim().regex(/^#[0-9A-Fa-f]{6}$/, 'Couleur au format #RRGGBB');
+// logoUrl/brandingPrimaryColor acceptent explicitement `null` (lot G) pour
+// effacer une valeur — un simple `.optional()` ne peut que les omettre.
+const nullableLogoUrl = z.union([z.string().url(), z.null()]).optional();
+const nullableBrandingColor = z.union([hexColor, z.null()]).optional();
 
 const updateTenantSchema = z.object({
   name: z.string().min(1).optional(),
@@ -149,10 +137,10 @@ const updateTenantSchema = z.object({
   country: z.string().optional(),
   city: z.string().optional(),
   address: z.string().optional(),
-  brandingPrimaryColor: z.string().optional(),
+  brandingPrimaryColor: nullableBrandingColor,
   subdomain: z.string().optional(),
   customDomain: z.string().optional(),
-  logoUrl: z.string().url().optional(),
+  logoUrl: nullableLogoUrl,
   website: z.string().url().optional()
 });
 
@@ -165,46 +153,81 @@ const updateTenantSelfSchema = z.object({
   country: z.string().optional(),
   city: z.string().optional(),
   address: z.string().optional(),
-  brandingPrimaryColor: z.string().optional(),
-  logoUrl: z.string().url().optional(),
+  brandingPrimaryColor: nullableBrandingColor,
+  logoUrl: nullableLogoUrl,
   website: z.string().url().optional()
 });
 
+// --- Lot F2 : creation d'agence en un clic ---------------------------------
+
+const provisionTenantSchema = z.object({
+  name: z.string().trim().min(2).max(120),
+  adminFullName: z.string().trim().min(2).max(120),
+  adminEmail: z.string().trim().email(),
+  planKey: z.enum(['BASIC', 'PRO', 'ELITE']).optional(),
+  billingCycle: z.enum(['MONTHLY', 'ANNUAL']).optional(),
+  type: z.nativeEnum(TenantType).optional(),
+  modules: z.array(z.enum(['MODULE_AGENCY', 'MODULE_SYNDIC', 'MODULE_PROMOTER'])).min(1).optional(),
+  legalName: z.string().trim().max(160).optional(),
+  contactEmail: z.string().trim().email().optional(),
+  contactPhone: z.string().trim().max(30).optional(),
+  country: z.string().trim().max(80).optional(),
+  city: z.string().trim().max(80).optional(),
+  address: z.string().trim().max(200).optional(),
+  website: z.string().trim().url().optional(),
+  brandingPrimaryColor: hexColor.optional()
+});
+
 /**
- * Create a new tenant (Platform Admin only)
+ * Cree une agence prete a l'emploi en un clic (Platform Admin only).
  * POST /api/admin/tenants
+ *
+ * Modele : property-media-controller.ts — `asyncHandler` + erreurs typees,
+ * la validation zod renvoie directement le format d'erreur du projet.
  */
-export async function createTenantHandler(req: Request, res: Response): Promise<void> {
-  try {
-    if (!req.user?.userId) {
-      res.status(401).json({ success: false, message: 'Authentification requise.' });
-      return;
-    }
-
-    // Validate request body
-    const validationResult = createTenantSchema.safeParse(req.body);
-    if (!validationResult.success) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: validationResult.error.errors
-      });
-      return;
-    }
-
-    const data = validationResult.data as CreateTenantRequest;
-    const tenant = await createTenant(data, req.user.userId);
-
-    res.status(201).json({
-      success: true,
-      message: 'Tenant créé avec succès.',
-      data: tenant
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Une erreur est survenue.';
-    res.status(400).json({ success: false, message: errorMessage });
+export const provisionTenantHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user?.userId) {
+    throw new BadRequestError('Authentification requise.');
   }
-}
+
+  const validationResult = provisionTenantSchema.safeParse(req.body);
+  if (!validationResult.success) {
+    throw new BadRequestError(
+      'Données invalides',
+      validationResult.error.errors.map(e => ({ field: e.path.join('.') || '(racine)', message: e.message }))
+    );
+  }
+
+  const idempotencyKeyHeader = req.header('Idempotency-Key');
+  if (idempotencyKeyHeader && idempotencyKeyHeader.length > IDEMPOTENCY_KEY_MAX_LENGTH) {
+    throw new BadRequestError(`L'en-tête Idempotency-Key ne doit pas dépasser ${IDEMPOTENCY_KEY_MAX_LENGTH} caractères.`);
+  }
+
+  const { result, replay } = await provisionTenant(
+    validationResult.data as ProvisionTenantRequest,
+    req.user.userId,
+    idempotencyKeyHeader || undefined
+  );
+
+  res.status(replay ? 200 : 201).json({ success: true, data: result });
+});
+
+// --- Lot G : logo d'agence --------------------------------------------------
+
+/**
+ * Depose le logo d'une agence.
+ * POST /api/tenants/:tenantId/logo
+ */
+export const uploadTenantLogoHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { tenantId } = req.params;
+  if (!req.file) {
+    throw new BadRequestError('Un fichier logo est requis (champ "logo").');
+  }
+
+  const { logoUrl } = await uploadTenantLogo(tenantId, req.file, req.user?.userId);
+
+  res.status(200).json({ success: true, data: { logoUrl } });
+});
 
 /**
  * Update tenant (Platform Admin only)

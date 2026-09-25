@@ -125,7 +125,7 @@ export async function decideOffer(
 
     if (input.action === 'COUNTER') {
       return tx.saleOffer.update({
-        where: { id: offer.id },
+        where: { id: offer.id, tenantId },
         data: {
           status: SaleOfferStatus.COUNTERED,
           counterAmount: input.counterAmount,
@@ -138,7 +138,7 @@ export async function decideOffer(
 
     if (input.action === 'REJECT') {
       return tx.saleOffer.update({
-        where: { id: offer.id },
+        where: { id: offer.id, tenantId },
         data: {
           status: SaleOfferStatus.REJECTED,
           decidedAt: now,
@@ -166,7 +166,7 @@ export async function decideOffer(
       }
 
       const result = await tx.saleOffer.update({
-        where: { id: offer.id },
+        where: { id: offer.id, tenantId },
         data: {
           status: SaleOfferStatus.ACCEPTED,
           decidedAt: now,
@@ -196,7 +196,7 @@ export async function decideOffer(
         throw conflict('Cette offre a un compromis en cours : elle ne peut pas être retirée.');
       }
       const result = await tx.saleOffer.update({
-        where: { id: offer.id },
+        where: { id: offer.id, tenantId },
         data: {
           status: SaleOfferStatus.WITHDRAWN,
           decidedAt: now,
@@ -218,7 +218,7 @@ export async function decideOffer(
       throw conflict("Cette offre n'est plus en attente de décision.");
     }
     return tx.saleOffer.update({
-      where: { id: offer.id },
+      where: { id: offer.id, tenantId },
       data: {
         status: SaleOfferStatus.WITHDRAWN,
         decidedAt: now,

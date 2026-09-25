@@ -315,8 +315,12 @@ async function resolveSiteTotalCost(client: FinanceReadClient, tenantId: string,
  * Voir `AssertSiteOpenTx` dans `./types-lot4-closing.ts`, et l'en-tête de ce
  * fichier pour la liste des cinq appelants que le superviseur doit brancher.
  *
- * Ne lève PAS quand le chantier n'existe pas : ce n'est pas son travail, et
- * l'appelant a déjà lu le chantier pour d'autres raisons (contrat).
+ * **Lève aussi quand le chantier n'existe pas pour cette agence**, depuis
+ * l'audit multi-tenant du 24 septembre 2026 (lot B1) : un `siteId` d'une
+ * autre agence, glissé dans une imputation, ne doit produire ni silence ni
+ * confirmation — la même `NotFoundError` qu'un chantier réellement
+ * inexistant (voir `types-lot4-closing.ts` pour le détail de la faille
+ * corrigée et la liste des appelants déjà à l'abri).
  */
 export const assertSiteOpenTx: AssertSiteOpenTx = async (tx, tenantId, siteId) => {
   const site = await tx.constructionSite.findFirst({
@@ -325,7 +329,7 @@ export const assertSiteOpenTx: AssertSiteOpenTx = async (tx, tenantId, siteId) =
   });
 
   if (!site) {
-    return;
+    throw notFound('Chantier introuvable');
   }
 
   if (isClosed(site)) {

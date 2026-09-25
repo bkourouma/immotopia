@@ -3,8 +3,26 @@ import { logger } from '../utils/logger';
 import { logAuditEvent } from './audit-service';
 import { CRM_ENTITY_TYPES } from '../types/audit-types';
 import { CreateContactRequest, UpdateContactRequest, ContactFilters, ContactDetail } from '../types/crm-types';
-import { CrmContactStatus } from '@prisma/client';
+import { CrmContactStatus, MembershipStatus, Prisma } from '@prisma/client';
 import { autoInviteContactToWhatsappGroup } from './whatsapp-group-automation-service';
+
+/**
+ * Assert that a user is an active member of the tenant before letting a
+ * request assign them to a contact/deal/activity. Without this check, any
+ * user id accepted from the request body (e.g. `assignedToUserId`) could
+ * point to a member of another agency.
+ * @param tenantId - Tenant ID
+ * @param userId - User ID to verify
+ */
+export async function assertActiveMember(tenantId: string, userId: string): Promise<void> {
+  const membership = await prisma.membership.findFirst({
+    where: { tenantId, userId, status: MembershipStatus.ACTIVE }
+  });
+
+  if (!membership) {
+    throw new Error("L'utilisateur assigné doit être membre actif de cette agence");
+  }
+}
 
 /**
  * Create a new contact
@@ -35,6 +53,11 @@ export async function createContact(tenantId: string, data: CreateContactRequest
 
   // Map phone to phonePrimary for backward compatibility
   const phonePrimary = data.phonePrimary || data.phone || null;
+
+  // The assignee must belong to this tenant (reference received in the request body)
+  if (data.assignedToUserId) {
+    await assertActiveMember(tenantId, data.assignedToUserId);
+  }
 
   // Create contact
   const contact = await prisma.crmContact.create({
@@ -73,10 +96,12 @@ export async function createContact(tenantId: string, data: CreateContactRequest
       preferredLanguage: data.preferredLanguage || null,
       preferredContactChannel: data.preferredContactChannel || null,
       // Real Estate Project Intent (JSON) – safe serialize, avoid undefined
+      // `Json?` de Prisma n'accepte pas un `null` ordinaire (voir audit-service.ts) :
+      // il faut la valeur sentinelle `DbNull`, qui écrit un NULL SQL.
       projectIntentJson:
         data.projectIntent != null && typeof data.projectIntent === 'object'
-          ? (JSON.parse(JSON.stringify(data.projectIntent)) as object)
-          : null,
+          ? (JSON.parse(JSON.stringify(data.projectIntent)) as Prisma.InputJsonValue)
+          : Prisma.DbNull,
       // Socio-Professional Profile
       profession: data.profession || null,
       sectorOfActivity: data.sectorOfActivity || null,
@@ -246,8 +271,11 @@ export async function getContactById(tenantId: string, contactId: string): Promi
   }
 
   // Transform tags and activities
-  // Map phone_primary to phone for backward compatibility
-  const transformedContact: ContactDetail = {
+  // Map phone_primary to phone for backward compatibility. `phone` is not a
+  // declared field of `ContactDetail` (it only documents the DB column
+  // `phonePrimary`) — the cast below is the pre-existing shape, kept as-is
+  // rather than widening the shared type from this file.
+  const transformedContact = {
     ...contact,
     phone: contact.phonePrimary || null, // Backward compatibility
     recentActivities: contact.activities,
@@ -255,7 +283,7 @@ export async function getContactById(tenantId: string, contactId: string): Promi
       ...ct.tag,
       CrmContactTag: ct
     }))
-  };
+  } as ContactDetail;
 
   return transformedContact;
 }
@@ -641,6 +669,9 @@ export async function updateContact(
 
   // Status & Assignment
   updateField('status', data.status, existingContact.status);
+  if (data.assignedToUserId !== undefined && data.assignedToUserId !== null) {
+    await assertActiveMember(tenantId, data.assignedToUserId);
+  }
   updateField('assignedToUserId', data.assignedToUserId, existingContact.assignedToUserId);
 
   // Financial Snapshot
@@ -674,7 +705,7 @@ export async function updateContact(
 
   // Update contact
   const updatedContact = await prisma.crmContact.update({
-    where: { id: contactId },
+    where: { id: contactId, tenantId },
     data: updateData,
     include: {
       assignedTo: {
@@ -861,7 +892,7 @@ export async function convertLeadToClient(tenantId: string, contactId: string, r
 
   // Update contact status to ACTIVE_CLIENT
   const updatedContact = await prisma.crmContact.update({
-    where: { id: contactId },
+    where: { id: contactId, tenantId },
     data: {
       status: CrmContactStatus.ACTIVE_CLIENT
     }
@@ -1026,7 +1057,7 @@ export async function deactivateContactRole(tenantId: string, contactId: string,
 
   // Delete role completely
   await prisma.crmContactRole.delete({
-    where: { id: roleId }
+    where: { id: roleId, tenantId }
   });
 
   // Check if contact has any remaining active roles
@@ -1035,7 +1066,7 @@ export async function deactivateContactRole(tenantId: string, contactId: string,
   // If no active roles remain, revert contact status to LEAD
   if (remainingActiveRoles.length === 0 && contact.status === CrmContactStatus.ACTIVE_CLIENT) {
     await prisma.crmContact.update({
-      where: { id: contactId },
+      where: { id: contactId, tenantId },
       data: {
         status: CrmContactStatus.LEAD
       }
@@ -1106,7 +1137,9 @@ export async function updateContactRoles(
     throw new Error('Contact not found');
   }
 
-  const currentActiveRoles = contact.roles.map(r => r.role);
+  // `desiredRoles` comes in as `string[]` from the request; comparing it
+  // against Prisma's `CrmContactRoleType[]` needs both sides on the same type.
+  const currentActiveRoles = contact.roles.map(r => r.role as string);
   const rolesToAdd = desiredRoles.filter(role => !currentActiveRoles.includes(role));
   const rolesToRemove = currentActiveRoles.filter(role => !desiredRoles.includes(role));
 
@@ -1145,7 +1178,7 @@ export async function updateContactRoles(
 
   if (finalActiveRoles === 0 && contact.status === CrmContactStatus.ACTIVE_CLIENT) {
     await prisma.crmContact.update({
-      where: { id: contactId },
+      where: { id: contactId, tenantId },
       data: {
         status: CrmContactStatus.LEAD
       }
@@ -1153,7 +1186,7 @@ export async function updateContactRoles(
     statusUpdated = true;
   } else if (finalActiveRoles > 0 && contact.status === CrmContactStatus.LEAD) {
     await prisma.crmContact.update({
-      where: { id: contactId },
+      where: { id: contactId, tenantId },
       data: {
         status: CrmContactStatus.ACTIVE_CLIENT
       }
@@ -1189,7 +1222,7 @@ export async function updateContactRoles(
 
   // Get updated contact with all roles
   const updatedContact = await prisma.crmContact.findFirst({
-    where: { id: contactId },
+    where: { id: contactId, tenantId },
     include: {
       roles: {
         where: {

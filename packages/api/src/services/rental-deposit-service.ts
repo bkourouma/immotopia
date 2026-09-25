@@ -257,6 +257,26 @@ export async function createDepositMovement(
     throw new Error('Security deposit not found');
   }
 
+  // Validate that the referenced payment and installment, when provided,
+  // belong to this tenant before storing them on the movement.
+  if (paymentId) {
+    const payment = await prisma.rentalPayment.findFirst({
+      where: { id: paymentId, tenant_id: tenantId }
+    });
+    if (!payment) {
+      throw new Error('Payment not found');
+    }
+  }
+
+  if (installmentId) {
+    const installment = await prisma.rentalInstallment.findFirst({
+      where: { id: installmentId, tenant_id: tenantId }
+    });
+    if (!installment) {
+      throw new Error('Installment not found');
+    }
+  }
+
   // Validate COLLECT movement - must be single payment equal to target amount
   if (type === RentalDepositMovementType.COLLECT) {
     const existingCollectMovements = await prisma.rentalDepositMovement.findMany({
@@ -340,7 +360,8 @@ export async function createDepositMovement(
 
     await tx.rentalSecurityDeposit.update({
       where: {
-        id: depositId
+        id: depositId,
+        tenant_id: tenantId
       },
       data: updateData
     });

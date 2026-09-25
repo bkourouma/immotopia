@@ -9,6 +9,25 @@ import {
   deleteTemplate
 } from '../services/document-template-service';
 import { DocumentType, DocumentTemplateStatus } from '@prisma/client';
+import { badRequest } from '../lib/errors';
+
+/**
+ * These routes are all mounted under `/tenants/:tenantId/documents/*` behind
+ * `requireTenantAccess`, so `req.tenantContext.tenantId` is always the
+ * caller's own, verified agency. There is no legitimate flow where a mutating
+ * handler here should manage a *global* template (tenant_id null) — that
+ * would let any agency user activate/deactivate/default/delete a template
+ * shared by every tenant. `getOwnTenantId` refuses instead of silently
+ * falling back to the "global" (null tenant) case the service layer accepts
+ * for read-only listing.
+ */
+function getOwnTenantId(req: Request): string {
+  const tenantId = req.tenantContext?.tenantId;
+  if (!tenantId) {
+    throw badRequest('Contexte tenant requis pour gérer les modèles de documents.');
+  }
+  return tenantId;
+}
 
 const uploadTemplateSchema = z.object({
   docType: z.enum(['LEASE_HABITATION', 'LEASE_COMMERCIAL', 'RENT_RECEIPT', 'RENT_STATEMENT']),
@@ -40,7 +59,7 @@ const updateTemplateSchema = z.object({
  */
 export async function uploadTemplateHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const tenantId = req.tenantContext?.tenantId || null;
+    const tenantId = getOwnTenantId(req);
     const actorUserId = req.user?.userId;
 
     if (!actorUserId) {
@@ -115,7 +134,7 @@ export async function listTemplatesHandler(req: Request, res: Response, next: Ne
  */
 export async function updateTemplateHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const tenantId = req.tenantContext?.tenantId || null;
+    const tenantId = getOwnTenantId(req);
     const { id } = req.params;
     const actorUserId = req.user?.userId;
 
@@ -157,7 +176,7 @@ export async function updateTemplateHandler(req: Request, res: Response, next: N
  */
 export async function setDefaultTemplateHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const tenantId = req.tenantContext?.tenantId || null;
+    const tenantId = getOwnTenantId(req);
     const { id } = req.params;
     const actorUserId = req.user?.userId;
 
@@ -187,7 +206,7 @@ export async function setDefaultTemplateHandler(req: Request, res: Response, nex
  */
 export async function deleteTemplateHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const tenantId = req.tenantContext?.tenantId || null;
+    const tenantId = getOwnTenantId(req);
     const { id } = req.params;
     const actorUserId = req.user?.userId;
 

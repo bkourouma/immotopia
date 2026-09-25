@@ -304,8 +304,8 @@ describe('assertSiteOpenTx', () => {
     await expect(assertSiteOpenTx(tx, TENANT, site.id)).resolves.toBeUndefined();
   });
 
-  it('ne lève PAS quand le chantier n’existe pas — ce n’est pas son travail (contrat)', async () => {
-    await expect(assertSiteOpenTx(tx, TENANT, 'chantier-fantome')).resolves.toBeUndefined();
+  it('lève NotFoundError quand le chantier n’existe pas — audit multi-tenant du 24/09/2026 (lot B1)', async () => {
+    await expect(assertSiteOpenTx(tx, TENANT, 'chantier-fantome')).rejects.toMatchObject({ status: 404 });
   });
 
   it('refuse toute écriture sur un chantier clos (409)', async () => {
@@ -314,10 +314,10 @@ describe('assertSiteOpenTx', () => {
     await expect(assertSiteOpenTx(tx, TENANT, site.id)).rejects.toMatchObject({ status: 409 });
   });
 
-  it('ne voit pas le chantier clos d’un AUTRE tenant — donc ne lève pas', async () => {
+  it('ne voit pas le chantier d’un AUTRE tenant — même NotFoundError qu’un chantier inexistant', async () => {
     const site = seedSite({ tenantId: OTHER_TENANT, closedAt: new Date('2026-07-01') });
 
-    await expect(assertSiteOpenTx(tx, TENANT, site.id)).resolves.toBeUndefined();
+    await expect(assertSiteOpenTx(tx, TENANT, site.id)).rejects.toMatchObject({ status: 404 });
   });
 
   it('laisse de nouveau passer après réouverture', async () => {

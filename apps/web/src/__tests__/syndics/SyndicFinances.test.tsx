@@ -68,7 +68,10 @@ const authValue: AuthContextType = {
   register: async () => undefined,
   refreshToken: async () => undefined,
   clearError: vi.fn(),
-  refreshMembership: async () => undefined
+  refreshMembership: async () => undefined,
+  availableTenants: [],
+  activeTenantId: null,
+  switchTenant: () => undefined
 };
 
 function mount(url = '/tenant/tenant-1/syndics/syndic-1/finances') {
