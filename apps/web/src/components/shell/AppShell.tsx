@@ -111,7 +111,18 @@ export const AppShell: React.FC = () => {
    */
   const redirectTo = isLoadingMembership ? null : portalRedirect(location.pathname, tenantClient?.clientType);
 
-  const personaNav = persona && persona !== 'non-rattache' ? NAVIGATION[persona] : null;
+  /**
+   * `NAVIGATION()` reconstruit l'arbre a chaque appel — c'est ce qui rend ses
+   * libelles dans la langue affichee plutot que dans celle du chargement du
+   * module. Sans memorisation, l'objet serait neuf a chaque rendu de la
+   * coquille, et `useFilteredNavigation`, qui le prend en dependance, refiltrait
+   * tout l'arbre pour rien a chaque changement de route.
+   *
+   * Memoriser sur `persona` seul est sur : un changement de langue remonte
+   * l'arbre applicatif (`key={language}` dans App.tsx), donc ce cache ne
+   * survit jamais a une bascule.
+   */
+  const personaNav = useMemo(() => (persona && persona !== 'non-rattache' ? NAVIGATION()[persona] : null), [persona]);
 
   /**
    * Menus coupes pour ce compte (Admin > Roles et permissions > Menus).

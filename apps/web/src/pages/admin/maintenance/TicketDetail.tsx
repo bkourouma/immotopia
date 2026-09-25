@@ -21,19 +21,23 @@ const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 const { Option } = Select;
 
-const categoryLabels: Record<string, string> = {
-  PLUMBING: 'Plomberie',
-  ELECTRICITY: t('Électricité'),
-  AC: 'Climatisation',
-  OTHER: 'Autre'
-};
+function categoryLabels(): Record<string, string> {
+  return {
+    PLUMBING: t('Plomberie'),
+    ELECTRICITY: t('Électricité'),
+    AC: t('Climatisation'),
+    OTHER: t('Autre')
+  };
+}
 
-const priorityLabels: Record<string, string> = {
-  LOW: 'Faible',
-  MEDIUM: 'Moyenne',
-  HIGH: t('Élevée'),
-  URGENT: 'Urgente'
-};
+function priorityLabels(): Record<string, string> {
+  return {
+    LOW: t('Faible'),
+    MEDIUM: t('Moyenne'),
+    HIGH: t('Élevée'),
+    URGENT: t('Urgente')
+  };
+}
 
 export const TicketDetail: React.FC = () => {
   const { message } = App.useApp();
@@ -169,7 +173,7 @@ export const TicketDetail: React.FC = () => {
                     <Space direction="vertical" size="small">
                       <div>
                         <Text strong>{t('Catégorie:')} </Text>
-                        <Text>{categoryLabels[ticket.category] || ticket.category}</Text>
+                        <Text>{categoryLabels()[ticket.category] || ticket.category}</Text>
                       </div>
                       {ticket.property && (
                         <div>

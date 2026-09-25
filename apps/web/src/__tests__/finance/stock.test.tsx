@@ -629,7 +629,7 @@ describe('Le journal des mouvements', () => {
     monter();
     await ouvrirJournal();
 
-    const ligneAjustement = await ligne(STOCK_MOVEMENT_TYPE_LABELS.ADJUSTMENT);
+    const ligneAjustement = await ligne(STOCK_MOVEMENT_TYPE_LABELS().ADJUSTMENT);
     expect(within(ligneAjustement).getByText('− 0,25 m³')).toBeInTheDocument();
 
     const ligneReception = await ligne('F-2026-0142');

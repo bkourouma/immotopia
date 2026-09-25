@@ -16,14 +16,16 @@ interface DealKanbanProps {
 // Pipeline stages - excluding WON and LOST from main pipeline
 const pipelineStages: CrmDealStage[] = ['NEW', 'QUALIFIED', 'VISIT', 'NEGOTIATION'];
 
-const stageLabels: Record<CrmDealStage, string> = {
-  NEW: 'Nouveau',
-  QUALIFIED: t('Qualifié'),
-  VISIT: 'Visite',
-  NEGOTIATION: t('Négociation'),
-  WON: t('Gagné'),
-  LOST: 'Perdu'
-};
+function stageLabels(): Record<CrmDealStage, string> {
+  return {
+    NEW: t('Nouveau'),
+    QUALIFIED: t('Qualifié'),
+    VISIT: t('Visite'),
+    NEGOTIATION: t('Négociation'),
+    WON: t('Gagné'),
+    LOST: t('Perdu')
+  };
+}
 
 // Get contact initials for avatar
 const getInitials = (firstName?: string, lastName?: string): string => {
@@ -146,7 +148,7 @@ export const DealKanban: React.FC<DealKanbanProps> = ({
             >
               {/* Stage Header */}
               <div className="p-2 border-b border-gray-200 bg-white rounded-t">
-                <h3 className="font-semibold text-gray-900 text-sm">{stageLabels[stage]}</h3>
+                <h3 className="font-semibold text-gray-900 text-sm">{stageLabels()[stage]}</h3>
                 {onAddDeal && (
                   <Button
                     variant="ghost"

@@ -15,19 +15,23 @@ interface TicketCardProps {
   onDelete?: (ticketId: string) => void;
 }
 
-const categoryLabels: Record<string, string> = {
-  PLUMBING: 'Plomberie',
-  ELECTRICITY: t('Électricité'),
-  AC: 'Climatisation',
-  OTHER: 'Autre'
-};
+function categoryLabels(): Record<string, string> {
+  return {
+    PLUMBING: t('Plomberie'),
+    ELECTRICITY: t('Électricité'),
+    AC: t('Climatisation'),
+    OTHER: t('Autre')
+  };
+}
 
-const priorityLabels: Record<string, string> = {
-  LOW: 'Faible',
-  MEDIUM: 'Moyenne',
-  HIGH: t('Élevée'),
-  URGENT: 'Urgente'
-};
+function priorityLabels(): Record<string, string> {
+  return {
+    LOW: t('Faible'),
+    MEDIUM: t('Moyenne'),
+    HIGH: t('Élevée'),
+    URGENT: t('Urgente')
+  };
+}
 
 const priorityColors: Record<string, string> = {
   LOW: 'default',
@@ -109,8 +113,8 @@ export const TicketCard: React.FC<TicketCardProps> = ({ ticket, onClick, onEdit,
         </div>
 
         <div>
-          <Tag>{categoryLabels[ticket.category] || ticket.category}</Tag>
-          <Tag color={priorityColors[ticket.priority]}>{priorityLabels[ticket.priority] || ticket.priority}</Tag>
+          <Tag>{categoryLabels()[ticket.category] || ticket.category}</Tag>
+          <Tag color={priorityColors[ticket.priority]}>{priorityLabels()[ticket.priority] || ticket.priority}</Tag>
         </div>
 
         <Text type="secondary" ellipsis style={{ display: 'block' }}>

@@ -6,14 +6,16 @@ import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
-const lotTypeLabels: Record<SyndicateLot['lotType'], string> = {
-  APARTMENT: 'Appartement',
-  PARKING: 'Parking',
-  CELLAR: 'Cave',
-  OFFICE: 'Bureau',
-  COMMERCIAL: 'Commerce',
-  OTHER: 'Autre'
-};
+function lotTypeLabels(): Record<SyndicateLot['lotType'], string> {
+  return {
+    APARTMENT: t('Appartement'),
+    PARKING: t('Parking'),
+    CELLAR: t('Cave'),
+    OFFICE: t('Bureau'),
+    COMMERCIAL: t('Commerce'),
+    OTHER: t('Autre')
+  };
+}
 
 function buildPropertyNomenclatureLabel(property: NonNullable<SyndicateLot['property']>): string {
   const ownerLabel = property.owner?.fullName?.trim() || '';
@@ -57,7 +59,7 @@ export const LotTable: React.FC<LotTableProps> = ({
       dataIndex: 'lotType',
       key: 'lotType',
       width: 140,
-      render: (value: SyndicateLot['lotType']) => <Tag>{lotTypeLabels[value]}</Tag>
+      render: (value: SyndicateLot['lotType']) => <Tag>{lotTypeLabels()[value]}</Tag>
     },
     {
       title: t('Tantièmes généraux'),

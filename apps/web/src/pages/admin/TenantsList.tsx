@@ -16,12 +16,14 @@ import { t } from '../../i18n/t';
 import { activeLocale } from '../../i18n/format';
 const { Title, Text } = Typography;
 
-const statusOptions = [
-  { value: '', label: t('Tous les statuts') },
-  { value: 'ACTIVE', label: t('Actif') },
-  { value: 'SUSPENDED', label: t('Suspendu') },
-  { value: 'INACTIVE', label: t('Inactif') }
-];
+function statusOptions() {
+  return [
+    { value: '', label: t('Tous les statuts') },
+    { value: 'ACTIVE', label: t('Actif') },
+    { value: 'SUSPENDED', label: t('Suspendu') },
+    { value: 'INACTIVE', label: t('Inactif') }
+  ];
+}
 
 const getStatusTag = (status: string) => {
   const config: Record<string, { color: string; text: string }> = {
@@ -207,7 +209,7 @@ export const TenantsList: React.FC = () => {
                 value={filters.status || undefined}
                 onChange={v => handleStatusFilter(v)}
                 style={{ minWidth: 140 }}
-                options={statusOptions}
+                options={statusOptions()}
                 allowClear
               />
               <Button type="primary" htmlType="submit" icon={<FilterOutlined />}>

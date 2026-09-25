@@ -59,11 +59,13 @@ import { t } from '../i18n/t';
 /** Cycle d'une pièce de tâcheron. Le serveur réutilise `SupplierInvoiceStatus`. */
 export type ContractorDocumentStatus = 'DRAFT' | 'VALIDATED' | 'VOIDED';
 
-export const CONTRACTOR_DOCUMENT_STATUS_LABELS: Record<ContractorDocumentStatus, string> = {
-  DRAFT: 'Brouillon',
-  VALIDATED: t('Validée'),
-  VOIDED: t('Annulée')
-};
+export function CONTRACTOR_DOCUMENT_STATUS_LABELS(): Record<ContractorDocumentStatus, string> {
+  return {
+    DRAFT: t('Brouillon'),
+    VALIDATED: t('Validée'),
+    VOIDED: t('Annulée')
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Le tâcheron

@@ -7,11 +7,13 @@ import { t } from '../../i18n/t';
 
 const { Paragraph, Text, Title } = Typography;
 
-const statusConfig: Record<Syndicate['status'], { color: string; label: string }> = {
-  ACTIVE: { color: 'green', label: t('Active') },
-  IN_LIQUIDATION: { color: 'orange', label: t('En liquidation') },
-  IN_DISPUTE: { color: 'red', label: t('En litige') }
-};
+function statusConfig(): Record<Syndicate['status'], { color: string; label: string }> {
+  return {
+    ACTIVE: { color: 'green', label: t('Active') },
+    IN_LIQUIDATION: { color: 'orange', label: t('En liquidation') },
+    IN_DISPUTE: { color: 'red', label: t('En litige') }
+  };
+}
 
 interface SyndicateCardProps {
   syndicate: Syndicate;
@@ -21,7 +23,7 @@ interface SyndicateCardProps {
 }
 
 export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantId, onDelete, deleting }) => {
-  const status = statusConfig[syndicate.status];
+  const status = statusConfig()[syndicate.status];
   const lotCount = syndicate._count?.lots ?? syndicate.totalLots ?? syndicate.lots?.length ?? 0;
 
   return (

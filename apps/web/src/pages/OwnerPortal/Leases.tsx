@@ -27,13 +27,15 @@ interface LeasesData {
   };
 }
 
-const statusOptions = [
-  { value: '', label: t('Tous les statuts') },
-  { value: 'ACTIVE', label: t('Actif') },
-  { value: 'ENDED', label: t('Terminé') },
-  { value: 'SUSPENDED', label: t('Suspendu') },
-  { value: 'CANCELED', label: t('Annulé') }
-];
+function statusOptions() {
+  return [
+    { value: '', label: t('Tous les statuts') },
+    { value: 'ACTIVE', label: t('Actif') },
+    { value: 'ENDED', label: t('Terminé') },
+    { value: 'SUSPENDED', label: t('Suspendu') },
+    { value: 'CANCELED', label: t('Annulé') }
+  ];
+}
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat(activeLocale(), {
@@ -166,7 +168,7 @@ export default function Leases() {
             onChange={value => setFilters({ ...filters, status: value || '' })}
             allowClear
           >
-            {statusOptions.map(opt => (
+            {statusOptions().map(opt => (
               <Option key={opt.value} value={opt.value}>
                 {opt.label}
               </Option>

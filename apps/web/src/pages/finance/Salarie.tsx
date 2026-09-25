@@ -103,30 +103,34 @@ const TONE_STATUT: Record<SalaryDocumentStatus, StatusTone> = {
   VOIDED: 'danger'
 };
 
-const MOIS_FR = [
-  'janvier',
-  t('février'),
-  'mars',
-  'avril',
-  'mai',
-  'juin',
-  'juillet',
-  t('août'),
-  'septembre',
-  'octobre',
-  'novembre',
-  t('décembre')
-];
+function MOIS_FR() {
+  return [
+    'janvier',
+    t('février'),
+    'mars',
+    'avril',
+    'mai',
+    'juin',
+    'juillet',
+    t('août'),
+    'septembre',
+    'octobre',
+    'novembre',
+    t('décembre')
+  ];
+}
 
 function libellePeriode(year: number, month: number): string {
-  const nomMois = MOIS_FR[month - 1] ?? String(month);
+  const nomMois = MOIS_FR()[month - 1] ?? String(month);
   return `${nomMois.charAt(0).toUpperCase()}${nomMois.slice(1)} ${year}`;
 }
 
-const OPTIONS_MOIS = MOIS_FR.map((nom, index) => ({
-  value: index + 1,
-  label: `${nom.charAt(0).toUpperCase()}${nom.slice(1)}`
-}));
+function OPTIONS_MOIS() {
+  return MOIS_FR().map((nom, index) => ({
+    value: index + 1,
+    label: `${nom.charAt(0).toUpperCase()}${nom.slice(1)}`
+  }));
+}
 
 function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
@@ -424,7 +428,7 @@ export const Salarie: React.FC = () => {
       title: t('Statut'),
       key: 'statut',
       render: (_, n) => (
-        <StatusTag status={n.status} tone={TONE_STATUT[n.status]} label={SALARY_STATUS_LABELS[n.status]} />
+        <StatusTag status={n.status} tone={TONE_STATUT[n.status]} label={SALARY_STATUS_LABELS()[n.status]} />
       )
     },
     {
@@ -462,7 +466,7 @@ export const Salarie: React.FC = () => {
       title: t('Statut'),
       key: 'statut',
       render: (_, r) => (
-        <StatusTag status={r.status} tone={TONE_STATUT[r.status]} label={SALARY_STATUS_LABELS[r.status]} />
+        <StatusTag status={r.status} tone={TONE_STATUT[r.status]} label={SALARY_STATUS_LABELS()[r.status]} />
       )
     },
     {
@@ -550,7 +554,9 @@ export const Salarie: React.FC = () => {
             title={libellePeriode(n.periodYear, n.periodMonth)}
             aria-label={libellePeriode(n.periodYear, n.periodMonth)}
             subtitle={n.siteLabel ?? t('Aucun chantier')}
-            status={<StatusTag status={n.status} tone={TONE_STATUT[n.status]} label={SALARY_STATUS_LABELS[n.status]} />}
+            status={
+              <StatusTag status={n.status} tone={TONE_STATUT[n.status]} label={SALARY_STATUS_LABELS()[n.status]} />
+            }
             highlight={<MoneyValue value={n.amount} />}
             fields={[
               { label: t('Poste de dépense'), value: n.costCategoryLabel ?? '—' },
@@ -628,7 +634,9 @@ export const Salarie: React.FC = () => {
           <DataCard
             title={dateCourte(r.paymentDate)}
             aria-label={t('Règlement du {{value}}', { value: dateCourte(r.paymentDate) })}
-            status={<StatusTag status={r.status} tone={TONE_STATUT[r.status]} label={SALARY_STATUS_LABELS[r.status]} />}
+            status={
+              <StatusTag status={r.status} tone={TONE_STATUT[r.status]} label={SALARY_STATUS_LABELS()[r.status]} />
+            }
             highlight={<MoneyValue value={r.amount} />}
             fields={[{ label: t('Saisi par'), value: r.createdByLabel }]}
             secondaryActions={
@@ -737,7 +745,7 @@ function Carte_SaisirNote(props: {
               style={{ width: 160 }}
               value={props.mois ?? undefined}
               onChange={value => props.setMois((value as number | undefined) ?? null)}
-              options={OPTIONS_MOIS}
+              options={OPTIONS_MOIS()}
             />
           </div>
           <div>

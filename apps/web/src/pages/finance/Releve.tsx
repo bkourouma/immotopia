@@ -31,17 +31,19 @@ const { RangePicker } = DatePicker;
  */
 
 /** Nature d'un mouvement -> libellé français, prêt à afficher (P-1). */
-export const NATURE_LABELS: Record<ThirdPartyMovementType, string> = {
-  INSTALLMENT: 'Loyer',
-  PAYMENT: t('Règlement'),
-  ADVANCE_RECEIVED: t('Avance reçue'),
-  ADVANCE_APPLIED: t('Avance imputée'),
-  PENALTY: t('Pénalité'),
-  WAIVER: 'Remise',
-  ADJUSTMENT: 'Ajustement',
-  OPENING_BALANCE: t('Solde initial'),
-  VOID: 'Annulation'
-};
+export function NATURE_LABELS(): Record<ThirdPartyMovementType, string> {
+  return {
+    INSTALLMENT: t('Loyer'),
+    PAYMENT: t('Règlement'),
+    ADVANCE_RECEIVED: t('Avance reçue'),
+    ADVANCE_APPLIED: t('Avance imputée'),
+    PENALTY: t('Pénalité'),
+    WAIVER: t('Remise'),
+    ADJUSTMENT: t('Ajustement'),
+    OPENING_BALANCE: t('Solde initial'),
+    VOID: t('Annulation')
+  };
+}
 
 /**
  * Libellé lisible d'une nature de mouvement.
@@ -51,7 +53,7 @@ export const NATURE_LABELS: Record<ThirdPartyMovementType, string> = {
  * TypeScript l'exige via `Record<ThirdPartyMovementType, string>` ci-dessus.
  */
 export function natureLabel(type: ThirdPartyMovementLine['type']): string {
-  return NATURE_LABELS[type] ?? type;
+  return NATURE_LABELS()[type] ?? type;
 }
 
 function dateCourte(iso: string): string {

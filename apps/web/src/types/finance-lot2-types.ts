@@ -23,37 +23,45 @@ import { t } from '../i18n/t';
 /** Nature d'un fournisseur. Décide si le rattachement à un chantier est exigé. */
 export type SupplierKind = 'MATERIALS' | 'SERVICES' | 'MIXED';
 
-export const SUPPLIER_KIND_LABELS: Record<SupplierKind, string> = {
-  MATERIALS: t('Matériaux'),
-  SERVICES: 'Prestation',
-  MIXED: t('Matériaux et prestation')
-};
+export function SUPPLIER_KIND_LABELS(): Record<SupplierKind, string> {
+  return {
+    MATERIALS: t('Matériaux'),
+    SERVICES: t('Prestation'),
+    MIXED: t('Matériaux et prestation')
+  };
+}
 
 /** Cycle de vie d'une pièce : brouillon, validée, annulée. */
 export type DocumentStatus = 'DRAFT' | 'VALIDATED' | 'VOIDED';
 
-export const DOCUMENT_STATUS_LABELS: Record<DocumentStatus, string> = {
-  DRAFT: 'Brouillon',
-  VALIDATED: t('Validée'),
-  VOIDED: t('Annulée')
-};
+export function DOCUMENT_STATUS_LABELS(): Record<DocumentStatus, string> {
+  return {
+    DRAFT: t('Brouillon'),
+    VALIDATED: t('Validée'),
+    VOIDED: t('Annulée')
+  };
+}
 
 export type VoidableDocumentType = 'SUPPLIER_INVOICE' | 'SUPPLIER_PAYMENT' | 'CASH_VOUCHER';
 
-export const DOCUMENT_TYPE_LABELS: Record<VoidableDocumentType, string> = {
-  SUPPLIER_INVOICE: t('Facture fournisseur'),
-  SUPPLIER_PAYMENT: t('Règlement fournisseur'),
-  CASH_VOUCHER: t('Pièce de caisse')
-};
+export function DOCUMENT_TYPE_LABELS(): Record<VoidableDocumentType, string> {
+  return {
+    SUPPLIER_INVOICE: t('Facture fournisseur'),
+    SUPPLIER_PAYMENT: t('Règlement fournisseur'),
+    CASH_VOUCHER: t('Pièce de caisse')
+  };
+}
 
 export type ConstructionSiteStatus = 'PLANNED' | 'IN_PROGRESS' | 'SUSPENDED' | 'CLOSED';
 
-export const SITE_STATUS_LABELS: Record<ConstructionSiteStatus, string> = {
-  PLANNED: t('Prévu'),
-  IN_PROGRESS: t('En cours'),
-  SUSPENDED: 'Suspendu',
-  CLOSED: t('Clôturé')
-};
+export function SITE_STATUS_LABELS(): Record<ConstructionSiteStatus, string> {
+  return {
+    PLANNED: t('Prévu'),
+    IN_PROGRESS: t('En cours'),
+    SUSPENDED: t('Suspendu'),
+    CLOSED: t('Clôturé')
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Fournisseurs

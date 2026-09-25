@@ -15,12 +15,14 @@ interface ManageRolesDialogProps {
   open?: boolean;
 }
 
-const roleOptions: { value: CrmContactRoleType; label: string }[] = [
-  { value: 'PROPRIETAIRE', label: t('Propriétaire (Owner)') },
-  { value: 'LOCATAIRE', label: t('Locataire (Renter)') },
-  { value: 'COPROPRIETAIRE', label: t('Copropriétaire (Co-owner)') },
-  { value: 'ACQUEREUR', label: t('Acquéreur (Buyer)') }
-];
+function roleOptions(): { value: CrmContactRoleType; label: string }[] {
+  return [
+    { value: 'PROPRIETAIRE', label: t('Propriétaire (Owner)') },
+    { value: 'LOCATAIRE', label: t('Locataire (Renter)') },
+    { value: 'COPROPRIETAIRE', label: t('Copropriétaire (Co-owner)') },
+    { value: 'ACQUEREUR', label: t('Acquéreur (Buyer)') }
+  ];
+}
 
 export const ManageRolesDialog: React.FC<ManageRolesDialogProps> = ({
   contactName,
@@ -84,7 +86,7 @@ export const ManageRolesDialog: React.FC<ManageRolesDialogProps> = ({
           style={{ width: '100%' }}
         >
           <Space direction="vertical" style={{ width: '100%' }}>
-            {roleOptions.map(role => (
+            {roleOptions().map(role => (
               <Checkbox
                 key={role.value}
                 value={role.value}

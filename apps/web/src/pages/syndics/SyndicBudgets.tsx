@@ -35,16 +35,20 @@ import { t } from '../../i18n/t';
 import { activeLocale } from '../../i18n/format';
 const { Paragraph, Title } = Typography;
 
-const batchTypeLabels: Record<ChargeCallBatch['batchType'], string> = {
-  REGULAR: t('Régulier'),
-  EXCEPTIONAL: 'Exceptionnel'
-};
+function batchTypeLabels(): Record<ChargeCallBatch['batchType'], string> {
+  return {
+    REGULAR: t('Régulier'),
+    EXCEPTIONAL: t('Exceptionnel')
+  };
+}
 
-const batchStatusLabels: Record<ChargeCallBatch['status'], string> = {
-  DRAFT: 'Brouillon',
-  SENT: t('Envoyé'),
-  CLOSED: t('Clôturé')
-};
+function batchStatusLabels(): Record<ChargeCallBatch['status'], string> {
+  return {
+    DRAFT: t('Brouillon'),
+    SENT: t('Envoyé'),
+    CLOSED: t('Clôturé')
+  };
+}
 
 function buildLotDisplayName(allocation: BudgetAllocation, lotDirectoryEntry?: SyndicateLot): string {
   const lot = allocation.lot || lotDirectoryEntry;
@@ -414,7 +418,7 @@ export const SyndicBudgets: React.FC = () => {
                   {
                     title: 'Type',
                     dataIndex: 'batchType',
-                    render: (value: ChargeCallBatch['batchType']) => batchTypeLabels[value] || value
+                    render: (value: ChargeCallBatch['batchType']) => batchTypeLabels()[value] || value
                   },
                   {
                     title: t('Échéance'),
@@ -430,7 +434,7 @@ export const SyndicBudgets: React.FC = () => {
                   {
                     title: 'Statut',
                     dataIndex: 'status',
-                    render: (status: ChargeCallBatch['status']) => <Tag>{batchStatusLabels[status] || status}</Tag>
+                    render: (status: ChargeCallBatch['status']) => <Tag>{batchStatusLabels()[status] || status}</Tag>
                   }
                 ]}
               />

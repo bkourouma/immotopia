@@ -58,7 +58,7 @@ function dateCourteOuTiret(iso: string | null): string {
 }
 
 function libelleNature(type: SiteAllocationLine['sourceType']): string {
-  return DOCUMENT_TYPE_LABELS[type] ?? type;
+  return DOCUMENT_TYPE_LABELS()[type] ?? type;
 }
 
 type LignePoste = SiteDetail['byCostCategory'][number];
@@ -160,7 +160,7 @@ export const ChantierDetail: React.FC = () => {
             onClick: () => navigate(`/tenant/${tenantId}/finance/chantiers/${siteId}/stock`)
           }
         ]}
-        extra={<StatusTag status={site.status} label={SITE_STATUS_LABELS[site.status]} />}
+        extra={<StatusTag status={site.status} label={SITE_STATUS_LABELS()[site.status]} />}
       />
 
       <div

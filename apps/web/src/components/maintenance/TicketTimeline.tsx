@@ -10,13 +10,15 @@ interface TicketTimelineProps {
   statusHistory: StatusHistory[];
 }
 
-const statusLabels: Record<string, string> = {
-  DECLARED: t('Déclaré'),
-  IN_PROGRESS: t('En cours'),
-  ASSIGNED: t('Assigné'),
-  RESOLVED: t('Résolu'),
-  CANCELED: t('Annulé')
-};
+function statusLabels(): Record<string, string> {
+  return {
+    DECLARED: t('Déclaré'),
+    IN_PROGRESS: t('En cours'),
+    ASSIGNED: t('Assigné'),
+    RESOLVED: t('Résolu'),
+    CANCELED: t('Annulé')
+  };
+}
 
 export const TicketTimeline: React.FC<TicketTimelineProps> = ({ statusHistory }) => {
   if (statusHistory.length === 0) {
@@ -26,8 +28,8 @@ export const TicketTimeline: React.FC<TicketTimelineProps> = ({ statusHistory })
   const items = statusHistory.map((history, index) => {
     const formattedDate = formatTimelineDate(history.changedAt);
     const label = history.fromStatus
-      ? `${statusLabels[history.fromStatus] || history.fromStatus} → ${statusLabels[history.toStatus] || history.toStatus}`
-      : statusLabels[history.toStatus] || history.toStatus;
+      ? `${statusLabels()[history.fromStatus] || history.fromStatus} → ${statusLabels()[history.toStatus] || history.toStatus}`
+      : statusLabels()[history.toStatus] || history.toStatus;
 
     return {
       children: (

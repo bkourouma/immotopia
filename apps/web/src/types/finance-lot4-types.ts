@@ -28,10 +28,12 @@ import { t } from '../i18n/t';
 /** Cycle d'un paiement au bailleur : brouillon, puis validé. */
 export type LandLeaseDocumentStatus = 'DRAFT' | 'VALIDATED';
 
-export const LAND_LEASE_STATUS_LABELS: Record<LandLeaseDocumentStatus, string> = {
-  DRAFT: 'Brouillon',
-  VALIDATED: t('Validé')
-};
+export function LAND_LEASE_STATUS_LABELS(): Record<LandLeaseDocumentStatus, string> {
+  return {
+    DRAFT: t('Brouillon'),
+    VALIDATED: t('Validé')
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Le bail

@@ -34,32 +34,38 @@ interface PropertiesData {
   };
 }
 
-const propertyTypeOptions = [
-  { value: '', label: t('Tous les types') },
-  { value: 'APPARTEMENT', label: t('Appartement') },
-  { value: 'MAISON_VILLA', label: t('Maison / Villa') },
-  { value: 'STUDIO', label: t('Studio') },
-  { value: 'DUPLEX_TRIPLEX', label: t('Duplex / Triplex') },
-  { value: 'BUREAU', label: t('Bureau') },
-  { value: 'BOUTIQUE_COMMERCIAL', label: t('Boutique / Commercial') },
-  { value: 'TERRAIN', label: t('Terrain') }
-];
+function propertyTypeOptions() {
+  return [
+    { value: '', label: t('Tous les types') },
+    { value: 'APPARTEMENT', label: t('Appartement') },
+    { value: 'MAISON_VILLA', label: t('Maison / Villa') },
+    { value: 'STUDIO', label: t('Studio') },
+    { value: 'DUPLEX_TRIPLEX', label: t('Duplex / Triplex') },
+    { value: 'BUREAU', label: t('Bureau') },
+    { value: 'BOUTIQUE_COMMERCIAL', label: t('Boutique / Commercial') },
+    { value: 'TERRAIN', label: t('Terrain') }
+  ];
+}
 
-const statusOptions = [
-  { value: '', label: t('Tous les statuts') },
-  { value: 'AVAILABLE', label: t('Disponible') },
-  { value: 'RENTED', label: t('Loué') },
-  { value: 'UNDER_REVIEW', label: t('En révision') },
-  { value: 'RESERVED', label: t('Réservé') },
-  { value: 'UNDER_OFFER', label: t('Sous offre') }
-];
+function statusOptions() {
+  return [
+    { value: '', label: t('Tous les statuts') },
+    { value: 'AVAILABLE', label: t('Disponible') },
+    { value: 'RENTED', label: t('Loué') },
+    { value: 'UNDER_REVIEW', label: t('En révision') },
+    { value: 'RESERVED', label: t('Réservé') },
+    { value: 'UNDER_OFFER', label: t('Sous offre') }
+  ];
+}
 
-const transactionModeOptions = [
-  { value: '', label: t('Tous les modes') },
-  { value: 'RENTAL', label: t('Location') },
-  { value: 'SALE', label: t('Vente') },
-  { value: 'SHORT_TERM', label: t('Location courte durée') }
-];
+function transactionModeOptions() {
+  return [
+    { value: '', label: t('Tous les modes') },
+    { value: 'RENTAL', label: t('Location') },
+    { value: 'SALE', label: t('Vente') },
+    { value: 'SHORT_TERM', label: t('Location courte durée') }
+  ];
+}
 
 export default function Properties() {
   const navigate = useNavigate();
@@ -178,7 +184,7 @@ export default function Properties() {
             onChange={value => setFilters({ ...filters, status: value || '' })}
             allowClear
           >
-            {statusOptions.map(opt => (
+            {statusOptions().map(opt => (
               <Option key={opt.value} value={opt.value}>
                 {opt.label}
               </Option>
@@ -192,7 +198,7 @@ export default function Properties() {
             onChange={value => setFilters({ ...filters, propertyType: value || '' })}
             allowClear
           >
-            {propertyTypeOptions.map(opt => (
+            {propertyTypeOptions().map(opt => (
               <Option key={opt.value} value={opt.value}>
                 {opt.label}
               </Option>
@@ -206,7 +212,7 @@ export default function Properties() {
             onChange={value => setFilters({ ...filters, transactionMode: value || '' })}
             allowClear
           >
-            {transactionModeOptions.map(opt => (
+            {transactionModeOptions().map(opt => (
               <Option key={opt.value} value={opt.value}>
                 {opt.label}
               </Option>

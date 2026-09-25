@@ -39,34 +39,42 @@ import { t } from '../../i18n/t';
 import { activeLocale } from '../../i18n/format';
 const { Paragraph, Title } = Typography;
 
-const incidentTypeLabels: Record<string, string> = {
-  BREAKDOWN: 'Panne',
-  LEAK: 'Fuite',
-  VANDALISM: 'Vandalisme',
-  SAFETY: t('Sécurité'),
-  OTHER: 'Autre'
-};
+function incidentTypeLabels(): Record<string, string> {
+  return {
+    BREAKDOWN: t('Panne'),
+    LEAK: t('Fuite'),
+    VANDALISM: t('Vandalisme'),
+    SAFETY: t('Sécurité'),
+    OTHER: t('Autre')
+  };
+}
 
-const incidentUrgencyLabels: Record<string, string> = {
-  LOW: 'Basse',
-  MEDIUM: 'Moyenne',
-  HIGH: 'Haute',
-  CRITICAL: 'Critique'
-};
+function incidentUrgencyLabels(): Record<string, string> {
+  return {
+    LOW: t('Basse'),
+    MEDIUM: t('Moyenne'),
+    HIGH: t('Haute'),
+    CRITICAL: t('Critique')
+  };
+}
 
-const incidentStatusLabels: Record<string, string> = {
-  REPORTED: t('Signalé'),
-  IN_PROGRESS: t('En cours'),
-  RESOLVED: t('Résolu'),
-  CLOSED: t('Clôturé')
-};
+function incidentStatusLabels(): Record<string, string> {
+  return {
+    REPORTED: t('Signalé'),
+    IN_PROGRESS: t('En cours'),
+    RESOLVED: t('Résolu'),
+    CLOSED: t('Clôturé')
+  };
+}
 
-const incidentImputationTypeLabels: Record<string, string> = {
-  SYNDICATE_BUDGET: t('Budget syndic'),
-  INSURANCE: 'Assurance',
-  LOT_OWNER: t('Lot propriétaire'),
-  THIRD_PARTY: 'Tiers'
-};
+function incidentImputationTypeLabels(): Record<string, string> {
+  return {
+    SYNDICATE_BUDGET: t('Budget syndic'),
+    INSURANCE: t('Assurance'),
+    LOT_OWNER: t('Lot propriétaire'),
+    THIRD_PARTY: t('Tiers')
+  };
+}
 
 function isTechnicalLotLabel(value?: string | null): boolean {
   if (!value) return false;
@@ -437,7 +445,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                         {
                           title: 'Type',
                           dataIndex: 'imputationType',
-                          render: (value: string) => incidentImputationTypeLabels[value] || value
+                          render: (value: string) => incidentImputationTypeLabels()[value] || value
                         },
                         {
                           title: 'Montant',
@@ -475,18 +483,18 @@ export const SyndicProfilesIncidents: React.FC = () => {
                   {
                     title: 'Type',
                     dataIndex: 'incidentType',
-                    render: (value: string) => incidentTypeLabels[value] || value
+                    render: (value: string) => incidentTypeLabels()[value] || value
                   },
                   {
                     title: 'Urgence',
                     dataIndex: 'urgency',
-                    render: (value: string) => incidentUrgencyLabels[value] || value
+                    render: (value: string) => incidentUrgencyLabels()[value] || value
                   },
                   { title: 'Description', dataIndex: 'description' },
                   {
                     title: 'Statut',
                     dataIndex: 'status',
-                    render: (value: string) => <Tag>{incidentStatusLabels[value] || value}</Tag>
+                    render: (value: string) => <Tag>{incidentStatusLabels()[value] || value}</Tag>
                   },
                   {
                     title: 'Imputations',

@@ -29,14 +29,16 @@ const statusColors: Record<string, string> = {
   FAILED: 'error'
 };
 
-const statusLabels: Record<string, string> = {
-  DRAFT: 'Brouillon',
-  SCHEDULED: t('Planifiée'),
-  SENDING: t('En cours'),
-  SENT: t('Envoyée'),
-  CANCELLED: t('Annulée'),
-  FAILED: t('Échec')
-};
+function statusLabels(): Record<string, string> {
+  return {
+    DRAFT: t('Brouillon'),
+    SCHEDULED: t('Planifiée'),
+    SENDING: t('En cours'),
+    SENT: t('Envoyée'),
+    CANCELLED: t('Annulée'),
+    FAILED: t('Échec')
+  };
+}
 
 export function NewsletterCampaignsPage() {
   const { message } = App.useApp();
@@ -215,7 +217,7 @@ export function NewsletterCampaignsPage() {
       render: (v: string, r: NewsletterCampaign) => (
         <Space>
           <Typography.Text strong>{v}</Typography.Text>
-          <Tag color={statusColors[r.status]}>{statusLabels[r.status]}</Tag>
+          <Tag color={statusColors[r.status]}>{statusLabels()[r.status]}</Tag>
         </Space>
       )
     },

@@ -150,13 +150,13 @@ function MonReleve() {
             scroll={{ x: 800 }}
             columns={[
               {
-                title: 'Date',
+                title: t('Date'),
                 key: 'date',
                 render: (_: unknown, m: ThirdPartyMovementLine) =>
                   new Date(m.movementDate).toLocaleDateString(activeLocale())
               },
               {
-                title: 'Nature',
+                title: t('Nature'),
                 key: 'nature',
                 render: (_: unknown, m: ThirdPartyMovementLine) => natureLabel(m.type)
               },

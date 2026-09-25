@@ -101,10 +101,12 @@ export interface StockItemRef {
 
 export type StockLocationKind = 'WAREHOUSE' | 'SITE';
 
-export const STOCK_LOCATION_KIND_LABELS: Record<StockLocationKind, string> = {
-  WAREHOUSE: 'Magasin',
-  SITE: t('Lieu de chantier')
-};
+export function STOCK_LOCATION_KIND_LABELS(): Record<StockLocationKind, string> {
+  return {
+    WAREHOUSE: t('Magasin'),
+    SITE: t('Lieu de chantier')
+  };
+}
 
 /** Sous-ensemble LU de `StockLocationRecord` (sous-lot 1). */
 export interface StockLocationRef {
@@ -227,10 +229,12 @@ export type StockCountStatus = 'DRAFT' | 'VALIDATED';
  * qui affichent l'état en texte courant — un filtre, une phrase — sans poser
  * d'étiquette.
  */
-export const STOCK_COUNT_STATUS_LABELS: Record<StockCountStatus, string> = {
-  DRAFT: 'Brouillon',
-  VALIDATED: t('Validé')
-};
+export function STOCK_COUNT_STATUS_LABELS(): Record<StockCountStatus, string> {
+  return {
+    DRAFT: t('Brouillon'),
+    VALIDATED: t('Validé')
+  };
+}
 
 /**
  * Une ligne de comptage.

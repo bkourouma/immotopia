@@ -55,7 +55,9 @@ import { activeLocale } from '../../i18n/format';
 type Filters = { siteId: string; supplierId: string; status: string };
 const FILTER_KEYS = ['siteId', 'supplierId', 'status'] as const;
 
-const OPTIONS_STATUT = Object.entries(PURCHASE_ORDER_STATUS_LABELS).map(([value, label]) => ({ value, label }));
+function OPTIONS_STATUT() {
+  return Object.entries(PURCHASE_ORDER_STATUS_LABELS()).map(([value, label]) => ({ value, label }));
+}
 
 const TONE_STATUT: Record<PurchaseOrderStatus, StatusTone> = {
   DRAFT: 'neutral',
@@ -147,7 +149,7 @@ export const BonsDeCommande: React.FC = () => {
       title: t('Statut'),
       key: 'statut',
       render: (_, b) => (
-        <StatusTag status={b.status} tone={TONE_STATUT[b.status]} label={PURCHASE_ORDER_STATUS_LABELS[b.status]} />
+        <StatusTag status={b.status} tone={TONE_STATUT[b.status]} label={PURCHASE_ORDER_STATUS_LABELS()[b.status]} />
       )
     },
     {
@@ -157,7 +159,7 @@ export const BonsDeCommande: React.FC = () => {
         <StatusTag
           status={b.invoicingState}
           tone={TONE_FACTURATION[b.invoicingState]}
-          label={INVOICING_STATE_LABELS[b.invoicingState]}
+          label={INVOICING_STATE_LABELS()[b.invoicingState]}
         />
       )
     },
@@ -230,7 +232,7 @@ export const BonsDeCommande: React.FC = () => {
             allowClear
             value={list.filters.status || undefined}
             onChange={valeur => list.setFilters({ status: valeur })}
-            options={OPTIONS_STATUT}
+            options={OPTIONS_STATUT()}
           />
         </div>
       </FilterSheet>
@@ -263,7 +265,7 @@ export const BonsDeCommande: React.FC = () => {
               <StatusTag
                 status={b.status}
                 tone={TONE_STATUT[b.status]}
-                label={PURCHASE_ORDER_STATUS_LABELS[b.status]}
+                label={PURCHASE_ORDER_STATUS_LABELS()[b.status]}
               />
             }
             highlight={<MoneyValue value={b.totalAmount} />}
@@ -275,7 +277,7 @@ export const BonsDeCommande: React.FC = () => {
                   <StatusTag
                     status={b.invoicingState}
                     tone={TONE_FACTURATION[b.invoicingState]}
-                    label={INVOICING_STATE_LABELS[b.invoicingState]}
+                    label={INVOICING_STATE_LABELS()[b.invoicingState]}
                   />
                 )
               },

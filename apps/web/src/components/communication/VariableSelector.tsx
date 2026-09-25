@@ -45,7 +45,7 @@ export function VariableSelector({ onInsert, groupByCategory = true, maxVisible 
   );
 
   if (groupByCategory) {
-    const byCategory = TEMPLATE_VARIABLES.reduce(
+    const byCategory = TEMPLATE_VARIABLES().reduce(
       (acc, v) => {
         if (!acc[v.category]) acc[v.category] = [];
         acc[v.category].push(v);
@@ -53,7 +53,7 @@ export function VariableSelector({ onInsert, groupByCategory = true, maxVisible 
       },
       {} as Record<TemplateVariable['category'], TemplateVariable[]>
     );
-    const categories = (Object.keys(VARIABLE_CATEGORY_LABELS) as TemplateVariable['category'][]).filter(
+    const categories = (Object.keys(VARIABLE_CATEGORY_LABELS()) as TemplateVariable['category'][]).filter(
       c => byCategory[c]?.length
     );
 
@@ -74,7 +74,7 @@ export function VariableSelector({ onInsert, groupByCategory = true, maxVisible 
           defaultActiveKey={categories}
           items={categories.map(cat => ({
             key: cat,
-            label: `${VARIABLE_CATEGORY_LABELS[cat]} (${byCategory[cat].length})`,
+            label: `${VARIABLE_CATEGORY_LABELS()[cat]} (${byCategory[cat].length})`,
             children: (
               <Space size={[4, 4]} wrap>
                 {byCategory[cat].map(renderVariableTag)}
@@ -86,8 +86,8 @@ export function VariableSelector({ onInsert, groupByCategory = true, maxVisible 
     );
   }
 
-  const visibleVars = maxVisible > 0 ? TEMPLATE_VARIABLES.slice(0, maxVisible) : TEMPLATE_VARIABLES;
-  const hasMore = maxVisible > 0 && TEMPLATE_VARIABLES.length > maxVisible;
+  const visibleVars = maxVisible > 0 ? TEMPLATE_VARIABLES().slice(0, maxVisible) : TEMPLATE_VARIABLES();
+  const hasMore = maxVisible > 0 && TEMPLATE_VARIABLES().length > maxVisible;
 
   return (
     <div style={{ marginTop: 8, marginBottom: 8 }}>
@@ -103,7 +103,8 @@ export function VariableSelector({ onInsert, groupByCategory = true, maxVisible 
       {hasMore && (
         <div style={{ marginTop: 8 }}>
           <Text type="secondary" style={{ fontSize: 12 }}>
-            + {TEMPLATE_VARIABLES.length - maxVisible} {t('autres variables. Utilisez la syntaxe')} {'{{nomVariable}}'}.
+            + {TEMPLATE_VARIABLES().length - maxVisible} {t('autres variables. Utilisez la syntaxe')}{' '}
+            {'{{nomVariable}}'}.
           </Text>
         </div>
       )}

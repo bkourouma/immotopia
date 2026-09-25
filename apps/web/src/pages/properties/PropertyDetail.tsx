@@ -81,38 +81,46 @@ const { Text, Title } = Typography;
  * l'onglet quitté, et un rechargement ne ramène pas sur « Aperçu ».
  */
 
-const TYPE_LABELS: Record<string, string> = {
-  APPARTEMENT: 'Appartement',
-  MAISON_VILLA: t('Maison / Villa'),
-  STUDIO: 'Studio',
-  DUPLEX_TRIPLEX: t('Duplex / Triplex'),
-  CHAMBRE_COLOCATION: t('Chambre en colocation'),
-  BUREAU: 'Bureau',
-  BOUTIQUE_COMMERCIAL: t('Boutique / Local commercial'),
-  ENTREPOT_INDUSTRIEL: t('Entrepôt / Local industriel'),
-  TERRAIN: 'Terrain',
-  IMMEUBLE: 'Immeuble',
-  PARKING_BOX: t('Parking / Box'),
-  LOT_PROGRAMME_NEUF: t('Lot de programme neuf')
-};
+function TYPE_LABELS(): Record<string, string> {
+  return {
+    APPARTEMENT: t('Appartement'),
+    MAISON_VILLA: t('Maison / Villa'),
+    STUDIO: t('Studio'),
+    DUPLEX_TRIPLEX: t('Duplex / Triplex'),
+    CHAMBRE_COLOCATION: t('Chambre en colocation'),
+    BUREAU: t('Bureau'),
+    BOUTIQUE_COMMERCIAL: t('Boutique / Local commercial'),
+    ENTREPOT_INDUSTRIEL: t('Entrepôt / Local industriel'),
+    TERRAIN: t('Terrain'),
+    IMMEUBLE: t('Immeuble'),
+    PARKING_BOX: t('Parking / Box'),
+    LOT_PROGRAMME_NEUF: t('Lot de programme neuf')
+  };
+}
 
-const TRANSACTION_LABELS: Record<string, string> = {
-  SALE: 'Vente',
-  RENTAL: 'Location',
-  SHORT_TERM: t('Court terme')
-};
+function TRANSACTION_LABELS(): Record<string, string> {
+  return {
+    SALE: t('Vente'),
+    RENTAL: t('Location'),
+    SHORT_TERM: t('Court terme')
+  };
+}
 
-const FURNISHING_LABELS: Record<string, string> = {
-  FURNISHED: t('Meublé'),
-  UNFURNISHED: t('Non meublé'),
-  PARTIALLY_FURNISHED: t('Partiellement meublé')
-};
+function FURNISHING_LABELS(): Record<string, string> {
+  return {
+    FURNISHED: t('Meublé'),
+    UNFURNISHED: t('Non meublé'),
+    PARTIALLY_FURNISHED: t('Partiellement meublé')
+  };
+}
 
-const AVAILABILITY_LABELS: Record<string, string> = {
-  AVAILABLE: 'Disponible',
-  UNAVAILABLE: 'Indisponible',
-  SOON_AVAILABLE: t('Bientôt disponible')
-};
+function AVAILABILITY_LABELS(): Record<string, string> {
+  return {
+    AVAILABLE: t('Disponible'),
+    UNAVAILABLE: t('Indisponible'),
+    SOON_AVAILABLE: t('Bientôt disponible')
+  };
+}
 
 /**
  * Qui possède le bien.
@@ -337,7 +345,7 @@ export const PropertyDetail: React.FC = () => {
       ? {
           key: 'furnishing',
           label: t('Ameublement'),
-          children: FURNISHING_LABELS[property.furnishingStatus] || property.furnishingStatus
+          children: FURNISHING_LABELS()[property.furnishingStatus] || property.furnishingStatus
         }
       : null
   ].filter(Boolean) as DescriptionsProps['items'];
@@ -347,7 +355,7 @@ export const PropertyDetail: React.FC = () => {
     {
       key: 'type',
       label: t('Type de bien'),
-      children: TYPE_LABELS[property.propertyType] || property.propertyType
+      children: TYPE_LABELS()[property.propertyType] || property.propertyType
     },
     {
       key: 'owner',
@@ -365,12 +373,12 @@ export const PropertyDetail: React.FC = () => {
     {
       key: 'transaction',
       label: t('Mise en marché'),
-      children: property.transactionModes.map(mode => TRANSACTION_LABELS[mode] || mode).join(' • ') || '—'
+      children: property.transactionModes.map(mode => TRANSACTION_LABELS()[mode] || mode).join(' • ') || '—'
     },
     {
       key: 'availability',
       label: t('Disponibilité'),
-      children: AVAILABILITY_LABELS[property.availability] || property.availability
+      children: AVAILABILITY_LABELS()[property.availability] || property.availability
     }
     // Ni « Publication », ni « Créé le », ni « Dernière modification ». La
     // première est déjà portée par l'étiquette « Publié » de l'en-tête, visible
@@ -637,7 +645,7 @@ export const PropertyDetail: React.FC = () => {
                 </Title>
               )}
               <Text type="secondary">
-                {property.transactionModes.map(mode => TRANSACTION_LABELS[mode] || mode).join(' • ')}
+                {property.transactionModes.map(mode => TRANSACTION_LABELS()[mode] || mode).join(' • ')}
                 {property.fees
                   ? t('· Frais : {{value}}', {
                       value: formatPrice(property.fees, property.currency, property.propertyType)

@@ -349,7 +349,7 @@ export const ClotureChantier: React.FC = () => {
     try {
       await setLotAllocationMethod(tenantId, siteId, cleChoisie);
       await invaliderTout();
-      message.success(t('Clé de répartition : {{value}}.', { value: ALLOCATION_METHOD_LABELS[cleChoisie] }));
+      message.success(t('Clé de répartition : {{value}}.', { value: ALLOCATION_METHOD_LABELS()[cleChoisie] }));
     } catch (err) {
       // Le serveur refuse une clé que les lots ne supportent pas, et son
       // message nomme les lots fautifs : il est relayé tel quel.
@@ -649,7 +649,7 @@ export const ClotureChantier: React.FC = () => {
           label={t('Clé de répartition')}
           value={
             repartition.allocationMethod
-              ? ALLOCATION_METHOD_LABELS[repartition.allocationMethod]
+              ? ALLOCATION_METHOD_LABELS()[repartition.allocationMethod]
               : t('Aucune clé posée')
           }
           tone={repartition.allocationMethod ? 'neutral' : 'warning'}
@@ -722,7 +722,7 @@ export const ClotureChantier: React.FC = () => {
               value={cleChoisie ?? repartition.allocationMethod ?? undefined}
               onChange={valeur => setCleChoisie(valeur)}
               disabled={clos || unLotABascule}
-              options={CLES.map(cle => ({ value: cle, label: ALLOCATION_METHOD_LABELS[cle] }))}
+              options={CLES.map(cle => ({ value: cle, label: ALLOCATION_METHOD_LABELS()[cle] }))}
             />
           </div>
           <Button
@@ -735,7 +735,7 @@ export const ClotureChantier: React.FC = () => {
           </Button>
         </Space>
         <Paragraph type="secondary" style={{ marginTop: 'var(--space-2)', marginBottom: 0 }}>
-          {ALLOCATION_METHOD_REQUIREMENTS[cleChoisie ?? repartition.allocationMethod ?? 'EQUAL']}
+          {ALLOCATION_METHOD_REQUIREMENTS()[cleChoisie ?? repartition.allocationMethod ?? 'EQUAL']}
         </Paragraph>
 
         {/*
@@ -1109,7 +1109,7 @@ export const ClotureChantier: React.FC = () => {
               onChange={valeur => setFormulaireBien({ ...formulaireBien, propertyType: valeur })}
               options={Object.values(PropertyType).map(type => ({
                 value: type,
-                label: PROPERTY_TYPE_LABELS[type]
+                label: PROPERTY_TYPE_LABELS()[type]
               }))}
             />
           </div>
@@ -1126,7 +1126,7 @@ export const ClotureChantier: React.FC = () => {
               onChange={valeur => setFormulaireBien({ ...formulaireBien, ownershipType: valeur })}
               options={Object.values(PropertyOwnershipType).map(mode => ({
                 value: mode,
-                label: OWNERSHIP_TYPE_LABELS[mode]
+                label: OWNERSHIP_TYPE_LABELS()[mode]
               }))}
             />
           </div>

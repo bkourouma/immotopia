@@ -49,20 +49,22 @@ import { activeLocale } from '../../i18n/format';
  * et le retour depuis une fiche retrouve la page et les filtres.
  */
 
-const PROPERTY_TYPE_LABELS: Record<string, string> = {
-  APPARTEMENT: 'Appartement',
-  MAISON_VILLA: t('Maison / Villa'),
-  STUDIO: 'Studio',
-  DUPLEX_TRIPLEX: t('Duplex / Triplex'),
-  CHAMBRE_COLOCATION: t('Chambre / Colocation'),
-  BUREAU: 'Bureau',
-  BOUTIQUE_COMMERCIAL: t('Boutique / Commercial'),
-  ENTREPOT_INDUSTRIEL: t('Entrepôt / Industriel'),
-  TERRAIN: 'Terrain',
-  IMMEUBLE: 'Immeuble',
-  PARKING_BOX: t('Parking / Box'),
-  LOT_PROGRAMME_NEUF: t('Lot programme neuf')
-};
+function PROPERTY_TYPE_LABELS(): Record<string, string> {
+  return {
+    APPARTEMENT: t('Appartement'),
+    MAISON_VILLA: t('Maison / Villa'),
+    STUDIO: t('Studio'),
+    DUPLEX_TRIPLEX: t('Duplex / Triplex'),
+    CHAMBRE_COLOCATION: t('Chambre / Colocation'),
+    BUREAU: t('Bureau'),
+    BOUTIQUE_COMMERCIAL: t('Boutique / Commercial'),
+    ENTREPOT_INDUSTRIEL: t('Entrepôt / Industriel'),
+    TERRAIN: t('Terrain'),
+    IMMEUBLE: t('Immeuble'),
+    PARKING_BOX: t('Parking / Box'),
+    LOT_PROGRAMME_NEUF: t('Lot programme neuf')
+  };
+}
 
 /**
  * Types retirés du filtre, sans être retirés de `PROPERTY_TYPE_LABELS`.
@@ -73,11 +75,13 @@ const PROPERTY_TYPE_LABELS: Record<string, string> = {
  */
 const TYPES_RETIRES: string[] = ['CHAMBRE_COLOCATION', 'BOUTIQUE_COMMERCIAL', 'LOT_PROGRAMME_NEUF'];
 
-const TRANSACTION_MODE_LABELS: Record<string, string> = {
-  SALE: 'Vente',
-  RENTAL: 'Location',
-  SHORT_TERM: t('Location courte durée')
-};
+function TRANSACTION_MODE_LABELS(): Record<string, string> {
+  return {
+    SALE: t('Vente'),
+    RENTAL: t('Location'),
+    SHORT_TERM: t('Location courte durée')
+  };
+}
 
 /**
  * Les deux seuls statuts proposés au filtre.
@@ -87,10 +91,12 @@ const TRANSACTION_MODE_LABELS: Record<string, string> = {
  * qu'on pose à un portefeuille locatif. Ils restent lisibles sur la fiche de
  * chaque bien, par `<StatusTag>` ; ils ne sont simplement plus offerts ici.
  */
-const STATUS_LABELS: Record<string, string> = {
-  AVAILABLE: 'Disponible',
-  RENTED: t('Loué')
-};
+function STATUS_LABELS(): Record<string, string> {
+  return {
+    AVAILABLE: t('Disponible'),
+    RENTED: t('Loué')
+  };
+}
 
 type Filters = {
   q: string;
@@ -494,7 +500,7 @@ export const Properties: React.FC = () => {
               allowClear
               value={list.filters.propertyType || undefined}
               onChange={value => list.setFilters({ propertyType: value })}
-              options={Object.entries(PROPERTY_TYPE_LABELS)
+              options={Object.entries(PROPERTY_TYPE_LABELS())
                 .filter(([value]) => !TYPES_RETIRES.includes(value))
                 .map(([value, label]) => ({ value, label }))}
             />
@@ -508,7 +514,7 @@ export const Properties: React.FC = () => {
               allowClear
               value={list.filters.transactionMode || undefined}
               onChange={value => list.setFilters({ transactionMode: value })}
-              options={Object.entries(TRANSACTION_MODE_LABELS).map(([value, label]) => ({ value, label }))}
+              options={Object.entries(TRANSACTION_MODE_LABELS()).map(([value, label]) => ({ value, label }))}
             />
           </Col>
           <Col xs={24} md={8} lg={6}>
@@ -520,7 +526,7 @@ export const Properties: React.FC = () => {
               allowClear
               value={list.filters.status || undefined}
               onChange={value => list.setFilters({ status: value })}
-              options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))}
+              options={Object.entries(STATUS_LABELS()).map(([value, label]) => ({ value, label }))}
             />
           </Col>
           <Col xs={24} md={8} lg={6}>
@@ -652,10 +658,10 @@ export const Properties: React.FC = () => {
               )
             }
             fields={[
-              { label: 'Type', value: PROPERTY_TYPE_LABELS[property.propertyType] || property.propertyType },
+              { label: 'Type', value: PROPERTY_TYPE_LABELS()[property.propertyType] || property.propertyType },
               {
                 label: 'Transaction',
-                value: property.transactionModes?.map(mode => TRANSACTION_MODE_LABELS[mode] || mode).join(', ') || '—'
+                value: property.transactionModes?.map(mode => TRANSACTION_MODE_LABELS()[mode] || mode).join(', ') || '—'
               },
               {
                 label: 'Surface',

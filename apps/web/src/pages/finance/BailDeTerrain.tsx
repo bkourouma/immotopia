@@ -95,32 +95,36 @@ const { Title, Text } = Typography;
 
 const TONE_PAIEMENT: Record<string, StatusTone> = { DRAFT: 'neutral', VALIDATED: 'success' };
 
-const MOIS_FR = [
-  'janvier',
-  t('février'),
-  'mars',
-  'avril',
-  'mai',
-  'juin',
-  'juillet',
-  t('août'),
-  'septembre',
-  'octobre',
-  'novembre',
-  t('décembre')
-];
+function MOIS_FR() {
+  return [
+    'janvier',
+    t('février'),
+    'mars',
+    'avril',
+    'mai',
+    'juin',
+    'juillet',
+    t('août'),
+    'septembre',
+    'octobre',
+    'novembre',
+    t('décembre')
+  ];
+}
 
-const OPTIONS_MOIS = MOIS_FR.map((libelle, index) => ({
-  value: index + 1,
-  label: libelle.charAt(0).toUpperCase() + libelle.slice(1)
-}));
+function OPTIONS_MOIS() {
+  return MOIS_FR().map((libelle, index) => ({
+    value: index + 1,
+    label: libelle.charAt(0).toUpperCase() + libelle.slice(1)
+  }));
+}
 
 function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
 }
 
 function libellePeriode(year: number, month: number): string {
-  const nomMois = MOIS_FR[month - 1] ?? String(month);
+  const nomMois = MOIS_FR()[month - 1] ?? String(month);
   return `${nomMois.charAt(0).toUpperCase()}${nomMois.slice(1)} ${year}`;
 }
 
@@ -364,7 +368,7 @@ export const BailDeTerrain: React.FC = () => {
       title: t('Statut'),
       key: 'statut',
       render: (_, p) => (
-        <StatusTag status={p.status} tone={TONE_PAIEMENT[p.status]} label={LAND_LEASE_STATUS_LABELS[p.status]} />
+        <StatusTag status={p.status} tone={TONE_PAIEMENT[p.status]} label={LAND_LEASE_STATUS_LABELS()[p.status]} />
       )
     },
     {
@@ -564,7 +568,11 @@ export const BailDeTerrain: React.FC = () => {
             aria-label={t('Paiement du {{value}}', { value: dateCourte(p.paymentDate) })}
             subtitle={`${dateCourte(p.coverageStartDate)} – ${dateCourte(p.coverageEndDate)}`}
             status={
-              <StatusTag status={p.status} tone={TONE_PAIEMENT[p.status]} label={LAND_LEASE_STATUS_LABELS[p.status]} />
+              <StatusTag
+                status={p.status}
+                tone={TONE_PAIEMENT[p.status]}
+                label={LAND_LEASE_STATUS_LABELS()[p.status]}
+              />
             }
             highlight={<MoneyValue value={p.amount} />}
             fields={[{ label: t('Saisi par'), value: p.createdByLabel }]}
@@ -712,7 +720,7 @@ export const BailDeTerrain: React.FC = () => {
               style={{ width: 160 }}
               value={moisConstat ?? undefined}
               onChange={setMoisConstat}
-              options={OPTIONS_MOIS}
+              options={OPTIONS_MOIS()}
             />
           </div>
           <Button

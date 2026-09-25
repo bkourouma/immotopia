@@ -396,12 +396,12 @@ export const BonDeCommande: React.FC = () => {
             <StatusTag
               status={bon.status}
               tone={TONE_STATUT[bon.status]}
-              label={PURCHASE_ORDER_STATUS_LABELS[bon.status]}
+              label={PURCHASE_ORDER_STATUS_LABELS()[bon.status]}
             />
             <StatusTag
               status={bon.invoicingState}
               tone={TONE_FACTURATION[bon.invoicingState]}
-              label={INVOICING_STATE_LABELS[bon.invoicingState]}
+              label={INVOICING_STATE_LABELS()[bon.invoicingState]}
             />
           </Space>
         }

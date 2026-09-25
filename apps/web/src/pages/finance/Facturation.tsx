@@ -65,20 +65,22 @@ const { Text, Title } = Typography;
  * doit rester lisible des mois plus tard, même si le bail a été clos depuis.
  */
 
-const MOIS_FR = [
-  'janvier',
-  t('février'),
-  'mars',
-  'avril',
-  'mai',
-  'juin',
-  'juillet',
-  t('août'),
-  'septembre',
-  'octobre',
-  'novembre',
-  t('décembre')
-];
+function MOIS_FR() {
+  return [
+    'janvier',
+    t('février'),
+    'mars',
+    'avril',
+    'mai',
+    'juin',
+    'juillet',
+    t('août'),
+    'septembre',
+    'octobre',
+    'novembre',
+    t('décembre')
+  ];
+}
 
 function capitaliser(mot: string): string {
   return mot.charAt(0).toUpperCase() + mot.slice(1);
@@ -92,7 +94,7 @@ function capitaliser(mot: string): string {
  * 2026 » — une préposition sans phrase où se rattacher.
  */
 function periodeSeule(mois: number, annee: number): string {
-  return capitaliser(`${MOIS_FR[mois - 1] ?? String(mois)} ${annee}`);
+  return capitaliser(`${MOIS_FR()[mois - 1] ?? String(mois)} ${annee}`);
 }
 
 /**
@@ -102,7 +104,7 @@ function periodeSeule(mois: number, annee: number): string {
  * accent circonflexe ne dispense pas de la règle.
  */
 function libellePeriode(mois: number, annee: number): string {
-  const nom = MOIS_FR[mois - 1] ?? String(mois);
+  const nom = MOIS_FR()[mois - 1] ?? String(mois);
   const preposition = /^[aeiouyàâäéèêëîïôöùûü]/i.test(nom) ? `d’${nom}` : `de ${nom}`;
   return `${preposition} ${annee}`;
 }
@@ -129,45 +131,55 @@ function accord(n: number, singulier: string, pluriel: string): string {
  * motif lisible est un défaut.
  */
 function libelleMotif(reason: BillingExclusionReason): string {
-  return BILLING_EXCLUSION_LABELS[reason] ?? t('Motif non précisé');
+  return BILLING_EXCLUSION_LABELS()[reason] ?? t('Motif non précisé');
 }
 
-const OPTIONS_MOIS = MOIS_FR.map((nom, index) => ({ value: index + 1, label: capitaliser(nom) }));
+function OPTIONS_MOIS() {
+  return MOIS_FR().map((nom, index) => ({ value: index + 1, label: capitaliser(nom) }));
+}
 
-const STATUT_CAMPAGNE: Record<BillingRun['status'], { tone: StatusTone; label: string }> = {
-  RUNNING: { tone: 'info', label: t('En cours') },
-  DONE: { tone: 'success', label: t('Exécutée') },
-  FAILED: { tone: 'danger', label: t('Échouée') }
-};
+function STATUT_CAMPAGNE(): Record<BillingRun['status'], { tone: StatusTone; label: string }> {
+  return {
+    RUNNING: { tone: 'info', label: t('En cours') },
+    DONE: { tone: 'success', label: t('Exécutée') },
+    FAILED: { tone: 'danger', label: t('Échouée') }
+  };
+}
 
 type LigneFacturee = BillingRunSummary['billed'][number];
 type LigneExclue = BillingRunSummary['excluded'][number];
 type LigneAvance = BillingRunSummary['advancesApplied'][number];
 
-const COLONNES_FACTUREES: ColumnsType<LigneFacturee> = [
-  { title: t('Bail'), dataIndex: 'leaseLabel', key: 'bail' },
-  {
-    title: t('Montant facturé'),
-    key: 'montant',
-    align: 'end',
-    render: (_, ligne) => <MoneyValue value={ligne.amount} />
-  }
-];
+function COLONNES_FACTUREES(): ColumnsType<LigneFacturee> {
+  return [
+    { title: t('Bail'), dataIndex: 'leaseLabel', key: 'bail' },
+    {
+      title: t('Montant facturé'),
+      key: 'montant',
+      align: 'end',
+      render: (_, ligne) => <MoneyValue value={ligne.amount} />
+    }
+  ];
+}
 
-const COLONNES_EXCLUES: ColumnsType<LigneExclue> = [
-  { title: t('Bail'), dataIndex: 'leaseLabel', key: 'bail' },
-  { title: t('Motif'), key: 'motif', render: (_, ligne) => libelleMotif(ligne.reason) }
-];
+function COLONNES_EXCLUES(): ColumnsType<LigneExclue> {
+  return [
+    { title: t('Bail'), dataIndex: 'leaseLabel', key: 'bail' },
+    { title: t('Motif'), key: 'motif', render: (_, ligne) => libelleMotif(ligne.reason) }
+  ];
+}
 
-const COLONNES_AVANCES: ColumnsType<LigneAvance> = [
-  { title: t('Client'), dataIndex: 'tenantLabel', key: 'client' },
-  {
-    title: t('Montant imputé'),
-    key: 'montant',
-    align: 'end',
-    render: (_, ligne) => <MoneyValue value={ligne.amount} />
-  }
-];
+function COLONNES_AVANCES(): ColumnsType<LigneAvance> {
+  return [
+    { title: t('Client'), dataIndex: 'tenantLabel', key: 'client' },
+    {
+      title: t('Montant imputé'),
+      key: 'montant',
+      align: 'end',
+      render: (_, ligne) => <MoneyValue value={ligne.amount} />
+    }
+  ];
+}
 
 interface CompteRenduProps {
   run: BillingRun | null;
@@ -193,7 +205,7 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
 
   if (!run) return null;
 
-  const statut = STATUT_CAMPAGNE[run.status];
+  const statut = STATUT_CAMPAGNE()[run.status];
   const resume = run.summary;
 
   return (
@@ -253,7 +265,7 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
             pageSize={Math.max(resume.billed.length, 1)}
             onPageChange={() => {}}
             emptyDescription={t('Aucun bail facturé pour cette période.')}
-            columns={COLONNES_FACTUREES}
+            columns={COLONNES_FACTUREES()}
             rowKey={ligne => ligne.installmentId}
             aria-label={t('Baux facturés')}
             renderCard={ligne => (
@@ -278,7 +290,7 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
             pageSize={Math.max(resume.excluded.length, 1)}
             onPageChange={() => {}}
             emptyDescription={t("Aucun bail exclu : la campagne a facturé l'ensemble des baux éligibles.")}
-            columns={COLONNES_EXCLUES}
+            columns={COLONNES_EXCLUES()}
             rowKey={ligne => ligne.leaseId}
             aria-label={t('Baux exclus')}
             renderCard={ligne => (
@@ -301,7 +313,7 @@ function CompteRendu({ run, loading, error, onRetry }: CompteRenduProps) {
             pageSize={Math.max(resume.advancesApplied.length, 1)}
             onPageChange={() => {}}
             emptyDescription={t('Aucune avance à imputer sur cette période.')}
-            columns={COLONNES_AVANCES}
+            columns={COLONNES_AVANCES()}
             rowKey={ligne => `${ligne.installmentId}-${ligne.sourcePaymentId}`}
             aria-label={t('Avances imputées')}
             renderCard={ligne => (
@@ -436,7 +448,7 @@ export const Facturation: React.FC = () => {
       title: t('Statut'),
       key: 'statut',
       render: (_, c) => {
-        const s = STATUT_CAMPAGNE[c.status];
+        const s = STATUT_CAMPAGNE()[c.status];
         return <StatusTag status={c.status} tone={s.tone} label={s.label} />;
       }
     },
@@ -475,7 +487,7 @@ export const Facturation: React.FC = () => {
               style={{ width: 180 }}
               value={moisChoisi}
               onChange={setMoisChoisi}
-              options={OPTIONS_MOIS}
+              options={OPTIONS_MOIS()}
             />
           </div>
           <div>
@@ -559,7 +571,7 @@ export const Facturation: React.FC = () => {
         rowKey={c => c.id}
         aria-label={t('Historique des campagnes')}
         renderCard={c => {
-          const s = STATUT_CAMPAGNE[c.status];
+          const s = STATUT_CAMPAGNE()[c.status];
           return (
             <DataCard
               title={c.label}

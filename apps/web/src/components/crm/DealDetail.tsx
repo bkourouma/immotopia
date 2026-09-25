@@ -43,23 +43,27 @@ interface DealDetailProps {
   dealId: string;
 }
 
-const STAGE_OPTIONS: Array<{ value: CrmDealStage; label: string }> = [
-  { value: 'NEW', label: t('Nouveau') },
-  { value: 'QUALIFIED', label: t('Qualifie') },
-  { value: 'VISIT', label: t('Visite') },
-  { value: 'NEGOTIATION', label: t('Negociation') },
-  { value: 'WON', label: t('Gagne') },
-  { value: 'LOST', label: t('Perdu') }
-];
+function STAGE_OPTIONS(): Array<{ value: CrmDealStage; label: string }> {
+  return [
+    { value: 'NEW', label: t('Nouveau') },
+    { value: 'QUALIFIED', label: t('Qualifie') },
+    { value: 'VISIT', label: t('Visite') },
+    { value: 'NEGOTIATION', label: t('Negociation') },
+    { value: 'WON', label: t('Gagne') },
+    { value: 'LOST', label: t('Perdu') }
+  ];
+}
 
-const FURNISHING_LABELS: Record<string, string> = {
-  MEUBLE: 'Meuble',
-  SEMI_MEUBLE: 'Semi-meuble',
-  NON_MEUBLE: t('Non meuble')
-};
+function FURNISHING_LABELS(): Record<string, string> {
+  return {
+    MEUBLE: t('Meuble'),
+    SEMI_MEUBLE: t('Semi-meuble'),
+    NON_MEUBLE: t('Non meuble')
+  };
+}
 
 function getStageLabel(stage: string): string {
-  return STAGE_OPTIONS.find(s => s.value === stage)?.label || stage;
+  return STAGE_OPTIONS().find(s => s.value === stage)?.label || stage;
 }
 
 function getStageColor(stage: string): string {
@@ -170,7 +174,7 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
     if (hasValue(criteria.furnishingStatus)) {
       rows.push({
         label: t('Etat du meuble'),
-        value: FURNISHING_LABELS[String(criteria.furnishingStatus)] || String(criteria.furnishingStatus)
+        value: FURNISHING_LABELS()[String(criteria.furnishingStatus)] || String(criteria.furnishingStatus)
       });
     }
     if (hasValue(criteria.floor)) rows.push({ label: t('Etage'), value: String(criteria.floor) });
@@ -322,7 +326,12 @@ export const DealDetail: React.FC<DealDetailProps> = ({ tenantId, dealId }) => {
               <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(`/tenant/${tenantId}/crm/deals`)}>
                 {t('Retour')}
               </Button>
-              <Select value={deal.stage} options={STAGE_OPTIONS} onChange={handleStageChange} loading={updatingStage} />
+              <Select
+                value={deal.stage}
+                options={STAGE_OPTIONS()}
+                onChange={handleStageChange}
+                loading={updatingStage}
+              />
               <Button
                 type="primary"
                 icon={<EditOutlined />}

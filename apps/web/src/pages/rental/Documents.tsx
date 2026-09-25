@@ -63,21 +63,25 @@ interface DocumentsProps {
 type Filters = { type: string; status: string };
 const FILTER_KEYS = ['type', 'status'] as const;
 
-const TYPE_LABELS: Record<string, string> = {
-  LEASE_CONTRACT: t('Contrat de bail'),
-  LEASE_ADDENDUM: 'Avenant',
-  RENT_RECEIPT: t('Reçu de loyer'),
-  RENT_QUITTANCE: t('Quittance de loyer'),
-  DEPOSIT_RECEIPT: t('Reçu de dépôt'),
-  STATEMENT: t('Relevé'),
-  OTHER: 'Autre'
-};
+function TYPE_LABELS(): Record<string, string> {
+  return {
+    LEASE_CONTRACT: t('Contrat de bail'),
+    LEASE_ADDENDUM: t('Avenant'),
+    RENT_RECEIPT: t('Reçu de loyer'),
+    RENT_QUITTANCE: t('Quittance de loyer'),
+    DEPOSIT_RECEIPT: t('Reçu de dépôt'),
+    STATEMENT: t('Relevé'),
+    OTHER: t('Autre')
+  };
+}
 
-const STATUS_OPTIONS = [
-  { value: 'DRAFT', label: t('Brouillon') },
-  { value: 'FINAL', label: t('Final') },
-  { value: 'VOID', label: t('Annulé') }
-];
+function STATUS_OPTIONS() {
+  return [
+    { value: 'DRAFT', label: t('Brouillon') },
+    { value: 'FINAL', label: t('Final') },
+    { value: 'VOID', label: t('Annulé') }
+  ];
+}
 
 function dateCourte(iso: string): string {
   return new Date(iso).toLocaleDateString(activeLocale());
@@ -196,7 +200,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
         </>
       )
     },
-    { title: t('Type'), key: 'type', render: (_, doc) => TYPE_LABELS[doc.type] || doc.type },
+    { title: t('Type'), key: 'type', render: (_, doc) => TYPE_LABELS()[doc.type] || doc.type },
     { title: t('Émis le'), key: 'emis', render: (_, doc) => dateCourte(doc.issued_at) },
     { title: t('Statut'), key: 'statut', render: (_, doc) => <StatusTag status={doc.status} /> },
     {
@@ -260,7 +264,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
             allowClear
             value={list.filters.type || undefined}
             onChange={valeur => list.setFilters({ type: valeur })}
-            options={Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label }))}
+            options={Object.entries(TYPE_LABELS()).map(([value, label]) => ({ value, label }))}
           />
         </div>
         <div style={{ minWidth: 200 }}>
@@ -272,7 +276,7 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
             allowClear
             value={list.filters.status || undefined}
             onChange={valeur => list.setFilters({ status: valeur })}
-            options={STATUS_OPTIONS}
+            options={STATUS_OPTIONS()}
           />
         </div>
       </FilterSheet>
@@ -302,10 +306,10 @@ export const Documents: React.FC<DocumentsProps> = ({ leaseId: propLeaseId }) =>
           <DataCard
             title={doc.document_number}
             aria-label={t('Document {{document_number}}', { document_number: doc.document_number })}
-            subtitle={doc.title || TYPE_LABELS[doc.type] || doc.type}
+            subtitle={doc.title || TYPE_LABELS()[doc.type] || doc.type}
             status={<StatusTag status={doc.status} />}
             fields={[
-              { label: 'Type', value: TYPE_LABELS[doc.type] || doc.type },
+              { label: 'Type', value: TYPE_LABELS()[doc.type] || doc.type },
               { label: t('Émis le'), value: dateCourte(doc.issued_at) }
             ]}
             primaryAction={{

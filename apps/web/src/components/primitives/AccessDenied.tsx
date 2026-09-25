@@ -30,25 +30,27 @@ export interface AccessDeniedProps {
   requiredRole?: string | null;
 }
 
-const MESSAGES: Record<AccessDeniedReason, { title: string; body: string; ref: string }> = {
-  role: {
-    title: t('Accès non autorisé'),
-    body: t('Votre rôle ne donne pas accès à cette section.'),
-    ref: 'AUTH-403'
-  },
-  'wrong-tenant': {
-    title: t('Cette agence n’est pas la vôtre'),
-    body: t("L'adresse demandée appartient à une autre agence que celle de votre compte."),
-    ref: 'AUTH-403-TENANT'
-  },
-  'no-tenant': {
-    title: t('Aucune agence rattachée'),
-    body: t(
-      "Votre compte n'est rattaché à aucune agence. Un administrateur doit vous inviter avant que vous puissiez accéder à cette section."
-    ),
-    ref: 'AUTH-403-NO-TENANT'
-  }
-};
+function MESSAGES(): Record<AccessDeniedReason, { title: string; body: string; ref: string }> {
+  return {
+    role: {
+      title: t('Accès non autorisé'),
+      body: t('Votre rôle ne donne pas accès à cette section.'),
+      ref: 'AUTH-403'
+    },
+    'wrong-tenant': {
+      title: t('Cette agence n’est pas la vôtre'),
+      body: t("L'adresse demandée appartient à une autre agence que celle de votre compte."),
+      ref: 'AUTH-403-TENANT'
+    },
+    'no-tenant': {
+      title: t('Aucune agence rattachée'),
+      body: t(
+        "Votre compte n'est rattaché à aucune agence. Un administrateur doit vous inviter avant que vous puissiez accéder à cette section."
+      ),
+      ref: 'AUTH-403-NO-TENANT'
+    }
+  };
+}
 
 export const AccessDenied: React.FC<AccessDeniedProps> = ({ reason, currentRole, requiredRole }) => {
   const navigate = useNavigate();
@@ -59,7 +61,7 @@ export const AccessDenied: React.FC<AccessDeniedProps> = ({ reason, currentRole,
     anchor.current?.focus();
   }, []);
 
-  const message = MESSAGES[reason];
+  const message = MESSAGES()[reason];
 
   // Le message nomme le rôle quand on le connaît : « Votre rôle « Agent » ne
   // donne pas accès… » est actionnable, « accès refusé » ne l'est pas.

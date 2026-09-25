@@ -32,21 +32,23 @@ const { TextArea } = Input;
 const { TabPane } = Tabs;
 const { Text } = Typography;
 
-const COUNTRY_DIAL_CODES = [
-  { value: '+225', label: t('CI (+225)') },
-  { value: '+33', label: t('FR (+33)') },
-  { value: '+32', label: t('BE (+32)') },
-  { value: '+41', label: t('CH (+41)') },
-  { value: '+1', label: t('US/CA (+1)') },
-  { value: '+212', label: t('MA (+212)') },
-  { value: '+221', label: t('SN (+221)') },
-  { value: '+223', label: t('ML (+223)') },
-  { value: '+226', label: t('BF (+226)') },
-  { value: '+228', label: t('TG (+228)') },
-  { value: '+229', label: t('BJ (+229)') },
-  { value: '+234', label: t('NG (+234)') },
-  { value: '+44', label: t('UK (+44)') }
-];
+function COUNTRY_DIAL_CODES() {
+  return [
+    { value: '+225', label: t('CI (+225)') },
+    { value: '+33', label: t('FR (+33)') },
+    { value: '+32', label: t('BE (+32)') },
+    { value: '+41', label: t('CH (+41)') },
+    { value: '+1', label: t('US/CA (+1)') },
+    { value: '+212', label: t('MA (+212)') },
+    { value: '+221', label: t('SN (+221)') },
+    { value: '+223', label: t('ML (+223)') },
+    { value: '+226', label: t('BF (+226)') },
+    { value: '+228', label: t('TG (+228)') },
+    { value: '+229', label: t('BJ (+229)') },
+    { value: '+234', label: t('NG (+234)') },
+    { value: '+44', label: t('UK (+44)') }
+  ];
+}
 
 const DEFAULT_COUNTRY_DIAL_CODE = '+225';
 
@@ -59,7 +61,7 @@ const splitPhoneWithCountryCode = (rawPhone?: string | null) => {
     };
   }
 
-  const matchingCode = [...COUNTRY_DIAL_CODES]
+  const matchingCode = [...COUNTRY_DIAL_CODES()]
     .sort((a, b) => b.value.length - a.value.length)
     .find(code => phone.startsWith(code.value));
 
@@ -425,7 +427,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                           placeholder={t('Numéro principal')}
                           addonBefore={
                             <Form.Item name="phonePrimaryCountryCode" noStyle>
-                              <Select style={{ width: 130 }} options={COUNTRY_DIAL_CODES} />
+                              <Select style={{ width: 130 }} options={COUNTRY_DIAL_CODES()} />
                             </Form.Item>
                           }
                         />
@@ -445,7 +447,7 @@ export const ContactForm: React.FC<ContactFormProps> = ({ contact, onSubmit, onC
                           placeholder={t('Numéro secondaire')}
                           addonBefore={
                             <Form.Item name="phoneSecondaryCountryCode" noStyle>
-                              <Select style={{ width: 130 }} options={COUNTRY_DIAL_CODES} />
+                              <Select style={{ width: 130 }} options={COUNTRY_DIAL_CODES()} />
                             </Form.Item>
                           }
                         />

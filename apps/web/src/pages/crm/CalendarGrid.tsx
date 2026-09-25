@@ -68,19 +68,21 @@ function couleurEvenement(event: EvenementAgenda): React.CSSProperties {
   };
 }
 
-const MESSAGES = {
-  next: 'Suivant',
-  previous: t('Précédent'),
-  today: "Aujourd'hui",
-  month: 'Mois',
-  week: 'Semaine',
-  day: 'Jour',
-  agenda: 'Agenda',
-  date: 'Date',
-  time: 'Heure',
-  event: t('Événement'),
-  noEventsInRange: t('Aucun événement sur cette période')
-};
+function MESSAGES() {
+  return {
+    next: t('Suivant'),
+    previous: t('Précédent'),
+    today: "Aujourd'hui",
+    month: t('Mois'),
+    week: t('Semaine'),
+    day: t('Jour'),
+    agenda: t('Agenda'),
+    date: t('Date'),
+    time: t('Heure'),
+    event: t('Événement'),
+    noEventsInRange: t('Aucun événement sur cette période')
+  };
+}
 
 export const CalendarGrid: React.FC<CalendarGridProps> = ({
   events,
@@ -108,7 +110,7 @@ export const CalendarGrid: React.FC<CalendarGridProps> = ({
       eventPropGetter={event => ({ style: couleurEvenement(event), className: 'rbc-event-small' })}
       draggableAccessor={event => event.canDrag}
       resizable
-      messages={MESSAGES}
+      messages={MESSAGES()}
     />
   </div>
 );

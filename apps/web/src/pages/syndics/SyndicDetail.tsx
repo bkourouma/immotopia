@@ -10,11 +10,13 @@ import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
 
-const statusConfig: Record<Syndicate['status'], { color: string; label: string }> = {
-  ACTIVE: { color: 'green', label: t('Active') },
-  IN_LIQUIDATION: { color: 'orange', label: t('En liquidation') },
-  IN_DISPUTE: { color: 'red', label: t('En litige') }
-};
+function statusConfig(): Record<Syndicate['status'], { color: string; label: string }> {
+  return {
+    ACTIVE: { color: 'green', label: t('Active') },
+    IN_LIQUIDATION: { color: 'orange', label: t('En liquidation') },
+    IN_DISPUTE: { color: 'red', label: t('En litige') }
+  };
+}
 
 export const SyndicDetail: React.FC = () => {
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
@@ -73,7 +75,7 @@ export const SyndicDetail: React.FC = () => {
     );
   }
 
-  const status = statusConfig[syndicate.status];
+  const status = statusConfig()[syndicate.status];
 
   return (
     <>

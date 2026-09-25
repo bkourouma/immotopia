@@ -39,20 +39,24 @@ import { t } from '../../i18n/t';
 import { activeLocale } from '../../i18n/format';
 const { Paragraph, Title } = Typography;
 
-const sourceTypeOptions: Array<{ value: SourceType; label: string }> = [
-  { value: 'MANUAL', label: 'MANUEL' },
-  { value: 'CHARGE_PAYMENT', label: t('PAIEMENT CHARGE') },
-  { value: 'PENALTY', label: t('PÉNALITÉ') },
-  { value: 'FUND', label: 'FONDS' }
-];
+function sourceTypeOptions(): Array<{ value: SourceType; label: string }> {
+  return [
+    { value: 'MANUAL', label: 'MANUEL' },
+    { value: 'CHARGE_PAYMENT', label: t('PAIEMENT CHARGE') },
+    { value: 'PENALTY', label: t('PÉNALITÉ') },
+    { value: 'FUND', label: 'FONDS' }
+  ];
+}
 
-const accountTypeLabels: Record<ChartOfAccount['accountType'], string> = {
-  ASSET: 'Actif',
-  LIABILITY: 'Passif',
-  EQUITY: t('Capitaux propres'),
-  INCOME: 'Produit',
-  EXPENSE: 'Charge'
-};
+function accountTypeLabels(): Record<ChartOfAccount['accountType'], string> {
+  return {
+    ASSET: t('Actif'),
+    LIABILITY: t('Passif'),
+    EQUITY: t('Capitaux propres'),
+    INCOME: t('Produit'),
+    EXPENSE: t('Charge')
+  };
+}
 
 export const SyndicAccounting: React.FC = () => {
   const { message } = App.useApp();
@@ -296,7 +300,7 @@ export const SyndicAccounting: React.FC = () => {
                   {
                     title: 'Type',
                     dataIndex: 'accountType',
-                    render: (value: ChartOfAccount['accountType']) => accountTypeLabels[value] || value
+                    render: (value: ChartOfAccount['accountType']) => accountTypeLabels()[value] || value
                   },
                   {
                     title: 'Actif',
@@ -587,7 +591,7 @@ export const SyndicAccounting: React.FC = () => {
                 name="sourceType"
                 rules={[{ required: true, message: t('Source obligatoire') }]}
               >
-                <Select options={sourceTypeOptions} />
+                <Select options={sourceTypeOptions()} />
               </Form.Item>
             </Col>
           </Row>

@@ -54,12 +54,14 @@ import { t } from '../i18n/t';
 /** Les quatre natures du schéma serveur (`StockMovementType`). */
 export type StockMovementType = 'RECEIPT' | 'ISSUE' | 'TRANSFER' | 'ADJUSTMENT';
 
-export const STOCK_MOVEMENT_TYPE_LABELS: Record<StockMovementType, string> = {
-  RECEIPT: t('Réception'),
-  ISSUE: t('Sortie vers un chantier'),
-  TRANSFER: t('Transfert entre lieux'),
-  ADJUSTMENT: t('Ajustement d’inventaire')
-};
+export function STOCK_MOVEMENT_TYPE_LABELS(): Record<StockMovementType, string> {
+  return {
+    RECEIPT: t('Réception'),
+    ISSUE: t('Sortie vers un chantier'),
+    TRANSFER: t('Transfert entre lieux'),
+    ADJUSTMENT: t('Ajustement d’inventaire')
+  };
+}
 
 /**
  * Le ton de chaque nature.
@@ -273,10 +275,12 @@ export interface StockItemRef {
 
 export type StockLocationKind = 'WAREHOUSE' | 'SITE';
 
-export const STOCK_LOCATION_KIND_LABELS: Record<StockLocationKind, string> = {
-  WAREHOUSE: 'Magasin',
-  SITE: t('Lieu de chantier')
-};
+export function STOCK_LOCATION_KIND_LABELS(): Record<StockLocationKind, string> {
+  return {
+    WAREHOUSE: t('Magasin'),
+    SITE: t('Lieu de chantier')
+  };
+}
 
 export interface StockLocationRef {
   id: string;

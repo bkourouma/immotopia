@@ -57,11 +57,13 @@ import { t } from '../i18n/t';
  */
 export type SalaryDocumentStatus = 'DRAFT' | 'VALIDATED' | 'VOIDED';
 
-export const SALARY_STATUS_LABELS: Record<SalaryDocumentStatus, string> = {
-  DRAFT: 'Brouillon',
-  VALIDATED: t('Validé'),
-  VOIDED: t('Annulé')
-};
+export function SALARY_STATUS_LABELS(): Record<SalaryDocumentStatus, string> {
+  return {
+    DRAFT: t('Brouillon'),
+    VALIDATED: t('Validé'),
+    VOIDED: t('Annulé')
+  };
+}
 
 // ---------------------------------------------------------------------------
 // L'employé

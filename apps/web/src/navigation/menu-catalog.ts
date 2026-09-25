@@ -36,24 +36,26 @@ export interface PortalPseudoRole {
   persona: PersonaId;
 }
 
-export const PORTAL_PSEUDO_ROLES: PortalPseudoRole[] = [
-  {
-    key: PORTAL_OWNER_ROLE_KEY,
-    name: 'Propriétaire (portail)',
-    description: t(
-      "Bailleur rattaché à l'agence. Accède au portail propriétaire : ses biens, ses revenus, les incidents de ses immeubles."
-    ),
-    persona: 'proprietaire'
-  },
-  {
-    key: PORTAL_RENTER_ROLE_KEY,
-    name: 'Locataire (portail)',
-    description: t(
-      'Occupant rattaché à un bail. Accède au portail locataire : son bail, ses paiements, ses incidents.'
-    ),
-    persona: 'locataire'
-  }
-];
+export function PORTAL_PSEUDO_ROLES(): PortalPseudoRole[] {
+  return [
+    {
+      key: PORTAL_OWNER_ROLE_KEY,
+      name: t('Propriétaire (portail)'),
+      description: t(
+        "Bailleur rattaché à l'agence. Accède au portail propriétaire : ses biens, ses revenus, les incidents de ses immeubles."
+      ),
+      persona: 'proprietaire'
+    },
+    {
+      key: PORTAL_RENTER_ROLE_KEY,
+      name: t('Locataire (portail)'),
+      description: t(
+        'Occupant rattaché à un bail. Accède au portail locataire : son bail, ses paiements, ses incidents.'
+      ),
+      persona: 'locataire'
+    }
+  ];
+}
 
 /**
  * Persona de navigation associé à une clé de rôle.
@@ -175,7 +177,9 @@ function requirementsFor(navKey: string): string[] {
 }
 
 /** Intitulé des entrées sans domaine : un menu sans catégorie reste un menu. */
-const GENERAL_SECTION_LABEL = t('Général');
+function GENERAL_SECTION_LABEL() {
+  return t('Général');
+}
 
 function toEntry(persona: PersonaId, group: NavGroup): MenuCatalogEntry {
   return {
@@ -205,13 +209,13 @@ export function catalogForPersona(persona: PersonaId): MenuCatalogSection[] {
   const sections: MenuCatalogSection[] = [];
   const bySection = new Map<string, MenuCatalogSection>();
 
-  for (const group of NAVIGATION[persona].tree) {
+  for (const group of NAVIGATION()[persona].tree) {
     const id: SectionId | 'general' = group.section ?? 'general';
     let section = bySection.get(id);
     if (!section) {
       section = {
         id,
-        label: id === 'general' ? GENERAL_SECTION_LABEL : SECTION_LABELS[id as SectionId],
+        label: id === 'general' ? GENERAL_SECTION_LABEL() : SECTION_LABELS()[id as SectionId],
         entries: []
       };
       bySection.set(id, section);

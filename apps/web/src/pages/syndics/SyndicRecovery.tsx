@@ -48,18 +48,22 @@ import { t } from '../../i18n/t';
 import { activeLocale } from '../../i18n/format';
 const { Paragraph, Title, Text } = Typography;
 
-const reminderChannelOptions: Array<{ label: string; value: ReminderChannel }> = [
-  { label: t('Email'), value: 'EMAIL' },
-  { label: 'SMS', value: 'SMS' },
-  { label: 'WhatsApp', value: 'WHATSAPP' },
-  { label: t('Push'), value: 'PUSH' }
-];
+function reminderChannelOptions(): Array<{ label: string; value: ReminderChannel }> {
+  return [
+    { label: t('Email'), value: 'EMAIL' },
+    { label: 'SMS', value: 'SMS' },
+    { label: 'WhatsApp', value: 'WHATSAPP' },
+    { label: t('Push'), value: 'PUSH' }
+  ];
+}
 
-const reminderStatusLabels: Record<ReminderStatus, string> = {
-  SENT: t('Envoyé'),
-  DELIVERED: t('Distribué'),
-  FAILED: t('Échec')
-};
+function reminderStatusLabels(): Record<ReminderStatus, string> {
+  return {
+    SENT: t('Envoyé'),
+    DELIVERED: t('Distribué'),
+    FAILED: t('Échec')
+  };
+}
 
 type LotWithPropertyLabel =
   | {
@@ -417,7 +421,7 @@ export const SyndicRecovery: React.FC = () => {
                   {
                     title: 'Statut',
                     dataIndex: 'status',
-                    render: (value: ReminderStatus) => <Tag>{reminderStatusLabels[value] ?? value}</Tag>
+                    render: (value: ReminderStatus) => <Tag>{reminderStatusLabels()[value] ?? value}</Tag>
                   },
                   { title: 'Lot', render: (_, item) => item.lot?.lotNumber || '-' },
                   { title: t('Propriétaire'), render: (_, item) => ownerLabel(item.lot?.owner) },
@@ -534,7 +538,7 @@ export const SyndicRecovery: React.FC = () => {
             </Col>
             <Col xs={24} md={12}>
               <Form.Item label={t('Canal')} name="channel" rules={[{ required: true }]}>
-                <Select options={reminderChannelOptions} />
+                <Select options={reminderChannelOptions()} />
               </Form.Item>
             </Col>
           </Row>

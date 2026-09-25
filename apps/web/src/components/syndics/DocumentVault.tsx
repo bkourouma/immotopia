@@ -13,14 +13,16 @@ interface DocumentVaultProps {
   loading?: boolean;
 }
 
-const DOCUMENT_TYPE_LABELS: Record<SyndicateDocument['type'], string> = {
-  REGULATION: 'Reglement',
-  GENERAL_MEETING_MINUTES: t("Proces-verbal d'AG"),
-  DIAGNOSTIC: 'Diagnostic',
-  INSURANCE: 'Assurance',
-  BUDGET: 'Budget',
-  OTHER: 'Autre'
-};
+function DOCUMENT_TYPE_LABELS(): Record<SyndicateDocument['type'], string> {
+  return {
+    REGULATION: t('Reglement'),
+    GENERAL_MEETING_MINUTES: t("Proces-verbal d'AG"),
+    DIAGNOSTIC: t('Diagnostic'),
+    INSURANCE: t('Assurance'),
+    BUDGET: t('Budget'),
+    OTHER: t('Autre')
+  };
+}
 
 export const DocumentVault: React.FC<DocumentVaultProps> = ({ documents, loading = false }) => {
   const getDocumentUrl = (fileUrl: string): string => {
@@ -41,7 +43,7 @@ export const DocumentVault: React.FC<DocumentVaultProps> = ({ documents, loading
       title: t('Type'),
       dataIndex: 'type',
       key: 'type',
-      render: (value: SyndicateDocument['type']) => <Tag>{DOCUMENT_TYPE_LABELS[value] ?? value}</Tag>
+      render: (value: SyndicateDocument['type']) => <Tag>{DOCUMENT_TYPE_LABELS()[value] ?? value}</Tag>
     },
     {
       title: t('Expiration'),

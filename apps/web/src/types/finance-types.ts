@@ -110,14 +110,16 @@ export type BillingExclusionReason =
  * Ils vivent ici, avec le type, pour qu'un motif ajouté à l'API ne puisse pas
  * s'afficher brut à l'écran : TypeScript exige une entrée par valeur.
  */
-export const BILLING_EXCLUSION_LABELS: Record<BillingExclusionReason, string> = {
-  PERIOD_BEFORE_LEASE_START: t('La période précède le début du bail'),
-  PERIOD_AFTER_LEASE_END: t('La période suit la fin du bail'),
-  PERIOD_OFF_BILLING_CYCLE: t('Le bail ne se facture pas sur ce mois'),
-  LEASE_NOT_ACTIVE: t("Le bail n'est pas actif"),
-  INSTALLMENT_ALREADY_EXISTS: t('Une échéance existe déjà pour cette période'),
-  LEASE_WITHOUT_AMOUNT: t('Le bail ne porte aucun montant')
-};
+export function BILLING_EXCLUSION_LABELS(): Record<BillingExclusionReason, string> {
+  return {
+    PERIOD_BEFORE_LEASE_START: t('La période précède le début du bail'),
+    PERIOD_AFTER_LEASE_END: t('La période suit la fin du bail'),
+    PERIOD_OFF_BILLING_CYCLE: t('Le bail ne se facture pas sur ce mois'),
+    LEASE_NOT_ACTIVE: t("Le bail n'est pas actif"),
+    INSTALLMENT_ALREADY_EXISTS: t('Une échéance existe déjà pour cette période'),
+    LEASE_WITHOUT_AMOUNT: t('Le bail ne porte aucun montant')
+  };
+}
 
 /**
  * Chaque ligne du compte rendu porte un libelle lisible en plus de son

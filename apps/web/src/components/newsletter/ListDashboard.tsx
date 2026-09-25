@@ -15,12 +15,14 @@ interface ListDashboardProps {
   onDeleteList: (list: NewsletterList) => void;
 }
 
-const typeLabels: Record<string, string> = {
-  MANUAL: 'Manuelle',
-  FROM_OWNERS: t('Propriétaires'),
-  FROM_RENTERS: 'Locataires',
-  FROM_CRM_CONTACTS: t('Contacts CRM')
-};
+function typeLabels(): Record<string, string> {
+  return {
+    MANUAL: t('Manuelle'),
+    FROM_OWNERS: t('Propriétaires'),
+    FROM_RENTERS: t('Locataires'),
+    FROM_CRM_CONTACTS: t('Contacts CRM')
+  };
+}
 
 export function ListDashboard({
   lists,
@@ -86,7 +88,7 @@ export function ListDashboard({
                 }
                 description={
                   <>
-                    <Tag>{typeLabels[list.type] ?? list.type}</Tag>
+                    <Tag>{typeLabels()[list.type] ?? list.type}</Tag>
                     {list.doubleOptIn && <Tag color="blue">{t('Double opt-in')}</Tag>}
                   </>
                 }

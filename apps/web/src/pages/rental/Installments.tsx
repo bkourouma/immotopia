@@ -71,12 +71,14 @@ interface InstallmentsProps {
 type Filters = { status: string; overdue: string; renterClientId: string };
 const FILTER_KEYS = ['status', 'overdue', 'renterClientId'] as const;
 
-const STATUS_OPTIONS = [
-  { value: 'DUE', label: t('À échoir') },
-  { value: 'PARTIAL', label: t('Partiel') },
-  { value: 'PAID', label: t('Payé') },
-  { value: 'OVERDUE', label: t('En retard') }
-];
+function STATUS_OPTIONS() {
+  return [
+    { value: 'DUE', label: t('À échoir') },
+    { value: 'PARTIAL', label: t('Partiel') },
+    { value: 'PAID', label: t('Payé') },
+    { value: 'OVERDUE', label: t('En retard') }
+  ];
+}
 
 /** Montant dû : loyer, charges, autres frais et pénalités. */
 function totalDu(echeance: RentalInstallment): number {
@@ -465,7 +467,7 @@ export const Installments: React.FC<InstallmentsProps> = ({ leaseId: propLeaseId
             allowClear
             value={list.filters.status || undefined}
             onChange={value => list.setFilters({ status: value })}
-            options={STATUS_OPTIONS}
+            options={STATUS_OPTIONS()}
           />
         </div>
         <div style={{ minWidth: 200 }}>

@@ -119,43 +119,49 @@ const formatDate = (dateString: string) => {
   });
 };
 
-const propertyTypeLabels: Record<string, string> = {
-  APPARTEMENT: 'Appartement',
-  MAISON_VILLA: 'Maison/Villa',
-  STUDIO: 'Studio',
-  DUPLEX_TRIPLEX: 'Duplex/Triplex',
-  CHAMBRE_COLOCATION: t('Chambre en colocation'),
-  BUREAU: 'Bureau',
-  BOUTIQUE_COMMERCIAL: 'Boutique/Commercial',
-  ENTREPOT_INDUSTRIEL: t('Entrepôt/Industriel'),
-  TERRAIN: 'Terrain',
-  IMMEUBLE: 'Immeuble',
-  PARKING_BOX: 'Parking/Box',
-  LOT_PROGRAMME_NEUF: t('Lot programme neuf')
-};
+function propertyTypeLabels(): Record<string, string> {
+  return {
+    APPARTEMENT: t('Appartement'),
+    MAISON_VILLA: t('Maison/Villa'),
+    STUDIO: t('Studio'),
+    DUPLEX_TRIPLEX: t('Duplex/Triplex'),
+    CHAMBRE_COLOCATION: t('Chambre en colocation'),
+    BUREAU: t('Bureau'),
+    BOUTIQUE_COMMERCIAL: t('Boutique/Commercial'),
+    ENTREPOT_INDUSTRIEL: t('Entrepôt/Industriel'),
+    TERRAIN: t('Terrain'),
+    IMMEUBLE: t('Immeuble'),
+    PARKING_BOX: t('Parking/Box'),
+    LOT_PROGRAMME_NEUF: t('Lot programme neuf')
+  };
+}
 
-const propertyStatusLabels: Record<string, string> = {
-  DRAFT: 'Brouillon',
-  UNDER_REVIEW: t("En cours d'examen"),
-  AVAILABLE: 'Disponible',
-  RESERVED: t('Réservé'),
-  UNDER_OFFER: t('Sous offre'),
-  RENTED: t('Loué'),
-  SOLD: 'Vendu',
-  ARCHIVED: t('Archivé')
-};
+function propertyStatusLabels(): Record<string, string> {
+  return {
+    DRAFT: t('Brouillon'),
+    UNDER_REVIEW: t("En cours d'examen"),
+    AVAILABLE: t('Disponible'),
+    RESERVED: t('Réservé'),
+    UNDER_OFFER: t('Sous offre'),
+    RENTED: t('Loué'),
+    SOLD: t('Vendu'),
+    ARCHIVED: t('Archivé')
+  };
+}
 
-const translatePropertyType = (value: string) => propertyTypeLabels[value] || value;
+const translatePropertyType = (value: string) => propertyTypeLabels()[value] || value;
 
-const translatePropertyStatus = (value: string) => propertyStatusLabels[value] || value;
+const translatePropertyStatus = (value: string) => propertyStatusLabels()[value] || value;
 
-const transactionModeLabels: Record<string, string> = {
-  SALE: 'Vente',
-  RENTAL: 'Location',
-  SHORT_TERM: t('Location courte durée')
-};
+function transactionModeLabels(): Record<string, string> {
+  return {
+    SALE: t('Vente'),
+    RENTAL: t('Location'),
+    SHORT_TERM: t('Location courte durée')
+  };
+}
 
-const translateTransactionMode = (value: string) => transactionModeLabels[value] || value;
+const translateTransactionMode = (value: string) => transactionModeLabels()[value] || value;
 
 export default function PropertyDetails() {
   const { id } = useParams<{ id: string }>();

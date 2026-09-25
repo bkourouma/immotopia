@@ -26,12 +26,14 @@ import { activeLocale } from '../../../i18n/format';
 type Filtres = { status: string };
 const FILTER_KEYS = ['status'] as const;
 
-const STATUTS = [
-  { value: 'PLANNED', label: t('Planifié') },
-  { value: 'IN_PROGRESS', label: t('En cours') },
-  { value: 'COMPLETED', label: t('Terminé') },
-  { value: 'CANCELLED', label: t('Annulé') }
-];
+function STATUTS() {
+  return [
+    { value: 'PLANNED', label: t('Planifié') },
+    { value: 'IN_PROGRESS', label: t('En cours') },
+    { value: 'COMPLETED', label: t('Terminé') },
+    { value: 'CANCELLED', label: t('Annulé') }
+  ];
+}
 
 function dateCourte(iso?: string | null): string {
   if (!iso) return '—';
@@ -116,7 +118,7 @@ export const WorkProgramsPage: React.FC = () => {
             allowClear
             value={list.filters.status || undefined}
             onChange={valeur => list.setFilters({ status: valeur })}
-            options={STATUTS}
+            options={STATUTS()}
           />
         </div>
       </FilterSheet>

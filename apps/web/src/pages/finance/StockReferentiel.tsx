@@ -154,13 +154,17 @@ function dateCourte(iso: string): string {
  * la même question : la formuler deux fois laisserait les deux versions
  * diverger, et l'une des deux finirait par laisser croire qu'on supprime.
  */
-const AVERTISSEMENT_DESACTIVATION_ARTICLE = t(
-  "Désactiver n'est pas supprimer : l'article garde son stock et son historique, il cesse simplement d'être proposé à la saisie."
-);
+function AVERTISSEMENT_DESACTIVATION_ARTICLE() {
+  return t(
+    "Désactiver n'est pas supprimer : l'article garde son stock et son historique, il cesse simplement d'être proposé à la saisie."
+  );
+}
 
-const AVERTISSEMENT_DESACTIVATION_LIEU = t(
-  "Désactiver n'est pas supprimer : le lieu garde son stock et son historique, il cesse simplement d'être proposé à la saisie."
-);
+function AVERTISSEMENT_DESACTIVATION_LIEU() {
+  return t(
+    "Désactiver n'est pas supprimer : le lieu garde son stock et son historique, il cesse simplement d'être proposé à la saisie."
+  );
+}
 
 export const StockReferentiel: React.FC = () => {
   const { message } = App.useApp();
@@ -592,7 +596,7 @@ export const StockReferentiel: React.FC = () => {
           {a.isActive ? (
             <ConfirmAction
               title={t("Désactiver l'article « {{reference}} » ?", { reference: a.reference })}
-              description={AVERTISSEMENT_DESACTIVATION_ARTICLE}
+              description={AVERTISSEMENT_DESACTIVATION_ARTICLE()}
               okText={t('Confirmer la désactivation')}
               onConfirm={() => basculerArticle(a, false)}
             >
@@ -610,7 +614,7 @@ export const StockReferentiel: React.FC = () => {
 
   const colonnesLieux: ColumnsType<StockLocation> = [
     { title: t('Libellé'), key: 'libelle', render: (_, l) => l.label },
-    { title: t('Nature'), key: 'nature', render: (_, l) => STOCK_LOCATION_KIND_LABELS[l.kind] },
+    { title: t('Nature'), key: 'nature', render: (_, l) => STOCK_LOCATION_KIND_LABELS()[l.kind] },
     {
       title: t('Chantier'),
       key: 'chantier',
@@ -629,7 +633,7 @@ export const StockReferentiel: React.FC = () => {
           {l.isActive ? (
             <ConfirmAction
               title={t('Désactiver le lieu « {{label}} » ?', { label: l.label })}
-              description={AVERTISSEMENT_DESACTIVATION_LIEU}
+              description={AVERTISSEMENT_DESACTIVATION_LIEU()}
               okText={t('Confirmer la désactivation')}
               onConfirm={() => basculerLieu(l, false)}
             >
@@ -725,7 +729,7 @@ export const StockReferentiel: React.FC = () => {
                     onClick: () =>
                       confirmerAction({
                         title: t("Désactiver l'article « {{reference}} » ?", { reference: a.reference }),
-                        description: AVERTISSEMENT_DESACTIVATION_ARTICLE,
+                        description: AVERTISSEMENT_DESACTIVATION_ARTICLE(),
                         okText: t('Confirmer la désactivation'),
                         onConfirm: () => basculerArticle(a, false)
                       })
@@ -764,8 +768,8 @@ export const StockReferentiel: React.FC = () => {
             value={natureFiltre}
             onChange={valeur => setNatureFiltre(valeur as StockLocationKind | undefined)}
             options={[
-              { value: 'WAREHOUSE', label: STOCK_LOCATION_KIND_LABELS.WAREHOUSE },
-              { value: 'SITE', label: STOCK_LOCATION_KIND_LABELS.SITE }
+              { value: 'WAREHOUSE', label: STOCK_LOCATION_KIND_LABELS().WAREHOUSE },
+              { value: 'SITE', label: STOCK_LOCATION_KIND_LABELS().SITE }
             ]}
           />
         </div>
@@ -802,7 +806,7 @@ export const StockReferentiel: React.FC = () => {
           <DataCard
             title={l.label}
             aria-label={l.label}
-            subtitle={STOCK_LOCATION_KIND_LABELS[l.kind]}
+            subtitle={STOCK_LOCATION_KIND_LABELS()[l.kind]}
             status={<StatusTag status={l.isActive ? 'ACTIVE' : 'INACTIVE'} />}
             fields={[{ label: 'Chantier', value: l.siteLabel ?? '—' }]}
             primaryAction={{ label: t('Corriger le libellé'), onClick: () => ouvrirCorrectionLieu(l) }}
@@ -814,7 +818,7 @@ export const StockReferentiel: React.FC = () => {
                     onClick: () =>
                       confirmerAction({
                         title: t('Désactiver le lieu « {{label}} » ?', { label: l.label }),
-                        description: AVERTISSEMENT_DESACTIVATION_LIEU,
+                        description: AVERTISSEMENT_DESACTIVATION_LIEU(),
                         okText: t('Confirmer la désactivation'),
                         onConfirm: () => basculerLieu(l, false)
                       })
@@ -849,7 +853,7 @@ export const StockReferentiel: React.FC = () => {
               {t('La décision en vigueur')}
             </Title>
             <Paragraph style={{ marginBottom: 'var(--space-2)' }}>
-              <strong>{STOCK_VALUATION_METHOD_LABELS[reglages?.valuationMethod ?? 'WEIGHTED_AVERAGE']}</strong>
+              <strong>{STOCK_VALUATION_METHOD_LABELS()[reglages?.valuationMethod ?? 'WEIGHTED_AVERAGE']}</strong>
               {reglages?.decidedAt ? (
                 <>
                   {' '}
@@ -888,7 +892,7 @@ export const StockReferentiel: React.FC = () => {
               )}
             </Paragraph>
             <Paragraph>
-              {t('Méthode retenue :')} <strong>{STOCK_VALUATION_METHOD_LABELS.WEIGHTED_AVERAGE}</strong>
+              {t('Méthode retenue :')} <strong>{STOCK_VALUATION_METHOD_LABELS().WEIGHTED_AVERAGE}</strong>
             </Paragraph>
             <div style={{ maxWidth: 520 }}>
               <label htmlFor="methode-motif">{t('Motif de la décision')}</label>
@@ -1162,8 +1166,8 @@ export const StockReferentiel: React.FC = () => {
                 if (nature !== 'SITE') setChantierLieu(undefined);
               }}
             >
-              <Radio value="WAREHOUSE">{STOCK_LOCATION_KIND_LABELS.WAREHOUSE}</Radio>
-              <Radio value="SITE">{STOCK_LOCATION_KIND_LABELS.SITE}</Radio>
+              <Radio value="WAREHOUSE">{STOCK_LOCATION_KIND_LABELS().WAREHOUSE}</Radio>
+              <Radio value="SITE">{STOCK_LOCATION_KIND_LABELS().SITE}</Radio>
             </Radio.Group>
             <div>
               <Text type="secondary">
@@ -1250,7 +1254,7 @@ export const StockReferentiel: React.FC = () => {
             {lieuCorrige ? (
               <>
                 {' '}
-                {t('Ce lieu reste un')} <strong>{STOCK_LOCATION_KIND_LABELS[lieuCorrige.kind].toLowerCase()}</strong>
+                {t('Ce lieu reste un')} <strong>{STOCK_LOCATION_KIND_LABELS()[lieuCorrige.kind].toLowerCase()}</strong>
                 {lieuCorrige.siteLabel ? (
                   <>
                     {' '}

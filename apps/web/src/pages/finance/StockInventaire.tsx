@@ -211,7 +211,7 @@ export const StockInventaire: React.FC = () => {
     () =>
       (lieux ?? []).map(l => ({
         value: l.id,
-        label: `${l.label} (${STOCK_LOCATION_KIND_LABELS[l.kind]})`
+        label: `${l.label} (${STOCK_LOCATION_KIND_LABELS()[l.kind]})`
       })),
     [lieux]
   );
@@ -1049,8 +1049,8 @@ export const StockInventaire: React.FC = () => {
             value={statutFiltre}
             onChange={valeur => setStatutFiltre((valeur as StockCountStatus | undefined) ?? undefined)}
             options={[
-              { value: 'DRAFT', label: STOCK_COUNT_STATUS_LABELS.DRAFT },
-              { value: 'VALIDATED', label: STOCK_COUNT_STATUS_LABELS.VALIDATED }
+              { value: 'DRAFT', label: STOCK_COUNT_STATUS_LABELS().DRAFT },
+              { value: 'VALIDATED', label: STOCK_COUNT_STATUS_LABELS().VALIDATED }
             ]}
           />
         </div>

@@ -46,14 +46,16 @@ import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
 
-const lotTypeOptions: Array<{ label: string; value: LotType }> = [
-  { label: t('Appartement'), value: 'APARTMENT' },
-  { label: t('Parking'), value: 'PARKING' },
-  { label: t('Cave'), value: 'CELLAR' },
-  { label: t('Bureau'), value: 'OFFICE' },
-  { label: t('Commerce'), value: 'COMMERCIAL' },
-  { label: t('Autre'), value: 'OTHER' }
-];
+function lotTypeOptions(): Array<{ label: string; value: LotType }> {
+  return [
+    { label: t('Appartement'), value: 'APARTMENT' },
+    { label: t('Parking'), value: 'PARKING' },
+    { label: t('Cave'), value: 'CELLAR' },
+    { label: t('Bureau'), value: 'OFFICE' },
+    { label: t('Commerce'), value: 'COMMERCIAL' },
+    { label: t('Autre'), value: 'OTHER' }
+  ];
+}
 
 type PropertySelectOption = {
   value: string;
@@ -603,7 +605,7 @@ export const SyndicLots: React.FC = () => {
                 name="lotType"
                 rules={[{ required: true, message: t('Le type est obligatoire') }]}
               >
-                <Select options={lotTypeOptions} />
+                <Select options={lotTypeOptions()} />
               </Form.Item>
             </Col>
           </Row>

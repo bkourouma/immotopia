@@ -33,14 +33,16 @@ import { t } from '../../i18n/t';
 import { activeLocale } from '../../i18n/format';
 const { Paragraph, Title } = Typography;
 
-const transactionTypeLabels: Record<OwnerAccountTransaction['type'], string> = {
-  CHARGE_CALL: t('Appel de charges'),
-  PAYMENT: 'Paiement',
-  PENALTY: t('Pénalité'),
-  WAIVER: 'Remise',
-  ADJUSTMENT: 'Ajustement',
-  FUND_TRANSFER: t('Transfert de fonds')
-};
+function transactionTypeLabels(): Record<OwnerAccountTransaction['type'], string> {
+  return {
+    CHARGE_CALL: t('Appel de charges'),
+    PAYMENT: t('Paiement'),
+    PENALTY: t('Pénalité'),
+    WAIVER: t('Remise'),
+    ADJUSTMENT: t('Ajustement'),
+    FUND_TRANSFER: t('Transfert de fonds')
+  };
+}
 
 export const SyndicOwnerAccount: React.FC = () => {
   const { message } = App.useApp();
@@ -201,7 +203,7 @@ export const SyndicOwnerAccount: React.FC = () => {
                   {
                     title: 'Type',
                     dataIndex: 'type',
-                    render: (value: OwnerAccountTransaction['type']) => transactionTypeLabels[value] || value
+                    render: (value: OwnerAccountTransaction['type']) => transactionTypeLabels()[value] || value
                   },
                   { title: t('Libellé'), dataIndex: 'label' },
                   {

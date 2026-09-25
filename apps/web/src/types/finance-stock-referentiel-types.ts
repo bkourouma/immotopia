@@ -67,10 +67,12 @@ import { t } from '../i18n/t';
  */
 export type StockLocationKind = 'WAREHOUSE' | 'SITE';
 
-export const STOCK_LOCATION_KIND_LABELS: Record<StockLocationKind, string> = {
-  WAREHOUSE: 'Magasin',
-  SITE: t('Lieu de chantier')
-};
+export function STOCK_LOCATION_KIND_LABELS(): Record<StockLocationKind, string> {
+  return {
+    WAREHOUSE: t('Magasin'),
+    SITE: t('Lieu de chantier')
+  };
+}
 
 /**
  * Une seule valeur, et c'est volontaire (contrat serveur, en-tête).
@@ -81,9 +83,11 @@ export const STOCK_LOCATION_KIND_LABELS: Record<StockLocationKind, string> = {
  */
 export type StockValuationMethod = 'WEIGHTED_AVERAGE';
 
-export const STOCK_VALUATION_METHOD_LABELS: Record<StockValuationMethod, string> = {
-  WEIGHTED_AVERAGE: t('Coût moyen pondéré')
-};
+export function STOCK_VALUATION_METHOD_LABELS(): Record<StockValuationMethod, string> {
+  return {
+    WEIGHTED_AVERAGE: t('Coût moyen pondéré')
+  };
+}
 
 // ---------------------------------------------------------------------------
 // L'article

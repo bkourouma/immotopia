@@ -64,7 +64,9 @@ import { t } from '../../i18n/t';
 type Filters = { status: string; onlyOverBudget: string };
 const FILTER_KEYS = ['status', 'onlyOverBudget'] as const;
 
-const OPTIONS_STATUT = Object.entries(SITE_STATUS_LABELS).map(([value, label]) => ({ value, label }));
+function OPTIONS_STATUT() {
+  return Object.entries(SITE_STATUS_LABELS()).map(([value, label]) => ({ value, label }));
+}
 
 /** Lit le SIGNE d'un écart déjà calculé — ne recalcule jamais l'écart lui-même. */
 function toneEcart(variance: number | null): StatusTone {
@@ -209,7 +211,7 @@ export const TableauDeBordChantiers: React.FC = () => {
             allowClear
             value={list.filters.status || undefined}
             onChange={valeur => list.setFilters({ status: valeur })}
-            options={OPTIONS_STATUT}
+            options={OPTIONS_STATUT()}
           />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', height: 32 }}>

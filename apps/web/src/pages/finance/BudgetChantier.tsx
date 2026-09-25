@@ -343,7 +343,7 @@ export const BudgetChantier: React.FC = () => {
       title: t('Statut'),
       key: 'statut',
       render: (_, a) => (
-        <StatusTag status={a.status} tone={TONE_BUDGET[a.status]} label={SITE_BUDGET_STATUS_LABELS[a.status]} />
+        <StatusTag status={a.status} tone={TONE_BUDGET[a.status]} label={SITE_BUDGET_STATUS_LABELS()[a.status]} />
       )
     },
     {
@@ -377,7 +377,7 @@ export const BudgetChantier: React.FC = () => {
             <StatusTag
               status={budget.status}
               tone={TONE_BUDGET[budget.status]}
-              label={SITE_BUDGET_STATUS_LABELS[budget.status]}
+              label={SITE_BUDGET_STATUS_LABELS()[budget.status]}
             />
           ) : undefined
         }
@@ -546,7 +546,7 @@ export const BudgetChantier: React.FC = () => {
                   <StatusTag
                     status={a.status}
                     tone={TONE_BUDGET[a.status]}
-                    label={SITE_BUDGET_STATUS_LABELS[a.status]}
+                    label={SITE_BUDGET_STATUS_LABELS()[a.status]}
                   />
                 }
                 highlight={<MoneyValue value={a.totalDelta} signed />}

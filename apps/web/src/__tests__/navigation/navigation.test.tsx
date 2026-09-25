@@ -24,19 +24,19 @@ describe('modèle de navigation — intégrité', () => {
   it('couvre les quatre personas qui ont une navigation', () => {
     // Le cinquieme etat — compte rattache a rien — n'est pas un persona : il
     // n'a aucune destination, donc aucun menu.
-    expect(Object.keys(NAVIGATION).sort()).toEqual(['collaborateur', 'locataire', 'proprietaire', 'super-admin']);
+    expect(Object.keys(NAVIGATION()).sort()).toEqual(['collaborateur', 'locataire', 'proprietaire', 'super-admin']);
   });
 
   it('respecte le nombre d’onglets par persona du §4.2', () => {
-    expect(NAVIGATION['super-admin'].tabs).toHaveLength(0);
-    expect(NAVIGATION.collaborateur.tabs).toHaveLength(5);
-    expect(NAVIGATION.proprietaire.tabs).toHaveLength(5);
-    expect(NAVIGATION.locataire.tabs).toHaveLength(4);
+    expect(NAVIGATION()['super-admin'].tabs).toHaveLength(0);
+    expect(NAVIGATION().collaborateur.tabs).toHaveLength(5);
+    expect(NAVIGATION().proprietaire.tabs).toHaveLength(5);
+    expect(NAVIGATION().locataire.tabs).toHaveLength(4);
   });
 
   it('n’expose aucune ACTION comme destination', () => {
     const labels: string[] = [];
-    for (const persona of Object.values(NAVIGATION)) {
+    for (const persona of Object.values(NAVIGATION())) {
       for (const group of persona.tree) {
         labels.push(group.label);
         group.children?.forEach(c => labels.push(c.label));
@@ -51,7 +51,7 @@ describe('modèle de navigation — intégrité', () => {
 
   it('applique les suppressions actées du §4.3', () => {
     const hrefs: string[] = [];
-    for (const persona of Object.values(NAVIGATION)) {
+    for (const persona of Object.values(NAVIGATION())) {
       for (const group of persona.tree) {
         if (group.href) hrefs.push(group.href);
         group.children?.forEach(c => hrefs.push(c.href));
@@ -65,14 +65,16 @@ describe('modèle de navigation — intégrité', () => {
   });
 
   it('place « Baux » et « Encaisser » au premier niveau, pas sous un accordéon', () => {
-    const primaires = NAVIGATION.collaborateur.tree.filter(g => g.zone === 'primary').map(g => g.label);
+    const primaires = NAVIGATION()
+      .collaborateur.tree.filter(g => g.zone === 'primary')
+      .map(g => g.label);
     expect(primaires).toEqual(['Tableau de bord', 'Biens', 'Baux', 'Encaisser']);
     // Le groupe que la refonte défait ne doit pas réapparaître.
-    expect(NAVIGATION.collaborateur.tree.map(g => g.label)).not.toContain('Gestion locative');
+    expect(NAVIGATION().collaborateur.tree.map(g => g.label)).not.toContain('Gestion locative');
   });
 
   it('marque la frontière « Plus » exigée par le §4.2', () => {
-    const more = NAVIGATION.collaborateur.tree.filter(g => g.zone === 'more');
+    const more = NAVIGATION().collaborateur.tree.filter(g => g.zone === 'more');
     expect(more.length).toBeGreaterThan(0);
     expect(more.map(g => g.label)).toContain('Syndic');
   });
@@ -80,14 +82,16 @@ describe('modèle de navigation — intégrité', () => {
   it('coiffe chaque entrée d’un domaine, sauf l’accueil', () => {
     // L'accueil n'a pas de domaine : un intertitre au-dessus d'une entrée
     // unique qui s'appelle déjà « Tableau de bord » ne dirait rien de plus.
-    const sansDomaine = NAVIGATION.collaborateur.tree.filter(g => !g.section).map(g => g.label);
+    const sansDomaine = NAVIGATION()
+      .collaborateur.tree.filter(g => !g.section)
+      .map(g => g.label);
     expect(sansDomaine).toEqual(['Tableau de bord']);
   });
 
   it('n’emploie que des domaines déclarés', () => {
-    for (const persona of Object.values(NAVIGATION)) {
+    for (const persona of Object.values(NAVIGATION())) {
       for (const group of persona.tree) {
-        if (group.section) expect(SECTION_LABELS[group.section]).toBeTruthy();
+        if (group.section) expect(SECTION_LABELS()[group.section]).toBeTruthy();
       }
     }
   });
@@ -96,7 +100,7 @@ describe('modèle de navigation — intégrité', () => {
     // Un domaine discontinu produirait deux intertitres de même clé : le menu
     // dirait deux fois la même chose à deux endroits, et React verrait deux
     // nœuds de même clé.
-    for (const persona of Object.values(NAVIGATION)) {
+    for (const persona of Object.values(NAVIGATION())) {
       const dejaVus = new Set<string>();
       let courant: string | undefined;
       for (const group of persona.tree) {
@@ -110,16 +114,20 @@ describe('modèle de navigation — intégrité', () => {
   });
 
   it('coiffe le portail propriétaire de ses deux domaines', () => {
-    const domaines = NAVIGATION.proprietaire.tree.map(g => g.section);
+    const domaines = NAVIGATION().proprietaire.tree.map(g => g.section);
     expect(domaines).toEqual([undefined, 'portefeuille', 'portefeuille', 'batiments', undefined]);
     // « Plus » reste sans intertitre : un titre au-dessus d'un groupe qui porte
     // deja ce nom nommerait deux fois la meme chose.
-    expect(NAVIGATION.proprietaire.tree.filter(g => !g.section).map(g => g.label)).toEqual(['Tableau de bord', 'Plus']);
+    expect(
+      NAVIGATION()
+        .proprietaire.tree.filter(g => !g.section)
+        .map(g => g.label)
+    ).toEqual(['Tableau de bord', 'Plus']);
   });
 
   it('fait de « Gestion locative » un titre, jamais un parent', () => {
-    expect(Object.values(SECTION_LABELS)).toContain('Gestion locative');
-    const locatif = NAVIGATION.collaborateur.tree.filter(g => g.section === 'locatif');
+    expect(Object.values(SECTION_LABELS())).toContain('Gestion locative');
+    const locatif = NAVIGATION().collaborateur.tree.filter(g => g.section === 'locatif');
     expect(locatif.map(g => g.label)).toEqual(['Baux', 'Encaisser']);
     // Les deux gardent leur href : ce sont des destinations de premier niveau,
     // pas des accordeons qui rajoutent un tap (§4.3).
@@ -127,7 +135,7 @@ describe('modèle de navigation — intégrité', () => {
   });
 
   it('donne la même icône à la même destination dans l’onglet et dans l’arbre', () => {
-    for (const persona of Object.values(NAVIGATION)) {
+    for (const persona of Object.values(NAVIGATION())) {
       for (const tab of persona.tabs) {
         if (tab.href === MORE_TAB_HREF) continue;
         const group = persona.tree.find(g => g.href === tab.href);
@@ -140,7 +148,7 @@ describe('modèle de navigation — intégrité', () => {
   });
 
   it('n’emploie que des clés uniques par persona', () => {
-    for (const persona of Object.values(NAVIGATION)) {
+    for (const persona of Object.values(NAVIGATION())) {
       const keys: string[] = [];
       persona.tree.forEach(g => {
         keys.push(g.key);
@@ -248,7 +256,7 @@ describe('table de libellés', () => {
 
   it('rend visible un segment inconnu au lieu de le masquer', () => {
     expect(labelForSegment('segment-inedit')).toBe('Segment inedit');
-    expect(ROUTE_LABELS.leases).toBe('Baux');
+    expect(ROUTE_LABELS().leases).toBe('Baux');
   });
 });
 
@@ -288,8 +296,8 @@ describe('compte non rattaché', () => {
   it('n’est pas un persona : il n’a aucune navigation', () => {
     // L'ancien persona « public » avait deux entrees de menu, dont aucune ne
     // menait nulle part depuis la suppression de la vitrine.
-    expect(Object.keys(NAVIGATION)).not.toContain('public');
-    expect(Object.keys(NAVIGATION)).not.toContain('non-rattache');
+    expect(Object.keys(NAVIGATION())).not.toContain('public');
+    expect(Object.keys(NAVIGATION())).not.toContain('non-rattache');
   });
 
   it('est distingué du chargement en cours', () => {

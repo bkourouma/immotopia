@@ -49,13 +49,15 @@ import { activeLocale } from '../../i18n/format';
 type Filtres = { q: string; status: string; primaryRenterClientId: string };
 const FILTER_KEYS = ['q', 'status', 'primaryRenterClientId'] as const;
 
-const STATUTS = [
-  { value: 'DRAFT', label: t('Brouillon') },
-  { value: 'ACTIVE', label: t('Actif') },
-  { value: 'SUSPENDED', label: t('Suspendu') },
-  { value: 'ENDED', label: t('Terminé') },
-  { value: 'CANCELED', label: t('Annulé') }
-];
+function STATUTS() {
+  return [
+    { value: 'DRAFT', label: t('Brouillon') },
+    { value: 'ACTIVE', label: t('Actif') },
+    { value: 'SUSPENDED', label: t('Suspendu') },
+    { value: 'ENDED', label: t('Terminé') },
+    { value: 'CANCELED', label: t('Annulé') }
+  ];
+}
 
 function dateCourte(iso?: string | null): string {
   if (!iso) return '—';
@@ -293,7 +295,7 @@ export const Leases: React.FC = () => {
             allowClear
             value={list.filters.status || undefined}
             onChange={valeur => list.setFilters({ status: valeur })}
-            options={STATUTS}
+            options={STATUTS()}
           />
         </div>
       </FilterSheet>

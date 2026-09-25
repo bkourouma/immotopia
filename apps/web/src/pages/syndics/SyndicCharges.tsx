@@ -34,33 +34,41 @@ import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
 
-const statusOptions: Array<{ label: string; value: ChargeCallStatus }> = [
-  { label: t('En attente'), value: 'PENDING' },
-  { label: t('Partiel'), value: 'PARTIAL' },
-  { label: t('Paye'), value: 'PAID' },
-  { label: t('En retard'), value: 'OVERDUE' }
-];
+function statusOptions(): Array<{ label: string; value: ChargeCallStatus }> {
+  return [
+    { label: t('En attente'), value: 'PENDING' },
+    { label: t('Partiel'), value: 'PARTIAL' },
+    { label: t('Paye'), value: 'PAID' },
+    { label: t('En retard'), value: 'OVERDUE' }
+  ];
+}
 
-const targetModeOptions = [
-  { label: t('Un lot'), value: 'single' },
-  { label: t('Plusieurs lots'), value: 'multiple' },
-  { label: t('Tous les lots'), value: 'all' }
-];
+function targetModeOptions() {
+  return [
+    { label: t('Un lot'), value: 'single' },
+    { label: t('Plusieurs lots'), value: 'multiple' },
+    { label: t('Tous les lots'), value: 'all' }
+  ];
+}
 
-const recurrenceFrequencyOptions = [
-  { label: t('Mensuelle'), value: 'MONTHLY' },
-  { label: t('Trimestrielle'), value: 'QUARTERLY' },
-  { label: t('Annuelle'), value: 'ANNUAL' }
-];
+function recurrenceFrequencyOptions() {
+  return [
+    { label: t('Mensuelle'), value: 'MONTHLY' },
+    { label: t('Trimestrielle'), value: 'QUARTERLY' },
+    { label: t('Annuelle'), value: 'ANNUAL' }
+  ];
+}
 
-const lotTypeLabels: Record<SyndicateLot['lotType'], string> = {
-  APARTMENT: 'Appartement',
-  PARKING: 'Parking',
-  CELLAR: 'Cave',
-  OFFICE: 'Bureau',
-  COMMERCIAL: 'Commerce',
-  OTHER: 'Autre'
-};
+function lotTypeLabels(): Record<SyndicateLot['lotType'], string> {
+  return {
+    APARTMENT: t('Appartement'),
+    PARKING: t('Parking'),
+    CELLAR: t('Cave'),
+    OFFICE: t('Bureau'),
+    COMMERCIAL: t('Commerce'),
+    OTHER: t('Autre')
+  };
+}
 
 function buildPropertyNomenclatureFromLot(lot: SyndicateLot): string {
   const property = lot.property;
@@ -154,7 +162,7 @@ export const SyndicCharges: React.FC = () => {
     () =>
       lots.map(lot => ({
         value: lot.id,
-        label: `${buildPropertyNomenclatureFromLot(lot)} (${lotTypeLabels[lot.lotType]})`
+        label: `${buildPropertyNomenclatureFromLot(lot)} (${lotTypeLabels()[lot.lotType]})`
       })),
     [lots]
   );
@@ -258,7 +266,7 @@ export const SyndicCharges: React.FC = () => {
                   placeholder={t('Filtrer par statut')}
                   value={statusFilter}
                   onChange={value => setStatusFilter(value)}
-                  options={statusOptions}
+                  options={statusOptions()}
                 />
                 <Input
                   allowClear
@@ -302,7 +310,7 @@ export const SyndicCharges: React.FC = () => {
             name="targetMode"
             rules={[{ required: true, message: t('La cible est obligatoire') }]}
           >
-            <Select options={targetModeOptions} />
+            <Select options={targetModeOptions()} />
           </Form.Item>
 
           <Form.Item noStyle dependencies={['targetMode']}>
@@ -406,7 +414,7 @@ export const SyndicCharges: React.FC = () => {
                       name="recurrenceFrequency"
                       rules={[{ required: true, message: t('La fréquence est obligatoire') }]}
                     >
-                      <Select options={recurrenceFrequencyOptions} />
+                      <Select options={recurrenceFrequencyOptions()} />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={12}>

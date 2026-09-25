@@ -437,7 +437,7 @@ export const RetenuesDeGarantie: React.FC = () => {
           et le ton sont donc passés explicitement. */}
       <StatusTag
         status={retenue.status}
-        label={RETENTION_STATUS_LABELS[retenue.status]}
+        label={RETENTION_STATUS_LABELS()[retenue.status]}
         tone={retenue.status === 'HELD' ? 'info' : 'success'}
       />
       {estEnRetard(retenue) && <StatusTag status="OVERDUE" label={t('En retard')} tone="danger" />}
@@ -452,7 +452,7 @@ export const RetenuesDeGarantie: React.FC = () => {
         <Space orientation="vertical" size={0}>
           <span>{r.sourceLabel}</span>
           <Text type="secondary" style={{ fontSize: 'var(--font-size-sm)' }}>
-            {RETENTION_SOURCE_TYPE_LABELS[r.sourceType]}
+            {RETENTION_SOURCE_TYPE_LABELS()[r.sourceType]}
           </Text>
         </Space>
       )
@@ -570,8 +570,8 @@ export const RetenuesDeGarantie: React.FC = () => {
             value={statut}
             onChange={valeur => setStatut(valeur as RetentionStatus | undefined)}
             options={[
-              { value: 'HELD', label: RETENTION_STATUS_LABELS.HELD },
-              { value: 'RELEASED', label: RETENTION_STATUS_LABELS.RELEASED }
+              { value: 'HELD', label: RETENTION_STATUS_LABELS().HELD },
+              { value: 'RELEASED', label: RETENTION_STATUS_LABELS().RELEASED }
             ]}
           />
         </div>
@@ -623,7 +623,7 @@ export const RetenuesDeGarantie: React.FC = () => {
           <DataCard
             title={r.sourceLabel}
             aria-label={r.sourceLabel}
-            subtitle={`${RETENTION_SOURCE_TYPE_LABELS[r.sourceType]} — ${r.thirdPartyLabel}`}
+            subtitle={`${RETENTION_SOURCE_TYPE_LABELS()[r.sourceType]} — ${r.thirdPartyLabel}`}
             status={<EtiquetteStatut retenue={r} />}
             highlight={<MoneyValue value={r.amount} />}
             fields={[
@@ -662,8 +662,8 @@ export const RetenuesDeGarantie: React.FC = () => {
                   setSituationId(undefined);
                 }}
                 options={[
-                  { value: 'SUPPLIER_INVOICE', label: RETENTION_SOURCE_TYPE_LABELS.SUPPLIER_INVOICE },
-                  { value: 'PROGRESS_STATEMENT', label: RETENTION_SOURCE_TYPE_LABELS.PROGRESS_STATEMENT }
+                  { value: 'SUPPLIER_INVOICE', label: RETENTION_SOURCE_TYPE_LABELS().SUPPLIER_INVOICE },
+                  { value: 'PROGRESS_STATEMENT', label: RETENTION_SOURCE_TYPE_LABELS().PROGRESS_STATEMENT }
                 ]}
               />
             </div>

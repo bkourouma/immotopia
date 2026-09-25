@@ -262,7 +262,7 @@ export const SyndicMeetingDetail: React.FC = () => {
             </Title>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
               Date: {dayjs(meeting.scheduledAt).format('DD/MM/YYYY HH:mm')} {t('| Type:')}{' '}
-              {meetingTypeLabels[meeting.type]}
+              {meetingTypeLabels()[meeting.type]}
             </Paragraph>
             <Form form={meetingMetaForm} layout="inline">
               <Form.Item label={t('Heure début')} name="startTime">

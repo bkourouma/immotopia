@@ -740,7 +740,7 @@ export const Stock: React.FC = () => {
       render: (_, m) => (
         <StatusTag
           status={m.type}
-          label={STOCK_MOVEMENT_TYPE_LABELS[m.type]}
+          label={STOCK_MOVEMENT_TYPE_LABELS()[m.type]}
           tone={STOCK_MOVEMENT_TYPE_TONES[m.type]}
         />
       )
@@ -963,9 +963,9 @@ export const Stock: React.FC = () => {
             allowClear
             value={journalNature}
             onChange={valeur => setJournalNature(valeur as StockMovementType | undefined)}
-            options={(Object.keys(STOCK_MOVEMENT_TYPE_LABELS) as StockMovementType[]).map(nature => ({
+            options={(Object.keys(STOCK_MOVEMENT_TYPE_LABELS()) as StockMovementType[]).map(nature => ({
               value: nature,
-              label: STOCK_MOVEMENT_TYPE_LABELS[nature]
+              label: STOCK_MOVEMENT_TYPE_LABELS()[nature]
             }))}
           />
         </div>
@@ -1017,7 +1017,7 @@ export const Stock: React.FC = () => {
             status={
               <StatusTag
                 status={m.type}
-                label={STOCK_MOVEMENT_TYPE_LABELS[m.type]}
+                label={STOCK_MOVEMENT_TYPE_LABELS()[m.type]}
                 tone={STOCK_MOVEMENT_TYPE_TONES[m.type]}
               />
             }

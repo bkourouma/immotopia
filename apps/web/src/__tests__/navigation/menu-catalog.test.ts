@@ -25,7 +25,7 @@ const PERSONAS: PersonaId[] = ['super-admin', 'collaborateur', 'proprietaire', '
 
 describe('catalogue des menus — fidélité au modèle de navigation', () => {
   it.each(PERSONAS)('couvre toutes les entrées de « %s », sans en inventer', persona => {
-    const fromModel = NAVIGATION[persona].tree.flatMap(group => [
+    const fromModel = NAVIGATION()[persona].tree.flatMap(group => [
       menuKeyFor(persona, group.key),
       ...(group.children ?? []).map(leaf => menuKeyFor(persona, group.key, leaf.key))
     ]);
@@ -39,13 +39,13 @@ describe('catalogue des menus — fidélité au modèle de navigation', () => {
     expect(sections.map(s => s.label)).toEqual([
       // Le tableau de bord n'a pas de domaine : il reste isolé en tête.
       'Général',
-      SECTION_LABELS.parc,
-      SECTION_LABELS.locatif,
-      SECTION_LABELS.finance,
-      SECTION_LABELS.patrimoine,
-      SECTION_LABELS.commercial,
-      SECTION_LABELS.copropriete,
-      SECTION_LABELS.parametrage
+      SECTION_LABELS().parc,
+      SECTION_LABELS().locatif,
+      SECTION_LABELS().finance,
+      SECTION_LABELS().patrimoine,
+      SECTION_LABELS().commercial,
+      SECTION_LABELS().copropriete,
+      SECTION_LABELS().parametrage
     ]);
   });
 
@@ -65,7 +65,11 @@ describe('catalogue des menus — fidélité au modèle de navigation', () => {
   it('donne une navigation aux deux personas qui n’ont pas de ligne dans `roles`', () => {
     // C'est le manque que comble cet écran : propriétaire et locataire n'ont
     // pas de rôle RBAC, mais ils ont bel et bien des menus à régler.
-    expect(PORTAL_PSEUDO_ROLES.map(r => r.persona).sort()).toEqual(['locataire', 'proprietaire']);
+    expect(
+      PORTAL_PSEUDO_ROLES()
+        .map(r => r.persona)
+        .sort()
+    ).toEqual(['locataire', 'proprietaire']);
   });
 });
 
@@ -116,10 +120,14 @@ describe('états par défaut — déduits des permissions du rôle', () => {
 
 describe('navigation filtrée — ce que la coquille rend réellement', () => {
   const filter = (persona: PersonaId, disabled: string[]) =>
-    renderHook(() => useFilteredNavigation(NAVIGATION[persona], new Set(disabled))).result.current;
+    renderHook(() => useFilteredNavigation(NAVIGATION()[persona], new Set(disabled))).result.current;
 
   it('ne touche à rien quand aucun menu n’est coupé', () => {
-    expect(filter('collaborateur', [])).toBe(NAVIGATION.collaborateur);
+    // `NAVIGATION()` reconstruit l'arbre a chaque appel : la comparaison par
+    // identite doit porter sur l'exemplaire reellement passe au hook, pas sur
+    // un second appel qui produirait un objet equivalent mais distinct.
+    const nav = NAVIGATION().collaborateur;
+    expect(renderHook(() => useFilteredNavigation(nav, new Set<string>())).result.current).toBe(nav);
   });
 
   it('retire l’entrée coupée, et l’onglet qui y menait', () => {
@@ -143,7 +151,7 @@ describe('navigation filtrée — ce que la coquille rend réellement', () => {
   it('fait tomber un parent dont toutes les sous-entrées sont coupées', () => {
     // Un accordéon vide promet un contenu qui n'existe plus : il vaut mieux
     // qu'il disparaisse.
-    const children = NAVIGATION.collaborateur.tree.find(g => g.key === 'crm')?.children ?? [];
+    const children = NAVIGATION().collaborateur.tree.find(g => g.key === 'crm')?.children ?? [];
     const nav = filter(
       'collaborateur',
       children.map(leaf => menuKeyFor('collaborateur', 'crm', leaf.key))

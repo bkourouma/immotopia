@@ -11,19 +11,23 @@ import { t } from '../../i18n/t';
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-const categoryLabels: Record<string, string> = {
-  PLUMBING: 'Plomberie',
-  ELECTRICITY: t('Électricité'),
-  AC: 'Climatisation',
-  OTHER: 'Autre'
-};
+function categoryLabels(): Record<string, string> {
+  return {
+    PLUMBING: t('Plomberie'),
+    ELECTRICITY: t('Électricité'),
+    AC: t('Climatisation'),
+    OTHER: t('Autre')
+  };
+}
 
-const priorityLabels: Record<string, string> = {
-  LOW: 'Faible',
-  MEDIUM: 'Moyenne',
-  HIGH: t('Élevée'),
-  URGENT: 'Urgente'
-};
+function priorityLabels(): Record<string, string> {
+  return {
+    LOW: t('Faible'),
+    MEDIUM: t('Moyenne'),
+    HIGH: t('Élevée'),
+    URGENT: t('Urgente')
+  };
+}
 
 const priorityColors: Record<string, string> = {
   LOW: 'default',
@@ -87,13 +91,13 @@ export const PropertyMaintenanceTab: React.FC<PropertyMaintenanceTabProps> = ({ 
       title: t('Catégorie'),
       dataIndex: 'category',
       key: 'category',
-      render: (category: string) => categoryLabels[category] || category
+      render: (category: string) => categoryLabels()[category] || category
     },
     {
       title: t('Priorité'),
       dataIndex: 'priority',
       key: 'priority',
-      render: (priority: string) => <Tag color={priorityColors[priority]}>{priorityLabels[priority] || priority}</Tag>
+      render: (priority: string) => <Tag color={priorityColors[priority]}>{priorityLabels()[priority] || priority}</Tag>
     },
     {
       title: t('Statut'),

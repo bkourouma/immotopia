@@ -61,43 +61,45 @@ export function categoricalColor(index: number): string {
  * Libellés que `<StatusTag>` ne connaît pas : ce ne sont pas des statuts.
  * Types de bien, moyens de paiement, priorités et étapes commerciales.
  */
-const EXTRA_LABELS: Record<string, string> = {
-  // Types de bien
-  APPARTEMENT: 'Appartement',
-  MAISON_VILLA: t('Maison / Villa'),
-  STUDIO: 'Studio',
-  DUPLEX_TRIPLEX: t('Duplex / Triplex'),
-  CHAMBRE_COLOCATION: 'Chambre',
-  BUREAU: 'Bureau',
-  BOUTIQUE_COMMERCIAL: 'Commerce',
-  ENTREPOT_INDUSTRIEL: t('Entrepôt'),
-  TERRAIN: 'Terrain',
-  IMMEUBLE: 'Immeuble',
-  PARKING_BOX: 'Parking',
-  LOT_PROGRAMME_NEUF: t('Lot neuf'),
+function EXTRA_LABELS(): Record<string, string> {
+  return {
+    // Types de bien
+    APPARTEMENT: t('Appartement'),
+    MAISON_VILLA: t('Maison / Villa'),
+    STUDIO: t('Studio'),
+    DUPLEX_TRIPLEX: t('Duplex / Triplex'),
+    CHAMBRE_COLOCATION: t('Chambre'),
+    BUREAU: t('Bureau'),
+    BOUTIQUE_COMMERCIAL: t('Commerce'),
+    ENTREPOT_INDUSTRIEL: t('Entrepôt'),
+    TERRAIN: t('Terrain'),
+    IMMEUBLE: t('Immeuble'),
+    PARKING_BOX: t('Parking'),
+    LOT_PROGRAMME_NEUF: t('Lot neuf'),
 
-  // Moyens de paiement
-  CASH: t('Espèces'),
-  BANK_TRANSFER: 'Virement',
-  CHECK: t('Chèque'),
-  MOBILE_MONEY: t('Mobile Money'),
-  CARD: t('Carte bancaire'),
-  OTHER: 'Autre',
+    // Moyens de paiement
+    CASH: t('Espèces'),
+    BANK_TRANSFER: t('Virement'),
+    CHECK: t('Chèque'),
+    MOBILE_MONEY: t('Mobile Money'),
+    CARD: t('Carte bancaire'),
+    OTHER: t('Autre'),
 
-  // Priorités de ticket
-  URGENT: 'Urgente',
-  HIGH: 'Haute',
-  MEDIUM: 'Moyenne',
-  LOW: 'Basse',
+    // Priorités de ticket
+    URGENT: t('Urgente'),
+    HIGH: t('Haute'),
+    MEDIUM: t('Moyenne'),
+    LOW: t('Basse'),
 
-  // Étapes commerciales et statuts de contact
-  QUALIFIED: t('Qualifiée'),
-  VISIT: 'Visite',
-  NEGOTIATION: t('Négociation'),
-  ACTIVE_CLIENT: 'Client',
-  AUTRES: 'Autres',
-  LEAD: 'Prospect'
-};
+    // Étapes commerciales et statuts de contact
+    QUALIFIED: t('Qualifiée'),
+    VISIT: t('Visite'),
+    NEGOTIATION: t('Négociation'),
+    ACTIVE_CLIENT: t('Client'),
+    AUTRES: t('Autres'),
+    LEAD: t('Prospect')
+  };
+}
 
 /**
  * Libellé français d'un code métier.
@@ -107,7 +109,7 @@ const EXTRA_LABELS: Record<string, string> = {
  * tables s'affiche tel quel — visible, donc corrigeable — plutôt que masqué.
  */
 export function bucketLabel(key: string): string {
-  return statusLabel(key) ?? EXTRA_LABELS[key] ?? key;
+  return statusLabel(key) ?? EXTRA_LABELS()[key] ?? key;
 }
 
 /**

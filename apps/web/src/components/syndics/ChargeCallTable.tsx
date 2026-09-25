@@ -8,12 +8,14 @@ import { t } from '../../i18n/t';
 import { activeLocale } from '../../i18n/format';
 const { Text } = Typography;
 
-const statusConfig: Record<ChargeCallStatus, { color: string; label: string }> = {
-  PENDING: { color: 'gold', label: t('En attente') },
-  PARTIAL: { color: 'blue', label: t('Partiel') },
-  PAID: { color: 'green', label: t('Paye') },
-  OVERDUE: { color: 'red', label: t('En retard') }
-};
+function statusConfig(): Record<ChargeCallStatus, { color: string; label: string }> {
+  return {
+    PENDING: { color: 'gold', label: t('En attente') },
+    PARTIAL: { color: 'blue', label: t('Partiel') },
+    PAID: { color: 'green', label: t('Paye') },
+    OVERDUE: { color: 'red', label: t('En retard') }
+  };
+}
 
 function buildLotLabel(item: ChargeCall): string {
   const property = item.lot?.property;
@@ -82,7 +84,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({ items, loading
       dataIndex: 'status',
       key: 'status',
       render: (value: ChargeCallStatus) => {
-        const config = statusConfig[value];
+        const config = statusConfig()[value];
         return <Tag color={config.color}>{config.label}</Tag>;
       }
     }

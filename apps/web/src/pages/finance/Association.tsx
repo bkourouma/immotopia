@@ -75,23 +75,25 @@ function pourcentage(valeur: number): string {
   return `${valeur.toLocaleString(activeLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %`;
 }
 
-const MOIS_FR = [
-  'janvier',
-  t('février'),
-  'mars',
-  'avril',
-  'mai',
-  'juin',
-  'juillet',
-  t('août'),
-  'septembre',
-  'octobre',
-  'novembre',
-  t('décembre')
-];
+function MOIS_FR() {
+  return [
+    'janvier',
+    t('février'),
+    'mars',
+    'avril',
+    'mai',
+    'juin',
+    'juillet',
+    t('août'),
+    'septembre',
+    'octobre',
+    'novembre',
+    t('décembre')
+  ];
+}
 
 function libellePeriode(year: number, month: number): string {
-  const nomMois = MOIS_FR[month - 1] ?? String(month);
+  const nomMois = MOIS_FR()[month - 1] ?? String(month);
   return `${nomMois.charAt(0).toUpperCase()}${nomMois.slice(1)} ${year}`;
 }
 

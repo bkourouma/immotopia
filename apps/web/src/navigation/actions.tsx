@@ -28,32 +28,34 @@ export interface ScreenAction {
   icon: React.ReactNode;
 }
 
-export const SCREEN_ACTIONS: ScreenAction[] = [
-  {
-    on: '/tenant/:tenantId/properties',
-    label: t('Ajouter une propriété'),
-    href: '/tenant/:tenantId/properties/new',
-    icon: <PlusOutlined />
-  },
-  {
-    on: '/tenant/:tenantId/crm/contacts',
-    label: t('Nouveau contact'),
-    href: '/tenant/:tenantId/crm/contacts/new',
-    icon: <PlusOutlined />
-  },
-  {
-    on: '/tenant/:tenantId/rental/leases',
-    label: t('Nouveau bail'),
-    href: '/tenant/:tenantId/rental/leases/new',
-    icon: <PlusOutlined />
-  },
-  {
-    on: '/tenant/:tenantId/maintenance',
-    label: t('Signaler un problème'),
-    href: '/tenant/:tenantId/maintenance/new',
-    icon: <PlusOutlined />
-  }
-];
+export function SCREEN_ACTIONS(): ScreenAction[] {
+  return [
+    {
+      on: '/tenant/:tenantId/properties',
+      label: t('Ajouter une propriété'),
+      href: '/tenant/:tenantId/properties/new',
+      icon: <PlusOutlined />
+    },
+    {
+      on: '/tenant/:tenantId/crm/contacts',
+      label: t('Nouveau contact'),
+      href: '/tenant/:tenantId/crm/contacts/new',
+      icon: <PlusOutlined />
+    },
+    {
+      on: '/tenant/:tenantId/rental/leases',
+      label: t('Nouveau bail'),
+      href: '/tenant/:tenantId/rental/leases/new',
+      icon: <PlusOutlined />
+    },
+    {
+      on: '/tenant/:tenantId/maintenance',
+      label: t('Signaler un problème'),
+      href: '/tenant/:tenantId/maintenance/new',
+      icon: <PlusOutlined />
+    }
+  ];
+}
 
 /**
  * Action de l'écran courant, ou `null`.
@@ -63,7 +65,7 @@ export const SCREEN_ACTIONS: ScreenAction[] = [
  */
 export function actionForPath(pathname: string, tenantId?: string | null): ScreenAction | null {
   if (!tenantId) return null;
-  const match = SCREEN_ACTIONS.find(a => a.on.replace(':tenantId', tenantId) === pathname);
+  const match = SCREEN_ACTIONS().find(a => a.on.replace(':tenantId', tenantId) === pathname);
   if (!match) return null;
   return { ...match, href: match.href.replace(':tenantId', tenantId) };
 }

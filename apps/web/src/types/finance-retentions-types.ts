@@ -45,10 +45,12 @@ import { t } from '../i18n/t';
 /** Les deux natures de pièce sur lesquelles une retenue peut se poser. */
 export type RetentionSourceType = 'SUPPLIER_INVOICE' | 'PROGRESS_STATEMENT';
 
-export const RETENTION_SOURCE_TYPE_LABELS: Record<RetentionSourceType, string> = {
-  SUPPLIER_INVOICE: t('Facture fournisseur'),
-  PROGRESS_STATEMENT: t('Situation de tâcheron')
-};
+export function RETENTION_SOURCE_TYPE_LABELS(): Record<RetentionSourceType, string> {
+  return {
+    SUPPLIER_INVOICE: t('Facture fournisseur'),
+    PROGRESS_STATEMENT: t('Situation de tâcheron')
+  };
+}
 
 export type RetentionStatus = 'HELD' | 'RELEASED';
 
@@ -64,10 +66,12 @@ export type RetentionStatus = 'HELD' | 'RELEASED';
  * « Libérée » et non « Réglée » : l'argent est redevenu exigible, il n'est pas
  * sorti.
  */
-export const RETENTION_STATUS_LABELS: Record<RetentionStatus, string> = {
-  HELD: t('Détenue'),
-  RELEASED: t('Libérée')
-};
+export function RETENTION_STATUS_LABELS(): Record<RetentionStatus, string> {
+  return {
+    HELD: t('Détenue'),
+    RELEASED: t('Libérée')
+  };
+}
 
 // ---------------------------------------------------------------------------
 // La retenue

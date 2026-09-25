@@ -735,7 +735,7 @@ function SceneSidebar() {
   return (
     <div style={{ position: 'relative', minHeight: 640 }}>
       <div style={{ width: largeur, position: 'relative', background: 'var(--surface-nav)', minHeight: 640 }}>
-        <AppNavigation persona={NAVIGATION[persona]} context={{ tenantId: AGENCE }} variant={variant} />
+        <AppNavigation persona={NAVIGATION()[persona]} context={{ tenantId: AGENCE }} variant={variant} />
       </div>
     </div>
   );

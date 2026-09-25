@@ -450,7 +450,7 @@ export const FactureFournisseur: React.FC = () => {
       title: t('Statut'),
       key: 'statut',
       render: (_, f) => (
-        <StatusTag status={f.status} tone={STATUT_TONE[f.status]} label={DOCUMENT_STATUS_LABELS[f.status]} />
+        <StatusTag status={f.status} tone={STATUT_TONE[f.status]} label={DOCUMENT_STATUS_LABELS()[f.status]} />
       )
     },
     {
@@ -681,7 +681,11 @@ export const FactureFournisseur: React.FC = () => {
                 aria-label={t('Facture {{reference}}', { reference: f.reference })}
                 subtitle={`${dateCourte(f.invoiceDate)}${f.siteLabel ? ' · ' + f.siteLabel : ''}`}
                 status={
-                  <StatusTag status={f.status} tone={STATUT_TONE[f.status]} label={DOCUMENT_STATUS_LABELS[f.status]} />
+                  <StatusTag
+                    status={f.status}
+                    tone={STATUT_TONE[f.status]}
+                    label={DOCUMENT_STATUS_LABELS()[f.status]}
+                  />
                 }
                 highlight={<MoneyValue value={f.amount} />}
                 primaryAction={
@@ -839,7 +843,7 @@ export const FactureFournisseur: React.FC = () => {
                         <StatusTag
                           status={r.status}
                           tone={STATUT_TONE[r.status]}
-                          label={DOCUMENT_STATUS_LABELS[r.status]}
+                          label={DOCUMENT_STATUS_LABELS()[r.status]}
                         />
                       )
                     },
@@ -876,7 +880,7 @@ export const FactureFournisseur: React.FC = () => {
                         <StatusTag
                           status={r.status}
                           tone={STATUT_TONE[r.status]}
-                          label={DOCUMENT_STATUS_LABELS[r.status]}
+                          label={DOCUMENT_STATUS_LABELS()[r.status]}
                         />
                       }
                       highlight={<MoneyValue value={r.amount} />}

@@ -27,19 +27,23 @@ import { t } from '../i18n/t';
 /** Cycle d'un budget de chantier et de ses avenants. */
 export type SiteBudgetStatus = 'DRAFT' | 'VALIDATED';
 
-export const SITE_BUDGET_STATUS_LABELS: Record<SiteBudgetStatus, string> = {
-  DRAFT: 'Brouillon',
-  VALIDATED: t('Validé')
-};
+export function SITE_BUDGET_STATUS_LABELS(): Record<SiteBudgetStatus, string> {
+  return {
+    DRAFT: t('Brouillon'),
+    VALIDATED: t('Validé')
+  };
+}
 
 /** Cycle **décidé** d'un bon de commande. Voir `PurchaseOrderInvoicingState`. */
 export type PurchaseOrderStatus = 'DRAFT' | 'ISSUED' | 'CANCELLED';
 
-export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
-  DRAFT: 'Brouillon',
-  ISSUED: t('Émis'),
-  CANCELLED: t('Annulé')
-};
+export function PURCHASE_ORDER_STATUS_LABELS(): Record<PurchaseOrderStatus, string> {
+  return {
+    DRAFT: t('Brouillon'),
+    ISSUED: t('Émis'),
+    CANCELLED: t('Annulé')
+  };
+}
 
 /**
  * État de facturation d'un bon. **Calculé par le serveur, jamais stocké.**
@@ -50,11 +54,13 @@ export const PURCHASE_ORDER_STATUS_LABELS: Record<PurchaseOrderStatus, string> =
  */
 export type PurchaseOrderInvoicingState = 'NOT_INVOICED' | 'PARTIALLY_INVOICED' | 'SETTLED';
 
-export const INVOICING_STATE_LABELS: Record<PurchaseOrderInvoicingState, string> = {
-  NOT_INVOICED: t('Non facturé'),
-  PARTIALLY_INVOICED: t('Partiellement facturé'),
-  SETTLED: t('Soldé')
-};
+export function INVOICING_STATE_LABELS(): Record<PurchaseOrderInvoicingState, string> {
+  return {
+    NOT_INVOICED: t('Non facturé'),
+    PARTIALLY_INVOICED: t('Partiellement facturé'),
+    SETTLED: t('Soldé')
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Budget

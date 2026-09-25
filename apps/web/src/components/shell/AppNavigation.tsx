@@ -125,7 +125,7 @@ export const AppNavigation: React.FC<AppNavigationProps> = ({
         out.push({
           key: `section:${entry.section}`,
           type: 'group',
-          label: SECTION_LABELS[entry.section],
+          label: SECTION_LABELS()[entry.section],
           children: []
         });
       }

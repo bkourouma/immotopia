@@ -202,7 +202,7 @@ describe('AppNavigation — intertitres de domaine', () => {
   function renderNav(variant: 'sidebar' | 'rail') {
     return render(
       <MemoryRouter initialEntries={[`/tenant/${TENANT}/rental/leases`]}>
-        <AppNavigation persona={NAVIGATION.collaborateur} context={{ tenantId: TENANT }} variant={variant} />
+        <AppNavigation persona={NAVIGATION().collaborateur} context={{ tenantId: TENANT }} variant={variant} />
       </MemoryRouter>
     );
   }
@@ -233,7 +233,7 @@ describe('AppNavigation — intertitres de domaine', () => {
   it('coiffe le portail propriétaire de « Mon portefeuille » et « Suivi des bâtiments »', () => {
     render(
       <MemoryRouter initialEntries={['/owner/revenues']}>
-        <AppNavigation persona={NAVIGATION.proprietaire} context={{}} variant="sidebar" />
+        <AppNavigation persona={NAVIGATION().proprietaire} context={{}} variant="sidebar" />
       </MemoryRouter>
     );
     expect(screen.getByText('Mon portefeuille')).toBeInTheDocument();

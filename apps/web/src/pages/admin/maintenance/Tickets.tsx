@@ -29,19 +29,23 @@ const { Title } = Typography;
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 
-const categoryLabels: Record<string, string> = {
-  PLUMBING: 'Plomberie',
-  ELECTRICITY: t('Électricité'),
-  AC: 'Climatisation',
-  OTHER: 'Autre'
-};
+function categoryLabels(): Record<string, string> {
+  return {
+    PLUMBING: t('Plomberie'),
+    ELECTRICITY: t('Électricité'),
+    AC: t('Climatisation'),
+    OTHER: t('Autre')
+  };
+}
 
-const priorityLabels: Record<string, string> = {
-  LOW: 'Faible',
-  MEDIUM: 'Moyenne',
-  HIGH: t('Élevée'),
-  URGENT: 'Urgente'
-};
+function priorityLabels(): Record<string, string> {
+  return {
+    LOW: t('Faible'),
+    MEDIUM: t('Moyenne'),
+    HIGH: t('Élevée'),
+    URGENT: t('Urgente')
+  };
+}
 
 const priorityColors: Record<string, string> = {
   LOW: 'default',
@@ -187,14 +191,14 @@ export const Tickets: React.FC = () => {
       dataIndex: 'category',
       key: 'category',
       width: 120,
-      render: (category: string) => categoryLabels[category] || category
+      render: (category: string) => categoryLabels()[category] || category
     },
     {
       title: t('Priorité'),
       dataIndex: 'priority',
       key: 'priority',
       width: 120,
-      render: (priority: string) => <Tag color={priorityColors[priority]}>{priorityLabels[priority] || priority}</Tag>
+      render: (priority: string) => <Tag color={priorityColors[priority]}>{priorityLabels()[priority] || priority}</Tag>
     },
     {
       title: t('Statut'),

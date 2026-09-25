@@ -57,7 +57,9 @@ import { activeLocale } from '../../i18n/format';
 type Filters = { status: string };
 const FILTER_KEYS = ['status'] as const;
 
-const OPTIONS_STATUT = Object.entries(SITE_STATUS_LABELS).map(([value, label]) => ({ value, label }));
+function OPTIONS_STATUT() {
+  return Object.entries(SITE_STATUS_LABELS()).map(([value, label]) => ({ value, label }));
+}
 
 function dateCourte(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString(activeLocale()) : '—';
@@ -167,7 +169,7 @@ export const Chantiers: React.FC = () => {
     {
       title: t('Statut'),
       key: 'statut',
-      render: (_, c) => <StatusTag status={c.status} label={SITE_STATUS_LABELS[c.status]} />
+      render: (_, c) => <StatusTag status={c.status} label={SITE_STATUS_LABELS()[c.status]} />
     },
     {
       title: t('Coût réel'),
@@ -210,7 +212,7 @@ export const Chantiers: React.FC = () => {
             allowClear
             value={list.filters.status || undefined}
             onChange={valeur => list.setFilters({ status: valeur })}
-            options={OPTIONS_STATUT}
+            options={OPTIONS_STATUT()}
           />
         </div>
       </FilterSheet>
@@ -241,7 +243,7 @@ export const Chantiers: React.FC = () => {
             title={c.name}
             aria-label={c.name}
             subtitle={[c.zone, c.propertyLabel ?? t('Sans bien (terrain loué)')].filter(Boolean).join(' · ')}
-            status={<StatusTag status={c.status} label={SITE_STATUS_LABELS[c.status]} />}
+            status={<StatusTag status={c.status} label={SITE_STATUS_LABELS()[c.status]} />}
             highlight={<MoneyValue value={c.actualCost} />}
             fields={[
               { label: 'Responsable', value: c.managerLabel ?? '—' },

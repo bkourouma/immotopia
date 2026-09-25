@@ -1,20 +1,26 @@
 import { MaintenanceContract, MeetingStatus, MeetingType } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
 
-export const contractStatusLabels: Record<MaintenanceContract['status'], string> = {
-  ACTIVE: 'Actif',
-  EXPIRED: t('Expiré'),
-  TERMINATED: t('Résilié')
-};
+export function contractStatusLabels(): Record<MaintenanceContract['status'], string> {
+  return {
+    ACTIVE: t('Actif'),
+    EXPIRED: t('Expiré'),
+    TERMINATED: t('Résilié')
+  };
+}
 
-export const meetingTypeLabels: Record<MeetingType, string> = {
-  ORDINARY: 'Ordinaire',
-  EXTRAORDINARY: 'Extraordinaire'
-};
+export function meetingTypeLabels(): Record<MeetingType, string> {
+  return {
+    ORDINARY: t('Ordinaire'),
+    EXTRAORDINARY: t('Extraordinaire')
+  };
+}
 
-export const meetingStatusLabels: Record<MeetingStatus, string> = {
-  PLANNED: t('Planifiée'),
-  IN_PROGRESS: t('En cours'),
-  COMPLETED: t('Clôturée'),
-  CANCELLED: t('Annulée')
-};
+export function meetingStatusLabels(): Record<MeetingStatus, string> {
+  return {
+    PLANNED: t('Planifiée'),
+    IN_PROGRESS: t('En cours'),
+    COMPLETED: t('Clôturée'),
+    CANCELLED: t('Annulée')
+  };
+}

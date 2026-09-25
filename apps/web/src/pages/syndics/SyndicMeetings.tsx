@@ -27,10 +27,12 @@ import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
 
-const meetingTypeOptions: Array<{ label: string; value: MeetingType }> = [
-  { label: t('Ordinaire'), value: 'ORDINARY' },
-  { label: t('Extraordinaire'), value: 'EXTRAORDINARY' }
-];
+function meetingTypeOptions(): Array<{ label: string; value: MeetingType }> {
+  return [
+    { label: t('Ordinaire'), value: 'ORDINARY' },
+    { label: t('Extraordinaire'), value: 'EXTRAORDINARY' }
+  ];
+}
 
 export const SyndicMeetings: React.FC = () => {
   const { message } = App.useApp();
@@ -145,7 +147,7 @@ export const SyndicMeetings: React.FC = () => {
                   title: 'Type',
                   dataIndex: 'type',
                   key: 'type',
-                  render: (value: MeetingType) => meetingTypeLabels[value]
+                  render: (value: MeetingType) => meetingTypeLabels()[value]
                 },
                 {
                   title: 'Date',
@@ -175,7 +177,7 @@ export const SyndicMeetings: React.FC = () => {
                   title: 'Statut',
                   dataIndex: 'status',
                   key: 'status',
-                  render: (value: GeneralMeeting['status']) => <Tag>{meetingStatusLabels[value]}</Tag>
+                  render: (value: GeneralMeeting['status']) => <Tag>{meetingStatusLabels()[value]}</Tag>
                 },
                 {
                   title: 'Actions',
@@ -206,7 +208,7 @@ export const SyndicMeetings: React.FC = () => {
       >
         <Form form={form} layout="vertical" initialValues={{ type: 'ORDINARY' }}>
           <Form.Item label={t('Type')} name="type" rules={[{ required: true, message: t('Le type est obligatoire') }]}>
-            <Select options={meetingTypeOptions} />
+            <Select options={meetingTypeOptions()} />
           </Form.Item>
           <Form.Item
             label={t('Date et heure')}

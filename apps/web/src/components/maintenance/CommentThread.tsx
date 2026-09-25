@@ -17,11 +17,13 @@ const authorTypeIcons: Record<string, React.ReactNode> = {
   SYSTEM: <RobotOutlined />
 };
 
-const authorTypeLabels: Record<string, string> = {
-  TENANT: 'Locataire',
-  MANAGER: 'Gestionnaire',
-  SYSTEM: t('Système')
-};
+function authorTypeLabels(): Record<string, string> {
+  return {
+    TENANT: t('Locataire'),
+    MANAGER: t('Gestionnaire'),
+    SYSTEM: t('Système')
+  };
+}
 
 export const CommentThread: React.FC<CommentThreadProps> = ({ comments }) => {
   if (comments.length === 0) {
@@ -36,7 +38,7 @@ export const CommentThread: React.FC<CommentThreadProps> = ({ comments }) => {
           ? comment.authorUser.fullName || comment.authorUser.email
           : comment.authorContact
             ? `${comment.authorContact.firstName} ${comment.authorContact.lastName}`
-            : authorTypeLabels[comment.authorType] || 'Inconnu';
+            : authorTypeLabels()[comment.authorType] || 'Inconnu';
 
         const formattedDate = formatCompactDate(comment.createdAt);
 
@@ -48,7 +50,7 @@ export const CommentThread: React.FC<CommentThreadProps> = ({ comments }) => {
                 <Space>
                   <Text strong>{authorName}</Text>
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    {authorTypeLabels[comment.authorType]}
+                    {authorTypeLabels()[comment.authorType]}
                   </Text>
                 </Space>
               }

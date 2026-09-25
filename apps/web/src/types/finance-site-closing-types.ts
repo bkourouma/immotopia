@@ -63,11 +63,13 @@ import { t } from '../i18n/t';
 export type SiteLotAllocationMethod = 'SURFACE' | 'EQUAL' | 'MANUAL';
 
 /** Libellés français des trois clés. Jamais la valeur brute à l'écran. */
-export const ALLOCATION_METHOD_LABELS: Record<SiteLotAllocationMethod, string> = {
-  SURFACE: t('Au prorata des surfaces'),
-  EQUAL: t('Parts égales'),
-  MANUAL: t('Quotes-parts saisies')
-};
+export function ALLOCATION_METHOD_LABELS(): Record<SiteLotAllocationMethod, string> {
+  return {
+    SURFACE: t('Au prorata des surfaces'),
+    EQUAL: t('Parts égales'),
+    MANUAL: t('Quotes-parts saisies')
+  };
+}
 
 /**
  * Ce que chaque clé EXIGE des lots, dit avant d'essayer de la poser.
@@ -76,11 +78,13 @@ export const ALLOCATION_METHOD_LABELS: Record<SiteLotAllocationMethod, string> =
  * répartir à moitié (contrat gelé, `SetLotAllocationMethodTx`). L'écran affiche
  * donc l'exigence à côté du choix, pour que le refus ne soit pas une surprise.
  */
-export const ALLOCATION_METHOD_REQUIREMENTS: Record<SiteLotAllocationMethod, string> = {
-  SURFACE: t('Chaque lot doit porter une surface strictement positive.'),
-  EQUAL: t('Aucune donnée supplémentaire à saisir sur les lots.'),
-  MANUAL: t('Les quotes-parts saisies doivent totaliser exactement cent pour cent.')
-};
+export function ALLOCATION_METHOD_REQUIREMENTS(): Record<SiteLotAllocationMethod, string> {
+  return {
+    SURFACE: t('Chaque lot doit porter une surface strictement positive.'),
+    EQUAL: t('Aucune donnée supplémentaire à saisir sur les lots.'),
+    MANUAL: t('Les quotes-parts saisies doivent totaliser exactement cent pour cent.')
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Les lots
@@ -281,25 +285,29 @@ export interface CapitalizedLot {
  * (`pages/properties/Properties.tsx` et `components/properties/PropertyForm.tsx`) :
  * un même type de bien ne doit pas s'appeler autrement selon l'écran.
  */
-export const PROPERTY_TYPE_LABELS: Record<PropertyType, string> = {
-  [PropertyType.APPARTEMENT]: 'Appartement',
-  [PropertyType.MAISON_VILLA]: t('Maison / Villa'),
-  [PropertyType.STUDIO]: 'Studio',
-  [PropertyType.DUPLEX_TRIPLEX]: t('Duplex / Triplex'),
-  [PropertyType.CHAMBRE_COLOCATION]: t('Chambre / Colocation'),
-  [PropertyType.BUREAU]: 'Bureau',
-  [PropertyType.BOUTIQUE_COMMERCIAL]: t('Boutique / Commercial'),
-  [PropertyType.ENTREPOT_INDUSTRIEL]: t('Entrepôt / Industriel'),
-  [PropertyType.TERRAIN]: 'Terrain',
-  [PropertyType.IMMEUBLE]: 'Immeuble',
-  [PropertyType.PARKING_BOX]: t('Parking / Box'),
-  [PropertyType.LOT_PROGRAMME_NEUF]: t('Lot programme neuf')
-};
+export function PROPERTY_TYPE_LABELS(): Record<PropertyType, string> {
+  return {
+    [PropertyType.APPARTEMENT]: t('Appartement'),
+    [PropertyType.MAISON_VILLA]: t('Maison / Villa'),
+    [PropertyType.STUDIO]: t('Studio'),
+    [PropertyType.DUPLEX_TRIPLEX]: t('Duplex / Triplex'),
+    [PropertyType.CHAMBRE_COLOCATION]: t('Chambre / Colocation'),
+    [PropertyType.BUREAU]: t('Bureau'),
+    [PropertyType.BOUTIQUE_COMMERCIAL]: t('Boutique / Commercial'),
+    [PropertyType.ENTREPOT_INDUSTRIEL]: t('Entrepôt / Industriel'),
+    [PropertyType.TERRAIN]: t('Terrain'),
+    [PropertyType.IMMEUBLE]: t('Immeuble'),
+    [PropertyType.PARKING_BOX]: t('Parking / Box'),
+    [PropertyType.LOT_PROGRAMME_NEUF]: t('Lot programme neuf')
+  };
+}
 
-export const OWNERSHIP_TYPE_LABELS: Record<PropertyOwnershipType, string> = {
-  [PropertyOwnershipType.TENANT]: t("Propriété de l'agence"),
-  [PropertyOwnershipType.PUBLIC]: t('Propriété privée'),
-  [PropertyOwnershipType.CLIENT]: t('Mandat de gestion')
-};
+export function OWNERSHIP_TYPE_LABELS(): Record<PropertyOwnershipType, string> {
+  return {
+    [PropertyOwnershipType.TENANT]: t("Propriété de l'agence"),
+    [PropertyOwnershipType.PUBLIC]: t('Propriété privée'),
+    [PropertyOwnershipType.CLIENT]: t('Mandat de gestion')
+  };
+}
 
 export { PropertyOwnershipType, PropertyType };

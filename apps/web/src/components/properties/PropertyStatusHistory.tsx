@@ -25,16 +25,18 @@ interface PropertyStatusHistoryProps {
   tenantId: string;
 }
 
-const statusLabels: Record<PropertyStatus, string> = {
-  [PropertyStatus.DRAFT]: 'Brouillon',
-  [PropertyStatus.UNDER_REVIEW]: t('En révision'),
-  [PropertyStatus.AVAILABLE]: 'Disponible',
-  [PropertyStatus.RESERVED]: t('Réservé'),
-  [PropertyStatus.UNDER_OFFER]: t('Sous offre'),
-  [PropertyStatus.RENTED]: t('Loué'),
-  [PropertyStatus.SOLD]: 'Vendu',
-  [PropertyStatus.ARCHIVED]: t('Archivé')
-};
+function statusLabels(): Record<PropertyStatus, string> {
+  return {
+    [PropertyStatus.DRAFT]: t('Brouillon'),
+    [PropertyStatus.UNDER_REVIEW]: t('En révision'),
+    [PropertyStatus.AVAILABLE]: t('Disponible'),
+    [PropertyStatus.RESERVED]: t('Réservé'),
+    [PropertyStatus.UNDER_OFFER]: t('Sous offre'),
+    [PropertyStatus.RENTED]: t('Loué'),
+    [PropertyStatus.SOLD]: t('Vendu'),
+    [PropertyStatus.ARCHIVED]: t('Archivé')
+  };
+}
 
 export const PropertyStatusHistory: React.FC<PropertyStatusHistoryProps> = ({ propertyId, tenantId }) => {
   const [history, setHistory] = useState<StatusHistoryEntry[]>([]);
@@ -96,11 +98,11 @@ export const PropertyStatusHistory: React.FC<PropertyStatusHistoryProps> = ({ pr
             <div className="flex items-center gap-2 mb-1">
               {entry.previousStatus && (
                 <>
-                  <span className="text-sm text-gray-600">{statusLabels[entry.previousStatus]}</span>
+                  <span className="text-sm text-gray-600">{statusLabels()[entry.previousStatus]}</span>
                   <span className="text-gray-400">→</span>
                 </>
               )}
-              <span className="font-medium text-gray-900">{statusLabels[entry.newStatus]}</span>
+              <span className="font-medium text-gray-900">{statusLabels()[entry.newStatus]}</span>
             </div>
             <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
               <User className="h-3 w-3" />

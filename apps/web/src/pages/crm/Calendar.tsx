@@ -66,12 +66,14 @@ type Vue = 'agenda' | 'month' | 'week' | 'day';
 type Filtres = { vue: string; perimetre: string; relances: string };
 const FILTER_KEYS = ['vue', 'perimetre', 'relances'] as const;
 
-const VUES: { value: Vue; label: string }[] = [
-  { value: 'agenda', label: t('Agenda') },
-  { value: 'month', label: t('Mois') },
-  { value: 'week', label: t('Semaine') },
-  { value: 'day', label: t('Jour') }
-];
+function VUES(): { value: Vue; label: string }[] {
+  return [
+    { value: 'agenda', label: t('Agenda') },
+    { value: 'month', label: t('Mois') },
+    { value: 'week', label: t('Semaine') },
+    { value: 'day', label: t('Jour') }
+  ];
+}
 
 function memeJour(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
@@ -355,7 +357,7 @@ export const CalendarPage: React.FC = () => {
         <Segmented<Vue>
           value={vue}
           onChange={valeur => list.setFilters({ vue: valeur })}
-          options={VUES}
+          options={VUES()}
           // Le choix de vue est une navigation, pas un filtre de données :
           // il mérite un nom accessible propre.
           aria-label={t('Choisir la vue du calendrier')}

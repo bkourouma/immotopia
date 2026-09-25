@@ -10,20 +10,22 @@ interface PropertyTypeSelectorProps {
   disabled?: boolean;
 }
 
-const propertyTypeConfig: Record<PropertyType, { label: string; icon: React.ReactNode }> = {
-  APPARTEMENT: { label: t('Appartement'), icon: <Building2 className="h-5 w-5" /> },
-  MAISON_VILLA: { label: 'Maison/Villa', icon: <Home className="h-5 w-5" /> },
-  STUDIO: { label: t('Studio'), icon: <Box className="h-5 w-5" /> },
-  DUPLEX_TRIPLEX: { label: 'Duplex/Triplex', icon: <Building className="h-5 w-5" /> },
-  CHAMBRE_COLOCATION: { label: t('Chambre (Colocation)'), icon: <Box className="h-5 w-5" /> },
-  BUREAU: { label: t('Bureau'), icon: <Building2 className="h-5 w-5" /> },
-  BOUTIQUE_COMMERCIAL: { label: 'Boutique/Commercial', icon: <Store className="h-5 w-5" /> },
-  ENTREPOT_INDUSTRIEL: { label: t('Entrepôt/Industriel'), icon: <Factory className="h-5 w-5" /> },
-  TERRAIN: { label: t('Terrain'), icon: <MapPin className="h-5 w-5" /> },
-  IMMEUBLE: { label: t('Immeuble'), icon: <Building className="h-5 w-5" /> },
-  PARKING_BOX: { label: 'Parking/Box', icon: <Car className="h-5 w-5" /> },
-  LOT_PROGRAMME_NEUF: { label: t('Lot (Programme neuf)'), icon: <Building className="h-5 w-5" /> }
-};
+function propertyTypeConfig(): Record<PropertyType, { label: string; icon: React.ReactNode }> {
+  return {
+    APPARTEMENT: { label: t('Appartement'), icon: <Building2 className="h-5 w-5" /> },
+    MAISON_VILLA: { label: 'Maison/Villa', icon: <Home className="h-5 w-5" /> },
+    STUDIO: { label: t('Studio'), icon: <Box className="h-5 w-5" /> },
+    DUPLEX_TRIPLEX: { label: 'Duplex/Triplex', icon: <Building className="h-5 w-5" /> },
+    CHAMBRE_COLOCATION: { label: t('Chambre (Colocation)'), icon: <Box className="h-5 w-5" /> },
+    BUREAU: { label: t('Bureau'), icon: <Building2 className="h-5 w-5" /> },
+    BOUTIQUE_COMMERCIAL: { label: 'Boutique/Commercial', icon: <Store className="h-5 w-5" /> },
+    ENTREPOT_INDUSTRIEL: { label: t('Entrepôt/Industriel'), icon: <Factory className="h-5 w-5" /> },
+    TERRAIN: { label: t('Terrain'), icon: <MapPin className="h-5 w-5" /> },
+    IMMEUBLE: { label: t('Immeuble'), icon: <Building className="h-5 w-5" /> },
+    PARKING_BOX: { label: 'Parking/Box', icon: <Car className="h-5 w-5" /> },
+    LOT_PROGRAMME_NEUF: { label: t('Lot (Programme neuf)'), icon: <Building className="h-5 w-5" /> }
+  };
+}
 
 /**
  * Types retirés du choix, sans être retirés du modèle.
@@ -45,7 +47,7 @@ export const PropertyTypeSelector: React.FC<PropertyTypeSelectorProps> = ({
   onSelect,
   disabled = false
 }) => {
-  const typesProposes = Object.entries(propertyTypeConfig).filter(
+  const typesProposes = Object.entries(propertyTypeConfig()).filter(
     ([type]) => !TYPES_MASQUES.includes(type as PropertyType) || type === selectedType
   );
 

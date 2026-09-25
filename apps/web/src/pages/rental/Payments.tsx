@@ -66,21 +66,25 @@ interface PaymentsProps {
 type Filters = { status: string; onglet: string; renterClientId: string };
 const FILTER_KEYS = ['status', 'onglet', 'renterClientId'] as const;
 
-const METHOD_LABELS: Record<string, string> = {
-  CASH: t('Espèces'),
-  BANK_TRANSFER: t('Virement bancaire'),
-  CHECK: t('Chèque'),
-  MOBILE_MONEY: t('Mobile Money'),
-  CARD: t('Carte bancaire'),
-  OTHER: 'Autre'
-};
+function METHOD_LABELS(): Record<string, string> {
+  return {
+    CASH: t('Espèces'),
+    BANK_TRANSFER: t('Virement bancaire'),
+    CHECK: t('Chèque'),
+    MOBILE_MONEY: t('Mobile Money'),
+    CARD: t('Carte bancaire'),
+    OTHER: t('Autre')
+  };
+}
 
-const STATUS_OPTIONS = [
-  { value: 'PENDING', label: t('En attente') },
-  { value: 'SUCCESS', label: t('Réussi') },
-  { value: 'FAILED', label: t('Échoué') },
-  { value: 'CANCELED', label: t('Annulé') }
-];
+function STATUS_OPTIONS() {
+  return [
+    { value: 'PENDING', label: t('En attente') },
+    { value: 'SUCCESS', label: t('Réussi') },
+    { value: 'FAILED', label: t('Échoué') },
+    { value: 'CANCELED', label: t('Annulé') }
+  ];
+}
 
 /**
  * Montant déjà affecté d'un paiement.
@@ -239,7 +243,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
         );
       }
     },
-    { title: t('Méthode'), key: 'methode', render: (_, p) => METHOD_LABELS[p.method] || p.method },
+    { title: t('Méthode'), key: 'methode', render: (_, p) => METHOD_LABELS()[p.method] || p.method },
     { title: t('Statut'), key: 'statut', render: (_, p) => <StatusTag status={p.status} /> },
     {
       title: t('Actions'),
@@ -292,7 +296,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
             allowClear
             value={list.filters.status || undefined}
             onChange={valeur => list.setFilters({ status: valeur })}
-            options={STATUS_OPTIONS}
+            options={STATUS_OPTIONS()}
           />
         </div>
       </FilterSheet>
@@ -324,7 +328,7 @@ export const Payments: React.FC<PaymentsProps> = ({ leaseId: propLeaseId }) => {
             <DataCard
               title={<MoneyValue value={p.amount} currency={p.currency} />}
               aria-label={t('Paiement du {{value}}', { value: dateCourte(p.initiated_at) })}
-              subtitle={`${dateCourte(p.initiated_at)} · ${METHOD_LABELS[p.method as RentalPaymentMethod] || p.method}`}
+              subtitle={`${dateCourte(p.initiated_at)} · ${METHOD_LABELS()[p.method as RentalPaymentMethod] || p.method}`}
               status={<StatusTag status={p.status} />}
               fields={
                 reste > 0

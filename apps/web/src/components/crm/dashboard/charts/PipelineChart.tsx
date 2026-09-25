@@ -21,19 +21,21 @@ const STAGE_COLORS: Record<CrmDealStage, string> = {
   LOST: '#94a3b8'
 };
 
-const STAGE_LABELS: Record<CrmDealStage, string> = {
-  NEW: 'Nouveau',
-  QUALIFIED: t('Qualifié'),
-  VISIT: 'Visite',
-  NEGOTIATION: t('Négociation'),
-  WON: t('Gagné'),
-  LOST: 'Perdu'
-};
+function STAGE_LABELS(): Record<CrmDealStage, string> {
+  return {
+    NEW: t('Nouveau'),
+    QUALIFIED: t('Qualifié'),
+    VISIT: t('Visite'),
+    NEGOTIATION: t('Négociation'),
+    WON: t('Gagné'),
+    LOST: t('Perdu')
+  };
+}
 
 export const PipelineChart: React.FC<PipelineChartProps> = ({ data, onStageClick }) => {
   const chartData = data.stages.map(stage => ({
     ...stage,
-    label: STAGE_LABELS[stage.stage] || stage.stage
+    label: STAGE_LABELS()[stage.stage] || stage.stage
   }));
 
   const CustomTooltip = ({ active, payload }: any) => {
@@ -41,7 +43,7 @@ export const PipelineChart: React.FC<PipelineChartProps> = ({ data, onStageClick
       const data: PipelineStageData = payload[0].payload;
       return (
         <div className="bg-white p-3 border border-slate-200 rounded-lg shadow-lg">
-          <p className="font-semibold">{STAGE_LABELS[data.stage] || data.stage}</p>
+          <p className="font-semibold">{STAGE_LABELS()[data.stage] || data.stage}</p>
           <p className="text-sm text-slate-600">Nombre: {data.count}</p>
           <p className="text-sm text-slate-600">Valeur: {data.value.toLocaleString(activeLocale())} FCFA</p>
           <p className="text-sm text-slate-600">

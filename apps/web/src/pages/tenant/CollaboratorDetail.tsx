@@ -22,11 +22,13 @@ interface Role {
   description: string | null;
 }
 
-const statusLabels: Record<string, string> = {
-  ACTIVE: 'Actif',
-  PENDING_INVITE: t('Invitation en attente'),
-  INACTIVE: t('Désactivé')
-};
+function statusLabels(): Record<string, string> {
+  return {
+    ACTIVE: t('Actif'),
+    PENDING_INVITE: t('Invitation en attente'),
+    INACTIVE: t('Désactivé')
+  };
+}
 
 export const CollaboratorDetail: React.FC = () => {
   const { message } = App.useApp();
@@ -171,7 +173,7 @@ export const CollaboratorDetail: React.FC = () => {
           <Descriptions column={{ xs: 1, sm: 2 }} bordered size="small">
             <Descriptions.Item label={t('Email')}>{member.user.email}</Descriptions.Item>
             <Descriptions.Item label={t('Nom complet')}>{member.user.fullName || '—'}</Descriptions.Item>
-            <Descriptions.Item label={t('Statut')}>{statusLabels[member.status] ?? member.status}</Descriptions.Item>
+            <Descriptions.Item label={t('Statut')}>{statusLabels()[member.status] ?? member.status}</Descriptions.Item>
             <Descriptions.Item label={t('Dernière connexion')}>
               {member.user.lastLoginAt ? new Date(member.user.lastLoginAt).toLocaleString(activeLocale()) : t('Jamais')}
             </Descriptions.Item>

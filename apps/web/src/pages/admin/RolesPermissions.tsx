@@ -84,11 +84,13 @@ interface ManagedRole {
   persona: PersonaId | null;
 }
 
-const SCOPE_TAGS: Record<ManagedRole['scope'], { color: string; label: string }> = {
-  PLATFORM: { color: 'blue', label: t('Plateforme') },
-  TENANT: { color: 'green', label: t('Agence') },
-  PORTAL: { color: 'purple', label: t('Portail client') }
-};
+function SCOPE_TAGS(): Record<ManagedRole['scope'], { color: string; label: string }> {
+  return {
+    PLATFORM: { color: 'blue', label: t('Plateforme') },
+    TENANT: { color: 'green', label: t('Agence') },
+    PORTAL: { color: 'purple', label: t('Portail client') }
+  };
+}
 
 /**
  * Menus qu'on ne peut pas couper.
@@ -132,7 +134,7 @@ export const RolesPermissions: React.FC = () => {
       };
     });
 
-    const portals: ManagedRole[] = PORTAL_PSEUDO_ROLES.map(pseudo => ({
+    const portals: ManagedRole[] = PORTAL_PSEUDO_ROLES().map(pseudo => ({
       key: pseudo.key,
       id: null,
       name: pseudo.name,
@@ -173,7 +175,7 @@ export const RolesPermissions: React.FC = () => {
         setRoles(rolesData);
         setPermissions(permissionsData);
         setMenuAccess(menuAccessData);
-        setSelectedKey(current => current ?? rolesData[0]?.key ?? PORTAL_PSEUDO_ROLES[0].key);
+        setSelectedKey(current => current ?? rolesData[0]?.key ?? PORTAL_PSEUDO_ROLES()[0].key);
       } catch (err: any) {
         if (!cancelled) setError(err.response?.data?.message || t('Erreur lors du chargement des données'));
       } finally {
@@ -341,7 +343,7 @@ export const RolesPermissions: React.FC = () => {
     );
   }
 
-  const personaLabel = selectedRole?.persona ? NAVIGATION[selectedRole.persona].label : null;
+  const personaLabel = selectedRole?.persona ? NAVIGATION()[selectedRole.persona].label : null;
 
   const renderMenuEntry = (entry: MenuCatalogEntry) => {
     const locked = LOCKED_MENU_KEYS.has(entry.menuKey);
@@ -441,7 +443,7 @@ export const RolesPermissions: React.FC = () => {
           <span>
             {t('Menus —')} {selectedRole.name}
           </span>
-          <Tag color={SCOPE_TAGS[selectedRole.scope].color}>{SCOPE_TAGS[selectedRole.scope].label}</Tag>
+          <Tag color={SCOPE_TAGS()[selectedRole.scope].color}>{SCOPE_TAGS()[selectedRole.scope].label}</Tag>
           <Badge
             count={`${menuCounts.enabled}/${menuCounts.total} actifs`}
             style={{ background: 'var(--ant-color-fill-secondary, #f0f0f0)', color: 'rgba(0,0,0,0.65)' }}
@@ -540,7 +542,7 @@ export const RolesPermissions: React.FC = () => {
           <span>
             {t('Permissions —')} {selectedRole.name}
           </span>
-          <Tag color={SCOPE_TAGS[selectedRole.scope].color}>{SCOPE_TAGS[selectedRole.scope].label}</Tag>
+          <Tag color={SCOPE_TAGS()[selectedRole.scope].color}>{SCOPE_TAGS()[selectedRole.scope].label}</Tag>
         </Space>
       }
       extra={
@@ -673,7 +675,7 @@ export const RolesPermissions: React.FC = () => {
                       title={<Text strong={isSelected}>{role.name}</Text>}
                       description={
                         <Space size={4} wrap>
-                          <Tag color={SCOPE_TAGS[role.scope].color}>{SCOPE_TAGS[role.scope].label}</Tag>
+                          <Tag color={SCOPE_TAGS()[role.scope].color}>{SCOPE_TAGS()[role.scope].label}</Tag>
                           {overrideCount > 0 && <Tag color="orange">{t('Menus personnalisés')}</Tag>}
                         </Space>
                       }

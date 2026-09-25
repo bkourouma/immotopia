@@ -36,10 +36,12 @@ import { t } from '../../i18n/t';
 type Filters = { q: string };
 const FILTER_KEYS = ['q'] as const;
 
-const OPTIONS_NATURE = (Object.keys(SUPPLIER_KIND_LABELS) as SupplierKind[]).map(kind => ({
-  value: kind,
-  label: SUPPLIER_KIND_LABELS[kind]
-}));
+function OPTIONS_NATURE() {
+  return (Object.keys(SUPPLIER_KIND_LABELS()) as SupplierKind[]).map(kind => ({
+    value: kind,
+    label: SUPPLIER_KIND_LABELS()[kind]
+  }));
+}
 
 interface FormulaireFournisseur {
   name: string;
@@ -124,7 +126,7 @@ export const Fournisseurs: React.FC = () => {
     {
       title: t('Nature'),
       key: 'nature',
-      render: (_, f) => SUPPLIER_KIND_LABELS[f.kind]
+      render: (_, f) => SUPPLIER_KIND_LABELS()[f.kind]
     },
     {
       title: t('Contact'),
@@ -197,7 +199,7 @@ export const Fournisseurs: React.FC = () => {
           <DataCard
             title={f.name}
             aria-label={f.name}
-            subtitle={SUPPLIER_KIND_LABELS[f.kind]}
+            subtitle={SUPPLIER_KIND_LABELS()[f.kind]}
             status={
               <StatusTag
                 status={f.isActive ? 'ACTIVE' : 'INACTIVE'}
@@ -237,7 +239,7 @@ export const Fournisseurs: React.FC = () => {
             // sera obligatoire pour les factures de ce fournisseur.
             extra={t('Décide si le rattachement à un chantier sera obligatoire pour ses factures.')}
           >
-            <Select options={OPTIONS_NATURE} placeholder="Choisir…" />
+            <Select options={OPTIONS_NATURE()} placeholder="Choisir…" />
           </Form.Item>
           <Form.Item name="contactName" label={t('Contact')}>
             <Input placeholder={t('Nom du contact')} />

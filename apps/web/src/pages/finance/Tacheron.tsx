@@ -475,7 +475,11 @@ export const Tacheron: React.FC = () => {
       title: t('Statut'),
       key: 'statut',
       render: (_, s) => (
-        <StatusTag status={s.status} tone={TONE_PIECE[s.status]} label={CONTRACTOR_DOCUMENT_STATUS_LABELS[s.status]} />
+        <StatusTag
+          status={s.status}
+          tone={TONE_PIECE[s.status]}
+          label={CONTRACTOR_DOCUMENT_STATUS_LABELS()[s.status]}
+        />
       )
     },
     {
@@ -506,7 +510,11 @@ export const Tacheron: React.FC = () => {
       title: t('Statut'),
       key: 'statut',
       render: (_, r) => (
-        <StatusTag status={r.status} tone={TONE_PIECE[r.status]} label={CONTRACTOR_DOCUMENT_STATUS_LABELS[r.status]} />
+        <StatusTag
+          status={r.status}
+          tone={TONE_PIECE[r.status]}
+          label={CONTRACTOR_DOCUMENT_STATUS_LABELS()[r.status]}
+        />
       )
     },
     {
@@ -738,7 +746,7 @@ export const Tacheron: React.FC = () => {
                     <StatusTag
                       status={s.status}
                       tone={TONE_PIECE[s.status]}
-                      label={CONTRACTOR_DOCUMENT_STATUS_LABELS[s.status]}
+                      label={CONTRACTOR_DOCUMENT_STATUS_LABELS()[s.status]}
                     />
                   }
                   highlight={<MoneyValue value={s.amount} />}
@@ -874,7 +882,7 @@ export const Tacheron: React.FC = () => {
               <StatusTag
                 status={r.status}
                 tone={TONE_PIECE[r.status]}
-                label={CONTRACTOR_DOCUMENT_STATUS_LABELS[r.status]}
+                label={CONTRACTOR_DOCUMENT_STATUS_LABELS()[r.status]}
               />
             }
             highlight={<MoneyValue value={r.amount} />}

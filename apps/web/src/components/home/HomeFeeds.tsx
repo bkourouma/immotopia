@@ -25,11 +25,13 @@ const { Text } = Typography;
  * la semaine, puis ce qui bloque, et le journal en queue).
  */
 
-const SEVERITE: Record<DashboardTask['severity'], { color: string; label: string }> = {
-  danger: { color: 'var(--color-error)', label: t('Urgent') },
-  warning: { color: 'var(--color-warning)', label: t('À surveiller') },
-  info: { color: 'var(--color-primary)', label: t('Information') }
-};
+function SEVERITE(): Record<DashboardTask['severity'], { color: string; label: string }> {
+  return {
+    danger: { color: 'var(--color-error)', label: t('Urgent') },
+    warning: { color: 'var(--color-warning)', label: t('À surveiller') },
+    info: { color: 'var(--color-primary)', label: t('Information') }
+  };
+}
 
 const ICONE_TACHE: Record<DashboardTaskKind, React.ReactNode> = {
   OVERDUE_INSTALLMENT: <ClockCircleOutlined />,
@@ -70,7 +72,7 @@ export const WorkQueue: React.FC<WorkQueueProps> = ({ tasks, loading, link }) =>
       <List
         dataSource={tasks}
         renderItem={tache => {
-          const severite = SEVERITE[tache.severity];
+          const severite = SEVERITE()[tache.severity];
 
           return (
             <List.Item style={{ padding: 0 }}>

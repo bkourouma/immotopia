@@ -55,7 +55,7 @@ export const ContractList: React.FC<ContractListProps> = ({ contracts, loading =
       dataIndex: 'status',
       key: 'status',
       render: (value: MaintenanceContract['status']) => (
-        <Tag color={statusColor[value]}>{contractStatusLabels[value]}</Tag>
+        <Tag color={statusColor[value]}>{contractStatusLabels()[value]}</Tag>
       )
     }
   ];

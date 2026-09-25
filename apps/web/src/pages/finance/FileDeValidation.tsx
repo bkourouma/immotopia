@@ -88,7 +88,7 @@ type Filters = { saisisseur: string; nature: string };
 const FILTER_KEYS = ['saisisseur', 'nature'] as const;
 
 function libelleNature(type: VoidableDocumentType): string {
-  return DOCUMENT_TYPE_LABELS[type] ?? type;
+  return DOCUMENT_TYPE_LABELS()[type] ?? type;
 }
 
 function dateCourte(iso: string): string {
@@ -117,10 +117,12 @@ function validerPiece(tenantId: string, doc: PendingDocument) {
   }
 }
 
-const OPTIONS_NATURE = (Object.keys(DOCUMENT_TYPE_LABELS) as VoidableDocumentType[]).map(type => ({
-  value: type,
-  label: DOCUMENT_TYPE_LABELS[type]
-}));
+function OPTIONS_NATURE() {
+  return (Object.keys(DOCUMENT_TYPE_LABELS()) as VoidableDocumentType[]).map(type => ({
+    value: type,
+    label: DOCUMENT_TYPE_LABELS()[type]
+  }));
+}
 
 interface RapportLot {
   succes: string[];
@@ -367,7 +369,7 @@ export const FileDeValidation: React.FC = () => {
             allowClear
             value={list.filters.nature || undefined}
             onChange={value => list.setFilters({ nature: value })}
-            options={OPTIONS_NATURE}
+            options={OPTIONS_NATURE()}
           />
         </div>
       </FilterSheet>
@@ -382,15 +384,15 @@ export const FileDeValidation: React.FC = () => {
           }}
         >
           <StatCard
-            label={DOCUMENT_TYPE_LABELS.SUPPLIER_INVOICE}
+            label={DOCUMENT_TYPE_LABELS().SUPPLIER_INVOICE}
             value={String(donneesBrutes.filter(d => d.documentType === 'SUPPLIER_INVOICE').length)}
           />
           <StatCard
-            label={DOCUMENT_TYPE_LABELS.SUPPLIER_PAYMENT}
+            label={DOCUMENT_TYPE_LABELS().SUPPLIER_PAYMENT}
             value={String(donneesBrutes.filter(d => d.documentType === 'SUPPLIER_PAYMENT').length)}
           />
           <StatCard
-            label={DOCUMENT_TYPE_LABELS.CASH_VOUCHER}
+            label={DOCUMENT_TYPE_LABELS().CASH_VOUCHER}
             value={String(donneesBrutes.filter(d => d.documentType === 'CASH_VOUCHER').length)}
           />
         </div>

@@ -13,48 +13,50 @@ interface PropertyStatusWorkflowProps {
   onStatusChange?: () => void;
 }
 
-const statusConfig: Record<PropertyStatus, { label: string; color: string; icon: React.ReactNode }> = {
-  [PropertyStatus.DRAFT]: {
-    label: t('Brouillon'),
-    color: 'bg-gray-100 text-gray-800',
-    icon: <Clock className="h-4 w-4" />
-  },
-  [PropertyStatus.UNDER_REVIEW]: {
-    label: t('En révision'),
-    color: 'bg-yellow-100 text-yellow-800',
-    icon: <Clock className="h-4 w-4" />
-  },
-  [PropertyStatus.AVAILABLE]: {
-    label: t('Disponible'),
-    color: 'bg-green-100 text-green-800',
-    icon: <CheckCircle className="h-4 w-4" />
-  },
-  [PropertyStatus.RESERVED]: {
-    label: t('Réservé'),
-    color: 'bg-orange-100 text-orange-800',
-    icon: <Clock className="h-4 w-4" />
-  },
-  [PropertyStatus.UNDER_OFFER]: {
-    label: t('Sous offre'),
-    color: 'bg-blue-100 text-blue-800',
-    icon: <Clock className="h-4 w-4" />
-  },
-  [PropertyStatus.RENTED]: {
-    label: t('Loué'),
-    color: 'bg-purple-100 text-purple-800',
-    icon: <CheckCircle className="h-4 w-4" />
-  },
-  [PropertyStatus.SOLD]: {
-    label: t('Vendu'),
-    color: 'bg-red-100 text-red-800',
-    icon: <XCircle className="h-4 w-4" />
-  },
-  [PropertyStatus.ARCHIVED]: {
-    label: t('Archivé'),
-    color: 'bg-gray-100 text-gray-800',
-    icon: <XCircle className="h-4 w-4" />
-  }
-};
+function statusConfig(): Record<PropertyStatus, { label: string; color: string; icon: React.ReactNode }> {
+  return {
+    [PropertyStatus.DRAFT]: {
+      label: t('Brouillon'),
+      color: 'bg-gray-100 text-gray-800',
+      icon: <Clock className="h-4 w-4" />
+    },
+    [PropertyStatus.UNDER_REVIEW]: {
+      label: t('En révision'),
+      color: 'bg-yellow-100 text-yellow-800',
+      icon: <Clock className="h-4 w-4" />
+    },
+    [PropertyStatus.AVAILABLE]: {
+      label: t('Disponible'),
+      color: 'bg-green-100 text-green-800',
+      icon: <CheckCircle className="h-4 w-4" />
+    },
+    [PropertyStatus.RESERVED]: {
+      label: t('Réservé'),
+      color: 'bg-orange-100 text-orange-800',
+      icon: <Clock className="h-4 w-4" />
+    },
+    [PropertyStatus.UNDER_OFFER]: {
+      label: t('Sous offre'),
+      color: 'bg-blue-100 text-blue-800',
+      icon: <Clock className="h-4 w-4" />
+    },
+    [PropertyStatus.RENTED]: {
+      label: t('Loué'),
+      color: 'bg-purple-100 text-purple-800',
+      icon: <CheckCircle className="h-4 w-4" />
+    },
+    [PropertyStatus.SOLD]: {
+      label: t('Vendu'),
+      color: 'bg-red-100 text-red-800',
+      icon: <XCircle className="h-4 w-4" />
+    },
+    [PropertyStatus.ARCHIVED]: {
+      label: t('Archivé'),
+      color: 'bg-gray-100 text-gray-800',
+      icon: <XCircle className="h-4 w-4" />
+    }
+  };
+}
 
 // Allowed transitions from each status
 const ALLOWED_TRANSITIONS: Record<PropertyStatus, PropertyStatus[]> = {
@@ -108,7 +110,7 @@ export const PropertyStatusWorkflow: React.FC<PropertyStatusWorkflowProps> = ({
     }
   };
 
-  const currentConfig = statusConfig[currentStatus];
+  const currentConfig = statusConfig()[currentStatus];
 
   return (
     <div className="space-y-4">
@@ -127,7 +129,7 @@ export const PropertyStatusWorkflow: React.FC<PropertyStatusWorkflowProps> = ({
           <h4 className="text-sm font-medium text-gray-700">{t('Changer le statut vers:')}</h4>
           <div className="flex flex-wrap gap-2">
             {allowedNextStatuses.map(status => {
-              const config = statusConfig[status];
+              const config = statusConfig()[status];
               return (
                 <button
                   key={status}
@@ -166,7 +168,7 @@ export const PropertyStatusWorkflow: React.FC<PropertyStatusWorkflowProps> = ({
                     </>
                   ) : (
                     <>
-                      {t('Changer vers')} {statusConfig[selectedStatus].label}
+                      {t('Changer vers')} {statusConfig()[selectedStatus].label}
                     </>
                   )}
                 </Button>

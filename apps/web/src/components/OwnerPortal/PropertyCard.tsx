@@ -25,37 +25,43 @@ interface PropertyCardProps {
   };
 }
 
-const propertyTypeLabels: Record<string, string> = {
-  APPARTEMENT: 'Appartement',
-  MAISON_VILLA: t('Maison / Villa'),
-  STUDIO: 'Studio',
-  DUPLEX_TRIPLEX: t('Duplex / Triplex'),
-  CHAMBRE_COLOCATION: t('Chambre / Colocation'),
-  BUREAU: 'Bureau',
-  BOUTIQUE_COMMERCIAL: t('Boutique / Commercial'),
-  ENTREPOT_INDUSTRIEL: t('Entrepôt / Industriel'),
-  TERRAIN: 'Terrain',
-  IMMEUBLE: 'Immeuble',
-  PARKING_BOX: t('Parking / Box'),
-  LOT_PROGRAMME_NEUF: t('Lot programme neuf')
-};
+function propertyTypeLabels(): Record<string, string> {
+  return {
+    APPARTEMENT: t('Appartement'),
+    MAISON_VILLA: t('Maison / Villa'),
+    STUDIO: t('Studio'),
+    DUPLEX_TRIPLEX: t('Duplex / Triplex'),
+    CHAMBRE_COLOCATION: t('Chambre / Colocation'),
+    BUREAU: t('Bureau'),
+    BOUTIQUE_COMMERCIAL: t('Boutique / Commercial'),
+    ENTREPOT_INDUSTRIEL: t('Entrepôt / Industriel'),
+    TERRAIN: t('Terrain'),
+    IMMEUBLE: t('Immeuble'),
+    PARKING_BOX: t('Parking / Box'),
+    LOT_PROGRAMME_NEUF: t('Lot programme neuf')
+  };
+}
 
-const statusLabels: Record<string, { label: string; color: string }> = {
-  DRAFT: { label: t('Brouillon'), color: 'default' },
-  UNDER_REVIEW: { label: t('En révision'), color: 'processing' },
-  AVAILABLE: { label: t('Disponible'), color: 'success' },
-  RESERVED: { label: t('Réservé'), color: 'warning' },
-  UNDER_OFFER: { label: t('Sous offre'), color: 'warning' },
-  RENTED: { label: t('Loué'), color: 'success' },
-  SOLD: { label: t('Vendu'), color: 'default' },
-  ARCHIVED: { label: t('Archivé'), color: 'default' }
-};
+function statusLabels(): Record<string, { label: string; color: string }> {
+  return {
+    DRAFT: { label: t('Brouillon'), color: 'default' },
+    UNDER_REVIEW: { label: t('En révision'), color: 'processing' },
+    AVAILABLE: { label: t('Disponible'), color: 'success' },
+    RESERVED: { label: t('Réservé'), color: 'warning' },
+    UNDER_OFFER: { label: t('Sous offre'), color: 'warning' },
+    RENTED: { label: t('Loué'), color: 'success' },
+    SOLD: { label: t('Vendu'), color: 'default' },
+    ARCHIVED: { label: t('Archivé'), color: 'default' }
+  };
+}
 
-const transactionModeLabels: Record<string, string> = {
-  SALE: 'Vente',
-  RENTAL: 'Location',
-  SHORT_TERM: t('Location courte durée')
-};
+function transactionModeLabels(): Record<string, string> {
+  return {
+    SALE: t('Vente'),
+    RENTAL: t('Location'),
+    SHORT_TERM: t('Location courte durée')
+  };
+}
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat(activeLocale(), {
@@ -77,7 +83,7 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property }) => {
    */
   const isStaleRented = property.status === 'RENTED' && !property.currentLease;
   const effectiveStatus = isStaleRented ? 'AVAILABLE' : property.status;
-  const statusConfig = statusLabels[effectiveStatus] || { label: property.status, color: 'default' };
+  const statusConfig = statusLabels()[effectiveStatus] || { label: property.status, color: 'default' };
 
   return (
     <Card
@@ -96,9 +102,9 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({ property }) => {
           </Text>
           <div style={{ marginTop: 8 }}>
             <Tag color={statusConfig.color}>{statusConfig.label}</Tag>
-            <Tag>{propertyTypeLabels[property.propertyType] || property.propertyType}</Tag>
+            <Tag>{propertyTypeLabels()[property.propertyType] || property.propertyType}</Tag>
             {property.transactionModes.map(mode => (
-              <Tag key={mode}>{transactionModeLabels[mode] || mode}</Tag>
+              <Tag key={mode}>{transactionModeLabels()[mode] || mode}</Tag>
             ))}
           </div>
         </div>

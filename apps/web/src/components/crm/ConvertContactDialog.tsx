@@ -11,12 +11,14 @@ interface ConvertContactDialogProps {
   loading?: boolean;
 }
 
-const roleOptions: { value: CrmContactRoleType; label: string }[] = [
-  { value: 'PROPRIETAIRE', label: t('Propriétaire (Owner)') },
-  { value: 'LOCATAIRE', label: t('Locataire (Renter)') },
-  { value: 'COPROPRIETAIRE', label: t('Copropriétaire (Co-owner)') },
-  { value: 'ACQUEREUR', label: t('Acquéreur (Buyer)') }
-];
+function roleOptions(): { value: CrmContactRoleType; label: string }[] {
+  return [
+    { value: 'PROPRIETAIRE', label: t('Propriétaire (Owner)') },
+    { value: 'LOCATAIRE', label: t('Locataire (Renter)') },
+    { value: 'COPROPRIETAIRE', label: t('Copropriétaire (Co-owner)') },
+    { value: 'ACQUEREUR', label: t('Acquéreur (Buyer)') }
+  ];
+}
 
 export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
   contactName,
@@ -71,7 +73,7 @@ export const ConvertContactDialog: React.FC<ConvertContactDialogProps> = ({
 
           <form onSubmit={handleSubmit}>
             <div className="space-y-3 mb-6">
-              {roleOptions.map(role => (
+              {roleOptions().map(role => (
                 <label
                   key={role.value}
                   className="flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer"

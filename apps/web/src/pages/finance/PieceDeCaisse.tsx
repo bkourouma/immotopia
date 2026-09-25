@@ -324,7 +324,7 @@ export const PieceDeCaisse: React.FC = () => {
             <StatusTag
               status={piece.status}
               tone={TONE_PIECE[piece.status]}
-              label={DOCUMENT_STATUS_LABELS[piece.status]}
+              label={DOCUMENT_STATUS_LABELS()[piece.status]}
             />
           </div>
 
