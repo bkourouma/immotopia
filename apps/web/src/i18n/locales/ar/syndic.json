@@ -2,7 +2,7 @@
   "{{createdCount}} appels de charges créés": "تم إنشاء {{createdCount}} مطالبة رسوم",
   "{{createdCount}} lot(s) importé(s) avec succès": "تم استيراد {{createdCount}} وحدة",
   "{{skippedCount}} lot(s) ignoré(s). {{skippedReasons}}": "تم تخطّي {{skippedCount}} وحدة. {{skippedReasons}}",
-  "{{value}} - {{value2}} - reste {{value3}} XOF": "{{value}} - {{value2}} - المتبقّي {{value3}} XOF",
+  "{{value}} - {{value2}} - reste {{value3}} FCFA": "{{value}} - {{value2}} - المتبقّي {{value3}} FCFA",
   "| Type:": "| النوع:",
   "Abstention": "امتناع",
   "Actifs communs ({{length}})": "الأصول المشتركة ({{length}})",

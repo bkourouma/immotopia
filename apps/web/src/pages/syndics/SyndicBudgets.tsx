@@ -310,7 +310,7 @@ export const SyndicBudgets: React.FC = () => {
                   {
                     title: 'Montant',
                     dataIndex: 'totalAmount',
-                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} XOF`
+                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} FCFA`
                   },
                   { title: 'Allocations', render: (_, budget) => budget.allocations?.length || 0 },
                   {
@@ -389,13 +389,13 @@ export const SyndicBudgets: React.FC = () => {
                   {
                     title: t('Total alloué'),
                     dataIndex: 'totalAllocated',
-                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} XOF`
+                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} FCFA`
                   },
                   {
                     title: t('Détail lignes'),
                     render: (_, row) =>
                       (row.breakdown || [])
-                        .map(line => `${line.category}: ${Number(line.allocated).toLocaleString(activeLocale())} XOF`)
+                        .map(line => `${line.category}: ${Number(line.allocated).toLocaleString(activeLocale())} FCFA`)
                         .join(' | ') || '-'
                   }
                 ]}
@@ -424,7 +424,7 @@ export const SyndicBudgets: React.FC = () => {
                   {
                     title: 'Montant',
                     dataIndex: 'totalAmount',
-                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} XOF`
+                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} FCFA`
                   },
                   { title: 'Charges', render: (_, batch) => batch.chargeCalls?.length || 0 },
                   {

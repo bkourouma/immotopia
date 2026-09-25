@@ -235,7 +235,7 @@ export const SyndicCharges: React.FC = () => {
             <Row gutter={[16, 16]}>
               <Col xs={24} md={8}>
                 <Card>
-                  <Statistic title={t('Montant appele')} value={summary.total} suffix="XOF" precision={0} />
+                  <Statistic title={t('Montant appele')} value={summary.total} suffix="FCFA" precision={0} />
                 </Card>
               </Col>
               <Col xs={24} md={8}>

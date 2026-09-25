@@ -70,22 +70,22 @@ export const SyndicFinances: React.FC = () => {
             <Row gutter={[16, 16]}>
               <Col xs={24} md={8}>
                 <Card>
-                  <Statistic title={t('Total fonds')} value={summary.totals.totalFundsBalance} suffix="XOF" />
+                  <Statistic title={t('Total fonds')} value={summary.totals.totalFundsBalance} suffix="FCFA" />
                 </Card>
               </Col>
               <Col xs={24} md={8}>
                 <Card>
-                  <Statistic title={t('Total appele')} value={summary.totals.totalCalled} suffix="XOF" />
+                  <Statistic title={t('Total appele')} value={summary.totals.totalCalled} suffix="FCFA" />
                 </Card>
               </Col>
               <Col xs={24} md={8}>
                 <Card>
-                  <Statistic title={t('Total paye')} value={summary.totals.totalPaid} suffix="XOF" />
+                  <Statistic title={t('Total paye')} value={summary.totals.totalPaid} suffix="FCFA" />
                 </Card>
               </Col>
               <Col xs={24} md={8}>
                 <Card>
-                  <Statistic title={t('Reste a payer')} value={summary.totals.totalOutstanding} suffix="XOF" />
+                  <Statistic title={t('Reste a payer')} value={summary.totals.totalOutstanding} suffix="FCFA" />
                 </Card>
               </Col>
               <Col xs={24} md={8}>
@@ -95,7 +95,7 @@ export const SyndicFinances: React.FC = () => {
               </Col>
               <Col xs={24} md={8}>
                 <Card>
-                  <Statistic title={t('Montant en retard')} value={summary.totals.overdueAmount} suffix="XOF" />
+                  <Statistic title={t('Montant en retard')} value={summary.totals.overdueAmount} suffix="FCFA" />
                 </Card>
               </Col>
             </Row>

@@ -814,7 +814,7 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       <Alert
         type="info"
         showIcon
-        message={t("Total des charges de l'année en cours : {{value}} XOF", {
+        message={t("Total des charges de l'année en cours : {{value}} FCFA", {
           value: annualExpenses.toLocaleString(activeLocale())
         })}
       />

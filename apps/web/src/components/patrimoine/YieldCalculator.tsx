@@ -51,7 +51,7 @@ export const YieldCalculator: React.FC<Props> = ({ data, loading, assumptions, o
               title={t('Plus-value latente')}
               value={data?.latentCapitalGain ?? 0}
               precision={0}
-              suffix="XOF"
+              suffix="FCFA"
               loading={loading}
             />
           </Col>
@@ -96,7 +96,7 @@ export const YieldCalculator: React.FC<Props> = ({ data, loading, assumptions, o
               title={t('Plus-value latente projetée')}
               value={data?.projectedAtHorizon?.latentCapitalGain ?? data?.latentCapitalGain ?? 0}
               precision={0}
-              suffix="XOF"
+              suffix="FCFA"
               loading={loading}
             />
           </Col>

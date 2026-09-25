@@ -170,7 +170,7 @@ export const SyndicOwnerAccount: React.FC = () => {
                   <Statistic
                     title={t('Solde courant')}
                     value={Number(account?.balance ?? 0)}
-                    suffix={account?.currency || 'XOF'}
+                    suffix={account?.currency && account.currency !== 'XOF' ? account.currency : 'FCFA'}
                   />
                 </Card>
               </Col>

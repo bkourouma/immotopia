@@ -442,7 +442,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
                         {
                           title: 'Montant',
                           dataIndex: 'amount',
-                          render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} XOF`
+                          render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} FCFA`
                         },
                         { title: 'Devise', dataIndex: 'currency' },
                         {

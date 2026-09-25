@@ -2,7 +2,7 @@
   "{{createdCount}} appels de charges créés": "{{createdCount}} charge calls created",
   "{{createdCount}} lot(s) importé(s) avec succès": "{{createdCount}} unit(s) imported",
   "{{skippedCount}} lot(s) ignoré(s). {{skippedReasons}}": "{{skippedCount}} unit(s) skipped. {{skippedReasons}}",
-  "{{value}} - {{value2}} - reste {{value3}} XOF": "{{value}} - {{value2}} - {{value3}} XOF remaining",
+  "{{value}} - {{value2}} - reste {{value3}} FCFA": "{{value}} - {{value2}} - {{value3}} FCFA remaining",
   "| Type:": "| Type:",
   "Abstention": "Abstention",
   "Actifs communs ({{length}})": "Common assets ({{length}})",

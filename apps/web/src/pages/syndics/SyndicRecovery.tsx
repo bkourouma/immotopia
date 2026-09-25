@@ -170,7 +170,7 @@ export const SyndicRecovery: React.FC = () => {
     () =>
       dashboard.items.map(item => ({
         value: item.chargeCallId,
-        label: t('{{value}} - {{value2}} - reste {{value3}} XOF', {
+        label: t('{{value}} - {{value2}} - reste {{value3}} FCFA', {
           value: propertyLabel(item),
           value2: ownerLabel(item.owner),
           value3: item.outstanding.toLocaleString(activeLocale())
@@ -360,7 +360,7 @@ export const SyndicRecovery: React.FC = () => {
               </Col>
               <Col xs={24} md={12}>
                 <Card>
-                  <Statistic title={t('Montant restant du')} value={dashboard.totals.overdueAmount} suffix="XOF" />
+                  <Statistic title={t('Montant restant du')} value={dashboard.totals.overdueAmount} suffix="FCFA" />
                 </Card>
               </Col>
             </Row>
@@ -389,17 +389,17 @@ export const SyndicRecovery: React.FC = () => {
                   {
                     title: 'Montant',
                     dataIndex: 'amount',
-                    render: (value: number) => `${value.toLocaleString(activeLocale())} XOF`
+                    render: (value: number) => `${value.toLocaleString(activeLocale())} FCFA`
                   },
                   {
                     title: t('Payé'),
                     dataIndex: 'paid',
-                    render: (value: number) => `${value.toLocaleString(activeLocale())} XOF`
+                    render: (value: number) => `${value.toLocaleString(activeLocale())} FCFA`
                   },
                   {
                     title: 'Reste',
                     dataIndex: 'outstanding',
-                    render: (value: number) => `${value.toLocaleString(activeLocale())} XOF`
+                    render: (value: number) => `${value.toLocaleString(activeLocale())} FCFA`
                   }
                 ]}
               />
@@ -444,7 +444,7 @@ export const SyndicRecovery: React.FC = () => {
                   {
                     title: 'Montant',
                     dataIndex: 'penaltyAmount',
-                    render: (value: number) => `${Number(value).toLocaleString(activeLocale())} XOF`
+                    render: (value: number) => `${Number(value).toLocaleString(activeLocale())} FCFA`
                   },
                   {
                     title: 'Statut',
@@ -484,7 +484,7 @@ export const SyndicRecovery: React.FC = () => {
                   {
                     title: t('Montant total'),
                     dataIndex: 'totalAmount',
-                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} XOF`
+                    render: (value: number | string) => `${Number(value).toLocaleString(activeLocale())} FCFA`
                   },
                   {
                     title: 'Accord',
@@ -497,7 +497,7 @@ export const SyndicRecovery: React.FC = () => {
                       (item.instalments || [])
                         .map(
                           inst =>
-                            `${dayjs(inst.dueDate).format('DD/MM/YYYY')} (${Number(inst.amount).toLocaleString(activeLocale())} XOF)`
+                            `${dayjs(inst.dueDate).format('DD/MM/YYYY')} (${Number(inst.amount).toLocaleString(activeLocale())} FCFA)`
                         )
                         .join(' | ') || '-'
                   },
