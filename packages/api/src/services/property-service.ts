@@ -181,15 +181,32 @@ export async function createProperty(
       });
     } catch (error: any) {
       // Check if it's a unique constraint violation on internal_reference
-      if (error.code === 'P2002' && error.meta?.target?.includes('internal_reference')) {
+      const isReferenceCollision = error.code === 'P2002' && error.meta?.target?.includes('internal_reference');
+      // Deux creations concurrentes pour la meme agence se serialisent sur le
+      // verrou d'agence (lockTenantLotsTx) : Prisma peut alors rapporter la
+      // contention comme un conflit d'ecriture/interblocage transactionnel
+      // (P2034 — « Transaction failed due to a write conflict or a deadlock.
+      // Please retry your transaction », documente comme reessayable) plutot
+      // que de laisser la seconde transaction voir le quota a jour. Sans ce
+      // cas, cette erreur Prisma brute remontait telle quelle et
+      // error-middleware la classait 500 INTERNAL au lieu du 409
+      // QUOTA_EXCEEDED que la reessai obtient (D1 ; recette syndic du 26/09).
+      const isTransientTransactionConflict = error.code === 'P2034';
+
+      if (isReferenceCollision || isTransientTransactionConflict) {
         retries++;
         if (retries < MAX_RETRIES) {
           // Wait a bit before retrying (exponential backoff)
           const delay = Math.min(50 * Math.pow(2, retries - 1), 200);
           await new Promise(resolve => setTimeout(resolve, delay));
-          logger.warn('Property reference collision, retrying', { retries, title: data.title });
+          logger.warn(
+            isReferenceCollision
+              ? 'Property reference collision, retrying'
+              : 'Property creation transaction conflict, retrying',
+            { retries, title: data.title }
+          );
           continue;
-        } else {
+        } else if (isReferenceCollision) {
           logger.error('Failed to create property after max retries due to reference collision', {
             retries,
             title: data.title,
@@ -199,9 +216,17 @@ export async function createProperty(
           throw new BadRequestError(
             'Failed to generate unique property reference after multiple attempts. Please try again.'
           );
+        } else {
+          logger.error('Failed to create property after max retries due to transaction conflicts', {
+            retries,
+            title: data.title,
+            tenantId,
+            ownerUserId: finalOwnerUserId
+          });
+          throw error;
         }
       } else {
-        // Re-throw if it's not a reference collision error
+        // Re-throw if it's not a reference collision or a transient transaction conflict
         throw error;
       }
     }

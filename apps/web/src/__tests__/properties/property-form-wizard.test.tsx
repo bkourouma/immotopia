@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { act } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent as domFireEvent } from '@testing-library/dom';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { App as AntApp } from 'antd';
@@ -27,12 +28,13 @@ import { PropertyFormWizard } from '../../components/properties/PropertyFormWiza
 
 const getTemplate = vi.fn();
 const createProperty = vi.fn();
+const updateProperty = vi.fn();
 
 vi.mock('../../services/property-service', () => ({
   __esModule: true,
   getTemplate: (...a: unknown[]) => getTemplate(...a),
   createProperty: (...a: unknown[]) => createProperty(...a),
-  updateProperty: vi.fn(),
+  updateProperty: (...a: unknown[]) => updateProperty(...a),
   uploadMedia: vi.fn()
 }));
 
@@ -65,9 +67,27 @@ vi.mock('../../utils/api-client', () => ({
   default: { get: vi.fn(async () => ({ data: { success: true, data: [] } })), post: vi.fn() }
 }));
 
-// Les briques lourdes du parcours ne sont pas le sujet de ces tests.
+// Les briques lourdes du parcours ne sont pas le sujet de ces tests. Rendu
+// interactif (bouton) pour le parcours de creation complet plus bas, qui a
+// besoin de renseigner `formData.location` pour valider l'etape.
 vi.mock('../../components/ui/location-selector', () => ({
-  LocationSelector: () => <div data-testid="selecteur-localisation" />
+  LocationSelector: ({ onChange }: { onChange: (location: unknown) => void }) => (
+    <button
+      type="button"
+      onClick={() =>
+        onChange({
+          country: 'CI',
+          countryId: 'ci',
+          region: 'Abidjan',
+          regionId: 'abj',
+          commune: 'Cocody',
+          communeId: 'cocody'
+        })
+      }
+    >
+      choisir-localisation
+    </button>
+  )
 }));
 vi.mock('../../components/properties/PropertyMediaUpload', () => ({
   PropertyMediaUpload: () => <div data-testid="envoi-medias" />
@@ -129,6 +149,8 @@ const GABARIT_NOMBRE = {
 beforeEach(() => {
   getTemplate.mockReset();
   createProperty.mockReset();
+  updateProperty.mockReset();
+  updateProperty.mockResolvedValue({ id: 'bien-1' });
   getTemplate.mockResolvedValue({ sections: [], fieldDefinitions: [] });
   // Le gabarit Immeuble porte le nombre d'appartements, qui pilote les lignes.
   getTemplate.mockImplementation(async (type: string) =>
@@ -283,5 +305,139 @@ describe('Immeuble — les appartements se saisissent dans la page', () => {
       expect(screen.getByText(/Appartements \(200\)/)).toBeInTheDocument();
     });
     expect(screen.queryByText(/Appartements \(250\)/)).toBeNull();
+  });
+});
+
+/**
+ * Ecart recette du 26/09 (Syndic, quota BLOCK) — un bien en mode Location,
+ * a la derniere etape (« Médias »), envoyait DEUX `POST .../properties` pour
+ * un seul clic sur « Terminer » : l'auto-save qui prepare l'etape media
+ * (`autoSaveForMedia`, sur l'arrivee a cette etape) et `handleFinish` (le
+ * clic) pouvaient chacun decider, sur un `savedPropertyId` encore vide,
+ * d'appeler `createProperty`. Le second partait alors que le premier avait
+ * deja consomme (ou vu refuser) le quota, et l'API le renvoyait en 500 au
+ * lieu de 409 (voir packages/api/src/services/property-service.ts).
+ *
+ * Un `propertyCreationPromiseRef` partage les deux chemins : le premier a
+ * demarrer pose la promesse, l'autre l'attend au lieu d'en relancer une.
+ * Cote navigateur reel, la fenetre de course est un ecart entre la peinture
+ * et l'effet passif differe (React ne la flushe jamais dans ces tests, qui
+ * traitent chaque effet de facon synchrone) : ces tests verifient donc le
+ * contrat observable — jamais plus d'un `createProperty` sur tout le
+ * parcours — plutot que de rejouer le timing exact.
+ */
+describe('Création (Location) — un seul createProperty part malgré l’auto-save media', () => {
+  async function allerJusquauxMedias(user: ReturnType<typeof userEvent.setup>) {
+    monter();
+
+    await user.click(screen.getByText('Appartement'));
+    await user.type(screen.getByPlaceholderText('Ex: Appartement 3 pièces à Cocody'), 'Bel appartement');
+    await user.click(screen.getByText('Suivant'));
+
+    await user.click(screen.getByText('choisir-localisation'));
+    await user.click(screen.getByText('Suivant'));
+
+    // « Caractéristiques générales » : rien d'obligatoire pour un appartement.
+    await user.click(screen.getByText('Suivant'));
+
+    await user.click(screen.getByText('Location'));
+    await user.click(screen.getByText('Suivant'));
+
+    // « Caractéristiques spécifiques » : gabarit vide (mock), rien à saisir.
+    await user.click(screen.getByText('Suivant'));
+    // Arrivée sur « Médias » (dernière étape) : déclenche l'auto-save.
+  }
+
+  it('l’auto-save crée le bien une seule fois ; « Terminer » met à jour, ne recrée pas', async () => {
+    const user = userEvent.setup();
+    createProperty.mockResolvedValue({ id: 'bien-1', propertyType: 'APPARTEMENT', title: 'Bel appartement' });
+
+    await allerJusquauxMedias(user);
+
+    await waitFor(() => expect(createProperty).toHaveBeenCalledTimes(1));
+    // L'auto-save doit avoir fini (savedPropertyId pose) avant que « Terminer »
+    // ne redevienne cliquable au sens d'antd (loading retombé).
+    await waitFor(() => {
+      const bouton = screen.getByText('Terminer').closest('button');
+      expect(bouton?.className).not.toMatch(/ant-btn-loading/);
+    });
+
+    await user.click(screen.getByText('Terminer'));
+
+    await waitFor(() => expect(updateProperty).toHaveBeenCalledTimes(1));
+    expect(updateProperty).toHaveBeenCalledWith('agence-1', 'bien-1', expect.anything());
+    // Le point du correctif : jamais un second create derriere l'auto-save.
+    expect(createProperty).toHaveBeenCalledTimes(1);
+  });
+
+  it('tant que l’auto-save est en cours, « Terminer » ne relance pas createProperty', async () => {
+    const user = userEvent.setup();
+    // Ne se resout jamais : imite un auto-save encore en vol (lent, ou
+    // bloque sur le quota cote API) au moment ou l'utilisateur clique.
+    createProperty.mockImplementation(() => new Promise(() => {}));
+
+    await allerJusquauxMedias(user);
+
+    await waitFor(() => expect(createProperty).toHaveBeenCalledTimes(1));
+
+    // Le bouton est en chargement (antd) : un clic pendant ce temps ne doit
+    // declencher ni un second createProperty, ni un updateProperty.
+    await user.click(screen.getByText('Terminer'));
+
+    expect(createProperty).toHaveBeenCalledTimes(1);
+    expect(updateProperty).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Reconstitution la plus fidèle du symptôme rapporté en recette : deux
+   * alertes superposées (la bannière de quota, correcte, puis une erreur
+   * générique). `message.error` n'est appelé qu'à un seul endroit dans ce
+   * composant — dans le `catch` de `handleFinish` — donc les deux alertes
+   * observées viennent forcément de DEUX exécutions de `handleFinish`, pas
+   * d'un auto-save silencieux (son `catch` ne fait qu'un `console.error`).
+   * Ça correspond à un double-clic sur « Terminer » une fois l'auto-save
+   * retombé en échec (quota refusé, `savedPropertyId` resté vide) : le
+   * bouton redevient cliquable, et deux clics rapprochés relancent chacun
+   * `handleFinish` avant que le premier n'ait eu le temps de désactiver le
+   * bouton (React n'a pas encore rendu `loading`). Reproduit ici en
+   * dispatchant les deux clics dans un seul batch React (`act`), qui les
+   * traite avant de flusher le premier rendu — le seul moyen, dans ce
+   * harnais, d'obtenir deux exécutions avant que l'état ne se mette à jour.
+   */
+  it('double-clic sur « Terminer » après l’échec silencieux de l’auto-save : un seul createProperty relancé', async () => {
+    const user = userEvent.setup();
+    const quotaError = {
+      response: {
+        status: 409,
+        data: { code: 'QUOTA_EXCEEDED', error: 'La capacité de votre abonnement est atteinte.' }
+      }
+    };
+    // 1er appel (auto-save) : quota refusé, silencieux (pas de message.error).
+    createProperty.mockRejectedValueOnce(quotaError);
+    // Tout appel suivant (relance depuis "Terminer") : jamais résolu, pour ne
+    // compter que le nombre d'appels sans se soucier de la suite du flux.
+    createProperty.mockImplementation(() => new Promise(() => {}));
+
+    await allerJusquauxMedias(user);
+
+    await waitFor(() => expect(createProperty).toHaveBeenCalledTimes(1));
+    // L'auto-save a échoué : `savedPropertyId` reste vide, mais le bouton
+    // redevient cliquable (isLoading retombe à false dans son `finally`).
+    await waitFor(() => {
+      const bouton = screen.getByText('Terminer').closest('button');
+      expect(bouton?.className).not.toMatch(/ant-btn-loading/);
+    });
+
+    const terminerBtn = screen.getByText('Terminer');
+    act(() => {
+      domFireEvent.click(terminerBtn);
+      domFireEvent.click(terminerBtn);
+    });
+
+    // 1 (auto-save, déjà réglé) + au plus 1 nouvelle tentative depuis
+    // "Terminer" — jamais 2 de plus (une par clic), ce qui donnerait le 500
+    // constaté en recette sur le second appel concurrent.
+    await waitFor(() => expect(createProperty.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(createProperty).toHaveBeenCalledTimes(2);
   });
 });
