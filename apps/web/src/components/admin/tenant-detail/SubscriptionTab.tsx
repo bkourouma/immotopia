@@ -1,5 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { App, Alert, Button, Card, Descriptions, Divider, Form, Input, InputNumber, Modal, Progress, Select, Space, Spin, Table, Typography } from 'antd';
+import {
+  App,
+  Alert,
+  Button,
+  Card,
+  Descriptions,
+  Divider,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Progress,
+  Select,
+  Space,
+  Spin,
+  Table,
+  Typography
+} from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -35,7 +52,10 @@ import { t } from '../../../i18n/t';
 
 const { Text, Title } = Typography;
 
-const REQUEST_STATUS_LABEL: Record<string, { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }> = {
+const REQUEST_STATUS_LABEL: Record<
+  string,
+  { label: string; tone: 'neutral' | 'info' | 'success' | 'warning' | 'danger' }
+> = {
   OPEN: { label: t('Ouverte'), tone: 'warning' },
   HANDLED: { label: t('Traitée'), tone: 'success' },
   DECLINED: { label: t('Refusée'), tone: 'neutral' }
@@ -68,6 +88,22 @@ const QUOTA_POLICY_OPTIONS: Array<{ value: QuotaPolicyCode; label: string }> = [
   { value: 'BILL_OVERAGE', label: t('Facturer le dépassement') },
   { value: 'WARN_ONLY', label: t('Avertir seulement') }
 ];
+
+/**
+ * Écart de recette Syndic D.4 : en `warn` (valeur par défaut de
+ * `SUBSCRIPTION_ENFORCEMENT`), `evaluateQuota` ne bloque jamais un
+ * dépassement, quelle que soit la « Politique de dépassement » choisie ici —
+ * y compris « Bloquer le dépassement ». Le super-admin doit le savoir avant
+ * de croire la politique active.
+ */
+const ENFORCEMENT_NOTICE: Partial<Record<'off' | 'warn', string>> = {
+  off: t(
+    'Mode « désactivé » : tous les modules restent accessibles, quels que soient les packs souscrits, et aucun dépassement n’est bloqué, quelle que soit la politique choisie. Les vérifications ne s’appliquent qu’en mode « appliquer » (SUBSCRIPTION_ENFORCEMENT=enforce).'
+  ),
+  warn: t(
+    'Mode « avertir » : les modules non souscrits restent accessibles et aucun dépassement n’est bloqué, quelle que soit la politique choisie. La politique ne s’applique qu’en mode « appliquer » (SUBSCRIPTION_ENFORCEMENT=enforce).'
+  )
+};
 
 const MODULE_LABEL: Record<string, string> = {
   MODULE_AGENCY: t('Agence'),
@@ -172,7 +208,12 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ open, onClose, catalog, hel
 interface OverrideModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (input: { capacityKey: CapacityKeyCode; delta: number; reason: string; expiresAt?: string | null }) => Promise<void>;
+  onSubmit: (input: {
+    capacityKey: CapacityKeyCode;
+    delta: number;
+    reason: string;
+    expiresAt?: string | null;
+  }) => Promise<void>;
 }
 
 const OverrideModal: React.FC<OverrideModalProps> = ({ open, onClose, onSubmit }) => {
@@ -227,7 +268,7 @@ const OverrideModal: React.FC<OverrideModalProps> = ({ open, onClose, onSubmit }
         <Form.Item label={t('Raison')} name="reason" rules={[{ required: true, message: t('La raison est requise') }]}>
           <Input.TextArea rows={2} placeholder={t('Ex. : Reprise, geste commercial…')} />
         </Form.Item>
-        <Form.Item label={t("Expire le (facultatif)")} name="expiresAt">
+        <Form.Item label={t('Expire le (facultatif)')} name="expiresAt">
           <Input type="date" />
         </Form.Item>
       </Form>
@@ -371,7 +412,12 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
     }
   };
 
-  const handleGrantOverride = async (input: { capacityKey: CapacityKeyCode; delta: number; reason: string; expiresAt?: string | null }) => {
+  const handleGrantOverride = async (input: {
+    capacityKey: CapacityKeyCode;
+    delta: number;
+    reason: string;
+    expiresAt?: string | null;
+  }) => {
     try {
       await grantCapacityOverride(tenantId, input);
       message.success(t('Dérogation accordée'));
@@ -589,10 +635,20 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
   ];
 
   const overrideColumns: ColumnsType<CapacityOverrideDTO> = [
-    { title: t('Capacité'), dataIndex: 'capacityKey', key: 'capacityKey', render: (v: CapacityKeyCode) => CAPACITY_LABEL[v] ?? v },
+    {
+      title: t('Capacité'),
+      dataIndex: 'capacityKey',
+      key: 'capacityKey',
+      render: (v: CapacityKeyCode) => CAPACITY_LABEL[v] ?? v
+    },
     { title: t('Quantité'), dataIndex: 'delta', key: 'delta' },
     { title: t('Raison'), dataIndex: 'reason', key: 'reason' },
-    { title: t('Expire le'), dataIndex: 'expiresAt', key: 'expiresAt', render: (v: string | null) => (v ? formatDateTime(v) : t('sans limite')) },
+    {
+      title: t('Expire le'),
+      dataIndex: 'expiresAt',
+      key: 'expiresAt',
+      render: (v: string | null) => (v ? formatDateTime(v) : t('sans limite'))
+    },
     {
       title: t('Statut'),
       key: 'status',
@@ -644,7 +700,9 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
             </Space>
           </Descriptions.Item>
           <Descriptions.Item label={t('Jours de grâce')}>{subscription.graceDays}</Descriptions.Item>
-          <Descriptions.Item label={t('Remise de combinaison')}>{subscription.comboDiscountPercent} %</Descriptions.Item>
+          <Descriptions.Item label={t('Remise de combinaison')}>
+            {subscription.comboDiscountPercent} %
+          </Descriptions.Item>
           <Descriptions.Item label={t('Politique de dépassement')}>
             <Select
               size="small"
@@ -662,6 +720,15 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
               : '—'}
           </Descriptions.Item>
         </Descriptions>
+        {entitlements.enforcement !== 'enforce' && (
+          <Alert
+            style={{ marginTop: 'var(--space-3)' }}
+            type="warning"
+            showIcon
+            message={t('Vérifications d’abonnement inactives')}
+            description={ENFORCEMENT_NOTICE[entitlements.enforcement]}
+          />
+        )}
         {entitlements.manualReadOnlyReason ? (
           <Alert
             style={{ marginTop: 'var(--space-3)' }}
@@ -708,7 +775,12 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
         <Space size="large" wrap style={{ width: '100%' }}>
           {(Object.keys(entitlements.capacities) as CapacityKeyCode[]).map(key => {
             const capacity = entitlements.capacities[key];
-            const percent = capacity.limit > 0 ? Math.min(100, Math.round((capacity.used / capacity.limit) * 100)) : capacity.used > 0 ? 100 : 0;
+            const percent =
+              capacity.limit > 0
+                ? Math.min(100, Math.round((capacity.used / capacity.limit) * 100))
+                : capacity.used > 0
+                  ? 100
+                  : 0;
             return (
               <div key={key} style={{ width: 220 }}>
                 <Text strong>{CAPACITY_LABEL[key]}</Text>
@@ -784,7 +856,10 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
               })}
             </Text>
             {invoicePreview.lines.map((line, index) => (
-              <div key={`${line.kind}-${index}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+              <div
+                key={`${line.kind}-${index}`}
+                style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)' }}
+              >
                 <Text style={{ flex: 1 }}>{line.label}</Text>
                 <MoneyValue value={line.amount} signed />
               </div>
@@ -857,7 +932,13 @@ export const SubscriptionTab: React.FC<{ tenantId: string; tenantName?: string }
         />
       </Card>
 
-      <AddItemModal open={addOpen} onClose={() => setAddOpen(false)} catalog={catalog} heldPacks={heldPacks} onSubmit={handleAddItem} />
+      <AddItemModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        catalog={catalog}
+        heldPacks={heldPacks}
+        onSubmit={handleAddItem}
+      />
       <OverrideModal open={overrideOpen} onClose={() => setOverrideOpen(false)} onSubmit={handleGrantOverride} />
 
       <ReasonPromptModal

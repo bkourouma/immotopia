@@ -570,5 +570,8 @@
   "Lecture seule (manuelle)": "قراءة فقط (يدوي)",
   "Mettre en lecture seule": "التحويل إلى وضع القراءة فقط",
   "Mettre l’agence en lecture seule (facture {{value}})": "تحويل الوكالة إلى وضع القراءة فقط (الفاتورة {{value}})",
-  "Ce dépassement impayé reste « en retard » sans effet automatique sur l'abonnement. Cette action bloque manuellement les écritures de l'agence, jusqu'à ce que vous la leviez vous-même depuis l'onglet Abonnement.": "يبقى هذا التجاوز غير المسدد \"متأخرًا\" دون أي أثر تلقائي على الاشتراك. يمنع هذا الإجراء كتابات الوكالة يدويًا، إلى أن ترفعه بنفسك من علامة التبويب الاشتراك."
+  "Ce dépassement impayé reste « en retard » sans effet automatique sur l'abonnement. Cette action bloque manuellement les écritures de l'agence, jusqu'à ce que vous la leviez vous-même depuis l'onglet Abonnement.": "يبقى هذا التجاوز غير المسدد \"متأخرًا\" دون أي أثر تلقائي على الاشتراك. يمنع هذا الإجراء كتابات الوكالة يدويًا، إلى أن ترفعه بنفسك من علامة التبويب الاشتراك.",
+  "Vérifications d’abonnement inactives": "عمليات التحقق من الاشتراك غير مفعّلة",
+  "Mode « avertir » : les modules non souscrits restent accessibles et aucun dépassement n’est bloqué, quelle que soit la politique choisie. La politique ne s’applique qu’en mode « appliquer » (SUBSCRIPTION_ENFORCEMENT=enforce).": "وضع «التحذير»: تبقى الوحدات غير المشترك بها متاحة ولا يُحظر أي تجاوز، أيًا كانت السياسة المختارة. لا تُطبَّق السياسة إلا في وضع «التطبيق» (SUBSCRIPTION_ENFORCEMENT=enforce).",
+  "Mode « désactivé » : tous les modules restent accessibles, quels que soient les packs souscrits, et aucun dépassement n’est bloqué, quelle que soit la politique choisie. Les vérifications ne s’appliquent qu’en mode « appliquer » (SUBSCRIPTION_ENFORCEMENT=enforce).": "وضع «معطّل»: تبقى جميع الوحدات متاحة، أيًا كانت الباقات المشترك بها، ولا يُحظر أي تجاوز، أيًا كانت السياسة المختارة. لا تُطبَّق عمليات التحقق إلا في وضع «التطبيق» (SUBSCRIPTION_ENFORCEMENT=enforce)."
 }

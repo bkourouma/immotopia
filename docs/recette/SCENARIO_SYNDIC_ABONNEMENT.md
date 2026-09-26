@@ -54,7 +54,14 @@ de cette instance locale pour que l'agent ne les prenne pas pour des bogues.
   (`packages/api/src/config/env.ts`). En `warn`, **tous les menus restent
   visibles et accessibles**, y compris les modules non souscrits par le pack
   Syndic (Gestion locative, Chantiers, CRM, Ventes, Patrimoine) : rien n'est
-  masqué. Le test du masquage réel demande le mode `enforce`
+  masqué. **`warn` désactive aussi le blocage des quotas** (`evaluateQuota`,
+  `packages/api/src/lib/subscription/entitlements.ts`) : quelle que soit la
+  « Politique de dépassement » choisie par le super-admin sur la fiche de
+  l'agence — **y compris « Bloquer le dépassement »** —, une création
+  au-delà de la capacité de l'agence est **acceptée**, jamais refusée. Les
+  étapes D.4 et D.6 de ce scénario, qui attendent un refus, exigent donc le
+  mode `enforce`, tout comme E.1 pour le masquage des menus. Le test du
+  masquage réel comme du blocage réel demande le mode `enforce`
   (`SUBSCRIPTION_ENFORCEMENT=enforce` puis redémarrage de l'API) : c'est une
   **étape optionnelle que Baba active lui-même** (partie E ci-dessous) — ne
   pas essayer de changer cette variable depuis le navigateur.
@@ -175,6 +182,10 @@ les jauges — voir partie D.
   apparaissent comme deux lignes distinctes (une ligne par ajout, prix figé).
 - Menu identique en `enforce` et en `warn` sauf action explicite de Baba (voir
   section 1).
+- En `warn` (l'état par défaut), un dépassement de quota n'est **jamais**
+  bloqué, quelle que soit la politique choisie — « Bloquer le dépassement »
+  compris : les étapes D.4 et D.6 (refus attendus) ainsi que E.1 (masquage de
+  menu) exigent le mode `enforce` (voir section 1).
 
 ---
 
@@ -398,7 +409,13 @@ jauges**.
       **70 859**. (Les frais de mise en route ne figurent pas dans cet
       aperçu — section 1.)
 
-### D.4 Passage en politique Bloquer et refus
+### D.4 Passage en politique Bloquer et refus (nécessite `enforce`)
+
+> **Nécessite `enforce`.** En `warn` (l'état par défaut de cette instance),
+> le changement de politique n'a aucun effet sur les créations : elles
+> passent toutes, même au-delà de la capacité (voir section 1). Si l'API
+> tourne encore en `warn`, le noter dans le journal et considérer que le
+> refus n'est pas testable pour l'instant, sans le traiter comme un échec.
 
 #### Ce qu'on doit faire
 
@@ -442,7 +459,11 @@ Palmiers.` → « Envoyer la demande ».
       « Bloc de 10 lots », message) avec les actions « Marquer traitée » et
       « Refuser ».
 
-### D.6 Extensions ajoutées par le super-admin, nouvelles tentatives
+### D.6 Extensions ajoutées par le super-admin, nouvelles tentatives (nécessite `enforce`)
+
+> **Nécessite `enforce`.** Cette étape prolonge D.4 : les refus qu'elle
+> attend au fil des extensions ne se produisent qu'en mode `enforce`, pour la
+> même raison (voir section 1).
 
 #### Ce qu'on doit faire
 
@@ -464,11 +485,15 @@ Palmiers.` → « Envoyer la demande ».
 - [ ] Après la seconde extension, la copropriété 4 est **créée** (4 / 4).
 - [ ] La demande passe **Traitée** côté super-admin et côté agence.
 - [ ] Aperçu de facture (super-admin) : `Syndic 49 900`, `Bloc de 10 lots
-    1 500`, deux lignes `Copropriété supplémentaire 10 000`, TVA `12 852` ;
+  1 500`, deux lignes `Copropriété supplémentaire 10 000`, TVA `12 852` ;
       Total HT **71 400**, Total TTC **84 252** ; plus aucune ligne de
       dépassement.
 
-### D.7 Import de lots partiel en politique Bloquer
+### D.7 Import de lots partiel en politique Bloquer (nécessite `enforce`)
+
+> **Nécessite `enforce`.** L'écart entre unités importables et unités créées
+> vient du même blocage de quota que D.4 et D.6 : en `warn`, les 12 unités
+> seraient toutes importées (voir section 1).
 
 #### Ce qu'on doit faire
 
