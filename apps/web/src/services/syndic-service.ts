@@ -39,6 +39,7 @@ import {
   ReminderBatchResult,
   CreateSyndicateLotRequest,
   CreateSyndicateRequest,
+  UpdateSyndicateRequest,
   GeneralMeeting,
   MaintenanceContract,
   SyndicProvidersPayload,
@@ -74,6 +75,27 @@ export async function getSyndicate(tenantId: string, syndicId: string): Promise<
 
 export async function createSyndicate(tenantId: string, data: CreateSyndicateRequest): Promise<Syndicate> {
   const response = await apiClient.post<{ success: boolean; data: Syndicate }>(`/tenants/${tenantId}/syndics`, data);
+  return response.data.data;
+}
+
+export async function updateSyndicate(
+  tenantId: string,
+  syndicId: string,
+  data: UpdateSyndicateRequest
+): Promise<Syndicate> {
+  const payload = {
+    name: data.name,
+    address: data.address,
+    registrationNo: data.registrationNo === '' ? null : data.registrationNo,
+    cadastralReference: data.cadastralReference === '' ? null : data.cadastralReference,
+    fiscalYear: data.fiscalYear,
+    syndicManagerId: data.syndicManagerId === '' ? null : data.syndicManagerId
+  };
+
+  const response = await apiClient.patch<{ success: boolean; data: Syndicate }>(
+    `/tenants/${tenantId}/syndics/${syndicId}`,
+    payload
+  );
   return response.data.data;
 }
 

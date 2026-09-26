@@ -65,6 +65,9 @@ export interface Syndicate {
   tenantId: string;
   name: string;
   address: string;
+  registrationNo?: string | null;
+  fiscalYear?: number;
+  syndicManagerId?: string | null;
   cadastralReference?: string | null;
   totalLots: number;
   totalBuildings: number;
@@ -111,9 +114,19 @@ export interface CreateSyndicateRequest {
   propertyId?: string;
   name: string;
   address: string;
+  registrationNo?: string;
   cadastralReference?: string;
   totalLots?: number;
   totalBuildings?: number;
+}
+
+export interface UpdateSyndicateRequest {
+  name?: string;
+  address?: string;
+  registrationNo?: string | null;
+  cadastralReference?: string | null;
+  fiscalYear?: number;
+  syndicManagerId?: string | null;
 }
 
 export interface CreateSyndicateLotRequest {
@@ -511,12 +524,7 @@ export interface CreatePaymentScheduleRequest {
 }
 
 export type OwnerAccountTransactionType =
-  | 'CHARGE_CALL'
-  | 'PAYMENT'
-  | 'PENALTY'
-  | 'WAIVER'
-  | 'ADJUSTMENT'
-  | 'FUND_TRANSFER';
+  'CHARGE_CALL' | 'PAYMENT' | 'PENALTY' | 'WAIVER' | 'ADJUSTMENT' | 'FUND_TRANSFER';
 
 export interface OwnerAccountTransaction {
   id: string;

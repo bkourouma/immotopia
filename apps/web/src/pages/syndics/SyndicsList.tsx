@@ -219,6 +219,9 @@ export const SyndicsList: React.FC = () => {
           <Form.Item label={t('Référence cadastrale')} name="cadastralReference">
             <Input />
           </Form.Item>
+          <Form.Item label={t("N° d'immatriculation")} name="registrationNo">
+            <Input />
+          </Form.Item>
         </Form>
       </Modal>
     </>
