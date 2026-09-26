@@ -246,4 +246,42 @@ describe('Immeuble — les appartements se saisissent dans la page', () => {
     // Rien n'est parti en base : la creation attend le bouton final.
     expect(createProperty).not.toHaveBeenCalled();
   });
+
+  /**
+   * Écart recette du 26/09 : un immeuble déclaré à 79 appartements n'en
+   * créait que 60 (`MAX_APPARTEMENTS`), sans aucun message pour dire que 19
+   * unités manquaient. Le plafond est monté à 200 (bien au-dessus de tout
+   * immeuble réel, cf. docs/recette/SCENARIO_SYNDIC_ABONNEMENT.md, qui va
+   * jusqu'à 102) : 79 doit désormais produire 79 lignes.
+   */
+  it('crée bien 79 lignes pour 79 appartements déclarés (écart recette du 26/09)', async () => {
+    const user = userEvent.setup();
+    await allerAuxSpecificites(user);
+
+    await user.type(await screen.findByLabelText("Nombre total d'appartements"), '79');
+
+    await waitFor(() => {
+      expect(screen.getByText(/Appartements \(79\)/)).toBeInTheDocument();
+    });
+    expect(screen.getByDisplayValue('Appartement 1')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Appartement 79')).toBeInTheDocument();
+  });
+
+  /**
+   * Le plafond doit désormais bloquer la saisie plutôt que tronquer en
+   * silence après coup : au-delà de 200, le champ lui-même refuse la valeur.
+   */
+  it('bloque la saisie au-delà du plafond au lieu de tronquer après coup', async () => {
+    const user = userEvent.setup();
+    await allerAuxSpecificites(user);
+
+    const champNombre = await screen.findByLabelText("Nombre total d'appartements");
+    await user.type(champNombre, '250');
+    await user.tab();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Appartements \(200\)/)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Appartements \(250\)/)).toBeNull();
+  });
 });

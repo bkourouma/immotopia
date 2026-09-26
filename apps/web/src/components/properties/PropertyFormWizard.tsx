@@ -84,12 +84,21 @@ interface AppartementSaisi {
 }
 
 /**
- * Plafond du nombre de lignes générées.
+ * Plafond du nombre de lignes générées, ET de la saisie du champ « Nombre
+ * total d'appartements » lui-même (voir `validation.max` injecté plus bas).
  *
- * Une faute de frappe dans « Nombre total d'appartements » — 1200 au lieu de 12
- * — ne doit pas tenter de peindre douze cents formulaires et figer l'onglet.
+ * Une faute de frappe dans ce champ — 1200 au lieu de 12 — ne doit pas tenter
+ * de peindre mille deux cents formulaires et figer l'onglet.
+ *
+ * Ce plafond doit rester au-dessus de tout immeuble réel : il bornait
+ * auparavant aussi la CRÉATION effective des lots (`creerLesAppartements` ne
+ * crée que les lignes de `appartements`), si bien qu'un immeuble de 79 ou 102
+ * appartements (cf. docs/recette/SCENARIO_SYNDIC_ABONNEMENT.md, immeuble « Les
+ * Manguiers ») en perdait silencieusement une partie à la création. Fixé à
+ * 200 : large marge au-dessus des tailles réelles observées, tout en bloquant
+ * la saisie sur une faute de frappe.
  */
-const MAX_APPARTEMENTS = 60;
+const MAX_APPARTEMENTS = 200;
 
 function appartementVide(rang: number): AppartementSaisi {
   return { titre: `Appartement ${rang}`, surface: '', pieces: '', chambres: '', sallesDeBain: '', prix: '' };
@@ -1186,9 +1195,19 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                     ) {
                       return null;
                     }
+                    // Le gabarit (prisma/seeds/property-templates-seed.ts) ne porte pas de
+                    // `validation.max` pour ce champ : sans plafond ici, l'InputNumber
+                    // acceptait n'importe quelle valeur, qui n'etait ensuite qu'en
+                    // partie honoree (voir MAX_APPARTEMENTS). On bloque desormais la
+                    // saisie au meme plafond que la creation, plutot que de tronquer
+                    // apres coup sans le dire.
                     const displayField =
                       (formData.propertyType as PropertyType) === PropertyType.IMMEUBLE && field.key === 'units_count'
-                        ? { ...field, label: t("Nombre total d'appartements") }
+                        ? {
+                            ...field,
+                            label: t("Nombre total d'appartements"),
+                            validation: { ...field.validation, min: 1, max: MAX_APPARTEMENTS }
+                          }
                         : field;
                     return (
                       <Col key={field.key} xs={24} sm={12}>
@@ -1226,12 +1245,17 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                 />
               ) : (
                 <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                  {/* Le champ ci-dessus bloque desormais la saisie a MAX_APPARTEMENTS
+                      (voir `validation.max` injecte plus haut) : cette alerte ne peut
+                      plus se declencher a la creation. Elle reste un filet pour un
+                      immeuble existant dont le nombre declare, enregistre avant ce
+                      correctif, depasse encore le plafond. */}
                   {nbAppartementsDeclare > MAX_APPARTEMENTS && (
                     <Alert
                       type="warning"
                       showIcon
                       message={t(
-                        "Seuls les {{MAX_APPARTEMENTS}} premiers appartements sont saisissables ici. Les suivants se créeront depuis la fiche de l'immeuble.",
+                        "Seuls les {{MAX_APPARTEMENTS}} premiers appartements sont saisissables ici. Ajoutez les suivants un par un depuis la fiche de l'immeuble, une fois celui-ci enregistré.",
                         { MAX_APPARTEMENTS: MAX_APPARTEMENTS }
                       )}
                     />

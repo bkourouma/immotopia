@@ -395,7 +395,7 @@
   "Sélectionner un propriétaire": "Select an owner",
   "Sélectionner...": "Select…",
   "Sélectionnez le type de bien et les informations de base": "Select the property type and the basic information",
-  "Seuls les {{MAX_APPARTEMENTS}} premiers appartements sont saisissables ici. Les suivants se créeront depuis la fiche de l'immeuble.": "Only the first {{MAX_APPARTEMENTS}} flats can be entered here. The rest are created from the building's page.",
+  "Seuls les {{MAX_APPARTEMENTS}} premiers appartements sont saisissables ici. Ajoutez les suivants un par un depuis la fiche de l'immeuble, une fois celui-ci enregistré.": "Only the first {{MAX_APPARTEMENTS}} flats can be entered here. Add the rest one by one from the building's page, once it has been saved.",
   "Si plusieurs appartements, un numéro sera ajouté automatiquement (ex: Appartement 1, Appartement 2...)": "With several flats, a number is added automatically (e.g. Flat 1, Flat 2…)",
   "Signature du contrat": "Contract signature",
   "Sous offre": "Under offer",
