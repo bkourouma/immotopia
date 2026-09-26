@@ -9,9 +9,18 @@
  * recenser.
  *
  * Ce qui est recense :
- *   - le message des erreurs typees (`new NotFoundError('...')`) et leur
- *     message par defaut ;
- *   - les textes passes a `t(...)` dans les gabarits d'e-mail.
+ *   - le message des erreurs typees (`new NotFoundError('...')`, y compris
+ *     `GatewayError` pour le client PaySecureHub) et leur message par
+ *     defaut ;
+ *   - les textes passes LITTERALEMENT a `t('...')`, gabarits d'e-mail
+ *     compris. Un `t(uneVariable)` — message compose avant d'etre traduit,
+ *     comme dans `lib/payment-gateway/settings.ts` ou les libelles de
+ *     capacite (`CAPACITY_LABELS`) — n'est pas vu : ce script ne suit que
+ *     des litteraux, jamais leur origine.
+ *
+ * Rejouable comme le codemod du frontend : une cle deja traduite qui
+ * disparait du recensement (texte source retouche, ou `t(variable)` ci-dessus)
+ * part dans `<langue>.orphans.json` plutot que d'etre perdue en silence.
  *
  *   node scripts/i18n-extract.mjs
  */
@@ -32,7 +41,10 @@ const ERROR_CLASSES = new Set([
   'ForbiddenError',
   'NotFoundError',
   'ConflictError',
-  'ValidationError'
+  'ValidationError',
+  // `lib/payment-gateway/types.ts` : erreurs du client PaySecureHub, levees
+  // avec un message francais comme les autres classes typees.
+  'GatewayError'
 ]);
 
 /**
@@ -134,6 +146,19 @@ for (const language of TARGET_LANGUAGES) {
     merged[key] = existing[key] ?? '';
   }
   fs.writeFileSync(target, JSON.stringify(merged, null, 2) + '\n', 'utf8');
+
+  // Une cle qui disparait du recensement n'est pas forcement partie du code :
+  // `t(uneVariable)` — un message construit avant d'etre traduit, comme
+  // `lib/payment-gateway/settings.ts` ou `CAPACITY_LABELS` — n'est jamais vu
+  // par ce script, qui ne suit que des litteraux. Sans ce fichier, une telle
+  // cle perdait sa traduction en silence a chaque reextraction.
+  const orphans = Object.entries(existing).filter(([key, value]) => !(key in merged) && value);
+  const orphanFile = path.join(LOCALES, `${language}.orphans.json`);
+  if (orphans.length) {
+    fs.writeFileSync(orphanFile, JSON.stringify(Object.fromEntries(orphans), null, 2) + '\n', 'utf8');
+  } else if (fs.existsSync(orphanFile)) {
+    fs.rmSync(orphanFile);
+  }
 }
 
 const translated = Object.values(
