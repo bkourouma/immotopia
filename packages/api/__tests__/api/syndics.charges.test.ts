@@ -134,11 +134,16 @@ jest.mock('../../src/lib/syndics/notifications', () => ({
 }));
 
 import syndicRoutes from '../../src/routes/syndic-routes';
+import { errorHandler } from '../../src/middleware/error-middleware';
 
 describe('Syndics charges routes', () => {
   const app = express();
   app.use(express.json());
   app.use('/api', syndicRoutes);
+  // Sans ce middleware, une erreur typee (throw + asyncHandler) tombe sur le
+  // gestionnaire par defaut d'Express : corps JSON vide, statut potentiellement
+  // errone. Voir __tests__/api/syndics.accounting.characterization.test.ts.
+  app.use(errorHandler);
 
   beforeEach(() => {
     store.seq = 1;

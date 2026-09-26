@@ -128,13 +128,27 @@ export const AppShell: React.FC = () => {
   const nav = useFilteredNavigation(personaNav, disabledMenuKeys, featureAccess);
 
   // Refus d'abonnement (403 MODULE_NOT_INCLUDED / MODULE_READ_ONLY /
-  // SUBSCRIPTION_READ_ONLY) traduits en message clair, sur l'instance
-  // centrale d'api-client, depuis ce chunk paresseux — voir
-  // utils/subscription-denial-notice.ts (budget du chunk d'entrée).
+  // SUBSCRIPTION_READ_ONLY, 409 QUOTA_EXCEEDED) traduits en message clair, sur
+  // l'instance centrale d'api-client, depuis ce chunk paresseux — voir
+  // utils/subscription-denial-notice.ts (budget du chunk d'entrée). Le
+  // `settingsPath` d'un QUOTA_EXCEEDED devient ici un vrai bouton, puisque
+  // c'est ce chunk-ci qui a React et le routeur sous la main.
   const { notification } = AntApp.useApp();
-  useEffect(() => installSubscriptionDenialInterceptor(apiClient, notification), [notification]);
-
-
+  useEffect(
+    () =>
+      installSubscriptionDenialInterceptor(apiClient, {
+        warning: ({ settingsPath, ...config }) =>
+          notification.warning({
+            ...config,
+            btn: settingsPath ? (
+              <Button size="small" type="primary" onClick={() => navigate(settingsPath)}>
+                {t('Paramètres › Abonnement')}
+              </Button>
+            ) : undefined
+          })
+      }),
+    [notification, navigate]
+  );
 
   // Tant que le persona n'est pas tranché, on rend la coquille sans menu
   // plutôt qu'un menu faux : afficher le menu public à un collaborateur, même

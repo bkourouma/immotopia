@@ -18,6 +18,18 @@ import '../lib/zod-error-map';
 export interface ErrorResponse {
   success: false;
   message: string;
+  /**
+   * Alias retro-compatible de `message`.
+   *
+   * Avant l'unification (lot 2, controleurs syndic/biens/baux), chaque
+   * controleur renvoyait lui-meme `{ success: false, error: message }` a la
+   * main. De nombreux lecteurs — tests de caracterisation, et le front via
+   * `err.response?.data?.error` — lisent encore cette cle. Plutot que de les
+   * faire tous evoluer vers `message` d'un coup, `errorHandler` porte les
+   * deux : un ancien lecteur continue de fonctionner, un nouveau peut migrer
+   * vers `message` a son rythme.
+   */
+  error?: string;
   code?: string;
   errors?: Array<{ field: string; message: string }>;
   /**
@@ -145,7 +157,7 @@ export class SubscriptionReadOnlyError extends AppError {
 export class QuotaExceededError extends AppError {
   constructor(
     detail: { capacityKey: string; limit: number; used: number; requested: number },
-    message = "La capacité de votre abonnement est atteinte : ajoutez une extension pour continuer."
+    message = 'La capacité de votre abonnement est atteinte : ajoutez une extension pour continuer.'
   ) {
     super(message, 409, ErrorCode.QUOTA_EXCEEDED, undefined, detail);
   }
@@ -163,7 +175,7 @@ export function asyncHandler(
   handler: (req: Request, res: Response, next: NextFunction) => Promise<unknown>
 ): RequestHandler {
   return (req, res, next) => {
-    Promise.resolve(handler(req, res, next)).catch(next);
+    return Promise.resolve(handler(req, res, next)).catch(next);
   };
 }
 
@@ -294,6 +306,9 @@ export function errorHandler(err: Error | AppError, req: Request, res: Response,
   if (body.errors) {
     body.errors = body.errors.map(entry => ({ ...entry, message: t(entry.message) }));
   }
+  // Voir le commentaire sur `ErrorResponse.error` : alias retro-compatible,
+  // toujours pose ici, une fois le message traduit.
+  body.error = body.message;
 
   // 4xx are expected client mistakes; only 5xx deserve error level.
   const log = status >= 500 ? logger.error.bind(logger) : logger.warn.bind(logger);

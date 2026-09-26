@@ -80,7 +80,9 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   getFinanceSummaryBySyndicate: jest.fn(),
   listCommonAssetsBySyndicate: jest.fn(),
   listMeetingsBySyndicate: jest.fn(async (tenantId: string, syndicateId: string) =>
-    Array.from(store.meetings.values()).filter((meeting) => meeting.tenantId === tenantId && meeting.syndicateId === syndicateId)
+    Array.from(store.meetings.values()).filter(
+      meeting => meeting.tenantId === tenantId && meeting.syndicateId === syndicateId
+    )
   ),
   getMeetingByTenant: jest.fn(async (tenantId: string, syndicateId: string, meetingId: string) => {
     const meeting = store.meetings.get(meetingId);
@@ -104,7 +106,9 @@ jest.mock('../../src/lib/syndics/queries', () => ({
     return created;
   }),
   addResolutionToMeeting: jest.fn(async (tenantId: string, syndicateId: string, data: any) => {
-    const meeting = Array.from(store.meetings.values()).find((m) => m.id === data.meetingId && m.tenantId === tenantId && m.syndicateId === syndicateId);
+    const meeting = Array.from(store.meetings.values()).find(
+      m => m.id === data.meetingId && m.tenantId === tenantId && m.syndicateId === syndicateId
+    );
     if (!meeting) {
       const err: any = new Error('Assemblee generale introuvable ou inaccessible');
       err.status = 404;
@@ -122,32 +126,36 @@ jest.mock('../../src/lib/syndics/queries', () => ({
     meeting.resolutions.push(resolution);
     return resolution;
   }),
-  castVoteAndRecomputeResolutionCounters: jest.fn(async (tenantId: string, syndicateId: string, resolutionId: string, lotId: string, vote: string) => {
-    const meeting = Array.from(store.meetings.values()).find((m) => m.tenantId === tenantId && m.syndicateId === syndicateId);
-    if (!meeting) {
-      const err: any = new Error('Assemblee generale introuvable ou inaccessible');
-      err.status = 404;
-      throw err;
+  castVoteAndRecomputeResolutionCounters: jest.fn(
+    async (tenantId: string, syndicateId: string, resolutionId: string, lotId: string, vote: string) => {
+      const meeting = Array.from(store.meetings.values()).find(
+        m => m.tenantId === tenantId && m.syndicateId === syndicateId
+      );
+      if (!meeting) {
+        const err: any = new Error('Assemblee generale introuvable ou inaccessible');
+        err.status = 404;
+        throw err;
+      }
+      const resolution = meeting.resolutions.find(item => item.id === resolutionId);
+      if (!resolution) {
+        const err: any = new Error('Resolution introuvable ou inaccessible');
+        err.status = 404;
+        throw err;
+      }
+      if (lotId !== LOT_ID) {
+        const err: any = new Error('Lot introuvable ou inaccessible');
+        err.status = 404;
+        throw err;
+      }
+      if (vote === 'FOR') resolution.votesFor += 1;
+      if (vote === 'AGAINST') resolution.votesAgainst += 1;
+      if (vote === 'ABSTAIN') resolution.votesAbstain += 1;
+      resolution.sharesFor = resolution.votesFor * 100;
+      meeting.quorum = 100;
+      resolution.result = resolution.votesFor > resolution.votesAgainst ? 'APPROVED' : 'PENDING';
+      return meeting;
     }
-    const resolution = meeting.resolutions.find((item) => item.id === resolutionId);
-    if (!resolution) {
-      const err: any = new Error('Resolution introuvable ou inaccessible');
-      err.status = 404;
-      throw err;
-    }
-    if (lotId !== LOT_ID) {
-      const err: any = new Error('Lot introuvable ou inaccessible');
-      err.status = 404;
-      throw err;
-    }
-    if (vote === 'FOR') resolution.votesFor += 1;
-    if (vote === 'AGAINST') resolution.votesAgainst += 1;
-    if (vote === 'ABSTAIN') resolution.votesAbstain += 1;
-    resolution.sharesFor = resolution.votesFor * 100;
-    meeting.quorum = 100;
-    resolution.result = resolution.votesFor > resolution.votesAgainst ? 'APPROVED' : 'PENDING';
-    return meeting;
-  })
+  )
 }));
 
 jest.mock('../../src/lib/syndics/notifications', () => ({
@@ -156,11 +164,16 @@ jest.mock('../../src/lib/syndics/notifications', () => ({
 }));
 
 import syndicRoutes from '../../src/routes/syndic-routes';
+import { errorHandler } from '../../src/middleware/error-middleware';
 
 describe('Syndics meetings routes', () => {
   const app = express();
   app.use(express.json());
   app.use('/api', syndicRoutes);
+  // Sans ce middleware, une erreur typee (throw + asyncHandler) tombe sur le
+  // gestionnaire par defaut d'Express : corps JSON vide, statut potentiellement
+  // errone. Voir __tests__/api/syndics.accounting.characterization.test.ts.
+  app.use(errorHandler);
 
   beforeEach(() => {
     store.meetings.clear();
@@ -178,13 +191,11 @@ describe('Syndics meetings routes', () => {
   });
 
   it('creates a meeting and returns PLANNED status', async () => {
-    const response = await request(app)
-      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees`)
-      .send({
-        type: 'ORDINARY',
-        scheduledAt: '2026-06-20T09:00:00.000Z',
-        location: 'Salle commune'
-      });
+    const response = await request(app).post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees`).send({
+      type: 'ORDINARY',
+      scheduledAt: '2026-06-20T09:00:00.000Z',
+      location: 'Salle commune'
+    });
 
     expect(response.status).toBe(201);
     expect(response.body.success).toBe(true);
@@ -192,13 +203,11 @@ describe('Syndics meetings routes', () => {
   });
 
   it('adds a resolution then casts vote and recomputes quorum/results', async () => {
-    await request(app)
-      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees`)
-      .send({
-        type: 'ORDINARY',
-        scheduledAt: '2026-06-20T09:00:00.000Z',
-        location: 'Salle commune'
-      });
+    await request(app).post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees`).send({
+      type: 'ORDINARY',
+      scheduledAt: '2026-06-20T09:00:00.000Z',
+      location: 'Salle commune'
+    });
 
     const addResolution = await request(app)
       .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees/${MEETING_ID}/resolutions`)
@@ -207,7 +216,9 @@ describe('Syndics meetings routes', () => {
     expect(addResolution.body.data.id).toBe(RESOLUTION_ID);
 
     const vote = await request(app)
-      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees/${MEETING_ID}/resolutions/${RESOLUTION_ID}/votes`)
+      .post(
+        `/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees/${MEETING_ID}/resolutions/${RESOLUTION_ID}/votes`
+      )
       .send({ lotId: LOT_ID, vote: 'FOR' });
     expect(vote.status).toBe(200);
     expect(vote.body.data.quorum).toBe(100);
@@ -215,8 +226,9 @@ describe('Syndics meetings routes', () => {
   });
 
   it('enforces tenant isolation on meeting detail', async () => {
-    const response = await request(app)
-      .get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees/other-tenant-meeting`);
+    const response = await request(app).get(
+      `/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees/other-tenant-meeting`
+    );
     expect(response.status).toBe(404);
     expect(response.body.success).toBe(false);
   });

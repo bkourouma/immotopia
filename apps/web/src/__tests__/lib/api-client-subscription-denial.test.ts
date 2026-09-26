@@ -8,7 +8,8 @@ import apiClient from '../../utils/api-client';
 import {
   installSubscriptionDenialInterceptor,
   isSubscriptionDenialCode,
-  subscriptionDenialText
+  subscriptionDenialText,
+  quotaExceededDenialText
 } from '../../utils/subscription-denial-notice';
 
 /**
@@ -64,5 +65,49 @@ describe('apiClient — refus d’abonnement', () => {
     expect(isSubscriptionDenialCode('MODULE_READ_ONLY')).toBe(true);
     expect(isSubscriptionDenialCode('TENANT_SUSPENDED')).toBe(false);
     expect(subscriptionDenialText('SUBSCRIPTION_READ_ONLY').title).toBe('Abonnement en lecture seule');
+  });
+});
+
+/**
+ * BUG A1 — dépassement de capacité (D4, politique BLOCK) : 409
+ * `QUOTA_EXCEEDED` avec `data: { capacityKey, used, limit, requested }`.
+ * Distinct des trois codes ci-dessus : la notification a besoin des chiffres
+ * du serveur, et le message pointe vers Paramètres › Abonnement.
+ */
+describe('apiClient — dépassement de capacité (QUOTA_EXCEEDED)', () => {
+  it('traduit un 409 QUOTA_EXCEEDED en une notification claire avec un lien vers le réglage', async () => {
+    apiClient.defaults.adapter = rejectingWith(409, {
+      success: false,
+      code: 'QUOTA_EXCEEDED',
+      message: 'Capacité atteinte.',
+      data: { capacityKey: 'LOTS', used: 50, limit: 50, requested: 5 }
+    });
+
+    await expect(apiClient.post('/tenants/tenant-1/syndics/synd-1/lots', {})).rejects.toThrow();
+
+    expect(warning).toHaveBeenCalledTimes(1);
+    expect(warning.mock.calls[0][0]).toMatchObject({
+      key: 'subscription-denial:QUOTA_EXCEEDED',
+      title: 'Capacité de votre abonnement atteinte',
+      description: 'Votre abonnement comprend 50 lots et 50 sont utilisés. Demandez une extension de capacité.',
+      settingsPath: '/tenant/tenant-1/settings/abonnement'
+    });
+  });
+
+  it('ignore un 409 QUOTA_EXCEEDED sans data exploitable', async () => {
+    apiClient.defaults.adapter = rejectingWith(409, { success: false, code: 'QUOTA_EXCEEDED' });
+    await expect(apiClient.post('/tenants/a/syndics', {})).rejects.toThrow();
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  it('construit le message pour chaque capacité, avec ou sans tenantId', () => {
+    expect(quotaExceededDenialText({ capacityKey: 'COPROPRIETES', used: 3, limit: 3, requested: 1 })).toMatchObject({
+      title: 'Capacité de votre abonnement atteinte',
+      description: 'Votre abonnement comprend 3 copropriétés et 3 sont utilisés. Demandez une extension de capacité.',
+      settingsPath: null
+    });
+    expect(
+      quotaExceededDenialText({ capacityKey: 'CHANTIERS', used: 2, limit: 2, requested: 1 }, 'tenant-9').settingsPath
+    ).toBe('/tenant/tenant-9/settings/abonnement');
   });
 });

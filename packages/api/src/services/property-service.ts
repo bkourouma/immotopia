@@ -7,6 +7,7 @@ import { syncLotActivationsTx } from './lot-registry-service';
 import { generatePropertyReference } from '../utils/property-reference-generator';
 import { validatePropertyData } from './property-template-service';
 import { CreatePropertyRequest, UpdatePropertyRequest, PropertyDetail } from '../types/property-types';
+import { BadRequestError, NotFoundError, ConflictError } from '../middleware/error-middleware';
 import {
   PropertyType,
   PropertyOwnershipType,
@@ -63,7 +64,7 @@ export async function createProperty(
 ): Promise<PropertyDetail> {
   // Validate ownership type matches provided IDs
   if (data.ownershipType === PropertyOwnershipType.TENANT && !tenantId) {
-    throw new Error('Tenant ID is required for tenant-owned properties');
+    throw new BadRequestError('Tenant ID is required for tenant-owned properties');
   }
 
   // If ownerEmail is provided, find or create the User
@@ -91,7 +92,7 @@ export async function createProperty(
   }
 
   if (data.ownershipType === PropertyOwnershipType.PUBLIC && !finalOwnerUserId) {
-    throw new Error('Owner user ID or email is required for public properties');
+    throw new BadRequestError('Owner user ID or email is required for public properties');
   }
 
   // Validate against template
@@ -104,7 +105,7 @@ export async function createProperty(
   const validation = await validatePropertyData(data.propertyType, validationData);
 
   if (!validation.valid) {
-    throw new Error(`Property validation failed: ${validation.errors.join(', ')}`);
+    throw new BadRequestError(`Property validation failed: ${validation.errors.join(', ')}`);
   }
 
   // Retry logic for handling unique constraint violations (reference collisions)
@@ -121,55 +122,60 @@ export async function createProperty(
       // des lots de l'abonnement (D1 ; QuotaExceededError en BLOCK annule tout).
       property = await prisma.$transaction(async tx => {
         const created = await tx.property.create({
-        data: {
-          internalReference,
-          propertyType: data.propertyType,
-          ownershipType: data.ownershipType,
-          tenantId: data.ownershipType === PropertyOwnershipType.TENANT ? tenantId : null,
-          ownerUserId: finalOwnerUserId, // Can be set even for TENANT type if owner is selected in form
-          containerParentId: data.containerParentId || null, // For sub-properties (apartments in buildings)
-          title: data.title,
-          description: data.description,
-          address: data.address,
-          locationZone: data.locationZone || null,
-          latitude: data.latitude || null,
-          longitude: data.longitude || null,
-          transactionModes: data.transactionModes,
-          price: data.price || null,
-          fees: data.fees || null,
-          currency: data.currency || 'EUR',
-          surfaceArea: data.surfaceArea || null,
-          surfaceUseful: data.surfaceUseful || null,
-          surfaceTerrain: data.surfaceTerrain || null,
-          rooms: data.rooms || null,
-          bedrooms: data.bedrooms || null,
-          bathrooms: data.bathrooms || null,
-          furnishingStatus: data.furnishingStatus || null,
-          status: data.status || PropertyStatus.AVAILABLE,
-          availability: data.availability || 'AVAILABLE',
-          // Prisma type ce champ en InputJsonValue, plus etroit que le
-          // Record<string, any> | null du contrat d entree. Aucune conversion
-          // a l execution : la valeur part telle quelle.
-          typeSpecificData: (data.typeSpecificData || null) as any
-        },
-        include: {
-          tenant: {
-            select: {
-              id: true,
-              name: true
-            }
+          data: {
+            internalReference,
+            propertyType: data.propertyType,
+            ownershipType: data.ownershipType,
+            tenantId: data.ownershipType === PropertyOwnershipType.TENANT ? tenantId : null,
+            ownerUserId: finalOwnerUserId, // Can be set even for TENANT type if owner is selected in form
+            containerParentId: data.containerParentId || null, // For sub-properties (apartments in buildings)
+            title: data.title,
+            description: data.description,
+            address: data.address,
+            locationZone: data.locationZone || null,
+            latitude: data.latitude || null,
+            longitude: data.longitude || null,
+            transactionModes: data.transactionModes,
+            price: data.price || null,
+            fees: data.fees || null,
+            currency: data.currency || 'EUR',
+            surfaceArea: data.surfaceArea || null,
+            surfaceUseful: data.surfaceUseful || null,
+            surfaceTerrain: data.surfaceTerrain || null,
+            rooms: data.rooms || null,
+            bedrooms: data.bedrooms || null,
+            bathrooms: data.bathrooms || null,
+            furnishingStatus: data.furnishingStatus || null,
+            status: data.status || PropertyStatus.AVAILABLE,
+            availability: data.availability || 'AVAILABLE',
+            // Prisma type ce champ en InputJsonValue, plus etroit que le
+            // Record<string, any> | null du contrat d entree. Aucune conversion
+            // a l execution : la valeur part telle quelle.
+            typeSpecificData: (data.typeSpecificData || null) as any
           },
-          owner: {
-            select: {
-              id: true,
-              email: true,
-              fullName: true
+          include: {
+            tenant: {
+              select: {
+                id: true,
+                name: true
+              }
+            },
+            owner: {
+              select: {
+                id: true,
+                email: true,
+                fullName: true
+              }
             }
           }
-        }
         });
         if (tenantId) {
-          await syncLotActivationsTx(tx, tenantId, { propertyIds: [created.id, created.containerParentId] }, { actorUserId });
+          await syncLotActivationsTx(
+            tx,
+            tenantId,
+            { propertyIds: [created.id, created.containerParentId] },
+            { actorUserId }
+          );
         }
         return created;
       });
@@ -190,7 +196,9 @@ export async function createProperty(
             tenantId,
             ownerUserId: finalOwnerUserId
           });
-          throw new Error('Failed to generate unique property reference after multiple attempts. Please try again.');
+          throw new BadRequestError(
+            'Failed to generate unique property reference after multiple attempts. Please try again.'
+          );
         }
       } else {
         // Re-throw if it's not a reference collision error
@@ -200,7 +208,7 @@ export async function createProperty(
   }
 
   if (!property) {
-    throw new Error('Failed to create property after multiple attempts');
+    throw new BadRequestError('Failed to create property after multiple attempts');
   }
 
   logger.info('[PROPERTY_CREATE] Propriété créée', {
@@ -257,7 +265,12 @@ export async function createProperty(
  * was returned to any agency that knew its id.
  */
 function canAccessProperty(
-  property: { ownershipType: PropertyOwnershipType; tenantId: string | null; ownerUserId: string | null; isPublished: boolean },
+  property: {
+    ownershipType: PropertyOwnershipType;
+    tenantId: string | null;
+    ownerUserId: string | null;
+    isPublished: boolean;
+  },
   tenantId: string | null | undefined,
   userId: string | null | undefined,
   activeMandateTenantIds: string[]
@@ -375,7 +388,7 @@ export async function updateProperty(
   // Get existing property
   const existing = await getPropertyById(propertyId, tenantId, userId);
   if (!existing) {
-    throw new Error('Property not found or access denied');
+    throw new NotFoundError('Property not found or access denied');
   }
 
   // Validate against template if typeSpecificData is provided
@@ -390,7 +403,7 @@ export async function updateProperty(
     const validation = await validatePropertyData(existing.propertyType, validationData);
 
     if (!validation.valid) {
-      throw new Error(`Property validation failed: ${validation.errors.join(', ')}`);
+      throw new BadRequestError(`Property validation failed: ${validation.errors.join(', ')}`);
     }
   }
 
@@ -431,7 +444,7 @@ export async function updateProperty(
       );
 
       if (!validation.valid) {
-        throw new Error(validation.error || 'Invalid status transition');
+        throw new BadRequestError(validation.error || 'Invalid status transition');
       }
 
       // Record status history before updating
@@ -456,35 +469,40 @@ export async function updateProperty(
   // decompte des lots de l'abonnement (D1), recalcule dans la meme transaction.
   const lotTenantId = tenantId || existing.tenantId || null;
   const updated = await prisma.$transaction(async tx => {
-  const row = await tx.property.update({
-    where: {
-      id: propertyId,
-      version: existing.version // Optimistic locking
-    },
-    data: updateData,
-    include: {
-      tenant: {
-        select: {
-          id: true,
-          name: true
-        }
+    const row = await tx.property.update({
+      where: {
+        id: propertyId,
+        version: existing.version // Optimistic locking
       },
-      owner: {
-        select: {
-          id: true,
-          email: true,
-          fullName: true
+      data: updateData,
+      include: {
+        tenant: {
+          select: {
+            id: true,
+            name: true
+          }
+        },
+        owner: {
+          select: {
+            id: true,
+            email: true,
+            fullName: true
+          }
         }
       }
-    }
-  });
-  if (lotTenantId && (data.status !== undefined || data.transactionModes !== undefined)) {
-    await syncLotActivationsTx(tx, lotTenantId, { propertyIds: [row.id] }, {
-      actorUserId: actorUserId ?? userId ?? null,
-      reason: `PROPERTY_${row.status}`
     });
-  }
-  return row;
+    if (lotTenantId && (data.status !== undefined || data.transactionModes !== undefined)) {
+      await syncLotActivationsTx(
+        tx,
+        lotTenantId,
+        { propertyIds: [row.id] },
+        {
+          actorUserId: actorUserId ?? userId ?? null,
+          reason: `PROPERTY_${row.status}`
+        }
+      );
+    }
+    return row;
   });
 
   logger.info('Property updated', {
@@ -842,7 +860,7 @@ export async function deleteProperty(
   // Get property with validation
   const property = await getPropertyById(propertyId, tenantId, userId);
   if (!property) {
-    throw new Error('Property not found or access denied');
+    throw new NotFoundError('Property not found or access denied');
   }
 
   // Check if property has active deals (through CrmDealProperty)
@@ -860,7 +878,7 @@ export async function deleteProperty(
   });
 
   if (hasActiveDeals > 0) {
-    throw new Error('Cannot delete property - has active deals');
+    throw new ConflictError('Cannot delete property - has active deals');
   }
 
   // Log before deletion for audit
@@ -1086,7 +1104,7 @@ export async function getChildProperties(
   // Verify parent property exists and is accessible
   const parent = await getPropertyById(parentPropertyId, tenantId);
   if (!parent) {
-    throw new Error('Parent property not found or access denied');
+    throw new NotFoundError('Parent property not found or access denied');
   }
 
   // If parent is not a container type (IMMEUBLE), return empty array

@@ -967,5 +967,11 @@
   "Module en lecture seule": "وحدة للقراءة فقط",
   "Ce module a été retiré de votre abonnement : vous pouvez consulter et exporter ses données, mais plus les modifier.": "أُزيلت هذه الوحدة من اشتراككم: يمكنكم الاطلاع على بياناتها وتصديرها، لكن لم يعد بإمكانكم تعديلها.",
   "Abonnement en lecture seule": "اشتراك للقراءة فقط",
-  "L'abonnement de votre agence n'est plus actif : les données restent consultables, les modifications sont suspendues jusqu'à sa régularisation.": "لم يعد اشتراك وكالتكم نشطًا: تبقى البيانات متاحة للاطلاع، وتُعلَّق التعديلات إلى حين تسويته."
+  "L'abonnement de votre agence n'est plus actif : les données restent consultables, les modifications sont suspendues jusqu'à sa régularisation.": "لم يعد اشتراك وكالتكم نشطًا: تبقى البيانات متاحة للاطلاع، وتُعلَّق التعديلات إلى حين تسويته.",
+  "Capacité de votre abonnement atteinte": "بلغتم الحد الأقصى لسعة اشتراككم",
+  "Votre abonnement comprend {{limit}} {{capacite}} et {{used}} sont utilisés. Demandez une extension de capacité.": "يشمل اشتراككم {{limit}} {{capacite}} واستُخدم منها {{used}}. اطلبوا تمديد السعة.",
+  "lots": "وحدات",
+  "copropriétés": "ملكيات مشتركة",
+  "chantiers": "أوراش",
+  "Paramètres › Abonnement": "الإعدادات › الاشتراك"
 }
