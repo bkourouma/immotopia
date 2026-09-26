@@ -278,6 +278,7 @@ jest.mock('@prisma/client', () => {
 import express from 'express';
 import request from 'supertest';
 import syndicRoutes from '../../src/routes/syndic-routes';
+import { errorHandler } from '../../src/middleware/error-middleware';
 
 const { __store: store } = jest.requireMock('@prisma/client') as { __store: any };
 
@@ -326,6 +327,13 @@ function seedJournal(id = JOURNAL_ID, fiscalYear = 2026, code = 'JG') {
 const app = express();
 app.use(express.json());
 app.use('/api', syndicRoutes);
+// Sans ceci, une erreur typee (throw + asyncHandler) tombe sur le
+// gestionnaire par defaut d'Express : le corps JSON est vide ({}) et le
+// statut retombe sur err.status s'il existe, sinon 500 — ce qui masquait,
+// avant ce correctif, a la fois l'absence de `error` dans le corps (lot 2,
+// controleurs syndic/biens/baux -> errorHandler) et deux ecarts de statut
+// qui n'etaient qu'un artefact du gestionnaire par defaut (voir plus bas).
+app.use(errorHandler);
 
 /** Poste une ecriture equilibree simple entre les deux comptes de base. */
 async function posterEcriture(montant: number, entryDate: string, reference: string, extra: Record<string, any> = {}) {
@@ -738,7 +746,15 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
       expect(response.body.data.map((e: any) => e.reference)).toEqual(['JE-MAR', 'JE-FEV']);
     });
 
-    it('SURPRISE : un intervalle de dates invalide renvoie 500 sur les ecritures mais 400 sur la balance', async () => {
+    // Etait : "SURPRISE : un intervalle de dates invalide renvoie 500 sur les
+    // ecritures mais 400 sur la balance". Ce n'etait pas une regle voulue :
+    // chaque controleur avait son propre `catch` avec un repli de statut
+    // arbitraire (`error.status || 500` ici, `error.status || 400` la-bas)
+    // pour la meme ZodError, sans statut porte par l'erreur elle-meme. Le
+    // lot 2 fait remonter les deux vers le meme `errorHandler`, qui mappe
+    // toute ZodError sur 400 (middleware/error-middleware.ts) : l'ecart
+    // disparait, et les deux routes sont maintenant coherentes.
+    it('un intervalle de dates invalide renvoie 400 de la meme facon sur les ecritures et sur la balance', async () => {
       const ecritures = await request(app)
         .get(`${base()}/ecritures`)
         .query({ from: '2026-06-01T00:00:00.000Z', to: '2026-01-01T00:00:00.000Z' });
@@ -746,8 +762,7 @@ describe('Caracterisation - moteur comptable de copropriete', () => {
         .get(`${base()}/balance`)
         .query({ from: '2026-06-01T00:00:00.000Z', to: '2026-01-01T00:00:00.000Z' });
 
-      // Meme erreur Zod, deux repli de statut differents dans les controleurs.
-      expect(ecritures.status).toBe(500);
+      expect(ecritures.status).toBe(400);
       expect(balance.status).toBe(400);
     });
   });

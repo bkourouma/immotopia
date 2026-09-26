@@ -66,7 +66,8 @@ function matches(row: Row, where: Row | undefined): boolean {
 
 function apply(row: Row, data: Row): Row {
   for (const [key, value] of Object.entries(data)) {
-    if (value !== null && typeof value === 'object' && 'increment' in value) row[key] = (row[key] ?? 0) + value.increment;
+    if (value !== null && typeof value === 'object' && 'increment' in value)
+      row[key] = (row[key] ?? 0) + value.increment;
     else row[key] = value;
   }
   row.updatedAt = new Date();
@@ -113,7 +114,8 @@ function delegate(collection: () => Row[], prefix: string, defaults: () => Row =
     }),
     groupBy: jest.fn(async ({ where }: Row) => {
       const counts = new Map<string, number>();
-      for (const r of collection().filter(row => matches(row, where))) counts.set(r.tenantId, (counts.get(r.tenantId) ?? 0) + 1);
+      for (const r of collection().filter(row => matches(row, where)))
+        counts.set(r.tenantId, (counts.get(r.tenantId) ?? 0) + 1);
       return [...counts.entries()].map(([tenantId, n]) => ({ tenantId, _count: { _all: n } }));
     })
   };
@@ -146,12 +148,16 @@ const mockPrisma: Row = {
   subscription: delegate(() => store.subscriptions, 'sub'),
   subscriptionItem: delegate(() => store.items, 'item'),
   catalogItem: delegate(() => store.catalog, 'cat'),
-  subscriptionExtensionRequest: delegate(() => store.requests, 'req', () => ({
-    status: 'OPEN',
-    handledAt: null,
-    handledByUserId: null,
-    handledNote: null
-  })),
+  subscriptionExtensionRequest: delegate(
+    () => store.requests,
+    'req',
+    () => ({
+      status: 'OPEN',
+      handledAt: null,
+      handledByUserId: null,
+      handledNote: null
+    })
+  ),
   capacityOverride: delegate(() => store.overrides, 'ovr'),
   tenantModule: delegate(() => store.modules, 'mod'),
   lotActivation: delegate(() => store.lots, 'lot'),
@@ -163,6 +169,24 @@ const mockPrisma: Row = {
     return Promise.all(arg as Promise<unknown>[]);
   })
 };
+
+// Hermetique par rapport au .env du poste : ce test doit rester en SIMULATOR
+// avec des identifiants vides quel que soit ce que le developpeur a mis dans
+// son .env local (ex. PLATFORM_PAYSECUREHUB_MODE=LIVE avec de vraies cles pour
+// tester le mode reel a la main). On ne surcharge que les cles PaySecureHub de
+// la plateforme ; le reste de `env` vient du chargement reel.
+jest.mock('../../src/config/env', () => {
+  const actual = jest.requireActual('../../src/config/env');
+  return {
+    ...actual,
+    env: {
+      ...actual.env,
+      PLATFORM_PAYSECUREHUB_MODE: 'SIMULATOR',
+      PLATFORM_PAYSECUREHUB_API_KEY: undefined,
+      PLATFORM_PAYSECUREHUB_MERCHANT_ID: undefined
+    }
+  };
+});
 
 jest.mock('../../src/utils/database', () => ({
   prisma: new Proxy({}, { get: (_t, prop) => (mockPrisma as any)[prop] })
@@ -191,7 +215,9 @@ jest.mock('../../src/services/subscription-v2-service', () => ({
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn() }));
 
 const sendEmail = jest.fn(async () => undefined);
-jest.mock('../../src/services/email-service', () => ({ emailService: { sendEmail: (...args: unknown[]) => sendEmail(...(args as [])) } }));
+jest.mock('../../src/services/email-service', () => ({
+  emailService: { sendEmail: (...args: unknown[]) => sendEmail(...(args as [])) }
+}));
 
 import {
   startInvoiceCheckout,
@@ -333,7 +359,7 @@ describe("Paiement en ligne d'une facture d'abonnement (compte ImmoTopia)", () =
     await expect(startInvoiceCheckout(TENANT_A, 'inv-a', 'user-a')).rejects.toMatchObject({ statusCode: 409 });
   });
 
-  it("succès : facture PAYÉE, règlement ONLINE, sortie de PAST_DUE et période avancée", async () => {
+  it('succès : facture PAYÉE, règlement ONLINE, sortie de PAST_DUE et période avancée', async () => {
     const { row } = await payThroughSimulator('SUCCESS');
     expect(row.status).toBe('SUCCESS');
     expect(store.invoices[0].status).toBe('PAID');
@@ -346,10 +372,12 @@ describe("Paiement en ligne d'une facture d'abonnement (compte ImmoTopia)", () =
     expect(sub.currentPeriodStart).toEqual(PERIOD_END);
     expect(sub.currentPeriodEnd).toEqual(NEXT_END);
     expect(applyDue).toHaveBeenCalledTimes(1);
-    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ actionKey: 'INVOICE_MARKED_PAID', entityId: 'inv-a' }));
+    expect(logAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ actionKey: 'INVOICE_MARKED_PAID', entityId: 'inv-a' })
+    );
   });
 
-  it("IPN rejouée : idempotente, aucun second règlement", async () => {
+  it('IPN rejouée : idempotente, aucun second règlement', async () => {
     const { checkout } = await payThroughSimulator('SUCCESS');
     await reconcilePlatformCheckoutPublic(checkout.codePaiement);
     await reconcilePlatformCheckoutPublic(checkout.codePaiement);
@@ -408,7 +436,7 @@ describe("Paiement en ligne d'une facture d'abonnement (compte ImmoTopia)", () =
   });
 });
 
-describe("IPN du compte ImmoTopia", () => {
+describe('IPN du compte ImmoTopia', () => {
   function fakeRes() {
     const res: Partial<Response> & { statusCode?: number; body?: unknown } = {};
     res.status = jest.fn((code: number) => {
@@ -425,7 +453,9 @@ describe("IPN du compte ImmoTopia", () => {
   async function call(body: unknown) {
     const res = fakeRes();
     await new Promise<void>((resolve, reject) => {
-      paysecurehubPlatformIpnHandler({ body } as Request, res as Response, (err?: unknown) => (err ? reject(err) : resolve()));
+      paysecurehubPlatformIpnHandler({ body } as Request, res as Response, (err?: unknown) =>
+        err ? reject(err) : resolve()
+      );
       setTimeout(resolve, 50);
     });
     return res;
@@ -458,11 +488,24 @@ describe('Constat manuel du super-admin', () => {
       'admin-1'
     );
     expect(result.subscription).toBe('RENEWED');
-    expect(result.payment).toMatchObject({ method: 'BANK_TRANSFER', reference: 'VIR-42', amount: 35282, hasProof: false });
-    expect(store.invoices[0]).toMatchObject({ status: 'PAID', paymentMethod: 'BANK_TRANSFER', paymentReference: 'VIR-42' });
+    expect(result.payment).toMatchObject({
+      method: 'BANK_TRANSFER',
+      reference: 'VIR-42',
+      amount: 35282,
+      hasProof: false
+    });
+    expect(store.invoices[0]).toMatchObject({
+      status: 'PAID',
+      paymentMethod: 'BANK_TRANSFER',
+      paymentReference: 'VIR-42'
+    });
     expect(store.subscriptions[0].status).toBe('ACTIVE');
     expect(logAuditEvent).toHaveBeenCalledWith(
-      expect.objectContaining({ actorUserId: 'admin-1', actionKey: 'INVOICE_MARKED_PAID', payload: expect.objectContaining({ source: 'MANUAL' }) })
+      expect.objectContaining({
+        actorUserId: 'admin-1',
+        actionKey: 'INVOICE_MARKED_PAID',
+        payload: expect.objectContaining({ source: 'MANUAL' })
+      })
     );
   });
 
@@ -490,7 +533,12 @@ describe('Constat manuel du super-admin', () => {
 
   it("une facture hors échéance réglée ne touche pas à l'abonnement", async () => {
     store.invoices[0].periodStart = new Date('2026-12-01T00:00:00Z');
-    const result = await recordManualPayment(TENANT_A, 'inv-a', { method: 'CASH', paidAt: new Date('2026-09-02') }, 'admin-1');
+    const result = await recordManualPayment(
+      TENANT_A,
+      'inv-a',
+      { method: 'CASH', paidAt: new Date('2026-09-02') },
+      'admin-1'
+    );
     expect(result.subscription).toBe('NONE');
     expect(store.subscriptions[0].status).toBe('PAST_DUE');
   });
@@ -533,29 +581,47 @@ describe('Routes manquantes de la vague 2', () => {
   });
 
   it("PATCH d'un élément : remise modifiée en une écriture auditée", async () => {
-    const item = await updateSubscriptionItem(TENANT_A, 'item-a', { discountPercent: 15, reason: 'Geste commercial' }, 'admin-1');
+    const item = await updateSubscriptionItem(
+      TENANT_A,
+      'item-a',
+      { discountPercent: 15, reason: 'Geste commercial' },
+      'admin-1'
+    );
     expect(item.discountPercent).toBe(15);
     expect(item.unitMonthlyPrice).toBe(29900);
     expect(logAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         actionKey: 'SUBSCRIPTION_ITEM_UPDATED',
-        payload: expect.objectContaining({ before: expect.objectContaining({ discountPercent: 0 }), after: expect.objectContaining({ discountPercent: 15 }) })
+        payload: expect.objectContaining({
+          before: expect.objectContaining({ discountPercent: 0 }),
+          after: expect.objectContaining({ discountPercent: 15 })
+        })
       })
     );
   });
 
   it("PATCH : 404 pour l'élément d'une autre agence, 400 sur un élément terminé", async () => {
-    await expect(updateSubscriptionItem(TENANT_B, 'item-a', { discountPercent: 5 }, 'admin-1')).rejects.toBeInstanceOf(NotFoundError);
+    await expect(updateSubscriptionItem(TENANT_B, 'item-a', { discountPercent: 5 }, 'admin-1')).rejects.toBeInstanceOf(
+      NotFoundError
+    );
     store.items[0].status = 'ENDED';
-    await expect(updateSubscriptionItem(TENANT_A, 'item-a', { discountPercent: 5 }, 'admin-1')).rejects.toMatchObject({ statusCode: 400 });
+    await expect(updateSubscriptionItem(TENANT_A, 'item-a', { discountPercent: 5 }, 'admin-1')).rejects.toMatchObject({
+      statusCode: 400
+    });
   });
 
   it("demande d'extension : tracée, auditée, e-mail aux super-admins, visible de l'agence seule", async () => {
-    const request = await createExtensionRequest(TENANT_A, { catalogCode: 'AGENCE', quantity: 1, message: 'Il nous faut 50 lots' }, 'user-a');
+    const request = await createExtensionRequest(
+      TENANT_A,
+      { catalogCode: 'AGENCE', quantity: 1, message: 'Il nous faut 50 lots' },
+      'user-a'
+    );
     expect(request).toMatchObject({ status: 'OPEN', catalogName: 'Pack Agence', requestedByName: 'Awa Koné' });
     await new Promise(resolve => setTimeout(resolve, 20));
     expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'root@immotopia.app' }));
-    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ actionKey: 'SUBSCRIPTION_EXTENSION_REQUESTED' }));
+    expect(logAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ actionKey: 'SUBSCRIPTION_EXTENSION_REQUESTED' })
+    );
     expect(await listExtensionRequests(TENANT_A)).toHaveLength(1);
     expect(await listExtensionRequests(TENANT_B)).toHaveLength(0);
   });

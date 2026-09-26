@@ -967,5 +967,11 @@
   "Module en lecture seule": "Read-only module",
   "Ce module a été retiré de votre abonnement : vous pouvez consulter et exporter ses données, mais plus les modifier.": "This module has been removed from your subscription: you can still view and export its data, but no longer change it.",
   "Abonnement en lecture seule": "Read-only subscription",
-  "L'abonnement de votre agence n'est plus actif : les données restent consultables, les modifications sont suspendues jusqu'à sa régularisation.": "Your agency's subscription is no longer active: data remains viewable, changes are suspended until it is settled."
+  "L'abonnement de votre agence n'est plus actif : les données restent consultables, les modifications sont suspendues jusqu'à sa régularisation.": "Your agency's subscription is no longer active: data remains viewable, changes are suspended until it is settled.",
+  "Capacité de votre abonnement atteinte": "Your subscription capacity is reached",
+  "Votre abonnement comprend {{limit}} {{capacite}} et {{used}} sont utilisés. Demandez une extension de capacité.": "Your subscription includes {{limit}} {{capacite}} and {{used}} are used. Request a capacity extension.",
+  "lots": "units",
+  "copropriétés": "condominiums",
+  "chantiers": "construction sites",
+  "Paramètres › Abonnement": "Settings › Subscription"
 }

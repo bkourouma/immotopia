@@ -27,31 +27,46 @@ function bodyOf(file: string, name: string): string {
 
 const CALL_SITES: Array<[file: string, fn: string, expected: RegExp, transactional: boolean]> = [
   // Biens : creation, sortie de brouillon / statut / modes, suppression, vente.
-  ['services/property-service.ts', 'createProperty', /syncLotActivationsTx\(tx,/, true],
-  ['services/property-service.ts', 'updateProperty', /syncLotActivationsTx\(tx,/, true],
+  ['services/property-service.ts', 'createProperty', /syncLotActivationsTx\(\s*tx,/, true],
+  ['services/property-service.ts', 'updateProperty', /syncLotActivationsTx\(\s*tx,/, true],
   ['services/property-service.ts', 'deleteProperty', /syncLotActivationsTx\(\s*tx,/, true],
-  ['services/property-status-service.ts', 'updatePropertyStatus', /syncLotActivationsTx\(tx,/, true],
-  ['lib/sales/property-status.ts', 'setPropertyStatusTx', /syncLotActivationsTx\(tx,/, false],
+  ['services/property-status-service.ts', 'updatePropertyStatus', /syncLotActivationsTx\(\s*tx,/, true],
+  ['lib/sales/property-status.ts', 'setPropertyStatusTx', /syncLotActivationsTx\(\s*tx,/, false],
   // Baux : creation (ACTIVE), changement de statut, renouvellement, resiliation.
-  ['services/rental-lease-service.ts', 'createLease', /syncLotActivationsTx\(tx,/, true],
-  ['services/rental-lease-service.ts', 'updateLeaseStatus', /syncLotActivationsTx\(tx,/, true],
-  ['services/rental-lease-service.ts', 'deleteLease', /syncLotActivationsTx\(tx,/, true],
-  ['lib/lease-lifecycle/service.ts', 'renewLease', /syncLotActivationsTx\(tx,/, true],
-  ['lib/lease-lifecycle/service.ts', 'terminateLease', /syncLotActivationsTx\(tx,/, true],
+  ['services/rental-lease-service.ts', 'createLease', /syncLotActivationsTx\(\s*tx,/, true],
+  ['services/rental-lease-service.ts', 'updateLeaseStatus', /syncLotActivationsTx\(\s*tx,/, true],
+  ['services/rental-lease-service.ts', 'deleteLease', /syncLotActivationsTx\(\s*tx,/, true],
+  ['lib/lease-lifecycle/service.ts', 'renewLease', /syncLotActivationsTx\(\s*tx,/, true],
+  ['lib/lease-lifecycle/service.ts', 'terminateLease', /syncLotActivationsTx\(\s*tx,/, true],
   // Coproprietes : creation (capacite), statut, suppression, lots.
   ['lib/syndics/queries.ts', 'createSyndicateWithDefaults', /assertCapacityTx\(tx, tenantId, 'COPROPRIETES'\)/, true],
   ['lib/syndics/queries.ts', 'updateSyndicateByTenant', /syncLotActivationsTx\(tx, tenantId, \{ syndicateIds/, true],
   ['lib/syndics/queries.ts', 'archiveSyndicateByTenant', /syncLotActivationsTx\(tx, tenantId, scope/, true],
   ['lib/syndics/queries.ts', 'createSyndicateLot', /syncLotActivationsTx\(tx, tenantId, \{ syndicateLotIds/, true],
-  ['lib/syndics/queries.ts', 'importLotsFromPropertiesBySyndicate', /syncLotActivationsTx\(tx, tenantId, \{ syndicateLotIds/, true],
+  [
+    'lib/syndics/queries.ts',
+    'importLotsFromPropertiesBySyndicate',
+    /syncLotActivationsTx\(tx, tenantId, \{ syndicateLotIds/,
+    true
+  ],
   ['lib/syndics/queries.ts', 'updateSyndicateLotByTenant', /syncLotActivationsTx\(tx, tenantId, \{/, true],
   // Chantiers : creation (capacite), lots, cloture, reouverture, bascule.
   ['lib/finance/sites.ts', 'createConstructionSite', /assertCapacityTx\(tx, tenantId, 'CHANTIERS'\)/, true],
   ['lib/finance/site-closing.ts', 'createSiteLotTx', /syncLotActivationsTx\(tx, tenantId, \{ siteLotIds/, false],
   ['lib/finance/site-closing.ts', 'deleteSiteLotTx', /syncLotActivationsTx\(tx, tenantId, \{ siteLotIds/, false],
   ['lib/finance/site-closing.ts', 'closeSiteTx', /syncLotActivationsTx\(tx, tenantId, \{ siteIds/, false],
-  ['lib/finance/site-closing.ts', 'reopenSiteTx', /assertCapacityTx\(tx, tenantId, 'CHANTIERS'\)[\s\S]*syncLotActivationsTx\(tx, tenantId, \{ siteIds/, false],
-  ['lib/finance/site-closing.ts', 'capitalizeSiteLotTx', /syncLotActivationsTx\(tx, tenantId, \{ siteLotIds: \[lotId\], propertyIds/, false]
+  [
+    'lib/finance/site-closing.ts',
+    'reopenSiteTx',
+    /assertCapacityTx\(tx, tenantId, 'CHANTIERS'\)[\s\S]*syncLotActivationsTx\(tx, tenantId, \{ siteIds/,
+    false
+  ],
+  [
+    'lib/finance/site-closing.ts',
+    'capitalizeSiteLotTx',
+    /syncLotActivationsTx\(tx, tenantId, \{ siteLotIds: \[lotId\], propertyIds/,
+    false
+  ]
 ];
 
 describe('registre des lots branche dans chaque operation metier', () => {

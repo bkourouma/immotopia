@@ -59,7 +59,7 @@ const store = {
   reminderSeq: 1,
   penaltySeq: 1,
   reminders: new Map<string, Reminder>(),
-  penalties: new Map<string, Penalty>(),
+  penalties: new Map<string, Penalty>()
 };
 
 function nextReminderId(seq: number): string {
@@ -104,7 +104,8 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   getFinanceSummaryBySyndicate: jest.fn(),
   listCommonAssetsBySyndicate: jest.fn(),
   listOverdueDashboardBySyndicate: jest.fn(async (tenantId: string, syndicateId: string) => {
-    if (tenantId !== TENANT_ID || syndicateId !== SYNDIC_ID) return { items: [], totals: { overdueCount: 0, overdueAmount: 0 } };
+    if (tenantId !== TENANT_ID || syndicateId !== SYNDIC_ID)
+      return { items: [], totals: { overdueCount: 0, overdueAmount: 0 } };
     return {
       items: [
         {
@@ -117,36 +118,38 @@ jest.mock('../../src/lib/syndics/queries', () => ({
           amount: 100000,
           paid: 20000,
           outstanding: 80000,
-          daysLate: 20,
-        },
+          daysLate: 20
+        }
       ],
-      totals: { overdueCount: 1, overdueAmount: 80000 },
+      totals: { overdueCount: 1, overdueAmount: 80000 }
     };
   }),
   listPaymentRemindersBySyndicate: jest.fn(async (tenantId: string, syndicateId: string) =>
-    Array.from(store.reminders.values()).filter((r) => r.tenantId === tenantId && r.syndicateId === syndicateId)
+    Array.from(store.reminders.values()).filter(r => r.tenantId === tenantId && r.syndicateId === syndicateId)
   ),
-  createManualReminderForChargeCall: jest.fn(async (tenantId: string, syndicateId: string, chargeCallId: string, data: any) => {
-    if (tenantId !== TENANT_ID || syndicateId !== SYNDIC_ID || chargeCallId !== CHARGE_ID) {
-      const err: any = new Error('Appel de charges introuvable ou inaccessible');
-      err.status = 404;
-      throw err;
+  createManualReminderForChargeCall: jest.fn(
+    async (tenantId: string, syndicateId: string, chargeCallId: string, data: any) => {
+      if (tenantId !== TENANT_ID || syndicateId !== SYNDIC_ID || chargeCallId !== CHARGE_ID) {
+        const err: any = new Error('Appel de charges introuvable ou inaccessible');
+        err.status = 404;
+        throw err;
+      }
+      const id = nextReminderId(store.reminderSeq++);
+      const reminder: Reminder = {
+        id,
+        tenantId,
+        syndicateId,
+        chargeCallId,
+        lotId: LOT_ID,
+        reminderLevel: data.reminderLevel ?? 1,
+        channel: data.channel ?? 'EMAIL',
+        status: data.status ?? 'SENT',
+        sentAt: new Date().toISOString()
+      };
+      store.reminders.set(id, reminder);
+      return reminder;
     }
-    const id = nextReminderId(store.reminderSeq++);
-    const reminder: Reminder = {
-      id,
-      tenantId,
-      syndicateId,
-      chargeCallId,
-      lotId: LOT_ID,
-      reminderLevel: data.reminderLevel ?? 1,
-      channel: data.channel ?? 'EMAIL',
-      status: data.status ?? 'SENT',
-      sentAt: new Date().toISOString(),
-    };
-    store.reminders.set(id, reminder);
-    return reminder;
-  }),
+  ),
   runReminderBatchForSyndicate: jest.fn(async (tenantId: string, syndicateId: string) => {
     if (tenantId !== TENANT_ID || syndicateId !== SYNDIC_ID) {
       return { processedCalls: 0, remindersCreated: 0, createdReminderIds: [] };
@@ -161,80 +164,91 @@ jest.mock('../../src/lib/syndics/queries', () => ({
       reminderLevel: 1,
       channel: 'EMAIL',
       status: 'SENT',
-      sentAt: new Date().toISOString(),
+      sentAt: new Date().toISOString()
     });
     return { processedCalls: 1, remindersCreated: 1, createdReminderIds: [id] };
   }),
   listLatePaymentPenaltiesBySyndicate: jest.fn(async (tenantId: string, syndicateId: string) =>
-    Array.from(store.penalties.values()).filter((p) => p.tenantId === tenantId && p.syndicateId === syndicateId)
+    Array.from(store.penalties.values()).filter(p => p.tenantId === tenantId && p.syndicateId === syndicateId)
   ),
-  createLatePaymentPenaltyForChargeCall: jest.fn(async (tenantId: string, syndicateId: string, chargeCallId: string, data: any) => {
-    if (tenantId !== TENANT_ID || syndicateId !== SYNDIC_ID || chargeCallId !== CHARGE_ID) {
-      const err: any = new Error('Appel de charges introuvable ou inaccessible');
-      err.status = 404;
-      throw err;
+  createLatePaymentPenaltyForChargeCall: jest.fn(
+    async (tenantId: string, syndicateId: string, chargeCallId: string, data: any) => {
+      if (tenantId !== TENANT_ID || syndicateId !== SYNDIC_ID || chargeCallId !== CHARGE_ID) {
+        const err: any = new Error('Appel de charges introuvable ou inaccessible');
+        err.status = 404;
+        throw err;
+      }
+      const id = nextPenaltyId(store.penaltySeq++);
+      const penalty: Penalty = {
+        id,
+        tenantId,
+        syndicateId,
+        chargeCallId,
+        lotId: LOT_ID,
+        daysLate: data.daysLate ?? 10,
+        penaltyRate: data.penaltyRate,
+        penaltyAmount: data.penaltyAmount ?? 1500,
+        waived: false
+      };
+      store.penalties.set(id, penalty);
+      return penalty;
     }
-    const id = nextPenaltyId(store.penaltySeq++);
-    const penalty: Penalty = {
-      id,
-      tenantId,
-      syndicateId,
-      chargeCallId,
-      lotId: LOT_ID,
-      daysLate: data.daysLate ?? 10,
-      penaltyRate: data.penaltyRate,
-      penaltyAmount: data.penaltyAmount ?? 1500,
-      waived: false,
-    };
-    store.penalties.set(id, penalty);
-    return penalty;
-  }),
-  waiveLatePaymentPenaltyByTenant: jest.fn(async (tenantId: string, syndicateId: string, penaltyId: string, waivedReason: string) => {
-    const penalty = store.penalties.get(penaltyId);
-    if (!penalty || penalty.tenantId !== tenantId || penalty.syndicateId !== syndicateId) {
-      const err: any = new Error('Penalite introuvable ou inaccessible');
-      err.status = 404;
-      throw err;
+  ),
+  waiveLatePaymentPenaltyByTenant: jest.fn(
+    async (tenantId: string, syndicateId: string, penaltyId: string, waivedReason: string) => {
+      const penalty = store.penalties.get(penaltyId);
+      if (!penalty || penalty.tenantId !== tenantId || penalty.syndicateId !== syndicateId) {
+        const err: any = new Error('Penalite introuvable ou inaccessible');
+        err.status = 404;
+        throw err;
+      }
+      penalty.waived = true;
+      penalty.waivedReason = waivedReason;
+      return penalty;
     }
-    penalty.waived = true;
-    penalty.waivedReason = waivedReason;
-    return penalty;
-  }),
-  createPaymentScheduleForChargeCall: jest.fn(async (tenantId: string, syndicateId: string, chargeCallId: string, data: any) => {
-    if (tenantId !== TENANT_ID || syndicateId !== SYNDIC_ID || chargeCallId !== CHARGE_ID) {
-      const err: any = new Error('Appel de charges introuvable ou inaccessible');
-      err.status = 404;
-      throw err;
+  ),
+  createPaymentScheduleForChargeCall: jest.fn(
+    async (tenantId: string, syndicateId: string, chargeCallId: string, data: any) => {
+      if (tenantId !== TENANT_ID || syndicateId !== SYNDIC_ID || chargeCallId !== CHARGE_ID) {
+        const err: any = new Error('Appel de charges introuvable ou inaccessible');
+        err.status = 404;
+        throw err;
+      }
+      return {
+        id: 'sched-1',
+        chargeCallId,
+        lotId: LOT_ID,
+        totalAmount: data.totalAmount,
+        status: 'ACTIVE',
+        instalments: data.instalments.map((i: any, index: number) => ({
+          id: `inst-${index + 1}`,
+          dueDate: i.dueDate,
+          amount: i.amount,
+          status: 'PENDING'
+        }))
+      };
     }
-    return {
-      id: 'sched-1',
-      chargeCallId,
-      lotId: LOT_ID,
-      totalAmount: data.totalAmount,
-      status: 'ACTIVE',
-      instalments: data.instalments.map((i: any, index: number) => ({
-        id: `inst-${index + 1}`,
-        dueDate: i.dueDate,
-        amount: i.amount,
-        status: 'PENDING',
-      })),
-    };
-  }),
+  )
 }));
 
 jest.mock('../../src/lib/syndics/notifications', () => ({
   notifyChargeCall: jest.fn().mockResolvedValue({ emailSent: true, whatsappSent: false }),
   notifyMeetingConvocation: jest.fn().mockResolvedValue({ emailSent: 0, whatsappSent: 0 }),
-  notifyChargeCallReminder: jest.fn().mockResolvedValue({ emailSent: true, whatsappSent: false }),
+  notifyChargeCallReminder: jest.fn().mockResolvedValue({ emailSent: true, whatsappSent: false })
 }));
 
 import syndicRoutes from '../../src/routes/syndic-routes';
+import { errorHandler } from '../../src/middleware/error-middleware';
 const mockNotifications = jest.requireMock('../../src/lib/syndics/notifications') as Record<string, jest.Mock>;
 
 describe('Syndics recovery routes', () => {
   const app = express();
   app.use(express.json());
   app.use('/api', syndicRoutes);
+  // Sans ce middleware, une erreur typee (throw + asyncHandler) tombe sur le
+  // gestionnaire par defaut d'Express : corps JSON vide, statut potentiellement
+  // errone. Voir __tests__/api/syndics.accounting.characterization.test.ts.
+  app.use(errorHandler);
 
   beforeEach(() => {
     store.reminderSeq = 1;
@@ -263,9 +277,7 @@ describe('Syndics recovery routes', () => {
   });
 
   it('runs reminder batch and triggers notifications', async () => {
-    const response = await request(app)
-      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/relances/batch`)
-      .send({});
+    const response = await request(app).post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/relances/batch`).send({});
 
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
@@ -296,8 +308,8 @@ describe('Syndics recovery routes', () => {
         totalAmount: 80000,
         instalments: [
           { dueDate: '2026-04-10T00:00:00.000Z', amount: 40000 },
-          { dueDate: '2026-05-10T00:00:00.000Z', amount: 40000 },
-        ],
+          { dueDate: '2026-05-10T00:00:00.000Z', amount: 40000 }
+        ]
       });
 
     expect(response.status).toBe(201);

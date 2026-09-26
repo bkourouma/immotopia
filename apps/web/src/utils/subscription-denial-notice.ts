@@ -24,12 +24,42 @@ export function isSubscriptionDenialCode(code: unknown): code is SubscriptionDen
   return typeof code === 'string' && (SUBSCRIPTION_DENIAL_CODES as readonly string[]).includes(code);
 }
 
+/**
+ * Dépassement de capacité (D4, politique BLOCK) : 409 `QUOTA_EXCEEDED`, avec
+ * `data: { capacityKey, used, limit, requested }`. Distinct des trois codes
+ * ci-dessus (403, sans `data`) : le message a besoin des chiffres du serveur,
+ * donc pas de simple entrée dans `SUBSCRIPTION_DENIAL_CODES`.
+ */
+export interface QuotaExceededDetail {
+  capacityKey: string;
+  used: number;
+  limit: number;
+  requested: number;
+}
+
+export function isQuotaExceededDetail(data: unknown): data is QuotaExceededDetail {
+  if (!data || typeof data !== 'object') return false;
+  const d = data as Record<string, unknown>;
+  return typeof d.capacityKey === 'string' && typeof d.used === 'number' && typeof d.limit === 'number';
+}
+
+/** Libellé pluriel de la capacité, tel qu'il apparaît dans le message. */
+const CAPACITY_LABELS: Record<string, string> = {
+  LOTS: 'lots',
+  COPROPRIETES: 'copropriétés',
+  CHANTIERS: 'chantiers'
+};
+
+function capacityLabel(capacityKey: string): string {
+  return t(CAPACITY_LABELS[capacityKey] ?? capacityKey.toLowerCase());
+}
+
 /** Titre et explication d'un refus, traduits. */
 export function subscriptionDenialText(code: SubscriptionDenialCode): { title: string; description: string } {
   switch (code) {
     case 'MODULE_NOT_INCLUDED':
       return {
-        title: t("Fonction non comprise dans votre abonnement"),
+        title: t('Fonction non comprise dans votre abonnement'),
         description: t(
           "Cette fonction relève d'un module que votre agence n'a pas souscrit. Pour l'ajouter, contactez l'administrateur de votre agence ou ImmoTopia."
         )
@@ -38,7 +68,7 @@ export function subscriptionDenialText(code: SubscriptionDenialCode): { title: s
       return {
         title: t('Module en lecture seule'),
         description: t(
-          "Ce module a été retiré de votre abonnement : vous pouvez consulter et exporter ses données, mais plus les modifier."
+          'Ce module a été retiré de votre abonnement : vous pouvez consulter et exporter ses données, mais plus les modifier.'
         )
       };
     case 'SUBSCRIPTION_READ_ONLY':
@@ -51,14 +81,56 @@ export function subscriptionDenialText(code: SubscriptionDenialCode): { title: s
   }
 }
 
+/**
+ * Titre, explication et lien vers le réglage, pour un dépassement de
+ * capacité. Le lien est un chemin (pas un composant) : ce fichier reste hors
+ * de React pour ne pas peser sur le chunk d'entrée (voir plus bas) — c'est
+ * l'appelant (`AppShell`, déjà paresseux) qui construit le bouton depuis
+ * `settingsPath`.
+ */
+export function quotaExceededDenialText(
+  detail: QuotaExceededDetail,
+  tenantId?: string | null
+): { title: string; description: string; settingsPath: string | null } {
+  return {
+    title: t('Capacité de votre abonnement atteinte'),
+    description: t(
+      'Votre abonnement comprend {{limit}} {{capacite}} et {{used}} sont utilisés. Demandez une extension de capacité.',
+      { limit: detail.limit, capacite: capacityLabel(detail.capacityKey), used: detail.used }
+    ),
+    settingsPath: tenantId ? `/tenant/${tenantId}/settings/abonnement` : null
+  };
+}
+
+/** Extrait le tenantId d'une URL de requête (`/tenants/:tenantId/...`). */
+function tenantIdFromUrl(url: string | undefined): string | null {
+  const match = url?.match(/\/tenants\/([^/]+)/);
+  return match ? match[1] : null;
+}
+
 /** Ce qu'il faut d'une API de notification antd (`App.useApp().notification`). */
 export interface DenialNotifier {
-  warning: (config: { key: string; title: string; description: string; duration: number }) => void;
+  warning: (config: {
+    key: string;
+    title: string;
+    description: string;
+    duration: number;
+    settingsPath?: string | null;
+  }) => void;
 }
 
 export function showSubscriptionDenial(notifier: DenialNotifier, code: SubscriptionDenialCode): void {
   const { title, description } = subscriptionDenialText(code);
   notifier.warning({ key: `subscription-denial:${code}`, title, description, duration: 8 });
+}
+
+export function showQuotaExceededDenial(
+  notifier: DenialNotifier,
+  detail: QuotaExceededDetail,
+  tenantId?: string | null
+): void {
+  const { title, description, settingsPath } = quotaExceededDenialText(detail, tenantId);
+  notifier.warning({ key: 'subscription-denial:QUOTA_EXCEEDED', title, description, duration: 8, settingsPath });
 }
 
 /**
@@ -71,8 +143,14 @@ export function installSubscriptionDenialInterceptor(client: AxiosInstance, noti
   const id = client.interceptors.response.use(
     response => response,
     (error: AxiosError) => {
-      const code = (error.response?.data as { code?: unknown } | undefined)?.code;
-      if (error.response?.status === 403 && isSubscriptionDenialCode(code)) showSubscriptionDenial(notifier, code);
+      const body = error.response?.data as { code?: unknown; data?: unknown } | undefined;
+      const code = body?.code;
+      const status = error.response?.status;
+      if (status === 403 && isSubscriptionDenialCode(code)) {
+        showSubscriptionDenial(notifier, code);
+      } else if (status === 409 && code === 'QUOTA_EXCEEDED' && isQuotaExceededDetail(body?.data)) {
+        showQuotaExceededDenial(notifier, body.data, tenantIdFromUrl(error.config?.url));
+      }
       return Promise.reject(error);
     }
   );
