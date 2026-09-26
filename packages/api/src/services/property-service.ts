@@ -49,6 +49,39 @@ export async function createPublicProperty(
 }
 
 /**
+ * Controle, avant tout acces a la base, les champs que `tx.property.create()`
+ * exige ou type strictement. Le corps arrive tel quel de `req.body` : un
+ * champ absent ou d'un mauvais type devient sinon un
+ * `PrismaClientValidationError`, que le gestionnaire d'erreurs classe 500.
+ * Les champs facultatifs du formulaire (adresse, description) ne sont
+ * verifies que s'ils sont fournis.
+ */
+function assertCreatePropertyRequest(data: CreatePropertyRequest): void {
+  if (!Object.values(PropertyType).includes(data.propertyType)) {
+    throw new BadRequestError('Le type de bien est absent ou inconnu.');
+  }
+  if (!Object.values(PropertyOwnershipType).includes(data.ownershipType)) {
+    throw new BadRequestError('Le type de détention du bien est absent ou inconnu.');
+  }
+  if (typeof data.title !== 'string' || !data.title.trim()) {
+    throw new BadRequestError('Le titre du bien est requis.');
+  }
+  if (
+    data.transactionModes !== undefined &&
+    (!Array.isArray(data.transactionModes) ||
+      data.transactionModes.some(mode => !Object.values(PropertyTransactionMode).includes(mode)))
+  ) {
+    throw new BadRequestError('Les modes de transaction du bien sont invalides.');
+  }
+  if (data.address !== undefined && data.address !== null && typeof data.address !== 'string') {
+    throw new BadRequestError("L'adresse du bien doit être un texte.");
+  }
+  if (data.description !== undefined && data.description !== null && typeof data.description !== 'string') {
+    throw new BadRequestError('La description du bien doit être un texte.');
+  }
+}
+
+/**
  * Create a new property
  * @param tenantId - Tenant ID (for tenant-owned properties)
  * @param ownerUserId - Owner user ID (for public/private owner properties)
@@ -62,6 +95,8 @@ export async function createProperty(
   data: CreatePropertyRequest,
   actorUserId?: string
 ): Promise<PropertyDetail> {
+  assertCreatePropertyRequest(data);
+
   // Validate ownership type matches provided IDs
   if (data.ownershipType === PropertyOwnershipType.TENANT && !tenantId) {
     throw new BadRequestError('Tenant ID is required for tenant-owned properties');
@@ -130,8 +165,11 @@ export async function createProperty(
             ownerUserId: finalOwnerUserId, // Can be set even for TENANT type if owner is selected in form
             containerParentId: data.containerParentId || null, // For sub-properties (apartments in buildings)
             title: data.title,
-            description: data.description,
-            address: data.address,
+            // Colonnes NOT NULL sans defaut, mais facultatives dans le
+            // formulaire : « Terminer » omet l'adresse laissee vide. Sans ce
+            // repli, Prisma levait « Argument `address` is missing » -> 500.
+            description: data.description ?? '',
+            address: data.address ?? '',
             locationZone: data.locationZone || null,
             latitude: data.latitude || null,
             longitude: data.longitude || null,
@@ -181,32 +219,15 @@ export async function createProperty(
       });
     } catch (error: any) {
       // Check if it's a unique constraint violation on internal_reference
-      const isReferenceCollision = error.code === 'P2002' && error.meta?.target?.includes('internal_reference');
-      // Deux creations concurrentes pour la meme agence se serialisent sur le
-      // verrou d'agence (lockTenantLotsTx) : Prisma peut alors rapporter la
-      // contention comme un conflit d'ecriture/interblocage transactionnel
-      // (P2034 — « Transaction failed due to a write conflict or a deadlock.
-      // Please retry your transaction », documente comme reessayable) plutot
-      // que de laisser la seconde transaction voir le quota a jour. Sans ce
-      // cas, cette erreur Prisma brute remontait telle quelle et
-      // error-middleware la classait 500 INTERNAL au lieu du 409
-      // QUOTA_EXCEEDED que la reessai obtient (D1 ; recette syndic du 26/09).
-      const isTransientTransactionConflict = error.code === 'P2034';
-
-      if (isReferenceCollision || isTransientTransactionConflict) {
+      if (error.code === 'P2002' && error.meta?.target?.includes('internal_reference')) {
         retries++;
         if (retries < MAX_RETRIES) {
           // Wait a bit before retrying (exponential backoff)
           const delay = Math.min(50 * Math.pow(2, retries - 1), 200);
           await new Promise(resolve => setTimeout(resolve, delay));
-          logger.warn(
-            isReferenceCollision
-              ? 'Property reference collision, retrying'
-              : 'Property creation transaction conflict, retrying',
-            { retries, title: data.title }
-          );
+          logger.warn('Property reference collision, retrying', { retries, title: data.title });
           continue;
-        } else if (isReferenceCollision) {
+        } else {
           logger.error('Failed to create property after max retries due to reference collision', {
             retries,
             title: data.title,
@@ -216,17 +237,9 @@ export async function createProperty(
           throw new BadRequestError(
             'Failed to generate unique property reference after multiple attempts. Please try again.'
           );
-        } else {
-          logger.error('Failed to create property after max retries due to transaction conflicts', {
-            retries,
-            title: data.title,
-            tenantId,
-            ownerUserId: finalOwnerUserId
-          });
-          throw error;
         }
       } else {
-        // Re-throw if it's not a reference collision or a transient transaction conflict
+        // Re-throw if it's not a reference collision error
         throw error;
       }
     }

@@ -43,6 +43,18 @@ export function isQuotaExceededDetail(data: unknown): data is QuotaExceededDetai
   return typeof d.capacityKey === 'string' && typeof d.used === 'number' && typeof d.limit === 'number';
 }
 
+/**
+ * L'erreur Axios est-elle un refus de capacité que l'intercepteur ci-dessous
+ * annonce déjà ? L'écran appelant s'en sert pour ne pas doubler l'alerte.
+ */
+export function isQuotaExceededResponse(error: unknown): boolean {
+  const response = (error as { response?: { status?: number; data?: { code?: unknown; data?: unknown } } } | null)
+    ?.response;
+  return (
+    response?.status === 409 && response.data?.code === 'QUOTA_EXCEEDED' && isQuotaExceededDetail(response.data.data)
+  );
+}
+
 /** Libellé pluriel de la capacité, tel qu'il apparaît dans le message. */
 const CAPACITY_LABELS: Record<string, string> = {
   LOTS: 'lots',

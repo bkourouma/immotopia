@@ -72,8 +72,9 @@ export interface CreatePropertyRequest {
   ownerEmail?: string; // Alternative to ownerUserId - will find/create User by email
   containerParentId?: string; // For sub-properties (apartments in buildings)
   title: string;
-  description: string;
-  address: string;
+  // Facultatives dans le formulaire : absentes, elles sont enregistrees vides.
+  description?: string;
+  address?: string;
   locationZone?: string;
   latitude?: number;
   longitude?: number;

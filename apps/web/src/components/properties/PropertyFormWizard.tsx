@@ -45,6 +45,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { listContacts, CrmContact } from '../../services/crm-service';
 import { t } from '../../i18n/t';
+import { isQuotaExceededResponse } from '../../utils/subscription-denial-notice';
 
 import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
@@ -181,13 +182,10 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
   const [template, setTemplate] = useState<PropertyTypeTemplate | null>(null);
   const [loadingTemplate, setLoadingTemplate] = useState(false);
   const autoSaveAttemptedRef = useRef(false);
-  // Enregistrement en cours partage entre l'auto-save media (arrivee sur
-  // l'etape 'medias') et handleFinish (clic sur "Terminer") : sans lui, les
-  // deux peuvent decider independamment, sur un savedPropertyId encore vide,
-  // d'appeler createProperty — deux POST partent, le second retombe en plein
-  // sur le quota deja consomme par le premier. Quiconque demarre la creation
-  // pose la promesse ici en premier ; l'autre l'attend au lieu d'en relancer une.
-  const propertyCreationPromiseRef = useRef<Promise<Property> | null>(null);
+  // Vrai tant que handleFinish tourne. Un double clic sur « Terminer »
+  // declenche deux appels avant que React n'ait rendu le bouton en
+  // chargement : le second repartirait avec un POST de creation.
+  const finishInFlightRef = useRef(false);
   const [mediaRefreshKey, setMediaRefreshKey] = useState(0);
   const [owners, setOwners] = useState<Array<CrmContact & { userId?: string }>>([]);
   const [loadingOwners, setLoadingOwners] = useState(false);
@@ -323,20 +321,10 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
   };
 
   const handleFinish = async () => {
+    if (finishInFlightRef.current) return;
+    finishInFlightRef.current = true;
     setIsLoading(true);
     try {
-      // L'auto-save media (arrivee sur la derniere etape) a pu demarrer une
-      // creation juste avant ce clic : on l'attend au lieu d'en relancer une
-      // seconde, qui repartirait sur le meme quota deja consomme ou refuse
-      // par la premiere (deux POST pour un seul clic sur "Terminer"). Si elle
-      // echoue (quota refuse), l'attente rejette ici et le catch plus bas
-      // affiche l'erreur une seule fois.
-      let idEnAttenteDeCreation: string | undefined;
-      if (!savedPropertyId && propertyCreationPromiseRef.current) {
-        const inFlightProperty = await propertyCreationPromiseRef.current;
-        idEnAttenteDeCreation = inFlightProperty.id;
-      }
-
       const submitData: CreatePropertyRequest | UpdatePropertyRequest = {
         ...(property ? {} : { propertyType: formData.propertyType, ownershipType: formData.ownershipType }),
         ownerUserId: formData.ownerUserId && !formData.ownerUserId.includes('@') ? formData.ownerUserId : undefined,
@@ -377,18 +365,14 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
         })
       };
 
-      let finalPropertyId = savedPropertyId || idEnAttenteDeCreation || null;
+      let finalPropertyId = savedPropertyId;
       if (finalPropertyId) {
         await updateProperty(tenantId, finalPropertyId, submitData);
       } else {
-        const creationPromise = createProperty(tenantId, submitData as CreatePropertyRequest);
-        propertyCreationPromiseRef.current = creationPromise;
-        try {
-          const newProperty = await creationPromise;
-          finalPropertyId = newProperty.id;
-        } finally {
-          propertyCreationPromiseRef.current = null;
-        }
+        // L'enregistrement automatique de l'etape « Medias » a echoue (quota
+        // refuse, par exemple) : « Terminer » relance legitimement la creation.
+        const newProperty = await createProperty(tenantId, submitData as CreatePropertyRequest);
+        finalPropertyId = newProperty.id;
       }
 
       if (finalPropertyId && (formData.propertyType as PropertyType) === PropertyType.IMMEUBLE) {
@@ -400,8 +384,14 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
       }
     } catch (error: any) {
       console.error('Error finishing wizard:', error);
-      message.error(error.response?.data?.error || t("Erreur lors de l'enregistrement"));
+      // Un refus de quota est deja annonce par la notification de la coquille
+      // (intercepteur d'api-client, avec le lien vers l'abonnement) : un
+      // second message dirait la meme chose moins bien.
+      if (!isQuotaExceededResponse(error)) {
+        message.error(error.response?.data?.error || t("Erreur lors de l'enregistrement"));
+      }
     } finally {
+      finishInFlightRef.current = false;
       setIsLoading(false);
     }
   };
@@ -1458,14 +1448,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
       const cle = cleEtape(currentStep);
       const exigeUnBienEnregistre = cle !== undefined && ETAPES_APRES_ENREGISTREMENT.includes(cle);
 
-      if (
-        exigeUnBienEnregistre &&
-        !savedPropertyId &&
-        !isLoading &&
-        !property &&
-        !autoSaveAttemptedRef.current &&
-        !propertyCreationPromiseRef.current
-      ) {
+      if (exigeUnBienEnregistre && !savedPropertyId && !isLoading && !property && !autoSaveAttemptedRef.current) {
         const requiredStepsValid =
           formData.propertyType && formData.title.trim() && formData.location && formData.transactionModes.length > 0;
 
@@ -1520,15 +1503,12 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
               typeSpecificData: processedTypeSpecificData
             };
 
-            const creationPromise = createProperty(tenantId, submitData);
-            propertyCreationPromiseRef.current = creationPromise;
-            const newProperty = await creationPromise;
+            const newProperty = await createProperty(tenantId, submitData);
             setSavedPropertyId(newProperty.id);
           } catch (error: any) {
             console.error('Error auto-saving for media:', error);
           } finally {
             setIsLoading(false);
-            propertyCreationPromiseRef.current = null;
           }
         }
       }

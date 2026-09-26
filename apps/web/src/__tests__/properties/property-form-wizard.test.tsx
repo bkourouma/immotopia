@@ -309,24 +309,18 @@ describe('Immeuble — les appartements se saisissent dans la page', () => {
 });
 
 /**
- * Ecart recette du 26/09 (Syndic, quota BLOCK) — un bien en mode Location,
- * a la derniere etape (« Médias »), envoyait DEUX `POST .../properties` pour
- * un seul clic sur « Terminer » : l'auto-save qui prepare l'etape media
- * (`autoSaveForMedia`, sur l'arrivee a cette etape) et `handleFinish` (le
- * clic) pouvaient chacun decider, sur un `savedPropertyId` encore vide,
- * d'appeler `createProperty`. Le second partait alors que le premier avait
- * deja consomme (ou vu refuser) le quota, et l'API le renvoyait en 500 au
- * lieu de 409 (voir packages/api/src/services/property-service.ts).
+ * Écart recette du 26/09 (Syndic, quota « Bloquer », mode Location).
  *
- * Un `propertyCreationPromiseRef` partage les deux chemins : le premier a
- * demarrer pose la promesse, l'autre l'attend au lieu d'en relancer une.
- * Cote navigateur reel, la fenetre de course est un ecart entre la peinture
- * et l'effet passif differe (React ne la flushe jamais dans ces tests, qui
- * traitent chaque effet de facon synchrone) : ces tests verifient donc le
- * contrat observable — jamais plus d'un `createProperty` sur tout le
- * parcours — plutot que de rejouer le timing exact.
+ * En arrivant sur « Médias », l'enregistrement automatique crée le bien ; si
+ * le quota le refuse (409), `savedPropertyId` reste vide et « Terminer »
+ * relance légitimement une création — une requête SUCCESSIVE, pas
+ * concurrente. Cette seconde création répondait 500 : son corps omettait
+ * `address` (colonne NOT NULL côté API, corrigé dans
+ * packages/api/src/services/property-service.ts). Côté écran, deux règles :
+ * un double clic ne crée pas deux fois, et le refus de quota n'affiche qu'une
+ * alerte — la notification de la coquille, pas un `message.error` en plus.
  */
-describe('Création (Location) — un seul createProperty part malgré l’auto-save media', () => {
+describe('Création (Location) — enregistrement automatique puis « Terminer »', () => {
   async function allerJusquauxMedias(user: ReturnType<typeof userEvent.setup>) {
     monter();
 
@@ -348,6 +342,25 @@ describe('Création (Location) — un seul createProperty part malgré l’auto-
     // Arrivée sur « Médias » (dernière étape) : déclenche l'auto-save.
   }
 
+  /** Attend que « Terminer » ne soit plus en chargement (antd ignore alors les clics). */
+  async function terminerDisponible() {
+    await waitFor(() => {
+      const bouton = screen.getByText('Terminer').closest('button');
+      expect(bouton?.className).not.toMatch(/ant-btn-loading/);
+    });
+  }
+
+  const REFUS_QUOTA = {
+    response: {
+      status: 409,
+      data: {
+        code: 'QUOTA_EXCEEDED',
+        error: 'La capacité de votre abonnement est atteinte : ajoutez une extension pour continuer.',
+        data: { capacityKey: 'LOTS', limit: 100, used: 110, requested: 1 }
+      }
+    }
+  };
+
   it('l’auto-save crée le bien une seule fois ; « Terminer » met à jour, ne recrée pas', async () => {
     const user = userEvent.setup();
     createProperty.mockResolvedValue({ id: 'bien-1', propertyType: 'APPARTEMENT', title: 'Bel appartement' });
@@ -355,78 +368,82 @@ describe('Création (Location) — un seul createProperty part malgré l’auto-
     await allerJusquauxMedias(user);
 
     await waitFor(() => expect(createProperty).toHaveBeenCalledTimes(1));
-    // L'auto-save doit avoir fini (savedPropertyId pose) avant que « Terminer »
-    // ne redevienne cliquable au sens d'antd (loading retombé).
-    await waitFor(() => {
-      const bouton = screen.getByText('Terminer').closest('button');
-      expect(bouton?.className).not.toMatch(/ant-btn-loading/);
-    });
+    await terminerDisponible();
 
     await user.click(screen.getByText('Terminer'));
 
     await waitFor(() => expect(updateProperty).toHaveBeenCalledTimes(1));
     expect(updateProperty).toHaveBeenCalledWith('agence-1', 'bien-1', expect.anything());
-    // Le point du correctif : jamais un second create derriere l'auto-save.
     expect(createProperty).toHaveBeenCalledTimes(1);
   });
 
-  it('tant que l’auto-save est en cours, « Terminer » ne relance pas createProperty', async () => {
+  it('tant que l’auto-save est en cours, « Terminer » (en chargement) ne relance rien', async () => {
     const user = userEvent.setup();
-    // Ne se resout jamais : imite un auto-save encore en vol (lent, ou
-    // bloque sur le quota cote API) au moment ou l'utilisateur clique.
     createProperty.mockImplementation(() => new Promise(() => {}));
 
     await allerJusquauxMedias(user);
 
     await waitFor(() => expect(createProperty).toHaveBeenCalledTimes(1));
 
-    // Le bouton est en chargement (antd) : un clic pendant ce temps ne doit
-    // declencher ni un second createProperty, ni un updateProperty.
     await user.click(screen.getByText('Terminer'));
 
     expect(createProperty).toHaveBeenCalledTimes(1);
     expect(updateProperty).not.toHaveBeenCalled();
   });
 
-  /**
-   * Reconstitution la plus fidèle du symptôme rapporté en recette : deux
-   * alertes superposées (la bannière de quota, correcte, puis une erreur
-   * générique). `message.error` n'est appelé qu'à un seul endroit dans ce
-   * composant — dans le `catch` de `handleFinish` — donc les deux alertes
-   * observées viennent forcément de DEUX exécutions de `handleFinish`, pas
-   * d'un auto-save silencieux (son `catch` ne fait qu'un `console.error`).
-   * Ça correspond à un double-clic sur « Terminer » une fois l'auto-save
-   * retombé en échec (quota refusé, `savedPropertyId` resté vide) : le
-   * bouton redevient cliquable, et deux clics rapprochés relancent chacun
-   * `handleFinish` avant que le premier n'ait eu le temps de désactiver le
-   * bouton (React n'a pas encore rendu `loading`). Reproduit ici en
-   * dispatchant les deux clics dans un seul batch React (`act`), qui les
-   * traite avant de flusher le premier rendu — le seul moyen, dans ce
-   * harnais, d'obtenir deux exécutions avant que l'état ne se mette à jour.
-   */
-  it('double-clic sur « Terminer » après l’échec silencieux de l’auto-save : un seul createProperty relancé', async () => {
+  it('après un refus de quota à l’auto-save, « Terminer » relance la création et n’affiche pas de second message', async () => {
     const user = userEvent.setup();
-    const quotaError = {
-      response: {
-        status: 409,
-        data: { code: 'QUOTA_EXCEEDED', error: 'La capacité de votre abonnement est atteinte.' }
-      }
-    };
-    // 1er appel (auto-save) : quota refusé, silencieux (pas de message.error).
-    createProperty.mockRejectedValueOnce(quotaError);
-    // Tout appel suivant (relance depuis "Terminer") : jamais résolu, pour ne
-    // compter que le nombre d'appels sans se soucier de la suite du flux.
+    createProperty.mockRejectedValue(REFUS_QUOTA);
+
+    await allerJusquauxMedias(user);
+
+    await waitFor(() => expect(createProperty).toHaveBeenCalledTimes(1));
+    await terminerDisponible();
+
+    await user.click(screen.getByText('Terminer'));
+
+    await waitFor(() => expect(createProperty).toHaveBeenCalledTimes(2));
+    await terminerDisponible();
+    // La notification « Capacité de votre abonnement atteinte » vient de
+    // l'intercepteur d'api-client (AppShell), hors de ce composant : ici,
+    // aucun message.error ne doit s'y ajouter.
+    expect(screen.queryByText(/La capacité de votre abonnement est atteinte/)).toBeNull();
+    expect(screen.queryByText("Erreur lors de l'enregistrement")).toBeNull();
+    expect(updateProperty).not.toHaveBeenCalled();
+  });
+
+  it('toute autre erreur de « Terminer » reste affichée à l’écran', async () => {
+    const user = userEvent.setup();
+    createProperty.mockRejectedValueOnce(REFUS_QUOTA);
+    createProperty.mockRejectedValueOnce({
+      response: { status: 400, data: { code: 'BAD_REQUEST', error: 'Le titre du bien est requis.' } }
+    });
+
+    await allerJusquauxMedias(user);
+
+    await waitFor(() => expect(createProperty).toHaveBeenCalledTimes(1));
+    await terminerDisponible();
+
+    await user.click(screen.getByText('Terminer'));
+
+    expect(await screen.findByText('Le titre du bien est requis.')).toBeTruthy();
+  });
+
+  /**
+   * Double clic sur « Terminer » une fois l'auto-save retombé en échec : les
+   * deux clics partent dans le même lot React (`act`), avant que le bouton ne
+   * soit rendu en chargement. Un seul `createProperty` doit repartir.
+   */
+  it('double-clic sur « Terminer » après l’échec de l’auto-save : une seule création relancée', async () => {
+    const user = userEvent.setup();
+    createProperty.mockRejectedValueOnce(REFUS_QUOTA);
+    // Relance depuis « Terminer » : jamais résolue, on ne compte que les appels.
     createProperty.mockImplementation(() => new Promise(() => {}));
 
     await allerJusquauxMedias(user);
 
     await waitFor(() => expect(createProperty).toHaveBeenCalledTimes(1));
-    // L'auto-save a échoué : `savedPropertyId` reste vide, mais le bouton
-    // redevient cliquable (isLoading retombe à false dans son `finally`).
-    await waitFor(() => {
-      const bouton = screen.getByText('Terminer').closest('button');
-      expect(bouton?.className).not.toMatch(/ant-btn-loading/);
-    });
+    await terminerDisponible();
 
     const terminerBtn = screen.getByText('Terminer');
     act(() => {
@@ -434,9 +451,6 @@ describe('Création (Location) — un seul createProperty part malgré l’auto-
       domFireEvent.click(terminerBtn);
     });
 
-    // 1 (auto-save, déjà réglé) + au plus 1 nouvelle tentative depuis
-    // "Terminer" — jamais 2 de plus (une par clic), ce qui donnerait le 500
-    // constaté en recette sur le second appel concurrent.
     await waitFor(() => expect(createProperty.mock.calls.length).toBeGreaterThanOrEqual(2));
     expect(createProperty).toHaveBeenCalledTimes(2);
   });
