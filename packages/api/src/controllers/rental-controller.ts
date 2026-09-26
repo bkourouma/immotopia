@@ -13,6 +13,7 @@ import {
   deleteLease
 } from '../services/rental-lease-service';
 import { RentalLeaseStatus } from '@prisma/client';
+import { asyncHandler, UnauthorizedError, NotFoundError, BadRequestError } from '../middleware/error-middleware';
 
 // Helper function to validate datetime strings
 const datetimeSchema = z.string().refine(
@@ -84,447 +85,236 @@ const addCoRenterSchema = z.object({
   renterClientId: z.string().min(1)
 });
 
+function requireActorUserId(req: Request): string {
+  const actorUserId = req.user?.userId;
+  if (!actorUserId) {
+    throw new UnauthorizedError('Non authentifié');
+  }
+  return actorUserId;
+}
+
 /**
  * Create a new lease
  * POST /tenants/:tenantId/rental/leases
  */
-export async function createLeaseHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const actorUserId = req.user?.userId;
+export const createLeaseHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const actorUserId = requireActorUserId(req);
 
-    if (!actorUserId) {
-      res.status(401).json({
-        success: false,
-        message: 'Non authentifié'
-      });
-      return;
-    }
+  // Validate request body
+  const validatedData = createLeaseSchema.parse(req.body);
 
-    // Validate request body
-    const validatedData = createLeaseSchema.parse(req.body);
+  // Convert date strings to Date objects with validation
+  const leaseData = {
+    ...validatedData,
+    startDate: new Date(validatedData.startDate),
+    endDate: validatedData.endDate ? new Date(validatedData.endDate) : undefined,
+    moveInDate: validatedData.moveInDate ? new Date(validatedData.moveInDate) : undefined,
+    moveOutDate: validatedData.moveOutDate ? new Date(validatedData.moveOutDate) : undefined
+  };
 
-    // Convert date strings to Date objects with validation
-    const leaseData = {
-      ...validatedData,
-      startDate: new Date(validatedData.startDate),
-      endDate: validatedData.endDate ? new Date(validatedData.endDate) : undefined,
-      moveInDate: validatedData.moveInDate ? new Date(validatedData.moveInDate) : undefined,
-      moveOutDate: validatedData.moveOutDate ? new Date(validatedData.moveOutDate) : undefined
-    };
-
-    // Validate that dates are valid Date objects
-    if (isNaN(leaseData.startDate.getTime())) {
-      throw new Error('Date de début invalide');
-    }
-    if (leaseData.endDate && isNaN(leaseData.endDate.getTime())) {
-      throw new Error('Date de fin invalide');
-    }
-    if (leaseData.moveInDate && isNaN(leaseData.moveInDate.getTime())) {
-      throw new Error("Date d'emménagement invalide");
-    }
-    if (leaseData.moveOutDate && isNaN(leaseData.moveOutDate.getTime())) {
-      throw new Error('Date de déménagement invalide');
-    }
-
-    const lease = await createLease(tenantId, leaseData, actorUserId);
-
-    res.status(201).json({
-      success: true,
-      data: lease
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: error.errors
-      });
-      return;
-    }
-
-    if (error instanceof Error) {
-      // Check if it's a Prisma foreign key constraint error
-      if (
-        error.message.includes('Foreign key constraint') ||
-        error.message.includes('Foreign key constraint violated')
-      ) {
-        res.status(400).json({
-          success: false,
-          message: 'Erreur de référence: Vérifiez que la propriété et les clients existent et appartiennent à ce tenant'
-        });
-        return;
-      }
-
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la création du bail'
-    });
+  // Validate that dates are valid Date objects
+  if (isNaN(leaseData.startDate.getTime())) {
+    throw new BadRequestError('Date de début invalide');
   }
-}
+  if (leaseData.endDate && isNaN(leaseData.endDate.getTime())) {
+    throw new BadRequestError('Date de fin invalide');
+  }
+  if (leaseData.moveInDate && isNaN(leaseData.moveInDate.getTime())) {
+    throw new BadRequestError("Date d'emménagement invalide");
+  }
+  if (leaseData.moveOutDate && isNaN(leaseData.moveOutDate.getTime())) {
+    throw new BadRequestError('Date de déménagement invalide');
+  }
+
+  const lease = await createLease(tenantId, leaseData, actorUserId);
+
+  res.status(201).json({
+    success: true,
+    data: lease
+  });
+});
 
 /**
  * Get lease by ID
  * GET /tenants/:tenantId/rental/leases/:leaseId
  */
-export async function getLeaseHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { leaseId } = req.params;
+export const getLeaseHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { leaseId } = req.params;
 
-    const lease = await getLeaseById(tenantId, leaseId);
+  const lease = await getLeaseById(tenantId, leaseId);
 
-    if (!lease) {
-      res.status(404).json({
-        success: false,
-        message: 'Bail non trouvé'
-      });
-      return;
-    }
-
-    res.json({
-      success: true,
-      data: lease
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération du bail'
-    });
+  if (!lease) {
+    throw new NotFoundError('Bail non trouvé');
   }
-}
+
+  res.json({
+    success: true,
+    data: lease
+  });
+});
 
 /**
  * List leases
  * GET /tenants/:tenantId/rental/leases
  */
-export async function listLeasesHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { status, propertyId, primaryRenterClientId, search } = req.query;
+export const listLeasesHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { status, propertyId, primaryRenterClientId, search } = req.query;
 
-    const filters: any = {};
-    if (status) {
-      filters.status = status as RentalLeaseStatus;
-    }
-    if (propertyId) {
-      filters.propertyId = propertyId as string;
-    }
-    if (primaryRenterClientId) {
-      filters.primaryRenterClientId = primaryRenterClientId as string;
-    }
-    if (search) {
-      filters.search = search as string;
-    }
-
-    const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
-    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
-
-    const result = await listLeases(tenantId, filters, { page, limit });
-
-    res.json({
-      success: true,
-      ...result
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération des baux'
-    });
+  const filters: any = {};
+  if (status) {
+    filters.status = status as RentalLeaseStatus;
   }
-}
+  if (propertyId) {
+    filters.propertyId = propertyId as string;
+  }
+  if (primaryRenterClientId) {
+    filters.primaryRenterClientId = primaryRenterClientId as string;
+  }
+  if (search) {
+    filters.search = search as string;
+  }
+
+  const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
+  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+
+  const result = await listLeases(tenantId, filters, { page, limit });
+
+  res.json({
+    success: true,
+    ...result
+  });
+});
 
 /**
  * Update lease
  * PATCH /tenants/:tenantId/rental/leases/:leaseId
  */
-export async function updateLeaseHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { leaseId } = req.params;
-    const actorUserId = req.user?.userId;
+export const updateLeaseHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { leaseId } = req.params;
+  const actorUserId = requireActorUserId(req);
 
-    if (!actorUserId) {
-      res.status(401).json({
-        success: false,
-        message: 'Non authentifié'
-      });
-      return;
+  // Validate request body
+  const validatedData = updateLeaseSchema.parse(req.body);
+
+  // Convert date strings to Date objects with validation
+  const updateData: any = { ...validatedData };
+  if (validatedData.endDate) {
+    updateData.endDate = new Date(validatedData.endDate);
+    if (isNaN(updateData.endDate.getTime())) {
+      throw new BadRequestError('Date de fin invalide');
     }
-
-    // Validate request body
-    const validatedData = updateLeaseSchema.parse(req.body);
-
-    // Convert date strings to Date objects with validation
-    const updateData: any = { ...validatedData };
-    if (validatedData.endDate) {
-      updateData.endDate = new Date(validatedData.endDate);
-      if (isNaN(updateData.endDate.getTime())) {
-        throw new Error('Date de fin invalide');
-      }
-    }
-    if (validatedData.moveInDate) {
-      updateData.moveInDate = new Date(validatedData.moveInDate);
-      if (isNaN(updateData.moveInDate.getTime())) {
-        throw new Error("Date d'emménagement invalide");
-      }
-    }
-    if (validatedData.moveOutDate) {
-      updateData.moveOutDate = new Date(validatedData.moveOutDate);
-      if (isNaN(updateData.moveOutDate.getTime())) {
-        throw new Error('Date de déménagement invalide');
-      }
-    }
-
-    const lease = await updateLease(tenantId, leaseId, updateData, actorUserId);
-
-    res.json({
-      success: true,
-      data: lease
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: error.errors
-      });
-      return;
-    }
-
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la mise à jour du bail'
-    });
   }
-}
+  if (validatedData.moveInDate) {
+    updateData.moveInDate = new Date(validatedData.moveInDate);
+    if (isNaN(updateData.moveInDate.getTime())) {
+      throw new BadRequestError("Date d'emménagement invalide");
+    }
+  }
+  if (validatedData.moveOutDate) {
+    updateData.moveOutDate = new Date(validatedData.moveOutDate);
+    if (isNaN(updateData.moveOutDate.getTime())) {
+      throw new BadRequestError('Date de déménagement invalide');
+    }
+  }
+
+  const lease = await updateLease(tenantId, leaseId, updateData, actorUserId);
+
+  res.json({
+    success: true,
+    data: lease
+  });
+});
 
 /**
  * Update lease status
  * PATCH /tenants/:tenantId/rental/leases/:leaseId/status
  */
-export async function updateLeaseStatusHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { leaseId } = req.params;
-    const actorUserId = req.user?.userId;
+export const updateLeaseStatusHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { leaseId } = req.params;
+  const actorUserId = requireActorUserId(req);
 
-    if (!actorUserId) {
-      res.status(401).json({
-        success: false,
-        message: 'Non authentifié'
-      });
-      return;
-    }
+  // Validate request body
+  const validatedData = updateLeaseStatusSchema.parse(req.body);
 
-    // Validate request body
-    const validatedData = updateLeaseStatusSchema.parse(req.body);
+  const lease = await updateLeaseStatus(tenantId, leaseId, validatedData.status as RentalLeaseStatus, actorUserId);
 
-    const lease = await updateLeaseStatus(tenantId, leaseId, validatedData.status as RentalLeaseStatus, actorUserId);
-
-    res.json({
-      success: true,
-      data: lease
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: error.errors
-      });
-      return;
-    }
-
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la mise à jour du statut du bail'
-    });
-  }
-}
+  res.json({
+    success: true,
+    data: lease
+  });
+});
 
 /**
  * Add co-renter to lease
  * POST /tenants/:tenantId/rental/leases/:leaseId/co-renters
  */
-export async function addCoRenterHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { leaseId } = req.params;
-    const actorUserId = req.user?.userId;
+export const addCoRenterHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { leaseId } = req.params;
+  const actorUserId = requireActorUserId(req);
 
-    if (!actorUserId) {
-      res.status(401).json({
-        success: false,
-        message: 'Non authentifié'
-      });
-      return;
-    }
+  // Validate request body
+  const validatedData = addCoRenterSchema.parse(req.body);
 
-    // Validate request body
-    const validatedData = addCoRenterSchema.parse(req.body);
+  const lease = await addCoRenter(tenantId, leaseId, validatedData.renterClientId, actorUserId);
 
-    const lease = await addCoRenter(tenantId, leaseId, validatedData.renterClientId, actorUserId);
-
-    res.status(201).json({
-      success: true,
-      data: lease
-    });
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      res.status(400).json({
-        success: false,
-        message: 'Données invalides',
-        errors: error.errors
-      });
-      return;
-    }
-
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: "Erreur lors de l'ajout du co-locataire"
-    });
-  }
-}
+  res.status(201).json({
+    success: true,
+    data: lease
+  });
+});
 
 /**
  * Remove co-renter from lease
  * DELETE /tenants/:tenantId/rental/leases/:leaseId/co-renters/:renterClientId
  */
-export async function removeCoRenterHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { leaseId, renterClientId } = req.params;
-    const actorUserId = req.user?.userId;
+export const removeCoRenterHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { leaseId, renterClientId } = req.params;
+  const actorUserId = requireActorUserId(req);
 
-    if (!actorUserId) {
-      res.status(401).json({
-        success: false,
-        message: 'Non authentifié'
-      });
-      return;
-    }
+  await removeCoRenter(tenantId, leaseId, renterClientId, actorUserId);
 
-    await removeCoRenter(tenantId, leaseId, renterClientId, actorUserId);
-
-    res.json({
-      success: true,
-      message: 'Co-locataire retiré avec succès'
-    });
-  } catch (error) {
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la suppression du co-locataire'
-    });
-  }
-}
+  res.json({
+    success: true,
+    message: 'Co-locataire retiré avec succès'
+  });
+});
 
 /**
  * List co-renters for a lease
  * GET /tenants/:tenantId/rental/leases/:leaseId/co-renters
  */
-export async function listCoRentersHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { leaseId } = req.params;
+export const listCoRentersHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { leaseId } = req.params;
 
-    const coRenters = await listCoRenters(tenantId, leaseId);
+  const coRenters = await listCoRenters(tenantId, leaseId);
 
-    res.json({
-      success: true,
-      data: coRenters
-    });
-  } catch (error) {
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la récupération des co-locataires'
-    });
-  }
-}
+  res.json({
+    success: true,
+    data: coRenters
+  });
+});
 
 /**
  * Delete a lease
  * DELETE /tenants/:tenantId/rental/leases/:leaseId
  */
-export async function deleteLeaseHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { leaseId } = req.params;
-    const actorUserId = req.user?.userId;
+export const deleteLeaseHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const { leaseId } = req.params;
+  const actorUserId = requireActorUserId(req);
 
-    if (!actorUserId) {
-      res.status(401).json({
-        success: false,
-        message: 'Non authentifié'
-      });
-      return;
-    }
+  await deleteLease(tenantId, leaseId, actorUserId);
 
-    await deleteLease(tenantId, leaseId, actorUserId);
-
-    res.json({
-      success: true,
-      message: 'Bail supprimé avec succès'
-    });
-  } catch (error) {
-    if (error instanceof Error) {
-      res.status(400).json({
-        success: false,
-        message: error.message
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      message: 'Erreur lors de la suppression du bail'
-    });
-  }
-}
+  res.json({
+    success: true,
+    message: 'Bail supprimé avec succès'
+  });
+});

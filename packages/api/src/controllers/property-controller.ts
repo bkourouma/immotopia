@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import { logger } from '../utils/logger';
 import {
   createProperty,
   getPropertyById,
@@ -15,551 +14,380 @@ import { getTemplateByType, getAllTemplates } from '../services/property-templat
 import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
 import { CreatePropertyRequest, UpdatePropertyRequest } from '../types/property-types';
 import { PropertyType } from '@prisma/client';
+import { asyncHandler, BadRequestError, NotFoundError } from '../middleware/error-middleware';
 
 /**
  * Create property handler
  */
-export async function createPropertyHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = req.params.tenantId || getTenantIdFromRequest(req);
-    const userId = req.user?.userId;
-    const actorUserId = userId;
+export const createPropertyHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || getTenantIdFromRequest(req);
+  const userId = req.user?.userId;
+  const actorUserId = userId;
 
-    const data: CreatePropertyRequest = {
-      propertyType: req.body.propertyType,
-      ownershipType: req.body.ownershipType,
-      ownerUserId: req.body.ownerUserId ?? (req.body.ownerEmail ? undefined : userId),
-      ownerEmail: req.body.ownerEmail,
-      title: req.body.title,
-      description: req.body.description,
-      address: req.body.address,
-      locationZone: req.body.locationZone,
-      latitude: req.body.latitude,
-      longitude: req.body.longitude,
-      transactionModes: req.body.transactionModes,
-      price: req.body.price,
-      fees: req.body.fees,
-      currency: req.body.currency || 'EUR',
-      surfaceArea: req.body.surfaceArea,
-      surfaceUseful: req.body.surfaceUseful,
-      surfaceTerrain: req.body.surfaceTerrain,
-      rooms: req.body.rooms,
-      bedrooms: req.body.bedrooms,
-      bathrooms: req.body.bathrooms,
-      furnishingStatus: req.body.furnishingStatus,
-      availability: req.body.availability,
-      status: req.body.status,
-      typeSpecificData: req.body.typeSpecificData,
-      containerParentId: req.body.containerParentId
-    };
+  const data: CreatePropertyRequest = {
+    propertyType: req.body.propertyType,
+    ownershipType: req.body.ownershipType,
+    ownerUserId: req.body.ownerUserId ?? (req.body.ownerEmail ? undefined : userId),
+    ownerEmail: req.body.ownerEmail,
+    title: req.body.title,
+    description: req.body.description,
+    address: req.body.address,
+    locationZone: req.body.locationZone,
+    latitude: req.body.latitude,
+    longitude: req.body.longitude,
+    transactionModes: req.body.transactionModes,
+    price: req.body.price,
+    fees: req.body.fees,
+    currency: req.body.currency || 'EUR',
+    surfaceArea: req.body.surfaceArea,
+    surfaceUseful: req.body.surfaceUseful,
+    surfaceTerrain: req.body.surfaceTerrain,
+    rooms: req.body.rooms,
+    bedrooms: req.body.bedrooms,
+    bathrooms: req.body.bathrooms,
+    furnishingStatus: req.body.furnishingStatus,
+    availability: req.body.availability,
+    status: req.body.status,
+    typeSpecificData: req.body.typeSpecificData,
+    containerParentId: req.body.containerParentId
+  };
 
-    const property = await createProperty(
-      tenantId,
-      data.ownerUserId ?? (data.ownerEmail ? null : (userId ?? null)),
-      data,
-      actorUserId
-    );
+  const property = await createProperty(
+    tenantId,
+    data.ownerUserId ?? (data.ownerEmail ? null : (userId ?? null)),
+    data,
+    actorUserId
+  );
 
-    res.status(201).json({
-      success: true,
-      data: property
-    });
-  } catch (error: any) {
-    logger.error('Error creating property', { error, body: req.body });
-    res.status(400).json({
-      success: false,
-      error: error.message || 'Failed to create property'
-    });
-  }
-}
+  res.status(201).json({
+    success: true,
+    data: property
+  });
+});
 
 /**
  * Get property handler
  */
-export async function getPropertyHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const propertyId = req.params.id;
-    const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-    const userId = req.user?.userId;
+export const getPropertyHandler = asyncHandler(async (req: Request, res: Response) => {
+  const propertyId = req.params.id;
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const userId = req.user?.userId;
 
-    const property = await getPropertyById(propertyId, tenantId, userId);
+  const property = await getPropertyById(propertyId, tenantId, userId);
 
-    if (!property) {
-      res.status(404).json({
-        success: false,
-        error: 'Property not found'
-      });
-      return;
-    }
-
-    res.json({
-      success: true,
-      data: property
-    });
-  } catch (error: any) {
-    logger.error('Error getting property', { error, propertyId: req.params.id });
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to get property'
-    });
+  if (!property) {
+    throw new NotFoundError('Property not found');
   }
-}
+
+  res.json({
+    success: true,
+    data: property
+  });
+});
 
 /**
  * Update property handler
  */
-export async function updatePropertyHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const propertyId = req.params.id;
-    const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-    const userId = req.user?.userId;
-    const actorUserId = userId;
+export const updatePropertyHandler = asyncHandler(async (req: Request, res: Response) => {
+  const propertyId = req.params.id;
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const userId = req.user?.userId;
+  const actorUserId = userId;
 
-    const data: UpdatePropertyRequest = {
-      ownerUserId: req.body.ownerUserId,
-      title: req.body.title,
-      description: req.body.description,
-      address: req.body.address,
-      locationZone: req.body.locationZone,
-      latitude: req.body.latitude,
-      longitude: req.body.longitude,
-      transactionModes: req.body.transactionModes,
-      price: req.body.price,
-      fees: req.body.fees,
-      currency: req.body.currency,
-      surfaceArea: req.body.surfaceArea,
-      surfaceUseful: req.body.surfaceUseful,
-      surfaceTerrain: req.body.surfaceTerrain,
-      rooms: req.body.rooms,
-      bedrooms: req.body.bedrooms,
-      bathrooms: req.body.bathrooms,
-      furnishingStatus: req.body.furnishingStatus,
-      availability: req.body.availability,
-      status: req.body.status,
-      typeSpecificData: req.body.typeSpecificData
-    };
+  const data: UpdatePropertyRequest = {
+    ownerUserId: req.body.ownerUserId,
+    title: req.body.title,
+    description: req.body.description,
+    address: req.body.address,
+    locationZone: req.body.locationZone,
+    latitude: req.body.latitude,
+    longitude: req.body.longitude,
+    transactionModes: req.body.transactionModes,
+    price: req.body.price,
+    fees: req.body.fees,
+    currency: req.body.currency,
+    surfaceArea: req.body.surfaceArea,
+    surfaceUseful: req.body.surfaceUseful,
+    surfaceTerrain: req.body.surfaceTerrain,
+    rooms: req.body.rooms,
+    bedrooms: req.body.bedrooms,
+    bathrooms: req.body.bathrooms,
+    furnishingStatus: req.body.furnishingStatus,
+    availability: req.body.availability,
+    status: req.body.status,
+    typeSpecificData: req.body.typeSpecificData
+  };
 
-    const property = await updateProperty(propertyId, data, tenantId, userId, actorUserId);
+  const property = await updateProperty(propertyId, data, tenantId, userId, actorUserId);
 
-    res.json({
-      success: true,
-      data: property
-    });
-  } catch (error: any) {
-    logger.error('Error updating property', { error, propertyId: req.params.id });
-
-    if (error.message?.includes('not found')) {
-      res.status(404).json({
-        success: false,
-        error: error.message
-      });
-      return;
-    }
-
-    if (error.message?.includes('version')) {
-      res.status(409).json({
-        success: false,
-        error: 'Property was modified by another user. Please refresh and try again.'
-      });
-      return;
-    }
-
-    if (error.message?.includes('status transition') || error.message?.includes('Invalid status')) {
-      res.status(400).json({
-        success: false,
-        error: error.message || 'Invalid status transition'
-      });
-      return;
-    }
-
-    res.status(400).json({
-      success: false,
-      error: error.message || 'Failed to update property'
-    });
-  }
-}
+  res.json({
+    success: true,
+    data: property
+  });
+});
 
 /**
  * List properties handler
  */
-export async function listPropertiesHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-    const userId = req.user?.userId;
+export const listPropertiesHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const userId = req.user?.userId;
 
-    // Un nombre absent ou illisible vaut « pas de borne » et non zero :
-    // `?minPrice=` ne doit pas se comporter comme `?minPrice=0`.
-    const num = (value: unknown): number | undefined => {
-      if (typeof value !== 'string' || value.trim() === '') return undefined;
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : undefined;
-    };
+  // Un nombre absent ou illisible vaut « pas de borne » et non zero :
+  // `?minPrice=` ne doit pas se comporter comme `?minPrice=0`.
+  const num = (value: unknown): number | undefined => {
+    if (typeof value !== 'string' || value.trim() === '') return undefined;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
 
-    const filters = {
-      propertyType: req.query.propertyType as PropertyType | undefined,
-      ownershipType: req.query.ownershipType as any,
-      status: req.query.status as any,
-      transactionMode: req.query.transactionMode as any,
-      // Filtres deplaces du navigateur vers le serveur (§8.4) : ils etaient
-      // appliques sur la page deja recue, donc sur 20 biens et non sur le
-      // portefeuille, et le compteur affiche mentait.
-      q: typeof req.query.q === 'string' ? req.query.q : undefined,
-      city: typeof req.query.city === 'string' ? req.query.city : undefined,
-      minPrice: num(req.query.minPrice),
-      maxPrice: num(req.query.maxPrice),
-      minSurface: num(req.query.minSurface),
-      maxSurface: num(req.query.maxSurface),
-      minRooms: num(req.query.minRooms),
-      maxRooms: num(req.query.maxRooms),
-      minBedrooms: num(req.query.minBedrooms),
-      maxBedrooms: num(req.query.maxBedrooms),
-      page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
-      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 20
-    };
+  const filters = {
+    propertyType: req.query.propertyType as PropertyType | undefined,
+    ownershipType: req.query.ownershipType as any,
+    status: req.query.status as any,
+    transactionMode: req.query.transactionMode as any,
+    // Filtres deplaces du navigateur vers le serveur (§8.4) : ils etaient
+    // appliques sur la page deja recue, donc sur 20 biens et non sur le
+    // portefeuille, et le compteur affiche mentait.
+    q: typeof req.query.q === 'string' ? req.query.q : undefined,
+    city: typeof req.query.city === 'string' ? req.query.city : undefined,
+    minPrice: num(req.query.minPrice),
+    maxPrice: num(req.query.maxPrice),
+    minSurface: num(req.query.minSurface),
+    maxSurface: num(req.query.maxSurface),
+    minRooms: num(req.query.minRooms),
+    maxRooms: num(req.query.maxRooms),
+    minBedrooms: num(req.query.minBedrooms),
+    maxBedrooms: num(req.query.maxBedrooms),
+    page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
+    limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 20
+  };
 
-    const result = await listProperties(tenantId, userId, filters);
+  const result = await listProperties(tenantId, userId, filters);
 
-    res.json({
-      success: true,
-      data: result.properties,
-      pagination: {
-        page: filters.page || 1,
-        limit: filters.limit || 20,
-        total: result.total,
-        totalPages: Math.ceil(result.total / (filters.limit || 20))
-      }
-    });
-  } catch (error: any) {
-    logger.error('Error listing properties', { error });
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to list properties'
-    });
-  }
-}
+  res.json({
+    success: true,
+    data: result.properties,
+    pagination: {
+      page: filters.page || 1,
+      limit: filters.limit || 20,
+      total: result.total,
+      totalPages: Math.ceil(result.total / (filters.limit || 20))
+    }
+  });
+});
 
 /**
  * Get property template handler
  */
-export async function getTemplateHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const propertyType = req.params.type as PropertyType;
-    const template = await getTemplateByType(propertyType);
+export const getTemplateHandler = asyncHandler(async (req: Request, res: Response) => {
+  const propertyType = req.params.type as PropertyType;
+  const template = await getTemplateByType(propertyType);
 
-    if (!template) {
-      res.status(404).json({
-        success: false,
-        error: `Template not found for property type: ${propertyType}`
-      });
-      return;
-    }
-
-    res.json({
-      success: true,
-      data: template
-    });
-  } catch (error: any) {
-    logger.error('Error getting template', { error, propertyType: req.params.type });
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to get template'
-    });
+  if (!template) {
+    throw new NotFoundError(`Template not found for property type: ${propertyType}`);
   }
-}
+
+  res.json({
+    success: true,
+    data: template
+  });
+});
 
 /**
  * List all templates handler
  */
-export async function listTemplatesHandler(_req: Request, res: Response): Promise<void> {
-  try {
-    const templates = await getAllTemplates();
+export const listTemplatesHandler = asyncHandler(async (_req: Request, res: Response) => {
+  const templates = await getAllTemplates();
 
-    res.json({
-      success: true,
-      data: templates
-    });
-  } catch (error: any) {
-    logger.error('Error listing templates', { error });
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to list templates'
-    });
-  }
-}
+  res.json({
+    success: true,
+    data: templates
+  });
+});
 
 /**
  * Publish property handler
  */
-export async function publishPropertyHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const propertyId = req.params.id;
-    const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-    const userId = req.user?.userId;
-    const actorUserId = userId;
+export const publishPropertyHandler = asyncHandler(async (req: Request, res: Response) => {
+  const propertyId = req.params.id;
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const userId = req.user?.userId;
+  const actorUserId = userId;
 
-    const property = await publishPropertyWrapper(propertyId, tenantId, userId, actorUserId);
+  const property = await publishPropertyWrapper(propertyId, tenantId, userId, actorUserId);
 
-    res.json({
-      success: true,
-      data: property,
-      message: 'Property published successfully'
-    });
-  } catch (error: any) {
-    logger.error('Error publishing property', { error, propertyId: req.params.id });
-    res.status(400).json({
-      success: false,
-      error: error.message || 'Failed to publish property'
-    });
-  }
-}
+  res.json({
+    success: true,
+    data: property,
+    message: 'Property published successfully'
+  });
+});
 
 /**
  * Unpublish property handler
  */
-export async function unpublishPropertyHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const propertyId = req.params.id;
-    const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-    const userId = req.user?.userId;
-    const actorUserId = userId;
+export const unpublishPropertyHandler = asyncHandler(async (req: Request, res: Response) => {
+  const propertyId = req.params.id;
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const userId = req.user?.userId;
+  const actorUserId = userId;
 
-    const property = await unpublishPropertyWrapper(propertyId, tenantId, userId, actorUserId);
+  const property = await unpublishPropertyWrapper(propertyId, tenantId, userId, actorUserId);
 
-    res.json({
-      success: true,
-      data: property,
-      message: 'Property unpublished successfully'
-    });
-  } catch (error: any) {
-    logger.error('Error unpublishing property', { error, propertyId: req.params.id });
-    res.status(400).json({
-      success: false,
-      error: error.message || 'Failed to unpublish property'
-    });
-  }
-}
+  res.json({
+    success: true,
+    data: property,
+    message: 'Property unpublished successfully'
+  });
+});
 
 /**
  * Delete property handler
  */
-export async function deletePropertyHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const propertyId = req.params.id;
-    const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-    const userId = req.user?.userId;
-    const actorUserId = userId;
+export const deletePropertyHandler = asyncHandler(async (req: Request, res: Response) => {
+  const propertyId = req.params.id;
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const userId = req.user?.userId;
+  const actorUserId = userId;
 
-    await deleteProperty(propertyId, tenantId, userId, actorUserId);
+  await deleteProperty(propertyId, tenantId, userId, actorUserId);
 
-    res.status(204).send();
-  } catch (error: any) {
-    logger.error('Error deleting property', { error, propertyId: req.params.id });
-
-    if (error.message?.includes('not found') || error.message?.includes('access denied')) {
-      res.status(404).json({
-        success: false,
-        error: error.message || 'Property not found'
-      });
-      return;
-    }
-
-    if (error.message?.includes('active deals') || error.message?.includes('active transactions')) {
-      res.status(409).json({
-        success: false,
-        error: error.message || 'Cannot delete property - has active deals, visits, or transactions'
-      });
-      return;
-    }
-
-    res.status(400).json({
-      success: false,
-      error: error.message || 'Failed to delete property'
-    });
-  }
-}
+  res.status(204).send();
+});
 
 /**
  * Get quality score handler
  */
-export async function getQualityScoreHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const propertyId = req.params.id;
-    const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
-    const userId = req.user?.userId;
+export const getQualityScoreHandler = asyncHandler(async (req: Request, res: Response) => {
+  const propertyId = req.params.id;
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const userId = req.user?.userId;
 
-    if (!tenantId) {
-      res.status(400).json({
-        success: false,
-        error: 'Contexte tenant requis'
-      });
-      return;
-    }
-
-    // Verify property access
-    const property = await getPropertyById(propertyId, tenantId, userId);
-    if (!property) {
-      res.status(404).json({
-        success: false,
-        error: 'Property not found or access denied'
-      });
-      return;
-    }
-
-    // Get latest score or calculate new one
-    const recalculate = req.query.recalculate === 'true';
-    let qualityScore;
-
-    if (recalculate) {
-      qualityScore = await calculateQualityScore(propertyId, tenantId);
-    } else {
-      const latest = await getLatestQualityScore(propertyId, tenantId);
-      if (latest) {
-        qualityScore = {
-          score: latest.score,
-          suggestions: latest.suggestions as string[],
-          breakdown: {
-            requiredFields: 0,
-            media: 0,
-            geolocation: 0,
-            description: 0
-          }
-        };
-      } else {
-        // Calculate if no score exists
-        qualityScore = await calculateQualityScore(propertyId, tenantId);
-      }
-    }
-
-    res.json({
-      success: true,
-      data: qualityScore
-    });
-  } catch (error: any) {
-    logger.error('Error getting quality score', { error, propertyId: req.params.id });
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to get quality score'
-    });
+  if (!tenantId) {
+    throw new BadRequestError('Contexte tenant requis');
   }
-}
+
+  // Verify property access
+  const property = await getPropertyById(propertyId, tenantId, userId);
+  if (!property) {
+    throw new NotFoundError('Property not found or access denied');
+  }
+
+  // Get latest score or calculate new one
+  const recalculate = req.query.recalculate === 'true';
+  let qualityScore;
+
+  if (recalculate) {
+    qualityScore = await calculateQualityScore(propertyId, tenantId);
+  } else {
+    const latest = await getLatestQualityScore(propertyId, tenantId);
+    if (latest) {
+      qualityScore = {
+        score: latest.score,
+        suggestions: latest.suggestions as string[],
+        breakdown: {
+          requiredFields: 0,
+          media: 0,
+          geolocation: 0,
+          description: 0
+        }
+      };
+    } else {
+      // Calculate if no score exists
+      qualityScore = await calculateQualityScore(propertyId, tenantId);
+    }
+  }
+
+  res.json({
+    success: true,
+    data: qualityScore
+  });
+});
 
 /**
  * Create sub-property (apartment) handler
  */
-export async function createSubPropertyHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = req.params.tenantId || getTenantIdFromRequest(req);
-    const parentPropertyId = req.params.id;
-    const userId = req.user?.userId;
-    const actorUserId = userId;
+export const createSubPropertyHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || getTenantIdFromRequest(req);
+  const parentPropertyId = req.params.id;
+  const userId = req.user?.userId;
+  const actorUserId = userId;
 
-    // Verify parent property exists and is IMMEUBLE
-    const parent = await getPropertyById(parentPropertyId, tenantId, userId);
-    if (!parent) {
-      res.status(404).json({
-        success: false,
-        error: 'Parent property not found or access denied'
-      });
-      return;
-    }
-
-    if (parent.propertyType !== PropertyType.IMMEUBLE) {
-      res.status(400).json({
-        success: false,
-        error: 'Parent property must be of type IMMEUBLE'
-      });
-      return;
-    }
-
-    // Inherit location from parent (Pays, Région, Commune) so apartments have same location as building
-    const parentLocation =
-      (parent as any).typeSpecificData && typeof (parent as any).typeSpecificData === 'object'
-        ? (parent as any).typeSpecificData
-        : {};
-    const locationKeys = ['country', 'countryId', 'region', 'regionId', 'commune', 'communeId'];
-    const inheritedLocation: Record<string, any> = {};
-    locationKeys.forEach(key => {
-      if (parentLocation[key] !== undefined && parentLocation[key] !== null) {
-        inheritedLocation[key] = parentLocation[key];
-      }
-    });
-    const mergedTypeSpecificData = {
-      ...inheritedLocation,
-      ...(req.body.typeSpecificData && typeof req.body.typeSpecificData === 'object' ? req.body.typeSpecificData : {})
-    };
-
-    const data: CreatePropertyRequest = {
-      propertyType: req.body.propertyType || PropertyType.APPARTEMENT,
-      ownershipType: req.body.ownershipType || parent.ownershipType,
-      ownerUserId: req.body.ownerUserId || parent.ownerUserId || userId,
-      ownerEmail: req.body.ownerEmail,
-      containerParentId: parentPropertyId, // Link to parent
-      title: req.body.title,
-      description: req.body.description || '',
-      address: req.body.address || parent.address, // Inherit from parent if not provided
-      locationZone: req.body.locationZone ?? parent.locationZone ?? undefined,
-      latitude: req.body.latitude ?? parent.latitude ?? undefined,
-      longitude: req.body.longitude ?? parent.longitude ?? undefined,
-      transactionModes: req.body.transactionModes || parent.transactionModes,
-      price: req.body.price,
-      fees: req.body.fees,
-      currency: req.body.currency || parent.currency || 'EUR',
-      surfaceArea: req.body.surfaceArea,
-      surfaceUseful: req.body.surfaceUseful,
-      surfaceTerrain: req.body.surfaceTerrain,
-      rooms: req.body.rooms,
-      bedrooms: req.body.bedrooms,
-      bathrooms: req.body.bathrooms,
-      furnishingStatus: req.body.furnishingStatus,
-      availability: req.body.availability,
-      status: req.body.status,
-      typeSpecificData: Object.keys(mergedTypeSpecificData).length > 0 ? mergedTypeSpecificData : undefined
-    };
-
-    const property = await createProperty(tenantId, data.ownerUserId || userId || null, data, actorUserId);
-
-    res.status(201).json({
-      success: true,
-      data: property
-    });
-  } catch (error: any) {
-    logger.error('Error creating sub-property', { error, body: req.body });
-    res.status(400).json({
-      success: false,
-      error: error.message || 'Failed to create sub-property'
-    });
+  // Verify parent property exists and is IMMEUBLE
+  const parent = await getPropertyById(parentPropertyId, tenantId, userId);
+  if (!parent) {
+    throw new NotFoundError('Parent property not found or access denied');
   }
-}
+
+  if (parent.propertyType !== PropertyType.IMMEUBLE) {
+    throw new BadRequestError('Parent property must be of type IMMEUBLE');
+  }
+
+  // Inherit location from parent (Pays, Région, Commune) so apartments have same location as building
+  const parentLocation =
+    (parent as any).typeSpecificData && typeof (parent as any).typeSpecificData === 'object'
+      ? (parent as any).typeSpecificData
+      : {};
+  const locationKeys = ['country', 'countryId', 'region', 'regionId', 'commune', 'communeId'];
+  const inheritedLocation: Record<string, any> = {};
+  locationKeys.forEach(key => {
+    if (parentLocation[key] !== undefined && parentLocation[key] !== null) {
+      inheritedLocation[key] = parentLocation[key];
+    }
+  });
+  const mergedTypeSpecificData = {
+    ...inheritedLocation,
+    ...(req.body.typeSpecificData && typeof req.body.typeSpecificData === 'object' ? req.body.typeSpecificData : {})
+  };
+
+  const data: CreatePropertyRequest = {
+    propertyType: req.body.propertyType || PropertyType.APPARTEMENT,
+    ownershipType: req.body.ownershipType || parent.ownershipType,
+    ownerUserId: req.body.ownerUserId || parent.ownerUserId || userId,
+    ownerEmail: req.body.ownerEmail,
+    containerParentId: parentPropertyId, // Link to parent
+    title: req.body.title,
+    description: req.body.description || '',
+    address: req.body.address || parent.address, // Inherit from parent if not provided
+    locationZone: req.body.locationZone ?? parent.locationZone ?? undefined,
+    latitude: req.body.latitude ?? parent.latitude ?? undefined,
+    longitude: req.body.longitude ?? parent.longitude ?? undefined,
+    transactionModes: req.body.transactionModes || parent.transactionModes,
+    price: req.body.price,
+    fees: req.body.fees,
+    currency: req.body.currency || parent.currency || 'EUR',
+    surfaceArea: req.body.surfaceArea,
+    surfaceUseful: req.body.surfaceUseful,
+    surfaceTerrain: req.body.surfaceTerrain,
+    rooms: req.body.rooms,
+    bedrooms: req.body.bedrooms,
+    bathrooms: req.body.bathrooms,
+    furnishingStatus: req.body.furnishingStatus,
+    availability: req.body.availability,
+    status: req.body.status,
+    typeSpecificData: Object.keys(mergedTypeSpecificData).length > 0 ? mergedTypeSpecificData : undefined
+  };
+
+  const property = await createProperty(tenantId, data.ownerUserId || userId || null, data, actorUserId);
+
+  res.status(201).json({
+    success: true,
+    data: property
+  });
+});
 
 /**
  * Get child properties handler
  */
-export async function getChildPropertiesHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const parentPropertyId = req.params.id;
-    const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+export const getChildPropertiesHandler = asyncHandler(async (req: Request, res: Response) => {
+  const parentPropertyId = req.params.id;
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
 
-    const children = await getChildProperties(parentPropertyId, tenantId);
+  const children = await getChildProperties(parentPropertyId, tenantId);
 
-    res.json({
-      success: true,
-      data: children
-    });
-  } catch (error: any) {
-    logger.error('Error getting child properties', { error, propertyId: req.params.id });
-
-    // If it's a "not found" or "access denied" error, return 404
-    if (error.message?.includes('not found') || error.message?.includes('access denied')) {
-      res.status(404).json({
-        success: false,
-        error: error.message || 'Parent property not found or access denied'
-      });
-      return;
-    }
-
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to get child properties'
-    });
-  }
-}
+  res.json({
+    success: true,
+    data: children
+  });
+});

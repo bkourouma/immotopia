@@ -145,7 +145,7 @@ export class SubscriptionReadOnlyError extends AppError {
 export class QuotaExceededError extends AppError {
   constructor(
     detail: { capacityKey: string; limit: number; used: number; requested: number },
-    message = "La capacité de votre abonnement est atteinte : ajoutez une extension pour continuer."
+    message = 'La capacité de votre abonnement est atteinte : ajoutez une extension pour continuer.'
   ) {
     super(message, 409, ErrorCode.QUOTA_EXCEEDED, undefined, detail);
   }
@@ -163,7 +163,7 @@ export function asyncHandler(
   handler: (req: Request, res: Response, next: NextFunction) => Promise<unknown>
 ): RequestHandler {
   return (req, res, next) => {
-    Promise.resolve(handler(req, res, next)).catch(next);
+    return Promise.resolve(handler(req, res, next)).catch(next);
   };
 }
 

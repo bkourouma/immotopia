@@ -62,7 +62,7 @@ describe('createPropertyHandler — le tenantId du corps est ignore', () => {
     };
     const res = mockRes();
 
-    await createPropertyHandler(req, res);
+    await createPropertyHandler(req, res, jest.fn());
 
     expect(createProperty).toHaveBeenCalledTimes(1);
     const [tenantIdArg, , dataArg] = createProperty.mock.calls[0];
@@ -96,7 +96,7 @@ describe('createSubPropertyHandler — le tenantId du corps est ignore', () => {
     };
     const res = mockRes();
 
-    await createSubPropertyHandler(req, res);
+    await createSubPropertyHandler(req, res, jest.fn());
 
     expect(createProperty).toHaveBeenCalledTimes(1);
     const [tenantIdArg, , dataArg] = createProperty.mock.calls[0];
