@@ -48,7 +48,13 @@ export const updateSyndicateSchema = z
 
 export const createLotSchema = z.object({
   syndicateId: z.string().uuid(),
-  propertyId: z.string().uuid(),
+  // Facultatif : un lot de copropriete (parking, cave...) peut exister sans
+  // bien lie, cree directement au niveau de la copropriete (voir le modele
+  // Prisma SyndicateLot.propertyId, deja optionnel, et
+  // docs/recette/SCENARIO_SYNDIC_ABONNEMENT.md, MC1). Seuls les lots
+  // principaux (Appartement, Bureau, Commercial) comptent dans le quota de
+  // lots, que le bien soit renseigne ou non (voir lot-registry-service.ts).
+  propertyId: z.string().uuid().optional(),
   coownerId: z.string().uuid().optional(),
   lotNumber: z.string().min(1, 'Le numero de lot est obligatoire'),
   lotType: z.enum(['APARTMENT', 'PARKING', 'CELLAR', 'OFFICE', 'COMMERCIAL', 'OTHER']),
@@ -77,35 +83,37 @@ export const updateLotSchema = z
     message: 'Au moins un champ doit etre fourni pour la mise a jour du lot'
   });
 
-export const createChargeCallSchema = z.object({
-  syndicateId: z.string().uuid(),
-  lotId: z.string().uuid().optional(),
-  lotIds: z.array(z.string().uuid()).optional(),
-  applyToAllLots: z.boolean().optional().default(false),
-  period: z.string().min(1, 'La periode est obligatoire'),
-  amount: z.number().positive(),
-  currency: z.string().default('XOF'),
-  dueDate: z.coerce.date(),
-  isRecurring: z.boolean().optional().default(false),
-  recurrenceFrequency: z.enum(['MONTHLY', 'QUARTERLY', 'ANNUAL']).optional(),
-  recurrenceCount: z.number().int().min(1).max(24).optional()
-}).superRefine((value, ctx) => {
-  if (!value.applyToAllLots && !value.lotId && (!value.lotIds || value.lotIds.length === 0)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Selectionnez un lot, plusieurs lots ou tous les lots',
-      path: ['lotId']
-    });
-  }
+export const createChargeCallSchema = z
+  .object({
+    syndicateId: z.string().uuid(),
+    lotId: z.string().uuid().optional(),
+    lotIds: z.array(z.string().uuid()).optional(),
+    applyToAllLots: z.boolean().optional().default(false),
+    period: z.string().min(1, 'La periode est obligatoire'),
+    amount: z.number().positive(),
+    currency: z.string().default('XOF'),
+    dueDate: z.coerce.date(),
+    isRecurring: z.boolean().optional().default(false),
+    recurrenceFrequency: z.enum(['MONTHLY', 'QUARTERLY', 'ANNUAL']).optional(),
+    recurrenceCount: z.number().int().min(1).max(24).optional()
+  })
+  .superRefine((value, ctx) => {
+    if (!value.applyToAllLots && !value.lotId && (!value.lotIds || value.lotIds.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Selectionnez un lot, plusieurs lots ou tous les lots',
+        path: ['lotId']
+      });
+    }
 
-  if (value.isRecurring && !value.recurrenceFrequency) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'La frequence de recurrence est obligatoire',
-      path: ['recurrenceFrequency']
-    });
-  }
-});
+    if (value.isRecurring && !value.recurrenceFrequency) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'La frequence de recurrence est obligatoire',
+        path: ['recurrenceFrequency']
+      });
+    }
+  });
 
 export const createChargePaymentSchema = z.object({
   chargeCallId: z.string().uuid(),

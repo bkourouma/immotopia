@@ -364,18 +364,18 @@ export async function createSyndicateWithDefaults(
   return prisma.$transaction(async tx => {
     await assertCapacityTx(tx, tenantId, 'COPROPRIETES');
     return tx.syndicate.create({
-    data: {
-      propertyId: data.propertyId ?? undefined,
-      name: data.name,
-      address: data.address ?? '',
-      registrationNo: data.registrationNo ?? undefined,
-      fiscalYear: data.fiscalYear ?? 1,
-      syndicManagerId: data.syndicManagerId ?? undefined,
-      cadastralReference: data.cadastralReference ?? undefined,
-      totalLots: data.totalLots ?? 0,
-      totalBuildings: data.totalBuildings ?? 1,
-      tenantId
-    }
+      data: {
+        propertyId: data.propertyId ?? undefined,
+        name: data.name,
+        address: data.address ?? '',
+        registrationNo: data.registrationNo ?? undefined,
+        fiscalYear: data.fiscalYear ?? 1,
+        syndicManagerId: data.syndicManagerId ?? undefined,
+        cadastralReference: data.cadastralReference ?? undefined,
+        totalLots: data.totalLots ?? 0,
+        totalBuildings: data.totalBuildings ?? 1,
+        tenantId
+      }
     });
   });
 }
@@ -484,7 +484,7 @@ export async function createSyndicateLot(
   tenantId: string,
   data: {
     syndicateId: string;
-    propertyId: string;
+    propertyId?: string | null;
     coownerId?: string | null;
     lotNumber: string;
     lotType: LotType;
@@ -503,19 +503,25 @@ export async function createSyndicateLot(
     throw notFound('Copropriete introuvable ou inaccessible');
   }
 
-  const property = await prisma.property.findFirst({
-    where: { id: data.propertyId, tenantId },
-    select: { id: true, containerParentId: true, propertyType: true }
-  });
+  // Un lot de copropriete (parking, cave...) peut ne pas avoir de bien lie :
+  // il est alors cree directement au niveau de la copropriete. Cf. modele
+  // Prisma SyndicateLot.propertyId (optionnel) et
+  // docs/recette/SCENARIO_SYNDIC_ABONNEMENT.md (lot MC1).
+  if (data.propertyId) {
+    const property = await prisma.property.findFirst({
+      where: { id: data.propertyId, tenantId },
+      select: { id: true, containerParentId: true, propertyType: true }
+    });
 
-  if (!property) {
-    throw notFound('Sous-propriete introuvable ou inaccessible');
-  }
+    if (!property) {
+      throw notFound('Sous-propriete introuvable ou inaccessible');
+    }
 
-  if (property.propertyType === 'IMMEUBLE') {
-    throw unprocessableEntity(
-      'Un lot ne peut pas etre un immeuble parent; selectionnez une unite (appartement, villa, bureau, etc.)'
-    );
+    if (property.propertyType === 'IMMEUBLE') {
+      throw unprocessableEntity(
+        'Un lot ne peut pas etre un immeuble parent; selectionnez une unite (appartement, villa, bureau, etc.)'
+      );
+    }
   }
 
   if (data.coownerId) {
@@ -536,7 +542,7 @@ export async function createSyndicateLot(
     const lot = await tx.syndicateLot.create({
       data: {
         syndicateId: data.syndicateId,
-        propertyId: data.propertyId,
+        propertyId: data.propertyId ?? null,
         coownerId: data.coownerId ?? undefined,
         ownerContactId: data.coownerId ?? undefined,
         lotNumber: data.lotNumber,
@@ -792,29 +798,29 @@ export async function importLotsFromPropertiesBySyndicate(
     // tout passe.
     let lot: { id: string };
     try {
-    lot = await prisma.$transaction(async tx => {
-      if (ownerContactId) {
-        await ensureCrmRoleForContact(tx, tenantId, ownerContactId, 'COOWNER');
-      }
-
-      const createdLot = await tx.syndicateLot.create({
-        data: {
-          syndicateId,
-          propertyId: property.id,
-          coownerId: ownerContactId ?? undefined,
-          ownerContactId: ownerContactId ?? undefined,
-          lotNumber,
-          lotType,
-          generalShares: tantiemes,
-          specialShares: lotType === 'PARKING' ? tantiemes : null
-        },
-        select: {
-          id: true
+      lot = await prisma.$transaction(async tx => {
+        if (ownerContactId) {
+          await ensureCrmRoleForContact(tx, tenantId, ownerContactId, 'COOWNER');
         }
+
+        const createdLot = await tx.syndicateLot.create({
+          data: {
+            syndicateId,
+            propertyId: property.id,
+            coownerId: ownerContactId ?? undefined,
+            ownerContactId: ownerContactId ?? undefined,
+            lotNumber,
+            lotType,
+            generalShares: tantiemes,
+            specialShares: lotType === 'PARKING' ? tantiemes : null
+          },
+          select: {
+            id: true
+          }
+        });
+        await syncLotActivationsTx(tx, tenantId, { syndicateLotIds: [createdLot.id] });
+        return createdLot;
       });
-      await syncLotActivationsTx(tx, tenantId, { syndicateLotIds: [createdLot.id] });
-      return createdLot;
-    });
     } catch (error) {
       if (!(error instanceof QuotaExceededError)) throw error;
       skipped.push({ propertyId: property.id, reason: t(LOT_QUOTA_REACHED_REASON) });

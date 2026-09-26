@@ -165,6 +165,33 @@ describe('Syndics queries - US1', () => {
     expect(result.id).toBe('lot-1');
   });
 
+  it('creates a lot without a linked property (parking/cellar, écart recette MC1/MP1) without looking up any property', async () => {
+    (mockPrisma.syndicate.findFirst as jest.Mock).mockResolvedValue({ id: 'syndic-1', propertyId: 'property-imm-1' });
+    (mockPrisma.syndicateLot.create as jest.Mock).mockResolvedValue({
+      id: 'lot-mp1',
+      syndicateId: 'syndic-1',
+      lotNumber: 'MP1'
+    });
+
+    const result = await createSyndicateLot('tenant-a', {
+      syndicateId: 'syndic-1',
+      lotNumber: 'MP1',
+      lotType: 'PARKING' as any,
+      tantiemes: 5
+    });
+
+    expect(mockPrisma.property.findFirst).not.toHaveBeenCalled();
+    expect(mockPrisma.syndicateLot.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        syndicateId: 'syndic-1',
+        propertyId: null,
+        lotNumber: 'MP1',
+        lotType: 'PARKING'
+      })
+    });
+    expect(result.id).toBe('lot-mp1');
+  });
+
   it('rejects lot creation when syndicate is from another tenant', async () => {
     (mockPrisma.syndicate.findFirst as jest.Mock).mockResolvedValue(null);
 
@@ -184,7 +211,6 @@ describe('Syndics queries - US1', () => {
   });
 });
 
-
 describe('registre des lots et capacité COPROPRIETES (vague 2, lot B)', () => {
   it('la création d’une copropriété contrôle la capacité COPROPRIETES dans sa transaction', async () => {
     mockLotRegistry.assertCapacityTx.mockClear();
@@ -196,7 +222,11 @@ describe('registre des lots et capacité COPROPRIETES (vague 2, lot B)', () => {
   it('un lot de copropriété créé entre au registre dans la même transaction', async () => {
     mockLotRegistry.syncLotActivationsTx.mockClear();
     mockPrisma.syndicate.findFirst.mockResolvedValueOnce({ id: 'syn-1', propertyId: null });
-    mockPrisma.property.findFirst.mockResolvedValueOnce({ id: 'prop-9', containerParentId: null, propertyType: 'APPARTEMENT' });
+    mockPrisma.property.findFirst.mockResolvedValueOnce({
+      id: 'prop-9',
+      containerParentId: null,
+      propertyType: 'APPARTEMENT'
+    });
     mockPrisma.syndicateLot.create.mockResolvedValueOnce({ id: 'lot-9' });
     await createSyndicateLot('tenant-1', {
       syndicateId: 'syn-1',
@@ -205,7 +235,9 @@ describe('registre des lots et capacité COPROPRIETES (vague 2, lot B)', () => {
       lotType: 'APARTMENT' as any,
       tantiemes: 100
     });
-    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenCalledWith(expect.anything(), 'tenant-1', { syndicateLotIds: ['lot-9'] });
+    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenCalledWith(expect.anything(), 'tenant-1', {
+      syndicateLotIds: ['lot-9']
+    });
   });
 });
 
@@ -232,12 +264,14 @@ describe('import de lots par lots et quota (vague 2, lot B)', () => {
     // Il reste UNE place : le parking ne consomme rien (il passe), le deuxieme lot principal depasse.
     let room = 1;
     mockLotRegistry.syncLotActivationsTx.mockReset();
-    mockLotRegistry.syncLotActivationsTx.mockImplementation(async (_tx: unknown, _t: string, scope: { syndicateLotIds: string[] }) => {
-      if (scope.syndicateLotIds[0] === 'lot-p2') return { activated: [], deactivated: [], quota: null };
-      if (room === 0) throw new QuotaExceededError({ capacityKey: 'LOTS', limit: 10, used: 10, requested: 1 });
-      room -= 1;
-      return { activated: [`P:${scope.syndicateLotIds[0]}`], deactivated: [], quota: { decision: 'ALLOW' } };
-    });
+    mockLotRegistry.syncLotActivationsTx.mockImplementation(
+      async (_tx: unknown, _t: string, scope: { syndicateLotIds: string[] }) => {
+        if (scope.syndicateLotIds[0] === 'lot-p2') return { activated: [], deactivated: [], quota: null };
+        if (room === 0) throw new QuotaExceededError({ capacityKey: 'LOTS', limit: 10, used: 10, requested: 1 });
+        room -= 1;
+        return { activated: [`P:${scope.syndicateLotIds[0]}`], deactivated: [], quota: { decision: 'ALLOW' } };
+      }
+    );
 
     const result = await importLotsFromPropertiesBySyndicate('tenant-1', 'syn-1', ['p1', 'p2', 'p3', 'p4']);
 
@@ -253,7 +287,11 @@ describe('import de lots par lots et quota (vague 2, lot B)', () => {
   it('BILL_OVERAGE : tout passe', async () => {
     arrangeImport();
     mockLotRegistry.syncLotActivationsTx.mockReset();
-    mockLotRegistry.syncLotActivationsTx.mockResolvedValue({ activated: [], deactivated: [], quota: { decision: 'BILL' } });
+    mockLotRegistry.syncLotActivationsTx.mockResolvedValue({
+      activated: [],
+      deactivated: [],
+      quota: { decision: 'BILL' }
+    });
     const result = await importLotsFromPropertiesBySyndicate('tenant-1', 'syn-1', ['p1', 'p2', 'p3', 'p4']);
     expect(result.created).toHaveLength(4);
     expect(result.skipped).toEqual([]);
