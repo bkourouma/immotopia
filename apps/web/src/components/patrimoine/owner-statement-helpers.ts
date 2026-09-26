@@ -36,6 +36,9 @@ function sumItemsByLabelPrefix(items: OwnerStatementItem[], labelPrefix: string)
 }
 
 export function totalWithholdingTax(statement: Pick<OwnerStatement, 'items'>): number {
+  // Le préfixe est comparé au libellé brut produit par le serveur
+  // (`owner-statement-computation.ts`), toujours en français : le traduire
+  // ferait échouer `.startsWith()` dès que l'écran n'est pas en français.
   return sumItemsByLabelPrefix(statement.items, 'Retenue à la source');
 }
 
