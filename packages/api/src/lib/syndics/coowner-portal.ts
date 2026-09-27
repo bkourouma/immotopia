@@ -3,6 +3,8 @@ import { NotFoundError } from '../../middleware/error-middleware';
 import { isExternalDocumentUrl, localSyndicateDocumentPath, readSyndicateDocumentFile } from './document-files';
 import { computeOutstanding, deriveChargeCallStatus, roundMoney, type ChargeCallStatusValue } from './finance-utils';
 import { computeResolutionTally, normalizeMajorityRule, type MajorityRule } from './meeting-majority';
+import { sumAllocationsByCall } from './charge-allocation';
+import { fromCents } from './charge-allocation-plan';
 
 /**
  * Portail copropriétaire — lectures, en lecture seule.
@@ -328,22 +330,16 @@ export async function listCoOwnerChargeCalls(scope: CoOwnerPortalScope, filters:
       status: true
     }
   });
-  const payments =
-    calls.length === 0
-      ? []
-      : await prisma.chargePayment.findMany({
-          where: { chargeCallId: { in: calls.map(call => call.id) } },
-          select: { chargeCallId: true, amount: true }
-        });
-  const paidByCall = new Map<string, number>();
-  for (const payment of payments) {
-    paidByCall.set(payment.chargeCallId, (paidByCall.get(payment.chargeCallId) ?? 0) + Number(payment.amount));
-  }
+  // Lot S2 : regle d'un appel = somme de ses affectations (paiements et avances).
+  const paidCentsByCall = await sumAllocationsByCall(
+    prisma,
+    calls.map(call => call.id)
+  );
 
   const now = new Date();
   return calls.map(call => {
     const amount = roundMoney(Number(call.amount));
-    const paid = roundMoney(paidByCall.get(call.id) ?? 0);
+    const paid = fromCents(paidCentsByCall.get(call.id) ?? 0);
     const lot = lotById.get(call.lotId);
     return {
       id: call.id,

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { checkPeriodBounds, periodBoundsFields } from './charge-allocation-schemas';
 
 const uuidSchema = z.string().uuid();
 
@@ -94,6 +95,8 @@ export const createChargeCallSchema = z
     lotIds: z.array(z.string().uuid()).optional(),
     applyToAllLots: z.boolean().optional().default(false),
     period: z.string().min(1, 'La periode est obligatoire'),
+    // Lot S2 : bornes facultatives ; deduites du libelle quand elles manquent.
+    ...periodBoundsFields,
     amount: z.number().positive(),
     currency: z.string().default('XOF'),
     dueDate: z.coerce.date(),
@@ -102,6 +105,7 @@ export const createChargeCallSchema = z
     recurrenceCount: z.number().int().min(1).max(24).optional()
   })
   .superRefine((value, ctx) => {
+    checkPeriodBounds(value, ctx);
     if (!value.applyToAllLots && !value.lotId && (!value.lotIds || value.lotIds.length === 0)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -261,16 +265,19 @@ export const updateContractSchema = z
     message: 'Au moins un champ doit etre fourni pour la mise a jour du contrat'
   });
 
-export const createChargeCallBatchSchema = z.object({
-  syndicateId: uuidSchema,
-  label: z.string().min(1, 'Le libelle du batch est obligatoire'),
-  period: z.string().min(1, 'La periode est obligatoire'),
-  dueDate: z.coerce.date(),
-  batchType: z.enum(['REGULAR', 'EXCEPTIONAL']),
-  budgetId: uuidSchema.optional(),
-  totalAmount: z.number().positive(),
-  currency: z.string().default('XOF')
-});
+export const createChargeCallBatchSchema = z
+  .object({
+    syndicateId: uuidSchema,
+    label: z.string().min(1, 'Le libelle du batch est obligatoire'),
+    period: z.string().min(1, 'La periode est obligatoire'),
+    ...periodBoundsFields,
+    dueDate: z.coerce.date(),
+    batchType: z.enum(['REGULAR', 'EXCEPTIONAL']),
+    budgetId: uuidSchema.optional(),
+    totalAmount: z.number().positive(),
+    currency: z.string().default('XOF')
+  })
+  .superRefine(checkPeriodBounds);
 
 export const createReminderSchema = z.object({
   chargeCallId: uuidSchema,
@@ -338,13 +345,16 @@ export const updateBudgetSchema = z
     message: 'Au moins un champ doit etre fourni pour la mise a jour du budget'
   });
 
-export const generateBudgetChargeCallsSchema = z.object({
-  label: z.string().min(1, 'Le libelle du batch est obligatoire'),
-  period: z.string().min(1, 'La periode est obligatoire'),
-  dueDate: z.coerce.date(),
-  batchType: z.enum(['REGULAR', 'EXCEPTIONAL']),
-  currency: z.string().default('XOF')
-});
+export const generateBudgetChargeCallsSchema = z
+  .object({
+    label: z.string().min(1, 'Le libelle du batch est obligatoire'),
+    period: z.string().min(1, 'La periode est obligatoire'),
+    ...periodBoundsFields,
+    dueDate: z.coerce.date(),
+    batchType: z.enum(['REGULAR', 'EXCEPTIONAL']),
+    currency: z.string().default('XOF')
+  })
+  .superRefine(checkPeriodBounds);
 
 export const budgetListQuerySchema = z.object({
   fiscalYear: z.coerce.number().int().min(2000).optional(),

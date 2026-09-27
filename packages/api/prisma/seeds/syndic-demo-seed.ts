@@ -51,6 +51,7 @@ import { randomUUID } from 'crypto';
 import * as dotenv from 'dotenv';
 import { PDFDocument, PDFFont, StandardFonts, rgb } from 'pdf-lib';
 import { Prisma, PrismaClient } from '@prisma/client';
+import { parsePeriodBounds } from '../../src/lib/syndics/period';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env'), quiet: true });
 
@@ -4569,6 +4570,8 @@ async function seedCopro(
 
   // ─────────────────────────────── paiements, relances, pénalités, échéanciers
   const paymentRows: Prisma.ChargePaymentCreateManyInput[] = [];
+  // Lot S2 : chaque paiement de la demo est affecte en entier a son appel.
+  const paymentAllocationRows: Prisma.ChargePaymentAllocationCreateManyInput[] = [];
   const reminderRows: Prisma.PaymentReminderCreateManyInput[] = [];
   const penaltyRows: Prisma.LatePaymentPenaltyCreateManyInput[] = [];
   const scheduleRows: Prisma.PaymentScheduleCreateManyInput[] = [];
@@ -4690,12 +4693,15 @@ async function seedCopro(
           : call.due < REFERENCE_DATE
             ? 'OVERDUE'
             : 'PENDING';
+    const callBounds = parsePeriodBounds(call.period);
     callRows.push({
       id: call.id,
       syndicateId: def.id,
       lotId: lot.id,
       batchId: call.batchId,
       period: call.period,
+      periodStart: callBounds?.start ?? null,
+      periodEnd: callBounds?.end ?? null,
       amount: call.amount,
       currency: 'XOF',
       dueDate: call.due,
@@ -4724,6 +4730,7 @@ async function seedCopro(
       const ref = makeRef(p.method, p.date, r);
       paymentRows.push({
         id: pid,
+        lotId: lot.id,
         chargeCallId: call.id,
         amount: p.amount,
         paidAt: p.date,
@@ -4731,6 +4738,7 @@ async function seedCopro(
         reference: ref,
         createdAt: p.date
       });
+      paymentAllocationRows.push({ id: pid, paymentId: pid, chargeCallId: call.id, amount: p.amount, source: 'PAYMENT' });
       pushEvent(lot.id, {
         date: p.date,
         type: 'PAYMENT',
@@ -5594,6 +5602,9 @@ async function seedCopro(
       await tx.chargeCallBatch.createMany({ data: batchRows });
       await insert('calls', callRows, data => tx.chargeCall.createMany({ data }));
       await insert('payments', paymentRows, data => tx.chargePayment.createMany({ data }));
+      await insert('paymentAllocations', paymentAllocationRows, data =>
+        tx.chargePaymentAllocation.createMany({ data })
+      );
       await insert('reminders', reminderRows, data => tx.paymentReminder.createMany({ data }));
       await insert(
         'entries',
@@ -5674,6 +5685,7 @@ async function seedCopro(
       charge_call_batches: batchRows.length,
       charge_calls: callRows.length,
       charge_payments: paymentRows.length,
+      charge_payment_allocations: paymentAllocationRows.length,
       payment_reminders: reminderRows.length,
       late_payment_penalties: penaltyRows.length,
       payment_schedules: scheduleRows.length,

@@ -19,6 +19,12 @@ jest.mock('@prisma/client', () => {
       // seul `create` importe pour ce test.
       create: jest.fn(),
     },
+    // Lot S2 : chaque appel cree impute l'avance du lot (applyLotAdvanceTx),
+    // sous un verrou consultatif. Aucune avance ici : lecture vide, verrou no-op.
+    chargePayment: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
+    $executeRaw: jest.fn(),
   };
 
   const prisma = {
@@ -138,6 +144,19 @@ describe('Syndics budget queries - US4', () => {
     // recuperer son identifiant et debiter le compte du lot correspondant.
     expect(mockTx.chargeCall.create).toHaveBeenCalledTimes(2);
     expect(result?.id).toBe('batch-1');
+
+    // Lot S2 : bornes deduites du libelle « 2026-Q2 » (trimestre), sur le lot
+    // d'appels comme sur chaque appel.
+    const bounds = {
+      periodStart: new Date('2026-04-01T00:00:00.000Z'),
+      periodEnd: new Date('2026-06-30T00:00:00.000Z')
+    };
+    expect(mockTx.chargeCallBatch.create).toHaveBeenCalledWith({ data: expect.objectContaining(bounds) });
+    expect(mockTx.chargeCall.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ ...bounds, batchId: 'batch-1', lotId: 'lot-1', amount: 40000 })
+    });
+    // Verrou du lot pris pour chaque appel (imputation d'avance sans concurrence).
+    expect(mockTx.$executeRaw).toHaveBeenCalled();
   });
 });
 

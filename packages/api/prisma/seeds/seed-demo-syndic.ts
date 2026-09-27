@@ -23,6 +23,7 @@
  * Idempotent : si une copropriété existe déjà sur l'agence, le script s'arrête.
  */
 
+import { parsePeriodBounds } from '../../src/lib/syndics/period';
 import {
   PrismaClient,
   SyndicateStatus,
@@ -404,6 +405,9 @@ async function main() {
           lotId: l.id,
           batchId: lot.id,
           period: cle,
+          // Lot S2 : bornes du trimestre, lues par le suivi mensuel.
+          periodStart: parsePeriodBounds(cle)?.start ?? null,
+          periodEnd: parsePeriodBounds(cle)?.end ?? null,
           amount: montant,
           currency: 'XOF',
           dueDate: echeance,
@@ -413,9 +417,12 @@ async function main() {
       appels++;
 
       if (verse > 0) {
+        // Lot S2 : le paiement appartient au lot et s'affecte en entier a son appel.
         await prisma.chargePayment.create({
           data: {
+            lotId: l.id,
             chargeCallId: appel.id,
+            allocations: { create: { chargeCallId: appel.id, amount: verse, source: 'PAYMENT' } },
             amount: verse,
             paidAt: new Date(echeance.getTime() - 3 * 86400000),
             method: i % 3 === 0 ? 'MOBILE_MONEY' : i % 3 === 1 ? 'BANK_TRANSFER' : 'CASH',
