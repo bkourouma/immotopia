@@ -3,6 +3,7 @@ import multer from 'multer';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess, requireTenantCollaborator } from '../middleware/tenant-middleware';
 import { enforceTenantIsolation } from '../middleware/tenant-isolation-middleware';
+import { BadRequestError } from '../middleware/error-middleware';
 import {
   listHandler,
   updateHandler,
@@ -21,7 +22,7 @@ const upload = multer({
       cb(null, true);
       return;
     }
-    cb(new Error('Type de fichier non autorise. Types: JPEG, PNG'));
+    cb(new BadRequestError('Type de fichier non accepté. Formats autorisés : JPEG, PNG.'));
   },
   limits: {
     fileSize: 5 * 1024 * 1024

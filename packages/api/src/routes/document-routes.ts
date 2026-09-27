@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforceTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import multer from 'multer';
+import { BadRequestError } from '../middleware/error-middleware';
 import {
   uploadTemplateHandler,
   listTemplatesHandler,
@@ -31,7 +32,9 @@ const upload = multer({
     ) {
       cb(null, true);
     } else {
-      cb(new Error('Only DOCX files are allowed'));
+      // Erreur typée : un `Error` nu tomberait en 500 dans le gestionnaire
+      // central (modele property-media-controller.ts).
+      cb(new BadRequestError('Type de fichier non accepté. Format autorisé : DOCX.'));
     }
   }
 });

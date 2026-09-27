@@ -795,5 +795,15 @@
   "Pièce jointe introuvable.": "المرفق غير موجود.",
   "Accès portail locataire refusé.": "تم رفض الوصول إلى بوابة المستأجر.",
   "Accès portail propriétaire requis.": "يلزم الوصول إلى بوابة المالك.",
-  "Preuve de paiement introuvable.": "إثبات الدفع غير موجود."
+  "Preuve de paiement introuvable.": "إثبات الدفع غير موجود.",
+  "Type de fichier introuvable. Formats autorisés : JPEG, PNG, WebP, MP4, WebM, QuickTime.": "تعذر تحديد نوع الملف. الصيغ المسموح بها: JPEG وPNG وWebP وMP4 وWebM وQuickTime.",
+  "Type de fichier non accepté pour une vidéo. Formats autorisés : MP4, WebM, QuickTime.": "نوع الملف غير مقبول لفيديو. الصيغ المسموح بها: MP4 وWebM وQuickTime.",
+  "Type de fichier non accepté pour une photo. Formats autorisés : JPEG, PNG, WebP.": "نوع الملف غير مقبول لصورة. الصيغ المسموح بها: JPEG وPNG وWebP.",
+  "Type de fichier non accepté. Formats autorisés : PDF, DOC, DOCX, JPEG, PNG, TIFF.": "نوع الملف غير مقبول. الصيغ المسموح بها: PDF وDOC وDOCX وJPEG وPNG وTIFF.",
+  "Type de fichier non accepté pour un logo. Formats autorisés : PNG, JPEG, WebP.": "نوع الملف غير مقبول لشعار. الصيغ المسموح بها: PNG وJPEG وWebP.",
+  "Type de fichier non accepté. Format autorisé : DOCX.": "نوع الملف غير مقبول. الصيغة المسموح بها: DOCX.",
+  "Type de fichier non accepté. Formats autorisés : JPEG, PNG, WebP, PDF.": "نوع الملف غير مقبول. الصيغ المسموح بها: JPEG وPNG وWebP وPDF.",
+  "Type de fichier non accepté. Formats autorisés : JPEG, PNG.": "نوع الملف غير مقبول. الصيغ المسموح بها: JPEG وPNG.",
+  "Le fichier envoyé dépasse la taille maximale autorisée.": "الملف المُرسل يتجاوز الحجم الأقصى المسموح به.",
+  "Le fichier envoyé n'a pas pu être traité. Vérifiez son format et réessayez.": "تعذّرت معالجة الملف المُرسل. تحقق من صيغته وأعد المحاولة."
 }
