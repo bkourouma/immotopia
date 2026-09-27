@@ -40,6 +40,8 @@ export const EMAIL_NOTIFICATION_KEYS = [
   // Syndic – appels de charges & AG & contrats
   'CHARGE_CALL_ISSUED',
   'CHARGE_CALL_REMINDER',
+  'CHARGE_PAYMENT_RECEIPT',
+  'CHARGE_CALL_SETTLED',
   'GENERAL_MEETING_CONVOCATION',
   'GENERAL_MEETING_MINUTES',
   'CONTRACT_RENEWAL_ALERT',
@@ -222,6 +224,20 @@ export const EMAIL_NOTIFICATION_META: Record<EmailNotificationKey, EmailNotifica
     key: 'CHARGE_CALL_REMINDER',
     label: 'Rappel appel de charges',
     description: 'Rappel d’appel de charges proche de l’échéance ou en retard.',
+    recipientLabel: 'Copropriétaire'
+  },
+  CHARGE_PAYMENT_RECEIPT: {
+    key: 'CHARGE_PAYMENT_RECEIPT',
+    label: 'Reçu de paiement de charges',
+    description:
+      'Envoyé au copropriétaire, avec le reçu PDF, quand un paiement laisse un reste dû ou est conservé en avance.',
+    recipientLabel: 'Copropriétaire'
+  },
+  CHARGE_CALL_SETTLED: {
+    key: 'CHARGE_CALL_SETTLED',
+    label: 'Quittance de charges',
+    description:
+      'Envoyé au copropriétaire, avec la quittance PDF, quand un appel de charges est entièrement réglé (paiement ou avance).',
     recipientLabel: 'Copropriétaire'
   },
   GENERAL_MEETING_CONVOCATION: {

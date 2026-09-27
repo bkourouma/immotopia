@@ -17,6 +17,7 @@ import contactSearchRoutes from './routes/contact-search-routes';
 import propertyRoutes from './routes/property-routes';
 import syndicRoutes from './routes/syndic-routes';
 import syndicLotPaymentsRoutes from './routes/syndic-lot-payments-routes';
+import syndicReceiptsRoutes from './routes/syndic-receipts-routes';
 import syndicProviderInvoiceRoutes from './routes/syndic-provider-invoice-routes';
 import documentBrandingRoutes from './routes/document-branding-routes';
 import propertyPublicRoutes from './routes/property-public-routes';
@@ -256,6 +257,7 @@ app.use('/api', propertyRoutes); // Property routes (tenant-scoped)
 app.use('/api', syndicProviderInvoiceRoutes); // Syndic S6 : factures et paiements des prestataires
 app.use('/api', documentBrandingRoutes); // Identite des documents : mandants, logos, signature et cachet (lot S1)
 app.use('/api', syndicLotPaymentsRoutes); // Paiements par lot, avance et suivi mensuel des charges (lot S2)
+app.use('/api', syndicReceiptsRoutes); // Recus de paiement et quittances de charges, impression groupee (lot S3)
 app.use('/api', syndicRoutes); // Syndic (copropriétés) routes (tenant-scoped)
 app.use('/api', patrimoineRoutes); // Patrimoine routes (tenant-scoped)
 app.use('/api', ownerStatementsRoutes); // Owner statements routes (tenant-scoped)

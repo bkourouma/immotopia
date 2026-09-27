@@ -90,6 +90,7 @@ describe('SyndicWorkspaceLayout — après la mise en commun du rendu', () => {
       'Budgets',
       'Appels de charges',
       'Suivi mensuel',
+      'Quittances',
       'Recouvrement',
       'Trésorerie',
       'Comptabilité'

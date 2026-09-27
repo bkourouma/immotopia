@@ -297,12 +297,22 @@ export const FAKE_MODEL_NAMES = [
   'rentalDocument',
   'rentalLeaseCoRenter',
   'rentalPayment',
-  'rentalPaymentAllocation'
+  'rentalPaymentAllocation',
+  // Lot S3 : recus et quittances de charges.
+  'syndicChargeReceipt',
+  'syndicMandatingAgency'
 ] as const;
 
 export type FakePrisma = Record<(typeof FAKE_MODEL_NAMES)[number], FakeModel> & {
   $transaction: jest.Mock;
   $executeRaw: jest.Mock;
+  /**
+   * Seule requete brute simulee : le compteur des numeros de recus et
+   * quittances (lot S3, `nextChargeReceiptNumberTx`), cle (agence, emetteur,
+   * type, annee) — les valeurs interpolees du gabarit, dans cet ordre.
+   */
+  $queryRaw: jest.Mock;
+  receiptSequences: Map<string, number>;
   reset: () => void;
 };
 
@@ -311,10 +321,18 @@ export function createFakePrisma(): FakePrisma {
   for (const name of FAKE_MODEL_NAMES) fake[name] = createModel(name);
   fake.$transaction = jest.fn(async (arg: any) => (typeof arg === 'function' ? arg(fake) : Promise.all(arg)));
   fake.$executeRaw = jest.fn(async () => 0);
+  fake.receiptSequences = new Map<string, number>();
+  fake.$queryRaw = jest.fn(async (_strings: TemplateStringsArray, ...values: unknown[]) => {
+    const key = values.slice(0, 4).join('|');
+    const next = (fake.receiptSequences.get(key) ?? 0) + 1;
+    fake.receiptSequences.set(key, next);
+    return [{ last_value: next }];
+  });
   fake.reset = () => {
     for (const name of FAKE_MODEL_NAMES) {
       fake[name].rows = [];
     }
+    fake.receiptSequences.clear();
   };
   return fake as FakePrisma;
 }
