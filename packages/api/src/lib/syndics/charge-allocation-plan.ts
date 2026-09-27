@@ -156,7 +156,7 @@ export function planAdvanceImputation(advances: AdvanceSource[], openCalls: Allo
   return imputations;
 }
 
-/** Statut stocke d'un appel d'apres son regle (meme regle que `computeChargeCallStatus`). */
+/** Statut stocke d'un appel d'apres son regle (en centimes). */
 export function statusFromCents(paidCents: number, amountCents: number): 'PENDING' | 'PARTIAL' | 'PAID' {
   if (paidCents <= 0) return 'PENDING';
   if (paidCents < amountCents) return 'PARTIAL';

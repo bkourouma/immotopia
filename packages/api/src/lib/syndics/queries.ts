@@ -15,6 +15,8 @@ import {
 } from './meeting-majority';
 import { assertBelongsToTenant } from '../../utils/tenant-ownership';
 import { logger } from '../../utils/logger';
+// Lot S2 (audit S1) : le logo prive de la copropriete est supprime avec elle.
+import { deleteBrandingImage } from '../documents/branding-storage';
 // Shared client: a second `new PrismaClient()` here doubled the connection
 // pool and escaped the graceful-shutdown handlers in utils/database.
 import { prisma, type PrismaTransactionClient } from '../../utils/database';
@@ -27,7 +29,9 @@ import { ensureCrmRoleForContact, ensureOwnerAccountForLotTx } from './owner-acc
 import {
   applyLotAdvanceTx,
   CHARGE_CALL_ALLOCATIONS_INCLUDE,
+  compareLotIdsForLocking,
   lockLotTx,
+  sortLotIdsForLocking,
   paidFromAllocations,
   recordLotPaymentTx,
   withAllocationPayments
@@ -409,7 +413,9 @@ export async function deleteEmptySyndicateByTenant(tenantId: string, syndicateId
       id: syndicateId,
       tenantId
     },
-    select: { id: true }
+    // Le logo prive (s'il existe) est releve AVANT la suppression pour
+    // pouvoir supprimer le fichier une fois la ligne effacee en base.
+    select: { id: true, logoPath: true }
   });
 
   if (!existing) {
@@ -436,14 +442,21 @@ export async function deleteEmptySyndicateByTenant(tenantId: string, syndicateId
   // autre sortie du registre des lots (il n'y a normalement aucun lot ici
   // puisque la copropriete est vide, mais on garde la meme mecanique que les
   // autres operations de `syncLotActivationsTx` par coherence).
-  return prisma.$transaction(async tx => {
+  const deleted = await prisma.$transaction(async tx => {
     const scope = await resolveLotScope(tx, tenantId, { syndicateIds: [syndicateId] });
-    const deleted = await tx.syndicate.delete({
+    const row = await tx.syndicate.delete({
       where: { id: syndicateId, tenantId }
     });
     await syncLotActivationsTx(tx, tenantId, scope, { reason: 'SYNDICATE_DELETED' });
-    return deleted;
+    return row;
   });
+
+  // Logo prive de la copropriete : supprime apres coup, jamais bloquant pour
+  // la suppression elle-meme (deleteBrandingImage journalise et n'echoue
+  // jamais, meme fichier deja absent).
+  await deleteBrandingImage(tenantId, existing.logoPath);
+
+  return deleted;
 }
 
 export async function createSyndicateLot(
@@ -1230,6 +1243,10 @@ export async function createChargeCallAndUpdateStatus(
     throw notFound('Un ou plusieurs lots sont introuvables pour cette copropriete');
   }
 
+  // Verrous consultatifs par lot pris dans un ordre GLOBAL (identifiant croissant) :
+  // deux creations concurrentes sur [L7, L3] et [L3, L7] s'interbloqueraient sinon.
+  const lotIdsInLockOrder = sortLotIdsForLocking(targetLotIds);
+
   const recurrenceCount = data.isRecurring ? Math.max(1, data.recurrenceCount ?? 1) : 1;
   const recurrenceFrequency = data.recurrenceFrequency ?? 'MONTHLY';
 
@@ -1270,7 +1287,7 @@ export async function createChargeCallAndUpdateStatus(
     const bounds = resolveBounds(occurrenceIndex);
 
     await prisma.$transaction(async tx => {
-      for (const lotId of targetLotIds) {
+      for (const lotId of lotIdsInLockOrder) {
         const chargeCall = await createLotChargeCallTx(tx, tenantId, {
           syndicateId: data.syndicateId,
           lotId,
@@ -3992,7 +4009,9 @@ export async function generateChargeCallsFromBudget(
     // c'est deja le choix fait pour la creation directe multi-lots.
     // Lot S2 : chaque appel impute aussitot l'avance du lot (createLotChargeCallTx).
     const currency = data.currency || budget.currency || 'XOF';
-    for (const allocation of allocations) {
+    // Verrous par lot dans l'ordre des identifiants (voir sortLotIdsForLocking).
+    const allocationsInLockOrder = [...allocations].sort((a, b) => compareLotIdsForLocking(a.lotId, b.lotId));
+    for (const allocation of allocationsInLockOrder) {
       await createLotChargeCallTx(tx, tenantId, {
         syndicateId,
         lotId: allocation.lotId,

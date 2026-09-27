@@ -102,6 +102,20 @@ export interface LotPaymentResult {
 // ---------------------------------------------------------------------------
 
 /**
+ * Ordre global de prise des verrous de lot : identifiant croissant (ordre
+ * lexicographique de l'UUID). Toute transaction qui verrouille PLUSIEURS lots
+ * doit les parcourir dans cet ordre, sinon deux transactions concurrentes sur
+ * les memes lots en ordre inverse s'interbloquent (Postgres 40P01).
+ */
+export function compareLotIdsForLocking(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+export function sortLotIdsForLocking(lotIds: string[]): string[] {
+  return Array.from(new Set(lotIds)).sort(compareLotIdsForLocking);
+}
+
+/**
  * Verrou consultatif de transaction scope au lot (meme idiome que
  * `lib/finance/cash.ts`). Reentrant dans la meme transaction.
  */

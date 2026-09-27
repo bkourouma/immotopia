@@ -146,13 +146,13 @@ const updateTenantSchema = z.object({
 
 // Schema for tenant self-update (without status)
 const updateTenantSelfSchema = z.object({
-  name: z.string().min(1).optional(),
-  legalName: z.string().optional(),
+  name: z.string().min(1).max(200).optional(),
+  legalName: z.string().max(200).optional(),
   contactEmail: z.string().email().optional(),
   contactPhone: z.string().optional(),
-  country: z.string().optional(),
-  city: z.string().optional(),
-  address: z.string().optional(),
+  country: z.string().max(200).optional(),
+  city: z.string().max(200).optional(),
+  address: z.string().max(500).optional(),
   brandingPrimaryColor: nullableBrandingColor,
   logoUrl: nullableLogoUrl,
   website: z.string().url().optional()

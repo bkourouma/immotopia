@@ -28,6 +28,7 @@ jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn(),
 
 import {
   applyLotAdvanceTx,
+  sortLotIdsForLocking,
   getLotAdvance,
   listOpenCallsForLot,
   previewLotPaymentForTenant,
@@ -355,6 +356,31 @@ describe('avance imputee a la creation des appels', () => {
     expect(ancien.unallocatedAmount).toBe(0);
   });
 
+  it('plusieurs lots : verrous pris par identifiant croissant, quel que soit l ordre demande', async () => {
+    mockPrisma.$executeRaw.mockClear();
+    await createChargeCallAndUpdateStatus(TENANT_A, {
+      syndicateId: S1,
+      lotIds: [L2, L1],
+      period: '2026-01',
+      amount: 1000,
+      currency: 'XOF',
+      dueDate: d('2026-01-31'),
+      isRecurring: true,
+      recurrenceFrequency: 'MONTHLY',
+      recurrenceCount: 2
+    });
+    const keys = mockPrisma.$executeRaw.mock.calls.map(call => call[1]);
+    const firstLockOf = (lotId: string) => keys.indexOf(`syndic-lot-allocation:${lotId}`);
+    expect(firstLockOf(L1)).toBeGreaterThanOrEqual(0);
+    expect(firstLockOf(L1)).toBeLessThan(firstLockOf(L2));
+    // Dans chaque occurrence (une transaction), L1 avant L2 : sequence L1.., L2.., L1.., L2..
+    const lotSequence = keys
+      .filter((key: string) => key.startsWith('syndic-lot-allocation:'))
+      .map((key: string) => key.slice('syndic-lot-allocation:'.length))
+      .filter((lotId: string, index: number, all: string[]) => index === 0 || all[index - 1] !== lotId);
+    expect(lotSequence).toEqual([L1, L2, L1, L2]);
+  });
+
   it('applyLotAdvanceTx ne fait rien sans avance (une seule lecture)', async () => {
     await createCall(L1, '2026-01', 10000, '2026-01-05');
     const outcome = await applyLotAdvanceTx(mockPrisma as any, L1);
@@ -539,5 +565,11 @@ describe('withAllocationPayments — forme historique des appels', () => {
     ]);
     expect(view.paidAmount).toBe(3500.1);
     expect(view.outstandingAmount).toBe(6499.9);
+  });
+});
+
+describe('sortLotIdsForLocking', () => {
+  it('trie par identifiant croissant et retire les doublons', () => {
+    expect(sortLotIdsForLocking([L2, LB, L1, L2])).toEqual([L1, L2, LB]);
   });
 });

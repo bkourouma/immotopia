@@ -3510,7 +3510,11 @@ model Syndicate {
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
   tenant             Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  mandatingAgency    SyndicMandatingAgency?     @relation(fields: [mandatingAgencyId], references: [id], onDelete: Restrict)
+  // Defense en profondeur (audit S1) : cle composite (tenant_id,
+  // mandating_agency_id) -> syndic_mandating_agencies(tenant_id, id), pour
+  // qu'une copropriete ne puisse jamais etre rattachee au mandant d'une
+  // autre agence, meme si un bug applicatif oubliait de le verifier.
+  mandatingAgency    SyndicMandatingAgency?     @relation(fields: [tenantId, mandatingAgencyId], references: [tenantId, id], onDelete: Restrict)
   property           Property?                  @relation("SyndicateProperty", fields: [propertyId], references: [id], onDelete: SetNull)
   syndicManager      CrmContact?                @relation("SyndicManager", fields: [syndicManagerId], references: [id], onDelete: SetNull)
   lots               SyndicateLot[]
@@ -3559,9 +3563,11 @@ model SyndicMandatingAgency {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Cible de la cle composite de `Syndicate.mandatingAgency` (audit S1).
   syndicates Syndicate[]
 
   @@unique([tenantId, name])
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@map("syndic_mandating_agencies")
 }

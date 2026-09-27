@@ -19,12 +19,25 @@ export const dateRangeQuerySchema = z
 
 export const createSyndicateSchema = z.object({
   propertyId: z.string().uuid().optional(),
-  name: z.string().min(1, 'Le nom de la copropriete est obligatoire'),
-  address: z.string().min(1, "L'adresse de la copropriete est obligatoire").optional(),
-  registrationNo: z.string().optional(),
+  name: z
+    .string()
+    .min(1, 'Le nom de la copropriete est obligatoire')
+    .max(200, 'Le nom de la copropriete ne doit pas depasser 200 caracteres'),
+  address: z
+    .string()
+    .min(1, "L'adresse de la copropriete est obligatoire")
+    .max(500, "L'adresse de la copropriete ne doit pas depasser 500 caracteres")
+    .optional(),
+  registrationNo: z
+    .string()
+    .max(100, "Le numero d'immatriculation ne doit pas depasser 100 caracteres")
+    .optional(),
   fiscalYear: z.number().int().min(1).max(12).optional().default(1),
   syndicManagerId: z.string().uuid().optional(),
-  cadastralReference: z.string().optional(),
+  cadastralReference: z
+    .string()
+    .max(100, 'La reference cadastrale ne doit pas depasser 100 caracteres')
+    .optional(),
   totalLots: z.number().int().nonnegative().default(0),
   totalBuildings: z.number().int().positive().default(1),
   // Lot S1 : agence mandante (facultative) dont l'identite figure sur les documents.
@@ -34,12 +47,28 @@ export const createSyndicateSchema = z.object({
 export const updateSyndicateSchema = z
   .object({
     propertyId: z.string().uuid().optional(),
-    name: z.string().min(1, 'Le nom de la copropriete est obligatoire').optional(),
-    address: z.string().min(1, "L'adresse de la copropriete est obligatoire").optional(),
-    registrationNo: z.string().nullable().optional(),
+    name: z
+      .string()
+      .min(1, 'Le nom de la copropriete est obligatoire')
+      .max(200, 'Le nom de la copropriete ne doit pas depasser 200 caracteres')
+      .optional(),
+    address: z
+      .string()
+      .min(1, "L'adresse de la copropriete est obligatoire")
+      .max(500, "L'adresse de la copropriete ne doit pas depasser 500 caracteres")
+      .optional(),
+    registrationNo: z
+      .string()
+      .max(100, "Le numero d'immatriculation ne doit pas depasser 100 caracteres")
+      .nullable()
+      .optional(),
     fiscalYear: z.number().int().min(1).max(12).optional(),
     syndicManagerId: z.string().uuid().nullable().optional(),
-    cadastralReference: z.string().nullable().optional(),
+    cadastralReference: z
+      .string()
+      .max(100, 'La reference cadastrale ne doit pas depasser 100 caracteres')
+      .nullable()
+      .optional(),
     totalLots: z.number().int().nonnegative().optional(),
     totalBuildings: z.number().int().positive().optional(),
     status: z.enum(['ACTIVE', 'IN_LIQUIDATION', 'IN_DISPUTE']).optional(),
