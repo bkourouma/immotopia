@@ -794,5 +794,15 @@
   "L'agence {{agency}} vous ouvre un accès en lecture à votre espace copropriétaire : vos lots, le compte de chaque lot, vos appels de charges, les documents et les assemblées générales de votre copropriété.": "The agency {{agency}} is giving you read access to your co-owner area: your units, the account of each unit, your service charge calls, and the documents and general meetings of your co-ownership.",
   "Pièce jointe introuvable.": "Attachment not found.",
   "Accès portail locataire refusé.": "Tenant portal access denied.",
-  "Accès portail propriétaire requis.": "Owner portal access required."
+  "Accès portail propriétaire requis.": "Owner portal access required.",
+  "Type de fichier introuvable. Formats autorisés : JPEG, PNG, WebP, MP4, WebM, QuickTime.": "File type could not be determined. Allowed formats: JPEG, PNG, WebP, MP4, WebM, QuickTime.",
+  "Type de fichier non accepté pour une vidéo. Formats autorisés : MP4, WebM, QuickTime.": "File type not accepted for a video. Allowed formats: MP4, WebM, QuickTime.",
+  "Type de fichier non accepté pour une photo. Formats autorisés : JPEG, PNG, WebP.": "File type not accepted for a photo. Allowed formats: JPEG, PNG, WebP.",
+  "Type de fichier non accepté. Formats autorisés : PDF, DOC, DOCX, JPEG, PNG, TIFF.": "File type not accepted. Allowed formats: PDF, DOC, DOCX, JPEG, PNG, TIFF.",
+  "Type de fichier non accepté pour un logo. Formats autorisés : PNG, JPEG, WebP.": "File type not accepted for a logo. Allowed formats: PNG, JPEG, WebP.",
+  "Type de fichier non accepté. Format autorisé : DOCX.": "File type not accepted. Allowed format: DOCX.",
+  "Type de fichier non accepté. Formats autorisés : JPEG, PNG, WebP, PDF.": "File type not accepted. Allowed formats: JPEG, PNG, WebP, PDF.",
+  "Type de fichier non accepté. Formats autorisés : JPEG, PNG.": "File type not accepted. Allowed formats: JPEG, PNG.",
+  "Le fichier envoyé dépasse la taille maximale autorisée.": "The uploaded file exceeds the maximum allowed size.",
+  "Le fichier envoyé n'a pas pu être traité. Vérifiez son format et réessayez.": "The uploaded file could not be processed. Check its format and try again."
 }

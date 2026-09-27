@@ -920,4 +920,32 @@ describe('Gestionnaire — télécharger un document de copropriété (jamais en
     expect(downloaded.status).toBe(200);
     expect((downloaded.body as Buffer).toString()).toBe('PDF-CARNET');
   });
+
+  it('un fichier .txt dans le coffre documentaire : 400, jamais 500', async () => {
+    const res = await request(app)
+      .post(`/api/tenants/${TENANT_A}/syndics/${S1}/documents`)
+      .set(as(USER_MANAGER))
+      .field('title', 'Note')
+      .field('type', 'OTHER')
+      .attach('file', Buffer.from('juste du texte'), { filename: 'note.txt', contentType: 'text/plain' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('Type de fichier non accepté. Formats autorisés : PDF, DOC, DOCX, JPEG, PNG, TIFF.');
+    expect(res.body.code).toBe('BAD_REQUEST');
+  });
+
+  it('un fichier trop volumineux dans le coffre documentaire : 413, jamais 500', async () => {
+    // uploadDocument (upload-middleware.ts) plafonne a 10 Mo : un fichier
+    // au-dela declenche une MulterError LIMIT_FILE_SIZE avant meme le controleur.
+    const tropGros = Buffer.alloc(10 * 1024 * 1024 + 1, 'a');
+    const res = await request(app)
+      .post(`/api/tenants/${TENANT_A}/syndics/${S1}/documents`)
+      .set(as(USER_MANAGER))
+      .field('title', 'Gros fichier')
+      .field('type', 'OTHER')
+      .attach('file', tropGros, { filename: 'gros.pdf', contentType: 'application/pdf' });
+
+    expect(res.status).toBe(413);
+    expect(res.body.message).toBe('Le fichier envoyé dépasse la taille maximale autorisée.');
+  });
 });

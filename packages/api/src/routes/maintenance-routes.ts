@@ -21,6 +21,7 @@ import {
   getPropertyMaintenanceHistoryHandler
 } from '../controllers/maintenance-ticket-controller';
 import { uploadAttachmentHandler, downloadAttachmentHandler } from '../controllers/maintenance-attachment-controller';
+import { BadRequestError } from '../middleware/error-middleware';
 import {
   getActiveVendorsHandler,
   createVendorHandler,
@@ -44,7 +45,9 @@ const maintenanceFileFilter = (_req: any, file: Express.Multer.File, cb: multer.
   if (file.mimetype && allowedMimeTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Type de fichier non autorisé. Types autorisés: JPEG, PNG, WebP, PDF'));
+    // Erreur typée : un `Error` nu tomberait en 500 dans le gestionnaire
+    // central (modele property-media-controller.ts).
+    cb(new BadRequestError('Type de fichier non accepté. Formats autorisés : JPEG, PNG, WebP, PDF.'));
   }
 };
 
