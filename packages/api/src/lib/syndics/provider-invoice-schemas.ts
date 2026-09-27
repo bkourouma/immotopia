@@ -18,7 +18,23 @@ const optionalDate = z
   .optional()
   .transform(value => (value instanceof Date ? value : undefined));
 
-const money = z.coerce.number().finite();
+/** Plafond de `Decimal(14,2)` : au-dela, Postgres refuserait la valeur. */
+export const MAX_AMOUNT = 999_999_999_999.99;
+const money = z.coerce.number().finite().max(MAX_AMOUNT, 'Montant trop eleve');
+
+/** Devises admises (le module syndic travaille en XOF par defaut). */
+export const SYNDIC_CURRENCIES = ['XOF', 'XAF', 'EUR', 'USD'] as const;
+
+/** Une piece ne peut pas etre datee a plus d'un an dans le futur. */
+export function latestAllowedDate(now: Date = new Date()): Date {
+  const limit = new Date(now);
+  limit.setUTCFullYear(limit.getUTCFullYear() + 1);
+  return limit;
+}
+
+const pieceDate = z.coerce
+  .date()
+  .refine(value => value <= latestAllowedDate(), { message: "La date ne peut pas depasser d'un an la date du jour" });
 
 export const PAYMENT_METHODS = ['MOBILE_MONEY', 'BANK_TRANSFER', 'CASH', 'CHECK', 'CARD', 'OTHER'] as const;
 export const INVOICE_STATUSES = ['RECORDED', 'PARTIALLY_PAID', 'PAID', 'CANCELLED'] as const;
@@ -35,12 +51,12 @@ export const createProviderInvoiceSchema = z
     expenseKind: z.enum(['CURRENT', 'WORKS']).optional().default('CURRENT'),
     number: z.string().trim().min(1, 'Le numero de facture est obligatoire').max(100),
     label: z.string().trim().min(1, 'Le libelle de la facture est obligatoire').max(300),
-    invoiceDate: z.coerce.date(),
+    invoiceDate: pieceDate,
     dueDate: optionalDate,
     amountHT: money.positive('Le montant HT doit etre positif'),
     vatAmount: money.nonnegative().optional().default(0),
     amountTTC: money.positive().optional(),
-    currency: z.string().trim().min(3).max(3).optional().default('XOF')
+    currency: z.enum(SYNDIC_CURRENCIES).optional().default('XOF')
   })
   .refine(value => !value.dueDate || value.dueDate >= value.invoiceDate, {
     message: "L'echeance ne peut pas preceder la date de facture",
@@ -64,7 +80,7 @@ export const cancelSchema = z.object({
 
 export const createProviderPaymentSchema = z.object({
   amount: money.positive('Le montant du paiement doit etre positif'),
-  paidAt: z.coerce.date(),
+  paidAt: pieceDate,
   method: z.enum(PAYMENT_METHODS),
   reference: z
     .string()

@@ -3,8 +3,11 @@ import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import { unprocessableEntity } from '../errors';
 import { logger } from '../../utils/logger';
+import { logAuditEvent } from '../../services/audit-service';
+import { AuditActionKey } from '../../types/audit-types';
 import { roundMoney } from './finance-utils';
 import {
+  assertFiscalYearOpenTx,
   ensureSyndicJournalTx,
   ensureSyndicProviderAccountsTx,
   postSyndicEntryTx,
@@ -76,7 +79,7 @@ async function assertProvider(tenantId: string, providerId: string) {
 async function assertFund(syndicateId: string, fundId: string) {
   const fund = await prisma.syndicateFund.findFirst({
     where: { id: fundId, syndicateId },
-    select: { id: true, name: true }
+    select: { id: true, name: true, currency: true }
   });
   if (!fund) throw new NotFoundError('Fonds introuvable ou inaccessible pour cette copropriete');
   return fund;
@@ -119,7 +122,7 @@ async function resolveExpenseAccountId(
 ): Promise<string | null> {
   if (explicitId) {
     const account = await prisma.chartOfAccount.findFirst({
-      where: { id: explicitId, tenantId, syndicateId, accountType: 'EXPENSE', isActive: true },
+      where: { id: explicitId, tenantId, syndicateId, scope: 'SYNDICATE', accountType: 'EXPENSE', isActive: true },
       select: { id: true }
     });
     if (!account) throw new NotFoundError('Compte de charge introuvable pour cette copropriete');
@@ -129,7 +132,14 @@ async function resolveExpenseAccountId(
     // Le compte de la ligne budgetaire n'est retenu que s'il est un compte de
     // charge actif de la copropriete ; sinon on retombe sur le compte par defaut.
     const account = await prisma.chartOfAccount.findFirst({
-      where: { id: budgetLineAccountId, tenantId, syndicateId, accountType: 'EXPENSE', isActive: true },
+      where: {
+        id: budgetLineAccountId,
+        tenantId,
+        syndicateId,
+        scope: 'SYNDICATE',
+        accountType: 'EXPENSE',
+        isActive: true
+      },
       select: { id: true }
     });
     return account?.id ?? null;
@@ -146,10 +156,21 @@ export function computeInvoiceTotals(input: { amountHT: number; vatAmount?: numb
   const amountHT = roundMoney(input.amountHT);
   const vatAmount = roundMoney(input.vatAmount ?? 0);
   const expected = roundMoney(amountHT + vatAmount);
+  // Un montant saisi positif peut s'arrondir a zero (0,004) : refuse aussi.
+  if (amountHT <= 0 || expected <= 0) {
+    throw unprocessableEntity('Le montant doit etre superieur a zero');
+  }
   if (input.amountTTC !== undefined && roundMoney(input.amountTTC) !== expected) {
     throw unprocessableEntity('Le montant TTC doit etre egal au montant HT augmente de la TVA');
   }
   return { amountHT, vatAmount, amountTTC: expected };
+}
+
+/** La devise d'un fonds doit etre celle de la facture qu'il regle. */
+function assertSameCurrency(fundCurrency: string, invoiceCurrency: string) {
+  if (fundCurrency !== invoiceCurrency) {
+    throw unprocessableEntity('La devise du fonds ne correspond pas a celle de la facture');
+  }
 }
 
 /** Statut d'une facture non annulee d'apres ce qui a ete paye. */
@@ -437,7 +458,10 @@ export async function createProviderInvoice(
     });
     if (!incident) throw new NotFoundError('Incident introuvable');
   }
-  if (input.fundId) await assertFund(syndicateId, input.fundId);
+  if (input.fundId) {
+    const fund = await assertFund(syndicateId, input.fundId);
+    assertSameCurrency(fund.currency, input.currency);
+  }
 
   const budgetLine = input.budgetLineItemId
     ? await assertBudgetLine(syndicateId, input.budgetLineItemId)
@@ -468,7 +492,63 @@ export async function createProviderInvoice(
 
   const totals = computeInvoiceTotals(input);
 
-  const result = await prisma.$transaction(async tx => {
+  // La piece est ecrite AVANT la transaction et retiree si celle-ci echoue :
+  // ni facture sans sa piece, ni fichier orphelin sur le disque.
+  const filePath = file && fileKind ? await storeProviderInvoiceFile(syndicateId, file.buffer, fileKind) : null;
+  try {
+    const result = await recordInvoiceTx(tenantId, syndicateId, input, totals, {
+      budgetLine,
+      explicitExpenseAccountId,
+      filePath,
+      fileName: filePath ? cleanOriginalName(file?.originalname) : null,
+      actorUserId
+    });
+
+    logger.info('Audit: syndic provider invoice recorded', {
+      tenantId,
+      syndicateId,
+      invoiceId: result.invoiceId,
+      amountTTC: totals.amountTTC,
+      actorUserId
+    });
+    if (filePath) {
+      logAuditEvent({
+        actorUserId: actorUserId ?? null,
+        tenantId,
+        actionKey: AuditActionKey.SYNDIC_PROVIDER_INVOICE_FILE_ATTACHED,
+        entityType: 'SYNDIC_PROVIDER_INVOICE',
+        entityId: result.invoiceId,
+        payload: { syndicateId }
+      });
+    }
+
+    return {
+      invoice: await loadInvoiceDto(prisma, tenantId, result.invoiceId),
+      incidentImputation: result.incidentImputation
+    };
+  } catch (error) {
+    if (filePath) await removeProviderInvoiceFile(syndicateId, filePath);
+    throw error;
+  }
+}
+
+/** La transaction d'enregistrement : facture, ecriture, realise, imputation. */
+async function recordInvoiceTx(
+  tenantId: string,
+  syndicateId: string,
+  input: CreateProviderInvoiceInput,
+  totals: { amountHT: number; vatAmount: number; amountTTC: number },
+  extra: {
+    budgetLine: { id: string } | null;
+    explicitExpenseAccountId: string | null;
+    filePath: string | null;
+    fileName: string | null;
+    actorUserId?: string | null;
+  }
+) {
+  const { budgetLine, explicitExpenseAccountId, actorUserId } = extra;
+  return prisma.$transaction(async tx => {
+    await assertFiscalYearOpenTx(tx, syndicateId, input.invoiceDate);
     const accounts = await ensureSyndicProviderAccountsTx(tx, tenantId, syndicateId);
     const expenseAccountId = explicitExpenseAccountId ?? accounts.get(input.expenseKind === 'WORKS' ? '6241' : '624')!;
     const journalId = await ensureSyndicJournalTx(tx, tenantId, syndicateId, 'CHARGES', input.invoiceDate);
@@ -491,6 +571,8 @@ export async function createProviderInvoice(
         amountTTC: totals.amountTTC,
         currency: input.currency,
         expenseAccountId,
+        filePath: extra.filePath,
+        fileName: extra.fileName,
         createdById: actorUserId ?? null
       },
       select: { id: true }
@@ -527,27 +609,6 @@ export async function createProviderInvoice(
     const incidentImputation = await linkIncidentImputationTx(tx, input.incidentId ?? null, journalEntryId);
     return { invoiceId: invoice.id, incidentImputation };
   });
-
-  if (file && fileKind) {
-    const filePath = await storeProviderInvoiceFile(syndicateId, file.buffer, fileKind);
-    await prisma.syndicProviderInvoice.update({
-      where: { id: result.invoiceId, tenantId },
-      data: { filePath, fileName: cleanOriginalName(file.originalname) }
-    });
-  }
-
-  logger.info('Audit: syndic provider invoice recorded', {
-    tenantId,
-    syndicateId,
-    invoiceId: result.invoiceId,
-    amountTTC: totals.amountTTC,
-    actorUserId
-  });
-
-  return {
-    invoice: await loadInvoiceDto(prisma, tenantId, result.invoiceId),
-    incidentImputation: result.incidentImputation
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -561,36 +622,51 @@ export async function updateProviderInvoice(
   input: UpdateProviderInvoiceInput
 ) {
   await assertSyndicate(tenantId, syndicateId);
-  const invoice = await findInvoiceOrThrow(tenantId, syndicateId, invoiceId);
-  if (invoice.status !== 'RECORDED') {
-    throw new ConflictError('Seule une facture enregistree et non payee peut etre modifiee');
-  }
-  if (input.fundId) await assertFund(syndicateId, input.fundId);
-  if (input.number && input.number !== invoice.number) {
-    const duplicate = await prisma.syndicProviderInvoice.findFirst({
-      where: {
-        tenantId,
-        syndicateId,
-        providerId: invoice.providerId,
-        number: input.number,
-        status: { not: 'CANCELLED' },
-        id: { not: invoiceId }
-      },
-      select: { id: true }
-    });
-    if (duplicate) {
-      throw new ConflictError('Une facture de ce prestataire porte deja ce numero pour cette copropriete');
-    }
-  }
+  await findInvoiceOrThrow(tenantId, syndicateId, invoiceId);
+  const fund = input.fundId ? await assertFund(syndicateId, input.fundId) : null;
 
-  await prisma.syndicProviderInvoice.update({
-    where: { id: invoiceId, tenantId },
-    data: {
-      ...(input.number !== undefined ? { number: input.number } : {}),
-      ...(input.label !== undefined ? { label: input.label } : {}),
-      ...(input.dueDate !== undefined ? { dueDate: input.dueDate } : {}),
-      ...(input.fundId !== undefined ? { fundId: input.fundId } : {})
+  await prisma.$transaction(async tx => {
+    // Statut relu SOUS VERROU : un paiement concurrent ne doit pas laisser
+    // passer la modification d'une facture qu'il vient de payer.
+    await lockInvoiceTx(tx, tenantId, invoiceId);
+    const invoice = await tx.syndicProviderInvoice.findFirst({
+      where: { id: invoiceId, tenantId },
+      select: { status: true, number: true, providerId: true, currency: true, invoiceDate: true }
+    });
+    if (!invoice) throw new NotFoundError(NOT_FOUND_INVOICE);
+    if (invoice.status !== 'RECORDED') {
+      throw new ConflictError('Seule une facture enregistree et non payee peut etre modifiee');
     }
+    if (fund) assertSameCurrency(fund.currency, invoice.currency);
+    if (input.dueDate && input.dueDate < invoice.invoiceDate) {
+      throw unprocessableEntity("L'echeance ne peut pas preceder la date de facture");
+    }
+    if (input.number && input.number !== invoice.number) {
+      const duplicate = await tx.syndicProviderInvoice.findFirst({
+        where: {
+          tenantId,
+          syndicateId,
+          providerId: invoice.providerId,
+          number: input.number,
+          status: { not: 'CANCELLED' },
+          id: { not: invoiceId }
+        },
+        select: { id: true }
+      });
+      if (duplicate) {
+        throw new ConflictError('Une facture de ce prestataire porte deja ce numero pour cette copropriete');
+      }
+    }
+
+    await tx.syndicProviderInvoice.update({
+      where: { id: invoiceId, tenantId },
+      data: {
+        ...(input.number !== undefined ? { number: input.number } : {}),
+        ...(input.label !== undefined ? { label: input.label } : {}),
+        ...(input.dueDate !== undefined ? { dueDate: input.dueDate } : {}),
+        ...(input.fundId !== undefined ? { fundId: input.fundId } : {})
+      }
+    });
   });
   return loadInvoiceDto(prisma, tenantId, invoiceId);
 }
@@ -618,6 +694,7 @@ export async function cancelProviderInvoice(
     });
     if (!invoice) throw new NotFoundError(NOT_FOUND_INVOICE);
     if (invoice.status === 'CANCELLED') throw new ConflictError('Cette facture est deja annulee');
+    await assertFiscalYearOpenTx(tx, syndicateId, now);
 
     const activePayments = await tx.syndicProviderPayment.count({
       where: { tenantId, invoiceId, cancelledAt: null }
@@ -679,6 +756,7 @@ export async function payProviderInvoice(
   if (!fundId) throw unprocessableEntity('Choisissez le fonds a debiter pour ce paiement');
   await assertFund(syndicateId, fundId);
   const amount = roundMoney(input.amount);
+  if (amount <= 0) throw unprocessableEntity('Le montant doit etre superieur a zero');
 
   const result = await prisma.$transaction(async tx => {
     await lockInvoiceTx(tx, tenantId, invoiceId);
@@ -686,10 +764,28 @@ export async function payProviderInvoice(
 
     const invoice = await tx.syndicProviderInvoice.findFirst({
       where: { id: invoiceId, tenantId },
-      select: { id: true, status: true, number: true, amountTTC: true, amountPaid: true }
+      select: {
+        id: true,
+        status: true,
+        number: true,
+        amountTTC: true,
+        amountPaid: true,
+        currency: true,
+        invoiceDate: true
+      }
     });
     if (!invoice) throw new NotFoundError(NOT_FOUND_INVOICE);
     if (invoice.status === 'CANCELLED') throw new ConflictError('Une facture annulee ne peut pas etre payee');
+    if (input.paidAt < invoice.invoiceDate) {
+      throw unprocessableEntity('Le paiement ne peut pas preceder la date de la facture');
+    }
+    const lockedFund = await tx.syndicateFund.findFirst({
+      where: { id: fundId, syndicateId },
+      select: { currency: true }
+    });
+    if (!lockedFund) throw new NotFoundError('Fonds introuvable ou inaccessible pour cette copropriete');
+    assertSameCurrency(lockedFund.currency, invoice.currency);
+    await assertFiscalYearOpenTx(tx, syndicateId, input.paidAt);
 
     const due = roundMoney(Number(invoice.amountTTC) - Number(invoice.amountPaid));
     if (amount > due) {
@@ -805,6 +901,7 @@ export async function cancelProviderPayment(
     });
     if (!payment) throw new NotFoundError('Paiement introuvable.');
     if (payment.cancelledAt) throw new ConflictError('Ce paiement est deja annule');
+    await assertFiscalYearOpenTx(tx, syndicateId, now);
 
     const invoice = await tx.syndicProviderInvoice.findFirst({
       where: { id: invoiceId, tenantId },
@@ -1007,34 +1104,107 @@ export async function listFundMovements(
 // Piece jointe
 // ---------------------------------------------------------------------------
 
+function auditInvoiceFile(
+  actionKey: AuditActionKey,
+  tenantId: string,
+  syndicateId: string,
+  invoiceId: string,
+  actorUserId?: string | null
+) {
+  logAuditEvent({
+    actorUserId: actorUserId ?? null,
+    tenantId,
+    actionKey,
+    entityType: 'SYNDIC_PROVIDER_INVOICE',
+    entityId: invoiceId,
+    payload: { syndicateId }
+  });
+}
+
+/**
+ * Joint ou remplace la piece. Le nouveau fichier est ecrit d'abord ; la base
+ * est mise a jour sous verrou de la facture, avec relecture du chemin actuel ;
+ * si la mise a jour echoue, le nouveau fichier est retire. L'ancien n'est
+ * supprime qu'une fois la mise a jour validee.
+ */
 export async function attachProviderInvoiceFile(
   tenantId: string,
   syndicateId: string,
   invoiceId: string,
-  file: UploadedFile | undefined
+  file: UploadedFile | undefined,
+  actorUserId?: string | null
 ) {
   await assertSyndicate(tenantId, syndicateId);
-  const invoice = await findInvoiceOrThrow(tenantId, syndicateId, invoiceId);
+  await findInvoiceOrThrow(tenantId, syndicateId, invoiceId);
   const kind = assertProviderInvoiceFile(file?.buffer);
-  const filePath = await storeProviderInvoiceFile(syndicateId, file!.buffer, kind);
-  await prisma.syndicProviderInvoice.update({
-    where: { id: invoiceId, tenantId },
-    data: { filePath, fileName: cleanOriginalName(file?.originalname) }
-  });
-  // L'ancienne piece, remplacee, est retiree du disque.
-  if (invoice.filePath) await removeProviderInvoiceFile(syndicateId, invoice.filePath);
+  const filePath = await storeProviderInvoiceFile(syndicateId, (file as UploadedFile).buffer, kind);
+
+  let previousPath: string | null;
+  try {
+    previousPath = await prisma.$transaction(async tx => {
+      await lockInvoiceTx(tx, tenantId, invoiceId);
+      const current = await tx.syndicProviderInvoice.findFirst({
+        where: { id: invoiceId, tenantId },
+        select: { filePath: true }
+      });
+      if (!current) throw new NotFoundError(NOT_FOUND_INVOICE);
+      await tx.syndicProviderInvoice.update({
+        where: { id: invoiceId, tenantId },
+        data: { filePath, fileName: cleanOriginalName(file?.originalname) }
+      });
+      return current.filePath;
+    });
+  } catch (error) {
+    await removeProviderInvoiceFile(syndicateId, filePath);
+    throw error;
+  }
+
+  if (previousPath) await removeProviderInvoiceFile(syndicateId, previousPath);
+  auditInvoiceFile(
+    previousPath
+      ? AuditActionKey.SYNDIC_PROVIDER_INVOICE_FILE_REPLACED
+      : AuditActionKey.SYNDIC_PROVIDER_INVOICE_FILE_ATTACHED,
+    tenantId,
+    syndicateId,
+    invoiceId,
+    actorUserId
+  );
   return loadInvoiceDto(prisma, tenantId, invoiceId);
 }
 
-export async function removeProviderInvoiceAttachment(tenantId: string, syndicateId: string, invoiceId: string) {
+/**
+ * Retire la piece. Refuse (409) pour une facture deja reglee, meme en partie :
+ * la piece justifie un paiement passe en comptabilite.
+ */
+export async function removeProviderInvoiceAttachment(
+  tenantId: string,
+  syndicateId: string,
+  invoiceId: string,
+  actorUserId?: string | null
+) {
   await assertSyndicate(tenantId, syndicateId);
-  const invoice = await findInvoiceOrThrow(tenantId, syndicateId, invoiceId);
-  if (!invoice.filePath) throw new NotFoundError('Piece jointe introuvable.');
-  await prisma.syndicProviderInvoice.update({
-    where: { id: invoiceId, tenantId },
-    data: { filePath: null, fileName: null }
+  await findInvoiceOrThrow(tenantId, syndicateId, invoiceId);
+
+  const removedPath = await prisma.$transaction(async tx => {
+    await lockInvoiceTx(tx, tenantId, invoiceId);
+    const current = await tx.syndicProviderInvoice.findFirst({
+      where: { id: invoiceId, tenantId },
+      select: { filePath: true, status: true }
+    });
+    if (!current) throw new NotFoundError(NOT_FOUND_INVOICE);
+    if (!current.filePath) throw new NotFoundError('Piece jointe introuvable.');
+    if (current.status === 'PAID' || current.status === 'PARTIALLY_PAID') {
+      throw new ConflictError("La piece d'une facture reglee ne peut pas etre supprimee");
+    }
+    await tx.syndicProviderInvoice.update({
+      where: { id: invoiceId, tenantId },
+      data: { filePath: null, fileName: null }
+    });
+    return current.filePath;
   });
-  await removeProviderInvoiceFile(syndicateId, invoice.filePath);
+
+  await removeProviderInvoiceFile(syndicateId, removedPath);
+  auditInvoiceFile(AuditActionKey.SYNDIC_PROVIDER_INVOICE_FILE_REMOVED, tenantId, syndicateId, invoiceId, actorUserId);
   return loadInvoiceDto(prisma, tenantId, invoiceId);
 }
 

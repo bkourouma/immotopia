@@ -58,7 +58,8 @@ const MODELS = [
   'syndicProviderInvoice',
   'syndicProviderPayment',
   'syndicateFundMovement',
-  'incidentCostImputation'
+  'incidentCostImputation',
+  'syndicateBudget'
 ];
 
 function createDb() {
@@ -139,6 +140,11 @@ function createDb() {
 const mockDb = createDb();
 jest.mock('../../src/utils/database', () => ({ prisma: mockDb }));
 
+const mockLogAuditEvent = jest.fn();
+jest.mock('../../src/services/audit-service', () => ({
+  logAuditEvent: (...args: any[]) => mockLogAuditEvent(...args)
+}));
+
 import {
   attachProviderInvoiceFile,
   cancelProviderInvoice,
@@ -150,7 +156,9 @@ import {
   listFundMovements,
   listProviderBalances,
   listProviderInvoices,
-  payProviderInvoice
+  payProviderInvoice,
+  removeProviderInvoiceAttachment,
+  updateProviderInvoice
 } from '../../src/lib/syndics/provider-invoices';
 import { detectProviderInvoiceFileKind } from '../../src/lib/syndics/provider-invoice-files';
 import { createProviderInvoiceSchema } from '../../src/lib/syndics/provider-invoice-schemas';
@@ -168,6 +176,10 @@ const INCIDENT = randomUUID();
 const BUDGET_LINE = randomUUID();
 const FUND = randomUUID();
 const OTHER_FUND = randomUUID();
+const EUR_FUND = randomUUID();
+const OTHER_BUDGET_LINE = randomUUID();
+const OTHER_INCIDENT = randomUUID();
+const OTHER_ACCOUNT = randomUUID();
 
 const PDF = Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(64, 1)]);
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
@@ -199,8 +211,28 @@ function seed() {
   });
   mockDb.syndicateFund.rows.push(
     { id: FUND, syndicateId: SYND, name: 'Compte courant', balance: 100000, currency: 'XOF' },
-    { id: OTHER_FUND, syndicateId: OTHER_SYND, name: 'Fonds B', balance: 100000, currency: 'XOF' }
+    { id: OTHER_FUND, syndicateId: OTHER_SYND, name: 'Fonds B', balance: 100000, currency: 'XOF' },
+    { id: EUR_FUND, syndicateId: SYND, name: 'Compte en euros', balance: 100000, currency: 'EUR' }
   );
+  // Objets d'une AUTRE copropriete de la meme agence.
+  mockDb.budgetLineItem.rows.push({
+    id: OTHER_BUDGET_LINE,
+    budget: { syndicateId: OTHER_SYND },
+    category: 'Autre',
+    description: 'Autre',
+    amountActual: 0,
+    accountId: null
+  });
+  mockDb.syndicateIncident.rows.push({ id: OTHER_INCIDENT, syndicateId: OTHER_SYND, description: 'Autre' });
+  mockDb.chartOfAccount.rows.push({
+    id: OTHER_ACCOUNT,
+    tenantId: TENANT,
+    syndicateId: OTHER_SYND,
+    scope: 'SYNDICATE',
+    accountNumber: '628',
+    accountType: 'EXPENSE',
+    isActive: true
+  });
 }
 
 function invoiceInput(overrides: Record<string, unknown> = {}) {
@@ -258,16 +290,18 @@ describe('enregistrement d une facture', () => {
     expect(entry).toMatchObject({ tenantId: TENANT, sourceType: 'PROVIDER_INVOICE', sourceId: invoice.id });
     const journal = mockDb.accountingJournal.rows.find((row: Row) => row.id === entry.journalId);
     expect(journal).toMatchObject({ syndicateId: SYND, scope: 'SYNDICATE', code: 'ACH', fiscalYear: 2026 });
-    // Portee copropriete : aucun compte d'agence (OPERATIONS) cree.
-    expect(mockDb.chartOfAccount.rows.every((row: Row) => row.syndicateId === SYND && row.scope === 'SYNDICATE')).toBe(
-      true
-    );
+    // Portee copropriete : les comptes crees sont ceux de la copropriete.
+    const created = mockDb.chartOfAccount.rows.filter((row: Row) => row.id !== OTHER_ACCOUNT);
+    expect(created.every((row: Row) => row.syndicateId === SYND && row.scope === 'SYNDICATE')).toBe(true);
   });
 
   it('pose le plan comptable minimal une seule fois (idempotent)', async () => {
     await createProviderInvoice(TENANT, SYND, invoiceInput());
     await createProviderInvoice(TENANT, SYND, invoiceInput({ number: 'F-002', expenseKind: 'WORKS' }));
-    const numbers = mockDb.chartOfAccount.rows.map((row: Row) => row.accountNumber).sort();
+    const numbers = mockDb.chartOfAccount.rows
+      .filter((row: Row) => row.syndicateId === SYND)
+      .map((row: Row) => row.accountNumber)
+      .sort();
     expect(numbers).toEqual(['401', '521', '624', '6241']);
     const works = mockDb.journalEntryLine.rows.filter((line: Row) => accountNumber(line.accountId) === '6241');
     expect(works).toHaveLength(1);
@@ -579,6 +613,199 @@ describe('piece jointe', () => {
     });
     expect(replaced.fileName).toBe('scan.png');
     expect((await getProviderInvoiceFile(TENANT, SYND, invoice.id)).mimeType).toBe('image/png');
+  });
+});
+
+describe('isolation des references', () => {
+  it("compte de charge, ligne budgetaire et incident d'une autre copropriete : 404", async () => {
+    for (const overrides of [
+      { expenseAccountId: OTHER_ACCOUNT },
+      { budgetLineItemId: OTHER_BUDGET_LINE },
+      { incidentId: OTHER_INCIDENT }
+    ]) {
+      await expect(createProviderInvoice(TENANT, SYND, invoiceInput(overrides))).rejects.toMatchObject({
+        statusCode: 404
+      });
+    }
+    expect(mockDb.syndicProviderInvoice.rows).toHaveLength(0);
+    expect(mockDb.budgetLineItem.rows.find((row: Row) => row.id === OTHER_BUDGET_LINE).amountActual).toBe(0);
+  });
+
+  it("compte de charge d'une autre agence ou hors portee SYNDICATE : 404", async () => {
+    const foreign = randomUUID();
+    const operations = randomUUID();
+    mockDb.chartOfAccount.rows.push(
+      {
+        id: foreign,
+        tenantId: OTHER_TENANT,
+        syndicateId: SYND,
+        scope: 'SYNDICATE',
+        accountType: 'EXPENSE',
+        isActive: true
+      },
+      {
+        id: operations,
+        tenantId: TENANT,
+        syndicateId: SYND,
+        scope: 'OPERATIONS',
+        accountType: 'EXPENSE',
+        isActive: true
+      }
+    );
+    for (const expenseAccountId of [foreign, operations]) {
+      await expect(createProviderInvoice(TENANT, SYND, invoiceInput({ expenseAccountId }))).rejects.toMatchObject({
+        statusCode: 404
+      });
+    }
+  });
+
+  it("paiement d'une autre facture : 404 a l'annulation", async () => {
+    const first = (await createProviderInvoice(TENANT, SYND, invoiceInput({ fundId: FUND }))).invoice;
+    const second = (await createProviderInvoice(TENANT, SYND, invoiceInput({ number: 'F-002', fundId: FUND }))).invoice;
+    const paid = await payProviderInvoice(TENANT, SYND, first.id, {
+      amount: 1000,
+      paidAt: new Date('2026-09-10'),
+      method: 'CASH'
+    });
+    await expect(
+      cancelProviderPayment(TENANT, SYND, second.id, paid.payment!.id, { reason: 'Mauvaise facture' })
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect(mockDb.syndicProviderPayment.rows[0].cancelledAt).toBeNull();
+  });
+});
+
+describe('garde-fous de saisie', () => {
+  it('refuse un montant qui s arrondit a zero (422)', async () => {
+    await expect(
+      createProviderInvoice(TENANT, SYND, invoiceInput({ amountHT: 0.004, vatAmount: 0 }))
+    ).rejects.toMatchObject({ status: 422 });
+    const { invoice } = await createProviderInvoice(TENANT, SYND, invoiceInput({ fundId: FUND }));
+    await expect(
+      payProviderInvoice(TENANT, SYND, invoice.id, { amount: 0.001, paidAt: new Date('2026-09-10'), method: 'CASH' })
+    ).rejects.toMatchObject({ status: 422 });
+  });
+
+  it('refuse un montant au-dela de Decimal(14,2), une devise inconnue, une date a plus d un an', () => {
+    expect(() => invoiceInput({ amountHT: 1e13 })).toThrow();
+    expect(() => invoiceInput({ currency: 'BTC' })).toThrow();
+    const farFuture = new Date();
+    farFuture.setUTCFullYear(farFuture.getUTCFullYear() + 2);
+    expect(() => invoiceInput({ invoiceDate: farFuture.toISOString() })).toThrow();
+    expect(invoiceInput().currency).toBe('XOF');
+  });
+
+  it('refuse un fonds dont la devise differe de celle de la facture (422)', async () => {
+    await expect(createProviderInvoice(TENANT, SYND, invoiceInput({ fundId: EUR_FUND }))).rejects.toMatchObject({
+      status: 422
+    });
+    const { invoice } = await createProviderInvoice(TENANT, SYND, invoiceInput());
+    await expect(
+      payProviderInvoice(TENANT, SYND, invoice.id, {
+        amount: 1000,
+        paidAt: new Date('2026-09-10'),
+        method: 'CASH',
+        fundId: EUR_FUND
+      })
+    ).rejects.toMatchObject({ status: 422 });
+    expect(mockDb.syndicateFund.rows.find((row: Row) => row.id === EUR_FUND).balance).toBe(100000);
+  });
+
+  it('refuse un paiement anterieur a la facture (422)', async () => {
+    const { invoice } = await createProviderInvoice(TENANT, SYND, invoiceInput({ fundId: FUND }));
+    await expect(
+      payProviderInvoice(TENANT, SYND, invoice.id, { amount: 1000, paidAt: new Date('2026-08-31'), method: 'CASH' })
+    ).rejects.toMatchObject({ status: 422 });
+  });
+
+  it('refuse une ecriture dans un exercice clos (409)', async () => {
+    mockDb.syndicateBudget.rows.push({ id: randomUUID(), syndicateId: SYND, fiscalYear: 2025, status: 'CLOSED' });
+    await expect(
+      createProviderInvoice(TENANT, SYND, invoiceInput({ invoiceDate: '2025-06-01' }))
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(mockDb.syndicProviderInvoice.rows).toHaveLength(0);
+    await expect(createProviderInvoice(TENANT, SYND, invoiceInput())).resolves.toBeDefined();
+  });
+
+  it('pose les ecritures verrouillees', async () => {
+    const { invoice } = await createProviderInvoice(TENANT, SYND, invoiceInput({ fundId: FUND }));
+    await payProviderInvoice(TENANT, SYND, invoice.id, {
+      amount: 1000,
+      paidAt: new Date('2026-09-10'),
+      method: 'CASH'
+    });
+    expect(mockDb.journalEntry.rows.length).toBe(2);
+    expect(mockDb.journalEntry.rows.every((row: Row) => row.isLocked === true)).toBe(true);
+  });
+
+  it('PATCH : refuse la modification d une facture payee, relue sous verrou (409)', async () => {
+    const { invoice } = await createProviderInvoice(TENANT, SYND, invoiceInput({ fundId: FUND }));
+    await payProviderInvoice(TENANT, SYND, invoice.id, {
+      amount: 1000,
+      paidAt: new Date('2026-09-10'),
+      method: 'CASH'
+    });
+    await expect(updateProviderInvoice(TENANT, SYND, invoice.id, { label: 'Nouveau' })).rejects.toMatchObject({
+      statusCode: 409
+    });
+    expect(mockDb.$queryRaw).toHaveBeenCalled();
+  });
+});
+
+describe('piece jointe : orphelins et journal', () => {
+  async function storedFiles() {
+    const dir = path.join(mockUploadsDir, 'syndics', SYND, 'factures-prestataires');
+    return fs.readdir(dir).catch(() => [] as string[]);
+  }
+
+  it("retire le fichier ecrit si l'enregistrement echoue", async () => {
+    mockDb.syndicateBudget.rows.push({ id: randomUUID(), syndicateId: SYND, fiscalYear: 2026, status: 'CLOSED' });
+    const before = (await storedFiles()).length;
+    await expect(
+      createProviderInvoice(TENANT, SYND, invoiceInput(), 'user-1', { buffer: PDF, originalname: 'f.pdf' })
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect((await storedFiles()).length).toBe(before);
+  });
+
+  it('remplacement : ancien fichier retire, evenement journalise ; suppression refusee si reglee', async () => {
+    const { invoice } = await createProviderInvoice(TENANT, SYND, invoiceInput({ fundId: FUND }), 'user-1', {
+      buffer: PDF,
+      originalname: 'f.pdf'
+    });
+    const before = (await storedFiles()).length;
+    await attachProviderInvoiceFile(TENANT, SYND, invoice.id, { buffer: PNG, originalname: 'scan.png' }, 'user-2');
+    expect((await storedFiles()).length).toBe(before);
+    expect(mockLogAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionKey: 'SYNDIC_PROVIDER_INVOICE_FILE_REPLACED',
+        actorUserId: 'user-2',
+        tenantId: TENANT,
+        entityId: invoice.id
+      })
+    );
+
+    await payProviderInvoice(TENANT, SYND, invoice.id, {
+      amount: 1000,
+      paidAt: new Date('2026-09-10'),
+      method: 'CASH'
+    });
+    await expect(removeProviderInvoiceAttachment(TENANT, SYND, invoice.id, 'user-2')).rejects.toMatchObject({
+      statusCode: 409
+    });
+    expect(mockDb.syndicProviderInvoice.rows[0].filePath).toBeTruthy();
+  });
+
+  it('suppression d une piece de facture non reglee : fichier retire et journalise', async () => {
+    const { invoice } = await createProviderInvoice(TENANT, SYND, invoiceInput(), 'user-1', {
+      buffer: PDF,
+      originalname: 'f.pdf'
+    });
+    const before = (await storedFiles()).length;
+    const updated = await removeProviderInvoiceAttachment(TENANT, SYND, invoice.id, 'user-1');
+    expect(updated.hasFile).toBe(false);
+    expect((await storedFiles()).length).toBe(before - 1);
+    expect(mockLogAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ actionKey: 'SYNDIC_PROVIDER_INVOICE_FILE_REMOVED', entityId: invoice.id })
+    );
   });
 });
 

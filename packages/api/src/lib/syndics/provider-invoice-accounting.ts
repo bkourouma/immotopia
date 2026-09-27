@@ -1,4 +1,5 @@
 import type { PrismaTransactionClient } from '../../utils/database';
+import { ConflictError } from '../../middleware/error-middleware';
 import { unprocessableEntity } from '../errors';
 import { isJournalEntryBalanced, roundMoney } from './finance-utils';
 
@@ -131,6 +132,21 @@ export async function ensureSyndicJournalTx(
   return created.id;
 }
 
+/**
+ * Refuse une ecriture dans un exercice clos. Le module syndic n'a pas de
+ * cloture comptable proprement dite : l'exercice est tenu pour clos quand la
+ * copropriete a un budget de cette annee au statut CLOSED.
+ */
+export async function assertFiscalYearOpenTx(tx: PrismaTransactionClient, syndicateId: string, date: Date) {
+  const closed = await tx.syndicateBudget.findFirst({
+    where: { syndicateId, fiscalYear: date.getUTCFullYear(), status: 'CLOSED' },
+    select: { id: true }
+  });
+  if (closed) {
+    throw new ConflictError('Exercice clos : aucune ecriture ne peut y etre passee');
+  }
+}
+
 export interface SyndicEntryLine {
   accountId: string;
   debit: number;
@@ -176,7 +192,10 @@ export async function postSyndicEntryTx(tx: PrismaTransactionClient, params: Pos
       sourceType: params.sourceType,
       sourceId: params.sourceId,
       documentType: params.documentType,
-      documentId: params.sourceId
+      documentId: params.sourceId,
+      // Ecriture nee d'une piece : verrouillee d'emblee, comme celles de
+      // lib/finance/accounting.ts. Elle se corrige par contre-passation.
+      isLocked: true
     },
     select: { id: true }
   });

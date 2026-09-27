@@ -98,12 +98,18 @@ export const cancelProviderPaymentHandler = asyncHandler(async (req: Request, re
 });
 
 export const uploadProviderInvoiceFileHandler = asyncHandler(async (req: Request, res: Response) => {
-  const data = await attachProviderInvoiceFile(tenantOf(req), syndicOf(req), invoiceOf(req), req.file);
+  const data = await attachProviderInvoiceFile(
+    tenantOf(req),
+    syndicOf(req),
+    invoiceOf(req),
+    req.file,
+    req.user?.userId
+  );
   res.json({ success: true, data });
 });
 
 export const deleteProviderInvoiceFileHandler = asyncHandler(async (req: Request, res: Response) => {
-  const data = await removeProviderInvoiceAttachment(tenantOf(req), syndicOf(req), invoiceOf(req));
+  const data = await removeProviderInvoiceAttachment(tenantOf(req), syndicOf(req), invoiceOf(req), req.user?.userId);
   res.json({ success: true, data });
 });
 
