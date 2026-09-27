@@ -1,7 +1,7 @@
 #!/bin/bash
 # Hook PreToolUse (matcher Bash) — controle supplementaire avant un `git commit`
-# lance par l'agent, en plus du hook husky (lint-staged) qui reste inchange et
-# continue de tourner normalement.
+# lance par l'agent, en complement du hook Lefthook (lint-staged) declare dans
+# .lefthook.yml, qui continue de tourner normalement.
 #
 # Ne fait rien (exit 0 immediat) si la commande ne contient pas "git commit".
 # Sinon, sur les fichiers INDEXES uniquement (git diff --cached) :
@@ -18,7 +18,7 @@
 # Les binaires sont appeles par leur point d'entree JS (node node_modules/...)
 # plutot que par le raccourci .cmd de node_modules/.bin : sous Windows, ce
 # raccourci bloque lint-staged des que plusieurs fichiers sont indexes (voir
-# .husky/pre-commit et docs/refonte/LOT-0-RAPPORT.md). Le meme risque existe ici.
+# .lefthook.yml et docs/refonte/LOT-0-RAPPORT.md). Le meme risque existe ici.
 
 set -u
 

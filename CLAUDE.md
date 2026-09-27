@@ -48,8 +48,10 @@ fichier lui-même.
 
 ## Sous-agents
 
-Tout prompt de sous-agent interdit explicitement : de lancer d'autres
-sous-agents ; toute commande git qui modifie l'arbre ou l'index (`stash`,
+Les coordinateurs des deux processus peuvent déléguer à leurs agents de
+réalisation. Ces derniers ne lancent pas d'autres sous-agents. Tout prompt
+de réalisation interdit explicitement : toute commande git qui modifie
+l'arbre ou l'index (`stash`,
 `checkout`, `reset`, `restore`) ; de refaire un travail qui semble « revenu en
 arrière » (s'arrêter et signaler). Découper par territoire de fichiers, jamais
 deux agents sur le même fichier. Ne pas commiter pendant qu'un agent écrit : le

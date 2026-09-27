@@ -81,15 +81,69 @@ port, sous peine d'un blocage CORS silencieux côté navigateur.
 Quatre configurations (plus une pour un site vitrine externe, hors
 périmètre de ce dépôt) :
 
-| Nom        | Commande                                                                                                                      | Port   | Usage                                                                                                                                                                                                                                                                                                                                |
-| ---------- | ----------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `web`      | `npm run dev:web`                                                                                                             | `3002` | Frontend de développement courant. **Le port diffère du défaut Vite (3000)** — à vérifier avant de le confondre avec `FRONTEND_URL` par défaut côté API ; si l'API tourne avec sa configuration par défaut (`FRONTEND_URL=http://localhost:3000`), lancer `web` via ce fichier sans ajuster `FRONTEND_URL` provoque un blocage CORS. |
-| `api`      | `npm run dev:api`                                                                                                             | `8001` | Backend de développement courant, config par défaut.                                                                                                                                                                                                                                                                                 |
-| `api-demo` | `npm run dev:api` avec `PORT`, `FRONTEND_URL`, `CLIENT_URL`, `BACKEND_URL` surchargés en ligne de commande (`cmd /c set ...`) | `8800` | Instance de démonstration isolée, pensée pour tourner en parallèle de l'instance de dev normale.                                                                                                                                                                                                                                     |
-| `web-demo` | `npm run dev:web` avec `PORT=3300`, `VITE_API_ORIGIN`/`VITE_API_URL` pointant sur `8800`                                      | `3300` | Frontend apparié à `api-demo`.                                                                                                                                                                                                                                                                                                       |
+| Nom        | Commande                                                                                                                                                                                 | Port   | Usage                                                                                                                                                                                                                                                                                                                                |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `web`      | `npm run dev:web`                                                                                                                                                                        | `3002` | Frontend de développement courant. **Le port diffère du défaut Vite (3000)** — à vérifier avant de le confondre avec `FRONTEND_URL` par défaut côté API ; si l'API tourne avec sa configuration par défaut (`FRONTEND_URL=http://localhost:3000`), lancer `web` via ce fichier sans ajuster `FRONTEND_URL` provoque un blocage CORS. |
+| `api`      | `npm run dev:api`                                                                                                                                                                        | `8001` | Backend de développement courant, config par défaut.                                                                                                                                                                                                                                                                                 |
+| `api-demo` | `npm run dev:api`, exécuté depuis `.claude/worktrees/demo` (`cd /d` avant le `cmd /c set ...`), avec `PORT`, `FRONTEND_URL`, `CLIENT_URL`, `BACKEND_URL` surchargés en ligne de commande | `8800` | Instance de démonstration figée sur un SHA, posée par `npm run demo:sync` (voir « Instance de démo figée » plus bas) ; base dédiée : `packages/api/.env.demo` du checkout principal, copié en `.env` du worktree.                                                                                                                    |
+| `web-demo` | `npm run dev:web`, exécuté depuis `.claude/worktrees/demo`, avec `PORT=3300`, `VITE_API_ORIGIN`/`VITE_API_URL` pointant sur `8800`                                                       | `3300` | Frontend apparié à `api-demo`, même worktree.                                                                                                                                                                                                                                                                                        |
 
 Ces configurations Windows utilisent `cmd /c set VAR=valeur&& ...` (pas de
 `VAR=valeur commande` façon Unix, qui ne fonctionne pas sous `cmd.exe`).
+
+## Instance de démo figée
+
+`npm run demo:sync -- <ref> [--migrate] [--install]` place un worktree
+détaché `.claude/worktrees/demo` sur le SHA donné et copie
+`packages/api/.env.demo` — une base de démo DÉDIÉE, obligatoire — vers le
+`.env` de l'API du worktree. La commande refuse de tourner si `.env.demo`
+pointe sur la même `DATABASE_URL` que le développement. `--migrate` lance
+ensuite `prisma migrate deploy` sur la base démo.
+
+Dépendances, deux modes :
+
+- par défaut, **jonctions (partagé)** : les trois `node_modules` (racine,
+  `apps/web`, `packages/api`) sont des jonctions vers ceux du checkout
+  principal (voir « Worktrees git » plus bas). Rapide, mais le client Prisma
+  généré (`node_modules/.prisma`) est celui du checkout principal ;
+- `--install`, **dépendances propres** : le script retire les jonctions (le
+  lien seulement, jamais leur cible), lance `npm ci` à la racine du worktree
+  puis `prisma generate` dans `packages/api`. Plus long, mais la démo a son
+  propre client Prisma sans toucher au développement.
+
+Le mode est enregistré à côté de la révision, dans le répertoire git du
+worktree. Un `sync` ultérieur sans `--install` ne repose pas de jonction sur
+un vrai `node_modules` : il le signale et conserve les dépendances propres.
+Si le schéma Prisma du SHA démo diffère de celui du checkout principal en mode
+jonctions, le script avertit : relancer avec `--install`.
+
+Variables du frontend : le script copie vers `apps/web/.env` du worktree le
+fichier `apps/web/.env.demo` du checkout principal s'il existe (optionnel),
+sinon `apps/web/.env`, sinon ne copie rien et le dit. Ce fichier est ignoré
+par git dans le worktree. Les `set PORT=…` et `set VITE_API_*=…` de
+`web-demo` dans `.claude/launch.json` l'emportent sur lui : `loadEnv` de Vite
+(6.4.3 installé) écrase les valeurs lues dans les fichiers par celles déjà
+présentes dans l'environnement du processus.
+
+`npm run demo:status` donne le SHA courant du worktree, le mode de
+dépendances et la santé des ports `api-demo` (8800) / `web-demo` (3300), qui
+tournent désormais dans ce worktree.
+
+Le processus développement exécute `demo:sync` puis
+`npm run agent-bus -- revision` avant d'annoncer une révision ; le processus
+démo/debug vérifie `demo:status` (SHA = SHA annoncé) avant de rejouer un
+scénario. Détail des rôles : [DEV_PROCESS.md](DEV_PROCESS.md) et
+[DEMO_DEBUG_PROCESS.md](DEMO_DEBUG_PROCESS.md).
+
+## Bus d'agents
+
+`.agent-bus/` (racine du checkout principal, commun à tous les worktrees,
+ignoré par git, surchargeable par `AGENT_BUS_DIR`) est le canal de passation
+entre développement et démo/debug : un fichier par anomalie
+(`bugs/BUG-AAAA-MM-JJ-NNN.md`) et un journal des livraisons (`revisions.md`).
+CLI : `npm run agent-bus -- <new-bug|list|show|set-state|revision|path>`.
+Détail du format et de la propriété des champs :
+[BUG_REPORT_TEMPLATE.md](BUG_REPORT_TEMPLATE.md).
 
 ## Base de données
 
@@ -179,7 +233,7 @@ main sur la nouvelle clé.
 ## Worktrees git (`.claude/worktrees/*`)
 
 Un `git worktree` n'a pas son propre `node_modules` : `npm install` n'y
-tourne pas automatiquement, et le hook `pre-commit` (husky + lint-staged)
+tourne pas automatiquement, et le hook `pre-commit` (Lefthook + lint-staged)
 échoue tant qu'aucun module n'est résolvable. Les worktrees existants du
 dépôt (`.claude/worktrees/<nom>/node_modules`) sont en réalité des
 **jonctions Windows** vers le `node_modules` du checkout principal — vérifié
@@ -224,9 +278,16 @@ frontend — le CORS de ce projet n'autorise **qu'une seule origine** (voir
    diagnostic (vérifier que le backend tourne, `curl` sur `/health`), pas
    pour les numéros de port qu'il cite.
 
+### Hooks Lefthook
+
+`.lefthook.yml` déclare aussi un hook `pre-push`
+(`scripts/pre-push-guard.cjs`) qui refuse une poussée directe vers
+`main`/`master`. Un refus se corrige (passer par une branche puis une PR), il
+ne se contourne pas.
+
 ### `lint-staged` bloqué sous Windows
 
-`.husky/pre-commit` appelle explicitement les points d'entrée JS de
+`.lefthook.yml` délègue à `lint-staged`, qui appelle explicitement les points d'entrée JS de
 prettier et eslint (`node node_modules/prettier/bin/prettier.cjs --write`)
 plutôt que les raccourcis `node_modules/.bin/*.cmd`. Raison documentée dans
 le hook lui-même : sous Windows, `lint-staged` 17.5.0 se bloque

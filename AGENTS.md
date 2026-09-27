@@ -8,13 +8,15 @@ Ce fichier est la source unique de vérité pour tous les agents (Claude Code,
 Codex, Cursor…). En cas de désaccord avec un autre document, il prime ; le
 détail vit ailleurs et se charge à la demande :
 
-| Sujet                                | Document                    |
-| ------------------------------------ | --------------------------- |
-| Reprise du travail en cours          | `docs/workflows/HANDOFF.md` |
-| Installation, ports, dépannage       | `docs/workflows/RUNBOOK.md` |
-| Architecture, modèle de données, ADR | `docs/architecture/`        |
-| Conventions et modèle de menace      | `docs/governance/`          |
-| Règles ciblées par chemin            | `.claude/rules/`            |
+| Sujet                                | Document                               |
+| ------------------------------------ | -------------------------------------- |
+| Reprise du travail en cours          | `docs/workflows/HANDOFF.md`            |
+| Développement multi-agents           | `docs/workflows/DEV_PROCESS.md`        |
+| Démo, anomalies et retests           | `docs/workflows/DEMO_DEBUG_PROCESS.md` |
+| Installation, ports, dépannage       | `docs/workflows/RUNBOOK.md`            |
+| Architecture, modèle de données, ADR | `docs/architecture/`                   |
+| Conventions et modèle de menace      | `docs/governance/`                     |
+| Règles ciblées par chemin            | `.claude/rules/`                       |
 
 ## Passation de session
 
@@ -42,9 +44,38 @@ Monorepo npm workspaces : `npm install` **à la racine uniquement**, un seul
 npm run dev          # API (8001) + web (3000)
 npm run typecheck    # tsc --noEmit sur les deux paquets
 npm run lint
+npm run check:architecture # frontières entre frontend et API
+npm run repomix             # contexte IA local, export ignoré par Git
 npm test             # tests backend
 npm run test:web     # tests frontend
 ```
+
+## Flux de travail des agents et hooks
+
+Deux processus réutilisables sont définis dans `docs/workflows/` :
+**développement** et **démo/debug**. Ils définissent des rôles, des passations
+et des critères de fin indépendants du modèle et de l'outil. Si une demande
+lance ces processus, chaque coordinateur dirige ses agents spécialisés ; la
+recette transmet ses anomalies au développement, attend les corrections, puis
+rejoue les scénarios jusqu'à réussite ou blocage documenté. Choisir les modèles
+et les outils disponibles dans l'environnement courant. Ne pas demander de
+validation humaine pour les actions réversibles déjà autorisées ; respecter les
+permissions et confirmations imposées par la plateforme.
+
+- Au début d'une session, lire `docs/workflows/HANDOFF.md` et vérifier
+  `git status` avant de modifier le dépôt.
+- Utiliser Repomix seulement lorsqu'un contexte regroupé est utile pour une
+  revue ou un autre agent. Préférer un périmètre ciblé, par exemple :
+  `npm run repomix -- --include "AGENTS.md,apps/web/src/**/*.ts,apps/web/src/**/*.tsx"`.
+  Le fichier généré est local et ignoré par Git ; vérifier les exclusions
+  Secretlint avant de partager son contenu. Ne pas produire le pack complet
+  automatiquement à chaque session.
+- Lefthook est installé par `npm install` à la racine via `prepare`. À chaque
+  commit, son hook `pre-commit` lance `lint-staged` sur les fichiers indexés.
+  Laisser le hook terminer et corriger ses erreurs avant de recommitter ; ne pas
+  le contourner avec `LEFTHOOK=0`.
+- Le hook de commit ne remplace pas les vérifications pertinentes du projet
+  (`typecheck`, tests ciblés et `check:architecture`) avant une livraison.
 
 ## Règles à respecter
 

@@ -35,7 +35,23 @@ npm run typecheck     # tsc --noEmit sur les deux paquets
 npm run lint
 npm test              # jest — @immotopia/api
 npm run test:web      # vitest — @immotopia/web
+npm run check:architecture # frontières entre frontend et API
+npm run repomix       # génère le contexte IA local (repomix-output.xml)
 ```
+
+`npm run check:architecture` applique les frontières de paquet définies dans
+`.dependency-cruiser.cjs`. Le frontend ne peut pas importer les sources de
+l'API, et l'API ne peut pas importer celles du frontend. Cette vérification est
+bloquante en CI ; les exceptions métier ponctuelles doivent être explicites dans
+la configuration et documentées.
+
+Lefthook installe le hook `pre-commit`, qui lance `lint-staged` sur les fichiers
+indexés. `npm run prepare` effectue aussi la migration de l'ancien chemin Husky
+`.husky/_` dans le clone courant. Repomix génère un export local ignoré par Git.
+Pour limiter le contexte, utilisez par exemple
+`npm run repomix -- --include "apps/web/src/**/*.ts,apps/web/src/**/*.tsx,AGENTS.md"`.
+Repomix respecte `.gitignore` et active la détection Secretlint ; vérifier tout
+de même l'export avant partage.
 
 Ports : API `8001`, web `3000`. Des documents archivés mentionnent `8000`
 ou `5000` : c'est faux, ne pas les reproduire dans du code ou de la
@@ -304,8 +320,8 @@ qui décrit un fichier : filePath / file_path (chemin absolu sur le
 serveur) et l'identifiant de stockage /uploads/... d'un fichier privé.
 ```
 
-Un hook `pre-commit` (husky + lint-staged) formate et lint les fichiers
-modifiés. La CI (`.github/workflows/ci.yml`) bloque sur `jest` backend,
+Le hook `pre-commit` (Lefthook + lint-staged) formate et lint les fichiers
+indexés. La CI (`.github/workflows/ci.yml`) bloque sur `jest` backend,
 `tsc --noEmit` frontend et le `build` frontend ; `prisma migrate diff`,
 `tsc --noEmit` backend et `eslint` sont encore non bloquants (dette
 préexistante) et doivent le devenir module par module, sans jamais
