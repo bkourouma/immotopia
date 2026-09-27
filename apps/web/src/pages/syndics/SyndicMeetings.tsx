@@ -20,8 +20,10 @@ import {
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { meetingStatusLabels, meetingTypeLabels } from '../../components/syndics/labels';
-import { createMeeting, listMeetings } from '../../services/syndic-service';
-import { GeneralMeeting, MeetingType } from '../../types/syndic-types';
+import { MeetingStatusActions } from '../../components/syndics/MeetingStatusActions';
+import { meetingStatusColors } from '../../components/syndics/meeting-governance';
+import { createMeeting, listMeetings, updateMeetingStatus } from '../../services/syndic-service';
+import { GeneralMeeting, MeetingStatus, MeetingType } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
@@ -43,6 +45,7 @@ export const SyndicMeetings: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [changingStatusId, setChangingStatusId] = useState<string | null>(null);
   const [form] = Form.useForm();
 
   useEffect(() => {
@@ -65,6 +68,25 @@ export const SyndicMeetings: React.FC = () => {
       setError(err.response?.data?.error || t('Impossible de charger les assemblées'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleStatusChange = async (meetingId: string, status: MeetingStatus) => {
+    if (!effectiveTenantId || !syndicId) return;
+    setChangingStatusId(meetingId);
+    try {
+      await updateMeetingStatus(effectiveTenantId, syndicId, meetingId, status);
+      const successMessages: Partial<Record<MeetingStatus, string>> = {
+        IN_PROGRESS: t('Séance ouverte'),
+        COMPLETED: t('Séance clôturée : les votes sont figés'),
+        CANCELLED: t('Assemblée annulée')
+      };
+      message.success(successMessages[status] || t('Statut mis à jour'));
+      await loadMeetings();
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Changement de statut impossible'));
+    } finally {
+      setChangingStatusId(null);
     }
   };
 
@@ -169,18 +191,28 @@ export const SyndicMeetings: React.FC = () => {
                   title: 'Statut',
                   dataIndex: 'status',
                   key: 'status',
-                  render: (value: GeneralMeeting['status']) => <Tag>{meetingStatusLabels[value]}</Tag>
+                  render: (value: GeneralMeeting['status']) => (
+                    <Tag color={meetingStatusColors[value]}>{meetingStatusLabels[value]}</Tag>
+                  )
                 },
                 {
                   title: 'Actions',
                   key: 'actions',
                   render: (_: unknown, item: GeneralMeeting) => (
-                    <Button
-                      size="small"
-                      onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/assemblees/${item.id}`)}
-                    >
-                      {t('Voir détails')}
-                    </Button>
+                    <Space wrap>
+                      <Button
+                        size="small"
+                        onClick={() => navigate(`/tenant/${effectiveTenantId}/syndics/${syndicId}/assemblees/${item.id}`)}
+                      >
+                        {t('Voir détails')}
+                      </Button>
+                      <MeetingStatusActions
+                        size="small"
+                        status={item.status}
+                        loading={changingStatusId === item.id}
+                        onChange={status => handleStatusChange(item.id, status)}
+                      />
+                    </Space>
                   )
                 }
               ]}

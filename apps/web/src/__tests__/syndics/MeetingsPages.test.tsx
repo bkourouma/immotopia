@@ -60,6 +60,8 @@ vi.mock('antd', async () => {
     Form: FormComp,
     Input: InputComp,
     Modal: passthrough(),
+    // Les actions de statut et de pouvoir passent par une confirmation.
+    Popconfirm: ({ children }: any) => <>{children}</>,
     Progress: passthrough(),
     Row: passthrough(),
     Select: passthrough('select'),
