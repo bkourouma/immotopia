@@ -33,6 +33,7 @@ import {
 } from '../../types/syndic-types';
 import { saveBlob } from '../../utils/save-blob';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
+import { chargeCallStatusConfig } from './ChargeCallTable';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Text } = Typography;
@@ -73,12 +74,11 @@ function formatPeriodRange(call: LotOpenChargeCall): string {
   return `${call.period} (${dayjs(call.periodStart).format('DD/MM/YYYY')} – ${dayjs(call.periodEnd).format('DD/MM/YYYY')})`;
 }
 
-const openCallStatusColor: Record<LotOpenChargeCall['status'], string> = {
-  PENDING: 'gold',
-  PARTIAL: 'blue',
-  PAID: 'green',
-  OVERDUE: 'red'
-};
+/** Statut d'appel traduit, avec la même couleur que la liste des appels. */
+function renderCallStatus(value: LotOpenChargeCall['status']) {
+  const config = chargeCallStatusConfig[value];
+  return config ? <Tag color={config.color}>{config.label}</Tag> : <Tag>{value}</Tag>;
+}
 
 /**
  * Modale « Enregistrer un paiement » du lot S2 : un paiement PAR LOT, plus
@@ -203,7 +203,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
   const lotOptions = useMemo(() => lots.map(lot => ({ value: lot.id, label: formatLotLabel(lot) })), [lots]);
 
   const openCallColumns: ColumnsType<LotOpenChargeCall> = [
-    { title: t('Periode'), dataIndex: 'period', key: 'period', render: (_: string, call) => formatPeriodRange(call) },
+    { title: t('Période'), dataIndex: 'period', key: 'period', render: (_: string, call) => formatPeriodRange(call) },
     {
       title: t("Date d'échéance"),
       dataIndex: 'dueDate',
@@ -220,12 +220,12 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
       title: t('Statut'),
       dataIndex: 'status',
       key: 'status',
-      render: (value: LotOpenChargeCall['status']) => <Tag color={openCallStatusColor[value]}>{value}</Tag>
+      render: (value: LotOpenChargeCall['status']) => renderCallStatus(value)
     }
   ];
 
   const allocationColumns: ColumnsType<LotPaymentAllocationView> = [
-    { title: t('Periode'), dataIndex: 'period', key: 'period' },
+    { title: t('Période'), dataIndex: 'period', key: 'period' },
     {
       title: t('Montant affecté'),
       key: 'amount',
@@ -243,7 +243,8 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
     {
       title: t('Statut après'),
       dataIndex: 'callStatusAfter',
-      key: 'callStatusAfter'
+      key: 'callStatusAfter',
+      render: (value: LotPaymentAllocationView['callStatusAfter']) => renderCallStatus(value)
     }
   ];
 
@@ -414,6 +415,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
             <Text strong>{t('Montant')}</Text>
             <InputNumber
               id="lot-payment-amount"
+              aria-label={t('Montant')}
               min={1}
               style={{ width: 200, display: 'block', marginTop: 4 }}
               value={amount ?? undefined}
@@ -424,6 +426,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
             <Text strong>{t('Date de paiement')}</Text>
             <DatePicker
               id="lot-payment-date"
+              aria-label={t('Date de paiement')}
               style={{ width: 200, display: 'block', marginTop: 4 }}
               format="DD/MM/YYYY"
               value={paidAt}
@@ -434,6 +437,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
             <Text strong>{t('Mode de paiement')}</Text>
             <Select
               id="lot-payment-method"
+              aria-label={t('Mode de paiement')}
               showSearch
               optionFilterProp="label"
               style={{ width: 200, marginTop: 4 }}
@@ -448,6 +452,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
           <Text strong>{t('Référence (optionnel)')}</Text>
           <Input
             id="lot-payment-reference"
+            aria-label={t('Référence (optionnel)')}
             style={{ marginTop: 4 }}
             value={reference}
             onChange={event => setReference(event.target.value)}
@@ -470,7 +475,12 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
           locale={{ emptyText: t('Aucun appel ouvert pour ce lot') }}
           rowSelection={{
             selectedRowKeys: selectedCallIds,
-            onChange: keys => setSelectedCallIds(keys as string[])
+            onChange: keys => setSelectedCallIds(keys as string[]),
+            // Antd écrit en dur « Select all » / « Select row N » : libellés accessibles fournis ici.
+            getTitleCheckboxProps: () => ({ 'aria-label': t('Sélectionner tous les appels') }),
+            getCheckboxProps: call => ({
+              'aria-label': t("Sélectionner l'appel {{period}}", { period: call.period })
+            })
           }}
         />
 

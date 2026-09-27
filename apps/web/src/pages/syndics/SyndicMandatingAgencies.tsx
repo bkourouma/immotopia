@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { App, Alert, Button, Drawer, Empty, Form, Input, Space, Spin, Table, Typography } from 'antd';
+import { App, Alert, Button, Drawer, Empty, Form, Input, Space, Spin, Table, Tooltip, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { useAuth } from '../../hooks/useAuth';
@@ -131,13 +131,17 @@ export const SyndicMandatingAgencies: React.FC = () => {
         // Reste ouvert, bascule en édition : les images ne peuvent être
         // envoyées qu'une fois le mandant créé (elles pointent vers son id).
         setEditingAgency(created);
-        message.success(t('Agence mandante créée. Vous pouvez maintenant ajouter son logo, sa signature et son cachet.'));
+        message.success(
+          t('Agence mandante créée. Vous pouvez maintenant ajouter son logo, sa signature et son cachet.')
+        );
       }
       await loadAgencies();
     } catch (err: any) {
       const fieldErrors: Array<{ field: string; message: string }> | undefined = err.response?.data?.errors;
       if (fieldErrors && fieldErrors.length > 0) {
-        form.setFields(fieldErrors.map(fe => ({ name: fe.field as keyof MandatingAgencyFormValues, errors: [fe.message] })));
+        form.setFields(
+          fieldErrors.map(fe => ({ name: fe.field as keyof MandatingAgencyFormValues, errors: [fe.message] }))
+        );
       } else if (err.response?.status === 409) {
         message.error(err.response?.data?.error || t('Une agence mandante porte déjà ce nom.'));
       } else {
@@ -231,15 +235,20 @@ export const SyndicMandatingAgencies: React.FC = () => {
             <Button size="small" onClick={() => openEditDrawer(agency)}>
               {t('Modifier')}
             </Button>
-            <Button
-              size="small"
-              danger
-              loading={deletingId === agency.id}
-              disabled={agency.syndicateCount > 0}
-              onClick={() => handleDelete(agency)}
-            >
-              {t('Supprimer')}
-            </Button>
+            {agency.syndicateCount > 0 ? (
+              // Un bouton désactivé ne déclenche pas le survol : le span porte l'infobulle.
+              <Tooltip title={t("Détachez d'abord ses copropriétés pour pouvoir le supprimer.")}>
+                <span tabIndex={0} data-testid={`mandant-delete-blocked-${agency.id}`}>
+                  <Button size="small" danger disabled style={{ pointerEvents: 'none' }}>
+                    {t('Supprimer')}
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : (
+              <Button size="small" danger loading={deletingId === agency.id} onClick={() => handleDelete(agency)}>
+                {t('Supprimer')}
+              </Button>
+            )}
           </Space>
         )
       }
@@ -296,7 +305,7 @@ export const SyndicMandatingAgencies: React.FC = () => {
         }
       >
         <Form form={form} layout="vertical">
-          <Form.Item label={t('Nom')} name="name" rules={[{ required: true, message: t("Le nom est obligatoire") }]}>
+          <Form.Item label={t('Nom')} name="name" rules={[{ required: true, message: t('Le nom est obligatoire') }]}>
             <Input />
           </Form.Item>
           <Form.Item label={t('Dénomination légale')} name="legalName">

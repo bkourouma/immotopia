@@ -192,7 +192,7 @@ export function applyReceiptTemplate(template: string, vars: Record<string, stri
 
 export function receiptTemplateVars(snapshot: ChargeReceiptSnapshot): Record<string, string> {
   return {
-    ownerName: snapshot.coowner?.name ?? 'Coproprietaire',
+    ownerName: snapshot.coowner?.name ?? 'Copropriétaire',
     syndicateName: snapshot.syndicate.name,
     lotLabel: snapshot.lot.label ? `${snapshot.lot.number} - ${snapshot.lot.label}` : snapshot.lot.number,
     lotNumber: snapshot.lot.number,

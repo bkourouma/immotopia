@@ -124,7 +124,7 @@ export type SectionId =
 export const SECTION_LABELS: Record<SectionId, string> = {
   parc: t('Parc immobilier'),
   locatif: t('Gestion locative'),
-  finance: 'Finance',
+  finance: t('Finance'),
   ventes: t('Ventes'),
   patrimoine: t('Patrimoine et entretien'),
   commercial: t('Commercial et communication'),

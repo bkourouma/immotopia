@@ -1518,13 +1518,13 @@ export const downloadLotOwnerAccountStatementHandler = asyncHandler(async (req: 
   const ownerName =
     [statement.account.contact?.firstName ?? '', statement.account.contact?.lastName ?? ''].join(' ').trim() ||
     statement.account.contact?.legalName ||
-    'Proprietaire';
+    'Propriétaire';
 
   // Lot S1 : en-tete et signature du mandant de la copropriete, sinon de l'agence.
   const branding = await resolveDocumentBranding(tenantId, syndicateId);
   const pdfBuffer = await buildOwnerAccountStatementPdf(
     {
-      syndicateName: statement.account.syndicate?.name || 'Copropriete',
+      syndicateName: statement.account.syndicate?.name || 'Copropriété',
       lotNumber: statement.account.lot?.lotNumber || lotId,
       ownerName,
       currency: statement.account.currency || 'XOF',

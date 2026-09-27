@@ -302,13 +302,21 @@ describe('LotPaymentModal — paiement par lot (lot S2)', () => {
     // Coche uniquement l'appel du deuxième trimestre (2026-Q2), pas le premier.
     const row = (await screen.findByText('2026-Q2 (01/04/2026 – 30/06/2026)')).closest('tr');
     const checkbox = within(row as HTMLElement).getByRole('checkbox');
+    // BUG-003 : statut traduit, cases et montant nommés en français.
+    expect(within(row as HTMLElement).getByText('En attente')).toBeTruthy();
+    expect(checkbox.getAttribute('aria-label')).toBe("Sélectionner l'appel 2026-Q2");
+    expect(screen.getByRole('checkbox', { name: 'Sélectionner tous les appels' })).toBeTruthy();
+    expect(screen.getAllByText('Période').length).toBeGreaterThan(0);
     fireEvent.click(checkbox);
 
-    const amountInput = document.getElementById('lot-payment-amount') as HTMLInputElement;
+    const amountInput = screen.getByRole('spinbutton', { name: 'Montant' }) as HTMLInputElement;
     fireEvent.change(amountInput, { target: { value: '200000' } });
     fireEvent.blur(amountInput);
 
     await waitFor(() => expect(previewLotPayment).toHaveBeenCalled(), { timeout: 2000 });
+    // « Statut après » de l'aperçu : libellé, jamais le code brut.
+    await waitFor(() => expect(screen.getAllByText('Payé').some(element => element.closest('.ant-tag'))).toBe(true));
+    expect(screen.queryByText('PAID')).toBeNull();
 
     const submitButton = await screen.findByText('Enregistrer');
     fireEvent.click(submitButton);
@@ -399,5 +407,7 @@ describe('LotPaymentModal — paiement par lot (lot S2)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Fermer' }));
 
     await waitFor(() => expect(listChargeCalls.mock.calls.length).toBeGreaterThan(callsBeforeClose));
+    // BUG-003 : avance formatée comme les autres montants, avec la devise.
+    expect(await screen.findByText('Paiement enregistré : 1 appel(s) soldé(s), avance de 0 XOF')).toBeTruthy();
   });
 });

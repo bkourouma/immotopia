@@ -324,7 +324,7 @@ export function issuerIdentityLines(issuer: DocumentIssuer): string[] {
   const lines: string[] = [];
   if (issuer.legalName && issuer.legalName !== issuer.name) lines.push(issuer.legalName);
   if (issuer.address) lines.push(issuer.address);
-  const contact = [issuer.phone ? `Tel. ${issuer.phone}` : null, issuer.email].filter(Boolean).join(' - ');
+  const contact = [issuer.phone ? `Tél. ${issuer.phone}` : null, issuer.email].filter(Boolean).join(' - ');
   if (contact) lines.push(contact);
   const legal = [issuer.rccm ? `RCCM ${issuer.rccm}` : null, issuer.taxId ? `NCC ${issuer.taxId}` : null]
     .filter(Boolean)
@@ -392,11 +392,11 @@ export async function drawDocumentHeader(
   if (syndicate) {
     const refs = [
       syndicate.registrationNo ? `Immatriculation ${syndicate.registrationNo}` : null,
-      syndicate.cadastralReference ? `Ref. cadastrale ${syndicate.cadastralReference}` : null
+      syndicate.cadastralReference ? `Réf. cadastrale ${syndicate.cadastralReference}` : null
     ]
       .filter(Boolean)
       .join(' - ');
-    const line = [`Copropriete : ${syndicate.name}`, syndicate.address, refs].filter(Boolean).join(' - ');
+    const line = [`Copropriété : ${syndicate.name}`, syndicate.address, refs].filter(Boolean).join(' - ');
     cursor -= 15;
     page.drawText(truncate(line, regular, 9, contentWidth), {
       x: MARGIN,

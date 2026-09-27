@@ -32,6 +32,11 @@ import {
   withAllocationPayments
 } from './charge-allocation';
 import { toCents, fromCents } from './charge-allocation-plan';
+import {
+  applyChronologicalBalances,
+  chronologicalBalanceStrictlyBefore,
+  type RunningBalanceMovement
+} from './owner-account-running-balance';
 // Lot S3 : recus et quittances emis dans la transaction, livres apres le commit.
 import {
   issueQuittancesAfterAdvanceTx,
@@ -3112,14 +3117,29 @@ export async function listOwnerAccountTransactionsByLot(
   const account = await getOwnerAccountByLot(tenantId, syndicateId, lotId);
   const pager = buildPagination(filters?.pagination);
 
+  const [rows, movements] = await Promise.all([
+    prisma.ownerAccountTransaction.findMany({
+      where: {
+        accountId: account.id,
+        ...buildDateRangeFilter('transactionDate', filters?.range)
+      },
+      skip: pager.skip,
+      take: pager.take,
+      // Plus récent d'abord ; même critère secondaire (création) que le cumul.
+      orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]
+    }),
+    loadOwnerAccountMovements(account.id)
+  ]);
+
+  // BUG-006 : solde cumulé recalculé dans l'ordre chronologique affiché.
+  return applyChronologicalBalances(rows, movements);
+}
+
+/** Tous les mouvements d'un compte de lot, réduits à ce qu'exige le calcul du solde cumulé. */
+async function loadOwnerAccountMovements(accountId: string): Promise<RunningBalanceMovement[]> {
   return prisma.ownerAccountTransaction.findMany({
-    where: {
-      accountId: account.id,
-      ...buildDateRangeFilter('transactionDate', filters?.range)
-    },
-    skip: pager.skip,
-    take: pager.take,
-    orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }]
+    where: { accountId },
+    select: { id: true, transactionDate: true, createdAt: true, debit: true, credit: true, balanceAfter: true }
   });
 }
 
@@ -3166,18 +3186,14 @@ export async function createOwnerAccountAdjustmentByLot(
  * grand livre des comptes de tiers (`lib/finance/reports.ts`), auquel ce
  * releve s'aligne.
  */
-async function getOwnerBalanceStrictlyBefore(accountId: string, before?: Date): Promise<number> {
+function getOwnerBalanceStrictlyBefore(movements: RunningBalanceMovement[], before?: Date): number {
   if (!before) {
     return 0;
   }
 
-  const dernier = await prisma.ownerAccountTransaction.findFirst({
-    where: { accountId, transactionDate: { lt: before } },
-    orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
-    select: { balanceAfter: true }
-  });
-
-  return dernier ? roundMoney(Number(dernier.balanceAfter ?? 0)) : 0;
+  // BUG-006 : somme des mouvements antérieurs, et non plus le `balanceAfter`
+  // stocké (figé dans l'ordre de création).
+  return chronologicalBalanceStrictlyBefore(movements, before);
 }
 
 /**
@@ -3205,13 +3221,18 @@ export async function getOwnerAccountStatementByLot(
 ) {
   const account = await getOwnerAccountByLot(tenantId, syndicateId, lotId);
 
-  const transactions = await prisma.ownerAccountTransaction.findMany({
-    where: {
-      accountId: account.id,
-      ...buildDateRangeFilter('transactionDate', range)
-    },
-    orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }]
-  });
+  const [rows, movements] = await Promise.all([
+    prisma.ownerAccountTransaction.findMany({
+      where: {
+        accountId: account.id,
+        ...buildDateRangeFilter('transactionDate', range)
+      },
+      orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }]
+    }),
+    loadOwnerAccountMovements(account.id)
+  ]);
+  // BUG-006 : solde cumulé dans l'ordre chronologique, cohérent avec l'ordre du relevé.
+  const transactions = applyChronologicalBalances(rows, movements);
 
   // Periode mouvementee : le premier mouvement porte deja l'ouverture, par
   // soustraction de son propre montant. Une lecture de moins, et un resultat
@@ -3223,7 +3244,7 @@ export async function getOwnerAccountStatementByLot(
             Number(transactions[0].debit ?? 0) +
             Number(transactions[0].credit ?? 0)
         )
-      : await getOwnerBalanceStrictlyBefore(account.id, range?.from);
+      : getOwnerBalanceStrictlyBefore(movements, range?.from);
 
   const closingBalance =
     transactions.length > 0 ? roundMoney(Number(transactions[transactions.length - 1].balanceAfter)) : openingBalance;

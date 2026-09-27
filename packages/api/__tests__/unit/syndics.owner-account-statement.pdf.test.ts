@@ -1,4 +1,9 @@
-import { buildOwnerAccountStatementPdf, describeBalanceForPdf } from '../../src/lib/syndics/owner-account-statement';
+import {
+  buildOwnerAccountStatementPdf,
+  describeBalanceForPdf,
+  movementTypeLabel,
+  sanitizeForPdf
+} from '../../src/lib/syndics/owner-account-statement';
 
 /**
  * Non-régression : `GET .../lots/:lotId/compte/releve` répondait 400 avec
@@ -74,19 +79,65 @@ describe('buildOwnerAccountStatementPdf', () => {
  * muette. Ce relevé doit donc porter la même mention explicite.
  */
 describe('describeBalanceForPdf', () => {
-  it('labels a positive balance as "Debiteur" and keeps the amount as-is', () => {
-    expect(describeBalanceForPdf(20000)).toEqual({ amount: 20000, label: 'Debiteur' });
+  it('labels a positive balance as "Débiteur" and keeps the amount as-is', () => {
+    expect(describeBalanceForPdf(20000)).toEqual({ amount: 20000, label: 'Débiteur' });
   });
 
-  it('labels a negative balance as "Crediteur" and returns the absolute amount, never a negative number', () => {
-    expect(describeBalanceForPdf(-20000)).toEqual({ amount: 20000, label: 'Crediteur' });
+  it('labels a negative balance as "Créditeur" and returns the absolute amount, never a negative number', () => {
+    expect(describeBalanceForPdf(-20000)).toEqual({ amount: 20000, label: 'Créditeur' });
   });
 
   it('labels a zero balance as settled', () => {
-    expect(describeBalanceForPdf(0)).toEqual({ amount: 0, label: 'Solde a jour' });
+    expect(describeBalanceForPdf(0)).toEqual({ amount: 0, label: 'Solde à jour' });
   });
 
   it('rounds to the cent before comparing to zero', () => {
-    expect(describeBalanceForPdf(-0.001)).toEqual({ amount: 0, label: 'Solde a jour' });
+    expect(describeBalanceForPdf(-0.001)).toEqual({ amount: 0, label: 'Solde à jour' });
+  });
+});
+
+/**
+ * BUG-2026-09-27-007 (partie S3) : les textes fixes du relevé sont accentués.
+ * La police standard (WinAnsi) encode les lettres accentuées latines :
+ * `sanitizeForPdf` doit les laisser passer, et ne remplacer que l'inencodable.
+ */
+describe('textes accentués du relevé PDF', () => {
+  it('conserve les accents français à la sanitisation', () => {
+    const text =
+      'Relevé de compte du lot — Copropriété, Propriétaire, Débit, Crédit, Solde à jour, Pénalité, Reçu, Ç œ €';
+    expect(sanitizeForPdf(text)).toBe(text);
+  });
+
+  it("remplace seulement ce que WinAnsi n'encode pas", () => {
+    expect(sanitizeForPdf('Lot مرحبا')).toBe('Lot ?????');
+  });
+
+  it('traduit les codes de mouvement en libellés français', () => {
+    expect(movementTypeLabel('CHARGE_CALL')).toBe('Appel');
+    expect(movementTypeLabel('PENALTY')).toBe('Pénalité');
+    expect(movementTypeLabel('INCONNU')).toBe('INCONNU');
+  });
+
+  it('génère le relevé accentué sans erreur d’encodage', async () => {
+    await expect(
+      buildOwnerAccountStatementPdf({
+        syndicateName: 'Copropriété Les Baobabs',
+        lotNumber: 'BAO-1',
+        ownerName: 'Élodie Kouassi',
+        currency: 'FCFA',
+        openingBalance: 0,
+        closingBalance: -15000,
+        transactions: [
+          {
+            transactionDate: new Date('2026-10-15T00:00:00.000Z'),
+            type: 'CHARGE_CALL',
+            label: 'Appel de charges 2026-T4',
+            debit: 60000,
+            credit: null,
+            balanceAfter: -15000
+          }
+        ]
+      })
+    ).resolves.toBeInstanceOf(Buffer);
   });
 });

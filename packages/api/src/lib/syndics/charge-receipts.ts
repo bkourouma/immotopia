@@ -165,7 +165,7 @@ async function loadIssuanceContextTx(
       },
       lot: { number: lot.lotNumber, type: lotTypeLabel(lot.lotType), label: trim(lot.property?.title) },
       coowner: contact
-        ? { name: contactDisplayName(contact) ?? 'Coproprietaire', address: trim(contact.address) }
+        ? { name: contactDisplayName(contact) ?? 'Copropriétaire', address: trim(contact.address) }
         : null
     }
   };
