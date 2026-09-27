@@ -37,6 +37,9 @@ import {
   PaymentReminder,
   PaymentSchedule,
   ReminderBatchResult,
+  CreateServiceProviderRequest,
+  UpdateServiceProviderRequest,
+  ServiceProvider,
   CreateSyndicateLotRequest,
   CreateSyndicateRequest,
   UpdateSyndicateRequest,
@@ -89,7 +92,8 @@ export async function updateSyndicate(
     registrationNo: data.registrationNo === '' ? null : data.registrationNo,
     cadastralReference: data.cadastralReference === '' ? null : data.cadastralReference,
     fiscalYear: data.fiscalYear,
-    syndicManagerId: data.syndicManagerId === '' ? null : data.syndicManagerId
+    syndicManagerId: data.syndicManagerId === '' ? null : data.syndicManagerId,
+    status: data.status
   };
 
   const response = await apiClient.patch<{ success: boolean; data: Syndicate }>(
@@ -371,6 +375,35 @@ export async function listProvidersContracts(tenantId: string, syndicId: string)
     `/tenants/${tenantId}/syndics/${syndicId}/prestataires`
   );
   return response.data.data;
+}
+
+export async function createProvider(
+  tenantId: string,
+  syndicId: string,
+  data: CreateServiceProviderRequest
+): Promise<ServiceProvider> {
+  const response = await apiClient.post<{ success: boolean; data: ServiceProvider }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/prestataires`,
+    data
+  );
+  return response.data.data;
+}
+
+export async function updateProvider(
+  tenantId: string,
+  syndicId: string,
+  providerId: string,
+  data: UpdateServiceProviderRequest
+): Promise<ServiceProvider> {
+  const response = await apiClient.patch<{ success: boolean; data: ServiceProvider }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/prestataires/${providerId}`,
+    data
+  );
+  return response.data.data;
+}
+
+export async function deleteProvider(tenantId: string, syndicId: string, providerId: string): Promise<void> {
+  await apiClient.delete(`/tenants/${tenantId}/syndics/${syndicId}/prestataires/${providerId}`);
 }
 
 export async function listContracts(

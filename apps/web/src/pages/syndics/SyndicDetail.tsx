@@ -133,6 +133,7 @@ interface EditSyndicateFormValues {
   cadastralReference?: string;
   fiscalYear?: number;
   syndicManagerId?: string;
+  status?: Syndicate['status'];
 }
 
 function scrollToSection(id: string) {
@@ -319,7 +320,8 @@ export const SyndicDetail: React.FC = () => {
       registrationNo: syndicate.registrationNo ?? undefined,
       cadastralReference: syndicate.cadastralReference ?? undefined,
       fiscalYear: syndicate.fiscalYear ?? undefined,
-      syndicManagerId: syndicate.syndicManagerId ?? undefined
+      syndicManagerId: syndicate.syndicManagerId ?? undefined,
+      status: syndicate.status
     });
     setEditOpen(true);
   };
@@ -344,7 +346,8 @@ export const SyndicDetail: React.FC = () => {
         registrationNo: values.registrationNo || null,
         cadastralReference: values.cadastralReference || null,
         fiscalYear: values.fiscalYear,
-        syndicManagerId: values.syndicManagerId || null
+        syndicManagerId: values.syndicManagerId || null,
+        status: values.status
       };
       await updateSyndicate(effectiveTenantId, syndicId, payload);
       message.success(t('Copropriété mise à jour'));
@@ -561,6 +564,21 @@ export const SyndicDetail: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Exercice')} name="fiscalYear">
             <InputNumber min={1} max={12} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item
+            label={t('Statut')}
+            name="status"
+            rules={[{ required: true, message: t('Le statut est obligatoire') }]}
+            extra={t(
+              "Passer une copropriété « En liquidation » la retire des listes de gestion courante — une alternative à la suppression, elle, définitive."
+            )}
+          >
+            <Select
+              options={(Object.keys(statusConfig) as Array<Syndicate['status']>).map(value => ({
+                value,
+                label: statusConfig[value].label
+              }))}
+            />
           </Form.Item>
           <Form.Item label={t('Gestionnaire')} name="syndicManagerId">
             <Select

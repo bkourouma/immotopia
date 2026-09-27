@@ -27,10 +27,12 @@ import {
   createSyndicIncident,
   listLotOwnerProfiles,
   listLotTenantProfiles,
+  listProvidersContracts,
   listSyndicateLots,
-  listSyndicIncidents
+  listSyndicIncidents,
+  updateSyndicIncident
 } from '../../services/syndic-service';
-import { LotOwnerProfile, LotTenantProfile, SyndicateIncident, SyndicateLot } from '../../types/syndic-types';
+import { LotOwnerProfile, LotTenantProfile, ServiceProvider, SyndicateIncident, SyndicateLot } from '../../types/syndic-types';
 import type { Property } from '../../types/property-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { CrmContact } from '../../types/crm-types';
@@ -135,8 +137,10 @@ export const SyndicProfilesIncidents: React.FC = () => {
   const [lots, setLots] = useState<SyndicateLot[]>([]);
   const [contacts, setContacts] = useState<CrmContact[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
+  const [providers, setProviders] = useState<ServiceProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [assigningProviderIncidentId, setAssigningProviderIncidentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [openOwner, setOpenOwner] = useState(false);
@@ -188,10 +192,11 @@ export const SyndicProfilesIncidents: React.FC = () => {
         listLotTenantProfiles(effectiveTenantId, syndicId),
         listSyndicIncidents(effectiveTenantId, syndicId)
       ]);
-      const [lotsData, contactsData, propertiesData] = await Promise.all([
+      const [lotsData, contactsData, propertiesData, providersData] = await Promise.all([
         listSyndicateLots(effectiveTenantId, syndicId),
         listContacts(effectiveTenantId, { page: 1, limit: 200 }),
-        listProperties(effectiveTenantId, { page: 1, limit: 1000 })
+        listProperties(effectiveTenantId, { page: 1, limit: 1000 }),
+        listProvidersContracts(effectiveTenantId, syndicId)
       ]);
       setOwnerProfiles(owners);
       setTenantProfiles(tenants);
@@ -199,6 +204,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
       setLots(lotsData);
       setContacts(contactsData.contacts || []);
       setProperties(propertiesData.properties || []);
+      setProviders(providersData.providers || []);
     } catch (err: any) {
       setError(err.response?.data?.error || t('Impossible de charger profils et incidents'));
     } finally {
@@ -296,6 +302,28 @@ export const SyndicProfilesIncidents: React.FC = () => {
       message.error(err.response?.data?.error || t("Imputation d'incident impossible"));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  /**
+   * Assignation d'un prestataire a un incident (ecart recette #2, FR-010) :
+   * `updateIncidentSchema` (packages/api/src/lib/syndics/schemas.ts) accepte
+   * deja `providerId`, et `updateSyndicIncident` existait deja cote web sans
+   * qu'aucun ecran ne l'appelle pour ce champ. La liste deroulante se nourrit
+   * des prestataires de `listProvidersContracts`, y compris ceux crees a la
+   * volee depuis `<SyndicProviders>`.
+   */
+  const handleAssignProvider = async (incidentId: string, providerId: string | undefined) => {
+    if (!effectiveTenantId || !syndicId) return;
+    setAssigningProviderIncidentId(incidentId);
+    try {
+      await updateSyndicIncident(effectiveTenantId, syndicId, incidentId, { providerId: providerId || null });
+      message.success(t('Prestataire assigné à l’incident'));
+      await loadData();
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t("Assignation du prestataire impossible"));
+    } finally {
+      setAssigningProviderIncidentId(null);
     }
   };
 
@@ -486,6 +514,24 @@ export const SyndicProfilesIncidents: React.FC = () => {
                       <Tag color={(row.imputations?.length || 0) > 0 ? 'blue' : 'default'}>
                         {row.imputations?.length || 0}
                       </Tag>
+                    )
+                  },
+                  {
+                    title: t('Prestataire'),
+                    key: 'providerId',
+                    render: (_, row) => (
+                      <Select
+                        allowClear
+                        showSearch
+                        style={{ minWidth: 200 }}
+                        placeholder={t('Aucun prestataire')}
+                        optionFilterProp="label"
+                        value={row.providerId || undefined}
+                        loading={assigningProviderIncidentId === row.id}
+                        disabled={assigningProviderIncidentId === row.id}
+                        options={providers.map(provider => ({ value: provider.id, label: provider.name }))}
+                        onChange={value => void handleAssignProvider(row.id, value)}
+                      />
                     )
                   },
                   {
