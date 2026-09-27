@@ -45,6 +45,7 @@ packages/api/missing-lease-data-report.json
 # AI tooling caches
 .serena/cache/
 *.pkl
+repomix-output*.xml
 
 # IDE
 .vscode/
@@ -70,3 +71,6 @@ Thumbs.db
 # Claude Code : réglages propres à chaque poste
 CLAUDE.local.md
 .claude/settings.local.json
+
+# Canal partagé entre les processus développement et recette
+.agent-bus/
