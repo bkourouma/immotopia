@@ -18,6 +18,7 @@ import {
   type ChargeReceiptSnapshot,
   type SnapshotAllocation,
   type SnapshotIssuer,
+  type SnapshotIssuerImages,
   type SnapshotPeriod
 } from './charge-receipt-snapshot';
 
@@ -79,7 +80,7 @@ interface IssuanceContext {
   lotId: string;
   issuerKey: string;
   contactId: string | null;
-  base: Pick<ChargeReceiptSnapshot, 'issuer' | 'syndicate' | 'lot' | 'coowner'>;
+  base: Pick<ChargeReceiptSnapshot, 'issuer' | 'issuerImages' | 'syndicate' | 'lot' | 'coowner'>;
 }
 
 const CONTACT_SELECT = { id: true, firstName: true, lastName: true, legalName: true, address: true } as const;
@@ -102,7 +103,9 @@ async function loadIssuanceContextTx(
       registrationNo: true,
       cadastralReference: true,
       mandatingAgencyId: true,
-      mandatingAgency: { select: MANDANT_IDENTITY_SELECT }
+      mandatingAgency: {
+        select: { ...MANDANT_IDENTITY_SELECT, logoPath: true, signaturePath: true, stampPath: true }
+      }
     }
   });
   if (!syndicate) throw new NotFoundError('Copropriete introuvable ou inaccessible.');
@@ -119,12 +122,28 @@ async function loadIssuanceContextTx(
   });
   if (!lot) throw new NotFoundError('Lot introuvable ou inaccessible pour cette copropriete.');
 
+  // Émetteur et clés de ses images, figés ensemble (même lecture).
   let issuer: SnapshotIssuer;
-  if (syndicate.mandatingAgencyId && syndicate.mandatingAgency) {
-    issuer = { ...issuerFromMandant(syndicate.mandatingAgency), key: syndicate.mandatingAgencyId };
+  let issuerImages: SnapshotIssuerImages;
+  const mandant = syndicate.mandatingAgency;
+  if (syndicate.mandatingAgencyId && mandant) {
+    issuer = { ...issuerFromMandant(mandant), key: syndicate.mandatingAgencyId };
+    issuerImages = {
+      logo: mandant.logoPath ?? null,
+      signature: mandant.signaturePath ?? null,
+      stamp: mandant.stampPath ?? null
+    };
   } else {
-    const tenant = await tx.tenant.findUnique({ where: { id: tenantId }, select: TENANT_IDENTITY_SELECT });
+    const tenant = await tx.tenant.findUnique({
+      where: { id: tenantId },
+      select: { ...TENANT_IDENTITY_SELECT, logoUrl: true, documentSignaturePath: true, documentStampPath: true }
+    });
     issuer = { ...issuerFromTenant(tenant), key: AGENCY_ISSUER_KEY };
+    issuerImages = {
+      logo: tenant?.logoUrl ?? null,
+      signature: tenant?.documentSignaturePath ?? null,
+      stamp: tenant?.documentStampPath ?? null
+    };
   }
 
   const contact = lot.owner ?? lot.coowner ?? null;
@@ -137,6 +156,7 @@ async function loadIssuanceContextTx(
     contactId: contact?.id ?? null,
     base: {
       issuer,
+      issuerImages,
       syndicate: {
         name: syndicate.name,
         address: trim(syndicate.address),
@@ -145,7 +165,7 @@ async function loadIssuanceContextTx(
       },
       lot: { number: lot.lotNumber, type: lotTypeLabel(lot.lotType), label: trim(lot.property?.title) },
       coowner: contact
-        ? { name: contactDisplayName(contact) ?? 'Coproprietaire', address: trim(contact.address) }
+        ? { name: contactDisplayName(contact) ?? 'Copropriétaire', address: trim(contact.address) }
         : null
     }
   };
@@ -302,8 +322,9 @@ function quittanceSnapshot(
     .sort((a, b) => a.payment.paidAt.getTime() - b.payment.paidAt.getTime())
     .map(allocation => ({
       paidAt: allocation.payment.paidAt.toISOString(),
-      method: allocation.payment.method,
-      reference: allocation.payment.reference,
+      // Rattrapage : le payeur n'est pas connu avec certitude, ni mode ni référence.
+      method: backfilled ? null : allocation.payment.method,
+      reference: backfilled ? null : allocation.payment.reference,
       amount: fromCents(toCents(allocation.amount)),
       source: (allocation.source === 'ADVANCE' ? 'ADVANCE' : 'PAYMENT') as 'PAYMENT' | 'ADVANCE'
     }));

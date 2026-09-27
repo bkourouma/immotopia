@@ -10,6 +10,7 @@ import {
 } from '../../navigation/resolve';
 import { buildCrumbs } from '../../components/shell/Breadcrumbs';
 import { ROUTE_LABELS, isIdSegment, labelForSegment } from '../../navigation/route-labels';
+import i18next from '../../i18n/index';
 
 /**
  * Le modèle de navigation pilote les 100 écrans : sidebar, barre d'onglets et
@@ -96,10 +97,11 @@ describe('modèle de navigation — intégrité', () => {
     expect(more.map(g => g.label)).toContain('Syndic');
   });
 
-  it('ramène le syndic à quatre entrées qui couvrent chacune leurs onglets', () => {
+  it('ramène le syndic à cinq entrées qui couvrent chacune leurs onglets', () => {
     const syndic = NAVIGATION.collaborateur.tree.find(g => g.key === 'syndic');
     expect(syndic?.children?.map(c => c.label)).toEqual([
       'Copropriétés',
+      'Agences mandantes',
       'Copropriété',
       'Finances',
       'Assemblées et documents'
@@ -112,6 +114,8 @@ describe('modèle de navigation — intégrité', () => {
       'profils-incidents',
       'budgets',
       'charges',
+      'suivi-mensuel',
+      'quittances',
       'recouvrement',
       'finances',
       'comptabilite',
@@ -411,6 +415,28 @@ describe('table de libellés', () => {
   it('rend visible un segment inconnu au lieu de le masquer', () => {
     expect(labelForSegment('segment-inedit')).toBe('Segment inedit');
     expect(ROUTE_LABELS.leases).toBe('Baux');
+  });
+
+  // BUG-2026-09-27-004 : pages syndic des lots S1 à S3 absentes de la table.
+  it('nomme les pages syndic des lots S1 à S3 dans le fil d’Ariane', () => {
+    expect(buildCrumbs(`/tenant/${TENANT}/syndics/mandants`).map(c => c.label)).toEqual([
+      'Copropriétés',
+      'Agences mandantes'
+    ]);
+    expect(labelForSegment('suivi-mensuel')).toBe('Suivi mensuel');
+    expect(labelForSegment('quittances')).toBe('Quittances');
+  });
+
+  it('traduit les libellés dans la langue active, même chargée après le module', async () => {
+    const previous = i18next.language;
+    i18next.addResourceBundle('ar', 'app', { 'Suivi mensuel': 'المتابعة الشهرية' }, true, true);
+    try {
+      await i18next.changeLanguage('ar');
+      expect(labelForSegment('suivi-mensuel')).toBe('المتابعة الشهرية');
+    } finally {
+      await i18next.changeLanguage(previous);
+    }
+    expect(labelForSegment('suivi-mensuel')).toBe('Suivi mensuel');
   });
 });
 

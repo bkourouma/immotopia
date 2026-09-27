@@ -48,6 +48,8 @@ vi.mock('antd', async () => {
     }
   ];
   FormComp.Item = passthrough();
+  // BUG-008 : la page observe l'échéance pour avertir d'une date passée.
+  FormComp.useWatch = () => undefined;
   const InputComp: any = passthrough('input');
   InputComp.TextArea = passthrough('textarea');
 

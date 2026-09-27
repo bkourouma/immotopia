@@ -10,9 +10,12 @@ import express from 'express';
 import request from 'supertest';
 import { findDiskPathLeaks } from '../helpers/disk-path-leaks';
 
+let mockNextUser = 1;
 jest.mock('../../src/middleware/auth-middleware', () => ({
   authenticate: (req: any, _res: any, next: any) => {
-    req.user = { userId: 'user-1', globalRole: 'USER' };
+    // Un utilisateur par requete, sauf en-tete explicite : les limiteurs
+    // (par utilisateur et agence) ne se declenchent que dans leur test.
+    req.user = { userId: req.headers['x-test-user'] ?? `user-${mockNextUser++}`, globalRole: 'USER' };
     next();
   }
 }));
@@ -224,9 +227,47 @@ describe('GET .../quittances/impression', () => {
 describe('POST .../quittances/generer-manquantes', () => {
   it('200 avec { created, skipped } ; transmet l utilisateur', async () => {
     mockBackfill.mockResolvedValue({ created: 3, skipped: 1 });
-    const response = await request(app).post(`${BASE}/quittances/generer-manquantes`);
+    const response = await request(app).post(`${BASE}/quittances/generer-manquantes`).set('x-test-user', 'user-1');
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ success: true, data: { created: 3, skipped: 1 } });
     expect(mockBackfill).toHaveBeenCalledWith(TENANT, SYNDIC, 'user-1');
+  });
+});
+
+describe('limiteurs par utilisateur et agence', () => {
+  it('impression : 5 par minute, puis 429 ; un autre utilisateur garde son budget', async () => {
+    mockPrint.mockResolvedValue(Buffer.from('%PDF-1.7'));
+    const url = `${BASE}/quittances/impression?from=2026-01-01&to=2026-03-31`;
+    for (let index = 0; index < 5; index += 1) {
+      expect((await request(app).get(url).set('x-test-user', 'imprimeur')).status).toBe(200);
+    }
+    const limited = await request(app).get(url).set('x-test-user', 'imprimeur');
+    expect(limited.status).toBe(429);
+    expect(limited.body).toMatchObject({ success: false, code: 'RATE_LIMITED' });
+    expect((await request(app).get(url).set('x-test-user', 'autre')).status).toBe(200);
+    expect(mockPrint).toHaveBeenCalledTimes(6);
+  });
+
+  it('renvoi : 30 par heure, puis 429 ; transmet l utilisateur au service', async () => {
+    mockResend.mockResolvedValue({ id: RECEIPT, number: 'Q-2026-000001', sent: true, emailedAt: null });
+    for (let index = 0; index < 30; index += 1) {
+      expect(
+        (await request(app).post(`${BASE}/quittances/${RECEIPT}/envoi`).set('x-test-user', 'relanceur')).status
+      ).toBe(200);
+    }
+    expect(
+      (await request(app).post(`${BASE}/quittances/${RECEIPT}/envoi`).set('x-test-user', 'relanceur')).status
+    ).toBe(429);
+    expect(mockResend).toHaveBeenLastCalledWith(TENANT, SYNDIC, RECEIPT, 'relanceur');
+  });
+
+  it('renvoi : 429 (deja envoye) et 409 (rattrape, coproprietaire change) relayes', async () => {
+    const { AppError, ConflictError } = jest.requireActual('../../src/middleware/error-middleware');
+    mockResend.mockRejectedValueOnce(new AppError("Ce document vient d'être envoyé.", 429, 'EMAIL_RECENTLY_SENT'));
+    const recent = await request(app).post(`${BASE}/quittances/${RECEIPT}/envoi`);
+    expect(recent.status).toBe(429);
+    expect(recent.body.code).toBe('EMAIL_RECENTLY_SENT');
+    mockResend.mockRejectedValueOnce(new ConflictError('Copropriétaire changé.'));
+    expect((await request(app).post(`${BASE}/quittances/${RECEIPT}/envoi`)).status).toBe(409);
   });
 });

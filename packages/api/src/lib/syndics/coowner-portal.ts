@@ -5,6 +5,7 @@ import { computeOutstanding, deriveChargeCallStatus, roundMoney, type ChargeCall
 import { computeResolutionTally, normalizeMajorityRule, type MajorityRule } from './meeting-majority';
 import { sumAllocationsByCall } from './charge-allocation';
 import { fromCents } from './charge-allocation-plan';
+import { applyChronologicalBalances } from './owner-account-running-balance';
 
 /**
  * Portail copropriétaire — lectures, en lecture seule.
@@ -252,10 +253,10 @@ export async function getCoOwnerLotAccount(scope: CoOwnerPortalScope, lotId: str
     where: { lotId: lot.id, syndicateId: lot.syndicateId },
     select: { id: true, balance: true, currency: true, lastUpdatedAt: true }
   });
-  const transactions = account
+  const rows = account
     ? await prisma.ownerAccountTransaction.findMany({
         where: { accountId: account.id },
-        orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
+        orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
         take: 200,
         select: {
           id: true,
@@ -269,6 +270,16 @@ export async function getCoOwnerLotAccount(scope: CoOwnerPortalScope, lotId: str
         }
       })
     : [];
+  // BUG-006 : même solde cumulé chronologique que l'écran de gestion.
+  const transactions = account
+    ? applyChronologicalBalances(
+        rows,
+        await prisma.ownerAccountTransaction.findMany({
+          where: { accountId: account.id },
+          select: { id: true, transactionDate: true, createdAt: true, debit: true, credit: true, balanceAfter: true }
+        })
+      )
+    : rows;
 
   return {
     lot: {

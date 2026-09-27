@@ -28,9 +28,16 @@ import {
   listLotOwnerAccountTransactions
 } from '../../services/syndic-service';
 import { getLotAdvance } from '../../services/syndic-lot-payment-service';
-import { OwnerAccount, OwnerAccountTransaction } from '../../types/syndic-types';
+import { downloadReceiptFile, listLotReceipts } from '../../services/syndic-receipt-service';
+import { OwnerAccount, OwnerAccountTransaction, ReceiptKind, ReceiptView } from '../../types/syndic-types';
+import { saveBlob } from '../../utils/save-blob';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
+
+const receiptKindLabel: Record<ReceiptKind, string> = {
+  RECEIPT: t('Reçu'),
+  QUITTANCE: t('Quittance')
+};
 
 const { Paragraph, Title } = Typography;
 
@@ -101,6 +108,10 @@ export const SyndicOwnerAccount: React.FC = () => {
   const [transactions, setTransactions] = useState<OwnerAccountTransaction[]>([]);
   // Lot S2 : avance du lot, imputée automatiquement sur ses prochains appels.
   const [advance, setAdvance] = useState<number | null>(null);
+  // Lot S3 : historique des reçus et quittances de ce lot.
+  const [receipts, setReceipts] = useState<ReceiptView[]>([]);
+  const [receiptsLoading, setReceiptsLoading] = useState(true);
+  const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,7 +125,21 @@ export const SyndicOwnerAccount: React.FC = () => {
       return;
     }
     void loadData();
+    void loadReceipts();
   }, [effectiveTenantId, syndicId, lotId]);
+
+  const loadReceipts = async () => {
+    if (!effectiveTenantId || !syndicId || !lotId) return;
+    setReceiptsLoading(true);
+    try {
+      const result = await listLotReceipts(effectiveTenantId, syndicId, lotId, { limit: 50 });
+      setReceipts(result.items);
+    } catch {
+      setReceipts([]);
+    } finally {
+      setReceiptsLoading(false);
+    }
+  };
 
   const loadData = async () => {
     if (!effectiveTenantId || !syndicId || !lotId) return;
@@ -174,6 +199,20 @@ export const SyndicOwnerAccount: React.FC = () => {
       message.error(err.response?.data?.error || t('Ajustement impossible'));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDownloadReceipt = async (receipt: ReceiptView) => {
+    if (!effectiveTenantId || !syndicId) return;
+    setDownloadingReceiptId(receipt.id);
+    try {
+      const fallback = `${receipt.kind === 'QUITTANCE' ? 'Quittance' : 'Recu'} ${receipt.number}.pdf`;
+      const { blob, filename } = await downloadReceiptFile(effectiveTenantId, syndicId, receipt.id, fallback);
+      saveBlob(blob, filename);
+    } catch {
+      message.error(t('Téléchargement impossible.'));
+    } finally {
+      setDownloadingReceiptId(null);
     }
   };
 
@@ -296,6 +335,49 @@ export const SyndicOwnerAccount: React.FC = () => {
                         </Space>
                       );
                     }
+                  }
+                ]}
+              />
+            </Card>
+
+            <Card title={t('Reçus et quittances')}>
+              <Table
+                rowKey="id"
+                loading={receiptsLoading}
+                dataSource={receipts}
+                pagination={false}
+                locale={{ emptyText: t('Aucun reçu ou quittance pour ce lot.') }}
+                columns={[
+                  { title: t('Numéro'), dataIndex: 'number' },
+                  {
+                    title: t('Type'),
+                    dataIndex: 'kind',
+                    render: (value: ReceiptView['kind']) => (
+                      <Tag color={value === 'QUITTANCE' ? 'green' : 'blue'}>{receiptKindLabel[value]}</Tag>
+                    )
+                  },
+                  {
+                    title: t('Émis le'),
+                    dataIndex: 'issuedAt',
+                    render: (value: string) => dayjs(value).format('DD/MM/YYYY')
+                  },
+                  {
+                    title: t('Montant'),
+                    align: 'end',
+                    render: (_: unknown, row: ReceiptView) => <MoneyValue value={row.amount} currency={row.currency} />
+                  },
+                  {
+                    title: t('Actions'),
+                    render: (_: unknown, row: ReceiptView) => (
+                      <Button
+                        size="small"
+                        icon={<DownloadOutlined />}
+                        loading={downloadingReceiptId === row.id}
+                        onClick={() => void handleDownloadReceipt(row)}
+                      >
+                        {t('Télécharger')}
+                      </Button>
+                    )
                   }
                 ]}
               />

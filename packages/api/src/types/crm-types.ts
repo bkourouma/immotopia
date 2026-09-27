@@ -391,6 +391,7 @@ export interface PaginatedResponse<T> {
 
 // Zod validation schemas
 import { z } from 'zod';
+import { httpUrl } from '../lib/safe-url';
 
 // Helper schema for project intent JSON
 const projectIntentSchema = z
@@ -421,7 +422,7 @@ export const createContactSchema = z.object({
   identityDocumentType: z.enum(['CNI', 'PASSPORT', 'DRIVING_LICENSE', 'OTHER']).optional(),
   identityDocumentNumber: z.string().optional(),
   identityDocumentExpiry: z.union([z.date(), z.string()]).optional(),
-  profilePhotoUrl: z.string().url().optional(),
+  profilePhotoUrl: httpUrl().optional(),
 
   // Company Identification
   legalName: z.string().optional(),
@@ -502,7 +503,7 @@ export const updateContactSchema = z.object({
   identityDocumentType: z.enum(['CNI', 'PASSPORT', 'DRIVING_LICENSE', 'OTHER']).optional().nullable(),
   identityDocumentNumber: z.string().optional().nullable(),
   identityDocumentExpiry: z.union([z.date(), z.string()]).optional().nullable(),
-  profilePhotoUrl: z.string().url().optional().nullable(),
+  profilePhotoUrl: httpUrl().optional().nullable(),
 
   // Company Identification
   legalName: z.string().optional().nullable(),

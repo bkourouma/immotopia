@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import { MoneyValue } from '../primitives/MoneyValue';
 import { MaintenanceContract } from '../../types/syndic-types';
 import { contractStatusLabels } from './labels';
+import { LinkedProviderInvoices } from './LinkedProviderInvoices';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -18,9 +19,16 @@ const statusColor: Record<MaintenanceContract['status'], string> = {
 interface ContractListProps {
   contracts: MaintenanceContract[];
   loading?: boolean;
+  /**
+   * Agence et copropriété : quand les deux sont fournis, chaque ligne
+   * s'étend sur ses « Factures liées » (lot S6). Absents, le tableau reste
+   * celui d'avant S6 — les appelants qui n'en ont pas besoin ne changent pas.
+   */
+  tenantId?: string;
+  syndicId?: string;
 }
 
-export const ContractList: React.FC<ContractListProps> = ({ contracts, loading = false }) => {
+export const ContractList: React.FC<ContractListProps> = ({ contracts, loading = false, tenantId, syndicId }) => {
   const renewalWindowDays = 45;
 
   const columns: ColumnsType<MaintenanceContract> = [
@@ -58,6 +66,8 @@ export const ContractList: React.FC<ContractListProps> = ({ contracts, loading =
     }
   ];
 
+  const showLinkedInvoices = Boolean(tenantId && syndicId);
+
   return (
     <Table
       scroll={{ x: 'max-content' }}
@@ -67,6 +77,15 @@ export const ContractList: React.FC<ContractListProps> = ({ contracts, loading =
       loading={loading}
       pagination={{ pageSize: 8, hideOnSinglePage: true }}
       locale={{ emptyText: 'Aucun contrat de maintenance' }}
+      expandable={
+        showLinkedInvoices
+          ? {
+              expandedRowRender: contract => (
+                <LinkedProviderInvoices tenantId={tenantId!} syndicId={syndicId!} contractId={contract.id} />
+              )
+            }
+          : undefined
+      }
     />
   );
 };

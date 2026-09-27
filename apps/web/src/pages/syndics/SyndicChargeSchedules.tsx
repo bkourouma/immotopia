@@ -391,19 +391,24 @@ export const SyndicChargeSchedules: React.FC = () => {
           } else if (run.alreadyProcessed || run.status === 'SKIPPED') {
             message.info(t('Période {{period}} déjà traitée : rien à créer.', { period: run.periodLabel }));
           } else {
+            const counts = {
+              period: run.periodLabel,
+              created: run.callsCreated,
+              covered: run.callsCovered,
+              notified: run.notificationsSent,
+              skipped: run.notificationsSkipped
+            };
+            // Deux appels à t() littéraux : l'extracteur ne lit pas un ternaire passé à t().
             message.success(
-              t(
-                run.notificationsSkipped > 0
-                  ? 'Exécution réussie — {{period}} : {{created}} appel(s) créé(s), {{covered}} couvert(s) par une avance, {{notified}} notification(s) envoyée(s), {{skipped}} avis non envoyé(s) (propriétaire à vérifier).'
-                  : 'Exécution réussie — {{period}} : {{created}} appel(s) créé(s), {{covered}} couvert(s) par une avance, {{notified}} notification(s) envoyée(s).',
-                {
-                  period: run.periodLabel,
-                  created: run.callsCreated,
-                  covered: run.callsCovered,
-                  notified: run.notificationsSent,
-                  skipped: run.notificationsSkipped
-                }
-              )
+              run.notificationsSkipped > 0
+                ? t(
+                    'Exécution réussie — {{period}} : {{created}} appel(s) créé(s), {{covered}} couvert(s) par une avance, {{notified}} notification(s) envoyée(s), {{skipped}} avis non envoyé(s) (propriétaire à vérifier).',
+                    counts
+                  )
+                : t(
+                    'Exécution réussie — {{period}} : {{created}} appel(s) créé(s), {{covered}} couvert(s) par une avance, {{notified}} notification(s) envoyée(s).',
+                    counts
+                  )
             );
           }
           await loadData();

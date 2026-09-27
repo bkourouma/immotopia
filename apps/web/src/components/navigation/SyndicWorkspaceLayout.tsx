@@ -74,6 +74,12 @@ function buildTabs(family: SyndicWorkspaceFamily, tenantId: string, syndicId: st
           href: `${base}/suivi-mensuel`,
           icon: <CalendarOutlined />
         },
+        {
+          key: 'quittances',
+          label: t('Quittances'),
+          href: `${base}/quittances`,
+          icon: <FolderOutlined />
+        },
         { key: 'recouvrement', label: t('Recouvrement'), href: `${base}/recouvrement`, icon: <AlertOutlined /> },
         { key: 'tresorerie', label: t('Trésorerie'), href: `${base}/finances`, icon: <BankOutlined /> },
         {

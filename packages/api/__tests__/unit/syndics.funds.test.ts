@@ -8,8 +8,13 @@ jest.mock('@prisma/client', () => {
       findFirst: jest.fn(),
       create: jest.fn(),
       update: jest.fn()
-    }
+    },
+    syndicateFundMovement: {
+      create: jest.fn()
+    },
+    $transaction: jest.fn()
   };
+  prisma.$transaction.mockImplementation(async (fn: any) => fn(prisma));
 
   return {
     PrismaClient: jest.fn(() => prisma),
@@ -37,6 +42,8 @@ const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as {
       create: jest.Mock;
       update: jest.Mock;
     };
+    syndicateFundMovement: { create: jest.Mock };
+    $transaction: jest.Mock;
   };
 };
 
@@ -104,9 +111,22 @@ describe('Syndicate funds queries - FR-013', () => {
       'user-1'
     );
 
+    // S6 : increment atomique, et mouvement trace avec le solde apres.
     expect(mockPrisma.syndicateFund.update).toHaveBeenCalledWith({
       where: { id: 'fund-1' },
-      data: { balance: 150000 }
+      data: { balance: { increment: 50000 } }
+    });
+    expect(mockPrisma.syndicateFundMovement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tenantId: 'tenant-a',
+        fundId: 'fund-1',
+        direction: 'CREDIT',
+        amount: 50000,
+        balanceAfter: 150000,
+        label: 'Appel de fonds travaux voté en AG',
+        sourceType: 'MANUAL_ADJUSTMENT',
+        createdById: 'user-1'
+      })
     });
     expect(logAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -140,7 +160,10 @@ describe('Syndicate funds queries - FR-013', () => {
 
     expect(mockPrisma.syndicateFund.update).toHaveBeenCalledWith({
       where: { id: 'fund-1' },
-      data: { balance: -5000 }
+      data: { balance: { decrement: 15000 } }
+    });
+    expect(mockPrisma.syndicateFundMovement.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ direction: 'DEBIT', amount: 15000, balanceAfter: -5000 })
     });
     expect(updated.balance).toBe(-5000);
   });

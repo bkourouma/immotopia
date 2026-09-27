@@ -105,7 +105,7 @@ vi.mock('antd', async () => {
     <table>
       <tbody>
         {(dataSource || []).map((row: any, rowIndex: number) => (
-          <tr key={typeof rowKey === 'function' ? rowKey(row) : row[rowKey as string] ?? rowIndex}>
+          <tr key={typeof rowKey === 'function' ? rowKey(row) : (row[rowKey as string] ?? rowIndex)}>
             {(columns || []).map((column: any, columnIndex: number) => (
               <td key={column.key || column.dataIndex || columnIndex}>
                 {column.render
@@ -130,6 +130,29 @@ vi.mock('antd', async () => {
     </select>
   );
 
+  // `<Tabs>` ne monte que le panneau actif — comme le vrai composant AntD
+  // (montage paresseux des panneaux inactifs). SyndicProviders l'utilise
+  // depuis le lot S6 : sans ce comportement, l'onglet « Factures » (et donc
+  // `<ProviderInvoicesTab>`, hors périmètre de ce mock volontairement
+  // minimal) se monterait avec le premier rendu et casserait les appels API
+  // que ce fichier attend dans un ordre précis.
+  const Tabs: any = ({ items, activeKey, defaultActiveKey }: any) => {
+    const [active, setActive] = React.useState(activeKey ?? defaultActiveKey ?? items?.[0]?.key);
+    const current = (items || []).find((item: any) => item.key === (activeKey ?? active));
+    return (
+      <div>
+        <div>
+          {(items || []).map((item: any) => (
+            <button key={item.key} onClick={() => setActive(item.key)}>
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <div>{current?.children}</div>
+      </div>
+    );
+  };
+
   const antdMock: Record<string, unknown> = {
     Alert: passthrough(),
     Button: ({ children, onClick, disabled, loading, icon }: any) => (
@@ -149,6 +172,7 @@ vi.mock('antd', async () => {
     Select,
     Space: passthrough(),
     Spin: passthrough(),
+    Tabs,
     Statistic: ({ title, value }: any) => (
       <div>
         {title}:{value}

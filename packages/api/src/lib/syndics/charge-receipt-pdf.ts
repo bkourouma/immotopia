@@ -235,7 +235,9 @@ function drawInfoRows(snapshot: ChargeReceiptSnapshot, flow: Flow, s: number, fo
   row('Références', refs);
   const lot = snapshot.lot;
   row('Lot', [`${lot.number}${lot.type ? ` (${lot.type})` : ''}`, lot.label].filter(Boolean).join(' - '));
-  row('Copropriétaire', snapshot.coowner?.name ?? 'Non renseigné');
+  // Rattrapage : le copropriétaire affiché est celui du jour du rattrapage, pas forcément le payeur.
+  const coowner = snapshot.coowner?.name ?? 'Non renseigné';
+  row('Copropriétaire', snapshot.backfilled ? `${coowner} (au jour du rattrapage)` : coowner);
   if (s >= 0.45) row('Adresse', snapshot.coowner?.address);
   if (snapshot.kind === 'QUITTANCE') row('Période', periodText(snapshot.call?.period));
   flow.gap(Math.max(2, 8 * s));
@@ -272,6 +274,7 @@ function drawAmount(page: PDFPage, snapshot: ChargeReceiptSnapshot, flow: Flow, 
 
 function settlementText(item: { paidAt: string; method: string | null; reference: string | null; source: string }) {
   if (item.source === 'ADVANCE') return `Avance du ${frenchDay(item.paidAt)} imputée`;
+  if (!item.method && !item.reference) return `Réglé le ${frenchDay(item.paidAt)}`;
   return [
     `Le ${frenchDay(item.paidAt)}`,
     paymentMethodLabel(item.method),
@@ -565,6 +568,9 @@ export async function renderChargeReceiptSheets(items: RenderItem[], cols: numbe
   const cells = gridCells(cols, rows);
   const perPage = cols * rows;
   for (let start = 0; start < items.length; start += perPage) {
+    // Rend la main entre deux feuilles : une grosse impression ne bloque pas
+    // la boucle d'événements (les autres requêtes continuent d'être servies).
+    if (start > 0) await new Promise<void>(resolve => setImmediate(resolve));
     const page = pdfDoc.addPage([A4.width, A4.height]);
     const chunk = items.slice(start, start + perPage);
     for (let index = 0; index < chunk.length; index += 1) {

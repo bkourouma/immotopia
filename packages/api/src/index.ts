@@ -9,6 +9,8 @@ import { startReminderSchedulerJob } from './jobs/reminder-scheduler.job';
 import { startNewsletterCampaignSchedulerJob } from './jobs/newsletter-campaign-scheduler.job';
 import { startSubscriptionUsageJob } from './jobs/subscription-usage-job';
 import { startSyndicChargeCallSchedulerJob } from './jobs/syndic-charge-call-scheduler.job';
+import { recoverTenantDataExports } from './services/tenant-data-export/export-service';
+import { startTenantDataExportExpiryJob } from './jobs/tenant-data-export-expiry-job';
 import { logger } from './utils/logger';
 
 /**
@@ -55,5 +57,12 @@ app.listen(PORT, () => {
     // Lot S4 : appels de charges automatiques des coproprietes, chaque jour a
     // 6 h UTC. Idempotent : une periode deja emise ne l'est jamais deux fois.
     startSyndicChargeCallSchedulerJob();
+    // Lot S7 : archives d'export echues supprimees toutes les heures.
+    startTenantDataExportExpiryJob();
+    // Lot S7 : exports d'agence interrompus par un redemarrage (RUNNING →
+    // FAILED), demandes en attente relancees, archives echues supprimees.
+    recoverTenantDataExports().catch(error =>
+      logger.error('Export agence : reprise au demarrage impossible', { message: (error as Error).message })
+    );
   }
 });
