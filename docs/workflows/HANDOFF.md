@@ -41,7 +41,7 @@ Pièges et décisions :
 ## Branche `chore/agentic-architecture` — 2026-09-27
 
 **État :** en cours (PR #16 ouverte ; garde et outils ajoutés localement)
-**Dernier commit :** `f36a2f3 docs(handoff): PR #16 ouverte`, sur la base `43e5761` (fix/recette-syndic-modules)
+**Dernier commit :** `f2440f7 chore(agents): processus dev/recette, bus partagé et démo figée`, sur la base `43e5761` (fix/recette-syndic-modules)
 
 Fait :
 
@@ -93,8 +93,7 @@ Fait :
 
 Reste à faire :
 
-- Committer puis pousser les changements locaux de garde et d'outillage pour
-  relancer la CI de la PR #16.
+- Suivre la CI de la PR #16 après la poussée de 9010d8d et f2440f7.
 - Créer `packages/api/.env.demo` (base de démo dédiée) — à faire par
   l'utilisateur, les agents ne touchent pas aux `.env` ; puis
   `npm run demo:sync -- HEAD --migrate` et démarrer api-demo/web-demo (jamais
