@@ -9,7 +9,8 @@ import { t } from '../../i18n/t';
 
 const { Text } = Typography;
 
-const statusConfig: Record<ChargeCallStatus, { color: string; label: string }> = {
+/** Libellé et couleur d'un statut d'appel de charges, partagés avec la modale de paiement par lot. */
+export const chargeCallStatusConfig: Record<ChargeCallStatus, { color: string; label: string }> = {
   PENDING: { color: 'gold', label: t('En attente') },
   PARTIAL: { color: 'blue', label: t('Partiel') },
   PAID: { color: 'green', label: t('Payé') },
@@ -58,7 +59,7 @@ interface ChargeCallTableProps {
 export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({ items, loading = false, onRecordPayment }) => {
   const columns: ColumnsType<ChargeCall> = [
     {
-      title: t('Periode'),
+      title: t('Période'),
       dataIndex: 'period',
       key: 'period',
       render: (value: string) => <Text strong>{value}</Text>
@@ -76,7 +77,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({ items, loading
       render: (_: unknown, item: ChargeCall) => <MoneyValue value={item.amount} />
     },
     {
-      title: t('Echeance'),
+      title: t('Échéance'),
       dataIndex: 'dueDate',
       key: 'dueDate',
       render: (value: string, item: ChargeCall) => {
@@ -106,7 +107,7 @@ export const ChargeCallTable: React.FC<ChargeCallTableProps> = ({ items, loading
       dataIndex: 'status',
       key: 'status',
       render: (value: ChargeCallStatus) => {
-        const config = statusConfig[value];
+        const config = chargeCallStatusConfig[value];
         return <Tag color={config.color}>{config.label}</Tag>;
       }
     },

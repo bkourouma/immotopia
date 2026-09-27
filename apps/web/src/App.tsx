@@ -317,6 +317,11 @@ const SyndicMonthlyTracking = lazy(() =>
     default: m.SyndicMonthlyTracking
   }))
 );
+const SyndicReceipts = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicReceipts').then(m => ({
+    default: m.SyndicReceipts
+  }))
+);
 const SyndicOwnerAccount = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicOwnerAccount').then(m => ({
     default: m.SyndicOwnerAccount
@@ -886,6 +891,7 @@ function App() {
                               path="/tenant/:tenantId/syndics/:syndicId/suivi-mensuel"
                               element={<SyndicMonthlyTracking />}
                             />
+                            <Route path="/tenant/:tenantId/syndics/:syndicId/quittances" element={<SyndicReceipts />} />
                             <Route
                               path="/tenant/:tenantId/syndics/:syndicId/recouvrement"
                               element={<SyndicRecovery />}

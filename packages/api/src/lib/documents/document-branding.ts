@@ -46,6 +46,21 @@ export interface DocumentBranding {
     cadastralReference: string | null;
     logo: DocumentImage | null;
   } | null;
+  /**
+   * Lot S3 : émetteur et clés de stockage des images, lus dans la MÊME
+   * lecture que les images elles-mêmes. Un document figé compare ces clés à
+   * celles qu'il a notées à l'émission avant d'apposer une image (une clé
+   * est régénérée à chaque dépôt : elle identifie un fichier précis).
+   */
+  source?: DocumentBrandingSource;
+}
+
+export interface DocumentBrandingSource {
+  /** Identifiant du mandant, ou `AGENCY`. */
+  issuerKey: string;
+  logoKey: string | null;
+  signatureKey: string | null;
+  stampKey: string | null;
 }
 
 /** Lit le logo public de l'agence (`/uploads/properties/agency-logos/<tenantId>/<fichier>`). */
@@ -155,6 +170,7 @@ export async function resolveDocumentBranding(tenantId: string, syndicateId: str
           registrationNo: true,
           cadastralReference: true,
           logoPath: true,
+          mandatingAgencyId: true,
           mandatingAgency: {
             select: {
               name: true,
@@ -195,7 +211,13 @@ export async function resolveDocumentBranding(tenantId: string, syndicateId: str
       issuerLogo,
       signature,
       stamp,
-      syndicate: syndicateBlock
+      syndicate: syndicateBlock,
+      source: {
+        issuerKey: syndicate?.mandatingAgencyId ?? 'AGENCY',
+        logoKey: mandant.logoPath ?? null,
+        signatureKey: mandant.signaturePath ?? null,
+        stampKey: mandant.stampPath ?? null
+      }
     };
   }
 
@@ -227,7 +249,13 @@ export async function resolveDocumentBranding(tenantId: string, syndicateId: str
     issuerLogo,
     signature,
     stamp,
-    syndicate: syndicateBlock
+    syndicate: syndicateBlock,
+    source: {
+      issuerKey: 'AGENCY',
+      logoKey: tenant?.logoUrl ?? null,
+      signatureKey: tenant?.documentSignaturePath ?? null,
+      stampKey: tenant?.documentStampPath ?? null
+    }
   };
 }
 
@@ -296,7 +324,7 @@ export function issuerIdentityLines(issuer: DocumentIssuer): string[] {
   const lines: string[] = [];
   if (issuer.legalName && issuer.legalName !== issuer.name) lines.push(issuer.legalName);
   if (issuer.address) lines.push(issuer.address);
-  const contact = [issuer.phone ? `Tel. ${issuer.phone}` : null, issuer.email].filter(Boolean).join(' - ');
+  const contact = [issuer.phone ? `Tél. ${issuer.phone}` : null, issuer.email].filter(Boolean).join(' - ');
   if (contact) lines.push(contact);
   const legal = [issuer.rccm ? `RCCM ${issuer.rccm}` : null, issuer.taxId ? `NCC ${issuer.taxId}` : null]
     .filter(Boolean)
@@ -364,11 +392,11 @@ export async function drawDocumentHeader(
   if (syndicate) {
     const refs = [
       syndicate.registrationNo ? `Immatriculation ${syndicate.registrationNo}` : null,
-      syndicate.cadastralReference ? `Ref. cadastrale ${syndicate.cadastralReference}` : null
+      syndicate.cadastralReference ? `Réf. cadastrale ${syndicate.cadastralReference}` : null
     ]
       .filter(Boolean)
       .join(' - ');
-    const line = [`Copropriete : ${syndicate.name}`, syndicate.address, refs].filter(Boolean).join(' - ');
+    const line = [`Copropriété : ${syndicate.name}`, syndicate.address, refs].filter(Boolean).join(' - ');
     cursor -= 15;
     page.drawText(truncate(line, regular, 9, contentWidth), {
       x: MARGIN,

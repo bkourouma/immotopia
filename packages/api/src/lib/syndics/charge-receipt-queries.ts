@@ -1,6 +1,8 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/database';
-import { AppError, NotFoundError, ValidationError } from '../../middleware/error-middleware';
+import { AppError, ConflictError, NotFoundError, ValidationError } from '../../middleware/error-middleware';
+import { logAuditEvent } from '../../services/audit-service';
+import { AuditActionKey } from '../../types/audit-types';
 import { assertLotOfSyndicate, assertSyndicateOfTenant, lockLotTx } from './charge-allocation';
 import { issueQuittancesForSettledCallsTx } from './charge-receipts';
 import {
@@ -13,7 +15,7 @@ import {
   STORED_RECEIPT_SELECT,
   type StoredReceipt
 } from './charge-receipt-delivery';
-import { renderChargeReceiptSheets } from './charge-receipt-pdf';
+import { renderChargeReceiptSheets, sheetCount } from './charge-receipt-pdf';
 import type { ReceiptListQuery, ReceiptPrintQuery } from './charge-receipt-schemas';
 import { isoDay } from './charge-receipt-snapshot';
 import { toCents, fromCents } from './charge-allocation-plan';
@@ -28,6 +30,14 @@ import { toCents, fromCents } from './charge-allocation-plan';
 
 /** Au-delà, l'impression groupée est refusée (422) : période ou filtre à resserrer. */
 export const MAX_DOCUMENTS_PER_PRINT = 500;
+/** Plafond en feuilles A4, en plus du nombre de documents (500 en 1 x 1 = 500 pages). */
+export const MAX_PAGES_PER_PRINT = 250;
+/** Appels traités au plus par requête de rattrapage ; le reste est signalé (`remaining`). */
+export const MAX_BACKFILL_PER_REQUEST = 500;
+/** Appels traités par transaction du rattrapage (transactions courtes). */
+const BACKFILL_CHUNK = 50;
+/** Délai minimal entre deux envois du même document. */
+export const RESEND_COOLDOWN_MS = 2 * 60 * 1000;
 
 const RECEIPT_NOT_FOUND = 'Document introuvable.';
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -90,6 +100,7 @@ const LIST_SELECT = {
   issuedAt: true,
   emailedAt: true,
   emailError: true,
+  emailErrorCode: true,
   snapshot: true
 } as const;
 
@@ -109,6 +120,7 @@ type ListRow = {
   issuedAt: Date;
   emailedAt: Date | null;
   emailError: string | null;
+  emailErrorCode: string | null;
   snapshot: unknown;
 };
 
@@ -132,6 +144,7 @@ export function toReceiptView(row: ListRow) {
     currency: row.currency,
     issuedAt: row.issuedAt,
     emailedAt: row.emailedAt,
+    emailErrorCode: row.emailErrorCode ?? null,
     emailError: row.emailError,
     backfilled: Boolean(snapshot.backfilled)
   };
@@ -188,14 +201,63 @@ export async function getReceiptFile(tenantId: string, syndicateId: string, rece
 }
 
 /**
+ * Un document rattrapé désigne le copropriétaire du jour du rattrapage, pas
+ * forcément le payeur : on ne l'envoie qu'à ce même contact (409 sinon).
+ */
+async function assertBackfilledRecipientUnchanged(tenantId: string, receipt: StoredReceipt) {
+  if (!snapshotOf(receipt).backfilled) return;
+  const lot = await prisma.syndicateLot.findFirst({
+    where: { id: receipt.lotId, syndicateId: receipt.syndicateId, syndicate: { tenantId } },
+    select: { ownerContactId: true, coownerId: true }
+  });
+  const currentContactId = lot?.ownerContactId ?? lot?.coownerId ?? null;
+  if (!receipt.contactId || currentContactId !== receipt.contactId) {
+    throw new ConflictError(
+      "Ce document rattrapé désigne un copropriétaire qui n'est plus celui du lot : il ne peut pas lui être renvoyé."
+    );
+  }
+}
+
+/**
  * Renvoi manuel par e-mail. Geste explicite du gestionnaire : il passe même
  * si l'envoi AUTOMATIQUE est désactivé par l'agence (le modèle de l'agence
- * reste utilisé). 422 sans adresse, 502 si le serveur de messagerie refuse.
+ * reste utilisé). 429 si le document est parti il y a moins de 2 minutes,
+ * 409 pour un document rattrapé dont le copropriétaire a changé, 422 sans
+ * adresse, 502 si le serveur de messagerie refuse. Journal d'audit.
  */
-export async function resendReceiptEmail(tenantId: string, syndicateId: string, receiptId: string) {
+export async function resendReceiptEmail(
+  tenantId: string,
+  syndicateId: string,
+  receiptId: string,
+  actorUserId: string | null = null
+) {
   await assertSyndicateOfTenant(prisma, tenantId, syndicateId);
   const receipt = await loadReceipt(tenantId, syndicateId, receiptId);
+  if (receipt.emailedAt && Date.now() - receipt.emailedAt.getTime() < RESEND_COOLDOWN_MS) {
+    throw new AppError(
+      "Ce document vient d'être envoyé : patientez deux minutes avant de le renvoyer.",
+      429,
+      'EMAIL_RECENTLY_SENT'
+    );
+  }
+  await assertBackfilledRecipientUnchanged(tenantId, receipt);
+
   const outcome = await sendReceiptEmail(receipt, undefined, { ignoreDisabled: true });
+  logAuditEvent({
+    actorUserId,
+    tenantId,
+    actionKey: AuditActionKey.SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT,
+    entityType: 'SYNDIC_CHARGE_RECEIPT',
+    entityId: receipt.id,
+    payload: {
+      syndicateId,
+      number: receipt.number,
+      kind: receipt.kind,
+      sent: outcome.sent,
+      reason: outcome.sent ? null : outcome.reason,
+      code: !outcome.sent && outcome.reason === 'ERROR' ? outcome.code : null
+    }
+  });
   if (outcome.sent) {
     const updated = await prisma.syndicChargeReceipt.findFirst({
       where: { id: receipt.id, tenantId },
@@ -214,7 +276,29 @@ export async function resendReceiptEmail(tenantId: string, syndicateId: string, 
 /** Comparaison « naturelle » des numéros de lot (A-2 avant A-10). */
 const lotCollator = new Intl.Collator('fr', { numeric: true, sensitivity: 'base' });
 
+/**
+ * Agences dont une impression groupée est en cours (dans ce processus) : une
+ * seule à la fois par agence, les suivantes reçoivent 429.
+ */
+const printsInProgress = new Set<string>();
+
 export async function printReceipts(tenantId: string, syndicateId: string, query: ReceiptPrintQuery): Promise<Buffer> {
+  if (printsInProgress.has(tenantId)) {
+    throw new AppError(
+      'Une impression de quittances est déjà en cours pour votre agence : réessayez dans un instant.',
+      429,
+      'PRINT_IN_PROGRESS'
+    );
+  }
+  printsInProgress.add(tenantId);
+  try {
+    return await buildPrint(tenantId, syndicateId, query);
+  } finally {
+    printsInProgress.delete(tenantId);
+  }
+}
+
+async function buildPrint(tenantId: string, syndicateId: string, query: ReceiptPrintQuery): Promise<Buffer> {
   await assertSyndicateOfTenant(prisma, tenantId, syndicateId);
   if (query.lotId) await assertLotOfSyndicate(prisma, tenantId, syndicateId, query.lotId);
 
@@ -233,6 +317,13 @@ export async function printReceipts(tenantId: string, syndicateId: string, query
     throw new ValidationError(
       'Trop de documents pour une seule impression (500 au plus) : réduisez la période ou choisissez un copropriétaire.',
       [{ field: 'count', message: `${total} > ${MAX_DOCUMENTS_PER_PRINT}` }]
+    );
+  }
+  const pages = sheetCount(total, query.cols, query.rows);
+  if (pages > MAX_PAGES_PER_PRINT) {
+    throw new ValidationError(
+      'Trop de pages pour une seule impression (250 au plus) : mettez plus de quittances par page ou réduisez la période.',
+      [{ field: 'pages', message: `${pages} > ${MAX_PAGES_PER_PRINT}` }]
     );
   }
 
@@ -264,32 +355,53 @@ export async function printReceipts(tenantId: string, syndicateId: string, query
 /**
  * « Générer les quittances manquantes » : une quittance pour chaque appel
  * PAID de la copropriété qui n'en a pas, snapshot construit avec les données
- * ACTUELLES et marqué `backfilled`. Aucun e-mail ; le PDF est produit à la
- * première demande. Idempotent : un second passage ne crée rien.
+ * ACTUELLES et marqué `backfilled` (sans mode ni référence de paiement).
+ * Aucun e-mail ; le PDF est produit à la première demande. Idempotent.
+ *
+ * Plafonné à `MAX_BACKFILL_PER_REQUEST` appels traités par requête, en
+ * transactions courtes (`BACKFILL_CHUNK` appels d'un même lot) :
+ * `remaining` dit combien d'appels attendent un nouveau passage.
  */
 export async function backfillMissingQuittances(tenantId: string, syndicateId: string, actorUserId: string | null) {
   await assertSyndicateOfTenant(prisma, tenantId, syndicateId);
   const paidCalls = await prisma.chargeCall.findMany({
     where: { syndicateId, status: 'PAID', syndicate: { tenantId } },
-    select: { id: true, lotId: true }
+    select: { id: true, lotId: true },
+    orderBy: [{ dueDate: 'asc' }, { createdAt: 'asc' }]
   });
+  const existing = await prisma.syndicChargeReceipt.findMany({
+    where: { tenantId, syndicateId, kind: 'QUITTANCE', chargeCallId: { in: paidCalls.map(call => call.id) } },
+    select: { chargeCallId: true }
+  });
+  const alreadyIssued = new Set(existing.map(row => row.chargeCallId));
+  const candidates = paidCalls.filter(call => !alreadyIssued.has(call.id));
+  const batch = candidates.slice(0, MAX_BACKFILL_PER_REQUEST);
+
   const byLot = new Map<string, string[]>();
-  for (const call of paidCalls) byLot.set(call.lotId, [...(byLot.get(call.lotId) ?? []), call.id]);
+  for (const call of batch) byLot.set(call.lotId, [...(byLot.get(call.lotId) ?? []), call.id]);
 
   let created = 0;
   for (const [lotId, callIds] of byLot) {
-    const documents = await prisma.$transaction(async tx => {
-      await lockLotTx(tx, lotId);
-      return issueQuittancesForSettledCallsTx(tx, {
-        tenantId,
-        syndicateId,
-        lotId,
-        chargeCallIds: callIds,
-        actorUserId,
-        backfilled: true
+    for (let start = 0; start < callIds.length; start += BACKFILL_CHUNK) {
+      const chunk = callIds.slice(start, start + BACKFILL_CHUNK);
+      const documents = await prisma.$transaction(async tx => {
+        await lockLotTx(tx, lotId);
+        return issueQuittancesForSettledCallsTx(tx, {
+          tenantId,
+          syndicateId,
+          lotId,
+          chargeCallIds: chunk,
+          actorUserId,
+          backfilled: true
+        });
       });
-    });
-    created += documents.length;
+      created += documents.length;
+    }
   }
-  return { created, skipped: paidCalls.length - created };
+  return {
+    created,
+    // Déjà quittancés, ou PAID en base sans être soldés par leurs affectations.
+    skipped: paidCalls.length - candidates.length + (batch.length - created),
+    remaining: candidates.length - batch.length
+  };
 }

@@ -109,7 +109,7 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       expect(res.status).toBe(401);
     });
 
-    it("un utilisateur de A qui appelle /api/tenants/<B>/... -> 403", async () => {
+    it('un utilisateur de A qui appelle /api/tenants/<B>/... -> 403', async () => {
       const res = await request(app).get(`/api/tenants/${tenantB.id}`).set(authed(adminA));
       expect(res.status).toBe(403);
     });
@@ -211,14 +211,14 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
       await spec.assertIntact(idOfB);
     });
 
-    it("la liste de A ne contient aucun id de B", async () => {
+    it('la liste de A ne contient aucun id de B', async () => {
       const res = await request(app).get(spec.listPath(tenantA.id)).set(authed(adminA));
       expect(res.status).toBe(200);
       const ids = spec.listItems(res.body).map((item: any) => item.id);
       expect(ids).not.toContain(idOfB);
     });
 
-    it("GET/DELETE/liste depuis SA PROPRE agence (B) fonctionnent (non-regression)", async () => {
+    it('GET/DELETE/liste depuis SA PROPRE agence (B) fonctionnent (non-regression)', async () => {
       const getRes = await request(app).get(spec.itemPath(tenantB.id, idOfB)).set(authed(adminB));
       expect(getRes.status).toBe(200);
 
@@ -250,6 +250,190 @@ maybeDescribe('E1 — isolation multi-tenant bout en bout (lot E)', () => {
         .set(authed(adminB));
 
       expect(res.status).toBe(200);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Lot S3 — reçus et quittances de charges : A contre B
+  // -------------------------------------------------------------------------
+
+  describe('Syndic — recus et quittances (lot S3)', () => {
+    /** Copropriété, lot, appel PAID réglé, et (facultatif) sa quittance, directement en base. */
+    async function createSyndicWithPaidCall(tenantId: string, label: string, withReceipt: boolean) {
+      const syndicate = await prisma.syndicate.create({
+        data: { tenantId, name: `Copro ${label}`, address: '1 rue du Test' }
+      });
+      const lot = await prisma.syndicateLot.create({
+        data: { syndicateId: syndicate.id, lotNumber: `${label}-01`, lotType: 'APARTMENT', generalShares: 100 }
+      });
+      const call = await prisma.chargeCall.create({
+        data: {
+          syndicateId: syndicate.id,
+          lotId: lot.id,
+          period: '2026-01',
+          amount: 1000,
+          currency: 'XOF',
+          dueDate: new Date('2026-01-31T00:00:00.000Z'),
+          status: 'PAID'
+        }
+      });
+      const payment = await prisma.chargePayment.create({
+        data: { lotId: lot.id, chargeCallId: call.id, amount: 1000, paidAt: new Date('2026-01-10T00:00:00.000Z') }
+      });
+      await prisma.chargePaymentAllocation.create({
+        data: { paymentId: payment.id, chargeCallId: call.id, amount: 1000, source: 'PAYMENT' }
+      });
+      let receiptId: string | null = null;
+      if (withReceipt) {
+        const receipt = await prisma.syndicChargeReceipt.create({
+          data: {
+            tenantId,
+            syndicateId: syndicate.id,
+            lotId: lot.id,
+            kind: 'QUITTANCE',
+            number: `Q-2026-${label}`,
+            issuerKey: 'AGENCY',
+            chargeCallId: call.id,
+            amount: 1000,
+            currency: 'XOF',
+            // Envoyé il y a longtemps : seul le cloisonnement peut refuser le renvoi.
+            emailedAt: new Date('2026-01-10T00:00:00.000Z'),
+            snapshot: {
+              version: 1,
+              kind: 'QUITTANCE',
+              number: `Q-2026-${label}`,
+              issuedAt: '2026-01-10T00:00:00.000Z',
+              currency: 'XOF',
+              amount: 1000,
+              issuer: {
+                key: 'AGENCY',
+                kind: 'AGENCY',
+                name: label,
+                legalName: null,
+                address: null,
+                phone: null,
+                email: null,
+                rccm: null,
+                taxId: null
+              },
+              syndicate: { name: `Copro ${label}`, address: null, registrationNo: null, cadastralReference: null },
+              lot: { number: `${label}-01`, type: 'Appartement', label: null },
+              coowner: null,
+              call: {
+                id: call.id,
+                period: { label: '2026-01', start: null, end: null },
+                amount: 1000,
+                dueDate: '2026-01-31T00:00:00.000Z'
+              },
+              settlements: [],
+              settledAt: null,
+              payment: null,
+              allocations: [],
+              outstandingAfter: 0,
+              advance: 0,
+              lotAdvanceBalance: 0,
+              backfilled: false
+            }
+          }
+        });
+        receiptId = receipt.id;
+      }
+      return { syndicateId: syndicate.id, lotId: lot.id, callId: call.id, receiptId };
+    }
+
+    let own: Awaited<ReturnType<typeof createSyndicWithPaidCall>>;
+    let foreign: Awaited<ReturnType<typeof createSyndicWithPaidCall>>;
+    let foreignBare: Awaited<ReturnType<typeof createSyndicWithPaidCall>>;
+
+    beforeAll(async () => {
+      own = await createSyndicWithPaidCall(tenantA.id, 'A', true);
+      foreign = await createSyndicWithPaidCall(tenantB.id, 'B', true);
+      // Copropriété de B avec un appel PAID sans quittance : cible du rattrapage.
+      foreignBare = await createSyndicWithPaidCall(tenantB.id, 'B2', false);
+    });
+
+    const base = (tenantId: string, syndicateId: string) => `/api/tenants/${tenantId}/syndics/${syndicateId}`;
+
+    it('liste : A ne voit pas la copropriete de B (404) et sa propre liste ne contient aucun document de B', async () => {
+      const foreignList = await request(app)
+        .get(`${base(tenantA.id, foreign.syndicateId)}/quittances`)
+        .set(authed(adminA));
+      expect(foreignList.status).toBe(404);
+
+      const ownList = await request(app)
+        .get(`${base(tenantA.id, own.syndicateId)}/quittances`)
+        .set(authed(adminA));
+      expect(ownList.status).toBe(200);
+      const ids = (ownList.body.data.items as Array<{ id: string }>).map(item => item.id);
+      expect(ids).toContain(own.receiptId);
+      expect(ids).not.toContain(foreign.receiptId);
+
+      const foreignLot = await request(app)
+        .get(`${base(tenantA.id, own.syndicateId)}/lots/${foreign.lotId}/quittances`)
+        .set(authed(adminA));
+      expect(foreignLot.status).toBe(404);
+    });
+
+    it('telechargement : un document de B via une copropriete de A ou de B -> 404', async () => {
+      for (const syndicateId of [own.syndicateId, foreign.syndicateId]) {
+        const res = await request(app)
+          .get(`${base(tenantA.id, syndicateId)}/quittances/${foreign.receiptId}/fichier`)
+          .set(authed(adminA));
+        expect(res.status).toBe(404);
+      }
+    });
+
+    it("appel direct sur l'URL de B par un utilisateur de A -> 403", async () => {
+      const res = await request(app)
+        .get(`${base(tenantB.id, foreign.syndicateId)}/quittances/${foreign.receiptId}/fichier`)
+        .set(authed(adminA));
+      expect(res.status).toBe(403);
+    });
+
+    it("renvoi : un document de B -> 404, et rien n'est modifie", async () => {
+      const res = await request(app)
+        .post(`${base(tenantA.id, own.syndicateId)}/quittances/${foreign.receiptId}/envoi`)
+        .set(authed(adminA));
+      expect(res.status).toBe(404);
+      const row = await prisma.syndicChargeReceipt.findUnique({ where: { id: foreign.receiptId! } });
+      expect(row?.emailedAt?.toISOString()).toBe('2026-01-10T00:00:00.000Z');
+      expect(row?.emailErrorCode ?? null).toBeNull();
+    });
+
+    it('impression : lotId de B dans une copropriete de A -> 404 ; copropriete de B -> 404', async () => {
+      const query = 'from=2026-01-01&to=2026-12-31&kind=ALL&cols=1&rows=1';
+      const foreignLot = await request(app)
+        .get(`${base(tenantA.id, own.syndicateId)}/quittances/impression?${query}&lotId=${foreign.lotId}`)
+        .set(authed(adminA));
+      expect(foreignLot.status).toBe(404);
+      const foreignSyndicate = await request(app)
+        .get(`${base(tenantA.id, foreign.syndicateId)}/quittances/impression?${query}`)
+        .set(authed(adminA));
+      expect(foreignSyndicate.status).toBe(404);
+    });
+
+    it('rattrapage : copropriete de B -> 404, aucune quittance creee chez B', async () => {
+      const res = await request(app)
+        .post(`${base(tenantA.id, foreignBare.syndicateId)}/quittances/generer-manquantes`)
+        .set(authed(adminA));
+      expect(res.status).toBe(404);
+      const created = await prisma.syndicChargeReceipt.count({
+        where: { tenantId: tenantB.id, syndicateId: foreignBare.syndicateId }
+      });
+      expect(created).toBe(0);
+    });
+
+    it('non-regression : B lit et telecharge ses propres documents', async () => {
+      const list = await request(app)
+        .get(`${base(tenantB.id, foreign.syndicateId)}/quittances`)
+        .set(authed(adminB));
+      expect(list.status).toBe(200);
+      expect((list.body.data.items as Array<{ id: string }>).map(item => item.id)).toContain(foreign.receiptId);
+      const file = await request(app)
+        .get(`${base(tenantB.id, foreign.syndicateId)}/quittances/${foreign.receiptId}/fichier`)
+        .set(authed(adminB));
+      expect(file.status).toBe(200);
+      expect(file.headers['content-type']).toBe('application/pdf');
     });
   });
 });

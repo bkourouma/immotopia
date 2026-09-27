@@ -1,5 +1,12 @@
 # Documentation ImmoTopia
 
+## Fonctionnalités
+
+- [Inventaire des fonctionnalités](fonctionnalites/README.md) — le classeur
+  `ImmoTopia_Wiki_Fonctionnalites.xlsx` (619 sous-fonctionnalités, construit
+  depuis le code) est la référence à jour de ce que fait l'application ; à
+  mettre à jour après chaque fonctionnalité livrée.
+
 ## Agents IA et gouvernance
 
 - [AGENTS.md](../AGENTS.md) — constitution du projet pour tous les agents ;
@@ -35,14 +42,14 @@ Ces quatre documents se recouvrent partiellement : ils ont été écrits à des
 moments différents du projet. Ils sont regroupés ici en attendant une passe
 éditoriale de fusion.
 
-| Document                                                      | Contenu                                                | À lire pour                        |
-| ------------------------------------------------------------- | ------------------------------------------------------ | ---------------------------------- |
-| [overview.md](architecture/overview.md)                       | Vue d'ensemble technique la plus complète              | Comprendre l'ensemble du système   |
-| [modules.md](architecture/modules.md)                         | Découpage par module métier                            | Situer une fonctionnalité          |
-| [implementation.md](architecture/implementation.md)           | Choix d'implémentation et schéma                       | Détails techniques                 |
-| [features.md](architecture/features.md)                       | Inventaire fonctionnel                                 | Savoir ce que fait l'application   |
-| [functional-overview.md](architecture/functional-overview.md) | Présentation orientée prospect                         | Contexte commercial                |
-| [database-schema.md](architecture/database-schema.md)         | Schéma de base **partiel et daté** (38 tables sur 112) | À régénérer depuis `schema.prisma` |
+| Document                                                      | Contenu                                                                                                                | À lire pour                         |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| [overview.md](architecture/overview.md)                       | Vue d'ensemble technique la plus complète                                                                              | Comprendre l'ensemble du système    |
+| [modules.md](architecture/modules.md)                         | Découpage par module métier                                                                                            | Situer une fonctionnalité           |
+| [implementation.md](architecture/implementation.md)           | Choix d'implémentation et schéma                                                                                       | Détails techniques                  |
+| [features.md](architecture/features.md)                       | Inventaire fonctionnel **ancien, non maintenu** — le classeur [`fonctionnalites/`](fonctionnalites/README.md) fait foi | Historique de la rédaction manuelle |
+| [functional-overview.md](architecture/functional-overview.md) | Présentation orientée prospect                                                                                         | Contexte commercial                 |
+| [database-schema.md](architecture/database-schema.md)         | Schéma de base **partiel et daté** (38 tables sur 112)                                                                 | À régénérer depuis `schema.prisma`  |
 
 La référence à jour du schéma est `packages/api/prisma/schema.prisma`.
 

@@ -1142,6 +1142,12 @@ export interface LotPaymentResult {
   advance: number;
   lotAdvanceBalance: number;
   currency: string;
+  /**
+   * Reçus et quittances émis par ce paiement (lot S3). Présent seulement sur
+   * l'enregistrement réel (`POST .../paiements`) — absent de l'aperçu
+   * (`.../paiements/apercu`), qui n'écrit rien.
+   */
+  documents?: IssuedReceiptRef[];
 }
 
 export type MonthlyTrackingStatus = 'NONE' | 'PAID' | 'PARTIAL' | 'DUE' | 'OVERDUE';
@@ -1167,4 +1173,267 @@ export interface MonthlyTracking {
   currency: string;
   months: number[];
   lots: MonthlyTrackingLotRow[];
+}
+
+// --------------------------------------------------------------------------
+// Lot S3 — reçus et quittances (besoin 1)
+// --------------------------------------------------------------------------
+
+export type ReceiptKind = 'RECEIPT' | 'QUITTANCE';
+
+/** Un reçu de paiement ou une quittance de charges, tels que rendus par la liste. */
+export interface ReceiptView {
+  id: string;
+  kind: ReceiptKind;
+  number: string;
+  lotId: string;
+  lotNumber: string | null;
+  contactId: string | null;
+  coownerName: string | null;
+  chargeCallId: string | null;
+  chargePaymentId: string | null;
+  periodLabel: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  amount: number;
+  currency: string;
+  issuedAt: string;
+  emailedAt: string | null;
+  /** Message générique stocké côté API (français) — préférer `emailErrorCode` pour un libellé traduit. */
+  emailError: string | null;
+  emailErrorCode: 'SMTP_REJECTED' | 'TIMEOUT' | 'ERROR' | null;
+  /** Quittance produite par « Générer les quittances manquantes », sans appel réel derrière. */
+  backfilled: boolean;
+}
+
+/** Filtres communs à `GET .../quittances` et `GET .../lots/:lotId/quittances`. */
+export interface ReceiptListQuery {
+  lotId?: string;
+  contactId?: string;
+  kind?: ReceiptKind;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface ReceiptListResult {
+  items: ReceiptView[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+/** Paramètres de `GET .../quittances/impression` : période obligatoire, grille A4 1×1 à 3×4. */
+export interface ReceiptPrintQuery {
+  from: string;
+  to: string;
+  kind?: 'QUITTANCE' | 'RECEIPT' | 'ALL';
+  lotId?: string;
+  contactId?: string;
+  cols?: number;
+  rows?: number;
+}
+
+/** Réponse de `POST .../quittances/:receiptId/envoi`. */
+export interface ResendReceiptResult {
+  id: string;
+  number: string;
+  sent: boolean;
+  emailedAt: string;
+}
+
+/**
+ * Réponse de `POST .../quittances/generer-manquantes`. Plafonnée par requête
+ * côté API (500 appels au plus) : `remaining > 0` signifie qu'un nouveau
+ * passage traitera la suite.
+ */
+export interface BackfillReceiptsResult {
+  created: number;
+  skipped: number;
+  remaining: number;
+}
+
+/** Référence minimale d'un document émis, portée par un résultat de paiement (lot S3). */
+export interface IssuedReceiptRef {
+  id: string;
+  kind: ReceiptKind;
+  number: string;
+}
+
+// ---------------------------------------------------------------------------
+// Lot S6 — factures et paiements des prestataires (SyndicProviderInvoice).
+// ---------------------------------------------------------------------------
+
+export type ProviderInvoiceStatus = 'RECORDED' | 'PARTIALLY_PAID' | 'PAID' | 'CANCELLED';
+export type ProviderPaymentMethod = 'MOBILE_MONEY' | 'BANK_TRANSFER' | 'CASH' | 'CHECK' | 'CARD' | 'OTHER';
+
+export interface ProviderInvoicePayment {
+  id: string;
+  invoiceId: string;
+  fundId: string | null;
+  fund: { id: string; name: string } | null;
+  amount: number;
+  paidAt: string;
+  method: ProviderPaymentMethod;
+  reference: string | null;
+  journalEntryId: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  cancelEntryId: string | null;
+  createdById: string | null;
+  createdAt: string;
+}
+
+export interface ProviderInvoice {
+  id: string;
+  syndicateId: string;
+  providerId: string;
+  provider: { id: string; name: string } | null;
+  contractId: string | null;
+  contract: { id: string; nature: string } | null;
+  incidentId: string | null;
+  incident: { id: string; description: string; status: string } | null;
+  budgetLineItemId: string | null;
+  budgetLine: { id: string; category: string; description: string } | null;
+  fundId: string | null;
+  fund: { id: string; name: string } | null;
+  number: string;
+  label: string;
+  invoiceDate: string;
+  dueDate: string | null;
+  amountHT: number;
+  vatAmount: number;
+  amountTTC: number;
+  amountPaid: number;
+  amountDue: number;
+  currency: string;
+  expenseAccountId: string | null;
+  hasFile: boolean;
+  fileName: string | null;
+  status: ProviderInvoiceStatus;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  journalEntryId: string | null;
+  cancelEntryId: string | null;
+  createdById: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProviderInvoiceDetail extends ProviderInvoice {
+  payments: ProviderInvoicePayment[];
+}
+
+export interface ProviderInvoiceListQuery {
+  providerId?: string;
+  contractId?: string;
+  incidentId?: string;
+  status?: ProviderInvoiceStatus;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface ProviderInvoiceListResult {
+  items: ProviderInvoice[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/** Résultat du rattachement automatique à une imputation d'incident (§S6). */
+export type IncidentImputationLinkResult =
+  | { linked: true; imputationId: string }
+  | { linked: false; reason: 'NO_INCIDENT' | 'NO_SYNDICATE_BUDGET_IMPUTATION' | 'AMBIGUOUS' };
+
+export interface CreateProviderInvoiceRequest {
+  providerId: string;
+  contractId?: string;
+  incidentId?: string;
+  budgetLineItemId?: string;
+  fundId?: string;
+  expenseAccountId?: string;
+  expenseKind?: 'CURRENT' | 'WORKS';
+  number: string;
+  label: string;
+  invoiceDate: string;
+  dueDate?: string;
+  amountHT: number;
+  vatAmount?: number;
+  amountTTC?: number;
+  currency?: string;
+  /** Présent : la requête part en multipart. Absent : JSON. */
+  file?: File;
+}
+
+export interface CreateProviderInvoiceResult {
+  invoice: ProviderInvoice;
+  incidentImputation: IncidentImputationLinkResult;
+}
+
+export interface UpdateProviderInvoiceRequest {
+  number?: string;
+  label?: string;
+  dueDate?: string | null;
+  fundId?: string | null;
+}
+
+export interface CancelProviderInvoiceRequest {
+  reason: string;
+}
+
+export interface CreateProviderPaymentRequest {
+  amount: number;
+  paidAt: string;
+  method: ProviderPaymentMethod;
+  reference?: string;
+  fundId?: string;
+}
+
+export interface ProviderPaymentFundInfo {
+  id: string;
+  name: string;
+  balance: number;
+  currency: string;
+}
+
+export interface ProviderPaymentResult {
+  payment: ProviderInvoicePayment | null;
+  invoice: ProviderInvoice;
+  fund: ProviderPaymentFundInfo | null;
+  fundBalanceNegative: boolean;
+}
+
+export interface ProviderBalance {
+  providerId: string;
+  providerName: string;
+  currency: string;
+  invoicesCount: number;
+  totalInvoiced: number;
+  totalPaid: number;
+  totalDue: number;
+  overdueDue: number;
+}
+
+export type FundMovementDirection = 'CREDIT' | 'DEBIT';
+export type FundMovementSourceType = 'MANUAL_ADJUSTMENT' | 'PROVIDER_PAYMENT' | 'PROVIDER_PAYMENT_REVERSAL';
+
+export interface FundMovement {
+  id: string;
+  direction: FundMovementDirection;
+  amount: number;
+  balanceAfter: number;
+  label: string;
+  sourceType: FundMovementSourceType;
+  sourceId: string | null;
+  createdById: string | null;
+  createdAt: string;
+}
+
+export interface FundMovementsResult {
+  fund: { id: string; name: string; balance: number; currency: string };
+  items: FundMovement[];
+  total: number;
+  page: number;
+  limit: number;
 }
