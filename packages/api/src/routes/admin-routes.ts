@@ -53,6 +53,7 @@ import {
   updateItemHandler
 } from '../controllers/platform-billing-controller';
 import { platformInvoiceAdminRouter } from './platform-invoice-routes';
+import { tenantDataExportAdminRouter } from './tenant-data-export-routes';
 import { authenticate } from '../middleware/auth-middleware';
 import { requirePermission } from '../middleware/rbac-middleware';
 
@@ -229,6 +230,9 @@ router.post('/invoices/:invoiceId/mark-paid', requirePermission('PLATFORM_INVOIC
 // Factures PLATFORM des abonnements (vague 3, lot A) : liste, generation,
 // emission, constat de paiement, avoir, PDF.
 router.use(platformInvoiceAdminRouter);
+
+// Export complet des donnees d'une agence (lot S7) : super-admin seulement.
+router.use(tenantDataExportAdminRouter);
 
 // Statistics routes
 router.get('/statistics', requirePermission('PLATFORM_TENANTS_VIEW'), getGlobalStatisticsHandler);

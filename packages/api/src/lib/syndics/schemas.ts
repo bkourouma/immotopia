@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { checkPeriodBounds, periodBoundsFields } from './charge-allocation-schemas';
+import { httpUrl } from '../safe-url';
 
 const uuidSchema = z.string().uuid();
 
@@ -28,16 +29,10 @@ export const createSyndicateSchema = z.object({
     .min(1, "L'adresse de la copropriete est obligatoire")
     .max(500, "L'adresse de la copropriete ne doit pas depasser 500 caracteres")
     .optional(),
-  registrationNo: z
-    .string()
-    .max(100, "Le numero d'immatriculation ne doit pas depasser 100 caracteres")
-    .optional(),
+  registrationNo: z.string().max(100, "Le numero d'immatriculation ne doit pas depasser 100 caracteres").optional(),
   fiscalYear: z.number().int().min(1).max(12).optional().default(1),
   syndicManagerId: z.string().uuid().optional(),
-  cadastralReference: z
-    .string()
-    .max(100, 'La reference cadastrale ne doit pas depasser 100 caracteres')
-    .optional(),
+  cadastralReference: z.string().max(100, 'La reference cadastrale ne doit pas depasser 100 caracteres').optional(),
   totalLots: z.number().int().nonnegative().default(0),
   totalBuildings: z.number().int().positive().default(1),
   // Lot S1 : agence mandante (facultative) dont l'identite figure sur les documents.
@@ -72,7 +67,7 @@ export const updateSyndicateSchema = z
     totalLots: z.number().int().nonnegative().optional(),
     totalBuildings: z.number().int().positive().optional(),
     status: z.enum(['ACTIVE', 'IN_LIQUIDATION', 'IN_DISPUTE']).optional(),
-    regulationDocUrl: z.string().url('Le lien du reglement doit etre une URL valide').nullable().optional(),
+    regulationDocUrl: httpUrl('Le lien du reglement doit etre une URL valide').nullable().optional(),
     // Lot S1 : null detache la copropriete de son mandant.
     mandatingAgencyId: z.string().uuid().nullable().optional()
   })
@@ -253,7 +248,7 @@ export const createDocumentSchema = z.object({
   syndicateId: z.string().uuid(),
   title: z.string().min(1, 'Le titre du document est obligatoire'),
   type: z.enum(['REGULATION', 'GENERAL_MEETING_MINUTES', 'DIAGNOSTIC', 'INSURANCE', 'BUDGET', 'OTHER']),
-  fileUrl: z.string().url('Le lien du document doit etre une URL valide').optional(),
+  fileUrl: httpUrl('Le lien du document doit etre une URL valide').optional(),
   expiresAt: z.coerce.date().optional()
 });
 

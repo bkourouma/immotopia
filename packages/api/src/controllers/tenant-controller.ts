@@ -16,12 +16,18 @@ import {
   uploadTenantLogo
 } from '../services/tenant-service';
 import { ClientType, TenantType } from '@prisma/client';
-import { UpdateTenantRequest, TenantFilters, UpdateTenantModulesRequest, ProvisionTenantRequest } from '../types/tenant-types';
+import {
+  UpdateTenantRequest,
+  TenantFilters,
+  UpdateTenantModulesRequest,
+  ProvisionTenantRequest
+} from '../types/tenant-types';
 import { z } from 'zod';
 import { getTenantModules, updateTenantModules } from '../services/module-service';
 import { provisionTenant } from '../services/tenant-provisioning-service';
 import { IDEMPOTENCY_KEY_MAX_LENGTH } from '../utils/idempotency';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
+import { httpUrl } from '../lib/safe-url';
 
 /**
  * Register as a client of a tenant
@@ -122,10 +128,13 @@ export async function listTenants(_req: Request, res: Response): Promise<void> {
 
 // Validation schemas
 // `#RRGGBB` : la meme regle vaut pour l'auto-edition et l'admin (lot G3).
-const hexColor = z.string().trim().regex(/^#[0-9A-Fa-f]{6}$/, 'Couleur au format #RRGGBB');
+const hexColor = z
+  .string()
+  .trim()
+  .regex(/^#[0-9A-Fa-f]{6}$/, 'Couleur au format #RRGGBB');
 // logoUrl/brandingPrimaryColor acceptent explicitement `null` (lot G) pour
 // effacer une valeur — un simple `.optional()` ne peut que les omettre.
-const nullableLogoUrl = z.union([z.string().url(), z.null()]).optional();
+const nullableLogoUrl = z.union([httpUrl(), z.null()]).optional();
 const nullableBrandingColor = z.union([hexColor, z.null()]).optional();
 
 const updateTenantSchema = z.object({
@@ -180,7 +189,10 @@ const provisionTenantSchema = z.object({
   planKey: z.enum(['BASIC', 'PRO', 'ELITE']).optional(),
   billingCycle: z.enum(['MONTHLY', 'ANNUAL']).optional(),
   type: z.nativeEnum(TenantType).optional(),
-  modules: z.array(z.enum(['MODULE_AGENCY', 'MODULE_SYNDIC', 'MODULE_PROMOTER'])).min(1).optional(),
+  modules: z
+    .array(z.enum(['MODULE_AGENCY', 'MODULE_SYNDIC', 'MODULE_PROMOTER']))
+    .min(1)
+    .optional(),
   legalName: z.string().trim().max(160).optional(),
   contactEmail: z.string().trim().email().optional(),
   contactPhone: z.string().trim().max(30).optional(),
@@ -213,7 +225,9 @@ export const provisionTenantHandler = asyncHandler(async (req: Request, res: Res
 
   const idempotencyKeyHeader = req.header('Idempotency-Key');
   if (idempotencyKeyHeader && idempotencyKeyHeader.length > IDEMPOTENCY_KEY_MAX_LENGTH) {
-    throw new BadRequestError(`L'en-tête Idempotency-Key ne doit pas dépasser ${IDEMPOTENCY_KEY_MAX_LENGTH} caractères.`);
+    throw new BadRequestError(
+      `L'en-tête Idempotency-Key ne doit pas dépasser ${IDEMPOTENCY_KEY_MAX_LENGTH} caractères.`
+    );
   }
 
   const { result, replay } = await provisionTenant(
