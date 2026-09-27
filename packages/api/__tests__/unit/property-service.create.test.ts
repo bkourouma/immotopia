@@ -200,28 +200,77 @@ describe('POST /api/tenants/:tenantId/properties — corps sans adresse ni descr
   });
 });
 
-describe('POST /api/tenants/:tenantId/properties — corps invalide : 400 clair, jamais 500', () => {
+describe('POST /api/tenants/:tenantId/properties — corps invalide : 400 VALIDATION_ERROR, jamais 500', () => {
+  /**
+   * `assertCreatePropertyRequest` levait une `BadRequestError` avec le message
+   * en `res.body.message` (code `BAD_REQUEST`). Le schema Zod
+   * (`lib/properties/schemas.ts`) qui l'a remplace laisse le `ZodError`
+   * remonter nu jusqu'a `errorHandler`, classe en 400 `VALIDATION_ERROR` — le
+   * message precis vit desormais dans `errors[].message`, par champ.
+   */
   it.each([
-    ['sans titre', { ...corpsTerminer, title: undefined }, 'Le titre du bien est requis.'],
-    ['titre blanc', { ...corpsTerminer, title: '   ' }, 'Le titre du bien est requis.'],
-    ['sans type de bien', { ...corpsTerminer, propertyType: undefined }, 'Le type de bien est absent ou inconnu.'],
-    ['type de bien inconnu', { ...corpsTerminer, propertyType: 'CHATEAU' }, 'Le type de bien est absent ou inconnu.'],
+    ['sans titre', { ...corpsTerminer, title: undefined }, 'title', 'Le titre du bien est requis.'],
+    ['titre blanc', { ...corpsTerminer, title: '   ' }, 'title', 'Le titre du bien est requis.'],
+    [
+      'sans type de bien',
+      { ...corpsTerminer, propertyType: undefined },
+      'propertyType',
+      'Le type de bien est absent ou inconnu.'
+    ],
+    [
+      'type de bien inconnu',
+      { ...corpsTerminer, propertyType: 'CHATEAU' },
+      'propertyType',
+      'Le type de bien est absent ou inconnu.'
+    ],
     [
       'type de detention inconnu',
       { ...corpsTerminer, ownershipType: 'LOCATAIRE' },
+      'ownershipType',
       'Le type de détention du bien est absent ou inconnu.'
     ],
     [
       'mode de transaction inconnu',
       { ...corpsTerminer, transactionModes: ['LEASING'] },
+      'transactionModes.0',
       'Les modes de transaction du bien sont invalides.'
     ],
-    ['adresse non textuelle', { ...corpsTerminer, address: 12 }, "L'adresse du bien doit être un texte."]
-  ])('%s -> 400', async (_cas, corps, message) => {
+    [
+      'adresse non textuelle',
+      { ...corpsTerminer, address: 12 },
+      'address',
+      "L'adresse du bien doit être un texte."
+    ],
+    [
+      'prix mal type (chaine non numerique)',
+      { ...corpsTerminer, price: 'abc' },
+      'price',
+      'Type invalide : number attendu, string reçu.'
+    ],
+    [
+      'nombre de chambres mal type (chaine non numerique)',
+      { ...corpsTerminer, bedrooms: 'x' },
+      'bedrooms',
+      'Type invalide : number attendu, string reçu.'
+    ],
+    [
+      'proprietaire qui n’est pas un uuid',
+      { ...corpsTerminer, ownerUserId: 'pas-un-uuid' },
+      'ownerUserId',
+      'Identifiant invalide.'
+    ],
+    [
+      'devise mal typee (nombre au lieu de texte)',
+      { ...corpsTerminer, currency: 123 },
+      'currency',
+      'Type invalide : string attendu, number reçu.'
+    ]
+  ])('%s -> 400 VALIDATION_ERROR', async (_cas, corps, field, message) => {
     const res = await request(appCreation()).post(`/api/tenants/${TENANT_ID}/properties`).send(corps);
 
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe(message);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+    expect(res.body.errors).toEqual(expect.arrayContaining([expect.objectContaining({ field, message })]));
     expect(transactionMock).not.toHaveBeenCalled();
   });
 });
