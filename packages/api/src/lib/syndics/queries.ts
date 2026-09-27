@@ -256,6 +256,16 @@ async function ensureOwnerAccountForLotTx(
   });
 }
 
+/**
+ * Lot S1 : l'agence mandante designee doit appartenir a l'agence. Un mandant
+ * d'une autre agence repond comme un mandant inexistant (404).
+ */
+async function assertMandatingAgencyOfTenant(tenantId: string, mandatingAgencyId: string | null | undefined) {
+  await assertBelongsToTenant(prisma, 'syndicMandatingAgency', mandatingAgencyId, tenantId, {
+    message: 'Agence mandante introuvable.'
+  });
+}
+
 export async function listSyndicatesByTenant(tenantId: string, pagination?: PaginationInput) {
   const pager = buildPagination(pagination);
   return prisma.syndicate.findMany({
@@ -271,6 +281,8 @@ export async function listSyndicatesByTenant(tenantId: string, pagination?: Pagi
       // « Supprimer » doit etre desactive (ecart recette #8 : seule une
       // copropriete vide peut etre supprimee — voir
       // `deleteEmptySyndicateByTenant`).
+      // Lot S1 : resume du mandant, expose par toSyndicateResponse.
+      mandatingAgency: { select: { id: true, name: true } },
       _count: {
         select: {
           lots: true,
@@ -328,7 +340,8 @@ export async function getSyndicateWithLotsAndStats(tenantId: string, syndicateId
         }
       },
       chargeCalls: true,
-      funds: true
+      funds: true,
+      mandatingAgency: { select: { id: true, name: true } }
     }
   });
 }
@@ -345,8 +358,11 @@ export async function createSyndicateWithDefaults(
     cadastralReference?: string | null;
     totalLots?: number;
     totalBuildings?: number;
+    mandatingAgencyId?: string | null;
   }
 ) {
+  await assertMandatingAgencyOfTenant(tenantId, data.mandatingAgencyId);
+
   if (data.propertyId) {
     const property = await prisma.property.findFirst({
       where: {
@@ -408,6 +424,7 @@ export async function createSyndicateWithDefaults(
         cadastralReference: data.cadastralReference ?? undefined,
         totalLots: data.totalLots ?? 0,
         totalBuildings: data.totalBuildings ?? 1,
+        mandatingAgencyId: data.mandatingAgencyId ?? undefined,
         tenantId
       }
     });
@@ -429,6 +446,7 @@ export async function updateSyndicateByTenant(
     totalBuildings?: number;
     status?: 'ACTIVE' | 'IN_LIQUIDATION' | 'IN_DISPUTE';
     regulationDocUrl?: string | null;
+    mandatingAgencyId?: string | null;
   }
 ) {
   const existing = await prisma.syndicate.findFirst({
@@ -465,6 +483,8 @@ export async function updateSyndicateByTenant(
       throw notFound('Syndic manager introuvable ou inaccessible');
     }
   }
+
+  await assertMandatingAgencyOfTenant(tenantId, data.mandatingAgencyId);
 
   const statusChanges = data.status !== undefined && data.status !== existing.status;
   if (!statusChanges) {

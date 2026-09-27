@@ -563,17 +563,22 @@ model Tenant {
   updatedAt DateTime   @updatedAt @map("updated_at")
 
   // New fields for multi-tenant SaaS
-  legalName            String?      @map("legal_name")
-  status               TenantStatus @default(PENDING)
-  contactEmail         String?      @map("contact_email")
-  contactPhone         String?      @map("contact_phone")
-  country              String?
-  city                 String?
-  address              String?
-  brandingPrimaryColor String?      @map("branding_primary_color")
-  subdomain            String?      @unique
-  customDomain         String?      @map("custom_domain")
-  lastActivityAt       DateTime?    @map("last_activity_at")
+  legalName             String?      @map("legal_name")
+  status                TenantStatus @default(PENDING)
+  contactEmail          String?      @map("contact_email")
+  contactPhone          String?      @map("contact_phone")
+  country               String?
+  city                  String?
+  address               String?
+  brandingPrimaryColor  String?      @map("branding_primary_color")
+  subdomain             String?      @unique
+  customDomain          String?      @map("custom_domain")
+  lastActivityAt        DateTime?    @map("last_activity_at")
+  /// Lot S1 (syndic) : signature et cachet de l'agence apposes sur les
+  /// documents emis sans agence mandante. Cle de stockage PRIVEE
+  /// (`branding/<tenantId>/agence/...`), jamais renvoyee au client.
+  documentSignaturePath String?      @map("document_signature_path")
+  documentStampPath     String?      @map("document_stamp_path")
 
   // Relationships
   clients TenantClient[]
@@ -654,6 +659,7 @@ model Tenant {
 
   // Syndic relationships
   syndicates               Syndicate[]
+  syndicMandatingAgencies  SyndicMandatingAgency[]
   serviceProviders         ServiceProvider[]
   assetValuations          AssetValuation[]
   propertyLoans            PropertyLoan[]
@@ -3496,10 +3502,15 @@ model Syndicate {
   totalBuildings     Int             @default(1) @map("total_buildings")
   status             SyndicateStatus @default(ACTIVE)
   regulationDocUrl   String?         @map("regulation_doc_url")
+  /// Lot S1 : agence mandante dont l'identite figure sur les documents.
+  mandatingAgencyId  String?         @map("mandating_agency_id") @db.Uuid
+  /// Lot S1 : cle de stockage PRIVEE du logo de la copropriete.
+  logoPath           String?         @map("logo_path")
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
   tenant             Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  mandatingAgency    SyndicMandatingAgency?     @relation(fields: [mandatingAgencyId], references: [id], onDelete: Restrict)
   property           Property?                  @relation("SyndicateProperty", fields: [propertyId], references: [id], onDelete: SetNull)
   syndicManager      CrmContact?                @relation("SyndicManager", fields: [syndicManagerId], references: [id], onDelete: SetNull)
   lots               SyndicateLot[]
@@ -3522,7 +3533,37 @@ model Syndicate {
 
   @@index([tenantId])
   @@index([tenantId, name])
+  @@index([mandatingAgencyId])
   @@map("syndicates")
+}
+
+/// Lot S1 (besoin 7) : agence cliente du cabinet de syndic pour le compte de
+/// laquelle une copropriete est geree. Elle ne se connecte jamais ; son
+/// identite (logo, coordonnees, signature, cachet) figure sur les documents
+/// emis pour ses coproprietes. Les images sont des cles de stockage PRIVEES
+/// (`branding/<tenantId>/mandants/<id>/...`), jamais renvoyees au client.
+model SyndicMandatingAgency {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id")
+  name          String
+  legalName     String?  @map("legal_name")
+  address       String?
+  phone         String?
+  email         String?
+  rccm          String?
+  taxId         String?  @map("tax_id")
+  logoPath      String?  @map("logo_path")
+  signaturePath String?  @map("signature_path")
+  stampPath     String?  @map("stamp_path")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syndicates Syndicate[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("syndic_mandating_agencies")
 }
 
 model SyndicateLot {
