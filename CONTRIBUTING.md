@@ -12,22 +12,24 @@ le dépôt est un monorepo npm workspaces avec un unique `package-lock.json`.
 - Une branche par sujet : `fix/...`, `feat/...`, `chore/...`.
 - Messages de commit en [Conventional Commits](https://www.conventionalcommits.org/fr/) :
   `type(portée): résumé à l'impératif`.
-- Le corps du message explique le *pourquoi*, pas le *quoi* — le diff dit déjà
+- Le corps du message explique le _pourquoi_, pas le _quoi_ — le diff dit déjà
   quoi.
 
 ## Garde-fous
 
-Un hook `pre-commit` (husky + lint-staged) formate et lint les fichiers
-modifiés. La CI (`.github/workflows/ci.yml`) exécute sur chaque PR :
+Le hook `pre-commit` de Lefthook appelle `lint-staged` pour formater et lint les
+fichiers indexés. `npm install` installe le hook ; le script `prepare` migre
+l'ancien chemin Husky `.husky/_` lorsqu'il est encore configuré localement. La
+CI (`.github/workflows/ci.yml`) exécute sur chaque PR :
 
-| Étape | Bloquant |
-|---|---|
-| `prisma generate` + `prisma migrate diff` | non (signale la dérive schéma/migrations) |
-| `tsc --noEmit` backend | non (dette préexistante, voir `AUDIT_CODE.md`) |
-| `eslint` | non (dette préexistante) |
-| `jest` backend | **oui** |
-| `tsc --noEmit` frontend | **oui** |
-| `build` frontend | **oui** |
+| Étape                                     | Bloquant                                       |
+| ----------------------------------------- | ---------------------------------------------- |
+| `prisma generate` + `prisma migrate diff` | non (signale la dérive schéma/migrations)      |
+| `tsc --noEmit` backend                    | non (dette préexistante, voir `AUDIT_CODE.md`) |
+| `eslint`                                  | non (dette préexistante)                       |
+| `jest` backend                            | **oui**                                        |
+| `tsc --noEmit` frontend                   | **oui**                                        |
+| `build` frontend                          | **oui**                                        |
 
 Les étapes non bloquantes le sont temporairement : elles doivent passer à
 bloquant module par module à mesure que la dette est résorbée. Ne rajoutez pas

@@ -1,0 +1,15 @@
+# Two Astra coordinators are started as separate Codex tasks; this is their
+# project default when the repository is trusted.
+model = "gpt-6-astra"
+model_reasoning_effort = "medium"
+# No approval prompts, but writes stay confined to the workspace. The Claude
+# hooks in .claude/ do not apply to Codex: the shared guards are the Lefthook
+# git hooks (pre-commit, pre-push) and CI.
+approval_policy = "never"
+sandbox_mode = "workspace-write"
+
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 6
+default_subagent_model = "gpt-6-sol"
+default_subagent_reasoning_effort = "medium"

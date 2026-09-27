@@ -1,5 +1,27 @@
 # Documentation ImmoTopia
 
+## Agents IA et gouvernance
+
+- [AGENTS.md](../AGENTS.md) — constitution du projet pour tous les agents ;
+  [CLAUDE.md](../CLAUDE.md) l'importe pour Claude Code
+- [Passation de session](workflows/HANDOFF.md) — état du travail en cours, lu
+  en début de session et tenu à jour par les agents
+- [Processus développement](workflows/DEV_PROCESS.md) et
+  [processus démo/debug](workflows/DEMO_DEBUG_PROCESS.md) — rôles indépendants
+  des modèles, cycle de correction et [rapport d'anomalie](workflows/BUG_REPORT_TEMPLATE.md) ;
+  [processus pilotage à agent unique](workflows/LEAD_PROCESS.md) — un seul
+  agent coordonne les deux processus ou délègue directement, jusqu'à la PR ;
+  [adaptateurs Codex, Claude et autres agents](workflows/AGENT_ADAPTERS.md)
+- [Runbook](workflows/RUNBOOK.md) — installation, ports, base, dépannage
+- [Architecture du système](architecture/SYSTEM_DESIGN.md) et
+  [modèle de données](architecture/DATA_MODELS.md)
+- [Décisions d'architecture (ADR)](architecture/adr/ADR-000-template.md)
+- [ADR-001 — contrôle des frontières de paquets](architecture/adr/ADR-001-controle-frontieres-paquets.md)
+- [ADR-002 — Repomix et Lefthook](architecture/adr/ADR-002-repomix-lefthook.md)
+- [Standards de code](governance/CODING_STANDARDS.md) et
+  [sécurité — modèle de menace](governance/SECURITY.md)
+- [Contexte IA avec Repomix](../repomix.config.json) — génération locale via `npm run repomix`
+
 ## Démarrer
 
 - [Installation et premier lancement](setup/getting-started.md)
