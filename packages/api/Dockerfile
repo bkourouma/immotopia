@@ -127,8 +127,10 @@ console.log(deps.length + ' dependances de production presentes dans l image');"
 # sans ce dossier prepare, le process meurt au demarrage sur
 # `EACCES: permission denied, mkdir 'logs'`.
 #
-# Ces fichiers restent volontairement ephemeres, sans volume : le transport
-# Console est toujours actif, donc la source de verite est `docker logs`.
+# En production, /app/logs est monte sur le volume nomme immotopia-saas-api-logs
+# (infra/compose/docker-compose.prod.yml) : `docker logs` est perdu a chaque
+# recreation du conteneur, ces fichiers non. Un volume nomme vide reprend au
+# premier montage le contenu et le proprietaire (node) de ce dossier.
 RUN mkdir -p /data/uploads /app/logs && chown -R node:node /data /app/logs
 
 USER node
