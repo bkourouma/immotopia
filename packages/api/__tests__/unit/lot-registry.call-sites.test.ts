@@ -41,7 +41,7 @@ const CALL_SITES: Array<[file: string, fn: string, expected: RegExp, transaction
   // Coproprietes : creation (capacite), statut, suppression, lots.
   ['lib/syndics/queries.ts', 'createSyndicateWithDefaults', /assertCapacityTx\(tx, tenantId, 'COPROPRIETES'\)/, true],
   ['lib/syndics/queries.ts', 'updateSyndicateByTenant', /syncLotActivationsTx\(tx, tenantId, \{ syndicateIds/, true],
-  ['lib/syndics/queries.ts', 'archiveSyndicateByTenant', /syncLotActivationsTx\(tx, tenantId, scope/, true],
+  ['lib/syndics/queries.ts', 'deleteEmptySyndicateByTenant', /syncLotActivationsTx\(tx, tenantId, scope/, true],
   ['lib/syndics/queries.ts', 'createSyndicateLot', /syncLotActivationsTx\(tx, tenantId, \{ syndicateLotIds/, true],
   [
     'lib/syndics/queries.ts',

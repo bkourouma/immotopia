@@ -249,10 +249,20 @@ export async function listSyndicatesByTenant(tenantId: string, pagination?: Pagi
       }
     },
     include: {
+      // Le compte complet (pas seulement lots/chargeCalls) permet a la liste
+      // web de savoir, sans requete supplementaire, si le bouton
+      // « Supprimer » doit etre desactive (ecart recette #8 : seule une
+      // copropriete vide peut etre supprimee — voir
+      // `deleteEmptySyndicateByTenant`).
       _count: {
         select: {
           lots: true,
-          chargeCalls: true
+          chargeCalls: true,
+          budgets: true,
+          generalMeetings: true,
+          documents: true,
+          serviceContracts: true,
+          incidents: true
         }
       }
     },
@@ -462,7 +472,19 @@ export async function updateSyndicateByTenant(
   });
 }
 
-export async function archiveSyndicateByTenant(tenantId: string, syndicateId: string) {
+/**
+ * Suppression definitive d'une copropriete — seulement si elle est vide.
+ *
+ * Anciennement `archiveSyndicateByTenant` : le nom promettait un archivage
+ * (statut, corbeille) que le code n'a jamais fait — c'etait deja un
+ * `prisma.syndicate.delete` en cascade sur les lots, appels de charges, AG,
+ * documents, contrats et incidents (ecart recette #8,
+ * docs/recette/SCENARIO_SYNDIC_MODULES.md). Sans migration pour ajouter un
+ * statut d'archivage a `SyndicateStatus`, la seule option sure est de refuser
+ * la suppression tant qu'il reste la moindre donnee liee, et de renommer la
+ * fonction pour qu'elle dise ce qu'elle fait reellement.
+ */
+export async function deleteEmptySyndicateByTenant(tenantId: string, syndicateId: string) {
   const existing = await prisma.syndicate.findFirst({
     where: {
       id: syndicateId,
@@ -475,8 +497,26 @@ export async function archiveSyndicateByTenant(tenantId: string, syndicateId: st
     throw notFound('Copropriete introuvable ou inaccessible');
   }
 
-  // Suppression : ses lots (supprimes en cascade) sortent du registre dans la
-  // meme transaction ; le perimetre est releve AVANT la suppression.
+  const [lots, budgets, chargeCalls, meetings, documents, contracts, incidents] = await Promise.all([
+    prisma.syndicateLot.count({ where: { syndicateId } }),
+    prisma.syndicateBudget.count({ where: { syndicateId } }),
+    prisma.chargeCall.count({ where: { syndicateId } }),
+    prisma.generalMeeting.count({ where: { syndicateId } }),
+    prisma.syndicateDocument.count({ where: { syndicateId } }),
+    prisma.maintenanceContract.count({ where: { syndicateId } }),
+    prisma.syndicateIncident.count({ where: { syndicateId } })
+  ]);
+
+  if (lots + budgets + chargeCalls + meetings + documents + contracts + incidents > 0) {
+    throw conflict(
+      'Cette copropriete a des lots, des appels de charges, des assemblees ou des documents : elle ne peut pas etre supprimee.'
+    );
+  }
+
+  // Suppression : perimetre releve AVANT la suppression, comme pour toute
+  // autre sortie du registre des lots (il n'y a normalement aucun lot ici
+  // puisque la copropriete est vide, mais on garde la meme mecanique que les
+  // autres operations de `syncLotActivationsTx` par coherence).
   return prisma.$transaction(async tx => {
     const scope = await resolveLotScope(tx, tenantId, { syndicateIds: [syndicateId] });
     const deleted = await tx.syndicate.delete({
@@ -2041,6 +2081,76 @@ export async function listServiceProvidersBySyndicate(tenantId: string, syndicat
       }
     },
     orderBy: { name: 'asc' }
+  });
+}
+
+/**
+ * Creation d'un prestataire, rattache a l'agence (ecart recette #2, FR-010).
+ * `ServiceProvider` n'est pas lie a une copropriete : le prestataire cree ici
+ * est visible depuis n'importe quelle copropriete de l'agence, comme
+ * `listServiceProvidersBySyndicate` (au-dessus) le fait deja pour la lecture.
+ */
+export async function createServiceProvider(
+  tenantId: string,
+  data: { name: string; specialty?: string; email?: string; phone?: string }
+) {
+  return prisma.serviceProvider.create({
+    data: {
+      tenantId,
+      name: data.name,
+      specialty: data.specialty,
+      email: data.email,
+      phone: data.phone
+    }
+  });
+}
+
+export async function updateServiceProviderByTenant(
+  tenantId: string,
+  providerId: string,
+  data: { name?: string; specialty?: string | null; email?: string | null; phone?: string | null }
+) {
+  const existing = await prisma.serviceProvider.findFirst({
+    where: { id: providerId, tenantId },
+    select: { id: true }
+  });
+
+  if (!existing) {
+    throw notFound('Prestataire introuvable ou inaccessible');
+  }
+
+  return prisma.serviceProvider.update({
+    where: { id: providerId },
+    data
+  });
+}
+
+/**
+ * Refuse la suppression d'un prestataire encore lie a un contrat ou un
+ * incident (ecart recette #2) : le supprimer aurait laisse ces lignes
+ * pointer vers un prestataire disparu sans le dire.
+ */
+export async function deleteServiceProviderByTenant(tenantId: string, providerId: string) {
+  const existing = await prisma.serviceProvider.findFirst({
+    where: { id: providerId, tenantId },
+    select: { id: true }
+  });
+
+  if (!existing) {
+    throw notFound('Prestataire introuvable ou inaccessible');
+  }
+
+  const [contractsCount, incidentsCount] = await Promise.all([
+    prisma.maintenanceContract.count({ where: { providerId } }),
+    prisma.syndicateIncident.count({ where: { providerId } })
+  ]);
+
+  if (contractsCount > 0 || incidentsCount > 0) {
+    throw conflict('Ce prestataire a des contrats ou des incidents lies : il ne peut pas etre supprime.');
+  }
+
+  return prisma.serviceProvider.delete({
+    where: { id: providerId }
   });
 }
 

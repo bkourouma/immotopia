@@ -209,6 +209,11 @@ describe('Syndics profiles/incidents page', () => {
       if (url.includes('/properties')) {
         return Promise.resolve({ data: { success: true, data: [], pagination: { total: 0 } } });
       }
+      if (url.includes('/prestataires')) {
+        return Promise.resolve({
+          data: { success: true, data: { providers: [], contracts: [], commonAssets: [] } }
+        });
+      }
       return Promise.reject(new Error(`Unhandled GET ${url}`));
     });
   });

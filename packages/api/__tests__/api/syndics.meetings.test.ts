@@ -68,7 +68,7 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   createSyndicateLot: jest.fn(),
   updateSyndicateLotByTenant: jest.fn(),
   updateSyndicateByTenant: jest.fn(),
-  archiveSyndicateByTenant: jest.fn(),
+  deleteEmptySyndicateByTenant: jest.fn(),
   listChargeCallsBySyndicate: jest.fn(),
   getChargeCallByTenant: jest.fn(),
   createChargeCallAndUpdateStatus: jest.fn(),
@@ -185,15 +185,17 @@ jest.mock('../../src/lib/syndics/queries', () => ({
     store.proxies.push(proxy);
     return proxy;
   }),
-  deleteMeetingProxyByTenant: jest.fn(async (_tenantId: string, _syndicateId: string, _meetingId: string, proxyId: string) => {
-    const index = store.proxies.findIndex(proxy => proxy.id === proxyId);
-    if (index === -1) {
-      const err: any = new Error('Pouvoir introuvable ou inaccessible');
-      err.status = 404;
-      throw err;
+  deleteMeetingProxyByTenant: jest.fn(
+    async (_tenantId: string, _syndicateId: string, _meetingId: string, proxyId: string) => {
+      const index = store.proxies.findIndex(proxy => proxy.id === proxyId);
+      if (index === -1) {
+        const err: any = new Error('Pouvoir introuvable ou inaccessible');
+        err.status = 404;
+        throw err;
+      }
+      return store.proxies.splice(index, 1)[0];
     }
-    return store.proxies.splice(index, 1)[0];
-  })
+  )
 }));
 
 jest.mock('../../src/lib/syndics/notifications', () => ({
@@ -296,7 +298,9 @@ describe('Syndics meetings routes', () => {
     const missing = await request(app).post(base).send({ grantorContactId: 'contact-1' });
     expect(missing.status).toBe(400);
 
-    const same = await request(app).post(base).send({ grantorContactId: 'contact-1', representativeContactId: 'contact-1' });
+    const same = await request(app)
+      .post(base)
+      .send({ grantorContactId: 'contact-1', representativeContactId: 'contact-1' });
     expect(same.status).toBe(422);
 
     const created = await request(app)

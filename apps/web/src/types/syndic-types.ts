@@ -58,6 +58,11 @@ export interface SyndicateLot {
 export interface SyndicateCount {
   lots: number;
   chargeCalls: number;
+  budgets?: number;
+  generalMeetings?: number;
+  documents?: number;
+  serviceContracts?: number;
+  incidents?: number;
 }
 
 export interface Syndicate {
@@ -127,6 +132,7 @@ export interface UpdateSyndicateRequest {
   cadastralReference?: string | null;
   fiscalYear?: number;
   syndicManagerId?: string | null;
+  status?: SyndicateStatus;
 }
 
 export interface CreateSyndicateLotRequest {
@@ -351,7 +357,23 @@ export interface ServiceProvider {
   id: string;
   tenantId: string;
   name: string;
-  category?: string | null;
+  specialty?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateServiceProviderRequest {
+  name: string;
+  specialty?: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface UpdateServiceProviderRequest {
+  name?: string;
+  specialty?: string | null;
   email?: string | null;
   phone?: string | null;
 }

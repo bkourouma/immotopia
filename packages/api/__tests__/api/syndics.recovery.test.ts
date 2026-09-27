@@ -79,7 +79,7 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   createSyndicateLot: jest.fn(),
   updateSyndicateLotByTenant: jest.fn(),
   updateSyndicateByTenant: jest.fn(),
-  archiveSyndicateByTenant: jest.fn(),
+  deleteEmptySyndicateByTenant: jest.fn(),
   listChargeCallsBySyndicate: jest.fn(),
   getChargeCallByTenant: jest.fn(),
   createChargeCallAndUpdateStatus: jest.fn(),
