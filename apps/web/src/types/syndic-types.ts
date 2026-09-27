@@ -78,6 +78,11 @@ export interface Syndicate {
   totalBuildings: number;
   status: SyndicateStatus;
   regulationDocUrl?: string | null;
+  /** Lot S1 (besoin 7) : agence mandante, sinon identité de l'agence elle-même. */
+  mandatingAgencyId?: string | null;
+  mandatingAgency?: { id: string; name: string } | null;
+  hasLogo?: boolean;
+  logoUrl?: string | null;
   createdAt: string;
   updatedAt: string;
   lots?: SyndicateLot[];
@@ -123,6 +128,8 @@ export interface CreateSyndicateRequest {
   cadastralReference?: string;
   totalLots?: number;
   totalBuildings?: number;
+  /** Lot S1 : `null` détache (identité de l'agence), absent = pas de mandant à la création. */
+  mandatingAgencyId?: string | null;
 }
 
 export interface UpdateSyndicateRequest {
@@ -133,6 +140,8 @@ export interface UpdateSyndicateRequest {
   fiscalYear?: number;
   syndicManagerId?: string | null;
   status?: SyndicateStatus;
+  /** Lot S1 : `null` détache le mandant (identité de l'agence). */
+  mandatingAgencyId?: string | null;
 }
 
 export interface CreateSyndicateLotRequest {

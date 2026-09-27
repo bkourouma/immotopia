@@ -52,10 +52,16 @@ preuve.
   français (`feat(module): …`), terminé par la ligne d'attribution demandée
   par l'environnement. Jamais pendant qu'un agent écrit, jamais `--no-verify` :
   un refus de hook se corrige.
+- Avant de pousser, si le diff ajoute, modifie ou retire une fonctionnalité
+  visible, mets à jour
+  `docs/fonctionnalites/ImmoTopia_Wiki_Fonctionnalites.xlsx` et lance
+  `npm run wiki:export` (`docs/fonctionnalites/README.md`) ; sinon dis-le
+  dans la PR.
 - Pousse après chaque lot de commits, puis ouvre la PR avec `gh pr create`
   (base `main` ou la branche parente) : titre et description en français —
   contexte, changements, vérifications faites, ce qui n'a pas été vérifié,
-  points ouverts — et la ligne d'attribution demandée par l'environnement.
+  points ouverts, mise à jour ou non du classeur de fonctionnalités — et la
+  ligne d'attribution demandée par l'environnement.
 - Suis la CI avec les outils PR de l'environnement plutôt qu'en interrogeant
   `gh` en boucle ; corrige les échecs sur la branche et repousse.
 

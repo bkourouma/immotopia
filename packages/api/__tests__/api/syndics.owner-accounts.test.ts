@@ -144,6 +144,18 @@ jest.mock('../../src/lib/syndics/owner-account-statement', () => ({
   buildOwnerAccountStatementPdf: jest.fn().mockResolvedValue(Buffer.from('PDF-STATEMENT'))
 }));
 
+// Lot S1 : le releve porte l'identite du mandant ou de l'agence, lue en base.
+const mockBranding = {
+  issuer: { kind: 'AGENCY', name: 'Agence' },
+  issuerLogo: null,
+  signature: null,
+  stamp: null,
+  syndicate: null
+};
+jest.mock('../../src/lib/documents/document-branding', () => ({
+  resolveDocumentBranding: jest.fn(async () => mockBranding)
+}));
+
 import syndicRoutes from '../../src/routes/syndic-routes';
 import { errorHandler } from '../../src/middleware/error-middleware';
 
@@ -200,6 +212,11 @@ describe('Syndics owner accounts routes', () => {
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toContain('application/pdf');
     expect(response.headers['content-disposition']).toContain('attachment');
+
+    const { resolveDocumentBranding } = jest.requireMock('../../src/lib/documents/document-branding');
+    const { buildOwnerAccountStatementPdf } = jest.requireMock('../../src/lib/syndics/owner-account-statement');
+    expect(resolveDocumentBranding).toHaveBeenCalledWith(TENANT_ID, SYNDIC_ID);
+    expect(buildOwnerAccountStatementPdf).toHaveBeenCalledWith(expect.any(Object), mockBranding);
   });
 
   it('enforces tenant isolation for unknown lot account', async () => {

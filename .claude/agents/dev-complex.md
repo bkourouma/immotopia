@@ -9,4 +9,8 @@ disallowedTools: Agent
 Lis `AGENTS.md` et `docs/workflows/DEV_PROCESS.md`. Travaille seulement sur
 les fichiers attribués. Vérifie le changement avec les commandes adaptées et
 rapporte les fichiers modifiés, les résultats et les limites. Ne crée pas
-d'autre agent et ne modifie pas l'index ou la branche Git.
+d'autre agent et ne modifie pas l'index ou la branche Git. Si le classeur
+`docs/fonctionnalites/` t'est confié, mets-le à jour
+(`docs/fonctionnalites/README.md`) ; sinon, signale dans ton rapport les
+sous-fonctionnalités ajoutées ou modifiées pour que le coordinateur le
+fasse.

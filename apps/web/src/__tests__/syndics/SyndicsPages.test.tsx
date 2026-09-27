@@ -36,6 +36,8 @@ vi.mock('antd', async () => {
       React.createElement(Tag, props, children);
 
   const Table = ({ dataSource }: any) => <div>{JSON.stringify(dataSource || [])}</div>;
+  const UploadComp: any = ({ children }: any) => <div>{children}</div>;
+  UploadComp.LIST_IGNORE = 'ignore';
   const FormComp: any = ({ children }: any) => <form>{children}</form>;
   FormComp.useForm = () => [
     { validateFields: jestObject.fn(), resetFields: jestObject.fn(), setFieldsValue: jestObject.fn() }
@@ -103,6 +105,7 @@ vi.mock('antd', async () => {
     // « Supprimer » desactive (ecart recette #8) sans simuler le survol reel.
     Tooltip: passthrough('span'),
     Typography,
+    Upload: UploadComp,
     message: {
       success: jestObject.fn(),
       error: jestObject.fn()
@@ -318,6 +321,9 @@ describe('Syndics pages', () => {
           }
         } as never);
       }
+      if (url === '/tenants/tenant-1/syndic-mandating-agencies') {
+        return Promise.resolve({ data: { success: true, data: [] } } as never);
+      }
       if (url === '/tenants/tenant-1/syndics/syndic-1/charges') {
         return Promise.resolve({
           data: {
@@ -412,6 +418,9 @@ describe('Syndics pages', () => {
         } as never);
       }
       if (url === '/tenants/tenant-1/syndics/syndic-1/charges') {
+        return Promise.resolve({ data: { success: true, data: [] } } as never);
+      }
+      if (url === '/tenants/tenant-1/syndic-mandating-agencies') {
         return Promise.resolve({ data: { success: true, data: [] } } as never);
       }
       return Promise.reject(new Error(`Unhandled GET ${url}`));
