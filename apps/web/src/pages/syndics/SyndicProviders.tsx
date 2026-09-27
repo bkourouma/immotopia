@@ -13,11 +13,13 @@ import {
   Space,
   Spin,
   Table,
+  Tabs,
   Typography
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { ContractList } from '../../components/syndics/ContractList';
+import { ProviderInvoicesTab } from '../../components/syndics/ProviderInvoicesTab';
 import { useConfirmAction } from '../../components/primitives';
 import {
   createContract,
@@ -226,54 +228,79 @@ export const SyndicProviders: React.FC = () => {
     }
   ];
 
+  const providersPanel = (
+    <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <Space direction="vertical" size={4}>
+        <div className="it-toolbar">
+          <Title level={2} className="it-toolbar__title" style={{ margin: 0 }}>
+            {t('Prestataires et contrats')}
+          </Title>
+          <Space>
+            <Button icon={<PlusOutlined />} onClick={openCreateProviderModal}>
+              {t('Nouveau prestataire')}
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenCreateContract(true)}>
+              {t('Nouveau contrat')}
+            </Button>
+          </Space>
+        </div>
+        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+          {t('Contrats actifs, prestataires relies et actifs des parties communes.')}
+        </Paragraph>
+      </Space>
+
+      {error ? <Alert type="error" message={error} showIcon /> : null}
+
+      {loading ? (
+        <div style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Spin size="large" />
+        </div>
+      ) : (
+        <>
+          <Card title={t('Prestataires ({{length}})', { length: payload.providers.length })}>
+            <Table
+              rowKey="id"
+              dataSource={payload.providers}
+              columns={providerColumns}
+              pagination={{ pageSize: 8, hideOnSinglePage: true }}
+              locale={{ emptyText: t('Aucun prestataire') }}
+            />
+          </Card>
+          <Card title={t('Contrats de maintenance')}>
+            <ContractList
+              contracts={payload.contracts}
+              tenantId={effectiveTenantId ?? undefined}
+              syndicId={syndicId ?? undefined}
+            />
+          </Card>
+          <Card title={t('Actifs communs ({{length}})', { length: payload.commonAssets.length })}>
+            <div>{payload.commonAssets.map(asset => asset.name).join(' | ') || t('Aucun actif commun')}</div>
+          </Card>
+        </>
+      )}
+    </Space>
+  );
+
   return (
     <>
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        <Space direction="vertical" size={4}>
-          <div className="it-toolbar">
-            <Title level={2} className="it-toolbar__title" style={{ margin: 0 }}>
-              {t('Prestataires et contrats')}
-            </Title>
-            <Space>
-              <Button icon={<PlusOutlined />} onClick={openCreateProviderModal}>
-                {t('Nouveau prestataire')}
-              </Button>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenCreateContract(true)}>
-                {t('Nouveau contrat')}
-              </Button>
-            </Space>
-          </div>
-          <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            {t('Contrats actifs, prestataires relies et actifs des parties communes.')}
-          </Paragraph>
-        </Space>
-
-        {error ? <Alert type="error" message={error} showIcon /> : null}
-
-        {loading ? (
-          <div style={{ minHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Spin size="large" />
-          </div>
-        ) : (
-          <>
-            <Card title={t('Prestataires ({{length}})', { length: payload.providers.length })}>
-              <Table
-                rowKey="id"
-                dataSource={payload.providers}
-                columns={providerColumns}
-                pagination={{ pageSize: 8, hideOnSinglePage: true }}
-                locale={{ emptyText: t('Aucun prestataire') }}
-              />
-            </Card>
-            <Card title={t('Contrats de maintenance')}>
-              <ContractList contracts={payload.contracts} />
-            </Card>
-            <Card title={t('Actifs communs ({{length}})', { length: payload.commonAssets.length })}>
-              <div>{payload.commonAssets.map(asset => asset.name).join(' | ') || t('Aucun actif commun')}</div>
-            </Card>
-          </>
-        )}
-      </Space>
+      <Tabs
+        items={[
+          { key: 'prestataires', label: t('Prestataires'), children: providersPanel },
+          {
+            key: 'factures',
+            label: t('Factures'),
+            children:
+              effectiveTenantId && syndicId ? (
+                <ProviderInvoicesTab
+                  tenantId={effectiveTenantId}
+                  syndicId={syndicId}
+                  providers={payload.providers}
+                  contracts={payload.contracts}
+                />
+              ) : null
+          }
+        ]}
+      />
 
       <Modal
         title={t('Nouveau contrat de maintenance')}
