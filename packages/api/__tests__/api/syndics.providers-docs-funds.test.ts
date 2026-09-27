@@ -90,11 +90,29 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   }),
   listDocumentsBySyndicate: jest.fn(async (tenantId: string) => {
     if (tenantId !== TENANT_ID) return [];
-    return [{ id: 'doc-1', syndicateId: SYNDIC_ID, title: 'Reglement', type: 'REGULATION', fileUrl: 'https://example.com/reglement.pdf' }];
+    return [
+      {
+        id: 'doc-1',
+        syndicateId: SYNDIC_ID,
+        title: 'Reglement',
+        type: 'REGULATION',
+        fileUrl: 'https://example.com/reglement.pdf'
+      }
+    ];
   }),
   getFinanceSummaryBySyndicate: jest.fn(async (tenantId: string) => {
     if (tenantId !== TENANT_ID) {
-      return { funds: [], totals: { totalFundsBalance: 0, totalCalled: 0, totalPaid: 0, totalOutstanding: 0, overdueCount: 0, overdueAmount: 0 } };
+      return {
+        funds: [],
+        totals: {
+          totalFundsBalance: 0,
+          totalCalled: 0,
+          totalPaid: 0,
+          totalOutstanding: 0,
+          overdueCount: 0,
+          overdueAmount: 0
+        }
+      };
     }
     return {
       funds: [{ id: 'fund-1', name: 'Fonds travaux', balance: 1000000, currency: 'XOF' }],
@@ -107,7 +125,14 @@ jest.mock('../../src/lib/syndics/queries', () => ({
         overdueAmount: 50000
       }
     };
-  })
+  }),
+  listFundsBySyndicate: jest.fn(async (tenantId: string) => {
+    if (tenantId !== TENANT_ID) return [];
+    return [{ id: 'fund-1', syndicateId: SYNDIC_ID, name: 'Fonds travaux', balance: 1000000, currency: 'XOF' }];
+  }),
+  createSyndicateFundBySyndicate: jest.fn(),
+  renameSyndicateFundByTenant: jest.fn(),
+  adjustSyndicateFundBalanceByTenant: jest.fn()
 }));
 
 jest.mock('../../src/lib/syndics/notifications', () => ({
@@ -124,9 +149,10 @@ describe('Syndics providers/documents/funds routes', () => {
   const app = express();
   app.use(express.json());
   app.use('/api', syndicRoutes);
-  // Sans ce middleware, une erreur typee (throw + asyncHandler, ex. le 409 du
-  // refus de suppression d'un prestataire lie) tombe sur le gestionnaire par
-  // defaut d'Express au lieu du code et du message attendus.
+  // Sans ce middleware, une erreur typee (409 du refus de suppression d'un
+  // prestataire lie) ou zod (motif obligatoire de l'ajustement de fonds) tombe
+  // sur le gestionnaire par defaut d'Express au lieu du code et du message
+  // attendus.
   app.use(errorHandler);
 
   it('returns providers/contracts/common assets payload', async () => {
@@ -155,7 +181,11 @@ describe('Syndics providers/documents/funds routes', () => {
     });
     const createResponse = await request(app)
       .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/contrats`)
-      .send({ providerId: '22222222-2222-4222-8222-222222222222', nature: 'Sécurité incendie', startDate: '2026-03-01T00:00:00.000Z' });
+      .send({
+        providerId: '22222222-2222-4222-8222-222222222222',
+        nature: 'Sécurité incendie',
+        startDate: '2026-03-01T00:00:00.000Z'
+      });
     expect(createResponse.status).toBe(201);
     expect(createResponse.body.success).toBe(true);
     expect(createResponse.body.data.id).toBe('contract-new');
@@ -193,7 +223,9 @@ describe('Syndics providers/documents/funds routes', () => {
       nature: 'Sécurité incendie - MAJ',
       status: 'TERMINATED'
     });
-    const deleteResponse = await request(app).delete(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/contrats/contract-new`);
+    const deleteResponse = await request(app).delete(
+      `/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/contrats/contract-new`
+    );
     expect(deleteResponse.status).toBe(200);
     expect(deleteResponse.body.success).toBe(true);
   });
@@ -271,7 +303,10 @@ describe('Syndics providers/documents/funds routes', () => {
     expect(refusedDelete.body.message).toContain('ne peut pas etre supprime');
 
     // Suppression possible pour un prestataire sans contrat ni incident.
-    mockQueries.deleteServiceProviderByTenant.mockResolvedValueOnce({ id: 'provider-new', name: 'Ascenseurs Pro SARL' });
+    mockQueries.deleteServiceProviderByTenant.mockResolvedValueOnce({
+      id: 'provider-new',
+      name: 'Ascenseurs Pro SARL'
+    });
     const okDelete = await request(app).delete(
       `/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/prestataires/provider-new`
     );
@@ -308,5 +343,91 @@ describe('Syndics providers/documents/funds routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
     expect(response.body.data.totals.totalOutstanding).toBe(50000);
+  });
+
+  it('returns funds list', async () => {
+    const response = await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/fonds`);
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data[0].name).toBe('Fonds travaux');
+  });
+
+  it('creates a fund', async () => {
+    mockQueries.createSyndicateFundBySyndicate.mockResolvedValueOnce({
+      id: 'fund-new',
+      syndicateId: SYNDIC_ID,
+      name: 'Compte courant',
+      balance: 0,
+      currency: 'XOF'
+    });
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/fonds`)
+      .send({ name: 'Compte courant' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.id).toBe('fund-new');
+    expect(mockQueries.createSyndicateFundBySyndicate).toHaveBeenCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      expect.objectContaining({ name: 'Compte courant' }),
+      'user-1'
+    );
+  });
+
+  it('renames a fund', async () => {
+    mockQueries.renameSyndicateFundByTenant.mockResolvedValueOnce({
+      id: 'fund-1',
+      syndicateId: SYNDIC_ID,
+      name: 'Fonds travaux (renomme)',
+      balance: 1000000,
+      currency: 'XOF'
+    });
+
+    const response = await request(app)
+      .patch(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/fonds/fund-1`)
+      .send({ name: 'Fonds travaux (renomme)' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.name).toBe('Fonds travaux (renomme)');
+  });
+
+  it('adjusts a fund balance with a mandatory reason', async () => {
+    mockQueries.adjustSyndicateFundBalanceByTenant.mockResolvedValueOnce({
+      id: 'fund-1',
+      syndicateId: SYNDIC_ID,
+      name: 'Fonds travaux',
+      balance: 1050000,
+      currency: 'XOF'
+    });
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/fonds/fund-1/ajustement`)
+      .send({ direction: 'CREDIT', amount: 50000, reason: 'Appel de fonds travaux vote en AG' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.balance).toBe(1050000);
+    expect(mockQueries.adjustSyndicateFundBalanceByTenant).toHaveBeenCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      'fund-1',
+      { direction: 'CREDIT', amount: 50000, reason: 'Appel de fonds travaux vote en AG' },
+      'user-1'
+    );
+  });
+
+  it('rejects a fund balance adjustment without a reason', async () => {
+    // Reinitialise le compteur d'appels : le test precedent a deja appele
+    // cette fonction avec succes, et ce fichier ne fait pas de
+    // `jest.clearAllMocks()` global entre les cas.
+    mockQueries.adjustSyndicateFundBalanceByTenant.mockClear();
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/fonds/fund-1/ajustement`)
+      .send({ direction: 'DEBIT', amount: 10000 });
+
+    expect(response.status).toBe(400);
+    expect(mockQueries.adjustSyndicateFundBalanceByTenant).not.toHaveBeenCalled();
   });
 });

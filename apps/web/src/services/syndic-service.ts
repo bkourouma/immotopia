@@ -64,7 +64,11 @@ import {
   IncidentCostImputation,
   LotOwnerProfile,
   LotTenantProfile,
-  SyndicateIncident
+  SyndicateIncident,
+  SyndicateFund,
+  CreateSyndicateFundRequest,
+  RenameSyndicateFundRequest,
+  AdjustSyndicateFundBalanceRequest
 } from '../types/syndic-types';
 
 export async function listSyndicates(tenantId: string): Promise<Syndicate[]> {
@@ -988,6 +992,52 @@ export async function createIncidentImputation(
 ): Promise<IncidentCostImputation> {
   const response = await apiClient.post<{ success: boolean; data: IncidentCostImputation }>(
     `/tenants/${tenantId}/syndics/${syndicId}/incidents/${incidentId}/imputations`,
+    data
+  );
+  return response.data.data;
+}
+
+// FR-013 : fonds financiers de la copropriete (SyndicateFund).
+export async function listSyndicateFunds(tenantId: string, syndicId: string): Promise<SyndicateFund[]> {
+  const response = await apiClient.get<{ success: boolean; data: SyndicateFund[] }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/fonds`
+  );
+  return response.data.data;
+}
+
+export async function createSyndicateFund(
+  tenantId: string,
+  syndicId: string,
+  data: CreateSyndicateFundRequest
+): Promise<SyndicateFund> {
+  const response = await apiClient.post<{ success: boolean; data: SyndicateFund }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/fonds`,
+    data
+  );
+  return response.data.data;
+}
+
+export async function renameSyndicateFund(
+  tenantId: string,
+  syndicId: string,
+  fundId: string,
+  data: RenameSyndicateFundRequest
+): Promise<SyndicateFund> {
+  const response = await apiClient.patch<{ success: boolean; data: SyndicateFund }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/fonds/${fundId}`,
+    data
+  );
+  return response.data.data;
+}
+
+export async function adjustSyndicateFundBalance(
+  tenantId: string,
+  syndicId: string,
+  fundId: string,
+  data: AdjustSyndicateFundBalanceRequest
+): Promise<SyndicateFund> {
+  const response = await apiClient.post<{ success: boolean; data: SyndicateFund }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/fonds/${fundId}/ajustement`,
     data
   );
   return response.data.data;

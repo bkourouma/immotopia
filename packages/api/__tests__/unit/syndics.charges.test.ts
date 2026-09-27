@@ -116,10 +116,13 @@ describe('Syndics charges queries - US2', () => {
     mockTx.chargeCall.findFirst.mockResolvedValue({
       id: 'call-2',
       amount: 100000,
+      currency: 'XOF',
       status: 'PENDING',
     });
     mockTx.chargePayment.create.mockResolvedValue({ id: 'payment-2' });
-    mockTx.chargePayment.aggregate.mockResolvedValue({ _sum: { amount: 100000 } });
+    // 30000 deja regle avant ce paiement de 70000 : le total attendu atteint
+    // exactement le montant de l'appel (100000), d'ou le statut PAID.
+    mockTx.chargePayment.aggregate.mockResolvedValue({ _sum: { amount: 30000 } });
     mockTx.chargeCall.update.mockResolvedValue({ id: 'call-2', status: 'PAID' });
 
     await recordChargePaymentWithStatusUpdate('tenant-a', {
@@ -134,6 +137,31 @@ describe('Syndics charges queries - US2', () => {
       where: { id: 'call-2' },
       data: { status: 'PAID' },
     });
+  });
+
+  it('rejects a payment that exceeds the outstanding balance (no overpayment)', async () => {
+    mockPrisma.$transaction.mockImplementationOnce(async (callback: any) => callback(mockTx));
+    mockTx.chargeCall.findFirst.mockResolvedValue({
+      id: 'call-3',
+      amount: 100000,
+      currency: 'XOF',
+      status: 'PARTIAL',
+    });
+    // Deja 80000 regles : le reste du est 20000, un paiement de 25000 doit
+    // etre refuse plutot qu'accepte comme trop-percu (FR-005).
+    mockTx.chargePayment.aggregate.mockResolvedValue({ _sum: { amount: 80000 } });
+
+    await expect(
+      recordChargePaymentWithStatusUpdate('tenant-a', {
+        chargeCallId: 'call-3',
+        amount: 25000,
+        paidAt: new Date('2026-04-12T00:00:00.000Z'),
+        method: 'VIREMENT',
+      })
+    ).rejects.toMatchObject({ status: 422 });
+
+    expect(mockTx.chargePayment.create).not.toHaveBeenCalled();
+    expect(mockTx.chargeCall.update).not.toHaveBeenCalled();
   });
 
   it('rejects payment when charge call is outside tenant scope', async () => {

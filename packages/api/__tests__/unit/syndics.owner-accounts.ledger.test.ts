@@ -136,6 +136,22 @@ jest.mock('@prisma/client', () => {
         store.accounts.push(created);
         return created;
       }),
+      // `ensureOwnerAccountForLotTx` (queries.ts) cree desormais le compte du
+      // lot via un seul `upsert` atomique sur `lotId`, plutot qu'un
+      // `findUnique` puis `create` non-atomique (constat de recette module
+      // 3.3 : deux lectures concurrentes du meme lot heurtaient la contrainte
+      // unique). Ce magasin en memoire imite le meme contrat : trouve par
+      // `lotId`, sinon insere `create`.
+      upsert: jest.fn(async (args: Row) => {
+        const existing = store.accounts.find(a => a.lotId === args.where.lotId);
+        if (existing) {
+          Object.assign(existing, args.update ?? {});
+          return existing;
+        }
+        const created = { id: `acc-${nextSeq()}`, currency: 'XOF', ...args.create };
+        store.accounts.push(created);
+        return created;
+      }),
       update: jest.fn(async (args: Row) => {
         const account: any = store.accounts.find(a => a.id === args.where.id);
         Object.assign(account ?? {}, args.data);
@@ -251,7 +267,8 @@ describe('Caracterisation - grand livre du compte de lot', () => {
 
       expect(account.balance).toBe(0);
       expect(account.contactId).toBe(CONTACT_ID);
-      expect(mockPrisma.ownerAccount.create).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.ownerAccount.upsert).toHaveBeenCalledTimes(1);
+      expect(store.accounts).toHaveLength(1);
     });
 
     it('reutilise le compte existant plutot que d en creer un second', async () => {
@@ -261,7 +278,25 @@ describe('Caracterisation - grand livre du compte de lot', () => {
 
       expect(account.id).toBe('acc-seed');
       expect(account.balance).toBe(1500);
-      expect(mockPrisma.ownerAccount.create).not.toHaveBeenCalled();
+      // L'upsert est toujours appele (c'est lui qui decide reutiliser/creer),
+      // mais aucun second compte ne doit apparaitre dans le magasin.
+      expect(store.accounts).toHaveLength(1);
+    });
+
+    it('deux lectures concurrentes du meme lot ne creent qu un seul compte (constat de recette module 3.3)', async () => {
+      // Simule les deux appels lances en parallele par la page web
+      // (`getLotOwnerAccount` et `listLotOwnerAccountTransactions`, qui
+      // declenchaient chacun leur propre creation) : `Promise.all` sur deux
+      // `getOwnerAccountByLot` pour le meme lot ne doit jamais faire
+      // apparaitre une erreur ni un second compte.
+      const [first, second] = await Promise.all([
+        getOwnerAccountByLot(TENANT_ID, SYNDIC_ID, LOT_ID),
+        getOwnerAccountByLot(TENANT_ID, SYNDIC_ID, LOT_ID)
+      ]);
+
+      expect(first.id).toBe(second.id);
+      expect(store.accounts).toHaveLength(1);
+      expect(store.accounts[0].balance).toBe(0);
     });
 
     it('leve notFound (404) quand le lot n a aucun proprietaire rattache', async () => {

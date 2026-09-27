@@ -548,6 +548,23 @@ export const createOwnerAccountAdjustmentSchema = z.object({
   transactionDate: z.coerce.date().optional()
 });
 
+// FR-013 : fonds financiers de la copropriete (SyndicateFund).
+export const createSyndicateFundSchema = z.object({
+  name: z.string().min(1, 'Le nom du fonds est obligatoire'),
+  initialBalance: z.number().nonnegative().optional().default(0),
+  currency: z.string().min(1).optional().default('XOF')
+});
+
+export const renameSyndicateFundSchema = z.object({
+  name: z.string().min(1, 'Le nom du fonds est obligatoire')
+});
+
+export const adjustSyndicateFundBalanceSchema = z.object({
+  direction: z.enum(['CREDIT', 'DEBIT']),
+  amount: z.number().positive(),
+  reason: z.string().min(1, 'Le motif de l ajustement est obligatoire')
+});
+
 export type CreateSyndicateInput = z.infer<typeof createSyndicateSchema>;
 export type UpdateSyndicateInput = z.infer<typeof updateSyndicateSchema>;
 export type CreateLotInput = z.infer<typeof createLotSchema>;
@@ -599,3 +616,6 @@ export type LockJournalEntryInput = z.infer<typeof lockJournalEntrySchema>;
 export type AccountingRangeQueryInput = z.infer<typeof accountingRangeQuerySchema>;
 export type OwnerAccountStatementQueryInput = z.infer<typeof ownerAccountStatementQuerySchema>;
 export type CreateOwnerAccountAdjustmentInput = z.infer<typeof createOwnerAccountAdjustmentSchema>;
+export type CreateSyndicateFundInput = z.infer<typeof createSyndicateFundSchema>;
+export type RenameSyndicateFundInput = z.infer<typeof renameSyndicateFundSchema>;
+export type AdjustSyndicateFundBalanceInput = z.infer<typeof adjustSyndicateFundBalanceSchema>;

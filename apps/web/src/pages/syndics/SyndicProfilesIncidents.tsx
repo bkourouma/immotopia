@@ -32,10 +32,17 @@ import {
   listSyndicIncidents,
   updateSyndicIncident
 } from '../../services/syndic-service';
-import { LotOwnerProfile, LotTenantProfile, ServiceProvider, SyndicateIncident, SyndicateLot } from '../../types/syndic-types';
+import {
+  LotOwnerProfile,
+  LotTenantProfile,
+  ServiceProvider,
+  SyndicateIncident,
+  SyndicateLot
+} from '../../types/syndic-types';
 import type { Property } from '../../types/property-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { CrmContact } from '../../types/crm-types';
+import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
@@ -69,28 +76,18 @@ const incidentImputationTypeLabels: Record<string, string> = {
   THIRD_PARTY: 'Tiers'
 };
 
-function isTechnicalLotLabel(value?: string | null): boolean {
-  if (!value) return false;
-  const normalized = value.trim().toUpperCase();
-  return normalized.startsWith('PROP-');
-}
-
-function getContactDisplayName(
-  contact?: {
-    firstName?: string | null;
-    lastName?: string | null;
-    legalName?: string | null;
-    email?: string | null;
-  } | null
-): string {
-  if (!contact) return '';
-  const fullName = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
-  return fullName || contact.legalName || contact.email || '';
-}
-
+/**
+ * Libellé d'un lot pour les tableaux de profils/incidents.
+ *
+ * `fallbackProperty` couvre les lots importés dont la relation `property`
+ * n'est pas chargée directement : `getLotOptionLabel` la retrouve par
+ * référence interne et la transmet ici. Toujours construit par
+ * `formatLotLabel` (numéro de lot en tête) — voir ce module pour le pourquoi
+ * (constat de recette, module 5.1).
+ */
 function getLotDisplayName(
   lot?: SyndicateLot | null,
-  profileContact?: {
+  _profileContact?: {
     firstName?: string | null;
     lastName?: string | null;
     legalName?: string | null;
@@ -98,23 +95,10 @@ function getLotDisplayName(
   } | null,
   fallbackProperty?: {
     title?: string | null;
-    address?: string | null;
-    internalReference?: string | null;
   } | null
 ): string {
   if (!lot) return '-';
-  const property = lot.property;
-  const contactName = getContactDisplayName(profileContact);
-  const titleLabel = property?.title?.trim() || fallbackProperty?.title?.trim() || '';
-  const addressLabel = property?.address?.trim() || fallbackProperty?.address?.trim() || '';
-  const referenceLabel =
-    property?.internalReference?.trim() || fallbackProperty?.internalReference?.trim() || lot.lotNumber || '';
-  const validReferenceLabel = isTechnicalLotLabel(referenceLabel) ? '' : referenceLabel;
-  const lotLabel = titleLabel || addressLabel || validReferenceLabel;
-
-  if (!lotLabel && contactName) return 'Lot';
-  if (!lotLabel) return t('Lot sans libellé');
-  return lotLabel || lot.lotNumber || '-';
+  return formatLotLabel({ ...lot, property: lot.property || fallbackProperty || null });
 }
 
 function getLotOptionLabel(lot: SyndicateLot, propertiesByInternalReference: Record<string, Property>): string {
@@ -122,8 +106,7 @@ function getLotOptionLabel(lot: SyndicateLot, propertiesByInternalReference: Rec
   const propertyByReference = lotReference
     ? propertiesByInternalReference[lotReference.trim().toUpperCase()]
     : undefined;
-  const displayName = getLotDisplayName(lot, null, propertyByReference);
-  return `${displayName} (${lot.lotType})`;
+  return getLotDisplayName(lot, null, propertyByReference);
 }
 
 export const SyndicProfilesIncidents: React.FC = () => {
@@ -321,7 +304,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
       message.success(t('Prestataire assigné à l’incident'));
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || t("Assignation du prestataire impossible"));
+      message.error(err.response?.data?.error || t('Assignation du prestataire impossible'));
     } finally {
       setAssigningProviderIncidentId(null);
     }
