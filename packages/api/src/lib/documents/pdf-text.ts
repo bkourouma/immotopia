@@ -22,5 +22,13 @@ const WINANSI_SAFE_PATTERN = new RegExp(`[^\\u0000-\\u00FF${WINANSI_EXTRA_CHARS}
  * `drawText` de ce fichier via le petit wrapper `draw()` ci-dessous.
  */
 export function sanitizeForPdf(text: string): string {
-  return text.replace(/[\u00A0\u202F]/g, ' ').replace(WINANSI_SAFE_PATTERN, '?');
+  // Caract\u00E8res de contr\u00F4le (retour \u00E0 la ligne d'une adresse saisie sur deux
+  // lignes, tabulation\u2026) : `drawText` ne sait pas les encoder et levait.
+  return text
+    .replace(CONTROL_CHARS, ' ')
+    .replace(/[\u00A0\u202F]/g, ' ')
+    .replace(WINANSI_SAFE_PATTERN, '?');
 }
+
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/g;

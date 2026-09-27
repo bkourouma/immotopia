@@ -58,7 +58,75 @@ export function validateBrandingImage(
   if (!format) {
     throw new BadRequestError('Image invalide : seuls les formats PNG et JPEG sont acceptés.');
   }
+  // Un PNG de quelques Ko peut déclarer 8000 x 8000 pixels : décompressé à la
+  // génération d'un PDF, il saturerait la mémoire (bombe de décompression).
+  const dimensions = readImageDimensions(file.buffer, format);
+  if (!dimensions) {
+    throw new BadRequestError('Image invalide : dimensions illisibles.');
+  }
+  if (
+    dimensions.width > BRANDING_IMAGE_MAX_SIDE ||
+    dimensions.height > BRANDING_IMAGE_MAX_SIDE ||
+    dimensions.width * dimensions.height > BRANDING_IMAGE_MAX_PIXELS
+  ) {
+    throw new BadRequestError('Image trop grande : 3000 x 3000 pixels maximum.');
+  }
   return format;
+}
+
+export const BRANDING_IMAGE_MAX_SIDE = 3000;
+export const BRANDING_IMAGE_MAX_PIXELS = 8_000_000;
+
+/**
+ * Dimensions déclarées par l'en-tête d'une image, sans la décoder.
+ * PNG : bloc IHDR (largeur octets 16-19, hauteur 20-23). JPEG : premier
+ * marqueur SOFn trouvé en parcourant les segments. `null` si illisible.
+ */
+export function readImageDimensions(
+  bytes: Uint8Array,
+  format: BrandingImageFormat
+): { width: number; height: number } | null {
+  const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (format === 'png') {
+    if (buffer.length < 24 || buffer.toString('latin1', 12, 16) !== 'IHDR') return null;
+    const width = buffer.readUInt32BE(16);
+    const height = buffer.readUInt32BE(20);
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+  return readJpegDimensions(buffer);
+}
+
+/** SOF0 à SOF15, hors DHT (C4), JPG (C8) et DAC (CC) qui partagent la plage. */
+function isStartOfFrame(marker: number): boolean {
+  return marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+}
+
+function readJpegDimensions(buffer: Buffer): { width: number; height: number } | null {
+  let offset = 2; // après SOI (FF D8)
+  while (offset + 4 <= buffer.length) {
+    if (buffer[offset] !== 0xff) return null;
+    const marker = buffer[offset + 1];
+    if (marker === 0xff) {
+      offset += 1; // octet de remplissage
+      continue;
+    }
+    // Marqueurs sans longueur : RSTn, TEM. SOS (DA) ou EOI : plus de SOF à attendre.
+    if ((marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) {
+      offset += 2;
+      continue;
+    }
+    if (marker === 0xda || marker === 0xd9) return null;
+    const length = buffer.readUInt16BE(offset + 2);
+    if (length < 2) return null;
+    if (isStartOfFrame(marker)) {
+      if (offset + 9 > buffer.length) return null;
+      const height = buffer.readUInt16BE(offset + 5);
+      const width = buffer.readUInt16BE(offset + 7);
+      return width > 0 && height > 0 ? { width, height } : null;
+    }
+    offset += 2 + length;
+  }
+  return null;
 }
 
 function isSafeSegment(segment: string): boolean {

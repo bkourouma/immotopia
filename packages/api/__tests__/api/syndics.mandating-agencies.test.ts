@@ -16,6 +16,7 @@ import { randomUUID } from 'crypto';
 import express from 'express';
 import request from 'supertest';
 import { findDiskPathLeaks } from '../helpers/disk-path-leaks';
+import { logAuditEvent } from '../../src/services/audit-service';
 
 jest.mock('../../src/config/env', () => {
   const actual = jest.requireActual('../../src/config/env');
@@ -41,13 +42,20 @@ jest.mock('../../src/middleware/tenant-middleware', () => ({
   }
 }));
 
+// Gardes de permission : laissent passer, sauf la permission nommée dans
+// l'en-tête `x-deny` (403) — de quoi vérifier quelle garde protège quelle route.
+function mockGuard(keys: string[]) {
+  return (req: any, res: any, next: any) =>
+    keys.includes(req.headers['x-deny']) ? res.status(403).json({ success: false }) : next();
+}
+
 jest.mock('../../src/middleware/property-rbac-middleware', () => ({
-  requireAnyPropertyPermission: () => (_req: any, _res: any, next: any) => next(),
-  requirePropertyPermission: () => (_req: any, _res: any, next: any) => next()
+  requireAnyPropertyPermission: (keys: string[]) => mockGuard(keys),
+  requirePropertyPermission: (key: string) => mockGuard([key])
 }));
 
 jest.mock('../../src/middleware/rbac-middleware', () => ({
-  requirePermission: () => (_req: any, _res: any, next: any) => next()
+  requirePermission: (key: string) => mockGuard([key])
 }));
 
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn(), flushAuditQueue: jest.fn() }));
@@ -416,6 +424,96 @@ describe('images : dépôt, lecture, remplacement', () => {
           .attach('file', PNG, { filename: 'l.png', contentType: 'image/png' })
       ).status
     ).toBe(404);
+  });
+});
+
+describe('audit de sécurité du lot S1', () => {
+  const png = { filename: 'x.png', contentType: 'image/png' };
+
+  it('réserve le dépôt et la suppression de la signature et du cachet d’un mandant à TENANT_SETTINGS_EDIT', async () => {
+    const mandant = await createMandant(TENANT_A, 'Agence Alpha');
+    const url = (kind: string) => `${base(TENANT_A)}/syndic-mandating-agencies/${mandant.id}/images/${kind}`;
+
+    for (const kind of ['signature', 'stamp']) {
+      const denied = await request(app).put(url(kind)).set('x-deny', 'TENANT_SETTINGS_EDIT').attach('file', PNG, png);
+      expect(denied.status).toBe(403);
+      expect((await request(app).delete(url(kind)).set('x-deny', 'TENANT_SETTINGS_EDIT')).status).toBe(403);
+      // PROPERTIES_EDIT ne suffit plus, mais n'est pas exigé non plus.
+      expect((await request(app).put(url(kind)).set('x-deny', 'PROPERTIES_EDIT').attach('file', PNG, png)).status).toBe(
+        200
+      );
+    }
+    // Le logo reste en PROPERTIES_EDIT.
+    expect(
+      (await request(app).put(url('logo')).set('x-deny', 'TENANT_SETTINGS_EDIT').attach('file', PNG, png)).status
+    ).toBe(200);
+    expect((await request(app).put(url('logo')).set('x-deny', 'PROPERTIES_EDIT').attach('file', PNG, png)).status).toBe(
+      403
+    );
+  });
+
+  it('journalise chaque dépôt et suppression de signature ou de cachet (mandant et agence), pas les logos', async () => {
+    const audit = logAuditEvent as jest.Mock;
+    audit.mockClear();
+    const mandant = await createMandant(TENANT_A, 'Agence Alpha');
+    const mandantUrl = (kind: string) => `${base(TENANT_A)}/syndic-mandating-agencies/${mandant.id}/images/${kind}`;
+
+    await request(app).put(mandantUrl('logo')).attach('file', PNG, png);
+    expect(audit).not.toHaveBeenCalled();
+
+    await request(app).put(mandantUrl('signature')).attach('file', PNG, png);
+    await request(app).delete(mandantUrl('signature'));
+    await request(app)
+      .put(`${base(TENANT_A)}/document-identity/images/stamp`)
+      .attach('file', PNG, png);
+    await request(app).delete(`${base(TENANT_A)}/document-identity/images/stamp`);
+
+    expect(
+      audit.mock.calls.map(([entry]) => [entry.actionKey, entry.entityType, entry.entityId, entry.payload])
+    ).toEqual([
+      ['DOCUMENT_SIGNATURE_UPLOADED', 'SyndicMandatingAgency', mandant.id, { kind: 'signature' }],
+      ['DOCUMENT_SIGNATURE_REMOVED', 'SyndicMandatingAgency', mandant.id, { kind: 'signature' }],
+      ['DOCUMENT_SIGNATURE_UPLOADED', 'Tenant', TENANT_A, { kind: 'stamp' }],
+      ['DOCUMENT_SIGNATURE_REMOVED', 'Tenant', TENANT_A, { kind: 'stamp' }]
+    ]);
+    expect(audit.mock.calls.every(([entry]) => entry.tenantId === TENANT_A && entry.actorUserId === 'user-1')).toBe(
+      true
+    );
+  });
+
+  it('supprime le nouveau fichier quand l’écriture en base échoue (aucun orphelin)', async () => {
+    const mandant = await createMandant(TENANT_A, 'Agence Alpha');
+    const dir = path.join(UPLOADS, 'branding', TENANT_A, 'mandants', mandant.id);
+    const listFiles = () => (fs.existsSync(dir) ? fs.readdirSync(dir) : []);
+    const before = listFiles();
+
+    mockPrisma.syndicMandatingAgency.update.mockRejectedValueOnce(new Error('base indisponible'));
+    const res = await request(app)
+      .put(`${base(TENANT_A)}/syndic-mandating-agencies/${mandant.id}/images/logo`)
+      .attach('file', PNG, png);
+    expect(res.status).toBe(500);
+    expect(listFiles()).toEqual(before);
+    expect(mockDb.mandants[0].logoPath ?? null).toBeNull();
+
+    const syndicDir = path.join(UPLOADS, 'branding', TENANT_A, 'syndics', SYNDIC_A);
+    const syndicBefore = fs.existsSync(syndicDir) ? fs.readdirSync(syndicDir) : [];
+    mockPrisma.syndicate.update.mockRejectedValueOnce(new Error('base indisponible'));
+    const logo = await request(app)
+      .put(`${base(TENANT_A)}/syndics/${SYNDIC_A}/logo`)
+      .attach('file', PNG, png);
+    expect(logo.status).toBe(500);
+    expect(fs.existsSync(syndicDir) ? fs.readdirSync(syndicDir) : []).toEqual(syndicBefore);
+  });
+
+  it('refuse une image aux dimensions démesurées (bombe de décompression)', async () => {
+    const huge = Buffer.from(PNG);
+    huge.writeUInt32BE(8000, 16);
+    huge.writeUInt32BE(8000, 20);
+    const res = await request(app)
+      .put(`${base(TENANT_A)}/syndics/${SYNDIC_A}/logo`)
+      .attach('file', huge, png);
+    expect(res.status).toBe(400);
+    expect(mockDb.syndicates[0].logoPath).toBeNull();
   });
 });
 

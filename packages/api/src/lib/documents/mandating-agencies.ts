@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { prisma } from '../../utils/database';
+import { logAuditEvent } from '../../services/audit-service';
+import { AuditActionKey } from '../../types/audit-types';
 import { ConflictError, NotFoundError } from '../../middleware/error-middleware';
 import {
   deleteBrandingImage,
@@ -227,26 +229,66 @@ export async function deleteMandatingAgency(tenantId: string, agencyId: string) 
 
 // ------------------------------------------------------------------ images des mandants
 
+/**
+ * Enregistre en base la clé d'un fichier qui vient d'être écrit. Si
+ * l'écriture en base échoue, le nouveau fichier est supprimé avant de
+ * relancer l'erreur : aucun fichier orphelin sur disque.
+ */
+async function recordOrDiscard<T>(tenantId: string, key: string, record: () => Promise<T>): Promise<T> {
+  try {
+    return await record();
+  } catch (error) {
+    await deleteBrandingImage(tenantId, key);
+    throw error;
+  }
+}
+
+/**
+ * Journal d'audit des signatures et cachets (mandant ou agence) : ce sont
+ * eux qui engagent l'émetteur sur un document. Les logos n'y figurent pas.
+ */
+function auditSignatureChange(
+  tenantId: string,
+  actorUserId: string | undefined,
+  change: { uploaded: boolean; kind: 'signature' | 'stamp'; owner: 'MANDANT' | 'AGENCY'; entityId: string }
+) {
+  logAuditEvent({
+    actorUserId: actorUserId ?? null,
+    tenantId,
+    actionKey: change.uploaded ? AuditActionKey.DOCUMENT_SIGNATURE_UPLOADED : AuditActionKey.DOCUMENT_SIGNATURE_REMOVED,
+    entityType: change.owner === 'MANDANT' ? 'SyndicMandatingAgency' : 'Tenant',
+    entityId: change.entityId,
+    payload: { kind: change.kind }
+  });
+}
+
 export async function uploadMandantImage(
   tenantId: string,
   agencyId: string,
   kind: MandantImageKind,
-  file: UploadedFile
+  file: UploadedFile,
+  actorUserId?: string
 ) {
   const format = validateBrandingImage(file);
   const row = await findMandant(tenantId, agencyId);
   const field = MANDANT_IMAGE_FIELD[kind];
   const key = await saveBrandingImage(tenantId, ['mandants', agencyId], IMAGE_BASENAME[kind], file!.buffer!, format);
-  const updated = await prisma.syndicMandatingAgency.update({
-    where: { id: agencyId, tenantId },
-    data: { [field]: key }
-  });
+  const updated = await recordOrDiscard(tenantId, key, () =>
+    prisma.syndicMandatingAgency.update({ where: { id: agencyId, tenantId }, data: { [field]: key } })
+  );
   // L'ancien fichier ne part qu'une fois la nouvelle clé enregistrée.
   await deleteBrandingImage(tenantId, row[field]);
+  if (kind !== 'logo')
+    auditSignatureChange(tenantId, actorUserId, { uploaded: true, kind, owner: 'MANDANT', entityId: agencyId });
   return toMandatingAgencyResponse(updated);
 }
 
-export async function removeMandantImage(tenantId: string, agencyId: string, kind: MandantImageKind) {
+export async function removeMandantImage(
+  tenantId: string,
+  agencyId: string,
+  kind: MandantImageKind,
+  actorUserId?: string
+) {
   const row = await findMandant(tenantId, agencyId);
   const field = MANDANT_IMAGE_FIELD[kind];
   const updated = await prisma.syndicMandatingAgency.update({
@@ -254,6 +296,8 @@ export async function removeMandantImage(tenantId: string, agencyId: string, kin
     data: { [field]: null }
   });
   await deleteBrandingImage(tenantId, row[field]);
+  if (kind !== 'logo')
+    auditSignatureChange(tenantId, actorUserId, { uploaded: false, kind, owner: 'MANDANT', entityId: agencyId });
   return toMandatingAgencyResponse(updated);
 }
 
@@ -293,7 +337,9 @@ export async function uploadSyndicateLogo(tenantId: string, syndicateId: string,
   const format = validateBrandingImage(file);
   const row = await findSyndicateLogo(tenantId, syndicateId);
   const key = await saveBrandingImage(tenantId, ['syndics', syndicateId], 'logo', file!.buffer!, format);
-  await prisma.syndicate.update({ where: { id: syndicateId, tenantId }, data: { logoPath: key } });
+  await recordOrDiscard(tenantId, key, () =>
+    prisma.syndicate.update({ where: { id: syndicateId, tenantId }, data: { logoPath: key } })
+  );
   await deleteBrandingImage(tenantId, row.logoPath);
   return syndicateLogoView(tenantId, syndicateId, key);
 }
@@ -342,21 +388,29 @@ export async function getAgencyDocumentIdentity(tenantId: string) {
   return agencyIdentityView(tenantId, await findTenantIdentity(tenantId));
 }
 
-export async function uploadAgencyImage(tenantId: string, kind: AgencyImageKind, file: UploadedFile) {
+export async function uploadAgencyImage(
+  tenantId: string,
+  kind: AgencyImageKind,
+  file: UploadedFile,
+  actorUserId?: string
+) {
   const format = validateBrandingImage(file);
   const row = await findTenantIdentity(tenantId);
   const field = AGENCY_IMAGE_FIELD[kind];
   const key = await saveBrandingImage(tenantId, ['agence'], IMAGE_BASENAME[kind], file!.buffer!, format);
-  const updated = await prisma.tenant.update({
-    where: { id: tenantId },
-    data: { [field]: key },
-    select: { logoUrl: true, documentSignaturePath: true, documentStampPath: true }
-  });
+  const updated = await recordOrDiscard(tenantId, key, () =>
+    prisma.tenant.update({
+      where: { id: tenantId },
+      data: { [field]: key },
+      select: { logoUrl: true, documentSignaturePath: true, documentStampPath: true }
+    })
+  );
   await deleteBrandingImage(tenantId, row[field]);
+  auditSignatureChange(tenantId, actorUserId, { uploaded: true, kind, owner: 'AGENCY', entityId: tenantId });
   return agencyIdentityView(tenantId, updated);
 }
 
-export async function removeAgencyImage(tenantId: string, kind: AgencyImageKind) {
+export async function removeAgencyImage(tenantId: string, kind: AgencyImageKind, actorUserId?: string) {
   const row = await findTenantIdentity(tenantId);
   const field = AGENCY_IMAGE_FIELD[kind];
   const updated = await prisma.tenant.update({
@@ -365,6 +419,7 @@ export async function removeAgencyImage(tenantId: string, kind: AgencyImageKind)
     select: { logoUrl: true, documentSignaturePath: true, documentStampPath: true }
   });
   await deleteBrandingImage(tenantId, row[field]);
+  auditSignatureChange(tenantId, actorUserId, { uploaded: false, kind, owner: 'AGENCY', entityId: tenantId });
   return agencyIdentityView(tenantId, updated);
 }
 

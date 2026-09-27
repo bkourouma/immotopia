@@ -31,14 +31,22 @@ const mockPrisma = {
 };
 jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
 
+import { PDFDocument as PdfDoc, StandardFonts } from 'pdf-lib';
 import {
   BRANDING_IMAGE_MAX_BYTES,
   detectImageFormat,
+  readImageDimensions,
   resolveBrandingKey,
   saveBrandingImage,
   validateBrandingImage
 } from '../../src/lib/documents/branding-storage';
-import { fitInBox, resolveDocumentBranding, type DocumentBranding } from '../../src/lib/documents/document-branding';
+import {
+  fitInBox,
+  resolveDocumentBranding,
+  truncate,
+  type DocumentBranding
+} from '../../src/lib/documents/document-branding';
+import { sanitizeForPdf } from '../../src/lib/documents/pdf-text';
 import { buildOwnerAccountStatementPdf } from '../../src/lib/syndics/owner-account-statement';
 import { buildIssuerContext, buildMeetingMinutesDocx } from '../../src/lib/syndics/minutes-generator';
 
@@ -97,6 +105,97 @@ describe("validation d'une image déposée", () => {
     expect(fitInBox(300, 100, 90, 60)).toEqual({ width: 90, height: 30 });
     expect(fitInBox(100, 200, 90, 60)).toEqual({ width: 30, height: 60 });
     expect(fitInBox(10, 10, 90, 60)).toEqual({ width: 10, height: 10 });
+  });
+});
+
+/** PNG dont l'en-tête IHDR déclare `width` x `height` (le reste n'est pas lu à la validation). */
+function pngDeclaring(width: number, height: number): Buffer {
+  const buffer = Buffer.from(PNG);
+  buffer.writeUInt32BE(width, 16);
+  buffer.writeUInt32BE(height, 20);
+  return buffer;
+}
+
+/** JPEG minimal : SOI, APP0, puis `frame` (SOF0 ou rien), puis SOS. */
+function jpegDeclaring(frame: { width: number; height: number } | null): Buffer {
+  const app0 = Buffer.from([0xff, 0xe0, 0x00, 0x10, ...Buffer.from('JFIF\0'), 1, 1, 0, 0, 1, 0, 1, 0, 0]);
+  const sof = frame
+    ? Buffer.from([
+        0xff,
+        0xc0,
+        0x00,
+        0x11,
+        0x08,
+        frame.height >> 8,
+        frame.height & 0xff,
+        frame.width >> 8,
+        frame.width & 0xff,
+        3,
+        1,
+        0x22,
+        0,
+        2,
+        0x11,
+        1,
+        3,
+        0x11,
+        1
+      ])
+    : Buffer.alloc(0);
+  const sos = Buffer.from([0xff, 0xda, 0x00, 0x08, 1, 1, 0, 0, 0x3f, 0]);
+  return Buffer.concat([Buffer.from([0xff, 0xd8]), app0, sof, sos, Buffer.from([0x00, 0xff, 0xd9])]);
+}
+
+describe('dimensions déclarées (bombe de décompression)', () => {
+  it('lit les dimensions d’un PNG et d’un JPEG sans les décoder', () => {
+    expect(readImageDimensions(pngDeclaring(1000, 500), 'png')).toEqual({ width: 1000, height: 500 });
+    expect(readImageDimensions(jpegDeclaring({ width: 640, height: 480 }), 'jpg')).toEqual({ width: 640, height: 480 });
+    expect(readImageDimensions(jpegDeclaring(null), 'jpg')).toBeNull();
+  });
+
+  it('accepte un PNG de 1000 x 500', () => {
+    expect(validateBrandingImage({ buffer: pngDeclaring(1000, 500) })).toBe('png');
+  });
+
+  it('refuse un PNG minuscule qui déclare 8000 x 8000 pixels (400)', () => {
+    const bomb = pngDeclaring(8000, 8000);
+    expect(bomb.length).toBeLessThan(200);
+    expect(() => validateBrandingImage({ buffer: bomb })).toThrow(expect.objectContaining({ statusCode: 400 }));
+  });
+
+  it('refuse au-delà de 8 Mpx même sous 3000 px de côté', () => {
+    expect(() => validateBrandingImage({ buffer: pngDeclaring(3000, 2700) })).toThrow(
+      expect.objectContaining({ statusCode: 400 })
+    );
+  });
+
+  it('refuse un JPEG trop grand, et un JPEG sans marqueur SOF lisible', () => {
+    expect(validateBrandingImage({ buffer: jpegDeclaring({ width: 800, height: 600 }) })).toBe('jpg');
+    expect(() => validateBrandingImage({ buffer: jpegDeclaring({ width: 5000, height: 4000 }) })).toThrow(
+      expect.objectContaining({ statusCode: 400 })
+    );
+    expect(() => validateBrandingImage({ buffer: jpegDeclaring(null) })).toThrow(
+      expect.objectContaining({ statusCode: 400 })
+    );
+  });
+});
+
+describe('texte des PDF', () => {
+  it('remplace les caractères de contrôle par une espace', () => {
+    expect(sanitizeForPdf('Rue 12\nCocody\r\n\tAbidjan\u0085')).toBe('Rue 12 Cocody   Abidjan ');
+  });
+
+  it('tronque une chaîne de 200 000 caractères en moins de 50 ms', async () => {
+    const doc = await PdfDoc.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const long = 'Résidence '.repeat(20_000);
+    const started = performance.now();
+    const cut = truncate(long, font, 10, 200);
+    const elapsed = performance.now() - started;
+    expect(elapsed).toBeLessThan(50);
+    expect(cut.endsWith('...')).toBe(true);
+    expect(font.widthOfTextAtSize(cut, 10)).toBeLessThanOrEqual(200);
+    expect(truncate('Court', font, 10, 200)).toBe('Court');
   });
 });
 
@@ -285,6 +384,13 @@ describe('relevé de compte du lot avec identité', () => {
     expect(content).toContain(hexOf('RCCM CI-ABJ-1'));
     // Quatre images (logo émetteur, logo copropriété, signature, cachet) ou aucune.
     expect(content.includes('/XObject') || content.includes(' Do')).toBe(withImages);
+  });
+
+  it('se génère avec une adresse saisie sur plusieurs lignes', async () => {
+    const multiline = branding(false);
+    multiline.issuer.address = 'Rue 12\nCocody\r\nAbidjan';
+    const buffer = await buildOwnerAccountStatementPdf(payload, multiline);
+    expect(await pdfContentText(buffer)).toContain(hexOf('Rue 12 Cocody  Abidjan'));
   });
 
   it("ignore une image corrompue plutôt que d'échouer", async () => {

@@ -36,6 +36,11 @@ function tenantIdOf(req: Request): string {
   return tenantId;
 }
 
+/**
+ * `:kind` du chemin ; absent sur la route littérale `.../images/logo`, déclarée
+ * à part parce que le logo n'exige pas les mêmes droits (voir le routeur).
+ */
+const mandantKindOf = (req: Request) => parseMandantImageKind(req.params.kind ?? 'logo');
 const agencyIdOf = (req: Request) => assertUuidOrNotFound(req.params.agencyId, 'Agence mandante introuvable.');
 const syndicIdOf = (req: Request) =>
   assertUuidOrNotFound(req.params.syndicId, 'Copropriete introuvable ou inaccessible');
@@ -76,17 +81,20 @@ export const deleteMandatingAgencyHandler = asyncHandler(async (req: Request, re
 });
 
 export const uploadMandantImageHandler = asyncHandler(async (req: Request, res: Response) => {
-  const kind = parseMandantImageKind(req.params.kind);
-  res.json({ success: true, data: await uploadMandantImage(tenantIdOf(req), agencyIdOf(req), kind, req.file) });
+  const kind = mandantKindOf(req);
+  res.json({
+    success: true,
+    data: await uploadMandantImage(tenantIdOf(req), agencyIdOf(req), kind, req.file, req.user?.userId)
+  });
 });
 
 export const removeMandantImageHandler = asyncHandler(async (req: Request, res: Response) => {
-  const kind = parseMandantImageKind(req.params.kind);
-  res.json({ success: true, data: await removeMandantImage(tenantIdOf(req), agencyIdOf(req), kind) });
+  const kind = mandantKindOf(req);
+  res.json({ success: true, data: await removeMandantImage(tenantIdOf(req), agencyIdOf(req), kind, req.user?.userId) });
 });
 
 export const readMandantImageHandler = asyncHandler(async (req: Request, res: Response) => {
-  const kind = parseMandantImageKind(req.params.kind);
+  const kind = mandantKindOf(req);
   sendImage(res, await readMandantImage(tenantIdOf(req), agencyIdOf(req), kind));
 });
 
@@ -112,12 +120,12 @@ export const getAgencyDocumentIdentityHandler = asyncHandler(async (req: Request
 
 export const uploadAgencyImageHandler = asyncHandler(async (req: Request, res: Response) => {
   const kind = parseAgencyImageKind(req.params.kind);
-  res.json({ success: true, data: await uploadAgencyImage(tenantIdOf(req), kind, req.file) });
+  res.json({ success: true, data: await uploadAgencyImage(tenantIdOf(req), kind, req.file, req.user?.userId) });
 });
 
 export const removeAgencyImageHandler = asyncHandler(async (req: Request, res: Response) => {
   const kind = parseAgencyImageKind(req.params.kind);
-  res.json({ success: true, data: await removeAgencyImage(tenantIdOf(req), kind) });
+  res.json({ success: true, data: await removeAgencyImage(tenantIdOf(req), kind, req.user?.userId) });
 });
 
 export const readAgencyImageHandler = asyncHandler(async (req: Request, res: Response) => {

@@ -211,14 +211,26 @@ export function fitInBox(width: number, height: number, maxWidth: number, maxHei
   return { width: width * scale, height: height * scale };
 }
 
-/** Coupe un texte pour qu'il tienne dans `maxWidth` (points), avec « ... ». */
-function truncate(text: string, font: PDFFont, size: number, maxWidth: number): string {
-  let clean = sanitizeForPdf(text);
-  if (font.widthOfTextAtSize(clean, size) <= maxWidth) return clean;
-  while (clean.length > 1 && font.widthOfTextAtSize(`${clean}...`, size) > maxWidth) {
-    clean = clean.slice(0, -1);
+/** Au-delà, un texte ne tient de toute façon sur aucune ligne d'une page A4. */
+const TRUNCATE_CAP = 300;
+
+/**
+ * Coupe un texte pour qu'il tienne dans `maxWidth` (points), avec « ... ».
+ * Plafond puis recherche dichotomique : une saisie libre de plusieurs
+ * centaines de milliers de caractères ne coûte que quelques mesures.
+ */
+export function truncate(text: string, font: PDFFont, size: number, maxWidth: number): string {
+  const clean = sanitizeForPdf(text.length > TRUNCATE_CAP ? text.slice(0, TRUNCATE_CAP) : text);
+  if (text.length <= TRUNCATE_CAP && font.widthOfTextAtSize(clean, size) <= maxWidth) return clean;
+  // Plus grand préfixe `n` tel que `préfixe + "..."` tienne.
+  let low = 0;
+  let high = clean.length;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (font.widthOfTextAtSize(`${clean.slice(0, mid)}...`, size) <= maxWidth) low = mid;
+    else high = mid - 1;
   }
-  return `${clean}...`;
+  return `${clean.slice(0, Math.max(low, 1))}...`;
 }
 
 const MARGIN = 40;
