@@ -1,0 +1,2 @@
+# Les hooks shell gardent des fins de ligne LF : bash échoue sur un CRLF.
+*.sh text eol=lf
