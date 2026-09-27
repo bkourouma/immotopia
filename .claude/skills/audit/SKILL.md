@@ -77,6 +77,14 @@ grep -rn "queryRawUnsafe\|executeRawUnsafe" packages/api/src
 # console.log ajoute par le diff (pas les console.log preexistants : il y en a
 # deja 7 fichiers sur ce depot, tous ne sont pas des regressions a signaler).
 git diff main...HEAD -- packages/api/src apps/web/src | grep -E "^\+.*console\.log"
+
+# Route, ecran ou menu touche par le diff sans mise a jour du classeur de
+# fonctionnalites (docs/fonctionnalites/). Un resultat non vide n'est pas
+# automatiquement un constat : verifier d'abord que la PR ne le justifie pas
+# deja comme un correctif sans effet fonctionnel (voir
+# docs/fonctionnalites/README.md).
+git diff --name-only main...HEAD -- packages/api/src/routes apps/web/src/pages apps/web/src/navigation
+git diff --name-only main...HEAD -- docs/fonctionnalites
 ```
 
 Si une commande remonte un flot de faux positifs sur le perimetre precis

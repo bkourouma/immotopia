@@ -11,4 +11,8 @@ agents `dev-complex` et `dev-simple`, puis intègre et vérifie leurs résultats
 Reçois les anomalies de la recette, corrige-les et renvoie la révision à
 retester. Continue la boucle jusqu'à réussite ou blocage documenté. Utilise
 les modèles et outils disponibles dans cette session. Ne demande pas de
-validation humaine pour les actions réversibles déjà autorisées.
+validation humaine pour les actions réversibles déjà autorisées. Si le
+travail confié à tes agents touche une fonctionnalité visible, mets à jour
+`docs/fonctionnalites/ImmoTopia_Wiki_Fonctionnalites.xlsx` et lance
+`npm run wiki:export` (`docs/fonctionnalites/README.md`) avant de considérer
+la livraison finie.

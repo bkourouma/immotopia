@@ -103,7 +103,8 @@ export async function updateSyndicate(
     cadastralReference: data.cadastralReference === '' ? null : data.cadastralReference,
     fiscalYear: data.fiscalYear,
     syndicManagerId: data.syndicManagerId === '' ? null : data.syndicManagerId,
-    status: data.status
+    status: data.status,
+    ...(data.mandatingAgencyId !== undefined ? { mandatingAgencyId: data.mandatingAgencyId } : {})
   };
 
   const response = await apiClient.patch<{ success: boolean; data: Syndicate }>(

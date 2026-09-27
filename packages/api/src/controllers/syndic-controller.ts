@@ -145,6 +145,8 @@ import { logger } from '../utils/logger';
 import { asyncHandler } from '../middleware/error-middleware';
 import { buildMeetingMinutesDocx } from '../lib/syndics/minutes-generator';
 import { buildOwnerAccountStatementPdf } from '../lib/syndics/owner-account-statement';
+import { resolveDocumentBranding } from '../lib/documents/document-branding';
+import { toSyndicateResponse } from '../lib/documents/syndicate-branding-view';
 import {
   getSyndicateDocumentFileForTenant,
   syndicateDocumentFileUrl,
@@ -162,7 +164,7 @@ export const listSyndicsHandler = asyncHandler(async (req: Request, res: Respons
 
   res.json({
     success: true,
-    data: syndics
+    data: syndics.map(toSyndicateResponse)
   });
 });
 
@@ -178,7 +180,7 @@ export const createSyndicHandler = asyncHandler(async (req: Request, res: Respon
 
   res.status(201).json({
     success: true,
-    data: syndic
+    data: toSyndicateResponse(syndic)
   });
 });
 
@@ -198,7 +200,7 @@ export const getSyndicHandler = asyncHandler(async (req: Request, res: Response)
 
   res.json({
     success: true,
-    data: syndic
+    data: toSyndicateResponse(syndic)
   });
 });
 
@@ -215,7 +217,7 @@ export const updateSyndicHandler = asyncHandler(async (req: Request, res: Respon
 
   res.json({
     success: true,
-    data: syndic
+    data: toSyndicateResponse(syndic)
   });
 });
 
@@ -232,7 +234,7 @@ export const deleteSyndicHandler = asyncHandler(async (req: Request, res: Respon
   res.json({
     success: true,
     message: 'Copropriete supprimee',
-    data: syndic
+    data: toSyndicateResponse(syndic)
   });
 });
 
@@ -920,7 +922,8 @@ export const generateMeetingMinutesHandler = asyncHandler(async (req: Request, r
     throw notFound('Assemblee generale introuvable ou inaccessible');
   }
 
-  const buffer = await buildMeetingMinutesDocx(meeting, tenantId);
+  const branding = await resolveDocumentBranding(tenantId, syndicateId);
+  const buffer = await buildMeetingMinutesDocx(meeting, tenantId, branding);
   const filename = `compte-rendu-${meetingId}.docx`;
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
@@ -1511,22 +1514,27 @@ export const downloadLotOwnerAccountStatementHandler = asyncHandler(async (req: 
     statement.account.contact?.legalName ||
     'Proprietaire';
 
-  const pdfBuffer = await buildOwnerAccountStatementPdf({
-    syndicateName: statement.account.syndicate?.name || 'Copropriete',
-    lotNumber: statement.account.lot?.lotNumber || lotId,
-    ownerName,
-    currency: statement.account.currency || 'XOF',
-    openingBalance: statement.summary.openingBalance,
-    closingBalance: statement.summary.closingBalance,
-    transactions: statement.transactions.map(tx => ({
-      transactionDate: tx.transactionDate,
-      type: tx.type,
-      label: tx.label,
-      debit: tx.debit ? Number(tx.debit) : null,
-      credit: tx.credit ? Number(tx.credit) : null,
-      balanceAfter: Number(tx.balanceAfter)
-    }))
-  });
+  // Lot S1 : en-tete et signature du mandant de la copropriete, sinon de l'agence.
+  const branding = await resolveDocumentBranding(tenantId, syndicateId);
+  const pdfBuffer = await buildOwnerAccountStatementPdf(
+    {
+      syndicateName: statement.account.syndicate?.name || 'Copropriete',
+      lotNumber: statement.account.lot?.lotNumber || lotId,
+      ownerName,
+      currency: statement.account.currency || 'XOF',
+      openingBalance: statement.summary.openingBalance,
+      closingBalance: statement.summary.closingBalance,
+      transactions: statement.transactions.map(tx => ({
+        transactionDate: tx.transactionDate,
+        type: tx.type,
+        label: tx.label,
+        debit: tx.debit ? Number(tx.debit) : null,
+        credit: tx.credit ? Number(tx.credit) : null,
+        balanceAfter: Number(tx.balanceAfter)
+      }))
+    },
+    branding
+  );
 
   const filename = `releve-compte-lot-${lotId}.pdf`;
   res.setHeader('Content-Type', 'application/pdf');

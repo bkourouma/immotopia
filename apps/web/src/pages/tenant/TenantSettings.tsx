@@ -16,6 +16,14 @@ import {
   TenantWithBranding
 } from '../../services/tenant-branding-service';
 import { onAntFormValidationFailed } from '../../lib/antFormFailure';
+import { BrandingImageField } from '../../components/documents/BrandingImageField';
+import {
+  AgencyImageKind,
+  fetchAgencyImageBlob,
+  getAgencyDocumentIdentity,
+  removeAgencyImage,
+  uploadAgencyImage
+} from '../../services/document-branding-service';
 import { t } from '../../i18n/t';
 
 const { Title, Text } = Typography;
@@ -36,13 +44,47 @@ export const TenantSettings: React.FC = () => {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [removingLogo, setRemovingLogo] = useState(false);
+  const [hasSignature, setHasSignature] = useState(false);
+  const [hasStamp, setHasStamp] = useState(false);
+  const [identityVersion, setIdentityVersion] = useState(0);
   const brandingColorValue = Form.useWatch('brandingPrimaryColor', form);
 
   useEffect(() => {
     if (tenantId) {
       loadTenant();
+      void loadDocumentIdentity();
     }
   }, [tenantId]);
+
+  // Signature et cachet pour les documents (lot S1, besoin 7) : chargés à
+  // part du reste des réglages, sur une route dédiée (`document-identity`).
+  const loadDocumentIdentity = async () => {
+    if (!tenantId) return;
+    try {
+      const identity = await getAgencyDocumentIdentity(tenantId);
+      setHasSignature(identity.hasSignature);
+      setHasStamp(identity.hasStamp);
+    } catch {
+      setHasSignature(false);
+      setHasStamp(false);
+    }
+  };
+
+  const handleIdentityImageUpload = async (kind: AgencyImageKind, file: File) => {
+    if (!tenantId) return;
+    const updated = await uploadAgencyImage(tenantId, kind, file);
+    setHasSignature(updated.hasSignature);
+    setHasStamp(updated.hasStamp);
+    setIdentityVersion(version => version + 1);
+  };
+
+  const handleIdentityImageRemove = async (kind: AgencyImageKind) => {
+    if (!tenantId) return;
+    const updated = await removeAgencyImage(tenantId, kind);
+    setHasSignature(updated.hasSignature);
+    setHasStamp(updated.hasStamp);
+    setIdentityVersion(version => version + 1);
+  };
 
   const loadTenant = async () => {
     if (!tenantId) return;
@@ -333,6 +375,30 @@ export const TenantSettings: React.FC = () => {
                 </Form.Item>
               </Col>
             </Row>
+          </Card>
+
+          {/* Signature et cachet pour les documents (lot S1, besoin 7) : images
+              privées (jamais un <img src> direct), utilisées comme identité par
+              défaut quand une copropriété n'a pas de mandant. */}
+          <Card title={t('Signature et cachet pour les documents')} style={{ marginBottom: 16 }}>
+            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+              <BrandingImageField
+                label={t('Signature')}
+                hasImage={hasSignature}
+                imageVersion={identityVersion}
+                fetchImage={() => fetchAgencyImageBlob(tenantId!, 'signature')}
+                onUpload={file => handleIdentityImageUpload('signature', file)}
+                onRemove={() => handleIdentityImageRemove('signature')}
+              />
+              <BrandingImageField
+                label={t('Cachet')}
+                hasImage={hasStamp}
+                imageVersion={identityVersion}
+                fetchImage={() => fetchAgencyImageBlob(tenantId!, 'stamp')}
+                onUpload={file => handleIdentityImageUpload('stamp', file)}
+                onRemove={() => handleIdentityImageRemove('stamp')}
+              />
+            </Space>
           </Card>
 
           {/* Informations Générales */}

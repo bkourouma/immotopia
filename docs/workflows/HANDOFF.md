@@ -38,6 +38,46 @@ Pièges et décisions :
 
 ---
 
+## Branche `docs/wiki-fonctionnalites` — 2026-09-27
+
+**État :** prêt à relire (PR #17 vers `main`) ; CI non exécutée : GitHub
+refuse de lancer les jobs (paiement du compte en échec / limite de dépense),
+comme sur `main` — `wiki:check` vérifié en local seulement
+**Dernier commit :** `f50e9f5 docs(fonctionnalites): classeur des fonctionnalités, miroir texte et mise à jour obligatoire`
+
+Fait :
+
+- Classeur `docs/fonctionnalites/ImmoTopia_Wiki_Fonctionnalites.xlsx`
+  (619 sous-fonctionnalités, construit depuis le code le 2026-09-27) versé
+  au dépôt ; feuille « Lisez-moi » complétée d'une section « Tenue à jour —
+  obligatoire ».
+- `scripts/wiki-fonctionnalites.cjs` : `npm run wiki:export` (miroir texte
+  `sous-fonctionnalites.md`), `wiki:check` (miroir synchronisé + structure,
+  étape bloquante de la CI, job `api`), `wiki:search -- <termes>`.
+- Règle « après une fonctionnalité, le classeur est mis à jour dans la même
+  PR » posée dans `AGENTS.md`, `CLAUDE.md`, DEV/LEAD/DEMO_PROCESS, agents
+  Claude et Codex, `.claude/rules/api-routes.md`, skill `/audit`,
+  `.github/pull_request_template.md` (nouveau), `CONTRIBUTING.md`.
+
+Reste à faire :
+
+- Les branches Syndic en cours (lots S1–S7, worktrees `syndic-*`) livrent
+  des fonctionnalités absentes du classeur : chacune ajoute ses lignes avant
+  sa PR (une branche à la fois, le .xlsx ne se fusionne pas).
+- Page « Wiki des fonctionnalités » du site vitrine : pas commencée ;
+  relire la feuille Notes avant toute publication.
+
+Pièges et décisions :
+
+- exceljs 4.4 plante en lecture sur les cibles de relation absolues écrites
+  par openpyxl (`/xl/tables/…`) : le script les réécrit en relatif dans une
+  copie mémoire (jszip) ; le fichier sur disque n'est jamais réécrit par
+  exceljs. Écrire le classeur avec openpyxl ou Excel, jamais exceljs.
+- Le miroir est dans `.prettierignore` : `wiki:check` compare octet à octet
+  (CRLF normalisés), Prettier le casserait à chaque commit.
+- `docs/architecture/features.md` a été reformaté par Prettier (alignement
+  des tableaux seulement, contenu inchangé).
+
 ## Branche `chore/agentic-architecture` — 2026-09-27
 
 **État :** en cours (PR #16 ouverte ; garde et outils ajoutés localement)

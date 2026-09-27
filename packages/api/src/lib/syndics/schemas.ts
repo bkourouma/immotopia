@@ -26,7 +26,9 @@ export const createSyndicateSchema = z.object({
   syndicManagerId: z.string().uuid().optional(),
   cadastralReference: z.string().optional(),
   totalLots: z.number().int().nonnegative().default(0),
-  totalBuildings: z.number().int().positive().default(1)
+  totalBuildings: z.number().int().positive().default(1),
+  // Lot S1 : agence mandante (facultative) dont l'identite figure sur les documents.
+  mandatingAgencyId: z.string().uuid().nullable().optional()
 });
 
 export const updateSyndicateSchema = z
@@ -41,7 +43,9 @@ export const updateSyndicateSchema = z
     totalLots: z.number().int().nonnegative().optional(),
     totalBuildings: z.number().int().positive().optional(),
     status: z.enum(['ACTIVE', 'IN_LIQUIDATION', 'IN_DISPUTE']).optional(),
-    regulationDocUrl: httpUrl('Le lien du reglement doit etre une URL valide').nullable().optional()
+    regulationDocUrl: httpUrl('Le lien du reglement doit etre une URL valide').nullable().optional(),
+    // Lot S1 : null detache la copropriete de son mandant.
+    mandatingAgencyId: z.string().uuid().nullable().optional()
   })
   .refine(value => Object.keys(value).length > 0, {
     message: 'Au moins un champ doit etre fourni pour la mise a jour'
