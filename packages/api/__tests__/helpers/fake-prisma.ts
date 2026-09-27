@@ -159,7 +159,11 @@ export interface FakeModel {
 
 function createModel(name: string): FakeModel {
   const model: any = { rows: [] as Row[] };
-  const find = (args: any = {}) => sortRows(model.rows.filter((row: Row) => matchesWhere(row, args.where)), args.orderBy);
+  const find = (args: any = {}) =>
+    sortRows(
+      model.rows.filter((row: Row) => matchesWhere(row, args.where)),
+      args.orderBy
+    );
   model.findMany = jest.fn(async (args: any = {}) => {
     const rows = find(args);
     const sliced = args.take !== undefined ? rows.slice(args.skip ?? 0, (args.skip ?? 0) + args.take) : rows;

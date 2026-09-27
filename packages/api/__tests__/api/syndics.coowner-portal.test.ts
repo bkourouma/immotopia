@@ -181,7 +181,14 @@ function seed() {
   });
 
   mockPrisma.crmContact.rows.push(
-    { id: CONTACT_AWA, tenantId: TENANT_A, firstName: 'Awa', lastName: 'Konan', legalName: null, email: 'awa@example.com' },
+    {
+      id: CONTACT_AWA,
+      tenantId: TENANT_A,
+      firstName: 'Awa',
+      lastName: 'Konan',
+      legalName: null,
+      email: 'awa@example.com'
+    },
     {
       id: CONTACT_BAKARY,
       tenantId: TENANT_A,
@@ -242,7 +249,13 @@ function seed() {
     { id: SB, tenantId: TENANT_B, name: 'Résidence Cocody', address: 'Cocody' }
   );
 
-  const lot = (lotId: string, syndicateId: string, lotNumber: string, generalShares: number, ownerContactId: string) => ({
+  const lot = (
+    lotId: string,
+    syndicateId: string,
+    lotNumber: string,
+    generalShares: number,
+    ownerContactId: string
+  ) => ({
     id: lotId,
     syndicateId,
     lotNumber,
@@ -282,8 +295,24 @@ function seed() {
   );
 
   mockPrisma.ownerAccount.rows.push(
-    { id: ACCOUNT_L1, syndicateId: S1, lotId: L1, contactId: CONTACT_AWA, balance: 70000, currency: 'XOF', lastUpdatedAt: PAST },
-    { id: ACCOUNT_L2, syndicateId: S1, lotId: L2, contactId: CONTACT_BAKARY, balance: -20000, currency: 'XOF', lastUpdatedAt: PAST }
+    {
+      id: ACCOUNT_L1,
+      syndicateId: S1,
+      lotId: L1,
+      contactId: CONTACT_AWA,
+      balance: 70000,
+      currency: 'XOF',
+      lastUpdatedAt: PAST
+    },
+    {
+      id: ACCOUNT_L2,
+      syndicateId: S1,
+      lotId: L2,
+      contactId: CONTACT_BAKARY,
+      balance: -20000,
+      currency: 'XOF',
+      lastUpdatedAt: PAST
+    }
   );
   mockPrisma.ownerAccountTransaction.rows.push(
     {
@@ -325,8 +354,28 @@ function seed() {
   );
 
   mockPrisma.chargeCall.rows.push(
-    { id: CALL_L1, syndicateId: S1, lotId: L1, period: '2026-T1', amount: 100000, currency: 'XOF', dueDate: PAST, status: 'PARTIAL', createdAt: PAST },
-    { id: CALL_L2, syndicateId: S1, lotId: L2, period: '2026-T1', amount: 150000, currency: 'XOF', dueDate: FUTURE, status: 'PENDING', createdAt: PAST }
+    {
+      id: CALL_L1,
+      syndicateId: S1,
+      lotId: L1,
+      period: '2026-T1',
+      amount: 100000,
+      currency: 'XOF',
+      dueDate: PAST,
+      status: 'PARTIAL',
+      createdAt: PAST
+    },
+    {
+      id: CALL_L2,
+      syndicateId: S1,
+      lotId: L2,
+      period: '2026-T1',
+      amount: 150000,
+      currency: 'XOF',
+      dueDate: FUTURE,
+      status: 'PENDING',
+      createdAt: PAST
+    }
   );
   mockPrisma.chargePayment.rows.push(
     { id: 'pay-1', chargeCallId: CALL_L1, amount: 30000 },
@@ -334,15 +383,59 @@ function seed() {
   );
 
   mockPrisma.syndicateDocument.rows.push(
-    { id: DOC_REGULATION, syndicateId: S1, title: 'Reglement', type: 'REGULATION', fileUrl: `/uploads/syndics/${S1}/documents/reglement.pdf`, createdAt: PAST },
-    { id: DOC_INSURANCE, syndicateId: S1, title: 'Assurance', type: 'INSURANCE', fileUrl: `/uploads/syndics/${S1}/documents/assurance.pdf`, createdAt: PAST },
-    { id: DOC_MINUTES, syndicateId: S1, title: 'PV AG 2025', type: 'GENERAL_MEETING_MINUTES', fileUrl: 'https://docs.example.com/pv.pdf', createdAt: PAST },
-    { id: DOC_SB, syndicateId: SB, title: 'Reglement Cocody', type: 'REGULATION', fileUrl: `/uploads/syndics/${SB}/documents/reglement.pdf`, createdAt: PAST }
+    {
+      id: DOC_REGULATION,
+      syndicateId: S1,
+      title: 'Reglement',
+      type: 'REGULATION',
+      fileUrl: `/uploads/syndics/${S1}/documents/reglement.pdf`,
+      createdAt: PAST
+    },
+    {
+      id: DOC_INSURANCE,
+      syndicateId: S1,
+      title: 'Assurance',
+      type: 'INSURANCE',
+      fileUrl: `/uploads/syndics/${S1}/documents/assurance.pdf`,
+      createdAt: PAST
+    },
+    {
+      id: DOC_MINUTES,
+      syndicateId: S1,
+      title: 'PV AG 2025',
+      type: 'GENERAL_MEETING_MINUTES',
+      fileUrl: 'https://docs.example.com/pv.pdf',
+      createdAt: PAST
+    },
+    {
+      id: DOC_SB,
+      syndicateId: SB,
+      title: 'Reglement Cocody',
+      type: 'REGULATION',
+      fileUrl: `/uploads/syndics/${SB}/documents/reglement.pdf`,
+      createdAt: PAST
+    }
   );
 
   mockPrisma.generalMeeting.rows.push(
-    { id: MEETING_DONE, syndicateId: S1, type: 'ORDINARY', scheduledAt: PAST, location: 'Salle A', status: 'COMPLETED', createdAt: PAST },
-    { id: MEETING_PLANNED, syndicateId: S1, type: 'ORDINARY', scheduledAt: FUTURE, location: 'Salle B', status: 'PLANNED', createdAt: PAST }
+    {
+      id: MEETING_DONE,
+      syndicateId: S1,
+      type: 'ORDINARY',
+      scheduledAt: PAST,
+      location: 'Salle A',
+      status: 'COMPLETED',
+      createdAt: PAST
+    },
+    {
+      id: MEETING_PLANNED,
+      syndicateId: S1,
+      type: 'ORDINARY',
+      scheduledAt: FUTURE,
+      location: 'Salle B',
+      status: 'PLANNED',
+      createdAt: PAST
+    }
   );
   mockPrisma.gMAgendaItem.rows.push(
     { id: 'ag-1', meetingId: MEETING_PLANNED, orderIndex: 1, title: 'Budget 2027', createdAt: PAST },
@@ -412,9 +505,11 @@ describe('Portail copropriétaire — ce que voit chaque copropriétaire', () =>
     expect(res.body.data.transactions.map((tx: any) => tx.id)).toEqual(['tx-2', 'tx-1']);
   });
 
-  it("A ne lit pas le compte du lot de B dans la même copropriété : 404, comme un lot inexistant", async () => {
+  it('A ne lit pas le compte du lot de B dans la même copropriété : 404, comme un lot inexistant', async () => {
     const res = await request(app).get(`/api/portal/copropriete/lots/${L2}/compte`).set(as(USER_AWA));
-    const inexistant = await request(app).get(`/api/portal/copropriete/lots/${id(999)}/compte`).set(as(USER_AWA));
+    const inexistant = await request(app)
+      .get(`/api/portal/copropriete/lots/${id(999)}/compte`)
+      .set(as(USER_AWA));
 
     expect(res.status).toBe(404);
     expect(inexistant.status).toBe(404);
@@ -437,7 +532,7 @@ describe('Portail copropriétaire — ce que voit chaque copropriétaire', () =>
     });
   });
 
-  it("A ne voit pas les appels du lot de B, ni en les filtrant par son identifiant", async () => {
+  it('A ne voit pas les appels du lot de B, ni en les filtrant par son identifiant', async () => {
     const all = await request(app).get('/api/portal/copropriete/appels').set(as(USER_AWA));
     const filtered = await request(app).get(`/api/portal/copropriete/appels?lotId=${L2}`).set(as(USER_AWA));
 
@@ -570,7 +665,9 @@ describe('Portail copropriétaire — le jeton de portail n’ouvre aucune route
     const profiles = await request(app)
       .get(`/api/tenants/${TENANT_A}/syndics/${S1}/profils/proprietaires`)
       .set(as(USER_AWA));
-    const account = await request(app).get(`/api/tenants/${TENANT_A}/syndics/${S1}/lots/${L2}/compte`).set(as(USER_AWA));
+    const account = await request(app)
+      .get(`/api/tenants/${TENANT_A}/syndics/${S1}/lots/${L2}/compte`)
+      .set(as(USER_AWA));
     expect(profiles.status).toBe(403);
     expect(account.status).toBe(403);
   });

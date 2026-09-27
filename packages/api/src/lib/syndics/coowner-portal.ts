@@ -528,7 +528,14 @@ export async function listCoOwnerMeetings(scope: CoOwnerPortalScope) {
       ? []
       : await prisma.syndicateLot.findMany({
           where: { syndicateId: { in: completedSyndicateIds } },
-          select: { id: true, syndicateId: true, lotNumber: true, generalShares: true, coownerId: true, ownerContactId: true }
+          select: {
+            id: true,
+            syndicateId: true,
+            lotNumber: true,
+            generalShares: true,
+            coownerId: true,
+            ownerContactId: true
+          }
         });
   const myLotIds = new Set(scope.lotIds);
   const lotNumberById = new Map(allLots.map(lot => [lot.id, lot.lotNumber]));
