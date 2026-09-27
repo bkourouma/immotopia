@@ -15,6 +15,7 @@ import {
   Space,
   Spin,
   Table,
+  Tag,
   Typography
 } from 'antd';
 import { ArrowLeftOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons';
@@ -39,6 +40,55 @@ const transactionTypeLabels: Record<OwnerAccountTransaction['type'], string> = {
   WAIVER: 'Remise',
   ADJUSTMENT: 'Ajustement',
   FUND_TRANSFER: t('Transfert de fonds')
+};
+
+/**
+ * Sens du solde d'un compte copropriétaire.
+ *
+ * `OwnerAccount.balance` (et le `balanceAfter` de chaque mouvement) suit la
+ * convention comptable posée par `appendOwnerAccountTransactionTx`
+ * (`packages/api/src/lib/finance/ledger.ts`) : le débit (appel de charges,
+ * pénalité) AUGMENTE le solde, le crédit (paiement, remise, ajustement
+ * crédit) le DIMINUE. Un solde positif signifie donc que le copropriétaire
+ * DOIT ce montant à la copropriété ; un solde négatif signifie qu'il a une
+ * avance (trop-perçu). C'est la même convention qu'utilise le relevé PDF
+ * (`owner-account-statement.ts`) : les deux écrans qui affichent ce solde
+ * sont déjà cohérents entre eux, il n'y avait donc pas lieu de changer le
+ * signe stocké en base — seulement de l'expliquer, ce qui manquait (constat
+ * de recette, module 3.4 : un crédit de 20 000 affichait « -20 000 FCFA »
+ * sans indication de ce que le signe négatif signifie).
+ */
+type BalanceTone = 'debtor' | 'creditor' | 'settled';
+
+function describeOwnerBalance(rawBalance: number | string | null | undefined): { amount: number; tone: BalanceTone } {
+  const balance = Math.round(Number(rawBalance ?? 0) * 100) / 100;
+  if (balance > 0) return { amount: balance, tone: 'debtor' };
+  if (balance < 0) return { amount: Math.abs(balance), tone: 'creditor' };
+  return { amount: 0, tone: 'settled' };
+}
+
+const balanceToneLabel: Record<BalanceTone, string> = {
+  debtor: t('Débiteur'),
+  creditor: t('Créditeur'),
+  settled: t('Soldé')
+};
+
+const balanceToneHint: Record<BalanceTone, string> = {
+  debtor: t('Le copropriétaire doit ce montant'),
+  creditor: t('Le copropriétaire a une avance'),
+  settled: t('Compte à jour')
+};
+
+const balanceToneStatCardTone: Record<BalanceTone, 'warning' | 'positive' | 'neutral'> = {
+  debtor: 'warning',
+  creditor: 'positive',
+  settled: 'neutral'
+};
+
+const balanceToneTagColor: Record<BalanceTone, string> = {
+  debtor: 'orange',
+  creditor: 'green',
+  settled: 'default'
 };
 
 export const SyndicOwnerAccount: React.FC = () => {
@@ -68,11 +118,20 @@ export const SyndicOwnerAccount: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [accountData, txData] = await Promise.all([
-        getLotOwnerAccount(effectiveTenantId, syndicId, lotId),
-        listLotOwnerAccountTransactions(effectiveTenantId, syndicId, lotId, { page: 1, limit: 100 })
-      ]);
+      // Le compte du lot est créé à la première consultation
+      // (`getOrCreateOwnerAccountForLot`, côté API). Lancer les deux appels en
+      // parallèle faisait courir la création du compte deux fois de suite :
+      // la seconde requête (transactions) déclenchait sa propre création
+      // avant que celle du premier appel (compte) n'ait eu le temps de
+      // committer, et l'API renvoyait 409 (constat de recette, module 3.3).
+      // Attendre le compte avant d'aller chercher ses transactions élimine
+      // cette course côté web, en plus du correctif d'idempotence côté API.
+      const accountData = await getLotOwnerAccount(effectiveTenantId, syndicId, lotId);
       setAccount(accountData);
+      const txData = await listLotOwnerAccountTransactions(effectiveTenantId, syndicId, lotId, {
+        page: 1,
+        limit: 100
+      });
       setTransactions(txData);
     } catch (err: any) {
       setError(err.response?.data?.error || t('Impossible de charger le compte lot'));
@@ -89,6 +148,8 @@ export const SyndicOwnerAccount: React.FC = () => {
       t('Propriétaire')
     );
   }, [account]);
+
+  const balanceInfo = useMemo(() => describeOwnerBalance(account?.balance), [account]);
 
   const handleAdjustment = async () => {
     if (!effectiveTenantId || !syndicId || !lotId) return;
@@ -165,7 +226,12 @@ export const SyndicOwnerAccount: React.FC = () => {
           <>
             <Row gutter={[16, 16]}>
               <Col xs={24} md={8}>
-                <StatCard label={t('Solde courant')} value={<MoneyValue value={account?.balance ?? 0} />} />
+                <StatCard
+                  label={t('Solde courant')}
+                  value={<MoneyValue value={balanceInfo.amount} />}
+                  hint={`${balanceToneLabel[balanceInfo.tone]} — ${balanceToneHint[balanceInfo.tone]}`}
+                  tone={balanceToneStatCardTone[balanceInfo.tone]}
+                />
               </Col>
               <Col xs={24} md={8}>
                 <StatCard label={t('Transactions')} value={transactions.length} />
@@ -209,7 +275,15 @@ export const SyndicOwnerAccount: React.FC = () => {
                     title: 'Solde',
                     dataIndex: 'balanceAfter',
                     align: 'end',
-                    render: (value: number | string) => <MoneyValue value={value} />
+                    render: (value: number | string) => {
+                      const info = describeOwnerBalance(value);
+                      return (
+                        <Space size={6}>
+                          <MoneyValue value={info.amount} />
+                          <Tag color={balanceToneTagColor[info.tone]}>{balanceToneLabel[info.tone]}</Tag>
+                        </Space>
+                      );
+                    }
                   }
                 ]}
               />
