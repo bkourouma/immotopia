@@ -414,3 +414,13 @@ describe('gestion — personnel avec la permission maintenance', () => {
   });
 });
 
+describe('/uploads/maintenance en accès direct', () => {
+  it('répond 404, même au gestionnaire et au locataire concerné, fichier présent sur le disque', async () => {
+    const url = fileUrl(TENANT_A, T_AWA, 'fuite.jpg');
+    for (const userId of [USER_MARIAM, USER_AWA, USER_BAKARY, USER_OUMAR]) {
+      const res = await request(app).get(url).set('Cookie', `accessToken=${userId}`);
+      expect(`${userId} : ${res.status}`).toBe(`${userId} : 404`);
+    }
+    expect((await request(app).get(url)).status).toBe(404);
+  });
+});

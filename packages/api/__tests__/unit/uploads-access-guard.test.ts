@@ -9,7 +9,9 @@
  *     pièces de pénalité : réservés au personnel de l'agence — un client du
  *     portail (locataire, propriétaire, copropriétaire) ne les ouvre plus
  *     par leur URL ;
- *   - pièces jointes de maintenance : inchangé (les portails les affichent) ;
+ *   - `/uploads/maintenance/...` est refusé de même : les pièces jointes des
+ *     tickets ne sortent que par les routes authentifiées de
+ *     lib/maintenance/attachment-files.ts, qui contrôlent le ticket ;
  *   - médias d'annonce : publics, inchangé.
  *
  * La base est la base en mémoire de `helpers/fake-prisma.ts` ; le jeton est
@@ -68,6 +70,17 @@ describe('uploadsAccessGuard — documents de copropriété', () => {
   });
 });
 
+describe('uploadsAccessGuard — pièces jointes de maintenance', () => {
+  it('refuse /uploads/maintenance/... en accès direct, quelle que soit la session', async () => {
+    const path = '/maintenance/tenant-a/ticket-1/photo.jpg';
+    expect(await hit(path, STAFF)).toEqual({ served: false, status: 404 });
+    expect(await hit(path, CLIENT)).toEqual({ served: false, status: 404 });
+    expect(await hit(path, OTHER_AGENCY_STAFF)).toEqual({ served: false, status: 404 });
+    expect(await hit(path)).toEqual({ served: false, status: 404 });
+    expect(await hit('/maintenance', STAFF)).toEqual({ served: false, status: 404 });
+  });
+});
+
 describe('uploadsAccessGuard — fichiers réservés au personnel', () => {
   const staffOnly = [
     '/properties/prop-1/documents/titre.pdf',
@@ -94,14 +107,6 @@ describe('uploadsAccessGuard — fichiers réservés au personnel', () => {
 });
 
 describe('uploadsAccessGuard — inchangé', () => {
-  it('pièces jointes de maintenance : ouvertes aux clients de l’agence (portails)', async () => {
-    expect((await hit('/maintenance/tenant-a/ticket-1/photo.jpg', CLIENT)).served).toBe(true);
-    expect(await hit('/maintenance/tenant-a/ticket-1/photo.jpg', OTHER_AGENCY_STAFF)).toEqual({
-      served: false,
-      status: 403
-    });
-  });
-
   it("médias d'annonce : publics", async () => {
     expect((await hit('/properties/prop-1/photo.jpg')).served).toBe(true);
   });
