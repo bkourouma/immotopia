@@ -29,7 +29,10 @@
     "test": "npm run test -w @immotopia/api",
     "test:web": "npm run test -w @immotopia/web",
     "a11y:contrast": "npm run a11y:contrast -w @immotopia/web",
-    "prepare": "node scripts/install-git-hooks.cjs"
+    "prepare": "node scripts/install-git-hooks.cjs",
+    "wiki:export": "node scripts/wiki-fonctionnalites.cjs export",
+    "wiki:check": "node scripts/wiki-fonctionnalites.cjs check",
+    "wiki:search": "node scripts/wiki-fonctionnalites.cjs search"
   },
   "lint-staged": {
     "packages/api/**/*.ts": [

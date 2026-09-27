@@ -74,4 +74,6 @@ toujours `select` explicite sur `User`.
 
 Toute route nouvelle doit porter une garde tenant/portail/plateforme,
 vérifié par `__tests__/unit/routes-inventory.test.ts`. Tout modèle Prisma
-nouveau doit passer `__tests__/unit/schema-tenant-coverage.test.ts`.
+nouveau doit passer `__tests__/unit/schema-tenant-coverage.test.ts`. Une
+route nouvelle, modifiée ou retirée se répercute aussi dans
+`docs/fonctionnalites/` (voir `docs/fonctionnalites/README.md`).
