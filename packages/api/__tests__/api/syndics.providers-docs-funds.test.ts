@@ -34,7 +34,10 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   createSyndicateLot: jest.fn(),
   updateSyndicateLotByTenant: jest.fn(),
   updateSyndicateByTenant: jest.fn(),
-  archiveSyndicateByTenant: jest.fn(),
+  deleteEmptySyndicateByTenant: jest.fn(),
+  createServiceProvider: jest.fn(),
+  updateServiceProviderByTenant: jest.fn(),
+  deleteServiceProviderByTenant: jest.fn(),
   listChargeCallsBySyndicate: jest.fn(),
   getChargeCallByTenant: jest.fn(),
   createChargeCallAndUpdateStatus: jest.fn(),
@@ -113,12 +116,18 @@ jest.mock('../../src/lib/syndics/notifications', () => ({
 }));
 
 import syndicRoutes from '../../src/routes/syndic-routes';
+import { errorHandler } from '../../src/middleware/error-middleware';
+import { conflict } from '../../src/lib/errors';
 const mockQueries = jest.requireMock('../../src/lib/syndics/queries') as Record<string, jest.Mock>;
 
 describe('Syndics providers/documents/funds routes', () => {
   const app = express();
   app.use(express.json());
   app.use('/api', syndicRoutes);
+  // Sans ce middleware, une erreur typee (throw + asyncHandler, ex. le 409 du
+  // refus de suppression d'un prestataire lie) tombe sur le gestionnaire par
+  // defaut d'Express au lieu du code et du message attendus.
+  app.use(errorHandler);
 
   it('returns providers/contracts/common assets payload', async () => {
     const response = await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/prestataires`);
@@ -187,6 +196,104 @@ describe('Syndics providers/documents/funds routes', () => {
     const deleteResponse = await request(app).delete(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/contrats/contract-new`);
     expect(deleteResponse.status).toBe(200);
     expect(deleteResponse.body.success).toBe(true);
+  });
+
+  it('supports provider CRUD endpoints (ecart recette #2, FR-010)', async () => {
+    mockQueries.createServiceProvider.mockResolvedValueOnce({
+      id: 'provider-new',
+      tenantId: TENANT_ID,
+      name: 'Ascenseurs Pro',
+      specialty: 'Ascenseur',
+      email: 'contact@ascenseurspro.test',
+      phone: null
+    });
+    const createResponse = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/prestataires`)
+      .send({ name: 'Ascenseurs Pro', specialty: 'Ascenseur', email: 'contact@ascenseurspro.test' });
+    expect(createResponse.status).toBe(201);
+    expect(createResponse.body.success).toBe(true);
+    expect(createResponse.body.data.id).toBe('provider-new');
+    expect(mockQueries.createServiceProvider).toHaveBeenCalledWith(
+      TENANT_ID,
+      expect.objectContaining({ name: 'Ascenseurs Pro', specialty: 'Ascenseur', email: 'contact@ascenseurspro.test' })
+    );
+
+    // Nom obligatoire.
+    const missingNameResponse = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/prestataires`)
+      .send({ email: 'contact@ascenseurspro.test' });
+    expect(missingNameResponse.status).toBe(400);
+
+    // E-mail invalide si fourni.
+    const invalidEmailResponse = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/prestataires`)
+      .send({ name: 'Ascenseurs Pro', email: 'pas-un-email' });
+    expect(invalidEmailResponse.status).toBe(400);
+    expect(mockQueries.createServiceProvider).toHaveBeenCalledTimes(1);
+
+    mockQueries.updateServiceProviderByTenant.mockResolvedValueOnce({
+      id: 'provider-new',
+      tenantId: TENANT_ID,
+      name: 'Ascenseurs Pro SARL',
+      specialty: 'Ascenseur',
+      email: 'contact@ascenseurspro.test',
+      phone: '+225 07 00 00 00'
+    });
+    const patchResponse = await request(app)
+      .patch(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/prestataires/provider-new`)
+      .send({ name: 'Ascenseurs Pro SARL', phone: '+225 07 00 00 00' });
+    expect(patchResponse.status).toBe(200);
+    expect(patchResponse.body.data.name).toBe('Ascenseurs Pro SARL');
+    expect(mockQueries.updateServiceProviderByTenant).toHaveBeenCalledWith(
+      TENANT_ID,
+      'provider-new',
+      expect.objectContaining({ name: 'Ascenseurs Pro SARL', phone: '+225 07 00 00 00' })
+    );
+
+    // Isolation multi-tenant : le service leve NotFound pour un prestataire
+    // d'une autre agence, la route ne fait que relayer.
+    mockQueries.updateServiceProviderByTenant.mockRejectedValueOnce(
+      Object.assign(new Error('Prestataire introuvable ou inaccessible'), { status: 404 })
+    );
+    const otherTenantPatch = await request(app)
+      .patch(`/api/tenants/tenant-autre/syndics/${SYNDIC_ID}/prestataires/provider-new`)
+      .send({ name: 'Vole' });
+    expect(otherTenantPatch.status).toBe(404);
+
+    // Refus de suppression : le prestataire a des contrats ou incidents lies.
+    mockQueries.deleteServiceProviderByTenant.mockRejectedValueOnce(
+      conflict('Ce prestataire a des contrats ou des incidents lies : il ne peut pas etre supprime.')
+    );
+    const refusedDelete = await request(app).delete(
+      `/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/prestataires/provider-new`
+    );
+    expect(refusedDelete.status).toBe(409);
+    expect(refusedDelete.body.message).toContain('ne peut pas etre supprime');
+
+    // Suppression possible pour un prestataire sans contrat ni incident.
+    mockQueries.deleteServiceProviderByTenant.mockResolvedValueOnce({ id: 'provider-new', name: 'Ascenseurs Pro SARL' });
+    const okDelete = await request(app).delete(
+      `/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/prestataires/provider-new`
+    );
+    expect(okDelete.status).toBe(200);
+    expect(okDelete.body.success).toBe(true);
+  });
+
+  it('refuse la suppression d une copropriete non vide et l accepte une fois vide (ecart recette #8)', async () => {
+    mockQueries.deleteEmptySyndicateByTenant.mockRejectedValueOnce(
+      conflict(
+        'Cette copropriete a des lots, des appels de charges, des assemblees ou des documents : elle ne peut pas etre supprimee.'
+      )
+    );
+    const refused = await request(app).delete(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}`);
+    expect(refused.status).toBe(409);
+    expect(refused.body.message).toContain('ne peut pas etre supprimee');
+
+    mockQueries.deleteEmptySyndicateByTenant.mockResolvedValueOnce({ id: SYNDIC_ID });
+    const accepted = await request(app).delete(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}`);
+    expect(accepted.status).toBe(200);
+    expect(accepted.body.success).toBe(true);
+    expect(accepted.body.message).toBe('Copropriete supprimee');
   });
 
   it('returns documents list', async () => {

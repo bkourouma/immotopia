@@ -172,6 +172,24 @@ export const updateAgendaItemSchema = z
     message: "Au moins un champ doit etre fourni pour la mise a jour du point d'ordre du jour"
   });
 
+export const createServiceProviderSchema = z.object({
+  name: z.string().min(1, 'Le nom du prestataire est obligatoire'),
+  specialty: z.string().min(1).optional(),
+  email: z.string().email("L'email du prestataire doit etre valide").optional(),
+  phone: z.string().optional()
+});
+
+export const updateServiceProviderSchema = z
+  .object({
+    name: z.string().min(1, 'Le nom du prestataire est obligatoire').optional(),
+    specialty: z.string().nullable().optional(),
+    email: z.string().email("L'email du prestataire doit etre valide").nullable().optional(),
+    phone: z.string().nullable().optional()
+  })
+  .refine(value => Object.keys(value).length > 0, {
+    message: 'Au moins un champ doit etre fourni pour la mise a jour du prestataire'
+  });
+
 export const createContractSchema = z.object({
   syndicateId: z.string().uuid(),
   providerId: z.string().uuid(),
@@ -532,6 +550,8 @@ export type CreateResolutionInput = z.infer<typeof createResolutionSchema>;
 export type CastVoteInput = z.infer<typeof castVoteSchema>;
 export type CreateAgendaItemInput = z.infer<typeof createAgendaItemSchema>;
 export type UpdateAgendaItemInput = z.infer<typeof updateAgendaItemSchema>;
+export type CreateServiceProviderInput = z.infer<typeof createServiceProviderSchema>;
+export type UpdateServiceProviderInput = z.infer<typeof updateServiceProviderSchema>;
 export type CreateContractInput = z.infer<typeof createContractSchema>;
 export type CreateDocumentInput = z.infer<typeof createDocumentSchema>;
 export type CreateLotTenantAssignmentInput = z.infer<typeof createLotTenantAssignmentSchema>;

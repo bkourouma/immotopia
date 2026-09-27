@@ -9,7 +9,7 @@ import {
   createSyndicHandler,
   getSyndicHandler,
   updateSyndicHandler,
-  archiveSyndicHandler,
+  deleteSyndicHandler,
   listSyndicLotsHandler,
   createSyndicLotHandler,
   importSyndicLotsFromPropertiesHandler,
@@ -38,6 +38,9 @@ import {
   castVoteHandler,
   generateMeetingMinutesHandler,
   listProvidersHandler,
+  createProviderHandler,
+  updateProviderHandler,
+  deleteProviderHandler,
   listContractsHandler,
   linkContractHandler,
   createContractHandler,
@@ -99,7 +102,7 @@ router.patch('/tenants/:tenantId/syndics/:syndicId', requirePropertyPermission('
 router.delete(
   '/tenants/:tenantId/syndics/:syndicId',
   requirePropertyPermission('PROPERTIES_EDIT'),
-  archiveSyndicHandler
+  deleteSyndicHandler
 );
 
 router.get(
@@ -364,6 +367,21 @@ router.get(
   '/tenants/:tenantId/syndics/:syndicId/prestataires',
   requireAnyPropertyPermission(['PROPERTIES_VIEW']),
   listProvidersHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/prestataires',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createProviderHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/prestataires/:providerId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  updateProviderHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/prestataires/:providerId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  deleteProviderHandler
 );
 router.get(
   '/tenants/:tenantId/syndics/:syndicId/contrats',

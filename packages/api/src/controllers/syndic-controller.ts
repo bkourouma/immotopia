@@ -11,7 +11,7 @@ import {
   addLotTenantBySyndicate,
   deactivateLotTenantAssignmentBySyndicate,
   updateSyndicateByTenant,
-  archiveSyndicateByTenant,
+  deleteEmptySyndicateByTenant,
   listChargeCallsBySyndicate,
   getChargeCallByTenant,
   createChargeCallAndUpdateStatus,
@@ -26,6 +26,9 @@ import {
   updateAgendaItemByTenant,
   deleteAgendaItemByTenant,
   listServiceProvidersBySyndicate,
+  createServiceProvider,
+  updateServiceProviderByTenant,
+  deleteServiceProviderByTenant,
   listMaintenanceContractsBySyndicate,
   linkMaintenanceContractBySyndicate,
   listLinkedMaintenanceContractsBySyndicate,
@@ -107,6 +110,8 @@ import {
   castVoteSchema,
   createAgendaItemSchema,
   updateAgendaItemSchema,
+  createServiceProviderSchema,
+  updateServiceProviderSchema,
   createContractSchema,
   createDocumentSchema,
   updateContractSchema,
@@ -198,15 +203,15 @@ export const updateSyndicHandler = asyncHandler(async (req: Request, res: Respon
   });
 });
 
-export const archiveSyndicHandler = asyncHandler(async (req: Request, res: Response) => {
+export const deleteSyndicHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
   const syndicId = req.params.syndicId;
 
   if (!tenantId) {
-    throw badRequest('TenantId manquant pour l archivage de copropriete');
+    throw badRequest('TenantId manquant pour la suppression de copropriete');
   }
 
-  const syndic = await archiveSyndicateByTenant(tenantId, syndicId);
+  const syndic = await deleteEmptySyndicateByTenant(tenantId, syndicId);
 
   res.json({
     success: true,
@@ -872,6 +877,56 @@ export const listProvidersHandler = asyncHandler(async (req: Request, res: Respo
       contracts,
       commonAssets: assets
     }
+  });
+});
+
+export const createProviderHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la creation de prestataire');
+  }
+
+  const parsed = createServiceProviderSchema.parse(req.body);
+  const provider = await createServiceProvider(tenantId, parsed);
+
+  res.status(201).json({
+    success: true,
+    data: provider
+  });
+});
+
+export const updateProviderHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const providerId = req.params.providerId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la mise a jour du prestataire');
+  }
+
+  const parsed = updateServiceProviderSchema.parse(req.body);
+  const provider = await updateServiceProviderByTenant(tenantId, providerId, parsed);
+
+  res.json({
+    success: true,
+    data: provider
+  });
+});
+
+export const deleteProviderHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const providerId = req.params.providerId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la suppression du prestataire');
+  }
+
+  const provider = await deleteServiceProviderByTenant(tenantId, providerId);
+
+  res.json({
+    success: true,
+    message: 'Prestataire supprime',
+    data: provider
   });
 });
 

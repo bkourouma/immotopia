@@ -514,7 +514,7 @@
   "Tâcheron introuvable pour ce règlement": "Subcontractor not found for this payment",
   "Tâcheron introuvable pour cette situation": "Subcontractor not found for this progress claim",
   "TenantId manquant": "Missing tenantId",
-  "TenantId manquant pour l archivage de copropriete": "Missing tenantId to archive a co-ownership",
+  "TenantId manquant pour la suppression de copropriete": "Missing tenantId to delete a co-ownership",
   "TenantId manquant pour l'affectation locataire": "Missing tenantId to assign a tenant",
   "TenantId manquant pour l'import des lots": "Missing tenantId to import units",
   "TenantId manquant pour l'imputation d'incident": "Missing tenantId to allocate an incident",
@@ -745,5 +745,15 @@
   "Offre : {{offer}} (quantité : {{quantity}})": "Offer: {{offer}} (quantity: {{quantity}})",
   "Demandeur : {{name}} ({{email}})": "Requested by: {{name}} ({{email}})",
   "Le motif de la lecture seule manuelle doit compter au moins 3 caractères.": "The reason for manual read-only mode must be at least 3 characters long.",
-  "L'abonnement n'est pas en lecture seule manuelle.": "The subscription is not in manual read-only mode."
+  "L'abonnement n'est pas en lecture seule manuelle.": "The subscription is not in manual read-only mode.",
+  "Le nom du prestataire est obligatoire": "The service provider's name is required",
+  "L'email du prestataire doit etre valide": "The service provider's email must be valid",
+  "Au moins un champ doit etre fourni pour la mise a jour du prestataire": "At least one field must be provided to update the service provider",
+  "Prestataire introuvable ou inaccessible": "Service provider not found or not accessible",
+  "Ce prestataire a des contrats ou des incidents lies : il ne peut pas etre supprime.": "This service provider still has linked contracts or incidents: it cannot be deleted.",
+  "Prestataire supprime": "Service provider deleted",
+  "TenantId manquant pour la creation de prestataire": "Missing tenantId to create a service provider",
+  "TenantId manquant pour la mise a jour du prestataire": "Missing tenantId to update the service provider",
+  "TenantId manquant pour la suppression du prestataire": "Missing tenantId to delete the service provider",
+  "Cette copropriete a des lots, des appels de charges, des assemblees ou des documents : elle ne peut pas etre supprimee.": "This co-ownership has units, charge calls, general meetings or documents: it cannot be deleted."
 }

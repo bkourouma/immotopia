@@ -63,7 +63,7 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   createSyndicateLot: jest.fn(),
   updateSyndicateLotByTenant: jest.fn(),
   updateSyndicateByTenant: jest.fn(),
-  archiveSyndicateByTenant: jest.fn(),
+  deleteEmptySyndicateByTenant: jest.fn(),
   listMeetingsBySyndicate: jest.fn(),
   getMeetingByTenant: jest.fn(),
   createMeetingWithResolutions: jest.fn(),

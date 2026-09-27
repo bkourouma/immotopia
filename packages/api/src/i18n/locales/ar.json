@@ -514,7 +514,7 @@
   "Tâcheron introuvable pour ce règlement": "لم يُعثر على المقاول لهذه الدفعة",
   "Tâcheron introuvable pour cette situation": "لم يُعثر على المقاول لهذا المستخلص",
   "TenantId manquant": "معرّف الوكالة مفقود",
-  "TenantId manquant pour l archivage de copropriete": "معرّف الوكالة مفقود لأرشفة ملكية مشتركة",
+  "TenantId manquant pour la suppression de copropriete": "معرّف الوكالة مفقود لحذف ملكية مشتركة",
   "TenantId manquant pour l'affectation locataire": "معرّف الوكالة مفقود لإسناد مستأجر",
   "TenantId manquant pour l'import des lots": "معرّف الوكالة مفقود لاستيراد الوحدات",
   "TenantId manquant pour l'imputation d'incident": "معرّف الوكالة مفقود لتحميل بلاغ",
@@ -745,5 +745,15 @@
   "Offre : {{offer}} (quantité : {{quantity}})": "العرض: {{offer}} (الكمية: {{quantity}})",
   "Demandeur : {{name}} ({{email}})": "مقدم الطلب: {{name}} ({{email}})",
   "Le motif de la lecture seule manuelle doit compter au moins 3 caractères.": "يجب أن يتكون سبب القراءة فقط اليدوية من 3 أحرف على الأقل.",
-  "L'abonnement n'est pas en lecture seule manuelle.": "الاشتراك ليس في وضع القراءة فقط اليدوي."
+  "L'abonnement n'est pas en lecture seule manuelle.": "الاشتراك ليس في وضع القراءة فقط اليدوي.",
+  "Le nom du prestataire est obligatoire": "اسم مزود الخدمة إلزامي",
+  "L'email du prestataire doit etre valide": "يجب أن يكون البريد الإلكتروني لمزود الخدمة صحيحًا",
+  "Au moins un champ doit etre fourni pour la mise a jour du prestataire": "يجب إدخال حقل واحد على الأقل لتحديث مزود الخدمة",
+  "Prestataire introuvable ou inaccessible": "مزود الخدمة غير موجود أو غير قابل للوصول إليه",
+  "Ce prestataire a des contrats ou des incidents lies : il ne peut pas etre supprime.": "لا يمكن حذف مزود الخدمة هذا لارتباطه بعقود أو حوادث.",
+  "Prestataire supprime": "تم حذف مزود الخدمة",
+  "TenantId manquant pour la creation de prestataire": "معرّف الوكالة مفقود لإنشاء مزود خدمة",
+  "TenantId manquant pour la mise a jour du prestataire": "معرّف الوكالة مفقود لتحديث مزود الخدمة",
+  "TenantId manquant pour la suppression du prestataire": "معرّف الوكالة مفقود لحذف مزود الخدمة",
+  "Cette copropriete a des lots, des appels de charges, des assemblees ou des documents : elle ne peut pas etre supprimee.": "لهذه الملكية المشتركة وحدات أو استدعاءات رسوم أو اجتماعات عامة أو مستندات: لا يمكن حذفها."
 }
