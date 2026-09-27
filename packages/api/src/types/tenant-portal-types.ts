@@ -132,7 +132,8 @@ export interface PaymentDeclarationData {
   paymentMethod: string;
   mobileOperator: string | null;
   reference: string | null;
-  proofFileUrl: string | null;
+  /** Une preuve est jointe ; le fichier ne sort que côté agence (route authentifiée). */
+  hasProof: boolean;
   status: string;
   createdAt: Date;
 }

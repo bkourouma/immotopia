@@ -29,6 +29,7 @@ process.env.UPLOADS_DIR = UPLOADS_ROOT;
 import express from 'express';
 import request from 'supertest';
 import { createFakePrisma } from '../helpers/fake-prisma';
+import { findDiskPathLeaks } from '../helpers/disk-path-leaks';
 
 const mockPrisma = createFakePrisma();
 
@@ -597,6 +598,32 @@ describe('Portail copropriétaire — ce que voit chaque copropriétaire', () =>
     });
     expect(JSON.stringify(res.body)).not.toContain(CONTACT_BAKARY);
     expect(JSON.stringify(res.body)).not.toContain('A2');
+  });
+});
+
+describe('Portail copropriétaire — aucune réponse ne porte de chemin disque', () => {
+  it('ni `filePath`, ni chemin disque, ni URL de stockage `/uploads/...`', async () => {
+    // Des chemins privés partout où le modèle en porte : ils ne doivent
+    // ressortir dans aucune réponse du portail (même contrôle que
+    // portal-no-disk-paths.test.ts pour les portails locataire et propriétaire).
+    for (const syndicate of mockPrisma.syndicate.rows) {
+      syndicate.regulationDocUrl = `/uploads/syndics/${syndicate.id}/documents/reglement.pdf`;
+    }
+    for (const meeting of mockPrisma.generalMeeting.rows) {
+      meeting.minutesUrl = `/uploads/syndics/${meeting.syndicateId}/documents/pv.pdf`;
+    }
+
+    for (const route of [
+      '/api/portal/copropriete/lots',
+      `/api/portal/copropriete/lots/${L1}/compte`,
+      '/api/portal/copropriete/appels',
+      '/api/portal/copropriete/documents',
+      '/api/portal/copropriete/assemblees'
+    ]) {
+      const res = await request(app).get(route).set(as(USER_AWA));
+      expect(`${route} : ${res.status}`).toBe(`${route} : 200`);
+      expect(findDiskPathLeaks(res.body)).toEqual([]);
+    }
   });
 });
 
