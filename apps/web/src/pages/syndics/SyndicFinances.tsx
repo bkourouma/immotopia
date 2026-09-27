@@ -274,7 +274,7 @@ export const SyndicFinances: React.FC = () => {
       setDashboard(dashboardData);
       setReminders(remindersData);
     } catch (err: any) {
-      setError(err.response?.data?.error || t('Impossible de charger la synthese financiere'));
+      setError(err.response?.data?.error || t('Impossible de charger la synthèse financière'));
     } finally {
       setLoading(false);
     }
@@ -500,21 +500,21 @@ export const SyndicFinances: React.FC = () => {
           </Col>
           <Col xs={24} md={8}>
             <StatCard
-              label={t('Total appele')}
+              label={t('Total appelé')}
               value={<MoneyValue value={summary?.totals.totalCalled} />}
               onClick={() => scrollToSection('finances-appels')}
             />
           </Col>
           <Col xs={24} md={8}>
             <StatCard
-              label={t('Total paye')}
+              label={t('Total payé')}
               value={<MoneyValue value={summary?.totals.totalPaid} />}
               onClick={() => scrollToSection('finances-paiements')}
             />
           </Col>
           <Col xs={24} md={8}>
             <StatCard
-              label={t('Reste a payer')}
+              label={t('Reste à payer')}
               value={<MoneyValue value={summary?.totals.totalOutstanding} />}
               onClick={() => scrollToSection('finances-appels')}
             />

@@ -45,7 +45,7 @@ function idParam(req: Request, name: string, message: string): string {
   return parsed.data;
 }
 
-const syndicOf = (req: Request) => idParam(req, 'syndicId', 'Copropriete introuvable ou inaccessible');
+const syndicOf = (req: Request) => idParam(req, 'syndicId', 'Copropriété introuvable ou inaccessible');
 const invoiceOf = (req: Request) => idParam(req, 'invoiceId', 'Facture de prestataire introuvable.');
 
 export const listProviderInvoicesHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -114,7 +114,7 @@ export const deleteProviderInvoiceFileHandler = asyncHandler(async (req: Request
 });
 
 export const downloadProviderInvoiceFileHandler = asyncHandler(async (req: Request, res: Response) => {
-  const notFound = 'Piece jointe introuvable.';
+  const notFound = 'Pièce jointe introuvable.';
   const file = await getProviderInvoiceFile(
     tenantOf(req),
     idParam(req, 'syndicId', notFound),
@@ -130,7 +130,7 @@ export const listProviderBalancesHandler = asyncHandler(async (req: Request, res
 
 export const listFundMovementsHandler = asyncHandler(async (req: Request, res: Response) => {
   const query = fundMovementsQuerySchema.parse(req.query ?? {});
-  const fundId = idParam(req, 'fundId', 'Fonds introuvable ou inaccessible pour cette copropriete');
+  const fundId = idParam(req, 'fundId', 'Fonds introuvable ou inaccessible pour cette copropriété');
   const data = await listFundMovements(tenantOf(req), syndicOf(req), fundId, query);
   res.json({ success: true, data });
 });

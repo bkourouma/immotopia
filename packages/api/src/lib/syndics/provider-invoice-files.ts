@@ -45,7 +45,7 @@ export function assertProviderInvoiceFile(buffer: Buffer | undefined): ProviderI
   }
   const kind = detectProviderInvoiceFileKind(buffer);
   if (!kind) {
-    throw new BadRequestError('Type de fichier non accepte. Formats autorises : PDF, PNG, JPEG.');
+    throw new BadRequestError('Type de fichier non accepté. Formats autorisés : PDF, PNG, JPEG.');
   }
   return kind;
 }
