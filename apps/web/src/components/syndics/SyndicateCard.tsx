@@ -133,6 +133,10 @@ export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantI
           </Text>
         ) : null}
 
+        <Text type="secondary">
+          {t('Mandant:')} {syndicate.mandatingAgency?.name || t('Identité de l’agence')}
+        </Text>
+
         <Link to={`/tenant/${tenantId}/syndics/${syndicate.id}`}>
           <Button type="primary" block>
             {t('Ouvrir la copropriété')}

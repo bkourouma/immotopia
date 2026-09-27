@@ -21,9 +21,17 @@ import type { ColumnsType } from 'antd/es/table';
 import { ApartmentOutlined, BankOutlined, EditOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { LotTable } from '../../components/syndics/LotTable';
+import { BrandingImageField } from '../../components/documents/BrandingImageField';
 import { DataCard, DataView, MoneyValue, StatCard } from '../../components/primitives';
 import { listContacts } from '../../services/crm-service';
 import { getSyndicate, listAllChargeCalls, updateSyndicate } from '../../services/syndic-service';
+import {
+  fetchSyndicateLogoBlob,
+  listMandatingAgencies,
+  MandatingAgency,
+  removeSyndicateLogo,
+  uploadSyndicateLogo
+} from '../../services/document-branding-service';
 import { CrmContact } from '../../types/crm-types';
 import type { Sort } from '../../hooks/useListParams';
 import {
@@ -120,6 +128,7 @@ interface EditSyndicateFormValues {
   fiscalYear?: number;
   syndicManagerId?: string;
   status?: Syndicate['status'];
+  mandatingAgencyId?: string;
 }
 
 function scrollToSection(id: string) {
@@ -240,9 +249,11 @@ export const SyndicDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [managerOptions, setManagerOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [mandatingAgencies, setMandatingAgencies] = useState<MandatingAgency[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editForm] = Form.useForm<EditSyndicateFormValues>();
+  const [logoVersion, setLogoVersion] = useState(0);
 
   const managerLabelById = useMemo(() => {
     return managerOptions.reduce<Record<string, string>>((acc, option) => {
@@ -294,6 +305,14 @@ export const SyndicDetail: React.FC = () => {
     } catch {
       setManagerOptions([]);
     }
+
+    // Idem pour la liste des agences mandantes (sélecteur du formulaire de
+    // modification) : un échec laisse simplement la liste vide.
+    try {
+      setMandatingAgencies(await listMandatingAgencies(effectiveTenantId));
+    } catch {
+      setMandatingAgencies([]);
+    }
   };
 
   const openEditModal = () => {
@@ -307,7 +326,8 @@ export const SyndicDetail: React.FC = () => {
       cadastralReference: syndicate.cadastralReference ?? undefined,
       fiscalYear: syndicate.fiscalYear ?? undefined,
       syndicManagerId: syndicate.syndicManagerId ?? undefined,
-      status: syndicate.status
+      status: syndicate.status,
+      mandatingAgencyId: syndicate.mandatingAgencyId ?? undefined
     });
     setEditOpen(true);
   };
@@ -333,7 +353,8 @@ export const SyndicDetail: React.FC = () => {
         cadastralReference: values.cadastralReference || null,
         fiscalYear: values.fiscalYear,
         syndicManagerId: values.syndicManagerId || null,
-        status: values.status
+        status: values.status,
+        mandatingAgencyId: values.mandatingAgencyId || null
       };
       await updateSyndicate(effectiveTenantId, syndicId, payload);
       message.success(t('Copropriété mise à jour'));
@@ -462,6 +483,9 @@ export const SyndicDetail: React.FC = () => {
         <Paragraph type="secondary" style={{ marginBottom: 0 }}>
           {syndicate.address}
         </Paragraph>
+        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+          {t('Mandant:')} {syndicate.mandatingAgency?.name || t('Identité de l’agence')}
+        </Paragraph>
       </Space>
 
       <Row gutter={[16, 16]}>
@@ -512,6 +536,9 @@ export const SyndicDetail: React.FC = () => {
             {syndicate.cadastralReference || t('Non renseignée')}
           </Descriptions.Item>
           <Descriptions.Item label={t('Exercice')}>{syndicate.fiscalYear ?? t('Non renseigné')}</Descriptions.Item>
+          <Descriptions.Item label={t('Agence mandante')}>
+            {syndicate.mandatingAgency?.name || t('Identité de l’agence')}
+          </Descriptions.Item>
           <Descriptions.Item label={t('Gestionnaire')}>
             {(syndicate.syndicManagerId && managerLabelById[syndicate.syndicManagerId]) || t('Non renseigné')}
           </Descriptions.Item>
@@ -520,6 +547,25 @@ export const SyndicDetail: React.FC = () => {
           </Descriptions.Item>
           <Descriptions.Item label={t('Nombre de bâtiments')}>{syndicate.totalBuildings}</Descriptions.Item>
         </Descriptions>
+      </Card>
+
+      <Card title={t('Logo de la copropriété')}>
+        <BrandingImageField
+          label={t('Logo')}
+          hasImage={Boolean(syndicate.hasLogo)}
+          imageVersion={logoVersion}
+          fetchImage={() => fetchSyndicateLogoBlob(effectiveTenantId!, syndicId!)}
+          onUpload={async file => {
+            const updated = await uploadSyndicateLogo(effectiveTenantId!, syndicId!, file);
+            setSyndicate(prev => (prev ? { ...prev, hasLogo: updated.hasLogo, logoUrl: updated.logoUrl } : prev));
+            setLogoVersion(version => version + 1);
+          }}
+          onRemove={async () => {
+            const updated = await removeSyndicateLogo(effectiveTenantId!, syndicId!);
+            setSyndicate(prev => (prev ? { ...prev, hasLogo: updated.hasLogo, logoUrl: updated.logoUrl } : prev));
+            setLogoVersion(version => version + 1);
+          }}
+        />
       </Card>
 
       <Modal
@@ -573,6 +619,21 @@ export const SyndicDetail: React.FC = () => {
               optionFilterProp="label"
               placeholder={t('Sélectionner un contact CRM')}
               options={managerOptions}
+            />
+          </Form.Item>
+          <Form.Item
+            label={t('Agence mandante')}
+            name="mandatingAgencyId"
+            extra={t(
+              'Les documents de cette copropriété porteront le logo, la signature et le cachet du mandant choisi.'
+            )}
+          >
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              placeholder={t('Aucune (identité de l’agence)')}
+              options={mandatingAgencies.map(agency => ({ value: agency.id, label: agency.name }))}
             />
           </Form.Item>
         </Form>

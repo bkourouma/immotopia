@@ -18,6 +18,7 @@ détail vit ailleurs et se charge à la demande :
 | Architecture, modèle de données, ADR | `docs/architecture/`                   |
 | Conventions et modèle de menace      | `docs/governance/`                     |
 | Règles ciblées par chemin            | `.claude/rules/`                       |
+| Inventaire des fonctionnalités       | `docs/fonctionnalites/`                |
 
 ## Passation de session
 
@@ -125,6 +126,12 @@ propriété logique (`ms-4`, `margin-inline-start`, `align: 'end'`), jamais
 
 **Ports.** API 8001, web 3000. Des documents archivés mentionnent 8000 ou 5000 :
 c'est faux.
+
+**Wiki des fonctionnalités.** Après la mise en place d'une fonctionnalité
+(écran, action, route API, permission ou entrée de menu ajoutés, modifiés
+ou retirés), mettre à jour `docs/fonctionnalites/ImmoTopia_Wiki_Fonctionnalites.xlsx`
+et lancer `npm run wiki:export` dans la même PR ; `npm run wiki:check` le
+vérifie en CI. Détail : [docs/fonctionnalites/README.md](docs/fonctionnalites/README.md).
 
 ## Pièges connus
 

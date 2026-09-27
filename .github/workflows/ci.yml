@@ -48,6 +48,11 @@ jobs:
       # Single install for the whole workspace: one lockfile at the root.
       - run: npm ci
 
+      # Le classeur Excel des fonctionnalités doit suivre chaque livraison ;
+      # ce miroir texte régénéré doit rester synchronisé avec lui.
+      - name: Wiki des fonctionnalités à jour
+        run: npm run wiki:check
+
       # Enforce package boundaries that are otherwise only documented.
       - name: Check architecture boundaries
         run: npm run check:architecture
