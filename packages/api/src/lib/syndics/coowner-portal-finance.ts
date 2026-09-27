@@ -12,7 +12,7 @@ import {
 } from './charge-receipt-delivery';
 import { periodWhere } from './charge-receipt-queries';
 import { isoDay, paymentMethodLabel } from './charge-receipt-snapshot';
-import type { CoOwnerLotScope, CoOwnerPortalScope } from './coowner-portal';
+import { ownedChargeCallsWhere, type CoOwnerLotScope, type CoOwnerPortalScope } from './coowner-portal';
 import type { CoOwnerPaymentsQuery, CoOwnerReceiptsQuery } from './coowner-portal-schemas';
 import { lastDayOfMonth, utcDay } from './period';
 
@@ -361,16 +361,28 @@ export async function getCoOwnerReceiptFile(scope: CoOwnerPortalScope, receiptId
 // 3. Suivi mensuel d'un lot
 // ---------------------------------------------------------------------------
 
-async function loadLotCallsOfYear(lot: CoOwnerLotScope, year: number) {
+/**
+ * Appels de l'année du lot, restreints à ceux du copropriétaire connecté
+ * (`ownedChargeCallsWhere`, même critère que la liste des appels du portail).
+ * Sans ce filtre, un appel pluri-mensuel de l'ancien propriétaire (appel
+ * annuel, lot acquis en cours d'année) serait étalé par `buildLotMonthGrid`
+ * sur les mois postérieurs à l'acquisition, que `hideMonthsBeforeOwnership`
+ * ne masque pas : statut et totaux révéleraient ce qu'il a payé (audit S5).
+ */
+async function loadLotCallsOfYear(scope: CoOwnerPortalScope, lot: CoOwnerLotScope, year: number) {
   const yearStart = utcDay(year, 1, 1);
   const yearEnd = lastDayOfMonth(year, 12);
   return prisma.chargeCall.findMany({
     where: {
-      lotId: lot.lotId,
-      syndicateId: lot.syndicateId,
-      OR: [
-        { periodStart: { lte: yearEnd }, periodEnd: { gte: yearStart } },
-        { periodStart: null, dueDate: { gte: yearStart, lt: utcDay(year + 1, 1, 1) } }
+      AND: [
+        ownedChargeCallsWhere(scope, [lot.lotId]),
+        { lotId: lot.lotId, syndicateId: lot.syndicateId },
+        {
+          OR: [
+            { periodStart: { lte: yearEnd }, periodEnd: { gte: yearStart } },
+            { periodStart: null, dueDate: { gte: yearStart, lt: utcDay(year + 1, 1, 1) } }
+          ]
+        }
       ]
     },
     select: { id: true, lotId: true, amount: true, currency: true, dueDate: true, periodStart: true, periodEnd: true }
@@ -398,7 +410,10 @@ export async function getCoOwnerLotMonthlyTracking(scope: CoOwnerPortalScope, lo
   const { lots, viewOf } = await lotContext(scope, [lotScope.lotId]);
   if (lots.length === 0) throw new NotFoundError(LOT_NOT_FOUND);
 
-  const calls = await loadLotCallsOfYear(lotScope, year);
+  // Appels du copropriétaire seulement ; les affectations lues ensuite ne portent
+  // donc que sur ses appels, et l'avance sur ses paiements (`ownedPaymentsWhere`).
+  // `hideMonthsBeforeOwnership` reste en second rideau.
+  const calls = await loadLotCallsOfYear(scope, lotScope, year);
   const [paidByCall, advanceCents] = await Promise.all([
     sumAllocationsByCall(
       prisma,

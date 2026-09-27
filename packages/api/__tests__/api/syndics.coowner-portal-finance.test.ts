@@ -1021,9 +1021,92 @@ describe('Historique de l’ancien propriétaire du lot', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.ownedSince).toBe('2026-02-10');
     expect(res.body.data.months[0]).toEqual({ month: 1, due: 0, paid: 0, status: 'NONE' });
-    expect(res.body.data.months[1]).toEqual({ month: 2, due: 30000, paid: 10000, status: 'OVERDUE' });
-    expect(res.body.data.totals).toEqual({ due: 60000, paid: 10000, outstanding: 50000 });
+    // CALL_L1 (période commencée le 01/01) est l'appel de l'ancien propriétaire :
+    // ni février ni mars ne le reprennent, même partiellement (audit S5).
+    expect(res.body.data.months[1]).toEqual({ month: 2, due: 0, paid: 0, status: 'NONE' });
+    expect(res.body.data.months[2]).toEqual({ month: 3, due: 0, paid: 0, status: 'NONE' });
+    expect(res.body.data.totals).toEqual({ due: 0, paid: 0, outstanding: 0 });
     // Le paiement du 15/01 précède l'acquisition : son avance n'est pas la sienne.
+    expect(res.body.data.advance).toBe(0);
+  });
+
+  it('/suivi-mensuel : un appel annuel de l’ancien propriétaire ne s’étale pas après l’acquisition', async () => {
+    acquiredOn('2026-07-01');
+    const CALL_ANNUAL = id(320);
+    const CALL_SEPT = id(321);
+    const PAY_PREVIOUS = id(420);
+    const PAY_SEPT = id(421);
+    const call = (callId: string, extra: any) => ({
+      id: callId,
+      syndicateId: S1,
+      lotId: L1,
+      currency: 'XOF',
+      status: 'PARTIAL',
+      createdAt: new Date('2026-01-01'),
+      ...extra
+    });
+    mockPrisma.chargeCall.rows.push(
+      // Appel annuel de l'ancien propriétaire, réglé en partie avant la vente.
+      call(CALL_ANNUAL, {
+        period: '2026',
+        periodStart: new Date('2026-01-01'),
+        periodEnd: new Date('2026-12-31'),
+        amount: 120000,
+        dueDate: new Date('2026-01-31')
+      }),
+      // Appel d'Awa, postérieur à l'acquisition, réglé.
+      call(CALL_SEPT, {
+        period: '2026-09',
+        periodStart: new Date('2026-09-01'),
+        periodEnd: new Date('2026-09-30'),
+        amount: 10000,
+        dueDate: new Date('2026-09-30')
+      })
+    );
+    const payment = (paymentId: string, amount: number, paidAt: string) => ({
+      id: paymentId,
+      lotId: L1,
+      chargeCallId: null,
+      amount,
+      unallocatedAmount: 0,
+      paidAt: new Date(paidAt),
+      method: 'CASH',
+      reference: null,
+      createdAt: new Date(paidAt)
+    });
+    mockPrisma.chargePayment.rows.push(
+      payment(PAY_PREVIOUS, 50000, '2026-03-01'),
+      payment(PAY_SEPT, 10000, '2026-09-15')
+    );
+    mockPrisma.chargePaymentAllocation.rows.push(
+      {
+        id: 'a-prev',
+        paymentId: PAY_PREVIOUS,
+        chargeCallId: CALL_ANNUAL,
+        amount: 50000,
+        source: 'PAYMENT',
+        createdAt: new Date('2026-03-01')
+      },
+      {
+        id: 'a-sept',
+        paymentId: PAY_SEPT,
+        chargeCallId: CALL_SEPT,
+        amount: 10000,
+        source: 'PAYMENT',
+        createdAt: new Date('2026-09-15')
+      }
+    );
+
+    const res = await request(app).get(`${BASE}/lots/${L1}/suivi-mensuel?year=2026`).set(as(USER_AWA));
+    expect(res.status).toBe(200);
+    const months = res.body.data.months;
+    // Juillet à décembre : rien de l'appel annuel (ni dû, ni payé, ni statut).
+    for (const month of [7, 8, 10, 11, 12]) {
+      expect(months[month - 1]).toEqual({ month, due: 0, paid: 0, status: 'NONE' });
+    }
+    // L'appel postérieur à l'acquisition reste affiché.
+    expect(months[8]).toEqual({ month: 9, due: 10000, paid: 10000, status: 'PAID' });
+    expect(res.body.data.totals).toEqual({ due: 10000, paid: 10000, outstanding: 0 });
     expect(res.body.data.advance).toBe(0);
   });
 
