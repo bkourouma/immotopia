@@ -19,6 +19,7 @@
   "{{rate}} % ({{payer}})": "{{rate}}٪ ({{payer}})",
   "{{shares}} tantièmes": "{{shares}} حصة",
   "{{shares}} tantièmes généraux": "{{shares}} حصة عامة",
+  "{{start}}–{{end}} sur {{total}}": "⁨{{start}}–{{end}}⁩ من {{total}}",
   "{{syndicates}} copropriété{{value}} · {{lots}} lots": "{{syndicates}} ملكية مشتركة{{value}} · {{lots}} وحدة",
   "{{typeLabel}} – n° {{num}}": "{{typeLabel}} – رقم {{num}}",
   "{{typeLabel}} – Réf. {{ref}}": "{{typeLabel}} – مرجع {{ref}}",

@@ -312,7 +312,12 @@ export function DataView<T>(props: DataViewProps<T>) {
             showSizeChanger={isDesktop}
             // Le compteur vient du serveur. Sur mobile il prend trop de place
             // à côté des numéros de page.
-            showTotal={isDesktop ? (count, range) => `${range[0]}–${range[1]} sur ${count}` : undefined}
+            showTotal={
+              isDesktop
+                ? (count, range) =>
+                    t('{{start}}–{{end}} sur {{total}}', { start: range[0], end: range[1], total: count })
+                : undefined
+            }
             responsive
           />
         </div>

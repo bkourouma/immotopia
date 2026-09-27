@@ -19,6 +19,7 @@
   "{{rate}} % ({{payer}})": "{{rate}}% ({{payer}})",
   "{{shares}} tantièmes": "{{shares}} shares",
   "{{shares}} tantièmes généraux": "{{shares}} general shares",
+  "{{start}}–{{end}} sur {{total}}": "{{start}}–{{end}} of {{total}}",
   "{{syndicates}} copropriété{{value}} · {{lots}} lots": "{{syndicates}} co-ownership{{value}} · {{lots}} units",
   "{{typeLabel}} – n° {{num}}": "{{typeLabel}} – no. {{num}}",
   "{{typeLabel}} – Réf. {{ref}}": "{{typeLabel}} – Ref. {{ref}}",

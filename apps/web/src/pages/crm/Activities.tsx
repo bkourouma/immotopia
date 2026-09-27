@@ -379,7 +379,7 @@ export const Activities: React.FC = () => {
                   total={pagination.total}
                   pageSize={pagination.limit}
                   showSizeChanger={false}
-                  showTotal={(total, range) => `${range[0]}-${range[1]} sur ${total}`}
+                  showTotal={(total, range) => t('{{start}}–{{end}} sur {{total}}', { start: range[0], end: range[1], total })}
                   onChange={page => setFilters({ ...filters, page })}
                 />
               </Col>
