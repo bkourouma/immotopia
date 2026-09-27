@@ -46,6 +46,21 @@ export interface DocumentBranding {
     cadastralReference: string | null;
     logo: DocumentImage | null;
   } | null;
+  /**
+   * Lot S3 : émetteur et clés de stockage des images, lus dans la MÊME
+   * lecture que les images elles-mêmes. Un document figé compare ces clés à
+   * celles qu'il a notées à l'émission avant d'apposer une image (une clé
+   * est régénérée à chaque dépôt : elle identifie un fichier précis).
+   */
+  source?: DocumentBrandingSource;
+}
+
+export interface DocumentBrandingSource {
+  /** Identifiant du mandant, ou `AGENCY`. */
+  issuerKey: string;
+  logoKey: string | null;
+  signatureKey: string | null;
+  stampKey: string | null;
 }
 
 /** Lit le logo public de l'agence (`/uploads/properties/agency-logos/<tenantId>/<fichier>`). */
@@ -155,6 +170,7 @@ export async function resolveDocumentBranding(tenantId: string, syndicateId: str
           registrationNo: true,
           cadastralReference: true,
           logoPath: true,
+          mandatingAgencyId: true,
           mandatingAgency: {
             select: {
               name: true,
@@ -195,7 +211,13 @@ export async function resolveDocumentBranding(tenantId: string, syndicateId: str
       issuerLogo,
       signature,
       stamp,
-      syndicate: syndicateBlock
+      syndicate: syndicateBlock,
+      source: {
+        issuerKey: syndicate?.mandatingAgencyId ?? 'AGENCY',
+        logoKey: mandant.logoPath ?? null,
+        signatureKey: mandant.signaturePath ?? null,
+        stampKey: mandant.stampPath ?? null
+      }
     };
   }
 
@@ -227,7 +249,13 @@ export async function resolveDocumentBranding(tenantId: string, syndicateId: str
     issuerLogo,
     signature,
     stamp,
-    syndicate: syndicateBlock
+    syndicate: syndicateBlock,
+    source: {
+      issuerKey: 'AGENCY',
+      logoKey: tenant?.logoUrl ?? null,
+      signatureKey: tenant?.documentSignaturePath ?? null,
+      stampKey: tenant?.documentStampPath ?? null
+    }
   };
 }
 

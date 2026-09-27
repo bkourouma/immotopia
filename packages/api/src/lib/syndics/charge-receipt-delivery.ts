@@ -5,7 +5,7 @@ import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
 import { getUploadsRoot } from '../../utils/project-root';
 import { privateUploadPath, readPrivateUpload } from '../files/private-files';
-import { resolveDocumentBranding, type DocumentBranding } from '../documents/document-branding';
+import { resolveDocumentBranding, type DocumentBranding, type DocumentImage } from '../documents/document-branding';
 import type { EmailNotificationKey } from '../../constants/email-notification-keys';
 import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../constants/email-notification-default-templates';
 import { getEmailNotificationConfig } from '../../services/email-notification-config-service';
@@ -37,27 +37,31 @@ export interface StoredReceipt {
   id: string;
   tenantId: string;
   syndicateId: string;
+  lotId: string;
   contactId: string | null;
   kind: ChargeReceiptKind;
   number: string;
   snapshot: unknown;
   filePath: string | null;
+  emailedAt: Date | null;
 }
 
 export const STORED_RECEIPT_SELECT = {
   id: true,
   tenantId: true,
   syndicateId: true,
+  lotId: true,
   contactId: true,
   kind: true,
   number: true,
   snapshot: true,
-  filePath: true
+  filePath: true,
+  emailedAt: true
 } as const;
 
 // ---------------------------------------------------------------- identité
 
-/** Identité courante d'une copropriété, et la clé de son émetteur actuel. */
+/** Identité courante d'une copropriété, avec la clé de son émetteur et de ses images. */
 export interface SyndicateRenderContext {
   issuerKey: string;
   branding: DocumentBranding;
@@ -67,29 +71,40 @@ export async function loadSyndicateRenderContext(
   tenantId: string,
   syndicateId: string
 ): Promise<SyndicateRenderContext> {
-  const [branding, syndicate] = await Promise.all([
-    resolveDocumentBranding(tenantId, syndicateId),
-    prisma.syndicate.findFirst({ where: { id: syndicateId, tenantId }, select: { mandatingAgencyId: true } })
-  ]);
-  return { issuerKey: syndicate?.mandatingAgencyId ?? AGENCY_ISSUER_KEY, branding };
+  // Émetteur, images et clés des images viennent de la MÊME lecture.
+  const branding = await resolveDocumentBranding(tenantId, syndicateId);
+  return { issuerKey: branding.source?.issuerKey ?? AGENCY_ISSUER_KEY, branding };
+}
+
+/** Une image courante n'est apposée que si c'est le fichier noté à l'émission. */
+function sameImage(current: string | null | undefined, frozen: string | null | undefined): boolean {
+  return Boolean(current) && current === frozen;
 }
 
 /**
- * Identité à dessiner : TOUT le texte vient du snapshot ; les images de
- * l'émetteur (logo, signature, cachet) seulement si c'est toujours lui qui
- * émet pour cette copropriété — jamais la signature d'un autre émetteur sur
- * un original.
+ * Identité à dessiner : TOUT le texte vient du snapshot. Une image de
+ * l'émetteur (logo, signature, cachet) n'est apposée que si l'émetteur est
+ * toujours le même ET que le fichier est celui noté à l'émission (clé de
+ * stockage, régénérée à chaque dépôt). Sinon le document sort sans elle :
+ * jamais une signature remplacée ou celle d'un autre émetteur sur un original.
  */
 export function brandingForSnapshot(
   context: SyndicateRenderContext,
   snapshot: ChargeReceiptSnapshot
 ): DocumentBranding {
-  const sameIssuer = snapshot.issuer.key === context.issuerKey;
+  const source = context.branding.source;
+  const frozen = snapshot.issuerImages;
+  const sameIssuer = snapshot.issuer.key === context.issuerKey && Boolean(source) && Boolean(frozen);
+  const keep = (
+    image: DocumentImage | null,
+    current: string | null | undefined,
+    original: string | null | undefined
+  ) => (sameIssuer && sameImage(current, original) ? image : null);
   return {
     issuer: snapshot.issuer,
-    issuerLogo: sameIssuer ? context.branding.issuerLogo : null,
-    signature: sameIssuer ? context.branding.signature : null,
-    stamp: sameIssuer ? context.branding.stamp : null,
+    issuerLogo: keep(context.branding.issuerLogo, source?.logoKey, frozen?.logo),
+    signature: keep(context.branding.signature, source?.signatureKey, frozen?.signature),
+    stamp: keep(context.branding.stamp, source?.stampKey, frozen?.stamp),
     syndicate: { ...snapshot.syndicate, logo: context.branding.syndicate?.logo ?? null }
   };
 }
@@ -192,8 +207,29 @@ export function receiptTemplateVars(snapshot: ChargeReceiptSnapshot): Record<str
   };
 }
 
+export type ReceiptEmailErrorCode = 'SMTP_REJECTED' | 'TIMEOUT' | 'ERROR';
+
+/** Message générique stocké et affiché ; l'erreur brute ne va qu'aux journaux. */
+export const RECEIPT_EMAIL_ERROR_MESSAGES: Record<ReceiptEmailErrorCode, string> = {
+  SMTP_REJECTED: "Le serveur de messagerie a refusé l'e-mail.",
+  TIMEOUT: "Le serveur de messagerie n'a pas répondu à temps.",
+  ERROR: "L'envoi de l'e-mail a échoué."
+};
+
+/** Classe une erreur d'envoi (nodemailer) sans en conserver le texte. */
+export function classifyEmailError(error: unknown): ReceiptEmailErrorCode {
+  const detail = (error ?? {}) as { code?: unknown; responseCode?: unknown };
+  const code = typeof detail.code === 'string' ? detail.code : '';
+  const responseCode = typeof detail.responseCode === 'number' ? detail.responseCode : 0;
+  if (['ETIMEDOUT', 'ETIMEOUT', 'ESOCKETTIMEDOUT', 'ECONNRESET', 'ECONNECTION'].includes(code)) return 'TIMEOUT';
+  if (responseCode >= 500 || ['EENVELOPE', 'EMESSAGE', 'EAUTH'].includes(code)) return 'SMTP_REJECTED';
+  return 'ERROR';
+}
+
 export type ReceiptEmailOutcome =
-  { sent: true } | { sent: false; reason: 'DISABLED' | 'NO_EMAIL' | 'ERROR'; error?: string };
+  | { sent: true }
+  | { sent: false; reason: 'DISABLED' | 'NO_EMAIL' }
+  | { sent: false; reason: 'ERROR'; code: ReceiptEmailErrorCode };
 
 /**
  * Envoie le document à son copropriétaire (adresse ACTUELLE du contact),
@@ -232,19 +268,25 @@ export async function sendReceiptEmail(
     });
     await prisma.syndicChargeReceipt.updateMany({
       where: { id: receipt.id, tenantId: receipt.tenantId },
-      data: { emailedAt: new Date(), emailError: null }
+      data: { emailedAt: new Date(), emailError: null, emailErrorCode: null }
     });
     return { sent: true };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    logger.warn('Charge receipt e-mail failed', { receiptId: receipt.id, key, error: message });
+    const code = classifyEmailError(error);
+    // Le détail brut (serveur, adresse, réponse SMTP) reste dans les journaux.
+    logger.warn('Charge receipt e-mail failed', {
+      receiptId: receipt.id,
+      key,
+      code,
+      error: error instanceof Error ? error.message : String(error)
+    });
     await prisma.syndicChargeReceipt
       .updateMany({
         where: { id: receipt.id, tenantId: receipt.tenantId },
-        data: { emailError: message.slice(0, 500) }
+        data: { emailErrorCode: code, emailError: RECEIPT_EMAIL_ERROR_MESSAGES[code] }
       })
       .catch(() => undefined);
-    return { sent: false, reason: 'ERROR', error: message };
+    return { sent: false, reason: 'ERROR', code };
   }
 }
 

@@ -22,6 +22,7 @@ CREATE TABLE "syndic_charge_receipts" (
     "file_path" TEXT,
     "issued_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "emailed_at" TIMESTAMP(3),
+    "email_error_code" TEXT,
     "email_error" TEXT,
     "created_by_id" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

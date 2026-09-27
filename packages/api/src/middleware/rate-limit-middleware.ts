@@ -1,3 +1,4 @@
+import type { Request } from 'express';
 import rateLimit from 'express-rate-limit';
 
 /**
@@ -151,4 +152,43 @@ export const globalApiRateLimiter = rateLimit({
   legacyHeaders: false,
   // Health checks and static uploads must not consume the budget.
   skip: req => req.path === '/health' || req.path.startsWith('/uploads/')
+});
+
+/**
+ * Clé d'un limiteur « par utilisateur et par agence » (routes authentifiées,
+ * après `authenticate` et `requireTenantAccess`) : un collaborateur de deux
+ * agences a un budget dans chacune, et deux collaborateurs derrière la même
+ * IP ne se partagent pas le leur.
+ */
+function userTenantKey(req: Request): string {
+  const tenantId = req.params?.tenantId || req.tenantContext?.tenantId || 'aucune-agence';
+  return `${req.user?.userId ?? 'anonyme'}:${tenantId}`;
+}
+
+/** Lot S3 : impression groupée des quittances, coûteuse (PDF de centaines de pages). 5 par minute. */
+export const receiptPrintRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  keyGenerator: userTenantKey,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: "Trop d'impressions de quittances en peu de temps. Réessayez dans une minute."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Lot S3 : renvoi par e-mail d'un reçu ou d'une quittance. 30 par heure. */
+export const receiptResendRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  keyGenerator: userTenantKey,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: "Trop de renvois d'e-mails en peu de temps. Réessayez plus tard."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
 });

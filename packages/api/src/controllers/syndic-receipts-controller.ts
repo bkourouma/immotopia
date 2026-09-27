@@ -47,7 +47,10 @@ export const downloadReceiptHandler = asyncHandler(async (req: Request, res: Res
 });
 
 export const resendReceiptHandler = asyncHandler(async (req: Request, res: Response) => {
-  res.json({ success: true, data: await resendReceiptEmail(tenantIdOf(req), syndicIdOf(req), receiptIdOf(req)) });
+  res.json({
+    success: true,
+    data: await resendReceiptEmail(tenantIdOf(req), syndicIdOf(req), receiptIdOf(req), req.user?.userId ?? null)
+  });
 });
 
 export const printReceiptsHandler = asyncHandler(async (req: Request, res: Response) => {

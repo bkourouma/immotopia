@@ -93,7 +93,10 @@ export enum AuditActionKey {
 
   // Identite des documents (lot S1) : signature et cachet d'un mandant ou de l'agence
   DOCUMENT_SIGNATURE_UPLOADED = 'DOCUMENT_SIGNATURE_UPLOADED',
-  DOCUMENT_SIGNATURE_REMOVED = 'DOCUMENT_SIGNATURE_REMOVED'
+  DOCUMENT_SIGNATURE_REMOVED = 'DOCUMENT_SIGNATURE_REMOVED',
+
+  // Syndic - recus et quittances de charges (lot S3) : renvoi manuel par e-mail
+  SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT = 'SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT'
 }
 
 // Audit log entry

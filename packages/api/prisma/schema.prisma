@@ -3813,6 +3813,9 @@ model SyndicChargeReceipt {
   filePath        String?                 @map("file_path")
   issuedAt        DateTime                @default(now()) @map("issued_at")
   emailedAt       DateTime?               @map("emailed_at")
+  /// Code d'echec du dernier envoi : SMTP_REJECTED, TIMEOUT ou ERROR.
+  emailErrorCode  String?                 @map("email_error_code")
+  /// Message generique en francais (l'erreur brute ne va qu'aux journaux).
   emailError      String?                 @map("email_error")
   createdById     String?                 @map("created_by_id")
   createdAt       DateTime                @default(now()) @map("created_at")

@@ -8,9 +8,12 @@ import type { ChargeReceiptKind } from './charge-receipt-numbering';
  * ne relisent jamais les tables vivantes (un copropriétaire qui change de nom,
  * un mandant qui change d'adresse ne modifient pas un original déjà émis).
  *
- * Seules les IMAGES (logo, signature, cachet) sont relues à l'impression :
- * elles le sont chez l'émetteur figé (`issuer.key`), et omises si la
- * copropriété a changé d'émetteur depuis (voir `charge-receipt-render.ts`).
+ * Seules les IMAGES (logo, signature, cachet) sont relues à l'impression.
+ * Le snapshot note la clé de stockage de chacune à l'émission
+ * (`issuerImages`) ; une image n'est apposée que si l'émetteur et la clé
+ * actuels sont les mêmes (voir `brandingForSnapshot`,
+ * `charge-receipt-delivery.ts`). Une clé est régénérée à chaque dépôt : une
+ * signature remplacée depuis ne s'appose jamais sur un original plus ancien.
  */
 
 export const CHARGE_RECEIPT_SNAPSHOT_VERSION = 1;
@@ -47,6 +50,13 @@ export interface SnapshotAllocation {
   outstandingAfter: number;
 }
 
+/** Clés de stockage des images de l'émetteur au moment de l'émission (jamais exposées au client). */
+export interface SnapshotIssuerImages {
+  logo: string | null;
+  signature: string | null;
+  stamp: string | null;
+}
+
 export interface ChargeReceiptSnapshot {
   version: number;
   kind: ChargeReceiptKind;
@@ -56,6 +66,8 @@ export interface ChargeReceiptSnapshot {
   /** Montant du document : l'appel soldé (quittance), le paiement (reçu). */
   amount: number;
   issuer: SnapshotIssuer;
+  /** Absent d'un document émis avant ce champ : il sort alors sans image de l'émetteur. */
+  issuerImages?: SnapshotIssuerImages;
   syndicate: {
     name: string;
     address: string | null;
@@ -80,7 +92,11 @@ export interface ChargeReceiptSnapshot {
   advance: number;
   /** Reçu : avance totale du lot après ce paiement. */
   lotAdvanceBalance: number;
-  /** Quittance créée par le rattrapage : contenu reconstitué, pas figé à l'époque. */
+  /**
+   * Quittance créée par le rattrapage : contenu reconstitué, pas figé à
+   * l'époque. Modes et références de paiement retirés (le payeur n'est pas
+   * connu avec certitude) ; le copropriétaire est celui du jour du rattrapage.
+   */
   backfilled: boolean;
 }
 

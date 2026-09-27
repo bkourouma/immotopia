@@ -40,18 +40,27 @@ jest.mock('../../src/services/email-notification-config-service', () => ({
 jest.mock('../../src/services/whatsapp-notification-send-service', () => ({
   sendWhatsappNotification: jest.fn(async () => false)
 }));
-jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn(), flushAuditQueue: jest.fn() }));
+const mockAudit = jest.fn();
+jest.mock('../../src/services/audit-service', () => ({
+  logAuditEvent: (entry: any) => mockAudit(entry),
+  flushAuditQueue: jest.fn()
+}));
 
 import { recordLotPayment, type LotPaymentInput } from '../../src/lib/syndics/charge-allocation';
 import { createChargeCallAndUpdateStatus, recordChargePaymentWithStatusUpdate } from '../../src/lib/syndics/queries';
 import { settledCallIds, shouldIssueReceipt } from '../../src/lib/syndics/charge-receipts';
 import { formatChargeReceiptNumber, nextChargeReceiptNumberTx } from '../../src/lib/syndics/charge-receipt-numbering';
-import { deliverChargeDocuments } from '../../src/lib/syndics/charge-receipt-delivery';
+import {
+  brandingForSnapshot,
+  classifyEmailError,
+  deliverChargeDocuments
+} from '../../src/lib/syndics/charge-receipt-delivery';
 import {
   backfillMissingQuittances,
   getReceiptFile,
   listLotReceipts,
   listSyndicateReceipts,
+  MAX_BACKFILL_PER_REQUEST,
   MAX_DOCUMENTS_PER_PRINT,
   printReceipts,
   resendReceiptEmail
@@ -472,15 +481,27 @@ describe('livraison apres commit : PDF prive et e-mail', () => {
     }
   });
 
-  it('un echec d e-mail est note sur le document et n annule pas le paiement', async () => {
-    mockSendEmail.mockRejectedValue(new Error('SMTP indisponible'));
+  it('un echec d e-mail est note (code et message generique) et n annule pas le paiement', async () => {
+    mockSendEmail.mockRejectedValue(
+      Object.assign(new Error('550 5.1.1 <awa@example.test> user unknown'), { responseCode: 550 })
+    );
     const result = await recordLotPayment(pay(L1, 10000, '2026-01-10'));
     await expect(deliverChargeDocuments(TENANT_A, result.documents)).resolves.toBeUndefined();
     expect(mockPrisma.chargePayment.rows).toHaveLength(1);
     expect(mockPrisma.chargeCall.rows[0].status).toBe('PAID');
     const row = receiptRow(result.documents[0].id);
-    expect(row.emailError).toBe('SMTP indisponible');
+    expect(row.emailErrorCode).toBe('SMTP_REJECTED');
+    expect(row.emailError).toBe("Le serveur de messagerie a refusé l'e-mail.");
+    expect(row.emailError).not.toContain('awa@example.test');
     expect(row.emailedAt ?? null).toBeNull();
+  });
+
+  it('classe les erreurs d envoi sans en garder le texte', () => {
+    expect(classifyEmailError(Object.assign(new Error('x'), { code: 'ETIMEDOUT' }))).toBe('TIMEOUT');
+    expect(classifyEmailError(Object.assign(new Error('x'), { code: 'EENVELOPE' }))).toBe('SMTP_REJECTED');
+    expect(classifyEmailError(Object.assign(new Error('x'), { responseCode: 554 }))).toBe('SMTP_REJECTED');
+    expect(classifyEmailError(new Error('inconnue'))).toBe('ERROR');
+    expect(classifyEmailError(null)).toBe('ERROR');
   });
 
   it('sans adresse e-mail : aucun envoi, document conserve', async () => {
@@ -494,12 +515,30 @@ describe('livraison apres commit : PDF prive et e-mail', () => {
   it('renvoi manuel : passe outre la desactivation automatique ; 502 si le serveur refuse', async () => {
     mockEmailConfig.mockImplementation(async () => ({ enabled: false, subjectOverride: null, bodyHtmlOverride: null }));
     const result = await recordLotPayment(pay(L1, 10000, '2026-01-10'));
-    const sent = await resendReceiptEmail(TENANT_A, S1, result.documents[0].id);
-    expect(sent).toMatchObject({ id: result.documents[0].id, sent: true });
+    const documentId = result.documents[0].id;
+    const sent = await resendReceiptEmail(TENANT_A, S1, documentId, 'user-9');
+    expect(sent).toMatchObject({ id: documentId, sent: true });
+    expect(mockSendEmail).toHaveBeenCalledTimes(1);
+    expect(mockAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: 'user-9',
+        tenantId: TENANT_A,
+        actionKey: 'SYNDIC_CHARGE_RECEIPT_EMAIL_RESENT',
+        entityType: 'SYNDIC_CHARGE_RECEIPT',
+        entityId: documentId
+      })
+    );
+
+    // Envoyé il y a moins de deux minutes : 429, sans nouvel envoi.
+    await expect(resendReceiptEmail(TENANT_A, S1, documentId)).rejects.toMatchObject({
+      statusCode: 429,
+      code: 'EMAIL_RECENTLY_SENT'
+    });
     expect(mockSendEmail).toHaveBeenCalledTimes(1);
 
+    receiptRow(documentId).emailedAt = new Date(Date.now() - 3 * 60 * 1000);
     mockSendEmail.mockRejectedValue(new Error('refus'));
-    await expect(resendReceiptEmail(TENANT_A, S1, result.documents[0].id)).rejects.toMatchObject({ statusCode: 502 });
+    await expect(resendReceiptEmail(TENANT_A, S1, documentId)).rejects.toMatchObject({ statusCode: 502 });
   });
 
   it('un PDF perdu est reconstruit a l identique depuis le snapshot', async () => {
@@ -705,6 +744,27 @@ describe('listes, impression groupee et isolation', () => {
     ).rejects.toMatchObject({ statusCode: 422 });
   });
 
+  it('impression groupee : plafond de pages -> 422 ; une seule impression a la fois par agence -> 429', async () => {
+    const template = receipts()[0];
+    for (let index = 0; index < 260; index += 1) {
+      receipts().push({ ...template, id: `page-${index}`, number: `P-${index}` });
+    }
+    await expect(
+      printReceipts(TENANT_A, S1, { from: d('2026-01-01'), to: d('2026-12-31'), kind: 'ALL', cols: 1, rows: 1 })
+    ).rejects.toMatchObject({ statusCode: 422 });
+    mockPrisma.syndicChargeReceipt.rows = receipts().filter(row => !String(row.id).startsWith('page-'));
+
+    const query = { from: d('2026-01-01'), to: d('2026-12-31'), kind: 'ALL' as const, cols: 1, rows: 1 };
+    const [first, second] = await Promise.allSettled([
+      printReceipts(TENANT_A, S1, query),
+      printReceipts(TENANT_A, S1, query)
+    ]);
+    expect(first.status).toBe('fulfilled');
+    expect(second).toMatchObject({ status: 'rejected', reason: { statusCode: 429, code: 'PRINT_IN_PROGRESS' } });
+    // Le verrou est rendu, même après un refus.
+    await expect(printReceipts(TENANT_A, S1, query)).resolves.toBeInstanceOf(Buffer);
+  });
+
   it('impression groupee : plafond de documents -> 422', async () => {
     const template = receipts()[0];
     for (let index = 0; index < MAX_DOCUMENTS_PER_PRINT; index += 1) {
@@ -750,12 +810,142 @@ describe('rattrapage des quittances manquantes', () => {
     mockPrisma.syndicChargeReceipt.rows = [];
 
     const first = await backfillMissingQuittances(TENANT_A, S1, 'user-1');
-    expect(first).toEqual({ created: 3, skipped: 0 });
+    expect(first).toEqual({ created: 3, skipped: 0, remaining: 0 });
     expect(receipts().every(row => row.kind === 'QUITTANCE' && row.snapshot.backfilled === true)).toBe(true);
     expect(mockSendEmail).not.toHaveBeenCalled();
+    // Le payeur n'est pas connu avec certitude : ni mode ni référence.
+    for (const row of receipts()) {
+      for (const settlement of row.snapshot.settlements) {
+        expect(settlement.method).toBeNull();
+        expect(settlement.reference).toBeNull();
+      }
+    }
 
     const second = await backfillMissingQuittances(TENANT_A, S1, 'user-1');
-    expect(second).toEqual({ created: 0, skipped: 3 });
+    expect(second).toEqual({ created: 0, skipped: 3, remaining: 0 });
     expect(receipts()).toHaveLength(3);
+  });
+
+  it('plafond par requete : le reste est signale dans `remaining`', async () => {
+    // Appels PAID poses directement, chacun solde par une affectation.
+    const total = MAX_BACKFILL_PER_REQUEST + 7;
+    const payment = { id: 'pay-old', lotId: L1, paidAt: d('2026-01-05'), method: 'CHEQUE', reference: 'CHQ-1' };
+    mockPrisma.chargePayment.rows.push(payment);
+    for (let index = 0; index < total; index += 1) {
+      const callId = `old-call-${index}`;
+      mockPrisma.chargeCall.rows.push({
+        id: callId,
+        syndicateId: S1,
+        lotId: L1,
+        period: '2025-01',
+        periodStart: null,
+        periodEnd: null,
+        amount: 100,
+        currency: 'XOF',
+        dueDate: d('2025-01-31'),
+        createdAt: new Date(),
+        status: 'PAID',
+        syndicate: { tenantId: TENANT_A }
+      });
+      mockPrisma.chargePaymentAllocation.rows.push({
+        id: `alloc-${index}`,
+        paymentId: payment.id,
+        chargeCallId: callId,
+        amount: 100,
+        source: 'PAYMENT',
+        createdAt: new Date()
+      });
+    }
+    const first = await backfillMissingQuittances(TENANT_A, S1, null);
+    expect(first).toEqual({ created: MAX_BACKFILL_PER_REQUEST, skipped: 0, remaining: 7 });
+    const second = await backfillMissingQuittances(TENANT_A, S1, null);
+    expect(second).toEqual({ created: 7, skipped: MAX_BACKFILL_PER_REQUEST, remaining: 0 });
+  });
+
+  it('renvoi d un document rattrape : 409 si le coproprietaire du lot a change', async () => {
+    await createCall(L1, '2026-01', 1000, '2026-01-31');
+    await recordLotPayment(pay(L1, 1000, '2026-01-10'));
+    mockPrisma.syndicChargeReceipt.rows = [];
+    await backfillMissingQuittances(TENANT_A, S1, null);
+    const documentId = receipts()[0].id;
+
+    const lot = mockPrisma.syndicateLot.rows.find(row => row.id === L1)!;
+    lot.ownerContactId = BAKARY;
+    await expect(resendReceiptEmail(TENANT_A, S1, documentId)).rejects.toMatchObject({ statusCode: 409 });
+    expect(mockSendEmail).not.toHaveBeenCalled();
+
+    lot.ownerContactId = AWA;
+    await expect(resendReceiptEmail(TENANT_A, S1, documentId)).resolves.toMatchObject({ sent: true });
+  });
+});
+
+describe('signature et cachet figes a l emission', () => {
+  const png = (tag: number) => ({ bytes: new Uint8Array([tag]), format: 'png' as const });
+  const context = (overrides: Partial<{ issuerKey: string; signatureKey: string | null }> = {}) => ({
+    issuerKey: overrides.issuerKey ?? 'AGENCY',
+    branding: {
+      issuer: {
+        kind: 'AGENCY' as const,
+        name: 'Agence A',
+        legalName: null,
+        address: null,
+        phone: null,
+        email: null,
+        rccm: null,
+        taxId: null
+      },
+      issuerLogo: png(1),
+      signature: png(2),
+      stamp: png(3),
+      syndicate: null,
+      source: {
+        issuerKey: overrides.issuerKey ?? 'AGENCY',
+        logoKey: 'logo-1',
+        signatureKey: overrides.signatureKey === undefined ? 'sig-1' : overrides.signatureKey,
+        stampKey: 'stamp-1'
+      }
+    }
+  });
+
+  it('note les cles des images a l emission', async () => {
+    const tenant = mockPrisma.tenant.rows.find(row => row.id === TENANT_A)!;
+    Object.assign(tenant, {
+      logoUrl: null,
+      documentSignaturePath: 'branding/tenant-a/agency/signature-1.png',
+      documentStampPath: null
+    });
+    await createCall(L1, '2026-01', 1000, '2026-01-31');
+    const result = await recordLotPayment(pay(L1, 1000, '2026-01-10'));
+    expect(receiptRow(result.documents[0].id).snapshot.issuerImages).toEqual({
+      logo: null,
+      signature: 'branding/tenant-a/agency/signature-1.png',
+      stamp: null
+    });
+  });
+
+  it('appose une image seulement si l emetteur et la cle n ont pas change', () => {
+    const snapshot: any = {
+      issuer: { key: 'AGENCY', name: 'Agence A' },
+      issuerImages: { logo: 'logo-1', signature: 'sig-1', stamp: 'stamp-1' },
+      syndicate: { name: 'S' }
+    };
+    const same = brandingForSnapshot(context(), snapshot);
+    expect([same.issuerLogo, same.signature, same.stamp].map(image => image?.bytes[0])).toEqual([1, 2, 3]);
+
+    const replaced = brandingForSnapshot(context({ signatureKey: 'sig-2' }), snapshot);
+    expect(replaced.signature).toBeNull();
+    expect(replaced.stamp).not.toBeNull();
+
+    const removed = brandingForSnapshot(context({ signatureKey: null }), {
+      ...snapshot,
+      issuerImages: { ...snapshot.issuerImages, signature: null }
+    });
+    expect(removed.signature).toBeNull();
+
+    const otherIssuer = brandingForSnapshot(context({ issuerKey: 'mandant-9' }), snapshot);
+    expect([otherIssuer.issuerLogo, otherIssuer.signature, otherIssuer.stamp]).toEqual([null, null, null]);
+
+    const legacy = brandingForSnapshot(context(), { ...snapshot, issuerImages: undefined });
+    expect([legacy.issuerLogo, legacy.signature, legacy.stamp]).toEqual([null, null, null]);
   });
 });

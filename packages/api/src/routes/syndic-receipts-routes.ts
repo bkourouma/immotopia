@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
+import { receiptPrintRateLimiter, receiptResendRateLimiter } from '../middleware/rate-limit-middleware';
 import {
   backfillQuittancesHandler,
   downloadReceiptHandler,
@@ -32,10 +33,17 @@ const canEdit = requirePropertyPermission('PROPERTIES_EDIT');
 const SYNDIC = '/tenants/:tenantId/syndics/:syndicId';
 
 router.get(`${SYNDIC}/quittances`, ...guards, canView, listSyndicateReceiptsHandler);
-router.get(`${SYNDIC}/quittances/impression`, ...guards, canView, printReceiptsHandler);
+// Limiteurs par utilisateur et agence, posés APRÈS les gardes (ils lisent la session et l'agence).
+router.get(`${SYNDIC}/quittances/impression`, ...guards, canView, receiptPrintRateLimiter, printReceiptsHandler);
 router.post(`${SYNDIC}/quittances/generer-manquantes`, ...guards, canEdit, backfillQuittancesHandler);
 router.get(`${SYNDIC}/quittances/:receiptId/fichier`, ...guards, canView, downloadReceiptHandler);
-router.post(`${SYNDIC}/quittances/:receiptId/envoi`, ...guards, canEdit, resendReceiptHandler);
+router.post(
+  `${SYNDIC}/quittances/:receiptId/envoi`,
+  ...guards,
+  canEdit,
+  receiptResendRateLimiter,
+  resendReceiptHandler
+);
 router.get(`${SYNDIC}/lots/:lotId/quittances`, ...guards, canView, listLotReceiptsHandler);
 
 export default router;
