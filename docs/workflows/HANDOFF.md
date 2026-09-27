@@ -38,6 +38,30 @@ Pièges et décisions :
 
 ---
 
+## Branche `chore/i18n-syndic-orphelins` — 2026-09-27
+
+**État :** prêt à relire (PR vers `main`)
+**Dernier commit :** voir `git log -1 chore/i18n-syndic-orphelins`
+
+Fait :
+
+- `npm run i18n:extract -w @immotopia/web` sur `origin/main` produisait
+  4 orphelins dans `syndic` (en/ar) : « La date de fin est obligatoire », « Le
+  mode de paiement est obligatoire », « Le montant dépasse le reste dû
+  ({{value}}) » (retirés avec l'ancienne modale de paiement par appel,
+  `6253b81`) et « Reste a payer » (corrigé en « Reste à payer », `5dfe782`,
+  clé déjà traduite). Aucun n'était une simple reformulation sans traduction :
+  les quatre clés mortes sont supprimées, l'ordre des clés suit l'extracteur.
+- Vérifié : seconde extraction sans orphelin ni diff (empreintes identiques),
+  test `catalogs-completeness` (36/36), `typecheck` web. Aucune PR ouverte
+  (#25 à #29) n'emploie ces textes.
+
+Pièges et décisions :
+
+- L'extraction réécrit tous les catalogues en LF alors que le checkout Windows
+  est en CRLF : `git status` les montre modifiés, mais
+  `git diff --ignore-cr-at-eol` n'en montre que deux. N'indexer que ceux-là.
+
 ## Pilote — fusions du 2026-09-27
 
 **État :** `main` à jour, aucune PR ouverte
