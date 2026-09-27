@@ -1142,6 +1142,12 @@ export interface LotPaymentResult {
   advance: number;
   lotAdvanceBalance: number;
   currency: string;
+  /**
+   * Reçus et quittances émis par ce paiement (lot S3). Présent seulement sur
+   * l'enregistrement réel (`POST .../paiements`) — absent de l'aperçu
+   * (`.../paiements/apercu`), qui n'écrit rien.
+   */
+  documents?: IssuedReceiptRef[];
 }
 
 export type MonthlyTrackingStatus = 'NONE' | 'PAID' | 'PARTIAL' | 'DUE' | 'OVERDUE';
@@ -1167,4 +1173,88 @@ export interface MonthlyTracking {
   currency: string;
   months: number[];
   lots: MonthlyTrackingLotRow[];
+}
+
+// --------------------------------------------------------------------------
+// Lot S3 — reçus et quittances (besoin 1)
+// --------------------------------------------------------------------------
+
+export type ReceiptKind = 'RECEIPT' | 'QUITTANCE';
+
+/** Un reçu de paiement ou une quittance de charges, tels que rendus par la liste. */
+export interface ReceiptView {
+  id: string;
+  kind: ReceiptKind;
+  number: string;
+  lotId: string;
+  lotNumber: string | null;
+  contactId: string | null;
+  coownerName: string | null;
+  chargeCallId: string | null;
+  chargePaymentId: string | null;
+  periodLabel: string | null;
+  periodStart: string | null;
+  periodEnd: string | null;
+  amount: number;
+  currency: string;
+  issuedAt: string;
+  emailedAt: string | null;
+  /** Message générique stocké côté API (français) — préférer `emailErrorCode` pour un libellé traduit. */
+  emailError: string | null;
+  emailErrorCode: 'SMTP_REJECTED' | 'TIMEOUT' | 'ERROR' | null;
+  /** Quittance produite par « Générer les quittances manquantes », sans appel réel derrière. */
+  backfilled: boolean;
+}
+
+/** Filtres communs à `GET .../quittances` et `GET .../lots/:lotId/quittances`. */
+export interface ReceiptListQuery {
+  lotId?: string;
+  contactId?: string;
+  kind?: ReceiptKind;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface ReceiptListResult {
+  items: ReceiptView[];
+  pagination: { page: number; limit: number; total: number; totalPages: number };
+}
+
+/** Paramètres de `GET .../quittances/impression` : période obligatoire, grille A4 1×1 à 3×4. */
+export interface ReceiptPrintQuery {
+  from: string;
+  to: string;
+  kind?: 'QUITTANCE' | 'RECEIPT' | 'ALL';
+  lotId?: string;
+  contactId?: string;
+  cols?: number;
+  rows?: number;
+}
+
+/** Réponse de `POST .../quittances/:receiptId/envoi`. */
+export interface ResendReceiptResult {
+  id: string;
+  number: string;
+  sent: boolean;
+  emailedAt: string;
+}
+
+/**
+ * Réponse de `POST .../quittances/generer-manquantes`. Plafonnée par requête
+ * côté API (500 appels au plus) : `remaining > 0` signifie qu'un nouveau
+ * passage traitera la suite.
+ */
+export interface BackfillReceiptsResult {
+  created: number;
+  skipped: number;
+  remaining: number;
+}
+
+/** Référence minimale d'un document émis, portée par un résultat de paiement (lot S3). */
+export interface IssuedReceiptRef {
+  id: string;
+  kind: ReceiptKind;
+  number: string;
 }

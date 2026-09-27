@@ -324,7 +324,10 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         href: financeWorkspaceHref('facturation-balances'),
         children: [
           financeLeaf('finance-clients', t('Facturation et balances'), 'facturation-balances'),
-          { ...financeLeaf('finance-owner-accounts', t('Reversements et commissions'), 'reversements-commissions'), feature: 'RENTAL' }
+          {
+            ...financeLeaf('finance-owner-accounts', t('Reversements et commissions'), 'reversements-commissions'),
+            feature: 'RENTAL'
+          }
         ]
       },
       {
@@ -531,6 +534,8 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
             href: '/tenant/:tenantId/syndics/:syndicId/budgets',
             activeFor: [
               '/tenant/:tenantId/syndics/:syndicId/charges',
+              '/tenant/:tenantId/syndics/:syndicId/suivi-mensuel',
+              '/tenant/:tenantId/syndics/:syndicId/quittances',
               '/tenant/:tenantId/syndics/:syndicId/recouvrement',
               '/tenant/:tenantId/syndics/:syndicId/finances',
               '/tenant/:tenantId/syndics/:syndicId/comptabilite'

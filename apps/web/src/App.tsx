@@ -317,6 +317,11 @@ const SyndicMonthlyTracking = lazy(() =>
     default: m.SyndicMonthlyTracking
   }))
 );
+const SyndicReceipts = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicReceipts').then(m => ({
+    default: m.SyndicReceipts
+  }))
+);
 const SyndicOwnerAccount = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicOwnerAccount').then(m => ({
     default: m.SyndicOwnerAccount
@@ -846,10 +851,7 @@ function App() {
                           {/* Route statique avant le layout de fiche : elle doit être déclarée
                           avant `/tenant/:tenantId/syndics/:syndicId` pour que « mandants » ne
                           soit jamais lu comme un identifiant de copropriété. */}
-                          <Route
-                            path="/tenant/:tenantId/syndics/mandants"
-                            element={<SyndicMandatingAgencies />}
-                          />
+                          <Route path="/tenant/:tenantId/syndics/mandants" element={<SyndicMandatingAgencies />} />
                           {/* Famille « Copropriété » — fiche, lots (et le compte d'un lot,
                         rattaché à l'onglet Lots), prestataires, profils et incidents.
                         Même route de layout que les deux familles suivantes : elle ne
@@ -880,6 +882,7 @@ function App() {
                               path="/tenant/:tenantId/syndics/:syndicId/suivi-mensuel"
                               element={<SyndicMonthlyTracking />}
                             />
+                            <Route path="/tenant/:tenantId/syndics/:syndicId/quittances" element={<SyndicReceipts />} />
                             <Route
                               path="/tenant/:tenantId/syndics/:syndicId/recouvrement"
                               element={<SyndicRecovery />}
@@ -906,7 +909,10 @@ function App() {
                           <Route path="/tenant/:tenantId/invitations" element={<InvitationsList />} />
                           <Route path="/tenant/:tenantId/settings" element={<TenantSettings />} />
                           <Route path="/tenant/:tenantId/settings/finance" element={<AgencyFinanceSettings />} />
-                          <Route path="/tenant/:tenantId/settings/abonnement" element={<TenantSubscriptionSettings />} />
+                          <Route
+                            path="/tenant/:tenantId/settings/abonnement"
+                            element={<TenantSubscriptionSettings />}
+                          />
                           <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
                           <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
                           <Route path="/tenant/:tenantId/crm/contacts/new" element={<ContactFormPage />} />

@@ -1,6 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, DatePicker, Input, InputNumber, Modal, Select, Space, Spin, Table, Tag, Typography } from 'antd';
+import {
+  Alert,
+  Button,
+  DatePicker,
+  Input,
+  InputNumber,
+  Modal,
+  Select,
+  Space,
+  Spin,
+  Table,
+  Tag,
+  Typography
+} from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import { DownloadOutlined } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { MoneyValue } from '../primitives';
 import {
@@ -9,7 +23,15 @@ import {
   previewLotPayment,
   recordLotPayment
 } from '../../services/syndic-lot-payment-service';
-import { LotOpenChargeCall, LotPaymentAllocationView, LotPaymentResult, SyndicateLot } from '../../types/syndic-types';
+import { downloadReceiptFile } from '../../services/syndic-receipt-service';
+import {
+  IssuedReceiptRef,
+  LotOpenChargeCall,
+  LotPaymentAllocationView,
+  LotPaymentResult,
+  SyndicateLot
+} from '../../types/syndic-types';
+import { saveBlob } from '../../utils/save-blob';
 import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 
@@ -83,9 +105,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
 
   const [openCalls, setOpenCalls] = useState<LotOpenChargeCall[]>([]);
   const [callsLoading, setCallsLoading] = useState(false);
-  const [selectedCallIds, setSelectedCallIds] = useState<string[]>(
-    initialChargeCallId ? [initialChargeCallId] : []
-  );
+  const [selectedCallIds, setSelectedCallIds] = useState<string[]>(initialChargeCallId ? [initialChargeCallId] : []);
 
   const [advance, setAdvance] = useState<number | null>(null);
   const [preview, setPreview] = useState<LotPaymentResult | null>(null);
@@ -94,6 +114,11 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // Synthèse affichée après l'enregistrement, avant fermeture (lot S3 : les
+  // documents émis, avec numéro et lien de téléchargement).
+  const [recordedResult, setRecordedResult] = useState<LotPaymentResult | null>(null);
+  const [downloadingDocId, setDownloadingDocId] = useState<string | null>(null);
 
   // Réinitialise l'état à chaque ouverture, sur les valeurs de la consigne
   // (lot et appel pré-sélectionnés depuis un appel donné).
@@ -109,6 +134,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
     setPreviewError(null);
     setSubmitError(null);
     setAdvance(null);
+    setRecordedResult(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialLotId, initialChargeCallId]);
 
@@ -174,10 +200,7 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
     };
   }, [open, lotId, amount, paidAt, method, reference, selectedCallIds, tenantId, syndicId]);
 
-  const lotOptions = useMemo(
-    () => lots.map(lot => ({ value: lot.id, label: formatLotLabel(lot) })),
-    [lots]
-  );
+  const lotOptions = useMemo(() => lots.map(lot => ({ value: lot.id, label: formatLotLabel(lot) })), [lots]);
 
   const openCallColumns: ColumnsType<LotOpenChargeCall> = [
     { title: t('Periode'), dataIndex: 'period', key: 'period', render: (_: string, call) => formatPeriodRange(call) },
@@ -241,13 +264,108 @@ export const LotPaymentModal: React.FC<LotPaymentModalProps> = ({
         reference: reference || undefined,
         chargeCallIds: selectedCallIds.length > 0 ? selectedCallIds : undefined
       });
-      onRecorded(result);
+      // Lot S3 : la synthèse (documents émis) reste affichée jusqu'à ce que
+      // le gestionnaire ferme lui-même ; `onRecorded` (rafraîchissement de la
+      // liste des appels côté parent) n'est appelé qu'à ce moment-là.
+      setRecordedResult(result);
     } catch (err: any) {
-      setSubmitError(err.response?.data?.error || t("Enregistrement du paiement impossible"));
+      setSubmitError(err.response?.data?.error || t('Enregistrement du paiement impossible'));
     } finally {
       setSubmitting(false);
     }
   };
+
+  const handleDownloadDocument = async (doc: IssuedReceiptRef) => {
+    setDownloadingDocId(doc.id);
+    try {
+      const fallback = `${doc.kind === 'QUITTANCE' ? 'Quittance' : 'Recu'} ${doc.number}.pdf`;
+      const { blob, filename } = await downloadReceiptFile(tenantId, syndicId, doc.id, fallback);
+      saveBlob(blob, filename);
+    } catch {
+      setSubmitError(t('Téléchargement impossible.'));
+    } finally {
+      setDownloadingDocId(null);
+    }
+  };
+
+  const handleCloseSynthesis = () => {
+    if (recordedResult) onRecorded(recordedResult);
+  };
+
+  if (recordedResult) {
+    return (
+      <Modal
+        title={t('Paiement enregistré')}
+        open={open}
+        onCancel={handleCloseSynthesis}
+        footer={
+          <Button type="primary" onClick={handleCloseSynthesis}>
+            {t('Fermer')}
+          </Button>
+        }
+        width={640}
+      >
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          {submitError ? <Alert type="error" message={submitError} showIcon /> : null}
+
+          <Table<LotPaymentAllocationView>
+            rowKey={(row, index) => `${row.chargeCallId}-${index}`}
+            size="small"
+            dataSource={recordedResult.allocations}
+            columns={allocationColumns}
+            pagination={false}
+            locale={{ emptyText: t('Le paiement reste entièrement en avance') }}
+          />
+          <Paragraph style={{ marginBottom: 0 }}>
+            {t('Avance restante')} :{' '}
+            <MoneyValue value={recordedResult.lotAdvanceBalance} currency={recordedResult.currency} />
+          </Paragraph>
+
+          <div>
+            <Text strong>{t('Documents émis')}</Text>
+            {recordedResult.documents && recordedResult.documents.length > 0 ? (
+              <Table<IssuedReceiptRef>
+                rowKey="id"
+                size="small"
+                style={{ marginTop: 4 }}
+                dataSource={recordedResult.documents}
+                pagination={false}
+                columns={[
+                  { title: t('Numéro'), dataIndex: 'number' },
+                  {
+                    title: t('Type'),
+                    dataIndex: 'kind',
+                    render: (value: IssuedReceiptRef['kind']) => (
+                      <Tag color={value === 'QUITTANCE' ? 'green' : 'blue'}>
+                        {value === 'QUITTANCE' ? t('Quittance') : t('Reçu')}
+                      </Tag>
+                    )
+                  },
+                  {
+                    title: t('Actions'),
+                    render: (_: unknown, doc: IssuedReceiptRef) => (
+                      <Button
+                        size="small"
+                        icon={<DownloadOutlined />}
+                        loading={downloadingDocId === doc.id}
+                        onClick={() => void handleDownloadDocument(doc)}
+                      >
+                        {t('Télécharger')}
+                      </Button>
+                    )
+                  }
+                ]}
+              />
+            ) : (
+              <Paragraph type="secondary" style={{ marginTop: 4, marginBottom: 0 }}>
+                {t('Aucun document émis par ce paiement.')}
+              </Paragraph>
+            )}
+          </div>
+        </Space>
+      </Modal>
+    );
+  }
 
   return (
     <Modal

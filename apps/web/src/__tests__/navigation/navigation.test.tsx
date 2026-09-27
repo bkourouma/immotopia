@@ -96,10 +96,11 @@ describe('modèle de navigation — intégrité', () => {
     expect(more.map(g => g.label)).toContain('Syndic');
   });
 
-  it('ramène le syndic à quatre entrées qui couvrent chacune leurs onglets', () => {
+  it('ramène le syndic à cinq entrées qui couvrent chacune leurs onglets', () => {
     const syndic = NAVIGATION.collaborateur.tree.find(g => g.key === 'syndic');
     expect(syndic?.children?.map(c => c.label)).toEqual([
       'Copropriétés',
+      'Agences mandantes',
       'Copropriété',
       'Finances',
       'Assemblées et documents'
@@ -112,6 +113,8 @@ describe('modèle de navigation — intégrité', () => {
       'profils-incidents',
       'budgets',
       'charges',
+      'suivi-mensuel',
+      'quittances',
       'recouvrement',
       'finances',
       'comptabilite',
