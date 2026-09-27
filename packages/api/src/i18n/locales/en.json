@@ -791,5 +791,8 @@
   "Vous avez déjà un compte ImmoTopia : connectez-vous avec votre adresse e-mail et votre mot de passe habituels.": "You already have an ImmoTopia account: sign in with your usual email address and password.",
   "Votre espace copropriétaire": "Your co-owner area",
   "Votre espace copropriétaire — {{agency}}": "Your co-owner area — {{agency}}",
-  "L'agence {{agency}} vous ouvre un accès en lecture à votre espace copropriétaire : vos lots, le compte de chaque lot, vos appels de charges, les documents et les assemblées générales de votre copropriété.": "The agency {{agency}} is giving you read access to your co-owner area: your units, the account of each unit, your service charge calls, and the documents and general meetings of your co-ownership."
+  "L'agence {{agency}} vous ouvre un accès en lecture à votre espace copropriétaire : vos lots, le compte de chaque lot, vos appels de charges, les documents et les assemblées générales de votre copropriété.": "The agency {{agency}} is giving you read access to your co-owner area: your units, the account of each unit, your service charge calls, and the documents and general meetings of your co-ownership.",
+  "Pièce jointe introuvable.": "Attachment not found.",
+  "Accès portail locataire refusé.": "Tenant portal access denied.",
+  "Accès portail propriétaire requis.": "Owner portal access required."
 }

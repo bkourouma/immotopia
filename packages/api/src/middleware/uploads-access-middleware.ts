@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { verifyToken } from '../utils/jwt-utils';
-import { userHasTenantAccess, userIsTenantStaff } from '../utils/tenant-access';
+import { userIsTenantStaff } from '../utils/tenant-access';
 
 /**
  * Access control for the /uploads static mount.
@@ -14,18 +14,20 @@ import { userHasTenantAccess, userIsTenantStaff } from '../utils/tenant-access';
  *
  * This middleware runs before express.static and:
  *   - lets genuinely public assets through unchanged;
- *   - requires an authenticated user with access to the owning tenant for
- *     everything else — and, for files only agency screens ever open, a
- *     member of the agency's staff (`staffOnly`, see `userIsTenantStaff`):
- *     a portal client must not open another client's file by its URL;
+ *   - requires, for every private file still served here, an authenticated
+ *     member of the owning agency's staff (`userIsTenantStaff`): these files
+ *     are only opened by agency screens, and a portal client must not open
+ *     another client's file by its URL;
  *   - denies anything it cannot classify (fail closed).
  *
  * Layout handled:
  *   properties/<propertyId>/<file>              public  (listing photos/videos, agency logos)
  *   properties/<propertyId>/documents/<file>    staff   (property.tenantId)
  *   whatsapp/**                                 public  (fetched by the WhatsApp provider)
- *   maintenance/<tenantId>/<ticketId>/<file>    tenant  (members AND clients: the tenant
- *                                                        and owner portals show attachments)
+ *   maintenance/**                              DENIED  (never static: served only by the
+ *                                                        authenticated routes of
+ *                                                        lib/maintenance/attachment-files.ts,
+ *                                                        checked ticket by ticket)
  *   portal/payments/<tenantId>/<file>           staff   (payment proofs, validated by the agency)
  *   rental/penalties/<penaltyId>/<file>         staff   (penalty.tenant_id)
  *   syndics/**                                  DENIED  (never static: served only by the
@@ -35,14 +37,14 @@ import { userHasTenantAccess, userIsTenantStaff } from '../utils/tenant-access';
  * Every other root is denied too. Private files with a root of their own and
  * a dedicated download route (lease inspections, platform invoice payment
  * proofs...) are therefore never reachable here — the same treatment
- * `syndics/` now gets.
+ * `syndics/` and `maintenance/` now get.
  */
 
 type Classification =
   | { kind: 'public' }
-  | { kind: 'tenant'; tenantId: string; staffOnly?: boolean }
-  | { kind: 'property'; propertyId: string; staffOnly?: boolean }
-  | { kind: 'penalty'; penaltyId: string; staffOnly?: boolean }
+  | { kind: 'tenant'; tenantId: string }
+  | { kind: 'property'; propertyId: string }
+  | { kind: 'penalty'; penaltyId: string }
   | { kind: 'deny' };
 
 function classify(segments: string[]): Classification {
@@ -52,7 +54,7 @@ function classify(segments: string[]): Classification {
     case 'properties': {
       // properties/<propertyId>/documents/... is private, the rest is public media
       if (rest.length >= 2 && rest[1] === 'documents') {
-        return { kind: 'property', propertyId: rest[0], staffOnly: true };
+        return { kind: 'property', propertyId: rest[0] };
       }
       return rest.length >= 1 ? { kind: 'public' } : { kind: 'deny' };
     }
@@ -62,17 +64,22 @@ function classify(segments: string[]): Classification {
     case 'whatsapp':
       return { kind: 'public' };
 
+    // Pieces jointes de maintenance : jamais en statique. Cette garde ne
+    // savait verifier que l'agence ; un locataire ouvrait donc la photo du
+    // ticket d'un autre locataire, ou d'un proprietaire, en connaissant
+    // l'URL. Elles sortent par les routes authentifiees de
+    // lib/maintenance/attachment-files.ts, qui controlent le ticket.
     case 'maintenance':
-      return rest.length >= 1 ? { kind: 'tenant', tenantId: rest[0] } : { kind: 'deny' };
+      return { kind: 'deny' };
 
     case 'portal':
       return rest.length >= 2 && rest[0] === 'payments'
-        ? { kind: 'tenant', tenantId: rest[1], staffOnly: true }
+        ? { kind: 'tenant', tenantId: rest[1] }
         : { kind: 'deny' };
 
     case 'rental':
       return rest.length >= 2 && rest[0] === 'penalties'
-        ? { kind: 'penalty', penaltyId: rest[1], staffOnly: true }
+        ? { kind: 'penalty', penaltyId: rest[1] }
         : { kind: 'deny' };
 
     // Documents de copropriete : jamais en statique (AGENTS.md, « les
@@ -179,9 +186,10 @@ export async function uploadsAccessGuard(req: Request, res: Response, next: Next
       return;
     }
 
-    const allowed = classification.staffOnly
-      ? await userIsTenantStaff(user.userId, tenantId, user.globalRole)
-      : await userHasTenantAccess(user.userId, tenantId, user.globalRole);
+    // Tout fichier prive encore servi ici n'est ouvert que par des ecrans
+    // d'agence : reserve au personnel. Un client de portail n'y a jamais
+    // acces par l'URL.
+    const allowed = await userIsTenantStaff(user.userId, tenantId, user.globalRole);
 
     if (!allowed) {
       logger.warn('Blocked cross-tenant upload access', {
