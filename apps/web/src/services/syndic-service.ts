@@ -1,4 +1,5 @@
 import apiClient from '../utils/api-client';
+import { filenameFromDisposition } from '../utils/save-blob';
 import {
   CreateAgendaItemRequest,
   ChargeCall,
@@ -17,6 +18,7 @@ import {
   CreateLatePenaltyRequest,
   CreateMaintenanceContractRequest,
   CreateMeetingRequest,
+  CreateMeetingProxyRequest,
   CreateManualReminderRequest,
   CreatePaymentScheduleRequest,
   CreateResolutionRequest,
@@ -37,10 +39,15 @@ import {
   PaymentReminder,
   PaymentSchedule,
   ReminderBatchResult,
+  CreateServiceProviderRequest,
+  UpdateServiceProviderRequest,
+  ServiceProvider,
   CreateSyndicateLotRequest,
   CreateSyndicateRequest,
   UpdateSyndicateRequest,
   GeneralMeeting,
+  MeetingProxy,
+  MeetingStatus,
   MaintenanceContract,
   SyndicProvidersPayload,
   SyndicateDocument,
@@ -57,8 +64,14 @@ import {
   UpdateBudgetRequest,
   IncidentCostImputation,
   LotOwnerProfile,
+  CoOwnerPortalInvitation,
+  CoOwnerPortalRevocation,
   LotTenantProfile,
-  SyndicateIncident
+  SyndicateIncident,
+  SyndicateFund,
+  CreateSyndicateFundRequest,
+  RenameSyndicateFundRequest,
+  AdjustSyndicateFundBalanceRequest
 } from '../types/syndic-types';
 
 export async function listSyndicates(tenantId: string): Promise<Syndicate[]> {
@@ -89,7 +102,8 @@ export async function updateSyndicate(
     registrationNo: data.registrationNo === '' ? null : data.registrationNo,
     cadastralReference: data.cadastralReference === '' ? null : data.cadastralReference,
     fiscalYear: data.fiscalYear,
-    syndicManagerId: data.syndicManagerId === '' ? null : data.syndicManagerId
+    syndicManagerId: data.syndicManagerId === '' ? null : data.syndicManagerId,
+    status: data.status
   };
 
   const response = await apiClient.patch<{ success: boolean; data: Syndicate }>(
@@ -291,6 +305,52 @@ export async function updateMeeting(
   return response.data.data;
 }
 
+/** Ouvre, cloture ou annule une AG ; l'API refuse une transition incoherente (409). */
+export async function updateMeetingStatus(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  status: MeetingStatus
+): Promise<GeneralMeeting> {
+  return updateMeeting(tenantId, syndicId, meetingId, { status });
+}
+
+export async function listMeetingProxies(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingProxy[]> {
+  const response = await apiClient.get<{ success: boolean; data: MeetingProxy[] }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/pouvoirs`
+  );
+  return response.data.data;
+}
+
+export async function createMeetingProxy(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  data: CreateMeetingProxyRequest
+): Promise<MeetingProxy> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingProxy }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/pouvoirs`,
+    data
+  );
+  return response.data.data;
+}
+
+export async function deleteMeetingProxy(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  proxyId: string
+): Promise<MeetingProxy> {
+  const response = await apiClient.delete<{ success: boolean; data: MeetingProxy }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/pouvoirs/${proxyId}`
+  );
+  return response.data.data;
+}
+
 export async function addMeetingResolution(
   tenantId: string,
   syndicId: string,
@@ -371,6 +431,35 @@ export async function listProvidersContracts(tenantId: string, syndicId: string)
     `/tenants/${tenantId}/syndics/${syndicId}/prestataires`
   );
   return response.data.data;
+}
+
+export async function createProvider(
+  tenantId: string,
+  syndicId: string,
+  data: CreateServiceProviderRequest
+): Promise<ServiceProvider> {
+  const response = await apiClient.post<{ success: boolean; data: ServiceProvider }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/prestataires`,
+    data
+  );
+  return response.data.data;
+}
+
+export async function updateProvider(
+  tenantId: string,
+  syndicId: string,
+  providerId: string,
+  data: UpdateServiceProviderRequest
+): Promise<ServiceProvider> {
+  const response = await apiClient.patch<{ success: boolean; data: ServiceProvider }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/prestataires/${providerId}`,
+    data
+  );
+  return response.data.data;
+}
+
+export async function deleteProvider(tenantId: string, syndicId: string, providerId: string): Promise<void> {
+  await apiClient.delete(`/tenants/${tenantId}/syndics/${syndicId}/prestataires/${providerId}`);
 }
 
 export async function listContracts(
@@ -824,6 +913,48 @@ export async function updateLotOwnerProfile(
   return response.data.data;
 }
 
+/** Ouvre le portail copropriétaire au contact de ce profil ; le lien est rendu que l'e-mail parte ou non. */
+export async function inviteCoOwnerToPortal(
+  tenantId: string,
+  syndicId: string,
+  ownerProfileId: string
+): Promise<CoOwnerPortalInvitation> {
+  const response = await apiClient.post<{ success: boolean; data: CoOwnerPortalInvitation }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/profils/proprietaires/${ownerProfileId}/invitation-portail`
+  );
+  return response.data.data;
+}
+
+/** Ferme le portail copropriétaire au contact de ce profil (tous ses lots de l'agence). */
+export async function revokeCoOwnerPortalAccess(
+  tenantId: string,
+  syndicId: string,
+  ownerProfileId: string
+): Promise<CoOwnerPortalRevocation> {
+  const response = await apiClient.delete<{ success: boolean; data: CoOwnerPortalRevocation }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/profils/proprietaires/${ownerProfileId}/invitation-portail`
+  );
+  return response.data.data;
+}
+
+/**
+ * Télécharge le fichier d'un document de copropriété. Les documents ne sont
+ * jamais servis en statique (`/uploads/syndics` est refusé) : ils passent par
+ * cette route, qui vérifie que le document appartient à l'agence.
+ */
+export async function downloadSyndicDocument(
+  tenantId: string,
+  syndicId: string,
+  documentId: string,
+  fallbackName: string
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(
+    `/tenants/${tenantId}/syndics/${syndicId}/documents/${encodeURIComponent(documentId)}/fichier`,
+    { responseType: 'blob' }
+  );
+  return { blob: response.data, filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName) };
+}
+
 export async function listLotTenantProfiles(
   tenantId: string,
   syndicId: string,
@@ -906,6 +1037,52 @@ export async function createIncidentImputation(
 ): Promise<IncidentCostImputation> {
   const response = await apiClient.post<{ success: boolean; data: IncidentCostImputation }>(
     `/tenants/${tenantId}/syndics/${syndicId}/incidents/${incidentId}/imputations`,
+    data
+  );
+  return response.data.data;
+}
+
+// FR-013 : fonds financiers de la copropriete (SyndicateFund).
+export async function listSyndicateFunds(tenantId: string, syndicId: string): Promise<SyndicateFund[]> {
+  const response = await apiClient.get<{ success: boolean; data: SyndicateFund[] }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/fonds`
+  );
+  return response.data.data;
+}
+
+export async function createSyndicateFund(
+  tenantId: string,
+  syndicId: string,
+  data: CreateSyndicateFundRequest
+): Promise<SyndicateFund> {
+  const response = await apiClient.post<{ success: boolean; data: SyndicateFund }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/fonds`,
+    data
+  );
+  return response.data.data;
+}
+
+export async function renameSyndicateFund(
+  tenantId: string,
+  syndicId: string,
+  fundId: string,
+  data: RenameSyndicateFundRequest
+): Promise<SyndicateFund> {
+  const response = await apiClient.patch<{ success: boolean; data: SyndicateFund }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/fonds/${fundId}`,
+    data
+  );
+  return response.data.data;
+}
+
+export async function adjustSyndicateFundBalance(
+  tenantId: string,
+  syndicId: string,
+  fundId: string,
+  data: AdjustSyndicateFundBalanceRequest
+): Promise<SyndicateFund> {
+  const response = await apiClient.post<{ success: boolean; data: SyndicateFund }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/fonds/${fundId}/ajustement`,
     data
   );
   return response.data.data;

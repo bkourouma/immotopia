@@ -20,8 +20,8 @@ interface RentalDocument {
   type: string;
   document_number: string | null;
   title: string | null;
-  file_url: string | null;
-  file_path: string | null;
+  /** Route authentifiée du fichier (relative à l'API) ; jamais de chemin disque. */
+  downloadPath: string | null;
   issued_at: string | null;
   status: string;
   lease?: {

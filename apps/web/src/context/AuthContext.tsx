@@ -19,6 +19,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [tenantMembership, setTenantMembership] = useState<TenantMembership | null>(null);
   const [tenantClient, setTenantClient] = useState<TenantClient | null>(null);
   const [isLoadingMembership, setIsLoadingMembership] = useState(false);
+  /**
+   * Compte pour lequel l'appartenance (agence, client de portail) a déjà été
+   * résolue au moins une fois.
+   *
+   * Sans lui, un rechargement de page ouvrait une fenêtre d'un rendu : la
+   * session était établie (`isLoading` à false, `isAuthenticated` à true)
+   * mais `refreshMembership` n'avait pas encore démarré (il part d'un effet
+   * APRÈS ce rendu), donc `isLoadingMembership` valait false et
+   * `tenantClient` null. La coquille concluait « ni propriétaire, ni
+   * locataire, ni copropriétaire » et renvoyait vers `/dashboard`, qui
+   * renvoyait à son tour vers la racine du portail : une adresse profonde
+   * (`/copropriete/lots/<id>`, `/owner/properties/<id>`...) collée dans la
+   * barre d'adresse revenait silencieusement à l'accueil du portail, sans que
+   * l'écran demandé ne soit jamais monté (constat de recette, portail
+   * copropriétaire 13.5). Tant que ce compte n'est pas celui connecté,
+   * l'appartenance est tenue pour « en cours de chargement ».
+   */
+  const [membershipResolvedFor, setMembershipResolvedFor] = useState<string | null>(null);
   const [availableTenants, setAvailableTenants] = useState<AvailableTenant[]>([]);
 
   /**
@@ -46,9 +64,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setTenantClient(null);
       setAvailableTenants([]);
       rawMembershipsRef.current = { asMember: [], asClient: [] };
+      setMembershipResolvedFor(user?.id ?? null);
       return;
     }
 
+    const resolvingFor = user.id;
     setIsLoadingMembership(true);
     try {
       const response = await apiClient.get('/tenants/my-memberships');
@@ -88,8 +108,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       rawMembershipsRef.current = { asMember: [], asClient: [] };
     } finally {
       setIsLoadingMembership(false);
+      setMembershipResolvedFor(resolvingFor);
     }
   };
+
+  // Voir `membershipResolvedFor` : connecté, mais appartenance pas encore
+  // résolue pour CE compte = chargement en cours. Le super-admin n'a pas
+  // d'appartenance à attendre.
+  const membershipPending = Boolean(
+    isAuthenticated && user && user.globalRole !== 'SUPER_ADMIN' && membershipResolvedFor !== user.id
+  );
 
   /**
    * Change l'agence courante parmi `availableTenants`, depuis les données
@@ -112,7 +140,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const client = asClient.find(
       (c: any) =>
-        c?.tenant?.id === tenantId && (c?.clientType === 'OWNER' || c?.clientType === 'RENTER')
+        c?.tenant?.id === tenantId &&
+        (c?.clientType === 'OWNER' || c?.clientType === 'RENTER' || c?.clientType === 'CO_OWNER')
     );
     if (client) {
       setStoredActiveTenantId(tenantId);
@@ -297,7 +326,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     error,
     tenantMembership,
     tenantClient,
-    isLoadingMembership,
+    isLoadingMembership: isLoadingMembership || membershipPending,
     availableTenants,
     activeTenantId: tenantMembership?.tenantId ?? tenantClient?.tenantId ?? null,
     login,

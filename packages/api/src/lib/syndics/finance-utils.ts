@@ -23,6 +23,39 @@ export function computeOutstanding(chargeAmount: number, totalPaid: number): num
   return roundMoney(clampNonNegative(chargeAmount - totalPaid));
 }
 
+export type ChargeCallStatusValue = 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE';
+
+/**
+ * Statut effectif d'un appel de charges, calcule a la lecture.
+ *
+ * Le modele Prisma prevoit un statut `OVERDUE`, mais aucun code n'ecrit
+ * jamais cette valeur en base (ni la creation, ni le paiement, ni une tache
+ * planifiee) — voir docs/recette/SCENARIO_SYNDIC_MODULES.md, annexe #6 et
+ * partie 8. Plutot que d'introduire une tache planifiee supplementaire (donc
+ * un ecart entre la base et l'affichage tant qu'elle n'est pas repassee, et
+ * un nouveau fichier `jobs/` partage avec d'autres lots en cours), le statut
+ * « En retard » se derive au moment de la lecture : un appel non solde
+ * (`PENDING`/`PARTIAL`) dont l'echeance est deja passee est toujours
+ * effectivement en retard, sans ecriture. Un appel `PAID` ne peut jamais etre
+ * en retard, quelle que soit sa date d'echeance.
+ */
+export function deriveChargeCallStatus(
+  status: ChargeCallStatusValue,
+  dueDate: Date | string,
+  now: Date = new Date()
+): ChargeCallStatusValue {
+  if (status === 'PAID') {
+    return status;
+  }
+
+  const due = dueDate instanceof Date ? dueDate : new Date(dueDate);
+  if (due.getTime() < now.getTime()) {
+    return 'OVERDUE';
+  }
+
+  return status;
+}
+
 export function allocateAmountByShares(totalAmount: number, shares: number, totalShares: number): number {
   if (totalShares <= 0) {
     return 0;

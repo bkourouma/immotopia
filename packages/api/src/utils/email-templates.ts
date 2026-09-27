@@ -539,3 +539,81 @@ export function getLeaseActivatedTemplate(params: {
 </html>
   `.trim();
 }
+
+/**
+ * Invitation au portail coproprietaire (lot « portail coproprietaire »).
+ *
+ * @param params.accessUrl - Lien de definition du mot de passe (compte neuf ou
+ *   jamais active) ou de connexion (compte deja utilise)
+ * @param params.isActivation - true si le destinataire doit encore definir son mot de passe
+ * @param params.lots - Lots ouverts au portail, pour que le destinataire sache de quoi il s'agit
+ * @param params.language - Langue de l'e-mail
+ */
+export function getCoOwnerPortalInvitationTemplate(params: {
+  accessUrl: string;
+  userName: string;
+  agencyName: string;
+  lots: Array<{ syndicateName: string; lotNumber: string }>;
+  isActivation: boolean;
+  language?: Language;
+}): string {
+  const language = params.language ?? currentLanguage();
+  const { lang, dir } = documentDirection(language);
+  const agency = escapeHtml(params.agencyName);
+  const userName = escapeHtml(params.userName);
+  const accessUrl = escapeHtml(params.accessUrl);
+  const lotRows = params.lots
+    .map(
+      lot =>
+        `<li style="margin: 0 0 4px;">${escapeHtml(lot.syndicateName)} — ${t('lot {{lotNumber}}', { lotNumber: escapeHtml(lot.lotNumber) }, language)}</li>`
+    )
+    .join('');
+  const intro = params.isActivation
+    ? t('Pour activer votre accès, définissez votre mot de passe en cliquant ci-dessous :', undefined, language)
+    : t(
+        'Vous avez déjà un compte ImmoTopia : connectez-vous avec votre adresse e-mail et votre mot de passe habituels.',
+        undefined,
+        language
+      );
+  const cta = params.isActivation
+    ? t('Définir mon mot de passe', undefined, language)
+    : t('Accéder à mon espace', undefined, language);
+
+  return `
+<!DOCTYPE html>
+<html lang="${lang}" dir="${dir}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${t('Votre espace copropriétaire', undefined, language)}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #eef2f7;">
+  <div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 24px 16px; direction: ${dir};">
+    <div style="background-color: #ffffff; padding: 32px; border-radius: 8px;">
+      <h1 style="color: #2c3e50; font-size: 21px; margin: 0 0 20px;">${t('Votre espace copropriétaire', undefined, language)}</h1>
+      <p style="margin: 0 0 16px;">${t('Bonjour {{name}},', { name: userName }, language)}</p>
+      <p style="margin: 0 0 16px;">${t(
+        "L'agence {{agency}} vous ouvre un accès en lecture à votre espace copropriétaire : vos lots, le compte de chaque lot, vos appels de charges, les documents et les assemblées générales de votre copropriété.",
+        { agency: `<strong>${agency}</strong>` },
+        language
+      )}</p>
+      ${lotRows ? `<ul style="margin: 0 0 20px; padding-inline-start: 20px;">${lotRows}</ul>` : ''}
+      <p style="margin: 0 0 8px;">${intro}</p>
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="${accessUrl}" style="background-color: #3498db; color: #ffffff; padding: 14px 36px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold; font-size: 15px;">${cta}</a>
+      </div>
+      <p style="margin: 0 0 6px; font-size: 14px; color: #6b7c8f;">${t('Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :', undefined, language)}</p>
+      <p style="margin: 0 0 20px; word-break: break-all; font-size: 13px; direction: ltr;"><a href="${accessUrl}" style="color: #3498db;">${accessUrl}</a></p>
+      ${params.isActivation ? `<p style="margin: 0 0 16px;"><strong>${t('Ce lien expire dans 7 jours.', undefined, language)}</strong></p>` : ''}
+      <hr style="border: none; border-top: 1px solid #e6ebf1; margin: 28px 0 16px;">
+      <p style="margin: 0; font-size: 12px; color: #98a6b5; text-align: center;">${t(
+        "Cet email vous a été envoyé automatiquement à la demande de l'agence {{agency}}, merci de ne pas y répondre.",
+        { agency },
+        language
+      )}</p>
+    </div>
+  </div>
+</body>
+</html>
+  `.trim();
+}

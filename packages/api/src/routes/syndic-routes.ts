@@ -5,11 +5,15 @@ import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-m
 import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
 import { uploadDocument } from '../middleware/upload-middleware';
 import {
+  inviteCoOwnerToPortalHandler,
+  revokeCoOwnerPortalAccessHandler
+} from '../controllers/syndic-coowner-portal-controller';
+import {
   listSyndicsHandler,
   createSyndicHandler,
   getSyndicHandler,
   updateSyndicHandler,
-  archiveSyndicHandler,
+  deleteSyndicHandler,
   listSyndicLotsHandler,
   createSyndicLotHandler,
   importSyndicLotsFromPropertiesHandler,
@@ -36,8 +40,14 @@ import {
   updateAgendaItemHandler,
   deleteAgendaItemHandler,
   castVoteHandler,
+  listMeetingProxiesHandler,
+  createMeetingProxyHandler,
+  deleteMeetingProxyHandler,
   generateMeetingMinutesHandler,
   listProvidersHandler,
+  createProviderHandler,
+  updateProviderHandler,
+  deleteProviderHandler,
   listContractsHandler,
   linkContractHandler,
   createContractHandler,
@@ -46,6 +56,7 @@ import {
   deleteContractHandler,
   listDocumentsHandler,
   createDocumentHandler,
+  downloadDocumentHandler,
   getFinanceSummaryHandler,
   getOverdueDashboardHandler,
   listRemindersHandler,
@@ -79,7 +90,11 @@ import {
   createAccountingEntryHandler,
   lockAccountingEntryHandler,
   getTrialBalanceHandler,
-  getGeneralLedgerHandler
+  getGeneralLedgerHandler,
+  listFundsHandler,
+  createFundHandler,
+  renameFundHandler,
+  adjustFundBalanceHandler
 } from '../controllers/syndic-controller';
 
 const router = Router();
@@ -99,7 +114,7 @@ router.patch('/tenants/:tenantId/syndics/:syndicId', requirePropertyPermission('
 router.delete(
   '/tenants/:tenantId/syndics/:syndicId',
   requirePropertyPermission('PROPERTIES_EDIT'),
-  archiveSyndicHandler
+  deleteSyndicHandler
 );
 
 router.get(
@@ -268,6 +283,18 @@ router.patch(
   requirePropertyPermission('PROPERTIES_EDIT'),
   updateLotOwnerProfileHandler
 );
+// Portail coproprietaire : ouvrir (invitation, lien affiche) ou fermer l'acces
+// du contact de ce profil. Voir services/syndic-coowner-portal-service.ts.
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/profils/proprietaires/:ownerProfileId/invitation-portail',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  inviteCoOwnerToPortalHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/profils/proprietaires/:ownerProfileId/invitation-portail',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  revokeCoOwnerPortalAccessHandler
+);
 router.get(
   '/tenants/:tenantId/syndics/:syndicId/profils/locataires',
   requireAnyPropertyPermission(['PROPERTIES_VIEW']),
@@ -354,6 +381,21 @@ router.post(
   requirePropertyPermission('PROPERTIES_EDIT'),
   castVoteHandler
 );
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listMeetingProxiesHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createMeetingProxyHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs/:proxyId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  deleteMeetingProxyHandler
+);
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/compte-rendu',
   requirePropertyPermission('PROPERTIES_EDIT'),
@@ -364,6 +406,21 @@ router.get(
   '/tenants/:tenantId/syndics/:syndicId/prestataires',
   requireAnyPropertyPermission(['PROPERTIES_VIEW']),
   listProvidersHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/prestataires',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createProviderHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/prestataires/:providerId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  updateProviderHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/prestataires/:providerId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  deleteProviderHandler
 );
 router.get(
   '/tenants/:tenantId/syndics/:syndicId/contrats',
@@ -405,6 +462,14 @@ router.post(
   requirePropertyPermission('PROPERTIES_EDIT'),
   uploadDocument.single('file'),
   createDocumentHandler
+);
+// Fichier d'un document : jamais servi en statique (/uploads/syndics est
+// refuse), seulement ici, apres controle de l'agence. Voir
+// lib/syndics/document-files.ts.
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/documents/:documentId/fichier',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  downloadDocumentHandler
 );
 router.get(
   '/tenants/:tenantId/syndics/:syndicId/finances',
@@ -455,6 +520,27 @@ router.get(
   '/tenants/:tenantId/syndics/:syndicId/comptabilite/grand-livre',
   requireAnyPropertyPermission(['PROPERTIES_VIEW']),
   getGeneralLedgerHandler
+);
+
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/fonds',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listFundsHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/fonds',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createFundHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/fonds/:fundId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  renameFundHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/fonds/:fundId/ajustement',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  adjustFundBalanceHandler
 );
 
 export default router;

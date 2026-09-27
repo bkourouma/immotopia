@@ -1,11 +1,36 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { App, Alert, Button, Card, Form, Input, Modal, Space, Spin, TimePicker, Typography } from 'antd';
+import {
+  App,
+  Alert,
+  Button,
+  Card,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Spin,
+  Tag,
+  TimePicker,
+  Tooltip,
+  Typography
+} from 'antd';
 import { ArrowLeftOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { meetingTypeLabels } from '../../components/syndics/labels';
+import { meetingStatusLabels, meetingTypeLabels } from '../../components/syndics/labels';
 import { MeetingAgenda } from '../../components/syndics/MeetingAgenda';
+import { MeetingProxies } from '../../components/syndics/MeetingProxies';
+import { MeetingStatusActions } from '../../components/syndics/MeetingStatusActions';
 import { VoteBoard } from '../../components/syndics/VoteBoard';
+import {
+  DEFAULT_MAJORITY_RULE,
+  isMeetingFrozen,
+  majorityRuleHint,
+  majorityRuleOptions,
+  meetingFrozenReason,
+  meetingStatusColors
+} from '../../components/syndics/meeting-governance';
 import {
   addMeetingAgendaItem,
   addMeetingResolution,
@@ -14,9 +39,17 @@ import {
   generateMeetingMinutesDocx,
   getMeeting,
   updateMeeting,
-  updateMeetingAgendaItem
+  updateMeetingAgendaItem,
+  updateMeetingStatus
 } from '../../services/syndic-service';
-import { GeneralMeeting, MeetingAgendaItem, VoteChoice } from '../../types/syndic-types';
+import {
+  GeneralMeeting,
+  MajorityRule,
+  MeetingAgendaItem,
+  MeetingLot,
+  MeetingStatus,
+  VoteChoice
+} from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
@@ -40,6 +73,8 @@ export const SyndicMeetingDetail: React.FC = () => {
   const [savingMeetingMeta, setSavingMeetingMeta] = useState(false);
   const [deletingAgendaId, setDeletingAgendaId] = useState<string | null>(null);
   const [generatingMinutes, setGeneratingMinutes] = useState(false);
+  const [changingStatus, setChangingStatus] = useState(false);
+  const [selectedMajorityRule, setSelectedMajorityRule] = useState<MajorityRule>(DEFAULT_MAJORITY_RULE);
   const [resolutionForm] = Form.useForm();
   const [agendaForm] = Form.useForm();
   const [meetingMetaForm] = Form.useForm();
@@ -90,6 +125,25 @@ export const SyndicMeetingDetail: React.FC = () => {
     }
   };
 
+  const handleStatusChange = async (status: MeetingStatus) => {
+    if (!effectiveTenantId || !syndicId || !meetingId) return;
+    setChangingStatus(true);
+    try {
+      await updateMeetingStatus(effectiveTenantId, syndicId, meetingId, status);
+      const successMessages: Partial<Record<MeetingStatus, string>> = {
+        IN_PROGRESS: t('Séance ouverte'),
+        COMPLETED: t('Séance clôturée : les votes sont figés'),
+        CANCELLED: t('Assemblée annulée')
+      };
+      message.success(successMessages[status] || t('Statut mis à jour'));
+      await loadMeeting();
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Changement de statut impossible'));
+    } finally {
+      setChangingStatus(false);
+    }
+  };
+
   const handleAddResolution = async () => {
     if (!effectiveTenantId || !syndicId || !meetingId) return;
     const values = await resolutionForm.validateFields();
@@ -99,6 +153,7 @@ export const SyndicMeetingDetail: React.FC = () => {
       message.success(t('Résolution ajoutée'));
       setOpenResolution(false);
       resolutionForm.resetFields();
+      setSelectedMajorityRule(DEFAULT_MAJORITY_RULE);
       await loadMeeting();
     } catch (err: any) {
       message.error(err.response?.data?.error || t('Ajout impossible'));
@@ -246,6 +301,9 @@ export const SyndicMeetingDetail: React.FC = () => {
     );
   }
 
+  const frozen = isMeetingFrozen(meeting.status);
+  const meetingLots = (meeting.syndicate?.lots || []) as MeetingLot[];
+
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -257,31 +315,41 @@ export const SyndicMeetingDetail: React.FC = () => {
             >
               {t('Retour aux assemblées')}
             </Button>
-            <Title level={2} style={{ margin: 0 }}>
-              {t('Détail assemblée générale')}
-            </Title>
+            <Space wrap>
+              <Title level={2} style={{ margin: 0 }}>
+                {t('Détail assemblée générale')}
+              </Title>
+              <Tag color={meetingStatusColors[meeting.status]}>{meetingStatusLabels[meeting.status]}</Tag>
+            </Space>
             <Paragraph type="secondary" style={{ marginBottom: 0 }}>
               Date: {dayjs(meeting.scheduledAt).format('DD/MM/YYYY HH:mm')} {t('| Type:')}{' '}
               {meetingTypeLabels[meeting.type]}
             </Paragraph>
-            <Form form={meetingMetaForm} layout="inline">
+            <Form form={meetingMetaForm} layout="inline" disabled={frozen}>
               <Form.Item label={t('Heure début')} name="startTime">
-                <TimePicker format="HH:mm" minuteStep={5} allowClear />
+                <TimePicker format="HH:mm" minuteStep={5} allowClear disabled={frozen} />
               </Form.Item>
               <Form.Item label={t('Heure fin')} name="endTime">
-                <TimePicker format="HH:mm" minuteStep={5} allowClear />
+                <TimePicker format="HH:mm" minuteStep={5} allowClear disabled={frozen} />
               </Form.Item>
               <Form.Item label={t('Lieu')} name="location">
-                <Input placeholder={t("Lieu de l'assemblée")} style={{ minWidth: 240 }} />
+                <Input placeholder={t("Lieu de l'assemblée")} style={{ minWidth: 240 }} disabled={frozen} />
               </Form.Item>
               <Form.Item>
-                <Button onClick={() => void handleSaveMeetingMeta()} loading={savingMeetingMeta}>
-                  {t('Enregistrer')}
-                </Button>
+                {frozen ? (
+                  <Tooltip title={meetingFrozenReason(meeting.status)}>
+                    <Button disabled>{t('Enregistrer')}</Button>
+                  </Tooltip>
+                ) : (
+                  <Button onClick={() => void handleSaveMeetingMeta()} loading={savingMeetingMeta}>
+                    {t('Enregistrer')}
+                  </Button>
+                )}
               </Form.Item>
             </Form>
           </Space>
-          <Space>
+          <Space wrap align="start">
+            <MeetingStatusActions status={meeting.status} onChange={handleStatusChange} loading={changingStatus} />
             <Button
               icon={<DownloadOutlined />}
               onClick={() => void handleGenerateMinutes()}
@@ -289,20 +357,44 @@ export const SyndicMeetingDetail: React.FC = () => {
             >
               {t('Générer compte rendu Word')}
             </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenResolution(true)}>
-              {t('Ajouter une résolution')}
-            </Button>
+            {frozen ? null : (
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenResolution(true)}>
+                {t('Ajouter une résolution')}
+              </Button>
+            )}
           </Space>
         </div>
 
-        <VoteBoard quorum={meeting.quorum || 0} resolutions={meeting.resolutions || []} />
+        <VoteBoard
+          quorum={meeting.quorum || 0}
+          resolutions={meeting.resolutions || []}
+          attendance={meeting.attendance}
+        />
+
+        <MeetingProxies
+          tenantId={effectiveTenantId || ''}
+          syndicId={syndicId || ''}
+          meetingId={meeting.id}
+          proxies={meeting.proxies || []}
+          lots={meetingLots}
+          readOnly={frozen}
+          onChanged={loadMeeting}
+        />
 
         <Card
           title={t('Ordre du jour')}
           extra={
-            <Button size="small" type="primary" icon={<PlusOutlined />} onClick={openCreateAgendaModal}>
-              {t('Ajouter un point')}
-            </Button>
+            frozen ? (
+              <Tooltip title={meetingFrozenReason(meeting.status)}>
+                <Button size="small" type="primary" icon={<PlusOutlined />} disabled>
+                  {t('Ajouter un point')}
+                </Button>
+              </Tooltip>
+            ) : (
+              <Button size="small" type="primary" icon={<PlusOutlined />} onClick={openCreateAgendaModal}>
+                {t('Ajouter un point')}
+              </Button>
+            )
           }
         >
           <Space direction="vertical" size="middle" style={{ width: '100%' }}>
@@ -319,18 +411,34 @@ export const SyndicMeetingDetail: React.FC = () => {
                     title={`${item.orderIndex}. ${item.title}`}
                     extra={
                       <Space>
-                        <Button size="small" icon={<EditOutlined />} onClick={() => openEditAgendaModal(item)}>
-                          {t('Modifier')}
-                        </Button>
-                        <Button
-                          size="small"
-                          danger
-                          icon={<DeleteOutlined />}
-                          loading={deletingAgendaId === item.id}
-                          onClick={() => void handleDeleteAgenda(item.id)}
-                        >
-                          {t('Supprimer')}
-                        </Button>
+                        {frozen ? (
+                          <Tooltip title={meetingFrozenReason(meeting.status)}>
+                            <Button size="small" icon={<EditOutlined />} disabled>
+                              {t('Modifier')}
+                            </Button>
+                          </Tooltip>
+                        ) : (
+                          <Button size="small" icon={<EditOutlined />} onClick={() => openEditAgendaModal(item)}>
+                            {t('Modifier')}
+                          </Button>
+                        )}
+                        {frozen ? (
+                          <Tooltip title={meetingFrozenReason(meeting.status)}>
+                            <Button size="small" danger icon={<DeleteOutlined />} disabled>
+                              {t('Supprimer')}
+                            </Button>
+                          </Tooltip>
+                        ) : (
+                          <Button
+                            size="small"
+                            danger
+                            icon={<DeleteOutlined />}
+                            loading={deletingAgendaId === item.id}
+                            onClick={() => void handleDeleteAgenda(item.id)}
+                          >
+                            {t('Supprimer')}
+                          </Button>
+                        )}
                       </Space>
                     }
                   >
@@ -352,9 +460,16 @@ export const SyndicMeetingDetail: React.FC = () => {
         <Card title={t('Ordre du jour et votes')}>
           <MeetingAgenda
             resolutions={meeting.resolutions || []}
-            lots={meeting.syndicate?.lots || []}
+            lots={meetingLots}
             onVote={handleVote}
             voting={voting}
+            proxies={meeting.proxies || []}
+            readOnly={frozen}
+            readOnlyReason={
+              meeting.status === 'CANCELLED'
+                ? t('Assemblée annulée : aucun vote possible.')
+                : t('Séance clôturée : les votes sont figés.')
+            }
           />
         </Card>
       </Space>
@@ -379,8 +494,13 @@ export const SyndicMeetingDetail: React.FC = () => {
           <Form.Item label={t('Description')} name="description">
             <Input.TextArea rows={4} />
           </Form.Item>
-          <Form.Item label={t('Regle de majorite')} name="majorityRule">
-            <Input placeholder={t('Ex: article 24')} />
+          <Form.Item
+            label={t('Regle de majorite')}
+            name="majorityRule"
+            initialValue={DEFAULT_MAJORITY_RULE}
+            extra={majorityRuleHint(selectedMajorityRule)}
+          >
+            <Select<MajorityRule> options={majorityRuleOptions()} onChange={value => setSelectedMajorityRule(value)} />
           </Form.Item>
         </Form>
       </Modal>

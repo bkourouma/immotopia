@@ -54,8 +54,11 @@ type Meeting = {
   syndicate: { lots: Array<{ id: string; lotNumber: string; generalShares: number }> };
 };
 
+const PROXY_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+
 const store = {
-  meetings: new Map<string, Meeting>()
+  meetings: new Map<string, Meeting>(),
+  proxies: [] as Array<Record<string, unknown>>
 };
 
 jest.mock('../../src/lib/syndics/queries', () => ({
@@ -65,7 +68,7 @@ jest.mock('../../src/lib/syndics/queries', () => ({
   createSyndicateLot: jest.fn(),
   updateSyndicateLotByTenant: jest.fn(),
   updateSyndicateByTenant: jest.fn(),
-  archiveSyndicateByTenant: jest.fn(),
+  deleteEmptySyndicateByTenant: jest.fn(),
   listChargeCallsBySyndicate: jest.fn(),
   getChargeCallByTenant: jest.fn(),
   createChargeCallAndUpdateStatus: jest.fn(),
@@ -155,6 +158,43 @@ jest.mock('../../src/lib/syndics/queries', () => ({
       resolution.result = resolution.votesFor > resolution.votesAgainst ? 'APPROVED' : 'PENDING';
       return meeting;
     }
+  ),
+  updateMeetingByTenant: jest.fn(async (tenantId: string, syndicateId: string, meetingId: string, data: any) => {
+    const meeting = store.meetings.get(meetingId);
+    if (!meeting || meeting.tenantId !== tenantId || meeting.syndicateId !== syndicateId) {
+      const err: any = new Error('Assemblee generale introuvable ou inaccessible');
+      err.status = 404;
+      throw err;
+    }
+    if (data.status === 'COMPLETED' && meeting.status !== 'IN_PROGRESS') {
+      const err: any = new Error("La seance doit etre ouverte avant d'etre cloturee");
+      err.status = 409;
+      throw err;
+    }
+    if (data.status) meeting.status = data.status;
+    return meeting;
+  }),
+  listMeetingProxiesByTenant: jest.fn(async () => store.proxies),
+  createMeetingProxyByTenant: jest.fn(async (_tenantId: string, _syndicateId: string, data: any) => {
+    if (data.grantorContactId === data.representativeContactId) {
+      const err: any = new Error('Le mandataire ne peut pas etre le mandant');
+      err.status = 422;
+      throw err;
+    }
+    const proxy = { id: PROXY_ID, ...data };
+    store.proxies.push(proxy);
+    return proxy;
+  }),
+  deleteMeetingProxyByTenant: jest.fn(
+    async (_tenantId: string, _syndicateId: string, _meetingId: string, proxyId: string) => {
+      const index = store.proxies.findIndex(proxy => proxy.id === proxyId);
+      if (index === -1) {
+        const err: any = new Error('Pouvoir introuvable ou inaccessible');
+        err.status = 404;
+        throw err;
+      }
+      return store.proxies.splice(index, 1)[0];
+    }
   )
 }));
 
@@ -177,6 +217,7 @@ describe('Syndics meetings routes', () => {
 
   beforeEach(() => {
     store.meetings.clear();
+    store.proxies = [];
     store.meetings.set('other-tenant-meeting', {
       id: 'other-tenant-meeting',
       tenantId: TENANT_OTHER_ID,
@@ -223,6 +264,60 @@ describe('Syndics meetings routes', () => {
     expect(vote.status).toBe(200);
     expect(vote.body.data.quorum).toBe(100);
     expect(vote.body.data.resolutions[0].votesFor).toBe(1);
+  });
+
+  it('opens then closes a meeting through PATCH status', async () => {
+    await request(app).post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees`).send({
+      type: 'ORDINARY',
+      scheduledAt: '2026-06-20T09:00:00.000Z'
+    });
+    const base = `/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees/${MEETING_ID}`;
+
+    const tooEarly = await request(app).patch(base).send({ status: 'COMPLETED' });
+    expect(tooEarly.status).toBe(409);
+
+    const opened = await request(app).patch(base).send({ status: 'IN_PROGRESS' });
+    expect(opened.status).toBe(200);
+    expect(opened.body.data.status).toBe('IN_PROGRESS');
+
+    const closed = await request(app).patch(base).send({ status: 'COMPLETED' });
+    expect(closed.status).toBe(200);
+    expect(closed.body.data.status).toBe('COMPLETED');
+  });
+
+  it('rejects an unknown meeting status with 400', async () => {
+    const response = await request(app)
+      .patch(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees/${MEETING_ID}`)
+      .send({ status: 'OPEN' });
+    expect(response.status).toBe(400);
+  });
+
+  it('creates, lists and removes a proxy (pouvoir)', async () => {
+    const base = `/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/assemblees/${MEETING_ID}/pouvoirs`;
+
+    const missing = await request(app).post(base).send({ grantorContactId: 'contact-1' });
+    expect(missing.status).toBe(400);
+
+    const same = await request(app)
+      .post(base)
+      .send({ grantorContactId: 'contact-1', representativeContactId: 'contact-1' });
+    expect(same.status).toBe(422);
+
+    const created = await request(app)
+      .post(base)
+      .send({ grantorContactId: 'contact-1', representativeContactId: 'contact-2' });
+    expect(created.status).toBe(201);
+    expect(created.body.data).toMatchObject({ id: PROXY_ID, meetingId: MEETING_ID });
+
+    const listed = await request(app).get(base);
+    expect(listed.status).toBe(200);
+    expect(listed.body.data).toHaveLength(1);
+
+    const removed = await request(app).delete(`${base}/${PROXY_ID}`);
+    expect(removed.status).toBe(200);
+
+    const removedAgain = await request(app).delete(`${base}/${PROXY_ID}`);
+    expect(removedAgain.status).toBe(404);
   });
 
   it('enforces tenant isolation on meeting detail', async () => {

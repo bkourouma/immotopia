@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { fileUrl as buildFileUrl } from '../../config/api';
 import {
   Card,
   Row,
@@ -13,7 +12,6 @@ import {
   Button,
   Modal,
   Descriptions,
-  Image,
   List,
   Avatar,
   Select,
@@ -26,11 +24,15 @@ import {
   MessageOutlined,
   UserOutlined,
   CalendarOutlined,
-  SyncOutlined,
-  FileOutlined
+  SyncOutlined
 } from '@ant-design/icons';
 import { ownerPortalService } from '../../services/ownerPortalService';
 import { StatCard } from '../../components/OwnerPortal/StatCard';
+import {
+  AttachmentList,
+  fromPortalAttachment,
+  type PortalAttachment
+} from '../../components/maintenance/AttachmentList';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
 
@@ -75,11 +77,7 @@ interface TicketDetails {
       id: string;
       address: string;
     };
-    attachments: Array<{
-      id: string;
-      file_url: string;
-      file_name: string;
-    }>;
+    attachments: PortalAttachment[];
     comments: Array<{
       id: string;
       content: string;
@@ -163,9 +161,6 @@ const getCategoryLabel = (category: string) => {
   };
   return categoryMap[category] || category;
 };
-
-// Static files are served from the server root at /uploads, not from /api.
-const getAttachmentUrl = (fileUrl: string): string => buildFileUrl(fileUrl);
 
 export default function Maintenance() {
   const [loading, setLoading] = useState(true);
@@ -534,69 +529,14 @@ export default function Maintenance() {
               )}
             </Descriptions>
 
-            {/* Attachments */}
+            {/* Pièces jointes : lues par la route du portail, jamais en statique. */}
             {ticketDetails.ticket.attachments && ticketDetails.ticket.attachments.length > 0 && (
               <div>
                 <Title level={5}>{t('Pièces jointes')}</Title>
-                <Image.PreviewGroup>
-                  <Space wrap>
-                    {ticketDetails.ticket.attachments.map(att => {
-                      const imageUrl = getAttachmentUrl(att.file_url);
-                      // Check if file is an image based on extension or mime type
-                      const isImageFile =
-                        /\.(jpg|jpeg|png|gif|webp)$/i.test(att.file_name) ||
-                        att.file_name.toLowerCase().includes('image');
-
-                      if (!isImageFile) {
-                        // For non-image files, show a file icon
-                        return (
-                          <div
-                            key={att.id}
-                            style={{
-                              width: 100,
-                              height: 100,
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              border: '1px solid #d9d9d9',
-                              borderRadius: 4,
-                              padding: 8,
-                              backgroundColor: '#fafafa'
-                            }}
-                          >
-                            <FileOutlined style={{ fontSize: 32, color: '#1890ff' }} />
-                            <Text style={{ fontSize: 10, marginTop: 4, textAlign: 'center' }} ellipsis>
-                              {att.file_name}
-                            </Text>
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <Image
-                          key={att.id}
-                          width={100}
-                          height={100}
-                          src={imageUrl}
-                          alt={att.file_name}
-                          style={{ objectFit: 'cover', borderRadius: 4 }}
-                          preview={{
-                            mask: t('Aperçu')
-                          }}
-                          onError={e => {
-                            console.error('Image load error:', {
-                              url: imageUrl,
-                              fileUrl: att.file_url,
-                              fileName: att.file_name,
-                              error: e
-                            });
-                          }}
-                        />
-                      );
-                    })}
-                  </Space>
-                </Image.PreviewGroup>
+                <AttachmentList
+                  attachments={ticketDetails.ticket.attachments.map(fromPortalAttachment)}
+                  source={{ kind: 'owner-portal', ticketId: ticketDetails.ticket.id }}
+                />
               </div>
             )}
 

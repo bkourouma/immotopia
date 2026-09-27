@@ -6,6 +6,7 @@ import {
   requireMaintenanceTenantPermission,
   requireMaintenanceAdminPermission
 } from '../middleware/maintenance-rbac-middleware';
+import { requireAnyPermission } from '../middleware/rbac-middleware';
 import {
   createTicketHandler,
   listTenantTicketsHandler,
@@ -20,6 +21,7 @@ import {
   getPropertyMaintenanceHistoryHandler
 } from '../controllers/maintenance-ticket-controller';
 import { uploadAttachmentHandler, downloadAttachmentHandler } from '../controllers/maintenance-attachment-controller';
+import { BadRequestError } from '../middleware/error-middleware';
 import {
   getActiveVendorsHandler,
   createVendorHandler,
@@ -37,13 +39,15 @@ const router = Router({ mergeParams: true });
 const storage = multer.memoryStorage();
 
 // File filter for maintenance attachments (images and PDFs only)
-const maintenanceFileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+const maintenanceFileFilter = (_req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'];
 
   if (file.mimetype && allowedMimeTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Type de fichier non autorisé. Types autorisés: JPEG, PNG, WebP, PDF'));
+    // Erreur typée : un `Error` nu tomberait en 500 dans le gestionnaire
+    // central (modele property-media-controller.ts).
+    cb(new BadRequestError('Type de fichier non accepté. Formats autorisés : JPEG, PNG, WebP, PDF.'));
   }
 };
 
@@ -108,12 +112,18 @@ router.use('/admin', adminRouter);
 // Vendor routes (shared, requires authentication and tenant access)
 router.get('/vendors/active', authenticate, requireTenantAccess, enforceTenantIsolation, getActiveVendorsHandler);
 
-// File download route (shared, but requires authentication and tenant access)
+// Téléchargement d'une pièce jointe, côté agence : les deux écrans qui la
+// montrent (routeurs `tenant` et `admin` ci-dessus) exigent l'une des deux
+// permissions maintenance. `requireTenantAccess` seul laissait passer un
+// client du portail (TenantClient), qui ouvrait ainsi n'importe quelle pièce
+// de l'agence. Les portails ont leurs propres routes, filtrées par ticket
+// (lib/maintenance/attachment-files.ts).
 router.get(
   '/files/:attachmentId',
   authenticate,
   requireTenantAccess,
   enforceTenantIsolation,
+  requireAnyPermission(['MAINTENANCE_ADMIN', 'MAINTENANCE_TENANT']),
   downloadAttachmentHandler
 );
 

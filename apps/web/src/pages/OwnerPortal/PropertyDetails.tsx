@@ -47,11 +47,11 @@ interface PropertyDetailsData {
       mediaType: string;
       isPrimary: boolean;
     }>;
+    /** Description seulement : aucun chemin ni URL de stockage (fichiers privés). */
     documents: Array<{
       id: string;
       fileName: string;
       documentType: string;
-      fileUrl: string;
     }>;
   };
   currentLease?: {

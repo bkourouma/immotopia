@@ -45,6 +45,7 @@ import whatsappWebhookRoutes from './routes/whatsapp.webhook.route';
 import paymentGatewayPublicRoutes from './routes/payment-gateway-public-routes';
 import tenantPortalRoutes from './routes/tenant-portal-routes';
 import ownerPortalRoutes from './routes/owner-portal-routes';
+import coOwnerPortalRoutes from './routes/coowner-portal-routes';
 import patrimoineRoutes from './routes/patrimoine-routes';
 import ownerStatementsRoutes from './routes/owner-statements-routes';
 import agencySettingsRoutes from './routes/agency-settings-routes';
@@ -241,6 +242,7 @@ app.use('/api/newsletter', newsletterPublicRoutes); // Newsletter public (subscr
 app.use('/api/portal/tenant', tenantPortalRoutes); // Tenant portal routes
 app.use('/api/portal/owner', ownerPortalRoutes); // Owner portal routes
 app.use('/api/portal/owner', ownerAccountPortalRouter); // Compte courant du proprietaire connecte
+app.use('/api/portal/copropriete', coOwnerPortalRoutes); // Portail coproprietaire (lecture seule)
 
 // Public routes must be mounted before any broad /api router
 // that applies auth middleware globally (router.use(authenticate)).

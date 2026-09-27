@@ -851,7 +851,13 @@ export const PropertyPatrimoineTab: React.FC<Props> = ({ tenantId, propertyId })
       </Card>
       <Row gutter={[16, 16]}>
         <Col xs={24}>
-          <DocumentVault documents={documents} onDelete={handleDeleteDocument} deletingId={deletingDocumentId} />
+          <DocumentVault
+            documents={documents}
+            tenantId={tenantId}
+            propertyId={propertyId}
+            onDelete={handleDeleteDocument}
+            deletingId={deletingDocumentId}
+          />
         </Col>
       </Row>
       <Alert

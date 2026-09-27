@@ -1,6 +1,13 @@
 import { Request, Response } from 'express';
 import { getTenantIdFromRequest } from '../middleware/tenant-isolation-middleware';
-import { uploadAttachment, downloadAttachment } from '../services/maintenance-attachment-service';
+import { asyncHandler, ForbiddenError } from '../middleware/error-middleware';
+import { uploadAttachment } from '../services/maintenance-attachment-service';
+import {
+  getMaintenanceAttachmentFileForOwnerPortal,
+  getMaintenanceAttachmentFileForTenant,
+  getMaintenanceAttachmentFileForTenantPortal
+} from '../lib/maintenance/attachment-files';
+import { sendPrivateFile } from '../lib/files/private-files';
 
 /**
  * Upload attachment for a ticket
@@ -61,48 +68,53 @@ export async function uploadAttachmentHandler(req: Request, res: Response): Prom
 }
 
 /**
- * Download attachment
- * GET /tenants/:tenantId/maintenance/files/:attachmentId
+ * Gestion : GET /tenants/:tenantId/maintenance/files/:attachmentId
+ *
+ * `requireTenantAccess` + permission maintenance (voir maintenance-routes.ts) ;
+ * la pièce doit appartenir à l'agence, sinon 404. Le paramètre
+ * `tenantContactId` que lisait l'ancienne version n'est plus lu : fourni par
+ * l'appelant, il ne pouvait que restreindre, jamais protéger.
  */
-export async function downloadAttachmentHandler(req: Request, res: Response): Promise<void> {
-  try {
-    const tenantId = getTenantIdFromRequest(req);
-    const { attachmentId } = req.params;
-    const actorContactId = req.query.tenantContactId as string | undefined;
+export const downloadAttachmentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = getTenantIdFromRequest(req);
+  const file = await getMaintenanceAttachmentFileForTenant(tenantId, req.params.attachmentId);
+  sendPrivateFile(res, file);
+});
 
-    const { stream, metadata } = await downloadAttachment(tenantId, attachmentId, actorContactId);
-
-    // Set response headers
-    res.setHeader('Content-Type', metadata.mimeType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${metadata.fileName}"`);
-    res.setHeader('Content-Length', metadata.fileSize?.toString() || '0');
-
-    // Stream file to response
-    stream.pipe(res);
-  } catch (error) {
-    console.error('Error downloading attachment:', error);
-    if (error instanceof Error) {
-      if (error.message.includes('introuvable')) {
-        res.status(404).json({
-          success: false,
-          error: 'Not Found',
-          message: error.message
-        });
-        return;
-      }
-      if (error.message.includes('non autorisé')) {
-        res.status(403).json({
-          success: false,
-          error: 'Forbidden',
-          message: error.message
-        });
-        return;
-      }
-    }
-    res.status(500).json({
-      success: false,
-      error: 'Internal Server Error',
-      message: 'Échec du téléchargement de la pièce jointe'
-    });
+/**
+ * Portail locataire : GET /portal/tenant/maintenance/:id/attachments/:attachmentId
+ *
+ * Le périmètre vient de la garde (`requireTenantPortalAccess`), jamais de la
+ * requête : seulement les pièces d'un ticket visible dans CE portail.
+ */
+export const downloadTenantPortalAttachmentHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.tenantPortal) {
+    throw new ForbiddenError('Accès portail locataire refusé.');
   }
-}
+  const { tenantId, tenantClientId, leaseId } = req.tenantPortal;
+  const file = await getMaintenanceAttachmentFileForTenantPortal(
+    { tenantId, tenantClientId, leaseId },
+    req.params.id,
+    req.params.attachmentId
+  );
+  sendPrivateFile(res, file);
+});
+
+/**
+ * Portail propriétaire : GET /portal/owner/maintenance/:id/attachments/:attachmentId
+ *
+ * Seulement les pièces d'un ticket portant sur un bien du propriétaire
+ * connecté, dans l'agence résolue par `requireOwnerPortalAccess`.
+ */
+export const downloadOwnerPortalAttachmentHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.ownerPortal) {
+    throw new ForbiddenError('Accès portail propriétaire requis.');
+  }
+  const { tenantId, propertyIds } = req.ownerPortal;
+  const file = await getMaintenanceAttachmentFileForOwnerPortal(
+    { tenantId, propertyIds },
+    req.params.id,
+    req.params.attachmentId
+  );
+  sendPrivateFile(res, file);
+});

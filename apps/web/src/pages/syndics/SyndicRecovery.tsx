@@ -42,6 +42,7 @@ import {
   ReminderStatus
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Title, Text } = Typography;
@@ -59,72 +60,14 @@ const reminderStatusLabels: Record<ReminderStatus, string> = {
   FAILED: t('Échec')
 };
 
-type LotWithPropertyLabel =
-  | {
-      lotNumber?: string | null;
-      property?: {
-        title?: string | null;
-        address?: string | null;
-        internalReference?: string | null;
-      } | null;
-    }
-  | null
-  | undefined;
-
 function ownerLabel(owner?: { firstName?: string | null; lastName?: string | null; email?: string | null } | null) {
   if (!owner) return t('Sans propriétaire');
   const name = [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim();
   return name || owner.email || t('Propriétaire');
 }
 
-function lotPropertyLabel(lot: LotWithPropertyLabel): string {
-  const title = lot?.property?.title?.trim();
-  const address = lot?.property?.address?.trim();
-  const internalReference = lot?.property?.internalReference?.trim();
-  const isTechnicalReference = Boolean(title && /^PROP-\d{8}-[A-Z0-9]{4}-\d{4}$/i.test(title));
-
-  if (title && !isTechnicalReference) {
-    return title;
-  }
-
-  if (address) {
-    return address;
-  }
-
-  if (title) {
-    return title;
-  }
-
-  if (internalReference) {
-    return internalReference;
-  }
-
-  return lot?.lotNumber || '-';
-}
-
 function propertyLabel(item: OverdueDashboardItem): string {
-  const title = item.property?.title?.trim();
-  const address = item.property?.address?.trim();
-  const internalReference = item.property?.internalReference?.trim();
-  const isTechnicalReference = Boolean(title && /^PROP-\d{8}-[A-Z0-9]{4}-\d{4}$/i.test(title));
-
-  if (title && !isTechnicalReference) {
-    return title;
-  }
-
-  if (address) {
-    return address;
-  }
-
-  if (title) {
-    return title;
-  }
-
-  if (internalReference) {
-    return internalReference;
-  }
-
-  return item.lotNumber;
+  return formatLotLabel({ lotNumber: item.lotNumber, property: item.property }, item.lotNumber);
 }
 
 export const SyndicRecovery: React.FC = () => {
@@ -419,7 +362,7 @@ export const SyndicRecovery: React.FC = () => {
                     dataIndex: 'status',
                     render: (value: ReminderStatus) => <Tag>{reminderStatusLabels[value] ?? value}</Tag>
                   },
-                  { title: 'Lot', render: (_, item) => item.lot?.lotNumber || '-' },
+                  { title: 'Lot', render: (_, item) => formatLotLabel(item.lot, item.lotId) },
                   { title: t('Propriétaire'), render: (_, item) => ownerLabel(item.lot?.owner) },
                   {
                     title: t('Envoyé le'),
@@ -437,7 +380,7 @@ export const SyndicRecovery: React.FC = () => {
                 dataSource={penalties}
                 pagination={{ pageSize: 10 }}
                 columns={[
-                  { title: 'Lot', render: (_, item) => lotPropertyLabel(item.lot) },
+                  { title: 'Lot', render: (_, item) => formatLotLabel(item.lot, item.lotId) },
                   { title: t('Propriétaire'), render: (_, item) => ownerLabel(item.lot?.owner) },
                   { title: t('Jours retard'), dataIndex: 'daysLate' },
                   { title: 'Taux', dataIndex: 'penaltyRate', render: (value: number) => `${value}%` },
@@ -479,7 +422,7 @@ export const SyndicRecovery: React.FC = () => {
                 dataSource={schedules}
                 pagination={{ pageSize: 10 }}
                 columns={[
-                  { title: 'Lot', render: (_, item) => lotPropertyLabel(item.lot) },
+                  { title: 'Lot', render: (_, item) => formatLotLabel(item.lot, item.lotId) },
                   { title: t('Propriétaire'), render: (_, item) => ownerLabel(item.lot?.owner) },
                   { title: 'Appel', render: (_, item) => item.chargeCall?.period || '-' },
                   {

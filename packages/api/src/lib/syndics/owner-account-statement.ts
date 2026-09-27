@@ -24,6 +24,23 @@ function money(value: number, currency: string) {
 }
 
 /**
+ * Le solde d'un compte copropriétaire (et le solde après chaque mouvement)
+ * suit la même convention comptable que l'écran web (`SyndicOwnerAccount.tsx`) :
+ * un débit (appel de charges, pénalité) l'augmente, un crédit (paiement,
+ * remise) le diminue — positif = le copropriétaire doit ce montant, négatif =
+ * il a une avance. Les deux écrans étaient déjà cohérents entre eux ; ce
+ * n'était que le signe brut, sans mention, qui rendait la lecture ambiguë
+ * (constat de recette module 3.4). On affiche donc ici la valeur absolue avec
+ * la mention explicite, plutôt que de changer la convention stockée.
+ */
+export function describeBalanceForPdf(value: number): { amount: number; label: string } {
+  const rounded = Math.round(value * 100) / 100;
+  if (rounded > 0) return { amount: rounded, label: 'Debiteur' };
+  if (rounded < 0) return { amount: Math.abs(rounded), label: 'Crediteur' };
+  return { amount: 0, label: 'Solde a jour' };
+}
+
+/**
  * Caractères propres à WinAnsi (Windows-1252) au-delà de Latin-1 : ceux que
  * pdf-lib sait aussi encoder avec les polices standard (`Helvetica`).
  */
@@ -73,14 +90,17 @@ export async function buildOwnerAccountStatementPdf(payload: StatementPayload): 
   draw(`Proprietaire: ${payload.ownerName}`, { x: left, y, size: 10, font });
   y -= 24;
 
-  draw(`Solde initial: ${money(payload.openingBalance, payload.currency)}`, {
+  const opening = describeBalanceForPdf(payload.openingBalance);
+  const closing = describeBalanceForPdf(payload.closingBalance);
+
+  draw(`Solde initial: ${money(opening.amount, payload.currency)} (${opening.label})`, {
     x: left,
     y,
     size: 10,
     font: bold
   });
   y -= 16;
-  draw(`Solde final: ${money(payload.closingBalance, payload.currency)}`, {
+  draw(`Solde final: ${money(closing.amount, payload.currency)} (${closing.label})`, {
     x: left,
     y,
     size: 10,
@@ -94,7 +114,18 @@ export async function buildOwnerAccountStatementPdf(payload: StatementPayload): 
   draw('Debit', { x: left + 330, y, size: 9, font: bold });
   draw('Credit', { x: left + 410, y, size: 9, font: bold });
   draw('Solde', { x: left + 490, y, size: 9, font: bold });
-  y -= 12;
+  y -= 11;
+  // Legende plutot qu'une mention repetee sur chaque ligne (la colonne est
+  // trop etroite pour "12 345 FCFA (Debiteur)" a 8pt) : le signe du solde
+  // courant de chaque mouvement se lit ainsi sans connaitre la convention.
+  draw('(positif = le coproprietaire doit, negatif = il a une avance)', {
+    x: left + 140,
+    y,
+    size: 7,
+    font,
+    color: rgb(0.4, 0.4, 0.4)
+  });
+  y -= 13;
 
   const rows = payload.transactions.slice(0, 30);
   for (const tx of rows) {

@@ -196,7 +196,10 @@ export const TicketDetail: React.FC = () => {
               <div>
                 <Title level={5}>{t('Pièces jointes')}</Title>
                 {effectiveTenantId && (
-                  <AttachmentList attachments={ticket.attachments || []} tenantId={effectiveTenantId} />
+                  <AttachmentList
+                    attachments={ticket.attachments || []}
+                    source={{ kind: 'agency', tenantId: effectiveTenantId }}
+                  />
                 )}
               </div>
 

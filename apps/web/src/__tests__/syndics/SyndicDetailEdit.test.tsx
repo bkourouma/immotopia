@@ -315,6 +315,39 @@ describe('SyndicDetail — modification de la copropriété', () => {
     expect(mockMessageSuccess).toHaveBeenCalled();
   });
 
+  it('pré-remplit le statut et envoie sa modification (écart recette #8 : alternative à la suppression)', async () => {
+    mockGetHandlers();
+    mockApiClient.patch.mockResolvedValue({
+      data: { success: true, data: { ...baseSyndicate, status: 'IN_LIQUIDATION' } }
+    } as never);
+
+    renderWithRoute();
+
+    fireEvent.click(await screen.findByText('Modifier'));
+
+    await waitFor(() => {
+      expect(mockSetFieldsValue).toHaveBeenCalledWith(expect.objectContaining({ status: 'ACTIVE' }));
+    });
+
+    mockValidateFields.mockResolvedValue({
+      name: 'Résidence Test',
+      address: 'Dakar',
+      registrationNo: 'RC-2024-001',
+      fiscalYear: 3,
+      syndicManagerId: 'contact-1',
+      status: 'IN_LIQUIDATION'
+    });
+
+    fireEvent.click(await screen.findByText('Enregistrer'));
+
+    await waitFor(() => {
+      expect(mockApiClient.patch).toHaveBeenCalledWith(
+        '/tenants/tenant-1/syndics/syndic-1',
+        expect.objectContaining({ status: 'IN_LIQUIDATION' })
+      );
+    });
+  });
+
   it("affiche le message d'erreur de l'API quand l'enregistrement échoue (dont un refus d'abonnement)", async () => {
     mockGetHandlers();
     mockApiClient.patch.mockRejectedValue({

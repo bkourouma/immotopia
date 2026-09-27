@@ -34,6 +34,7 @@ import {
   UpdateSyndicateRequest
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
@@ -53,7 +54,7 @@ const statusConfig: Record<Syndicate['status'], { color: string; label: string }
 const chargeStatusConfig: Record<ChargeCallStatus, { color: string; label: string }> = {
   PENDING: { color: 'gold', label: t('En attente') },
   PARTIAL: { color: 'blue', label: t('Partiel') },
-  PAID: { color: 'green', label: t('Paye') },
+  PAID: { color: 'green', label: t('Payé') },
   OVERDUE: { color: 'red', label: t('En retard') }
 };
 
@@ -81,21 +82,6 @@ function ownerLabel(
   if (!owner) return t('Sans copropriétaire');
   const name = [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim();
   return name || owner.email || t('Copropriétaire');
-}
-
-function lotLabel(
-  lotNumber: string,
-  property?: { title?: string | null; address?: string | null; internalReference?: string | null } | null
-): string {
-  const title = property?.title?.trim();
-  const address = property?.address?.trim();
-  const internalReference = property?.internalReference?.trim();
-  const isTechnicalReference = Boolean(title && /^PROP-\d{8}-[A-Z0-9]{4}-\d{4}$/i.test(title));
-
-  if (title && !isTechnicalReference) return `${lotNumber} — ${title}`;
-  if (address) return `${lotNumber} — ${address}`;
-  if (internalReference) return `${lotNumber} — ${internalReference}`;
-  return lotNumber;
 }
 
 function shortReference(id: string): string {
@@ -133,6 +119,7 @@ interface EditSyndicateFormValues {
   cadastralReference?: string;
   fiscalYear?: number;
   syndicManagerId?: string;
+  status?: Syndicate['status'];
 }
 
 function scrollToSection(id: string) {
@@ -233,7 +220,7 @@ function buildChargeRows(charges: ChargeCall[]): ChargeRow[] {
       id: charge.id,
       reference: shortReference(charge.id),
       period: charge.period,
-      lotLabel: lotLabel(lot?.lotNumber || charge.lotId, lot?.property),
+      lotLabel: formatLotLabel(lot, charge.lotId),
       ownerLabel: ownerLabel(lot?.owner),
       amount,
       paid,
@@ -319,7 +306,8 @@ export const SyndicDetail: React.FC = () => {
       registrationNo: syndicate.registrationNo ?? undefined,
       cadastralReference: syndicate.cadastralReference ?? undefined,
       fiscalYear: syndicate.fiscalYear ?? undefined,
-      syndicManagerId: syndicate.syndicManagerId ?? undefined
+      syndicManagerId: syndicate.syndicManagerId ?? undefined,
+      status: syndicate.status
     });
     setEditOpen(true);
   };
@@ -344,7 +332,8 @@ export const SyndicDetail: React.FC = () => {
         registrationNo: values.registrationNo || null,
         cadastralReference: values.cadastralReference || null,
         fiscalYear: values.fiscalYear,
-        syndicManagerId: values.syndicManagerId || null
+        syndicManagerId: values.syndicManagerId || null,
+        status: values.status
       };
       await updateSyndicate(effectiveTenantId, syndicId, payload);
       message.success(t('Copropriété mise à jour'));
@@ -561,6 +550,21 @@ export const SyndicDetail: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Exercice')} name="fiscalYear">
             <InputNumber min={1} max={12} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item
+            label={t('Statut')}
+            name="status"
+            rules={[{ required: true, message: t('Le statut est obligatoire') }]}
+            extra={t(
+              'Passer une copropriété « En liquidation » la retire des listes de gestion courante — une alternative à la suppression, elle, définitive.'
+            )}
+          >
+            <Select
+              options={(Object.keys(statusConfig) as Array<Syndicate['status']>).map(value => ({
+                value,
+                label: statusConfig[value].label
+              }))}
+            />
           </Form.Item>
           <Form.Item label={t('Gestionnaire')} name="syndicManagerId">
             <Select

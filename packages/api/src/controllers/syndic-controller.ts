@@ -11,7 +11,7 @@ import {
   addLotTenantBySyndicate,
   deactivateLotTenantAssignmentBySyndicate,
   updateSyndicateByTenant,
-  archiveSyndicateByTenant,
+  deleteEmptySyndicateByTenant,
   listChargeCallsBySyndicate,
   getChargeCallByTenant,
   createChargeCallAndUpdateStatus,
@@ -22,10 +22,16 @@ import {
   updateMeetingByTenant,
   addResolutionToMeeting,
   castVoteAndRecomputeResolutionCounters,
+  listMeetingProxiesByTenant,
+  createMeetingProxyByTenant,
+  deleteMeetingProxyByTenant,
   addAgendaItemToMeeting,
   updateAgendaItemByTenant,
   deleteAgendaItemByTenant,
   listServiceProvidersBySyndicate,
+  createServiceProvider,
+  updateServiceProviderByTenant,
+  deleteServiceProviderByTenant,
   listMaintenanceContractsBySyndicate,
   linkMaintenanceContractBySyndicate,
   listLinkedMaintenanceContractsBySyndicate,
@@ -76,7 +82,11 @@ import {
   listIncidentsBySyndicate,
   createIncidentBySyndicate,
   updateIncidentBySyndicate,
-  addIncidentImputationBySyndicate
+  addIncidentImputationBySyndicate,
+  listFundsBySyndicate,
+  createSyndicateFundBySyndicate,
+  renameSyndicateFundByTenant,
+  adjustSyndicateFundBalanceByTenant
 } from '../lib/syndics/queries';
 import {
   createSyndicateSchema,
@@ -105,8 +115,11 @@ import {
   updateMeetingSchema,
   createResolutionSchema,
   castVoteSchema,
+  createMeetingProxySchema,
   createAgendaItemSchema,
   updateAgendaItemSchema,
+  createServiceProviderSchema,
+  updateServiceProviderSchema,
   createContractSchema,
   createDocumentSchema,
   updateContractSchema,
@@ -121,7 +134,10 @@ import {
   createJournalEntrySchema,
   accountingEntriesQuerySchema,
   lockJournalEntrySchema,
-  accountingRangeQuerySchema
+  accountingRangeQuerySchema,
+  createSyndicateFundSchema,
+  renameSyndicateFundSchema,
+  adjustSyndicateFundBalanceSchema
 } from '../lib/syndics/schemas';
 import { notifyChargeCall, notifyChargeCallReminder, notifyMeetingConvocation } from '../lib/syndics/notifications';
 import { badRequest, notFound } from '../lib/errors';
@@ -129,6 +145,11 @@ import { logger } from '../utils/logger';
 import { asyncHandler } from '../middleware/error-middleware';
 import { buildMeetingMinutesDocx } from '../lib/syndics/minutes-generator';
 import { buildOwnerAccountStatementPdf } from '../lib/syndics/owner-account-statement';
+import {
+  getSyndicateDocumentFileForTenant,
+  syndicateDocumentFileUrl,
+  syndicateDocumentsDir
+} from '../lib/syndics/document-files';
 
 export const listSyndicsHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
@@ -198,15 +219,15 @@ export const updateSyndicHandler = asyncHandler(async (req: Request, res: Respon
   });
 });
 
-export const archiveSyndicHandler = asyncHandler(async (req: Request, res: Response) => {
+export const deleteSyndicHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
   const syndicId = req.params.syndicId;
 
   if (!tenantId) {
-    throw badRequest('TenantId manquant pour l archivage de copropriete');
+    throw badRequest('TenantId manquant pour la suppression de copropriete');
   }
 
-  const syndic = await archiveSyndicateByTenant(tenantId, syndicId);
+  const syndic = await deleteEmptySyndicateByTenant(tenantId, syndicId);
 
   res.json({
     success: true,
@@ -827,6 +848,63 @@ export const castVoteHandler = asyncHandler(async (req: Request, res: Response) 
   });
 });
 
+export const listMeetingProxiesHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  const meetingId = req.params.meetingId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la liste des pouvoirs');
+  }
+
+  const proxies = await listMeetingProxiesByTenant(tenantId, syndicateId, meetingId);
+
+  res.json({
+    success: true,
+    data: proxies
+  });
+});
+
+export const createMeetingProxyHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  const meetingId = req.params.meetingId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la creation du pouvoir');
+  }
+
+  const parsed = createMeetingProxySchema.parse({
+    ...req.body,
+    meetingId
+  });
+
+  const proxy = await createMeetingProxyByTenant(tenantId, syndicateId, parsed);
+
+  res.status(201).json({
+    success: true,
+    data: proxy
+  });
+});
+
+export const deleteMeetingProxyHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  const meetingId = req.params.meetingId;
+  const proxyId = req.params.proxyId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour le retrait du pouvoir');
+  }
+
+  const deleted = await deleteMeetingProxyByTenant(tenantId, syndicateId, meetingId, proxyId);
+
+  res.json({
+    success: true,
+    data: deleted
+  });
+});
+
 export const generateMeetingMinutesHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
   const syndicateId = req.params.syndicId;
@@ -872,6 +950,56 @@ export const listProvidersHandler = asyncHandler(async (req: Request, res: Respo
       contracts,
       commonAssets: assets
     }
+  });
+});
+
+export const createProviderHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la creation de prestataire');
+  }
+
+  const parsed = createServiceProviderSchema.parse(req.body);
+  const provider = await createServiceProvider(tenantId, parsed);
+
+  res.status(201).json({
+    success: true,
+    data: provider
+  });
+});
+
+export const updateProviderHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const providerId = req.params.providerId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la mise a jour du prestataire');
+  }
+
+  const parsed = updateServiceProviderSchema.parse(req.body);
+  const provider = await updateServiceProviderByTenant(tenantId, providerId, parsed);
+
+  res.json({
+    success: true,
+    data: provider
+  });
+});
+
+export const deleteProviderHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const providerId = req.params.providerId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la suppression du prestataire');
+  }
+
+  const provider = await deleteServiceProviderByTenant(tenantId, providerId);
+
+  res.json({
+    success: true,
+    message: 'Prestataire supprime',
+    data: provider
   });
 });
 
@@ -1033,10 +1161,12 @@ export const createDocumentHandler = asyncHandler(async (req: Request, res: Resp
 
   let fileUrl = parsed.fileUrl;
   if (req.file) {
-    const cwd = process.cwd();
-    const projectRoot =
-      path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages' ? path.resolve(cwd, '..') : cwd;
-    const uploadDir = path.join(projectRoot, 'uploads', 'syndics', syndicateId, 'documents');
+    // Racine de reference (`UPLOADS_DIR`, sinon `<monorepo>/uploads`). Le
+    // calcul fait ici ne remontait que d'un niveau et ecrivait dans
+    // `packages/uploads` : ces fichiers-la restent lus, voir
+    // lib/syndics/document-files.ts. Le fichier n'est jamais servi en
+    // statique, seulement par `downloadDocumentHandler` ci-dessous.
+    const uploadDir = syndicateDocumentsDir(syndicateId);
     await fs.mkdir(uploadDir, { recursive: true });
 
     const extension = path.extname(req.file.originalname) || '';
@@ -1045,7 +1175,7 @@ export const createDocumentHandler = asyncHandler(async (req: Request, res: Resp
     const filePath = path.join(uploadDir, fileName);
 
     await fs.writeFile(filePath, req.file.buffer);
-    fileUrl = `/uploads/syndics/${syndicateId}/documents/${fileName}`;
+    fileUrl = syndicateDocumentFileUrl(syndicateId, fileName);
   }
 
   if (!fileUrl) {
@@ -1061,6 +1191,26 @@ export const createDocumentHandler = asyncHandler(async (req: Request, res: Resp
     success: true,
     data: document
   });
+});
+
+/**
+ * Telechargement d'un document de copropriete, cote gestion. Le document doit
+ * appartenir a une copropriete de l'agence ; sinon 404, comme un document
+ * inexistant. Remplace l'ouverture directe de `/uploads/syndics/...`, que le
+ * service statique refuse desormais.
+ */
+export const downloadDocumentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.tenantContext?.tenantId || req.params.tenantId;
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour le telechargement de document');
+  }
+
+  const file = await getSyndicateDocumentFileForTenant(tenantId, req.params.syndicId, req.params.documentId);
+
+  res.setHeader('Content-Type', file.mimeType);
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`);
+  res.setHeader('Content-Length', file.buffer.length.toString());
+  res.send(file.buffer);
 });
 
 export const getFinanceSummaryHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -1667,4 +1817,49 @@ export const getGeneralLedgerHandler = asyncHandler(async (req: Request, res: Re
     pagination: { page: parsed.page, limit: parsed.limit }
   });
   res.json({ success: true, data: ledger });
+});
+
+export const listFundsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la liste des fonds');
+  }
+  const funds = await listFundsBySyndicate(tenantId, syndicateId);
+  res.json({ success: true, data: funds });
+});
+
+export const createFundHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la creation du fonds');
+  }
+  const parsed = createSyndicateFundSchema.parse(req.body ?? {});
+  const fund = await createSyndicateFundBySyndicate(tenantId, syndicateId, parsed, req.user?.userId);
+  res.status(201).json({ success: true, data: fund });
+});
+
+export const renameFundHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  const fundId = req.params.fundId;
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour le renommage du fonds');
+  }
+  const parsed = renameSyndicateFundSchema.parse(req.body ?? {});
+  const fund = await renameSyndicateFundByTenant(tenantId, syndicateId, fundId, parsed, req.user?.userId);
+  res.json({ success: true, data: fund });
+});
+
+export const adjustFundBalanceHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  const fundId = req.params.fundId;
+  if (!tenantId) {
+    throw badRequest("TenantId manquant pour l'ajustement du fonds");
+  }
+  const parsed = adjustSyndicateFundBalanceSchema.parse(req.body ?? {});
+  const fund = await adjustSyndicateFundBalanceByTenant(tenantId, syndicateId, fundId, parsed, req.user?.userId);
+  res.json({ success: true, data: fund });
 });

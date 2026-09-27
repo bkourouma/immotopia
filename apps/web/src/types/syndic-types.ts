@@ -58,6 +58,11 @@ export interface SyndicateLot {
 export interface SyndicateCount {
   lots: number;
   chargeCalls: number;
+  budgets?: number;
+  generalMeetings?: number;
+  documents?: number;
+  serviceContracts?: number;
+  incidents?: number;
 }
 
 export interface Syndicate {
@@ -127,6 +132,7 @@ export interface UpdateSyndicateRequest {
   cadastralReference?: string | null;
   fiscalYear?: number;
   syndicManagerId?: string | null;
+  status?: SyndicateStatus;
 }
 
 export interface CreateSyndicateLotRequest {
@@ -209,6 +215,26 @@ export interface CreateLotTenantAssignmentRequest {
   notes?: string;
 }
 
+/** Codes stables de `GMResolution.majorityRule` ; tout autre texte vaut l'article 24. */
+export type MajorityRule = 'ARTICLE_24' | 'ARTICLE_25' | 'ARTICLE_26' | 'UNANIMITE';
+
+/** Decompte d'une resolution calcule par l'API (tantiemes et nombre de lots). */
+export interface ResolutionTally {
+  rule: MajorityRule;
+  votesFor: number;
+  votesAgainst: number;
+  votesAbstain: number;
+  sharesFor: number;
+  sharesAgainst: number;
+  sharesAbstain: number;
+  totalShares: number;
+  totalLots: number;
+  referenceShares: number;
+  ownersFor: number;
+  totalOwners: number;
+  result: 'APPROVED' | 'REJECTED' | null;
+}
+
 export interface MeetingResolution {
   id: string;
   meetingId: string;
@@ -219,10 +245,49 @@ export interface MeetingResolution {
   votesAgainst: number;
   votesAbstain: number;
   sharesFor: number;
-  result: 'PENDING' | 'APPROVED' | 'REJECTED';
+  /** `null` tant qu'aucun vote n'est saisi. */
+  result: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DEFERRED' | null;
   createdAt: string;
   updatedAt: string;
   votes?: Array<{ id: string; lotId: string; vote: VoteChoice }>;
+  tally?: ResolutionTally;
+}
+
+/** Contact CRM tel que l'API l'expose dans une assemblee. */
+export interface MeetingContact {
+  id: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  legalName?: string | null;
+  email?: string | null;
+}
+
+/** Pouvoir (mandat) : le mandant se fait representer par le mandataire. */
+export interface MeetingProxy {
+  id: string;
+  meetingId: string;
+  grantorContactId: string;
+  representativeContactId: string;
+  createdAt: string;
+  grantor?: MeetingContact | null;
+  representative?: MeetingContact | null;
+}
+
+export interface CreateMeetingProxyRequest {
+  grantorContactId: string;
+  representativeContactId: string;
+}
+
+/** Lot d'une assemblee : le detail inclut le coproprietaire (`owner`). */
+export type MeetingLot = SyndicateLot & { owner?: MeetingContact | null };
+
+/** Tantiemes representes (lots ayant vote au moins une fois) sur le total. */
+export interface MeetingAttendance {
+  representedLots: number;
+  representedShares: number;
+  totalLots: number;
+  totalShares: number;
+  quorumPercent: number;
 }
 
 export interface MeetingAgendaItem {
@@ -249,6 +314,8 @@ export interface GeneralMeeting {
   updatedAt: string;
   agendaItems?: MeetingAgendaItem[];
   resolutions?: MeetingResolution[];
+  proxies?: MeetingProxy[];
+  attendance?: MeetingAttendance;
   syndicate?: Syndicate;
 }
 
@@ -265,6 +332,7 @@ export interface UpdateMeetingRequest {
   startTime?: string | null;
   endTime?: string | null;
   location?: string | null;
+  status?: MeetingStatus;
 }
 
 export interface CreateResolutionRequest {
@@ -289,7 +357,23 @@ export interface ServiceProvider {
   id: string;
   tenantId: string;
   name: string;
-  category?: string | null;
+  specialty?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateServiceProviderRequest {
+  name: string;
+  specialty?: string;
+  email?: string;
+  phone?: string;
+}
+
+export interface UpdateServiceProviderRequest {
+  name?: string;
+  specialty?: string | null;
   email?: string | null;
   phone?: string | null;
 }
@@ -792,6 +876,29 @@ export type IncidentUrgency = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type IncidentStatus = 'REPORTED' | 'ASSIGNED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
 export type ImputationType = 'SYNDICATE_BUDGET' | 'INSURANCE' | 'LOT_OWNER' | 'THIRD_PARTY';
 
+/**
+ * Résultat de « Inviter au portail » (portail copropriétaire). Ce que rend
+ * `POST .../profils/proprietaires/:id/invitation-portail`.
+ *   - NEW_ACCOUNT : compte créé, `invitationUrl` est un lien d'activation ;
+ *   - ACTIVATION_RENEWED : compte jamais utilisé, nouveau lien d'activation ;
+ *   - EXISTING_ACCOUNT : compte déjà utilisé, `invitationUrl` mène à la
+ *     connexion (jamais de lien qui changerait son mot de passe).
+ */
+export interface CoOwnerPortalInvitation {
+  email: string;
+  contactName: string;
+  accountStatus: 'NEW_ACCOUNT' | 'ACTIVATION_RENEWED' | 'EXISTING_ACCOUNT';
+  invitationUrl: string;
+  expiresAt: string | null;
+  emailSent: boolean;
+  openedLots: number;
+}
+
+export interface CoOwnerPortalRevocation {
+  closedLots: number;
+  unlinkedAccounts: number;
+}
+
 export interface LotOwnerProfile {
   id: string;
   lotId: string;
@@ -911,4 +1018,31 @@ export interface CreateIncidentImputationRequest {
   lotId?: string;
   contractId?: string;
   notes?: string;
+}
+
+// FR-013 : fonds financiers de la copropriete (SyndicateFund).
+export interface SyndicateFund {
+  id: string;
+  syndicateId: string;
+  name: string;
+  balance: number | string;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSyndicateFundRequest {
+  name: string;
+  initialBalance?: number;
+  currency?: string;
+}
+
+export interface RenameSyndicateFundRequest {
+  name: string;
+}
+
+export interface AdjustSyndicateFundBalanceRequest {
+  direction: 'CREDIT' | 'DEBIT';
+  amount: number;
+  reason: string;
 }

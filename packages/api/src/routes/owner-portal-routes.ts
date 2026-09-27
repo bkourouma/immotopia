@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireOwnerPortalAccess } from '../middleware/owner-portal-access';
 import { OwnerPortalController } from '../controllers/owner-portal-controller';
+import { downloadOwnerPortalAttachmentHandler } from '../controllers/maintenance-attachment-controller';
 
 const router = Router();
 const controller = new OwnerPortalController();
@@ -49,6 +50,9 @@ router.get('/deposits/:id/movements', (req, res) => controller.getDepositMovemen
 router.get('/maintenance', (req, res) => controller.getMaintenanceTickets(req, res));
 
 router.get('/maintenance/:id', (req, res) => controller.getMaintenanceTicketDetails(req, res));
+
+// Pièce jointe d'un ticket d'un de ses biens — jamais servie en statique.
+router.get('/maintenance/:id/attachments/:attachmentId', downloadOwnerPortalAttachmentHandler);
 
 // Documents
 router.get('/documents', (req, res) => controller.getDocuments(req, res));

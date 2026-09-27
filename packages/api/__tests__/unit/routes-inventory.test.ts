@@ -5,7 +5,7 @@
  * Parcourt la pile Express reelle (`app._router.stack`, cf.
  * `__tests__/helpers/route-walker.ts`) et echoue si une route n'a NI
  * `requireTenantAccess`, NI `requireTenantPortalAccess`, NI
- * `requireOwnerPortalAccess`, NI une permission plateforme
+ * `requireOwnerPortalAccess`, NI `requireCoOwnerPortalAccess`, NI une permission plateforme
  * (`requirePermission('PLATFORM_*')`), hors de la liste blanche explicite
  * ci-dessous.
  *
@@ -31,6 +31,7 @@ import app from '../../src/app';
 import { requireTenantAccess } from '../../src/middleware/tenant-middleware';
 import { requireTenantPortalAccess } from '../../src/middleware/tenant-portal-access';
 import { requireOwnerPortalAccess } from '../../src/middleware/owner-portal-access';
+import { requireCoOwnerPortalAccess } from '../../src/middleware/coowner-portal-access';
 
 /** Une entree de la liste blanche : routes publiques VOLONTAIRES. */
 interface WhitelistEntry {
@@ -184,7 +185,11 @@ function hasPlatformPermission(route: DiscoveredRoute): string | undefined {
 
 function hasTenantOrPortalGuard(route: DiscoveredRoute): boolean {
   return route.middlewares.some(
-    mw => mw === requireTenantAccess || mw === requireTenantPortalAccess || mw === requireOwnerPortalAccess
+    mw =>
+      mw === requireTenantAccess ||
+      mw === requireTenantPortalAccess ||
+      mw === requireOwnerPortalAccess ||
+      mw === requireCoOwnerPortalAccess
   );
 }
 

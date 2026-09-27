@@ -10,9 +10,10 @@ import {
   updatePenalty,
   deletePenalty,
   uploadPenaltyJustification,
+  downloadPenaltyJustification,
   RentalPenalty
 } from '../../services/rental-service';
-import { API_URL } from '../../config/api';
+import { saveBlob } from '../../utils/save-blob';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { queryKey, STALE_TIME } from '../../lib/query-keys';
 import { PageHeader, StateBlock, MoneyValue, DataView, DataCard, useConfirmAction } from '../../components/primitives';
@@ -197,9 +198,21 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
     }
   };
 
-  const ouvrirJustificatif = (fichier: Justificatif | null) => {
-    if (!fichier?.fileUrl) return;
-    window.open(`${API_URL.replace(/\/api$/, '')}${fichier.fileUrl}`, '_blank', 'noopener,noreferrer');
+  // Le justificatif n'est plus lu en statique (`/uploads/rental/penalties`
+  // répond 404) : il se télécharge par la route authentifiée de la pénalité.
+  const ouvrirJustificatif = async (penalite: RentalPenalty) => {
+    const fichier = justificatif(penalite);
+    if (!tenantId || !fichier?.fileUrl) return;
+    try {
+      const { blob, filename } = await downloadPenaltyJustification(
+        tenantId,
+        penalite.id,
+        fichier.fileName || 'justificatif'
+      );
+      saveBlob(blob, filename);
+    } catch {
+      message.error(t('Téléchargement impossible.'));
+    }
   };
 
   if (!tenantId) {
@@ -253,7 +266,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
         return (
           <Space>
             {fichier && (
-              <Button type="link" icon={<DownloadOutlined />} onClick={() => ouvrirJustificatif(fichier)}>
+              <Button type="link" icon={<DownloadOutlined />} onClick={() => ouvrirJustificatif(p)}>
                 {t('Justificatif')}
               </Button>
             )}
@@ -333,7 +346,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
           <Button
             size="small"
             icon={<DownloadOutlined />}
-            onClick={() => ouvrirJustificatif(justificatif(justifiePour))}
+            onClick={() => ouvrirJustificatif(justifiePour)}
           >
             {t('Ouvrir')}
           </Button>
@@ -440,7 +453,7 @@ export const Penalties: React.FC<PenaltiesProps> = ({ leaseId: propLeaseId }) =>
               primaryAction={{ label: 'Ajuster', onClick: () => ouvrirAjustement(p) }}
               secondaryActions={[
                 ...(fichier
-                  ? [{ key: 'open', label: t('Ouvrir le justificatif'), onClick: () => ouvrirJustificatif(fichier) }]
+                  ? [{ key: 'open', label: t('Ouvrir le justificatif'), onClick: () => ouvrirJustificatif(p) }]
                   : []),
                 ...actionsSecondaires(p)
               ]}

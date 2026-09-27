@@ -16,7 +16,6 @@ import {
   Col,
   Modal,
   Descriptions,
-  Image,
   Input,
   List,
   Avatar,
@@ -32,6 +31,11 @@ import {
   CalendarOutlined
 } from '@ant-design/icons';
 import MaintenanceTicketModal from '../../components/TenantPortal/MaintenanceTicketModal';
+import {
+  AttachmentList,
+  fromPortalAttachment,
+  type PortalAttachment
+} from '../../components/maintenance/AttachmentList';
 import { tenantPortalService } from '../../services/tenantPortalService';
 import dayjs from 'dayjs';
 import { t } from '../../i18n/t';
@@ -87,11 +91,7 @@ interface TicketDetails {
     id: string;
     address: string;
   };
-  attachments: Array<{
-    id: string;
-    file_url: string;
-    file_name: string;
-  }>;
+  attachments: PortalAttachment[];
   comments: Array<{
     id: string;
     content: string;
@@ -437,24 +437,14 @@ export default function TenantMaintenance() {
               )}
             </Descriptions>
 
-            {/* Attachments */}
+            {/* Pièces jointes : lues par la route du portail, jamais en statique. */}
             {selectedTicket.attachments && selectedTicket.attachments.length > 0 && (
               <div>
-                <Title level={5}>{t('Photos')}</Title>
-                <Image.PreviewGroup>
-                  <Space wrap>
-                    {selectedTicket.attachments.map(attachment => (
-                      <Image
-                        key={attachment.id}
-                        width={100}
-                        height={100}
-                        src={attachment.file_url}
-                        alt={attachment.file_name}
-                        style={{ objectFit: 'cover', borderRadius: 4 }}
-                      />
-                    ))}
-                  </Space>
-                </Image.PreviewGroup>
+                <Title level={5}>{t('Pièces jointes')}</Title>
+                <AttachmentList
+                  attachments={selectedTicket.attachments.map(fromPortalAttachment)}
+                  source={{ kind: 'tenant-portal', ticketId: selectedTicket.id }}
+                />
               </div>
             )}
 

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   App,
   Alert,
@@ -12,19 +12,36 @@ import {
   Select,
   Space,
   Spin,
+  Table,
   Typography
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { PlusOutlined } from '@ant-design/icons';
 import { ContractList } from '../../components/syndics/ContractList';
-import { createContract, listProvidersContracts } from '../../services/syndic-service';
-import { SyndicProvidersPayload } from '../../types/syndic-types';
+import { useConfirmAction } from '../../components/primitives';
+import {
+  createContract,
+  createProvider,
+  deleteProvider,
+  listProvidersContracts,
+  updateProvider
+} from '../../services/syndic-service';
+import { ServiceProvider, SyndicProvidersPayload } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { t } from '../../i18n/t';
 
-const { Paragraph, Title } = Typography;
+const { Paragraph, Title, Link: TypographyLink } = Typography;
+
+interface ProviderFormValues {
+  name: string;
+  specialty?: string;
+  email?: string;
+  phone?: string;
+}
 
 export const SyndicProviders: React.FC = () => {
   const { message } = App.useApp();
+  const confirmAction = useConfirmAction();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
 
@@ -38,6 +55,12 @@ export const SyndicProviders: React.FC = () => {
   const [openCreateContract, setOpenCreateContract] = useState(false);
   const [submittingContract, setSubmittingContract] = useState(false);
   const [contractForm] = Form.useForm();
+
+  const [openProviderModal, setOpenProviderModal] = useState(false);
+  const [editingProvider, setEditingProvider] = useState<ServiceProvider | null>(null);
+  const [submittingProvider, setSubmittingProvider] = useState(false);
+  const [deletingProviderId, setDeletingProviderId] = useState<string | null>(null);
+  const [providerForm] = Form.useForm<ProviderFormValues>();
 
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
@@ -60,6 +83,90 @@ export const SyndicProviders: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const openCreateProviderModal = () => {
+    setEditingProvider(null);
+    providerForm.resetFields();
+    setOpenProviderModal(true);
+  };
+
+  const openEditProviderModal = (provider: ServiceProvider) => {
+    setEditingProvider(provider);
+    providerForm.setFieldsValue({
+      name: provider.name,
+      specialty: provider.specialty ?? undefined,
+      email: provider.email ?? undefined,
+      phone: provider.phone ?? undefined
+    });
+    setOpenProviderModal(true);
+  };
+
+  const closeProviderModal = () => {
+    setOpenProviderModal(false);
+    setEditingProvider(null);
+    providerForm.resetFields();
+  };
+
+  const handleSubmitProvider = async () => {
+    if (!effectiveTenantId || !syndicId) return;
+    const values = await providerForm.validateFields();
+    setSubmittingProvider(true);
+    try {
+      let provider: ServiceProvider;
+      if (editingProvider) {
+        provider = await updateProvider(effectiveTenantId, syndicId, editingProvider.id, {
+          name: values.name,
+          specialty: values.specialty || null,
+          email: values.email || null,
+          phone: values.phone || null
+        });
+        message.success(t('Prestataire mis à jour'));
+      } else {
+        provider = await createProvider(effectiveTenantId, syndicId, {
+          name: values.name,
+          specialty: values.specialty || undefined,
+          email: values.email || undefined,
+          phone: values.phone || undefined
+        });
+        message.success(t('Prestataire créé'));
+      }
+      closeProviderModal();
+      await loadData();
+      // Depuis la creation d'un contrat, le prestataire cree a la volee est
+      // directement selectionne dans le formulaire de contrat ouvert.
+      if (!editingProvider && openCreateContract) {
+        contractForm.setFieldsValue({ providerId: provider.id });
+      }
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Enregistrement du prestataire impossible'));
+    } finally {
+      setSubmittingProvider(false);
+    }
+  };
+
+  const handleDeleteProvider = (provider: ServiceProvider) => {
+    if (!effectiveTenantId || !syndicId) return;
+
+    confirmAction({
+      title: t('Supprimer ce prestataire ?'),
+      description: t('Cette action est définitive. Impossible si le prestataire a des contrats ou des incidents liés.'),
+      okText: t('Supprimer'),
+      danger: true,
+      cancelText: t('Annuler'),
+      onConfirm: async () => {
+        setDeletingProviderId(provider.id);
+        try {
+          await deleteProvider(effectiveTenantId, syndicId, provider.id);
+          message.success(t('Prestataire supprimé'));
+          await loadData();
+        } catch (err: any) {
+          message.error(err.response?.data?.error || t('Suppression du prestataire impossible'));
+        } finally {
+          setDeletingProviderId(null);
+        }
+      }
+    });
   };
 
   const handleCreateContract = async () => {
@@ -87,6 +194,38 @@ export const SyndicProviders: React.FC = () => {
     }
   };
 
+  const providerColumns: ColumnsType<ServiceProvider> = [
+    { title: t('Nom'), dataIndex: 'name', key: 'name' },
+    {
+      title: t('Spécialité'),
+      dataIndex: 'specialty',
+      key: 'specialty',
+      render: (value?: string | null) => value || t('Non renseignée')
+    },
+    { title: t('Email'), dataIndex: 'email', key: 'email', render: (value?: string | null) => value || '—' },
+    { title: t('Téléphone'), dataIndex: 'phone', key: 'phone', render: (value?: string | null) => value || '—' },
+    {
+      title: t('Actions'),
+      key: 'actions',
+      align: 'end',
+      render: (_: unknown, provider) => (
+        <Space>
+          <Button size="small" onClick={() => openEditProviderModal(provider)}>
+            {t('Modifier')}
+          </Button>
+          <Button
+            size="small"
+            danger
+            loading={deletingProviderId === provider.id}
+            onClick={() => handleDeleteProvider(provider)}
+          >
+            {t('Supprimer')}
+          </Button>
+        </Space>
+      )
+    }
+  ];
+
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -95,9 +234,14 @@ export const SyndicProviders: React.FC = () => {
             <Title level={2} className="it-toolbar__title" style={{ margin: 0 }}>
               {t('Prestataires et contrats')}
             </Title>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenCreateContract(true)}>
-              {t('Nouveau contrat')}
-            </Button>
+            <Space>
+              <Button icon={<PlusOutlined />} onClick={openCreateProviderModal}>
+                {t('Nouveau prestataire')}
+              </Button>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpenCreateContract(true)}>
+                {t('Nouveau contrat')}
+              </Button>
+            </Space>
           </div>
           <Paragraph type="secondary" style={{ marginBottom: 0 }}>
             {t('Contrats actifs, prestataires relies et actifs des parties communes.')}
@@ -113,7 +257,13 @@ export const SyndicProviders: React.FC = () => {
         ) : (
           <>
             <Card title={t('Prestataires ({{length}})', { length: payload.providers.length })}>
-              <div>{payload.providers.map(provider => provider.name).join(' | ') || t('Aucun prestataire')}</div>
+              <Table
+                rowKey="id"
+                dataSource={payload.providers}
+                columns={providerColumns}
+                pagination={{ pageSize: 8, hideOnSinglePage: true }}
+                locale={{ emptyText: t('Aucun prestataire') }}
+              />
             </Card>
             <Card title={t('Contrats de maintenance')}>
               <ContractList contracts={payload.contracts} />
@@ -146,6 +296,11 @@ export const SyndicProviders: React.FC = () => {
             label={t('Prestataire')}
             name="providerId"
             rules={[{ required: true, message: t('Le prestataire est obligatoire') }]}
+            extra={
+              <TypographyLink onClick={openCreateProviderModal}>
+                {t('Pas de prestataire ? Créer un prestataire')}
+              </TypographyLink>
+            }
           >
             <Select
               showSearch
@@ -179,6 +334,39 @@ export const SyndicProviders: React.FC = () => {
           </Form.Item>
           <Form.Item label={t('Alerte renouvellement (jours)')} name="renewalAlertDays">
             <InputNumber style={{ width: '100%' }} min={0} precision={0} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={editingProvider ? t('Modifier le prestataire') : t('Nouveau prestataire')}
+        open={openProviderModal}
+        onCancel={closeProviderModal}
+        onOk={() => void handleSubmitProvider()}
+        okText={editingProvider ? t('Enregistrer') : t('Créer')}
+        cancelText={t('Annuler')}
+        confirmLoading={submittingProvider}
+      >
+        <Form form={providerForm} layout="vertical">
+          <Form.Item
+            label={t('Nom')}
+            name="name"
+            rules={[{ required: true, message: t('Le nom du prestataire est obligatoire') }]}
+          >
+            <Input placeholder={t('Ex: Ascenseurs Pro')} />
+          </Form.Item>
+          <Form.Item label={t('Spécialité')} name="specialty">
+            <Input placeholder={t('Ex: Ascenseur, nettoyage, sécurité...')} />
+          </Form.Item>
+          <Form.Item
+            label={t('Email')}
+            name="email"
+            rules={[{ type: 'email', message: t("L'email doit être valide") }]}
+          >
+            <Input placeholder="contact@prestataire.test" />
+          </Form.Item>
+          <Form.Item label={t('Téléphone')} name="phone">
+            <Input />
           </Form.Item>
         </Form>
       </Modal>

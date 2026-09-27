@@ -14,13 +14,28 @@ jest.mock('@prisma/client', () => {
       findMany: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
-      update: jest.fn()
+      update: jest.fn(),
+      delete: jest.fn()
     },
     syndicateLot: {
       create: jest.fn(),
       // `syncSyndicateLotCount` recompte les lots puis met a jour le syndicat
       // depuis le commit 3b568c5 ; le mock ne l'avait pas suivi.
       count: jest.fn(async () => 1)
+    },
+    // Comptes utilises par `deleteEmptySyndicateByTenant` (ecart recette #8) :
+    // par defaut vides, chaque test « non vide » les override explicitement.
+    syndicateBudget: { count: jest.fn(async () => 0) },
+    chargeCall: { count: jest.fn(async () => 0) },
+    generalMeeting: { count: jest.fn(async () => 0) },
+    syndicateDocument: { count: jest.fn(async () => 0) },
+    maintenanceContract: { count: jest.fn(async () => 0) },
+    syndicateIncident: { count: jest.fn(async () => 0) },
+    serviceProvider: {
+      create: jest.fn(),
+      findFirst: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn()
     },
     $transaction: jest.fn(async (cb: (tx: any) => Promise<any>) => cb(prisma))
   };
@@ -49,10 +64,17 @@ const mockLotRegistry = jest.requireMock('../../src/services/lot-registry-servic
 import {
   createSyndicateLot,
   createSyndicateWithDefaults,
+  createServiceProvider,
+  updateServiceProviderByTenant,
+  deleteServiceProviderByTenant,
+  deleteEmptySyndicateByTenant,
   importLotsFromPropertiesBySyndicate,
   listSyndicatesByTenant
 } from '../../src/lib/syndics/queries';
 
+// Typage volontairement large (`any`) au-dela des champs deja types : ce mock
+// gagne un modele a chaque ecart couvert, et dupliquer son type ici a chaque
+// fois serait plus fragile que la verite du mock lui-meme.
 const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as {
   __mockPrisma: {
     property: {
@@ -70,10 +92,23 @@ const { __mockPrisma: mockPrisma } = jest.requireMock('@prisma/client') as {
       findFirst: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
+      delete: jest.Mock;
     };
     syndicateLot: {
       create: jest.Mock;
       count: jest.Mock;
+    };
+    syndicateBudget: { count: jest.Mock };
+    chargeCall: { count: jest.Mock };
+    generalMeeting: { count: jest.Mock };
+    syndicateDocument: { count: jest.Mock };
+    maintenanceContract: { count: jest.Mock };
+    syndicateIncident: { count: jest.Mock };
+    serviceProvider: {
+      create: jest.Mock;
+      findFirst: jest.Mock;
+      update: jest.Mock;
+      delete: jest.Mock;
     };
   };
 };
@@ -302,5 +337,118 @@ describe('import de lots par lots et quota (vague 2, lot B)', () => {
     mockLotRegistry.syncLotActivationsTx.mockReset();
     mockLotRegistry.syncLotActivationsTx.mockRejectedValueOnce(new Error('panne'));
     await expect(importLotsFromPropertiesBySyndicate('tenant-1', 'syn-1', ['p1'])).rejects.toThrow('panne');
+  });
+});
+
+describe('Suppression d une copropriete vide uniquement (ecart recette #8)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Vide par defaut : chaque test « non vide » override le compte qui l'interesse.
+    mockPrisma.syndicateBudget.count.mockResolvedValue(0);
+    mockPrisma.chargeCall.count.mockResolvedValue(0);
+    mockPrisma.generalMeeting.count.mockResolvedValue(0);
+    mockPrisma.syndicateDocument.count.mockResolvedValue(0);
+    mockPrisma.maintenanceContract.count.mockResolvedValue(0);
+    mockPrisma.syndicateIncident.count.mockResolvedValue(0);
+    mockPrisma.syndicateLot.count.mockResolvedValue(0);
+  });
+
+  it('refuse (404) une copropriete d une autre agence, introuvable pour ce tenant', async () => {
+    mockPrisma.syndicate.findFirst.mockResolvedValueOnce(null);
+
+    await expect(deleteEmptySyndicateByTenant('tenant-a', 'syn-other')).rejects.toMatchObject({ status: 404 });
+    expect(mockPrisma.syndicate.delete).not.toHaveBeenCalled();
+  });
+
+  it('refuse (409) si la copropriete a au moins un lot', async () => {
+    mockPrisma.syndicate.findFirst.mockResolvedValueOnce({ id: 'syn-1' });
+    mockPrisma.syndicateLot.count.mockResolvedValueOnce(2);
+
+    await expect(deleteEmptySyndicateByTenant('tenant-a', 'syn-1')).rejects.toMatchObject({ status: 409 });
+    expect(mockPrisma.syndicate.delete).not.toHaveBeenCalled();
+  });
+
+  it('refuse (409) si la copropriete a au moins un appel de charges, meme sans lot', async () => {
+    mockPrisma.syndicate.findFirst.mockResolvedValueOnce({ id: 'syn-1' });
+    mockPrisma.chargeCall.count.mockResolvedValueOnce(1);
+
+    await expect(deleteEmptySyndicateByTenant('tenant-a', 'syn-1')).rejects.toMatchObject({ status: 409 });
+    expect(mockPrisma.syndicate.delete).not.toHaveBeenCalled();
+  });
+
+  it('supprime une copropriete sans aucune donnee liee (lots, budgets, charges, AG, documents, contrats, incidents)', async () => {
+    mockPrisma.syndicate.findFirst.mockResolvedValueOnce({ id: 'syn-1' });
+    mockPrisma.syndicate.delete.mockResolvedValueOnce({ id: 'syn-1' });
+
+    const result = await deleteEmptySyndicateByTenant('tenant-a', 'syn-1');
+
+    expect(mockPrisma.syndicate.delete).toHaveBeenCalledWith({ where: { id: 'syn-1', tenantId: 'tenant-a' } });
+    expect(mockLotRegistry.syncLotActivationsTx).toHaveBeenCalledWith(
+      expect.anything(),
+      'tenant-a',
+      expect.anything(),
+      { reason: 'SYNDICATE_DELETED' }
+    );
+    expect(result.id).toBe('syn-1');
+  });
+});
+
+describe('Prestataires rattaches a l agence (ecart recette #2, FR-010)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('cree un prestataire rattache au tenant', async () => {
+    mockPrisma.serviceProvider.create.mockResolvedValueOnce({
+      id: 'prov-1',
+      tenantId: 'tenant-a',
+      name: 'Nettoyage Plus'
+    });
+
+    const result = await createServiceProvider('tenant-a', { name: 'Nettoyage Plus' });
+
+    expect(mockPrisma.serviceProvider.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ tenantId: 'tenant-a', name: 'Nettoyage Plus' })
+    });
+    expect(result.id).toBe('prov-1');
+  });
+
+  it('refuse (404) la mise a jour d un prestataire d une autre agence', async () => {
+    mockPrisma.serviceProvider.findFirst.mockResolvedValueOnce(null);
+
+    await expect(updateServiceProviderByTenant('tenant-a', 'prov-autre-agence', { name: 'Vole' })).rejects.toMatchObject(
+      { status: 404 }
+    );
+    expect(mockPrisma.serviceProvider.update).not.toHaveBeenCalled();
+  });
+
+  it('refuse (409) la suppression d un prestataire encore lie a un contrat', async () => {
+    mockPrisma.serviceProvider.findFirst.mockResolvedValueOnce({ id: 'prov-1' });
+    mockPrisma.maintenanceContract.count.mockResolvedValueOnce(1);
+    mockPrisma.syndicateIncident.count.mockResolvedValueOnce(0);
+
+    await expect(deleteServiceProviderByTenant('tenant-a', 'prov-1')).rejects.toMatchObject({ status: 409 });
+    expect(mockPrisma.serviceProvider.delete).not.toHaveBeenCalled();
+  });
+
+  it('refuse (409) la suppression d un prestataire encore lie a un incident', async () => {
+    mockPrisma.serviceProvider.findFirst.mockResolvedValueOnce({ id: 'prov-1' });
+    mockPrisma.maintenanceContract.count.mockResolvedValueOnce(0);
+    mockPrisma.syndicateIncident.count.mockResolvedValueOnce(1);
+
+    await expect(deleteServiceProviderByTenant('tenant-a', 'prov-1')).rejects.toMatchObject({ status: 409 });
+    expect(mockPrisma.serviceProvider.delete).not.toHaveBeenCalled();
+  });
+
+  it('supprime un prestataire sans contrat ni incident lie', async () => {
+    mockPrisma.serviceProvider.findFirst.mockResolvedValueOnce({ id: 'prov-1' });
+    mockPrisma.maintenanceContract.count.mockResolvedValueOnce(0);
+    mockPrisma.syndicateIncident.count.mockResolvedValueOnce(0);
+    mockPrisma.serviceProvider.delete.mockResolvedValueOnce({ id: 'prov-1' });
+
+    const result = await deleteServiceProviderByTenant('tenant-a', 'prov-1');
+
+    expect(mockPrisma.serviceProvider.delete).toHaveBeenCalledWith({ where: { id: 'prov-1' } });
+    expect(result.id).toBe('prov-1');
   });
 });

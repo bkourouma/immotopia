@@ -69,6 +69,15 @@ import {
   exportData as exportDataFunction
 } from '../utils/report-generator';
 import { getDocumentFile } from './document-generation-service';
+import { ownerPortalTicketWhere } from '../lib/maintenance/portal-visibility';
+import {
+  PORTAL_ATTACHMENT_SELECT,
+  PORTAL_PROPERTY_DOCUMENT_SELECT,
+  PORTAL_PROPERTY_MEDIA_SELECT,
+  PORTAL_RENTAL_DOCUMENT_SELECT,
+  toPortalAttachment,
+  toPortalRentalDocument
+} from '../lib/files/portal-files';
 
 /**
  * Statuts qui sortent un bien du portefeuille locatif : ni loue, ni a louer.
@@ -587,13 +596,17 @@ export class OwnerPortalService {
           id: propertyId,
           tenantId: tenantId
         },
+        // Jamais de `filePath` (chemin disque) ni d'URL de stockage privée
+        // dans une réponse de portail : voir lib/files/portal-files.ts.
         include: {
           media: {
+            select: PORTAL_PROPERTY_MEDIA_SELECT,
             orderBy: {
               displayOrder: 'asc'
             }
           },
           documents: {
+            select: PORTAL_PROPERTY_DOCUMENT_SELECT,
             orderBy: {
               createdAt: 'desc'
             }
@@ -739,6 +752,16 @@ export class OwnerPortalService {
         where: {
           property_id: propertyId,
           tenant_id: tenantId
+        },
+        // Ce que l'écran affiche, rien de plus (réponse de portail).
+        select: {
+          id: true,
+          title: true,
+          category: true,
+          priority: true,
+          status: true,
+          created_at: true,
+          resolved_at: true
         },
         orderBy: {
           created_at: 'desc'
@@ -2087,11 +2110,12 @@ export class OwnerPortalService {
   ): Promise<MaintenanceTicketDetailsData> {
     try {
       // Get ticket with all relations
+      // Même règle que les pièces jointes du portail
+      // (lib/maintenance/portal-visibility.ts) : une seule source.
       const ticket = await prisma.maintenanceTicket.findFirst({
         where: {
-          id: ticketId,
-          tenant_id: tenantId,
-          property_id: { in: propertyIds }
+          ...ownerPortalTicketWhere({ tenantId, propertyIds }),
+          id: ticketId
         },
         include: {
           property: true,
@@ -2099,12 +2123,14 @@ export class OwnerPortalService {
             include: {
               primaryRenter: {
                 include: {
-                  user: true
+                  // Jamais `user: true` : la ligne complète porte `passwordHash`.
+                  user: { select: { id: true, fullName: true, email: true } }
                 }
               }
             }
           },
           attachments: {
+            select: PORTAL_ATTACHMENT_SELECT,
             orderBy: {
               created_at: 'asc'
             }
@@ -2165,7 +2191,10 @@ export class OwnerPortalService {
       }
 
       return {
-        ticket: ticket as any
+        ticket: {
+          ...ticket,
+          attachments: (ticket.attachments ?? []).map(attachment => toPortalAttachment(attachment, ticket.id, 'owner'))
+        } as any
       };
     } catch (error) {
       logger.error('Error getting maintenance ticket details:', error);
@@ -2255,11 +2284,14 @@ export class OwnerPortalService {
       }
 
       // Get documents
-      const documents = await prisma.rentalDocument.findMany({
+      const rows = await prisma.rentalDocument.findMany({
         where,
-        include: {
+        select: {
+          ...PORTAL_RENTAL_DOCUMENT_SELECT,
           lease: {
-            include: {
+            select: {
+              id: true,
+              lease_number: true,
               property: {
                 select: {
                   id: true,
@@ -2273,6 +2305,9 @@ export class OwnerPortalService {
           issued_at: 'desc'
         }
       });
+      // Sans chemin disque ni URL de stockage : le fichier se télécharge par
+      // `downloadPath` (GET /portal/owner/documents/:id/download).
+      const documents = rows.map(document => toPortalRentalDocument(document, 'owner'));
 
       // Group by type
       const groupedByType: Record<string, any[]> = {};

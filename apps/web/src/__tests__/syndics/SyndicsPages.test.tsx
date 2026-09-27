@@ -55,10 +55,22 @@ vi.mock('antd', async () => {
   SkeletonComp.Input = passthrough('span');
   SkeletonComp.Button = passthrough('span');
 
+  // `<SyndicateCard>` passe son bouton « Supprimer » via `actions` (et non
+  // `children`) : un simple passthrough le perdrait, comme pour `extra` dans
+  // `SyndicDetailEdit.test.tsx`.
+  const CardComp: any = ({ children, title, extra, actions }: any) => (
+    <div>
+      {title}
+      {extra}
+      {children}
+      {actions}
+    </div>
+  );
+
   const antdMock: Record<string, unknown> = {
     Alert: passthrough(),
     Button: passthrough('button'),
-    Card: passthrough(),
+    Card: CardComp,
     Col: passthrough(),
     DatePicker: passthrough('input'),
     Descriptions: DescriptionsComp,
@@ -86,6 +98,10 @@ vi.mock('antd', async () => {
     ),
     Table,
     Tag: passthrough('span'),
+    // Passthrough minimal : le `title` (texte d'infobulle) atterrit comme
+    // attribut DOM sur le `<span>`, suffisant pour l'assertion du bouton
+    // « Supprimer » desactive (ecart recette #8) sans simuler le survol reel.
+    Tooltip: passthrough('span'),
     Typography,
     message: {
       success: jestObject.fn(),
@@ -191,6 +207,66 @@ describe('Syndics pages', () => {
     expect(await screen.findByText('Copropriétés')).toBeTruthy();
     expect(await screen.findByText('Résidence Les Palmiers')).toBeTruthy();
     expect(mockApiClient.get).toHaveBeenCalledWith('/tenants/tenant-1/syndics');
+  });
+
+  it('désactive « Supprimer » quand la liste sait déjà que la copropriété n’est pas vide (écart recette #8)', async () => {
+    mockApiClient.get.mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: [
+          {
+            id: 'syndic-pleine',
+            tenantId: 'tenant-1',
+            name: 'Résidence Pleine',
+            address: 'Abidjan Cocody',
+            totalLots: 4,
+            totalBuildings: 1,
+            status: 'ACTIVE',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            _count: {
+              lots: 4,
+              chargeCalls: 0,
+              budgets: 0,
+              generalMeetings: 0,
+              documents: 0,
+              serviceContracts: 0,
+              incidents: 0
+            }
+          },
+          {
+            id: 'syndic-vide',
+            tenantId: 'tenant-1',
+            name: 'Résidence Vide',
+            address: 'Abidjan Cocody',
+            totalLots: 0,
+            totalBuildings: 1,
+            status: 'ACTIVE',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            _count: {
+              lots: 0,
+              chargeCalls: 0,
+              budgets: 0,
+              generalMeetings: 0,
+              documents: 0,
+              serviceContracts: 0,
+              incidents: 0
+            }
+          }
+        ]
+      }
+    } as never);
+
+    renderWithAuthAndRoute('/tenant/tenant-1/syndics', <SyndicsList />);
+
+    await screen.findByText('Résidence Pleine');
+    const deleteButtons = screen.getAllByText('Supprimer').map(node => node.closest('button')) as HTMLButtonElement[];
+
+    // Résidence Pleine (4 lots) : bouton désactivé, une seule copropriété vide
+    // active le sien.
+    expect(deleteButtons.some(button => button.disabled)).toBe(true);
+    expect(deleteButtons.some(button => !button.disabled)).toBe(true);
   });
 
   it('renders syndicate detail with lots, its building and its charge calls', async () => {
