@@ -18,7 +18,7 @@
       "runtimeExecutable": "cmd",
       "runtimeArgs": [
         "/c",
-        "set PORT=8800&& set FRONTEND_URL=http://localhost:3300&& set CLIENT_URL=http://localhost:3300&& set BACKEND_URL=http://localhost:8800&& npm run dev:api"
+        "cd /d .claude\\worktrees\\demo && set PORT=8800&& set FRONTEND_URL=http://localhost:3300&& set CLIENT_URL=http://localhost:3300&& set BACKEND_URL=http://localhost:8800&& npm run dev:api"
       ],
       "port": 8800
     },
@@ -27,7 +27,7 @@
       "runtimeExecutable": "cmd",
       "runtimeArgs": [
         "/c",
-        "set PORT=3300&& set VITE_API_ORIGIN=http://localhost:8800&& set VITE_API_URL=http://localhost:8800/api&& npm run dev:web"
+        "cd /d .claude\\worktrees\\demo && set PORT=3300&& set VITE_API_ORIGIN=http://localhost:8800&& set VITE_API_URL=http://localhost:8800/api&& npm run dev:web"
       ],
       "port": 3300
     },
