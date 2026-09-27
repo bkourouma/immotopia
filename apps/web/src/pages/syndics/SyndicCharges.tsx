@@ -19,18 +19,14 @@ import {
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { ChargeCallTable } from '../../components/syndics/ChargeCallTable';
-import { formatMoney, MoneyValue, StatCard } from '../../components/primitives';
-import {
-  createChargeCall,
-  getSyndicate,
-  listChargeCalls,
-  listSyndicateLots,
-  recordChargePayment
-} from '../../services/syndic-service';
+import { LotPaymentModal } from '../../components/syndics/LotPaymentModal';
+import { MoneyValue, StatCard } from '../../components/primitives';
+import { createChargeCall, getSyndicate, listChargeCalls, listSyndicateLots } from '../../services/syndic-service';
 import {
   ChargeCall,
   ChargeCallStatus,
   CreateChargeCallRequest,
+  LotPaymentResult,
   Syndicate,
   SyndicateLot
 } from '../../types/syndic-types';
@@ -59,24 +55,6 @@ const recurrenceFrequencyOptions = [
   { label: t('Annuelle'), value: 'ANNUAL' }
 ];
 
-// FR-005 : modes de paiement acceptes pour un appel de charges. Le paiement en
-// ligne n'y figure jamais — voir docs/recette/SCENARIO_SYNDIC_MODULES.md,
-// regle absolue n°1 (compte PaySecureHub de recette en mode LIVE).
-const paymentMethodOptions = [
-  { label: t('Espèces'), value: 'ESPECES' },
-  { label: t('Virement'), value: 'VIREMENT' },
-  { label: t('Chèque'), value: 'CHEQUE' },
-  { label: t('Mobile money'), value: 'MOBILE_MONEY' }
-];
-
-function computeChargePaid(charge: ChargeCall): number {
-  return (charge.payments || []).reduce((sum, payment) => sum + Number(payment.amount), 0);
-}
-
-function computeChargeOutstanding(charge: ChargeCall): number {
-  return Math.max(0, Number(charge.amount) - computeChargePaid(charge));
-}
-
 export const SyndicCharges: React.FC = () => {
   const { message } = App.useApp();
 
@@ -93,9 +71,12 @@ export const SyndicCharges: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
 
-  const [paymentTarget, setPaymentTarget] = useState<ChargeCall | null>(null);
-  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
-  const [paymentForm] = Form.useForm();
+  // Lot S2 : la modale de paiement travaille PAR LOT. `paymentContext` porte
+  // le lot et, si elle a été ouverte depuis un dossier précis, l'appel à
+  // pré-cocher ; `paymentOpen` seul (sans lot) ouvre la modale en demandant
+  // au gestionnaire de choisir le lot lui-même.
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentContext, setPaymentContext] = useState<{ lotId?: string; chargeCallId?: string }>({});
 
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
@@ -173,13 +154,22 @@ export const SyndicCharges: React.FC = () => {
 
     const values = await form.validateFields();
     const targetMode = values.targetMode as 'single' | 'multiple' | 'all';
-    const periodStart = values.periodStart ? dayjs(values.periodStart).format('YYYY-MM-DD') : '';
-    const periodEnd = values.periodEnd ? dayjs(values.periodEnd).format('YYYY-MM-DD') : '';
+    // Lot S2 : les bornes de période sont désormais facultatives (les deux ou
+    // aucune). Quand elles sont renseignées et que le libellé n'a pas été
+    // saisi à la main, on le préremplit comme avant (compatibilité du format
+    // existant) ; sans bornes, le libellé doit être saisi.
+    const periodStart = values.periodStart ? dayjs(values.periodStart).format('YYYY-MM-DD') : undefined;
+    const periodEnd = values.periodEnd ? dayjs(values.periodEnd).format('YYYY-MM-DD') : undefined;
+    const period: string =
+      (values.period && String(values.period).trim()) ||
+      (periodStart && periodEnd ? `${periodStart} au ${periodEnd}` : '');
     const payload: CreateChargeCallRequest = {
       lotId: targetMode === 'single' ? values.lotId : undefined,
       lotIds: targetMode === 'multiple' ? values.lotIds : undefined,
       applyToAllLots: targetMode === 'all',
-      period: `${periodStart} au ${periodEnd}`,
+      period,
+      periodStart,
+      periodEnd,
       amount: values.amount,
       currency: values.currency || 'XOF',
       dueDate: values.dueDate.toISOString(),
@@ -207,46 +197,30 @@ export const SyndicCharges: React.FC = () => {
     }
   };
 
-  const paymentOutstanding = useMemo(
-    () => (paymentTarget ? computeChargeOutstanding(paymentTarget) : 0),
-    [paymentTarget]
-  );
-
-  const handleOpenPayment = (charge: ChargeCall) => {
-    setPaymentTarget(charge);
-    paymentForm.resetFields();
-    paymentForm.setFieldsValue({ paidAt: dayjs(), method: 'VIREMENT' });
+  const handleOpenPaymentForCharge = (charge: ChargeCall) => {
+    setPaymentContext({ lotId: charge.lotId, chargeCallId: charge.id });
+    setPaymentOpen(true);
   };
 
-  const handleRecordPayment = async () => {
-    if (!effectiveTenantId || !syndicId || !paymentTarget) {
-      return;
-    }
+  const handleOpenPaymentGeneric = () => {
+    setPaymentContext({});
+    setPaymentOpen(true);
+  };
 
-    let values: { amount: number; paidAt: dayjs.Dayjs; method: string; reference?: string };
-    try {
-      values = await paymentForm.validateFields();
-    } catch {
-      // Le formulaire affiche deja l'erreur sous le champ concerne (ex. « Le
-      // montant depasse le reste du ») : rien d'autre a faire ici.
-      return;
-    }
-    setPaymentSubmitting(true);
-    try {
-      await recordChargePayment(effectiveTenantId, syndicId, paymentTarget.id, {
-        amount: values.amount,
-        paidAt: values.paidAt.toISOString(),
-        method: values.method,
-        reference: values.reference || undefined
-      });
-      message.success(t('Paiement enregistré'));
-      setPaymentTarget(null);
-      await loadCharges();
-    } catch (err: any) {
-      message.error(err.response?.data?.error || t('Enregistrement du paiement impossible'));
-    } finally {
-      setPaymentSubmitting(false);
-    }
+  const handlePaymentRecorded = (result: LotPaymentResult) => {
+    setPaymentOpen(false);
+    const settledCount = result.allocations.filter(item => item.callStatusAfter === 'PAID').length;
+    message.success(
+      settledCount > 0
+        ? t('Paiement enregistré : {{settledCount}} appel(s) soldé(s), avance de {{advance}}', {
+            settledCount,
+            advance: new Intl.NumberFormat('fr-FR').format(result.lotAdvanceBalance)
+          })
+        : t('Paiement enregistré : avance de {{advance}}', {
+            advance: new Intl.NumberFormat('fr-FR').format(result.lotAdvanceBalance)
+          })
+    );
+    void loadCharges();
   };
 
   return (
@@ -262,9 +236,14 @@ export const SyndicCharges: React.FC = () => {
             </Paragraph>
           </Space>
 
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)} disabled={lots.length === 0}>
-            {t('Nouvel appel de charges')}
-          </Button>
+          <Space>
+            <Button onClick={handleOpenPaymentGeneric} disabled={lots.length === 0}>
+              {t('Enregistrer un paiement')}
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)} disabled={lots.length === 0}>
+              {t('Nouvel appel de charges')}
+            </Button>
+          </Space>
         </div>
 
         {error ? <Alert type="error" message={error} showIcon /> : null}
@@ -314,7 +293,7 @@ export const SyndicCharges: React.FC = () => {
             </Card>
 
             <Card title={t('Liste des appels de charges')}>
-              <ChargeCallTable items={charges} onRecordPayment={handleOpenPayment} />
+              <ChargeCallTable items={charges} onRecordPayment={handleOpenPaymentForCharge} />
             </Card>
           </>
         )}
@@ -376,21 +355,53 @@ export const SyndicCharges: React.FC = () => {
             }
           </Form.Item>
 
+          <Form.Item
+            label={t('Libellé de la période')}
+            name="period"
+            dependencies={['periodStart', 'periodEnd']}
+            tooltip={t(
+              'Facultatif si vous renseignez les deux dates ci-dessous : le libellé est alors composé automatiquement.'
+            )}
+            rules={[
+              {
+                validator: (_rule, value) => {
+                  const hasLabel = Boolean(value && String(value).trim());
+                  const hasBounds = Boolean(form.getFieldValue('periodStart') && form.getFieldValue('periodEnd'));
+                  if (!hasLabel && !hasBounds) {
+                    return Promise.reject(
+                      new Error(t('Saisissez un libellé de période ou les deux dates de début et de fin'))
+                    );
+                  }
+                  return Promise.resolve();
+                }
+              }
+            ]}
+          >
+            <Input placeholder={t('ex : 2026-Q1')} />
+          </Form.Item>
+
           <Row gutter={12}>
             <Col xs={24} md={12}>
-              <Form.Item
-                label={t('Date de début')}
-                name="periodStart"
-                rules={[{ required: true, message: t('La date de début est obligatoire') }]}
-              >
+              <Form.Item label={t('Début de période (optionnel)')} name="periodStart">
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
               <Form.Item
-                label={t('Date de fin')}
+                label={t('Fin de période (optionnel)')}
                 name="periodEnd"
-                rules={[{ required: true, message: t('La date de fin est obligatoire') }]}
+                dependencies={['periodStart']}
+                rules={[
+                  {
+                    validator: (_rule, value) => {
+                      const start = form.getFieldValue('periodStart');
+                      if (Boolean(start) !== Boolean(value)) {
+                        return Promise.reject(new Error(t('Les deux dates de période vont ensemble, ou aucune')));
+                      }
+                      return Promise.resolve();
+                    }
+                  }
+                ]}
               >
                 <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
               </Form.Item>
@@ -470,67 +481,18 @@ export const SyndicCharges: React.FC = () => {
         </Form>
       </Modal>
 
-      <Modal
-        title={t('Enregistrer un paiement')}
-        open={Boolean(paymentTarget)}
-        onCancel={() => setPaymentTarget(null)}
-        onOk={() => void handleRecordPayment()}
-        okText={t('Enregistrer')}
-        cancelText={t('Annuler')}
-        confirmLoading={paymentSubmitting}
-      >
-        {paymentTarget ? (
-          <Paragraph type="secondary">
-            {t('Reste à payer')} : <MoneyValue value={paymentOutstanding} />
-          </Paragraph>
-        ) : null}
-        <Form form={paymentForm} layout="vertical">
-          <Form.Item
-            label={t('Montant')}
-            name="amount"
-            rules={[
-              { required: true, message: t('Le montant est obligatoire') },
-              {
-                // Constat de recette (module 7) : `InputNumber max` plafonne
-                // silencieusement la valeur saisie a la perte de focus — une
-                // saisie de 250 000 sur un reste dû de 200 000 partait donc
-                // avec 200 000 sans que personne ne le remarque, alors que
-                // l'agence croyait avoir encaissé le montant saisi. Un
-                // validateur qui bloque l'envoi avec un message explicite
-                // remplace ce plafond muet ; l'API reste le dernier rempart
-                // (422) si ce contrôle était contourné.
-                validator: (_rule, value) => {
-                  if (typeof value === 'number' && value > paymentOutstanding) {
-                    return Promise.reject(
-                      new Error(t('Le montant dépasse le reste dû ({{value}})', { value: formatMoney(paymentOutstanding) }))
-                    );
-                  }
-                  return Promise.resolve();
-                }
-              }
-            ]}
-          >
-            <InputNumber min={1} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item
-            label={t('Date de paiement')}
-            name="paidAt"
-            rules={[{ required: true, message: t('La date est obligatoire') }]}
-          >
-            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-          </Form.Item>
-          <Form.Item
-            label={t('Mode de paiement')}
-            name="method"
-            rules={[{ required: true, message: t('Le mode de paiement est obligatoire') }]}
-          >
-            <Select showSearch optionFilterProp="label" options={paymentMethodOptions} />
-          </Form.Item>
-          <Form.Item label={t('Référence (optionnel)')} name="reference">
-            <Input />
-          </Form.Item>
-        </Form>
-      </Modal>
+      {effectiveTenantId && syndicId ? (
+        <LotPaymentModal
+          open={paymentOpen}
+          tenantId={effectiveTenantId}
+          syndicId={syndicId}
+          lots={lots}
+          initialLotId={paymentContext.lotId}
+          initialChargeCallId={paymentContext.chargeCallId}
+          onClose={() => setPaymentOpen(false)}
+          onRecorded={handlePaymentRecorded}
+        />
+      ) : null}
     </>
   );
 };

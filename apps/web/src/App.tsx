@@ -312,6 +312,11 @@ const SyndicFinances = lazy(() =>
 const SyndicRecovery = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicRecovery').then(m => ({ default: m.SyndicRecovery }))
 );
+const SyndicMonthlyTracking = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicMonthlyTracking').then(m => ({
+    default: m.SyndicMonthlyTracking
+  }))
+);
 const SyndicOwnerAccount = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicOwnerAccount').then(m => ({
     default: m.SyndicOwnerAccount
@@ -871,6 +876,10 @@ function App() {
                           <Route element={<SyndicWorkspaceLayout family="finances" />}>
                             <Route path="/tenant/:tenantId/syndics/:syndicId/budgets" element={<SyndicBudgets />} />
                             <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/suivi-mensuel"
+                              element={<SyndicMonthlyTracking />}
+                            />
                             <Route
                               path="/tenant/:tenantId/syndics/:syndicId/recouvrement"
                               element={<SyndicRecovery />}

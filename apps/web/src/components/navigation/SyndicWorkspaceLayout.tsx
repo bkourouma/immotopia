@@ -61,6 +61,12 @@ function buildTabs(family: SyndicWorkspaceFamily, tenantId: string, syndicId: st
       return [
         { key: 'budgets', label: t('Budgets'), href: `${base}/budgets`, icon: <WalletOutlined /> },
         { key: 'charges', label: t('Appels de charges'), href: `${base}/charges`, icon: <SendOutlined /> },
+        {
+          key: 'suivi-mensuel',
+          label: t('Suivi mensuel'),
+          href: `${base}/suivi-mensuel`,
+          icon: <CalendarOutlined />
+        },
         { key: 'recouvrement', label: t('Recouvrement'), href: `${base}/recouvrement`, icon: <AlertOutlined /> },
         { key: 'tresorerie', label: t('Trésorerie'), href: `${base}/finances`, icon: <BankOutlined /> },
         {
