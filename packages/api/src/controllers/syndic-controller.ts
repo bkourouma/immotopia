@@ -76,7 +76,11 @@ import {
   listIncidentsBySyndicate,
   createIncidentBySyndicate,
   updateIncidentBySyndicate,
-  addIncidentImputationBySyndicate
+  addIncidentImputationBySyndicate,
+  listFundsBySyndicate,
+  createSyndicateFundBySyndicate,
+  renameSyndicateFundByTenant,
+  adjustSyndicateFundBalanceByTenant
 } from '../lib/syndics/queries';
 import {
   createSyndicateSchema,
@@ -121,7 +125,10 @@ import {
   createJournalEntrySchema,
   accountingEntriesQuerySchema,
   lockJournalEntrySchema,
-  accountingRangeQuerySchema
+  accountingRangeQuerySchema,
+  createSyndicateFundSchema,
+  renameSyndicateFundSchema,
+  adjustSyndicateFundBalanceSchema
 } from '../lib/syndics/schemas';
 import { notifyChargeCall, notifyChargeCallReminder, notifyMeetingConvocation } from '../lib/syndics/notifications';
 import { badRequest, notFound } from '../lib/errors';
@@ -1667,4 +1674,49 @@ export const getGeneralLedgerHandler = asyncHandler(async (req: Request, res: Re
     pagination: { page: parsed.page, limit: parsed.limit }
   });
   res.json({ success: true, data: ledger });
+});
+
+export const listFundsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la liste des fonds');
+  }
+  const funds = await listFundsBySyndicate(tenantId, syndicateId);
+  res.json({ success: true, data: funds });
+});
+
+export const createFundHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la creation du fonds');
+  }
+  const parsed = createSyndicateFundSchema.parse(req.body ?? {});
+  const fund = await createSyndicateFundBySyndicate(tenantId, syndicateId, parsed, req.user?.userId);
+  res.status(201).json({ success: true, data: fund });
+});
+
+export const renameFundHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  const fundId = req.params.fundId;
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour le renommage du fonds');
+  }
+  const parsed = renameSyndicateFundSchema.parse(req.body ?? {});
+  const fund = await renameSyndicateFundByTenant(tenantId, syndicateId, fundId, parsed, req.user?.userId);
+  res.json({ success: true, data: fund });
+});
+
+export const adjustFundBalanceHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  const fundId = req.params.fundId;
+  if (!tenantId) {
+    throw badRequest("TenantId manquant pour l'ajustement du fonds");
+  }
+  const parsed = adjustSyndicateFundBalanceSchema.parse(req.body ?? {});
+  const fund = await adjustSyndicateFundBalanceByTenant(tenantId, syndicateId, fundId, parsed, req.user?.userId);
+  res.json({ success: true, data: fund });
 });

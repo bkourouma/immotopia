@@ -1,7 +1,13 @@
 import { LotType, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { conflict, notFound, tenantIsolationError, unprocessableEntity } from '../errors';
-import { computeChargeCallStatus, computeOutstanding, isJournalEntryBalanced, roundMoney } from './finance-utils';
+import {
+  computeChargeCallStatus,
+  computeOutstanding,
+  deriveChargeCallStatus,
+  isJournalEntryBalanced,
+  roundMoney
+} from './finance-utils';
 import { logger } from '../../utils/logger';
 // Shared client: a second `new PrismaClient()` here doubled the connection
 // pool and escaped the graceful-shutdown handlers in utils/database.
@@ -11,6 +17,8 @@ import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import { appendOwnerAccountTransactionTx, supportsOwnerAccount, type OwnerAccountTxClient } from '../finance/ledger';
 import { QuotaExceededError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
+import { logAuditEvent } from '../../services/audit-service';
+import { AuditActionKey } from '../../types/audit-types';
 import {
   ACTIVE_SYNDICATE_STATUSES,
   assertCapacityTx,
@@ -214,21 +222,30 @@ async function ensureOwnerAccountForLotTx(
     return null;
   }
 
-  const existing = await tx.ownerAccount.findUnique({
-    where: { lotId }
-  });
-
-  if (existing) {
-    return existing;
-  }
-
-  return tx.ownerAccount.create({
-    data: {
+  // Concurrence (constat de recette, module 3.3) : deux requetes qui
+  // consultent le compte du meme lot pour la premiere fois (la page web
+  // demandait `/compte` et `/compte/transactions` en parallele, chacune
+  // declenchant sa propre creation) faisaient toutes les deux ce
+  // `findUnique` avant qu'aucune n'ait committe sa `create` : la seconde
+  // heurtait la contrainte unique sur `lotId` (P2002), remontee en 409 sur
+  // ce qui n'est censee etre qu'une lecture. `upsert` sur cette meme
+  // contrainte se traduit, sur Postgres, par un `INSERT ... ON CONFLICT
+  // (lot_id) DO UPDATE` — une seule instruction atomique : la requete
+  // perdante attend le verrou puis relit le compte deja cree au lieu
+  // d'echouer. Le correctif cote web (SyndicOwnerAccount.tsx, qui n'appelle
+  // plus les transactions qu'apres avoir obtenu le compte) reste une
+  // defense en profondeur ; celui-ci est ce qui rend l'API elle-meme sure
+  // en concurrence, y compris pour un futur appelant qui repeterait la
+  // meme erreur.
+  return tx.ownerAccount.upsert({
+    where: { lotId },
+    create: {
       syndicateId,
       lotId,
       contactId,
       balance: 0
-    }
+    },
+    update: {}
   });
 }
 
@@ -1030,16 +1047,36 @@ export async function listChargeCallsBySyndicate(
 ) {
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
   const pager = buildPagination(filters?.pagination);
+  const now = new Date();
 
-  return prisma.chargeCall.findMany({
+  // Le statut OVERDUE n'est jamais stocke (voir deriveChargeCallStatus,
+  // finance-utils.ts) : un filtre demandant ce statut doit donc reprendre la
+  // meme regle (echeance passee, solde non solde) plutot que de chercher une
+  // valeur qui n'existe jamais en base ; a l'inverse, un filtre PENDING/PARTIAL
+  // exclut ce qui serait maintenant derive OVERDUE, pour rester coherent avec
+  // ce que l'ecran affichera.
+  let statusWhere: Prisma.ChargeCallWhereInput = {};
+  if (filters?.status === 'OVERDUE') {
+    statusWhere = { status: { in: ['PENDING', 'PARTIAL'] }, dueDate: { lt: now } };
+  } else if (filters?.status === 'PENDING' || filters?.status === 'PARTIAL') {
+    statusWhere = { status: filters.status, dueDate: { gte: now } };
+  } else if (filters?.status === 'PAID') {
+    statusWhere = { status: 'PAID' };
+  }
+
+  const rangeWhere = buildDateRangeFilter('dueDate', filters?.range);
+  const combinedConditions: Prisma.ChargeCallWhereInput[] = [];
+  if (Object.keys(statusWhere).length > 0) combinedConditions.push(statusWhere);
+  if (Object.keys(rangeWhere).length > 0) combinedConditions.push(rangeWhere);
+
+  const calls = await prisma.chargeCall.findMany({
     where: {
       syndicateId,
       syndicate: {
         tenantId
       },
       ...(filters?.period ? { period: filters.period } : {}),
-      ...(filters?.status ? { status: filters.status } : {}),
-      ...buildDateRangeFilter('dueDate', filters?.range)
+      ...(combinedConditions.length > 0 ? { AND: combinedConditions } : {})
     },
     include: {
       lot: {
@@ -1064,10 +1101,12 @@ export async function listChargeCallsBySyndicate(
     take: pager.take,
     orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }]
   });
+
+  return calls.map(call => ({ ...call, status: deriveChargeCallStatus(call.status, call.dueDate, now) }));
 }
 
 export async function getChargeCallByTenant(tenantId: string, syndicateId: string, chargeCallId: string) {
-  return prisma.chargeCall.findFirst({
+  const call = await prisma.chargeCall.findFirst({
     where: {
       id: chargeCallId,
       syndicateId,
@@ -1085,6 +1124,12 @@ export async function getChargeCallByTenant(tenantId: string, syndicateId: strin
       syndicate: true
     }
   });
+
+  if (!call) {
+    return call;
+  }
+
+  return { ...call, status: deriveChargeCallStatus(call.status, call.dueDate) };
 }
 
 export async function createChargeCallAndUpdateStatus(
@@ -1274,15 +1319,34 @@ export async function recordChargePaymentWithStatusUpdate(
       throw notFound('Appel de charges introuvable ou inaccessible');
     }
 
-    const payment = await tx.chargePayment.create({ data });
-
-    const aggregate = await tx.chargePayment.aggregate({
+    const aggregateBefore = await tx.chargePayment.aggregate({
       where: { chargeCallId: data.chargeCallId },
       _sum: { amount: true }
     });
 
-    const totalPaid = roundMoney(Number(aggregate._sum.amount ?? 0));
+    const alreadyPaid = roundMoney(Number(aggregateBefore._sum.amount ?? 0));
     const chargeAmount = Number(call.amount);
+    const outstandingBeforePayment = computeOutstanding(chargeAmount, alreadyPaid);
+    const paymentAmount = roundMoney(Number(data.amount));
+
+    // FR-005 : un paiement superieur au reste du est refuse plutot
+    // qu'accepte comme trop-percu — l'API n'offrait jusqu'ici aucun ecran pour
+    // le corriger (aucun remboursement, aucun avoir sur ChargeCall), et un
+    // trop-percu silencieux aurait laisse le statut a PAID sans que personne
+    // ne sache qu'un exces existe. Le gestionnaire doit soit ajuster le
+    // montant du paiement, soit passer par un ajustement de compte
+    // copropriétaire (createOwnerAccountAdjustmentByLot) s'il veut vraiment
+    // enregistrer un credit au-dela de l'appel.
+    if (paymentAmount > outstandingBeforePayment) {
+      throw unprocessableEntity(
+        `Le paiement (${paymentAmount} ${call.currency}) depasse le reste a payer de cet appel de charges ` +
+          `(${outstandingBeforePayment} ${call.currency})`
+      );
+    }
+
+    const payment = await tx.chargePayment.create({ data });
+
+    const totalPaid = roundMoney(alreadyPaid + paymentAmount);
     const status = computeChargeCallStatus(totalPaid, chargeAmount);
 
     await tx.chargeCall.update({
@@ -2071,7 +2135,7 @@ export async function getFinanceSummaryBySyndicate(tenantId: string, syndicateId
     })
   ]);
 
-  const overdueCharges = charges.filter(charge => charge.status === 'OVERDUE');
+  const overdueCharges = charges.filter(charge => deriveChargeCallStatus(charge.status, charge.dueDate) === 'OVERDUE');
   const totalCalled = roundMoney(charges.reduce((sum: number, charge) => sum + Number(charge.amount), 0));
   const totalPaid = roundMoney(
     charges.reduce(
@@ -2157,7 +2221,7 @@ export async function listOverdueDashboardBySyndicate(tenantId: string, syndicat
           }
         : null,
       dueDate: call.dueDate,
-      status: call.status,
+      status: deriveChargeCallStatus(call.status, call.dueDate, now),
       amount,
       paid,
       outstanding,
@@ -3984,4 +4048,130 @@ export async function addIncidentImputationBySyndicate(
       contract: true
     }
   });
+}
+
+// =============================================================
+// SYNDIC MODULE - FONDS FINANCIERS DE LA COPROPRIETE (FR-013)
+// =============================================================
+// Le modele SyndicateFund existait deja (utilise en lecture seule par
+// getFinanceSummaryBySyndicate) mais n'avait ni route de creation ni de
+// modification — voir docs/recette/SCENARIO_SYNDIC_MODULES.md, annexe #4.
+
+async function findSyndicateFundOrThrow(tenantId: string, syndicateId: string, fundId: string) {
+  const fund = await prisma.syndicateFund.findFirst({
+    where: {
+      id: fundId,
+      syndicateId,
+      syndicate: { tenantId }
+    }
+  });
+
+  if (!fund) {
+    throw notFound('Fonds introuvable ou inaccessible pour cette copropriete');
+  }
+
+  return fund;
+}
+
+export async function createSyndicateFundBySyndicate(
+  tenantId: string,
+  syndicateId: string,
+  data: { name: string; initialBalance?: number; currency?: string },
+  actorUserId?: string | null
+) {
+  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+
+  const fund = await prisma.syndicateFund.create({
+    data: {
+      syndicateId,
+      name: data.name,
+      balance: roundMoney(data.initialBalance ?? 0),
+      currency: data.currency || 'XOF'
+    }
+  });
+
+  if (actorUserId) {
+    logAuditEvent({
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.SYNDICATE_FUND_CREATED,
+      entityType: 'SYNDICATE_FUND',
+      entityId: fund.id,
+      payload: { syndicateId, name: fund.name, initialBalance: Number(fund.balance), currency: fund.currency }
+    });
+  }
+
+  return fund;
+}
+
+export async function renameSyndicateFundByTenant(
+  tenantId: string,
+  syndicateId: string,
+  fundId: string,
+  data: { name: string },
+  actorUserId?: string | null
+) {
+  const fund = await findSyndicateFundOrThrow(tenantId, syndicateId, fundId);
+
+  const updated = await prisma.syndicateFund.update({
+    where: { id: fund.id },
+    data: { name: data.name }
+  });
+
+  if (actorUserId) {
+    logAuditEvent({
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.SYNDICATE_FUND_RENAMED,
+      entityType: 'SYNDICATE_FUND',
+      entityId: fund.id,
+      payload: { syndicateId, previousName: fund.name, newName: updated.name }
+    });
+  }
+
+  return updated;
+}
+
+export async function adjustSyndicateFundBalanceByTenant(
+  tenantId: string,
+  syndicateId: string,
+  fundId: string,
+  data: { direction: 'CREDIT' | 'DEBIT'; amount: number; reason: string },
+  actorUserId?: string | null
+) {
+  const fund = await findSyndicateFundOrThrow(tenantId, syndicateId, fundId);
+
+  const amount = roundMoney(data.amount);
+  const previousBalance = Number(fund.balance);
+  const nextBalance =
+    data.direction === 'CREDIT' ? roundMoney(previousBalance + amount) : roundMoney(previousBalance - amount);
+
+  // Le solde d'un fonds (compte courant, fonds de travaux...) peut legitimement
+  // devenir negatif (avance de tresorerie de l'agence, decouvert temporaire) :
+  // contrairement aux montants d'appels ou de paiements, aucune regle metier
+  // de la spec (FR-013, data-model.md) n'impose un plancher a zero.
+  const updated = await prisma.syndicateFund.update({
+    where: { id: fund.id },
+    data: { balance: nextBalance }
+  });
+
+  if (actorUserId) {
+    logAuditEvent({
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.SYNDICATE_FUND_BALANCE_ADJUSTED,
+      entityType: 'SYNDICATE_FUND',
+      entityId: fund.id,
+      payload: {
+        syndicateId,
+        direction: data.direction,
+        amount,
+        reason: data.reason,
+        previousBalance,
+        newBalance: nextBalance
+      }
+    });
+  }
+
+  return updated;
 }

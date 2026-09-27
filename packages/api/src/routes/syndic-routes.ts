@@ -79,7 +79,11 @@ import {
   createAccountingEntryHandler,
   lockAccountingEntryHandler,
   getTrialBalanceHandler,
-  getGeneralLedgerHandler
+  getGeneralLedgerHandler,
+  listFundsHandler,
+  createFundHandler,
+  renameFundHandler,
+  adjustFundBalanceHandler
 } from '../controllers/syndic-controller';
 
 const router = Router();
@@ -455,6 +459,27 @@ router.get(
   '/tenants/:tenantId/syndics/:syndicId/comptabilite/grand-livre',
   requireAnyPropertyPermission(['PROPERTIES_VIEW']),
   getGeneralLedgerHandler
+);
+
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/fonds',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listFundsHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/fonds',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createFundHandler
+);
+router.patch(
+  '/tenants/:tenantId/syndics/:syndicId/fonds/:fundId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  renameFundHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/fonds/:fundId/ajustement',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  adjustFundBalanceHandler
 );
 
 export default router;
