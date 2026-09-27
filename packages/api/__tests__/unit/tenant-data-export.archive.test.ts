@@ -149,6 +149,7 @@ beforeAll(async () => {
   await touch('uploads/properties/pA/photo.jpg', 'photo-A');
   await touch('uploads/rental/penalties/rpA/j.pdf', 'penalty-A');
   await touch('uploads/platform/invoice-payments/tA/p.pdf', 'proof-A');
+  await touch('uploads/branding/tA/mandants/m1/logo-x.png', 'brand-A');
   await touch('uploads/maintenance/tA/t1/m.pdf', 'maint-A');
   await touch('uploads/docs/a.pdf', 'loose');
   await touch('uploads/exports/tA/old.zip', 'old');
@@ -456,6 +457,11 @@ describe('Export agence — collecteur de fichiers', () => {
     ['properties/agency-logos/tA/l.png', true],
     ['properties/agency-logos/tB/l.png', false],
     ['platform/invoice-payments/tB/p.pdf', false],
+    ['branding/tA/mandants/m1/logo-x.png', true],
+    ['branding/tA/syndics/s1/signature-x.png', true],
+    ['branding/tA/agence/cachet-x.png', true],
+    ['branding/tB/mandants/m1/logo-x.png', false],
+    ['branding/tA', false],
     ['properties/pA/photo.jpg', true],
     ['properties/pB/photo.jpg', false],
     ['syndics/sA1/documents/a.pdf', true],
@@ -468,6 +474,22 @@ describe('Export agence — collecteur de fichiers', () => {
   ])('regle de dossier uploads/%s → %s', (relative, allowed) => {
     const collector = new FileReferenceCollector('tA', roots, owned());
     expect(collector.allowedForTenant({ kind: 'uploads', relative, absolute: false })).toBe(allowed);
+  });
+
+  it('joint une image de marque presente et compte celle absente comme manquante', async () => {
+    const collector = new FileReferenceCollector('tA', roots, owned());
+    await collector.inspectField('logoPath', 'branding/tA/mandants/m1/logo-x.png');
+    await collector.inspectField('signaturePath', 'branding/tA/mandants/m1/signature-absente.png');
+    expect(collector.files.size).toBe(1);
+    expect(collector.missingCount).toBe(1);
+    expect([...collector.files.keys()]).toEqual([n('fichiers/uploads/branding/ta/mandants/m1/logo-x.png')]);
+  });
+
+  it('refuse une image de marque dont le dossier appartient a une autre agence', async () => {
+    const collector = new FileReferenceCollector('tA', roots, owned());
+    await collector.inspectField('logoPath', 'branding/tB/mandants/m1/logo-x.png');
+    expect(collector.files.size).toBe(0);
+    expect(collector.refusedCount).toBe(1);
   });
 
   it('regles generated_documents et modeles', () => {
@@ -491,6 +513,10 @@ describe('Export agence — reconnaissance des references de fichier', () => {
     [
       'platform/invoice-payments/t1/p.pdf',
       { kind: 'uploads', relative: 'platform/invoice-payments/t1/p.pdf', absolute: false }
+    ],
+    [
+      'branding/t1/mandants/m1/logo-x.png',
+      { kind: 'uploads', relative: 'branding/t1/mandants/m1/logo-x.png', absolute: false }
     ],
     ['https://cdn.example.com/uploads/a.png', null],
     ['file:///srv/uploads/maintenance/t1/x.pdf', null],

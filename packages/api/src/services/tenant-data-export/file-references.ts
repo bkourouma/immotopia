@@ -71,7 +71,9 @@ export interface ParsedReference {
  * paiement), lease-inspections/service, whatsapp-group-broadcast-service,
  * tenant-service (logos), platform-payment-service (justificatifs de
  * reglement d'abonnement), property-media/document-service,
- * syndics/document-files, rental-penalty-service.
+ * syndics/document-files, rental-penalty-service, images de marque du lot S1
+ * (`branding/<tenantId>/mandants|syndics|agence/...` — code hors de cette
+ * branche, seul le format de la cle est repris ici).
  * L'ordre compte : `properties/agency-logos` avant `properties`.
  */
 export const UPLOAD_FOLDER_RULES: ReadonlyArray<{ prefix: string[]; owner: 'tenant' | OwnerModel }> = [
@@ -81,16 +83,19 @@ export const UPLOAD_FOLDER_RULES: ReadonlyArray<{ prefix: string[]; owner: 'tena
   { prefix: ['whatsapp', 'group-broadcast'], owner: 'tenant' },
   { prefix: ['properties', 'agency-logos'], owner: 'tenant' },
   { prefix: ['platform', 'invoice-payments'], owner: 'tenant' },
+  { prefix: ['branding'], owner: 'tenant' },
   { prefix: ['properties'], owner: 'Property' },
   { prefix: ['syndics'], owner: 'Syndicate' },
   { prefix: ['rental', 'penalties'], owner: 'RentalPenalty' }
 ];
 
 /**
- * Justificatifs de reglement d'abonnement : stockes RELATIFS a la racine des
- * depots, sans `uploads/` devant (`platform/invoice-payments/<tenantId>/...`).
+ * Justificatifs de reglement d'abonnement et images de marque (lot S1) :
+ * stockes RELATIFS a la racine des depots, sans `uploads/` devant
+ * (`platform/invoice-payments/<tenantId>/...`,
+ * `branding/<tenantId>/mandants|syndics|agence/...`).
  */
-const BARE_UPLOAD_PREFIXES = ['platform/invoice-payments/'];
+const BARE_UPLOAD_PREFIXES = ['platform/invoice-payments/', 'branding/'];
 
 export const MAX_FILES = 200_000;
 export const MAX_TOTAL_BYTES = 20 * 1024 ** 3;
