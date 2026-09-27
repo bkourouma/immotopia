@@ -97,8 +97,9 @@ qu'une seconde session humaine soit nécessaire. Démarrer avec
 `claude --agent lead`, ou par défaut via la clé `"agent": "lead"` dans
 `.claude/settings.local.json` (réglage personnel, propre au poste). La prise
 en compte de cette clé par l'application de bureau Claude n'est pas
-documentée : si elle ne s'applique pas, `claude --agent lead` reste la
-solution de repli (lancée depuis un terminal). Les
+documentée : si elle ne s'applique pas, `/lead` (skill `.claude/skills/lead`, éventuellement suivi
+d'un objectif) fait de la session courante le Pilote, ou lancer
+`claude --agent lead` depuis un terminal. Les
 coordinateurs `dev-orchestrator` et `demo-orchestrator` restent utilisables
 seuls en deux sessions séparées, comme décrit plus haut.
 

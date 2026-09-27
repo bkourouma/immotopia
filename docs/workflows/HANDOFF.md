@@ -41,7 +41,7 @@ Pièges et décisions :
 ## Branche `chore/agentic-architecture` — 2026-09-27
 
 **État :** en cours (PR #16 ouverte ; garde et outils ajoutés localement)
-**Dernier commit :** `f2440f7 chore(agents): processus dev/recette, bus partagé et démo figée`, sur la base `43e5761` (fix/recette-syndic-modules)
+**Dernier commit :** `10155c3 feat(agents): Pilote, agent unique qui livre jusqu'à la PR`, sur la base `43e5761` (fix/recette-syndic-modules)
 
 Fait :
 
@@ -100,7 +100,8 @@ Reste à faire :
 - L'utilisateur doit renseigner lui-même `.claude/settings.local.json` :
   `"agent": "lead"` et les autorisations git/gh (écriture refusée à l'agent
   par le classifieur d'auto-modification). Prise en compte de `agent` par
-  l'application de bureau non documentée : repli `claude --agent lead`.
+  l'application de bureau non documentée : repli `/lead` (skill) ou
+  `claude --agent lead`.
 - Suivre la CI de la PR #16 après la poussée de 9010d8d et f2440f7.
 - Créer `packages/api/.env.demo` (base de démo dédiée) — à faire par
   l'utilisateur, les agents ne touchent pas aux `.env` ; puis
