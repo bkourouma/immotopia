@@ -63,6 +63,8 @@ import {
   UpdateBudgetRequest,
   IncidentCostImputation,
   LotOwnerProfile,
+  CoOwnerPortalInvitation,
+  CoOwnerPortalRevocation,
   LotTenantProfile,
   SyndicateIncident,
   SyndicateFund,
@@ -906,6 +908,30 @@ export async function updateLotOwnerProfile(
   const response = await apiClient.patch<{ success: boolean; data: LotOwnerProfile }>(
     `/tenants/${tenantId}/syndics/${syndicId}/profils/proprietaires/${ownerProfileId}`,
     data
+  );
+  return response.data.data;
+}
+
+/** Ouvre le portail copropriétaire au contact de ce profil ; le lien est rendu que l'e-mail parte ou non. */
+export async function inviteCoOwnerToPortal(
+  tenantId: string,
+  syndicId: string,
+  ownerProfileId: string
+): Promise<CoOwnerPortalInvitation> {
+  const response = await apiClient.post<{ success: boolean; data: CoOwnerPortalInvitation }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/profils/proprietaires/${ownerProfileId}/invitation-portail`
+  );
+  return response.data.data;
+}
+
+/** Ferme le portail copropriétaire au contact de ce profil (tous ses lots de l'agence). */
+export async function revokeCoOwnerPortalAccess(
+  tenantId: string,
+  syndicId: string,
+  ownerProfileId: string
+): Promise<CoOwnerPortalRevocation> {
+  const response = await apiClient.delete<{ success: boolean; data: CoOwnerPortalRevocation }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/profils/proprietaires/${ownerProfileId}/invitation-portail`
   );
   return response.data.data;
 }

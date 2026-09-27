@@ -25,14 +25,18 @@ import {
   createLotOwnerProfile,
   createLotTenantProfile,
   createSyndicIncident,
+  inviteCoOwnerToPortal,
   listLotOwnerProfiles,
   listLotTenantProfiles,
   listProvidersContracts,
   listSyndicateLots,
   listSyndicIncidents,
+  revokeCoOwnerPortalAccess,
   updateSyndicIncident
 } from '../../services/syndic-service';
+import { CoOwnerInvitationResult } from '../../components/syndics/CoOwnerInvitationResult';
 import {
+  CoOwnerPortalInvitation,
   LotOwnerProfile,
   LotTenantProfile,
   ServiceProvider,
@@ -109,8 +113,21 @@ function getLotOptionLabel(lot: SyndicateLot, propertiesByInternalReference: Rec
   return getLotDisplayName(lot, null, propertyByReference);
 }
 
+/** Message d'erreur de l'API : `message` (erreurs typées), à défaut `error`, sinon le repli. */
+function apiErrorMessage(err: unknown, fallback: string): string {
+  const data = (err as { response?: { data?: { message?: string; error?: string } } } | null)?.response?.data;
+  return data?.message || data?.error || fallback;
+}
+
+function contactLabel(profile: LotOwnerProfile): string {
+  const contact = profile.contact;
+  if (!contact) return profile.contactId;
+  const name = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
+  return name || contact.legalName || contact.email || profile.contactId;
+}
+
 export const SyndicProfilesIncidents: React.FC = () => {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
 
@@ -124,6 +141,10 @@ export const SyndicProfilesIncidents: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [assigningProviderIncidentId, setAssigningProviderIncidentId] = useState<string | null>(null);
+  // Portail copropriétaire : invitation en cours, résultat affiché, révocation.
+  const [invitingProfileId, setInvitingProfileId] = useState<string | null>(null);
+  const [revokingProfileId, setRevokingProfileId] = useState<string | null>(null);
+  const [invitation, setInvitation] = useState<CoOwnerPortalInvitation | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [openOwner, setOpenOwner] = useState(false);
@@ -310,6 +331,54 @@ export const SyndicProfilesIncidents: React.FC = () => {
     }
   };
 
+  /**
+   * « Inviter au portail » : ouvre le portail copropriétaire au contact du
+   * profil (compte créé au besoin, lots ouverts) et affiche le lien à copier,
+   * que l'e-mail soit parti ou non. L'e-mail du contact est obligatoire : le
+   * serveur refuse sinon, avec un message qui dit quoi corriger.
+   */
+  const handleInvite = async (profile: LotOwnerProfile) => {
+    if (!effectiveTenantId || !syndicId) return;
+    setInvitingProfileId(profile.id);
+    try {
+      const result = await inviteCoOwnerToPortal(effectiveTenantId, syndicId, profile.id);
+      setInvitation(result);
+      await loadData();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t('Invitation au portail impossible')));
+    } finally {
+      setInvitingProfileId(null);
+    }
+  };
+
+  const handleRevoke = async (profile: LotOwnerProfile) => {
+    if (!effectiveTenantId || !syndicId) return;
+    setRevokingProfileId(profile.id);
+    try {
+      await revokeCoOwnerPortalAccess(effectiveTenantId, syndicId, profile.id);
+      message.success(t('Accès au portail révoqué'));
+      await loadData();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("Révocation de l'accès impossible")));
+    } finally {
+      setRevokingProfileId(null);
+    }
+  };
+
+  const confirmRevoke = (profile: LotOwnerProfile) => {
+    modal.confirm({
+      title: t("Révoquer l'accès au portail ?"),
+      content: t(
+        "{{name}} ne pourra plus consulter aucun de ses lots dans l'agence. Son compte utilisateur n'est pas supprimé.",
+        { name: contactLabel(profile) }
+      ),
+      okText: t('Révoquer'),
+      okButtonProps: { danger: true },
+      cancelText: t('Annuler'),
+      onOk: () => handleRevoke(profile)
+    });
+  };
+
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -379,6 +448,32 @@ export const SyndicProfilesIncidents: React.FC = () => {
                   {
                     title: 'Portail',
                     render: (_, row) => (row.portalAccessEnabled ? <Tag color="green">ACTIVE</Tag> : <Tag>INACTIF</Tag>)
+                  },
+                  {
+                    title: t('Accès portail'),
+                    key: 'portal-actions',
+                    render: (_, row) => (
+                      <Space wrap>
+                        <Button
+                          size="small"
+                          loading={invitingProfileId === row.id}
+                          disabled={row.isActive === false}
+                          onClick={() => void handleInvite(row)}
+                        >
+                          {t('Inviter au portail')}
+                        </Button>
+                        {row.portalAccessEnabled ? (
+                          <Button
+                            size="small"
+                            danger
+                            loading={revokingProfileId === row.id}
+                            onClick={() => confirmRevoke(row)}
+                          >
+                            {t("Révoquer l'accès")}
+                          </Button>
+                        ) : null}
+                      </Space>
+                    )
                   }
                 ]}
               />
@@ -537,6 +632,19 @@ export const SyndicProfilesIncidents: React.FC = () => {
           </>
         )}
       </Space>
+
+      <Modal
+        title={t('Inviter au portail copropriétaire')}
+        open={invitation !== null}
+        onCancel={() => setInvitation(null)}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setInvitation(null)}>
+            {t('Fermer')}
+          </Button>
+        ]}
+      >
+        {invitation ? <CoOwnerInvitationResult invitation={invitation} /> : null}
+      </Modal>
 
       <Modal
         title={t('Nouveau profil propriétaire')}

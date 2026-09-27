@@ -64,7 +64,8 @@ vi.mock('antd', async () => {
     InputNumber: passthrough('input'),
     Modal: passthrough(),
     Select: passthrough('select'),
-    Space: passthrough(),
+    // `Space.Compact` : le résultat d'invitation au portail y pose le lien et « Copier ».
+    Space: Object.assign(passthrough(), { Compact: passthrough() }),
     Spin: passthrough(),
     Table,
     Tag: passthrough('span'),
@@ -80,7 +81,15 @@ vi.mock('antd', async () => {
   };
   const appApi = {
     message: antdMock.message ?? { success() {}, error() {}, warning() {}, info() {}, loading() {} },
-    modal: { confirm() {}, info() {}, warning() {}, error() {}, success() {} },
+    // La confirmation de révocation est acceptée d'office : le test porte sur
+    // l'appel qui suit, pas sur la boîte de dialogue d'AntD.
+    modal: {
+      confirm: (options: any) => options?.onOk?.(),
+      info() {},
+      warning() {},
+      error() {},
+      success() {}
+    },
     notification: { open() {}, success() {}, error() {}, warning() {}, info() {} }
   };
   return {
@@ -224,6 +233,79 @@ describe('Syndics profiles/incidents page', () => {
     // The description shows both in the incidents table and in the imputation
     // modal's incident selector, so match all occurrences.
     expect((await screen.findAllByText('Fuite')).length).toBeGreaterThan(0);
+  });
+
+  it('« Inviter au portail » affiche le lien d’invitation et le bouton « Copier », e-mail envoyé ou non', async () => {
+    mockApiClient.post.mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          email: 'awa@example.com',
+          contactName: 'Awa Konan',
+          accountStatus: 'NEW_ACCOUNT',
+          invitationUrl: 'http://localhost:3000/reset-password?token=abc',
+          expiresAt: '2026-10-04T00:00:00.000Z',
+          emailSent: false,
+          openedLots: 2
+        }
+      }
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    renderWithRoute();
+    fireEvent.click(await screen.findByText('Inviter au portail'));
+
+    await waitFor(() =>
+      expect(mockApiClient.post).toHaveBeenCalledWith(
+        '/tenants/tenant-1/syndics/syndic-1/profils/proprietaires/op-1/invitation-portail'
+      )
+    );
+    const link = (await screen.findByDisplayValue('http://localhost:3000/reset-password?token=abc')) as HTMLInputElement;
+    expect(link.readOnly).toBe(true);
+    // E-mail non parti : l'avertissement remplace la confirmation d'envoi (le
+    // mock d'AntD ne rend pas la prop `message` d'<Alert>, d'où ce contrôle).
+    expect(screen.queryByText("E-mail d'invitation envoyé.")).toBeNull();
+
+    fireEvent.click(screen.getByText('Copier'));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('http://localhost:3000/reset-password?token=abc'));
+  });
+
+  it('un compte existant reçoit un lien de connexion, présenté comme tel', async () => {
+    mockApiClient.post.mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          email: 'awa@example.com',
+          contactName: 'Awa Konan',
+          accountStatus: 'EXISTING_ACCOUNT',
+          invitationUrl: 'http://localhost:3000/login?redirect=%2Fcopropriete',
+          expiresAt: null,
+          emailSent: true,
+          openedLots: 1
+        }
+      }
+    });
+
+    renderWithRoute();
+    fireEvent.click(await screen.findByText('Inviter au portail'));
+
+    expect(await screen.findByText('Lien de connexion')).toBeTruthy();
+    expect(screen.getByText('Compte existant')).toBeTruthy();
+    expect(screen.getByText("E-mail d'invitation envoyé.")).toBeTruthy();
+  });
+
+  it('« Révoquer l’accès » appelle la révocation après confirmation', async () => {
+    mockApiClient.delete.mockResolvedValue({ data: { success: true, data: { closedLots: 1, unlinkedAccounts: 1 } } });
+
+    renderWithRoute();
+    fireEvent.click(await screen.findByText("Révoquer l'accès"));
+
+    await waitFor(() =>
+      expect(mockApiClient.delete).toHaveBeenCalledWith(
+        '/tenants/tenant-1/syndics/syndic-1/profils/proprietaires/op-1/invitation-portail'
+      )
+    );
   });
 
   it('shows imputation action for incidents', async () => {

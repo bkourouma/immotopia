@@ -84,6 +84,7 @@ export function resolvePersona(input: {
   if (input.hasTenantMembership) return 'collaborateur';
   if (input.clientType === 'OWNER') return 'proprietaire';
   if (input.clientType === 'RENTER') return 'locataire';
+  if (input.clientType === 'CO_OWNER') return 'coproprietaire';
   // Tant que l'appartenance charge, on ne tranche pas : afficher un menu faux,
   // meme une seconde, est pire que de n'afficher aucun menu.
   if (input.isLoadingMembership) return null;
@@ -129,6 +130,11 @@ export function isOwnerPortalPath(pathname: string): boolean {
   return pathname === '/owner' || pathname.startsWith('/owner/');
 }
 
+/** Le chemin appartient-il au portail COPROPRIETAIRE ? */
+export function isCoOwnerPortalPath(pathname: string): boolean {
+  return pathname === '/copropriete' || pathname.startsWith('/copropriete/');
+}
+
 /**
  * Ou rediriger un client qui atteint le mauvais portail, ou `null` s'il est
  * au bon endroit.
@@ -140,8 +146,13 @@ export function isOwnerPortalPath(pathname: string): boolean {
 export function portalRedirect(pathname: string, clientType?: string | null): string | null {
   const inTenantPortal = isTenantPortalPath(pathname);
   const inOwnerPortal = isOwnerPortalPath(pathname);
-  if (!inTenantPortal && !inOwnerPortal) return null;
+  const inCoOwnerPortal = isCoOwnerPortalPath(pathname);
+  if (!inTenantPortal && !inOwnerPortal && !inCoOwnerPortal) return null;
 
+  // Le portail copropriétaire est ouvert à tout client de l'agence : un
+  // bailleur ou un locataire peut AUSSI être copropriétaire d'un lot. C'est
+  // l'API qui tranche (invitation), l'écran affiche son refus le cas échéant.
+  if (clientType === 'CO_OWNER') return inCoOwnerPortal ? null : '/copropriete';
   if (clientType === 'OWNER') return inTenantPortal ? '/owner' : null;
   if (clientType === 'RENTER') return inOwnerPortal ? '/tenant' : null;
 

@@ -1,5 +1,14 @@
 import type { AvailableTenant, TenantClient, TenantMembership } from '../types/auth-types';
 
+/**
+ * Types de client qui ont un portail : propriétaire, locataire, et
+ * copropriétaire (rattachement créé par l'invitation au portail
+ * copropriétaire, `CO_OWNER`). `BUYER` n'en a pas.
+ */
+export function isPortalClientType(clientType: unknown): boolean {
+  return clientType === 'OWNER' || clientType === 'RENTER' || clientType === 'CO_OWNER';
+}
+
 /** Dédoublonne par agence, en gardant l'ordre d'apparition (le plus récent d'abord, `my-memberships` trie déjà ainsi). */
 function dedupeTenants(tenants: Array<{ id: string; name: string; slug: string } | undefined>): AvailableTenant[] {
   const seen = new Set<string>();
@@ -58,10 +67,8 @@ export function buildTenantClient(client: any): TenantClient {
  * par construction, à ce point de son exécution.
  */
 export function selectTenants(asMember: any[], asClient: any[], storedTenantId: string | null): TenantSelection {
-  // Tenant clients: prioritize OWNER/RENTER profiles for portal routing.
-  const portalCandidates = asClient.filter(
-    (client: any) => client?.clientType === 'OWNER' || client?.clientType === 'RENTER'
-  );
+  // Tenant clients: prioritize portal profiles (OWNER/RENTER/CO_OWNER) for portal routing.
+  const portalCandidates = asClient.filter((client: any) => isPortalClientType(client?.clientType));
   const prioritizedClient =
     (storedTenantId && portalCandidates.find((client: any) => client?.tenant?.id === storedTenantId)) ||
     portalCandidates[0] ||

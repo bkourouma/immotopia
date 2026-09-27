@@ -112,7 +112,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const client = asClient.find(
       (c: any) =>
-        c?.tenant?.id === tenantId && (c?.clientType === 'OWNER' || c?.clientType === 'RENTER')
+        c?.tenant?.id === tenantId &&
+        (c?.clientType === 'OWNER' || c?.clientType === 'RENTER' || c?.clientType === 'CO_OWNER')
     );
     if (client) {
       setStoredActiveTenantId(tenantId);

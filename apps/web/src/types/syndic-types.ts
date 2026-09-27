@@ -876,6 +876,29 @@ export type IncidentUrgency = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 export type IncidentStatus = 'REPORTED' | 'ASSIGNED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
 export type ImputationType = 'SYNDICATE_BUDGET' | 'INSURANCE' | 'LOT_OWNER' | 'THIRD_PARTY';
 
+/**
+ * Résultat de « Inviter au portail » (portail copropriétaire). Ce que rend
+ * `POST .../profils/proprietaires/:id/invitation-portail`.
+ *   - NEW_ACCOUNT : compte créé, `invitationUrl` est un lien d'activation ;
+ *   - ACTIVATION_RENEWED : compte jamais utilisé, nouveau lien d'activation ;
+ *   - EXISTING_ACCOUNT : compte déjà utilisé, `invitationUrl` mène à la
+ *     connexion (jamais de lien qui changerait son mot de passe).
+ */
+export interface CoOwnerPortalInvitation {
+  email: string;
+  contactName: string;
+  accountStatus: 'NEW_ACCOUNT' | 'ACTIVATION_RENEWED' | 'EXISTING_ACCOUNT';
+  invitationUrl: string;
+  expiresAt: string | null;
+  emailSent: boolean;
+  openedLots: number;
+}
+
+export interface CoOwnerPortalRevocation {
+  closedLots: number;
+  unlinkedAccounts: number;
+}
+
 export interface LotOwnerProfile {
   id: string;
   lotId: string;
