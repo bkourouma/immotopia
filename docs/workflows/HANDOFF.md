@@ -40,7 +40,7 @@ Pièges et décisions :
 
 ## Branche `chore/agentic-architecture` — 2026-09-27
 
-**État :** prêt à relire (commité, non poussé)
+**État :** prêt à relire (poussé sur origin, PR non ouverte)
 **Dernier commit :** `docs(agents): architecture de consignes pour agents IA`, sur la base `43e5761` (fix/recette-syndic-modules)
 
 Fait :
