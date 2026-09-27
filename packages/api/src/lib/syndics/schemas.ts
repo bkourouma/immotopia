@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { httpUrl } from '../safe-url';
 
 const uuidSchema = z.string().uuid();
 
@@ -40,7 +41,7 @@ export const updateSyndicateSchema = z
     totalLots: z.number().int().nonnegative().optional(),
     totalBuildings: z.number().int().positive().optional(),
     status: z.enum(['ACTIVE', 'IN_LIQUIDATION', 'IN_DISPUTE']).optional(),
-    regulationDocUrl: z.string().url('Le lien du reglement doit etre une URL valide').nullable().optional()
+    regulationDocUrl: httpUrl('Le lien du reglement doit etre une URL valide').nullable().optional()
   })
   .refine(value => Object.keys(value).length > 0, {
     message: 'Au moins un champ doit etre fourni pour la mise a jour'
@@ -216,7 +217,7 @@ export const createDocumentSchema = z.object({
   syndicateId: z.string().uuid(),
   title: z.string().min(1, 'Le titre du document est obligatoire'),
   type: z.enum(['REGULATION', 'GENERAL_MEETING_MINUTES', 'DIAGNOSTIC', 'INSURANCE', 'BUDGET', 'OTHER']),
-  fileUrl: z.string().url('Le lien du document doit etre une URL valide').optional(),
+  fileUrl: httpUrl('Le lien du document doit etre une URL valide').optional(),
   expiresAt: z.coerce.date().optional()
 });
 

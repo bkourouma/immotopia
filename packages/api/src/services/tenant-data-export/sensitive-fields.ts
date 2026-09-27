@@ -32,16 +32,18 @@ export const EXPLICIT_SENSITIVE_FIELDS: Readonly<Record<string, readonly string[
   PaymentGatewayConfig: ['apiKeyEncrypted', 'apiKeyLast4', 'merchantId']
 };
 
-/** Seuls champs exportes d'un compte utilisateur. */
+/**
+ * Seuls champs exportes d'un compte utilisateur. Ni `isActive` ni
+ * `lastLoginAt` : ils decrivent le compte sur TOUTE la plateforme, pas sa
+ * relation avec l'agence (voir Membership pour le statut dans l'agence).
+ */
 export const USER_EXPORT_FIELDS: readonly string[] = [
   'id',
   'email',
   'fullName',
   'avatarUrl',
   'emailVerified',
-  'isActive',
   'preferredLanguage',
-  'lastLoginAt',
   'createdAt',
   'updatedAt'
 ];

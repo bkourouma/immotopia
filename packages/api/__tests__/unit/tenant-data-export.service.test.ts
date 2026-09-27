@@ -28,10 +28,13 @@ const auditMock = jest.fn();
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: (...a: any[]) => auditMock(...a) }));
 
 const buildMock = jest.fn();
+class FakeDiskError extends Error {}
 jest.mock('../../src/services/tenant-data-export/archive-builder', () => ({
-  buildTenantArchive: (...a: any[]) => buildMock(...a)
+  buildTenantArchive: (...a: any[]) => buildMock(...a),
+  InsufficientDiskSpaceError: FakeDiskError
 }));
 
+import { Prisma } from '@prisma/client';
 import {
   deleteTenantDataExport,
   getTenantDataExport,
@@ -105,6 +108,15 @@ describe('Export agence — demande', () => {
     expect(db.tenantDataExport.create).not.toHaveBeenCalled();
   });
 
+  it('une course perdue sur l’index unique partiel (P2002) repond 409', async () => {
+    db.tenantDataExport.findFirst.mockResolvedValue(null);
+    db.tenantDataExport.create.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' })
+    );
+    await expect(requestTenantDataExport(TENANT, 'u-super')).rejects.toMatchObject({ statusCode: 409 });
+    expect(auditMock).not.toHaveBeenCalled();
+  });
+
   it('agence inconnue : 404', async () => {
     db.tenant.findUnique.mockResolvedValue(null);
     await expect(requestTenantDataExport('nope', 'u-super')).rejects.toMatchObject({ statusCode: 404 });
@@ -147,6 +159,16 @@ describe('Export agence — execution', () => {
     expect(data.expiresAt.getTime() - data.finishedAt.getTime()).toBe(7 * 24 * 3600 * 1000);
   });
 
+  it('un manque de place disque est dit tel quel', async () => {
+    db.tenantDataExport.updateMany.mockResolvedValue({ count: 1 });
+    db.tenantDataExport.findUnique.mockResolvedValue(row({ status: 'RUNNING' }));
+    buildMock.mockRejectedValue(new FakeDiskError('plein'));
+    await runTenantDataExport(EXPORT_ID);
+    const data = db.tenantDataExport.update.mock.calls[0][0].data;
+    expect(data.status).toBe('FAILED');
+    expect(data.error).toMatch(/Espace disque insuffisant/);
+  });
+
   it('un echec passe FAILED avec un message generique', async () => {
     db.tenantDataExport.updateMany.mockResolvedValue({ count: 1 });
     db.tenantDataExport.findUnique.mockResolvedValue(row({ status: 'RUNNING' }));
@@ -162,11 +184,16 @@ describe('Export agence — execution', () => {
     expect(buildMock).not.toHaveBeenCalled();
   });
 
-  it('au demarrage, les RUNNING orphelins passent FAILED', async () => {
+  it('au demarrage, seuls les RUNNING de plus de 30 minutes passent FAILED', async () => {
     db.tenantDataExport.findMany.mockImplementation(async ({ where }: any) =>
       where.status === 'RUNNING' ? [{ id: EXPORT_ID, tenantId: TENANT }] : []
     );
+    const before = Date.now();
     await recoverTenantDataExports();
+    const query = db.tenantDataExport.findMany.mock.calls.find(([args]: any) => args.where.status === 'RUNNING')[0];
+    const cutoff = query.where.OR[1].startedAt.lt.getTime();
+    expect(before - cutoff).toBeGreaterThanOrEqual(30 * 60 * 1000 - 1000);
+    expect(before - cutoff).toBeLessThanOrEqual(30 * 60 * 1000 + 1000);
     expect(db.tenantDataExport.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: { in: [EXPORT_ID] }, status: 'RUNNING' },

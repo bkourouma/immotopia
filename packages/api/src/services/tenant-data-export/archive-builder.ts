@@ -5,7 +5,14 @@ import * as path from 'path';
 import { buildTenantWhere, classifyModels, schemaModels, type DmmfModel, type ExportModelPlan } from './model-registry';
 import { exportableFields } from './sensitive-fields';
 import { CSV_BOM, csvLine } from './csv';
-import { FileReferenceCollector, type FileRoots } from './file-references';
+import {
+  FileReferenceCollector,
+  OWNER_MODELS,
+  parseFileReference,
+  portableReference,
+  type FileRoots,
+  type OwnedIds
+} from './file-references';
 import { buildSummaryWorkbook, type SummaryModelLine } from './summary-workbook';
 
 /**
@@ -34,7 +41,34 @@ export interface BuildArchiveInput {
   models?: DmmfModel[];
   batchSize?: number;
   now?: Date;
+  /** Espace libre (octets) du volume de l'archive ; `fs.statfs` par defaut. */
+  freeSpaceBytes?: (dir: string) => Promise<number>;
+  /** Plafonds du collecteur de fichiers (tests). */
+  fileLimits?: { maxFiles: number; maxTotalBytes: number };
 }
+
+/** L'archive ne tiendrait pas sur le disque : l'export echoue avant d'ecrire le ZIP. */
+export class InsufficientDiskSpaceError extends Error {
+  constructor(
+    readonly requiredBytes: number,
+    readonly availableBytes: number
+  ) {
+    super(`Espace disque insuffisant : ${requiredBytes} octets requis, ${availableBytes} disponibles.`);
+    this.name = 'InsufficientDiskSpaceError';
+  }
+}
+
+/**
+ * Champs qui stockent un chemin ABSOLU du serveur : le CSV n'en garde que la
+ * forme relative (ou rien), jamais le chemin disque.
+ */
+const SERVER_PATH_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  RentalDocument: ['file_path'],
+  DocumentTemplate: ['storage_path'],
+  LeaseInspectionPhoto: ['filePath']
+};
+
+const ABSOLUTE_PATH = /^([a-z]:[\\/]|[\\/])/i;
 
 export interface BuildArchiveResult {
   sizeBytes: number;
@@ -62,6 +96,58 @@ function describeAttachment(plan: ExportModelPlan): string {
   if (plan.kind === 'USER') return 'Comptes membres ou clients de l’agence';
   if (plan.kind === 'DIRECT') return `Direct (${plan.path[0]})`;
   return `Par relation : ${plan.path.join(' → ')}`;
+}
+
+/**
+ * Valeur ecrite dans le CSV. Un chemin absolu du serveur qui designe un
+ * fichier interne devient son nom dans l'archive (`fichiers/...`) ou sa forme
+ * relative (`uploads/...`) ; dans un champ de chemin serveur connu, un chemin
+ * absolu non reconnu est vide plutot qu'expose.
+ */
+function cellValue(model: string, field: string, value: unknown, collector: FileReferenceCollector): unknown {
+  if (typeof value !== 'string' || !ABSOLUTE_PATH.test(value.trim()) || value.trim().startsWith('/uploads/')) {
+    return value;
+  }
+  const reference = parseFileReference(value);
+  if (reference?.absolute) return collector.archiveNameOf(value) ?? portableReference(reference);
+  return SERVER_PATH_FIELDS[model]?.includes(field) ? '' : value;
+}
+
+/** Identifiants des biens, coproprietes et penalites de l'agence (dossiers de depot). */
+async function loadOwnedIds(input: BuildArchiveInput, plans: ExportModelPlan[]): Promise<OwnedIds> {
+  const owned: OwnedIds = { Property: new Set(), Syndicate: new Set(), RentalPenalty: new Set() };
+  for (const model of OWNER_MODELS) {
+    const plan = plans.find(p => p.model === model);
+    const delegate = plan && input.db[plan.delegate];
+    if (!plan || !delegate) continue;
+    const where = buildTenantWhere(plan, input.tenant.id);
+    let cursor: unknown;
+    for (;;) {
+      const page = await delegate.findMany({
+        where: cursor === undefined ? where : { AND: [where, { [plan.idField]: { gt: cursor } }] },
+        select: { [plan.idField]: true },
+        orderBy: { [plan.idField]: 'asc' },
+        take: 5000
+      });
+      for (const row of page) owned[model].add(String(row[plan.idField]));
+      if (page.length < 5000) break;
+      cursor = page[page.length - 1][plan.idField];
+    }
+  }
+  return owned;
+}
+
+async function statfsFreeBytes(dir: string): Promise<number> {
+  const stats = await fs.statfs(dir);
+  return Number(stats.bavail) * Number(stats.bsize);
+}
+
+/** Echoue proprement s'il manque au moins deux fois la taille des fichiers a joindre. */
+async function assertDiskSpace(input: BuildArchiveInput, fileBytes: number): Promise<void> {
+  const dir = path.dirname(input.archivePath);
+  const available = await (input.freeSpaceBytes ?? statfsFreeBytes)(dir);
+  const required = 2 * fileBytes;
+  if (available < required) throw new InsufficientDiskSpaceError(required, available);
 }
 
 /** Ecrit `data/<Modele>.csv` et renvoie le nombre de lignes. */
@@ -94,8 +180,8 @@ async function exportModel(
       if (page.length === 0) break;
       let chunk = '';
       for (const row of page) {
-        chunk += csvLine(fields.map(name => row[name]));
         for (const name of fields) await collector.inspectField(name, row[name]);
+        chunk += csvLine(fields.map(name => cellValue(plan.model, name, row[name], collector)));
       }
       await write(stream, chunk);
       count += page.length;
@@ -132,12 +218,14 @@ export async function buildTenantArchive(input: BuildArchiveInput): Promise<Buil
   const models = input.models ?? schemaModels();
   const byName = new Map(models.map(m => [m.name, m]));
   const { plans, excluded, unclassified } = classifyModels(models);
-  const collector = new FileReferenceCollector(input.tenant.id, input.roots);
   const dataDir = path.join(input.stagingDir, 'data');
   const partial = `${input.archivePath}.part`;
 
   await fs.mkdir(dataDir, { recursive: true });
+  await fs.mkdir(path.dirname(input.archivePath), { recursive: true });
   try {
+    const owned = await loadOwnedIds(input, plans);
+    const collector = new FileReferenceCollector(input.tenant.id, input.roots, owned, input.fileLimits);
     const lines: SummaryModelLine[] = [];
     const data: Array<{ name: string; path: string }> = [];
     for (const plan of plans) {
@@ -160,6 +248,7 @@ export async function buildTenantArchive(input: BuildArchiveInput): Promise<Buil
         models: lines.length,
         rows: rowCount,
         files: collector.files.size,
+        fileBytes: collector.totalBytes,
         missingFiles: collector.missingCount,
         refusedFiles: collector.refusedCount
       },
@@ -178,7 +267,9 @@ export async function buildTenantArchive(input: BuildArchiveInput): Promise<Buil
       missingFileCount: collector.missingCount
     });
 
-    await fs.mkdir(path.dirname(input.archivePath), { recursive: true });
+    // Taille des fichiers connue apres le passage sur les donnees, avant
+    // l'assemblage du ZIP (la phase lourde) : on echoue ici s'il ne tiendrait pas.
+    await assertDiskSpace(input, collector.totalBytes);
     await zipArchive(
       partial,
       {

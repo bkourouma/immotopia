@@ -22,6 +22,7 @@ import { getTenantModules, updateTenantModules } from '../services/module-servic
 import { provisionTenant } from '../services/tenant-provisioning-service';
 import { IDEMPOTENCY_KEY_MAX_LENGTH } from '../utils/idempotency';
 import { asyncHandler, BadRequestError } from '../middleware/error-middleware';
+import { httpUrl } from '../lib/safe-url';
 
 /**
  * Register as a client of a tenant
@@ -125,7 +126,7 @@ export async function listTenants(_req: Request, res: Response): Promise<void> {
 const hexColor = z.string().trim().regex(/^#[0-9A-Fa-f]{6}$/, 'Couleur au format #RRGGBB');
 // logoUrl/brandingPrimaryColor acceptent explicitement `null` (lot G) pour
 // effacer une valeur — un simple `.optional()` ne peut que les omettre.
-const nullableLogoUrl = z.union([z.string().url(), z.null()]).optional();
+const nullableLogoUrl = z.union([httpUrl(), z.null()]).optional();
 const nullableBrandingColor = z.union([hexColor, z.null()]).optional();
 
 const updateTenantSchema = z.object({

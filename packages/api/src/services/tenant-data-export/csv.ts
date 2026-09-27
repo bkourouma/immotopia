@@ -28,14 +28,17 @@ export function formatValue(value: unknown): string {
 }
 
 /**
- * Neutralise une formule qu'un tableur executerait a l'ouverture (`=`, `+`,
- * `@`, tabulation, ou `-` suivi d'autre chose qu'un chiffre) en la prefixant
- * d'une apostrophe. Ne touche que les textes : un montant negatif reste un
- * nombre.
+ * Neutralise une formule qu'un tableur executerait a l'ouverture : tout texte
+ * qui commence — y compris apres des espaces — par `=`, `+`, `-`, `@`, une
+ * tabulation, un retour chariot, ou leurs equivalents pleine chasse (`＝`,
+ * `＋`, `－`, `＠`), est prefixe d'une apostrophe. Ne touche que les textes :
+ * un montant (Decimal, nombre) reste un nombre.
  */
+const FORMULA_START = /^[\t\r]|^\s*[=+\-@＝＋－＠]/;
+
 function neutralizeFormula(text: string, original: unknown): string {
   if (typeof original !== 'string') return text;
-  return /^[=+@\t\r]/.test(text) || /^-[^\d.]/.test(text) ? `'${text}` : text;
+  return FORMULA_START.test(text) ? `'${text}` : text;
 }
 
 export function csvCell(value: unknown): string {

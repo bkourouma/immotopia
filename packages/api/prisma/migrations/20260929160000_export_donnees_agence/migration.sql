@@ -28,3 +28,11 @@ CREATE INDEX "tenant_data_exports_tenant_id_created_at_idx" ON "tenant_data_expo
 -- CreateIndex
 CREATE INDEX "tenant_data_exports_status_idx" ON "tenant_data_exports"("status");
 
+
+-- Une seule demande en cours (QUEUED ou RUNNING) par agence, garantie par la
+-- base meme avec plusieurs instances de l'API. Index partiel : Prisma ne sait
+-- pas le declarer dans le schema, il vit seulement ici. Une violation (P2002)
+-- est traduite en 409 par le service.
+CREATE UNIQUE INDEX "tenant_data_exports_one_active_per_tenant"
+    ON "tenant_data_exports"("tenant_id")
+    WHERE "status" IN ('QUEUED', 'RUNNING');

@@ -1,11 +1,11 @@
 import { promises as fs } from 'fs';
-import { TenantDataExportStatus, type TenantDataExport } from '@prisma/client';
+import { Prisma, TenantDataExportStatus, type TenantDataExport } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
 import { logAuditEvent } from '../audit-service';
 import { AuditActionKey } from '../../types/audit-types';
 import { AppError, ConflictError, NotFoundError } from '../../middleware/error-middleware';
-import { buildTenantArchive, type ExportDataSource } from './archive-builder';
+import { InsufficientDiskSpaceError, buildTenantArchive, type ExportDataSource } from './archive-builder';
 import { EXPORT_TTL_DAYS, defaultFileRoots, exportArchivePath, exportStagingDir, isInsideExportsRoot } from './storage';
 
 /**
@@ -131,6 +131,9 @@ export async function expireOldExports(tenantId?: string, now: Date = new Date()
 
 let queue: Promise<void> = Promise.resolve();
 
+/** Exports en cours de preparation DANS CE processus (jamais declares orphelins). */
+const runningHere = new Set<string>();
+
 async function latestMigration(): Promise<string | null> {
   try {
     const rows = await prisma.$queryRaw<Array<{ migration_name: string }>>`
@@ -154,6 +157,7 @@ export async function runTenantDataExport(exportId: string): Promise<void> {
   const row = await prisma.tenantDataExport.findUnique({ where: { id: exportId } });
   if (!row) return;
   const archivePath = exportArchivePath(row.tenantId, row.id);
+  runningHere.add(row.id);
   try {
     const tenant = await requireTenant(row.tenantId);
     const result = await buildTenantArchive({
@@ -195,9 +199,14 @@ export async function runTenantDataExport(exportId: string): Promise<void> {
       data: {
         status: TenantDataExportStatus.FAILED,
         finishedAt: new Date(),
-        error: "La préparation de l'archive a échoué. Consultez les journaux du serveur, puis relancez l'export."
+        error:
+          error instanceof InsufficientDiskSpaceError
+            ? "Espace disque insuffisant sur le serveur pour préparer l'archive. Libérez de l'espace, puis relancez l'export."
+            : "La préparation de l'archive a échoué. Consultez les journaux du serveur, puis relancez l'export."
       }
     });
+  } finally {
+    runningHere.delete(row.id);
   }
 }
 
@@ -210,12 +219,26 @@ export function scheduleTenantDataExport(exportId: string): void {
     });
 }
 
-/** Au demarrage : RUNNING orphelins → FAILED, QUEUED relances. */
-export async function recoverTenantDataExports(): Promise<void> {
-  const orphans = await prisma.tenantDataExport.findMany({
-    where: { status: TenantDataExportStatus.RUNNING },
+/** Au demarrage : RUNNING de plus de 30 minutes → FAILED. */
+export const STARTUP_ORPHAN_AGE_MS = 30 * 60 * 1000;
+/** Tache horaire : RUNNING de plus de 6 heures, hors de ce processus → FAILED. */
+export const STALE_RUNNING_AGE_MS = 6 * 3600 * 1000;
+
+/**
+ * Exports RUNNING demarres avant `maxAgeMs` et qui ne tournent pas dans ce
+ * processus : un redemarrage les a interrompus. Un export plus recent peut
+ * tourner sur une autre instance : on n'y touche pas.
+ */
+export async function failStaleRunningExports(maxAgeMs: number, now: Date = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - maxAgeMs);
+  const candidates = await prisma.tenantDataExport.findMany({
+    where: {
+      status: TenantDataExportStatus.RUNNING,
+      OR: [{ startedAt: null }, { startedAt: { lt: cutoff } }]
+    },
     select: { id: true, tenantId: true }
   });
+  const orphans = candidates.filter(orphan => !runningHere.has(orphan.id));
   for (const orphan of orphans) {
     await fs.rm(exportStagingDir(orphan.tenantId, orphan.id), { recursive: true, force: true });
     await fs.rm(`${exportArchivePath(orphan.tenantId, orphan.id)}.part`, { force: true });
@@ -230,6 +253,12 @@ export async function recoverTenantDataExports(): Promise<void> {
       }
     });
   }
+  return orphans.length;
+}
+
+/** Au demarrage : RUNNING orphelins → FAILED, QUEUED relances, archives echues supprimees. */
+export async function recoverTenantDataExports(): Promise<void> {
+  await failStaleRunningExports(STARTUP_ORPHAN_AGE_MS);
   const queued = await prisma.tenantDataExport.findMany({
     where: { status: TenantDataExportStatus.QUEUED },
     orderBy: { createdAt: 'asc' },
@@ -257,9 +286,16 @@ export async function requestTenantDataExport(tenantId: string, actorUserId: str
       select: { id: true }
     });
     if (active) throw new ConflictError('Un export de cette agence est déjà en préparation.');
-    const created = await prisma.tenantDataExport.create({
-      data: { tenantId: tenant.id, requestedById: actorUserId, status: TenantDataExportStatus.QUEUED }
-    });
+    const created = await prisma.tenantDataExport
+      .create({ data: { tenantId: tenant.id, requestedById: actorUserId, status: TenantDataExportStatus.QUEUED } })
+      .catch(error => {
+        // Index unique partiel (tenant_id) WHERE status IN (QUEUED, RUNNING) :
+        // une demande concurrente, sur une autre instance, a gagne la course.
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          throw new ConflictError('Un export de cette agence est déjà en préparation.');
+        }
+        throw error;
+      });
     logAuditEvent({
       actorUserId,
       tenantId: tenant.id,

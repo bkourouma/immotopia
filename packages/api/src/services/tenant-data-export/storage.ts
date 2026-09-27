@@ -41,6 +41,8 @@ export function isInsideExportsRoot(filePath: string): boolean {
 export function defaultFileRoots(): FileRoots {
   return {
     uploads: privateUploadReadRoots(),
-    generated: path.join(getProjectRoot(), 'assets', 'generated_documents')
+    generated: path.join(getProjectRoot(), 'assets', 'generated_documents'),
+    templates: path.join(getProjectRoot(), 'assets', 'modeles_documents'),
+    exports: exportsRoot()
   };
 }
