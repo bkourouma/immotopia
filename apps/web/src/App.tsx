@@ -335,6 +335,11 @@ const SyndicAccounting = lazy(() =>
 const SyndicBudgets = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicBudgets').then(m => ({ default: m.SyndicBudgets }))
 );
+const SyndicChargeSchedules = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicChargeSchedules').then(m => ({
+    default: m.SyndicChargeSchedules
+  }))
+);
 const SyndicProfilesIncidents = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicProfilesIncidents').then(m => ({
     default: m.SyndicProfilesIncidents
@@ -878,6 +883,10 @@ function App() {
                           <Route element={<SyndicWorkspaceLayout family="finances" />}>
                             <Route path="/tenant/:tenantId/syndics/:syndicId/budgets" element={<SyndicBudgets />} />
                             <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/programmation"
+                              element={<SyndicChargeSchedules />}
+                            />
                             <Route
                               path="/tenant/:tenantId/syndics/:syndicId/suivi-mensuel"
                               element={<SyndicMonthlyTracking />}

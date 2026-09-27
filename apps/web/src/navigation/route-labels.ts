@@ -66,6 +66,8 @@ function buildRouteLabels(): Record<string, string> {
     mandants: t('Agences mandantes'),
     'suivi-mensuel': t('Suivi mensuel'),
     quittances: t('Quittances'),
+    // Lot S4 : onglet des appels automatiques.
+    programmation: t('Programmation'),
 
     // Gestion locative, lots 2 et 3 : sans ces entrées, le fil d'Ariane
     // affichait « Owner accounts » et « Account », tels que dans l'adresse.

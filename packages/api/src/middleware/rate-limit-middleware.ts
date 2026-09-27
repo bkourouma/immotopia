@@ -155,6 +155,23 @@ export const globalApiRateLimiter = rateLimit({
 });
 
 /**
+ * Lot S4 : avis d'appel de charges PDF du portail copropriétaire. Chaque
+ * demande rend un PDF (identité, images) : 20 par minute et par compte
+ * (repli sur l'adresse IP sans session), bien au-dessus d'un usage normal.
+ */
+export const coOwnerChargeNoticeRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: req => (req.user?.userId ? `user:${req.user.userId}` : `ip:${req.ip}`),
+  message: {
+    success: false,
+    message: 'Trop de téléchargements. Veuillez réessayer dans une minute.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
  * Clé d'un limiteur « par utilisateur et par agence » (routes authentifiées,
  * après `authenticate` et `requireTenantAccess`) : un collaborateur de deux
  * agences a un budget dans chacune, et deux collaborateurs derrière la même
@@ -188,6 +205,34 @@ export const receiptResendRateLimiter = rateLimit({
     success: false,
     code: 'RATE_LIMITED',
     message: "Trop de renvois d'e-mails en peu de temps. Réessayez plus tard."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Lot S4 : exécution manuelle d'une programmation d'appels de charges (relit et réécrit les répartitions budgétaires). 10 par minute. */
+export const chargeScheduleExecuteRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: userTenantKey,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: "Trop d'exécutions de programmations en peu de temps. Réessayez dans une minute."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Lot S4 : avis d'appel de charges PDF côté gestion (génère un PDF à chaque appel). 30 par minute. */
+export const chargeCallNoticeRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: userTenantKey,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: "Trop de téléchargements d'avis d'appel en peu de temps. Réessayez dans une minute."
   },
   standardHeaders: true,
   legacyHeaders: false
