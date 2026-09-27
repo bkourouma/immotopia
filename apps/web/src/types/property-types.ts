@@ -303,8 +303,9 @@ export interface CreatePropertyRequest {
   ownerUserId?: string;
   ownerEmail?: string;
   title: string;
-  description: string;
-  address: string;
+  // Facultatives : « Terminer » omet l'adresse laissée vide, l'API l'enregistre vide.
+  description?: string;
+  address?: string;
   locationZone?: string;
   latitude?: number;
   longitude?: number;

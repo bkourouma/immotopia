@@ -25,7 +25,17 @@ export function corsMiddleware(req: Request, res: Response, next: NextFunction):
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
 
   // Allowed headers
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  //
+  // Idempotency-Key : posé par `apps/web/src/services/tenant-service.ts` sur
+  // la création d'agence, pour qu'un double clic pendant la requête en vol ne
+  // crée pas une seconde agence.
+  // X-Portal-Tenant-Id : posé par `apps/web/src/utils/api-client.ts` sur les
+  // routes `/portal/*`, pour qu'un client rattaché à plusieurs agences dise
+  // laquelle.
+  res.setHeader(
+    'Access-Control-Allow-Headers',
+    'Content-Type, Authorization, X-Requested-With, Idempotency-Key, X-Portal-Tenant-Id'
+  );
 
   // Exposed headers
   // Content-Disposition : sans lui, le front d'une autre origine ne lit pas

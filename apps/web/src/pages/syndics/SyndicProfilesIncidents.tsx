@@ -25,15 +25,28 @@ import {
   createLotOwnerProfile,
   createLotTenantProfile,
   createSyndicIncident,
+  inviteCoOwnerToPortal,
   listLotOwnerProfiles,
   listLotTenantProfiles,
+  listProvidersContracts,
   listSyndicateLots,
-  listSyndicIncidents
+  listSyndicIncidents,
+  revokeCoOwnerPortalAccess,
+  updateSyndicIncident
 } from '../../services/syndic-service';
-import { LotOwnerProfile, LotTenantProfile, SyndicateIncident, SyndicateLot } from '../../types/syndic-types';
+import { CoOwnerInvitationResult } from '../../components/syndics/CoOwnerInvitationResult';
+import {
+  CoOwnerPortalInvitation,
+  LotOwnerProfile,
+  LotTenantProfile,
+  ServiceProvider,
+  SyndicateIncident,
+  SyndicateLot
+} from '../../types/syndic-types';
 import type { Property } from '../../types/property-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
 import { CrmContact } from '../../types/crm-types';
+import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
@@ -67,28 +80,18 @@ const incidentImputationTypeLabels: Record<string, string> = {
   THIRD_PARTY: 'Tiers'
 };
 
-function isTechnicalLotLabel(value?: string | null): boolean {
-  if (!value) return false;
-  const normalized = value.trim().toUpperCase();
-  return normalized.startsWith('PROP-');
-}
-
-function getContactDisplayName(
-  contact?: {
-    firstName?: string | null;
-    lastName?: string | null;
-    legalName?: string | null;
-    email?: string | null;
-  } | null
-): string {
-  if (!contact) return '';
-  const fullName = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
-  return fullName || contact.legalName || contact.email || '';
-}
-
+/**
+ * Libellé d'un lot pour les tableaux de profils/incidents.
+ *
+ * `fallbackProperty` couvre les lots importés dont la relation `property`
+ * n'est pas chargée directement : `getLotOptionLabel` la retrouve par
+ * référence interne et la transmet ici. Toujours construit par
+ * `formatLotLabel` (numéro de lot en tête) — voir ce module pour le pourquoi
+ * (constat de recette, module 5.1).
+ */
 function getLotDisplayName(
   lot?: SyndicateLot | null,
-  profileContact?: {
+  _profileContact?: {
     firstName?: string | null;
     lastName?: string | null;
     legalName?: string | null;
@@ -96,23 +99,10 @@ function getLotDisplayName(
   } | null,
   fallbackProperty?: {
     title?: string | null;
-    address?: string | null;
-    internalReference?: string | null;
   } | null
 ): string {
   if (!lot) return '-';
-  const property = lot.property;
-  const contactName = getContactDisplayName(profileContact);
-  const titleLabel = property?.title?.trim() || fallbackProperty?.title?.trim() || '';
-  const addressLabel = property?.address?.trim() || fallbackProperty?.address?.trim() || '';
-  const referenceLabel =
-    property?.internalReference?.trim() || fallbackProperty?.internalReference?.trim() || lot.lotNumber || '';
-  const validReferenceLabel = isTechnicalLotLabel(referenceLabel) ? '' : referenceLabel;
-  const lotLabel = titleLabel || addressLabel || validReferenceLabel;
-
-  if (!lotLabel && contactName) return 'Lot';
-  if (!lotLabel) return t('Lot sans libellé');
-  return lotLabel || lot.lotNumber || '-';
+  return formatLotLabel({ ...lot, property: lot.property || fallbackProperty || null });
 }
 
 function getLotOptionLabel(lot: SyndicateLot, propertiesByInternalReference: Record<string, Property>): string {
@@ -120,12 +110,24 @@ function getLotOptionLabel(lot: SyndicateLot, propertiesByInternalReference: Rec
   const propertyByReference = lotReference
     ? propertiesByInternalReference[lotReference.trim().toUpperCase()]
     : undefined;
-  const displayName = getLotDisplayName(lot, null, propertyByReference);
-  return `${displayName} (${lot.lotType})`;
+  return getLotDisplayName(lot, null, propertyByReference);
+}
+
+/** Message d'erreur de l'API : `message` (erreurs typées), à défaut `error`, sinon le repli. */
+function apiErrorMessage(err: unknown, fallback: string): string {
+  const data = (err as { response?: { data?: { message?: string; error?: string } } } | null)?.response?.data;
+  return data?.message || data?.error || fallback;
+}
+
+function contactLabel(profile: LotOwnerProfile): string {
+  const contact = profile.contact;
+  if (!contact) return profile.contactId;
+  const name = `${contact.firstName || ''} ${contact.lastName || ''}`.trim();
+  return name || contact.legalName || contact.email || profile.contactId;
 }
 
 export const SyndicProfilesIncidents: React.FC = () => {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
 
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
 
@@ -135,8 +137,14 @@ export const SyndicProfilesIncidents: React.FC = () => {
   const [lots, setLots] = useState<SyndicateLot[]>([]);
   const [contacts, setContacts] = useState<CrmContact[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
+  const [providers, setProviders] = useState<ServiceProvider[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [assigningProviderIncidentId, setAssigningProviderIncidentId] = useState<string | null>(null);
+  // Portail copropriétaire : invitation en cours, résultat affiché, révocation.
+  const [invitingProfileId, setInvitingProfileId] = useState<string | null>(null);
+  const [revokingProfileId, setRevokingProfileId] = useState<string | null>(null);
+  const [invitation, setInvitation] = useState<CoOwnerPortalInvitation | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [openOwner, setOpenOwner] = useState(false);
@@ -188,10 +196,11 @@ export const SyndicProfilesIncidents: React.FC = () => {
         listLotTenantProfiles(effectiveTenantId, syndicId),
         listSyndicIncidents(effectiveTenantId, syndicId)
       ]);
-      const [lotsData, contactsData, propertiesData] = await Promise.all([
+      const [lotsData, contactsData, propertiesData, providersData] = await Promise.all([
         listSyndicateLots(effectiveTenantId, syndicId),
         listContacts(effectiveTenantId, { page: 1, limit: 200 }),
-        listProperties(effectiveTenantId, { page: 1, limit: 1000 })
+        listProperties(effectiveTenantId, { page: 1, limit: 1000 }),
+        listProvidersContracts(effectiveTenantId, syndicId)
       ]);
       setOwnerProfiles(owners);
       setTenantProfiles(tenants);
@@ -199,6 +208,7 @@ export const SyndicProfilesIncidents: React.FC = () => {
       setLots(lotsData);
       setContacts(contactsData.contacts || []);
       setProperties(propertiesData.properties || []);
+      setProviders(providersData.providers || []);
     } catch (err: any) {
       setError(err.response?.data?.error || t('Impossible de charger profils et incidents'));
     } finally {
@@ -299,6 +309,76 @@ export const SyndicProfilesIncidents: React.FC = () => {
     }
   };
 
+  /**
+   * Assignation d'un prestataire a un incident (ecart recette #2, FR-010) :
+   * `updateIncidentSchema` (packages/api/src/lib/syndics/schemas.ts) accepte
+   * deja `providerId`, et `updateSyndicIncident` existait deja cote web sans
+   * qu'aucun ecran ne l'appelle pour ce champ. La liste deroulante se nourrit
+   * des prestataires de `listProvidersContracts`, y compris ceux crees a la
+   * volee depuis `<SyndicProviders>`.
+   */
+  const handleAssignProvider = async (incidentId: string, providerId: string | undefined) => {
+    if (!effectiveTenantId || !syndicId) return;
+    setAssigningProviderIncidentId(incidentId);
+    try {
+      await updateSyndicIncident(effectiveTenantId, syndicId, incidentId, { providerId: providerId || null });
+      message.success(t('Prestataire assigné à l’incident'));
+      await loadData();
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Assignation du prestataire impossible'));
+    } finally {
+      setAssigningProviderIncidentId(null);
+    }
+  };
+
+  /**
+   * « Inviter au portail » : ouvre le portail copropriétaire au contact du
+   * profil (compte créé au besoin, lots ouverts) et affiche le lien à copier,
+   * que l'e-mail soit parti ou non. L'e-mail du contact est obligatoire : le
+   * serveur refuse sinon, avec un message qui dit quoi corriger.
+   */
+  const handleInvite = async (profile: LotOwnerProfile) => {
+    if (!effectiveTenantId || !syndicId) return;
+    setInvitingProfileId(profile.id);
+    try {
+      const result = await inviteCoOwnerToPortal(effectiveTenantId, syndicId, profile.id);
+      setInvitation(result);
+      await loadData();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t('Invitation au portail impossible')));
+    } finally {
+      setInvitingProfileId(null);
+    }
+  };
+
+  const handleRevoke = async (profile: LotOwnerProfile) => {
+    if (!effectiveTenantId || !syndicId) return;
+    setRevokingProfileId(profile.id);
+    try {
+      await revokeCoOwnerPortalAccess(effectiveTenantId, syndicId, profile.id);
+      message.success(t('Accès au portail révoqué'));
+      await loadData();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("Révocation de l'accès impossible")));
+    } finally {
+      setRevokingProfileId(null);
+    }
+  };
+
+  const confirmRevoke = (profile: LotOwnerProfile) => {
+    modal.confirm({
+      title: t("Révoquer l'accès au portail ?"),
+      content: t(
+        "{{name}} ne pourra plus consulter aucun de ses lots dans l'agence. Son compte utilisateur n'est pas supprimé.",
+        { name: contactLabel(profile) }
+      ),
+      okText: t('Révoquer'),
+      okButtonProps: { danger: true },
+      cancelText: t('Annuler'),
+      onOk: () => handleRevoke(profile)
+    });
+  };
+
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
@@ -368,6 +448,32 @@ export const SyndicProfilesIncidents: React.FC = () => {
                   {
                     title: 'Portail',
                     render: (_, row) => (row.portalAccessEnabled ? <Tag color="green">ACTIVE</Tag> : <Tag>INACTIF</Tag>)
+                  },
+                  {
+                    title: t('Accès portail'),
+                    key: 'portal-actions',
+                    render: (_, row) => (
+                      <Space wrap>
+                        <Button
+                          size="small"
+                          loading={invitingProfileId === row.id}
+                          disabled={row.isActive === false}
+                          onClick={() => void handleInvite(row)}
+                        >
+                          {t('Inviter au portail')}
+                        </Button>
+                        {row.portalAccessEnabled ? (
+                          <Button
+                            size="small"
+                            danger
+                            loading={revokingProfileId === row.id}
+                            onClick={() => confirmRevoke(row)}
+                          >
+                            {t("Révoquer l'accès")}
+                          </Button>
+                        ) : null}
+                      </Space>
+                    )
                   }
                 ]}
               />
@@ -489,6 +595,24 @@ export const SyndicProfilesIncidents: React.FC = () => {
                     )
                   },
                   {
+                    title: t('Prestataire'),
+                    key: 'providerId',
+                    render: (_, row) => (
+                      <Select
+                        allowClear
+                        showSearch
+                        style={{ minWidth: 200 }}
+                        placeholder={t('Aucun prestataire')}
+                        optionFilterProp="label"
+                        value={row.providerId || undefined}
+                        loading={assigningProviderIncidentId === row.id}
+                        disabled={assigningProviderIncidentId === row.id}
+                        options={providers.map(provider => ({ value: provider.id, label: provider.name }))}
+                        onChange={value => void handleAssignProvider(row.id, value)}
+                      />
+                    )
+                  },
+                  {
                     title: 'Action',
                     render: (_, row) => (
                       <Button
@@ -508,6 +632,19 @@ export const SyndicProfilesIncidents: React.FC = () => {
           </>
         )}
       </Space>
+
+      <Modal
+        title={t('Inviter au portail copropriétaire')}
+        open={invitation !== null}
+        onCancel={() => setInvitation(null)}
+        footer={[
+          <Button key="close" type="primary" onClick={() => setInvitation(null)}>
+            {t('Fermer')}
+          </Button>
+        ]}
+      >
+        {invitation ? <CoOwnerInvitationResult invitation={invitation} /> : null}
+      </Modal>
 
       <Modal
         title={t('Nouveau profil propriétaire')}

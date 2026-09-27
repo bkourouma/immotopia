@@ -17,11 +17,21 @@ export const registrationRateLimiter = rateLimit({
 
 /**
  * Rate limiter for login endpoint
- * 5 attempts per 15 minutes per IP
+ * 5 failed attempts per 15 minutes per IP.
+ *
+ * `skipSuccessfulRequests` : le contrôleur (`login` dans auth-controller.ts)
+ * répond 200 sur une connexion réussie et 400 sur un échec, donc seuls les
+ * échecs consomment le quota. Sans ça, une agence dont les collaborateurs
+ * sortent par la même IP (ou un super-admin qui bascule entre deux comptes)
+ * se fait bloquer après 5 connexions RÉUSSIES en 15 minutes — constaté en
+ * recette Syndic. La protection anti-force-brute reste intacte : un
+ * attaquant qui devine juste ne produit que des 400 et reste plafonné à 5
+ * essais par fenêtre.
  */
 export const loginRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 requests per window
+  max: 5, // 5 échecs par fenêtre
+  skipSuccessfulRequests: true,
   message: {
     success: false,
     message: 'Trop de tentatives de connexion. Veuillez réessayer dans 15 minutes.'
@@ -33,6 +43,11 @@ export const loginRateLimiter = rateLimit({
 /**
  * Rate limiter for forgot password endpoint
  * 3 attempts per hour per IP
+ *
+ * Pas de `skipSuccessfulRequests` ici : le contrôleur répond toujours 200,
+ * même en cas d'échec (email inconnu), pour ne pas révéler quels comptes
+ * existent. Ajouter `skipSuccessfulRequests` reviendrait à ne plus jamais
+ * compter aucune requête et désactiverait de fait ce limiteur.
  */
 export const forgotPasswordRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour

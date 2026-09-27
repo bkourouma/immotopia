@@ -116,7 +116,21 @@ const OVERVIEW = {
 };
 
 const CATALOG = [
-  { id: 'c-1', code: 'AGENCE', kind: 'PACK' as const, name: 'Agence', description: null, monthlyPrice: 29_900, setupPrice: 100_000, modules: ['MODULE_AGENCY'], exclusiveGroup: null, rules: null, isSellable: true, sortOrder: 10, capacities: { LOTS: 100 } }
+  {
+    id: 'c-1',
+    code: 'AGENCE',
+    kind: 'PACK' as const,
+    name: 'Agence',
+    description: null,
+    monthlyPrice: 29_900,
+    setupPrice: 100_000,
+    modules: ['MODULE_AGENCY'],
+    exclusiveGroup: null,
+    rules: null,
+    isSellable: true,
+    sortOrder: 10,
+    capacities: { LOTS: 100 }
+  }
 ];
 
 const INVOICE_PREVIEW = {
@@ -185,7 +199,12 @@ describe('SubscriptionTab — abonnement par packs', () => {
   });
 
   it('retire un élément à l’échéance après confirmation', async () => {
-    removeSubscriptionItem.mockResolvedValue({ item: OVERVIEW.items[0], remainder: null, immediate: false, modules: null });
+    removeSubscriptionItem.mockResolvedValue({
+      item: OVERVIEW.items[0],
+      remainder: null,
+      immediate: false,
+      modules: null
+    });
     mount();
 
     await screen.findByText('Abonnement');
@@ -222,7 +241,10 @@ describe('SubscriptionTab — abonnement par packs', () => {
     await user.clear(delta);
     await user.type(delta, '30');
 
-    await user.type(within(dialogue).getByPlaceholderText('Ex. : Reprise, geste commercial…'), 'Reprise après dépassement');
+    await user.type(
+      within(dialogue).getByPlaceholderText('Ex. : Reprise, geste commercial…'),
+      'Reprise après dépassement'
+    );
     await user.click(within(dialogue).getByRole('button', { name: 'Accorder' }));
 
     await waitFor(() => expect(grantCapacityOverride).toHaveBeenCalled());
@@ -248,7 +270,9 @@ describe('SubscriptionTab — vague 3 : modification d’un élément et demande
     await user.type(remise, '15');
     await user.click(within(dialogue).getByRole('button', { name: 'Enregistrer' }));
 
-    await waitFor(() => expect(updateSubscriptionItem).toHaveBeenCalledWith('tenant-1', 'item-1', { discountPercent: 15 }));
+    await waitFor(() =>
+      expect(updateSubscriptionItem).toHaveBeenCalledWith('tenant-1', 'item-1', { discountPercent: 15 })
+    );
     expect(removeSubscriptionItem).not.toHaveBeenCalled();
     expect(addSubscriptionItem).not.toHaveBeenCalled();
   });
@@ -259,7 +283,9 @@ describe('SubscriptionTab — vague 3 : modification d’un élément et demande
 
     expect(await screen.findByText('Il nous faut 50 lots de plus')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Marquer traitée' }));
-    await waitFor(() => expect(handleExtensionRequest).toHaveBeenCalledWith('tenant-1', 'req-1', { status: 'HANDLED' }));
+    await waitFor(() =>
+      expect(handleExtensionRequest).toHaveBeenCalledWith('tenant-1', 'req-1', { status: 'HANDLED' })
+    );
   });
 });
 
@@ -315,6 +341,31 @@ describe('SubscriptionTab — lecture seule manuelle (Baba, 25/09)', () => {
     fireEvent.click(within(dialogue).getByRole('button', { name: 'Lever la lecture seule' }));
 
     await waitFor(() => expect(clearSubscriptionManualReadOnly).toHaveBeenCalledWith('tenant-1'));
+  });
+});
+
+describe('SubscriptionTab — écart de recette D.4 : mode d’application des abonnements', () => {
+  it('affiche l’alerte quand SUBSCRIPTION_ENFORCEMENT vaut « warn »', async () => {
+    getSubscriptionOverview.mockResolvedValue({
+      ...OVERVIEW,
+      entitlements: { ...OVERVIEW.entitlements, enforcement: 'warn' as const }
+    });
+    mount();
+
+    await screen.findByText('Abonnement');
+    expect(screen.getByText('Vérifications d’abonnement inactives')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Mode « avertir » : les modules non souscrits restent accessibles et aucun dépassement n’est bloqué, quelle que soit la politique choisie. La politique ne s’applique qu’en mode « appliquer » (SUBSCRIPTION_ENFORCEMENT=enforce).'
+      )
+    ).toBeInTheDocument();
+  });
+
+  it('n’affiche pas l’alerte quand SUBSCRIPTION_ENFORCEMENT vaut « enforce »', async () => {
+    mount();
+
+    await screen.findByText('Abonnement');
+    expect(screen.queryByText('Vérifications d’abonnement inactives')).not.toBeInTheDocument();
   });
 });
 

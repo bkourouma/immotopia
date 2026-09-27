@@ -74,6 +74,10 @@ import {
   updateDocumentStatusHandler
 } from '../controllers/rental-document-controller';
 import { uploadDocument } from '../middleware/upload-middleware';
+import {
+  downloadPaymentDeclarationProofHandler,
+  downloadPenaltyJustificationHandler
+} from '../controllers/private-file-controller';
 
 const router = Router({ mergeParams: true });
 
@@ -121,6 +125,12 @@ router.post('/:tenantId/rental/payments/:paymentId/online-check', requirePayment
 // Payment Declaration routes
 router.get('/:tenantId/rental/payment-declarations', requirePaymentsView, listPaymentDeclarationsHandler);
 router.get('/:tenantId/rental/payment-declarations/:declarationId', requirePaymentsView, getPaymentDeclarationHandler);
+// Preuve jointe par le locataire : jamais servie en statique (lib/rental/proof-files.ts).
+router.get(
+  '/:tenantId/rental/payment-declarations/:declarationId/proof',
+  requirePaymentsView,
+  downloadPaymentDeclarationProofHandler
+);
 router.post(
   '/:tenantId/rental/payment-declarations/:declarationId/approve',
   requirePaymentsAllocate,
@@ -138,6 +148,12 @@ router.get('/:tenantId/rental/penalties/:penaltyId', requirePenaltiesView, getPe
 router.post('/:tenantId/rental/penalties/calculate', requirePenaltiesCalculate, calculatePenaltiesHandler);
 router.patch('/:tenantId/rental/penalties/:penaltyId', requirePenaltiesEdit, updatePenaltyHandler);
 router.delete('/:tenantId/rental/penalties/:penaltyId', requirePenaltiesEdit, deletePenaltyHandler);
+// Justificatif d'une pénalité : jamais servi en statique (lib/rental/proof-files.ts).
+router.get(
+  '/:tenantId/rental/penalties/:penaltyId/justification',
+  requirePenaltiesView,
+  downloadPenaltyJustificationHandler
+);
 router.post(
   '/:tenantId/rental/penalties/:penaltyId/justification',
   requirePenaltiesEdit,

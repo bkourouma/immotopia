@@ -69,6 +69,24 @@ type OwnerSelectOption = {
   email?: string;
 };
 
+/**
+ * Le service web traduit les champs du formulaire vers les noms attendus par
+ * l'API (`generalShares` -> `tantiemes`, `ownerContactId` -> `coownerId`, cf.
+ * `services/syndic-service.ts`). Une erreur de validation renvoyée par l'API
+ * porte donc le nom API : sans cette table inverse, `form.setFields` ne
+ * retrouverait jamais le bon champ à l'écran.
+ */
+const LOT_API_FIELD_TO_FORM_FIELD: Record<string, string> = {
+  tantiemes: 'generalShares',
+  coownerId: 'ownerContactId',
+  propertyId: 'propertyId',
+  lotNumber: 'lotNumber',
+  lotType: 'lotType',
+  surface: 'surface',
+  floor: 'floor',
+  isParkingIncluded: 'specialShares'
+};
+
 type PropertyLabelSource = {
   id: string;
   internalReference?: string | null;
@@ -408,7 +426,24 @@ export const SyndicLots: React.FC = () => {
       resetModalState();
       await loadData();
     } catch (err: any) {
-      message.error(err.response?.data?.error || t('Enregistrement du lot impossible'));
+      // Une erreur de validation (400) porte le detail par champ dans
+      // `errors[]` ; sans le reporter sur le formulaire, la boite de dialogue
+      // reste ouverte sans aucune explication pour l'utilisateur.
+      const fieldErrors: Array<{ field: string; message: string }> | undefined = err.response?.data?.errors;
+
+      if (fieldErrors && fieldErrors.length > 0) {
+        fieldErrors.forEach(fieldErr => {
+          const formFieldName = LOT_API_FIELD_TO_FORM_FIELD[fieldErr.field] || fieldErr.field;
+          form.setFields([{ name: formFieldName, errors: [fieldErr.message] }]);
+        });
+        message.error(
+          t('Formulaire invalide : {{details}}', {
+            details: fieldErrors.map(fieldErr => fieldErr.message).join(' ; ')
+          })
+        );
+      } else {
+        message.error(err.response?.data?.error || t('Enregistrement du lot impossible'));
+      }
     } finally {
       setSubmitting(false);
     }

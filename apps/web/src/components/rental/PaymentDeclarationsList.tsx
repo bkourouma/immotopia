@@ -9,8 +9,10 @@ import {
   RentalPaymentDeclaration,
   PaymentDeclarationStatus,
   PaymentDeclarationFilters,
-  RentalPaymentMethod
+  RentalPaymentMethod,
+  fetchPaymentDeclarationProof
 } from '../../services/rental-service';
+import { saveBlob } from '../../utils/save-blob';
 import { nomDuBien, nomDeLaPersonne, ABSENT } from '../../lib/rental-labels';
 import { TreasuryAccountSelector } from '../finance/TreasuryAccountSelector';
 import { t } from '../../i18n/t';
@@ -144,9 +146,29 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
     }
   };
 
-  const handleViewProof = (url: string) => {
-    setProofImageUrl(url);
-    setProofImageVisible(true);
+  // La preuve n'est plus lue en statique (`/uploads/portal/payments` répond
+  // 404) : elle arrive en blob par la route authentifiée. Une image s'affiche
+  // par une URL `blob:`, libérée quand elle change ou au démontage ; un autre
+  // format (PDF) se télécharge.
+  useEffect(() => {
+    return () => {
+      if (proofImageUrl) URL.revokeObjectURL(proofImageUrl);
+    };
+  }, [proofImageUrl]);
+
+  const handleViewProof = async (declaration: RentalPaymentDeclaration) => {
+    if (!tenantId) return;
+    try {
+      const { blob, filename } = await fetchPaymentDeclarationProof(tenantId, declaration.id);
+      if (blob.type.startsWith('image/')) {
+        setProofImageUrl(URL.createObjectURL(blob));
+        setProofImageVisible(true);
+      } else {
+        saveBlob(blob, filename);
+      }
+    } catch {
+      message.error(t('Téléchargement impossible.'));
+    }
   };
 
   const getStatusTag = (status: PaymentDeclarationStatus) => {
@@ -262,7 +284,7 @@ export const PaymentDeclarationsList: React.FC<PaymentDeclarationsListProps> = (
             <Button
               type="text"
               icon={<FileImageOutlined />}
-              onClick={() => handleViewProof(record.proof_file_url!)}
+              onClick={() => handleViewProof(record)}
               title={t('Voir la preuve de paiement')}
             />
           )}

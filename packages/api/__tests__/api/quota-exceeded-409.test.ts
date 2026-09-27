@@ -122,6 +122,21 @@ describe('BUG A1 — POST /api/tenants/:tenantId/syndics/:syndicId/lots', () => 
     expect(res.status).toBe(400);
     expect(createSyndicateLot).not.toHaveBeenCalled();
   });
+
+  it('un lot Parking sans bien lie passe la validation (ecart recette du 26/09, scenario MC1/MP1)', async () => {
+    createSyndicateLot.mockResolvedValueOnce({ id: 'lot-mp1', lotNumber: 'MP1', lotType: 'PARKING' });
+
+    const res = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/lots`)
+      .send({ lotNumber: 'MP1', lotType: 'PARKING', tantiemes: 5 });
+
+    expect(res.status).toBe(201);
+    expect(createSyndicateLot).toHaveBeenCalledWith(
+      TENANT_ID,
+      expect.objectContaining({ lotNumber: 'MP1', lotType: 'PARKING', tantiemes: 5 })
+    );
+    expect(createSyndicateLot.mock.calls[0][1].propertyId).toBeUndefined();
+  });
 });
 
 describe('BUG A1 — POST /api/tenants/:tenantId/properties', () => {

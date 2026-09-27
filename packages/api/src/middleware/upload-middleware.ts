@@ -1,5 +1,6 @@
 import multer from 'multer';
 import { Request } from 'express';
+import { BadRequestError } from './error-middleware';
 
 // Configure multer storage
 const storage = multer.memoryStorage(); // Store in memory, we'll save to disk in service
@@ -11,7 +12,9 @@ const storage = multer.memoryStorage(); // Store in memory, we'll save to disk i
 // happens in the service layer based on the actual mediaType from req.body.
 export const mediaFileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   if (!file.mimetype) {
-    cb(new Error('File type could not be determined'));
+    // Erreur typée : un `Error` nu remontait en 500 dans le gestionnaire
+    // central (voir property-media-controller.ts pour le modèle).
+    cb(new BadRequestError('Type de fichier introuvable. Formats autorisés : JPEG, PNG, WebP, MP4, WebM, QuickTime.'));
     return;
   }
 
@@ -29,9 +32,9 @@ export const mediaFileFilter = (req: Request, file: Express.Multer.File, cb: mul
     // Try to get mediaType from body if available (might not be set yet)
     const mediaType = req.body?.mediaType || 'PHOTO';
     if (mediaType === 'VIDEO') {
-      cb(new Error('Invalid file type for video. Allowed: MP4, WebM, QuickTime'));
+      cb(new BadRequestError('Type de fichier non accepté pour une vidéo. Formats autorisés : MP4, WebM, QuickTime.'));
     } else {
-      cb(new Error('Invalid file type for photo. Allowed: JPEG, PNG, WebP'));
+      cb(new BadRequestError('Type de fichier non accepté pour une photo. Formats autorisés : JPEG, PNG, WebP.'));
     }
   }
 };
@@ -50,7 +53,7 @@ export const documentFileFilter = (_req: Request, file: Express.Multer.File, cb:
   if (file.mimetype && allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type for document. Allowed: PDF, DOC, DOCX, JPEG, PNG, TIFF'));
+    cb(new BadRequestError('Type de fichier non accepté. Formats autorisés : PDF, DOC, DOCX, JPEG, PNG, TIFF.'));
   }
 };
 

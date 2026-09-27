@@ -45,6 +45,7 @@ import {
   completeVisitHandler
 } from '../controllers/property-visit-controller';
 import { uploadMedia, uploadDocument } from '../middleware/upload-middleware';
+import { downloadPropertyDocumentFileHandler } from '../controllers/private-file-controller';
 
 const router = Router();
 
@@ -201,6 +202,18 @@ router.get(
   enforcePropertyTenantIsolation,
   requirePropertyPermission('PROPERTIES_VIEW'),
   listDocumentsHandler
+);
+
+// Fichier d'un document de bien : jamais servi en statique
+// (/uploads/properties/<bien>/documents répond 404), voir
+// lib/properties/document-files.ts.
+router.get(
+  '/tenants/:tenantId/properties/:id/documents/:documentId/file',
+  authenticate,
+  requireTenantAccess,
+  enforcePropertyTenantIsolation,
+  requirePropertyPermission('PROPERTIES_VIEW'),
+  downloadPropertyDocumentFileHandler
 );
 
 router.delete(

@@ -48,7 +48,13 @@ export const updateSyndicateSchema = z
 
 export const createLotSchema = z.object({
   syndicateId: z.string().uuid(),
-  propertyId: z.string().uuid(),
+  // Facultatif : un lot de copropriete (parking, cave...) peut exister sans
+  // bien lie, cree directement au niveau de la copropriete (voir le modele
+  // Prisma SyndicateLot.propertyId, deja optionnel, et
+  // docs/recette/SCENARIO_SYNDIC_ABONNEMENT.md, MC1). Seuls les lots
+  // principaux (Appartement, Bureau, Commercial) comptent dans le quota de
+  // lots, que le bien soit renseigne ou non (voir lot-registry-service.ts).
+  propertyId: z.string().uuid().optional(),
   coownerId: z.string().uuid().optional(),
   lotNumber: z.string().min(1, 'Le numero de lot est obligatoire'),
   lotType: z.enum(['APARTMENT', 'PARKING', 'CELLAR', 'OFFICE', 'COMMERCIAL', 'OTHER']),
@@ -77,35 +83,37 @@ export const updateLotSchema = z
     message: 'Au moins un champ doit etre fourni pour la mise a jour du lot'
   });
 
-export const createChargeCallSchema = z.object({
-  syndicateId: z.string().uuid(),
-  lotId: z.string().uuid().optional(),
-  lotIds: z.array(z.string().uuid()).optional(),
-  applyToAllLots: z.boolean().optional().default(false),
-  period: z.string().min(1, 'La periode est obligatoire'),
-  amount: z.number().positive(),
-  currency: z.string().default('XOF'),
-  dueDate: z.coerce.date(),
-  isRecurring: z.boolean().optional().default(false),
-  recurrenceFrequency: z.enum(['MONTHLY', 'QUARTERLY', 'ANNUAL']).optional(),
-  recurrenceCount: z.number().int().min(1).max(24).optional()
-}).superRefine((value, ctx) => {
-  if (!value.applyToAllLots && !value.lotId && (!value.lotIds || value.lotIds.length === 0)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Selectionnez un lot, plusieurs lots ou tous les lots',
-      path: ['lotId']
-    });
-  }
+export const createChargeCallSchema = z
+  .object({
+    syndicateId: z.string().uuid(),
+    lotId: z.string().uuid().optional(),
+    lotIds: z.array(z.string().uuid()).optional(),
+    applyToAllLots: z.boolean().optional().default(false),
+    period: z.string().min(1, 'La periode est obligatoire'),
+    amount: z.number().positive(),
+    currency: z.string().default('XOF'),
+    dueDate: z.coerce.date(),
+    isRecurring: z.boolean().optional().default(false),
+    recurrenceFrequency: z.enum(['MONTHLY', 'QUARTERLY', 'ANNUAL']).optional(),
+    recurrenceCount: z.number().int().min(1).max(24).optional()
+  })
+  .superRefine((value, ctx) => {
+    if (!value.applyToAllLots && !value.lotId && (!value.lotIds || value.lotIds.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Selectionnez un lot, plusieurs lots ou tous les lots',
+        path: ['lotId']
+      });
+    }
 
-  if (value.isRecurring && !value.recurrenceFrequency) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'La frequence de recurrence est obligatoire',
-      path: ['recurrenceFrequency']
-    });
-  }
-});
+    if (value.isRecurring && !value.recurrenceFrequency) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'La frequence de recurrence est obligatoire',
+        path: ['recurrenceFrequency']
+      });
+    }
+  });
 
 export const createChargePaymentSchema = z.object({
   chargeCallId: z.string().uuid(),
@@ -124,11 +132,16 @@ export const createMeetingSchema = z.object({
   location: z.string().optional()
 });
 
+export const meetingStatusSchema = z.enum(['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']);
+
 export const updateMeetingSchema = z
   .object({
     startTime: z.coerce.date().nullable().optional(),
     endTime: z.coerce.date().nullable().optional(),
-    location: z.string().nullable().optional()
+    location: z.string().nullable().optional(),
+    // Transition de statut (ouverture, cloture, annulation) : la coherence de la
+    // transition est controlee par le service, qui repond 409 sinon.
+    status: meetingStatusSchema.optional()
   })
   .refine(value => Object.keys(value).length > 0, {
     message: 'Au moins un champ doit etre fourni pour la mise a jour de l assemblee'
@@ -139,6 +152,12 @@ export const createResolutionSchema = z.object({
   title: z.string().min(1, 'Le titre de la resolution est obligatoire'),
   description: z.string().optional(),
   majorityRule: z.string().optional()
+});
+
+export const createMeetingProxySchema = z.object({
+  meetingId: z.string().uuid(),
+  grantorContactId: z.string().min(1, 'Le mandant est obligatoire'),
+  representativeContactId: z.string().min(1, 'Le mandataire est obligatoire')
 });
 
 export const castVoteSchema = z.object({
@@ -162,6 +181,24 @@ export const updateAgendaItemSchema = z
   })
   .refine(value => Object.keys(value).length > 0, {
     message: "Au moins un champ doit etre fourni pour la mise a jour du point d'ordre du jour"
+  });
+
+export const createServiceProviderSchema = z.object({
+  name: z.string().min(1, 'Le nom du prestataire est obligatoire'),
+  specialty: z.string().min(1).optional(),
+  email: z.string().email("L'email du prestataire doit etre valide").optional(),
+  phone: z.string().optional()
+});
+
+export const updateServiceProviderSchema = z
+  .object({
+    name: z.string().min(1, 'Le nom du prestataire est obligatoire').optional(),
+    specialty: z.string().nullable().optional(),
+    email: z.string().email("L'email du prestataire doit etre valide").nullable().optional(),
+    phone: z.string().nullable().optional()
+  })
+  .refine(value => Object.keys(value).length > 0, {
+    message: 'Au moins un champ doit etre fourni pour la mise a jour du prestataire'
   });
 
 export const createContractSchema = z.object({
@@ -511,6 +548,23 @@ export const createOwnerAccountAdjustmentSchema = z.object({
   transactionDate: z.coerce.date().optional()
 });
 
+// FR-013 : fonds financiers de la copropriete (SyndicateFund).
+export const createSyndicateFundSchema = z.object({
+  name: z.string().min(1, 'Le nom du fonds est obligatoire'),
+  initialBalance: z.number().nonnegative().optional().default(0),
+  currency: z.string().min(1).optional().default('XOF')
+});
+
+export const renameSyndicateFundSchema = z.object({
+  name: z.string().min(1, 'Le nom du fonds est obligatoire')
+});
+
+export const adjustSyndicateFundBalanceSchema = z.object({
+  direction: z.enum(['CREDIT', 'DEBIT']),
+  amount: z.number().positive(),
+  reason: z.string().min(1, 'Le motif de l ajustement est obligatoire')
+});
+
 export type CreateSyndicateInput = z.infer<typeof createSyndicateSchema>;
 export type UpdateSyndicateInput = z.infer<typeof updateSyndicateSchema>;
 export type CreateLotInput = z.infer<typeof createLotSchema>;
@@ -522,8 +576,11 @@ export type CreateMeetingInput = z.infer<typeof createMeetingSchema>;
 export type UpdateMeetingInput = z.infer<typeof updateMeetingSchema>;
 export type CreateResolutionInput = z.infer<typeof createResolutionSchema>;
 export type CastVoteInput = z.infer<typeof castVoteSchema>;
+export type CreateMeetingProxyInput = z.infer<typeof createMeetingProxySchema>;
 export type CreateAgendaItemInput = z.infer<typeof createAgendaItemSchema>;
 export type UpdateAgendaItemInput = z.infer<typeof updateAgendaItemSchema>;
+export type CreateServiceProviderInput = z.infer<typeof createServiceProviderSchema>;
+export type UpdateServiceProviderInput = z.infer<typeof updateServiceProviderSchema>;
 export type CreateContractInput = z.infer<typeof createContractSchema>;
 export type CreateDocumentInput = z.infer<typeof createDocumentSchema>;
 export type CreateLotTenantAssignmentInput = z.infer<typeof createLotTenantAssignmentSchema>;
@@ -559,3 +616,6 @@ export type LockJournalEntryInput = z.infer<typeof lockJournalEntrySchema>;
 export type AccountingRangeQueryInput = z.infer<typeof accountingRangeQuerySchema>;
 export type OwnerAccountStatementQueryInput = z.infer<typeof ownerAccountStatementQuerySchema>;
 export type CreateOwnerAccountAdjustmentInput = z.infer<typeof createOwnerAccountAdjustmentSchema>;
+export type CreateSyndicateFundInput = z.infer<typeof createSyndicateFundSchema>;
+export type RenameSyndicateFundInput = z.infer<typeof renameSyndicateFundSchema>;
+export type AdjustSyndicateFundBalanceInput = z.infer<typeof adjustSyndicateFundBalanceSchema>;

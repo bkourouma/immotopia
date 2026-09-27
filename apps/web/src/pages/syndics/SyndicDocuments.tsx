@@ -132,7 +132,7 @@ export const SyndicDocuments: React.FC = () => {
           </div>
         ) : (
           <Card title={t('Documents')}>
-            <DocumentVault documents={documents} />
+            <DocumentVault documents={documents} tenantId={effectiveTenantId ?? ''} syndicId={syndicId ?? ''} />
           </Card>
         )}
       </Space>

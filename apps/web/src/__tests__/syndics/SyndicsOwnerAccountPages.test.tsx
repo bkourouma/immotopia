@@ -189,6 +189,98 @@ describe('Syndics owner account page', () => {
     expect(await screen.findByText(/A-01/)).toBeTruthy();
   });
 
+  it('shows a positive balance as "Débiteur" (le copropriétaire doit ce montant)', async () => {
+    const { container } = renderWithRoute();
+    expect(await screen.findByText(/Débiteur/)).toBeTruthy();
+    // Comparaison sur les seuls chiffres de toute la page : <MoneyValue>
+    // sépare les milliers par une espace fine insécable, invisible mais peu
+    // robuste à comparer telle quelle, et un span et son <strong> parent
+    // partagent le même textContent (un matcher par élément trouverait donc
+    // "plusieurs éléments").
+    expect((container.textContent || '').replace(/\D/g, '')).toContain('35000');
+  });
+
+  it('shows a negative balance as "Créditeur" with the absolute amount, not a negative number', async () => {
+    mockApiClient.get.mockImplementation((url: string) => {
+      if (url.endsWith('/compte')) {
+        return Promise.resolve({
+          data: {
+            success: true,
+            data: {
+              id: 'acc-1',
+              lotId: 'lot-1',
+              balance: -20000,
+              currency: 'XOF',
+              lot: { id: 'lot-1', lotNumber: 'A-01' },
+              contact: { id: 'contact-1', firstName: 'Awa', lastName: 'Diop' }
+            }
+          }
+        });
+      }
+      if (url.endsWith('/compte/transactions')) {
+        return Promise.resolve({ data: { success: true, data: [] } });
+      }
+      return Promise.reject(new Error(`Unhandled GET ${url}`));
+    });
+
+    const { container } = renderWithRoute();
+
+    expect(await screen.findByText(/Créditeur/)).toBeTruthy();
+    expect((container.textContent || '').replace(/\D/g, '')).toContain('20000');
+    // Jamais le nombre signé brut : la page ne doit plus jamais afficher
+    // "-20 000" sans explication (constat de recette, module 3.4).
+    expect(container.textContent).not.toMatch(/-20/);
+  });
+
+  it('waits for the account to resolve before requesting its transactions (avoids the create-account race, module 3.3)', async () => {
+    let resolveAccount: (value: unknown) => void = () => undefined;
+    const accountPromise = new Promise(resolve => {
+      resolveAccount = resolve;
+    });
+
+    mockApiClient.get.mockImplementation((url: string) => {
+      if (url.endsWith('/compte')) {
+        return accountPromise;
+      }
+      if (url.endsWith('/compte/transactions')) {
+        return Promise.resolve({ data: { success: true, data: [] } });
+      }
+      return Promise.reject(new Error(`Unhandled GET ${url}`));
+    });
+
+    renderWithRoute();
+
+    // Le compte n'a pas encore resolu : les transactions ne doivent pas
+    // avoir été demandées (l'ancien `Promise.all` les lançait toutes les
+    // deux, ce qui déclenchait deux créations concurrentes côté API).
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(mockApiClient.get).not.toHaveBeenCalledWith(
+      '/tenants/tenant-1/syndics/syndic-1/lots/lot-1/compte/transactions',
+      expect.anything()
+    );
+
+    resolveAccount({
+      data: {
+        success: true,
+        data: {
+          id: 'acc-1',
+          lotId: 'lot-1',
+          balance: 0,
+          currency: 'XOF',
+          lot: { id: 'lot-1', lotNumber: 'A-01' },
+          contact: null
+        }
+      }
+    });
+
+    await waitFor(() => {
+      expect(mockApiClient.get).toHaveBeenCalledWith(
+        '/tenants/tenant-1/syndics/syndic-1/lots/lot-1/compte/transactions',
+        expect.anything()
+      );
+    });
+  });
+
   it('downloads statement', async () => {
     const createObjectURL = vi.fn().mockReturnValue('blob:fake');
     const revokeObjectURL = vi.fn();

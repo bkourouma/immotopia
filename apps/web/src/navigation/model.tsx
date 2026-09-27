@@ -75,13 +75,13 @@ import type { FinanceWorkspaceFamily } from './finance-workspaces';
  */
 
 /**
- * Les quatre personas qui ont une navigation.
+ * Les cinq personas qui ont une navigation.
  *
  * Un cinquieme etat existe — le compte authentifie rattache a rien — mais ce
  * n'est pas un persona : il n'a aucune destination, donc aucun menu. Il est
  * traite par `<AccountNotLinked>`, hors coquille.
  */
-export type PersonaId = 'super-admin' | 'collaborateur' | 'proprietaire' | 'locataire';
+export type PersonaId = 'super-admin' | 'collaborateur' | 'proprietaire' | 'locataire' | 'coproprietaire';
 
 /** Déclencheur d'interface, pas une destination : ouvre le drawer complet. */
 export const MORE_TAB_HREF = '#plus';
@@ -632,6 +632,9 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
         children: [
           { key: 'owner-documents', label: t('Documents'), href: '/owner/documents' },
           { key: 'owner-reports', label: t('Rapports'), href: '/owner/reports' },
+          // Un bailleur peut AUSSI etre coproprietaire d'un lot : l'espace
+          // s'ouvre s'il a ete invite, sinon l'ecran le dit.
+          { key: 'owner-copropriete', label: t('Ma copropriété'), href: '/copropriete' },
           { key: 'owner-preferences', label: t('Préférences'), href: '/owner/preferences' }
         ]
       }
@@ -654,6 +657,43 @@ export const NAVIGATION: Record<PersonaId, PersonaNav> = {
       { key: 'payer', label: t('Payer'), icon: <WalletOutlined />, zone: 'primary', href: '/tenant/payments' },
       { key: 'incidents', label: t('Incidents'), icon: <ToolOutlined />, zone: 'primary', href: '/tenant/maintenance' },
       { key: 'bail', label: t('Mon bail'), icon: <FileTextOutlined />, zone: 'primary', href: '/tenant/lease' }
+    ]
+  },
+
+  coproprietaire: {
+    id: 'coproprietaire',
+    label: t('Copropriétaire'),
+    // Portail en lecture seule, surtout consulté sur téléphone : quatre
+    // onglets couvrent ses quatre destinations, comme le portail locataire.
+    tabs: [
+      { key: 'tab-lots', label: t('Mes lots'), href: '/copropriete', icon: <ApartmentOutlined /> },
+      { key: 'tab-appels', label: t('Appels'), href: '/copropriete/appels', icon: <WalletOutlined /> },
+      { key: 'tab-assemblees', label: t('Assemblées'), href: '/copropriete/assemblees', icon: <TeamOutlined /> },
+      { key: 'tab-documents', label: t('Documents'), href: '/copropriete/documents', icon: <FolderOutlined /> }
+    ],
+    tree: [
+      { key: 'lots', label: t('Mes lots'), icon: <ApartmentOutlined />, zone: 'primary', href: '/copropriete' },
+      {
+        key: 'appels',
+        label: t('Appels de charges'),
+        icon: <WalletOutlined />,
+        zone: 'primary',
+        href: '/copropriete/appels'
+      },
+      {
+        key: 'assemblees',
+        label: t('Assemblées générales'),
+        icon: <TeamOutlined />,
+        zone: 'primary',
+        href: '/copropriete/assemblees'
+      },
+      {
+        key: 'documents',
+        label: t('Documents'),
+        icon: <FolderOutlined />,
+        zone: 'primary',
+        href: '/copropriete/documents'
+      }
     ]
   }
 };

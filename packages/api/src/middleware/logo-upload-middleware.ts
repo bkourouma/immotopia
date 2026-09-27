@@ -1,5 +1,6 @@
 import multer from 'multer';
 import { Request } from 'express';
+import { BadRequestError } from './error-middleware';
 
 /**
  * Upload du logo d'une agence (lot G). Instance multer dediee, distincte de
@@ -19,12 +20,9 @@ function logoFileFilter(_req: Request, file: Express.Multer.File, cb: multer.Fil
     cb(null, true);
     return;
   }
-  // Erreur multer generique ici (elle transite par `cb`, pas par la pile
-  // Express) : le controleur/service revalide de toute facon le type et la
-  // taille du fichier recu, avec des `BadRequestError` typees (modele
-  // property-media-controller.ts) — c'est cette seconde verification qui
-  // porte le message renvoye au client.
-  cb(new Error('Type de fichier non autorisé pour un logo. Formats acceptés : PNG, JPEG, WebP.'));
+  // Erreur typée : un `Error` nu tomberait en 500 dans le gestionnaire
+  // central (modele property-media-controller.ts).
+  cb(new BadRequestError('Type de fichier non accepté pour un logo. Formats autorisés : PNG, JPEG, WebP.'));
 }
 
 export const logoUpload = multer({

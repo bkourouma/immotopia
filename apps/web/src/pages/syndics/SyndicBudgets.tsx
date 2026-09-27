@@ -30,6 +30,7 @@ import {
 } from '../../services/syndic-service';
 import { BudgetAllocation, ChargeCallBatch, SyndicateBudget, SyndicateLot } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
@@ -47,26 +48,7 @@ const batchStatusLabels: Record<ChargeCallBatch['status'], string> = {
 
 function buildLotDisplayName(allocation: BudgetAllocation, lotDirectoryEntry?: SyndicateLot): string {
   const lot = allocation.lot || lotDirectoryEntry;
-  if (!lot) {
-    return allocation.lotId || '-';
-  }
-
-  const property = lot.property;
-  if (!property) {
-    return lot.lotNumber || allocation.lotId || '-';
-  }
-
-  const ownerLabel = property.owner?.fullName?.trim() || '';
-  const propertyLabel = property.title?.trim() || property.address?.trim() || '';
-
-  if (ownerLabel && propertyLabel) {
-    return `${ownerLabel} - ${propertyLabel}`;
-  }
-  if (propertyLabel) {
-    return propertyLabel;
-  }
-
-  return lot.lotNumber || allocation.lotId || '-';
+  return formatLotLabel(lot, allocation.lotId);
 }
 
 export const SyndicBudgets: React.FC = () => {

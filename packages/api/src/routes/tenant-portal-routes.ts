@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantPortalAccess } from '../middleware/tenant-portal-access';
 import { TenantPortalController } from '../controllers/tenant-portal-controller';
+import { downloadTenantPortalAttachmentHandler } from '../controllers/maintenance-attachment-controller';
 import {
   getOnlinePaymentAvailabilityHandler,
   startOnlinePaymentHandler,
@@ -54,6 +55,8 @@ router.post('/maintenance', upload.array('attachments', 10), (req, res) =>
 );
 router.get('/maintenance/:id', (req, res) => controller.getMaintenanceTicketDetails(req, res));
 router.post('/maintenance/:id/comment', (req, res) => controller.addTicketComment(req, res));
+// Pièce jointe d'un ticket visible dans ce portail — jamais servie en statique.
+router.get('/maintenance/:id/attachments/:attachmentId', downloadTenantPortalAttachmentHandler);
 
 // Documents
 router.get('/documents', (req, res) => controller.getDocuments(req, res));

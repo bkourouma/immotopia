@@ -1,5 +1,6 @@
 import nodemailer, { Transporter } from 'nodemailer';
 import { getCurrentTenantId } from '../utils/tenant-context';
+import { t, type Language } from '../i18n';
 
 interface EmailOptions {
   to: string;
@@ -223,6 +224,38 @@ export class EmailService {
       subject: `Invitation à rejoindre ${tenantName} sur ImmoTopia`,
       html: getInvitationTemplate(link, tenantName, roleLabels, expiresAt),
       tenantId
+    });
+  }
+
+  /**
+   * Invitation au portail coproprietaire. Aucun SMS ni WhatsApp : l'e-mail
+   * est le seul canal, et le lien reste de toute facon affiche au
+   * gestionnaire pour qu'il puisse le transmettre lui-meme.
+   */
+  async sendCoOwnerPortalInvitationEmail(params: {
+    to: string;
+    userName: string;
+    agencyName: string;
+    accessUrl: string;
+    isActivation: boolean;
+    lots: Array<{ syndicateName: string; lotNumber: string }>;
+    tenantId: string;
+    language?: Language;
+  }): Promise<void> {
+    const { getCoOwnerPortalInvitationTemplate } = await import('../utils/email-templates');
+    const html = getCoOwnerPortalInvitationTemplate({
+      accessUrl: params.accessUrl,
+      userName: params.userName,
+      agencyName: params.agencyName,
+      lots: params.lots,
+      isActivation: params.isActivation,
+      language: params.language
+    });
+    await this.sendEmail({
+      to: params.to,
+      subject: t('Votre espace copropriétaire — {{agency}}', { agency: params.agencyName }, params.language),
+      html,
+      tenantId: params.tenantId
     });
   }
 

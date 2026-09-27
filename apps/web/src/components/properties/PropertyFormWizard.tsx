@@ -45,6 +45,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { listContacts, CrmContact } from '../../services/crm-service';
 import { t } from '../../i18n/t';
+import { isQuotaExceededResponse } from '../../utils/subscription-denial-notice';
 
 import { activeLocale } from '../../i18n/format';
 const { TextArea } = Input;
@@ -84,12 +85,21 @@ interface AppartementSaisi {
 }
 
 /**
- * Plafond du nombre de lignes générées.
+ * Plafond du nombre de lignes générées, ET de la saisie du champ « Nombre
+ * total d'appartements » lui-même (voir `validation.max` injecté plus bas).
  *
- * Une faute de frappe dans « Nombre total d'appartements » — 1200 au lieu de 12
- * — ne doit pas tenter de peindre douze cents formulaires et figer l'onglet.
+ * Une faute de frappe dans ce champ — 1200 au lieu de 12 — ne doit pas tenter
+ * de peindre mille deux cents formulaires et figer l'onglet.
+ *
+ * Ce plafond doit rester au-dessus de tout immeuble réel : il bornait
+ * auparavant aussi la CRÉATION effective des lots (`creerLesAppartements` ne
+ * crée que les lignes de `appartements`), si bien qu'un immeuble de 79 ou 102
+ * appartements (cf. docs/recette/SCENARIO_SYNDIC_ABONNEMENT.md, immeuble « Les
+ * Manguiers ») en perdait silencieusement une partie à la création. Fixé à
+ * 200 : large marge au-dessus des tailles réelles observées, tout en bloquant
+ * la saisie sur une faute de frappe.
  */
-const MAX_APPARTEMENTS = 60;
+const MAX_APPARTEMENTS = 200;
 
 function appartementVide(rang: number): AppartementSaisi {
   return { titre: `Appartement ${rang}`, surface: '', pieces: '', chambres: '', sallesDeBain: '', prix: '' };
@@ -172,6 +182,10 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
   const [template, setTemplate] = useState<PropertyTypeTemplate | null>(null);
   const [loadingTemplate, setLoadingTemplate] = useState(false);
   const autoSaveAttemptedRef = useRef(false);
+  // Vrai tant que handleFinish tourne. Un double clic sur « Terminer »
+  // declenche deux appels avant que React n'ait rendu le bouton en
+  // chargement : le second repartirait avec un POST de creation.
+  const finishInFlightRef = useRef(false);
   const [mediaRefreshKey, setMediaRefreshKey] = useState(0);
   const [owners, setOwners] = useState<Array<CrmContact & { userId?: string }>>([]);
   const [loadingOwners, setLoadingOwners] = useState(false);
@@ -306,53 +320,71 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
     return processed;
   };
 
+  /**
+   * Construit le corps d'enregistrement (création ou mise à jour) à partir de
+   * `formData`.
+   *
+   * Point unique pour l'enregistrement automatique de l'étape « Médias »
+   * (`autoSaveForMedia`) et pour « Terminer » (`handleFinish`) : avant ce
+   * commit, chacun construisait son propre corps à la main, et leur
+   * divergence sur `address` (absent d'un côté, chaîne vide de l'autre) a
+   * causé le 500 corrigé par 335658e. Même `formData`, même corps, quel que
+   * soit l'appelant.
+   */
+  const construireCorpsBien = (pourCreation: boolean): CreatePropertyRequest | UpdatePropertyRequest => ({
+    ...(pourCreation ? { propertyType: formData.propertyType, ownershipType: formData.ownershipType } : {}),
+    ownerUserId:
+      formData.ownerUserId && !String(formData.ownerUserId).includes('@') ? formData.ownerUserId : undefined,
+    ownerEmail: formData.ownerUserId && String(formData.ownerUserId).includes('@') ? formData.ownerUserId : undefined,
+    title: formData.title.trim(),
+    description: formData.description.trim(),
+    address: formData.address.trim() || undefined,
+    locationZone: formData.locationZone.trim() || undefined,
+    latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
+    longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
+    transactionModes: formData.transactionModes,
+    price: formData.price ? parseFloat(parseNumber(formData.price)) : undefined,
+    fees: formData.fees ? parseFloat(parseNumber(formData.fees)) : undefined,
+    currency: formData.currency,
+    surfaceArea: formData.surfaceArea ? parseFloat(formData.surfaceArea) : undefined,
+    surfaceUseful: formData.surfaceUseful ? parseFloat(formData.surfaceUseful) : undefined,
+    surfaceTerrain: formData.surfaceTerrain ? parseFloat(formData.surfaceTerrain) : undefined,
+    rooms: formData.rooms ? parseInt(formData.rooms, 10) : undefined,
+    bedrooms: formData.bedrooms ? parseInt(formData.bedrooms, 10) : undefined,
+    bathrooms: formData.bathrooms ? parseInt(formData.bathrooms, 10) : undefined,
+    furnishingStatus: formData.furnishingStatus,
+    availability: formData.availability,
+    typeSpecificData: processTypeSpecificData({
+      ...formData.typeSpecificData,
+      country: formData.location?.country,
+      countryId: formData.location?.countryId,
+      region: formData.location?.region,
+      regionId: formData.location?.regionId,
+      commune: formData.location?.commune,
+      communeId: formData.location?.communeId,
+      pointsOfInterest: formData.pointsOfInterest,
+      constructionYear: formData.constructionYear ? parseInt(formData.constructionYear, 10) : undefined,
+      generalCondition: formData.generalCondition,
+      standing: formData.standing,
+      deposit: formData.deposit ? parseFloat(parseNumber(formData.deposit)) : undefined,
+      commissionMode: formData.commissionMode,
+      commissionAmount: formData.commissionAmount ? parseFloat(parseNumber(formData.commissionAmount)) : undefined
+    })
+  });
+
   const handleFinish = async () => {
+    if (finishInFlightRef.current) return;
+    finishInFlightRef.current = true;
     setIsLoading(true);
     try {
-      const submitData: CreatePropertyRequest | UpdatePropertyRequest = {
-        ...(property ? {} : { propertyType: formData.propertyType, ownershipType: formData.ownershipType }),
-        ownerUserId: formData.ownerUserId && !formData.ownerUserId.includes('@') ? formData.ownerUserId : undefined,
-        ownerEmail: formData.ownerUserId && formData.ownerUserId.includes('@') ? formData.ownerUserId : undefined,
-        title: formData.title.trim(),
-        description: formData.description.trim(),
-        address: formData.address.trim() || undefined,
-        locationZone: formData.locationZone.trim() || undefined,
-        latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
-        longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
-        transactionModes: formData.transactionModes,
-        price: formData.price ? parseFloat(parseNumber(formData.price)) : undefined,
-        fees: formData.fees ? parseFloat(parseNumber(formData.fees)) : undefined,
-        currency: formData.currency,
-        surfaceArea: formData.surfaceArea ? parseFloat(formData.surfaceArea) : undefined,
-        surfaceUseful: formData.surfaceUseful ? parseFloat(formData.surfaceUseful) : undefined,
-        surfaceTerrain: formData.surfaceTerrain ? parseFloat(formData.surfaceTerrain) : undefined,
-        rooms: formData.rooms ? parseInt(formData.rooms, 10) : undefined,
-        bedrooms: formData.bedrooms ? parseInt(formData.bedrooms, 10) : undefined,
-        bathrooms: formData.bathrooms ? parseInt(formData.bathrooms, 10) : undefined,
-        furnishingStatus: formData.furnishingStatus,
-        availability: formData.availability,
-        typeSpecificData: processTypeSpecificData({
-          ...formData.typeSpecificData,
-          country: formData.location?.country,
-          countryId: formData.location?.countryId,
-          region: formData.location?.region,
-          regionId: formData.location?.regionId,
-          commune: formData.location?.commune,
-          communeId: formData.location?.communeId,
-          pointsOfInterest: formData.pointsOfInterest,
-          constructionYear: formData.constructionYear ? parseInt(formData.constructionYear, 10) : undefined,
-          generalCondition: formData.generalCondition,
-          standing: formData.standing,
-          deposit: formData.deposit ? parseFloat(parseNumber(formData.deposit)) : undefined,
-          commissionMode: formData.commissionMode,
-          commissionAmount: formData.commissionAmount ? parseFloat(parseNumber(formData.commissionAmount)) : undefined
-        })
-      };
+      const submitData: CreatePropertyRequest | UpdatePropertyRequest = construireCorpsBien(!property);
 
       let finalPropertyId = savedPropertyId;
       if (finalPropertyId) {
         await updateProperty(tenantId, finalPropertyId, submitData);
       } else {
+        // L'enregistrement automatique de l'etape « Medias » a echoue (quota
+        // refuse, par exemple) : « Terminer » relance legitimement la creation.
         const newProperty = await createProperty(tenantId, submitData as CreatePropertyRequest);
         finalPropertyId = newProperty.id;
       }
@@ -366,8 +398,14 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
       }
     } catch (error: any) {
       console.error('Error finishing wizard:', error);
-      message.error(error.response?.data?.error || t("Erreur lors de l'enregistrement"));
+      // Un refus de quota est deja annonce par la notification de la coquille
+      // (intercepteur d'api-client, avec le lien vers l'abonnement) : un
+      // second message dirait la meme chose moins bien.
+      if (!isQuotaExceededResponse(error)) {
+        message.error(error.response?.data?.error || t("Erreur lors de l'enregistrement"));
+      }
     } finally {
+      finishInFlightRef.current = false;
       setIsLoading(false);
     }
   };
@@ -1186,9 +1224,19 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                     ) {
                       return null;
                     }
+                    // Le gabarit (prisma/seeds/property-templates-seed.ts) ne porte pas de
+                    // `validation.max` pour ce champ : sans plafond ici, l'InputNumber
+                    // acceptait n'importe quelle valeur, qui n'etait ensuite qu'en
+                    // partie honoree (voir MAX_APPARTEMENTS). On bloque desormais la
+                    // saisie au meme plafond que la creation, plutot que de tronquer
+                    // apres coup sans le dire.
                     const displayField =
                       (formData.propertyType as PropertyType) === PropertyType.IMMEUBLE && field.key === 'units_count'
-                        ? { ...field, label: t("Nombre total d'appartements") }
+                        ? {
+                            ...field,
+                            label: t("Nombre total d'appartements"),
+                            validation: { ...field.validation, min: 1, max: MAX_APPARTEMENTS }
+                          }
                         : field;
                     return (
                       <Col key={field.key} xs={24} sm={12}>
@@ -1226,12 +1274,17 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
                 />
               ) : (
                 <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                  {/* Le champ ci-dessus bloque desormais la saisie a MAX_APPARTEMENTS
+                      (voir `validation.max` injecte plus haut) : cette alerte ne peut
+                      plus se declencher a la creation. Elle reste un filet pour un
+                      immeuble existant dont le nombre declare, enregistre avant ce
+                      correctif, depasse encore le plafond. */}
                   {nbAppartementsDeclare > MAX_APPARTEMENTS && (
                     <Alert
                       type="warning"
                       showIcon
                       message={t(
-                        "Seuls les {{MAX_APPARTEMENTS}} premiers appartements sont saisissables ici. Les suivants se créeront depuis la fiche de l'immeuble.",
+                        "Seuls les {{MAX_APPARTEMENTS}} premiers appartements sont saisissables ici. Ajoutez les suivants un par un depuis la fiche de l'immeuble, une fois celui-ci enregistré.",
                         { MAX_APPARTEMENTS: MAX_APPARTEMENTS }
                       )}
                     />
@@ -1417,52 +1470,7 @@ export const PropertyFormWizard: React.FC<PropertyFormWizardProps> = ({ property
           autoSaveAttemptedRef.current = true;
           setIsLoading(true);
           try {
-            const processedTypeSpecificData = processTypeSpecificData({
-              ...formData.typeSpecificData,
-              country: formData.location?.country,
-              countryId: formData.location?.countryId,
-              region: formData.location?.region,
-              regionId: formData.location?.regionId,
-              commune: formData.location?.commune,
-              communeId: formData.location?.communeId,
-              pointsOfInterest: formData.pointsOfInterest,
-              constructionYear: formData.constructionYear ? parseInt(formData.constructionYear, 10) : undefined,
-              generalCondition: formData.generalCondition,
-              standing: formData.standing,
-              deposit: formData.deposit ? parseFloat(parseNumber(formData.deposit)) : undefined,
-              commissionMode: formData.commissionMode,
-              commissionAmount: formData.commissionAmount
-                ? parseFloat(parseNumber(formData.commissionAmount))
-                : undefined
-            });
-
-            const submitData: CreatePropertyRequest = {
-              propertyType: formData.propertyType,
-              ownershipType: formData.ownershipType,
-              ownerUserId:
-                formData.ownerUserId && !String(formData.ownerUserId).includes('@') ? formData.ownerUserId : undefined,
-              ownerEmail:
-                formData.ownerUserId && String(formData.ownerUserId).includes('@') ? formData.ownerUserId : undefined,
-              title: formData.title.trim() || 'Brouillon',
-              description: formData.description.trim() || '',
-              address: formData.address.trim() || '',
-              locationZone: formData.locationZone.trim() || undefined,
-              latitude: formData.latitude ? parseFloat(formData.latitude) : undefined,
-              longitude: formData.longitude ? parseFloat(formData.longitude) : undefined,
-              transactionModes: formData.transactionModes,
-              price: formData.price ? parseFloat(parseNumber(formData.price)) : undefined,
-              fees: formData.fees ? parseFloat(parseNumber(formData.fees)) : undefined,
-              currency: formData.currency,
-              surfaceArea: formData.surfaceArea ? parseFloat(formData.surfaceArea) : undefined,
-              surfaceUseful: formData.surfaceUseful ? parseFloat(formData.surfaceUseful) : undefined,
-              surfaceTerrain: formData.surfaceTerrain ? parseFloat(formData.surfaceTerrain) : undefined,
-              rooms: formData.rooms ? parseInt(formData.rooms, 10) : undefined,
-              bedrooms: formData.bedrooms ? parseInt(formData.bedrooms, 10) : undefined,
-              bathrooms: formData.bathrooms ? parseInt(formData.bathrooms, 10) : undefined,
-              furnishingStatus: formData.furnishingStatus,
-              availability: formData.availability,
-              typeSpecificData: processedTypeSpecificData
-            };
+            const submitData = construireCorpsBien(true) as CreatePropertyRequest;
 
             const newProperty = await createProperty(tenantId, submitData);
             setSavedPropertyId(newProperty.id);

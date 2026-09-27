@@ -1,7 +1,20 @@
 import { LotType, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { conflict, notFound, tenantIsolationError, unprocessableEntity } from '../errors';
-import { computeChargeCallStatus, computeOutstanding, isJournalEntryBalanced, roundMoney } from './finance-utils';
+import {
+  computeChargeCallStatus,
+  computeOutstanding,
+  deriveChargeCallStatus,
+  isJournalEntryBalanced,
+  roundMoney
+} from './finance-utils';
+import {
+  computeMeetingAttendance,
+  computeResolutionTally,
+  DEFAULT_MAJORITY_RULE,
+  type MajorityLot
+} from './meeting-majority';
+import { assertBelongsToTenant } from '../../utils/tenant-ownership';
 import { logger } from '../../utils/logger';
 // Shared client: a second `new PrismaClient()` here doubled the connection
 // pool and escaped the graceful-shutdown handlers in utils/database.
@@ -11,6 +24,8 @@ import { prisma, type PrismaTransactionClient } from '../../utils/database';
 import { appendOwnerAccountTransactionTx, supportsOwnerAccount, type OwnerAccountTxClient } from '../finance/ledger';
 import { QuotaExceededError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
+import { logAuditEvent } from '../../services/audit-service';
+import { AuditActionKey } from '../../types/audit-types';
 import {
   ACTIVE_SYNDICATE_STATUSES,
   assertCapacityTx,
@@ -214,21 +229,30 @@ async function ensureOwnerAccountForLotTx(
     return null;
   }
 
-  const existing = await tx.ownerAccount.findUnique({
-    where: { lotId }
-  });
-
-  if (existing) {
-    return existing;
-  }
-
-  return tx.ownerAccount.create({
-    data: {
+  // Concurrence (constat de recette, module 3.3) : deux requetes qui
+  // consultent le compte du meme lot pour la premiere fois (la page web
+  // demandait `/compte` et `/compte/transactions` en parallele, chacune
+  // declenchant sa propre creation) faisaient toutes les deux ce
+  // `findUnique` avant qu'aucune n'ait committe sa `create` : la seconde
+  // heurtait la contrainte unique sur `lotId` (P2002), remontee en 409 sur
+  // ce qui n'est censee etre qu'une lecture. `upsert` sur cette meme
+  // contrainte se traduit, sur Postgres, par un `INSERT ... ON CONFLICT
+  // (lot_id) DO UPDATE` — une seule instruction atomique : la requete
+  // perdante attend le verrou puis relit le compte deja cree au lieu
+  // d'echouer. Le correctif cote web (SyndicOwnerAccount.tsx, qui n'appelle
+  // plus les transactions qu'apres avoir obtenu le compte) reste une
+  // defense en profondeur ; celui-ci est ce qui rend l'API elle-meme sure
+  // en concurrence, y compris pour un futur appelant qui repeterait la
+  // meme erreur.
+  return tx.ownerAccount.upsert({
+    where: { lotId },
+    create: {
       syndicateId,
       lotId,
       contactId,
       balance: 0
-    }
+    },
+    update: {}
   });
 }
 
@@ -242,10 +266,20 @@ export async function listSyndicatesByTenant(tenantId: string, pagination?: Pagi
       }
     },
     include: {
+      // Le compte complet (pas seulement lots/chargeCalls) permet a la liste
+      // web de savoir, sans requete supplementaire, si le bouton
+      // « Supprimer » doit etre desactive (ecart recette #8 : seule une
+      // copropriete vide peut etre supprimee — voir
+      // `deleteEmptySyndicateByTenant`).
       _count: {
         select: {
           lots: true,
-          chargeCalls: true
+          chargeCalls: true,
+          budgets: true,
+          generalMeetings: true,
+          documents: true,
+          serviceContracts: true,
+          incidents: true
         }
       }
     },
@@ -364,18 +398,18 @@ export async function createSyndicateWithDefaults(
   return prisma.$transaction(async tx => {
     await assertCapacityTx(tx, tenantId, 'COPROPRIETES');
     return tx.syndicate.create({
-    data: {
-      propertyId: data.propertyId ?? undefined,
-      name: data.name,
-      address: data.address ?? '',
-      registrationNo: data.registrationNo ?? undefined,
-      fiscalYear: data.fiscalYear ?? 1,
-      syndicManagerId: data.syndicManagerId ?? undefined,
-      cadastralReference: data.cadastralReference ?? undefined,
-      totalLots: data.totalLots ?? 0,
-      totalBuildings: data.totalBuildings ?? 1,
-      tenantId
-    }
+      data: {
+        propertyId: data.propertyId ?? undefined,
+        name: data.name,
+        address: data.address ?? '',
+        registrationNo: data.registrationNo ?? undefined,
+        fiscalYear: data.fiscalYear ?? 1,
+        syndicManagerId: data.syndicManagerId ?? undefined,
+        cadastralReference: data.cadastralReference ?? undefined,
+        totalLots: data.totalLots ?? 0,
+        totalBuildings: data.totalBuildings ?? 1,
+        tenantId
+      }
     });
   });
 }
@@ -455,7 +489,19 @@ export async function updateSyndicateByTenant(
   });
 }
 
-export async function archiveSyndicateByTenant(tenantId: string, syndicateId: string) {
+/**
+ * Suppression definitive d'une copropriete — seulement si elle est vide.
+ *
+ * Anciennement `archiveSyndicateByTenant` : le nom promettait un archivage
+ * (statut, corbeille) que le code n'a jamais fait — c'etait deja un
+ * `prisma.syndicate.delete` en cascade sur les lots, appels de charges, AG,
+ * documents, contrats et incidents (ecart recette #8,
+ * docs/recette/SCENARIO_SYNDIC_MODULES.md). Sans migration pour ajouter un
+ * statut d'archivage a `SyndicateStatus`, la seule option sure est de refuser
+ * la suppression tant qu'il reste la moindre donnee liee, et de renommer la
+ * fonction pour qu'elle dise ce qu'elle fait reellement.
+ */
+export async function deleteEmptySyndicateByTenant(tenantId: string, syndicateId: string) {
   const existing = await prisma.syndicate.findFirst({
     where: {
       id: syndicateId,
@@ -468,8 +514,26 @@ export async function archiveSyndicateByTenant(tenantId: string, syndicateId: st
     throw notFound('Copropriete introuvable ou inaccessible');
   }
 
-  // Suppression : ses lots (supprimes en cascade) sortent du registre dans la
-  // meme transaction ; le perimetre est releve AVANT la suppression.
+  const [lots, budgets, chargeCalls, meetings, documents, contracts, incidents] = await Promise.all([
+    prisma.syndicateLot.count({ where: { syndicateId } }),
+    prisma.syndicateBudget.count({ where: { syndicateId } }),
+    prisma.chargeCall.count({ where: { syndicateId } }),
+    prisma.generalMeeting.count({ where: { syndicateId } }),
+    prisma.syndicateDocument.count({ where: { syndicateId } }),
+    prisma.maintenanceContract.count({ where: { syndicateId } }),
+    prisma.syndicateIncident.count({ where: { syndicateId } })
+  ]);
+
+  if (lots + budgets + chargeCalls + meetings + documents + contracts + incidents > 0) {
+    throw conflict(
+      'Cette copropriete a des lots, des appels de charges, des assemblees ou des documents : elle ne peut pas etre supprimee.'
+    );
+  }
+
+  // Suppression : perimetre releve AVANT la suppression, comme pour toute
+  // autre sortie du registre des lots (il n'y a normalement aucun lot ici
+  // puisque la copropriete est vide, mais on garde la meme mecanique que les
+  // autres operations de `syncLotActivationsTx` par coherence).
   return prisma.$transaction(async tx => {
     const scope = await resolveLotScope(tx, tenantId, { syndicateIds: [syndicateId] });
     const deleted = await tx.syndicate.delete({
@@ -484,7 +548,7 @@ export async function createSyndicateLot(
   tenantId: string,
   data: {
     syndicateId: string;
-    propertyId: string;
+    propertyId?: string | null;
     coownerId?: string | null;
     lotNumber: string;
     lotType: LotType;
@@ -503,19 +567,25 @@ export async function createSyndicateLot(
     throw notFound('Copropriete introuvable ou inaccessible');
   }
 
-  const property = await prisma.property.findFirst({
-    where: { id: data.propertyId, tenantId },
-    select: { id: true, containerParentId: true, propertyType: true }
-  });
+  // Un lot de copropriete (parking, cave...) peut ne pas avoir de bien lie :
+  // il est alors cree directement au niveau de la copropriete. Cf. modele
+  // Prisma SyndicateLot.propertyId (optionnel) et
+  // docs/recette/SCENARIO_SYNDIC_ABONNEMENT.md (lot MC1).
+  if (data.propertyId) {
+    const property = await prisma.property.findFirst({
+      where: { id: data.propertyId, tenantId },
+      select: { id: true, containerParentId: true, propertyType: true }
+    });
 
-  if (!property) {
-    throw notFound('Sous-propriete introuvable ou inaccessible');
-  }
+    if (!property) {
+      throw notFound('Sous-propriete introuvable ou inaccessible');
+    }
 
-  if (property.propertyType === 'IMMEUBLE') {
-    throw unprocessableEntity(
-      'Un lot ne peut pas etre un immeuble parent; selectionnez une unite (appartement, villa, bureau, etc.)'
-    );
+    if (property.propertyType === 'IMMEUBLE') {
+      throw unprocessableEntity(
+        'Un lot ne peut pas etre un immeuble parent; selectionnez une unite (appartement, villa, bureau, etc.)'
+      );
+    }
   }
 
   if (data.coownerId) {
@@ -536,7 +606,7 @@ export async function createSyndicateLot(
     const lot = await tx.syndicateLot.create({
       data: {
         syndicateId: data.syndicateId,
-        propertyId: data.propertyId,
+        propertyId: data.propertyId ?? null,
         coownerId: data.coownerId ?? undefined,
         ownerContactId: data.coownerId ?? undefined,
         lotNumber: data.lotNumber,
@@ -792,29 +862,29 @@ export async function importLotsFromPropertiesBySyndicate(
     // tout passe.
     let lot: { id: string };
     try {
-    lot = await prisma.$transaction(async tx => {
-      if (ownerContactId) {
-        await ensureCrmRoleForContact(tx, tenantId, ownerContactId, 'COOWNER');
-      }
-
-      const createdLot = await tx.syndicateLot.create({
-        data: {
-          syndicateId,
-          propertyId: property.id,
-          coownerId: ownerContactId ?? undefined,
-          ownerContactId: ownerContactId ?? undefined,
-          lotNumber,
-          lotType,
-          generalShares: tantiemes,
-          specialShares: lotType === 'PARKING' ? tantiemes : null
-        },
-        select: {
-          id: true
+      lot = await prisma.$transaction(async tx => {
+        if (ownerContactId) {
+          await ensureCrmRoleForContact(tx, tenantId, ownerContactId, 'COOWNER');
         }
+
+        const createdLot = await tx.syndicateLot.create({
+          data: {
+            syndicateId,
+            propertyId: property.id,
+            coownerId: ownerContactId ?? undefined,
+            ownerContactId: ownerContactId ?? undefined,
+            lotNumber,
+            lotType,
+            generalShares: tantiemes,
+            specialShares: lotType === 'PARKING' ? tantiemes : null
+          },
+          select: {
+            id: true
+          }
+        });
+        await syncLotActivationsTx(tx, tenantId, { syndicateLotIds: [createdLot.id] });
+        return createdLot;
       });
-      await syncLotActivationsTx(tx, tenantId, { syndicateLotIds: [createdLot.id] });
-      return createdLot;
-    });
     } catch (error) {
       if (!(error instanceof QuotaExceededError)) throw error;
       skipped.push({ propertyId: property.id, reason: t(LOT_QUOTA_REACHED_REASON) });
@@ -1024,16 +1094,36 @@ export async function listChargeCallsBySyndicate(
 ) {
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
   const pager = buildPagination(filters?.pagination);
+  const now = new Date();
 
-  return prisma.chargeCall.findMany({
+  // Le statut OVERDUE n'est jamais stocke (voir deriveChargeCallStatus,
+  // finance-utils.ts) : un filtre demandant ce statut doit donc reprendre la
+  // meme regle (echeance passee, solde non solde) plutot que de chercher une
+  // valeur qui n'existe jamais en base ; a l'inverse, un filtre PENDING/PARTIAL
+  // exclut ce qui serait maintenant derive OVERDUE, pour rester coherent avec
+  // ce que l'ecran affichera.
+  let statusWhere: Prisma.ChargeCallWhereInput = {};
+  if (filters?.status === 'OVERDUE') {
+    statusWhere = { status: { in: ['PENDING', 'PARTIAL'] }, dueDate: { lt: now } };
+  } else if (filters?.status === 'PENDING' || filters?.status === 'PARTIAL') {
+    statusWhere = { status: filters.status, dueDate: { gte: now } };
+  } else if (filters?.status === 'PAID') {
+    statusWhere = { status: 'PAID' };
+  }
+
+  const rangeWhere = buildDateRangeFilter('dueDate', filters?.range);
+  const combinedConditions: Prisma.ChargeCallWhereInput[] = [];
+  if (Object.keys(statusWhere).length > 0) combinedConditions.push(statusWhere);
+  if (Object.keys(rangeWhere).length > 0) combinedConditions.push(rangeWhere);
+
+  const calls = await prisma.chargeCall.findMany({
     where: {
       syndicateId,
       syndicate: {
         tenantId
       },
       ...(filters?.period ? { period: filters.period } : {}),
-      ...(filters?.status ? { status: filters.status } : {}),
-      ...buildDateRangeFilter('dueDate', filters?.range)
+      ...(combinedConditions.length > 0 ? { AND: combinedConditions } : {})
     },
     include: {
       lot: {
@@ -1058,10 +1148,12 @@ export async function listChargeCallsBySyndicate(
     take: pager.take,
     orderBy: [{ dueDate: 'asc' }, { createdAt: 'desc' }]
   });
+
+  return calls.map(call => ({ ...call, status: deriveChargeCallStatus(call.status, call.dueDate, now) }));
 }
 
 export async function getChargeCallByTenant(tenantId: string, syndicateId: string, chargeCallId: string) {
-  return prisma.chargeCall.findFirst({
+  const call = await prisma.chargeCall.findFirst({
     where: {
       id: chargeCallId,
       syndicateId,
@@ -1079,6 +1171,12 @@ export async function getChargeCallByTenant(tenantId: string, syndicateId: strin
       syndicate: true
     }
   });
+
+  if (!call) {
+    return call;
+  }
+
+  return { ...call, status: deriveChargeCallStatus(call.status, call.dueDate) };
 }
 
 export async function createChargeCallAndUpdateStatus(
@@ -1268,15 +1366,34 @@ export async function recordChargePaymentWithStatusUpdate(
       throw notFound('Appel de charges introuvable ou inaccessible');
     }
 
-    const payment = await tx.chargePayment.create({ data });
-
-    const aggregate = await tx.chargePayment.aggregate({
+    const aggregateBefore = await tx.chargePayment.aggregate({
       where: { chargeCallId: data.chargeCallId },
       _sum: { amount: true }
     });
 
-    const totalPaid = roundMoney(Number(aggregate._sum.amount ?? 0));
+    const alreadyPaid = roundMoney(Number(aggregateBefore._sum.amount ?? 0));
     const chargeAmount = Number(call.amount);
+    const outstandingBeforePayment = computeOutstanding(chargeAmount, alreadyPaid);
+    const paymentAmount = roundMoney(Number(data.amount));
+
+    // FR-005 : un paiement superieur au reste du est refuse plutot
+    // qu'accepte comme trop-percu — l'API n'offrait jusqu'ici aucun ecran pour
+    // le corriger (aucun remboursement, aucun avoir sur ChargeCall), et un
+    // trop-percu silencieux aurait laisse le statut a PAID sans que personne
+    // ne sache qu'un exces existe. Le gestionnaire doit soit ajuster le
+    // montant du paiement, soit passer par un ajustement de compte
+    // copropriétaire (createOwnerAccountAdjustmentByLot) s'il veut vraiment
+    // enregistrer un credit au-dela de l'appel.
+    if (paymentAmount > outstandingBeforePayment) {
+      throw unprocessableEntity(
+        `Le paiement (${paymentAmount} ${call.currency}) depasse le reste a payer de cet appel de charges ` +
+          `(${outstandingBeforePayment} ${call.currency})`
+      );
+    }
+
+    const payment = await tx.chargePayment.create({ data });
+
+    const totalPaid = roundMoney(alreadyPaid + paymentAmount);
     const status = computeChargeCallStatus(totalPaid, chargeAmount);
 
     await tx.chargeCall.update({
@@ -1335,8 +1452,50 @@ export async function listMeetingsBySyndicate(
   });
 }
 
+/** Champs d'un contact CRM exposes dans une assemblee (mandant, mandataire). */
+const MEETING_CONTACT_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  legalName: true,
+  email: true
+} as const;
+
+/**
+ * Une assemblee cloturee ou annulee est figee : plus de vote, de resolution ni
+ * de pouvoir. Messages fixes (le texte francais sert de cle de traduction).
+ */
+function assertMeetingOpenForChanges(status: string, messages: { COMPLETED: string; CANCELLED: string }) {
+  if (status === 'COMPLETED' || status === 'CANCELLED') {
+    throw conflict(messages[status]);
+  }
+}
+
+/**
+ * Transitions de statut autorisees (data-model, GeneralMeeting) :
+ * planifiee -> en cours -> cloturee, et planifiee -> annulee. Toute autre
+ * transition leve un 409 avec la raison.
+ */
+const MEETING_STATUS_TRANSITIONS: Record<string, string[]> = {
+  PLANNED: ['IN_PROGRESS', 'CANCELLED'],
+  IN_PROGRESS: ['COMPLETED'],
+  COMPLETED: [],
+  CANCELLED: []
+};
+
+function meetingTransitionErrorMessage(from: string, to: string): string {
+  if (from === 'COMPLETED') return 'Assemblee cloturee : son statut ne peut plus changer';
+  if (from === 'CANCELLED') return 'Assemblee annulee : son statut ne peut plus changer';
+  if (from === 'PLANNED' && to === 'COMPLETED') return "La seance doit etre ouverte avant d'etre cloturee";
+  if (from === 'IN_PROGRESS' && to === 'CANCELLED') {
+    return 'Une seance en cours ne peut pas etre annulee : cloturez-la';
+  }
+  if (from === 'IN_PROGRESS' && to === 'PLANNED') return 'Une seance ouverte ne peut pas redevenir planifiee';
+  return "Transition de statut d'assemblee impossible";
+}
+
 export async function getMeetingByTenant(tenantId: string, syndicateId: string, meetingId: string) {
-  return prisma.generalMeeting.findFirst({
+  const meeting = await prisma.generalMeeting.findFirst({
     where: {
       id: meetingId,
       syndicateId,
@@ -1358,6 +1517,7 @@ export async function getMeetingByTenant(tenantId: string, syndicateId: string, 
         orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }]
       },
       resolutions: {
+        orderBy: { createdAt: 'asc' },
         include: {
           votes: {
             include: {
@@ -1370,8 +1530,96 @@ export async function getMeetingByTenant(tenantId: string, syndicateId: string, 
           }
         }
       },
-      proxies: true
+      proxies: {
+        orderBy: { createdAt: 'asc' },
+        include: {
+          grantor: { select: MEETING_CONTACT_SELECT },
+          representative: { select: MEETING_CONTACT_SELECT }
+        }
+      }
     }
+  });
+
+  if (!meeting) {
+    return meeting;
+  }
+
+  // Decompte en tantiemes recalcule a la lecture (tantiemes contre/abstention,
+  // total de reference) : seules les colonnes `votes*` et `sharesFor` existent en base.
+  const lots: MajorityLot[] = meeting.syndicate?.lots ?? [];
+  return {
+    ...meeting,
+    attendance: computeMeetingAttendance(
+      lots,
+      meeting.resolutions.flatMap(resolution => resolution.votes)
+    ),
+    resolutions: meeting.resolutions.map(resolution => ({
+      ...resolution,
+      tally: computeResolutionTally(resolution.majorityRule, lots, resolution.votes)
+    }))
+  };
+}
+
+/** Assemblee de l'agence, ou 404 identique a une assemblee inexistante. */
+async function findMeetingForTenant(
+  client: PrismaTransactionClient,
+  tenantId: string,
+  syndicateId: string,
+  meetingId: string
+) {
+  const meeting = await client.generalMeeting.findFirst({
+    where: {
+      id: meetingId,
+      syndicateId,
+      syndicate: {
+        tenantId
+      }
+    },
+    select: { id: true, status: true, startTime: true, endTime: true }
+  });
+
+  if (!meeting) {
+    throw notFound('Assemblee generale introuvable ou inaccessible');
+  }
+
+  return meeting;
+}
+
+/**
+ * Recalcule les compteurs et le resultat de chaque resolution de l'assemblee,
+ * puis le quorum (tantiemes des lots ayant vote / tantiemes totaux).
+ */
+async function recomputeMeetingResultsTx(tx: PrismaTransactionClient, syndicateId: string, meetingId: string) {
+  const lots = await tx.syndicateLot.findMany({
+    where: { syndicateId },
+    select: { id: true, generalShares: true, coownerId: true, ownerContactId: true }
+  });
+  const resolutions = await tx.gMResolution.findMany({
+    where: { meetingId },
+    select: { id: true, majorityRule: true, votes: { select: { lotId: true, vote: true } } }
+  });
+
+  for (const resolution of resolutions) {
+    const tally = computeResolutionTally(resolution.majorityRule, lots, resolution.votes);
+    await tx.gMResolution.update({
+      where: { id: resolution.id },
+      data: {
+        result: tally.result,
+        votesFor: tally.votesFor,
+        votesAgainst: tally.votesAgainst,
+        votesAbstain: tally.votesAbstain,
+        sharesFor: tally.sharesFor
+      }
+    });
+  }
+
+  const attendance = computeMeetingAttendance(
+    lots,
+    resolutions.flatMap(resolution => resolution.votes)
+  );
+  await tx.generalMeeting.update({
+    where: { id: meetingId },
+    data: { quorum: attendance.quorumPercent }
   });
 }
 
@@ -1421,7 +1669,7 @@ export async function createMeetingWithResolutions(
           meetingId: meeting.id,
           title: r.title,
           description: r.description,
-          majorityRule: r.majorityRule
+          majorityRule: r.majorityRule?.trim() || DEFAULT_MAJORITY_RULE
         }))
       });
     }
@@ -1434,30 +1682,47 @@ export async function updateMeetingByTenant(
   tenantId: string,
   syndicateId: string,
   meetingId: string,
-  data: { startTime?: Date | null; endTime?: Date | null; location?: string | null }
-) {
-  const existing = await prisma.generalMeeting.findFirst({
-    where: {
-      id: meetingId,
-      syndicateId,
-      syndicate: {
-        tenantId
-      }
-    },
-    select: { id: true }
-  });
-
-  if (!existing) {
-    throw notFound('Assemblee generale introuvable ou inaccessible');
+  data: {
+    startTime?: Date | null;
+    endTime?: Date | null;
+    location?: string | null;
+    status?: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   }
+) {
+  const has = (key: keyof typeof data) => Object.prototype.hasOwnProperty.call(data, key);
 
-  return prisma.generalMeeting.update({
-    where: { id: meetingId },
-    data: {
-      ...(Object.prototype.hasOwnProperty.call(data, 'startTime') ? { startTime: data.startTime ?? null } : {}),
-      ...(Object.prototype.hasOwnProperty.call(data, 'endTime') ? { endTime: data.endTime ?? null } : {}),
-      ...(Object.prototype.hasOwnProperty.call(data, 'location') ? { location: data.location ?? null } : {})
+  return prisma.$transaction(async tx => {
+    const existing = await findMeetingForTenant(tx, tenantId, syndicateId, meetingId);
+
+    const statusChange: Record<string, unknown> = {};
+    if (data.status && data.status !== existing.status) {
+      if (!MEETING_STATUS_TRANSITIONS[existing.status]?.includes(data.status)) {
+        throw conflict(meetingTransitionErrorMessage(existing.status, data.status));
+      }
+      statusChange.status = data.status;
+      // L'ouverture et la cloture horodatent la seance si l'heure n'a pas ete saisie.
+      const now = new Date();
+      if (data.status === 'IN_PROGRESS' && !existing.startTime && !has('startTime')) {
+        statusChange.startTime = now;
+      }
+      if (data.status === 'COMPLETED' && !existing.endTime && !has('endTime')) {
+        statusChange.endTime = now;
+      }
+      // A la cloture, les resultats sont recalcules une derniere fois puis figes.
+      if (data.status === 'COMPLETED') {
+        await recomputeMeetingResultsTx(tx, syndicateId, meetingId);
+      }
     }
+
+    return tx.generalMeeting.update({
+      where: { id: meetingId },
+      data: {
+        ...(has('startTime') ? { startTime: data.startTime ?? null } : {}),
+        ...(has('endTime') ? { endTime: data.endTime ?? null } : {}),
+        ...(has('location') ? { location: data.location ?? null } : {}),
+        ...statusChange
+      }
+    });
   });
 }
 
@@ -1554,23 +1819,18 @@ export async function addResolutionToMeeting(
   syndicateId: string,
   data: { meetingId: string; title: string; description?: string | null; majorityRule?: string | null }
 ) {
-  const meeting = await prisma.generalMeeting.findFirst({
-    where: {
-      id: data.meetingId,
-      syndicateId,
-      syndicate: {
-        tenantId
-      }
-    },
-    select: { id: true }
+  const meeting = await findMeetingForTenant(prisma, tenantId, syndicateId, data.meetingId);
+  assertMeetingOpenForChanges(meeting.status, {
+    COMPLETED: "Assemblee cloturee : impossible d'ajouter une resolution",
+    CANCELLED: "Assemblee annulee : impossible d'ajouter une resolution"
   });
 
-  if (!meeting) {
-    throw notFound('Assemblee generale introuvable ou inaccessible');
-  }
-
   return prisma.gMResolution.create({
-    data
+    data: {
+      ...data,
+      // Code de regle stable (ARTICLE_24…) ; un texte libre reste accepte et vaut l'article 24.
+      majorityRule: data.majorityRule?.trim() || DEFAULT_MAJORITY_RULE
+    }
   });
 }
 
@@ -1581,7 +1841,7 @@ export async function castVoteAndRecomputeResolutionCounters(
   lotId: string,
   vote: 'FOR' | 'AGAINST' | 'ABSTAIN'
 ) {
-  return prisma.$transaction(async tx => {
+  const meetingId = await prisma.$transaction(async tx => {
     const resolution = await tx.gMResolution.findFirst({
       where: {
         id: resolutionId,
@@ -1593,13 +1853,18 @@ export async function castVoteAndRecomputeResolutionCounters(
         }
       },
       include: {
-        meeting: true
+        meeting: { select: { id: true, status: true } }
       }
     });
 
     if (!resolution) {
       throw notFound('Resolution introuvable ou inaccessible');
     }
+
+    assertMeetingOpenForChanges(resolution.meeting.status, {
+      COMPLETED: 'Assemblee cloturee : les votes sont figes',
+      CANCELLED: 'Assemblee annulee : aucun vote possible'
+    });
 
     const lot = await tx.syndicateLot.findFirst({
       where: {
@@ -1631,64 +1896,120 @@ export async function castVoteAndRecomputeResolutionCounters(
       }
     });
 
-    const votes = await tx.gMVote.findMany({
-      where: { resolutionId },
-      include: {
-        lot: true
-      }
+    // Resultat recalcule a chaque vote, en tantiemes, selon la regle de la
+    // resolution (voir meeting-majority.ts) ; quorum recalcule sur l'assemblee.
+    await recomputeMeetingResultsTx(tx, syndicateId, resolution.meeting.id);
+
+    return resolution.meeting.id;
+  });
+
+  // Relu apres la validation de la transaction : lu depuis le client global a
+  // l'interieur, le detail ne voyait pas encore le vote qui venait d'etre saisi.
+  return getMeetingByTenant(tenantId, syndicateId, meetingId);
+}
+
+export async function listMeetingProxiesByTenant(tenantId: string, syndicateId: string, meetingId: string) {
+  await findMeetingForTenant(prisma, tenantId, syndicateId, meetingId);
+
+  return prisma.gMProxy.findMany({
+    where: { meetingId },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      grantor: { select: MEETING_CONTACT_SELECT },
+      representative: { select: MEETING_CONTACT_SELECT }
+    }
+  });
+}
+
+/**
+ * Pouvoir (mandat) d'AG. Regles :
+ * - mandant et mandataire sont des contacts CRM de l'agence ;
+ * - le mandant est coproprietaire d'au moins un lot de la copropriete ;
+ * - le mandataire n'est pas le mandant ;
+ * - un seul pouvoir par mandant et par assemblee (controle applicatif, aucun
+ *   index unique en base) ;
+ * - assemblee ni cloturee ni annulee.
+ */
+export async function createMeetingProxyByTenant(
+  tenantId: string,
+  syndicateId: string,
+  data: { meetingId: string; grantorContactId: string; representativeContactId: string }
+) {
+  return prisma.$transaction(async tx => {
+    const meeting = await findMeetingForTenant(tx, tenantId, syndicateId, data.meetingId);
+    assertMeetingOpenForChanges(meeting.status, {
+      COMPLETED: 'Assemblee cloturee : les pouvoirs ne peuvent plus etre modifies',
+      CANCELLED: 'Assemblee annulee : les pouvoirs ne peuvent plus etre modifies'
     });
 
-    const syndicateLots = await tx.syndicateLot.findMany({
-      where: { syndicateId },
-      select: { generalShares: true }
-    });
-
-    let votesFor = 0;
-    let votesAgainst = 0;
-    let votesAbstain = 0;
-    let sharesFor = 0;
-    let representedShares = 0;
-
-    for (const currentVote of votes) {
-      representedShares += currentVote.lot.generalShares;
-
-      if (currentVote.vote === 'FOR') {
-        votesFor += 1;
-        sharesFor += currentVote.lot.generalShares;
-      } else if (currentVote.vote === 'AGAINST') {
-        votesAgainst += 1;
-      } else if (currentVote.vote === 'ABSTAIN') {
-        votesAbstain += 1;
-      }
+    if (data.grantorContactId === data.representativeContactId) {
+      throw unprocessableEntity('Le mandataire ne peut pas etre le mandant');
     }
 
-    const totalShares = syndicateLots.reduce(
-      (sum: number, currentLot: { generalShares: number }) => sum + currentLot.generalShares,
-      0
-    );
-    const quorum = totalShares > 0 ? (representedShares / totalShares) * 100 : 0;
-    const result = votesFor > votesAgainst ? 'APPROVED' : 'REJECTED';
-
-    await tx.gMResolution.update({
-      where: { id: resolutionId },
-      data: {
-        result,
-        votesFor,
-        votesAgainst,
-        votesAbstain,
-        sharesFor
-      }
+    // Un contact d'une autre agence leve la meme 404 qu'un contact inexistant.
+    await assertBelongsToTenant(tx, 'crmContact', data.grantorContactId, tenantId, {
+      message: 'Contact introuvable ou inaccessible'
+    });
+    await assertBelongsToTenant(tx, 'crmContact', data.representativeContactId, tenantId, {
+      message: 'Contact introuvable ou inaccessible'
     });
 
-    await tx.generalMeeting.update({
-      where: { id: resolution.meeting.id },
+    const grantorLot = await tx.syndicateLot.findFirst({
+      where: {
+        syndicateId,
+        syndicate: { tenantId },
+        OR: [{ coownerId: data.grantorContactId }, { ownerContactId: data.grantorContactId }]
+      },
+      select: { id: true }
+    });
+    if (!grantorLot) {
+      throw unprocessableEntity("Le mandant doit etre coproprietaire d'au moins un lot de la copropriete");
+    }
+
+    const duplicate = await tx.gMProxy.findFirst({
+      where: { meetingId: data.meetingId, grantorContactId: data.grantorContactId },
+      select: { id: true }
+    });
+    if (duplicate) {
+      throw conflict('Ce coproprietaire a deja donne un pouvoir pour cette assemblee');
+    }
+
+    return tx.gMProxy.create({
       data: {
-        quorum
+        meetingId: data.meetingId,
+        grantorContactId: data.grantorContactId,
+        representativeContactId: data.representativeContactId
+      },
+      include: {
+        grantor: { select: MEETING_CONTACT_SELECT },
+        representative: { select: MEETING_CONTACT_SELECT }
       }
     });
-
-    return getMeetingByTenant(tenantId, syndicateId, resolution.meeting.id);
   });
+}
+
+export async function deleteMeetingProxyByTenant(
+  tenantId: string,
+  syndicateId: string,
+  meetingId: string,
+  proxyId: string
+) {
+  const meeting = await findMeetingForTenant(prisma, tenantId, syndicateId, meetingId);
+
+  const proxy = await prisma.gMProxy.findFirst({
+    where: { id: proxyId, meetingId: meeting.id },
+    select: { id: true }
+  });
+  if (!proxy) {
+    throw notFound('Pouvoir introuvable ou inaccessible');
+  }
+
+  assertMeetingOpenForChanges(meeting.status, {
+    COMPLETED: 'Assemblee cloturee : les pouvoirs ne peuvent plus etre modifies',
+    CANCELLED: 'Assemblee annulee : les pouvoirs ne peuvent plus etre modifies'
+  });
+
+  return prisma.gMProxy.delete({ where: { id: proxy.id } });
 }
 
 export async function linkMaintenanceRequestBySyndicate(
@@ -1824,6 +2145,76 @@ export async function listServiceProvidersBySyndicate(tenantId: string, syndicat
       }
     },
     orderBy: { name: 'asc' }
+  });
+}
+
+/**
+ * Creation d'un prestataire, rattache a l'agence (ecart recette #2, FR-010).
+ * `ServiceProvider` n'est pas lie a une copropriete : le prestataire cree ici
+ * est visible depuis n'importe quelle copropriete de l'agence, comme
+ * `listServiceProvidersBySyndicate` (au-dessus) le fait deja pour la lecture.
+ */
+export async function createServiceProvider(
+  tenantId: string,
+  data: { name: string; specialty?: string; email?: string; phone?: string }
+) {
+  return prisma.serviceProvider.create({
+    data: {
+      tenantId,
+      name: data.name,
+      specialty: data.specialty,
+      email: data.email,
+      phone: data.phone
+    }
+  });
+}
+
+export async function updateServiceProviderByTenant(
+  tenantId: string,
+  providerId: string,
+  data: { name?: string; specialty?: string | null; email?: string | null; phone?: string | null }
+) {
+  const existing = await prisma.serviceProvider.findFirst({
+    where: { id: providerId, tenantId },
+    select: { id: true }
+  });
+
+  if (!existing) {
+    throw notFound('Prestataire introuvable ou inaccessible');
+  }
+
+  return prisma.serviceProvider.update({
+    where: { id: providerId },
+    data
+  });
+}
+
+/**
+ * Refuse la suppression d'un prestataire encore lie a un contrat ou un
+ * incident (ecart recette #2) : le supprimer aurait laisse ces lignes
+ * pointer vers un prestataire disparu sans le dire.
+ */
+export async function deleteServiceProviderByTenant(tenantId: string, providerId: string) {
+  const existing = await prisma.serviceProvider.findFirst({
+    where: { id: providerId, tenantId },
+    select: { id: true }
+  });
+
+  if (!existing) {
+    throw notFound('Prestataire introuvable ou inaccessible');
+  }
+
+  const [contractsCount, incidentsCount] = await Promise.all([
+    prisma.maintenanceContract.count({ where: { providerId } }),
+    prisma.syndicateIncident.count({ where: { providerId } })
+  ]);
+
+  if (contractsCount > 0 || incidentsCount > 0) {
+    throw conflict('Ce prestataire a des contrats ou des incidents lies : il ne peut pas etre supprime.');
+  }
+
+  return prisma.serviceProvider.delete({
+    where: { id: providerId }
   });
 }
 
@@ -2065,7 +2456,7 @@ export async function getFinanceSummaryBySyndicate(tenantId: string, syndicateId
     })
   ]);
 
-  const overdueCharges = charges.filter(charge => charge.status === 'OVERDUE');
+  const overdueCharges = charges.filter(charge => deriveChargeCallStatus(charge.status, charge.dueDate) === 'OVERDUE');
   const totalCalled = roundMoney(charges.reduce((sum: number, charge) => sum + Number(charge.amount), 0));
   const totalPaid = roundMoney(
     charges.reduce(
@@ -2151,7 +2542,7 @@ export async function listOverdueDashboardBySyndicate(tenantId: string, syndicat
           }
         : null,
       dueDate: call.dueDate,
-      status: call.status,
+      status: deriveChargeCallStatus(call.status, call.dueDate, now),
       amount,
       paid,
       outstanding,
@@ -2567,10 +2958,125 @@ async function getOrCreateOwnerAccountForLot(tenantId: string, syndicateId: stri
   });
 }
 
+/**
+ * Rapproche le compte d'un lot avec l'historique reel de ses appels de
+ * charges et de ses paiements.
+ *
+ * Constat de recette : seuls les appels crees par la creation directe
+ * debitaient le compte ; ceux generes depuis une campagne budgetaire
+ * (`generateChargeCallsFromBudget`) passaient par un `createMany` qui ne
+ * touchait jamais le grand livre — corrige a la source ci-dessus, mais les
+ * appels deja generes avant ce correctif restent orphelins de toute
+ * ecriture. Ce rapprochement les rattrape sans migration ni script a lancer
+ * a la main : chaque `ChargeCall`/`ChargePayment` du lot sans
+ * `OwnerAccountTransaction` correspondante (identifiee par `sourceId`) se
+ * voit ajouter l'ecriture manquante.
+ *
+ * Declenchement choisi : automatique, a chaque ouverture du compte du lot
+ * (`getOwnerAccountByLot`, donc `/compte` et `/compte/transactions`), plutot
+ * qu'un bouton dedie « Rapprocher le compte ». Un rattrapage automatique est
+ * plus sur qu'une action que quelqu'un doit penser a declencher, et le cout
+ * (parcourir les appels et paiements d'UN lot) reste negligeable a chaque
+ * lecture.
+ *
+ * Idempotence sous concurrence : `OwnerAccountTransaction` n'a pas de
+ * contrainte unique sur `sourceId` (aucune migration autorisee pour ce lot),
+ * donc un simple "verifier puis inserer" pourrait dupliquer une ecriture si
+ * deux requetes rapprochent le meme compte en meme temps (ex. deux onglets
+ * ouverts sur la meme page). Un verrou consultatif Postgres scope au compte
+ * — meme idiome que `lib/finance/cash.ts` et `lot-registry-service.ts` —
+ * serialise ces deux requetes : la seconde attend que la premiere ait
+ * committe, puis relit un etat ou les ecritures qu'elle s'appretait a creer
+ * existent deja, et ne les recree pas.
+ */
+export async function reconcileOwnerAccountLedgerForLot(
+  tenantId: string,
+  syndicateId: string,
+  lotId: string
+): Promise<{ accountId: string | null; created: number }> {
+  return prisma.$transaction(async tx => {
+    const account = await ensureOwnerAccountForLotTx(tx, tenantId, syndicateId, lotId);
+    if (!account) {
+      return { accountId: null, created: 0 };
+    }
+
+    const lockKey = `owner-account-ledger:${account.id}`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+
+    const [charges, payments, existingEntries] = await Promise.all([
+      tx.chargeCall.findMany({
+        where: { lotId, syndicateId, syndicate: { tenantId } },
+        select: { id: true, amount: true, period: true, dueDate: true }
+      }),
+      tx.chargePayment.findMany({
+        where: { chargeCall: { lotId, syndicateId, syndicate: { tenantId } } },
+        select: { id: true, amount: true, paidAt: true, reference: true }
+      }),
+      tx.ownerAccountTransaction.findMany({
+        where: { accountId: account.id, sourceId: { not: null } },
+        select: { sourceId: true, type: true }
+      })
+    ]);
+
+    const covered = new Set(existingEntries.map(entry => `${entry.type}:${entry.sourceId}`));
+
+    interface PendingEntry {
+      date: Date;
+      apply: () => Promise<unknown>;
+    }
+    const pending: PendingEntry[] = [];
+
+    for (const charge of charges) {
+      if (covered.has(`CHARGE_CALL:${charge.id}`)) continue;
+      pending.push({
+        date: charge.dueDate,
+        apply: () =>
+          appendOwnerAccountTransactionTx(tx, {
+            accountId: account.id,
+            type: 'CHARGE_CALL',
+            debit: Number(charge.amount),
+            label: `Appel de charges ${charge.period}`,
+            sourceId: charge.id,
+            transactionDate: charge.dueDate
+          })
+      });
+    }
+
+    for (const payment of payments) {
+      if (covered.has(`PAYMENT:${payment.id}`)) continue;
+      pending.push({
+        date: payment.paidAt,
+        apply: () =>
+          appendOwnerAccountTransactionTx(tx, {
+            accountId: account.id,
+            type: 'PAYMENT',
+            credit: Number(payment.amount),
+            label: 'Paiement appel de charges',
+            reference: payment.reference,
+            sourceId: payment.id,
+            transactionDate: payment.paidAt
+          })
+      });
+    }
+
+    // Ordre chronologique : ce lot d'ecritures manquantes reconstitue un
+    // solde courant coherent entre elles (le grand livre existant, lui, ne
+    // rejoue jamais sa propre chronologie une fois ecrit).
+    pending.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    for (const entry of pending) {
+      await entry.apply();
+    }
+
+    return { accountId: account.id, created: pending.length };
+  });
+}
+
 export async function getOwnerAccountByLot(tenantId: string, syndicateId: string, lotId: string) {
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
 
   await getOrCreateOwnerAccountForLot(tenantId, syndicateId, lotId);
+  await reconcileOwnerAccountLedgerForLot(tenantId, syndicateId, lotId);
 
   const account = await prisma.ownerAccount.findFirst({
     where: {
@@ -3529,18 +4035,42 @@ export async function generateChargeCallsFromBudget(
       }
     });
 
-    await tx.chargeCall.createMany({
-      data: allocations.map(allocation => ({
-        syndicateId,
-        lotId: allocation.lotId,
-        batchId: batch.id,
-        period: data.period,
-        amount: roundMoney(Number(allocation.totalAllocated)),
-        currency: data.currency || budget.currency || 'XOF',
-        dueDate: data.dueDate,
-        status: 'PENDING'
-      }))
-    });
+    // Constat de recette : `createMany` (avant ce correctif) ne renvoie que
+    // le nombre de lignes inserees, jamais leurs identifiants — impossible
+    // d'y accrocher une ecriture de grand livre. Un appel cree ainsi ne
+    // debitait donc jamais le compte du lot concerne, contrairement a un
+    // appel direct (createChargeCallAndUpdateStatus, plus haut) qui cree
+    // chaque ChargeCall un par un pour la meme raison. On boucle ici de la
+    // meme facon : le nombre de lots d'une copropriete reste modeste, et
+    // c'est deja le choix fait pour la creation directe multi-lots.
+    const currency = data.currency || budget.currency || 'XOF';
+    for (const allocation of allocations) {
+      const amount = roundMoney(Number(allocation.totalAllocated));
+      const chargeCall = await tx.chargeCall.create({
+        data: {
+          syndicateId,
+          lotId: allocation.lotId,
+          batchId: batch.id,
+          period: data.period,
+          amount,
+          currency,
+          dueDate: data.dueDate,
+          status: 'PENDING'
+        }
+      });
+
+      const account = await ensureOwnerAccountForLotTx(tx, tenantId, syndicateId, allocation.lotId);
+      if (account) {
+        await appendOwnerAccountTransactionTx(tx, {
+          accountId: account.id,
+          type: 'CHARGE_CALL',
+          debit: amount,
+          label: `Appel de charges ${data.period}`,
+          sourceId: chargeCall.id,
+          transactionDate: data.dueDate
+        });
+      }
+    }
 
     logger.info('Audit: charge calls batch generated from budget', {
       tenantId,
@@ -3978,4 +4508,130 @@ export async function addIncidentImputationBySyndicate(
       contract: true
     }
   });
+}
+
+// =============================================================
+// SYNDIC MODULE - FONDS FINANCIERS DE LA COPROPRIETE (FR-013)
+// =============================================================
+// Le modele SyndicateFund existait deja (utilise en lecture seule par
+// getFinanceSummaryBySyndicate) mais n'avait ni route de creation ni de
+// modification — voir docs/recette/SCENARIO_SYNDIC_MODULES.md, annexe #4.
+
+async function findSyndicateFundOrThrow(tenantId: string, syndicateId: string, fundId: string) {
+  const fund = await prisma.syndicateFund.findFirst({
+    where: {
+      id: fundId,
+      syndicateId,
+      syndicate: { tenantId }
+    }
+  });
+
+  if (!fund) {
+    throw notFound('Fonds introuvable ou inaccessible pour cette copropriete');
+  }
+
+  return fund;
+}
+
+export async function createSyndicateFundBySyndicate(
+  tenantId: string,
+  syndicateId: string,
+  data: { name: string; initialBalance?: number; currency?: string },
+  actorUserId?: string | null
+) {
+  await assertSyndicateTenantOwnership(tenantId, syndicateId);
+
+  const fund = await prisma.syndicateFund.create({
+    data: {
+      syndicateId,
+      name: data.name,
+      balance: roundMoney(data.initialBalance ?? 0),
+      currency: data.currency || 'XOF'
+    }
+  });
+
+  if (actorUserId) {
+    logAuditEvent({
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.SYNDICATE_FUND_CREATED,
+      entityType: 'SYNDICATE_FUND',
+      entityId: fund.id,
+      payload: { syndicateId, name: fund.name, initialBalance: Number(fund.balance), currency: fund.currency }
+    });
+  }
+
+  return fund;
+}
+
+export async function renameSyndicateFundByTenant(
+  tenantId: string,
+  syndicateId: string,
+  fundId: string,
+  data: { name: string },
+  actorUserId?: string | null
+) {
+  const fund = await findSyndicateFundOrThrow(tenantId, syndicateId, fundId);
+
+  const updated = await prisma.syndicateFund.update({
+    where: { id: fund.id },
+    data: { name: data.name }
+  });
+
+  if (actorUserId) {
+    logAuditEvent({
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.SYNDICATE_FUND_RENAMED,
+      entityType: 'SYNDICATE_FUND',
+      entityId: fund.id,
+      payload: { syndicateId, previousName: fund.name, newName: updated.name }
+    });
+  }
+
+  return updated;
+}
+
+export async function adjustSyndicateFundBalanceByTenant(
+  tenantId: string,
+  syndicateId: string,
+  fundId: string,
+  data: { direction: 'CREDIT' | 'DEBIT'; amount: number; reason: string },
+  actorUserId?: string | null
+) {
+  const fund = await findSyndicateFundOrThrow(tenantId, syndicateId, fundId);
+
+  const amount = roundMoney(data.amount);
+  const previousBalance = Number(fund.balance);
+  const nextBalance =
+    data.direction === 'CREDIT' ? roundMoney(previousBalance + amount) : roundMoney(previousBalance - amount);
+
+  // Le solde d'un fonds (compte courant, fonds de travaux...) peut legitimement
+  // devenir negatif (avance de tresorerie de l'agence, decouvert temporaire) :
+  // contrairement aux montants d'appels ou de paiements, aucune regle metier
+  // de la spec (FR-013, data-model.md) n'impose un plancher a zero.
+  const updated = await prisma.syndicateFund.update({
+    where: { id: fund.id },
+    data: { balance: nextBalance }
+  });
+
+  if (actorUserId) {
+    logAuditEvent({
+      actorUserId,
+      tenantId,
+      actionKey: AuditActionKey.SYNDICATE_FUND_BALANCE_ADJUSTED,
+      entityType: 'SYNDICATE_FUND',
+      entityId: fund.id,
+      payload: {
+        syndicateId,
+        direction: data.direction,
+        amount,
+        reason: data.reason,
+        previousBalance,
+        newBalance: nextBalance
+      }
+    });
+  }
+
+  return updated;
 }

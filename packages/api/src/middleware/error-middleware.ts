@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
+import multer from 'multer';
 import { logger } from '../utils/logger';
 import { isProduction } from '../config/env';
 import { t } from '../i18n';
@@ -190,6 +191,33 @@ function toErrorResponse(err: unknown): { status: number; body: ErrorResponse } 
         ...(err.code ? { code: err.code } : {}),
         ...(err.errors ? { errors: err.errors } : {}),
         ...(err.data !== undefined ? { data: err.data } : {})
+      }
+    };
+  }
+
+  // Multer (LIMIT_FILE_SIZE, champ inattendu…) : ce sont des erreurs de
+  // validation de la requête, jamais des pannes serveur. `LIMIT_FILE_SIZE`
+  // recoit son propre code 413 ; les autres (LIMIT_UNEXPECTED_FILE,
+  // LIMIT_FILE_COUNT…) restent en 400. La limite configurée n'est pas portée
+  // par l'erreur multer elle-même : le message reste générique plutôt que
+  // d'inventer un chiffre.
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return {
+        status: 413,
+        body: {
+          success: false,
+          message: 'Le fichier envoyé dépasse la taille maximale autorisée.',
+          code: ErrorCode.BAD_REQUEST
+        }
+      };
+    }
+    return {
+      status: 400,
+      body: {
+        success: false,
+        message: "Le fichier envoyé n'a pas pu être traité. Vérifiez son format et réessayez.",
+        code: ErrorCode.BAD_REQUEST
       }
     };
   }

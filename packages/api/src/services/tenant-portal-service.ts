@@ -19,56 +19,37 @@ import {
   RentalInstallmentStatus,
   RentalPaymentStatus,
   MaintenanceTicketStatus,
-  MaintenanceTicketCommentAuthorType
+  MaintenanceTicketCommentAuthorType,
+  type Prisma
 } from '@prisma/client';
 import { getDeposit, listDepositMovements } from './rental-deposit-service';
-import { createTicket, getTenantTickets, getTicketById } from './maintenance-ticket-service';
+import { createTicket, getTicketById } from './maintenance-ticket-service';
 import { uploadAttachment } from './maintenance-attachment-service';
 import { addComment } from './maintenance-comment-service';
 import { getDocumentFile } from './document-generation-service';
+import {
+  findTenantPortalTicket,
+  resolveTenantPortalCrmContactId,
+  tenantPortalTicketFilter
+} from '../lib/maintenance/portal-visibility';
+import { NotFoundError } from '../middleware/error-middleware';
+import {
+  PORTAL_RENTAL_DOCUMENT_SELECT,
+  toPortalAttachment,
+  toPortalRentalDocument
+} from '../lib/files/portal-files';
 
 export class TenantPortalService {
   /**
-   * Fiche CRM du locataire connecte, pour les colonnes qui en exigent une.
-   *
-   * Le portail ne connait que son `TenantClient` — le compte qui ouvre la
-   * session. Mais `maintenance_tickets.tenant_contact_id`,
-   * `created_by_contact_id`, `maintenance_ticket_attachments.uploaded_by_contact_id`
-   * et `maintenance_ticket_comments.author_contact_id` referencent tous
-   * `crm_contacts`. Passer l'identifiant du `TenantClient` a ces colonnes
-   * violait la cle etrangere : toute demande de maintenance deposee depuis le
-   * portail echouait en 500, avant meme les pieces jointes.
-   *
-   * Les deux tables n'ont aucun lien structurel : l'adresse e-mail du compte
-   * est la seule correspondance. On la suit, et on rend `undefined` quand
-   * aucune fiche ne repond — ces colonnes sont nullables, un ticket sans
-   * fiche CRM vaut mieux qu'un ticket refuse.
+   * Fiche CRM du locataire connecte, pour les colonnes qui en exigent une
+   * (`maintenance_tickets.tenant_contact_id`, `created_by_contact_id`,
+   * `maintenance_ticket_attachments.uploaded_by_contact_id`,
+   * `maintenance_ticket_comments.author_contact_id` referencent tous
+   * `crm_contacts`). La resolution vit avec la regle de visibilite des
+   * tickets, qui s'appuie sur la meme fiche : lib/maintenance/portal-visibility.ts.
    */
-  private async resolveCrmContactId(tenantId: string, tenantClientId: string): Promise<string | undefined> {
-    const client = await prisma.tenantClient.findFirst({
-      where: { id: tenantClientId, tenantId },
-      select: { user: { select: { email: true } } }
-    });
-
-    const email = client?.user?.email?.trim();
-    if (!email) {
-      return undefined;
-    }
-
-    const contact = await prisma.crmContact.findFirst({
-      where: {
-        tenantId,
-        email: { equals: email, mode: 'insensitive' }
-      },
-      select: { id: true }
-    });
-
-    if (!contact) {
-      logger.warn('Aucune fiche CRM pour ce locataire du portail', { tenantId, tenantClientId });
-      return undefined;
-    }
-
-    return contact.id;
+  private resolveCrmContactId(tenantId: string, tenantClientId: string): Promise<string | undefined> {
+    return resolveTenantPortalCrmContactId(tenantId, tenantClientId);
   }
 
   /**
@@ -257,11 +238,8 @@ export class TenantPortalService {
       // Get maintenance ticket summary (T025) - counts by status
       const maintenanceTicketsCounts = await prisma.maintenanceTicket.groupBy({
         by: ['status'],
-        where: {
-          tenant_id: tenantId,
-          lease_id: leaseId,
-          OR: [{ created_by_contact_id: tenantClientId }, { tenant_contact_id: tenantClientId }]
-        },
+        // Meme regle que la liste (lib/maintenance/portal-visibility.ts).
+        where: await tenantPortalTicketFilter({ tenantId, tenantClientId, leaseId }),
         _count: true
       });
 
@@ -402,19 +380,23 @@ export class TenantPortalService {
 
       const coRenters = coRentersRecords.map(cr => cr.renterClient);
 
-      // Get associated documents (T038) - grouped by type
-      const documents = await prisma.rentalDocument.findMany({
-        where: {
-          lease_id: leaseId,
-          tenant_id: tenantId,
-          status: {
-            not: 'VOID'
+      // Get associated documents (T038) - grouped by type. Sans chemin disque
+      // ni URL de stockage : `downloadPath` (lib/files/portal-files.ts).
+      const documents = (
+        await prisma.rentalDocument.findMany({
+          where: {
+            lease_id: leaseId,
+            tenant_id: tenantId,
+            status: {
+              not: 'VOID'
+            }
+          },
+          select: PORTAL_RENTAL_DOCUMENT_SELECT,
+          orderBy: {
+            issued_at: 'desc'
           }
-        },
-        orderBy: {
-          issued_at: 'desc'
-        }
-      });
+        })
+      ).map(document => toPortalRentalDocument(document, 'tenant'));
 
       // Group documents by type
       const groupedByType: Record<string, any[]> = {};
@@ -1186,7 +1168,10 @@ export class TenantPortalService {
         });
       }
 
-      return paymentDeclaration;
+      // La preuve reste privée : ni son chemin de stockage, ni son URL
+      // `/uploads/portal/payments/...` ne reviennent au portail.
+      const { proof_file_url: proofFileUrlStored, ...declaration } = paymentDeclaration;
+      return { ...declaration, hasProof: Boolean(proofFileUrlStored) };
     } catch (error) {
       logger.error('Error declaring payment', {
         error,
@@ -1602,28 +1587,37 @@ export class TenantPortalService {
     }
   ): Promise<any> {
     try {
-      // Call existing maintenance ticket service with reportedBy filter (T091)
-      const ticketsData = await getTenantTickets(
-        tenantId,
-        {
-          leaseId: leaseId,
-          tenantContactId: tenantClientId, // Filter by tenant contact
-          status: filters?.status as any
-        },
-        pagination
-      );
+      // Les tickets du locataire : son bail actif ou sa fiche CRM
+      // (lib/maintenance/portal-visibility.ts). L'ancien filtre comparait
+      // `tenant_contact_id` a l'identifiant du TenantClient, valeur que la cle
+      // etrangere vers `crm_contacts` interdit : la liste restait vide.
+      const visibility = await tenantPortalTicketFilter({ tenantId, tenantClientId, leaseId });
+      const where: Prisma.MaintenanceTicketWhereInput = filters?.status
+        ? { AND: [visibility, { status: filters.status as MaintenanceTicketStatus }] }
+        : visibility;
 
-      // Calculate summary (T092)
-      const allTickets = await prisma.maintenanceTicket.findMany({
-        where: {
-          tenant_id: tenantId,
-          lease_id: leaseId,
-          OR: [{ created_by_contact_id: tenantClientId }, { tenant_contact_id: tenantClientId }]
-        },
-        select: {
-          status: true
-        }
-      });
+      const page = pagination?.page || 1;
+      const limit = Math.min(pagination?.limit || 20, 100);
+
+      const [tickets, total, allTickets] = await Promise.all([
+        prisma.maintenanceTicket.findMany({
+          where,
+          include: {
+            property: { select: { id: true, internalReference: true, address: true, title: true } },
+            assignedVendor: { select: { id: true, name: true } }
+          },
+          orderBy: { created_at: 'desc' },
+          skip: (page - 1) * limit,
+          take: limit
+        }),
+        prisma.maintenanceTicket.count({ where }),
+        // Resume (T092) : tous les tickets du locataire, sans le filtre de statut.
+        prisma.maintenanceTicket.findMany({ where: visibility, select: { status: true } })
+      ]);
+      const ticketsData = {
+        tickets,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+      };
 
       let openCount = 0;
       let inProgressCount = 0;
@@ -1684,8 +1678,20 @@ export class TenantPortalService {
     ticketId: string
   ): Promise<any> {
     try {
-      // Call existing maintenance ticket service (T093)
-      const ticket = await getTicketById(tenantId, ticketId, tenantClientId);
+      // Visible dans ce portail (bail actif ou fiche CRM), sinon 404 comme un
+      // ticket inexistant ; le detail complet vient ensuite du service.
+      const visible = await findTenantPortalTicket({ tenantId, tenantClientId, leaseId }, ticketId);
+      if (!visible) {
+        throw new NotFoundError('Ticket introuvable');
+      }
+      const { attachments, ...details } = await getTicketById(tenantId, visible.id);
+      // Pièces jointes sans leur `file_url` de stockage : `toPortalAttachment`
+      // ne recopie que l'identifiant, le nom, le type, la taille, la date, et
+      // ajoute `downloadPath`.
+      const ticket = {
+        ...details,
+        attachments: (attachments ?? []).map(attachment => toPortalAttachment(attachment, visible.id, 'tenant'))
+      };
 
       logger.info('Maintenance ticket details retrieved', {
         tenantClientId,
@@ -1724,10 +1730,18 @@ export class TenantPortalService {
     comment: string
   ): Promise<any> {
     try {
+      // Seulement sur un ticket visible dans ce portail : `addComment` ne
+      // verifie que l'agence, et un locataire commentait ainsi le ticket d'un
+      // autre en connaissant son identifiant.
+      const visible = await findTenantPortalTicket({ tenantId, tenantClientId, leaseId }, ticketId);
+      if (!visible) {
+        throw new NotFoundError('Ticket introuvable');
+      }
+
       // Call existing maintenance comment service (T094)
       const createdComment = await addComment(
         tenantId,
-        ticketId,
+        visible.id,
         { content: comment },
         MaintenanceTicketCommentAuthorType.TENANT,
         undefined, // authorUserId
@@ -1785,12 +1799,15 @@ export class TenantPortalService {
         where.type = filters.type;
       }
 
-      const documents = await prisma.rentalDocument.findMany({
-        where,
-        orderBy: {
-          issued_at: 'desc'
-        }
-      });
+      const documents = (
+        await prisma.rentalDocument.findMany({
+          where,
+          select: PORTAL_RENTAL_DOCUMENT_SELECT,
+          orderBy: {
+            issued_at: 'desc'
+          }
+        })
+      ).map(document => toPortalRentalDocument(document, 'tenant'));
 
       // Group documents by type (T104)
       const groupedByType: Record<string, any[]> = {};

@@ -7,6 +7,7 @@ import { syncLotActivationsTx } from './lot-registry-service';
 import { generatePropertyReference } from '../utils/property-reference-generator';
 import { validatePropertyData } from './property-template-service';
 import { CreatePropertyRequest, UpdatePropertyRequest, PropertyDetail } from '../types/property-types';
+import { createPropertySchema, updatePropertySchema } from '../lib/properties/schemas';
 import { BadRequestError, NotFoundError, ConflictError } from '../middleware/error-middleware';
 import {
   PropertyType,
@@ -62,6 +63,13 @@ export async function createProperty(
   data: CreatePropertyRequest,
   actorUserId?: string
 ): Promise<PropertyDetail> {
+  // Un ZodError leve ici (pas de try/catch : voir lib/properties/schemas.ts)
+  // remonte tel quel jusqu'a `errorHandler`, qui le classe en 400
+  // `VALIDATION_ERROR` avec le champ en cause — jamais la
+  // `PrismaClientValidationError` (500) que `tx.property.create()` levait sur
+  // un champ mal type plus bas.
+  createPropertySchema.parse(data);
+
   // Validate ownership type matches provided IDs
   if (data.ownershipType === PropertyOwnershipType.TENANT && !tenantId) {
     throw new BadRequestError('Tenant ID is required for tenant-owned properties');
@@ -130,8 +138,11 @@ export async function createProperty(
             ownerUserId: finalOwnerUserId, // Can be set even for TENANT type if owner is selected in form
             containerParentId: data.containerParentId || null, // For sub-properties (apartments in buildings)
             title: data.title,
-            description: data.description,
-            address: data.address,
+            // Colonnes NOT NULL sans defaut, mais facultatives dans le
+            // formulaire : « Terminer » omet l'adresse laissee vide. Sans ce
+            // repli, Prisma levait « Argument `address` is missing » -> 500.
+            description: data.description ?? '',
+            address: data.address ?? '',
             locationZone: data.locationZone || null,
             latitude: data.latitude || null,
             longitude: data.longitude || null,
@@ -385,6 +396,11 @@ export async function updateProperty(
   userId?: string | null,
   actorUserId?: string
 ): Promise<PropertyDetail> {
+  // Meme validation qu'a la creation (voir lib/properties/schemas.ts) : un
+  // champ mal type levait une `PrismaClientValidationError` (500) au
+  // `tx.property.update()` plus bas, au lieu d'un 400 clair.
+  updatePropertySchema.parse(data);
+
   // Get existing property
   const existing = await getPropertyById(propertyId, tenantId, userId);
   if (!existing) {

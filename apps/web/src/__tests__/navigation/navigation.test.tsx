@@ -1,6 +1,7 @@
 import { NAVIGATION, MORE_TAB_HREF, SECTION_LABELS } from '../../navigation/model';
 import {
   contextFromPath,
+  isCoOwnerPortalPath,
   isOwnerPortalPath,
   isTenantPortalPath,
   portalRedirect,
@@ -21,10 +22,16 @@ const TENANT = '8cab62a9-bddc-41d5-be02-712d345df2df';
 const SYNDIC = '11111111-2222-3333-4444-555555555555';
 
 describe('modèle de navigation — intégrité', () => {
-  it('couvre les quatre personas qui ont une navigation', () => {
-    // Le cinquieme etat — compte rattache a rien — n'est pas un persona : il
+  it('couvre les cinq personas qui ont une navigation', () => {
+    // Le sixieme etat — compte rattache a rien — n'est pas un persona : il
     // n'a aucune destination, donc aucun menu.
-    expect(Object.keys(NAVIGATION).sort()).toEqual(['collaborateur', 'locataire', 'proprietaire', 'super-admin']);
+    expect(Object.keys(NAVIGATION).sort()).toEqual([
+      'collaborateur',
+      'coproprietaire',
+      'locataire',
+      'proprietaire',
+      'super-admin'
+    ]);
   });
 
   it('respecte le nombre d’onglets par persona du §4.2', () => {
@@ -32,6 +39,18 @@ describe('modèle de navigation — intégrité', () => {
     expect(NAVIGATION.collaborateur.tabs).toHaveLength(5);
     expect(NAVIGATION.proprietaire.tabs).toHaveLength(5);
     expect(NAVIGATION.locataire.tabs).toHaveLength(4);
+    expect(NAVIGATION.coproprietaire.tabs).toHaveLength(4);
+  });
+
+  it('donne au copropriétaire ses quatre destinations en lecture seule, et au bailleur un accès à sa copropriété', () => {
+    expect(NAVIGATION.coproprietaire.tree.map(g => g.href)).toEqual([
+      '/copropriete',
+      '/copropriete/appels',
+      '/copropriete/assemblees',
+      '/copropriete/documents'
+    ]);
+    const plus = NAVIGATION.proprietaire.tree.find(g => g.key === 'plus');
+    expect(plus?.children?.map(c => c.href)).toContain('/copropriete');
   });
 
   it('n’expose aucune ACTION comme destination', () => {
@@ -307,6 +326,7 @@ describe('resolvePersona', () => {
     expect(resolvePersona({ ...base, hasTenantMembership: true })).toBe('collaborateur');
     expect(resolvePersona({ ...base, clientType: 'OWNER' })).toBe('proprietaire');
     expect(resolvePersona({ ...base, clientType: 'RENTER' })).toBe('locataire');
+    expect(resolvePersona({ ...base, clientType: 'CO_OWNER' })).toBe('coproprietaire');
     expect(resolvePersona(base)).toBe('non-rattache');
   });
 
@@ -418,6 +438,20 @@ describe('gardes de portail', () => {
   it('renvoie au tableau de bord qui n’est ni l’un ni l’autre', () => {
     expect(portalRedirect('/owner', null)).toBe('/dashboard');
     expect(portalRedirect('/tenant', undefined)).toBe('/dashboard');
+  });
+
+  it('garde le copropriétaire dans son portail, et y laisse entrer bailleur et locataire', () => {
+    expect(isCoOwnerPortalPath('/copropriete')).toBe(true);
+    expect(isCoOwnerPortalPath('/copropriete/appels')).toBe(true);
+    expect(isCoOwnerPortalPath('/coproprietes')).toBe(false);
+    expect(portalRedirect('/copropriete/appels', 'CO_OWNER')).toBeNull();
+    expect(portalRedirect('/owner', 'CO_OWNER')).toBe('/copropriete');
+    expect(portalRedirect('/tenant/lease', 'CO_OWNER')).toBe('/copropriete');
+    // Un bailleur ou un locataire peut AUSSI être copropriétaire : c'est l'API
+    // qui tranche, l'écran affiche son refus le cas échéant.
+    expect(portalRedirect('/copropriete', 'OWNER')).toBeNull();
+    expect(portalRedirect('/copropriete', 'RENTER')).toBeNull();
+    expect(portalRedirect('/copropriete', null)).toBe('/dashboard');
   });
 
   it('ne touche pas aux écrans hors portail', () => {

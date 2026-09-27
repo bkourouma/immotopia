@@ -18,8 +18,8 @@ interface RentalDocument {
   type: string;
   document_number: string | null;
   title: string | null;
-  file_url: string | null;
-  file_path: string | null;
+  /** Route authentifiée du fichier (relative à l'API) ; jamais de chemin disque. */
+  downloadPath: string | null;
   issued_at: string | null;
   status: string;
 }
@@ -204,7 +204,7 @@ export default function TenantDocuments() {
                         icon={<DownloadOutlined />}
                         onClick={() => handleDownload(doc.id)}
                         loading={downloading === doc.id}
-                        disabled={!doc.file_path && !doc.file_url}
+                        disabled={!doc.downloadPath}
                       >
                         {t('Télécharger')}
                       </Button>

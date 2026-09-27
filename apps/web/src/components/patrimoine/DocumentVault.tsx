@@ -1,25 +1,29 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button, Card, Popconfirm, Space, Table, Tag } from 'antd';
 import type { PatrimonyDocument } from '../../types/patrimoine-types';
-import { API_URL } from '../../config/api';
+import { downloadPropertyDocumentFile } from '../../services/property-service';
+import { feedback } from '../../lib/feedback';
+import { saveBlob } from '../../utils/save-blob';
 import { t } from '../../i18n/t';
 
 import { activeLocale } from '../../i18n/format';
 interface Props {
   documents: PatrimonyDocument[];
+  /** Agence et bien : un fichier déposé se télécharge par la route authentifiée. */
+  tenantId: string;
+  propertyId: string;
   onDelete?: (documentId: string) => void;
   deletingId?: string | null;
 }
 
-function getDocumentUrl(fileUrl?: string | null): string {
-  if (!fileUrl) return '#';
-  if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
-    return fileUrl;
-  }
-  const apiBaseUrl = API_URL;
-  const serverBaseUrl = apiBaseUrl.replace('/api', '');
-  const normalizedFileUrl = fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`;
-  return `${serverBaseUrl}${normalizedFileUrl}`;
+/**
+ * Un lien externe saisi à la main s'ouvre tel quel. Un fichier déposé
+ * (`/uploads/properties/<bien>/documents/...`) n'est plus servi en statique :
+ * il se télécharge par `GET .../documents/:documentId/file`, qui vérifie
+ * l'agence, le bien et la permission `PROPERTIES_VIEW`.
+ */
+function isExternalUrl(fileUrl?: string | null): fileUrl is string {
+  return Boolean(fileUrl && /^https?:\/\//i.test(fileUrl));
 }
 
 function documentTypeLabel(type: PatrimonyDocument['type']): string {
@@ -44,7 +48,21 @@ function expiryInfo(expiresAt?: string | null): { label: string; color: string }
   return { label: t('Valide'), color: 'green' };
 }
 
-export const DocumentVault: React.FC<Props> = ({ documents, onDelete, deletingId }) => {
+export const DocumentVault: React.FC<Props> = ({ documents, tenantId, propertyId, onDelete, deletingId }) => {
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const download = async (document: PatrimonyDocument) => {
+    setDownloadingId(document.id);
+    try {
+      const { blob, filename } = await downloadPropertyDocumentFile(tenantId, propertyId, document.id, document.title);
+      saveBlob(blob, filename);
+    } catch {
+      feedback.error(t('Téléchargement impossible.'));
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   return (
     <Card title={t('Coffre-fort documentaire')}>
       <Table
@@ -75,11 +93,18 @@ export const DocumentVault: React.FC<Props> = ({ documents, onDelete, deletingId
           {
             title: 'Fichier',
             dataIndex: 'fileUrl',
-            render: (value: string) => (
-              <a href={getDocumentUrl(value)} target="_blank" rel="noreferrer">
-                {t('Ouvrir')}
-              </a>
-            )
+            render: (value: string | null | undefined, record: PatrimonyDocument) =>
+              isExternalUrl(value) ? (
+                <a href={value} target="_blank" rel="noopener noreferrer">
+                  {t('Ouvrir')}
+                </a>
+              ) : value ? (
+                <Button type="link" size="small" loading={downloadingId === record.id} onClick={() => download(record)}>
+                  {t('Ouvrir')}
+                </Button>
+              ) : (
+                '-'
+              )
           },
           {
             title: 'Actions',

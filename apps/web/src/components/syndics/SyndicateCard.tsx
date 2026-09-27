@@ -1,6 +1,6 @@
 import React from 'react';
 import { BankOutlined, EnvironmentOutlined, FolderOpenOutlined } from '@ant-design/icons';
-import { Button, Card, Space, Tag, Typography } from 'antd';
+import { Button, Card, Space, Tag, Tooltip, Typography } from 'antd';
 import { Link } from 'react-router-dom';
 import { Syndicate } from '../../types/syndic-types';
 import { t } from '../../i18n/t';
@@ -20,9 +20,44 @@ interface SyndicateCardProps {
   deleting?: boolean;
 }
 
+/**
+ * `null` (au lieu de `boolean`) quand `_count` est absent de la reponse : on
+ * ne sait alors pas si la copropriete est vide, et le bouton « Supprimer »
+ * reste actif — le 409 du serveur (`deleteEmptySyndicateByTenant`, ecart
+ * recette #8) tranchera a la place d'une desactivation hasardeuse.
+ */
+function isSyndicateEmpty(syndicate: Syndicate): boolean | null {
+  const counts = syndicate._count;
+  if (!counts) return null;
+  const total =
+    (counts.lots ?? 0) +
+    (counts.chargeCalls ?? 0) +
+    (counts.budgets ?? 0) +
+    (counts.generalMeetings ?? 0) +
+    (counts.documents ?? 0) +
+    (counts.serviceContracts ?? 0) +
+    (counts.incidents ?? 0);
+  return total === 0;
+}
+
 export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantId, onDelete, deleting }) => {
   const status = statusConfig[syndicate.status];
   const lotCount = syndicate._count?.lots ?? syndicate.totalLots ?? syndicate.lots?.length ?? 0;
+  const empty = isSyndicateEmpty(syndicate);
+  const deleteDisabled = empty === false;
+
+  const deleteButton = (
+    <Button
+      key="delete"
+      type="link"
+      danger
+      loading={deleting}
+      disabled={deleteDisabled}
+      onClick={() => onDelete?.(syndicate.id)}
+    >
+      {t('Supprimer')}
+    </Button>
+  );
 
   return (
     <Card
@@ -35,9 +70,16 @@ export const SyndicateCard: React.FC<SyndicateCardProps> = ({ syndicate, tenantI
         <Link key="lots" to={`/tenant/${tenantId}/syndics/${syndicate.id}/lots`}>
           {t('Voir les lots')}
         </Link>,
-        <Button key="delete" type="link" danger loading={deleting} onClick={() => onDelete?.(syndicate.id)}>
-          {t('Supprimer')}
-        </Button>
+        deleteDisabled ? (
+          <Tooltip
+            key="delete"
+            title={t('Cette copropriété a des lots ou d’autres données liées : elle ne peut pas être supprimée.')}
+          >
+            {deleteButton}
+          </Tooltip>
+        ) : (
+          deleteButton
+        )
       ]}
     >
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>

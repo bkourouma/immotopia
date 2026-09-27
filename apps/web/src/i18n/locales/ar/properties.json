@@ -395,7 +395,7 @@
   "Sélectionner un propriétaire": "اختيار مالك",
   "Sélectionner...": "اختر…",
   "Sélectionnez le type de bien et les informations de base": "اختر نوع العقار والمعلومات الأساسية",
-  "Seuls les {{MAX_APPARTEMENTS}} premiers appartements sont saisissables ici. Les suivants se créeront depuis la fiche de l'immeuble.": "لا يمكن إدخال سوى أول {{MAX_APPARTEMENTS}} شقة هنا. أما البقية فتُنشأ من صفحة المبنى.",
+  "Seuls les {{MAX_APPARTEMENTS}} premiers appartements sont saisissables ici. Ajoutez les suivants un par un depuis la fiche de l'immeuble, une fois celui-ci enregistré.": "لا يمكن إدخال سوى أول {{MAX_APPARTEMENTS}} شقة هنا. أضف البقية واحدة تلو الأخرى من صفحة المبنى، بعد حفظه.",
   "Si plusieurs appartements, un numéro sera ajouté automatiquement (ex: Appartement 1, Appartement 2...)": "عند وجود عدة شقق، يُضاف رقم تلقائيًا (مثل: الشقة 1، الشقة 2…)",
   "Signature du contrat": "توقيع العقد",
   "Sous offre": "قيد العرض",

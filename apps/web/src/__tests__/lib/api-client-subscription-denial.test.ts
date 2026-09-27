@@ -8,6 +8,7 @@ import apiClient from '../../utils/api-client';
 import {
   installSubscriptionDenialInterceptor,
   isSubscriptionDenialCode,
+  isQuotaExceededResponse,
   subscriptionDenialText,
   quotaExceededDenialText
 } from '../../utils/subscription-denial-notice';
@@ -109,5 +110,23 @@ describe('apiClient — dépassement de capacité (QUOTA_EXCEEDED)', () => {
     expect(
       quotaExceededDenialText({ capacityKey: 'CHANTIERS', used: 2, limit: 2, requested: 1 }, 'tenant-9').settingsPath
     ).toBe('/tenant/tenant-9/settings/abonnement');
+  });
+});
+
+describe('isQuotaExceededResponse — l’écran appelant ne double pas la notification', () => {
+  const detail = { capacityKey: 'LOTS', used: 110, limit: 100, requested: 1 };
+
+  it('reconnaît un 409 QUOTA_EXCEEDED porteur du détail de capacité', () => {
+    expect(isQuotaExceededResponse({ response: { status: 409, data: { code: 'QUOTA_EXCEEDED', data: detail } } })).toBe(
+      true
+    );
+  });
+
+  it('ignore les autres erreurs, que l’intercepteur n’annonce pas', () => {
+    expect(isQuotaExceededResponse({ response: { status: 409, data: { code: 'CONFLICT' } } })).toBe(false);
+    expect(isQuotaExceededResponse({ response: { status: 409, data: { code: 'QUOTA_EXCEEDED' } } })).toBe(false);
+    expect(isQuotaExceededResponse({ response: { status: 500, data: { code: 'INTERNAL' } } })).toBe(false);
+    expect(isQuotaExceededResponse(new Error('réseau'))).toBe(false);
+    expect(isQuotaExceededResponse(null)).toBe(false);
   });
 });

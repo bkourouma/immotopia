@@ -1,4 +1,5 @@
 import apiClient from '../utils/api-client';
+import { filenameFromDisposition } from '../utils/save-blob';
 import {
   Property,
   PropertyTypeTemplate,
@@ -490,4 +491,22 @@ export async function completePropertyVisit(
     { notes: notes || null }
   );
   return response.data.data;
+}
+
+/**
+ * Fichier d'un document de bien. Jamais servi en statique
+ * (`/uploads/properties/<bien>/documents` répond 404) : la route vérifie
+ * l'agence, le bien et la permission `PROPERTIES_VIEW`.
+ */
+export async function downloadPropertyDocumentFile(
+  tenantId: string,
+  propertyId: string,
+  documentId: string,
+  fallbackName: string
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(
+    `/tenants/${tenantId}/properties/${encodeURIComponent(propertyId)}/documents/${encodeURIComponent(documentId)}/file`,
+    { responseType: 'blob' }
+  );
+  return { blob: response.data, filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName) };
 }

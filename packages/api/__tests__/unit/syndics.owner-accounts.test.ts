@@ -3,11 +3,17 @@ jest.mock('@prisma/client', () => {
     chargeCall: {
       create: jest.fn(),
       findFirst: jest.fn(),
+      // Lus par reconcileOwnerAccountLedgerForLot (rapprochement automatique
+      // a chaque ouverture du compte, constat de recette module 7) : par
+      // defaut aucun appel/paiement en base, pour ne pas affecter les tests
+      // qui n'exercent pas ce chemin.
+      findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn(),
     },
     chargePayment: {
       create: jest.fn(),
       aggregate: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
     },
     syndicateLot: {
       findFirst: jest.fn(),
@@ -15,12 +21,16 @@ jest.mock('@prisma/client', () => {
     ownerAccount: {
       findUnique: jest.fn(),
       create: jest.fn(),
+      upsert: jest.fn(),
       update: jest.fn(),
     },
     ownerAccountTransaction: {
       create: jest.fn(),
-      findMany: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
     },
+    // Verrou consultatif du rapprochement (meme idiome que lib/finance/cash.ts) :
+    // no-op ici, ce magasin de test n'a pas de vraie base Postgres.
+    $executeRaw: jest.fn(),
   };
 
   const prisma = {
@@ -71,10 +81,16 @@ describe('Syndics owner accounts queries - US2', () => {
     mockPrisma.$transaction.mockImplementationOnce(async (callback: any) => callback(mockTx));
     mockTx.syndicateLot.findFirst.mockResolvedValue({ id: 'lot-1', ownerContactId: 'owner-1' });
     mockTx.chargeCall.create.mockResolvedValue({ id: 'charge-1', lotId: 'lot-1', period: '2026-Q2' });
-    mockTx.ownerAccount.findUnique
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 'acc-1', balance: 0 });
-    mockTx.ownerAccount.create.mockResolvedValue({ id: 'acc-1', balance: 0 });
+    // `ensureOwnerAccountForLotTx` cree (ou reutilise) le compte via un seul
+    // `upsert` atomique, plutot qu'un `findUnique` puis `create` non-atomique
+    // — voir le commentaire sur ce meme upsert dans queries.ts (constat de
+    // recette module 3.3 : deux lectures concurrentes du compte d'un lot
+    // heurtaient sinon la contrainte unique sur lotId). `appendOwnerAccountTransactionTx`
+    // (lib/finance/ledger.ts) relit ensuite ce meme compte PAR IDENTIFIANT
+    // (`findUnique({where:{id}})`) pour calculer le solde apres mouvement :
+    // les deux mocks coexistent, un par etape.
+    mockTx.ownerAccount.upsert.mockResolvedValue({ id: 'acc-1', balance: 0 });
+    mockTx.ownerAccount.findUnique.mockResolvedValue({ id: 'acc-1', balance: 0 });
     mockTx.ownerAccountTransaction.create.mockResolvedValue({ id: 'tx-1' });
     mockTx.ownerAccount.update.mockResolvedValue({ id: 'acc-1' });
 
@@ -109,6 +125,7 @@ describe('Syndics owner accounts queries - US2', () => {
     mockTx.chargePayment.aggregate.mockResolvedValue({ _sum: { amount: 40000 } });
     mockTx.chargeCall.update.mockResolvedValue({ id: 'charge-1', status: 'PARTIAL' });
     mockTx.syndicateLot.findFirst.mockResolvedValue({ id: 'lot-1', ownerContactId: 'owner-1' });
+    mockTx.ownerAccount.upsert.mockResolvedValue({ id: 'acc-1', balance: 120000 });
     mockTx.ownerAccount.findUnique.mockResolvedValue({ id: 'acc-1', balance: 120000 });
     mockTx.ownerAccountTransaction.create.mockResolvedValue({ id: 'tx-2' });
     mockTx.ownerAccount.update.mockResolvedValue({ id: 'acc-1' });
@@ -138,6 +155,10 @@ describe('Syndics owner accounts queries - US2', () => {
       balance: 20000,
     });
     mockPrisma.$transaction.mockImplementationOnce(async (callback: any) => callback(mockTx));
+    // `syndicateLot.findFirst` n'est pas mocke ici : `ensureOwnerAccountForLotTx`
+    // (appelee par `getOwnerAccountByLot`) sort donc avant tout `upsert`, et
+    // seule la relecture par identifiant d'`appendOwnerAccountTransactionTx`
+    // (`findUnique({where:{id}})`) importe pour ce test.
     mockTx.ownerAccount.findUnique.mockResolvedValue({ id: 'acc-1', balance: 20000 });
     mockTx.ownerAccountTransaction.create.mockResolvedValue({ id: 'tx-adj-1', type: 'ADJUSTMENT' });
     mockTx.ownerAccount.update.mockResolvedValue({ id: 'acc-1', balance: 25000 });

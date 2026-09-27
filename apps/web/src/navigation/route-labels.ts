@@ -128,6 +128,8 @@ export const ROUTE_LABELS: Record<string, string> = {
 
   // Portails
   owner: t('Portail propriétaire'),
+  copropriete: t('Espace copropriétaire'),
+  appels: t('Appels de charges'),
   revenues: 'Revenus',
   lease: t('Mon bail'),
   deposit: t('Dépôt de garantie'),
