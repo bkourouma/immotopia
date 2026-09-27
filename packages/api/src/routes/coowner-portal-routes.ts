@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth-middleware';
 import { requireCoOwnerPortalAccess } from '../middleware/coowner-portal-access';
+import { coOwnerPortalPdfRateLimiter } from '../middleware/rate-limit-middleware';
 import {
   downloadCoOwnerDocumentHandler,
   getCoOwnerLotAccountHandler,
@@ -42,8 +43,8 @@ router.get('/assemblees', listCoOwnerMeetingsHandler);
 // copropriétaire connecté ; pas de paiement en ligne (P4).
 router.get('/paiements', listCoOwnerPaymentsHandler);
 router.get('/quittances', listCoOwnerReceiptsHandler);
-router.get('/quittances/:receiptId/fichier', downloadCoOwnerReceiptHandler);
-router.get('/lots/:lotId/releve', downloadCoOwnerLotStatementHandler);
+router.get('/quittances/:receiptId/fichier', coOwnerPortalPdfRateLimiter, downloadCoOwnerReceiptHandler);
+router.get('/lots/:lotId/releve', coOwnerPortalPdfRateLimiter, downloadCoOwnerLotStatementHandler);
 router.get('/lots/:lotId/suivi-mensuel', getCoOwnerLotMonthlyTrackingHandler);
 router.get('/coproprietes/:syndicId', getCoOwnerSyndicateHandler);
 router.get('/coproprietes/:syndicId/logo', readCoOwnerSyndicateLogoHandler);

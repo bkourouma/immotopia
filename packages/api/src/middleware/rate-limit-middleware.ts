@@ -152,3 +152,21 @@ export const globalApiRateLimiter = rateLimit({
   // Health checks and static uploads must not consume the budget.
   skip: req => req.path === '/health' || req.path.startsWith('/uploads/')
 });
+
+/**
+ * Portail copropriétaire : routes qui produisent ou servent un PDF
+ * (`/quittances/:receiptId/fichier`, `/lots/:lotId/releve`). 30 par minute
+ * et par utilisateur — posé APRÈS `authenticate` et la garde du portail,
+ * donc `req.user` est connu ; l'adresse IP ne sert que de repli.
+ */
+export const coOwnerPortalPdfRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30,
+  keyGenerator: req => `coowner-pdf:${req.user?.userId ?? req.ip ?? 'anonyme'}`,
+  message: {
+    success: false,
+    message: 'Trop de requêtes. Veuillez réessayer dans quelques minutes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});

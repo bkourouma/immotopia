@@ -78,18 +78,21 @@ function publicIssuer(issuer: DocumentIssuer) {
   return { kind: issuer.kind, name: issuer.name, address: issuer.address, phone: issuer.phone, email: issuer.email };
 }
 
-/** Contact du syndic (gestionnaire désigné sur la copropriété), s'il est de l'agence. */
+/**
+ * Contact du syndic (gestionnaire désigné sur la copropriété), s'il est de
+ * l'agence : nom et e-mail seulement. Le téléphone de la fiche CRM peut être
+ * personnel : il n'est pas publié (audit S5, point produit ouvert).
+ */
 async function loadSyndicContact(tenantId: string, contactId: string | null) {
   if (!contactId) return null;
   const contact = await prisma.crmContact.findFirst({
     where: { id: contactId, tenantId },
-    select: { firstName: true, lastName: true, legalName: true, email: true, phonePrimary: true }
+    select: { firstName: true, lastName: true, legalName: true, email: true }
   });
   if (!contact) return null;
   return {
     name: contactDisplayName(contact),
-    email: contact.email?.trim() || null,
-    phone: contact.phonePrimary?.trim() || null
+    email: contact.email?.trim() || null
   };
 }
 

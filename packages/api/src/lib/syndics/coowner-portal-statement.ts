@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { NotFoundError } from '../../middleware/error-middleware';
-import { resolveDocumentBranding } from '../documents/document-branding';
+import { resolveDocumentBranding, type DocumentBranding } from '../documents/document-branding';
 import { contactDisplayName } from './charge-receipt-snapshot';
 import type { CoOwnerPortalScope } from './coowner-portal';
 import { LOT_NOT_FOUND, lotInScope } from './coowner-portal-finance';
@@ -18,8 +18,18 @@ import { buildOwnerAccountStatementPdf } from './owner-account-statement';
  *   - lecture seule : le compte n'est JAMAIS créé ici (la gestion le crée à
  *     sa première consultation) ; sans compte, le relevé sort vide, à zéro ;
  *   - le nom imprimé est celui de la fiche du copropriétaire connecté, pas
- *     celui du titulaire enregistré sur le compte.
+ *     celui du titulaire enregistré sur le compte ;
+ *   - la période ne remonte jamais avant l'acquisition du lot (`ownedSince`) :
+ *     le solde d'ouverture est alors le solde du compte à cette date ;
+ *   - seules les `STATEMENT_MAX_ROWS` lignes les PLUS RÉCENTES de la période
+ *     sont imprimées (le générateur en tient 30 sur sa page), avec pour solde
+ *     d'ouverture celui qui précède la première ligne imprimée ;
+ *   - document informatif : ni signature ni cachet de l'émetteur (images
+ *     extractibles d'un PDF), seuls les logos sont conservés (audit S5).
  */
+
+/** Lignes imprimées par le générateur de relevé (une page). */
+export const STATEMENT_MAX_ROWS = 30;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -56,13 +66,26 @@ async function openingBalance(accountId: string, rows: StatementRow[], from?: Da
   return previous ? roundMoney(Number(previous.balanceAfter)) : 0;
 }
 
-async function loadStatementRows(accountId: string, query: CoOwnerStatementQuery): Promise<StatementRow[]> {
-  const dates = statementDateWhere(query.from, query.to);
-  return prisma.ownerAccountTransaction.findMany({
+/** Les lignes les plus récentes de la période, remises dans l'ordre chronologique. */
+async function loadStatementRows(accountId: string, from: Date, to?: Date): Promise<StatementRow[]> {
+  const dates = statementDateWhere(from, to);
+  const latest = await prisma.ownerAccountTransaction.findMany({
     where: { accountId, ...(dates ? { transactionDate: dates } : {}) },
-    orderBy: [{ transactionDate: 'asc' }, { createdAt: 'asc' }],
+    orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }],
+    take: STATEMENT_MAX_ROWS,
     select: { transactionDate: true, type: true, label: true, debit: true, credit: true, balanceAfter: true }
   });
+  return latest.reverse();
+}
+
+/** Début effectif de la période : jamais avant l'acquisition du lot. */
+export function statementStart(from: Date | undefined, ownedSince: Date): Date {
+  return from && from.getTime() > ownedSince.getTime() ? from : ownedSince;
+}
+
+/** Identité du relevé du portail : logos conservés, ni signature ni cachet. */
+export function informativeBranding(branding: DocumentBranding): DocumentBranding {
+  return { ...branding, signature: null, stamp: null };
 }
 
 async function ownerNameOf(tenantId: string, contactId: string): Promise<string> {
@@ -89,11 +112,12 @@ export async function buildCoOwnerLotStatement(scope: CoOwnerPortalScope, lotId:
     where: { lotId: lot.id, syndicateId: syndicate.id },
     select: { id: true, currency: true }
   });
-  const rows = account ? await loadStatementRows(account.id, query) : [];
-  const opening = account ? await openingBalance(account.id, rows, query.from) : 0;
+  const from = statementStart(query.from, lotScope.ownedSince);
+  const rows = account ? await loadStatementRows(account.id, from, query.to) : [];
+  const opening = account ? await openingBalance(account.id, rows, from) : 0;
   const closing = rows.length > 0 ? roundMoney(Number(rows[rows.length - 1].balanceAfter)) : opening;
 
-  const branding = await resolveDocumentBranding(scope.tenantId, syndicate.id);
+  const branding = informativeBranding(await resolveDocumentBranding(scope.tenantId, syndicate.id));
   const buffer = await buildOwnerAccountStatementPdf(
     {
       syndicateName: syndicate.name,

@@ -25,7 +25,7 @@ process.env.UPLOADS_DIR = UPLOADS_ROOT;
 
 import express from 'express';
 import request from 'supertest';
-import { createFakePrisma } from '../helpers/fake-prisma';
+import { createFakePrisma, matchesWhere } from '../helpers/fake-prisma';
 import { findDiskPathLeaks } from '../helpers/disk-path-leaks';
 
 const mockPrisma = createFakePrisma();
@@ -49,7 +49,16 @@ jest.mock('../../src/services/audit-service', () => ({
   flushAuditQueue: jest.fn()
 }));
 
+// Le vrai générateur de relevé, espionné pour lire ce que le portail lui passe.
+jest.mock('../../src/lib/syndics/owner-account-statement', () => {
+  const actual = jest.requireActual('../../src/lib/syndics/owner-account-statement');
+  return { ...actual, buildOwnerAccountStatementPdf: jest.fn(actual.buildOwnerAccountStatementPdf) };
+});
+
 import coOwnerPortalRoutes from '../../src/routes/coowner-portal-routes';
+import { buildOwnerAccountStatementPdf } from '../../src/lib/syndics/owner-account-statement';
+import { ownedChargeCallsWhere } from '../../src/lib/syndics/coowner-portal';
+import { requireCoOwnerPortalAccess } from '../../src/middleware/coowner-portal-access';
 import { errorHandler } from '../../src/middleware/error-middleware';
 
 const app = express();
@@ -145,6 +154,7 @@ function snapshot(kind: 'RECEIPT' | 'QUITTANCE', number: string, coowner: string
 }
 
 function seedPeople() {
+  mockPrisma.user.rows.push({ id: USER_AWA, isActive: true }, { id: USER_BAKARY, isActive: true });
   mockPrisma.tenant.rows.push(
     { id: TENANT_A, name: 'Agence Plateau', status: 'ACTIVE', logoUrl: null, contactEmail: 'contact@plateau.ci' },
     { id: TENANT_B, name: 'Agence Cocody', status: 'ACTIVE', logoUrl: null },
@@ -207,6 +217,20 @@ function seedSyndicates() {
       cadastralReference: 'CAD-42',
       logoPath: SYNDIC_LOGO_KEY,
       mandatingAgencyId: MANDANT,
+      // Relation lue par l'identité S1 (`resolveDocumentBranding`), copiée ici
+      // parce que la base en mémoire ne suit pas les clés étrangères.
+      mandatingAgency: {
+        name: 'Cabinet Mandant',
+        legalName: null,
+        address: 'Plateau, rue 12',
+        phone: null,
+        email: null,
+        rccm: null,
+        taxId: null,
+        logoPath: MANDANT_LOGO_KEY,
+        signaturePath: MANDANT_SIGNATURE_KEY,
+        stampPath: null
+      },
       syndicManagerId: CONTACT_MANAGER
     },
     {
@@ -795,7 +819,7 @@ describe('GET /coproprietes/:syndicId', () => {
         phone: '0102030405',
         email: 'mandant@example.com'
       },
-      syndicContact: { name: 'Mariam Test', email: 'mariam@example.com', phone: '0700000000' },
+      syndicContact: { name: 'Mariam Test', email: 'mariam@example.com' },
       hasLogo: true,
       logoDownloadPath: `/portal/copropriete/coproprietes/${S1}/logo`,
       hasIssuerLogo: true,
@@ -883,6 +907,187 @@ describe('GET /coproprietes/:syndicId/logo et /logo-emetteur', () => {
 // Garde : agence choisie
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Ancien propriétaire : rien d'avant l'acquisition (audit S5)
+// ---------------------------------------------------------------------------
+
+const statementMock = buildOwnerAccountStatementPdf as jest.MockedFunction<typeof buildOwnerAccountStatementPdf>;
+
+/** Awa n'a acquis le lot L1 qu'à cette date. */
+function acquiredOn(day: string) {
+  const profile = mockPrisma.lotOwnerProfile.rows.find((row: any) => row.id === 'p-1');
+  if (!profile) throw new Error('profil p-1 absent');
+  profile.ownedSince = new Date(day);
+}
+
+describe('Historique de l’ancien propriétaire du lot', () => {
+  beforeEach(() => statementMock.mockClear());
+
+  it('/paiements et avances : rien avant l’acquisition', async () => {
+    acquiredOn('2026-01-10');
+    mockPrisma.chargePayment.rows.push({
+      id: id(499),
+      lotId: L1,
+      chargeCallId: null,
+      amount: 7000,
+      unallocatedAmount: 7000,
+      paidAt: new Date('2026-01-05'),
+      method: 'CASH',
+      reference: 'ANCIEN-REF',
+      createdAt: new Date('2026-01-05')
+    });
+
+    const res = await request(app).get(`${BASE}/paiements?lotId=${L1}`).set(as(USER_AWA));
+    expect(res.status).toBe(200);
+    expect(res.body.data.items.map((item: any) => item.id)).toEqual([PAY_L1]);
+    expect(res.body.data.advances[0].advance).toBe(10000);
+    expect(JSON.stringify(res.body)).not.toContain('ANCIEN-REF');
+
+    const previousYear = await request(app).get(`${BASE}/paiements?year=2025`).set(as(USER_AWA));
+    expect(previousYear.body.data.items).toEqual([]);
+  });
+
+  it('/appels : seulement les appels postérieurs à l’acquisition, lot par lot', async () => {
+    acquiredOn('2026-01-10');
+    const call = (callId: string, dueDate: string) => ({
+      id: callId,
+      syndicateId: S1,
+      lotId: L1,
+      period: `libre ${dueDate}`,
+      periodStart: null,
+      periodEnd: null,
+      amount: 1000,
+      currency: 'XOF',
+      dueDate: new Date(dueDate),
+      status: 'PENDING',
+      createdAt: new Date(dueDate)
+    });
+    // Sans bornes : l'échéance décide. Avec bornes : le début de période.
+    mockPrisma.chargeCall.rows.push(call(id(310), '2026-03-15'), call(id(311), '2026-01-05'));
+    mockPrisma.chargeCall.rows.push({
+      ...call(id(312), '2026-12-31'),
+      syndicateId: S2,
+      lotId: L3,
+      periodStart: new Date('2025-06-01'),
+      periodEnd: new Date('2025-06-30')
+    });
+
+    const res = await request(app).get(`${BASE}/appels`).set(as(USER_AWA));
+    expect(res.status).toBe(200);
+    // CALL_L1 (période du 01/01, échéance 31/01) et CALL_L1_2025 précèdent l'acquisition.
+    // L3 est détenu depuis 2025-01-01 : son appel de juin 2025 reste visible.
+    expect(res.body.data.map((row: any) => row.id).sort()).toEqual([id(310), id(312)].sort());
+
+    const lot = await request(app).get(`${BASE}/appels?lotId=${L1}`).set(as(USER_AWA));
+    expect(lot.body.data.map((row: any) => row.id)).toEqual([id(310)]);
+  });
+
+  it('ownedChargeCallsWhere : un appel antérieur ne correspond pas, comme un appel inconnu', async () => {
+    acquiredOn('2026-01-10');
+    const req: any = { user: { userId: USER_AWA }, headers: {} };
+    await requireCoOwnerPortalAccess(req, {} as any, jest.fn());
+    const where = ownedChargeCallsWhere(req.coOwnerPortal.scope, [L1]);
+    const byId = (callId: string) => {
+      const row = mockPrisma.chargeCall.rows.find((candidate: any) => candidate.id === callId);
+      if (!row) throw new Error(`appel ${callId} absent`);
+      return row;
+    };
+
+    expect(matchesWhere(byId(CALL_L1), { id: CALL_L1, ...where })).toBe(false);
+    expect(matchesWhere(byId(CALL_L2), { id: CALL_L2, ...where })).toBe(false);
+    expect(matchesWhere(byId(CALL_LB), { id: CALL_LB, ...where })).toBe(false);
+    // Témoin : un appel sans bornes, échu après l'acquisition, correspond.
+    const later = { id: 'x', syndicateId: S1, lotId: L1, periodStart: null, dueDate: new Date('2026-03-01') };
+    expect(matchesWhere(later, { id: 'x', ...where })).toBe(true);
+  });
+
+  it('/lots/:lotId/compte : mouvements depuis l’acquisition seulement', async () => {
+    acquiredOn('2026-01-10');
+    const res = await request(app).get(`${BASE}/lots/${L1}/compte`).set(as(USER_AWA));
+    expect(res.status).toBe(200);
+    expect(res.body.data.transactions.map((tx: any) => tx.id)).toEqual(['tx-2']);
+  });
+
+  it('/suivi-mensuel : année antérieure → 404 identique ; mois antérieurs vidés', async () => {
+    acquiredOn('2026-02-10');
+    const missing = await request(app)
+      .get(`${BASE}/lots/${id(999)}/suivi-mensuel?year=2025`)
+      .set(as(USER_AWA));
+    const before = await request(app).get(`${BASE}/lots/${L1}/suivi-mensuel?year=2025`).set(as(USER_AWA));
+    expect(before.status).toBe(404);
+    expect(before.body.message).toBe(missing.body.message);
+
+    const res = await request(app).get(`${BASE}/lots/${L1}/suivi-mensuel?year=2026`).set(as(USER_AWA));
+    expect(res.status).toBe(200);
+    expect(res.body.data.ownedSince).toBe('2026-02-10');
+    expect(res.body.data.months[0]).toEqual({ month: 1, due: 0, paid: 0, status: 'NONE' });
+    expect(res.body.data.months[1]).toEqual({ month: 2, due: 30000, paid: 10000, status: 'OVERDUE' });
+    expect(res.body.data.totals).toEqual({ due: 60000, paid: 10000, outstanding: 50000 });
+    // Le paiement du 15/01 précède l'acquisition : son avance n'est pas la sienne.
+    expect(res.body.data.advance).toBe(0);
+  });
+
+  it('/releve : période ramenée à l’acquisition, ouverture au solde de cette date', async () => {
+    acquiredOn('2026-01-10');
+    const res = await request(app)
+      .get(`${BASE}/lots/${L1}/releve?from=2025-01-01`)
+      .set(as(USER_AWA))
+      .buffer(true)
+      .parse(binary);
+
+    expect(res.status).toBe(200);
+    const [payload] = statementMock.mock.calls[0];
+    expect(payload.transactions.map(tx => tx.label)).toEqual(['Paiement']);
+    expect(payload.openingBalance).toBe(90000);
+    expect(payload.closingBalance).toBe(50000);
+    expect(payload.ownerName).toBe('Awa Test');
+  });
+});
+
+describe('Relevé du portail : informatif et récent', () => {
+  beforeEach(() => statementMock.mockClear());
+
+  it('ni signature ni cachet, logos conservés', async () => {
+    const res = await request(app).get(`${BASE}/lots/${L1}/releve`).set(as(USER_AWA)).buffer(true).parse(binary);
+
+    expect(res.status).toBe(200);
+    const branding = statementMock.mock.calls[0][1];
+    expect(branding).toBeTruthy();
+    expect(branding?.signature).toBeNull();
+    expect(branding?.stamp).toBeNull();
+    expect(branding?.issuerLogo).not.toBeNull();
+    expect(branding?.syndicate?.logo).not.toBeNull();
+  });
+
+  it('imprime les 30 lignes les plus récentes, ouverture au solde qui les précède', async () => {
+    // 40 versements de 1 000 après les deux mouvements existants (solde 50 000).
+    for (let n = 1; n <= 40; n += 1) {
+      const day = new Date(Date.UTC(2026, 1, 1) + n * 24 * 60 * 60 * 1000);
+      mockPrisma.ownerAccountTransaction.rows.push({
+        id: `tx-extra-${n}`,
+        accountId: ACCOUNT_L1,
+        transactionDate: day,
+        createdAt: day,
+        type: 'PAYMENT',
+        label: `Versement ${n}`,
+        debit: null,
+        credit: 1000,
+        balanceAfter: 50000 - n * 1000
+      });
+    }
+
+    await request(app).get(`${BASE}/lots/${L1}/releve`).set(as(USER_AWA)).buffer(true).parse(binary);
+
+    const [payload] = statementMock.mock.calls[0];
+    expect(payload.transactions).toHaveLength(30);
+    expect(payload.transactions[0].label).toBe('Versement 11');
+    expect(payload.transactions[29].label).toBe('Versement 40');
+    // Solde avant « Versement 11 » = solde après « Versement 10 ».
+    expect(payload.openingBalance).toBe(40000);
+    expect(payload.closingBalance).toBe(10000);
+  });
+});
+
 describe('Garde du portail sur les nouvelles routes', () => {
   const routes = [
     '/paiements',
@@ -914,5 +1119,20 @@ describe('Garde du portail sur les nouvelles routes', () => {
         route === '/paiements' || route === '/quittances' ? 200 : 404
       );
     }
+  });
+});
+
+// En dernier : le limiteur garde ses compteurs en mémoire pour tout le fichier.
+describe('Limiteur des routes PDF du portail', () => {
+  it('30 par minute et par utilisateur, puis 429', async () => {
+    const route = `${BASE}/quittances/${id(998)}/fichier`;
+    for (let n = 0; n < 30; n += 1) {
+      expect((await request(app).get(route).set(as(USER_BAKARY))).status).toBe(404);
+    }
+    expect((await request(app).get(route).set(as(USER_BAKARY))).status).toBe(429);
+    expect((await request(app).get(`${BASE}/lots/${L2}/releve`).set(as(USER_BAKARY))).status).toBe(429);
+    // Un autre utilisateur garde son propre quota ; les routes JSON ne sont pas limitées.
+    expect((await request(app).get(route).set(as(USER_AWA))).status).toBe(404);
+    expect((await request(app).get(`${BASE}/quittances`).set(as(USER_BAKARY))).status).toBe(200);
   });
 });

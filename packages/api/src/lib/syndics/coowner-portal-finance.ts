@@ -1,9 +1,9 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { NotFoundError } from '../../middleware/error-middleware';
-import { lotAdvanceCents, sumAllocationsByCall } from './charge-allocation';
+import { sumAllocationsByCall } from './charge-allocation';
 import { fromCents, toCents } from './charge-allocation-plan';
-import { buildLotMonthGrid, type TrackedCall } from './charge-monthly-tracking';
+import { buildLotMonthGrid, type MonthCell, type TrackedCall } from './charge-monthly-tracking';
 import {
   ensureReceiptPdf,
   receiptDownloadName,
@@ -101,6 +101,15 @@ async function lotContext(scope: CoOwnerPortalScope, lotIds: string[]) {
 // 1. Mes paiements
 // ---------------------------------------------------------------------------
 
+/**
+ * Paiements des lots `lotIds` versés depuis que le copropriétaire les détient
+ * (`ownedSince`) : ceux de l'ancien propriétaire restent à la gestion (audit S5).
+ */
+export function ownedPaymentsWhere(scope: CoOwnerPortalScope, lotIds: string[]): Prisma.ChargePaymentWhereInput {
+  const owned = scope.lots.filter(lot => lotIds.includes(lot.lotId));
+  return { OR: owned.map(lot => ({ lotId: lot.lotId, paidAt: { gte: lot.ownedSince } })) };
+}
+
 function yearWhere(year?: number): Prisma.ChargePaymentWhereInput {
   if (!year) return {};
   return { paidAt: { gte: utcDay(year, 1, 1), lt: utcDay(year + 1, 1, 1) } };
@@ -149,10 +158,10 @@ function allocationsOf(paymentId: string, details: PaymentDetails) {
     });
 }
 
-async function loadAdvances(lotIds: string[]) {
+async function loadAdvances(scope: CoOwnerPortalScope, lotIds: string[]) {
   if (lotIds.length === 0) return new Map<string, number>();
   const rows = await prisma.chargePayment.findMany({
-    where: { lotId: { in: lotIds }, unallocatedAmount: { gt: 0 } },
+    where: { AND: [ownedPaymentsWhere(scope, lotIds), { unallocatedAmount: { gt: 0 } }] },
     select: { lotId: true, unallocatedAmount: true }
   });
   const byLot = new Map<string, number>();
@@ -167,7 +176,7 @@ export async function listCoOwnerPayments(scope: CoOwnerPortalScope, query: CoOw
   if (lotIds.length === 0) return { items: [], advances: [] };
 
   const payments = await prisma.chargePayment.findMany({
-    where: { lotId: { in: lotIds }, ...yearWhere(query.year) },
+    where: { AND: [ownedPaymentsWhere(scope, lotIds), yearWhere(query.year)] },
     select: {
       id: true,
       lotId: true,
@@ -185,7 +194,7 @@ export async function listCoOwnerPayments(scope: CoOwnerPortalScope, query: CoOw
     payments.map(payment => payment.id),
     lotIds
   );
-  const advanceByLot = await loadAdvances(lotIds);
+  const advanceByLot = await loadAdvances(scope, lotIds);
 
   const items = payments.map(payment => {
     const allocations = allocationsOf(payment.id, details);
@@ -344,9 +353,24 @@ async function loadLotCallsOfYear(lot: CoOwnerLotScope, year: number) {
   });
 }
 
-/** Ligne de la grille mensuelle (S2) pour CE lot seulement. */
+/**
+ * Cases antérieures à l'acquisition vidées (NONE, 0) : les mois de l'ancien
+ * propriétaire ne sont pas ceux du copropriétaire connecté (audit S5).
+ */
+export function hideMonthsBeforeOwnership(months: MonthCell[], year: number, ownedSince: Date): MonthCell[] {
+  const startYear = ownedSince.getUTCFullYear();
+  if (year > startYear) return months;
+  const firstMonth = year < startYear ? 13 : ownedSince.getUTCMonth() + 1;
+  return months.map(cell =>
+    cell.month < firstMonth ? { month: cell.month, due: 0, paid: 0, status: 'NONE' as const } : cell
+  );
+}
+
+/** Ligne de la grille mensuelle (S2) pour CE lot seulement, depuis son acquisition. */
 export async function getCoOwnerLotMonthlyTracking(scope: CoOwnerPortalScope, lotId: string, year: number) {
   const lotScope = lotInScope(scope, lotId);
+  // Une année entièrement antérieure à l'acquisition : même 404 qu'un lot inconnu.
+  if (year < lotScope.ownedSince.getUTCFullYear()) throw new NotFoundError(LOT_NOT_FOUND);
   const { lots, viewOf } = await lotContext(scope, [lotScope.lotId]);
   if (lots.length === 0) throw new NotFoundError(LOT_NOT_FOUND);
 
@@ -356,7 +380,7 @@ export async function getCoOwnerLotMonthlyTracking(scope: CoOwnerPortalScope, lo
       prisma,
       calls.map(call => call.id)
     ),
-    lotAdvanceCents(prisma, lotScope.lotId)
+    loadAdvances(scope, [lotScope.lotId])
   ]);
   const tracked: TrackedCall[] = calls.map(call => ({
     id: call.id,
@@ -367,7 +391,7 @@ export async function getCoOwnerLotMonthlyTracking(scope: CoOwnerPortalScope, lo
     periodStart: call.periodStart,
     periodEnd: call.periodEnd
   }));
-  const months = buildLotMonthGrid(tracked, year);
+  const months = hideMonthsBeforeOwnership(buildLotMonthGrid(tracked, year), year, lotScope.ownedSince);
   const dueCents = months.reduce((sum, cell) => sum + toCents(cell.due), 0);
   const paidCents = months.reduce((sum, cell) => sum + toCents(cell.paid), 0);
 
@@ -375,7 +399,8 @@ export async function getCoOwnerLotMonthlyTracking(scope: CoOwnerPortalScope, lo
     year,
     currency: calls[0]?.currency ?? DEFAULT_CURRENCY,
     ...viewOf(lotScope.lotId),
-    advance: fromCents(advanceCents),
+    ownedSince: isoDay(lotScope.ownedSince),
+    advance: fromCents(advanceCents.get(lotScope.lotId) ?? 0),
     totals: { due: fromCents(dueCents), paid: fromCents(paidCents), outstanding: fromCents(dueCents - paidCents) },
     months
   };
