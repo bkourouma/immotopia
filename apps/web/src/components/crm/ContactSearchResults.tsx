@@ -107,7 +107,7 @@ export function ContactSearchResults({
               pageSize: pagination.limit,
               total: pagination.total,
               showSizeChanger: true,
-              showTotal: total => `Total: ${total}`,
+              showTotal: total => translate('Total : {{total}}', { total }),
               onChange: (page, pageSize) => onPageChange(page, pageSize ?? pagination.limit)
             }
           : false
