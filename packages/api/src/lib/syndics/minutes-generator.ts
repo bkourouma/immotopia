@@ -3,6 +3,7 @@ import * as path from 'path';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import { logger } from '../../utils/logger';
+import { MAJORITY_RULE_LABELS, normalizeMajorityRule } from './meeting-majority';
 
 interface AgendaItemInput {
   orderIndex: number;
@@ -18,6 +19,24 @@ interface ResolutionInput {
   votesFor?: number;
   votesAgainst?: number;
   votesAbstain?: number;
+  /** Decompte en tantiemes ajoute par getMeetingByTenant. */
+  tally?: {
+    sharesFor: number;
+    sharesAgainst: number;
+    sharesAbstain: number;
+    referenceShares: number;
+  } | null;
+}
+
+/** Libelle de la regle ; une saisie libre historique vaut l'article 24. */
+function formatMajorityRule(rule?: string | null): string {
+  return MAJORITY_RULE_LABELS[normalizeMajorityRule(rule)];
+}
+
+function formatShares(resolution: ResolutionInput): string | null {
+  if (!resolution.tally) return null;
+  const { sharesFor, sharesAgainst, sharesAbstain, referenceShares } = resolution.tally;
+  return `Tantiemes: Pour ${sharesFor}, Contre ${sharesAgainst}, Abstention ${sharesAbstain} (total de reference ${referenceShares})`;
 }
 
 function formatResolutionResult(result?: string | null): string {
@@ -129,10 +148,12 @@ function fallbackMinutes(meeting: MeetingInput): string {
     for (const [index, resolution] of meeting.resolutions.entries()) {
       lines.push(`${index + 1}. ${resolution.title}`);
       if (resolution.description) lines.push(`  - Description: ${resolution.description}`);
-      if (resolution.majorityRule) lines.push(`  - Regle de majorite: ${resolution.majorityRule}`);
+      lines.push(`  - Regle de majorite: ${formatMajorityRule(resolution.majorityRule)}`);
       lines.push(
         `  - Votes: Pour ${resolution.votesFor || 0}, Contre ${resolution.votesAgainst || 0}, Abstention ${resolution.votesAbstain || 0}`
       );
+      const sharesLine = formatShares(resolution);
+      if (sharesLine) lines.push(`  - ${sharesLine}`);
       lines.push(`  - Resultat: ${formatResolutionResult(resolution.result)}`);
     }
   }
@@ -173,17 +194,19 @@ function buildTemplateContext(meeting: MeetingInput): Record<string, unknown> {
   const resolutionsContext = resolutions.map((resolution, idx) => {
     resolutionLines.push(`${idx + 1}. ${resolution.title}`);
     resolutionLines.push(`  - Description: ${resolution.description || 'Non renseignee'}`);
-    resolutionLines.push(`  - Regle de majorite: ${resolution.majorityRule || 'Non renseignee'}`);
+    resolutionLines.push(`  - Regle de majorite: ${formatMajorityRule(resolution.majorityRule)}`);
     resolutionLines.push(
       `  - Votes: Pour ${resolution.votesFor || 0}, Contre ${resolution.votesAgainst || 0}, Abstention ${resolution.votesAbstain || 0}`
     );
+    const sharesLine = formatShares(resolution);
+    if (sharesLine) resolutionLines.push(`  - ${sharesLine}`);
     resolutionLines.push(`  - Resultat: ${formatResolutionResult(resolution.result)}`);
 
     return {
       RESOLUTION_INDEX: idx + 1,
       RESOLUTION_TITLE: resolution.title,
       RESOLUTION_DESCRIPTION: resolution.description || 'Non renseignee',
-      RESOLUTION_MAJORITY_RULE: resolution.majorityRule || 'Non renseignee',
+      RESOLUTION_MAJORITY_RULE: formatMajorityRule(resolution.majorityRule),
       RESOLUTION_VOTES_FOR: resolution.votesFor || 0,
       RESOLUTION_VOTES_AGAINST: resolution.votesAgainst || 0,
       RESOLUTION_VOTES_ABSTAIN: resolution.votesAbstain || 0,

@@ -22,6 +22,9 @@ import {
   updateMeetingByTenant,
   addResolutionToMeeting,
   castVoteAndRecomputeResolutionCounters,
+  listMeetingProxiesByTenant,
+  createMeetingProxyByTenant,
+  deleteMeetingProxyByTenant,
   addAgendaItemToMeeting,
   updateAgendaItemByTenant,
   deleteAgendaItemByTenant,
@@ -105,6 +108,7 @@ import {
   updateMeetingSchema,
   createResolutionSchema,
   castVoteSchema,
+  createMeetingProxySchema,
   createAgendaItemSchema,
   updateAgendaItemSchema,
   createContractSchema,
@@ -824,6 +828,63 @@ export const castVoteHandler = asyncHandler(async (req: Request, res: Response) 
   res.json({
     success: true,
     data: meeting
+  });
+});
+
+export const listMeetingProxiesHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  const meetingId = req.params.meetingId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la liste des pouvoirs');
+  }
+
+  const proxies = await listMeetingProxiesByTenant(tenantId, syndicateId, meetingId);
+
+  res.json({
+    success: true,
+    data: proxies
+  });
+});
+
+export const createMeetingProxyHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  const meetingId = req.params.meetingId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour la creation du pouvoir');
+  }
+
+  const parsed = createMeetingProxySchema.parse({
+    ...req.body,
+    meetingId
+  });
+
+  const proxy = await createMeetingProxyByTenant(tenantId, syndicateId, parsed);
+
+  res.status(201).json({
+    success: true,
+    data: proxy
+  });
+});
+
+export const deleteMeetingProxyHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
+  const syndicateId = req.params.syndicId;
+  const meetingId = req.params.meetingId;
+  const proxyId = req.params.proxyId;
+
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour le retrait du pouvoir');
+  }
+
+  const deleted = await deleteMeetingProxyByTenant(tenantId, syndicateId, meetingId, proxyId);
+
+  res.json({
+    success: true,
+    data: deleted
   });
 });
 

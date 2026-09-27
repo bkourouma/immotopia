@@ -2,6 +2,13 @@ import { LotType, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { conflict, notFound, tenantIsolationError, unprocessableEntity } from '../errors';
 import { computeChargeCallStatus, computeOutstanding, isJournalEntryBalanced, roundMoney } from './finance-utils';
+import {
+  computeMeetingAttendance,
+  computeResolutionTally,
+  DEFAULT_MAJORITY_RULE,
+  type MajorityLot
+} from './meeting-majority';
+import { assertBelongsToTenant } from '../../utils/tenant-ownership';
 import { logger } from '../../utils/logger';
 // Shared client: a second `new PrismaClient()` here doubled the connection
 // pool and escaped the graceful-shutdown handlers in utils/database.
@@ -1341,8 +1348,50 @@ export async function listMeetingsBySyndicate(
   });
 }
 
+/** Champs d'un contact CRM exposes dans une assemblee (mandant, mandataire). */
+const MEETING_CONTACT_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  legalName: true,
+  email: true
+} as const;
+
+/**
+ * Une assemblee cloturee ou annulee est figee : plus de vote, de resolution ni
+ * de pouvoir. Messages fixes (le texte francais sert de cle de traduction).
+ */
+function assertMeetingOpenForChanges(status: string, messages: { COMPLETED: string; CANCELLED: string }) {
+  if (status === 'COMPLETED' || status === 'CANCELLED') {
+    throw conflict(messages[status]);
+  }
+}
+
+/**
+ * Transitions de statut autorisees (data-model, GeneralMeeting) :
+ * planifiee -> en cours -> cloturee, et planifiee -> annulee. Toute autre
+ * transition leve un 409 avec la raison.
+ */
+const MEETING_STATUS_TRANSITIONS: Record<string, string[]> = {
+  PLANNED: ['IN_PROGRESS', 'CANCELLED'],
+  IN_PROGRESS: ['COMPLETED'],
+  COMPLETED: [],
+  CANCELLED: []
+};
+
+function meetingTransitionErrorMessage(from: string, to: string): string {
+  if (from === 'COMPLETED') return 'Assemblee cloturee : son statut ne peut plus changer';
+  if (from === 'CANCELLED') return 'Assemblee annulee : son statut ne peut plus changer';
+  if (from === 'PLANNED' && to === 'COMPLETED') return "La seance doit etre ouverte avant d'etre cloturee";
+  if (from === 'IN_PROGRESS' && to === 'CANCELLED') {
+    return 'Une seance en cours ne peut pas etre annulee : cloturez-la';
+  }
+  if (from === 'IN_PROGRESS' && to === 'PLANNED') return 'Une seance ouverte ne peut pas redevenir planifiee';
+  return "Transition de statut d'assemblee impossible";
+}
+
 export async function getMeetingByTenant(tenantId: string, syndicateId: string, meetingId: string) {
-  return prisma.generalMeeting.findFirst({
+  const meeting = await prisma.generalMeeting.findFirst({
     where: {
       id: meetingId,
       syndicateId,
@@ -1364,6 +1413,7 @@ export async function getMeetingByTenant(tenantId: string, syndicateId: string, 
         orderBy: [{ orderIndex: 'asc' }, { createdAt: 'asc' }]
       },
       resolutions: {
+        orderBy: { createdAt: 'asc' },
         include: {
           votes: {
             include: {
@@ -1376,8 +1426,96 @@ export async function getMeetingByTenant(tenantId: string, syndicateId: string, 
           }
         }
       },
-      proxies: true
+      proxies: {
+        orderBy: { createdAt: 'asc' },
+        include: {
+          grantor: { select: MEETING_CONTACT_SELECT },
+          representative: { select: MEETING_CONTACT_SELECT }
+        }
+      }
     }
+  });
+
+  if (!meeting) {
+    return meeting;
+  }
+
+  // Decompte en tantiemes recalcule a la lecture (tantiemes contre/abstention,
+  // total de reference) : seules les colonnes `votes*` et `sharesFor` existent en base.
+  const lots: MajorityLot[] = meeting.syndicate?.lots ?? [];
+  return {
+    ...meeting,
+    attendance: computeMeetingAttendance(
+      lots,
+      meeting.resolutions.flatMap(resolution => resolution.votes)
+    ),
+    resolutions: meeting.resolutions.map(resolution => ({
+      ...resolution,
+      tally: computeResolutionTally(resolution.majorityRule, lots, resolution.votes)
+    }))
+  };
+}
+
+/** Assemblee de l'agence, ou 404 identique a une assemblee inexistante. */
+async function findMeetingForTenant(
+  client: PrismaTransactionClient,
+  tenantId: string,
+  syndicateId: string,
+  meetingId: string
+) {
+  const meeting = await client.generalMeeting.findFirst({
+    where: {
+      id: meetingId,
+      syndicateId,
+      syndicate: {
+        tenantId
+      }
+    },
+    select: { id: true, status: true, startTime: true, endTime: true }
+  });
+
+  if (!meeting) {
+    throw notFound('Assemblee generale introuvable ou inaccessible');
+  }
+
+  return meeting;
+}
+
+/**
+ * Recalcule les compteurs et le resultat de chaque resolution de l'assemblee,
+ * puis le quorum (tantiemes des lots ayant vote / tantiemes totaux).
+ */
+async function recomputeMeetingResultsTx(tx: PrismaTransactionClient, syndicateId: string, meetingId: string) {
+  const lots = await tx.syndicateLot.findMany({
+    where: { syndicateId },
+    select: { id: true, generalShares: true, coownerId: true, ownerContactId: true }
+  });
+  const resolutions = await tx.gMResolution.findMany({
+    where: { meetingId },
+    select: { id: true, majorityRule: true, votes: { select: { lotId: true, vote: true } } }
+  });
+
+  for (const resolution of resolutions) {
+    const tally = computeResolutionTally(resolution.majorityRule, lots, resolution.votes);
+    await tx.gMResolution.update({
+      where: { id: resolution.id },
+      data: {
+        result: tally.result,
+        votesFor: tally.votesFor,
+        votesAgainst: tally.votesAgainst,
+        votesAbstain: tally.votesAbstain,
+        sharesFor: tally.sharesFor
+      }
+    });
+  }
+
+  const attendance = computeMeetingAttendance(
+    lots,
+    resolutions.flatMap(resolution => resolution.votes)
+  );
+  await tx.generalMeeting.update({
+    where: { id: meetingId },
+    data: { quorum: attendance.quorumPercent }
   });
 }
 
@@ -1427,7 +1565,7 @@ export async function createMeetingWithResolutions(
           meetingId: meeting.id,
           title: r.title,
           description: r.description,
-          majorityRule: r.majorityRule
+          majorityRule: r.majorityRule?.trim() || DEFAULT_MAJORITY_RULE
         }))
       });
     }
@@ -1440,30 +1578,47 @@ export async function updateMeetingByTenant(
   tenantId: string,
   syndicateId: string,
   meetingId: string,
-  data: { startTime?: Date | null; endTime?: Date | null; location?: string | null }
-) {
-  const existing = await prisma.generalMeeting.findFirst({
-    where: {
-      id: meetingId,
-      syndicateId,
-      syndicate: {
-        tenantId
-      }
-    },
-    select: { id: true }
-  });
-
-  if (!existing) {
-    throw notFound('Assemblee generale introuvable ou inaccessible');
+  data: {
+    startTime?: Date | null;
+    endTime?: Date | null;
+    location?: string | null;
+    status?: 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
   }
+) {
+  const has = (key: keyof typeof data) => Object.prototype.hasOwnProperty.call(data, key);
 
-  return prisma.generalMeeting.update({
-    where: { id: meetingId },
-    data: {
-      ...(Object.prototype.hasOwnProperty.call(data, 'startTime') ? { startTime: data.startTime ?? null } : {}),
-      ...(Object.prototype.hasOwnProperty.call(data, 'endTime') ? { endTime: data.endTime ?? null } : {}),
-      ...(Object.prototype.hasOwnProperty.call(data, 'location') ? { location: data.location ?? null } : {})
+  return prisma.$transaction(async tx => {
+    const existing = await findMeetingForTenant(tx, tenantId, syndicateId, meetingId);
+
+    const statusChange: Record<string, unknown> = {};
+    if (data.status && data.status !== existing.status) {
+      if (!MEETING_STATUS_TRANSITIONS[existing.status]?.includes(data.status)) {
+        throw conflict(meetingTransitionErrorMessage(existing.status, data.status));
+      }
+      statusChange.status = data.status;
+      // L'ouverture et la cloture horodatent la seance si l'heure n'a pas ete saisie.
+      const now = new Date();
+      if (data.status === 'IN_PROGRESS' && !existing.startTime && !has('startTime')) {
+        statusChange.startTime = now;
+      }
+      if (data.status === 'COMPLETED' && !existing.endTime && !has('endTime')) {
+        statusChange.endTime = now;
+      }
+      // A la cloture, les resultats sont recalcules une derniere fois puis figes.
+      if (data.status === 'COMPLETED') {
+        await recomputeMeetingResultsTx(tx, syndicateId, meetingId);
+      }
     }
+
+    return tx.generalMeeting.update({
+      where: { id: meetingId },
+      data: {
+        ...(has('startTime') ? { startTime: data.startTime ?? null } : {}),
+        ...(has('endTime') ? { endTime: data.endTime ?? null } : {}),
+        ...(has('location') ? { location: data.location ?? null } : {}),
+        ...statusChange
+      }
+    });
   });
 }
 
@@ -1560,23 +1715,18 @@ export async function addResolutionToMeeting(
   syndicateId: string,
   data: { meetingId: string; title: string; description?: string | null; majorityRule?: string | null }
 ) {
-  const meeting = await prisma.generalMeeting.findFirst({
-    where: {
-      id: data.meetingId,
-      syndicateId,
-      syndicate: {
-        tenantId
-      }
-    },
-    select: { id: true }
+  const meeting = await findMeetingForTenant(prisma, tenantId, syndicateId, data.meetingId);
+  assertMeetingOpenForChanges(meeting.status, {
+    COMPLETED: "Assemblee cloturee : impossible d'ajouter une resolution",
+    CANCELLED: "Assemblee annulee : impossible d'ajouter une resolution"
   });
 
-  if (!meeting) {
-    throw notFound('Assemblee generale introuvable ou inaccessible');
-  }
-
   return prisma.gMResolution.create({
-    data
+    data: {
+      ...data,
+      // Code de regle stable (ARTICLE_24…) ; un texte libre reste accepte et vaut l'article 24.
+      majorityRule: data.majorityRule?.trim() || DEFAULT_MAJORITY_RULE
+    }
   });
 }
 
@@ -1587,7 +1737,7 @@ export async function castVoteAndRecomputeResolutionCounters(
   lotId: string,
   vote: 'FOR' | 'AGAINST' | 'ABSTAIN'
 ) {
-  return prisma.$transaction(async tx => {
+  const meetingId = await prisma.$transaction(async tx => {
     const resolution = await tx.gMResolution.findFirst({
       where: {
         id: resolutionId,
@@ -1599,13 +1749,18 @@ export async function castVoteAndRecomputeResolutionCounters(
         }
       },
       include: {
-        meeting: true
+        meeting: { select: { id: true, status: true } }
       }
     });
 
     if (!resolution) {
       throw notFound('Resolution introuvable ou inaccessible');
     }
+
+    assertMeetingOpenForChanges(resolution.meeting.status, {
+      COMPLETED: 'Assemblee cloturee : les votes sont figes',
+      CANCELLED: 'Assemblee annulee : aucun vote possible'
+    });
 
     const lot = await tx.syndicateLot.findFirst({
       where: {
@@ -1637,64 +1792,120 @@ export async function castVoteAndRecomputeResolutionCounters(
       }
     });
 
-    const votes = await tx.gMVote.findMany({
-      where: { resolutionId },
-      include: {
-        lot: true
-      }
+    // Resultat recalcule a chaque vote, en tantiemes, selon la regle de la
+    // resolution (voir meeting-majority.ts) ; quorum recalcule sur l'assemblee.
+    await recomputeMeetingResultsTx(tx, syndicateId, resolution.meeting.id);
+
+    return resolution.meeting.id;
+  });
+
+  // Relu apres la validation de la transaction : lu depuis le client global a
+  // l'interieur, le detail ne voyait pas encore le vote qui venait d'etre saisi.
+  return getMeetingByTenant(tenantId, syndicateId, meetingId);
+}
+
+export async function listMeetingProxiesByTenant(tenantId: string, syndicateId: string, meetingId: string) {
+  await findMeetingForTenant(prisma, tenantId, syndicateId, meetingId);
+
+  return prisma.gMProxy.findMany({
+    where: { meetingId },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      grantor: { select: MEETING_CONTACT_SELECT },
+      representative: { select: MEETING_CONTACT_SELECT }
+    }
+  });
+}
+
+/**
+ * Pouvoir (mandat) d'AG. Regles :
+ * - mandant et mandataire sont des contacts CRM de l'agence ;
+ * - le mandant est coproprietaire d'au moins un lot de la copropriete ;
+ * - le mandataire n'est pas le mandant ;
+ * - un seul pouvoir par mandant et par assemblee (controle applicatif, aucun
+ *   index unique en base) ;
+ * - assemblee ni cloturee ni annulee.
+ */
+export async function createMeetingProxyByTenant(
+  tenantId: string,
+  syndicateId: string,
+  data: { meetingId: string; grantorContactId: string; representativeContactId: string }
+) {
+  return prisma.$transaction(async tx => {
+    const meeting = await findMeetingForTenant(tx, tenantId, syndicateId, data.meetingId);
+    assertMeetingOpenForChanges(meeting.status, {
+      COMPLETED: 'Assemblee cloturee : les pouvoirs ne peuvent plus etre modifies',
+      CANCELLED: 'Assemblee annulee : les pouvoirs ne peuvent plus etre modifies'
     });
 
-    const syndicateLots = await tx.syndicateLot.findMany({
-      where: { syndicateId },
-      select: { generalShares: true }
-    });
-
-    let votesFor = 0;
-    let votesAgainst = 0;
-    let votesAbstain = 0;
-    let sharesFor = 0;
-    let representedShares = 0;
-
-    for (const currentVote of votes) {
-      representedShares += currentVote.lot.generalShares;
-
-      if (currentVote.vote === 'FOR') {
-        votesFor += 1;
-        sharesFor += currentVote.lot.generalShares;
-      } else if (currentVote.vote === 'AGAINST') {
-        votesAgainst += 1;
-      } else if (currentVote.vote === 'ABSTAIN') {
-        votesAbstain += 1;
-      }
+    if (data.grantorContactId === data.representativeContactId) {
+      throw unprocessableEntity('Le mandataire ne peut pas etre le mandant');
     }
 
-    const totalShares = syndicateLots.reduce(
-      (sum: number, currentLot: { generalShares: number }) => sum + currentLot.generalShares,
-      0
-    );
-    const quorum = totalShares > 0 ? (representedShares / totalShares) * 100 : 0;
-    const result = votesFor > votesAgainst ? 'APPROVED' : 'REJECTED';
-
-    await tx.gMResolution.update({
-      where: { id: resolutionId },
-      data: {
-        result,
-        votesFor,
-        votesAgainst,
-        votesAbstain,
-        sharesFor
-      }
+    // Un contact d'une autre agence leve la meme 404 qu'un contact inexistant.
+    await assertBelongsToTenant(tx, 'crmContact', data.grantorContactId, tenantId, {
+      message: 'Contact introuvable ou inaccessible'
+    });
+    await assertBelongsToTenant(tx, 'crmContact', data.representativeContactId, tenantId, {
+      message: 'Contact introuvable ou inaccessible'
     });
 
-    await tx.generalMeeting.update({
-      where: { id: resolution.meeting.id },
+    const grantorLot = await tx.syndicateLot.findFirst({
+      where: {
+        syndicateId,
+        syndicate: { tenantId },
+        OR: [{ coownerId: data.grantorContactId }, { ownerContactId: data.grantorContactId }]
+      },
+      select: { id: true }
+    });
+    if (!grantorLot) {
+      throw unprocessableEntity("Le mandant doit etre coproprietaire d'au moins un lot de la copropriete");
+    }
+
+    const duplicate = await tx.gMProxy.findFirst({
+      where: { meetingId: data.meetingId, grantorContactId: data.grantorContactId },
+      select: { id: true }
+    });
+    if (duplicate) {
+      throw conflict('Ce coproprietaire a deja donne un pouvoir pour cette assemblee');
+    }
+
+    return tx.gMProxy.create({
       data: {
-        quorum
+        meetingId: data.meetingId,
+        grantorContactId: data.grantorContactId,
+        representativeContactId: data.representativeContactId
+      },
+      include: {
+        grantor: { select: MEETING_CONTACT_SELECT },
+        representative: { select: MEETING_CONTACT_SELECT }
       }
     });
-
-    return getMeetingByTenant(tenantId, syndicateId, resolution.meeting.id);
   });
+}
+
+export async function deleteMeetingProxyByTenant(
+  tenantId: string,
+  syndicateId: string,
+  meetingId: string,
+  proxyId: string
+) {
+  const meeting = await findMeetingForTenant(prisma, tenantId, syndicateId, meetingId);
+
+  const proxy = await prisma.gMProxy.findFirst({
+    where: { id: proxyId, meetingId: meeting.id },
+    select: { id: true }
+  });
+  if (!proxy) {
+    throw notFound('Pouvoir introuvable ou inaccessible');
+  }
+
+  assertMeetingOpenForChanges(meeting.status, {
+    COMPLETED: 'Assemblee cloturee : les pouvoirs ne peuvent plus etre modifies',
+    CANCELLED: 'Assemblee annulee : les pouvoirs ne peuvent plus etre modifies'
+  });
+
+  return prisma.gMProxy.delete({ where: { id: proxy.id } });
 }
 
 export async function linkMaintenanceRequestBySyndicate(

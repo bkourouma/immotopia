@@ -36,6 +36,9 @@ import {
   updateAgendaItemHandler,
   deleteAgendaItemHandler,
   castVoteHandler,
+  listMeetingProxiesHandler,
+  createMeetingProxyHandler,
+  deleteMeetingProxyHandler,
   generateMeetingMinutesHandler,
   listProvidersHandler,
   listContractsHandler,
@@ -353,6 +356,21 @@ router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/resolutions/:resolutionId/votes',
   requirePropertyPermission('PROPERTIES_EDIT'),
   castVoteHandler
+);
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  listMeetingProxiesHandler
+);
+router.post(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  createMeetingProxyHandler
+);
+router.delete(
+  '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/pouvoirs/:proxyId',
+  requirePropertyPermission('PROPERTIES_EDIT'),
+  deleteMeetingProxyHandler
 );
 router.post(
   '/tenants/:tenantId/syndics/:syndicId/assemblees/:meetingId/compte-rendu',
