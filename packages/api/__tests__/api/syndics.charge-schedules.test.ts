@@ -261,3 +261,16 @@ describe('avis d appel PDF', () => {
     expect(statuses.filter(status => status === 200).length).toBeLessThanOrEqual(20);
   });
 });
+
+describe('limiteur de la route executer', () => {
+  it('gestion : limiteur dedie, 10 executions par minute et par agence', async () => {
+    const run = { status: 'SUCCESS', alreadyProcessed: false, periodLabel: 'T4 2026', callsCreated: 2 };
+    mockService.executeChargeScheduleNow.mockResolvedValue({ run, schedule: view });
+    const statuses: number[] = [];
+    for (let index = 0; index < 12; index += 1) {
+      statuses.push((await request(app).post(`${BASE}/${SCHEDULE}/executer`)).status);
+    }
+    expect(statuses).toContain(429);
+    expect(statuses.filter(status => status === 200).length).toBeLessThanOrEqual(10);
+  });
+});

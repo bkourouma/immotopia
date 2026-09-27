@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth-middleware';
 import { requireTenantAccess } from '../middleware/tenant-middleware';
 import { enforcePropertyTenantIsolation } from '../middleware/tenant-isolation-middleware';
 import { requireAnyPropertyPermission, requirePropertyPermission } from '../middleware/property-rbac-middleware';
+import { chargeCallNoticeRateLimiter, chargeScheduleExecuteRateLimiter } from '../middleware/rate-limit-middleware';
 import {
   createChargeScheduleHandler,
   deleteChargeScheduleHandler,
@@ -44,9 +45,16 @@ router.patch(SCHEDULE, ...guards, canEdit, updateChargeScheduleHandler);
 router.delete(SCHEDULE, ...guards, canEdit, deleteChargeScheduleHandler);
 router.post(`${SCHEDULE}/pause`, ...guards, canEdit, pauseChargeScheduleHandler);
 router.post(`${SCHEDULE}/reprise`, ...guards, canEdit, resumeChargeScheduleHandler);
-router.post(`${SCHEDULE}/executer`, ...guards, canEdit, executeChargeScheduleHandler);
+// Limiteurs par utilisateur et agence, posés APRÈS les gardes (ils lisent la session et l'agence).
+router.post(`${SCHEDULE}/executer`, ...guards, canEdit, chargeScheduleExecuteRateLimiter, executeChargeScheduleHandler);
 router.get(`${SCHEDULE}/executions`, ...guards, canView, listChargeScheduleRunsHandler);
 router.get(`${SCHEDULE}/apercu`, ...guards, canView, previewChargeScheduleHandler);
-router.get(`${SYNDIC}/charges/:chargeId/avis`, ...guards, canView, downloadChargeCallNoticeHandler);
+router.get(
+  `${SYNDIC}/charges/:chargeId/avis`,
+  ...guards,
+  canView,
+  chargeCallNoticeRateLimiter,
+  downloadChargeCallNoticeHandler
+);
 
 export default router;

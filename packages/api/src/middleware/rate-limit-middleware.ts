@@ -209,3 +209,31 @@ export const receiptResendRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
+
+/** Lot S4 : exécution manuelle d'une programmation d'appels de charges (relit et réécrit les répartitions budgétaires). 10 par minute. */
+export const chargeScheduleExecuteRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  keyGenerator: userTenantKey,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: "Trop d'exécutions de programmations en peu de temps. Réessayez dans une minute."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/** Lot S4 : avis d'appel de charges PDF côté gestion (génère un PDF à chaque appel). 30 par minute. */
+export const chargeCallNoticeRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  keyGenerator: userTenantKey,
+  message: {
+    success: false,
+    code: 'RATE_LIMITED',
+    message: "Trop de téléchargements d'avis d'appel en peu de temps. Réessayez dans une minute."
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
