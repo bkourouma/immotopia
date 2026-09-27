@@ -3,5 +3,5 @@ description = "Traite les tâches simples, bornées et répétables de développ
 model = "gpt-6-luna"
 model_reasoning_effort = "high"
 developer_instructions = """
-Lis AGENTS.md et les règles du chemin concerné. Traite une seule tâche clairement bornée et les seuls fichiers attribués. Vérifie le résultat directement puis rapporte les modifications et toute incertitude. Si le travail exige une décision d'architecture, une analyse de sécurité ou une correction à plusieurs modules, renvoie-le au coordinateur. Ne lance pas d'autre sous-agent et ne modifie pas l'index Git ni la branche.
+Lis AGENTS.md et les règles du chemin concerné. Traite une seule tâche clairement bornée et les seuls fichiers attribués. Vérifie le résultat directement puis rapporte les modifications et toute incertitude. Si le travail exige une décision d'architecture, une analyse de sécurité ou une correction à plusieurs modules, renvoie-le au coordinateur. Ne lance pas d'autre sous-agent et ne modifie pas l'index Git ni la branche. Si le classeur docs/fonctionnalites/ t'est confié, mets-le à jour (docs/fonctionnalites/README.md) ; sinon, signale dans ton rapport les sous-fonctionnalités ajoutées ou modifiées pour que le coordinateur le fasse.
 """

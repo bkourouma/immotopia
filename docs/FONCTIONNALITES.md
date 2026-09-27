@@ -1,5 +1,10 @@
 # ImmoTopia — Liste des fonctionnalités
 
+> Recensement antérieur, non maintenu. L'inventaire de référence, tenu à
+> jour à partir du code, est
+> [`docs/fonctionnalites/ImmoTopia_Wiki_Fonctionnalites.xlsx`](fonctionnalites/README.md)
+> (miroir texte `docs/fonctionnalites/sous-fonctionnalites.md`).
+
 Mise à jour du 24 septembre 2026, branche `feat/gestion-locative-lot-1` (pas
 encore fusionnée sur `main`).
 

@@ -29,7 +29,12 @@ du résultat. Les agents de réalisation ne créent pas d'autres agents.
    Les erreurs préexistantes sont distinguées des régressions. Pour un diff qui
    touche authentification, portails, paiements, uploads ou une route recevant
    un identifiant de tenant, faire relire par `code-reviewer` et
-   `security-auditor` (ou `/audit`) avant la passation.
+   `security-auditor` (ou `/audit`) avant la passation. Si le diff ajoute,
+   modifie ou retire une fonctionnalité visible, le coordinateur met à jour
+   `docs/fonctionnalites/ImmoTopia_Wiki_Fonctionnalites.xlsx` (un agent de
+   réalisation à qui le fichier n'a pas été confié signale les
+   sous-fonctionnalités concernées dans son rapport) et lance
+   `npm run wiki:export` avant de considérer la tâche finie.
 4. Faire tourner `npm run demo:sync -- <sha>` (avec `--migrate` si le schéma a
    changé) pour poser la révision sur l'instance de démo dédiée, puis
    transmettre au processus démo/debug la révision testable, les changements
@@ -47,8 +52,11 @@ du résultat. Les agents de réalisation ne créent pas d'autres agents.
    `HANDOFF.md`.
 
 Une correction est terminée lorsque le scénario concerné passe dans
-l'interface, que les vérifications adaptées passent et que les autres scénarios
-touchés n'ont pas régressé. Ne déclarer aucun résultat non vérifié.
+l'interface, que les vérifications adaptées passent, que les autres scénarios
+touchés n'ont pas régressé, et que le classeur de fonctionnalités et son
+miroir sont à jour si le changement en touchait une (voir
+[docs/fonctionnalites/README.md](../fonctionnalites/README.md)). Ne déclarer
+aucun résultat non vérifié.
 
 ## Coordination
 

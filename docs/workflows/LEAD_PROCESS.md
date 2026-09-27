@@ -52,7 +52,14 @@ sessions.
    `check:architecture`, tests d'isolation si le changement touche le
    multi-tenant. Faire relire par `code-reviewer` et `security-auditor` (ou
    `/audit`) tout diff touchant authentification, portails, paiements,
-   uploads ou une route recevant un identifiant de tenant.
+   uploads ou une route recevant un identifiant de tenant. Si le diff ajoute,
+   modifie ou retire une fonctionnalité visible (écran, action, route API,
+   permission, entrée de menu), mettre à jour
+   `docs/fonctionnalites/ImmoTopia_Wiki_Fonctionnalites.xlsx` et lancer
+   `npm run wiki:export` avant l'étape suivante (voir
+   [docs/fonctionnalites/README.md](../fonctionnalites/README.md)) ; sinon,
+   le dire dans le rapport plutôt que de laisser deviner l'absence de mise à
+   jour.
 6. **Recette navigateur** si le changement est visible en interface : soit
    via le processus démo/debug (scénarios numérotés, anomalies dans le bus),
    soit directement par le Pilote avec l'outil de navigation disponible dans
@@ -65,7 +72,9 @@ sessions.
 8. **Push** après chaque lot de commits vérifié.
 9. **Pull request** via `gh pr create`, titre et description en français :
    contexte, changements, vérifications faites, ce qui n'a pas été vérifié,
-   points ouverts.
+   points ouverts, et si le classeur de fonctionnalités a été mis à jour ou
+   pourquoi ce n'était pas nécessaire (voir
+   [.github/pull_request_template.md](../../.github/pull_request_template.md)).
 10. **Suivi CI** avec les outils disponibles dans l'environnement ; corriger
     les échecs sur la branche.
 11. **Rapport unique** à l'utilisateur en fin d'objectif (voir « Rapport »

@@ -12,7 +12,8 @@ pas par une simulation des appels réseau. `AGENTS.md` reste prioritaire.
 | Coordinateur démo/debug | Conçoit les scénarios, attribue les lots, trie les anomalies, échange avec le développement et décide des retests. |
 | Testeur interface       | Exécute les parcours dans un navigateur réel et fournit des observations reproductibles.                           |
 
-Le coordinateur tire les scénarios de `specs/`, des parcours de `docs/` et des
+Le coordinateur tire les scénarios de `specs/`, des parcours de `docs/`, de
+l'inventaire `docs/fonctionnalites/` (`npm run wiki:search -- <termes>`) et des
 changements annoncés par le développement. Il couvre le parcours nominal et
 les erreurs importantes, notamment l'isolation entre agences lorsqu'elle est
 concernée. Il indique pour chaque scénario le rôle utilisateur, les données de

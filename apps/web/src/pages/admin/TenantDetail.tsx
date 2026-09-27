@@ -13,6 +13,7 @@ import type { TenantWithBranding } from '../../services/tenant-branding-service'
 import { SubscriptionTab } from '../../components/admin/tenant-detail/SubscriptionTab';
 import { InvoicesTab } from '../../components/admin/tenant-detail/InvoicesTab';
 import { ActivityTab } from '../../components/admin/tenant-detail/ActivityTab';
+import { DataExportTab } from '../../components/admin/tenant-detail/DataExportTab';
 import {
   Building2,
   ArrowLeft,
@@ -28,7 +29,8 @@ import {
   Plus,
   Eye,
   UserX,
-  UserCheck
+  UserCheck,
+  DatabaseBackup
 } from 'lucide-react';
 import { App } from 'antd';
 import { useConfirmAction } from '../../components/primitives';
@@ -49,7 +51,7 @@ export const TenantDetail: React.FC = () => {
   // sont désormais déduits des packs et affichés en lecture seule dans
   // <SubscriptionTab>.
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'subscription' | 'invoices' | 'activity' | 'stats' | 'collaborators'
+    'overview' | 'subscription' | 'invoices' | 'activity' | 'stats' | 'collaborators' | 'data-export'
   >('overview');
 
   useEffect(() => {
@@ -206,7 +208,8 @@ export const TenantDetail: React.FC = () => {
               { id: 'subscription', label: t('Abonnement'), icon: CreditCard },
               { id: 'invoices', label: t('Factures'), icon: Receipt },
               { id: 'activity', label: t('Activité'), icon: Activity },
-              { id: 'stats', label: t('Statistiques'), icon: BarChart3 }
+              { id: 'stats', label: t('Statistiques'), icon: BarChart3 },
+              { id: 'data-export', label: t('Export des données'), icon: DatabaseBackup }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -313,6 +316,12 @@ export const TenantDetail: React.FC = () => {
           {activeTab === 'activity' && (
             <div>
               <ActivityTab tenantId={tenantId!} />
+            </div>
+          )}
+
+          {activeTab === 'data-export' && (
+            <div>
+              <DataExportTab tenantId={tenantId!} />
             </div>
           )}
 

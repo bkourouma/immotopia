@@ -35,6 +35,13 @@ Les étapes non bloquantes le sont temporairement : elles doivent passer à
 bloquant module par module à mesure que la dette est résorbée. Ne rajoutez pas
 d'erreurs dans les fichiers déjà propres.
 
+Une PR qui ajoute, modifie ou retire une fonctionnalité visible (écran,
+action, route API, permission, entrée de menu) met à jour
+`docs/fonctionnalites/ImmoTopia_Wiki_Fonctionnalites.xlsx` et lance
+`npm run wiki:export` avant d'être proposée à la revue — voir
+[docs/fonctionnalites/README.md](docs/fonctionnalites/README.md) et la case
+correspondante du modèle de PR.
+
 ## Conventions de code
 
 **Backend**

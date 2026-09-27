@@ -1,0 +1,5 @@
+# Fichier genere par `npm run wiki:export` (voir scripts/wiki-fonctionnalites.cjs).
+# `npm run wiki:check` le compare au contenu regenere octet a octet ; le laisser
+# reformater par Prettier (lint-staged lance prettier --write sur **/*.md) le
+# ferait echouer a chaque commit.
+docs/fonctionnalites/sous-fonctionnalites.md

@@ -62,6 +62,7 @@
     "@types/passport": "^1.0.17",
     "@types/passport-google-oauth20": "^2.0.17",
     "@types/uuid": "^10.0.0",
+    "archiver": "^5.3.2",
     "bcrypt": "^5.1.1",
     "compression": "^1.7.4",
     "cookie-parser": "^1.4.6",
@@ -93,6 +94,7 @@
   "devDependencies": {
     "@immotopia/eslint-config": "*",
     "@immotopia/tsconfig": "*",
+    "@types/archiver": "^5.3.4",
     "@types/bcrypt": "^5.0.2",
     "@types/compression": "^1.7.5",
     "@types/cookie-parser": "^1.4.6",
