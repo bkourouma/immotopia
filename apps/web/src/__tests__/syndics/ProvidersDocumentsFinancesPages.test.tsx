@@ -362,4 +362,40 @@ describe('Providers/Documents pages', () => {
     // correspondances sont attendues.
     expect((await screen.findAllByText(/Reglement/)).length).toBeGreaterThan(0);
   });
+
+  it('télécharge un fichier déposé par la route authentifiée, jamais par /uploads', async () => {
+    mockApiClient.get.mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: [
+          {
+            id: 'd2',
+            title: 'Assurance',
+            type: 'INSURANCE',
+            fileUrl: '/uploads/syndics/syndic-1/documents/insurance-1.pdf'
+          }
+        ]
+      }
+    } as never);
+    const createObjectURL = vi.fn(() => 'blob:assurance');
+    Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() });
+
+    const { container } = renderWithRoute('/tenant/tenant-1/syndics/syndic-1/documents');
+    const button = await screen.findByText('Télécharger');
+    // Aucun lien direct vers le fichier : le service statique le refuse.
+    expect(container.querySelector('a[href*="/uploads/"]')).toBeNull();
+
+    mockApiClient.get.mockResolvedValueOnce({
+      data: new Blob(['pdf']),
+      headers: { 'content-disposition': "attachment; filename*=UTF-8''Assurance.pdf" }
+    } as never);
+    fireEvent.click(button);
+
+    await waitFor(() =>
+      expect(mockApiClient.get).toHaveBeenLastCalledWith('/tenants/tenant-1/syndics/syndic-1/documents/d2/fichier', {
+        responseType: 'blob'
+      })
+    );
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
+  });
 });

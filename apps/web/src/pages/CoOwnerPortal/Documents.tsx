@@ -9,6 +9,7 @@ import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
 import { downloadCoOwnerDocument, listMyDocuments, type CoOwnerDocument } from '../../services/coowner-portal-service';
 import { documentTypeLabel } from './labels';
+import { saveBlob } from '../../utils/save-blob';
 import { portalErrorMessage } from './portal-error';
 
 const { Title, Text } = Typography;
@@ -19,17 +20,6 @@ const { Title, Text } = Typography;
  * (diagnostics, assurances, budgets...) restent réservés à la gestion — voir
  * `listCoOwnerDocuments` côté API.
  */
-function saveBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
 export default function CoOwnerDocuments() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const {

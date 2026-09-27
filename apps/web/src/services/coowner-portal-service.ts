@@ -1,4 +1,5 @@
 import apiClient from '../utils/api-client';
+import { filenameFromDisposition } from '../utils/save-blob';
 
 /**
  * Portail copropriétaire — `/api/portal/copropriete/*`, en lecture seule.
@@ -154,15 +155,8 @@ export async function downloadCoOwnerDocument(
   const response = await apiClient.get<Blob>(`${BASE}/documents/${encodeURIComponent(documentId)}/fichier`, {
     responseType: 'blob'
   });
-  const disposition = String(response.headers?.['content-disposition'] ?? '');
-  const extended = disposition.match(/filename\*=UTF-8''([^;]+)/i);
-  let filename = fallbackName;
-  if (extended?.[1]) {
-    try {
-      filename = decodeURIComponent(extended[1]);
-    } catch {
-      filename = extended[1];
-    }
-  }
-  return { blob: response.data, filename };
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName)
+  };
 }

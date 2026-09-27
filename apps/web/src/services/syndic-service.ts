@@ -1,4 +1,5 @@
 import apiClient from '../utils/api-client';
+import { filenameFromDisposition } from '../utils/save-blob';
 import {
   CreateAgendaItemRequest,
   ChargeCall,
@@ -934,6 +935,24 @@ export async function revokeCoOwnerPortalAccess(
     `/tenants/${tenantId}/syndics/${syndicId}/profils/proprietaires/${ownerProfileId}/invitation-portail`
   );
   return response.data.data;
+}
+
+/**
+ * Télécharge le fichier d'un document de copropriété. Les documents ne sont
+ * jamais servis en statique (`/uploads/syndics` est refusé) : ils passent par
+ * cette route, qui vérifie que le document appartient à l'agence.
+ */
+export async function downloadSyndicDocument(
+  tenantId: string,
+  syndicId: string,
+  documentId: string,
+  fallbackName: string
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(
+    `/tenants/${tenantId}/syndics/${syndicId}/documents/${encodeURIComponent(documentId)}/fichier`,
+    { responseType: 'blob' }
+  );
+  return { blob: response.data, filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName) };
 }
 
 export async function listLotTenantProfiles(
