@@ -89,9 +89,10 @@ plusieurs manques dans `packages/api/src/lib/syndics/` et
 cette branche — création de prestataires, enregistrement de paiement de
 charges depuis l'écran, pouvoirs d'AG, fonds financiers créables, statut
 d'AG (ouvrir/clôturer/annuler), majorité calculée en tantièmes et
-suppression d'une copropriété réservée aux copropriétés vides. Il ne reste
-qu'un seul module réellement absent : le **portail copropriétaire** (partie
-13), qui n'existe encore dans aucune route ni page.
+suppression d'une copropriété réservée aux copropriétés vides. Le **portail
+copropriétaire** (partie 13) a été ajouté par le lot
+`feat/syndic-portail-coproprietaire` : invitation depuis « Profils lot et
+incidents », portail en lecture seule, révocation.
 
 ---
 
@@ -841,10 +842,10 @@ de la partie 3. Les deux coexistent sans se synchroniser.
 - [ ] Message `Profil propriétaire créé`. Tableau « Profils propriétaires » :
       une ligne Lot `ACA-A1`, Contact `Copro Un (Recette 3)`, Part `100`,
       Portail `ACTIVE` (tag vert).
-- [ ] **Constat à faire, pas une action à tenter** : cocher « Activer accès
-      portail » ne fait apparaître nulle part un lien d'invitation ni une
-      page de portail à visiter (voir partie 13 — ce champ ne débouche sur
-      aucune fonctionnalité observable dans l'interface).
+- [ ] La colonne **« Accès portail »** de la ligne propose **« Inviter au
+      portail »** (et « Révoquer l'accès », puisque le portail est coché).
+      **Ne pas cliquer maintenant** : l'invitation et le portail sont joués
+      en partie 13. La case seule n'envoie rien et ne crée aucun compte.
 
 #### Ce qu'on doit faire — profil locataire
 
@@ -1150,29 +1151,195 @@ ce seul constat — l'AG principale ci-dessus est déjà `Clôturée`.
 
 - [ ] Seul `Assurance multirisque (Recette 3)` reste affiché.
 
+5. Remettre le filtre sur tous les types. Dans la colonne **« Document »**
+   du coffre, cliquer **« Télécharger »** sur `Règlement de copropriété
+   (Recette 3)`.
+
+#### Résultat attendu
+
+- [ ] Le fichier déposé à l'étape 1 est téléchargé (nom = titre du document
+      + extension d'origine). Il n'y a plus de lien « Ouvrir » vers une
+      adresse `…/uploads/syndics/…` : un document de copropriété déposé ne
+      s'ouvre que par ce bouton, qui passe par une route authentifiée
+      réservée à l'agence. Un lien externe saisi à la place d'un fichier
+      garde, lui, un lien « Ouvrir ».
+- [ ] Le téléchargement côté copropriétaire est vérifié en partie 13.4.
+
 ---
 
-## 13. Portail copropriétaire — module absent du code
+## 13. Portail copropriétaire
 
-**Ne pas chercher cette page : elle n'existe pas.** Vérification faite dans
-le code (pas une supposition) : le champ `LotOwnerProfile.portalAccessToken`
-généré à la partie 10 n'est lu par **aucune route** ni **aucune page** —
-`grep` de `portalAccessToken` et de `LotOwnerProfile` dans
-`packages/api/src/services/owner-portal-service.ts`,
-`packages/api/src/middleware/owner-portal-access.ts` et
-`packages/api/src/utils/owner-portal-validators.ts` ne renvoie **aucun
-résultat**. Le « Portail Propriétaire » qui existe bel et bien dans
-l'application (`apps/web/src/pages/OwnerPortal/*`, menu séparé) est une
-fonctionnalité de la **gestion locative** (loyers, quittances, `OwnerPayout`,
-`PropertyOwnershipShare`) : elle ne connaît ni les copropriétés, ni les lots
-de copropriété, ni `LotOwnerProfile`.
+Le portail copropriétaire est **en lecture seule** : le copropriétaire y
+consulte ses lots, le compte de chaque lot, ses appels de charges, les
+documents et les assemblées de sa copropriété. **Il n'y a aucun bouton de
+paiement** (le paiement en ligne des charges n'existe pas). L'invitation
+n'envoie qu'un e-mail (à une adresse `@exemple.test`), **jamais de SMS ni
+de WhatsApp**.
+
+Prérequis : la partie 10.1 a créé le profil propriétaire `ACA-A1` →
+`Copro Un (Recette 3)`, et les parties 4, 7, 11 et 12 ont produit des
+appels, des paiements, des assemblées et deux documents sur Les Acacias.
+
+Garder **deux fenêtres** : la session gestionnaire habituelle, et une
+**fenêtre de navigation privée** pour le copropriétaire (sinon la connexion
+du copropriétaire remplace celle du gestionnaire).
+
+### 13.1 Un second copropriétaire, sans accès — pour vérifier l'étanchéité
+
+#### Ce qu'on doit faire (session gestionnaire)
+
+1. `BASE/syndics/<id-acacias>/profils-incidents` → **« Profil
+   propriétaire »**. Lot : `ACA-A2`. Contact propriétaire : `Copro Deux
+   (Recette 3)`. Part : `100`. Date de début : aujourd'hui. **Activer accès
+   portail : Non**. Valider.
+
+#### Résultat attendu
+
+- [ ] Une seconde ligne `ACA-A2` / `Copro Deux (Recette 3)`, Portail
+      `INACTIF`. Colonne « Accès portail » : bouton « Inviter au portail »
+      seul (pas de « Révoquer l'accès » tant que l'accès est fermé).
+
+### 13.2 Inviter au portail
+
+#### Ce qu'on doit faire (session gestionnaire)
+
+1. Même page, tableau « Profils propriétaires », ligne `ACA-A1` /
+   `Copro Un (Recette 3)` → **« Inviter au portail »**.
+
+#### Résultat attendu
+
+- [ ] Une fenêtre **« Inviter au portail copropriétaire »** s'ouvre :
+      bandeau vert « Accès au portail ouvert », `Copro Un (Recette 3)
+      (copro1.recette3@exemple.test) peut consulter 1 lot(s) en lecture
+      seule.`
+- [ ] Titre **« Lien d'invitation »**, un champ en lecture seule contenant
+      un lien `…/reset-password?token=…`, et un bouton **« Copier »**. Le
+      texte sous le champ donne la date de fin de validité (dans 7 jours).
+- [ ] Sous le lien : soit `E-mail d'invitation envoyé.`, soit l'avertissement
+      orange « L'e-mail n'a pas pu être envoyé — copiez le lien et
+      transmettez-le vous-même. » **Les deux cas sont acceptables** ;
+      consigner lequel s'affiche. Dans les deux cas, le lien reste affiché.
+- [ ] **« Copier »** → message `Lien copié.`
+- [ ] Après **« Fermer »**, la ligne `ACA-A1` affiche toujours Portail
+      `ACTIVE`, et la colonne « Accès portail » montre **« Inviter au
+      portail »** et **« Révoquer l'accès »**.
+
+> Si on relance « Inviter au portail » après que le copropriétaire a défini
+> son mot de passe (13.3), le titre devient **« Lien de connexion »** avec un
+> tag « Compte existant » : un compte déjà utilisé ne reçoit jamais de lien
+> qui changerait son mot de passe. C'est voulu.
+
+### 13.3 Activation et connexion (fenêtre privée)
 
 #### Ce qu'on doit faire
 
-Rien à jouer pour ce module. Se contenter de confirmer, en observant l'écran
-« Profils lot et incidents » de la partie 10, qu'aucun lien d'invitation
-n'apparaît nulle part après activation de l'accès portail (déjà vérifié en
-10.1).
+1. Coller le lien copié dans la barre d'adresse de la fenêtre privée.
+   (S'il commence par une autre adresse que celle de l'application testée,
+   remplacer seulement le début — `http://localhost:…` — par celle-ci, et le
+   consigner.)
+2. Définir un mot de passe (au moins 8 caractères, avec majuscule, chiffre et
+   caractère spécial ; le noter dans le journal de test).
+3. Se connecter avec `copro1.recette3@exemple.test` et ce mot de passe.
+
+#### Résultat attendu
+
+- [ ] Après connexion, l'application ouvre directement **`/copropriete`**
+      (« Mes lots »), sans passer par le tableau de bord d'agence.
+- [ ] Le menu (barre d'onglets en bas sur mobile, barre latérale sur
+      ordinateur) compte **4 entrées** : **« Mes lots »**, **« Appels »** (ou
+      « Appels de charges »), **« Assemblées »** (ou « Assemblées
+      générales »), **« Documents »**. Aucune entrée de gestion (Biens, Baux,
+      Syndic, Finance…).
+
+### 13.4 Les quatre onglets (fenêtre privée)
+
+#### Ce qu'on doit faire et résultat attendu
+
+1. **« Mes lots »**
+   - [ ] Une carte « Copropriété Les Acacias (Recette 2) » avec **un seul
+         lot** : `Lot ACA-A1`, son type (partie 2), `Tantièmes généraux 100`,
+         `Part détenue 100 %`.
+   - [ ] **`ACA-A2`, `ACA-A3` et `ACA-A4` n'apparaissent pas.**
+   - [ ] Le solde du lot est affiché **sans signe moins**, avec un tag
+         « Débiteur » ou « Créditeur » : même montant et même sens que
+         l'écran gestionnaire du compte de `ACA-A1` (partie 3). Si aucun
+         compte n'a encore été ouvert : « Aucun compte ouvert ».
+2. Cliquer la carte `Lot ACA-A1`.
+   - [ ] Titre `Lot ACA-A1`, carte **« Solde du compte »** (montant en valeur
+         absolue + tag + phrase « Vous devez ce montant à la copropriété » ou
+         « Vous avez une avance sur ce lot »).
+   - [ ] **« Mouvements du compte »** : les mêmes lignes que l'écran
+         gestionnaire du compte `ACA-A1`, rien d'un autre lot.
+   - [ ] **« Appels de charges du lot »** : les appels de `ACA-A1` seulement.
+3. **« Appels »**
+   - [ ] Pour chaque appel de `ACA-A1` : période, échéance, montant, payé,
+         reste à payer, statut (« En attente », « Partiel », « Payé » ou « En
+         retard » — « En retard » pour un appel non soldé dont l'échéance est
+         passée, comme dans l'écran gestionnaire).
+   - [ ] Aucun appel d'un autre lot ; **aucun bouton de paiement** ; une
+         phrase rappelle que le paiement en ligne n'est pas proposé.
+4. **« Documents »**
+   - [ ] `Règlement de copropriété (Recette 3)` est listé (type « Règlement
+         de copropriété ») avec un bouton **« Télécharger »**.
+   - [ ] **`Assurance multirisque (Recette 3)` n'apparaît pas** : seuls le
+         règlement et les procès-verbaux d'AG sont visibles des
+         copropriétaires (`SyndicateDocument` n'a pas de drapeau de
+         visibilité).
+   - [ ] **« Télécharger »** : le fichier déposé en 12.1 est téléchargé
+         (nom = titre du document + extension).
+5. **« Assemblées »**
+   - [ ] Les AG de Les Acacias de la partie 11 : type, date et heure, lieu
+         (`Salle communale (Recette 3)`), statut, ordre du jour numéroté.
+   - [ ] L'AG annulée en 11.10 apparaît avec le statut « Annulée ».
+   - [ ] Pour une AG **clôturée** seulement : bloc « Résultats des
+         résolutions » — titre, règle de majorité, tag « Adoptée »/« Rejetée »,
+         ligne « Pour … · Contre … · Abstention … — sur … » en tantièmes, et
+         « Votre vote : Lot ACA-A1 : … » si `ACA-A1` a voté. **Aucun nom ni
+         vote d'un autre copropriétaire.** Une AG non clôturée n'affiche pas
+         de résultats.
+
+### 13.5 Étanchéité vérifiable par clics (fenêtre privée)
+
+#### Ce qu'on doit faire et résultat attendu
+
+1. Dans la barre d'adresse, remplacer l'adresse par `BASE/syndics` (l'écran
+   de gestion des copropriétés).
+   - [ ] Aucune liste de copropriétés : l'écran de gestion ne s'ouvre pas pour
+         ce compte (retour au portail ou message de refus). Consigner ce qui
+         s'affiche.
+2. Revenir sur « Mes lots », ouvrir `Lot ACA-A1`, puis, dans la barre
+   d'adresse, remplacer le dernier segment (identifiant du lot) par
+   n'importe quelle autre valeur (par exemple changer un chiffre).
+   - [ ] Message « Ce lot est introuvable dans votre espace. » — aucun
+         détail sur un autre lot.
+3. Si un ancien lien direct vers un document (`…/uploads/syndics/…`) a été
+   noté lors d'une recette précédente, le coller dans la barre d'adresse.
+   - [ ] Réponse « Fichier introuvable » : les documents de copropriété ne
+         sont plus jamais servis par lien direct, même au gestionnaire.
+4. `Copro Deux` n'a pas été invité (13.1) : aucun lien ne lui a été remis,
+   il n'a donc aucun moyen d'entrer. Simple constat, rien à faire.
+
+### 13.6 Révoquer l'accès
+
+#### Ce qu'on doit faire (session gestionnaire)
+
+1. `BASE/syndics/<id-acacias>/profils-incidents`, ligne `ACA-A1` /
+   `Copro Un (Recette 3)` → **« Révoquer l'accès »**.
+2. Une confirmation « Révoquer l'accès au portail ? » s'affiche →
+   **« Révoquer »**.
+
+#### Résultat attendu
+
+- [ ] Message `Accès au portail révoqué`. La ligne `ACA-A1` passe à Portail
+      `INACTIF`, et le bouton « Révoquer l'accès » disparaît.
+- [ ] Dans la fenêtre privée (toujours connectée comme `Copro Un`),
+      **actualiser « Mes lots »** : l'accès est refusé immédiatement, sans
+      attendre l'expiration de la session — message « Aucun lot de
+      copropriété n'est ouvert à votre compte. » ou « Accès portail
+      copropriétaire refusé. ». Consigner le message exact.
+- [ ] Le compte de `Copro Un` n'est pas supprimé : une nouvelle invitation
+      (13.2) rouvrirait l'accès avec un **« Lien de connexion »**. Ne pas le
+      faire, sauf pour vérifier ce point en fin de scénario.
 
 ---
 
@@ -1292,5 +1459,5 @@ déduction :
 | 4   | FR-013 : « Le système MUST gérer des fonds financiers par copropriété... avec un solde »       | **Résolu (commits `cd141c8` API, `3375f21` web).** Routes GET/POST `.../fonds`, PATCH `.../fonds/:fundId` et POST `.../fonds/:fundId/ajustement` (motif obligatoire) ; écran des fonds dans Finances copropriété (création, renommage, ajustement crédit/débit). Voir partie 7.5.                                                                                         | `grep -n "/fonds" packages/api/src/routes/syndic-routes.ts`.                                                                                                                                        |
 | 5   | FR-007/US3 : parcours d'AG complet avec changement de statut (planifiée → en cours → clôturée) | **Résolu (commits `9b210be` API, `1e39806` web).** `PATCH .../assemblees/:id` accepte `status` ; transitions planifiée → en cours → clôturée et planifiée → annulée, toute autre transition répond 409. Boutons « Ouvrir la séance », « Clôturer la séance », « Annuler l'assemblée ». Voir parties 11.4, 11.9 et 11.10.                                                  | `packages/api/src/lib/syndics/schemas.ts` (`updateMeetingSchema` accepte désormais `status`) ; `components/syndics/MeetingStatusActions.tsx`.                                                       |
 | 6   | FR-009 : « déterminer... selon la règle de majorité applicable »                               | **Résolu (commit `9b210be`, `lib/syndics/meeting-majority.ts`).** Le résultat se calcule désormais en tantièmes selon la règle choisie (article 24 : tantièmes exprimés ; 25 : majorité absolue de tous les lots ; 26 : double majorité copropriétaires/tantièmes ; unanimité). Voir parties 11.5 à 11.7.                                                                 | `computeResolutionTally` dans `meeting-majority.ts` : `sharesFor > sharesAgainst` (art. 24), `sharesFor * 2 > totalShares` (art. 25), etc. — `majorityRule` conditionne désormais bien le résultat. |
-| 7   | Portail copropriétaire implicite (checkbox « Activer accès portail » sur `LotOwnerProfile`)    | **Ouvert — en cours de réalisation.** Champ toujours décoratif : le jeton `portalAccessToken` est généré mais n'est consommé par aucune route ni page à ce jour. Le « Portail Propriétaire » réellement présent dans l'app (`apps/web/src/pages/OwnerPortal/*`) sert la gestion locative, sans lien avec les copropriétés.                                                | `grep` de `portalAccessToken`/`LotOwnerProfile` dans les fichiers du portail propriétaire (services, middleware, validators) → aucun résultat à ce jour.                                            |
+| 7   | Portail copropriétaire implicite (checkbox « Activer accès portail » sur `LotOwnerProfile`)    | **Résolu (lot `feat/syndic-portail-coproprietaire`, fusion `418e066`).** Portail en lecture seule sous `/copropriete` (lots, compte de lot, appels de charges, règlement et PV d'AG, assemblées), dans l'infrastructure des portails existants (`TenantClient`, en-tête `X-Portal-Tenant-Id`, contexte d'agence). « Inviter au portail » / « Révoquer l'accès » sur « Profils lot et incidents » ; lien d'activation affiché avec « Copier ». La case « Activer accès portail » décide des lots visibles ; `portalAccessToken` n'est pas un jeton d'accès (l'accès passe par un compte). Les documents de copropriété ne sont plus servis en statique (`/uploads/syndics` refusé). Voir partie 13. | `packages/api/src/middleware/coowner-portal-access.ts`, `lib/syndics/coowner-portal.ts`, `services/syndic-coowner-portal-service.ts`, `lib/syndics/document-files.ts` ; `apps/web/src/pages/CoOwnerPortal/*`. |
 | 8   | Aucune exigence explicite, mais libellé UI trompeur                                            | **Résolu (commit `409c3fb`).** La fonction est renommée `deleteEmptySyndicateByTenant` et refuse désormais (409) la suppression d'une copropriété qui a le moindre lot, appel de charges, AG, document, contrat ou incident lié ; le bouton « Supprimer » de la carte est désactivé (avec infobulle) dès que ces compteurs sont connus. Voir partie 1.3.                  | `packages/api/src/lib/syndics/queries.ts`, fonction `deleteEmptySyndicateByTenant` ; `apps/web/src/components/syndics/SyndicateCard.tsx` (`isSyndicateEmpty`, `deleteDisabled`).                    |

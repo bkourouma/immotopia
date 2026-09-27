@@ -855,3 +855,69 @@ describe('Gestionnaire — révoquer l’accès', () => {
     expect(res.status).toBe(403);
   });
 });
+
+/** Lit une réponse binaire en Buffer (supertest ne parse pas un PDF). */
+function binary(response: any, callback: (error: Error | null, body: Buffer) => void) {
+  const chunks: Buffer[] = [];
+  response.on('data', (chunk: Buffer) => chunks.push(chunk));
+  response.on('end', () => callback(null, Buffer.concat(chunks)));
+}
+
+describe('Gestionnaire — télécharger un document de copropriété (jamais en statique)', () => {
+  const fileUrl = (syndicateId: string, documentId: string, tenantId = TENANT_A) =>
+    `/api/tenants/${tenantId}/syndics/${syndicateId}/documents/${documentId}/fichier`;
+
+  it("télécharge un document d'une copropriété de l'agence", async () => {
+    const res = await request(app).get(fileUrl(S1, DOC_REGULATION)).set(as(USER_MANAGER)).buffer(true).parse(binary);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('application/pdf');
+    expect((res.body as Buffer).toString()).toBe('PDF-REGLEMENT');
+  });
+
+  it("un document d'une autre agence : 404, par la copropriété de l'agence comme par la sienne", async () => {
+    const viaOwnSyndicate = await request(app).get(fileUrl(S1, DOC_SB)).set(as(USER_MANAGER));
+    const viaForeignSyndicate = await request(app).get(fileUrl(SB, DOC_SB)).set(as(USER_MANAGER));
+
+    expect(viaOwnSyndicate.status).toBe(404);
+    expect(viaForeignSyndicate.status).toBe(404);
+  });
+
+  it("un document d'une autre copropriété de l'agence, demandé sous la mauvaise copropriété : 404", async () => {
+    const res = await request(app).get(fileUrl(S2, DOC_REGULATION)).set(as(USER_MANAGER));
+    expect(res.status).toBe(404);
+  });
+
+  it('un lien externe ne se télécharge pas : 404', async () => {
+    const res = await request(app).get(fileUrl(S1, DOC_MINUTES)).set(as(USER_MANAGER));
+    expect(res.status).toBe(404);
+  });
+
+  it('un client du portail ne passe pas par la route de gestion : 403', async () => {
+    const res = await request(app).get(fileUrl(S1, DOC_INSURANCE)).set(as(USER_AWA));
+    expect(res.status).toBe(403);
+  });
+
+  it('un dépôt est écrit sous la racine de référence, puis se relit par la route', async () => {
+    const created = await request(app)
+      .post(`/api/tenants/${TENANT_A}/syndics/${S1}/documents`)
+      .set(as(USER_MANAGER))
+      .field('title', 'Carnet entretien')
+      .field('type', 'OTHER')
+      .attach('file', Buffer.from('PDF-CARNET'), { filename: 'carnet.pdf', contentType: 'application/pdf' });
+
+    expect(created.status).toBe(201);
+    const storedUrl: string = created.body.data.fileUrl;
+    expect(storedUrl).toMatch(new RegExp(`^/uploads/syndics/${S1}/documents/other-[^/]+\.pdf$`));
+    const onDisk = path.join(UPLOADS_ROOT, storedUrl.replace(/^\/uploads\//, ''));
+    expect((await fs.readFile(onDisk)).toString()).toBe('PDF-CARNET');
+
+    const downloaded = await request(app)
+      .get(fileUrl(S1, created.body.data.id))
+      .set(as(USER_MANAGER))
+      .buffer(true)
+      .parse(binary);
+    expect(downloaded.status).toBe(200);
+    expect((downloaded.body as Buffer).toString()).toBe('PDF-CARNET');
+  });
+});

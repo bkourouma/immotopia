@@ -145,6 +145,11 @@ import { logger } from '../utils/logger';
 import { asyncHandler } from '../middleware/error-middleware';
 import { buildMeetingMinutesDocx } from '../lib/syndics/minutes-generator';
 import { buildOwnerAccountStatementPdf } from '../lib/syndics/owner-account-statement';
+import {
+  getSyndicateDocumentFileForTenant,
+  syndicateDocumentFileUrl,
+  syndicateDocumentsDir
+} from '../lib/syndics/document-files';
 
 export const listSyndicsHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = req.params.tenantId || req.tenantContext?.tenantId;
@@ -1156,10 +1161,12 @@ export const createDocumentHandler = asyncHandler(async (req: Request, res: Resp
 
   let fileUrl = parsed.fileUrl;
   if (req.file) {
-    const cwd = process.cwd();
-    const projectRoot =
-      path.basename(cwd) === 'api' && path.basename(path.dirname(cwd)) === 'packages' ? path.resolve(cwd, '..') : cwd;
-    const uploadDir = path.join(projectRoot, 'uploads', 'syndics', syndicateId, 'documents');
+    // Racine de reference (`UPLOADS_DIR`, sinon `<monorepo>/uploads`). Le
+    // calcul fait ici ne remontait que d'un niveau et ecrivait dans
+    // `packages/uploads` : ces fichiers-la restent lus, voir
+    // lib/syndics/document-files.ts. Le fichier n'est jamais servi en
+    // statique, seulement par `downloadDocumentHandler` ci-dessous.
+    const uploadDir = syndicateDocumentsDir(syndicateId);
     await fs.mkdir(uploadDir, { recursive: true });
 
     const extension = path.extname(req.file.originalname) || '';
@@ -1168,7 +1175,7 @@ export const createDocumentHandler = asyncHandler(async (req: Request, res: Resp
     const filePath = path.join(uploadDir, fileName);
 
     await fs.writeFile(filePath, req.file.buffer);
-    fileUrl = `/uploads/syndics/${syndicateId}/documents/${fileName}`;
+    fileUrl = syndicateDocumentFileUrl(syndicateId, fileName);
   }
 
   if (!fileUrl) {
@@ -1184,6 +1191,26 @@ export const createDocumentHandler = asyncHandler(async (req: Request, res: Resp
     success: true,
     data: document
   });
+});
+
+/**
+ * Telechargement d'un document de copropriete, cote gestion. Le document doit
+ * appartenir a une copropriete de l'agence ; sinon 404, comme un document
+ * inexistant. Remplace l'ouverture directe de `/uploads/syndics/...`, que le
+ * service statique refuse desormais.
+ */
+export const downloadDocumentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const tenantId = req.tenantContext?.tenantId || req.params.tenantId;
+  if (!tenantId) {
+    throw badRequest('TenantId manquant pour le telechargement de document');
+  }
+
+  const file = await getSyndicateDocumentFileForTenant(tenantId, req.params.syndicId, req.params.documentId);
+
+  res.setHeader('Content-Type', file.mimeType);
+  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`);
+  res.setHeader('Content-Length', file.buffer.length.toString());
+  res.send(file.buffer);
 });
 
 export const getFinanceSummaryHandler = asyncHandler(async (req: Request, res: Response) => {
