@@ -71,6 +71,18 @@ export function isMeetingFrozen(status: MeetingStatus): boolean {
   return status === 'COMPLETED' || status === 'CANCELLED';
 }
 
+/**
+ * Raison affichee (infobulle) quand une action d'ecriture de la fiche est
+ * desactivee ou masquee parce que l'AG est figee. Utilisee par toutes les
+ * actions generiques (ordre du jour, date/lieu...) ; les votes et pouvoirs
+ * gardent leur propre libelle, plus specifique, deja etabli.
+ */
+export function meetingFrozenReason(status: MeetingStatus): string {
+  return status === 'CANCELLED'
+    ? t("Assemblée annulée : plus aucune modification n'est possible.")
+    : t("Séance clôturée : plus aucune modification n'est possible.");
+}
+
 export const meetingStatusColors: Record<MeetingStatus, string> = {
   PLANNED: 'blue',
   IN_PROGRESS: 'orange',

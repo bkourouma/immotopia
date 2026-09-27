@@ -347,7 +347,13 @@ introuvable ou lot sans proprietaire`, ce qui n'aurait pas été une anomalie).
 #### Résultat attendu
 
 - [ ] Message `Budget créé`. Ligne dans le tableau « Budgets » : Exercice
-      2026, Montant **1 000 000**, Allocations `0`, Statut `DRAFT`.
+      2026, Montant **1 000 000**, **Allocations = 4 dès la création**,
+      Statut `DRAFT`.
+- [ ] La répartition par tantièmes n'attend pas l'approbation : elle est
+      calculée tout de suite, à la création, comme un aperçu à l'état de
+      brouillon (le budget n'a pas encore de valeur légale tant qu'il n'est
+      pas `APPROVED`, mais la répartition, elle, est déjà là et consultable
+      via « Voir allocations »). Les montants sont ceux de la table du 4.2.
 
 ### 4.2 Approuver puis répartir
 
@@ -357,8 +363,14 @@ introuvable ou lot sans proprietaire`, ce qui n'aurait pas été une anomalie).
 #### Résultat attendu
 
 - [ ] Après « Approuver » : Statut devient `APPROVED`, message
-      `Budget approuvé`.
+      `Budget approuvé`. Allocations toujours `4` : approuver ne les touche
+      pas.
 - [ ] Après « Répartir » : message `Allocations recalculées (4 lot(s))`.
+      C'est un **recalcul**, pas une nouvelle répartition : l'opération est
+      idempotente (elle remplace l'aperçu du brouillon par le même résultat,
+      sans le dupliquer) — cliquer plusieurs fois de suite sur « Répartir »
+      doit toujours afficher `Allocations = 4`, jamais 8 ou 12. À vérifier
+      en recette en cliquant deux fois.
 - [ ] Carte « Répartition des lots » — **montants exactement calculables**,
       la clé « Tantièmes généraux » répartit le 1 000 000 FCFA
       proportionnellement aux 1000 tantièmes des 4 lots :
@@ -372,6 +384,8 @@ introuvable ou lot sans proprietaire`, ce qui n'aurait pas été une anomalie).
 
   (Ces 4 montants totalisent exactement 1 000 000 — aucun centime
   d'arrondi à attendre puisque 1 000 000 / 1000 tantièmes tombe rond.)
+  Ce sont les mêmes montants qu'à la création (4.1) : « Approuver » puis
+  « Répartir » ne changent pas le calcul, ils le rejouent.
 
 ### 4.3 Générer les appels de charges depuis le budget
 

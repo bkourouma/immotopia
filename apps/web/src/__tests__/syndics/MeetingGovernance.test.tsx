@@ -126,6 +126,9 @@ vi.mock('antd', async () => {
         </table>
       ),
     Tag: ({ children }: any) => <span>{children}</span>,
+    // `title` (texte d'infobulle) atterrit comme attribut DOM sur le `<span>` :
+    // suffisant pour verifier une action figee sans simuler le survol reel.
+    Tooltip: ({ title, children }: any) => <span title={typeof title === 'string' ? title : undefined}>{children}</span>,
     Typography: {
       Title: ({ children }: any) => <h1>{children}</h1>,
       Paragraph: ({ children }: any) => <p>{children}</p>,
@@ -252,9 +255,9 @@ function buildMeeting(status: string, overrides: Record<string, unknown> = {}) {
 
 const DETAIL_URL = '/tenants/tenant-1/syndics/syndic-1/assemblees/meeting-1';
 
-function mockDetail(status: string) {
+function mockDetail(status: string, overrides: Record<string, unknown> = {}) {
   mockApi.get.mockImplementation(async (url: string) => {
-    if (url === DETAIL_URL) return { data: { success: true, data: buildMeeting(status) } };
+    if (url === DETAIL_URL) return { data: { success: true, data: buildMeeting(status, overrides) } };
     if (url === '/tenants/tenant-1/crm/contacts') {
       return { data: { contacts: [contact('c5', 'Eric', 'Mandataire'), contact('c1', 'Awa', 'Kone')] } };
     }
@@ -351,6 +354,34 @@ describe('AG - statut, majorité et pouvoirs', () => {
     expect(screen.queryByRole('button', { name: 'Clôturer la séance' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Ajouter un pouvoir' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retirer' })).toBeNull();
+  });
+
+  it.each([
+    ['COMPLETED', "Séance clôturée : plus aucune modification n'est possible."],
+    ['CANCELLED', "Assemblée annulée : plus aucune modification n'est possible."]
+  ])('desactive l ordre du jour et les infos de reunion sur une AG %s, avec l infobulle qui explique pourquoi', async (status, reason) => {
+    mockDetail(status, { agendaItems: [{ id: 'agenda-1', title: 'Point 1', orderIndex: 1, discussions: [] }] });
+    renderRoute('/tenant/tenant-1/syndics/syndic-1/assemblees/meeting-1');
+
+    await screen.findByText('1. Point 1');
+
+    // Ajout, modification et suppression d'un point d'ordre du jour : desactives.
+    const addAgendaButton = screen.getByRole('button', { name: 'Ajouter un point' });
+    expect(addAgendaButton).toBeDisabled();
+    expect(addAgendaButton.closest('span')).toHaveAttribute('title', reason);
+
+    const editAgendaButton = screen.getByRole('button', { name: 'Modifier' });
+    expect(editAgendaButton).toBeDisabled();
+    expect(editAgendaButton.closest('span')).toHaveAttribute('title', reason);
+
+    const deleteAgendaButton = screen.getByRole('button', { name: 'Supprimer' });
+    expect(deleteAgendaButton).toBeDisabled();
+    expect(deleteAgendaButton.closest('span')).toHaveAttribute('title', reason);
+
+    // Modification de la date/heure/lieu de la reunion : desactivee elle aussi.
+    const saveMeetingMetaButton = screen.getByRole('button', { name: 'Enregistrer' });
+    expect(saveMeetingMetaButton).toBeDisabled();
+    expect(saveMeetingMetaButton.closest('span')).toHaveAttribute('title', reason);
   });
 
   it('propose les règles de majorité à la création d une résolution', async () => {
