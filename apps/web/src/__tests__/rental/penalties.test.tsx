@@ -31,14 +31,19 @@ const updatePenalty = vi.fn();
 const deletePenalty = vi.fn();
 const calculatePenalties = vi.fn();
 const uploadPenaltyJustification = vi.fn();
+const downloadPenaltyJustification = vi.fn();
+const saveBlob = vi.fn();
 
 vi.mock('../../services/rental-service', () => ({
   listPenalties: (...a: unknown[]) => listPenalties(...a),
   updatePenalty: (...a: unknown[]) => updatePenalty(...a),
   deletePenalty: (...a: unknown[]) => deletePenalty(...a),
   calculatePenalties: (...a: unknown[]) => calculatePenalties(...a),
-  uploadPenaltyJustification: (...a: unknown[]) => uploadPenaltyJustification(...a)
+  uploadPenaltyJustification: (...a: unknown[]) => uploadPenaltyJustification(...a),
+  downloadPenaltyJustification: (...a: unknown[]) => downloadPenaltyJustification(...a)
 }));
+
+vi.mock('../../utils/save-blob', () => ({ saveBlob: (...a: unknown[]) => saveBlob(...a) }));
 
 vi.mock('../../hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ screens: {}, active: 'lg', isMobile: false, isTablet: false, isDesktop: true })
@@ -120,6 +125,28 @@ describe('Pénalités — lecture du champ « raison »', () => {
     ]);
     expect(await screen.findByText('Geste commercial', {}, { timeout: 8000 })).toBeInTheDocument();
     expect(screen.getByText('Justificatif')).toBeInTheDocument();
+  });
+
+  it('télécharge le justificatif par la route authentifiée, jamais par /uploads', async () => {
+    // `/uploads/rental/penalties` répond 404 : le fichier se demande à l'API.
+    const blob = new Blob(['pdf']);
+    downloadPenaltyJustification.mockResolvedValue({ blob, filename: 'accord.pdf' });
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    mount([
+      penalite({
+        adjusted_amount: 30_000,
+        adjustment_reason: JSON.stringify({
+          reason: 'Geste commercial',
+          justification: { fileUrl: '/uploads/rental/penalties/pen-1/j.pdf', fileName: 'accord.pdf' }
+        })
+      })
+    ]);
+    await userEvent.setup({ delay: null }).click(await screen.findByText('Justificatif', {}, { timeout: 8000 }));
+
+    await waitFor(() => expect(downloadPenaltyJustification).toHaveBeenCalledWith('agence-1', 'pen-1', 'accord.pdf'));
+    await waitFor(() => expect(saveBlob).toHaveBeenCalledWith(blob, 'accord.pdf'));
+    expect(open).not.toHaveBeenCalled();
+    open.mockRestore();
   });
 
   it('lit une raison en texte brut, écrite avant que le format JSON n’existe', async () => {

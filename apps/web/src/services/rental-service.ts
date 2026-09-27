@@ -1,4 +1,5 @@
 import apiClient from '../utils/api-client';
+import { filenameFromDisposition } from '../utils/save-blob';
 import type { OnlineCheckoutSummary } from './payment-gateway-service';
 
 // Enums matching Prisma schema
@@ -1016,4 +1017,40 @@ export async function rejectPaymentDeclaration(
     data
   );
   return response.data;
+}
+
+/**
+ * Preuve jointe par un locataire à une déclaration de paiement. Jamais servie
+ * en statique (`/uploads/portal/payments` répond 404) : la route vérifie
+ * l'agence et la permission `RENTAL_PAYMENTS_VIEW`.
+ */
+export async function fetchPaymentDeclarationProof(
+  tenantId: string,
+  declarationId: string
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(
+    `/tenants/${tenantId}/rental/payment-declarations/${encodeURIComponent(declarationId)}/proof`,
+    { responseType: 'blob' }
+  );
+  return {
+    blob: response.data,
+    filename: filenameFromDisposition(response.headers?.['content-disposition'], 'preuve-de-paiement')
+  };
+}
+
+/**
+ * Justificatif d'une pénalité ajustée. Jamais servi en statique
+ * (`/uploads/rental/penalties` répond 404) : la route vérifie l'agence et la
+ * permission `RENTAL_PENALTIES_VIEW`.
+ */
+export async function downloadPenaltyJustification(
+  tenantId: string,
+  penaltyId: string,
+  fallbackName: string
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<Blob>(
+    `/tenants/${tenantId}/rental/penalties/${encodeURIComponent(penaltyId)}/justification`,
+    { responseType: 'blob' }
+  );
+  return { blob: response.data, filename: filenameFromDisposition(response.headers?.['content-disposition'], fallbackName) };
 }
