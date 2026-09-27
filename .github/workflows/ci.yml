@@ -48,6 +48,10 @@ jobs:
       # Single install for the whole workspace: one lockfile at the root.
       - run: npm ci
 
+      # Enforce package boundaries that are otherwise only documented.
+      - name: Check architecture boundaries
+        run: npm run check:architecture
+
       - run: npm run prisma:generate -w @immotopia/api
 
       # Fails when the Prisma schema and the migration history have drifted
