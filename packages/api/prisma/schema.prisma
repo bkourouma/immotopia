@@ -4186,23 +4186,27 @@ model SyndicChargeSchedule {
 /// periode. L'unicite (scheduleId, periodStart) est la garantie
 /// d'idempotence : une periode deja traitee n'est jamais reemise.
 model SyndicChargeScheduleRun {
-  id                String                        @id @default(uuid()) @db.Uuid
-  tenantId          String                        @map("tenant_id")
-  scheduleId        String                        @map("schedule_id") @db.Uuid
-  periodStart       DateTime                      @map("period_start") @db.Date
-  periodEnd         DateTime                      @map("period_end") @db.Date
-  periodLabel       String                        @map("period_label")
-  status            SyndicChargeScheduleRunStatus
+  id                   String                        @id @default(uuid()) @db.Uuid
+  tenantId             String                        @map("tenant_id")
+  scheduleId           String                        @map("schedule_id") @db.Uuid
+  periodStart          DateTime                      @map("period_start") @db.Date
+  periodEnd            DateTime                      @map("period_end") @db.Date
+  periodLabel          String                        @map("period_label")
+  status               SyndicChargeScheduleRunStatus
   /// CRON (tache quotidienne) ou MANUAL (bouton « Executer »).
-  trigger           String                        @default("CRON")
-  batchId           String?                       @map("batch_id") @db.Uuid
-  callsCreated      Int                           @default(0) @map("calls_created")
+  trigger              String                        @default("CRON")
+  batchId              String?                       @map("batch_id") @db.Uuid
+  callsCreated         Int                           @default(0) @map("calls_created")
   /// Appels entierement couverts par l'avance du lot (quittance, pas d'avis).
-  callsCovered      Int                           @default(0) @map("calls_covered")
-  notificationsSent Int                           @default(0) @map("notifications_sent")
-  error             String?
-  createdAt         DateTime                      @default(now()) @map("created_at")
-  finishedAt        DateTime?                     @map("finished_at")
+  callsCovered         Int                           @default(0) @map("calls_covered")
+  notificationsSent    Int                           @default(0) @map("notifications_sent")
+  /// Avis non envoyes volontairement (proprietaire du lot qui n'est plus un coproprietaire actuel).
+  notificationsSkipped Int                           @default(0) @map("notifications_skipped")
+  /// Remarques non sensibles de l'execution (lots dont l'avis n'est pas parti, etc.).
+  notes                String?
+  error                String?
+  createdAt            DateTime                      @default(now()) @map("created_at")
+  finishedAt           DateTime?                     @map("finished_at")
 
   tenant   Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   schedule SyndicChargeSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)

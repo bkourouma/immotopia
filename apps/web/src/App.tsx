@@ -330,6 +330,11 @@ const SyndicAccounting = lazy(() =>
 const SyndicBudgets = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicBudgets').then(m => ({ default: m.SyndicBudgets }))
 );
+const SyndicChargeSchedules = lazy(() =>
+  import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicChargeSchedules').then(m => ({
+    default: m.SyndicChargeSchedules
+  }))
+);
 const SyndicProfilesIncidents = lazy(() =>
   import(/* webpackChunkName: "syndics" */ './pages/syndics/SyndicProfilesIncidents').then(m => ({
     default: m.SyndicProfilesIncidents
@@ -846,10 +851,7 @@ function App() {
                           {/* Route statique avant le layout de fiche : elle doit être déclarée
                           avant `/tenant/:tenantId/syndics/:syndicId` pour que « mandants » ne
                           soit jamais lu comme un identifiant de copropriété. */}
-                          <Route
-                            path="/tenant/:tenantId/syndics/mandants"
-                            element={<SyndicMandatingAgencies />}
-                          />
+                          <Route path="/tenant/:tenantId/syndics/mandants" element={<SyndicMandatingAgencies />} />
                           {/* Famille « Copropriété » — fiche, lots (et le compte d'un lot,
                         rattaché à l'onglet Lots), prestataires, profils et incidents.
                         Même route de layout que les deux familles suivantes : elle ne
@@ -876,6 +878,10 @@ function App() {
                           <Route element={<SyndicWorkspaceLayout family="finances" />}>
                             <Route path="/tenant/:tenantId/syndics/:syndicId/budgets" element={<SyndicBudgets />} />
                             <Route path="/tenant/:tenantId/syndics/:syndicId/charges" element={<SyndicCharges />} />
+                            <Route
+                              path="/tenant/:tenantId/syndics/:syndicId/programmation"
+                              element={<SyndicChargeSchedules />}
+                            />
                             <Route
                               path="/tenant/:tenantId/syndics/:syndicId/suivi-mensuel"
                               element={<SyndicMonthlyTracking />}
@@ -906,7 +912,10 @@ function App() {
                           <Route path="/tenant/:tenantId/invitations" element={<InvitationsList />} />
                           <Route path="/tenant/:tenantId/settings" element={<TenantSettings />} />
                           <Route path="/tenant/:tenantId/settings/finance" element={<AgencyFinanceSettings />} />
-                          <Route path="/tenant/:tenantId/settings/abonnement" element={<TenantSubscriptionSettings />} />
+                          <Route
+                            path="/tenant/:tenantId/settings/abonnement"
+                            element={<TenantSubscriptionSettings />}
+                          />
                           <Route path="/tenant/:tenantId/documents/templates" element={<DocumentTemplates />} />
                           <Route path="/tenant/:tenantId/crm/contacts" element={<Contacts />} />
                           <Route path="/tenant/:tenantId/crm/contacts/new" element={<ContactFormPage />} />

@@ -43,7 +43,7 @@ import { scheduleChargeDocumentDelivery } from './charge-receipt-delivery';
 import { recurrenceStepMonths, resolvePeriodBounds, shiftPeriodBounds, type PeriodBounds } from './period';
 // Lot S4 : quote-part annuelle du budget divisee par le nombre de periodes.
 import { annualShareForPeriod } from './charge-schedule-periods';
-import { QuotaExceededError } from '../../middleware/error-middleware';
+import { ConflictError, QuotaExceededError } from '../../middleware/error-middleware';
 import { t } from '../../i18n';
 import { logAuditEvent } from '../../services/audit-service';
 import { AuditActionKey } from '../../types/audit-types';
@@ -3990,6 +3990,29 @@ export interface LotCallAmount {
 }
 
 /**
+ * Lot S4 (audit) : un seul lot d'appels ORDINAIRE par copropriete et par
+ * periode (memes bornes), qu'il vienne d'une programmation ou de la
+ * generation manuelle depuis le budget. Un appel exceptionnel reste possible,
+ * et une periode sans bornes n'est pas controlee. 409 sinon.
+ */
+export async function assertNoRegularBatchForPeriodTx(
+  tx: PrismaTransactionClient,
+  syndicateId: string,
+  bounds: PeriodBounds | null
+): Promise<void> {
+  if (!bounds) return;
+  const duplicate = await tx.chargeCallBatch.findFirst({
+    where: { syndicateId, batchType: 'REGULAR', periodStart: bounds.start, periodEnd: bounds.end },
+    select: { id: true }
+  });
+  if (duplicate) {
+    throw new ConflictError(
+      "Un lot d'appels ordinaire existe déjà pour cette copropriété sur cette période : aucun appel émis."
+    );
+  }
+}
+
+/**
  * Lot S4 : cree un lot d'appels (`ChargeCallBatch`) et un appel par lot, dans
  * la transaction de l'appelant, par le chemin commun `createLotChargeCallTx`
  * (debit du compte du lot, imputation de l'avance, quittances S3 ajoutees a
@@ -4014,6 +4037,7 @@ export async function createChargeCallBatchWithCallsTx(
   },
   issued: IssuedChargeDocument[] = []
 ) {
+  if (data.batchType === 'REGULAR') await assertNoRegularBatchForPeriodTx(tx, data.syndicateId, data.bounds);
   const batch = await tx.chargeCallBatch.create({
     data: {
       syndicateId: data.syndicateId,

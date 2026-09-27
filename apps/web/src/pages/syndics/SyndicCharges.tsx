@@ -22,6 +22,7 @@ import { ChargeCallTable } from '../../components/syndics/ChargeCallTable';
 import { LotPaymentModal } from '../../components/syndics/LotPaymentModal';
 import { MoneyValue, StatCard } from '../../components/primitives';
 import { createChargeCall, getSyndicate, listChargeCalls, listSyndicateLots } from '../../services/syndic-service';
+import { downloadChargeCallNotice } from '../../services/syndic-charge-schedule-service';
 import {
   ChargeCall,
   ChargeCallStatus,
@@ -197,6 +198,15 @@ export const SyndicCharges: React.FC = () => {
     }
   };
 
+  const handleDownloadNotice = async (charge: ChargeCall) => {
+    if (!effectiveTenantId || !syndicId) return;
+    try {
+      await downloadChargeCallNotice(effectiveTenantId, syndicId, charge.id);
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t("Téléchargement de l'avis d'appel impossible"));
+    }
+  };
+
   const handleOpenPaymentForCharge = (charge: ChargeCall) => {
     setPaymentContext({ lotId: charge.lotId, chargeCallId: charge.id });
     setPaymentOpen(true);
@@ -293,7 +303,11 @@ export const SyndicCharges: React.FC = () => {
             </Card>
 
             <Card title={t('Liste des appels de charges')}>
-              <ChargeCallTable items={charges} onRecordPayment={handleOpenPaymentForCharge} />
+              <ChargeCallTable
+                items={charges}
+                onRecordPayment={handleOpenPaymentForCharge}
+                onDownloadNotice={charge => void handleDownloadNotice(charge)}
+              />
             </Card>
           </>
         )}

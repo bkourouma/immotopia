@@ -46,6 +46,8 @@ CREATE TABLE "syndic_charge_schedule_runs" (
     "calls_created" INTEGER NOT NULL DEFAULT 0,
     "calls_covered" INTEGER NOT NULL DEFAULT 0,
     "notifications_sent" INTEGER NOT NULL DEFAULT 0,
+    "notifications_skipped" INTEGER NOT NULL DEFAULT 0,
+    "notes" TEXT,
     "error" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "finished_at" TIMESTAMP(3),
@@ -91,7 +93,14 @@ ALTER TABLE "syndic_charge_schedule_runs" ADD CONSTRAINT "syndic_charge_schedule
 
 
 -- Garde-fous metier (hors schema Prisma) : jour d'emission valable tous les
--- mois (1 a 28), echeance jamais anterieure a l'emission, montant fixe positif.
+-- mois (1 a 28), echeance jamais anterieure a l'emission, source du montant
+-- coherente, date de fin posterieure au debut, declencheur connu.
 ALTER TABLE "syndic_charge_schedules" ADD CONSTRAINT "syndic_charge_schedules_issue_day_check" CHECK ("issue_day" BETWEEN 1 AND 28);
 ALTER TABLE "syndic_charge_schedules" ADD CONSTRAINT "syndic_charge_schedules_due_offset_check" CHECK ("due_offset_days" >= 0);
 ALTER TABLE "syndic_charge_schedules" ADD CONSTRAINT "syndic_charge_schedules_fixed_amount_check" CHECK ("fixed_amount" IS NULL OR "fixed_amount" > 0);
+ALTER TABLE "syndic_charge_schedules" ADD CONSTRAINT "syndic_charge_schedules_amount_source_check" CHECK (
+    ("amount_source" = 'FIXED' AND "fixed_amount" IS NOT NULL AND "budget_id" IS NULL)
+    OR ("amount_source" = 'BUDGET' AND "fixed_amount" IS NULL)
+);
+ALTER TABLE "syndic_charge_schedules" ADD CONSTRAINT "syndic_charge_schedules_end_date_check" CHECK ("end_date" IS NULL OR "end_date" >= "start_date");
+ALTER TABLE "syndic_charge_schedule_runs" ADD CONSTRAINT "syndic_charge_schedule_runs_trigger_check" CHECK ("trigger" IN ('CRON', 'MANUAL'));

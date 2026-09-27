@@ -250,4 +250,14 @@ describe('avis d appel PDF', () => {
     expect(findDiskPathLeaks(outside.body)).toEqual([]);
     expect((await request(app).get('/api/portal/copropriete/appels/pas-un-uuid/avis')).status).toBe(400);
   });
+
+  it('portail : limiteur dedie, 20 avis par minute et par compte', async () => {
+    mockNoticeForCoOwner.mockResolvedValue(pdf);
+    const statuses: number[] = [];
+    for (let index = 0; index < 22; index += 1) {
+      statuses.push((await request(app).get(`/api/portal/copropriete/appels/${CHARGE}/avis`)).status);
+    }
+    expect(statuses).toContain(429);
+    expect(statuses.filter(status => status === 200).length).toBeLessThanOrEqual(20);
+  });
 });

@@ -152,3 +152,20 @@ export const globalApiRateLimiter = rateLimit({
   // Health checks and static uploads must not consume the budget.
   skip: req => req.path === '/health' || req.path.startsWith('/uploads/')
 });
+
+/**
+ * Lot S4 : avis d'appel de charges PDF du portail copropriétaire. Chaque
+ * demande rend un PDF (identité, images) : 20 par minute et par compte
+ * (repli sur l'adresse IP sans session), bien au-dessus d'un usage normal.
+ */
+export const coOwnerChargeNoticeRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: req => (req.user?.userId ? `user:${req.user.userId}` : `ip:${req.ip}`),
+  message: {
+    success: false,
+    message: 'Trop de téléchargements. Veuillez réessayer dans une minute.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});

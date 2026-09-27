@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { NotFoundError } from '../../middleware/error-middleware';
 import type { PrivateFile } from '../files/private-files';
-import { resolveDocumentBranding } from '../documents/document-branding';
+import { resolveDocumentBranding, type DocumentBranding } from '../documents/document-branding';
 import { fromCents, toCents } from './charge-allocation-plan';
 import { contactDisplayName, isoDay, lotTypeLabel } from './charge-receipt-snapshot';
 import type { CoOwnerPortalScope } from './coowner-portal';
@@ -66,10 +66,22 @@ async function loadPaymentMethods(syndicateId: string) {
   }));
 }
 
-/** Données de l'avis : montants en centimes pour ne perdre aucun centime. */
+type NoticeContact = {
+  firstName: string | null;
+  lastName: string | null;
+  legalName: string | null;
+  address: string | null;
+};
+
+/**
+ * Données de l'avis : montants en centimes pour ne perdre aucun centime.
+ * `recipient` : le destinataire à imprimer quand il est connu (portail : le
+ * contact de la session) ; sinon le propriétaire du lot.
+ */
 export function toNoticeData(
   call: NoticeCall,
-  paymentMethods: ChargeCallNoticeData['paymentMethods']
+  paymentMethods: ChargeCallNoticeData['paymentMethods'],
+  recipient?: NoticeContact | null
 ): ChargeCallNoticeData {
   const amountCents = toCents(call.amount);
   const sumOf = (source: string) =>
@@ -78,7 +90,7 @@ export function toNoticeData(
       .reduce((sum, allocation) => sum + toCents(allocation.amount), 0);
   const advanceCents = sumOf('ADVANCE');
   const paidCents = sumOf('PAYMENT');
-  const contact = call.lot?.owner ?? call.lot?.coowner ?? null;
+  const contact = recipient ?? call.lot?.owner ?? call.lot?.coowner ?? null;
   const trim = (value: string | null | undefined) => value?.trim() || null;
   return {
     chargeCallId: call.id,
@@ -100,17 +112,53 @@ export function toNoticeData(
   };
 }
 
-async function renderNotice(tenantId: string, call: NoticeCall): Promise<PrivateFile> {
+/** Ce qui est commun à tous les avis d'une copropriété : identité et moyens de paiement. */
+export interface NoticeRenderContext {
+  syndicateId: string;
+  branding: DocumentBranding;
+  paymentMethods: ChargeCallNoticeData['paymentMethods'];
+}
+
+/**
+ * Lu une fois par exécution de programmation, puis réutilisé pour chaque avis.
+ *
+ * L'avis est une DEMANDE de paiement, pas une pièce qui atteste quoi que ce
+ * soit : il ne porte ni signature ni cachet (décision de l'audit S4, comme le
+ * relevé du portail S5), sur le portail comme dans l'e-mail. Les logos
+ * restent. Les quittances S3, elles, gardent leur signature.
+ */
+export async function loadNoticeRenderContext(tenantId: string, syndicateId: string): Promise<NoticeRenderContext> {
   const [branding, paymentMethods] = await Promise.all([
-    resolveDocumentBranding(tenantId, call.syndicateId),
-    loadPaymentMethods(call.syndicateId)
+    resolveDocumentBranding(tenantId, syndicateId),
+    loadPaymentMethods(syndicateId)
   ]);
-  const data = toNoticeData(call, paymentMethods);
+  return { syndicateId, branding: { ...branding, signature: null, stamp: null }, paymentMethods };
+}
+
+async function renderNotice(
+  tenantId: string,
+  call: NoticeCall,
+  options: { context?: NoticeRenderContext; recipient?: NoticeContact | null } = {}
+): Promise<PrivateFile> {
+  const context =
+    options.context && options.context.syndicateId === call.syndicateId
+      ? options.context
+      : await loadNoticeRenderContext(tenantId, call.syndicateId);
+  const data = toNoticeData(call, context.paymentMethods, options.recipient);
   return {
-    buffer: await renderChargeCallNoticePdf(data, branding),
+    buffer: await renderChargeCallNoticePdf(data, context.branding),
     fileName: chargeCallNoticeFileName(data),
     mimeType: 'application/pdf'
   };
+}
+
+async function findTenantCall(tenantId: string, syndicateId: string, chargeCallId: string) {
+  const call = await prisma.chargeCall.findFirst({
+    where: { id: chargeCallId, syndicateId, syndicate: { tenantId } },
+    select: NOTICE_CALL_SELECT
+  });
+  if (!call) throw new NotFoundError('Appel de charges introuvable.');
+  return call;
 }
 
 /** Gestion : avis d'un appel de la copropriété `syndicateId` de l'agence. */
@@ -119,17 +167,14 @@ export async function getChargeCallNoticeForTenant(
   syndicateId: string,
   chargeCallId: string
 ): Promise<PrivateFile> {
-  const call = await prisma.chargeCall.findFirst({
-    where: { id: chargeCallId, syndicateId, syndicate: { tenantId } },
-    select: NOTICE_CALL_SELECT
-  });
-  if (!call) throw new NotFoundError('Appel de charges introuvable.');
-  return renderNotice(tenantId, call);
+  return renderNotice(tenantId, await findTenantCall(tenantId, syndicateId, chargeCallId));
 }
 
 /**
  * Portail : avis d'un appel d'un lot du périmètre (`resolveCoOwnerScope`).
  * Les copropriétés du périmètre sont déjà vérifiées comme étant de l'agence.
+ * Le destinataire imprimé est le contact de la session pour ce lot (relu
+ * avec le filtre d'agence), jamais un autre propriétaire du lot.
  */
 export async function getChargeCallNoticeForCoOwner(
   scope: CoOwnerPortalScope,
@@ -141,17 +186,24 @@ export async function getChargeCallNoticeForCoOwner(
     select: NOTICE_CALL_SELECT
   });
   const lotScope = call ? scope.lots.find(lot => lot.lotId === call.lotId) : undefined;
-  if (!call || !lotScope || lotScope.syndicateId !== call.syndicateId)
+  if (!call || !lotScope || lotScope.syndicateId !== call.syndicateId) {
     throw new NotFoundError('Appel de charges introuvable.');
-  return renderNotice(scope.tenantId, call);
+  }
+  const recipient = await prisma.crmContact.findFirst({
+    where: { id: lotScope.contactId, tenantId: scope.tenantId },
+    select: CONTACT_SELECT
+  });
+  return renderNotice(scope.tenantId, call, { recipient });
 }
 
-/** Envoi automatique : l'avis en pièce jointe d'e-mail. */
+/** Envoi automatique : l'avis en pièce jointe d'e-mail (`context` : identité déjà lue). */
 export async function buildChargeCallNoticeAttachment(
   tenantId: string,
   syndicateId: string,
-  chargeCallId: string
+  chargeCallId: string,
+  context?: NoticeRenderContext
 ): Promise<NotificationAttachment> {
-  const file = await getChargeCallNoticeForTenant(tenantId, syndicateId, chargeCallId);
+  const call = await findTenantCall(tenantId, syndicateId, chargeCallId);
+  const file = await renderNotice(tenantId, call, { context });
   return { filename: file.fileName, content: file.buffer, contentType: file.mimeType };
 }

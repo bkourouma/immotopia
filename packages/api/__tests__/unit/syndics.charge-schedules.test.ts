@@ -30,6 +30,13 @@ jest.mock('../../src/services/whatsapp-notification-send-service', () => ({
 }));
 jest.mock('../../src/services/audit-service', () => ({ logAuditEvent: jest.fn(), flushAuditQueue: jest.fn() }));
 
+// Droits d'abonnement de l'agence (tâche quotidienne) : SYNDIC complet par défaut.
+const fullEntitlements = () => ({ enforcement: 'enforce', moduleAccess: { MODULE_SYNDIC: 'FULL' }, readOnly: false });
+const mockGetEntitlements = jest.fn(async (_tenantId: string, _options?: any): Promise<any> => fullEntitlements());
+jest.mock('../../src/services/subscription-v2-service', () => ({
+  getEntitlements: (tenantId: string, options?: any) => mockGetEntitlements(tenantId, options)
+}));
+
 import { recordLotPayment } from '../../src/lib/syndics/charge-allocation';
 import { generateChargeCallsFromBudget } from '../../src/lib/syndics/queries';
 import {
@@ -44,7 +51,14 @@ import {
   resumeChargeSchedule,
   updateChargeSchedule
 } from '../../src/lib/syndics/charge-schedules';
-import { MAX_CATCH_UP_PERIODS, runDueChargeSchedules } from '../../src/lib/syndics/charge-schedule-runner';
+import {
+  isPeriodReservationConflict,
+  MAX_CATCH_UP_PERIODS,
+  runDueChargeSchedules,
+  TECHNICAL_ERROR_MESSAGE
+} from '../../src/lib/syndics/charge-schedule-runner';
+import * as noticePdf from '../../src/lib/syndics/charge-call-notice-pdf';
+import * as documentBranding from '../../src/lib/documents/document-branding';
 import {
   getChargeCallNoticeForCoOwner,
   getChargeCallNoticeForTenant,
@@ -152,7 +166,12 @@ mockPrisma.syndicChargeScheduleRun.create.mockImplementation(async (args: any) =
     row =>
       row.scheduleId === args.data.scheduleId && new Date(row.periodStart).getTime() === args.data.periodStart.getTime()
   );
-  if (clash) throw Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+  if (clash) {
+    throw Object.assign(new Error('Unique constraint failed'), {
+      code: 'P2002',
+      meta: { target: ['schedule_id', 'period_start'] }
+    });
+  }
   return originalRunCreate(args);
 });
 
@@ -160,6 +179,8 @@ function seed() {
   mockPrisma.reset();
   mockSendEmail.mockReset();
   mockSendEmail.mockImplementation(async () => undefined);
+  mockGetEntitlements.mockReset();
+  mockGetEntitlements.mockImplementation(async () => fullEntitlements());
   for (const [syndicId, info] of Object.entries(syndicates)) {
     mockPrisma.syndicate.rows.push({
       id: syndicId,
@@ -173,7 +194,10 @@ function seed() {
       mandatingAgency: null
     });
   }
-  mockPrisma.tenant.rows.push({ id: TENANT_A, name: 'Agence A' }, { id: TENANT_B, name: 'Agence B' });
+  mockPrisma.tenant.rows.push(
+    { id: TENANT_A, name: 'Agence A', status: 'ACTIVE' },
+    { id: TENANT_B, name: 'Agence B', status: 'ACTIVE' }
+  );
   mockPrisma.crmContact.rows.push(...Object.values(contacts).map(contact => ({ ...contact })));
   mockPrisma.syndicateLot.rows.push(
     lotRow(L1, S1, 'A-01', 'APARTMENT', 600, contacts[AWA]),
@@ -375,7 +399,13 @@ describe('execution et idempotence', () => {
   });
 
   it('sans budget designe : budget approuve de l exercice de la periode', async () => {
-    const schedule = await createChargeSchedule(TENANT_A, S1, input({ budgetId: null }), null, NOW);
+    const schedule = await createChargeSchedule(
+      TENANT_A,
+      S1,
+      input({ budgetId: null, endDate: d('2026-12-31') }),
+      null,
+      NOW
+    );
     const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
     expect(result.run.status).toBe('SUCCESS');
     expect(batches()[0].budgetId).toBe(BUD1);
@@ -681,8 +711,260 @@ describe('generation manuelle depuis le budget (correctif periodsPerYear)', () =
     await generateChargeCallsFromBudget(TENANT_A, S1, BUD1, { ...base, periodsPerYear: 4, periodIndex: 1 });
     expect(amountsByLot(calls())).toEqual({ [L1]: 3000, [L2]: 2000.01 });
     mockPrisma.chargeCall.rows = [];
+    mockPrisma.chargeCallBatch.rows = [];
     await generateChargeCallsFromBudget(TENANT_A, S1, BUD1, { ...base, periodsPerYear: 4, periodIndex: 4 });
     expect(amountsByLot(calls())).toEqual({ [L1]: 3000, [L2]: 2000.02 });
-    expect(Number(batches()[1].totalAmount)).toBe(5000.02);
+    expect(Number(batches()[0].totalAmount)).toBe(5000.02);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Suites de l'audit de securite du lot S4
+// ---------------------------------------------------------------------------
+
+describe('tache quotidienne : etat de l agence et abonnement', () => {
+  async function dueSchedule() {
+    const schedule = await createChargeSchedule(TENANT_A, S1, input({ startDate: d('2026-10-01') }), null, NOW);
+    return schedule;
+  }
+
+  async function expectDenied(reason: string) {
+    const schedule = await dueSchedule();
+    const report = await runDueChargeSchedules(d('2026-10-01T06:00:00.000Z'));
+    expect(report).toMatchObject({ schedules: 1, success: 0, skipped: 1, failed: 0 });
+    expect(report.denied).toEqual([{ tenantId: TENANT_A, syndicateId: S1, scheduleId: schedule.id, reason }]);
+    expect(calls()).toHaveLength(0);
+    expect(batches()).toHaveLength(0);
+    expect(mockSendEmail).not.toHaveBeenCalled();
+    expect(runs().map(run => [run.status, run.error, run.periodLabel])).toEqual([['FAILED', reason, 'Octobre 2026']]);
+    // La programmation avance : pas de rafale a la reactivation.
+    expect(scheduleRow(schedule.id)).toMatchObject({ active: true, nextRunAt: d('2026-11-01') });
+    return schedule;
+  }
+
+  it('agence suspendue : aucun appel, aucun e-mail ; periode rejouable a la main', async () => {
+    mockPrisma.tenant.rows.find(row => row.id === TENANT_A)!.status = 'SUSPENDED';
+    const schedule = await expectDenied('TENANT_INACTIVE');
+    expect(mockGetEntitlements).not.toHaveBeenCalled();
+
+    // Reactivee, le gestionnaire rejoue octobre : l'echec est remplace.
+    mockPrisma.tenant.rows.find(row => row.id === TENANT_A)!.status = 'ACTIVE';
+    const replay = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, d('2026-10-20'));
+    expect(replay.run).toMatchObject({ status: 'SUCCESS', periodLabel: 'Octobre 2026', callsCreated: 2 });
+    expect(runs().map(run => run.status)).toEqual(['SUCCESS']);
+  });
+
+  it('abonnement en lecture seule : refus', async () => {
+    mockGetEntitlements.mockImplementation(async () => ({ ...fullEntitlements(), readOnly: true }));
+    await expectDenied('SUBSCRIPTION_DENIED');
+    expect(mockGetEntitlements).toHaveBeenCalledWith(TENANT_A, { fresh: true, now: d('2026-10-01T06:00:00.000Z') });
+  });
+
+  it('module Syndic absent : refus', async () => {
+    mockGetEntitlements.mockImplementation(async () => ({ ...fullEntitlements(), moduleAccess: {} }));
+    await expectDenied('SUBSCRIPTION_DENIED');
+  });
+
+  it('mode warn : le refus est seulement journalise, l emission continue', async () => {
+    mockGetEntitlements.mockImplementation(async () => ({ enforcement: 'warn', moduleAccess: {}, readOnly: true }));
+    await dueSchedule();
+    const report = await runDueChargeSchedules(d('2026-10-01T06:00:00.000Z'));
+    expect(report).toMatchObject({ success: 1, denied: [] });
+    expect(calls()).toHaveLength(2);
+  });
+
+  it('droits calcules une seule fois par agence et par passage', async () => {
+    await createChargeSchedule(TENANT_A, S1, input({ startDate: d('2026-10-01') }), null, NOW);
+    await createChargeSchedule(TENANT_A, S2, input({ budgetId: null, startDate: d('2026-10-01') }), null, NOW);
+    await runDueChargeSchedules(d('2026-10-01T06:00:00.000Z'));
+    expect(mockGetEntitlements).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('destinataire de l avis', () => {
+  it('portail : le contact de la session, pas le proprietaire lie au lot', async () => {
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    const l2Call = calls().find(call => call.lotId === L2)!;
+    const render = jest.spyOn(noticePdf, 'renderChargeCallNoticePdf');
+    const scope: CoOwnerPortalScope = {
+      tenantId: TENANT_A,
+      contactIds: [AWA],
+      lots: [{ lotId: L2, syndicateId: S1, contactId: AWA, ownershipPercentage: 100 }],
+      lotIds: [L2],
+      syndicateIds: [S1]
+    };
+    await getChargeCallNoticeForCoOwner(scope, l2Call.id);
+    expect(render.mock.calls[0][0].coowner).toEqual({ name: 'Awa Kone', address: 'Cocody' });
+    render.mockRestore();
+  });
+
+  it('e-mail : proprietaire du lot absent des copropriétaires actuels -> non envoye, note au journal', async () => {
+    mockPrisma.lotOwnerProfile.rows.push(
+      { id: id(41), lotId: L2, contactId: AWA, isActive: true, ownedUntil: null },
+      // Bakary, ancien proprietaire : fiche close.
+      { id: id(42), lotId: L2, contactId: BAKARY, isActive: true, ownedUntil: d('2026-06-30') }
+    );
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(result.run).toMatchObject({ status: 'SUCCESS', notificationsSent: 1, notificationsSkipped: 1 });
+    expect(mockSendEmail.mock.calls.map(([mail]) => mail.to)).toEqual(['awa@example.test']);
+    const [history] = await listChargeScheduleRuns(TENANT_A, S1, schedule.id, { limit: 5 });
+    expect(history).toMatchObject({ notificationsSkipped: 1 });
+    expect(history.notes).toContain('A-02');
+  });
+
+  it('e-mail : lot sans fiche de copropriétaire -> comportement historique', async () => {
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(result.run).toMatchObject({ notificationsSent: 2, notificationsSkipped: 0 });
+  });
+
+  it('e-mail : les valeurs injectees dans le HTML sont echappees', async () => {
+    const lot = mockPrisma.syndicateLot.rows.find(row => row.id === L1)!;
+    lot.owner = { ...lot.owner, firstName: '<img src=x onerror=alert(1)>' };
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    const mail = mockSendEmail.mock.calls.find(([params]) => params.to === 'awa@example.test')![0];
+    expect(mail.html).not.toContain('<img src=x');
+    expect(mail.html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+  });
+});
+
+describe('erreurs techniques et doublons', () => {
+  it('une erreur Prisma ne ressort ni dans le journal ni dans l apercu', async () => {
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const secret = 'PrismaClientKnownRequestError: column "password_hash" leaked';
+    mockPrisma.syndicateLot.findMany.mockImplementationOnce(async () => {
+      throw new Error(secret);
+    });
+    const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(result.run).toMatchObject({ status: 'FAILED', error: TECHNICAL_ERROR_MESSAGE });
+    expect(JSON.stringify(result)).not.toContain('password_hash');
+    expect(runs()[0].error).toBe(TECHNICAL_ERROR_MESSAGE);
+
+    mockPrisma.syndicateLot.findMany.mockImplementationOnce(async () => {
+      throw new Error(secret);
+    });
+    const preview = await previewChargeSchedule(TENANT_A, S1, schedule.id, NOW);
+    expect(preview.periods[0].error).toBe(TECHNICAL_ERROR_MESSAGE);
+  });
+
+  it('P2002 : seule la contrainte (programmation, periode) vaut « deja traitee »', async () => {
+    const p2002 = (target: unknown) => Object.assign(new Error('unique'), { code: 'P2002', meta: { target } });
+    expect(isPeriodReservationConflict(p2002(['schedule_id', 'period_start']))).toBe(true);
+    expect(isPeriodReservationConflict(p2002('syndic_charge_schedule_runs_schedule_id_period_start_key'))).toBe(true);
+    expect(isPeriodReservationConflict(p2002(['tenant_id', 'issuer_key', 'number']))).toBe(false);
+    expect(isPeriodReservationConflict(p2002(undefined))).toBe(false);
+
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    mockPrisma.chargeCallBatch.create.mockImplementationOnce(async () => {
+      // La base en memoire n'annule rien : on simule le retour arriere de la transaction.
+      mockPrisma.syndicChargeScheduleRun.rows = [];
+      throw p2002(['tenant_id', 'issuer_key', 'number']);
+    });
+    const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(result.run).toMatchObject({ status: 'FAILED', alreadyProcessed: false, error: TECHNICAL_ERROR_MESSAGE });
+  });
+
+  it('programmations actives qui se chevauchent : 409 a la creation et a la reprise', async () => {
+    const first = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    await expect(
+      createChargeSchedule(TENANT_A, S1, input({ frequency: 'QUARTERLY', startDate: d('2027-01-01') }), null, NOW)
+    ).rejects.toMatchObject({ statusCode: 409 });
+    // Autre copropriete : aucun conflit.
+    await expect(createChargeSchedule(TENANT_A, S2, input({ budgetId: null }), null, NOW)).resolves.toBeTruthy();
+
+    await pauseChargeSchedule(TENANT_A, S1, first.id);
+    const second = await createChargeSchedule(TENANT_A, S1, input({ frequency: 'QUARTERLY' }), null, NOW);
+    await expect(resumeChargeSchedule(TENANT_A, S1, first.id, NOW)).rejects.toMatchObject({ statusCode: 409 });
+
+    // Calendriers disjoints : acceptes.
+    await pauseChargeSchedule(TENANT_A, S1, second.id);
+    await updateChargeSchedule(TENANT_A, S1, first.id, { endDate: d('2026-12-31') }, NOW);
+    await resumeChargeSchedule(TENANT_A, S1, first.id, NOW);
+    await expect(
+      createChargeSchedule(TENANT_A, S1, input({ startDate: d('2027-01-01') }), null, NOW)
+    ).resolves.toBeTruthy();
+  });
+
+  it('lot d appels ordinaire deja emis sur la periode : programmation et generation manuelle refusees', async () => {
+    const manual = {
+      label: 'Septembre',
+      period: '2026-09',
+      dueDate: d('2026-09-30'),
+      batchType: 'REGULAR' as const,
+      currency: 'XOF',
+      periodsPerYear: 12,
+      periodIndex: 9
+    };
+    await generateChargeCallsFromBudget(TENANT_A, S1, BUD1, manual);
+    await expect(generateChargeCallsFromBudget(TENANT_A, S1, BUD1, manual)).rejects.toMatchObject({ statusCode: 409 });
+    // Un appel exceptionnel reste possible.
+    await expect(
+      generateChargeCallsFromBudget(TENANT_A, S1, BUD1, { ...manual, batchType: 'EXCEPTIONAL' })
+    ).resolves.toBeTruthy();
+
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    const result = await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW);
+    expect(result.run.status).toBe('FAILED');
+    expect(result.run.error).toContain("Un lot d'appels ordinaire existe déjà");
+    expect(batches()).toHaveLength(2);
+  });
+});
+
+describe('avis d appel : ni signature ni cachet', () => {
+  it('le generateur de l avis ne recoit ni signature ni cachet, logos conserves (gestion, portail, e-mail)', async () => {
+    const image = (name: string) => ({ format: 'png', bytes: Buffer.from(name) }) as any;
+    const branding = jest.spyOn(documentBranding, 'resolveDocumentBranding').mockImplementation(async () => ({
+      issuer: {
+        kind: 'MANDANT',
+        name: 'Cabinet Mandant',
+        legalName: null,
+        address: null,
+        phone: null,
+        email: null,
+        rccm: null,
+        taxId: null
+      },
+      issuerLogo: image('logo'),
+      signature: image('signature'),
+      stamp: image('cachet'),
+      syndicate: {
+        name: 'Residence',
+        address: null,
+        registrationNo: null,
+        cadastralReference: null,
+        logo: image('logo-copro')
+      }
+    }));
+    const render = jest
+      .spyOn(noticePdf, 'renderChargeCallNoticePdf')
+      .mockImplementation(async () => Buffer.from('%PDF-avis'));
+
+    const schedule = await createChargeSchedule(TENANT_A, S1, input(), null, NOW);
+    await executeChargeScheduleNow(TENANT_A, S1, schedule.id, NOW); // e-mails : avis joint
+    const l1Call = calls().find(call => call.lotId === L1)!;
+    await getChargeCallNoticeForTenant(TENANT_A, S1, l1Call.id);
+    await getChargeCallNoticeForCoOwner(
+      {
+        tenantId: TENANT_A,
+        contactIds: [AWA],
+        lots: [{ lotId: L1, syndicateId: S1, contactId: AWA, ownershipPercentage: 100 }],
+        lotIds: [L1],
+        syndicateIds: [S1]
+      },
+      l1Call.id
+    );
+
+    expect(render.mock.calls.length).toBeGreaterThanOrEqual(4);
+    for (const [, used] of render.mock.calls) {
+      expect(used.signature).toBeNull();
+      expect(used.stamp).toBeNull();
+      expect(used.issuerLogo).not.toBeNull();
+      expect(used.syndicate?.logo).not.toBeNull();
+    }
+    render.mockRestore();
+    branding.mockRestore();
   });
 });

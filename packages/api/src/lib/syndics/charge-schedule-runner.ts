@@ -2,10 +2,12 @@ import type { SyndicChargeSchedule } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { logger } from '../../utils/logger';
 import { runWithTenantContext } from '../../utils/tenant-context';
+import { AppError } from '../../middleware/error-middleware';
 import { fromCents, toCents } from './charge-allocation-plan';
 import { scheduleChargeDocumentDelivery } from './charge-receipt-delivery';
 import type { IssuedChargeDocument } from './charge-receipts';
-import { buildChargeCallNoticeAttachment } from './charge-call-notice';
+import { buildChargeCallNoticeAttachment, loadNoticeRenderContext } from './charge-call-notice';
+import { createSchedulingGateCache, type SchedulingDenial } from './charge-schedule-tenant-gate';
 import {
   annualShareForPeriod,
   distributeFixedAmount,
@@ -15,7 +17,11 @@ import {
   type SchedulePeriod
 } from './charge-schedule-periods';
 import { notifyChargeCall } from './notifications';
-import { createChargeCallBatchWithCallsTx, recomputeBudgetAllocationsByBudget } from './queries';
+import {
+  assertNoRegularBatchForPeriodTx,
+  createChargeCallBatchWithCallsTx,
+  recomputeBudgetAllocationsByBudget
+} from './queries';
 
 /**
  * Exécution des programmations d'appels de charges (lot S4, besoin 6, P3).
@@ -53,6 +59,8 @@ export interface RunOutcome {
   callsCreated: number;
   callsCovered: number;
   notificationsSent: number;
+  /** Avis non envoyés : propriétaire du lot qui n'est plus copropriétaire actuel. */
+  notificationsSkipped: number;
   error: string | null;
 }
 
@@ -71,13 +79,32 @@ export function timingOf(
   };
 }
 
-function isUniqueViolation(error: unknown): boolean {
-  return Boolean(error && typeof error === 'object' && (error as { code?: unknown }).code === 'P2002');
+/**
+ * Violation de l'unicité (programmation, début de période) du journal, et
+ * d'elle seule : c'est le signe qu'une autre exécution a déjà réservé la
+ * période. Tout autre P2002 est une vraie erreur.
+ */
+export function isPeriodReservationConflict(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || (error as { code?: unknown }).code !== 'P2002') return false;
+  const target = (error as { meta?: { target?: unknown } }).meta?.target;
+  const text = Array.isArray(target) ? target.join(',') : String(target ?? '');
+  return /schedule_?id/i.test(text) && /period_?start/i.test(text);
 }
 
-function messageOf(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.slice(0, 500);
+export const TECHNICAL_ERROR_MESSAGE = 'Erreur technique, voir les journaux.';
+
+/**
+ * Message stocké dans le journal et renvoyé au client : celui d'un échec
+ * métier (`ScheduleRunError`) ou d'une erreur typée ; sinon un message
+ * générique, le détail allant aux journaux seulement.
+ */
+export function publicErrorMessage(error: unknown, context: Record<string, unknown> = {}): string {
+  if (error instanceof ScheduleRunError || error instanceof AppError) return error.message.slice(0, 500);
+  logger.error('Charge schedule technical error', {
+    ...context,
+    error: error instanceof Error ? error.message : String(error)
+  });
+  return TECHNICAL_ERROR_MESSAGE;
 }
 
 // ---------------------------------------------------------------- montants
@@ -191,6 +218,7 @@ function outcome(period: SchedulePeriod, fields: Partial<RunOutcome> & Pick<RunO
     callsCreated: 0,
     callsCovered: 0,
     notificationsSent: 0,
+    notificationsSkipped: 0,
     error: null,
     ...fields
   };
@@ -232,28 +260,52 @@ async function recordFailure(
   } catch (recordError) {
     logger.error('Charge schedule failure could not be recorded', {
       scheduleId: schedule.id,
-      error: messageOf(recordError)
+      error: recordError instanceof Error ? recordError.message : String(recordError)
     });
     return outcome(period, { status: 'FAILED', error });
   }
 }
 
-/** Notifie les appels non couverts, avis d'appel joint ; compte les appels effectivement notifiés. */
-async function notifyUncoveredCalls(schedule: SyndicChargeSchedule, callIds: string[]): Promise<number> {
+interface NotificationSummary {
+  sent: number;
+  skipped: number;
+  /** Remarque non sensible pour le journal (lots dont l'avis n'est pas parti). */
+  notes: string | null;
+}
+
+/**
+ * Notifie les appels non couverts, avis d'appel joint. L'identité (logos,
+ * signature, cachet) et les moyens de paiement sont lus UNE fois par
+ * exécution, pas une fois par appel.
+ */
+async function notifyUncoveredCalls(
+  schedule: SyndicChargeSchedule,
+  calls: Array<{ id: string; lotNumber: string }>
+): Promise<NotificationSummary> {
+  if (calls.length === 0) return { sent: 0, skipped: 0, notes: null };
+  const context = await loadNoticeRenderContext(schedule.tenantId, schedule.syndicateId);
   let sent = 0;
-  for (const callId of callIds) {
+  const skippedLots: string[] = [];
+  for (const call of calls) {
     try {
-      const result = await notifyChargeCall(callId, {
+      const result = await notifyChargeCall(call.id, {
         buildAttachments: async () => [
-          await buildChargeCallNoticeAttachment(schedule.tenantId, schedule.syndicateId, callId)
+          await buildChargeCallNoticeAttachment(schedule.tenantId, schedule.syndicateId, call.id, context)
         ]
       });
       if (result.emailSent || result.whatsappSent) sent += 1;
+      if ('skipped' in result && result.skipped === 'OWNER_NOT_CURRENT') skippedLots.push(call.lotNumber);
     } catch (error) {
-      logger.warn('Scheduled charge call notification failed', { chargeCallId: callId, error: messageOf(error) });
+      logger.warn('Scheduled charge call notification failed', {
+        chargeCallId: call.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
   }
-  return sent;
+  const notes = skippedLots.length
+    ? `Avis non envoyé (propriétaire du lot différent du copropriétaire actuel) : ${skippedLots.join(', ')}`
+    : null;
+  return { sent, skipped: skippedLots.length, notes };
 }
 
 interface CreatedRun {
@@ -261,7 +313,7 @@ interface CreatedRun {
   batchId: string;
   callsCreated: number;
   callsCovered: number;
-  toNotify: string[];
+  toNotify: Array<{ id: string; lotNumber: string }>;
 }
 
 async function createRunTx(
@@ -275,6 +327,13 @@ async function createRunTx(
   return prisma.$transaction(
     async tx => {
       const key = { tenantId: schedule.tenantId, scheduleId: schedule.id, periodStart: period.periodStart };
+      const lotNumbers = new Map(plan.lots.map(lot => [lot.lotId, lot.lotNumber]));
+      // Pas de second lot d'appels ordinaire sur la même période (autre
+      // programmation, génération manuelle) : ConflictError, rien n'est créé.
+      await assertNoRegularBatchForPeriodTx(tx, schedule.syndicateId, {
+        start: period.periodStart,
+        end: period.periodEnd
+      });
       // Un échec antérieur libère la période ; SUCCESS/SKIPPED la gardent (unicité).
       await tx.syndicChargeScheduleRun.deleteMany({ where: { ...key, status: 'FAILED' } });
       const run = await tx.syndicChargeScheduleRun.create({
@@ -316,7 +375,9 @@ async function createRunTx(
         batchId: batch.id,
         callsCreated: chargeCalls.length,
         callsCovered: covered.length,
-        toNotify: chargeCalls.filter(call => call.status !== 'PAID').map(call => call.id)
+        toNotify: chargeCalls
+          .filter(call => call.status !== 'PAID')
+          .map(call => ({ id: call.id, lotNumber: lotNumbers.get(call.lotId) ?? '' }))
       };
     },
     { timeout: 120_000 }
@@ -350,7 +411,8 @@ export async function executeSchedulePeriod(
   try {
     plan = await computePeriodPlan(schedule, period, { allowRecompute: true });
   } catch (error) {
-    return recordFailure(schedule, period, trigger, messageOf(error), now);
+    const message = publicErrorMessage(error, { scheduleId: schedule.id, step: 'plan' });
+    return recordFailure(schedule, period, trigger, message, now);
   }
 
   const issued: IssuedChargeDocument[] = [];
@@ -358,16 +420,21 @@ export async function executeSchedulePeriod(
   try {
     created = await createRunTx(schedule, period, plan, trigger, now, issued);
   } catch (error) {
-    if (isUniqueViolation(error)) return outcome(period, { status: 'SKIPPED', alreadyProcessed: true });
-    logger.error('Charge schedule period failed', { scheduleId: schedule.id, error: messageOf(error) });
-    return recordFailure(schedule, period, trigger, messageOf(error), now);
+    if (isPeriodReservationConflict(error)) return outcome(period, { status: 'SKIPPED', alreadyProcessed: true });
+    const message = publicErrorMessage(error, { scheduleId: schedule.id, step: 'issue' });
+    return recordFailure(schedule, period, trigger, message, now);
   }
 
   scheduleChargeDocumentDelivery(schedule.tenantId, issued);
-  const notificationsSent = await notifyUncoveredCalls(schedule, created.toNotify);
+  const notifications = await notifyUncoveredCalls(schedule, created.toNotify);
   await prisma.syndicChargeScheduleRun.updateMany({
     where: { id: created.runId, tenantId: schedule.tenantId },
-    data: { notificationsSent, finishedAt: new Date() }
+    data: {
+      notificationsSent: notifications.sent,
+      notificationsSkipped: notifications.skipped,
+      notes: notifications.notes,
+      finishedAt: new Date()
+    }
   });
   return outcome(period, {
     status: 'SUCCESS',
@@ -375,7 +442,8 @@ export async function executeSchedulePeriod(
     batchId: created.batchId,
     callsCreated: created.callsCreated,
     callsCovered: created.callsCovered,
-    notificationsSent
+    notificationsSent: notifications.sent,
+    notificationsSkipped: notifications.skipped
   });
 }
 
@@ -393,7 +461,12 @@ export async function advanceSchedule(schedule: SyndicChargeSchedule, period: Sc
  * programmation sur sa période : elle sera retentée à la prochaine exécution,
  * et les périodes suivantes attendent (jamais d'appel émis dans le désordre).
  */
-export async function processDueSchedule(tenantId: string, scheduleId: string, now: Date): Promise<RunOutcome[]> {
+export async function processDueSchedule(
+  tenantId: string,
+  scheduleId: string,
+  now: Date,
+  denial: SchedulingDenial | null = null
+): Promise<RunOutcome[]> {
   const outcomes: RunOutcome[] = [];
   for (let index = 0; index < MAX_CATCH_UP_PERIODS; index += 1) {
     const schedule = await prisma.syndicChargeSchedule.findFirst({ where: { id: scheduleId, tenantId } });
@@ -403,6 +476,15 @@ export async function processDueSchedule(tenantId: string, scheduleId: string, n
     if (!period) {
       await prisma.syndicChargeSchedule.updateMany({ where: { id: schedule.id, tenantId }, data: { nextRunAt: null } });
       break;
+    }
+    if (denial) {
+      // Agence inactive ou abonnement refusé : rien n'est créé ni envoyé. La
+      // période est consignée en échec (rejouable à la main via « Exécuter »)
+      // et la programmation avance, pour ne pas envoyer une rafale d'appels
+      // à la réactivation.
+      outcomes.push(await recordFailure(schedule, period, 'CRON', denial, now));
+      await advanceSchedule(schedule, period, now);
+      continue;
     }
     const result = await executeSchedulePeriod(schedule, period, 'CRON', now);
     outcomes.push(result);
@@ -418,6 +500,8 @@ export interface DueSchedulesReport {
   skipped: number;
   failed: number;
   failures: Array<{ tenantId: string; syndicateId: string; scheduleId: string; error: string }>;
+  /** Programmations non émises parce que l'agence n'y a pas droit (périodes comptées dans `skipped`). */
+  denied: Array<{ tenantId: string; syndicateId: string; scheduleId: string; reason: SchedulingDenial }>;
 }
 
 /**
@@ -432,12 +516,26 @@ export async function runDueChargeSchedules(now: Date = new Date()): Promise<Due
     orderBy: [{ nextRunAt: 'asc' }],
     take: 1000
   });
-  const report: DueSchedulesReport = { schedules: due.length, success: 0, skipped: 0, failed: 0, failures: [] };
+  const report: DueSchedulesReport = {
+    schedules: due.length,
+    success: 0,
+    skipped: 0,
+    failed: 0,
+    failures: [],
+    denied: []
+  };
+  const gateOf = createSchedulingGateCache(now);
   for (const schedule of due) {
     try {
+      const denial = await gateOf(schedule.tenantId);
       const outcomes = await runWithTenantContext({ tenantId: schedule.tenantId }, () =>
-        processDueSchedule(schedule.tenantId, schedule.id, now)
+        processDueSchedule(schedule.tenantId, schedule.id, now, denial)
       );
+      if (denial) {
+        report.skipped += outcomes.length;
+        report.denied.push({ ...pick(schedule), reason: denial });
+        continue;
+      }
       for (const result of outcomes) {
         if (result.status === 'SUCCESS') report.success += 1;
         else if (result.status === 'SKIPPED') report.skipped += 1;
@@ -448,7 +546,7 @@ export async function runDueChargeSchedules(now: Date = new Date()): Promise<Due
       }
     } catch (error) {
       report.failed += 1;
-      report.failures.push({ ...pick(schedule), error: messageOf(error) });
+      report.failures.push({ ...pick(schedule), error: error instanceof Error ? error.message : String(error) });
     }
   }
   return report;

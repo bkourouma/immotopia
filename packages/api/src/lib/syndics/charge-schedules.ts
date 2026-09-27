@@ -5,6 +5,7 @@ import { assertSyndicateOfTenant } from './charge-allocation';
 import { formatIsoDay } from './period';
 import {
   firstPeriodIssuedOnOrAfter,
+  periodStartContaining,
   followingPeriod,
   periodContaining,
   type SchedulePeriod
@@ -13,6 +14,7 @@ import {
   advanceSchedule,
   computePeriodPlan,
   executeSchedulePeriod,
+  publicErrorMessage,
   timingOf,
   type RunOutcome
 } from './charge-schedule-runner';
@@ -65,6 +67,8 @@ export function toRunView(run: SyndicChargeScheduleRun) {
     callsCreated: run.callsCreated,
     callsCovered: run.callsCovered,
     notificationsSent: run.notificationsSent,
+    notificationsSkipped: run.notificationsSkipped,
+    notes: run.notes,
     error: run.error,
     createdAt: run.createdAt,
     finishedAt: run.finishedAt
@@ -175,6 +179,42 @@ async function computeNextRunAt(
   return period?.issueDate ?? null;
 }
 
+type CalendarFields = Pick<SyndicChargeSchedule, 'frequency' | 'startDate' | 'endDate'>;
+
+/** Étendue d'une programmation : début de sa première période, date de fin (ou sans fin). */
+function calendarRange(schedule: CalendarFields): { start: number; end: number } {
+  return {
+    start: periodStartContaining(new Date(schedule.startDate), schedule.frequency).getTime(),
+    end: schedule.endDate ? new Date(schedule.endDate).getTime() : Number.POSITIVE_INFINITY
+  };
+}
+
+/**
+ * Deux programmations actives d'une même copropriété ne doivent pas couvrir
+ * la même période : les copropriétaires recevraient deux appels. 409 sinon.
+ */
+async function assertNoActiveOverlap(
+  tenantId: string,
+  syndicateId: string,
+  candidate: CalendarFields,
+  excludeId: string | null
+): Promise<void> {
+  const others = await prisma.syndicChargeSchedule.findMany({
+    where: { tenantId, syndicateId, active: true, ...(excludeId ? { id: { not: excludeId } } : {}) },
+    select: { id: true, frequency: true, startDate: true, endDate: true }
+  });
+  const range = calendarRange(candidate);
+  const clash = others.some(other => {
+    const otherRange = calendarRange(other);
+    return range.start <= otherRange.end && otherRange.start <= range.end;
+  });
+  if (clash) {
+    throw new ConflictError(
+      'Une autre programmation active de cette copropriété couvre déjà cette période : mettez-la en pause ou ajustez les dates.'
+    );
+  }
+}
+
 // ---------------------------------------------------------------- lecture
 
 export async function listChargeSchedules(tenantId: string, syndicateId: string): Promise<ChargeScheduleView[]> {
@@ -235,6 +275,7 @@ export async function createChargeSchedule(
     active: input.active ?? true,
     createdById: actorUserId
   };
+  if (data.active) await assertNoActiveOverlap(tenantId, syndicateId, data, null);
   const nextRunAt = await computeNextRunAt({ ...data, id: '' }, now);
   const created = await prisma.syndicChargeSchedule.create({ data: { ...data, nextRunAt }, select: { id: true } });
   return viewOf(tenantId, created.id);
@@ -291,6 +332,7 @@ export async function updateChargeSchedule(
     endDate: merged.endDate
   };
   const timingChanged = TIMING_FIELDS.some(field => input[field] !== undefined);
+  if (schedule.active && timingChanged) await assertNoActiveOverlap(tenantId, syndicateId, data, scheduleId);
   const nextRunAt = timingChanged ? await computeNextRunAt({ ...schedule, ...data }, now) : schedule.nextRunAt;
   await prisma.syndicChargeSchedule.updateMany({ where: { id: scheduleId, tenantId }, data: { ...data, nextRunAt } });
   return viewOf(tenantId, scheduleId);
@@ -328,6 +370,7 @@ export async function resumeChargeSchedule(
   now: Date = new Date()
 ) {
   const schedule = await loadOwnedSchedule(tenantId, syndicateId, scheduleId);
+  await assertNoActiveOverlap(tenantId, syndicateId, schedule, scheduleId);
   const nextRunAt = await computeNextRunAt(schedule, now);
   await prisma.syndicChargeSchedule.updateMany({
     where: { id: scheduleId, tenantId },
@@ -349,6 +392,7 @@ function runResultView(result: RunOutcome) {
     callsCreated: result.callsCreated,
     callsCovered: result.callsCovered,
     notificationsSent: result.notificationsSent,
+    notificationsSkipped: result.notificationsSkipped,
     error: result.error
   };
 }
@@ -427,7 +471,7 @@ async function previewPeriod(schedule: SyndicChargeSchedule, period: SchedulePer
       currency: schedule.currency,
       budgetId: schedule.budgetId,
       lots: [],
-      error: error instanceof Error ? error.message : String(error)
+      error: publicErrorMessage(error, { scheduleId: schedule.id, step: 'preview' })
     };
   }
 }

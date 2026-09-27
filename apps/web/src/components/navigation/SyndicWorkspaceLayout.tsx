@@ -6,6 +6,7 @@ import {
   ApartmentOutlined,
   BankOutlined,
   CalendarOutlined,
+  ClockCircleOutlined,
   FolderOutlined,
   IdcardOutlined,
   SendOutlined,
@@ -61,6 +62,12 @@ function buildTabs(family: SyndicWorkspaceFamily, tenantId: string, syndicId: st
       return [
         { key: 'budgets', label: t('Budgets'), href: `${base}/budgets`, icon: <WalletOutlined /> },
         { key: 'charges', label: t('Appels de charges'), href: `${base}/charges`, icon: <SendOutlined /> },
+        {
+          key: 'programmation',
+          label: t('Programmation'),
+          href: `${base}/programmation`,
+          icon: <ClockCircleOutlined />
+        },
         {
           key: 'suivi-mensuel',
           label: t('Suivi mensuel'),
