@@ -14,6 +14,12 @@ jest.mock('@prisma/client', () => {
       create: jest.fn(),
       aggregate: jest.fn(),
       findMany: jest.fn().mockResolvedValue([]),
+      update: jest.fn(),
+    },
+    // Lot S2 : le regle d'un appel se lit dans ses affectations.
+    chargePaymentAllocation: {
+      create: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
     },
     syndicateLot: {
       findFirst: jest.fn(),
@@ -121,8 +127,21 @@ describe('Syndics owner accounts queries - US2', () => {
       syndicateId: 'syndic-1',
       amount: 100000,
     });
+    // Lot S2 : l'appel est relu avec les autres appels du lot pour l'affectation.
+    mockTx.chargeCall.findMany.mockResolvedValueOnce([
+      {
+        id: 'charge-1',
+        period: '2026-Q2',
+        periodStart: null,
+        periodEnd: null,
+        dueDate: new Date('2026-06-15T00:00:00.000Z'),
+        createdAt: new Date('2026-05-01T00:00:00.000Z'),
+        amount: 100000,
+        currency: 'XOF',
+        status: 'PENDING',
+      },
+    ]);
     mockTx.chargePayment.create.mockResolvedValue({ id: 'pay-1' });
-    mockTx.chargePayment.aggregate.mockResolvedValue({ _sum: { amount: 40000 } });
     mockTx.chargeCall.update.mockResolvedValue({ id: 'charge-1', status: 'PARTIAL' });
     mockTx.syndicateLot.findFirst.mockResolvedValue({ id: 'lot-1', ownerContactId: 'owner-1' });
     mockTx.ownerAccount.upsert.mockResolvedValue({ id: 'acc-1', balance: 120000 });
@@ -145,6 +164,9 @@ describe('Syndics owner accounts queries - US2', () => {
         }),
       })
     );
+    // Un seul mouvement de grand livre pour ce paiement.
+    expect(mockTx.ownerAccountTransaction.create).toHaveBeenCalledTimes(1);
+    expect(mockTx.chargeCall.update).toHaveBeenCalledWith({ where: { id: 'charge-1' }, data: { status: 'PARTIAL' } });
   });
 
   it('creates manual adjustment transaction on lot account', async () => {

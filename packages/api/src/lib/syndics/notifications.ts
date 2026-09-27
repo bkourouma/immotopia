@@ -6,6 +6,8 @@ import { EMAIL_NOTIFICATION_DEFAULT_TEMPLATES } from '../../constants/email-noti
 import { getEmailNotificationConfig } from '../../services/email-notification-config-service';
 import { emailService } from '../../services/email-service';
 import { sendWhatsappNotification } from '../../services/whatsapp-notification-send-service';
+import { paidFromAllocations } from './charge-allocation';
+import { computeOutstanding } from './finance-utils';
 
 function applyTemplate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => String(vars[key] ?? ''));
@@ -55,6 +57,7 @@ export async function notifyChargeCall(chargeCallId: string) {
           }
         }
       },
+      allocations: { select: { amount: true } },
       syndicate: true
     }
   });
@@ -62,6 +65,13 @@ export async function notifyChargeCall(chargeCallId: string) {
   if (!chargeCall) {
     logger.warn('notifyChargeCall: charge call not found', { chargeCallId });
     return { emailSent: false, whatsappSent: false, skipped: 'CHARGE_CALL_NOT_FOUND' as const };
+  }
+
+  // Lot S2 : un appel entierement couvert (par un paiement ou par l'avance du
+  // lot, imputee a la creation) n'est pas notifie comme « a payer ».
+  if (computeOutstanding(Number(chargeCall.amount), paidFromAllocations(chargeCall.allocations)) <= 0) {
+    logger.info('notifyChargeCall: charge call already covered, skipping notifications', { chargeCallId });
+    return { emailSent: false, whatsappSent: false, skipped: 'ALREADY_PAID' as const };
   }
 
   const owner = chargeCall.lot?.owner;
@@ -255,7 +265,7 @@ export async function notifyChargeCallReminder(reminderId: string) {
               }
             }
           },
-          payments: true,
+          allocations: { select: { amount: true } },
           syndicate: true
         }
       }
@@ -276,8 +286,13 @@ export async function notifyChargeCallReminder(reminderId: string) {
 
   const tenantId = call.syndicate.tenantId;
   const amount = Number(call.amount);
-  const paid = call.payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
-  const outstanding = Math.max(amount - paid, 0);
+  // Lot S2 : regle lu dans les affectations (paiements et avances imputees).
+  const paid = paidFromAllocations(call.allocations);
+  const outstanding = computeOutstanding(amount, paid);
+  if (outstanding <= 0) {
+    logger.info('notifyChargeCallReminder: charge call already covered', { reminderId, chargeCallId: call.id });
+    return { emailSent: false, whatsappSent: false, skipped: 'ALREADY_PAID' as const };
+  }
   const ownerName =
     [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim() || owner.legalName || 'Copropriétaire';
 

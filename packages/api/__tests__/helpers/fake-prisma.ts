@@ -12,7 +12,7 @@
  *     `equals`, `AND` / `OR` / `NOT`, filtre JSON `path` + `array_contains`,
  *     et clés uniques composées (`userId_tenantId: { ... }`) ;
  *   - opérations : `findMany`, `findFirst`, `findUnique`, `count`, `create`,
- *     `update`, `updateMany`, et `$transaction(fn)`.
+ *     `update`, `updateMany`, `upsert`, et `$transaction(fn)`.
  *
  * Les relations dont un appelant a besoin (ex. `userRole.role.permissions`)
  * sont stockées directement dans la ligne par le test. `select` est appliqué
@@ -190,6 +190,7 @@ export interface FakeModel {
   create: jest.Mock;
   update: jest.Mock;
   updateMany: jest.Mock;
+  upsert: jest.Mock;
 }
 
 function createModel(name: string): FakeModel {
@@ -242,6 +243,16 @@ function createModel(name: string): FakeModel {
     Object.assign(row, args.data, { updatedAt: new Date() });
     return copy(row);
   });
+  model.upsert = jest.fn(async (args: any) => {
+    const row = model.rows.find((candidate: Row) => matchesWhere(candidate, args.where));
+    if (row) {
+      Object.assign(row, args.update, { updatedAt: new Date() });
+      return project(row, args);
+    }
+    const created = { id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), ...args.create };
+    model.rows.push(created);
+    return project(created, args);
+  });
   model.updateMany = jest.fn(async (args: any) => {
     const rows = model.rows.filter((candidate: Row) => matchesWhere(candidate, args.where));
     rows.forEach((row: Row) => Object.assign(row, args.data));
@@ -261,6 +272,8 @@ export const FAKE_MODEL_NAMES = [
   'ownerAccountTransaction',
   'chargeCall',
   'chargePayment',
+  'chargePaymentAllocation',
+  'paymentReminder',
   'syndicateDocument',
   'generalMeeting',
   'gMAgendaItem',

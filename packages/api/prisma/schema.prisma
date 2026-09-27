@@ -3513,7 +3513,11 @@ model Syndicate {
   updatedAt          DateTime        @updatedAt @map("updated_at")
 
   tenant             Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  mandatingAgency    SyndicMandatingAgency?     @relation(fields: [mandatingAgencyId], references: [id], onDelete: Restrict)
+  // Defense en profondeur (audit S1) : cle composite (tenant_id,
+  // mandating_agency_id) -> syndic_mandating_agencies(tenant_id, id), pour
+  // qu'une copropriete ne puisse jamais etre rattachee au mandant d'une
+  // autre agence, meme si un bug applicatif oubliait de le verifier.
+  mandatingAgency    SyndicMandatingAgency?     @relation(fields: [tenantId, mandatingAgencyId], references: [tenantId, id], onDelete: Restrict)
   property           Property?                  @relation("SyndicateProperty", fields: [propertyId], references: [id], onDelete: SetNull)
   syndicManager      CrmContact?                @relation("SyndicManager", fields: [syndicManagerId], references: [id], onDelete: SetNull)
   lots               SyndicateLot[]
@@ -3563,9 +3567,11 @@ model SyndicMandatingAgency {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Cible de la cle composite de `Syndicate.mandatingAgency` (audit S1).
   syndicates Syndicate[]
 
   @@unique([tenantId, name])
+  @@unique([tenantId, id])
   @@index([tenantId])
   @@map("syndic_mandating_agencies")
 }
@@ -3590,6 +3596,7 @@ model SyndicateLot {
   owner                CrmContact?                @relation("SyndicateLotOwner", fields: [ownerContactId], references: [id], onDelete: SetNull)
   votes                GMVote[]
   charges              ChargeCall[]
+  chargePayments       ChargePayment[]
   ownerProfiles        LotOwnerProfile[]
   tenantProfiles       LotTenantProfile[]
   tenantAssignments    LotTenantAssignment[]
@@ -3676,7 +3683,12 @@ model ChargeCall {
   syndicateId String           @map("syndicate_id") @db.Uuid
   lotId       String           @map("lot_id") @db.Uuid
   batchId     String?          @map("batch_id") @db.Uuid
+  /// Libelle libre de la periode (ex. « 2026-01-01 au 2026-03-31 », « 2026-01 »).
   period      String
+  /// Lot S2 : bornes structurees de la periode (dates sans heure), deduites du
+  /// libelle quand elles ne sont pas fournies. Nulles si le libelle est illisible.
+  periodStart DateTime?        @map("period_start") @db.Date
+  periodEnd   DateTime?        @map("period_end") @db.Date
   amount      Decimal          @db.Decimal(12, 2)
   currency    String           @default("XOF")
   dueDate     DateTime         @map("due_date")
@@ -3684,13 +3696,17 @@ model ChargeCall {
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
 
-  syndicate Syndicate            @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
-  lot       SyndicateLot         @relation(fields: [lotId], references: [id], onDelete: Cascade)
-  batch     ChargeCallBatch?     @relation(fields: [batchId], references: [id], onDelete: SetNull)
-  payments  ChargePayment[]
-  reminders PaymentReminder[]
-  penalties LatePaymentPenalty[]
-  schedules PaymentSchedule[]
+  syndicate      Syndicate                 @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  lot            SyndicateLot              @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  batch          ChargeCallBatch?          @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  /// Paiements dont c'est l'appel « principal » (compatibilite). Le montant
+  /// regle d'un appel se lit TOUJOURS dans `allocations`, jamais ici.
+  directPayments ChargePayment[]
+  /// Lot S2 : affectations de paiements (et d'avances) a cet appel.
+  allocations    ChargePaymentAllocation[]
+  reminders      PaymentReminder[]
+  penalties      LatePaymentPenalty[]
+  schedules      PaymentSchedule[]
 
   @@index([syndicateId])
   @@index([lotId])
@@ -3701,19 +3717,56 @@ model ChargeCall {
   @@map("charge_calls")
 }
 
+/// Paiement recu d'un coproprietaire pour un lot (lot S2). Il est reparti
+/// sur un ou plusieurs appels par `ChargePaymentAllocation` ; la part non
+/// encore imputee (`unallocatedAmount`) constitue l'avance du lot.
 model ChargePayment {
-  id           String   @id @default(uuid()) @db.Uuid
-  chargeCallId String   @map("charge_call_id") @db.Uuid
-  amount       Decimal  @db.Decimal(12, 2)
-  paidAt       DateTime @map("paid_at")
-  method       String?
-  reference    String?
-  createdAt    DateTime @default(now()) @map("created_at")
+  id                String   @id @default(uuid()) @db.Uuid
+  lotId             String   @map("lot_id") @db.Uuid
+  /// Premier appel solde par ce paiement, conserve pour compatibilite. Nul pour
+  /// une avance pure. Ne sert jamais a calculer le regle d'un appel.
+  chargeCallId      String?  @map("charge_call_id") @db.Uuid
+  amount            Decimal  @db.Decimal(12, 2)
+  /// Part du paiement non encore affectee a un appel (avance restante).
+  unallocatedAmount Decimal  @default(0) @map("unallocated_amount") @db.Decimal(12, 2)
+  paidAt            DateTime @map("paid_at")
+  method            String?
+  reference         String?
+  /// Utilisateur qui a saisi le paiement (sans cle etrangere : trace d'audit).
+  createdById       String?  @map("created_by_id")
+  createdAt         DateTime @default(now()) @map("created_at")
 
-  chargeCall ChargeCall @relation(fields: [chargeCallId], references: [id], onDelete: Cascade)
+  lot         SyndicateLot              @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  chargeCall  ChargeCall?               @relation(fields: [chargeCallId], references: [id], onDelete: SetNull)
+  allocations ChargePaymentAllocation[]
 
   @@index([chargeCallId])
+  @@index([lotId, paidAt])
   @@map("charge_payments")
+}
+
+enum ChargeAllocationSource {
+  /// Affectation faite au moment du paiement.
+  PAYMENT
+  /// Imputation ulterieure d'une avance (aucun mouvement d'argent).
+  ADVANCE
+}
+
+/// Lot S2 : part d'un paiement affectee a un appel de charges.
+model ChargePaymentAllocation {
+  id           String                 @id @default(uuid()) @db.Uuid
+  paymentId    String                 @map("payment_id") @db.Uuid
+  chargeCallId String                 @map("charge_call_id") @db.Uuid
+  amount       Decimal                @db.Decimal(12, 2)
+  source       ChargeAllocationSource @default(PAYMENT)
+  createdAt    DateTime               @default(now()) @map("created_at")
+
+  payment    ChargePayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  chargeCall ChargeCall    @relation(fields: [chargeCallId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentId, chargeCallId])
+  @@index([chargeCallId])
+  @@map("charge_payment_allocations")
 }
 
 model GeneralMeeting {
@@ -3959,6 +4012,9 @@ model ChargeCallBatch {
   syndicateId String      @map("syndicate_id") @db.Uuid
   label       String
   period      String
+  /// Lot S2 : bornes structurees de la periode du lot d'appels.
+  periodStart DateTime?   @map("period_start") @db.Date
+  periodEnd   DateTime?   @map("period_end") @db.Date
   dueDate     DateTime    @map("due_date")
   batchType   BatchType   @map("batch_type")
   budgetId    String?     @map("budget_id") @db.Uuid

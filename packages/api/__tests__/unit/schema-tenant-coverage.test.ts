@@ -107,7 +107,10 @@ const CHILD_MODELS: Record<string, string[]> = {
   SyndicateMaintenanceLink: ['syndicate'],
   SyndicateContractLink: ['syndicate'],
   ChargeCall: ['syndicate'],
-  ChargePayment: ['chargeCall', 'syndicate'],
+  // Lot S2 : un paiement appartient a un lot (l'appel devient facultatif :
+  // avance pure) ; ses affectations passent par le paiement.
+  ChargePayment: ['lot', 'syndicate'],
+  ChargePaymentAllocation: ['payment', 'lot', 'syndicate'],
   GeneralMeeting: ['syndicate'],
   GMAgendaItem: ['meeting', 'syndicate'],
   GMResolution: ['meeting', 'syndicate'],

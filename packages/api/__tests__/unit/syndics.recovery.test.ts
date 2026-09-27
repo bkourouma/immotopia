@@ -89,7 +89,7 @@ describe('Syndics recovery queries - US1', () => {
       syndicateId: 'syndic-1',
       lotId: 'lot-1',
       amount: 100000,
-      payments: [{ amount: 10000 }],
+      allocations: [{ amount: 10000 }],
     });
     mockPrisma.paymentReminder.create.mockResolvedValue({
       id: 'rem-1',
@@ -123,13 +123,13 @@ describe('Syndics recovery queries - US1', () => {
         id: 'charge-1',
         lotId: 'lot-1',
         amount: 100000,
-        payments: [{ amount: 0 }],
+        allocations: [{ amount: 0 }],
       },
       {
         id: 'charge-2',
         lotId: 'lot-2',
         amount: 100000,
-        payments: [{ amount: 100000 }],
+        allocations: [{ amount: 100000 }],
       },
     ]);
     mockTx.paymentReminder.count.mockResolvedValue(1);
@@ -150,7 +150,7 @@ describe('Syndics recovery queries - US1', () => {
       lotId: 'lot-1',
       dueDate: new Date('2026-01-01T00:00:00.000Z'),
       amount: 100000,
-      payments: [{ amount: 20000 }],
+      allocations: [{ amount: 20000 }],
     });
     mockTx.latePaymentPenalty.create.mockResolvedValue({
       id: 'pen-1',
@@ -190,7 +190,7 @@ describe('Syndics recovery queries - US1', () => {
       id: 'charge-1',
       lotId: 'lot-1',
       amount: 100000,
-      payments: [{ amount: 10000 }],
+      allocations: [{ amount: 10000 }],
     });
     mockTx.paymentSchedule.create.mockResolvedValue({ id: 'sched-1' });
     mockTx.paymentSchedule.findUnique.mockResolvedValue({

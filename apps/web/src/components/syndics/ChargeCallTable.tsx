@@ -33,11 +33,14 @@ function recurrenceLabel(item: ChargeCall): string {
   return t('Oui - {{frequency}}{{occurrences}}', { frequency: frequency, occurrences: occurrences });
 }
 
+/** Lot S2 : préfère les totaux calculés côté API (affectations) au repli sur `payments[]`. */
 function computePaidAmount(item: ChargeCall): number {
+  if (item.paidAmount !== undefined) return Number(item.paidAmount);
   return (item.payments || []).reduce((sum, payment) => sum + Number(payment.amount), 0);
 }
 
 function computeOutstandingAmount(item: ChargeCall): number {
+  if (item.outstandingAmount !== undefined) return Number(item.outstandingAmount);
   return Math.max(0, Number(item.amount) - computePaidAmount(item));
 }
 
