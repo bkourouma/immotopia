@@ -7,6 +7,7 @@ import { syncLotActivationsTx } from './lot-registry-service';
 import { generatePropertyReference } from '../utils/property-reference-generator';
 import { validatePropertyData } from './property-template-service';
 import { CreatePropertyRequest, UpdatePropertyRequest, PropertyDetail } from '../types/property-types';
+import { createPropertySchema, updatePropertySchema } from '../lib/properties/schemas';
 import { BadRequestError, NotFoundError, ConflictError } from '../middleware/error-middleware';
 import {
   PropertyType,
@@ -49,39 +50,6 @@ export async function createPublicProperty(
 }
 
 /**
- * Controle, avant tout acces a la base, les champs que `tx.property.create()`
- * exige ou type strictement. Le corps arrive tel quel de `req.body` : un
- * champ absent ou d'un mauvais type devient sinon un
- * `PrismaClientValidationError`, que le gestionnaire d'erreurs classe 500.
- * Les champs facultatifs du formulaire (adresse, description) ne sont
- * verifies que s'ils sont fournis.
- */
-function assertCreatePropertyRequest(data: CreatePropertyRequest): void {
-  if (!Object.values(PropertyType).includes(data.propertyType)) {
-    throw new BadRequestError('Le type de bien est absent ou inconnu.');
-  }
-  if (!Object.values(PropertyOwnershipType).includes(data.ownershipType)) {
-    throw new BadRequestError('Le type de détention du bien est absent ou inconnu.');
-  }
-  if (typeof data.title !== 'string' || !data.title.trim()) {
-    throw new BadRequestError('Le titre du bien est requis.');
-  }
-  if (
-    data.transactionModes !== undefined &&
-    (!Array.isArray(data.transactionModes) ||
-      data.transactionModes.some(mode => !Object.values(PropertyTransactionMode).includes(mode)))
-  ) {
-    throw new BadRequestError('Les modes de transaction du bien sont invalides.');
-  }
-  if (data.address !== undefined && data.address !== null && typeof data.address !== 'string') {
-    throw new BadRequestError("L'adresse du bien doit être un texte.");
-  }
-  if (data.description !== undefined && data.description !== null && typeof data.description !== 'string') {
-    throw new BadRequestError('La description du bien doit être un texte.');
-  }
-}
-
-/**
  * Create a new property
  * @param tenantId - Tenant ID (for tenant-owned properties)
  * @param ownerUserId - Owner user ID (for public/private owner properties)
@@ -95,7 +63,12 @@ export async function createProperty(
   data: CreatePropertyRequest,
   actorUserId?: string
 ): Promise<PropertyDetail> {
-  assertCreatePropertyRequest(data);
+  // Un ZodError leve ici (pas de try/catch : voir lib/properties/schemas.ts)
+  // remonte tel quel jusqu'a `errorHandler`, qui le classe en 400
+  // `VALIDATION_ERROR` avec le champ en cause — jamais la
+  // `PrismaClientValidationError` (500) que `tx.property.create()` levait sur
+  // un champ mal type plus bas.
+  createPropertySchema.parse(data);
 
   // Validate ownership type matches provided IDs
   if (data.ownershipType === PropertyOwnershipType.TENANT && !tenantId) {
@@ -423,6 +396,11 @@ export async function updateProperty(
   userId?: string | null,
   actorUserId?: string
 ): Promise<PropertyDetail> {
+  // Meme validation qu'a la creation (voir lib/properties/schemas.ts) : un
+  // champ mal type levait une `PrismaClientValidationError` (500) au
+  // `tx.property.update()` plus bas, au lieu d'un 400 clair.
+  updatePropertySchema.parse(data);
+
   // Get existing property
   const existing = await getPropertyById(propertyId, tenantId, userId);
   if (!existing) {

@@ -377,6 +377,32 @@ describe('Création (Location) — enregistrement automatique puis « Terminer �
     expect(createProperty).toHaveBeenCalledTimes(1);
   });
 
+  /**
+   * Avant `construireCorpsBien`, l'auto-save et « Terminer » construisaient
+   * chacun leur corps à la main, et leur divergence sur `address` (absent
+   * d'un côté, chaîne vide de l'autre) a causé le 500 corrigé par 335658e.
+   * À données de formulaire inchangées entre les deux appels, les deux corps
+   * doivent désormais être strictement identiques.
+   */
+  it('envoie le même corps pour l’auto-save et pour « Terminer », à données inchangées', async () => {
+    const user = userEvent.setup();
+    createProperty.mockResolvedValue({ id: 'bien-1', propertyType: 'APPARTEMENT', title: 'Bel appartement' });
+
+    await allerJusquauxMedias(user);
+
+    await waitFor(() => expect(createProperty).toHaveBeenCalledTimes(1));
+    await terminerDisponible();
+
+    await user.click(screen.getByText('Terminer'));
+
+    await waitFor(() => expect(updateProperty).toHaveBeenCalledTimes(1));
+
+    const [, corpsAutoSave] = createProperty.mock.calls[0];
+    const [, , corpsTerminer] = updateProperty.mock.calls[0];
+
+    expect(corpsTerminer).toEqual(corpsAutoSave);
+  });
+
   it('tant que l’auto-save est en cours, « Terminer » (en chargement) ne relance rien', async () => {
     const user = userEvent.setup();
     createProperty.mockImplementation(() => new Promise(() => {}));
