@@ -40,9 +40,9 @@ Pièges et décisions :
 
 ## Branche `docs/wiki-fonctionnalites` — 2026-09-27
 
-**État :** prêt à relire (PR #17 vers `main`) ; CI non exécutée : GitHub
-refuse de lancer les jobs (paiement du compte en échec / limite de dépense),
-comme sur `main` — `wiki:check` vérifié en local seulement
+**État :** prêt à fusionner (PR #17 vers `main`) ; CI verte, étape
+`wiki:check` comprise, depuis le passage du dépôt en public (2026-09-27 —
+avant, GitHub refusait de lancer les jobs faute de paiement)
 **Dernier commit :** `f50e9f5 docs(fonctionnalites): classeur des fonctionnalités, miroir texte et mise à jour obligatoire`
 
 Fait :
