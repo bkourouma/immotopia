@@ -39,16 +39,24 @@ describe('modèle de navigation — intégrité', () => {
     expect(NAVIGATION.collaborateur.tabs).toHaveLength(5);
     expect(NAVIGATION.proprietaire.tabs).toHaveLength(5);
     expect(NAVIGATION.locataire.tabs).toHaveLength(4);
-    expect(NAVIGATION.coproprietaire.tabs).toHaveLength(4);
+    expect(NAVIGATION.coproprietaire.tabs).toHaveLength(5);
   });
 
-  it('donne au copropriétaire ses quatre destinations en lecture seule, et au bailleur un accès à sa copropriété', () => {
-    expect(NAVIGATION.coproprietaire.tree.map(g => g.href)).toEqual([
+  it('donne au copropriétaire ses quatre destinations directes, et le lot S5 derrière « Plus »', () => {
+    expect(NAVIGATION.coproprietaire.tree.filter(g => g.zone === 'primary').map(g => g.href)).toEqual([
       '/copropriete',
       '/copropriete/appels',
       '/copropriete/assemblees',
       '/copropriete/documents'
     ]);
+    const coproprietairePlus = NAVIGATION.coproprietaire.tree.find(g => g.key === 'plus');
+    expect(coproprietairePlus?.children?.map(c => c.href)).toEqual([
+      '/copropriete/paiements',
+      '/copropriete/quittances',
+      '/copropriete/suivi-mensuel',
+      '/copropriete/ma-copropriete'
+    ]);
+
     const plus = NAVIGATION.proprietaire.tree.find(g => g.key === 'plus');
     expect(plus?.children?.map(c => c.href)).toContain('/copropriete');
   });
