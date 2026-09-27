@@ -104,7 +104,14 @@ jest.mock('../../src/lib/syndics/queries', () => ({
         overdueAmount: 50000
       }
     };
-  })
+  }),
+  listFundsBySyndicate: jest.fn(async (tenantId: string) => {
+    if (tenantId !== TENANT_ID) return [];
+    return [{ id: 'fund-1', syndicateId: SYNDIC_ID, name: 'Fonds travaux', balance: 1000000, currency: 'XOF' }];
+  }),
+  createSyndicateFundBySyndicate: jest.fn(),
+  renameSyndicateFundByTenant: jest.fn(),
+  adjustSyndicateFundBalanceByTenant: jest.fn()
 }));
 
 jest.mock('../../src/lib/syndics/notifications', () => ({
@@ -113,12 +120,18 @@ jest.mock('../../src/lib/syndics/notifications', () => ({
 }));
 
 import syndicRoutes from '../../src/routes/syndic-routes';
+import { errorHandler } from '../../src/middleware/error-middleware';
 const mockQueries = jest.requireMock('../../src/lib/syndics/queries') as Record<string, jest.Mock>;
 
 describe('Syndics providers/documents/funds routes', () => {
   const app = express();
   app.use(express.json());
   app.use('/api', syndicRoutes);
+  // Sans ce middleware, une erreur zod (validation du motif obligatoire pour
+  // l'ajustement de fonds) tombe sur le gestionnaire par defaut d'Express au
+  // lieu de renvoyer un JSON avec le bon statut — voir
+  // __tests__/api/syndics.accounting.characterization.test.ts.
+  app.use(errorHandler);
 
   it('returns providers/contracts/common assets payload', async () => {
     const response = await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/prestataires`);
@@ -201,5 +214,91 @@ describe('Syndics providers/documents/funds routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.success).toBe(true);
     expect(response.body.data.totals.totalOutstanding).toBe(50000);
+  });
+
+  it('returns funds list', async () => {
+    const response = await request(app).get(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/fonds`);
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data[0].name).toBe('Fonds travaux');
+  });
+
+  it('creates a fund', async () => {
+    mockQueries.createSyndicateFundBySyndicate.mockResolvedValueOnce({
+      id: 'fund-new',
+      syndicateId: SYNDIC_ID,
+      name: 'Compte courant',
+      balance: 0,
+      currency: 'XOF'
+    });
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/fonds`)
+      .send({ name: 'Compte courant' });
+
+    expect(response.status).toBe(201);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.id).toBe('fund-new');
+    expect(mockQueries.createSyndicateFundBySyndicate).toHaveBeenCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      expect.objectContaining({ name: 'Compte courant' }),
+      'user-1'
+    );
+  });
+
+  it('renames a fund', async () => {
+    mockQueries.renameSyndicateFundByTenant.mockResolvedValueOnce({
+      id: 'fund-1',
+      syndicateId: SYNDIC_ID,
+      name: 'Fonds travaux (renomme)',
+      balance: 1000000,
+      currency: 'XOF'
+    });
+
+    const response = await request(app)
+      .patch(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/fonds/fund-1`)
+      .send({ name: 'Fonds travaux (renomme)' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.name).toBe('Fonds travaux (renomme)');
+  });
+
+  it('adjusts a fund balance with a mandatory reason', async () => {
+    mockQueries.adjustSyndicateFundBalanceByTenant.mockResolvedValueOnce({
+      id: 'fund-1',
+      syndicateId: SYNDIC_ID,
+      name: 'Fonds travaux',
+      balance: 1050000,
+      currency: 'XOF'
+    });
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/fonds/fund-1/ajustement`)
+      .send({ direction: 'CREDIT', amount: 50000, reason: 'Appel de fonds travaux vote en AG' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.balance).toBe(1050000);
+    expect(mockQueries.adjustSyndicateFundBalanceByTenant).toHaveBeenCalledWith(
+      TENANT_ID,
+      SYNDIC_ID,
+      'fund-1',
+      { direction: 'CREDIT', amount: 50000, reason: 'Appel de fonds travaux vote en AG' },
+      'user-1'
+    );
+  });
+
+  it('rejects a fund balance adjustment without a reason', async () => {
+    // Reinitialise le compteur d'appels : le test precedent a deja appele
+    // cette fonction avec succes, et ce fichier ne fait pas de
+    // `jest.clearAllMocks()` global entre les cas.
+    mockQueries.adjustSyndicateFundBalanceByTenant.mockClear();
+
+    const response = await request(app)
+      .post(`/api/tenants/${TENANT_ID}/syndics/${SYNDIC_ID}/fonds/fund-1/ajustement`)
+      .send({ direction: 'DEBIT', amount: 10000 });
+
+    expect(response.status).toBe(400);
+    expect(mockQueries.adjustSyndicateFundBalanceByTenant).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-import { buildOwnerAccountStatementPdf } from '../../src/lib/syndics/owner-account-statement';
+import { buildOwnerAccountStatementPdf, describeBalanceForPdf } from '../../src/lib/syndics/owner-account-statement';
 
 /**
  * Non-régression : `GET .../lots/:lotId/compte/releve` répondait 400 avec
@@ -62,5 +62,31 @@ describe('buildOwnerAccountStatementPdf', () => {
     };
 
     await expect(buildOwnerAccountStatementPdf(payloadWithNarrowNbsp)).resolves.toBeInstanceOf(Buffer);
+  });
+});
+
+/**
+ * Constat de recette (module 3.4) : un crédit de 20 000 sur un compte à 0
+ * affichait « Solde courant -20 000 FCFA » sans rien pour expliquer le signe.
+ * La convention (débit augmente, crédit diminue — positif = le
+ * copropriétaire doit, négatif = il a une avance) est la même que celle de
+ * l'écran web `SyndicOwnerAccount.tsx` : elle n'est pas fausse, seulement
+ * muette. Ce relevé doit donc porter la même mention explicite.
+ */
+describe('describeBalanceForPdf', () => {
+  it('labels a positive balance as "Debiteur" and keeps the amount as-is', () => {
+    expect(describeBalanceForPdf(20000)).toEqual({ amount: 20000, label: 'Debiteur' });
+  });
+
+  it('labels a negative balance as "Crediteur" and returns the absolute amount, never a negative number', () => {
+    expect(describeBalanceForPdf(-20000)).toEqual({ amount: 20000, label: 'Crediteur' });
+  });
+
+  it('labels a zero balance as settled', () => {
+    expect(describeBalanceForPdf(0)).toEqual({ amount: 0, label: 'Solde a jour' });
+  });
+
+  it('rounds to the cent before comparing to zero', () => {
+    expect(describeBalanceForPdf(-0.001)).toEqual({ amount: 0, label: 'Solde a jour' });
   });
 });
