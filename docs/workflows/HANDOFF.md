@@ -38,51 +38,66 @@ Pièges et décisions :
 
 ---
 
-## Pilote — fusions du 2026-09-27
+## Pilote — lots Syndic S3 à S5, e-mail de contact, abonnements — 2026-09-27
 
-**État :** `main` à jour, aucune PR ouverte
-**Dernier commit main :** `0d3aa0c` Merge pull request #23 (recette S6)
+**État :** prêt à relire ; 5 PR ouvertes, CI verte (#26/#27 relancées après le dernier correctif)
+**Dernier commit :** S3 `ec3fceb`, S4 `caaa034`, S5 `5e3dd93`, e-mail `443461b`, journaux `e077830`
 
 Fait :
 
-- Fusionnées dans `main` : #17 (classeur des fonctionnalités), #19 (S1
-  identité des documents), #18 (export complet d'agence, avec #22 images de
-  marque), #20 (S6 factures prestataires), #21 (S2 paiements par lot, avance,
-  suivi mensuel), #23 (recette S6 : accents, historique du fonds sur mobile).
-  Chaque branche a reçu `main` avant fusion ; CI verte à
-  chaque fois.
-- Correctifs de CI faits au passage : test de navigation (entrée « Agences
-  mandantes », onglet « Suivi mensuel ») ; test d'archive de l'export dont
-  l'attendu dépendait de la casse (`tA`) sous Windows seulement.
-- Conflits récurrents entre lots Syndic : `app.ts` (routes), `syndic-types.ts`,
-  catalogues `syndic.json` et `packages/api/src/i18n/locales/*.json` — tous
-  résolus en gardant les deux côtés, doublons de clés ramenés à la valeur de
-  `main`.
-- Hors dépôt : ACC-STANDARD-ARCHITECTURE PR #3 fusionnée ; site vitrine
-  (`D:\APP\ImmoTopiaWebsite2Version2\site`) déployé deux fois en production
-  (wiki, puis icône et défilement), `lancement-site-v2` = `3582c86`, sauvegardes
-  d'image `immotopia-site:avant-wiki-20260927` et `:avant-icone-20260927`.
+- PR empilées, à fusionner dans l'ordre : #25 S3 reçus/quittances (base
+  `main`) → #26 S4 appels automatiques (base S3) → #27 S5 portail
+  copropriétaire (base S4 ; S5 a été empilée sur S4 pour absorber les
+  conflits S4↔S5 : limiteurs de débit, routes du portail, wiki).
+- Revue de code et audit de sécurité S4/S5 : 0 bloquant ; corrigés : suivi
+  mensuel du portail borné aux appels du copropriétaire (moyenne), avis
+  d'appel du portail borné à `ownedSince`, limiteurs sur l'exécution
+  manuelle et l'avis gestionnaire. Choix produit actés : signature et cachet
+  restent sur les quittances servies au portail (même PDF que l'e-mail) ;
+  le relevé du portail ouvre sur le solde du compte à la date d'acquisition.
+- Recette navigateur sur la démo (`5e3dd93`) : S3, S4, S5 passés ;
+  BUG-2026-09-27-009 (appels non notifiés comptés nulle part) corrigé
+  (`caaa034`) et retesté. Traduction « Quittance » = « Settlement receipt »
+  / « إيصال تسوية » (S3 avait « Statement »).
+- #28 : adresse de support `support@immotopia.cloud` (env.example, specs).
+  `PLATFORM_ISSUER_EMAIL=support@immotopia.cloud` posé dans `.env`, `.env.demo`
+  et l'environnement de production (sauvegarde
+  `/home/deployer/immotopia-saas.env.avant-email-20260927`), API de prod
+  recréée. Site vitrine : e-mail déployé (`d2a4818`, image de retour
+  `immotopia-site:avant-email-20260927`), et avant cela logos/menu/formulations
+  (`9b30cbd`, retour `:avant-menu-20260927`).
+- #29 : `/app/logs` de l'API de prod sur un volume nommé.
+- Abonnements en production (lecture seule) : l'image de prod date du
+  2026-09-25, sans garde d'abonnement ; 10 migrations en attente ; aucune
+  agence n'a d'abonnement ; Ivoire Résidences n'a que MODULE_AGENCY mais
+  utilise 4 copropriétés et 1 chantier ; Agence Immobilière du Mali n'a aucun
+  module.
 
 Reste à faire :
 
-- Lots S3 (`feat/syndic-s3-quittances`), S4, S5 en cours dans la session
-  Syndic : leurs branches partent d'anciennes têtes de S2/S6 ; fusionner
-  `main` avant d'ouvrir les PR (mêmes conflits attendus).
-- Hérité de `chore/agentic-architecture` (#16, fusionnée) : créer
-  `packages/api/.env.demo` (utilisateur), `demo:sync --install` jamais lancé,
-  protection de branche GitHub indisponible (offre gratuite).
+- Fusion de #25 → #26 → #27, #28, #29 : décision de l'utilisateur.
+- Déployer `main` en production (10 migrations, dont la réécriture des
+  paiements Syndic : sauvegarde de base avant), puis attribuer un pack à
+  chaque agence, observer les refus en `warn`, enfin
+  `SUBSCRIPTION_ENFORCEMENT=enforce` — chaque étape avec accord.
+- Découper `SyndicChargeSchedules.tsx` (631 lignes, remarque de revue).
+- Pagination « 1–3 sur 3 » non traduite : tâche séparée lancée
+  (`fix/pagination-i18n`).
+- Hérité : `demo:sync --install` jamais relancé depuis S7 ; protection de
+  branche GitHub indisponible.
 
 Pièges et décisions :
 
-- Ne pas travailler dans le worktree d'une autre session : `export-s7` a
-  changé de branche pendant un merge du Pilote (commit parti sur
-  `fix/export-images-marque`, rattrapé par fast-forward de #18).
-- Le `node_modules` du checkout principal (branche ancienne) n'a pas les
-  dépendances de l'export (`archiver`) : pour tester une branche récente dans
-  un worktree à jonction, pointer la jonction vers un worktree qui a fait
-  `npm install`.
-- Tests front sur ce poste : un dépassement de 40 s sous charge ne prouve
-  rien (la CI les passe) ; le panneau navigateur masqué a une hauteur 0, fixer
-  la taille avant toute mesure de défilement.
-- `.claude/settings.local.json` : la règle `ask` sur `gh pr merge` a été
-  remplacée par un `allow` (demande de l'utilisateur).
+- Recréer le conteneur API de prod efface ses journaux (#29 corrige) : les
+  refus du garde d'abonnement d'avant le 2026-09-27 18:47 UTC sont perdus.
+- Deux jest lourds en parallèle sur ce poste : tout tombe en délai ; lancer
+  les suites une par une (`--maxWorkers=4`).
+- Un jest orphelin d'une session morte verrouille le moteur Prisma du
+  worktree (EPERM au `prisma generate`) : chercher les `node.exe` du worktree.
+- `validate-bash.sh` prend `gh pr create --base main` chaîné après `git push`
+  pour une poussée vers main : lancer `gh pr create` seul.
+- Test web du suivi mensuel du portail : attendre le rendu (`findAllByText`),
+  pas seulement l'appel du service ; année courante, jamais 2026 en dur.
+- Déploiement du site : `npx tsc --noEmit` local passe grâce au cache
+  incrémental alors que `next build` échoue ; vérifier avec
+  `--incremental false` ou `npm run build`.
