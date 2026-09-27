@@ -1055,3 +1055,182 @@ export interface AdjustSyndicateFundBalanceRequest {
   amount: number;
   reason: string;
 }
+
+// ---------------------------------------------------------------------------
+// Lot S6 — factures et paiements des prestataires (SyndicProviderInvoice).
+// ---------------------------------------------------------------------------
+
+export type ProviderInvoiceStatus = 'RECORDED' | 'PARTIALLY_PAID' | 'PAID' | 'CANCELLED';
+export type ProviderPaymentMethod = 'MOBILE_MONEY' | 'BANK_TRANSFER' | 'CASH' | 'CHECK' | 'CARD' | 'OTHER';
+
+export interface ProviderInvoicePayment {
+  id: string;
+  invoiceId: string;
+  fundId: string | null;
+  fund: { id: string; name: string } | null;
+  amount: number;
+  paidAt: string;
+  method: ProviderPaymentMethod;
+  reference: string | null;
+  journalEntryId: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  cancelEntryId: string | null;
+  createdById: string | null;
+  createdAt: string;
+}
+
+export interface ProviderInvoice {
+  id: string;
+  syndicateId: string;
+  providerId: string;
+  provider: { id: string; name: string } | null;
+  contractId: string | null;
+  contract: { id: string; nature: string } | null;
+  incidentId: string | null;
+  incident: { id: string; description: string; status: string } | null;
+  budgetLineItemId: string | null;
+  budgetLine: { id: string; category: string; description: string } | null;
+  fundId: string | null;
+  fund: { id: string; name: string } | null;
+  number: string;
+  label: string;
+  invoiceDate: string;
+  dueDate: string | null;
+  amountHT: number;
+  vatAmount: number;
+  amountTTC: number;
+  amountPaid: number;
+  amountDue: number;
+  currency: string;
+  expenseAccountId: string | null;
+  hasFile: boolean;
+  fileName: string | null;
+  status: ProviderInvoiceStatus;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  journalEntryId: string | null;
+  cancelEntryId: string | null;
+  createdById: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProviderInvoiceDetail extends ProviderInvoice {
+  payments: ProviderInvoicePayment[];
+}
+
+export interface ProviderInvoiceListQuery {
+  providerId?: string;
+  contractId?: string;
+  incidentId?: string;
+  status?: ProviderInvoiceStatus;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface ProviderInvoiceListResult {
+  items: ProviderInvoice[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/** Résultat du rattachement automatique à une imputation d'incident (§S6). */
+export type IncidentImputationLinkResult =
+  | { linked: true; imputationId: string }
+  | { linked: false; reason: 'NO_INCIDENT' | 'NO_SYNDICATE_BUDGET_IMPUTATION' | 'AMBIGUOUS' };
+
+export interface CreateProviderInvoiceRequest {
+  providerId: string;
+  contractId?: string;
+  incidentId?: string;
+  budgetLineItemId?: string;
+  fundId?: string;
+  expenseAccountId?: string;
+  expenseKind?: 'CURRENT' | 'WORKS';
+  number: string;
+  label: string;
+  invoiceDate: string;
+  dueDate?: string;
+  amountHT: number;
+  vatAmount?: number;
+  amountTTC?: number;
+  currency?: string;
+  /** Présent : la requête part en multipart. Absent : JSON. */
+  file?: File;
+}
+
+export interface CreateProviderInvoiceResult {
+  invoice: ProviderInvoice;
+  incidentImputation: IncidentImputationLinkResult;
+}
+
+export interface UpdateProviderInvoiceRequest {
+  number?: string;
+  label?: string;
+  dueDate?: string | null;
+  fundId?: string | null;
+}
+
+export interface CancelProviderInvoiceRequest {
+  reason: string;
+}
+
+export interface CreateProviderPaymentRequest {
+  amount: number;
+  paidAt: string;
+  method: ProviderPaymentMethod;
+  reference?: string;
+  fundId?: string;
+}
+
+export interface ProviderPaymentFundInfo {
+  id: string;
+  name: string;
+  balance: number;
+  currency: string;
+}
+
+export interface ProviderPaymentResult {
+  payment: ProviderInvoicePayment | null;
+  invoice: ProviderInvoice;
+  fund: ProviderPaymentFundInfo | null;
+  fundBalanceNegative: boolean;
+}
+
+export interface ProviderBalance {
+  providerId: string;
+  providerName: string;
+  currency: string;
+  invoicesCount: number;
+  totalInvoiced: number;
+  totalPaid: number;
+  totalDue: number;
+  overdueDue: number;
+}
+
+export type FundMovementDirection = 'CREDIT' | 'DEBIT';
+export type FundMovementSourceType = 'MANUAL_ADJUSTMENT' | 'PROVIDER_PAYMENT' | 'PROVIDER_PAYMENT_REVERSAL';
+
+export interface FundMovement {
+  id: string;
+  direction: FundMovementDirection;
+  amount: number;
+  balanceAfter: number;
+  label: string;
+  sourceType: FundMovementSourceType;
+  sourceId: string | null;
+  createdById: string | null;
+  createdAt: string;
+}
+
+export interface FundMovementsResult {
+  fund: { id: string; name: string; balance: number; currency: string };
+  items: FundMovement[];
+  total: number;
+  page: number;
+  limit: number;
+}

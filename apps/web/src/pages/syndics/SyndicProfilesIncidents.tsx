@@ -35,6 +35,7 @@ import {
   updateSyndicIncident
 } from '../../services/syndic-service';
 import { CoOwnerInvitationResult } from '../../components/syndics/CoOwnerInvitationResult';
+import { LinkedProviderInvoices } from '../../components/syndics/LinkedProviderInvoices';
 import {
   CoOwnerPortalInvitation,
   LotOwnerProfile,
@@ -524,50 +525,62 @@ export const SyndicProfilesIncidents: React.FC = () => {
                 pagination={{ pageSize: 8 }}
                 expandable={{
                   expandedRowRender: incident => (
-                    <Table
-                      scroll={{ x: 'max-content' }}
-                      rowKey="id"
-                      dataSource={incident.imputations || []}
-                      pagination={false}
-                      size="small"
-                      locale={{ emptyText: 'Aucune imputation pour cet incident.' }}
-                      columns={[
-                        {
-                          title: 'Type',
-                          dataIndex: 'imputationType',
-                          render: (value: string) => incidentImputationTypeLabels[value] || value
-                        },
-                        {
-                          title: 'Montant',
-                          dataIndex: 'amount',
-                          align: 'end',
-                          render: (value: number | string) => <MoneyValue value={value} />
-                        },
-                        {
-                          title: 'Lot',
-                          render: (_, row) => {
-                            const lot = row.lot || (row.lotId ? lotsById[row.lotId] : undefined);
-                            const lotReference = lot?.property?.internalReference || lot?.lotNumber || '';
-                            const propertyByReference = lotReference
-                              ? propertiesByInternalReference[lotReference.trim().toUpperCase()]
-                              : undefined;
-                            return getLotDisplayName(lot, null, propertyByReference);
+                    <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                      <Table
+                        scroll={{ x: 'max-content' }}
+                        rowKey="id"
+                        dataSource={incident.imputations || []}
+                        pagination={false}
+                        size="small"
+                        locale={{ emptyText: 'Aucune imputation pour cet incident.' }}
+                        columns={[
+                          {
+                            title: 'Type',
+                            dataIndex: 'imputationType',
+                            render: (value: string) => incidentImputationTypeLabels[value] || value
+                          },
+                          {
+                            title: 'Montant',
+                            dataIndex: 'amount',
+                            align: 'end',
+                            render: (value: number | string) => <MoneyValue value={value} />
+                          },
+                          {
+                            title: 'Lot',
+                            render: (_, row) => {
+                              const lot = row.lot || (row.lotId ? lotsById[row.lotId] : undefined);
+                              const lotReference = lot?.property?.internalReference || lot?.lotNumber || '';
+                              const propertyByReference = lotReference
+                                ? propertiesByInternalReference[lotReference.trim().toUpperCase()]
+                                : undefined;
+                              return getLotDisplayName(lot, null, propertyByReference);
+                            }
+                          },
+                          {
+                            title: 'Notes',
+                            dataIndex: 'notes',
+                            render: (value: string | undefined | null) => value || '-'
+                          },
+                          {
+                            title: t('Cree le'),
+                            dataIndex: 'createdAt',
+                            render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm')
                           }
-                        },
-                        {
-                          title: 'Notes',
-                          dataIndex: 'notes',
-                          render: (value: string | undefined | null) => value || '-'
-                        },
-                        {
-                          title: t('Cree le'),
-                          dataIndex: 'createdAt',
-                          render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm')
-                        }
-                      ]}
-                    />
+                        ]}
+                      />
+                      {effectiveTenantId && syndicId ? (
+                        <div>
+                          <Typography.Text strong>{t('Factures liées')}</Typography.Text>
+                          <LinkedProviderInvoices
+                            tenantId={effectiveTenantId}
+                            syndicId={syndicId}
+                            incidentId={incident.id}
+                          />
+                        </div>
+                      ) : null}
+                    </Space>
                   ),
-                  rowExpandable: incident => (incident.imputations?.length || 0) > 0
+                  rowExpandable: () => true
                 }}
                 columns={[
                   {
