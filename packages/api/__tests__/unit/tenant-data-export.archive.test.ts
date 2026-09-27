@@ -482,7 +482,7 @@ describe('Export agence — collecteur de fichiers', () => {
     await collector.inspectField('signaturePath', 'branding/tA/mandants/m1/signature-absente.png');
     expect(collector.files.size).toBe(1);
     expect(collector.missingCount).toBe(1);
-    expect([...collector.files.keys()]).toEqual([n('fichiers/uploads/branding/ta/mandants/m1/logo-x.png')]);
+    expect([...collector.files.keys()]).toEqual([n('fichiers/uploads/branding/tA/mandants/m1/logo-x.png')]);
   });
 
   it('refuse une image de marque dont le dossier appartient a une autre agence', async () => {
