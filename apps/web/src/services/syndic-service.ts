@@ -17,6 +17,7 @@ import {
   CreateLatePenaltyRequest,
   CreateMaintenanceContractRequest,
   CreateMeetingRequest,
+  CreateMeetingProxyRequest,
   CreateManualReminderRequest,
   CreatePaymentScheduleRequest,
   CreateResolutionRequest,
@@ -41,6 +42,8 @@ import {
   CreateSyndicateRequest,
   UpdateSyndicateRequest,
   GeneralMeeting,
+  MeetingProxy,
+  MeetingStatus,
   MaintenanceContract,
   SyndicProvidersPayload,
   SyndicateDocument,
@@ -287,6 +290,52 @@ export async function updateMeeting(
   const response = await apiClient.patch<{ success: boolean; data: GeneralMeeting }>(
     `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}`,
     data
+  );
+  return response.data.data;
+}
+
+/** Ouvre, cloture ou annule une AG ; l'API refuse une transition incoherente (409). */
+export async function updateMeetingStatus(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  status: MeetingStatus
+): Promise<GeneralMeeting> {
+  return updateMeeting(tenantId, syndicId, meetingId, { status });
+}
+
+export async function listMeetingProxies(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string
+): Promise<MeetingProxy[]> {
+  const response = await apiClient.get<{ success: boolean; data: MeetingProxy[] }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/pouvoirs`
+  );
+  return response.data.data;
+}
+
+export async function createMeetingProxy(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  data: CreateMeetingProxyRequest
+): Promise<MeetingProxy> {
+  const response = await apiClient.post<{ success: boolean; data: MeetingProxy }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/pouvoirs`,
+    data
+  );
+  return response.data.data;
+}
+
+export async function deleteMeetingProxy(
+  tenantId: string,
+  syndicId: string,
+  meetingId: string,
+  proxyId: string
+): Promise<MeetingProxy> {
+  const response = await apiClient.delete<{ success: boolean; data: MeetingProxy }>(
+    `/tenants/${tenantId}/syndics/${syndicId}/assemblees/${meetingId}/pouvoirs/${proxyId}`
   );
   return response.data.data;
 }

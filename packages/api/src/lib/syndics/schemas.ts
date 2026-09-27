@@ -132,11 +132,16 @@ export const createMeetingSchema = z.object({
   location: z.string().optional()
 });
 
+export const meetingStatusSchema = z.enum(['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']);
+
 export const updateMeetingSchema = z
   .object({
     startTime: z.coerce.date().nullable().optional(),
     endTime: z.coerce.date().nullable().optional(),
-    location: z.string().nullable().optional()
+    location: z.string().nullable().optional(),
+    // Transition de statut (ouverture, cloture, annulation) : la coherence de la
+    // transition est controlee par le service, qui repond 409 sinon.
+    status: meetingStatusSchema.optional()
   })
   .refine(value => Object.keys(value).length > 0, {
     message: 'Au moins un champ doit etre fourni pour la mise a jour de l assemblee'
@@ -147,6 +152,12 @@ export const createResolutionSchema = z.object({
   title: z.string().min(1, 'Le titre de la resolution est obligatoire'),
   description: z.string().optional(),
   majorityRule: z.string().optional()
+});
+
+export const createMeetingProxySchema = z.object({
+  meetingId: z.string().uuid(),
+  grantorContactId: z.string().min(1, 'Le mandant est obligatoire'),
+  representativeContactId: z.string().min(1, 'Le mandataire est obligatoire')
 });
 
 export const castVoteSchema = z.object({
@@ -530,6 +541,7 @@ export type CreateMeetingInput = z.infer<typeof createMeetingSchema>;
 export type UpdateMeetingInput = z.infer<typeof updateMeetingSchema>;
 export type CreateResolutionInput = z.infer<typeof createResolutionSchema>;
 export type CastVoteInput = z.infer<typeof castVoteSchema>;
+export type CreateMeetingProxyInput = z.infer<typeof createMeetingProxySchema>;
 export type CreateAgendaItemInput = z.infer<typeof createAgendaItemSchema>;
 export type UpdateAgendaItemInput = z.infer<typeof updateAgendaItemSchema>;
 export type CreateContractInput = z.infer<typeof createContractSchema>;
