@@ -56,6 +56,7 @@ import {
   deleteContractHandler,
   listDocumentsHandler,
   createDocumentHandler,
+  downloadDocumentHandler,
   getFinanceSummaryHandler,
   getOverdueDashboardHandler,
   listRemindersHandler,
@@ -461,6 +462,14 @@ router.post(
   requirePropertyPermission('PROPERTIES_EDIT'),
   uploadDocument.single('file'),
   createDocumentHandler
+);
+// Fichier d'un document : jamais servi en statique (/uploads/syndics est
+// refuse), seulement ici, apres controle de l'agence. Voir
+// lib/syndics/document-files.ts.
+router.get(
+  '/tenants/:tenantId/syndics/:syndicId/documents/:documentId/fichier',
+  requireAnyPropertyPermission(['PROPERTIES_VIEW']),
+  downloadDocumentHandler
 );
 router.get(
   '/tenants/:tenantId/syndics/:syndicId/finances',

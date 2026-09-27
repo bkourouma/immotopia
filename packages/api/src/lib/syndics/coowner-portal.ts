@@ -1,9 +1,6 @@
-import { promises as fs } from 'fs';
-import * as path from 'path';
 import { prisma } from '../../utils/database';
 import { NotFoundError } from '../../middleware/error-middleware';
-import { env } from '../../config/env';
-import { getProjectRoot, getUploadsRoot } from '../../utils/project-root';
+import { isExternalDocumentUrl, localSyndicateDocumentPath, readSyndicateDocumentFile } from './document-files';
 import { computeOutstanding, deriveChargeCallStatus, roundMoney, type ChargeCallStatusValue } from './finance-utils';
 import { computeResolutionTally, normalizeMajorityRule, type MajorityRule } from './meeting-majority';
 
@@ -381,18 +378,6 @@ export async function listCoOwnerChargeCalls(scope: CoOwnerPortalScope, filters:
  * copropriétaire. Les diagnostics, contrats d'assurance, budgets et « autres »
  * (qui peuvent contenir des données de tiers) restent réservés à la gestion.
  */
-function isLocalSyndicateUpload(fileUrl: string, syndicateId: string): string | null {
-  const match = /^\/uploads\/(syndics\/([^/]+)\/documents\/([^/\\]+))$/.exec(fileUrl);
-  if (!match || match[2] !== syndicateId) return null;
-  const fileName = match[3];
-  if (fileName.includes('..') || fileName.includes('\0')) return null;
-  return match[1];
-}
-
-function isExternalUrl(fileUrl: string): boolean {
-  return /^https?:\/\//i.test(fileUrl);
-}
-
 export async function listCoOwnerDocuments(scope: CoOwnerPortalScope) {
   if (scope.syndicateIds.length === 0) return [];
   const syndicates = await loadSyndicates(scope);
@@ -408,33 +393,11 @@ export async function listCoOwnerDocuments(scope: CoOwnerPortalScope) {
     type: document.type,
     createdAt: document.createdAt,
     syndicate: syndicates.get(document.syndicateId)?.name ?? null,
-    downloadable: isLocalSyndicateUpload(document.fileUrl, document.syndicateId) !== null,
+    downloadable: localSyndicateDocumentPath(document.fileUrl, document.syndicateId) !== null,
     // Un lien externe saisi par le gestionnaire est rendu tel quel ; un
     // fichier déposé ne l'est JAMAIS (il passe par la route de téléchargement).
-    externalUrl: isExternalUrl(document.fileUrl) ? document.fileUrl : null
+    externalUrl: isExternalDocumentUrl(document.fileUrl) ? document.fileUrl : null
   }));
-}
-
-const MIME_BY_EXTENSION: Record<string, string> = {
-  '.pdf': 'application/pdf',
-  '.doc': 'application/msword',
-  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp'
-};
-
-/**
- * Racines où un document de copropriété peut se trouver. La première est la
- * racine officielle (`UPLOADS_DIR`, sinon `<monorepo>/uploads`). La seconde
- * rattrape les fichiers déposés par `createDocumentHandler`
- * (`syndic-controller.ts`), qui ne remonte que d'un niveau depuis
- * `packages/api` et écrit donc dans `packages/uploads` (défaut décrit dans
- * `utils/project-root.ts`).
- */
-function candidateUploadRoots(): string[] {
-  return [getUploadsRoot(env.UPLOADS_DIR), path.join(getProjectRoot(), 'packages', 'uploads')];
 }
 
 export async function getCoOwnerDocumentFile(scope: CoOwnerPortalScope, documentId: string) {
@@ -449,27 +412,8 @@ export async function getCoOwnerDocumentFile(scope: CoOwnerPortalScope, document
   });
   if (!document) throw new NotFoundError('Document introuvable.');
 
-  const relative = isLocalSyndicateUpload(document.fileUrl, document.syndicateId);
-  if (!relative) throw new NotFoundError('Document introuvable.');
-
-  for (const root of candidateUploadRoots()) {
-    const absolute = path.resolve(root, relative);
-    // Défense en profondeur : le chemin reste sous la racine.
-    if (!absolute.startsWith(path.resolve(root) + path.sep)) continue;
-    try {
-      const buffer = await fs.readFile(absolute);
-      const extension = path.extname(absolute).toLowerCase();
-      const safeTitle = document.title.replace(/[^\p{L}\p{N} ._-]/gu, '').trim() || 'document';
-      return {
-        buffer,
-        fileName: `${safeTitle}${extension}`,
-        mimeType: MIME_BY_EXTENSION[extension] ?? 'application/octet-stream'
-      };
-    } catch {
-      // Essayer la racine suivante.
-    }
-  }
-  throw new NotFoundError('Document introuvable.');
+  // Fichier déposé (jamais servi en statique) ou 404 : voir document-files.ts.
+  return readSyndicateDocumentFile(document);
 }
 
 // ---------------------------------------------------------------------------

@@ -118,10 +118,17 @@ export function matchesWhere(row: Row, where: any): boolean {
       if (branches.some(branch => matchesWhere(row, branch))) return false;
       continue;
     }
-    if (!(key in row) && isPlainObject(condition) && !Object.keys(condition).some(k => OPERATORS.has(k))) {
-      // Clé unique composée : chaque sous-champ doit correspondre.
-      if (!matchesWhere(row, condition)) return false;
-      continue;
+    if (isPlainObject(condition) && !Object.keys(condition).some(k => OPERATORS.has(k))) {
+      if (isPlainObject(row[key])) {
+        // Filtre sur une relation stockée dans la ligne (`role: { scope }`).
+        if (!matchesWhere(row[key], condition)) return false;
+        continue;
+      }
+      if (!(key in row)) {
+        // Clé unique composée : chaque sous-champ doit correspondre.
+        if (!matchesWhere(row, condition)) return false;
+        continue;
+      }
     }
     if (!matchValue(row[key], condition)) return false;
   }
@@ -211,7 +218,9 @@ export const FAKE_MODEL_NAMES = [
   'passwordResetToken',
   'membership',
   'userRole',
-  'permission'
+  'permission',
+  'property',
+  'rentalPenalty'
 ] as const;
 
 export type FakePrisma = Record<(typeof FAKE_MODEL_NAMES)[number], FakeModel> & {

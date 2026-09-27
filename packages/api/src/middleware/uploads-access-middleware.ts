@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { verifyToken } from '../utils/jwt-utils';
-import { userHasTenantAccess } from '../utils/tenant-access';
+import { userHasTenantAccess, userIsTenantStaff } from '../utils/tenant-access';
 
 /**
  * Access control for the /uploads static mount.
@@ -15,25 +15,34 @@ import { userHasTenantAccess } from '../utils/tenant-access';
  * This middleware runs before express.static and:
  *   - lets genuinely public assets through unchanged;
  *   - requires an authenticated user with access to the owning tenant for
- *     everything else;
+ *     everything else — and, for files only agency screens ever open, a
+ *     member of the agency's staff (`staffOnly`, see `userIsTenantStaff`):
+ *     a portal client must not open another client's file by its URL;
  *   - denies anything it cannot classify (fail closed).
  *
  * Layout handled:
- *   properties/<propertyId>/<file>              public  (listing photos/videos)
- *   properties/<propertyId>/documents/<file>    private (property.tenantId)
+ *   properties/<propertyId>/<file>              public  (listing photos/videos, agency logos)
+ *   properties/<propertyId>/documents/<file>    staff   (property.tenantId)
  *   whatsapp/**                                 public  (fetched by the WhatsApp provider)
- *   maintenance/<tenantId>/<ticketId>/<file>    private
- *   portal/payments/<tenantId>/<file>           private
- *   rental/penalties/<penaltyId>/<file>         private (penalty.tenant_id)
- *   syndics/<syndicateId>/documents/<file>      private (syndicate.tenantId)
+ *   maintenance/<tenantId>/<ticketId>/<file>    tenant  (members AND clients: the tenant
+ *                                                        and owner portals show attachments)
+ *   portal/payments/<tenantId>/<file>           staff   (payment proofs, validated by the agency)
+ *   rental/penalties/<penaltyId>/<file>         staff   (penalty.tenant_id)
+ *   syndics/**                                  DENIED  (never static: served only by the
+ *                                                        authenticated routes of
+ *                                                        lib/syndics/document-files.ts)
+ *
+ * Every other root is denied too. Private files with a root of their own and
+ * a dedicated download route (lease inspections, platform invoice payment
+ * proofs...) are therefore never reachable here — the same treatment
+ * `syndics/` now gets.
  */
 
 type Classification =
   | { kind: 'public' }
-  | { kind: 'tenant'; tenantId: string }
-  | { kind: 'property'; propertyId: string }
-  | { kind: 'penalty'; penaltyId: string }
-  | { kind: 'syndicate'; syndicateId: string }
+  | { kind: 'tenant'; tenantId: string; staffOnly?: boolean }
+  | { kind: 'property'; propertyId: string; staffOnly?: boolean }
+  | { kind: 'penalty'; penaltyId: string; staffOnly?: boolean }
   | { kind: 'deny' };
 
 function classify(segments: string[]): Classification {
@@ -43,7 +52,7 @@ function classify(segments: string[]): Classification {
     case 'properties': {
       // properties/<propertyId>/documents/... is private, the rest is public media
       if (rest.length >= 2 && rest[1] === 'documents') {
-        return { kind: 'property', propertyId: rest[0] };
+        return { kind: 'property', propertyId: rest[0], staffOnly: true };
       }
       return rest.length >= 1 ? { kind: 'public' } : { kind: 'deny' };
     }
@@ -57,13 +66,20 @@ function classify(segments: string[]): Classification {
       return rest.length >= 1 ? { kind: 'tenant', tenantId: rest[0] } : { kind: 'deny' };
 
     case 'portal':
-      return rest.length >= 2 && rest[0] === 'payments' ? { kind: 'tenant', tenantId: rest[1] } : { kind: 'deny' };
+      return rest.length >= 2 && rest[0] === 'payments'
+        ? { kind: 'tenant', tenantId: rest[1], staffOnly: true }
+        : { kind: 'deny' };
 
     case 'rental':
-      return rest.length >= 2 && rest[0] === 'penalties' ? { kind: 'penalty', penaltyId: rest[1] } : { kind: 'deny' };
+      return rest.length >= 2 && rest[0] === 'penalties'
+        ? { kind: 'penalty', penaltyId: rest[1], staffOnly: true }
+        : { kind: 'deny' };
 
+    // Documents de copropriete : jamais en statique (AGENTS.md, « les
+    // documents prives ne sont jamais servis en statique »). Refuses comme
+    // un chemin inconnu, sans meme verifier la session.
     case 'syndics':
-      return rest.length >= 1 ? { kind: 'syndicate', syndicateId: rest[0] } : { kind: 'deny' };
+      return { kind: 'deny' };
 
     default:
       return { kind: 'deny' };
@@ -90,14 +106,6 @@ async function resolveTenantId(classification: Classification): Promise<string |
         select: { tenant_id: true }
       });
       return penalty?.tenant_id ?? null;
-    }
-
-    case 'syndicate': {
-      const syndicate = await prisma.syndicate.findUnique({
-        where: { id: classification.syndicateId },
-        select: { tenantId: true }
-      });
-      return syndicate?.tenantId ?? null;
     }
 
     default:
@@ -171,7 +179,9 @@ export async function uploadsAccessGuard(req: Request, res: Response, next: Next
       return;
     }
 
-    const allowed = await userHasTenantAccess(user.userId, tenantId, user.globalRole);
+    const allowed = classification.staffOnly
+      ? await userIsTenantStaff(user.userId, tenantId, user.globalRole)
+      : await userHasTenantAccess(user.userId, tenantId, user.globalRole);
 
     if (!allowed) {
       logger.warn('Blocked cross-tenant upload access', {
