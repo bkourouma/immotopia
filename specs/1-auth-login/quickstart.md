@@ -417,7 +417,7 @@ npx prisma migrate deploy
 
 ### Support
 
-- **Email**: support@immotopia.com
+- **Email**: support@immotopia.cloud
 - **GitHub Issues**: [Repository Issues](https://github.com/immotopia/issues)
 
 ---
@@ -476,4 +476,3 @@ echo $FRONTEND_URL
 
 **Quickstart Status**: ✅ Complete - Guide de démarrage rapide créé  
 **Last Updated**: 2025-11-12
-

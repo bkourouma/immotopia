@@ -15,6 +15,7 @@
 ### 1.1 Architecture du module Communication
 
 Le module Communication d'ImmoTopia permet de :
+
 - **Envoyer des notifications automatiques** déclenchées par des événements métier (paiements, tickets, baux, etc.)
 - **Créer des templates réutilisables** avec variables dynamiques
 - **Définir des règles de notification** pour automatiser les envois
@@ -26,6 +27,7 @@ Le module Communication d'ImmoTopia permet de :
 ### 1.2 Prérequis techniques
 
 #### Base de données
+
 ```bash
 cd packages/api
 npx prisma migrate deploy
@@ -34,6 +36,7 @@ npx prisma db seed  # Pour données de test
 ```
 
 #### Variables d'environnement (packages/api/.env)
+
 ```env
 # Base de données
 DATABASE_URL="postgresql://user:password@localhost:5432/immotopia"
@@ -59,6 +62,7 @@ TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
 ```
 
 #### Seed des données de communication
+
 > **Obsolete** : les tables `communication_templates` et `notification_rules` ont ete supprimees
 > par la migration `20260210120000_remove_communication_messaging_tables`. Les notifications sont
 > desormais pilotees par les constantes `src/constants/email-notification-*` et
@@ -67,11 +71,13 @@ TWILIO_WHATSAPP_FROM=whatsapp:+14155238886
 > `script:list-rules` ont ete retires.
 
 Ce seed créera :
+
 - 1 template email "Confirmation de paiement"
 - 1 règle "Notification paiement reçu" (active)
 - Des données de test pour historique
 
 #### Démarrage de l'application
+
 ```bash
 # Terminal 1 - Backend
 cd packages/api
@@ -88,23 +94,25 @@ npm run dev
 
 Pour tester le module, vous devez avoir dans votre base :
 
-| Donnée | Description | Comment créer |
-|--------|-------------|---------------|
-| **Tenant (Agence)** | Au moins 1 agence active | Via admin ou seeds existants |
-| **Utilisateur agence** | Compte avec accès communication | Via registration + attribution rôle |
-| **Locataire (Renter)** | Avec email et téléphone | Module locatif |
-| **Propriétaire (Owner)** | Avec email et téléphone | Module propriétés |
-| **Contact CRM** | Pour annonces | Module CRM |
-| **Bail actif** | Pour déclencher événements | Module locatif |
+| Donnée                   | Description                     | Comment créer                       |
+| ------------------------ | ------------------------------- | ----------------------------------- |
+| **Tenant (Agence)**      | Au moins 1 agence active        | Via admin ou seeds existants        |
+| **Utilisateur agence**   | Compte avec accès communication | Via registration + attribution rôle |
+| **Locataire (Renter)**   | Avec email et téléphone         | Module locatif                      |
+| **Propriétaire (Owner)** | Avec email et téléphone         | Module propriétés                   |
+| **Contact CRM**          | Pour annonces                   | Module CRM                          |
+| **Bail actif**           | Pour déclencher événements      | Module locatif                      |
 
 ---
 
 ## 2. Scénario de test complet de bout en bout
 
 ### 🎯 Objectif du scénario
+
 Tester l'ensemble du flux : création de templates → configuration de règles → déclenchement automatique → envoi manuel → consultation historique → analytics
 
 ### 📝 Durée estimée
+
 30-45 minutes
 
 ### 🔄 Étapes du scénario
@@ -143,27 +151,21 @@ Tester l'ensemble du flux : création de templates → configuration de règles 
 
 2. **Remplir le formulaire**
 
-| Champ | Valeur d'exemple |
-|-------|------------------|
-| **Nom** | `Rappel échéance loyer à venir` |
-| **Type** | `Notification` (liste déroulante : Annonce, Alerte, Notification) |
-| **Canal** | `Email` (radio ou liste : Email, WhatsApp) |
-| **Sujet** | `Rappel : Loyer à payer le {{dueDate}}` |
-| **Corps** | Voir ci-dessous |
+| Champ     | Valeur d'exemple                                                  |
+| --------- | ----------------------------------------------------------------- |
+| **Nom**   | `Rappel échéance loyer à venir`                                   |
+| **Type**  | `Notification` (liste déroulante : Annonce, Alerte, Notification) |
+| **Canal** | `Email` (radio ou liste : Email, WhatsApp)                        |
+| **Sujet** | `Rappel : Loyer à payer le {{dueDate}}`                           |
+| **Corps** | Voir ci-dessous                                                   |
 
 **Corps du message (avec variables) :**
+
 ```html
-Bonjour {{contactName}},
-
-Nous vous rappelons que votre loyer pour le bien situé au {{propertyAddress}} 
-est à payer le {{dueDate}}.
-
-Montant à régler : {{amount}} €
-
-Merci de procéder au paiement avant cette date pour éviter tout désagrément.
-
-Cordialement,
-L'équipe {{agencyName}}
+Bonjour {{contactName}}, Nous vous rappelons que votre loyer pour le bien situé
+au {{propertyAddress}} est à payer le {{dueDate}}. Montant à régler : {{amount}}
+€ Merci de procéder au paiement avant cette date pour éviter tout désagrément.
+Cordialement, L'équipe {{agencyName}}
 ```
 
 3. **Ajouter les variables disponibles**
@@ -191,15 +193,16 @@ L'équipe {{agencyName}}
 
 2. **Remplir le formulaire**
 
-| Champ | Valeur d'exemple |
-|-------|------------------|
-| **Nom** | `Confirmation paiement WhatsApp` |
-| **Type** | `Notification` |
-| **Canal** | `WhatsApp` |
-| **Sujet** | *(laissez vide pour WhatsApp)* |
-| **Corps** | Voir ci-dessous |
+| Champ     | Valeur d'exemple                 |
+| --------- | -------------------------------- |
+| **Nom**   | `Confirmation paiement WhatsApp` |
+| **Type**  | `Notification`                   |
+| **Canal** | `WhatsApp`                       |
+| **Sujet** | _(laissez vide pour WhatsApp)_   |
+| **Corps** | Voir ci-dessous                  |
 
 **Corps du message (format court pour WhatsApp) :**
+
 ```
 Bonjour {{contactName}},
 
@@ -222,35 +225,28 @@ Merci !
 
 1. **Créer un nouveau template**
 
-| Champ | Valeur d'exemple |
-|-------|------------------|
-| **Nom** | `Nouveau ticket de maintenance` |
-| **Type** | `Alerte` |
-| **Canal** | `Email` |
+| Champ     | Valeur d'exemple                                   |
+| --------- | -------------------------------------------------- |
+| **Nom**   | `Nouveau ticket de maintenance`                    |
+| **Type**  | `Alerte`                                           |
+| **Canal** | `Email`                                            |
 | **Sujet** | `Nouveau ticket #{{ticketId}} - {{ticketSubject}}` |
-| **Corps** | Voir ci-dessous |
+| **Corps** | Voir ci-dessous                                    |
 
 **Corps du message :**
+
 ```html
-Bonjour {{contactName}},
-
-Un nouveau ticket de maintenance a été créé pour le bien situé au {{propertyAddress}}.
-
-Ticket #{{ticketId}}
-Sujet : {{ticketSubject}}
-Description : {{ticketDescription}}
-Priorité : {{ticketPriority}}
-Créé le : {{createdAt}}
-
-Nous vous tiendrons informé de son avancement.
-
-Cordialement,
-Service Maintenance - {{agencyName}}
+Bonjour {{contactName}}, Un nouveau ticket de maintenance a été créé pour le
+bien situé au {{propertyAddress}}. Ticket #{{ticketId}} Sujet :
+{{ticketSubject}} Description : {{ticketDescription}} Priorité :
+{{ticketPriority}} Créé le : {{createdAt}} Nous vous tiendrons informé de son
+avancement. Cordialement, Service Maintenance - {{agencyName}}
 ```
 
 5. **Enregistrer**
 
 ##### ✅ Checkpoint ÉTAPE 2
+
 - Vous avez créé 3 templates (2 email, 1 WhatsApp)
 - Chaque template utilise des variables dynamiques
 - Les templates apparaissent dans la liste
@@ -267,17 +263,17 @@ Service Maintenance - {{agencyName}}
 
 2. **Remplir le formulaire**
 
-| Champ | Valeur d'exemple |
-|-------|------------------|
-| **Nom** | `Rappel loyer 3 jours avant échéance` |
-| **Description** | `Envoie un email aux locataires 3 jours avant l'échéance du loyer` |
-| **Événement déclencheur** | `INSTALLMENT_DUE_REMINDER` (liste déroulante) |
-| **Types de destinataires** | `[✓] Locataire` (checkboxes multiples) |
-| **Template Email** | `Rappel échéance loyer à venir` (sélecteur) |
-| **Template WhatsApp** | *(laissez vide ou None)* |
-| **Copie à l'agence** | `[ ] Oui` (case à cocher) |
-| **Délai d'envoi** | `Immédiat` (ou 0 minutes) |
-| **Statut** | `[✓] Active` (interrupteur) |
+| Champ                      | Valeur d'exemple                                                   |
+| -------------------------- | ------------------------------------------------------------------ |
+| **Nom**                    | `Rappel loyer 3 jours avant échéance`                              |
+| **Description**            | `Envoie un email aux locataires 3 jours avant l'échéance du loyer` |
+| **Événement déclencheur**  | `INSTALLMENT_DUE_REMINDER` (liste déroulante)                      |
+| **Types de destinataires** | `[✓] Locataire` (checkboxes multiples)                             |
+| **Template Email**         | `Rappel échéance loyer à venir` (sélecteur)                        |
+| **Template WhatsApp**      | _(laissez vide ou None)_                                           |
+| **Copie à l'agence**       | `[ ] Oui` (case à cocher)                                          |
+| **Délai d'envoi**          | `Immédiat` (ou 0 minutes)                                          |
+| **Statut**                 | `[✓] Active` (interrupteur)                                        |
 
 3. **Événements disponibles dans la liste déroulante**
    - `PAYMENT_RECEIVED` - Paiement reçu
@@ -308,17 +304,17 @@ Service Maintenance - {{agencyName}}
 
 1. **Créer une nouvelle règle**
 
-| Champ | Valeur d'exemple |
-|-------|------------------|
-| **Nom** | `Confirmation paiement reçu` |
-| **Description** | `Notifie le locataire et le propriétaire lors de la réception d'un paiement` |
-| **Événement déclencheur** | `PAYMENT_RECEIVED` |
-| **Types de destinataires** | `[✓] Locataire` `[✓] Propriétaire` |
-| **Template Email** | `Confirmation paiement WhatsApp` *(peut réutiliser le même template)* |
-| **Template WhatsApp** | `Confirmation paiement WhatsApp` |
-| **Copie à l'agence** | `[✓] Oui` |
-| **Délai d'envoi** | `Immédiat` |
-| **Statut** | `[✓] Active` |
+| Champ                      | Valeur d'exemple                                                             |
+| -------------------------- | ---------------------------------------------------------------------------- |
+| **Nom**                    | `Confirmation paiement reçu`                                                 |
+| **Description**            | `Notifie le locataire et le propriétaire lors de la réception d'un paiement` |
+| **Événement déclencheur**  | `PAYMENT_RECEIVED`                                                           |
+| **Types de destinataires** | `[✓] Locataire` `[✓] Propriétaire`                                           |
+| **Template Email**         | `Confirmation paiement WhatsApp` _(peut réutiliser le même template)_        |
+| **Template WhatsApp**      | `Confirmation paiement WhatsApp`                                             |
+| **Copie à l'agence**       | `[✓] Oui`                                                                    |
+| **Délai d'envoi**          | `Immédiat`                                                                   |
+| **Statut**                 | `[✓] Active`                                                                 |
 
 2. **Enregistrer**
 
@@ -326,21 +322,22 @@ Service Maintenance - {{agencyName}}
 
 1. **Créer une nouvelle règle**
 
-| Champ | Valeur d'exemple |
-|-------|------------------|
-| **Nom** | `Notification création ticket` |
-| **Description** | `Alerte le propriétaire lors de la création d'un ticket de maintenance` |
-| **Événement déclencheur** | `TICKET_CREATED` |
-| **Types de destinataires** | `[✓] Propriétaire` `[✓] Contact CRM` |
-| **Template Email** | `Nouveau ticket de maintenance` |
-| **Template WhatsApp** | *(None)* |
-| **Copie à l'agence** | `[✓] Oui` |
-| **Délai d'envoi** | `Immédiat` |
-| **Statut** | `[✓] Active` |
+| Champ                      | Valeur d'exemple                                                        |
+| -------------------------- | ----------------------------------------------------------------------- |
+| **Nom**                    | `Notification création ticket`                                          |
+| **Description**            | `Alerte le propriétaire lors de la création d'un ticket de maintenance` |
+| **Événement déclencheur**  | `TICKET_CREATED`                                                        |
+| **Types de destinataires** | `[✓] Propriétaire` `[✓] Contact CRM`                                    |
+| **Template Email**         | `Nouveau ticket de maintenance`                                         |
+| **Template WhatsApp**      | _(None)_                                                                |
+| **Copie à l'agence**       | `[✓] Oui`                                                               |
+| **Délai d'envoi**          | `Immédiat`                                                              |
+| **Statut**                 | `[✓] Active`                                                            |
 
 2. **Enregistrer**
 
 ##### ✅ Checkpoint ÉTAPE 3
+
 - Vous avez créé 3 règles actives
 - Chaque règle est liée à un événement spécifique
 - Les destinataires et templates sont bien configurés
@@ -357,14 +354,14 @@ Service Maintenance - {{agencyName}}
 
 2. **Enregistrer un nouveau paiement**
 
-| Champ | Valeur d'exemple |
-|-------|------------------|
-| **Bail** | Sélectionner un bail avec locataire |
-| **Montant** | `850.00` |
-| **Date de paiement** | Date du jour |
-| **Type** | `Loyer` |
-| **Moyen de paiement** | `Virement bancaire` |
-| **Statut** | `Confirmé` ou `Validé` |
+| Champ                 | Valeur d'exemple                    |
+| --------------------- | ----------------------------------- |
+| **Bail**              | Sélectionner un bail avec locataire |
+| **Montant**           | `850.00`                            |
+| **Date de paiement**  | Date du jour                        |
+| **Type**              | `Loyer`                             |
+| **Moyen de paiement** | `Virement bancaire`                 |
+| **Statut**            | `Confirmé` ou `Validé`              |
 
 3. **Enregistrer le paiement**
    - Cliquer sur **"Enregistrer"** ou **"Valider"**
@@ -385,14 +382,14 @@ Service Maintenance - {{agencyName}}
 
 3. **Vérifier les détails**
 
-| Colonne | Valeur attendue |
-|---------|-----------------|
-| **Type** | Notification |
-| **Canal** | Email, WhatsApp (selon règle) |
-| **Destinataire** | Nom du locataire, nom du propriétaire |
-| **Sujet** | (Si email) "Votre paiement a été reçu" |
-| **Statut** | Envoyé ✓ (ou En attente) |
-| **Date** | Date/heure de création |
+| Colonne          | Valeur attendue                        |
+| ---------------- | -------------------------------------- |
+| **Type**         | Notification                           |
+| **Canal**        | Email, WhatsApp (selon règle)          |
+| **Destinataire** | Nom du locataire, nom du propriétaire  |
+| **Sujet**        | (Si email) "Votre paiement a été reçu" |
+| **Statut**       | Envoyé ✓ (ou En attente)               |
+| **Date**         | Date/heure de création                 |
 
 4. **Cliquer sur une ligne pour voir le détail**
    - Le corps du message doit afficher les variables remplacées :
@@ -408,13 +405,13 @@ Service Maintenance - {{agencyName}}
 
 2. **Créer un nouveau ticket**
 
-| Champ | Valeur d'exemple |
-|-------|------------------|
-| **Bien concerné** | Sélectionner un bien avec propriétaire |
-| **Sujet** | `Fuite d'eau dans la cuisine` |
-| **Description** | `Le locataire signale une fuite sous l'évier de la cuisine.` |
-| **Priorité** | `Haute` |
-| **Statut** | `Nouveau` ou `Ouvert` |
+| Champ             | Valeur d'exemple                                             |
+| ----------------- | ------------------------------------------------------------ |
+| **Bien concerné** | Sélectionner un bien avec propriétaire                       |
+| **Sujet**         | `Fuite d'eau dans la cuisine`                                |
+| **Description**   | `Le locataire signale une fuite sous l'évier de la cuisine.` |
+| **Priorité**      | `Haute`                                                      |
+| **Statut**        | `Nouveau` ou `Ouvert`                                        |
 
 3. **Enregistrer le ticket**
 
@@ -425,6 +422,7 @@ Service Maintenance - {{agencyName}}
    - Sujet : "Nouveau ticket #123 - Fuite d'eau dans la cuisine"
 
 ##### ✅ Checkpoint ÉTAPE 4
+
 - Les notifications automatiques sont déclenchées par les événements
 - L'historique affiche toutes les communications créées
 - Les variables sont correctement remplacées dans les messages
@@ -441,10 +439,10 @@ Service Maintenance - {{agencyName}}
 
 2. **Rechercher un locataire ou propriétaire**
 
-| Champ | Valeur d'exemple |
-|-------|------------------|
-| **Type de destinataire** | `Locataire` (liste déroulante) |
-| **Rechercher** | Nom ou ID du locataire (ex: "Jean Dupont") |
+| Champ                    | Valeur d'exemple                           |
+| ------------------------ | ------------------------------------------ |
+| **Type de destinataire** | `Locataire` (liste déroulante)             |
+| **Rechercher**           | Nom ou ID du locataire (ex: "Jean Dupont") |
 
 3. **Cliquer sur "Rechercher" ou sélectionner dans la liste**
 
@@ -454,18 +452,19 @@ Si le destinataire n'a pas encore de préférences, un formulaire de création s
 
 **Formulaire de préférences :**
 
-| Section | Champ | Valeur d'exemple |
-|---------|-------|------------------|
-| **Canaux autorisés** | Email | `[✓] Oui` |
-|  | WhatsApp | `[✓] Oui` |
-| **Types de messages** | Annonces | `[✓] Oui` |
-|  | Alertes | `[✓] Oui` |
-|  | Notifications | `[✓] Oui` |
-| **Plages horaires (Quiet Hours)** | Début | `22:00` |
-|  | Fin | `08:00` |
-| **Événements désactivés** | *Liste optionnelle* | `[ ] INSTALLMENT_DUE_REMINDER` *(exemple : locataire ne veut pas de rappels)* |
+| Section                           | Champ               | Valeur d'exemple                                                              |
+| --------------------------------- | ------------------- | ----------------------------------------------------------------------------- |
+| **Canaux autorisés**              | Email               | `[✓] Oui`                                                                     |
+|                                   | WhatsApp            | `[✓] Oui`                                                                     |
+| **Types de messages**             | Annonces            | `[✓] Oui`                                                                     |
+|                                   | Alertes             | `[✓] Oui`                                                                     |
+|                                   | Notifications       | `[✓] Oui`                                                                     |
+| **Plages horaires (Quiet Hours)** | Début               | `22:00`                                                                       |
+|                                   | Fin                 | `08:00`                                                                       |
+| **Événements désactivés**         | _Liste optionnelle_ | `[ ] INSTALLMENT_DUE_REMINDER` _(exemple : locataire ne veut pas de rappels)_ |
 
 **Explications :**
+
 - **Canaux autorisés** : Le destinataire ne recevra des messages QUE sur les canaux cochés
 - **Types de messages** : Permet de filtrer par type (Annonce, Alerte, Notification)
 - **Quiet Hours** : Pendant cette plage, les messages sont mis en attente et envoyés après
@@ -505,6 +504,7 @@ Si le destinataire n'a pas encore de préférences, un formulaire de création s
    - Le WhatsApp ne doit PAS être créé
 
 ##### ✅ Checkpoint ÉTAPE 5
+
 - Les préférences sont correctement enregistrées
 - Les Quiet Hours reportent bien les envois
 - Les canaux désactivés sont respectés
@@ -522,29 +522,23 @@ Si le destinataire n'a pas encore de préférences, un formulaire de création s
 
 2. **Remplir le formulaire**
 
-| Champ | Valeur d'exemple |
-|-------|------------------|
-| **Type** | `Annonce` (liste déroulante : Annonce, Alerte, Notification) |
-| **Sujet** | `Fermeture exceptionnelle de l'agence` |
-| **Corps du message** | Voir ci-dessous |
-| **Canaux** | `[✓] Email` `[ ] WhatsApp` |
-| **Destinataires** | Voir ci-dessous |
-| **Pièces jointes** | *(Optionnel pour email)* |
-| **Envoi** | `Immédiat` (ou planifier à une date/heure) |
+| Champ                | Valeur d'exemple                                             |
+| -------------------- | ------------------------------------------------------------ |
+| **Type**             | `Annonce` (liste déroulante : Annonce, Alerte, Notification) |
+| **Sujet**            | `Fermeture exceptionnelle de l'agence`                       |
+| **Corps du message** | Voir ci-dessous                                              |
+| **Canaux**           | `[✓] Email` `[ ] WhatsApp`                                   |
+| **Destinataires**    | Voir ci-dessous                                              |
+| **Pièces jointes**   | _(Optionnel pour email)_                                     |
+| **Envoi**            | `Immédiat` (ou planifier à une date/heure)                   |
 
 **Corps du message :**
+
 ```html
-Bonjour,
-
-Nous vous informons que l'agence ImmoTopia sera exceptionnellement fermée 
-le vendredi 15 février 2026 pour inventaire annuel.
-
-En cas d'urgence, vous pouvez nous contacter au 06 XX XX XX XX.
-
-Nous vous remercions de votre compréhension.
-
-Cordialement,
-L'équipe ImmoTopia
+Bonjour, Nous vous informons que l'agence ImmoTopia sera exceptionnellement
+fermée le vendredi 15 février 2026 pour inventaire annuel. En cas d'urgence,
+vous pouvez nous contacter au 06 XX XX XX XX. Nous vous remercions de votre
+compréhension. Cordialement, L'équipe ImmoTopia
 ```
 
 ##### 6.2 Sélectionner les destinataires
@@ -552,16 +546,19 @@ L'équipe ImmoTopia
 Plusieurs options selon l'interface :
 
 **Option A : Sélection par groupe**
+
 - `[✓] Tous les locataires`
 - `[ ] Tous les propriétaires`
 - `[ ] Tous les contacts CRM`
 
 **Option B : Sélection manuelle (liste ou recherche)**
+
 - Rechercher "Jean Dupont" → Ajouter
 - Rechercher "Marie Martin" → Ajouter
 - Rechercher "Paul Durand" → Ajouter
 
 **Option C : Saisie format texte (selon implémentation)**
+
 ```
 RENTER:uuid-du-locataire-1
 RENTER:uuid-du-locataire-2
@@ -569,6 +566,7 @@ OWNER:uuid-du-proprietaire-1
 ```
 
 **Format attendu dans la liste :**
+
 - Type de destinataire : `RENTER`, `OWNER`, `CRM_CONTACT`, `AGENCY_USER`
 - ID : UUID du destinataire
 - Format : `TYPE:ID`
@@ -611,6 +609,7 @@ OWNER:uuid-du-proprietaire-1
    - Le message ne sera pas envoyé à l'heure prévue
 
 ##### ✅ Checkpoint ÉTAPE 6
+
 - Une annonce manuelle a été composée et envoyée
 - Les destinataires ont bien été sélectionnés
 - L'historique affiche les communications créées
@@ -631,26 +630,29 @@ L'écran doit afficher plusieurs sections :
 
 ##### Section 1 : Vue d'ensemble
 
-| Indicateur | Description | Exemple de valeur |
-|------------|-------------|-------------------|
-| **Total envoyé** | Nombre total de communications envoyées | 47 |
-| **Taux de livraison** | % de messages délivrés / envoyés | 94.5% |
-| **En attente** | Messages planifiés ou en file | 3 |
-| **Échecs** | Messages en erreur | 2 |
+| Indicateur            | Description                             | Exemple de valeur |
+| --------------------- | --------------------------------------- | ----------------- |
+| **Total envoyé**      | Nombre total de communications envoyées | 47                |
+| **Taux de livraison** | % de messages délivrés / envoyés        | 94.5%             |
+| **En attente**        | Messages planifiés ou en file           | 3                 |
+| **Échecs**            | Messages en erreur                      | 2                 |
 
 ##### Section 2 : Répartition par canal
 
 **Graphique camembert ou barres :**
+
 - Email : 35 (74%)
 - WhatsApp : 12 (26%)
 
 **Taux de livraison par canal :**
+
 - Email : 97% (34 délivrés / 35 envoyés)
 - WhatsApp : 87% (10 délivrés / 12 envoyés)
 
 ##### Section 3 : Répartition par type
 
 **Graphique barres ou camembert :**
+
 - Notifications : 28 (60%)
 - Annonces : 12 (26%)
 - Alertes : 7 (14%)
@@ -658,6 +660,7 @@ L'écran doit afficher plusieurs sections :
 ##### Section 4 : Tendances (graphique ligne)
 
 **Évolution sur 7 ou 30 derniers jours :**
+
 - Axe X : Dates
 - Axe Y : Nombre de messages
 - Courbes : Envoyés, Délivrés, Échecs
@@ -666,10 +669,10 @@ L'écran doit afficher plusieurs sections :
 
 1. **Utiliser les filtres de date**
 
-| Champ | Valeur d'exemple |
-|-------|------------------|
-| **Date de début** | `01/01/2026` |
-| **Date de fin** | `31/01/2026` |
+| Champ             | Valeur d'exemple |
+| ----------------- | ---------------- |
+| **Date de début** | `01/01/2026`     |
+| **Date de fin**   | `31/01/2026`     |
 
 2. **Cliquer sur "Appliquer"**
    - Les indicateurs et graphiques se mettent à jour
@@ -678,6 +681,7 @@ L'écran doit afficher plusieurs sections :
 ##### 7.3 Identifier les problèmes
 
 **Exemple de détection d'anomalie :**
+
 - Si le taux de livraison WhatsApp chute à 40%
   → Vérifier les variables d'environnement Twilio
   → Vérifier les numéros de téléphone des destinataires
@@ -688,6 +692,7 @@ L'écran doit afficher plusieurs sections :
   → Consulter les raisons d'échec (adresse invalide, provider erreur, etc.)
 
 ##### ✅ Checkpoint ÉTAPE 7
+
 - Le tableau de bord affiche les indicateurs clés
 - Les graphiques par canal et par type sont cohérents
 - Les filtres de période fonctionnent
@@ -702,11 +707,13 @@ L'écran doit afficher plusieurs sections :
 Pour tester cette fonctionnalité, vous pouvez :
 
 **Option A : Email invalide**
+
 1. Créer un destinataire avec email invalide : `test@invalid-domain-that-does-not-exist.xyz`
 2. Envoyer une annonce à ce destinataire
 3. Le message doit passer en statut **"Échec"**
 
 **Option B : Désactiver temporairement le provider**
+
 1. Dans `packages/api/.env`, mettre une clé API invalide
 2. Envoyer une annonce
 3. Redémarrer l'API avec la vraie clé après
@@ -723,13 +730,14 @@ Pour tester cette fonctionnalité, vous pouvez :
 3. **Cliquer sur une ligne pour voir le détail**
 
 **Détail affiché :**
-| Champ | Exemple de valeur |
-|-------|-------------------|
-| **Statut** | Échec |
-| **Raison** | `Email address is invalid` ou `Provider error: 401 Unauthorized` |
-| **Tentatives** | 1/3 |
-| **Dernière tentative** | 04/02/2026 10:45 |
-| **Prochaine tentative** | 04/02/2026 11:00 (selon politique de retry) |
+
+| Champ                   | Exemple de valeur                                                |
+| ----------------------- | ---------------------------------------------------------------- |
+| **Statut**              | Échec                                                            |
+| **Raison**              | `Email address is invalid` ou `Provider error: 401 Unauthorized` |
+| **Tentatives**          | 1/3                                                              |
+| **Dernière tentative**  | 04/02/2026 10:45                                                 |
+| **Prochaine tentative** | 04/02/2026 11:00 (selon politique de retry)                      |
 
 ##### 8.3 Corriger et réessayer
 
@@ -751,16 +759,19 @@ Pour tester cette fonctionnalité, vous pouvez :
 Le système peut réessayer automatiquement selon la configuration :
 
 **Paramètres dans le code (CommunicationService) :**
+
 - Nombre max de tentatives : 3
 - Délai entre tentatives : 5 minutes (exponentiel : 5min, 10min, 20min)
 - Après 3 échecs, le statut reste "Échec" sans nouvelle tentative
 
 **Pour tester :**
+
 1. Créer un échec (email invalide non corrigé)
 2. Attendre 5-10 minutes
 3. Vérifier le champ "Tentatives" dans l'historique (doit augmenter automatiquement)
 
 ##### ✅ Checkpoint ÉTAPE 8
+
 - Les échecs sont correctement identifiés et affichés
 - La raison de l'échec est visible
 - Le bouton "Réessayer" fonctionne
@@ -770,17 +781,17 @@ Le système peut réessayer automatiquement selon la configuration :
 
 ### 🏁 Résumé du scénario complet
 
-| Étape | Durée | Résultat attendu |
-|-------|-------|------------------|
-| 1. Connexion | 5 min | Accès au module Communication ✓ |
-| 2. Templates | 10 min | 3 templates créés (2 email, 1 WhatsApp) ✓ |
-| 3. Règles | 10 min | 3 règles actives configurées ✓ |
-| 4. Notifications auto | 8 min | Événements déclenchent des envois ✓ |
-| 5. Préférences | 5 min | Quiet hours et canaux respectés ✓ |
-| 6. Annonces manuelles | 7 min | Annonce envoyée à plusieurs destinataires ✓ |
-| 7. Analytics | 5 min | Indicateurs cohérents affichés ✓ |
-| 8. Gestion échecs | 5 min | Réessai fonctionnel ✓ |
-| **TOTAL** | **55 min** | **Module complet validé ✓** |
+| Étape                 | Durée      | Résultat attendu                            |
+| --------------------- | ---------- | ------------------------------------------- |
+| 1. Connexion          | 5 min      | Accès au module Communication ✓             |
+| 2. Templates          | 10 min     | 3 templates créés (2 email, 1 WhatsApp) ✓   |
+| 3. Règles             | 10 min     | 3 règles actives configurées ✓              |
+| 4. Notifications auto | 8 min      | Événements déclenchent des envois ✓         |
+| 5. Préférences        | 5 min      | Quiet hours et canaux respectés ✓           |
+| 6. Annonces manuelles | 7 min      | Annonce envoyée à plusieurs destinataires ✓ |
+| 7. Analytics          | 5 min      | Indicateurs cohérents affichés ✓            |
+| 8. Gestion échecs     | 5 min      | Réessai fonctionnel ✓                       |
+| **TOTAL**             | **55 min** | **Module complet validé ✓**                 |
 
 ---
 
@@ -791,33 +802,37 @@ Le système peut réessayer automatiquement selon la configuration :
 **URL** : `/tenant/:tenantId/communication/templates`
 
 #### Description
+
 Page affichant tous les templates de messages créés pour le tenant. Permet de créer, modifier, dupliquer et supprimer des templates.
 
 #### Éléments de l'interface
 
-| Élément | Description |
-|---------|-------------|
-| **En-tête** | Titre "Templates" + bouton "Nouveau template" |
-| **Barre de recherche** | Rechercher par nom de template |
-| **Filtres** | Type (Annonce, Alerte, Notification), Canal (Email, WhatsApp) |
-| **Tableau** | Liste des templates avec colonnes : Nom, Type, Canal, Date de création, Actions |
-| **Actions** | Éditer (crayon), Dupliquer (copie), Supprimer (corbeille), Prévisualiser (œil) |
-| **Pagination** | Si plus de 20 templates |
+| Élément                | Description                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------- |
+| **En-tête**            | Titre "Templates" + bouton "Nouveau template"                                   |
+| **Barre de recherche** | Rechercher par nom de template                                                  |
+| **Filtres**            | Type (Annonce, Alerte, Notification), Canal (Email, WhatsApp)                   |
+| **Tableau**            | Liste des templates avec colonnes : Nom, Type, Canal, Date de création, Actions |
+| **Actions**            | Éditer (crayon), Dupliquer (copie), Supprimer (corbeille), Prévisualiser (œil)  |
+| **Pagination**         | Si plus de 20 templates                                                         |
 
 #### Données d'exemple pour test
 
 **Template 1**
+
 - Nom : "Bienvenue nouveau locataire"
 - Type : Annonce
 - Canal : Email
 - Statut : Actif
 
 **Template 2**
+
 - Nom : "Alerte impayé loyer"
 - Type : Alerte
 - Canal : Email + WhatsApp
 
 **Template 3**
+
 - Nom : "Rappel RDV visite"
 - Type : Notification
 - Canal : WhatsApp
@@ -837,24 +852,26 @@ Page affichant tous les templates de messages créés pour le tenant. Permet de 
 **URL** : `/tenant/:tenantId/communication/templates/new` ou `/templates/:id/edit`
 
 #### Description
+
 Formulaire complet pour créer ou modifier un template de message.
 
 #### Champs du formulaire
 
-| Champ | Type | Obligatoire | Description |
-|-------|------|-------------|-------------|
-| **Nom** | Texte | ✓ | Nom unique du template (max 100 caractères) |
-| **Description** | Textarea | ✗ | Description interne (non visible par destinataire) |
-| **Type** | Select | ✓ | Annonce, Alerte, Notification |
-| **Canal** | Radio | ✓ | Email ou WhatsApp |
-| **Sujet** | Texte | Email uniquement | Sujet de l'email (max 200 caractères) |
-| **Corps** | Textarea/RichText | ✓ | Contenu du message (max 5000 caractères) |
-| **Variables** | Panel/Liste | ✗ | Liste des variables disponibles |
-| **Mode HTML** | Toggle | Email uniquement | Activer le HTML pour mise en forme |
+| Champ           | Type              | Obligatoire      | Description                                        |
+| --------------- | ----------------- | ---------------- | -------------------------------------------------- |
+| **Nom**         | Texte             | ✓                | Nom unique du template (max 100 caractères)        |
+| **Description** | Textarea          | ✗                | Description interne (non visible par destinataire) |
+| **Type**        | Select            | ✓                | Annonce, Alerte, Notification                      |
+| **Canal**       | Radio             | ✓                | Email ou WhatsApp                                  |
+| **Sujet**       | Texte             | Email uniquement | Sujet de l'email (max 200 caractères)              |
+| **Corps**       | Textarea/RichText | ✓                | Contenu du message (max 5000 caractères)           |
+| **Variables**   | Panel/Liste       | ✗                | Liste des variables disponibles                    |
+| **Mode HTML**   | Toggle            | Email uniquement | Activer le HTML pour mise en forme                 |
 
 #### Variables disponibles par contexte
 
 **Variables globales (toujours disponibles)**
+
 ```javascript
 {
   agencyName: "Nom de l'agence",
@@ -869,6 +886,7 @@ Formulaire complet pour créer ou modifier un template de message.
 ```
 
 **Variables liées aux paiements**
+
 ```javascript
 {
   amount: "Montant du paiement",
@@ -879,6 +897,7 @@ Formulaire complet pour créer ou modifier un template de message.
 ```
 
 **Variables liées aux baux**
+
 ```javascript
 {
   leaseId: "ID du bail",
@@ -890,6 +909,7 @@ Formulaire complet pour créer ou modifier un template de message.
 ```
 
 **Variables liées aux propriétés**
+
 ```javascript
 {
   propertyAddress: "Adresse complète",
@@ -900,6 +920,7 @@ Formulaire complet pour créer ou modifier un template de message.
 ```
 
 **Variables liées aux tickets**
+
 ```javascript
 {
   ticketId: "Numéro du ticket",
@@ -912,6 +933,7 @@ Formulaire complet pour créer ou modifier un template de message.
 ```
 
 **Variables liées aux échéances**
+
 ```javascript
 {
   dueDate: "Date d'échéance",
@@ -922,6 +944,7 @@ Formulaire complet pour créer ou modifier un template de message.
 ```
 
 **Variables CRM**
+
 ```javascript
 {
   dealId: "ID du deal",
@@ -960,21 +983,21 @@ Corps (HTML):
   </div>
   <div class="content">
     <p>Bonjour {{contactName}},</p>
-    
-    <p>Nous vous rappelons que votre loyer pour le bien situé au <strong>{{propertyAddress}}</strong> 
+
+    <p>Nous vous rappelons que votre loyer pour le bien situé au <strong>{{propertyAddress}}</strong>
     est à payer avant le <strong>{{dueDate}}</strong>.</p>
-    
+
     <div class="highlight">
       <p><strong>Montant à régler : {{dueAmount}} €</strong></p>
       <p>Échéance n°{{installmentNumber}}</p>
     </div>
-    
+
     <p>Merci de procéder au paiement avant cette date pour éviter tout désagrément.</p>
-    
+
     <p>Coordonnées bancaires :<br>
     IBAN : FR76 XXXX XXXX XXXX XXXX XXXX XXX<br>
     BIC : XXXXXXXX</p>
-    
+
     <p>Cordialement,<br>
     L'équipe {{agencyName}}<br>
     {{agencyPhone}} - {{agencyEmail}}</p>
@@ -1048,7 +1071,7 @@ Sujet: Travaux programmés dans votre immeuble
 Corps:
 Madame, Monsieur {{contactName}},
 
-Nous vous informons que des travaux de rénovation auront lieu dans l'immeuble situé 
+Nous vous informons que des travaux de rénovation auront lieu dans l'immeuble situé
 au {{propertyAddress}} du 15 au 20 mars 2026.
 
 Nature des travaux :
@@ -1074,6 +1097,7 @@ Cordialement,
 #### Validation du formulaire
 
 **Règles de validation :**
+
 - Nom : requis, 3-100 caractères, unique par tenant
 - Type : requis
 - Canal : requis
@@ -1082,6 +1106,7 @@ Cordialement,
 - Variables : doivent utiliser la syntaxe `{{variableName}}`
 
 **Messages d'erreur :**
+
 - "Le nom est requis"
 - "Un template avec ce nom existe déjà"
 - "Le sujet est requis pour les templates email"
@@ -1095,22 +1120,24 @@ Cordialement,
 **URL** : `/tenant/:tenantId/communication/rules`
 
 #### Description
+
 Page affichant toutes les règles de notification configurées. Permet de créer, modifier, activer/désactiver et supprimer des règles.
 
 #### Éléments de l'interface
 
-| Élément | Description |
-|---------|-------------|
-| **En-tête** | Titre "Règles de notification" + bouton "Nouvelle règle" |
-| **Barre de recherche** | Rechercher par nom de règle |
-| **Filtres** | Statut (Active, Inactive), Événement |
-| **Tableau** | Colonnes : Nom, Événement, Destinataires, Canaux, Statut, Actions |
-| **Toggle Actif/Inactif** | Interrupteur pour activer/désactiver rapidement |
-| **Actions** | Éditer, Dupliquer, Supprimer |
+| Élément                  | Description                                                       |
+| ------------------------ | ----------------------------------------------------------------- |
+| **En-tête**              | Titre "Règles de notification" + bouton "Nouvelle règle"          |
+| **Barre de recherche**   | Rechercher par nom de règle                                       |
+| **Filtres**              | Statut (Active, Inactive), Événement                              |
+| **Tableau**              | Colonnes : Nom, Événement, Destinataires, Canaux, Statut, Actions |
+| **Toggle Actif/Inactif** | Interrupteur pour activer/désactiver rapidement                   |
+| **Actions**              | Éditer, Dupliquer, Supprimer                                      |
 
 #### Données d'exemple pour test
 
 **Règle 1**
+
 ```
 Nom: Rappel loyer 3 jours avant
 Événement: INSTALLMENT_DUE_REMINDER
@@ -1120,6 +1147,7 @@ Statut: ✓ Active
 ```
 
 **Règle 2**
+
 ```
 Nom: Confirmation paiement reçu
 Événement: PAYMENT_RECEIVED
@@ -1129,6 +1157,7 @@ Statut: ✓ Active
 ```
 
 **Règle 3**
+
 ```
 Nom: Alerte ticket haute priorité
 Événement: TICKET_CREATED
@@ -1151,27 +1180,29 @@ Statut: ✗ Inactive
 **URL** : `/tenant/:tenantId/communication/rules/new` ou `/rules/:id/edit`
 
 #### Description
+
 Formulaire pour créer ou modifier une règle de notification automatique.
 
 #### Champs du formulaire
 
-| Champ | Type | Obligatoire | Description |
-|-------|------|-------------|-------------|
-| **Nom** | Texte | ✓ | Nom de la règle (max 100 caractères) |
-| **Description** | Textarea | ✗ | Description interne |
-| **Événement déclencheur** | Select | ✓ | Type d'événement qui déclenche la règle |
-| **Types de destinataires** | Checkboxes | ✓ | Locataire, Propriétaire, Contact CRM, Agence |
-| **Template Email** | Select | ✗ | Template à utiliser pour email |
-| **Template WhatsApp** | Select | ✗ | Template à utiliser pour WhatsApp |
-| **Copie à l'agence** | Checkbox | ✗ | Envoyer une copie à l'agence |
-| **Email copie agence** | Texte | Si copie | Email destinataire de la copie |
-| **Délai d'envoi** | Number | ✗ | Délai en minutes (0 = immédiat) |
-| **Conditions** | JSON/Builder | ✗ | Conditions avancées (ex: montant > 1000) |
-| **Statut** | Toggle | ✓ | Active ou Inactive |
+| Champ                      | Type         | Obligatoire | Description                                  |
+| -------------------------- | ------------ | ----------- | -------------------------------------------- |
+| **Nom**                    | Texte        | ✓           | Nom de la règle (max 100 caractères)         |
+| **Description**            | Textarea     | ✗           | Description interne                          |
+| **Événement déclencheur**  | Select       | ✓           | Type d'événement qui déclenche la règle      |
+| **Types de destinataires** | Checkboxes   | ✓           | Locataire, Propriétaire, Contact CRM, Agence |
+| **Template Email**         | Select       | ✗           | Template à utiliser pour email               |
+| **Template WhatsApp**      | Select       | ✗           | Template à utiliser pour WhatsApp            |
+| **Copie à l'agence**       | Checkbox     | ✗           | Envoyer une copie à l'agence                 |
+| **Email copie agence**     | Texte        | Si copie    | Email destinataire de la copie               |
+| **Délai d'envoi**          | Number       | ✗           | Délai en minutes (0 = immédiat)              |
+| **Conditions**             | JSON/Builder | ✗           | Conditions avancées (ex: montant > 1000)     |
+| **Statut**                 | Toggle       | ✓           | Active ou Inactive                           |
 
 #### Événements disponibles
 
 **Catégorie : Paiements**
+
 ```
 PAYMENT_RECEIVED - Paiement reçu
 PAYMENT_CONFIRMED - Paiement confirmé
@@ -1179,12 +1210,14 @@ PAYMENT_FAILED - Paiement échoué
 ```
 
 **Catégorie : Échéances**
+
 ```
 INSTALLMENT_DUE_REMINDER - Rappel échéance (X jours avant)
 INSTALLMENT_OVERDUE - Échéance dépassée
 ```
 
 **Catégorie : Baux**
+
 ```
 LEASE_ACTIVATED - Bail activé
 LEASE_ENDING_SOON - Fin de bail prochaine (30 jours)
@@ -1192,6 +1225,7 @@ LEASE_TERMINATED - Bail résilié
 ```
 
 **Catégorie : Maintenance**
+
 ```
 TICKET_CREATED - Nouveau ticket créé
 TICKET_STATUS_CHANGED - Statut ticket modifié
@@ -1200,6 +1234,7 @@ TICKET_RESOLVED - Ticket résolu
 ```
 
 **Catégorie : CRM**
+
 ```
 DEAL_CREATED - Nouveau deal créé
 DEAL_STAGE_CHANGED - Étape du deal modifiée
@@ -1208,6 +1243,7 @@ LEAD_ASSIGNED - Lead assigné
 ```
 
 **Catégorie : Propriétés**
+
 ```
 PROPERTY_PUBLISHED - Propriété publiée
 DOCUMENT_EXPIRING - Document expirant (30 jours)
@@ -1222,7 +1258,7 @@ Nom: Rappel loyer 3 jours avant échéance
 Description: Envoie un email aux locataires 3 jours avant la date d'échéance du loyer
 
 Événement: INSTALLMENT_DUE_REMINDER
-Types de destinataires: 
+Types de destinataires:
   [✓] Locataire
   [ ] Propriétaire
   [ ] Contact CRM
@@ -1339,6 +1375,7 @@ Statut: [✓] Active
 #### Validation du formulaire
 
 **Règles de validation :**
+
 - Nom : requis, 3-100 caractères
 - Événement : requis
 - Au moins 1 type de destinataire sélectionné
@@ -1347,6 +1384,7 @@ Statut: [✓] Active
 - Délai d'envoi : >= 0 minutes
 
 **Messages d'erreur :**
+
 - "Le nom est requis"
 - "Sélectionnez au moins un événement"
 - "Sélectionnez au moins un type de destinataire"
@@ -1360,34 +1398,36 @@ Statut: [✓] Active
 **URL** : `/tenant/:tenantId/communication/history`
 
 #### Description
+
 Page affichant l'historique complet des communications envoyées, planifiées, en attente ou en échec. Permet de filtrer, rechercher, consulter les détails, annuler et réessayer.
 
 #### Éléments de l'interface
 
-| Élément | Description |
-|---------|-------------|
-| **En-tête** | Titre "Historique des communications" + stats rapides |
-| **Stats rapides** | Total envoyé, Taux de livraison, En attente, Échecs |
-| **Filtres** | Type, Canal, Statut, Date début/fin, Destinataire |
-| **Barre de recherche** | Rechercher par destinataire ou sujet |
-| **Tableau** | Colonnes : Date, Type, Canal, Destinataire, Sujet, Statut, Actions |
-| **Pagination** | 20 résultats par page |
+| Élément                | Description                                                        |
+| ---------------------- | ------------------------------------------------------------------ |
+| **En-tête**            | Titre "Historique des communications" + stats rapides              |
+| **Stats rapides**      | Total envoyé, Taux de livraison, En attente, Échecs                |
+| **Filtres**            | Type, Canal, Statut, Date début/fin, Destinataire                  |
+| **Barre de recherche** | Rechercher par destinataire ou sujet                               |
+| **Tableau**            | Colonnes : Date, Type, Canal, Destinataire, Sujet, Statut, Actions |
+| **Pagination**         | 20 résultats par page                                              |
 
 #### Colonnes du tableau
 
-| Colonne | Description | Exemple |
-|---------|-------------|---------|
-| **Date** | Date/heure d'envoi ou de création | 04/02/2026 10:45 |
-| **Type** | Badge coloré : Annonce (bleu), Alerte (orange), Notification (vert) | 🔔 Notification |
-| **Canal** | Icône Email 📧 ou WhatsApp 💬 | 📧 Email |
-| **Destinataire** | Nom et type (Locataire, Propriétaire, etc.) | Jean Dupont (Locataire) |
-| **Sujet** | Sujet du message (tronqué à 50 caractères) | Rappel : Loyer à payer le... |
-| **Statut** | Badge : Envoyé ✓, Délivré ✓✓, Lu ✓✓✓, Échec ❌, En attente ⏳, Planifié 📅, Annulé 🚫 | ✓ Envoyé |
-| **Actions** | Voir détail 👁, Réessayer 🔄 (si échec), Annuler ❌ (si planifié) | 👁 🔄 |
+| Colonne          | Description                                                                           | Exemple                      |
+| ---------------- | ------------------------------------------------------------------------------------- | ---------------------------- |
+| **Date**         | Date/heure d'envoi ou de création                                                     | 04/02/2026 10:45             |
+| **Type**         | Badge coloré : Annonce (bleu), Alerte (orange), Notification (vert)                   | 🔔 Notification              |
+| **Canal**        | Icône Email 📧 ou WhatsApp 💬                                                         | 📧 Email                     |
+| **Destinataire** | Nom et type (Locataire, Propriétaire, etc.)                                           | Jean Dupont (Locataire)      |
+| **Sujet**        | Sujet du message (tronqué à 50 caractères)                                            | Rappel : Loyer à payer le... |
+| **Statut**       | Badge : Envoyé ✓, Délivré ✓✓, Lu ✓✓✓, Échec ❌, En attente ⏳, Planifié 📅, Annulé 🚫 | ✓ Envoyé                     |
+| **Actions**      | Voir détail 👁, Réessayer 🔄 (si échec), Annuler ❌ (si planifié)                      | 👁 🔄                         |
 
 #### Filtres disponibles
 
 **Filtre Type**
+
 ```
 [ ] Tous
 [ ] Annonces
@@ -1396,6 +1436,7 @@ Page affichant l'historique complet des communications envoyées, planifiées, e
 ```
 
 **Filtre Canal**
+
 ```
 [ ] Tous
 [ ] Email
@@ -1403,6 +1444,7 @@ Page affichant l'historique complet des communications envoyées, planifiées, e
 ```
 
 **Filtre Statut**
+
 ```
 [ ] Tous
 [✓] Envoyé
@@ -1415,12 +1457,14 @@ Page affichant l'historique complet des communications envoyées, planifiées, e
 ```
 
 **Filtre Période**
+
 ```
 Date de début: [04/01/2026]
 Date de fin:   [04/02/2026]
 ```
 
 **Filtre Destinataire**
+
 ```
 Type: [Locataire ▼]
 Rechercher: [Jean Dupont_____________] [🔍]
@@ -1429,6 +1473,7 @@ Rechercher: [Jean Dupont_____________] [🔍]
 #### Données d'exemple pour test
 
 **Communication 1**
+
 ```
 Date: 04/02/2026 10:32
 Type: Notification
@@ -1439,6 +1484,7 @@ Statut: ✓✓ Délivré
 ```
 
 **Communication 2**
+
 ```
 Date: 04/02/2026 09:15
 Type: Notification
@@ -1449,6 +1495,7 @@ Statut: ✓ Envoyé
 ```
 
 **Communication 3**
+
 ```
 Date: 03/02/2026 14:20
 Type: Alerte
@@ -1459,6 +1506,7 @@ Statut: ✓✓✓ Lu
 ```
 
 **Communication 4**
+
 ```
 Date: 04/02/2026 11:00
 Type: Annonce
@@ -1470,6 +1518,7 @@ Date planifiée: 04/02/2026 23:01
 ```
 
 **Communication 5**
+
 ```
 Date: 04/02/2026 08:45
 Type: Notification
@@ -1486,6 +1535,7 @@ Tentatives: 2/3
 Cliquer sur l'action "Voir détail" 👁 ouvre un panneau avec toutes les informations :
 
 **Section 1 : Informations générales**
+
 ```
 ID: comm_01HQXXXXXXXXXXXXXX
 Type: Notification
@@ -1495,6 +1545,7 @@ Statut: Envoyé ✓
 ```
 
 **Section 2 : Destinataire**
+
 ```
 Nom: Jean Dupont
 Type: Locataire (RENTER)
@@ -1503,6 +1554,7 @@ Téléphone: +33 6 12 34 56 78
 ```
 
 **Section 3 : Contenu**
+
 ```
 Sujet: Rappel : Loyer à payer le 10/02/2026
 
@@ -1510,7 +1562,7 @@ Corps:
 ---
 Bonjour Jean Dupont,
 
-Nous vous rappelons que votre loyer pour le bien situé au 15 rue de la Paix, 75001 Paris 
+Nous vous rappelons que votre loyer pour le bien situé au 15 rue de la Paix, 75001 Paris
 est à payer le 10/02/2026.
 
 Montant à régler : 850.00 €
@@ -1523,6 +1575,7 @@ L'équipe ImmoTopia
 ```
 
 **Section 4 : Historique d'envoi**
+
 ```
 Créé:              04/02/2026 10:32:15
 Mis en file:       04/02/2026 10:32:16
@@ -1532,6 +1585,7 @@ Lu:                04/02/2026 11:15:42
 ```
 
 **Section 5 : Métadonnées**
+
 ```
 Template: "Rappel paiement loyer" (ID: tpl_xxxx)
 Règle: "Rappel loyer 3 jours avant" (ID: rule_yyyy)
@@ -1544,22 +1598,26 @@ Message ID: <xxxxx@sendgrid.net>
 #### Actions disponibles
 
 **1. Voir le détail** (toujours disponible)
+
 - Icône : 👁
 - Ouvre le panneau de détail
 
 **2. Réessayer** (si statut = Échec)
+
 - Icône : 🔄
 - Relance l'envoi immédiatement
 - Confirmation : "Réessayer l'envoi de ce message ?"
 - Résultat : Statut passe en "En file d'attente"
 
 **3. Annuler** (si statut = Planifié ou En attente)
+
 - Icône : ❌
 - Annule l'envoi planifié
 - Confirmation : "Annuler cet envoi planifié ?"
 - Résultat : Statut passe en "Annulé"
 
 **4. Exporter** (sélection multiple)
+
 - Bouton : "Exporter la sélection"
 - Formats : CSV, Excel, PDF
 - Contient : Toutes les colonnes visibles
@@ -1571,33 +1629,35 @@ Message ID: <xxxxx@sendgrid.net>
 **URL** : `/tenant/:tenantId/communication/announcements`
 
 #### Description
+
 Page permettant de composer et envoyer des annonces manuelles à des groupes de destinataires, avec planification optionnelle.
 
 #### Éléments de l'interface
 
-| Élément | Description |
-|---------|-------------|
-| **En-tête** | Titre "Annonces" + bouton "Nouvelle annonce" |
-| **Historique récent** | Liste des 5 dernières annonces envoyées |
-| **Formulaire de composition** | Formulaire complet pour créer une annonce |
+| Élément                       | Description                                  |
+| ----------------------------- | -------------------------------------------- |
+| **En-tête**                   | Titre "Annonces" + bouton "Nouvelle annonce" |
+| **Historique récent**         | Liste des 5 dernières annonces envoyées      |
+| **Formulaire de composition** | Formulaire complet pour créer une annonce    |
 
 #### Formulaire de composition
 
-| Champ | Type | Obligatoire | Description |
-|-------|------|-------------|-------------|
-| **Type** | Select | ✓ | Annonce, Alerte, Notification |
-| **Sujet** | Texte | ✓ (email) | Sujet de l'email (max 200 caractères) |
-| **Corps** | Textarea/RichText | ✓ | Contenu du message |
-| **Canaux** | Checkboxes | ✓ | Email, WhatsApp |
-| **Destinataires** | Multi-select/Builder | ✓ | Sélection des destinataires |
-| **Pièces jointes** | File upload | ✗ | Uniquement pour email (max 5 fichiers, 10MB total) |
-| **Envoi** | Radio | ✓ | Immédiat ou Planifié |
-| **Date/Heure** | DateTime | Si planifié | Date et heure d'envoi |
-| **Prévisualiser** | Bouton | - | Aperçu avant envoi |
+| Champ              | Type                 | Obligatoire | Description                                        |
+| ------------------ | -------------------- | ----------- | -------------------------------------------------- |
+| **Type**           | Select               | ✓           | Annonce, Alerte, Notification                      |
+| **Sujet**          | Texte                | ✓ (email)   | Sujet de l'email (max 200 caractères)              |
+| **Corps**          | Textarea/RichText    | ✓           | Contenu du message                                 |
+| **Canaux**         | Checkboxes           | ✓           | Email, WhatsApp                                    |
+| **Destinataires**  | Multi-select/Builder | ✓           | Sélection des destinataires                        |
+| **Pièces jointes** | File upload          | ✗           | Uniquement pour email (max 5 fichiers, 10MB total) |
+| **Envoi**          | Radio                | ✓           | Immédiat ou Planifié                               |
+| **Date/Heure**     | DateTime             | Si planifié | Date et heure d'envoi                              |
+| **Prévisualiser**  | Bouton               | -           | Aperçu avant envoi                                 |
 
 #### Sélection des destinataires
 
 **Option 1 : Groupes prédéfinis**
+
 ```
 Groupes:
   [ ] Tous les locataires (47)
@@ -1607,6 +1667,7 @@ Groupes:
 ```
 
 **Option 2 : Sélection manuelle**
+
 ```
 Rechercher un destinataire:
 Type: [Locataire ▼]
@@ -1624,6 +1685,7 @@ Destinataires sélectionnés (3):
 ```
 
 **Option 3 : Import CSV**
+
 ```
 Importer une liste:
 [Choisir un fichier CSV] [Télécharger le modèle]
@@ -1645,7 +1707,7 @@ Sujet: Fermeture exceptionnelle du 15 au 17 février
 Corps:
 Madame, Monsieur,
 
-Nous vous informons que l'agence ImmoTopia sera exceptionnellement fermée 
+Nous vous informons que l'agence ImmoTopia sera exceptionnellement fermée
 du vendredi 15 février au dimanche 17 février 2026 pour cause d'inventaire annuel.
 
 Nous serons de nouveau à votre disposition dès le lundi 18 février à 9h00.
@@ -1766,6 +1828,7 @@ Envoi: [•] Immédiat ( ) Planifié
 Cliquer sur "Prévisualiser" ouvre un modal avec :
 
 **Version Email**
+
 ```
 ┌─────────────────────────────────────────┐
 │ De: ImmoTopia <noreply@immotopia.fr>   │
@@ -1783,6 +1846,7 @@ Cliquer sur "Prévisualiser" ouvre un modal avec :
 ```
 
 **Version WhatsApp**
+
 ```
 ┌─────────────────────────────────────────┐
 │ WhatsApp Business                       │
@@ -1795,12 +1859,14 @@ Cliquer sur "Prévisualiser" ouvre un modal avec :
 ```
 
 Boutons :
+
 - [Retour à l'édition]
 - [Envoyer maintenant]
 
 #### Validation et envoi
 
 **Validation du formulaire :**
+
 - Type : requis
 - Sujet : requis si Email sélectionné
 - Corps : requis, min 10 caractères
@@ -1810,6 +1876,7 @@ Boutons :
 - Pièces jointes : max 5 fichiers, 10MB total, formats : PDF, DOC, DOCX, JPG, PNG
 
 **Confirmation avant envoi :**
+
 ```
 ┌─────────────────────────────────────────┐
 │ Confirmer l'envoi                       │
@@ -1828,6 +1895,7 @@ Boutons :
 ```
 
 **Après envoi :**
+
 - Message de succès : "Annonce envoyée avec succès à 47 destinataires"
 - Redirection vers **Historique** avec filtre Type=Annonce
 - Les communications créées apparaissent dans la liste
@@ -1839,15 +1907,16 @@ Boutons :
 **URL** : `/tenant/:tenantId/communication/preferences`
 
 #### Description
+
 Page permettant de rechercher un destinataire et de gérer ses préférences de communication (canaux, types de messages, quiet hours, événements désactivés).
 
 #### Éléments de l'interface
 
-| Élément | Description |
-|---------|-------------|
-| **En-tête** | Titre "Préférences des destinataires" |
-| **Recherche** | Formulaire de recherche par type + nom/ID |
-| **Résultats** | Liste des destinataires trouvés |
+| Élément                    | Description                                         |
+| -------------------------- | --------------------------------------------------- |
+| **En-tête**                | Titre "Préférences des destinataires"               |
+| **Recherche**              | Formulaire de recherche par type + nom/ID           |
+| **Résultats**              | Liste des destinataires trouvés                     |
 | **Formulaire préférences** | Édition des préférences du destinataire sélectionné |
 
 #### Formulaire de recherche
@@ -1871,6 +1940,7 @@ Valeur: [_________________________] [🔍 Rechercher]
 ```
 
 **Exemple de recherche :**
+
 ```
 Type: Locataire
 Rechercher par: Nom
@@ -1890,6 +1960,7 @@ Résultats (2):
 Une fois un destinataire sélectionné :
 
 **En-tête du formulaire**
+
 ```
 Préférences de communication
 
@@ -1938,7 +2009,7 @@ Ne pas déranger (Quiet Hours) :
 Début: [22:00 ▼]
 Fin:   [08:00 ▼]
 
-ℹ️ Les messages programmés pendant ces horaires seront reportés 
+ℹ️ Les messages programmés pendant ces horaires seront reportés
    automatiquement après la fin de la plage.
 
 Jours concernés:
@@ -1997,6 +2068,7 @@ Format d'heure: [24h ▼]
 ```
 
 **Boutons d'action**
+
 ```
 [Réinitialiser aux valeurs par défaut]  [Annuler]  [Enregistrer les préférences]
 ```
@@ -2004,6 +2076,7 @@ Format d'heure: [24h ▼]
 #### Exemples de configurations
 
 **Configuration 1 : Locataire standard**
+
 ```
 Destinataire: Jean Dupont (Locataire)
 
@@ -2015,11 +2088,12 @@ Quiet Hours: Actif
 
 Événements désactivés: (aucun)
 
-Résultat: Jean reçoit tous les messages sur tous les canaux, 
+Résultat: Jean reçoit tous les messages sur tous les canaux,
           mais les envois entre 22h et 8h sont reportés.
 ```
 
 **Configuration 2 : Propriétaire "Email uniquement"**
+
 ```
 Destinataire: Marie Martin (Propriétaire)
 
@@ -2031,11 +2105,12 @@ Quiet Hours: Inactif
 Événements désactivés:
   - Rappels d'échéance de loyer (ne la concernent pas)
 
-Résultat: Marie reçoit uniquement par email, sans restriction horaire, 
+Résultat: Marie reçoit uniquement par email, sans restriction horaire,
           et ne reçoit pas les rappels d'échéance.
 ```
 
 **Configuration 3 : Locataire "Minimum de notifications"**
+
 ```
 Destinataire: Paul Durand (Locataire)
 
@@ -2051,11 +2126,12 @@ Quiet Hours: Actif
   - Fin de bail prochaine
   - Propriété publiée
 
-Résultat: Paul ne reçoit que les notifications importantes (paiements, tickets) 
+Résultat: Paul ne reçoit que les notifications importantes (paiements, tickets)
           par email uniquement, jamais le weekend.
 ```
 
 **Configuration 4 : Contact CRM "WhatsApp uniquement"**
+
 ```
 Destinataire: Sophie Leclerc (Contact CRM)
 
@@ -2086,16 +2162,19 @@ Résumés: Inactifs
 #### Validation
 
 **Règles de validation :**
+
 - Au moins 1 canal doit être activé
 - Si Quiet Hours actif, heure de début ≠ heure de fin
 - Impossible de désactiver "Alertes" en tant que locataire (sécurité)
 
 **Messages d'erreur :**
+
 - "Au moins un canal de communication doit être activé"
 - "Les heures de début et de fin ne peuvent pas être identiques"
 - "Les alertes ne peuvent pas être désactivées pour les locataires"
 
 **Message de succès :**
+
 ```
 ✓ Préférences enregistrées avec succès pour Jean Dupont
   Les nouvelles préférences seront appliquées dès le prochain envoi.
@@ -2108,11 +2187,13 @@ Résumés: Inactifs
 **URL** : `/tenant/:tenantId/communication/analytics`
 
 #### Description
+
 Tableau de bord affichant les indicateurs clés de performance des communications : taux de livraison, volumes par canal et type, tendances temporelles.
 
 #### Éléments de l'interface
 
 **En-tête**
+
 ```
 Analytics - Communications
 
@@ -2137,6 +2218,7 @@ Raccourcis:
 ```
 
 **Explications des KPIs :**
+
 - **Total envoyé** : Nombre de communications créées (envoyées + délivrées + lues + échecs)
 - **Taux de livraison** : (Envoyés + Délivrés + Lus) / Total envoyé × 100
 - **En attente** : Messages planifiés + en file d'attente + quiet hours
@@ -2170,12 +2252,13 @@ TOTAL       | 147   | 139     | 132      | 73  | 8      | 94.6%
 ```
 
 **Graphique barres empilées**
+
 ```
 Email    ████████████████████████████████████████ 95 ▓▓ 5
 WhatsApp ████████████████████████████ 44 ▓ 3
 
          0    10   20   30   40   50   60   70   80   90   100
-         
+
          ████ Envoyés/Délivrés    ▓▓▓▓ Échecs
 ```
 
@@ -2293,6 +2376,7 @@ Fermeture exceptionnelle agence    | 35           | 91.4%          | 45.7%
 ```
 
 **Indicateur visuel :**
+
 - Taux livraison >= 95% : ✅ Vert
 - Taux livraison 85-94% : ⚠️ Orange
 - Taux livraison < 85% : ❌ Rouge
@@ -2321,6 +2405,7 @@ Actions recommandées:
 #### Filtres et exports
 
 **Barre de filtres avancés**
+
 ```
 Filtrer les analytics:
 
@@ -2367,6 +2452,7 @@ Export:
 **Objectif** : Vérifier que le système gère correctement l'envoi d'une annonce à un grand nombre de destinataires.
 
 #### Préparation
+
 1. Créer ou avoir au moins 100 locataires dans la base de données
 2. Vérifier que la file d'attente (queue) est activée (`COMMUNICATION_QUEUE_ENABLED=true`)
 3. Surveiller les logs du backend
@@ -2401,6 +2487,7 @@ Export:
    - Vérifier le taux de livraison dans **Analytics**
 
 #### Résultats attendus
+
 - ✅ 100% des messages créés et mis en file
 - ✅ Traitement progressif sans surcharge
 - ✅ Taux de livraison > 90%
@@ -2414,6 +2501,7 @@ Export:
 **Objectif** : Vérifier que le système gère correctement les échecs (email invalide, provider down) avec retry automatique.
 
 #### Préparation
+
 1. Créer 3 locataires avec emails invalides :
    - `invalid-email-1@domain-that-does-not-exist-xyz.com`
    - `invalid@`
@@ -2455,6 +2543,7 @@ Export:
    - Le message doit passer en "Envoyé"
 
 #### Résultats attendus
+
 - ✅ Échecs détectés et enregistrés
 - ✅ Retry automatique fonctionne (3 tentatives max)
 - ✅ Raisons d'échec visibles
@@ -2470,11 +2559,13 @@ Export:
 #### Scénario 1 : Respect des canaux désactivés
 
 **Préparation**
+
 1. Locataire A : Email ✓, WhatsApp ✗
 2. Locataire B : Email ✗, WhatsApp ✓ (cas limite)
 3. Locataire C : Email ✓, WhatsApp ✓
 
 **Test**
+
 1. Créer une règle avec Email + WhatsApp pour "Paiement reçu"
 2. Enregistrer un paiement pour chaque locataire
 3. Vérifier l'historique :
@@ -2485,10 +2576,12 @@ Export:
 #### Scénario 2 : Respect des Quiet Hours
 
 **Préparation**
+
 1. Locataire D : Quiet hours 22:00 - 08:00
 2. Heure actuelle du test : 23:30 (dans la plage)
 
 **Test**
+
 1. Enregistrer un paiement pour locataire D
 2. Vérifier l'historique :
    - Statut : "Planifié" ou "En attente"
@@ -2500,10 +2593,12 @@ Export:
 #### Scénario 3 : Respect des événements désactivés
 
 **Préparation**
+
 1. Locataire E : Événement "INSTALLMENT_DUE_REMINDER" désactivé
 2. Règle active pour "INSTALLMENT_DUE_REMINDER"
 
 **Test**
+
 1. Déclencher un rappel d'échéance pour locataire E
 2. Vérifier l'historique :
    - Aucune communication créée pour locataire E ✓
@@ -2512,6 +2607,7 @@ Export:
    - Une communication créée pour cet autre locataire ✓
 
 #### Résultats attendus
+
 - ✅ 100% de respect des canaux configurés
 - ✅ Messages reportés hors quiet hours
 - ✅ Événements désactivés jamais envoyés
@@ -2526,6 +2622,7 @@ Export:
 #### Flux testé : Paiement reçu → Notification email → Historique → Analytics
 
 **Préparation**
+
 1. Locataire configuré : Jean Dupont, email valide
 2. Template créé : "Confirmation paiement"
 3. Règle active : "Paiement reçu" → Locataire → Template email
@@ -2533,6 +2630,7 @@ Export:
 #### Étapes détaillées
 
 **Étape 1 : Déclencher l'événement**
+
 1. Aller dans **Module Locatif > Paiements**
 2. Enregistrer un paiement :
    - Locataire : Jean Dupont
@@ -2542,6 +2640,7 @@ Export:
 3. Noter l'heure exacte : 10:32:15
 
 **Étape 2 : Vérifier la création de la communication (< 2 secondes)**
+
 1. Aller immédiatement dans **Communication > Historique**
 2. Vérifier qu'une ligne est créée :
    - Type : Notification
@@ -2551,6 +2650,7 @@ Export:
    - Créé à : 10:32:15
 
 **Étape 3 : Vérifier le traitement de la file (< 1 minute)**
+
 1. Attendre 30-60 secondes
 2. Rafraîchir l'historique
 3. Vérifier que le statut a changé :
@@ -2558,6 +2658,7 @@ Export:
    - Date d'envoi : 10:32:18 (3 secondes après création)
 
 **Étape 4 : Vérifier le contenu du message**
+
 1. Cliquer sur la ligne pour voir le détail
 2. Vérifier que les variables sont remplacées :
    - `{{contactName}}` → "Jean Dupont"
@@ -2566,6 +2667,7 @@ Export:
    - `{{paymentDate}}` → "04/02/2026"
 
 **Étape 5 : Vérifier la mise à jour des analytics (< 5 minutes)**
+
 1. Aller dans **Communication > Analytics**
 2. Vérifier que les compteurs ont augmenté :
    - Total envoyé : +1
@@ -2574,10 +2676,12 @@ Export:
 3. Le graphique des tendances doit afficher le point pour 04/02
 
 **Étape 6 : Simuler la livraison (si webhook configuré)**
+
 1. Si SendGrid webhook configuré, le statut doit passer à "Délivré" dans les minutes qui suivent
 2. Si le destinataire ouvre l'email, statut → "Lu"
 
 #### Résultats attendus
+
 - ✅ Communication créée en < 2 secondes après l'événement
 - ✅ Message envoyé en < 1 minute
 - ✅ Variables correctement remplacées
@@ -2585,6 +2689,7 @@ Export:
 - ✅ Statut final "Envoyé" ou "Délivré"
 
 #### Temps total du flux
+
 - De l'événement à "Envoyé" : < 1 minute
 - De l'événement aux analytics : < 5 minutes
 
@@ -2595,6 +2700,7 @@ Export:
 **Objectif** : Vérifier qu'un tenant ne peut pas voir ou envoyer de communications pour un autre tenant.
 
 #### Préparation
+
 1. Tenant A : ID = `tenant-a-uuid`
 2. Tenant B : ID = `tenant-b-uuid`
 3. Utilisateur A : Accès uniquement à Tenant A
@@ -2603,6 +2709,7 @@ Export:
 #### Tests à effectuer
 
 **Test 1 : Isolation des templates**
+
 1. Se connecter avec Utilisateur A
 2. Créer un template "Template Tenant A"
 3. Se déconnecter
@@ -2613,6 +2720,7 @@ Export:
 8. Vérifier qu'il apparaît uniquement pour Utilisateur B
 
 **Test 2 : Isolation de l'historique**
+
 1. Utilisateur A envoie une annonce
 2. Se déconnecter, se connecter avec Utilisateur B
 3. Aller dans **Historique**
@@ -2620,6 +2728,7 @@ Export:
 5. Vérifier que seules les communications de Tenant B sont visibles
 
 **Test 3 : Tentative d'accès direct par URL**
+
 1. Utilisateur A note l'ID d'un template de Tenant A : `tpl-tenant-a-123`
 2. Se déconnecter, se connecter avec Utilisateur B
 3. Tenter d'accéder directement à :
@@ -2629,6 +2738,7 @@ Export:
 4. ❌ Erreur 403 ou 404 attendue
 
 **Test 4 : Tentative d'envoi cross-tenant via API**
+
 1. Utilisateur B récupère son token d'authentification
 2. Utiliser Postman pour tenter d'envoyer une annonce au tenant A :
    ```
@@ -2638,6 +2748,7 @@ Export:
 3. ❌ Erreur 403 Forbidden attendue
 
 #### Résultats attendus
+
 - ✅ Isolation stricte des données par tenant
 - ✅ Aucune fuite d'information entre tenants
 - ✅ Erreurs 403 sur les tentatives d'accès non autorisés
@@ -2652,6 +2763,7 @@ Export:
 #### Job 1 : communication-queue-processor (toutes les minutes)
 
 **Test**
+
 1. Créer 10 communications avec `scheduled_at` = dans 2 minutes
 2. Surveiller les logs du backend
 3. Vérifier que le job démarre toutes les minutes :
@@ -2664,6 +2776,7 @@ Export:
    - Les 10 messages doivent passer de "Planifié" à "Envoyé"
 
 **Résultats attendus**
+
 - ✅ Job démarre toutes les minutes
 - ✅ Traitement en < 5 secondes pour 10 messages
 - ✅ Pas d'erreur de concurrence
@@ -2671,6 +2784,7 @@ Export:
 #### Job 2 : reminder-scheduler (tous les jours à 6h UTC)
 
 **Test**
+
 1. Créer des échéances de loyer avec `due_date` dans 1, 2, 3, 30 jours
 2. Créer des baux avec `end_date` dans 30 jours
 3. Déclencher manuellement le job (ou attendre 6h UTC) :
@@ -2683,6 +2797,7 @@ Export:
    - Notifications "Fin de bail prochaine" créées pour J-30
 
 **Résultats attendus**
+
 - ✅ Job s'exécute une fois par jour à 6h UTC
 - ✅ Rappels créés pour les bonnes échéances
 - ✅ Pas de doublon
@@ -2690,11 +2805,13 @@ Export:
 #### Job 3 : status-updater (toutes les 5 minutes)
 
 **Test**
+
 1. Envoyer un email via SendGrid
 2. Attendre que SendGrid envoie un webhook "delivered"
 3. Vérifier que le job met à jour le statut dans les 5 minutes
 
 **Résultats attendus**
+
 - ✅ Job démarre toutes les 5 minutes
 - ✅ Statuts mis à jour selon les webhooks reçus
 
@@ -2707,6 +2824,7 @@ Export:
 Utilisez cette checklist pour valider que toutes les fonctionnalités sont opérationnelles :
 
 #### Fondations
+
 - [ ] Base de données migrée avec toutes les tables communication
 - [ ] Variables d'environnement configurées (email, WhatsApp, queue)
 - [ ] Backend démarré sans erreur (port 8001)
@@ -2714,6 +2832,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 - [ ] Seed de communication exécuté (template + règle par défaut)
 
 #### Templates
+
 - [ ] Liste des templates affichée
 - [ ] Création d'un template email avec variables
 - [ ] Création d'un template WhatsApp
@@ -2723,6 +2842,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 - [ ] Variables affichées dans le sélecteur
 
 #### Règles
+
 - [ ] Liste des règles affichée
 - [ ] Création d'une règle avec 1 événement + 1 destinataire + 1 template
 - [ ] Création d'une règle multi-canal (Email + WhatsApp)
@@ -2732,6 +2852,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 - [ ] Tous les événements disponibles dans la liste
 
 #### Notifications automatiques
+
 - [ ] Paiement reçu → Notification locataire
 - [ ] Rappel échéance → Notification locataire
 - [ ] Ticket créé → Notification propriétaire
@@ -2741,6 +2862,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 - [ ] Copie à l'agence fonctionne (si activée)
 
 #### Historique
+
 - [ ] Liste des communications affichée avec pagination
 - [ ] Filtres par Type fonctionnels
 - [ ] Filtres par Canal fonctionnels
@@ -2753,6 +2875,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 - [ ] Statuts corrects (Envoyé, Délivré, Lu, Échec, etc.)
 
 #### Préférences
+
 - [ ] Recherche de destinataire fonctionne
 - [ ] Création de préférences pour un nouveau destinataire
 - [ ] Modification de préférences existantes
@@ -2762,6 +2885,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 - [ ] Types de messages désactivés respectés
 
 #### Annonces manuelles
+
 - [ ] Formulaire de composition affiché
 - [ ] Sélection de destinataires par groupe fonctionne
 - [ ] Sélection manuelle de destinataires fonctionne
@@ -2773,6 +2897,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 - [ ] Préférences respectées (canaux, types)
 
 #### Analytics
+
 - [ ] KPIs affichés (Total envoyé, Taux livraison, En attente, Échecs)
 - [ ] Graphique par canal affiché
 - [ ] Graphique par type affiché
@@ -2784,6 +2909,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 - [ ] Export PDF/Excel/CSV fonctionne (si implémenté)
 
 #### Jobs
+
 - [ ] Job queue-processor démarre automatiquement (toutes les minutes)
 - [ ] Job reminder-scheduler démarre (tous les jours à 6h UTC)
 - [ ] Job status-updater démarre (toutes les 5 minutes)
@@ -2792,6 +2918,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 - [ ] Pas d'erreur dans les logs des jobs
 
 #### Sécurité et isolation
+
 - [ ] Utilisateur ne voit que les données de son tenant
 - [ ] Tentative d'accès à un autre tenant → 403
 - [ ] Templates isolés par tenant
@@ -2805,14 +2932,17 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 #### Problème 1 : Menu Communication absent
 
 **Symptômes**
+
 - Le menu "Communication" n'apparaît pas dans la sidebar
 
 **Causes possibles**
+
 1. Rôle utilisateur sans permission communication
 2. Tenant non sélectionné
 3. Route non enregistrée dans le frontend
 
 **Solutions**
+
 1. Vérifier les permissions du compte :
    ```sql
    SELECT * FROM users WHERE id = 'user-id';
@@ -2827,14 +2957,17 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 #### Problème 2 : Erreur 403 sur toutes les routes communication
 
 **Symptômes**
+
 - Toutes les requêtes vers `/api/tenants/:tenantId/communication/*` retournent 403
 
 **Causes possibles**
+
 1. Middleware RBAC trop restrictif
 2. Token d'authentification invalide ou expiré
 3. Utilisateur n'a pas accès au tenant spécifié
 
 **Solutions**
+
 1. Vérifier les logs du backend :
    ```
    [Auth] User xxx unauthorized for tenant yyy
@@ -2846,7 +2979,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
    ```
 3. Vérifier la relation User-Tenant :
    ```sql
-   SELECT * FROM tenant_users 
+   SELECT * FROM tenant_users
    WHERE user_id = 'xxx' AND tenant_id = 'yyy';
    ```
 4. Vérifier le middleware dans `packages/api/src/middleware/`
@@ -2856,16 +2989,19 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 #### Problème 3 : Communications créées mais jamais envoyées
 
 **Symptômes**
+
 - Messages restent en statut "En file d'attente" indéfiniment
 - Aucun passage à "Envoyé"
 
 **Causes possibles**
+
 1. Job `communication-queue-processor` ne démarre pas
 2. `COMMUNICATION_QUEUE_ENABLED=false` dans .env
 3. `NODE_ENV=test` (les jobs ne démarrent pas en mode test)
 4. Erreur dans le traitement de la file
 
 **Solutions**
+
 1. Vérifier les logs du backend au démarrage :
    ```
    [Jobs] Starting communication-queue-processor (cron: */1 * * * *)
@@ -2887,10 +3023,12 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 #### Problème 4 : Emails en échec avec "Provider error"
 
 **Symptômes**
+
 - Tous les emails passent en statut "Échec"
 - Raison : "Provider error: 401 Unauthorized" ou "Network error"
 
 **Causes possibles**
+
 1. Clé API SendGrid invalide ou expirée
 2. Credentials SMTP incorrects
 3. Provider email non configuré
@@ -2899,6 +3037,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 **Solutions**
 
 **SendGrid**
+
 1. Vérifier la clé API dans `.env` :
    ```env
    EMAIL_PROVIDER=sendgrid
@@ -2915,6 +3054,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 3. Vérifier le quota SendGrid (Dashboard SendGrid)
 
 **Nodemailer (SMTP)**
+
 1. Vérifier les credentials :
    ```env
    EMAIL_PROVIDER=nodemailer
@@ -2931,15 +3071,18 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 #### Problème 5 : Variables non remplacées dans les templates
 
 **Symptômes**
+
 - Les messages reçus contiennent `{{contactName}}` au lieu du nom réel
 - Les variables restent en format brut
 
 **Causes possibles**
+
 1. Template mal enregistré (variables non parsées)
 2. Données source manquantes (ex: locataire sans nom)
 3. Erreur dans le service `NotificationEngine.resolveTemplateVariables()`
 
 **Solutions**
+
 1. Vérifier que les variables utilisent la bonne syntaxe : `{{variableName}}` (pas `{variableName}` ou `$variableName`)
 2. Vérifier les données source :
    ```sql
@@ -2955,7 +3098,10 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
    ```typescript
    const context = { contactName: "Jean", amount: "850" };
    const template = "Bonjour {{contactName}}, montant: {{amount}}";
-   const result = template.replace(/\{\{(\w+)\}\}/g, (match, key) => context[key] || match);
+   const result = template.replace(
+     /\{\{(\w+)\}\}/g,
+     (match, key) => context[key] || match,
+   );
    // Résultat attendu: "Bonjour Jean, montant: 850"
    ```
 
@@ -2964,18 +3110,21 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 #### Problème 6 : Quiet hours non respectées
 
 **Symptômes**
+
 - Les messages sont envoyés pendant les quiet hours
 - Pas de report après la plage
 
 **Causes possibles**
+
 1. Préférences du destinataire mal configurées
 2. Job `queue-processor` ne vérifie pas les quiet hours
 3. Timezone incorrecte
 
 **Solutions**
+
 1. Vérifier les préférences dans la base :
    ```sql
-   SELECT * FROM communication_preferences 
+   SELECT * FROM communication_preferences
    WHERE recipient_type = 'RENTER' AND recipient_id = 'xxx';
    -- Vérifier quiet_hours_start et quiet_hours_end
    ```
@@ -2984,7 +3133,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
    // Doit calculer scheduled_at en fonction des quiet hours
    if (preference.quiet_hours_start && preference.quiet_hours_end) {
      const now = new Date();
-     const [startHour, startMin] = preference.quiet_hours_start.split(':');
+     const [startHour, startMin] = preference.quiet_hours_start.split(":");
      // ... logique de calcul
    }
    ```
@@ -2999,24 +3148,27 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 #### Problème 7 : Analytics vides ou incohérentes
 
 **Symptômes**
+
 - Les KPIs affichent 0 alors que des communications existent
 - Les graphiques sont vides
 - Les chiffres ne correspondent pas à l'historique
 
 **Causes possibles**
+
 1. Filtres de période trop restrictifs
 2. Données dans un autre tenant
 3. Erreur dans le calcul des analytics
 4. Cache frontend
 
 **Solutions**
+
 1. Vérifier les filtres de période :
    - Élargir la période : "Tous" ou "30 derniers jours"
    - Vérifier que la date de fin >= date de début
 2. Vérifier le tenantId dans l'URL et dans les requêtes API
 3. Vérifier les données en base :
    ```sql
-   SELECT 
+   SELECT
      DATE(sent_at) as date,
      COUNT(*) as total,
      SUM(CASE WHEN status = 'SENT' THEN 1 ELSE 0 END) as sent,
@@ -3035,10 +3187,12 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 #### Problème 8 : WhatsApp en échec systématique
 
 **Symptômes**
+
 - Tous les WhatsApp passent en échec
 - Raison : "Twilio error" ou "Invalid phone number"
 
 **Causes possibles**
+
 1. Credentials Twilio invalides
 2. Numéros de téléphone mal formatés
 3. Template WhatsApp non approuvé (selon provider)
@@ -3047,6 +3201,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 **Solutions**
 
 **Credentials**
+
 1. Vérifier dans `.env` :
    ```env
    TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxx
@@ -3063,11 +3218,13 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
    ```
 
 **Format des numéros**
+
 - Les numéros doivent être au format international : `+33612345678`
 - Pas d'espaces, pas de tirets
 - Préfixe `whatsapp:` ajouté automatiquement par le provider
 
 **Vérifier le solde Twilio**
+
 - Se connecter à Twilio Dashboard
 - Vérifier le solde et les logs d'envoi
 
@@ -3076,29 +3233,32 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 #### Problème 9 : Règle active mais aucune notification déclenchée
 
 **Symptômes**
+
 - Une règle est marquée "Active"
 - Un événement se produit (ex: paiement)
 - Aucune communication créée dans l'historique
 
 **Causes possibles**
+
 1. Événement non intégré (appel à `NotificationEngine.triggerEvent()` manquant)
 2. Destinataire non résolu (ex: bail sans locataire)
 3. Template supprimé ou manquant
 4. Conditions de la règle non respectées
 
 **Solutions**
+
 1. Vérifier que l'événement appelle bien le NotificationEngine :
    ```typescript
    // Dans PaymentService ou équivalent
    await this.notificationEngine.triggerEvent({
-     type: 'PAYMENT_RECEIVED',
+     type: "PAYMENT_RECEIVED",
      tenantId: payment.tenantId,
      data: {
        paymentId: payment.id,
        leaseId: payment.leaseId,
        amount: payment.amount,
        // ...
-     }
+     },
    });
    ```
 2. Vérifier les logs du backend :
@@ -3111,7 +3271,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
    ```
 3. Si "Resolved 0 recipient(s)", vérifier les relations :
    ```sql
-   SELECT l.*, tc.* 
+   SELECT l.*, tc.*
    FROM leases l
    LEFT JOIN tenant_clients tc ON l.renter_id = tc.id
    WHERE l.id = 'lease-id';
@@ -3119,7 +3279,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
    ```
 4. Vérifier que le template existe :
    ```sql
-   SELECT * FROM communication_templates 
+   SELECT * FROM communication_templates
    WHERE id = (SELECT email_template_id FROM notification_rules WHERE id = 'rule-id');
    ```
 
@@ -3128,11 +3288,13 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 #### Problème 10 : Performances dégradées (lenteur)
 
 **Symptômes**
+
 - Chargement des pages communication très lent (> 5 secondes)
 - Historique met longtemps à afficher
 - Analytics timeout
 
 **Causes possibles**
+
 1. Table `communications` très volumineuse (> 100k lignes)
 2. Index manquants
 3. Requêtes non optimisées
@@ -3141,6 +3303,7 @@ Utilisez cette checklist pour valider que toutes les fonctionnalités sont opér
 **Solutions**
 
 **Ajouter des index en base**
+
 ```sql
 -- Index sur les colonnes les plus utilisées
 CREATE INDEX idx_communications_tenant_id ON communications(tenant_id);
@@ -3151,6 +3314,7 @@ CREATE INDEX idx_communications_tenant_status ON communications(tenant_id, statu
 ```
 
 **Optimiser les requêtes**
+
 ```typescript
 // Utiliser Prisma avec select pour limiter les colonnes
 const communications = await prisma.communication.findMany({
@@ -3166,13 +3330,14 @@ const communications = await prisma.communication.findMany({
     sentAt: true,
     // Ne pas inclure 'body' qui peut être très volumineux
   },
-  orderBy: { sentAt: 'desc' },
-  take: 20,  // Pagination
-  skip: (page - 1) * 20
+  orderBy: { sentAt: "desc" },
+  take: 20, // Pagination
+  skip: (page - 1) * 20,
 });
 ```
 
 **Activer le cache (optionnel)**
+
 ```typescript
 // Cache Redis pour analytics (1 heure)
 const cacheKey = `analytics:${tenantId}:${startDate}:${endDate}`;
@@ -3184,13 +3349,14 @@ await redis.setex(cacheKey, 3600, JSON.stringify(analytics));
 ```
 
 **Archiver les anciennes communications**
+
 ```sql
 -- Déplacer les communications > 1 an dans une table d'archive
-CREATE TABLE communications_archive AS 
-SELECT * FROM communications 
+CREATE TABLE communications_archive AS
+SELECT * FROM communications
 WHERE sent_at < NOW() - INTERVAL '1 year';
 
-DELETE FROM communications 
+DELETE FROM communications
 WHERE sent_at < NOW() - INTERVAL '1 year';
 ```
 
@@ -3201,6 +3367,7 @@ WHERE sent_at < NOW() - INTERVAL '1 year';
 #### Activer les logs détaillés
 
 **Backend (packages/api/.env)**
+
 ```env
 LOG_LEVEL=debug  # ou info, warn, error
 LOG_FORMAT=json  # ou text pour développement
@@ -3233,18 +3400,21 @@ LOG_FORMAT=json  # ou text pour développement
 #### Monitoring production (recommandations)
 
 **Métriques à suivre**
+
 - Taux de livraison global (objectif > 95%)
 - Temps de traitement de la queue (objectif < 30s)
 - Nombre d'échecs par heure (objectif < 5%)
 - Temps de réponse API /history (objectif < 500ms)
 
 **Alertes à configurer**
+
 - Taux de livraison < 85% pendant 1 heure
 - Taux d'échec > 10% pendant 15 minutes
 - Queue non traitée pendant > 5 minutes
 - Job communication-queue-processor non exécuté depuis > 3 minutes
 
 **Outils recommandés**
+
 - Logs : Sentry, Datadog, CloudWatch
 - Metrics : Prometheus + Grafana
 - Uptime : UptimeRobot, Pingdom
@@ -3255,17 +3425,20 @@ LOG_FORMAT=json  # ou text pour développement
 ### 5.4 Support et documentation
 
 **Documentation complète**
+
 - Architecture : `docs/communication/COMMUNICATION_MODULE.md`
 - Variables templates : `docs/communication/TEMPLATE_VARIABLES.md`
 - Validation checklist : `specs/010-communication-module/checklists/validation-checklist.md`
 - Guide API : Swagger disponible à `http://localhost:8001/api-docs` (si configuré)
 
 **Contacts et support**
+
 - Issue GitHub : Ouvrir une issue avec le template "Bug" ou "Feature Request"
 - Slack/Discord : Canal #module-communication
-- Email support : support@immotopia.fr
+- Email support : support@immotopia.cloud
 
 **Contribuer**
+
 - Voir `CONTRIBUTING.md` pour les guidelines
 - Toute PR doit inclure des tests
 - Respecter les conventions du `.cursorrules`
@@ -3274,7 +3447,7 @@ LOG_FORMAT=json  # ou text pour développement
 
 ## 6. Conclusion
 
-Ce guide de test complet vous permet de valider l'ensemble des fonctionnalités du module Communication d'ImmoTopia. 
+Ce guide de test complet vous permet de valider l'ensemble des fonctionnalités du module Communication d'ImmoTopia.
 
 **Points clés à retenir :**
 
@@ -3285,6 +3458,7 @@ Ce guide de test complet vous permet de valider l'ensemble des fonctionnalités 
 5. **Préférences** : Tester systématiquement le respect des préférences (canaux, quiet hours, événements désactivés)
 
 **En cas de problème :**
+
 - Consulter la section 5 "Vérifications et dépannage"
 - Vérifier les logs du backend
 - Utiliser la checklist de validation (Section 5.1)
