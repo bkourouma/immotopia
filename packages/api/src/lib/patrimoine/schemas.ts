@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { httpUrl } from '../safe-url';
 
 const uuidSchema = z.string().uuid();
 
@@ -52,7 +53,7 @@ export const createExpenseSchema = z.object({
   currency: z.string().default('XOF'),
   paidAt: z.coerce.date(),
   isCapitalized: z.boolean().default(false),
-  receiptUrl: z.string().url().optional(),
+  receiptUrl: httpUrl().optional(),
   notes: z.string().optional(),
   /** Lot 10 : moyen et compte de paiement reels. Absent : caisse par defaut. */
   paymentMethod: z.enum(['MOBILE_MONEY', 'BANK_TRANSFER', 'CASH', 'CHECK', 'CARD', 'OTHER']).optional().nullable(),
@@ -110,7 +111,7 @@ export const createDocumentSchema = z.object({
     'BUILDING_PERMIT',
     'OTHER'
   ]),
-  fileUrl: z.string().url(),
+  fileUrl: httpUrl(),
   expiresAt: z.coerce.date().optional(),
   ownerContactId: uuidSchema.optional()
 });
