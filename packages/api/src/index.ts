@@ -8,6 +8,7 @@ import { startLandLeaseAccrualJob } from './jobs/land-lease-accrual-job';
 import { startReminderSchedulerJob } from './jobs/reminder-scheduler.job';
 import { startNewsletterCampaignSchedulerJob } from './jobs/newsletter-campaign-scheduler.job';
 import { startSubscriptionUsageJob } from './jobs/subscription-usage-job';
+import { startSyndicChargeCallSchedulerJob } from './jobs/syndic-charge-call-scheduler.job';
 import { logger } from './utils/logger';
 
 /**
@@ -51,5 +52,8 @@ app.listen(PORT, () => {
     // Abonnements par packs : echeances (PAST_DUE, retraits programmes),
     // releves de consommation, alertes de seuil, rappels de fin d essai.
     startSubscriptionUsageJob();
+    // Lot S4 : appels de charges automatiques des coproprietes, chaque jour a
+    // 6 h UTC. Idempotent : une periode deja emise ne l'est jamais deux fois.
+    startSyndicChargeCallSchedulerJob();
   }
 });

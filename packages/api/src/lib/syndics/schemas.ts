@@ -28,16 +28,10 @@ export const createSyndicateSchema = z.object({
     .min(1, "L'adresse de la copropriete est obligatoire")
     .max(500, "L'adresse de la copropriete ne doit pas depasser 500 caracteres")
     .optional(),
-  registrationNo: z
-    .string()
-    .max(100, "Le numero d'immatriculation ne doit pas depasser 100 caracteres")
-    .optional(),
+  registrationNo: z.string().max(100, "Le numero d'immatriculation ne doit pas depasser 100 caracteres").optional(),
   fiscalYear: z.number().int().min(1).max(12).optional().default(1),
   syndicManagerId: z.string().uuid().optional(),
-  cadastralReference: z
-    .string()
-    .max(100, 'La reference cadastrale ne doit pas depasser 100 caracteres')
-    .optional(),
+  cadastralReference: z.string().max(100, 'La reference cadastrale ne doit pas depasser 100 caracteres').optional(),
   totalLots: z.number().int().nonnegative().default(0),
   totalBuildings: z.number().int().positive().default(1),
   // Lot S1 : agence mandante (facultative) dont l'identite figure sur les documents.
@@ -381,9 +375,25 @@ export const generateBudgetChargeCallsSchema = z
     ...periodBoundsFields,
     dueDate: z.coerce.date(),
     batchType: z.enum(['REGULAR', 'EXCEPTIONAL']),
-    currency: z.string().default('XOF')
+    currency: z.string().default('XOF'),
+    // Lot S4 : quote-part annuelle divisee par le nombre de periodes (defaut 1 = annee entiere).
+    periodsPerYear: z
+      .number()
+      .int()
+      .refine(value => [1, 2, 4, 12].includes(value), 'Nombre de periodes par an attendu : 1, 2, 4 ou 12')
+      .default(1),
+    periodIndex: z.number().int().min(1).max(12).optional()
   })
-  .superRefine(checkPeriodBounds);
+  .superRefine((value, ctx) => {
+    checkPeriodBounds(value, ctx);
+    if (value.periodIndex !== undefined && value.periodIndex > value.periodsPerYear) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Le rang de la periode depasse le nombre de periodes par an',
+        path: ['periodIndex']
+      });
+    }
+  });
 
 export const budgetListQuerySchema = z.object({
   fiscalYear: z.coerce.number().int().min(2000).optional(),
