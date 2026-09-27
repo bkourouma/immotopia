@@ -1,11 +1,8 @@
-import { promises as fs } from 'fs';
-import * as path from 'path';
 import { z } from 'zod';
-import type { Prisma } from '@prisma/client';
-import { env } from '../../config/env';
-import { getProjectRoot, getUploadsRoot } from '../../utils/project-root';
 import { NotFoundError } from '../../middleware/error-middleware';
+import { privateUploadPath, readPrivateUpload, type PrivateFile } from '../files/private-files';
 import { prisma } from '../../utils/database';
+import { findTenantPortalTicket, ownerPortalTicketWhere, type TenantPortalContext } from './portal-visibility';
 
 /**
  * Fichiers des pièces jointes de maintenance (`MaintenanceTicketAttachment`).
@@ -26,7 +23,8 @@ import { prisma } from '../../utils/database';
  *   - gestion : `GET /api/tenants/:tenantId/maintenance/files/:attachmentId`
  *     (`requireTenantAccess` + permission maintenance, pièce de l'agence) ;
  *   - portail locataire : `GET /api/portal/tenant/maintenance/:id/attachments/:attachmentId`
- *     (ticket visible dans SON portail, voir `tenantPortalTicketWhere`) ;
+ *     (ticket visible dans SON portail : son bail actif ou sa fiche CRM,
+ *     voir portal-visibility.ts) ;
  *   - portail propriétaire : `GET /api/portal/owner/maintenance/:id/attachments/:attachmentId`
  *     (ticket d'un de SES biens, voir `ownerPortalTicketWhere`).
  * Toute autre situation — pièce inexistante, d'un autre ticket, d'une autre
@@ -35,58 +33,14 @@ import { prisma } from '../../utils/database';
  * `file_url` garde sa forme historique `/uploads/maintenance/<agence>/<ticket>/<f>` :
  * c'est un identifiant de stockage, plus une URL à ouvrir.
  *
- * ---------------------------------------------------------------------------
- * Où les fichiers sont relus
- * ---------------------------------------------------------------------------
- *
- * Le service d'upload (services/maintenance-attachment-service.ts) écrit sous
- * `<racine du monorepo>/uploads`, sans tenir compte de `UPLOADS_DIR` ; le
- * serveur statique, lui, lisait `getUploadsRoot(env.UPLOADS_DIR)`. On relit
- * donc la racine de référence d'abord, puis `<racine>/uploads` : les deux
- * coïncident quand `UPLOADS_DIR` n'est pas posé.
+ * Lecture et envoi : lib/files/private-files.ts, commun à tous les fichiers
+ * privés.
  */
 
-/** Règles de visibilité d'un ticket dans les portails — une seule source. */
+// Règles de visibilité d'un ticket dans les portails : ./portal-visibility.ts,
+// partagées avec la liste, le détail et les commentaires de chaque portail.
 
-/**
- * Portail locataire : exactement le filtre du détail d'un ticket dans son
- * portail — `TenantPortalService.getMaintenanceTicketDetails` appelle
- * `getTicketById(tenantId, ticketId, tenantClientId)`, qui filtre sur
- * `tenant_id` et `tenant_contact_id = tenantClientId`.
- */
-export function tenantPortalTicketWhere(portal: {
-  tenantId: string;
-  tenantClientId: string;
-}): Prisma.MaintenanceTicketWhereInput {
-  return { tenant_id: portal.tenantId, tenant_contact_id: portal.tenantClientId };
-}
-
-/**
- * Portail propriétaire : exactement le filtre de
- * `OwnerPortalService.getMaintenanceTicketDetails` — un ticket de l'agence
- * portant sur un des biens résolus par `requireOwnerPortalAccess`.
- */
-export function ownerPortalTicketWhere(portal: {
-  tenantId: string;
-  propertyIds: string[];
-}): Prisma.MaintenanceTicketWhereInput {
-  return { tenant_id: portal.tenantId, property_id: { in: portal.propertyIds } };
-}
-
-const MIME_BY_EXTENSION: Record<string, string> = {
-  '.pdf': 'application/pdf',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.gif': 'image/gif'
-};
-
-export interface MaintenanceAttachmentFile {
-  buffer: Buffer;
-  fileName: string;
-  mimeType: string;
-}
+export type MaintenanceAttachmentFile = PrivateFile;
 
 interface StoredAttachment {
   tenant_id: string;
@@ -105,52 +59,18 @@ function assertId(value: unknown): string {
   return parsed.data;
 }
 
-/** Racines relues, dans l'ordre (voir l'en-tête). */
-export function maintenanceAttachmentReadRoots(): string[] {
-  const reference = getUploadsRoot(env.UPLOADS_DIR);
-  const writer = path.join(getProjectRoot(), 'uploads');
-  return path.resolve(reference) === path.resolve(writer) ? [reference] : [reference, writer];
-}
-
 /**
  * Chemin relatif (`maintenance/<agence>/<ticket>/<fichier>`) d'un fichier
  * déposé pour CE ticket de CETTE agence, ou `null` (autre ticket, chemin
  * suspect).
  */
 export function localMaintenanceAttachmentPath(attachment: StoredAttachment): string | null {
-  const match = /^\/uploads\/(maintenance\/([^/\\]+)\/([^/\\]+)\/([^/\\]+))$/.exec(attachment.file_url);
-  if (!match) return null;
-  const [, relative, tenantId, ticketId, fileName] = match;
-  if (tenantId !== attachment.tenant_id || ticketId !== attachment.ticket_id) return null;
-  if (fileName.includes('..') || fileName.includes('\0')) return null;
-  return relative;
+  return privateUploadPath(attachment.file_url, ['maintenance', attachment.tenant_id, attachment.ticket_id]);
 }
 
 /** Lit le fichier d'une pièce jointe DÉJÀ AUTORISÉE. 404 si absent. */
-export async function readMaintenanceAttachmentFile(attachment: StoredAttachment): Promise<MaintenanceAttachmentFile> {
-  const relative = localMaintenanceAttachmentPath(attachment);
-  if (!relative) throw new NotFoundError(NOT_FOUND);
-
-  for (const root of maintenanceAttachmentReadRoots()) {
-    const absolute = path.resolve(root, relative);
-    // Défense en profondeur : le chemin reste sous la racine.
-    if (!absolute.startsWith(path.resolve(root) + path.sep)) continue;
-    try {
-      const buffer = await fs.readFile(absolute);
-      const extension = path.extname(absolute).toLowerCase();
-      const safeName = attachment.file_name.replace(/[^\p{L}\p{N} ._-]/gu, '').trim() || `piece-jointe${extension}`;
-      return {
-        buffer,
-        fileName: safeName,
-        // Le type vient de l'extension du fichier stocké, pas du type déclaré
-        // par le navigateur au dépôt : jamais de `text/html` servi par l'API.
-        mimeType: MIME_BY_EXTENSION[extension] ?? 'application/octet-stream'
-      };
-    } catch {
-      // Essayer la racine suivante.
-    }
-  }
-  throw new NotFoundError(NOT_FOUND);
+export function readMaintenanceAttachmentFile(attachment: StoredAttachment): Promise<MaintenanceAttachmentFile> {
+  return readPrivateUpload(localMaintenanceAttachmentPath(attachment), attachment.file_name, NOT_FOUND);
 }
 
 async function findAttachment(tenantId: string, attachmentId: string) {
@@ -175,40 +95,39 @@ export async function getMaintenanceAttachmentFileForTenant(
 }
 
 /**
- * Portails : la pièce `attachmentId` du ticket `ticketId`, à condition que ce
- * ticket soit visible dans le portail (`visibility`, un des filtres
- * ci-dessus). Sinon 404, comme une pièce inexistante.
+ * Portails : la pièce `attachmentId` du ticket `ticket`, déjà reconnu visible
+ * dans le portail (`null` sinon). Toute autre situation répond 404, comme une
+ * pièce inexistante.
  */
 async function getPortalAttachmentFile(
   tenantId: string,
-  ticketId: string,
-  attachmentId: string,
-  visibility: Prisma.MaintenanceTicketWhereInput
+  ticket: { id: string } | null,
+  attachmentId: string
 ): Promise<MaintenanceAttachmentFile> {
-  const ticket = await prisma.maintenanceTicket.findFirst({
-    where: { ...visibility, id: assertId(ticketId), tenant_id: tenantId },
-    select: { id: true }
-  });
   if (!ticket) throw new NotFoundError(NOT_FOUND);
-
   const attachment = await findAttachment(tenantId, attachmentId);
   if (!attachment || attachment.ticket_id !== ticket.id) throw new NotFoundError(NOT_FOUND);
   return readMaintenanceAttachmentFile(attachment);
 }
 
-export function getMaintenanceAttachmentFileForTenantPortal(
-  portal: { tenantId: string; tenantClientId: string },
+export async function getMaintenanceAttachmentFileForTenantPortal(
+  portal: TenantPortalContext,
   ticketId: string,
   attachmentId: string
 ): Promise<MaintenanceAttachmentFile> {
-  return getPortalAttachmentFile(portal.tenantId, ticketId, attachmentId, tenantPortalTicketWhere(portal));
+  const ticket = await findTenantPortalTicket(portal, ticketId);
+  return getPortalAttachmentFile(portal.tenantId, ticket, attachmentId);
 }
 
-export function getMaintenanceAttachmentFileForOwnerPortal(
+export async function getMaintenanceAttachmentFileForOwnerPortal(
   portal: { tenantId: string; propertyIds: string[] },
   ticketId: string,
   attachmentId: string
 ): Promise<MaintenanceAttachmentFile> {
-  if (portal.propertyIds.length === 0) return Promise.reject(new NotFoundError(NOT_FOUND));
-  return getPortalAttachmentFile(portal.tenantId, ticketId, attachmentId, ownerPortalTicketWhere(portal));
+  if (portal.propertyIds.length === 0) throw new NotFoundError(NOT_FOUND);
+  const ticket = await prisma.maintenanceTicket.findFirst({
+    where: { AND: [ownerPortalTicketWhere(portal), { id: assertId(ticketId), tenant_id: portal.tenantId }] },
+    select: { id: true }
+  });
+  return getPortalAttachmentFile(portal.tenantId, ticket, attachmentId);
 }

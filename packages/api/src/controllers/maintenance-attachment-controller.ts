@@ -5,9 +5,9 @@ import { uploadAttachment } from '../services/maintenance-attachment-service';
 import {
   getMaintenanceAttachmentFileForOwnerPortal,
   getMaintenanceAttachmentFileForTenant,
-  getMaintenanceAttachmentFileForTenantPortal,
-  type MaintenanceAttachmentFile
+  getMaintenanceAttachmentFileForTenantPortal
 } from '../lib/maintenance/attachment-files';
+import { sendPrivateFile } from '../lib/files/private-files';
 
 /**
  * Upload attachment for a ticket
@@ -68,19 +68,6 @@ export async function uploadAttachmentHandler(req: Request, res: Response): Prom
 }
 
 /**
- * Réponse fichier commune aux trois routes de téléchargement — même forme que
- * `.../syndics/:syndicId/documents/:documentId/fichier`. Le fichier n'est
- * jamais servi en statique (lib/maintenance/attachment-files.ts).
- */
-function sendAttachmentFile(res: Response, file: MaintenanceAttachmentFile): void {
-  res.setHeader('Content-Type', file.mimeType);
-  res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.fileName)}`);
-  res.setHeader('Content-Length', file.buffer.length.toString());
-  res.setHeader('Cache-Control', 'private, no-store');
-  res.send(file.buffer);
-}
-
-/**
  * Gestion : GET /tenants/:tenantId/maintenance/files/:attachmentId
  *
  * `requireTenantAccess` + permission maintenance (voir maintenance-routes.ts) ;
@@ -91,7 +78,7 @@ function sendAttachmentFile(res: Response, file: MaintenanceAttachmentFile): voi
 export const downloadAttachmentHandler = asyncHandler(async (req: Request, res: Response) => {
   const tenantId = getTenantIdFromRequest(req);
   const file = await getMaintenanceAttachmentFileForTenant(tenantId, req.params.attachmentId);
-  sendAttachmentFile(res, file);
+  sendPrivateFile(res, file);
 });
 
 /**
@@ -104,13 +91,13 @@ export const downloadTenantPortalAttachmentHandler = asyncHandler(async (req: Re
   if (!req.tenantPortal) {
     throw new ForbiddenError('Accès portail locataire refusé.');
   }
-  const { tenantId, tenantClientId } = req.tenantPortal;
+  const { tenantId, tenantClientId, leaseId } = req.tenantPortal;
   const file = await getMaintenanceAttachmentFileForTenantPortal(
-    { tenantId, tenantClientId },
+    { tenantId, tenantClientId, leaseId },
     req.params.id,
     req.params.attachmentId
   );
-  sendAttachmentFile(res, file);
+  sendPrivateFile(res, file);
 });
 
 /**
@@ -129,5 +116,5 @@ export const downloadOwnerPortalAttachmentHandler = asyncHandler(async (req: Req
     req.params.id,
     req.params.attachmentId
   );
-  sendAttachmentFile(res, file);
+  sendPrivateFile(res, file);
 });

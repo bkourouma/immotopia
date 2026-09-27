@@ -2,56 +2,27 @@
 /**
  * `uploadsAccessGuard` — le service statique de `/uploads`.
  *
- *   - `/uploads/syndics/...` est refusé en accès direct, quelle que soit la
- *     session (collaborateur de l'agence compris) : ces documents ne sortent
- *     que par les routes authentifiées de lib/syndics/document-files.ts ;
- *   - documents de bien, justificatifs de paiement du portail locataire et
- *     pièces de pénalité : réservés au personnel de l'agence — un client du
- *     portail (locataire, propriétaire, copropriétaire) ne les ouvre plus
- *     par leur URL ;
- *   - `/uploads/maintenance/...` est refusé de même : les pièces jointes des
- *     tickets ne sortent que par les routes authentifiées de
- *     lib/maintenance/attachment-files.ts, qui contrôlent le ticket ;
- *   - médias d'annonce : publics, inchangé.
+ * AGENTS.md : les documents privés ne sont jamais servis en statique. La garde
+ * ne laisse passer que les médias publics par nature (photos d'annonce, logos
+ * d'agence, images WhatsApp) et répond 404 à tout le reste, quelle que soit la
+ * session — personnel de l'agence compris. Chaque fichier privé sort par une
+ * route authentifiée qui contrôle l'objet (documents de bien, pièces jointes
+ * de maintenance, preuves de paiement, justificatifs de pénalité, documents de
+ * copropriété).
  *
- * La base est la base en mémoire de `helpers/fake-prisma.ts` ; le jeton est
- * remplacé par un identifiant lisible (`verifyToken` mocké).
+ * La garde ne lit plus ni la session ni la base : la requête porte un cookie
+ * de session pour montrer qu'il ne change rien.
  */
-
-import { createFakePrisma } from '../helpers/fake-prisma';
-
-const mockPrisma = createFakePrisma();
-jest.mock('../../src/utils/database', () => ({ prisma: mockPrisma }));
-jest.mock('../../src/utils/jwt-utils', () => ({
-  verifyToken: (token: string) => (token ? { userId: token, globalRole: 'USER' } : null)
-}));
 
 import { uploadsAccessGuard } from '../../src/middleware/uploads-access-middleware';
 
-const STAFF = 'user-staff';
-const CLIENT = 'user-client';
-const OTHER_AGENCY_STAFF = 'user-other-staff';
-
-function seed() {
-  mockPrisma.reset();
-  mockPrisma.tenant.rows.push({ id: 'tenant-a', status: 'ACTIVE' }, { id: 'tenant-b', status: 'ACTIVE' });
-  mockPrisma.membership.rows.push(
-    { id: 'm-1', userId: STAFF, tenantId: 'tenant-a', status: 'ACTIVE' },
-    { id: 'm-2', userId: OTHER_AGENCY_STAFF, tenantId: 'tenant-b', status: 'ACTIVE' }
-  );
-  mockPrisma.userRole.rows.push(
-    { id: 'ur-1', userId: STAFF, tenantId: 'tenant-a', role: { scope: 'TENANT' } },
-    { id: 'ur-2', userId: OTHER_AGENCY_STAFF, tenantId: 'tenant-b', role: { scope: 'TENANT' } }
-  );
-  // Un client du portail de l'agence A (locataire, propriétaire ou copropriétaire).
-  mockPrisma.tenantClient.rows.push({ id: 'tc-1', userId: CLIENT, tenantId: 'tenant-a', clientType: 'CO_OWNER' });
-  mockPrisma.property.rows.push({ id: 'prop-1', tenantId: 'tenant-a' });
-  mockPrisma.rentalPenalty.rows.push({ id: 'pen-1', tenant_id: 'tenant-a' });
-  mockPrisma.syndicate.rows.push({ id: 'syn-1', tenantId: 'tenant-a' });
-}
-
-async function hit(path: string, userId?: string) {
-  const req: any = { method: 'GET', path, cookies: userId ? { accessToken: userId } : {}, headers: {} };
+async function hit(path: string, options: { method?: string; session?: boolean } = {}) {
+  const req: any = {
+    method: options.method ?? 'GET',
+    path,
+    cookies: options.session ? { accessToken: 'jeton-du-gestionnaire' } : {},
+    headers: {}
+  };
   const res: any = {};
   res.status = jest.fn(() => res);
   res.json = jest.fn(() => res);
@@ -60,54 +31,53 @@ async function hit(path: string, userId?: string) {
   return { served: next.mock.calls.length === 1, status: res.status.mock.calls[0]?.[0] as number | undefined };
 }
 
-beforeEach(seed);
-
-describe('uploadsAccessGuard — documents de copropriété', () => {
-  it('refuse /uploads/syndics/... en accès direct, même au personnel de l’agence', async () => {
-    expect(await hit('/syndics/syn-1/documents/reglement.pdf', STAFF)).toEqual({ served: false, status: 404 });
-    expect(await hit('/syndics/syn-1/documents/reglement.pdf', CLIENT)).toEqual({ served: false, status: 404 });
-    expect(await hit('/syndics/syn-1/documents/reglement.pdf')).toEqual({ served: false, status: 404 });
+describe('uploadsAccessGuard — médias publics', () => {
+  it.each([
+    '/properties/prop-1/photo.jpg',
+    '/properties/agency-logos/tenant-a/logo.png',
+    '/whatsapp/group-broadcast/tenant-a/image.jpg'
+  ])('%s : servi, sans session', async path => {
+    expect((await hit(path)).served).toBe(true);
   });
 });
 
-describe('uploadsAccessGuard — pièces jointes de maintenance', () => {
-  it('refuse /uploads/maintenance/... en accès direct, quelle que soit la session', async () => {
-    const path = '/maintenance/tenant-a/ticket-1/photo.jpg';
-    expect(await hit(path, STAFF)).toEqual({ served: false, status: 404 });
-    expect(await hit(path, CLIENT)).toEqual({ served: false, status: 404 });
-    expect(await hit(path, OTHER_AGENCY_STAFF)).toEqual({ served: false, status: 404 });
-    expect(await hit(path)).toEqual({ served: false, status: 404 });
-    expect(await hit('/maintenance', STAFF)).toEqual({ served: false, status: 404 });
-  });
-});
-
-describe('uploadsAccessGuard — fichiers réservés au personnel', () => {
-  const staffOnly = [
+describe('uploadsAccessGuard — dossiers privés : 404, avec ou sans session', () => {
+  const privatePaths = [
     '/properties/prop-1/documents/titre.pdf',
     '/portal/payments/tenant-a/preuve.jpg',
-    '/rental/penalties/pen-1/accord.pdf'
+    '/rental/penalties/pen-1/accord.pdf',
+    '/maintenance/tenant-a/ticket-1/photo.jpg',
+    '/syndics/syn-1/documents/reglement.pdf',
+    '/lease-inspections/tenant-a/insp-1/photo.jpg',
+    '/inconnu/fichier.pdf',
+    '/properties',
+    '/properties/prop-1'
   ];
 
-  it.each(staffOnly)('%s : servi au personnel de l’agence', async path => {
-    expect((await hit(path, STAFF)).served).toBe(true);
+  it.each(privatePaths)('%s', async path => {
+    expect(await hit(path, { session: true })).toEqual({ served: false, status: 404 });
+    expect(await hit(path)).toEqual({ served: false, status: 404 });
   });
 
-  it.each(staffOnly)('%s : refusé à un client du portail de la même agence', async path => {
-    expect(await hit(path, CLIENT)).toEqual({ served: false, status: 403 });
-  });
-
-  it.each(staffOnly)('%s : refusé au personnel d’une autre agence', async path => {
-    expect(await hit(path, OTHER_AGENCY_STAFF)).toEqual({ served: false, status: 403 });
-  });
-
-  it('un membre sans rôle d’agence n’est pas du personnel', async () => {
-    mockPrisma.userRole.rows = [];
-    expect(await hit('/properties/prop-1/documents/titre.pdf', STAFF)).toEqual({ served: false, status: 403 });
+  it.each([
+    // Un système de fichiers insensible à la casse et aux points finaux
+    // (Windows) ouvrirait ces chemins sur le dossier privé.
+    '/properties/prop-1/DOCUMENTS/titre.pdf',
+    '/properties/prop-1/documents./titre.pdf',
+    '/properties/prop-1/Documents /titre.pdf',
+    '/Maintenance/tenant-a/ticket-1/photo.jpg',
+    '/PORTAL/payments/tenant-a/preuve.jpg'
+  ])('%s : variante de casse ou de point final, refusée aussi', async path => {
+    expect(await hit(path, { session: true })).toEqual({ served: false, status: 404 });
   });
 });
 
-describe('uploadsAccessGuard — inchangé', () => {
-  it("médias d'annonce : publics", async () => {
-    expect((await hit('/properties/prop-1/photo.jpg')).served).toBe(true);
+describe('uploadsAccessGuard — requêtes invalides', () => {
+  it('refuse une remontée de dossier (400)', async () => {
+    expect(await hit('/properties/prop-1/..%2Fdocuments%2Ftitre.pdf')).toEqual({ served: false, status: 400 });
+  });
+
+  it('refuse une autre méthode que GET/HEAD (405)', async () => {
+    expect(await hit('/properties/prop-1/photo.jpg', { method: 'POST' })).toEqual({ served: false, status: 405 });
   });
 });
