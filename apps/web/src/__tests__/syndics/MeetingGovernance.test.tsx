@@ -144,12 +144,46 @@ vi.mock('antd', async () => {
 
 const mockApi = apiClient as any;
 
-const contact = (id: string, firstName: string, lastName: string) => ({ id, firstName, lastName, legalName: null, email: null });
+const contact = (id: string, firstName: string, lastName: string) => ({
+  id,
+  firstName,
+  lastName,
+  legalName: null,
+  email: null
+});
 const LOTS = [
-  { id: 'A1', lotNumber: 'ACA-A1', lotType: 'APARTMENT', generalShares: 100, ownerContactId: 'c1', owner: contact('c1', 'Awa', 'Kone') },
-  { id: 'A2', lotNumber: 'ACA-A2', lotType: 'APARTMENT', generalShares: 200, ownerContactId: 'c2', owner: contact('c2', 'Bakary', 'Diallo') },
-  { id: 'A3', lotNumber: 'ACA-A3', lotType: 'APARTMENT', generalShares: 300, ownerContactId: 'c3', owner: contact('c3', 'Chantal', 'Yao') },
-  { id: 'A4', lotNumber: 'ACA-A4', lotType: 'APARTMENT', generalShares: 400, ownerContactId: 'c4', owner: contact('c4', 'Didier', 'Kouassi') }
+  {
+    id: 'A1',
+    lotNumber: 'ACA-A1',
+    lotType: 'APARTMENT',
+    generalShares: 100,
+    ownerContactId: 'c1',
+    owner: contact('c1', 'Awa', 'Kone')
+  },
+  {
+    id: 'A2',
+    lotNumber: 'ACA-A2',
+    lotType: 'APARTMENT',
+    generalShares: 200,
+    ownerContactId: 'c2',
+    owner: contact('c2', 'Bakary', 'Diallo')
+  },
+  {
+    id: 'A3',
+    lotNumber: 'ACA-A3',
+    lotType: 'APARTMENT',
+    generalShares: 300,
+    ownerContactId: 'c3',
+    owner: contact('c3', 'Chantal', 'Yao')
+  },
+  {
+    id: 'A4',
+    lotNumber: 'ACA-A4',
+    lotType: 'APARTMENT',
+    generalShares: 400,
+    ownerContactId: 'c4',
+    owner: contact('c4', 'Didier', 'Kouassi')
+  }
 ];
 
 function buildMeeting(status: string, overrides: Record<string, unknown> = {}) {
@@ -253,15 +287,27 @@ describe('AG - statut, majorité et pouvoirs', () => {
 
   it('ouvre une AG planifiée depuis la liste', async () => {
     mockApi.get.mockResolvedValue({
-      data: { success: true, data: [{ id: 'meeting-1', syndicateId: 'syndic-1', type: 'ORDINARY', scheduledAt: '2026-10-10T18:00:00.000Z', status: 'PLANNED', quorum: 0, createdAt: '', updatedAt: '' }] }
+      data: {
+        success: true,
+        data: [
+          {
+            id: 'meeting-1',
+            syndicateId: 'syndic-1',
+            type: 'ORDINARY',
+            scheduledAt: '2026-10-10T18:00:00.000Z',
+            status: 'PLANNED',
+            quorum: 0,
+            createdAt: '',
+            updatedAt: ''
+          }
+        ]
+      }
     });
 
     renderRoute('/tenant/tenant-1/syndics/syndic-1/assemblees');
     fireEvent.click(await screen.findByRole('button', { name: 'Ouvrir la séance' }));
 
-    await waitFor(() =>
-      expect(mockApi.patch).toHaveBeenCalledWith(DETAIL_URL, { status: 'IN_PROGRESS' })
-    );
+    await waitFor(() => expect(mockApi.patch).toHaveBeenCalledWith(DETAIL_URL, { status: 'IN_PROGRESS' }));
     expect(mockMessage.success).toHaveBeenCalledWith('Séance ouverte');
     // La liste est rechargée après la transition.
     await waitFor(() => expect(mockApi.get).toHaveBeenCalledTimes(2));
@@ -339,13 +385,14 @@ describe('AG - statut, majorité et pouvoirs', () => {
 
     const proxiesCard = (await screen.findByRole('heading', { name: 'Pouvoirs' })).closest('section') as HTMLElement;
     const row = within(proxiesCard).getByText('Awa Kone').closest('tr') as HTMLElement;
-    expect(within(row).getByText('ACA-A1')).toBeTruthy();
+    // Libellé canonique (formatLotLabel) : numéro de lot, type puis tantièmes.
+    expect(within(row).getByText('ACA-A1 · Appartement · 100 tantièmes')).toBeTruthy();
     expect(within(row).getByText('Eric Mandataire')).toBeTruthy();
 
     // Saisie des votes : le lot du mandant est signalé comme représenté.
     expect(screen.getByText('Awa Kone représenté par Eric Mandataire')).toBeTruthy();
     expect(screen.getByText('Pouvoir : représenté par Eric Mandataire')).toBeTruthy();
-    expect(screen.getByText(/ACA-A1 : Pour \(représenté\)/)).toBeTruthy();
+    expect(screen.getByText(/ACA-A1 · Appartement · 100 tantièmes : Pour \(représenté\)/)).toBeTruthy();
 
     fireEvent.click(within(proxiesCard).getByRole('button', { name: 'Ajouter un pouvoir' }));
     await waitFor(() =>
@@ -353,8 +400,10 @@ describe('AG - statut, majorité et pouvoirs', () => {
     );
     const dialog = screen.getByRole('dialog', { name: 'Ajouter un pouvoir' });
     const [grantorSelect, representativeSelect] = within(dialog).getAllByRole('combobox');
-    // Mandants proposés : les copropriétaires des lots seulement, avec leurs lots.
-    expect(within(grantorSelect).getByRole('option', { name: 'Bakary Diallo (ACA-A2)' })).toBeTruthy();
+    // Mandants proposés : les copropriétaires des lots seulement, avec leur libellé de lot complet.
+    expect(
+      within(grantorSelect).getByRole('option', { name: 'Bakary Diallo (ACA-A2 · Appartement · 200 tantièmes)' })
+    ).toBeTruthy();
     expect(within(grantorSelect).queryByRole('option', { name: 'Eric Mandataire' })).toBeNull();
     // Mandataires : tout contact de l'agence, y compris hors copropriété.
     expect(within(representativeSelect).getByRole('option', { name: 'Eric Mandataire' })).toBeTruthy();
@@ -368,6 +417,28 @@ describe('AG - statut, majorité et pouvoirs', () => {
       })
     );
     expect(mockMessage.success).toHaveBeenCalledWith('Pouvoir enregistré');
+  });
+
+  it('reprend formatLotLabel pour les votes : le titre du bien lié apparaît, comme sur les autres écrans du module syndic', async () => {
+    mockApi.get.mockImplementation(async (url: string) => {
+      if (url === DETAIL_URL) {
+        const meeting = buildMeeting('IN_PROGRESS');
+        (meeting as any).syndicate = {
+          lots: [{ ...LOTS[0], property: { title: 'Villa Les Cocotiers' } }, ...LOTS.slice(1)]
+        };
+        return { data: { success: true, data: meeting } };
+      }
+      if (url === '/tenants/tenant-1/crm/contacts') {
+        return { data: { contacts: [] } };
+      }
+      throw new Error(`GET inattendu : ${url}`);
+    });
+    renderRoute('/tenant/tenant-1/syndics/syndic-1/assemblees/meeting-1');
+
+    // Avant ce correctif, le lot A1 n'affichait ni son type traduit ni le titre du bien lié dans les votes.
+    expect(
+      await screen.findByText(/ACA-A1 · Appartement · 100 tantièmes · Villa Les Cocotiers : Pour \(représenté\)/)
+    ).toBeTruthy();
   });
 
   it('retire un pouvoir et relaie le refus de l API', async () => {

@@ -8,6 +8,7 @@ import {
   normalizeMajorityRule,
   proxyForLot
 } from './meeting-governance';
+import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Text, Title } = Typography;
@@ -46,12 +47,10 @@ export const MeetingAgenda: React.FC<MeetingAgendaProps> = ({
     () =>
       lots.map(lot => {
         const proxy = proxyForLot(lot, proxies);
-        const base = `${lot.lotNumber} (${lot.lotType}) · ${lot.generalShares} ${t('tantièmes')}`;
+        const base = formatLotLabel(lot);
         return {
           value: lot.id,
-          label: proxy
-            ? `${base} · ${t('représenté par {{name}}', { name: contactName(proxy.representative) })}`
-            : base
+          label: proxy ? `${base} · ${t('représenté par {{name}}', { name: contactName(proxy.representative) })}` : base
         };
       }),
     [lots, proxies]
@@ -137,7 +136,7 @@ export const MeetingAgenda: React.FC<MeetingAgendaProps> = ({
                     const proxy = proxyForLot(lot, proxies);
                     return (
                       <Tag key={vote.id}>
-                        {lot?.lotNumber ?? vote.lotId} : {voteLabels[vote.vote]}
+                        {formatLotLabel(lot, vote.lotId)} : {voteLabels[vote.vote]}
                         {proxy ? ` (${t('représenté')})` : ''}
                       </Tag>
                     );

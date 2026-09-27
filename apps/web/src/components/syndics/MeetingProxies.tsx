@@ -6,6 +6,7 @@ import { listContacts } from '../../services/crm-service';
 import { createMeetingProxy, deleteMeetingProxy } from '../../services/syndic-service';
 import { MeetingContact, MeetingLot, MeetingProxy } from '../../types/syndic-types';
 import { contactName, lotOwnerId } from './meeting-governance';
+import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 
 const { Text } = Typography;
@@ -51,17 +52,17 @@ export const MeetingProxies: React.FC<MeetingProxiesProps> = ({
 
   // Mandants possibles : les coproprietaires des lots, chacun une fois, avec ses lots.
   const grantorOptions = useMemo(() => {
-    const byOwner = new Map<string, { contact?: MeetingContact | null; lotNumbers: string[] }>();
+    const byOwner = new Map<string, { contact?: MeetingContact | null; lotLabels: string[] }>();
     for (const lot of lots) {
       const ownerId = lotOwnerId(lot);
       if (!ownerId) continue;
-      const entry = byOwner.get(ownerId) ?? { contact: lot.owner, lotNumbers: [] };
-      entry.lotNumbers.push(lot.lotNumber);
+      const entry = byOwner.get(ownerId) ?? { contact: lot.owner, lotLabels: [] };
+      entry.lotLabels.push(formatLotLabel(lot));
       byOwner.set(ownerId, entry);
     }
     return Array.from(byOwner.entries()).map(([id, entry]) => ({
       value: id,
-      label: `${entry.contact ? contactName(entry.contact) : id} (${entry.lotNumbers.join(', ')})`
+      label: `${entry.contact ? contactName(entry.contact) : id} (${entry.lotLabels.join(', ')})`
     }));
   }, [lots]);
 
@@ -70,7 +71,7 @@ export const MeetingProxies: React.FC<MeetingProxiesProps> = ({
     for (const lot of lots) {
       const ownerId = lotOwnerId(lot);
       if (!ownerId) continue;
-      map.set(ownerId, [...(map.get(ownerId) ?? []), lot.lotNumber]);
+      map.set(ownerId, [...(map.get(ownerId) ?? []), formatLotLabel(lot)]);
     }
     return map;
   }, [lots]);
@@ -210,7 +211,9 @@ export const MeetingProxies: React.FC<MeetingProxiesProps> = ({
         cancelText={t('Annuler')}
         confirmLoading={submitting}
       >
-        {contactsError ? <Alert type="warning" showIcon message={contactsError} style={{ marginBlockEnd: 12 }} /> : null}
+        {contactsError ? (
+          <Alert type="warning" showIcon message={contactsError} style={{ marginBlockEnd: 12 }} />
+        ) : null}
         <Form form={form} layout="vertical">
           <Form.Item
             label={t('Mandant (copropriétaire représenté)')}
