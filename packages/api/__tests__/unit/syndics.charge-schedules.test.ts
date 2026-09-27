@@ -680,7 +680,7 @@ describe('avis d appel PDF : gestion et portail', () => {
     const scope: CoOwnerPortalScope = {
       tenantId: TENANT_A,
       contactIds: [AWA],
-      lots: [{ lotId: L1, syndicateId: S1, contactId: AWA, ownershipPercentage: 100 }],
+      lots: [{ lotId: L1, syndicateId: S1, contactId: AWA, ownershipPercentage: 100, ownedSince: d('2026-01-01') }],
       lotIds: [L1],
       syndicateIds: [S1]
     };
@@ -690,6 +690,26 @@ describe('avis d appel PDF : gestion et portail', () => {
     await expect(
       getChargeCallNoticeForCoOwner({ ...scope, tenantId: TENANT_B, lots: [], lotIds: [], syndicateIds: [] }, callL1.id)
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('portail : un appel anterieur a l acquisition du lot (ownedSince) repond 404, un appel posterieur sert le PDF', async () => {
+    expect(callL1.periodStart).toEqual(d('2026-09-01'));
+    const scopeSince = (ownedSince: Date): CoOwnerPortalScope => ({
+      tenantId: TENANT_A,
+      contactIds: [AWA],
+      lots: [{ lotId: L1, syndicateId: S1, contactId: AWA, ownershipPercentage: 100, ownedSince }],
+      lotIds: [L1],
+      syndicateIds: [S1]
+    });
+    // Nouveau proprietaire depuis le 15/09 : l'appel de septembre est celui de l'ancien proprietaire.
+    await expect(getChargeCallNoticeForCoOwner(scopeSince(d('2026-09-15')), callL1.id)).rejects.toMatchObject({
+      statusCode: 404,
+      message: 'Appel de charges introuvable.'
+    });
+    // Acquisition anterieure a la periode : l'avis est servi.
+    const file = await getChargeCallNoticeForCoOwner(scopeSince(d('2026-08-15')), callL1.id);
+    expect(file.mimeType).toBe('application/pdf');
+    expect(file.buffer.subarray(0, 5).toString()).toBe('%PDF-');
   });
 });
 
@@ -791,7 +811,7 @@ describe('destinataire de l avis', () => {
     const scope: CoOwnerPortalScope = {
       tenantId: TENANT_A,
       contactIds: [AWA],
-      lots: [{ lotId: L2, syndicateId: S1, contactId: AWA, ownershipPercentage: 100 }],
+      lots: [{ lotId: L2, syndicateId: S1, contactId: AWA, ownershipPercentage: 100, ownedSince: d('2026-01-01') }],
       lotIds: [L2],
       syndicateIds: [S1]
     };
@@ -1039,7 +1059,7 @@ describe('avis d appel : ni signature ni cachet', () => {
       {
         tenantId: TENANT_A,
         contactIds: [AWA],
-        lots: [{ lotId: L1, syndicateId: S1, contactId: AWA, ownershipPercentage: 100 }],
+        lots: [{ lotId: L1, syndicateId: S1, contactId: AWA, ownershipPercentage: 100, ownedSince: d('2026-01-01') }],
         lotIds: [L1],
         syndicateIds: [S1]
       },

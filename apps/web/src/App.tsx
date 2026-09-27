@@ -632,6 +632,15 @@ const CoOwnerChargeCalls = lazy(
 );
 const CoOwnerDocuments = lazy(() => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/Documents'));
 const CoOwnerMeetings = lazy(() => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/Meetings'));
+// Lot S5 (besoin 2) : paiements, quittances, suivi mensuel, fiche de la copropriété.
+const CoOwnerPayments = lazy(() => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/Payments'));
+const CoOwnerReceipts = lazy(() => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/Receipts'));
+const CoOwnerMonthlyTracking = lazy(
+  () => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/MonthlyTracking')
+);
+const CoOwnerSyndicateSheet = lazy(
+  () => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/Syndicate')
+);
 const CoOwnerPortalNotFound = lazy(
   () => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/PortalNotFound')
 );
@@ -1223,6 +1232,11 @@ function App() {
                           <Route path="appels" element={<CoOwnerChargeCalls />} />
                           <Route path="documents" element={<CoOwnerDocuments />} />
                           <Route path="assemblees" element={<CoOwnerMeetings />} />
+                          {/* Lot S5 (besoin 2) */}
+                          <Route path="paiements" element={<CoOwnerPayments />} />
+                          <Route path="quittances" element={<CoOwnerReceipts />} />
+                          <Route path="suivi-mensuel" element={<CoOwnerMonthlyTracking />} />
+                          <Route path="ma-copropriete" element={<CoOwnerSyndicateSheet />} />
                           {/* Pas de page de détail d'AG ni de document : toute autre
                         adresse du portail le dit, dans la coquille du portail. */}
                           <Route path="*" element={<CoOwnerPortalNotFound />} />

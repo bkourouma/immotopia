@@ -18,6 +18,7 @@ import { readCoOwnerContactIds } from '../../src/lib/syndics/coowner-portal';
 function seed() {
   mockPrisma.reset();
   mockPrisma.tenant.rows.push({ id: 'tenant-a', status: 'ACTIVE' }, { id: 'tenant-b', status: 'ACTIVE' });
+  mockPrisma.user.rows.push({ id: 'user-1', isActive: true });
   mockPrisma.tenantClient.rows.push(
     // Plus ancien, mais sans lien de copropriété : un simple locataire.
     { id: 'tc-renter', userId: 'user-1', tenantId: 'tenant-b', createdAt: new Date('2025-01-01'), details: {} },
@@ -37,6 +38,7 @@ function seed() {
     lotId: 'lot-1',
     contactId: 'contact-1',
     ownershipPercentage: 50,
+    ownedSince: new Date('2025-06-01'),
     ownedUntil: null,
     isActive: true,
     portalAccessEnabled: true,
@@ -85,6 +87,31 @@ describe('requireCoOwnerPortalAccess', () => {
     await requireCoOwnerPortalAccess({ user: { userId: 'user-1' }, headers: {} } as any, {} as any, next);
 
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+  });
+
+  it('expose le début de détention de chaque lot (audit S5)', async () => {
+    const req: any = { user: { userId: 'user-1' }, headers: {} };
+    await requireCoOwnerPortalAccess(req, {} as any, jest.fn());
+    expect(req.coOwnerPortal.scope.lots[0].ownedSince).toEqual(new Date('2025-06-01'));
+  });
+
+  it("une détention qui n'a pas encore commencé n'ouvre rien", async () => {
+    mockPrisma.lotOwnerProfile.rows[0].ownedSince = new Date('2099-01-01');
+    const next = jest.fn();
+    await requireCoOwnerPortalAccess({ user: { userId: 'user-1' }, headers: {} } as any, {} as any, next);
+
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+  });
+
+  it('compte désactivé ou introuvable : 403, même avec une session valide', async () => {
+    mockPrisma.user.rows[0].isActive = false;
+    const inactive = jest.fn();
+    await requireCoOwnerPortalAccess({ user: { userId: 'user-1' }, headers: {} } as any, {} as any, inactive);
+    expect(inactive).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+
+    const unknown = jest.fn();
+    await requireCoOwnerPortalAccess({ user: { userId: 'user-inconnu' }, headers: {} } as any, {} as any, unknown);
+    expect(unknown).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
   });
 
   it('sans session : 401', async () => {

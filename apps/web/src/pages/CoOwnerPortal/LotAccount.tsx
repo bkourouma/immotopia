@@ -1,16 +1,74 @@
-import React from 'react';
-import { Button, Card, Space, Typography } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import React, { useState } from 'react';
+import { Button, Card, DatePicker, Space, Typography } from 'antd';
+import { ArrowLeftOutlined, DownloadOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { ColumnsType } from 'antd/es/table';
+import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import { DataCard, DataView, MoneyValue, SkeletonList, SkeletonStats, StateBlock } from '../../components/primitives';
+import { feedback } from '../../lib/feedback';
 import { t } from '../../i18n/t';
-import { getMyLotAccount, listMyChargeCalls, type CoOwnerTransaction } from '../../services/coowner-portal-service';
+import {
+  downloadCoOwnerLotStatement,
+  getMyLotAccount,
+  listMyChargeCalls,
+  type CoOwnerTransaction
+} from '../../services/coowner-portal-service';
+import { saveBlob } from '../../utils/save-blob';
 import { ChargeCallsTable } from './ChargeCallsTable';
 import { BalanceDirectionTag, balanceDirectionHint, lotTypeLabel, transactionTypeLabel } from './labels';
-import { isNotFound, portalErrorMessage } from './portal-error';
+import { blobErrorMessage, isNotFound, portalErrorMessage } from './portal-error';
+
+/** `AAAA-MM-JJ`, ou `undefined` si la date n'est pas posée. */
+function isoDayOf(value: Dayjs | null | undefined): string | undefined {
+  return value ? value.format('YYYY-MM-DD') : undefined;
+}
+
+/** Bouton « Télécharger mon relevé (PDF) » : période facultative. */
+function StatementDownload({ lotId, lotNumber }: { lotId: string; lotNumber: string }) {
+  const [range, setRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const download = async () => {
+    setLoading(true);
+    try {
+      const { blob, filename } = await downloadCoOwnerLotStatement(
+        lotId,
+        {
+          from: isoDayOf(range?.[0]),
+          to: isoDayOf(range?.[1])
+        },
+        t('Relevé lot {{lotNumber}}.pdf', { lotNumber })
+      );
+      saveBlob(blob, filename);
+    } catch (error) {
+      feedback.error(await blobErrorMessage(error, t('Téléchargement impossible.')));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Space direction="vertical" size={4} style={{ width: '100%' }}>
+      <Space wrap size="middle">
+        <DatePicker.RangePicker
+          format="DD/MM/YYYY"
+          placeholder={[t('Depuis le'), t("Jusqu'au")]}
+          value={range as [Dayjs, Dayjs] | null}
+          onChange={value => setRange(value as [Dayjs | null, Dayjs | null] | null)}
+          aria-label={t('Période du relevé')}
+        />
+        <Button icon={<DownloadOutlined />} loading={loading} onClick={() => void download()}>
+          {t('Télécharger mon relevé (PDF)')}
+        </Button>
+      </Space>
+      <Text type="secondary" style={{ fontSize: 'var(--font-size-caption)' }}>
+        {t('30 dernières opérations depuis votre acquisition.')}
+      </Text>
+    </Space>
+  );
+}
 
 const { Title, Text } = Typography;
 
@@ -129,6 +187,10 @@ export default function CoOwnerLotAccount() {
         ) : (
           <Text type="secondary">{t("Aucun compte n'est encore ouvert pour ce lot.")}</Text>
         )}
+      </Card>
+
+      <Card title={t('Relevé de compte')}>
+        <StatementDownload lotId={lotId} lotNumber={lot.lotNumber} />
       </Card>
 
       <Card title={t('Mouvements du compte')}>

@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/database';
 import { NotFoundError } from '../../middleware/error-middleware';
 import { isExternalDocumentUrl, localSyndicateDocumentPath, readSyndicateDocumentFile } from './document-files';
@@ -62,6 +63,13 @@ export interface CoOwnerLotScope {
   syndicateId: string;
   contactId: string;
   ownershipPercentage: number;
+  /**
+   * Début de la détention (`LotOwnerProfile.ownedSince`). Les lectures
+   * financières du portail (paiements, compte, relevé, suivi mensuel) ne
+   * remontent jamais avant : l'historique de l'ancien propriétaire du lot
+   * reste réservé à la gestion (audit S5).
+   */
+  ownedSince: Date;
 }
 
 export interface CoOwnerPortalScope {
@@ -97,8 +105,9 @@ export async function resolveCoOwnerScope(
   if (contactIds.length === 0) return emptyScope(tenantId);
 
   const profiles = await prisma.lotOwnerProfile.findMany({
-    where: { contactId: { in: contactIds }, isActive: true, portalAccessEnabled: true },
-    select: { lotId: true, contactId: true, ownershipPercentage: true, ownedUntil: true },
+    // Une détention qui n'a pas encore commencé n'ouvre rien (audit S5).
+    where: { contactId: { in: contactIds }, isActive: true, portalAccessEnabled: true, ownedSince: { lte: now } },
+    select: { lotId: true, contactId: true, ownershipPercentage: true, ownedSince: true, ownedUntil: true },
     orderBy: { createdAt: 'asc' }
   });
   const current = profiles.filter(profile => !profile.ownedUntil || profile.ownedUntil.getTime() >= now.getTime());
@@ -129,7 +138,8 @@ export async function resolveCoOwnerScope(
       lotId: profile.lotId,
       syndicateId,
       contactId: profile.contactId,
-      ownershipPercentage: Number(profile.ownershipPercentage)
+      ownershipPercentage: Number(profile.ownershipPercentage),
+      ownedSince: profile.ownedSince
     });
   }
 
@@ -255,7 +265,10 @@ export async function getCoOwnerLotAccount(scope: CoOwnerPortalScope, lotId: str
   });
   const rows = account
     ? await prisma.ownerAccountTransaction.findMany({
-        where: { accountId: account.id },
+        // Seulement depuis l'acquisition du lot : les mouvements de l'ancien
+        // propriétaire ne sont pas les siens (audit S5). Le solde affiché
+        // reste celui du compte du lot, à ce jour.
+        where: { accountId: account.id, transactionDate: { gte: lotScope.ownedSince } },
         orderBy: [{ transactionDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
         take: 200,
         select: {
@@ -319,6 +332,24 @@ export async function getCoOwnerLotAccount(scope: CoOwnerPortalScope, lotId: str
 // 3. Appels de charges
 // ---------------------------------------------------------------------------
 
+/**
+ * Appels des lots `lotIds` postérieurs à l'acquisition, lot par lot : début
+ * de période >= `ownedSince` s'il est renseigné, sinon échéance >=
+ * `ownedSince`. Les appels de l'ancien propriétaire restent à la gestion
+ * (audit S5). À réutiliser par toute lecture d'un appel du portail (un appel
+ * antérieur répond alors le même 404 qu'un appel inconnu).
+ */
+export function ownedChargeCallsWhere(scope: CoOwnerPortalScope, lotIds: string[]): Prisma.ChargeCallWhereInput {
+  const owned = scope.lots.filter(lot => lotIds.includes(lot.lotId));
+  return {
+    syndicateId: { in: scope.syndicateIds },
+    OR: owned.flatMap(lot => [
+      { lotId: lot.lotId, periodStart: { gte: lot.ownedSince } },
+      { lotId: lot.lotId, periodStart: null, dueDate: { gte: lot.ownedSince } }
+    ])
+  };
+}
+
 export async function listCoOwnerChargeCalls(scope: CoOwnerPortalScope, filters: { lotId?: string } = {}) {
   const lotIds = filters.lotId ? [scopeOrThrow(scope, filters.lotId).lotId] : scope.lotIds;
   if (lotIds.length === 0) return [];
@@ -327,7 +358,7 @@ export async function listCoOwnerChargeCalls(scope: CoOwnerPortalScope, filters:
   const lotById = new Map(lots.map(lot => [lot.id, lot]));
 
   const calls = await prisma.chargeCall.findMany({
-    where: { lotId: { in: lotIds }, syndicateId: { in: scope.syndicateIds } },
+    where: ownedChargeCallsWhere(scope, lotIds),
     orderBy: [{ dueDate: 'desc' }, { createdAt: 'desc' }],
     take: 500,
     select: {

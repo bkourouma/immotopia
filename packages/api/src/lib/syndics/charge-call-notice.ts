@@ -5,7 +5,7 @@ import type { PrivateFile } from '../files/private-files';
 import { resolveDocumentBranding, type DocumentBranding } from '../documents/document-branding';
 import { fromCents, toCents } from './charge-allocation-plan';
 import { contactDisplayName, isoDay, lotTypeLabel } from './charge-receipt-snapshot';
-import type { CoOwnerPortalScope } from './coowner-portal';
+import { ownedChargeCallsWhere, type CoOwnerPortalScope } from './coowner-portal';
 import {
   chargeCallNoticeFileName,
   renderChargeCallNoticePdf,
@@ -19,8 +19,8 @@ import type { NotificationAttachment } from './notifications';
  * - la gestion (`getChargeCallNoticeForTenant`) : appel de la copropriété de
  *   l'agence, sinon 404 ;
  * - le portail copropriétaire (`getChargeCallNoticeForCoOwner`) : appel d'un
- *   lot du périmètre de la session, sinon 404 (même réponse qu'un appel
- *   inexistant) ;
+ *   lot du périmètre de la session, postérieur à son acquisition, sinon 404
+ *   (même réponse qu'un appel inexistant) ;
  * - l'envoi automatique (`buildChargeCallNoticeAttachment`), en pièce jointe
  *   de l'e-mail `CHARGE_CALL_ISSUED`.
  */
@@ -182,7 +182,9 @@ export async function getChargeCallNoticeForCoOwner(
 ): Promise<PrivateFile> {
   if (scope.lotIds.length === 0) throw new NotFoundError('Appel de charges introuvable.');
   const call = await prisma.chargeCall.findFirst({
-    where: { id: chargeCallId, lotId: { in: scope.lotIds }, syndicateId: { in: scope.syndicateIds } },
+    // Périmètre S5 : seuls les appels postérieurs à l'acquisition du lot
+    // (`ownedSince`) ; ceux de l'ancien propriétaire répondent le même 404.
+    where: { id: chargeCallId, ...ownedChargeCallsWhere(scope, scope.lotIds) },
     select: NOTICE_CALL_SELECT
   });
   const lotScope = call ? scope.lots.find(lot => lot.lotId === call.lotId) : undefined;
