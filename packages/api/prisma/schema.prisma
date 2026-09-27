@@ -3419,6 +3419,9 @@ enum SourceType {
   TAX_REMITTANCE
   // Lot 9 : ventes immobilieres. Le versement d'une commission de transaction.
   SALE_COMMISSION_PAYMENT
+  // Syndic S6 : factures et reglements des prestataires d'une copropriete.
+  PROVIDER_INVOICE
+  PROVIDER_PAYMENT
 }
 
 /// Portee d'un plan de comptes, d'un journal ou d'une ecriture.
@@ -3534,6 +3537,7 @@ model Syndicate {
   incidents          SyndicateIncident[]
   maintenanceLinks   SyndicateMaintenanceLink[]
   contractLinks      SyndicateContractLink[]
+  providerInvoices   SyndicProviderInvoice[]
 
   @@index([tenantId])
   @@index([tenantId, name])
@@ -3870,9 +3874,10 @@ model ServiceProvider {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  tenant    Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant    Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   contracts MaintenanceContract[]
   incidents SyndicateIncident[]
+  invoices  SyndicProviderInvoice[]
 
   @@index([tenantId])
   @@index([tenantId, name])
@@ -3897,6 +3902,7 @@ model MaintenanceContract {
   provider            ServiceProvider          @relation(fields: [providerId], references: [id], onDelete: Cascade)
   incidentImputations IncidentCostImputation[]
   syndicateLinks      SyndicateContractLink[]
+  providerInvoices    SyndicProviderInvoice[]
 
   @@index([syndicateId])
   @@index([providerId])
@@ -3948,7 +3954,10 @@ model SyndicateFund {
   updatedAt   DateTime @updatedAt @map("updated_at")
   createdAt   DateTime @default(now()) @map("created_at")
 
-  syndicate Syndicate @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  syndicate        Syndicate               @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  providerInvoices SyndicProviderInvoice[]
+  providerPayments SyndicProviderPayment[]
+  movements        SyndicateFundMovement[]
 
   @@index([syndicateId])
   @@map("syndicate_funds")
@@ -4185,6 +4194,7 @@ model BudgetLineItem {
   budget              SyndicateBudget          @relation(fields: [budgetId], references: [id], onDelete: Cascade)
   account             ChartOfAccount?          @relation(fields: [accountId], references: [id], onDelete: SetNull)
   incidentImputations IncidentCostImputation[]
+  providerInvoices    SyndicProviderInvoice[]
 
   @@index([budgetId])
   @@index([accountId])
@@ -4424,6 +4434,7 @@ model SyndicateIncident {
   asset             CommonAreaAsset?         @relation(fields: [assetId], references: [id], onDelete: SetNull)
   provider          ServiceProvider?         @relation(fields: [providerId], references: [id], onDelete: SetNull)
   imputations       IncidentCostImputation[]
+  providerInvoices  SyndicProviderInvoice[]
 
   @@index([syndicateId])
   @@index([lotId])
@@ -4457,6 +4468,141 @@ model IncidentCostImputation {
   @@index([contractId])
   @@index([budgetLineId])
   @@map("incident_cost_imputations")
+}
+
+// =============================================================
+// SYNDIC S6 - FACTURES ET PAIEMENTS DES PRESTATAIRES
+// =============================================================
+// Chaine d'une depense de copropriete : la facture du prestataire est
+// enregistree (charge 6xx / prestataire 401 dans la comptabilite de la
+// COPROPRIETE, jamais celle de l'agence), puis reglee en un ou plusieurs
+// paiements (401 / 521) qui debitent un fonds et laissent un mouvement.
+// Code : lib/syndics/provider-invoices.ts.
+
+enum SyndicProviderInvoiceStatus {
+  RECORDED
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum SyndicFundMovementDirection {
+  CREDIT
+  DEBIT
+}
+
+enum SyndicFundMovementSource {
+  MANUAL_ADJUSTMENT
+  PROVIDER_PAYMENT
+  PROVIDER_PAYMENT_REVERSAL
+}
+
+/// Facture d'un prestataire, rattachee a une copropriete.
+///
+/// L'unicite (copropriete, prestataire, numero) hors factures annulees est un
+/// index unique PARTIEL cree en SQL brut dans la migration
+/// `20260929150000_syndic_factures_prestataires` : le DSL Prisma ne sait pas
+/// exprimer le WHERE (meme cas que `chart_of_accounts`).
+model SyndicProviderInvoice {
+  id               String                      @id @default(uuid()) @db.Uuid
+  tenantId         String                      @map("tenant_id")
+  syndicateId      String                      @map("syndicate_id") @db.Uuid
+  providerId       String                      @map("provider_id") @db.Uuid
+  contractId       String?                     @map("contract_id") @db.Uuid
+  incidentId       String?                     @map("incident_id") @db.Uuid
+  budgetLineItemId String?                     @map("budget_line_item_id") @db.Uuid
+  fundId           String?                     @map("fund_id") @db.Uuid
+  number           String
+  label            String
+  invoiceDate      DateTime                    @map("invoice_date")
+  dueDate          DateTime?                   @map("due_date")
+  amountHT         Decimal                     @map("amount_ht") @db.Decimal(14, 2)
+  vatAmount        Decimal                     @default(0) @map("vat_amount") @db.Decimal(14, 2)
+  amountTTC        Decimal                     @map("amount_ttc") @db.Decimal(14, 2)
+  amountPaid       Decimal                     @default(0) @map("amount_paid") @db.Decimal(14, 2)
+  currency         String                      @default("XOF")
+  expenseAccountId String?                     @map("expense_account_id") @db.Uuid
+  /// Identifiant de stockage prive (`/uploads/syndics/<id>/factures-prestataires/<f>`),
+  /// jamais renvoye au client : la piece se lit par la route `.../fichier`.
+  filePath         String?                     @map("file_path")
+  fileName         String?                     @map("file_name")
+  status           SyndicProviderInvoiceStatus @default(RECORDED)
+  cancelledAt      DateTime?                   @map("cancelled_at")
+  cancelReason     String?                     @map("cancel_reason")
+  journalEntryId   String?                     @map("journal_entry_id") @db.Uuid
+  cancelEntryId    String?                     @map("cancel_entry_id") @db.Uuid
+  createdById      String?                     @map("created_by_id")
+  createdAt        DateTime                    @default(now()) @map("created_at")
+  updatedAt        DateTime                    @updatedAt @map("updated_at")
+
+  syndicate  Syndicate               @relation(fields: [syndicateId], references: [id], onDelete: Cascade)
+  provider   ServiceProvider         @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  contract   MaintenanceContract?    @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  incident   SyndicateIncident?      @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  budgetLine BudgetLineItem?         @relation(fields: [budgetLineItemId], references: [id], onDelete: SetNull)
+  fund       SyndicateFund?          @relation(fields: [fundId], references: [id], onDelete: SetNull)
+  payments   SyndicProviderPayment[]
+
+  @@index([tenantId])
+  @@index([syndicateId, status])
+  @@index([syndicateId, providerId])
+  @@index([contractId])
+  @@index([incidentId])
+  @@index([budgetLineItemId])
+  @@index([fundId])
+  @@map("syndic_provider_invoices")
+}
+
+/// Paiement (partiel ou total) d'une facture de prestataire. Un paiement
+/// annule n'est pas supprime : `cancelledAt` le marque, et son mouvement de
+/// fonds et son ecriture sont contre-passes.
+model SyndicProviderPayment {
+  id             String        @id @default(uuid()) @db.Uuid
+  tenantId       String        @map("tenant_id")
+  invoiceId      String        @map("invoice_id") @db.Uuid
+  fundId         String?       @map("fund_id") @db.Uuid
+  amount         Decimal       @db.Decimal(14, 2)
+  paidAt         DateTime      @map("paid_at")
+  method         PaymentMethod
+  reference      String?
+  journalEntryId String?       @map("journal_entry_id") @db.Uuid
+  cancelledAt    DateTime?     @map("cancelled_at")
+  cancelReason   String?       @map("cancel_reason")
+  cancelEntryId  String?       @map("cancel_entry_id") @db.Uuid
+  createdById    String?       @map("created_by_id")
+  createdAt      DateTime      @default(now()) @map("created_at")
+
+  invoice SyndicProviderInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  fund    SyndicateFund?        @relation(fields: [fundId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([invoiceId])
+  @@index([fundId])
+  @@map("syndic_provider_payments")
+}
+
+/// Journal des mouvements d'un fonds de copropriete. `balanceAfter` est le
+/// solde du fonds juste apres le mouvement (le fonds est verrouille pendant
+/// l'ecriture, voir provider-invoices.ts).
+model SyndicateFundMovement {
+  id           String                      @id @default(uuid()) @db.Uuid
+  tenantId     String                      @map("tenant_id")
+  fundId       String                      @map("fund_id") @db.Uuid
+  direction    SyndicFundMovementDirection
+  amount       Decimal                     @db.Decimal(14, 2)
+  balanceAfter Decimal                     @map("balance_after") @db.Decimal(14, 2)
+  label        String
+  sourceType   SyndicFundMovementSource    @map("source_type")
+  sourceId     String?                     @map("source_id")
+  createdById  String?                     @map("created_by_id")
+  createdAt    DateTime                    @default(now()) @map("created_at")
+
+  fund SyndicateFund @relation(fields: [fundId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([fundId, createdAt])
+  @@index([sourceType, sourceId])
+  @@map("syndicate_fund_movements")
 }
 
 enum ValuationMethod {

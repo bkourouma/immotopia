@@ -1,12 +1,7 @@
 import { LotType, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { conflict, notFound, tenantIsolationError, unprocessableEntity } from '../errors';
-import {
-  computeOutstanding,
-  deriveChargeCallStatus,
-  isJournalEntryBalanced,
-  roundMoney
-} from './finance-utils';
+import { computeOutstanding, deriveChargeCallStatus, isJournalEntryBalanced, roundMoney } from './finance-utils';
 import {
   computeMeetingAttendance,
   computeResolutionTally,
@@ -2414,7 +2409,9 @@ export async function getFinanceSummaryBySyndicate(tenantId: string, syndicateId
   const totalCalled = roundMoney(charges.reduce((sum: number, charge) => sum + Number(charge.amount), 0));
   // Lot S2 : le regle d'un appel se lit dans ses affectations ; l'avance
   // (paiements non encore affectes) est rapportee a part.
-  const totalPaid = roundMoney(charges.reduce((sum: number, charge) => sum + paidFromAllocations(charge.allocations), 0));
+  const totalPaid = roundMoney(
+    charges.reduce((sum: number, charge) => sum + paidFromAllocations(charge.allocations), 0)
+  );
   const totalAdvance = fromCents(advances.reduce((sum, payment) => sum + toCents(payment.unallocatedAmount), 0));
 
   return {
@@ -4554,18 +4551,38 @@ export async function adjustSyndicateFundBalanceByTenant(
   const fund = await findSyndicateFundOrThrow(tenantId, syndicateId, fundId);
 
   const amount = roundMoney(data.amount);
-  const previousBalance = Number(fund.balance);
-  const nextBalance =
-    data.direction === 'CREDIT' ? roundMoney(previousBalance + amount) : roundMoney(previousBalance - amount);
 
   // Le solde d'un fonds (compte courant, fonds de travaux...) peut legitimement
   // devenir negatif (avance de tresorerie de l'agence, decouvert temporaire) :
   // contrairement aux montants d'appels ou de paiements, aucune regle metier
   // de la spec (FR-013, data-model.md) n'impose un plancher a zero.
-  const updated = await prisma.syndicateFund.update({
-    where: { id: fund.id },
-    data: { balance: nextBalance }
+  //
+  // S6 : l'ajustement est un mouvement du fonds comme un autre. Increment
+  // atomique (verrou de ligne jusqu'a la fin de la transaction, comme les
+  // paiements de prestataires) puis trace dans `SyndicateFundMovement`, avec
+  // le solde apres mouvement.
+  const updated = await prisma.$transaction(async tx => {
+    const row = await tx.syndicateFund.update({
+      where: { id: fund.id },
+      data: { balance: data.direction === 'CREDIT' ? { increment: amount } : { decrement: amount } }
+    });
+    await tx.syndicateFundMovement.create({
+      data: {
+        tenantId,
+        fundId: fund.id,
+        direction: data.direction,
+        amount,
+        balanceAfter: roundMoney(Number(row.balance)),
+        label: data.reason,
+        sourceType: 'MANUAL_ADJUSTMENT',
+        createdById: actorUserId ?? null
+      }
+    });
+    return row;
   });
+  const nextBalance = roundMoney(Number(updated.balance));
+  const previousBalance =
+    data.direction === 'CREDIT' ? roundMoney(nextBalance - amount) : roundMoney(nextBalance + amount);
 
   if (actorUserId) {
     logAuditEvent({

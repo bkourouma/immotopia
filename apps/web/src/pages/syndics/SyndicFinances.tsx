@@ -4,6 +4,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { DataCard, DataView, MoneyValue, StatCard } from '../../components/primitives';
+import { FundMovementsDrawer } from '../../components/syndics/FundMovementsDrawer';
 import type { Sort } from '../../hooks/useListParams';
 import {
   adjustSyndicateFundBalance,
@@ -184,7 +185,8 @@ function buildChargeRows(charges: ChargeCall[]): ChargeRow[] {
       ownerLabel: ownerLabel(lot?.owner),
       amount,
       paid,
-      outstanding: charge.outstandingAmount !== undefined ? Number(charge.outstandingAmount) : Math.max(0, amount - paid),
+      outstanding:
+        charge.outstandingAmount !== undefined ? Number(charge.outstandingAmount) : Math.max(0, amount - paid),
       dueDate: charge.dueDate,
       status: charge.status
     };
@@ -250,6 +252,8 @@ export const SyndicFinances: React.FC = () => {
   const [adjustTarget, setAdjustTarget] = useState<FundRow | null>(null);
   const [adjustSubmitting, setAdjustSubmitting] = useState(false);
   const [adjustForm] = Form.useForm();
+
+  const [movementsTarget, setMovementsTarget] = useState<FundRow | null>(null);
 
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
@@ -383,6 +387,9 @@ export const SyndicFinances: React.FC = () => {
           >
             {t('Ajuster le solde')}
           </Button>
+          <Button size="small" onClick={() => setMovementsTarget(row)}>
+            {t('Historique des mouvements')}
+          </Button>
         </Space>
       )
     }
@@ -474,218 +481,222 @@ export const SyndicFinances: React.FC = () => {
   return (
     <>
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-        <Space direction="vertical" size={4}>
-          <Title level={2} style={{ margin: 0 }}>
-            {t('Finances copropriété')}
-          </Title>
-          <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            {t('Soldes des fonds, appels émis, paiements et impayés.')}
-          </Paragraph>
-        </Space>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+          <Space direction="vertical" size={4}>
+            <Title level={2} style={{ margin: 0 }}>
+              {t('Finances copropriété')}
+            </Title>
+            <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+              {t('Soldes des fonds, appels émis, paiements et impayés.')}
+            </Paragraph>
+          </Space>
 
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setFundModalOpen(true)}>
-          {t('Nouveau fonds')}
-        </Button>
-      </div>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setFundModalOpen(true)}>
+            {t('Nouveau fonds')}
+          </Button>
+        </div>
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} md={8}>
-          <StatCard
-            label={t('Total fonds')}
-            value={<MoneyValue value={summary?.totals.totalFundsBalance} />}
-            onClick={() => scrollToSection('finances-fonds')}
-          />
-        </Col>
-        <Col xs={24} md={8}>
-          <StatCard
-            label={t('Total appele')}
-            value={<MoneyValue value={summary?.totals.totalCalled} />}
-            onClick={() => scrollToSection('finances-appels')}
-          />
-        </Col>
-        <Col xs={24} md={8}>
-          <StatCard
-            label={t('Total paye')}
-            value={<MoneyValue value={summary?.totals.totalPaid} />}
-            onClick={() => scrollToSection('finances-paiements')}
-          />
-        </Col>
-        <Col xs={24} md={8}>
-          <StatCard
-            label={t('Reste a payer')}
-            value={<MoneyValue value={summary?.totals.totalOutstanding} />}
-            onClick={() => scrollToSection('finances-appels')}
-          />
-        </Col>
-        <Col xs={24} md={8}>
-          <StatCard
-            label={t('Total des avances')}
-            value={<MoneyValue value={summary?.totals.totalAdvance} />}
-          />
-        </Col>
-        <Col xs={24} md={8}>
-          <StatCard
-            label={t('Dossiers en retard')}
-            value={dashboard.totals.overdueCount}
-            tone={dashboard.totals.overdueCount > 0 ? 'danger' : 'neutral'}
-            onClick={() => scrollToSection('finances-retards')}
-          />
-        </Col>
-        <Col xs={24} md={8}>
-          <StatCard
-            label={t('Montant en retard')}
-            value={<MoneyValue value={dashboard.totals.overdueAmount} />}
-            tone={dashboard.totals.overdueAmount > 0 ? 'danger' : 'neutral'}
-            onClick={() => scrollToSection('finances-retards')}
-          />
-        </Col>
-      </Row>
+        <Row gutter={[16, 16]}>
+          <Col xs={24} md={8}>
+            <StatCard
+              label={t('Total fonds')}
+              value={<MoneyValue value={summary?.totals.totalFundsBalance} />}
+              onClick={() => scrollToSection('finances-fonds')}
+            />
+          </Col>
+          <Col xs={24} md={8}>
+            <StatCard
+              label={t('Total appele')}
+              value={<MoneyValue value={summary?.totals.totalCalled} />}
+              onClick={() => scrollToSection('finances-appels')}
+            />
+          </Col>
+          <Col xs={24} md={8}>
+            <StatCard
+              label={t('Total paye')}
+              value={<MoneyValue value={summary?.totals.totalPaid} />}
+              onClick={() => scrollToSection('finances-paiements')}
+            />
+          </Col>
+          <Col xs={24} md={8}>
+            <StatCard
+              label={t('Reste a payer')}
+              value={<MoneyValue value={summary?.totals.totalOutstanding} />}
+              onClick={() => scrollToSection('finances-appels')}
+            />
+          </Col>
+          <Col xs={24} md={8}>
+            <StatCard label={t('Total des avances')} value={<MoneyValue value={summary?.totals.totalAdvance} />} />
+          </Col>
+          <Col xs={24} md={8}>
+            <StatCard
+              label={t('Dossiers en retard')}
+              value={dashboard.totals.overdueCount}
+              tone={dashboard.totals.overdueCount > 0 ? 'danger' : 'neutral'}
+              onClick={() => scrollToSection('finances-retards')}
+            />
+          </Col>
+          <Col xs={24} md={8}>
+            <StatCard
+              label={t('Montant en retard')}
+              value={<MoneyValue value={dashboard.totals.overdueAmount} />}
+              tone={dashboard.totals.overdueAmount > 0 ? 'danger' : 'neutral'}
+              onClick={() => scrollToSection('finances-retards')}
+            />
+          </Col>
+        </Row>
 
-      <div id="finances-fonds">
-        <Card title={t('Détail des fonds')}>
-          <DataView<FundRow>
-            items={fundsTable.pageItems}
-            total={fundsTable.total}
-            page={fundsTable.page}
-            pageSize={fundsTable.pageSize}
-            onPageChange={fundsTable.onPageChange}
-            sort={fundsTable.sort}
-            onSortChange={fundsTable.onSortChange}
-            loading={loading}
-            error={error}
-            onRetry={() => void loadAll()}
-            emptyDescription={t('Aucun fonds enregistré pour cette copropriété.')}
-            columns={fundColumns}
-            rowKey={row => row.id}
-            aria-label={t('Détail des fonds')}
-            renderCard={row => (
-              <DataCard
-                title={row.name}
-                aria-label={row.name}
-                highlight={<MoneyValue value={row.balance} />}
-                primaryAction={{
-                  label: t('Ajuster le solde'),
-                  onClick: () => {
-                    setAdjustTarget(row);
-                    adjustForm.resetFields();
-                    adjustForm.setFieldsValue({ direction: 'CREDIT' });
-                  }
-                }}
-                secondaryActions={[
-                  {
-                    key: 'renommer',
-                    label: t('Renommer'),
+        <div id="finances-fonds">
+          <Card title={t('Détail des fonds')}>
+            <DataView<FundRow>
+              items={fundsTable.pageItems}
+              total={fundsTable.total}
+              page={fundsTable.page}
+              pageSize={fundsTable.pageSize}
+              onPageChange={fundsTable.onPageChange}
+              sort={fundsTable.sort}
+              onSortChange={fundsTable.onSortChange}
+              loading={loading}
+              error={error}
+              onRetry={() => void loadAll()}
+              emptyDescription={t('Aucun fonds enregistré pour cette copropriété.')}
+              columns={fundColumns}
+              rowKey={row => row.id}
+              aria-label={t('Détail des fonds')}
+              renderCard={row => (
+                <DataCard
+                  title={row.name}
+                  aria-label={row.name}
+                  highlight={<MoneyValue value={row.balance} />}
+                  primaryAction={{
+                    label: t('Ajuster le solde'),
                     onClick: () => {
-                      setRenameTarget(row);
-                      renameForm.setFieldsValue({ name: row.name });
+                      setAdjustTarget(row);
+                      adjustForm.resetFields();
+                      adjustForm.setFieldsValue({ direction: 'CREDIT' });
                     }
+                  }}
+                  secondaryActions={[
+                    {
+                      key: 'renommer',
+                      label: t('Renommer'),
+                      onClick: () => {
+                        setRenameTarget(row);
+                        renameForm.setFieldsValue({ name: row.name });
+                      }
+                    },
+                    {
+                      key: 'mouvements',
+                      label: t('Historique des mouvements'),
+                      onClick: () => setMovementsTarget(row)
+                    }
+                  ]}
+                />
+              )}
+            />
+          </Card>
+        </div>
+
+        <div id="finances-appels">
+          <Card title={t('Détail des appels de fonds')}>
+            <DataView<ChargeRow>
+              items={chargesTable.pageItems}
+              total={chargesTable.total}
+              page={chargesTable.page}
+              pageSize={chargesTable.pageSize}
+              onPageChange={chargesTable.onPageChange}
+              sort={chargesTable.sort}
+              onSortChange={chargesTable.onSortChange}
+              loading={loading}
+              error={error}
+              onRetry={() => void loadAll()}
+              emptyDescription={t('Aucun appel de charges enregistré pour cette copropriété.')}
+              columns={chargeColumns}
+              rowKey={row => row.id}
+              aria-label={t('Détail des appels de fonds')}
+              scrollX={1100}
+              renderCard={row => (
+                <DataCard
+                  title={`${row.lotLabel} — ${row.ownerLabel}`}
+                  aria-label={row.reference}
+                  subtitle={`${row.reference} · ${row.period}`}
+                  highlight={<MoneyValue value={row.amount} />}
+                  status={
+                    <Tag color={chargeStatusConfig[row.status].color}>{chargeStatusConfig[row.status].label}</Tag>
                   }
-                ]}
-              />
-            )}
-          />
-        </Card>
-      </div>
+                  fields={[
+                    { label: t('Payé'), value: <MoneyValue value={row.paid} /> },
+                    { label: t('Reste'), value: <MoneyValue value={row.outstanding} /> },
+                    { label: t('Échéance'), value: dayjs(row.dueDate).format(dateFormat('short')) }
+                  ]}
+                />
+              )}
+            />
+          </Card>
+        </div>
 
-      <div id="finances-appels">
-        <Card title={t('Détail des appels de fonds')}>
-          <DataView<ChargeRow>
-            items={chargesTable.pageItems}
-            total={chargesTable.total}
-            page={chargesTable.page}
-            pageSize={chargesTable.pageSize}
-            onPageChange={chargesTable.onPageChange}
-            sort={chargesTable.sort}
-            onSortChange={chargesTable.onSortChange}
-            loading={loading}
-            error={error}
-            onRetry={() => void loadAll()}
-            emptyDescription={t('Aucun appel de charges enregistré pour cette copropriété.')}
-            columns={chargeColumns}
-            rowKey={row => row.id}
-            aria-label={t('Détail des appels de fonds')}
-            scrollX={1100}
-            renderCard={row => (
-              <DataCard
-                title={`${row.lotLabel} — ${row.ownerLabel}`}
-                aria-label={row.reference}
-                subtitle={`${row.reference} · ${row.period}`}
-                highlight={<MoneyValue value={row.amount} />}
-                status={<Tag color={chargeStatusConfig[row.status].color}>{chargeStatusConfig[row.status].label}</Tag>}
-                fields={[
-                  { label: t('Payé'), value: <MoneyValue value={row.paid} /> },
-                  { label: t('Reste'), value: <MoneyValue value={row.outstanding} /> },
-                  { label: t('Échéance'), value: dayjs(row.dueDate).format(dateFormat('short')) }
-                ]}
-              />
-            )}
-          />
-        </Card>
-      </div>
+        <div id="finances-paiements">
+          <Card title={t('Détail des paiements reçus')}>
+            <DataView<PaymentRow>
+              items={paymentsTable.pageItems}
+              total={paymentsTable.total}
+              page={paymentsTable.page}
+              pageSize={paymentsTable.pageSize}
+              onPageChange={paymentsTable.onPageChange}
+              sort={paymentsTable.sort}
+              onSortChange={paymentsTable.onSortChange}
+              loading={loading}
+              error={error}
+              onRetry={() => void loadAll()}
+              emptyDescription={t('Aucun paiement enregistré pour cette copropriété.')}
+              columns={paymentColumns}
+              rowKey={row => row.id}
+              aria-label={t('Détail des paiements reçus')}
+              scrollX={1000}
+              renderCard={row => (
+                <DataCard
+                  title={`${row.lotLabel} — ${row.ownerLabel}`}
+                  aria-label={row.id}
+                  subtitle={`${dayjs(row.paidAt).format(dateFormat('short'))} · ${row.chargeReference}`}
+                  highlight={<MoneyValue value={row.amount} />}
+                  fields={[{ label: t('Mode'), value: row.method }]}
+                />
+              )}
+            />
+          </Card>
+        </div>
 
-      <div id="finances-paiements">
-        <Card title={t('Détail des paiements reçus')}>
-          <DataView<PaymentRow>
-            items={paymentsTable.pageItems}
-            total={paymentsTable.total}
-            page={paymentsTable.page}
-            pageSize={paymentsTable.pageSize}
-            onPageChange={paymentsTable.onPageChange}
-            sort={paymentsTable.sort}
-            onSortChange={paymentsTable.onSortChange}
-            loading={loading}
-            error={error}
-            onRetry={() => void loadAll()}
-            emptyDescription={t('Aucun paiement enregistré pour cette copropriété.')}
-            columns={paymentColumns}
-            rowKey={row => row.id}
-            aria-label={t('Détail des paiements reçus')}
-            scrollX={1000}
-            renderCard={row => (
-              <DataCard
-                title={`${row.lotLabel} — ${row.ownerLabel}`}
-                aria-label={row.id}
-                subtitle={`${dayjs(row.paidAt).format(dateFormat('short'))} · ${row.chargeReference}`}
-                highlight={<MoneyValue value={row.amount} />}
-                fields={[{ label: t('Mode'), value: row.method }]}
-              />
-            )}
-          />
-        </Card>
-      </div>
-
-      <div id="finances-retards">
-        <Card title={t('Détail des impayés et retards')}>
-          <DataView<OverdueRow>
-            items={overdueTable.pageItems}
-            total={overdueTable.total}
-            page={overdueTable.page}
-            pageSize={overdueTable.pageSize}
-            onPageChange={overdueTable.onPageChange}
-            sort={overdueTable.sort}
-            onSortChange={overdueTable.onSortChange}
-            loading={loading}
-            error={error}
-            onRetry={() => void loadAll()}
-            emptyDescription={t('Aucun dossier en retard pour cette copropriété.')}
-            columns={overdueColumns}
-            rowKey={row => row.chargeCallId}
-            aria-label={t('Détail des impayés et retards')}
-            renderCard={row => (
-              <DataCard
-                title={`${row.lotLabel} — ${row.ownerLabel}`}
-                aria-label={row.lotLabel}
-                highlight={<MoneyValue value={row.outstanding} />}
-                fields={[
-                  { label: t('Jours de retard'), value: row.daysLate },
-                  { label: t('Relances'), value: row.remindersCount }
-                ]}
-              />
-            )}
-          />
-        </Card>
-      </div>
+        <div id="finances-retards">
+          <Card title={t('Détail des impayés et retards')}>
+            <DataView<OverdueRow>
+              items={overdueTable.pageItems}
+              total={overdueTable.total}
+              page={overdueTable.page}
+              pageSize={overdueTable.pageSize}
+              onPageChange={overdueTable.onPageChange}
+              sort={overdueTable.sort}
+              onSortChange={overdueTable.onSortChange}
+              loading={loading}
+              error={error}
+              onRetry={() => void loadAll()}
+              emptyDescription={t('Aucun dossier en retard pour cette copropriété.')}
+              columns={overdueColumns}
+              rowKey={row => row.chargeCallId}
+              aria-label={t('Détail des impayés et retards')}
+              renderCard={row => (
+                <DataCard
+                  title={`${row.lotLabel} — ${row.ownerLabel}`}
+                  aria-label={row.lotLabel}
+                  highlight={<MoneyValue value={row.outstanding} />}
+                  fields={[
+                    { label: t('Jours de retard'), value: row.daysLate },
+                    { label: t('Relances'), value: row.remindersCount }
+                  ]}
+                />
+              )}
+            />
+          </Card>
+        </div>
       </Space>
 
       <Modal
@@ -785,6 +796,15 @@ export const SyndicFinances: React.FC = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      {effectiveTenantId && syndicId ? (
+        <FundMovementsDrawer
+          tenantId={effectiveTenantId}
+          syndicId={syndicId}
+          fund={movementsTarget}
+          onClose={() => setMovementsTarget(null)}
+        />
+      ) : null}
     </>
   );
 };
