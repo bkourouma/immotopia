@@ -513,6 +513,7 @@ export const ProviderInvoicesTab: React.FC<ProviderInvoicesTabProps> = ({
           <Form.Item label={t('Pièce jointe')}>
             <Upload
               maxCount={1}
+              accept=".pdf,.png,.jpg,.jpeg"
               beforeUpload={file => {
                 setCreateFile(file as unknown as File);
                 return false;

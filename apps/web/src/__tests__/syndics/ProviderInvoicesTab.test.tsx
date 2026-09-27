@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import apiClient from '../../utils/api-client';
 import { ProviderInvoicesTab } from '../../components/syndics/ProviderInvoicesTab';
 
@@ -130,7 +130,15 @@ vi.mock('antd', async () => {
     </div>
   );
 
-  const Upload: any = passthrough();
+  // Capture chaque `<Upload>` monté (props `beforeUpload`/`accept`) : le test
+  // de sécurité vérifie, sans dépendre du rendu DOM du vrai composant AntD,
+  // que `beforeUpload` retourne bien `false` — sinon rc-upload lance EN PLUS
+  // son propre POST du fichier vers `action` (voir le correctif de ce tour).
+  let uploadRegistrations: Array<{ beforeUpload?: (file: unknown) => unknown; accept?: string }> = [];
+  const Upload: any = ({ children, beforeUpload, accept }: any) => {
+    uploadRegistrations.push({ beforeUpload, accept });
+    return <div data-accept={accept}>{children}</div>;
+  };
   Upload.Dragger = passthrough();
 
   const DatePicker: any = passthrough('input');
@@ -171,8 +179,12 @@ vi.mock('antd', async () => {
       get formInstances() {
         return formInstances;
       },
+      get uploadRegistrations() {
+        return uploadRegistrations;
+      },
       resetForms() {
         formInstances = [];
+        uploadRegistrations = [];
       }
     }
   };
@@ -189,7 +201,11 @@ vi.mock('antd', async () => {
 });
 
 const { __mocks } = (await import('antd')) as unknown as {
-  __mocks: { formInstances: any[]; resetForms: () => void };
+  __mocks: {
+    formInstances: any[];
+    uploadRegistrations: Array<{ beforeUpload?: (file: unknown) => unknown; accept?: string }>;
+    resetForms: () => void;
+  };
 };
 
 const mockApiClient = apiClient as any;
@@ -481,5 +497,97 @@ describe('ProviderInvoicesTab', () => {
         { reason: 'Erreur de saisie' }
       );
     });
+  });
+
+  it('les pièces jointes (création et remplacement) empêchent rc-upload de poster le fichier lui-même', async () => {
+    // `beforeUpload` DOIT renvoyer `false` : sinon rc-upload lance EN PLUS son
+    // propre POST du fichier vers `action` (l'URL de la page), en clair, sans
+    // passer par le service authentifié. Régression corrigée sur signalement
+    // de l'audit sécurité — ce test la fige.
+    mockReferenceData();
+    mockApiClient.get.mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          items: [
+            {
+              id: 'inv-1',
+              provider: { id: 'p1', name: 'Ascenseurs Pro' },
+              number: 'F-2026-001',
+              label: 'Entretien ascenseur',
+              invoiceDate: '2026-01-05T00:00:00.000Z',
+              amountTTC: 118000,
+              amountPaid: 0,
+              amountDue: 118000,
+              currency: 'XOF',
+              hasFile: true,
+              fileName: 'facture.pdf',
+              status: 'RECORDED'
+            }
+          ],
+          total: 1,
+          page: 1,
+          limit: 20
+        }
+      }
+    });
+
+    render(<ProviderInvoicesTab tenantId="tenant-1" syndicId="syndic-1" providers={[]} contracts={[]} />);
+
+    // Le formulaire « Enregistrer une facture » monte son propre `<Upload>`.
+    fireEvent.click(await screen.findByText('Enregistrer une facture'));
+
+    // Le tiroir d'une facture déjà pourvue d'une pièce monte le `<Upload>` de
+    // « Remplacer » (et non celui d'« Ajouter »).
+    mockApiClient.get.mockResolvedValueOnce({
+      data: {
+        success: true,
+        data: {
+          id: 'inv-1',
+          number: 'F-2026-001',
+          label: 'Entretien ascenseur',
+          invoiceDate: '2026-01-05T00:00:00.000Z',
+          dueDate: null,
+          amountHT: 100000,
+          vatAmount: 18000,
+          amountTTC: 118000,
+          amountPaid: 0,
+          amountDue: 118000,
+          currency: 'XOF',
+          hasFile: true,
+          fileName: 'facture.pdf',
+          status: 'RECORDED',
+          provider: { id: 'p1', name: 'Ascenseurs Pro' },
+          contract: null,
+          incident: null,
+          budgetLine: null,
+          fund: null,
+          payments: []
+        }
+      }
+    });
+    fireEvent.click(await screen.findByText('Ouvrir'));
+    await screen.findByText('Remplacer');
+
+    expect(__mocks.uploadRegistrations.length).toBeGreaterThanOrEqual(2);
+    // Copie figée : appeler `beforeUpload` déclenche un re-rendu, qui remonte
+    // le même `<Upload>` et repousse une NOUVELLE entrée dans le tableau —
+    // boucler sur le tableau lui-même (muté pendant l'itération) ne terminerait
+    // jamais.
+    const registrations = [...__mocks.uploadRegistrations];
+    for (const registration of registrations) {
+      expect(registration.accept).toBe('.pdf,.png,.jpg,.jpeg');
+      expect(typeof registration.beforeUpload).toBe('function');
+      const fakeFile = new File(['contenu'], 'facture.pdf', { type: 'application/pdf' });
+      let returned: unknown;
+      // `beforeUpload` déclenche par effet de bord `setCreateFile`/`handleReplaceFile`
+      // (mise à jour d'état) : englober dans `act` pour ne garder que le bruit de
+      // test pertinent, la valeur de retour elle-même reste synchrone.
+      act(() => {
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        returned = registration.beforeUpload!(fakeFile);
+      });
+      expect(returned).toBe(false);
+    }
   });
 });

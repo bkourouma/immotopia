@@ -228,7 +228,14 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
       message.success(t('Pièce jointe remplacée'));
       await refresh();
     } catch (err: any) {
-      message.error(err.response?.data?.error || t('Remplacement de la pièce jointe impossible'));
+      if (err.response?.status === 409) {
+        message.error(
+          err.response?.data?.error ||
+            t('Impossible de remplacer la pièce jointe : cette facture a déjà des paiements enregistrés.')
+        );
+      } else {
+        message.error(err.response?.data?.error || t('Remplacement de la pièce jointe impossible'));
+      }
     } finally {
       setUploading(false);
     }
@@ -249,7 +256,14 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
           message.success(t('Pièce jointe supprimée'));
           await refresh();
         } catch (err: any) {
-          message.error(err.response?.data?.error || t('Suppression de la pièce jointe impossible'));
+          if (err.response?.status === 409) {
+            message.error(
+              err.response?.data?.error ||
+                t('Impossible de supprimer la pièce jointe : cette facture a déjà des paiements enregistrés.')
+            );
+          } else {
+            message.error(err.response?.data?.error || t('Suppression de la pièce jointe impossible'));
+          }
         } finally {
           setDeletingFile(false);
         }
@@ -373,8 +387,12 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
                   </Button>
                   <Upload
                     maxCount={1}
+                    accept=".pdf,.png,.jpg,.jpeg"
                     showUploadList={false}
-                    beforeUpload={file => void handleReplaceFile(file as unknown as File)}
+                    beforeUpload={file => {
+                      void handleReplaceFile(file as unknown as File);
+                      return false;
+                    }}
                   >
                     <Button icon={<UploadOutlined />} loading={uploading}>
                       {t('Remplacer')}
@@ -387,8 +405,12 @@ export const ProviderInvoiceDrawer: React.FC<ProviderInvoiceDrawerProps> = ({
               ) : (
                 <Upload
                   maxCount={1}
+                  accept=".pdf,.png,.jpg,.jpeg"
                   showUploadList={false}
-                  beforeUpload={file => void handleReplaceFile(file as unknown as File)}
+                  beforeUpload={file => {
+                    void handleReplaceFile(file as unknown as File);
+                    return false;
+                  }}
                 >
                   <Button icon={<UploadOutlined />} loading={uploading}>
                     {t('Ajouter une pièce jointe')}
