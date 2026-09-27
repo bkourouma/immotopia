@@ -612,6 +612,9 @@ const CoOwnerChargeCalls = lazy(
 );
 const CoOwnerDocuments = lazy(() => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/Documents'));
 const CoOwnerMeetings = lazy(() => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/Meetings'));
+const CoOwnerPortalNotFound = lazy(
+  () => import(/* webpackChunkName: "coowner-portal" */ './pages/CoOwnerPortal/PortalNotFound')
+);
 
 /**
  * Affiche pendant le telechargement d'un chunk de route.
@@ -1179,9 +1182,14 @@ function App() {
                         >
                           <Route index element={<CoOwnerLots />} />
                           <Route path="lots/:lotId" element={<CoOwnerLotAccount />} />
+                          {/* Forme de l'adresse côté gestion (…/lots/<id>/compte) : même écran. */}
+                          <Route path="lots/:lotId/compte" element={<CoOwnerLotAccount />} />
                           <Route path="appels" element={<CoOwnerChargeCalls />} />
                           <Route path="documents" element={<CoOwnerDocuments />} />
                           <Route path="assemblees" element={<CoOwnerMeetings />} />
+                          {/* Pas de page de détail d'AG ni de document : toute autre
+                        adresse du portail le dit, dans la coquille du portail. */}
+                          <Route path="*" element={<CoOwnerPortalNotFound />} />
                         </Route>
                         {/* User Settings & Profile Routes */}
                         <Route path="/" element={<Navigate to="/dashboard" replace />} />

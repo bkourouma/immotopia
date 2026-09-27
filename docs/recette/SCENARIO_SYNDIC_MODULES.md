@@ -1312,11 +1312,21 @@ du copropriétaire remplace celle du gestionnaire).
    n'importe quelle autre valeur (par exemple changer un chiffre).
    - [ ] Message « Ce lot est introuvable dans votre espace. » — aucun
          détail sur un autre lot.
-3. Si un ancien lien direct vers un document (`…/uploads/syndics/…`) a été
+   - [ ] L'adresse reste celle qui a été saisie : pas de retour silencieux
+         vers « Mes lots » (constat corrigé lors de la recette).
+   - [ ] Même message si l'identifiant d'un lot d'un autre copropriétaire
+         (par exemple celui d'`ACA-A2`, lu dans l'adresse de l'écran
+         gestionnaire de son compte) est collé à la place.
+3. Remplacer l'adresse par `/copropriete/assemblees/n-importe-quoi`
+   (le portail n'a pas de page de détail d'assemblée ni de document).
+   - [ ] Message « Cet élément est introuvable dans votre espace
+         copropriétaire. », dans la coquille du portail, avec les boutons
+         « Mes lots » et « Assemblées générales ».
+4. Si un ancien lien direct vers un document (`…/uploads/syndics/…`) a été
    noté lors d'une recette précédente, le coller dans la barre d'adresse.
    - [ ] Réponse « Fichier introuvable » : les documents de copropriété ne
          sont plus jamais servis par lien direct, même au gestionnaire.
-4. `Copro Deux` n'a pas été invité (13.1) : aucun lien ne lui a été remis,
+5. `Copro Deux` n'a pas été invité (13.1) : aucun lien ne lui a été remis,
    il n'a donc aucun moyen d'entrer. Simple constat, rien à faire.
 
 ### 13.6 Révoquer l'accès
