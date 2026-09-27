@@ -250,7 +250,7 @@ describe('SyndicFinances — indicateurs et tableaux de détail', () => {
     expect(screen.getAllByText('A01').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Fabrice Aka').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Awa Koné').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Paye').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Payé').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Partiel').length).toBeGreaterThan(0);
 
     // Tableau « Détail des paiements reçus » : mode de paiement affiché tel quel.

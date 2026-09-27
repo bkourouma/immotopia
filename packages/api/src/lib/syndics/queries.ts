@@ -2958,10 +2958,125 @@ async function getOrCreateOwnerAccountForLot(tenantId: string, syndicateId: stri
   });
 }
 
+/**
+ * Rapproche le compte d'un lot avec l'historique reel de ses appels de
+ * charges et de ses paiements.
+ *
+ * Constat de recette : seuls les appels crees par la creation directe
+ * debitaient le compte ; ceux generes depuis une campagne budgetaire
+ * (`generateChargeCallsFromBudget`) passaient par un `createMany` qui ne
+ * touchait jamais le grand livre — corrige a la source ci-dessus, mais les
+ * appels deja generes avant ce correctif restent orphelins de toute
+ * ecriture. Ce rapprochement les rattrape sans migration ni script a lancer
+ * a la main : chaque `ChargeCall`/`ChargePayment` du lot sans
+ * `OwnerAccountTransaction` correspondante (identifiee par `sourceId`) se
+ * voit ajouter l'ecriture manquante.
+ *
+ * Declenchement choisi : automatique, a chaque ouverture du compte du lot
+ * (`getOwnerAccountByLot`, donc `/compte` et `/compte/transactions`), plutot
+ * qu'un bouton dedie « Rapprocher le compte ». Un rattrapage automatique est
+ * plus sur qu'une action que quelqu'un doit penser a declencher, et le cout
+ * (parcourir les appels et paiements d'UN lot) reste negligeable a chaque
+ * lecture.
+ *
+ * Idempotence sous concurrence : `OwnerAccountTransaction` n'a pas de
+ * contrainte unique sur `sourceId` (aucune migration autorisee pour ce lot),
+ * donc un simple "verifier puis inserer" pourrait dupliquer une ecriture si
+ * deux requetes rapprochent le meme compte en meme temps (ex. deux onglets
+ * ouverts sur la meme page). Un verrou consultatif Postgres scope au compte
+ * — meme idiome que `lib/finance/cash.ts` et `lot-registry-service.ts` —
+ * serialise ces deux requetes : la seconde attend que la premiere ait
+ * committe, puis relit un etat ou les ecritures qu'elle s'appretait a creer
+ * existent deja, et ne les recree pas.
+ */
+export async function reconcileOwnerAccountLedgerForLot(
+  tenantId: string,
+  syndicateId: string,
+  lotId: string
+): Promise<{ accountId: string | null; created: number }> {
+  return prisma.$transaction(async tx => {
+    const account = await ensureOwnerAccountForLotTx(tx, tenantId, syndicateId, lotId);
+    if (!account) {
+      return { accountId: null, created: 0 };
+    }
+
+    const lockKey = `owner-account-ledger:${account.id}`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+
+    const [charges, payments, existingEntries] = await Promise.all([
+      tx.chargeCall.findMany({
+        where: { lotId, syndicateId, syndicate: { tenantId } },
+        select: { id: true, amount: true, period: true, dueDate: true }
+      }),
+      tx.chargePayment.findMany({
+        where: { chargeCall: { lotId, syndicateId, syndicate: { tenantId } } },
+        select: { id: true, amount: true, paidAt: true, reference: true }
+      }),
+      tx.ownerAccountTransaction.findMany({
+        where: { accountId: account.id, sourceId: { not: null } },
+        select: { sourceId: true, type: true }
+      })
+    ]);
+
+    const covered = new Set(existingEntries.map(entry => `${entry.type}:${entry.sourceId}`));
+
+    interface PendingEntry {
+      date: Date;
+      apply: () => Promise<unknown>;
+    }
+    const pending: PendingEntry[] = [];
+
+    for (const charge of charges) {
+      if (covered.has(`CHARGE_CALL:${charge.id}`)) continue;
+      pending.push({
+        date: charge.dueDate,
+        apply: () =>
+          appendOwnerAccountTransactionTx(tx, {
+            accountId: account.id,
+            type: 'CHARGE_CALL',
+            debit: Number(charge.amount),
+            label: `Appel de charges ${charge.period}`,
+            sourceId: charge.id,
+            transactionDate: charge.dueDate
+          })
+      });
+    }
+
+    for (const payment of payments) {
+      if (covered.has(`PAYMENT:${payment.id}`)) continue;
+      pending.push({
+        date: payment.paidAt,
+        apply: () =>
+          appendOwnerAccountTransactionTx(tx, {
+            accountId: account.id,
+            type: 'PAYMENT',
+            credit: Number(payment.amount),
+            label: 'Paiement appel de charges',
+            reference: payment.reference,
+            sourceId: payment.id,
+            transactionDate: payment.paidAt
+          })
+      });
+    }
+
+    // Ordre chronologique : ce lot d'ecritures manquantes reconstitue un
+    // solde courant coherent entre elles (le grand livre existant, lui, ne
+    // rejoue jamais sa propre chronologie une fois ecrit).
+    pending.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    for (const entry of pending) {
+      await entry.apply();
+    }
+
+    return { accountId: account.id, created: pending.length };
+  });
+}
+
 export async function getOwnerAccountByLot(tenantId: string, syndicateId: string, lotId: string) {
   await assertSyndicateTenantOwnership(tenantId, syndicateId);
 
   await getOrCreateOwnerAccountForLot(tenantId, syndicateId, lotId);
+  await reconcileOwnerAccountLedgerForLot(tenantId, syndicateId, lotId);
 
   const account = await prisma.ownerAccount.findFirst({
     where: {
@@ -3920,18 +4035,42 @@ export async function generateChargeCallsFromBudget(
       }
     });
 
-    await tx.chargeCall.createMany({
-      data: allocations.map(allocation => ({
-        syndicateId,
-        lotId: allocation.lotId,
-        batchId: batch.id,
-        period: data.period,
-        amount: roundMoney(Number(allocation.totalAllocated)),
-        currency: data.currency || budget.currency || 'XOF',
-        dueDate: data.dueDate,
-        status: 'PENDING'
-      }))
-    });
+    // Constat de recette : `createMany` (avant ce correctif) ne renvoie que
+    // le nombre de lignes inserees, jamais leurs identifiants — impossible
+    // d'y accrocher une ecriture de grand livre. Un appel cree ainsi ne
+    // debitait donc jamais le compte du lot concerne, contrairement a un
+    // appel direct (createChargeCallAndUpdateStatus, plus haut) qui cree
+    // chaque ChargeCall un par un pour la meme raison. On boucle ici de la
+    // meme facon : le nombre de lots d'une copropriete reste modeste, et
+    // c'est deja le choix fait pour la creation directe multi-lots.
+    const currency = data.currency || budget.currency || 'XOF';
+    for (const allocation of allocations) {
+      const amount = roundMoney(Number(allocation.totalAllocated));
+      const chargeCall = await tx.chargeCall.create({
+        data: {
+          syndicateId,
+          lotId: allocation.lotId,
+          batchId: batch.id,
+          period: data.period,
+          amount,
+          currency,
+          dueDate: data.dueDate,
+          status: 'PENDING'
+        }
+      });
+
+      const account = await ensureOwnerAccountForLotTx(tx, tenantId, syndicateId, allocation.lotId);
+      if (account) {
+        await appendOwnerAccountTransactionTx(tx, {
+          accountId: account.id,
+          type: 'CHARGE_CALL',
+          debit: amount,
+          label: `Appel de charges ${data.period}`,
+          sourceId: chargeCall.id,
+          transactionDate: data.dueDate
+        });
+      }
+    }
 
     logger.info('Audit: charge calls batch generated from budget', {
       tenantId,

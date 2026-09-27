@@ -101,6 +101,21 @@ jest.mock('@prisma/client', () => {
     crmContact: {
       findFirst: jest.fn(async () => null)
     },
+    // reconcileOwnerAccountLedgerForLot (rapprochement automatique a chaque
+    // ouverture du compte, constat de recette module 7) lit ces deux tables
+    // pour retrouver les appels/paiements sans ecriture correspondante. Ce
+    // magasin ne modelise ni l'un ni l'autre (les tests d'ici seedent le
+    // compte et ses mouvements directement) : toujours vide, donc rien a
+    // rattraper — sans changer le comportement des tests existants.
+    chargeCall: {
+      findMany: jest.fn(async () => [])
+    },
+    chargePayment: {
+      findMany: jest.fn(async () => [])
+    },
+    // Verrou consultatif du rapprochement (lib/finance/cash.ts, meme idiome) :
+    // no-op, ce magasin en memoire ne parle pas a un vrai Postgres.
+    $executeRaw: jest.fn(async () => undefined),
     crmContactRole: {
       findFirst: jest.fn(async () => null),
       create: jest.fn(async (args: Row) => args.data),
@@ -267,7 +282,12 @@ describe('Caracterisation - grand livre du compte de lot', () => {
 
       expect(account.balance).toBe(0);
       expect(account.contactId).toBe(CONTACT_ID);
-      expect(mockPrisma.ownerAccount.upsert).toHaveBeenCalledTimes(1);
+      // Appele deux fois (idempotent, meme lot) : une fois par
+      // getOrCreateOwnerAccountForLot, une fois par
+      // reconcileOwnerAccountLedgerForLot qui s'assure aussi de l'existence
+      // du compte avant de rapprocher son historique (constat de recette,
+      // module 7). Un seul compte reste cree.
+      expect(mockPrisma.ownerAccount.upsert).toHaveBeenCalledTimes(2);
       expect(store.accounts).toHaveLength(1);
     });
 

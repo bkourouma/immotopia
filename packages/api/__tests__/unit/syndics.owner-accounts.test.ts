@@ -3,11 +3,17 @@ jest.mock('@prisma/client', () => {
     chargeCall: {
       create: jest.fn(),
       findFirst: jest.fn(),
+      // Lus par reconcileOwnerAccountLedgerForLot (rapprochement automatique
+      // a chaque ouverture du compte, constat de recette module 7) : par
+      // defaut aucun appel/paiement en base, pour ne pas affecter les tests
+      // qui n'exercent pas ce chemin.
+      findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn(),
     },
     chargePayment: {
       create: jest.fn(),
       aggregate: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
     },
     syndicateLot: {
       findFirst: jest.fn(),
@@ -20,8 +26,11 @@ jest.mock('@prisma/client', () => {
     },
     ownerAccountTransaction: {
       create: jest.fn(),
-      findMany: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
     },
+    // Verrou consultatif du rapprochement (meme idiome que lib/finance/cash.ts) :
+    // no-op ici, ce magasin de test n'a pas de vraie base Postgres.
+    $executeRaw: jest.fn(),
   };
 
   const prisma = {

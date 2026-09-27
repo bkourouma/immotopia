@@ -12,7 +12,7 @@ const { Text } = Typography;
 const statusConfig: Record<ChargeCallStatus, { color: string; label: string }> = {
   PENDING: { color: 'gold', label: t('En attente') },
   PARTIAL: { color: 'blue', label: t('Partiel') },
-  PAID: { color: 'green', label: t('Paye') },
+  PAID: { color: 'green', label: t('Payé') },
   OVERDUE: { color: 'red', label: t('En retard') }
 };
 
