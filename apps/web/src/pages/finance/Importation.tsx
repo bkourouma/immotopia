@@ -87,8 +87,15 @@ const { Text, Paragraph } = Typography;
  * **impute**. Jamais « débit » ni « crédit ».
  */
 
-/** Les cinq étapes, dans l'ordre. L'écran ne recule que par les boutons. */
-const ETAPES = ['Le document', 'Le fichier', 'Les colonnes', "L'aperçu", "L'import"];
+/**
+ * Titres des cinq étapes, dans l'ordre — traduits à l'appel, jamais au
+ * chargement du module, qui figerait la langue de la toute première visite
+ * de l'écran (`t()` est une fonction de module, pas un hook : voir
+ * `i18n/t.ts`). L'écran ne recule que par les boutons.
+ */
+function etapeTitles(): string[] {
+  return [t('Le document'), t('Le fichier'), t('Les colonnes'), t("L'aperçu"), t("L'import")];
+}
 
 /** Une ligne telle que la personne la modifie : du texte, et rien d'autre. */
 interface BrouillonLigne {
@@ -430,7 +437,7 @@ export const Importation: React.FC = () => {
         current={etape}
         size="small"
         style={{ marginBlockEnd: 'var(--space-6)' }}
-        items={ETAPES.map(libelle => ({ title: t(libelle) }))}
+        items={etapeTitles().map(title => ({ title }))}
       />
 
       {/* ---------------------------------------------------------------- */}

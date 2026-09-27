@@ -111,7 +111,7 @@ export const ComptesProprietaires: React.FC = () => {
     <>
       <PageHeader
         title={t('Comptes propriétaires')}
-        subtitle={comptes.length > 0 ? `${comptes.length} propriétaire${comptes.length > 1 ? 's' : ''}` : undefined}
+        subtitle={comptes.length > 0 ? t('{{length}} propriétaire{{value}}', { length: comptes.length, value: comptes.length > 1 ? 's' : '' }) : undefined}
       />
 
       {data && (

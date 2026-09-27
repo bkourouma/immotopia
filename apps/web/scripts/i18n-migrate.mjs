@@ -123,7 +123,11 @@ const CODE_CALLEES = [
   'querySelector', 'querySelectorAll', 'getElementById', 'createElement', 'setAttribute',
   'getAttribute', 'addEventListener', 'removeEventListener', 'parseInt', 'parseFloat', 'Number',
   'startsWith', 'endsWith', 'includes', 'split', 'match', 'test', 'setProperty', 'format',
-  'useTranslation', 't', 'translate', 'localeCompare', 'get', 'post', 'put', 'patch', 'delete'
+  'useTranslation', 't', 'translate', 'localeCompare', 'get', 'post', 'put', 'patch', 'delete',
+  // `sumItemsByLabelPrefix` (owner-statement-helpers.ts) compare son argument
+  // au libelle brut, toujours en francais, qu'un relevé genere cote serveur :
+  // ce n'est pas du texte affiche, et le traduire casserait le `.startsWith()`.
+  'sumItemsByLabelPrefix'
 ];
 
 /**
@@ -238,10 +242,44 @@ function childOf(parent, node) {
 }
 
 /**
+ * Vrai si `node` n'est enveloppe par AUCUNE fonction, methode ni classe : sa
+ * valeur est donc calculee UNE SEULE FOIS, au chargement du module, et jamais
+ * rejouee. `<LocalizedScreens>` (App.tsx) remonte l'arbre React a chaque
+ * changement de langue, mais un remontage ne re-execute pas un module deja
+ * importe : un `t('...')` pose ici resterait fige dans la langue active au
+ * tout premier chargement du module, pour toute la session. Un appel `t()`
+ * dans le corps d'une fonction, lui, est rejoue a chaque invocation — au
+ * rendu, dans un `useMemo` recalcule par le remontage, etc. — et reste donc
+ * sans danger.
+ */
+function isFrozenAtModuleScope(node) {
+  let current = node.parent;
+  while (current) {
+    if (
+      ts.isFunctionDeclaration(current) ||
+      ts.isFunctionExpression(current) ||
+      ts.isArrowFunction(current) ||
+      ts.isMethodDeclaration(current) ||
+      ts.isGetAccessor(current) ||
+      ts.isSetAccessor(current) ||
+      ts.isConstructorDeclaration(current) ||
+      ts.isClassDeclaration(current) ||
+      ts.isClassExpression(current)
+    ) {
+      return false;
+    }
+    current = current.parent;
+  }
+  return true;
+}
+
+/**
  * Renvoie 'yes' (position ou le texte est certainement affiche), 'maybe'
  * (position neutre — l'heuristique stricte tranche) ou 'no'.
  */
 function positionVerdict(node) {
+  if (isFrozenAtModuleScope(node)) return 'no';
+
   const chain = ancestors(node);
 
   for (const parent of chain) {
@@ -299,7 +337,14 @@ function positionVerdict(node) {
   for (const ancestor of chain) {
     if (ts.isJsxExpression(ancestor)) {
       const parent = ancestor.parent;
-      if (parent && (ts.isJsxElement(parent) || ts.isJsxFragment(parent))) return 'yes';
+      if (parent && ts.isJsxElement(parent)) {
+        // `<style>{...}</style>` et `<script>{...}</script>` : du CSS ou du JS,
+        // jamais un texte lu par un humain.
+        const tagName = parent.openingElement.tagName.getText();
+        if (tagName === 'style' || tagName === 'script') return 'no';
+        return 'yes';
+      }
+      if (parent && ts.isJsxFragment(parent)) return 'yes';
       break;
     }
     if (ts.isJsxAttribute(ancestor) || ts.isJsxElement(ancestor) || ts.isJsxSelfClosingElement(ancestor)) break;
