@@ -447,7 +447,6 @@
   "Part (%)": "Share (%)",
   "Part de propriete (%)": "Ownership share (%)",
   "Partiel": "Partial",
-  "Paye": "Paid",
   "Payé": "Paid",
   "Pénalité": "Penalty",
   "PÉNALITÉ": "PENALTY",
@@ -669,5 +668,6 @@
   "Solde actuel": "Current balance",
   "Crédit (augmenter le solde)": "Credit (increase balance)",
   "Débit (diminuer le solde)": "Debit (decrease balance)",
-  "Motif": "Reason"
+  "Motif": "Reason",
+  "Le montant dépasse le reste dû ({{value}})": "The amount exceeds the outstanding balance ({{value}})"
 }

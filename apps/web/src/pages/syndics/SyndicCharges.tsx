@@ -19,7 +19,7 @@ import {
 import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { ChargeCallTable } from '../../components/syndics/ChargeCallTable';
-import { MoneyValue, StatCard } from '../../components/primitives';
+import { formatMoney, MoneyValue, StatCard } from '../../components/primitives';
 import {
   createChargeCall,
   getSyndicate,
@@ -43,7 +43,7 @@ const { Paragraph, Title } = Typography;
 const statusOptions: Array<{ label: string; value: ChargeCallStatus }> = [
   { label: t('En attente'), value: 'PENDING' },
   { label: t('Partiel'), value: 'PARTIAL' },
-  { label: t('Paye'), value: 'PAID' },
+  { label: t('Payé'), value: 'PAID' },
   { label: t('En retard'), value: 'OVERDUE' }
 ];
 
@@ -223,7 +223,14 @@ export const SyndicCharges: React.FC = () => {
       return;
     }
 
-    const values = await paymentForm.validateFields();
+    let values: { amount: number; paidAt: dayjs.Dayjs; method: string; reference?: string };
+    try {
+      values = await paymentForm.validateFields();
+    } catch {
+      // Le formulaire affiche deja l'erreur sous le champ concerne (ex. « Le
+      // montant depasse le reste du ») : rien d'autre a faire ici.
+      return;
+    }
     setPaymentSubmitting(true);
     try {
       await recordChargePayment(effectiveTenantId, syndicId, paymentTarget.id, {
@@ -481,9 +488,29 @@ export const SyndicCharges: React.FC = () => {
           <Form.Item
             label={t('Montant')}
             name="amount"
-            rules={[{ required: true, message: t('Le montant est obligatoire') }]}
+            rules={[
+              { required: true, message: t('Le montant est obligatoire') },
+              {
+                // Constat de recette (module 7) : `InputNumber max` plafonne
+                // silencieusement la valeur saisie a la perte de focus — une
+                // saisie de 250 000 sur un reste dû de 200 000 partait donc
+                // avec 200 000 sans que personne ne le remarque, alors que
+                // l'agence croyait avoir encaissé le montant saisi. Un
+                // validateur qui bloque l'envoi avec un message explicite
+                // remplace ce plafond muet ; l'API reste le dernier rempart
+                // (422) si ce contrôle était contourné.
+                validator: (_rule, value) => {
+                  if (typeof value === 'number' && value > paymentOutstanding) {
+                    return Promise.reject(
+                      new Error(t('Le montant dépasse le reste dû ({{value}})', { value: formatMoney(paymentOutstanding) }))
+                    );
+                  }
+                  return Promise.resolve();
+                }
+              }
+            ]}
           >
-            <InputNumber min={1} max={paymentOutstanding || undefined} style={{ width: '100%' }} />
+            <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item
             label={t('Date de paiement')}
