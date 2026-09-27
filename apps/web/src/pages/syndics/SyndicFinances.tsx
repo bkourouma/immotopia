@@ -1,14 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Card, Col, Row, Space, Tag, Typography } from 'antd';
+import { App, Button, Card, Col, Form, Input, InputNumber, Modal, Row, Select, Space, Tag, Typography } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { DataCard, DataView, MoneyValue, StatCard } from '../../components/primitives';
 import type { Sort } from '../../hooks/useListParams';
 import {
+  adjustSyndicateFundBalance,
+  createSyndicateFund,
   getOverdueDashboard,
   getSyndicFinanceSummary,
   listAllChargeCalls,
-  listPaymentReminders
+  listPaymentReminders,
+  renameSyndicateFund
 } from '../../services/syndic-service';
 import {
   ChargeCall,
@@ -19,6 +23,7 @@ import {
   SyndicateLot
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
@@ -46,21 +51,6 @@ function ownerLabel(
   if (!owner) return t('Sans copropriétaire');
   const name = [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim();
   return name || owner.email || t('Copropriétaire');
-}
-
-function lotLabel(
-  lotNumber: string,
-  property?: { title?: string | null; address?: string | null; internalReference?: string | null } | null
-): string {
-  const title = property?.title?.trim();
-  const address = property?.address?.trim();
-  const internalReference = property?.internalReference?.trim();
-  const isTechnicalReference = Boolean(title && /^PROP-\d{8}-[A-Z0-9]{4}-\d{4}$/i.test(title));
-
-  if (title && !isTechnicalReference) return `${lotNumber} — ${title}`;
-  if (address) return `${lotNumber} — ${address}`;
-  if (internalReference) return `${lotNumber} — ${internalReference}`;
-  return lotNumber;
 }
 
 function shortReference(id: string): string {
@@ -131,6 +121,7 @@ interface FundRow {
   id: string;
   name: string;
   balance: number;
+  currency: string;
 }
 
 interface ChargeRow {
@@ -167,7 +158,12 @@ interface OverdueRow {
 
 function buildFundRows(summary: FinanceSummary | null): FundRow[] {
   if (!summary) return [];
-  return summary.funds.map(fund => ({ id: fund.id, name: fund.name, balance: Number(fund.balance) }));
+  return summary.funds.map(fund => ({
+    id: fund.id,
+    name: fund.name,
+    balance: Number(fund.balance),
+    currency: fund.currency
+  }));
 }
 
 function buildChargeRows(charges: ChargeCall[]): ChargeRow[] {
@@ -179,7 +175,7 @@ function buildChargeRows(charges: ChargeCall[]): ChargeRow[] {
       id: charge.id,
       reference: shortReference(charge.id),
       period: charge.period,
-      lotLabel: lotLabel(lot?.lotNumber || charge.lotId, lot?.property),
+      lotLabel: formatLotLabel(lot, charge.lotId),
       ownerLabel: ownerLabel(lot?.owner),
       amount,
       paid,
@@ -198,7 +194,7 @@ function buildPaymentRows(charges: ChargeCall[]): PaymentRow[] {
       rows.push({
         id: payment.id,
         paidAt: payment.paidAt,
-        lotLabel: lotLabel(lot?.lotNumber || charge.lotId, lot?.property),
+        lotLabel: formatLotLabel(lot, charge.lotId),
         ownerLabel: ownerLabel(lot?.owner),
         chargeReference: `${charge.period} · ${shortReference(charge.id)}`,
         amount: Number(payment.amount),
@@ -216,7 +212,7 @@ function buildOverdueRows(dashboard: OverdueDashboard, reminders: PaymentReminde
   }
   return dashboard.items.map(item => ({
     chargeCallId: item.chargeCallId,
-    lotLabel: lotLabel(item.lotNumber, item.property),
+    lotLabel: formatLotLabel({ lotNumber: item.lotNumber, property: item.property }, item.lotNumber),
     ownerLabel: ownerLabel(item.owner),
     outstanding: item.outstanding,
     daysLate: item.daysLate,
@@ -225,6 +221,7 @@ function buildOverdueRows(dashboard: OverdueDashboard, reminders: PaymentReminde
 }
 
 export const SyndicFinances: React.FC = () => {
+  const { message } = App.useApp();
   const { tenantId: effectiveTenantId, syndicId } = useSyndicRouteContext();
 
   const [summary, setSummary] = useState<FinanceSummary | null>(null);
@@ -236,6 +233,18 @@ export const SyndicFinances: React.FC = () => {
   const [reminders, setReminders] = useState<PaymentReminder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [fundModalOpen, setFundModalOpen] = useState(false);
+  const [fundSubmitting, setFundSubmitting] = useState(false);
+  const [fundForm] = Form.useForm();
+
+  const [renameTarget, setRenameTarget] = useState<FundRow | null>(null);
+  const [renameSubmitting, setRenameSubmitting] = useState(false);
+  const [renameForm] = Form.useForm();
+
+  const [adjustTarget, setAdjustTarget] = useState<FundRow | null>(null);
+  const [adjustSubmitting, setAdjustSubmitting] = useState(false);
+  const [adjustForm] = Form.useForm();
 
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
@@ -268,6 +277,63 @@ export const SyndicFinances: React.FC = () => {
     }
   };
 
+  const handleCreateFund = async () => {
+    if (!effectiveTenantId || !syndicId) return;
+    const values = await fundForm.validateFields();
+    setFundSubmitting(true);
+    try {
+      await createSyndicateFund(effectiveTenantId, syndicId, {
+        name: values.name,
+        initialBalance: values.initialBalance ?? 0,
+        currency: values.currency || 'XOF'
+      });
+      message.success(t('Fonds créé'));
+      setFundModalOpen(false);
+      fundForm.resetFields();
+      await loadAll();
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Création du fonds impossible'));
+    } finally {
+      setFundSubmitting(false);
+    }
+  };
+
+  const handleRenameFund = async () => {
+    if (!effectiveTenantId || !syndicId || !renameTarget) return;
+    const values = await renameForm.validateFields();
+    setRenameSubmitting(true);
+    try {
+      await renameSyndicateFund(effectiveTenantId, syndicId, renameTarget.id, { name: values.name });
+      message.success(t('Fonds renommé'));
+      setRenameTarget(null);
+      await loadAll();
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Renommage du fonds impossible'));
+    } finally {
+      setRenameSubmitting(false);
+    }
+  };
+
+  const handleAdjustFund = async () => {
+    if (!effectiveTenantId || !syndicId || !adjustTarget) return;
+    const values = await adjustForm.validateFields();
+    setAdjustSubmitting(true);
+    try {
+      await adjustSyndicateFundBalance(effectiveTenantId, syndicId, adjustTarget.id, {
+        direction: values.direction,
+        amount: values.amount,
+        reason: values.reason
+      });
+      message.success(t('Solde du fonds ajusté'));
+      setAdjustTarget(null);
+      await loadAll();
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Ajustement du fonds impossible'));
+    } finally {
+      setAdjustSubmitting(false);
+    }
+  };
+
   const fundRows = useMemo(() => buildFundRows(summary), [summary]);
   const chargeRows = useMemo(() => buildChargeRows(charges), [charges]);
   const paymentRows = useMemo(() => buildPaymentRows(charges), [charges]);
@@ -287,6 +353,33 @@ export const SyndicFinances: React.FC = () => {
       align: 'end',
       sorter: true,
       render: (_: number, row) => <MoneyValue value={row.balance} />
+    },
+    {
+      title: t('Actions'),
+      key: 'actions',
+      render: (_: unknown, row: FundRow) => (
+        <Space size={8}>
+          <Button
+            size="small"
+            onClick={() => {
+              setRenameTarget(row);
+              renameForm.setFieldsValue({ name: row.name });
+            }}
+          >
+            {t('Renommer')}
+          </Button>
+          <Button
+            size="small"
+            onClick={() => {
+              setAdjustTarget(row);
+              adjustForm.resetFields();
+              adjustForm.setFieldsValue({ direction: 'CREDIT' });
+            }}
+          >
+            {t('Ajuster le solde')}
+          </Button>
+        </Space>
+      )
     }
   ];
 
@@ -374,15 +467,22 @@ export const SyndicFinances: React.FC = () => {
   ];
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Space direction="vertical" size={4}>
-        <Title level={2} style={{ margin: 0 }}>
-          {t('Finances copropriété')}
-        </Title>
-        <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-          {t('Soldes des fonds, appels émis, paiements et impayés.')}
-        </Paragraph>
-      </Space>
+    <>
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+        <Space direction="vertical" size={4}>
+          <Title level={2} style={{ margin: 0 }}>
+            {t('Finances copropriété')}
+          </Title>
+          <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            {t('Soldes des fonds, appels émis, paiements et impayés.')}
+          </Paragraph>
+        </Space>
+
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setFundModalOpen(true)}>
+          {t('Nouveau fonds')}
+        </Button>
+      </div>
 
       <Row gutter={[16, 16]}>
         <Col xs={24} md={8}>
@@ -553,6 +653,105 @@ export const SyndicFinances: React.FC = () => {
           />
         </Card>
       </div>
-    </Space>
+      </Space>
+
+      <Modal
+        title={t('Créer un fonds')}
+        open={fundModalOpen}
+        onCancel={() => setFundModalOpen(false)}
+        onOk={() => void handleCreateFund()}
+        okText={t('Créer')}
+        cancelText={t('Annuler')}
+        confirmLoading={fundSubmitting}
+      >
+        <Form form={fundForm} layout="vertical" initialValues={{ currency: 'XOF', initialBalance: 0 }}>
+          <Form.Item
+            label={t('Nom du fonds')}
+            name="name"
+            rules={[{ required: true, message: t('Le nom du fonds est obligatoire') }]}
+          >
+            <Input placeholder={t('Compte courant')} />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col xs={24} md={12}>
+              <Form.Item label={t('Solde initial')} name="initialBalance">
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item
+                label={t('Devise')}
+                name="currency"
+                rules={[{ required: true, message: t('La devise est obligatoire') }]}
+              >
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={t('Renommer le fonds')}
+        open={Boolean(renameTarget)}
+        onCancel={() => setRenameTarget(null)}
+        onOk={() => void handleRenameFund()}
+        okText={t('Enregistrer')}
+        cancelText={t('Annuler')}
+        confirmLoading={renameSubmitting}
+      >
+        <Form form={renameForm} layout="vertical">
+          <Form.Item
+            label={t('Nom du fonds')}
+            name="name"
+            rules={[{ required: true, message: t('Le nom du fonds est obligatoire') }]}
+          >
+            <Input />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={t('Ajuster le solde du fonds')}
+        open={Boolean(adjustTarget)}
+        onCancel={() => setAdjustTarget(null)}
+        onOk={() => void handleAdjustFund()}
+        okText={t('Appliquer')}
+        cancelText={t('Annuler')}
+        confirmLoading={adjustSubmitting}
+      >
+        {adjustTarget ? (
+          <Paragraph type="secondary">
+            {t('Solde actuel')} : <MoneyValue value={adjustTarget.balance} />
+          </Paragraph>
+        ) : null}
+        <Form form={adjustForm} layout="vertical" initialValues={{ direction: 'CREDIT' }}>
+          <Form.Item label={t('Direction')} name="direction" rules={[{ required: true }]}>
+            <Select
+              showSearch
+              optionFilterProp="label"
+              options={[
+                { label: t('Crédit (augmenter le solde)'), value: 'CREDIT' },
+                { label: t('Débit (diminuer le solde)'), value: 'DEBIT' }
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            label={t('Montant')}
+            name="amount"
+            rules={[{ required: true, message: t('Le montant est obligatoire') }]}
+          >
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item
+            label={t('Motif')}
+            name="reason"
+            rules={[{ required: true, message: t('Le motif est obligatoire') }]}
+          >
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </>
   );
 };

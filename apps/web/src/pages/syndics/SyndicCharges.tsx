@@ -20,7 +20,13 @@ import { PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { ChargeCallTable } from '../../components/syndics/ChargeCallTable';
 import { MoneyValue, StatCard } from '../../components/primitives';
-import { createChargeCall, getSyndicate, listChargeCalls, listSyndicateLots } from '../../services/syndic-service';
+import {
+  createChargeCall,
+  getSyndicate,
+  listChargeCalls,
+  listSyndicateLots,
+  recordChargePayment
+} from '../../services/syndic-service';
 import {
   ChargeCall,
   ChargeCallStatus,
@@ -29,6 +35,7 @@ import {
   SyndicateLot
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { t } from '../../i18n/t';
 
 const { Paragraph, Title } = Typography;
@@ -52,24 +59,22 @@ const recurrenceFrequencyOptions = [
   { label: t('Annuelle'), value: 'ANNUAL' }
 ];
 
-const lotTypeLabels: Record<SyndicateLot['lotType'], string> = {
-  APARTMENT: 'Appartement',
-  PARKING: 'Parking',
-  CELLAR: 'Cave',
-  OFFICE: 'Bureau',
-  COMMERCIAL: 'Commerce',
-  OTHER: 'Autre'
-};
+// FR-005 : modes de paiement acceptes pour un appel de charges. Le paiement en
+// ligne n'y figure jamais — voir docs/recette/SCENARIO_SYNDIC_MODULES.md,
+// regle absolue n°1 (compte PaySecureHub de recette en mode LIVE).
+const paymentMethodOptions = [
+  { label: t('Espèces'), value: 'ESPECES' },
+  { label: t('Virement'), value: 'VIREMENT' },
+  { label: t('Chèque'), value: 'CHEQUE' },
+  { label: t('Mobile money'), value: 'MOBILE_MONEY' }
+];
 
-function buildPropertyNomenclatureFromLot(lot: SyndicateLot): string {
-  const property = lot.property;
-  if (!property) {
-    return t('Bien non lié');
-  }
+function computeChargePaid(charge: ChargeCall): number {
+  return (charge.payments || []).reduce((sum, payment) => sum + Number(payment.amount), 0);
+}
 
-  const ownerLabel = property.owner?.fullName?.trim() || '';
-  const title = property.title?.trim() || property.internalReference || property.id || t('Sans libellé');
-  return ownerLabel ? `${ownerLabel} - ${title}` : title;
+function computeChargeOutstanding(charge: ChargeCall): number {
+  return Math.max(0, Number(charge.amount) - computeChargePaid(charge));
 }
 
 export const SyndicCharges: React.FC = () => {
@@ -87,6 +92,10 @@ export const SyndicCharges: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
+
+  const [paymentTarget, setPaymentTarget] = useState<ChargeCall | null>(null);
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [paymentForm] = Form.useForm();
 
   useEffect(() => {
     if (!effectiveTenantId || !syndicId) {
@@ -152,7 +161,7 @@ export const SyndicCharges: React.FC = () => {
     () =>
       lots.map(lot => ({
         value: lot.id,
-        label: `${buildPropertyNomenclatureFromLot(lot)} (${lotTypeLabels[lot.lotType]})`
+        label: formatLotLabel(lot)
       })),
     [lots]
   );
@@ -195,6 +204,41 @@ export const SyndicCharges: React.FC = () => {
       message.error(err.response?.data?.error || t('Création impossible'));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const paymentOutstanding = useMemo(
+    () => (paymentTarget ? computeChargeOutstanding(paymentTarget) : 0),
+    [paymentTarget]
+  );
+
+  const handleOpenPayment = (charge: ChargeCall) => {
+    setPaymentTarget(charge);
+    paymentForm.resetFields();
+    paymentForm.setFieldsValue({ paidAt: dayjs(), method: 'VIREMENT' });
+  };
+
+  const handleRecordPayment = async () => {
+    if (!effectiveTenantId || !syndicId || !paymentTarget) {
+      return;
+    }
+
+    const values = await paymentForm.validateFields();
+    setPaymentSubmitting(true);
+    try {
+      await recordChargePayment(effectiveTenantId, syndicId, paymentTarget.id, {
+        amount: values.amount,
+        paidAt: values.paidAt.toISOString(),
+        method: values.method,
+        reference: values.reference || undefined
+      });
+      message.success(t('Paiement enregistré'));
+      setPaymentTarget(null);
+      await loadCharges();
+    } catch (err: any) {
+      message.error(err.response?.data?.error || t('Enregistrement du paiement impossible'));
+    } finally {
+      setPaymentSubmitting(false);
     }
   };
 
@@ -263,7 +307,7 @@ export const SyndicCharges: React.FC = () => {
             </Card>
 
             <Card title={t('Liste des appels de charges')}>
-              <ChargeCallTable items={charges} />
+              <ChargeCallTable items={charges} onRecordPayment={handleOpenPayment} />
             </Card>
           </>
         )}
@@ -415,6 +459,48 @@ export const SyndicCharges: React.FC = () => {
                 </Row>
               ) : null
             }
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={t('Enregistrer un paiement')}
+        open={Boolean(paymentTarget)}
+        onCancel={() => setPaymentTarget(null)}
+        onOk={() => void handleRecordPayment()}
+        okText={t('Enregistrer')}
+        cancelText={t('Annuler')}
+        confirmLoading={paymentSubmitting}
+      >
+        {paymentTarget ? (
+          <Paragraph type="secondary">
+            {t('Reste à payer')} : <MoneyValue value={paymentOutstanding} />
+          </Paragraph>
+        ) : null}
+        <Form form={paymentForm} layout="vertical">
+          <Form.Item
+            label={t('Montant')}
+            name="amount"
+            rules={[{ required: true, message: t('Le montant est obligatoire') }]}
+          >
+            <InputNumber min={1} max={paymentOutstanding || undefined} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item
+            label={t('Date de paiement')}
+            name="paidAt"
+            rules={[{ required: true, message: t('La date est obligatoire') }]}
+          >
+            <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
+          </Form.Item>
+          <Form.Item
+            label={t('Mode de paiement')}
+            name="method"
+            rules={[{ required: true, message: t('Le mode de paiement est obligatoire') }]}
+          >
+            <Select showSearch optionFilterProp="label" options={paymentMethodOptions} />
+          </Form.Item>
+          <Form.Item label={t('Référence (optionnel)')} name="reference">
+            <Input />
           </Form.Item>
         </Form>
       </Modal>

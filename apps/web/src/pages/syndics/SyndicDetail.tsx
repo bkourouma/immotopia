@@ -34,6 +34,7 @@ import {
   UpdateSyndicateRequest
 } from '../../types/syndic-types';
 import { useSyndicRouteContext } from './useSyndicRouteContext';
+import { formatLotLabel } from '../../utils/syndic-lot-label';
 import { dateFormat } from '../../i18n/format';
 import { t } from '../../i18n/t';
 
@@ -81,21 +82,6 @@ function ownerLabel(
   if (!owner) return t('Sans copropriétaire');
   const name = [owner.firstName, owner.lastName].filter(Boolean).join(' ').trim();
   return name || owner.email || t('Copropriétaire');
-}
-
-function lotLabel(
-  lotNumber: string,
-  property?: { title?: string | null; address?: string | null; internalReference?: string | null } | null
-): string {
-  const title = property?.title?.trim();
-  const address = property?.address?.trim();
-  const internalReference = property?.internalReference?.trim();
-  const isTechnicalReference = Boolean(title && /^PROP-\d{8}-[A-Z0-9]{4}-\d{4}$/i.test(title));
-
-  if (title && !isTechnicalReference) return `${lotNumber} — ${title}`;
-  if (address) return `${lotNumber} — ${address}`;
-  if (internalReference) return `${lotNumber} — ${internalReference}`;
-  return lotNumber;
 }
 
 function shortReference(id: string): string {
@@ -233,7 +219,7 @@ function buildChargeRows(charges: ChargeCall[]): ChargeRow[] {
       id: charge.id,
       reference: shortReference(charge.id),
       period: charge.period,
-      lotLabel: lotLabel(lot?.lotNumber || charge.lotId, lot?.property),
+      lotLabel: formatLotLabel(lot, charge.lotId),
       ownerLabel: ownerLabel(lot?.owner),
       amount,
       paid,

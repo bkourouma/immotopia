@@ -912,3 +912,30 @@ export interface CreateIncidentImputationRequest {
   contractId?: string;
   notes?: string;
 }
+
+// FR-013 : fonds financiers de la copropriete (SyndicateFund).
+export interface SyndicateFund {
+  id: string;
+  syndicateId: string;
+  name: string;
+  balance: number | string;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSyndicateFundRequest {
+  name: string;
+  initialBalance?: number;
+  currency?: string;
+}
+
+export interface RenameSyndicateFundRequest {
+  name: string;
+}
+
+export interface AdjustSyndicateFundBalanceRequest {
+  direction: 'CREDIT' | 'DEBIT';
+  amount: number;
+  reason: string;
+}
