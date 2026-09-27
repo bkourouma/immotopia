@@ -13,6 +13,7 @@ détail vit ailleurs et se charge à la demande :
 | Reprise du travail en cours          | `docs/workflows/HANDOFF.md`            |
 | Développement multi-agents           | `docs/workflows/DEV_PROCESS.md`        |
 | Démo, anomalies et retests           | `docs/workflows/DEMO_DEBUG_PROCESS.md` |
+| Pilotage par un agent unique         | `docs/workflows/LEAD_PROCESS.md`       |
 | Installation, ports, dépannage       | `docs/workflows/RUNBOOK.md`            |
 | Architecture, modèle de données, ADR | `docs/architecture/`                   |
 | Conventions et modèle de menace      | `docs/governance/`                     |
@@ -57,7 +58,11 @@ Deux processus réutilisables sont définis dans `docs/workflows/` :
 et des critères de fin indépendants du modèle et de l'outil. Si une demande
 lance ces processus, chaque coordinateur dirige ses agents spécialisés ; la
 recette transmet ses anomalies au développement, attend les corrections, puis
-rejoue les scénarios jusqu'à réussite ou blocage documenté. Choisir les modèles
+rejoue les scénarios jusqu'à réussite ou blocage documenté. Un **Pilote**
+(`docs/workflows/LEAD_PROCESS.md`) peut, en agent unique, coordonner les deux
+processus l'un après l'autre ou en boucle, ou déléguer directement à des
+agents de réalisation pour une tâche bornée, et livrer seul jusqu'à la pull
+request ; la fusion de cette PR reste à l'utilisateur. Choisir les modèles
 et les outils disponibles dans l'environnement courant. Ne pas demander de
 validation humaine pour les actions réversibles déjà autorisées ; respecter les
 permissions et confirmations imposées par la plateforme.

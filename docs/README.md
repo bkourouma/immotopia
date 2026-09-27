@@ -9,6 +9,8 @@
 - [Processus développement](workflows/DEV_PROCESS.md) et
   [processus démo/debug](workflows/DEMO_DEBUG_PROCESS.md) — rôles indépendants
   des modèles, cycle de correction et [rapport d'anomalie](workflows/BUG_REPORT_TEMPLATE.md) ;
+  [processus pilotage à agent unique](workflows/LEAD_PROCESS.md) — un seul
+  agent coordonne les deux processus ou délègue directement, jusqu'à la PR ;
   [adaptateurs Codex, Claude et autres agents](workflows/AGENT_ADAPTERS.md)
 - [Runbook](workflows/RUNBOOK.md) — installation, ports, base, dépannage
 - [Architecture du système](architecture/SYSTEM_DESIGN.md) et

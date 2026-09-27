@@ -91,8 +91,16 @@ Fait :
   le worktree, les `set` de launch.json restant prioritaires (vérifié dans
   Vite 6.4.3).
 
+- Pilote (agent unique, seul interlocuteur) : profil `.claude/agents/lead.md`
+  et contrat `docs/workflows/LEAD_PROCESS.md` ; il choisit la voie, commite,
+  pousse et ouvre les PR ; fusion, main, déploiement, `.env` exigent un oui.
+
 Reste à faire :
 
+- L'utilisateur doit renseigner lui-même `.claude/settings.local.json` :
+  `"agent": "lead"` et les autorisations git/gh (écriture refusée à l'agent
+  par le classifieur d'auto-modification). Prise en compte de `agent` par
+  l'application de bureau non documentée : repli `claude --agent lead`.
 - Suivre la CI de la PR #16 après la poussée de 9010d8d et f2440f7.
 - Créer `packages/api/.env.demo` (base de démo dédiée) — à faire par
   l'utilisateur, les agents ne touchent pas aux `.env` ; puis

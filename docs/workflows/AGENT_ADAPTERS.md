@@ -1,11 +1,20 @@
-# Démarrer les deux processus selon l'agent utilisé
+# Démarrer les processus selon l'agent utilisé
 
-Les contrats communs sont [DEV_PROCESS.md](DEV_PROCESS.md) et
-[DEMO_DEBUG_PROCESS.md](DEMO_DEBUG_PROCESS.md). Ouvrir deux sessions ou tâches
-distinctes sur le même projet : une pour le développement et une pour la
-démo/debug. Leur donner accès à la même révision testable, à une instance de
-démo dédiée et à un canal de messages ou de suivi partagé. Chaque processus
-reste responsable de son rôle ; seul le développement écrit dans le code.
+Les contrats communs sont [DEV_PROCESS.md](DEV_PROCESS.md),
+[DEMO_DEBUG_PROCESS.md](DEMO_DEBUG_PROCESS.md) et
+[LEAD_PROCESS.md](LEAD_PROCESS.md). Deux organisations sont possibles :
+
+- **Pilote unique** : une seule session tient le rôle décrit dans
+  `LEAD_PROCESS.md`, coordonne elle-même les deux processus via le bus
+  d'agents et livre jusqu'à la pull request.
+- **Deux sessions** : ouvrir deux sessions ou tâches distinctes sur le même
+  projet, une pour le développement et une pour la démo/debug. Leur donner
+  accès à la même révision testable, à une instance de démo dédiée et à un
+  canal de messages ou de suivi partagé. Chaque processus reste responsable
+  de son rôle ; seul le développement écrit dans le code.
+
+Les deux organisations restent valables selon l'agent disponible ; le choix
+entre elles est documenté par profil ci-dessous.
 
 ## Codex
 
@@ -44,6 +53,20 @@ présent et que le site est autorisé. Les tâches séparées échangent par la
 messagerie de l'application ; si elles utilisent des worktrees différents,
 toujours transmettre la branche et la révision à tester.
 
+Pour le pilotage à agent unique, démarrer une seule tâche avec cette consigne
+de départ :
+
+```text
+Pilote : lis AGENTS.md et docs/workflows/LEAD_PROCESS.md. Cadre chaque
+objectif reçu en critères observables, choisis la voie (développement seul,
+développement puis démo/debug, ou exécution directe d'agents de réalisation),
+délègue par territoire de fichiers, intègre et vérifie le résultat, fais la
+recette navigateur si le changement est visible, puis commite, pousse et
+ouvre la pull request toi-même. Ne fusionne jamais une PR ni ne pousse sur
+main sans un oui explicite en conversation. Rends un seul rapport par
+objectif.
+```
+
 ## Claude Code
 
 Les profils `.claude/agents/*.md` portent les mêmes rôles. Les deux
@@ -64,6 +87,20 @@ passation entre les deux sessions est le bus d'agents (`.agent-bus/`, voir
 [DEV_PROCESS.md](DEV_PROCESS.md)) ; la seule présence de deux profils ne crée
 pas ce canal, et SendMessage ne sert qu'à signaler un identifiant déjà écrit
 dans le bus.
+
+Pour le pilotage à agent unique, le profil `lead` (`.claude/agents/lead.md`)
+utilise Claude Opus 5.5 avec effort `high` : il applique
+[LEAD_PROCESS.md](LEAD_PROCESS.md), délègue lui-même aux deux coordinateurs
+ou directement à `dev-complex`/`dev-simple`/`ui-tester` pour une tâche assez
+petite, et relaie entre développement et démo/debug via le bus d'agents sans
+qu'une seconde session humaine soit nécessaire. Démarrer avec
+`claude --agent lead`, ou par défaut via la clé `"agent": "lead"` dans
+`.claude/settings.local.json` (réglage personnel, propre au poste). La prise
+en compte de cette clé par l'application de bureau Claude n'est pas
+documentée : si elle ne s'applique pas, `claude --agent lead` reste la
+solution de repli (lancée depuis un terminal). Les
+coordinateurs `dev-orchestrator` et `demo-orchestrator` restent utilisables
+seuls en deux sessions séparées, comme décrit plus haut.
 
 ## Autres agents
 

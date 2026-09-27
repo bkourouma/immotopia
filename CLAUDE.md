@@ -9,17 +9,18 @@ Point d'entrée des sessions Claude Code. La constitution du projet est
 
 Ne pas tout lire d'avance. Charger le document quand la tâche le demande :
 
-| Tâche                              | À lire                                                                       |
-| ---------------------------------- | ---------------------------------------------------------------------------- |
-| Reprendre un travail en cours      | [docs/workflows/HANDOFF.md](docs/workflows/HANDOFF.md) — toujours en premier |
-| Lancer, configurer, dépanner       | [docs/workflows/RUNBOOK.md](docs/workflows/RUNBOOK.md)                       |
-| Comprendre l'architecture          | [docs/architecture/SYSTEM_DESIGN.md](docs/architecture/SYSTEM_DESIGN.md)     |
-| Toucher au schéma Prisma           | [docs/architecture/DATA_MODELS.md](docs/architecture/DATA_MODELS.md)         |
-| Conventions détaillées             | [docs/governance/CODING_STANDARDS.md](docs/governance/CODING_STANDARDS.md)   |
-| Authentification, tenant, fichiers | [docs/governance/SECURITY.md](docs/governance/SECURITY.md)                   |
-| Un libellé affiché                 | [docs/architecture/i18n.md](docs/architecture/i18n.md)                       |
-| Une décision d'architecture        | [docs/architecture/adr/](docs/architecture/adr/ADR-000-template.md)          |
-| Une fonctionnalité métier          | `specs/<module>/`                                                            |
+| Tâche                                    | À lire                                                                       |
+| ---------------------------------------- | ---------------------------------------------------------------------------- |
+| Reprendre un travail en cours            | [docs/workflows/HANDOFF.md](docs/workflows/HANDOFF.md) — toujours en premier |
+| Lancer, configurer, dépanner             | [docs/workflows/RUNBOOK.md](docs/workflows/RUNBOOK.md)                       |
+| Comprendre l'architecture                | [docs/architecture/SYSTEM_DESIGN.md](docs/architecture/SYSTEM_DESIGN.md)     |
+| Toucher au schéma Prisma                 | [docs/architecture/DATA_MODELS.md](docs/architecture/DATA_MODELS.md)         |
+| Conventions détaillées                   | [docs/governance/CODING_STANDARDS.md](docs/governance/CODING_STANDARDS.md)   |
+| Authentification, tenant, fichiers       | [docs/governance/SECURITY.md](docs/governance/SECURITY.md)                   |
+| Un libellé affiché                       | [docs/architecture/i18n.md](docs/architecture/i18n.md)                       |
+| Une décision d'architecture              | [docs/architecture/adr/](docs/architecture/adr/ADR-000-template.md)          |
+| Une fonctionnalité métier                | `specs/<module>/`                                                            |
+| Piloter seul un objectif de bout en bout | [docs/workflows/LEAD_PROCESS.md](docs/workflows/LEAD_PROCESS.md)             |
 
 Les règles de `.claude/rules/` se chargent seules selon les fichiers touchés
 (frontmatter `paths:`) : style, tests, routes API, sécurité.
@@ -48,10 +49,15 @@ fichier lui-même.
 
 ## Sous-agents
 
-Les coordinateurs des deux processus peuvent déléguer à leurs agents de
-réalisation. Ces derniers ne lancent pas d'autres sous-agents. Tout prompt
-de réalisation interdit explicitement : toute commande git qui modifie
-l'arbre ou l'index (`stash`,
+Le Pilote (session principale, voir
+[docs/workflows/LEAD_PROCESS.md](docs/workflows/LEAD_PROCESS.md)) délègue
+soit aux coordinateurs des deux processus, soit directement à des agents de
+réalisation ou de relecture pour une tâche assez petite pour ne pas justifier
+un coordinateur. Les coordinateurs délèguent à leur tour à leurs agents de
+réalisation. Ces derniers ne lancent jamais d'autres sous-agents — profondeur
+maximale de trois niveaux sous la session principale. Tout prompt de
+réalisation interdit explicitement : toute commande git qui modifie l'arbre
+ou l'index (`stash`,
 `checkout`, `reset`, `restore`) ; de refaire un travail qui semble « revenu en
 arrière » (s'arrêter et signaler). Découper par territoire de fichiers, jamais
 deux agents sur le même fichier. Ne pas commiter pendant qu'un agent écrit : le
